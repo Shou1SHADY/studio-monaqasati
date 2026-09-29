@@ -17,7 +17,10 @@ import type { PmAccess } from "@/hooks/usePmAccess"
 import { useProjectCost } from "@/hooks/useProjectCost"
 import { pmDate, pmMoney } from "@/lib/pm/format"
 import { matchRows, MATCH_STATES, type MatchState } from "@/lib/pm/match"
+import { PURCHASE_REQUESTS, reqNo, requestOf } from "@/lib/pm/supply"
 import { displayDocNumber } from "@/lib/sales-numbering"
+import { collection } from "firebase/firestore"
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 
 const TONE: Record<MatchState, PillTone> = { ok: "ok", over: "bad", under: "warn", noinv: "mute" }
 const qty = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 })
@@ -29,6 +32,16 @@ export function MatchPanel({ projectId, orgId, items, access }: { projectId: str
   const world = useProjectCost(projectId, orgId, money)
   const rows = useMemo(() => matchRows(world.pos, world.invoices), [world.pos, world.invoices])
   const codeOf = useMemo(() => new Map(items.map((i) => [i.id, i.code])), [items])
+  const firestore = useFirestore()
+  const reqQ = useMemoFirebase(() => (firestore && money ? collection(firestore, "projects", projectId, PURCHASE_REQUESTS) : null), [firestore, money, projectId])
+  const { data: reqData } = useCollection(reqQ)
+  // The request an order answers: named on the order, or — for an older order — the request that names the order.
+  const reqSeq = useMemo(() => {
+    const reqs = ((reqData ?? []) as Array<Record<string, unknown> & { id: string }>).map(requestOf).filter((r) => r.seq)
+    const byId = new Map(reqs.map((r) => [r.id, r.seq as number]))
+    const byPo = new Map(reqs.filter((r) => r.poId).map((r) => [r.poId as string, r.seq as number]))
+    return (row: { requestId: string | null; poId: string }) => (row.requestId ? byId.get(row.requestId) : undefined) ?? byPo.get(row.poId) ?? null
+  }, [reqData])
   const bad = rows.filter((r) => r.state === "over").length
 
   if (!money) return <Callout tone="info">{t("money.money_only")}</Callout>
@@ -38,7 +51,7 @@ export function MatchPanel({ projectId, orgId, items, access }: { projectId: str
       title={t("money.match.title")}
       icon={Scale}
       count={rows.length || undefined}
-      countTone={bad > 0 ? "bad" : "mute"}
+      countTone={bad > 0 ? "bad" : "ok"}
       actions={<SourceBadge module="payments" label={t("money.match.payment_in_finance")} />}
       bodyClassName="p-0"
     >
@@ -63,6 +76,7 @@ export function MatchPanel({ projectId, orgId, items, access }: { projectId: str
                 {rows.map((r) => {
                   const known = (MATCH_STATES as readonly string[]).includes(r.state)
                   const code = r.itemId ? codeOf.get(r.itemId) : null
+                  const seq = reqSeq(r)
                   return (
                     <tr key={`${r.poId}:${r.lineId}`} className="border-b last:border-0">
                       <td className="px-4 py-2.5">
@@ -77,6 +91,7 @@ export function MatchPanel({ projectId, orgId, items, access }: { projectId: str
                       </td>
                       <td className="px-3 py-2.5 text-xs">
                         <span dir="ltr">{displayDocNumber(r.poNo, locale)}</span>
+                        {seq !== null && <p className="text-muted-foreground">{t("boqsup.po_from", { no: reqNo(seq) })}</p>}
                         {r.invoice && (
                           <p className="text-muted-foreground">
                             {t("money.match.invoice_line", { no: r.invoice.no, date: pmDate(r.invoice.date, locale) })}

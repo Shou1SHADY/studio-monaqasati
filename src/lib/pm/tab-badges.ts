@@ -2,14 +2,15 @@
 // many things on that screen wait for someone, and its tone says how bad: red
 // where the prototype paints it red (a failed inspection, a stale drawing, a
 // late letter, a claim whose notice window has passed, no project manager),
-// amber otherwise. "!" is a state, not a number. Pure: no I/O.
+// amber otherwise — except the team's seat count, which is information, not a
+// wait, and stays neutral. "!" is a state, not a number. Pure: no I/O.
 
 import { isOpenPunch, type PunchStatus } from "./punch"
 import { isLetterLate, type LetterStatus } from "./correspondence"
 
 export interface TabBadge {
   n: number | "!"
-  tone: "warn" | "bad"
+  tone: "warn" | "bad" | "mute"
 }
 
 export interface TabBadgeFacts {
@@ -48,7 +49,7 @@ const badge = (n: number, tone: TabBadge["tone"] = "warn"): TabBadge | null => (
 /** Badges by the page's tab keys; a key without a badge is absent. */
 export function tabBadges(f: TabBadgeFacts): Record<string, TabBadge> {
   const out: Record<string, TabBadge | null> = {
-    team: f.hasManager ? badge(f.liveSeats) : { n: "!", tone: "bad" },
+    team: f.hasManager ? badge(f.liveSeats, "mute") : { n: "!", tone: "bad" },
     pmTerms: badge(f.addendaDrafts ?? 0),
     pmVo: badge((f.variations ?? []).filter((v) => v.status === "wait" || v.status === "draft").length),
     pmClaims: f.claimNoticeLate ? { n: "!", tone: "bad" } : badge(f.claimsOpen ?? 0),

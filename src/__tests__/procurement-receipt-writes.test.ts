@@ -394,17 +394,19 @@ describe("the desk's pure helpers", () => {
   it("the log rows carry the state and the flags", () => {
     const rows = receiptRows(all, orders, "log", NOW)
     expect(rows.map((r) => r.delivery.id)).toEqual(["g1", "o1"])
-    expect(rows[0]).toMatchObject({ state: "received_with_rejects", rejected: 1, held: 2, short: 0, complete: false })
+    expect(rows[0]).toMatchObject({ state: "received_held", rejected: 1, held: 2, short: 0, complete: false })
     expect(rows[1]).toMatchObject({ state: "received", complete: null })
     expect(receiptRows(all, orders, "nopo", NOW)[0]).toMatchObject({ state: "manual_no_po" })
   })
 
   it("CSV: one row per line, no money, BOM, every cell quoted", () => {
-    const words: CsvWords = { headers: { receipt: "السند", date: "التاريخ", supplier: "المورد", po: "أمر الشراء", material: "المادة", perNotice: "حسب الإشعار", counted: "المعدود", accepted: "المقبول", rejected: "المرفوض", held: "بانتظار الفحص", place: "المكان", receiver: "المستلم", recordedIn: "سجّله" }, recordedManual: "يدوي", recordedGate: "البوابة", noPo: "بلا أمر", noNotice: "بلا إشعار" }
-    const rows = receiptCsvRows(all, orders, (id) => (id === "wh-p1" ? "مستودع البرج" : ""), words)
+    const words: CsvWords = { headers: { receipt: "السند", date: "التاريخ", supplier: "المورد", po: "أمر الشراء", material: "المادة", perNotice: "حسب الإشعار", counted: "المعدود", accepted: "المقبول", rejected: "المرفوض", held: "بانتظار الفحص", place: "المكان", receiver: "المستلم", recordedIn: "سجّله" }, recordedManual: "يدوي", modules: { procurement: "المشتريات", inventory: "المخزون", projects: "إدارة المشاريع" }, noPo: "بلا أمر", noNotice: "بلا إشعار" }
+    const rows = receiptCsvRows([{ ...received, confirmedByName: "Badr" }, manual, legacy, pending, latePending], orders, (id) => (id === "wh-p1" ? "مستودع البرج" : ""), words, (d) => (d.landedWarehouseId === "wh-p1" ? "prj" : null))
     expect(rows).toHaveLength(3)
     expect(rows[0]).toEqual(["GR-2026/002", "2026-09-22", "محل الحي", "بلا أمر", "زوايا · حبة", "بلا إشعار", "20", "20", "0", "0", "", "بدر", "يدوي"])
-    expect(rows[1]).toEqual(["GR-2026/001", "2026-09-21", "شركة الحديد", "PO-2026/001", "حديد 12مم · طن", "6", "6", "3", "1", "2", "مستودع البرج", "سلمى", "البوابة"])
+    expect(rows[1]).toEqual(["GR-2026/001", "2026-09-21", "شركة الحديد", "PO-2026/001", "حديد 12مم · طن", "6", "6", "3", "1", "2", "مستودع البرج", "سلمى", "إدارة المشاريع — Badr"])
+    // The recorder is the place's module, never "the receiver at the gate"; no name when it is the receiver himself.
+    expect(rows[2][12]).toBe("المخزون")
     const csv = receiptCsv(rows, words)
     expect(csv.startsWith("﻿\"السند\",")).toBe(true)
     expect(csv.split("\r\n")).toHaveLength(4)
@@ -430,5 +432,41 @@ describe("the desk's pure helpers", () => {
     expect(noPo).toContain("[status_no_po]")
     expect(noPo).toContain("[title_no_po]")
     expect(noPo).toContain("[footer_no_po]")
+  })
+
+  it("the printed receipt names the supplier in full, our notice number, who forwarded it and a link signature", () => {
+    const t = (k: string, p?: Record<string, string | number>) => `[${k}${p ? ":" + Object.values(p).join("|") : ""}]`
+    const fw = { linkId: "k", name: "ناصر", userId: null, phoneMasked: "•••12", byName: "Badr", at: "2026-09-20T08:00:00Z" }
+    const report = { linkId: "k", receiverName: "ناصر", receiverUserId: null, phoneMasked: "•••12", lines: [], note: null, signatureData: null, signedAt: "2026-09-21T09:00:00Z", verifiedBy: "sms_code" as const }
+    const base = { delivery: { ...received, paperNoteNumber: "DN-77", forwardedTo: fw, receiverReport: report }, po: order(), company: { name: "النخبة" }, placeName: null, projectName: null, displayNumber: "ا.س-2026/001", displayPoNumber: "ط.ش-2026/001", withPrices: false, locale: "ar", t, tp: t, now: NOW }
+    const html = buildReceiptPrintHtml({ ...base, supplier: { cr: "1010999", vat: "300111", city: "الرياض", phone: "0551234567" }, noticeNumber: "إ.ت-2026/001-1" })
+    expect(html).toContain("1010999")
+    expect(html).toContain("300111")
+    expect(html).toContain("الرياض")
+    expect(html).toContain("0551234567")
+    expect(html).toContain("إ.ت-2026/001-1")
+    expect(html).toContain("DN-77")
+    expect(html).toContain("[forwarded_title]")
+    expect(html).toContain("•••12")
+    expect(html).toContain("[forwarded_by:Badr]")
+    expect(html).toContain("[signed_on_link]")
+    expect(buildReceiptPrintHtml({ ...base, delivery: received })).not.toContain("[signed_on_link]")
+  })
+
+  it("a no-PO print: its stored CR/VAT (else not registered) and, for a price reader, the invoice as typed", () => {
+    const t = (k: string, p?: Record<string, string | number>) => `[${k}${p ? ":" + Object.values(p).join("|") : ""}]`
+    const priced: DeskDelivery = { ...manual, items: [{ name: "زوايا", quantity: 20, unit: "حبة", unitPrice: 12 }, { name: "براغي", quantity: 3, unit: "علبة", unitPrice: null }] }
+    const base = { po: null, company: { name: "النخبة" }, placeName: null, projectName: null, displayNumber: "ا.س-2026/002", displayPoNumber: null, locale: "ar", t, tp: t, now: NOW }
+    const withIds = buildReceiptPrintHtml({ ...base, delivery: { ...priced, supplierCrNumber: "7001", supplierVatNumber: "3999" } as DeskDelivery, withPrices: true })
+    expect(withIds).toContain("7001")
+    expect(withIds).toContain("3999")
+    expect(withIds).not.toContain("[not_registered]")
+    expect(withIds).toContain("[col_unit_price]")
+    expect(withIds).toContain("240 ر.س")
+    expect(withIds).toContain("[invoice_as_received]")
+    const blind = buildReceiptPrintHtml({ ...base, delivery: priced, withPrices: false })
+    expect(blind).toContain("[not_registered]")
+    expect(blind).not.toContain("[col_unit_price]")
+    expect(blind).not.toContain("240")
   })
 })

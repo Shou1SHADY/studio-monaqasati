@@ -15,8 +15,14 @@ import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
-import { BOUNDARY_CONFLICTS, boundaryLog, eventStats } from "@/lib/pm/boundary"
-import { PM_EVENTS, type PmEvent } from "@/lib/pm/events"
+import { JOURNAL_ENTRIES } from "@/lib/accounting/journal"
+import { BOUNDARY_CONFLICTS, boundaryRows, eventStats, incomingEntries } from "@/lib/pm/boundary"
+import { PM_CERTIFICATES } from "@/lib/pm/certificate"
+import type { PmCertificate } from "@/lib/pm/certificate-writes"
+import { eventDocId, PM_EVENTS, type PmEvent } from "@/lib/pm/events"
+import { PM_STORE, storeLineOf, type PmStoreLine } from "@/lib/pm/store"
+import { PURCHASE_REQUESTS, requestOf } from "@/lib/pm/supply"
+import { PURCHASE_ORDERS } from "@/lib/procurement/types"
 import { pmDate, pmMoney } from "@/lib/pm/format"
 import { cn } from "@/lib/utils"
 
@@ -40,7 +46,36 @@ export function BoundaryPanel({ projectId, orgId, access }: { projectId: string;
   const { data } = useCollection(q)
   const events = useMemo(() => (data ?? []) as unknown as PmEvent[], [data])
   const stats = eventStats(events)
-  const log = boundaryLog(events)
+
+  // What crossed the other way: each module's own records about this project.
+  const poQ = useMemoFirebase(
+    () => (firestore && orgId ? query(collection(firestore, PURCHASE_ORDERS), where("organizationId", "==", orgId), where("projectId", "==", projectId)) : null),
+    [firestore, orgId, projectId]
+  )
+  const { data: poData } = useCollection(poQ)
+  const certQ = useMemoFirebase(() => (firestore && money ? collection(firestore, "projects", projectId, PM_CERTIFICATES) : null), [firestore, money, projectId])
+  const { data: certData } = useCollection(certQ)
+  const financeReads = money && access.has("client")
+  const relQ = useMemoFirebase(
+    () => (firestore && orgId && financeReads ? query(collection(firestore, JOURNAL_ENTRIES), where("organizationId", "==", orgId), where("sourceType", "==", "retention_release")) : null),
+    [firestore, orgId, financeReads]
+  )
+  const { data: relData } = useCollection(relQ)
+  const reqQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PURCHASE_REQUESTS) : null), [firestore, projectId])
+  const { data: reqData } = useCollection(reqQ)
+  const storeQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_STORE) : null), [firestore, projectId])
+  const { data: storeData } = useCollection(storeQ)
+  const log = useMemo(() => {
+    const incoming = incomingEntries({
+      pos: (poData ?? []) as unknown as Parameters<typeof incomingEntries>[0]["pos"],
+      certificates: (certData ?? []) as unknown as PmCertificate[],
+      releases: (relData ?? []) as Array<{ sourceId: string; date: string }>,
+      hndDocIds: new Set(events.filter((e) => e.kind === "HND").map((e) => eventDocId(e.key))),
+      requests: ((reqData ?? []) as Array<Record<string, unknown> & { id: string }>).map(requestOf),
+      stores: ((storeData ?? []) as Array<Partial<PmStoreLine> & { id: string }>).map((d) => storeLineOf(d.id, d)),
+    })
+    return boundaryRows(events, incoming)
+  }, [events, poData, certData, relData, reqData, storeData])
 
   return (
     <div className="space-y-4">
@@ -124,25 +159,42 @@ export function BoundaryPanel({ projectId, orgId, access }: { projectId: string;
           <p className="border-t px-4 py-6 text-center text-sm text-muted-foreground">{t("bound.log_empty")}</p>
         ) : (
           <ul className="divide-y border-t">
-            {log.map((e) => (
-              <li key={e.key} className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-sm">
-                <StatusPill tone="module">{t("bound.out")}</StatusPill>
-                <StatusPill tone="info">{t("bound.to_finance")}</StatusPill>
-                <span className="min-w-0 flex-1">
-                  {t(`bound.ev.${e.kind}`)}{" "}
-                  <span dir="ltr" className="font-mono text-xs text-muted-foreground [unicode-bidi:isolate]">
-                    {e.key}
+            {log.map((row) =>
+              row.dir === "out" ? (
+                <li key={`out:${row.event.key}`} className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-sm">
+                  <StatusPill tone="module">{t("bound.out")}</StatusPill>
+                  <SourceBadge module="payments" label={t("bound.to_finance")} />
+                  <span className="min-w-0 flex-1">
+                    {t(`bound.ev.${row.event.kind}`)}{" "}
+                    <span dir="ltr" className="font-mono text-xs text-muted-foreground [unicode-bidi:isolate]">
+                      {row.event.key}
+                    </span>
+                    {money && row.event.amount > 0 && (
+                      <>
+                        {" · "}
+                        <span dir="ltr">{pmMoney(row.event.amount)}</span>
+                      </>
+                    )}
                   </span>
-                  {money && e.amount > 0 && (
-                    <>
-                      {" · "}
-                      <span dir="ltr">{pmMoney(e.amount)}</span>
-                    </>
-                  )}
-                </span>
-                <span className="text-xs text-muted-foreground">{pmDate(e.at?.slice(0, 10), locale)}</span>
-              </li>
-            ))}
+                  <span className="text-xs text-muted-foreground">{pmDate(row.at.slice(0, 10), locale)}</span>
+                </li>
+              ) : (
+                <li key={`in:${row.entry.id}`} className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-sm">
+                  <StatusPill tone="info">{t("bound.in")}</StatusPill>
+                  <SourceBadge module={row.entry.module} label={t(`bound.conf_module.${row.entry.module}`)} />
+                  <span className="min-w-0 flex-1" dir="auto">
+                    {t(`bound.in_kind.${row.entry.kind}`, row.entry.params)}
+                    {money && (row.entry.amount ?? 0) > 0 && (
+                      <>
+                        {" · "}
+                        <span dir="ltr">{pmMoney(row.entry.amount ?? 0)}</span>
+                      </>
+                    )}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{pmDate(row.at.slice(0, 10), locale)}</span>
+                </li>
+              )
+            )}
           </ul>
         )}
       </details>

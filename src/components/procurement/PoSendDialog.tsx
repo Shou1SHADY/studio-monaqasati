@@ -12,7 +12,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { doc, getDoc } from "firebase/firestore"
-import { Copy, Loader2, Mail, MessageCircle, Send } from "lucide-react"
+import { CheckCircle2, Copy, Loader2, Mail, MessageCircle, Send } from "lucide-react"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
@@ -21,10 +21,12 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import { displayPoNumber } from "@/lib/procurement/format"
 import { lineOutstanding, PO_SEND_CHANNELS } from "@/lib/procurement/po"
 import type { PoSendChannel, PurchaseOrder } from "@/lib/procurement/types"
 import { buildSendMessage, isEmail, mailtoUrl, moneyTrail, whatsappUrl } from "./PoModel"
 import type { Submit } from "./PoActionDialogs"
+import { Money, useDateText } from "./PoBits"
 
 /** The site the buyer is using — UAT links stay on UAT. */
 const portalOrigin = () => (typeof window !== "undefined" && window.location.origin) || "https://mdmaktech.sa"
@@ -49,6 +51,7 @@ export function PoSendDialog({
   const locale = useLocale() as "ar" | "en"
   const firestore = useFirestore()
   const { toast } = useToast()
+  const fmt = useDateText()
   const registered = Boolean(po && !po.isGuestSupplier && po.supplierUserId)
 
   const schema = z
@@ -136,6 +139,29 @@ export function PoSendDialog({
           <DialogTitle>{t("send.title")}</DialogTitle>
           <DialogDescription>{t("send.desc", { supplier: po.supplierName })}</DialogDescription>
         </DialogHeader>
+        <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+          <p className="font-bold" dir="auto">
+            {po.supplierName}
+          </p>
+          <p className="text-xs text-muted-foreground" dir="auto">
+            <span dir="ltr" className="tabular-nums">
+              {displayPoNumber(po.docNumber, locale)}
+            </span>{" "}
+            · {po.lines.map((l) => l.name).join("، ")}
+            {seesPrices && (
+              <>
+                {" "}
+                · <Money value={moneyTrail(po).commitment} /> {tProc("rfqpo.po.hold.incl_vat")}
+              </>
+            )}
+          </p>
+        </div>
+        {po.approvedAt && (
+          <p className="flex gap-2 rounded-lg border border-success/30 bg-success/5 px-3 py-2 text-xs leading-relaxed text-foreground/90">
+            <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
+            {tProc("rfqpo.po.send_approved_by", { name: po.approvedByName || po.preparedByName, date: fmt(po.approvedAt) })}
+          </p>
+        )}
         <Form {...form}>
           <form
             className="space-y-4"

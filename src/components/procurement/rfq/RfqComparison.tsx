@@ -22,7 +22,7 @@ import type { RfqNote } from "@/lib/procurement/rfq-notes"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 import { moneyFigure } from "@/components/procurement/PoModel"
-import { supplierNameOf, termsOf, type RfqOfferView, type RfqView } from "./rfqOfferView"
+import { lineForKey, supplierNameOf, termsOf, type RfqOfferView, type RfqView } from "./rfqOfferView"
 
 const NOTE_TONE = { bad: "block", warn: "warn", info: "info" } as const
 /** The prototype shows the six notes that matter most — the list is ordered by weight. */
@@ -33,6 +33,17 @@ export function leadDaysOf(o: Pick<RfqOfferView, "executionDuration" | "executio
   if (!Number.isFinite(n) || n <= 0) return null
   const u = o.executionDurationUnit || ""
   return n * (u === "أشهر" ? 30 : u === "أسابيع" ? 7 : 1)
+}
+
+/** «for (project)» under a line: its own project, the RFQ's, the workshop, or general stock. */
+export function useLineFor(rfq: RfqView, projectName: string | null) {
+  const tp = useTranslations("Portal.Procurement")
+  return (index: number): string => {
+    const f = lineForKey(rfq, index)
+    if (f.kind === "workshop") return tp("rfqpo.list.workshop")
+    if (f.kind === "general") return tp("rfqx.details.for_general")
+    return f.name || (f.id === rfq.projectId ? projectName : null) || tp("rfqpo.list.project_unknown")
+  }
 }
 
 export function useTermsText() {
@@ -62,6 +73,7 @@ export function RfqComparison({
   onCloseEarly,
   round,
   onAskRound,
+  projectName,
 }: {
   rfq: RfqView
   offers: RfqOfferView[]
@@ -78,12 +90,15 @@ export function RfqComparison({
   /** The one reduction round: may be asked, was asked, or neither applies. */
   round: "can" | "done" | "none"
   onAskRound: () => void
+  /** The RFQ's own project, for a line that names none. */
+  projectName?: string | null
 }) {
   const t = useTranslations("Portal.Procurement.rfqd")
   const tx = useTranslations("Portal.Procurement.rfqx")
   const tc = useTranslations("Portal.Contractor")
   const locale = useLocale()
   const termsText = useTermsText()
+  const forText = useLineFor(rfq, projectName ?? null)
   const live = competingOffers(offers)
   const name = (o: RfqOfferView) => supplierNameOf(o, tc("offers_registered_supplier"))
 
@@ -180,8 +195,8 @@ export function RfqComparison({
                     <span className="block max-w-[14rem] truncate" dir="auto" title={p.name}>
                       {p.name || "—"}
                     </span>
-                    <span className="block text-[11px] font-normal text-muted-foreground">
-                      <bdi dir="ltr">{qty(p.quantity)}</bdi> {p.unit}
+                    <span className="block max-w-[14rem] truncate text-[11px] font-normal text-muted-foreground" dir="auto">
+                      <bdi dir="ltr">{qty(p.quantity)}</bdi> {p.unit} · {forText(p.rfqProductIndex)}
                     </span>
                   </th>
                   {live.map((o) => {

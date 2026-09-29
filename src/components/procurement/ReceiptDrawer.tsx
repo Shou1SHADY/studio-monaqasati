@@ -30,7 +30,7 @@ import type { Translator } from "@/lib/mfg-events"
 import { operatingPolicies } from "@/lib/procurement/policies"
 import { receiveRight } from "@/lib/procurement/policy-enforce"
 import { poActs } from "@/lib/procurement/po-extras"
-import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
+import { displayNoticeNumber, displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { RECEIPT_CHECKS, acceptedOf, canRate, lineToArrive, round2 } from "@/lib/procurement/po"
 import { procLinks } from "@/lib/procurement/events"
 import { RFQ_HREF } from "@/lib/procurement/today"
@@ -40,6 +40,7 @@ import {
   isNoPo,
   isoOf,
   noPoInvoiceValue,
+  noticeNumberOf,
   receiptLinesOf,
   receiptLog,
   receiptTrail,
@@ -48,9 +49,10 @@ import {
   type DeskDelivery,
   type DestKind,
   type RecordedBy,
+  type TrailNeed,
   type TrailState,
 } from "@/lib/procurement/receipt-desk"
-import { printGoodsReceipt, type ReceiptPrintCompany } from "@/lib/procurement/receipt-print"
+import { printGoodsReceipt, type ReceiptPrintCompany, type SupplierIdentity } from "@/lib/procurement/receipt-print"
 import type { PoLine, ProcActor, ProcurementPolicies, PurchaseOrder, ReceiptCheck, RejectDecision } from "@/lib/procurement/types"
 import { ProcWriteError, decideReject, ratePurchaseOrder, type RatingInput } from "@/lib/procurement/writes"
 import { RejectDecisionDialog } from "./PoActionDialogs"
@@ -102,13 +104,17 @@ export interface ReceiptDrawerProps {
   /** The org's policies: who may record (buyerReceives) and how notices travel (noticeRouting). */
   policies?: ProcurementPolicies | null
   onRegularise?: (d: DeskDelivery) => void
+  /** The need the order answers, for the trail's first step. */
+  need?: TrailNeed | null
+  /** The supplier's CR, VAT, city and phone for the printed receipt. */
+  supplier?: SupplierIdentity | null
 }
 
 const TRAIL_ICON: Record<TrailState, typeof CheckCircle2> = { ok: CheckCircle2, bad: AlertTriangle, now: Clock }
 const TRAIL_TONE: Record<TrailState, string> = { ok: "bg-success/10 text-success", bad: "bg-destructive/10 text-destructive", now: "bg-amber-100 text-amber-800" }
 
 export function ReceiptDrawer(props: ReceiptDrawerProps) {
-  const { delivery: d, po, deliveries, onOpenChange, actor, orgName, company, warehouseName, projectName, placeKind, now, onReceive, onRegularise, policies } = props
+  const { delivery: d, po, deliveries, onOpenChange, actor, orgName, company, warehouseName, projectName, placeKind, now, onReceive, onRegularise, policies, need, supplier } = props
   const routing = operatingPolicies(policies).noticeRouting
   const t = useTranslations("Portal.ProcReceipts")
   const tp = useTranslations("Portal.Procurement")
@@ -129,6 +135,8 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
   const state = receiptState(d, now)
   const noPo = isNoPo(d)
   const number = d.docNumber ? displayReceiptNumber(d.docNumber, locale) : `DEL-${d.id.slice(0, 8).toUpperCase()}`
+  const noticeNo = noticeNumberOf(d, deliveries, po)
+  const noticeText = noticeNo ? displayNoticeNumber(noticeNo, locale) : null
   const when = d.confirmedAt || d.deliveryDate || null
   const placeId = d.landedWarehouseId || (d as { warehouseId?: string | null }).warehouseId
   const place = warehouseName(placeId) || null
@@ -182,6 +190,8 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
       delivery: d,
       po,
       company,
+      supplier: supplier ?? null,
+      noticeNumber: noticeText,
       placeName: place,
       projectName: project,
       displayNumber: number,
@@ -218,7 +228,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
     )
   }
 
-  const log = receiptLog(d, po)
+  const log = receiptLog(d, po, noticeNo)
   const LogSection = () =>
     log.length ? (
       <Section title={t("rlog.title")}>
@@ -226,7 +236,9 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
           {log.map((e, i) => (
             <li key={`${e.action}-${i}`} className="flex flex-wrap items-baseline justify-between gap-x-3 border-b pb-1.5 last:border-0">
               <span dir="auto">
-                {t(`rlog.${e.action}`, { ...e.params, number: e.params.number ? (e.action === "recorded" ? displayReceiptNumber(String(e.params.number), locale) : displayPoNumber(String(e.params.number), locale)) : "" })}
+                {e.action === "noticed" && e.params.notice
+                  ? t("rlog.noticed_numbered", { notice: displayNoticeNumber(String(e.params.notice), locale), day: String(e.params.day || "") })
+                  : t(`rlog.${e.action}`, { ...e.params, number: e.params.number ? (e.action === "recorded" ? displayReceiptNumber(String(e.params.number), locale) : displayPoNumber(String(e.params.number), locale)) : "" })}
                 {e.by && <span className="text-muted-foreground"> — {e.by}</span>}
               </span>
               <span className="text-[11px] text-muted-foreground" suppressHydrationWarning>{dateText(e.at)}</span>
@@ -324,15 +336,26 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
     )
   }
 
-  const trail = po && !pending ? receiptTrail(d, po, routing) : []
+  const trail = po && !pending ? receiptTrail(d, po, routing, { need, noticeNumber: noticeNo }) : []
+  const windowText = (w: string | number | undefined) => (w && tp.has(`deliveryWindow.${w}`) ? tp(`deliveryWindow.${w}` as "deliveryWindow.morning") : "")
   const trailText = (key: string, variant: string, params: Record<string, string | number>): string => {
     switch (key) {
       case "requested":
+        if (variant === "need") return [String(params.ref || ""), String(params.for || ""), params.by ? t("trail.requested_by", { name: String(params.by) }) : ""].filter(Boolean).join(" · ")
         return t.has(`trail.requested_${variant}`) ? t(`trail.requested_${variant}` as "trail.requested_direct") : t("trail.requested_linked")
       case "purchased":
         return [po ? displayPoNumber(po.docNumber, locale) : "", String(params.supplier || ""), String(params.rfq || "")].filter(Boolean).join(" · ")
       case "notified":
-        return variant === "none" ? t("trail.notified_none") : [t("trail.notified_for", { day: dateText(String(params.day || "")) }), params.note ? `${t("incoming.note")} ${params.note}` : "", String(params.driver || "")].filter(Boolean).join(" · ")
+        return variant === "none"
+          ? t("trail.notified_none")
+          : [
+              params.number ? displayNoticeNumber(String(params.number), locale) : "",
+              [t("trail.notified_for", { day: dateText(String(params.day || "")) }), windowText(params.window)].filter(Boolean).join(" "),
+              params.note ? `${t("incoming.note")} ${params.note}` : "",
+              String(params.driver || ""),
+            ]
+              .filter(Boolean)
+              .join(" · ")
       case "forwarded":
         return variant === "link" ? t("trail.forwarded_link", params) : variant === "member" ? t("trail.forwarded_member", params) : variant === "unannounced" ? t("trail.forwarded_unannounced") : variant === "both" ? t("trail.forwarded_both") : t("trail.forwarded_direct")
       case "received":
@@ -340,6 +363,8 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
       case "went":
         return [place ? t("drawer.wentToWarehouse", { name: place }) : project ? t("drawer.wentToProject", { name: project }) : t("drawer.wentNowhere"), variant === "held" ? t("drawer.heldIsolated") : ""].filter(Boolean).join(" · ")
       default:
+        if (variant === "paid") return t("trail.finance_paid")
+        if (variant === "held_price") return t("trail.finance_held_price")
         return variant === "closed" ? t("trail.finance_closed") : acceptedValue != null ? t("drawer.financeCeiling", { amount: withSarSign(fmt(acceptedValue), locale) }) : t("trail.finance_match")
     }
   }
@@ -435,7 +460,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
             />
             <Stat
               label={t("drawer.notice")}
-              value={d.noNotice || d.source === "manual" ? <span dir="ltr">{d.paperNoteNumber || t("drawer.noNotice")}</span> : t("drawer.platformNotice")}
+              value={noticeText ? <bdi>{noticeText}</bdi> : d.noNotice || d.source === "manual" ? <span dir="ltr">{d.paperNoteNumber || t("drawer.noNotice")}</span> : t("drawer.platformNotice")}
               sub={d.noNotice ? <span className="text-amber-700">{t("drawer.noPriorNotice")}</span> : d.paperNoteNumber ? <>{t("drawer.paperNoteSub")} <span dir="ltr">{d.paperNoteNumber}</span></> : undefined}
             />
             <Stat label={pending ? t("drawer.expected") : t("drawer.arrived")} value={dateText(isoOf(when))} sub={!pending && !d.noNotice && d.deliveryDate ? t("drawer.noticedFor", { date: dateText(d.deliveryDate.slice(0, 10)) }) : pending && d.deliveryWindow ? tp(`deliveryWindow.${d.deliveryWindow}` as "deliveryWindow.morning") : undefined} />

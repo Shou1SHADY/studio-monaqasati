@@ -15,19 +15,23 @@ import { assertPm, type PmContext } from "./access"
 import { PM_CERTIFICATES } from "./certificate"
 import type { PmCertificate } from "./certificate-writes"
 import { openClaims, PM_CLAIMS, type ClaimStatus } from "./claim"
-import { storeDocOf, storeHoldings, storeItemOf, subDues } from "./closeout"
-import { PM_DOCS } from "./documents"
+import type { Acceptances } from "./acceptance"
+import { closeoutRows, storeDocOf, storeHoldings, storeItemOf, subDues } from "./closeout"
+import { isLetterOpen, PM_LETTERS, type LetterStatus } from "./correspondence"
+import { PM_DOCS, staleDocuments, type PmDocument } from "./documents"
 import { PM_INSPECTIONS } from "./inspection"
+import { lastApprovedDay, PM_SHEETS, type PmSheet } from "./measurement"
+import { PM_NCRS, type NcrStatus } from "./ncr"
 import { PM_UNITS } from "./units"
 import { onSite, plantCost, PM_PLANT, type PmPlant } from "./plant"
 import { PM_ACTIVITIES } from "./programme"
-import { PM_STORE } from "./store"
-import { PM_PLANT as PM_PLANT_REQUESTS } from "./supply"
-import { PM_WEEKS } from "./weekly-plan"
+import { PM_STORE, storeLineOf, type PmStoreLine } from "./store"
+import { PM_PETTY, PM_PLANT as PM_PLANT_REQUESTS, PURCHASE_REQUESTS, requestOf } from "./supply"
+import { lookahead, PM_WEEKS, type LookActivity, type LookItem, type LookPlant } from "./weekly-plan"
 import { lastPaid, PRICE_HISTORY, type PriceHistoryEntry } from "../procurement/prices"
 import { withFreshState } from "./project-writes"
 import { isOpenPunch, PM_PUNCH, type PunchStatus } from "./punch"
-import { PM_DAILY, PM_INCIDENTS, PM_OBSTACLES, PM_PERMITS } from "./site"
+import { livePermits, PM_DAILY, PM_INCIDENTS, PM_OBSTACLES, PM_PERMITS, type PmObstacle, type PmPermit } from "./site"
 import { PM_SUB_CERTIFICATES, PM_SUBCONTRACTS, type PmSubCertificate, type PmSubcontract } from "./subcontract"
 import { PM_VARIATIONS, type VoStatus } from "./variation"
 import { SECTION_IDS, SECTION_REGISTRY, type SectionId } from "../project-sections"
@@ -72,6 +76,15 @@ export interface SectionFacts {
   plantOnSite?: number
   plantCharged?: number
   plantRequestsOpen?: number
+  /** Look-ahead activities not ready to start (wwp). */
+  lookaheadBlocked?: number
+  /** Items whose latest sample is with the consultant, and items whose contract needs one (subm). */
+  samplesWithConsultant?: number
+  samplesRequired?: number
+  pettyMoves?: number
+  lettersOpen?: number
+  /** Closeout rows not yet met (close). */
+  closeOpen?: number
 }
 
 export const NO_FACTS: SectionFacts = { storeLines: 0, uncollected: 0 }
@@ -165,8 +178,18 @@ export function sectionCensus(id: SectionId, f: SectionFacts): CensusRow[] {
   if (id === "daily") add("daily", f.daily)
   if (id === "rfi") add("obstacles_open", f.obstaclesOpen, "w")
   if (id === "claim") add("claims_open", f.claimsOpen, "w")
-  if (id === "progress") add("activities", f.activities)
-  if (id === "wwp") add("weeks", f.weeks)
+  if (id === "progress" || id === "sched") add("activities", f.activities)
+  if (id === "wwp") {
+    add("weeks", f.weeks)
+    add("lookahead_blocked", f.lookaheadBlocked, "w")
+  }
+  if (id === "subm") {
+    add("samples_with_consultant", f.samplesWithConsultant, "w")
+    add("samples_required", f.samplesRequired)
+  }
+  if (id === "petty") add("petty_moves", f.pettyMoves)
+  if (id === "corr") add("letters_open", f.lettersOpen, "w")
+  if (id === "close") add("close_open", f.closeOpen, "w")
   if (id === "zone") add("units", f.units)
   if (id === "eqp") {
     add("plant_on_site", f.plantOnSite, "r")
@@ -179,7 +202,7 @@ export function sectionCensus(id: SectionId, f: SectionFacts): CensusRow[] {
 
 /** Sections with their own "what goes silent" sentence (SECLOSS); the rest say
  * their screen and decisions disappear. */
-export const SECTION_LOSS: ReadonlySet<SectionId> = new Set<SectionId>(["docs", "store", "ipc", "collect", "daily", "rfi", "hse", "subs", "vo", "qa", "progress", "receive", "claim", "wwp", "eqp", "zone"])
+export const SECTION_LOSS: ReadonlySet<SectionId> = new Set<SectionId>(["docs", "store", "ipc", "collect", "daily", "rfi", "hse", "subs", "vo", "qa", "progress", "receive", "claim", "wwp", "eqp", "zone", "subm", "sched", "corr", "close", "petty"])
 
 /** Sections another module owns: we only read them here (the prototype's «يُقرأ من»). */
 export type SectionOwner = "procurement" | "finance" | "manufacturing"
@@ -242,7 +265,7 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
   const col = (name: string) => getDocs(collection(firestore, "projects", projectId, name)).catch(() => null)
   const pSnap = await getDoc(doc(firestore, "projects", projectId)).catch(() => null)
   const orgId = (pSnap?.exists() ? (pSnap.data() as { organizationId?: string }).organizationId : null) ?? null
-  const [certs, store, boq, history, subs, subCerts, docs, daily, obstacles, incidents, permits, vos, wirs, punch, claims, acts, weeks, plant, plantReqs, zones] = await Promise.all([
+  const [certs, store, boq, history, subs, subCerts, docs, daily, obstacles, incidents, permits, vos, wirs, punch, claims, acts, weeks, plant, plantReqs, zones, petty, letters, ncrs, sheets, reqs] = await Promise.all([
     col(PM_CERTIFICATES),
     col(PM_STORE),
     col("boqItems"),
@@ -263,7 +286,48 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
     col(PM_PLANT),
     col(PM_PLANT_REQUESTS),
     col(PM_UNITS),
+    col(PM_PETTY),
+    col(PM_LETTERS),
+    col(PM_NCRS),
+    col(PM_SHEETS),
+    col(PURCHASE_REQUESTS),
   ])
+  const project = (pSnap?.exists() ? pSnap.data() : {}) as {
+    enabledSections?: string[]
+    pm?: { terms?: { payer?: string } | null; acceptances?: Acceptances; cutPool?: number; retentionHeld?: number; retentionReleased?: boolean } | null
+  }
+  const on = new Set(project.enabledSections ?? [])
+  const today = new Date().toISOString().slice(0, 10)
+  const boqRows = (boq?.docs ?? []).map((d): Record<string, unknown> & { id: string } => ({ ...(d.data() as Record<string, unknown>), id: d.id }))
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : Number(v) || 0)
+  const lookItems: LookItem[] = boqRows.map((d) => ({
+    id: d.id,
+    code: String(d.itemNo ?? ""),
+    quantity: num(d.quantity),
+    rate: num(d.unitPrice),
+    executed: num(d.executedQuantity),
+    unit: String(d.unit ?? ""),
+    gate: { pmInspect: d.pmInspect === true, pmWir: (d.pmWir as string | null) ?? null },
+    pmSample: d.pmSample === true,
+    pmSub: (d.pmSub as string | null) ?? null,
+  }))
+  const storeDocs = (store?.docs ?? []).map((d) => storeLineOf(d.id, d.data() as Partial<PmStoreLine>))
+  const requestDocs = (reqs?.docs ?? []).map((d) => requestOf({ id: d.id, ...(d.data() as Record<string, unknown>) }))
+  const letterRows = (letters?.docs ?? []).map((d) => d.data() as { status: LetterStatus })
+  const blockedAhead = lookahead(
+    {
+      items: lookItems,
+      activities: (acts?.docs ?? []).map((d) => ({ ...(d.data() as LookActivity), id: d.id })),
+      obstacles: (obstacles?.docs ?? []).map((d) => d.data() as PmObstacle).map((o) => ({ title: o.title, party: o.partyName || o.party, itemIds: o.itemIds ?? [], closeOn: o.closeOn ?? null })),
+      livePermits: livePermits((permits?.docs ?? []).map((d) => d.data() as PmPermit), today).length,
+      staleDrawings: staleDocuments((docs?.docs ?? []).map((d) => d.data() as PmDocument), lastApprovedDay((sheets?.docs ?? []).map((d) => d.data() as PmSheet))).length,
+      stores: storeDocs,
+      requests: requestDocs,
+      plant: (plantReqs?.docs ?? []).map((d) => d.data() as LookPlant),
+      on: { docs: on.has("docs"), subm: lookItems.some((i) => i.pmSample), wir: true, rfi: on.has("rfi"), hse: on.has("hse"), stock: on.has("store"), eqp: on.has("eqp") },
+    },
+    today
+  ).filter((r) => r.block.length > 0).length
   const certList = (certs?.docs ?? []).map((d) => d.data() as PmCertificate & { collected?: number | null })
   const open = certList.filter((c) => (c.status === "appr" || c.status === "part") && (c.collected ?? 0) < 1)
   const priceRows = (history?.docs ?? []).map((d) => d.data() as PriceHistoryEntry)
@@ -275,7 +339,23 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
   const units = (plant?.docs ?? []).map((d) => d.data() as PmPlant)
   const contracts = (subs?.docs ?? []).map((d) => ({ ...(d.data() as PmSubcontract), id: d.id }))
   const dues = subDues(contracts, (subCerts?.docs ?? []).map((d) => d.data() as PmSubCertificate))
-  const voList = (vos?.docs ?? []).map((d) => d.data() as { status: VoStatus; value?: number })
+  const voList = (vos?.docs ?? []).map((d) => d.data() as { status: VoStatus; value?: number; executedPct?: number; billedPct?: number })
+  const closeOpen = closeoutRows({
+    hasClient: (project.pm?.terms?.payer ?? "client") !== "none",
+    acceptances: project.pm?.acceptances ?? {},
+    punch: (punch?.docs ?? []).map((d) => d.data() as { status: PunchStatus }),
+    ncrs: (ncrs?.docs ?? []).map((d) => d.data() as { status: NcrStatus }),
+    variations: voList.map((v) => ({ status: v.status, value: num(v.value), executedPct: num(v.executedPct), billedPct: num(v.billedPct) })),
+    items: boqRows.map((d) => ({ rate: num(d.unitPrice), executed: num(d.executedQuantity), billed: num(d.billedQuantity) })),
+    cutPool: project.pm?.cutPool ?? 0,
+    certificates: certList,
+    retentionHeld: project.pm?.retentionHeld ?? 0,
+    retentionReleased: project.pm?.retentionReleased === true,
+    storeLines: on.has("store") ? held.lines : null,
+    subs: on.has("subs") || contracts.length ? dues : null,
+    letters: letterRows,
+    today,
+  }).filter((r) => !r.ok).length
   return {
     storeLines: held.lines,
     storeValue: Math.round(held.value),
@@ -305,6 +385,12 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
       const r = d.data() as { status?: string; got?: unknown }
       return r.status !== "rej" && !r.got
     }).length,
+    lookaheadBlocked: blockedAhead,
+    samplesWithConsultant: lookItems.filter((i) => i.pmSub === "sub").length,
+    samplesRequired: lookItems.filter((i) => i.pmSample).length,
+    pettyMoves: petty?.size ?? 0,
+    lettersOpen: letterRows.filter(isLetterOpen).length,
+    closeOpen,
   }
 }
 

@@ -4,7 +4,9 @@
 // standing at the gate — with or without an account — counts what arrived,
 // marks what was rejected, signs, and confirms with a code texted to the
 // mobile Procurement named. The count is blind: the supplier's quantities are
-// deliberately not shown, so the receiver counts rather than agrees.
+// deliberately not shown, so the receiver counts rather than agrees. Like the
+// office's form, a line left blank did not arrive (sent as 0), and part of a
+// count may be set aside for inspection with its reason.
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
@@ -16,7 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { SignaturePad } from "@/components/SignaturePad"
-import { REJECT_REASON_CODES } from "@/lib/procurement/po"
+import { HOLD_REASON_CODES, REJECT_REASON_CODES } from "@/lib/procurement/po"
 import { cn } from "@/lib/utils"
 
 interface LinkData {
@@ -35,6 +37,8 @@ interface Row {
   counted: string
   rejected: string
   reason: string
+  held: string
+  holdReason: string
   note: string
 }
 
@@ -79,7 +83,7 @@ export function ReceiveLinkContent() {
         const d = body.data as LinkData
         setData(d)
         setReceiverName(d.receiverName)
-        setRows(Object.fromEntries(d.lines.map((l) => [l.poLineId, { counted: "", rejected: "", reason: "", note: "" }])))
+        setRows(Object.fromEntries(d.lines.map((l) => [l.poLineId, { counted: "", rejected: "", reason: "", held: "", holdReason: "", note: "" }])))
       })
       .catch(() => !cancelled && setLoadError("NETWORK"))
     return () => {
@@ -94,11 +98,12 @@ export function ReceiveLinkContent() {
     if (!data) return null
     for (const l of data.lines) {
       const r = rows[l.poLineId]
-      const counted = toNum(r?.counted ?? "")
-      if (counted === null) return t("err_count_every_line")
+      const counted = toNum(r?.counted ?? "") ?? 0
       const rejected = toNum(r?.rejected ?? "") ?? 0
-      if (rejected > counted) return t("err_rejected_over", { name: l.name })
+      const held = toNum(r?.held ?? "") ?? 0
+      if (rejected + held > counted) return t("err_rejected_over", { name: l.name })
       if (rejected > 0 && !r.reason) return t("err_reason_needed", { name: l.name })
+      if (held > 0 && !r.holdReason) return t("err_hold_reason_needed", { name: l.name })
     }
     if (!data.lines.some((l) => (toNum(rows[l.poLineId]?.counted ?? "") ?? 0) > 0)) return t("err_nothing_counted")
     if (receiverName.trim().length < 2) return t("err_name")
@@ -144,11 +149,14 @@ export function ReceiveLinkContent() {
           lines: data.lines.map((l) => {
             const r = rows[l.poLineId]
             const rejected = toNum(r.rejected) ?? 0
+            const held = toNum(r.held) ?? 0
             return {
               poLineId: l.poLineId,
               counted: toNum(r.counted) ?? 0,
               rejected,
               rejectReason: rejected > 0 ? r.reason : null,
+              held,
+              holdReason: held > 0 ? r.holdReason : null,
               note: r.note.trim() || null,
             }
           }),
@@ -229,16 +237,18 @@ export function ReceiveLinkContent() {
       <section className="space-y-2" aria-labelledby="lines-h">
         <h2 id="lines-h" className="text-sm font-bold text-foreground">{t("lines_title")}</h2>
         <p className="text-xs text-muted-foreground">{t("blind_note")}</p>
+        <p className="text-xs text-muted-foreground">{t("blank_hint")}</p>
         <ul className="space-y-3">
           {data.lines.map((l) => {
             const r = rows[l.poLineId]
             const rejected = toNum(r?.rejected ?? "") ?? 0
+            const held = toNum(r?.held ?? "") ?? 0
             return (
               <li key={l.poLineId} className="space-y-3 rounded-xl border bg-card p-4">
                 <p className="font-semibold text-foreground">
                   {l.name} <span className="text-xs font-normal text-muted-foreground">({l.unit})</span>
                 </p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
                     <Label htmlFor={`c-${l.poLineId}`} className="text-xs">{t("counted")}</Label>
                     <Input id={`c-${l.poLineId}`} inputMode="decimal" dir="ltr" className="h-11 tabular-nums" value={r?.counted ?? ""} onChange={(e) => setRow(l.poLineId, { counted: e.target.value })} />
@@ -246,6 +256,10 @@ export function ReceiveLinkContent() {
                   <div className="space-y-1">
                     <Label htmlFor={`r-${l.poLineId}`} className="text-xs">{t("rejected")}</Label>
                     <Input id={`r-${l.poLineId}`} inputMode="decimal" dir="ltr" placeholder="0" className="h-11 tabular-nums" value={r?.rejected ?? ""} onChange={(e) => setRow(l.poLineId, { rejected: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`h-${l.poLineId}`} className="text-xs">{t("held")}</Label>
+                    <Input id={`h-${l.poLineId}`} inputMode="decimal" dir="ltr" placeholder="0" className="h-11 tabular-nums" value={r?.held ?? ""} onChange={(e) => setRow(l.poLineId, { held: e.target.value })} />
                   </div>
                 </div>
                 {rejected > 0 && (
@@ -268,6 +282,27 @@ export function ReceiveLinkContent() {
                       ))}
                     </div>
                     <Input placeholder={t("line_note")} dir="auto" className="h-10 text-sm" value={r.note} onChange={(e) => setRow(l.poLineId, { note: e.target.value })} />
+                  </div>
+                )}
+                {held > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-foreground">{t("hold_reason")}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {HOLD_REASON_CODES.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          aria-pressed={r.holdReason === c}
+                          onClick={() => setRow(l.poLineId, { holdReason: r.holdReason === c ? "" : c })}
+                          className={cn(
+                            "min-h-9 rounded-full border px-3 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                            r.holdReason === c ? "border-module bg-module text-module-foreground" : "border-border bg-background hover:bg-muted"
+                          )}
+                        >
+                          {tp(`holdReason.${c}`)}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </li>

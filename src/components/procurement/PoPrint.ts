@@ -87,8 +87,21 @@ function footer(t: PrintCopy, locale: string, company: string, printedAt: string
 // The purchase order
 // ---------------------------------------------------------------------------
 
-export function printPurchaseOrder(m: PoPrintModel, displayNumber: string, locale: string, t: PrintCopy, now = new Date()): boolean {
-  const dir: "rtl" | "ltr" = locale === "ar" ? "rtl" : "ltr"
+/** What the drawer knows beyond the order's print model: the revision
+ * («نسخة n»), the payment terms already worded, and the receipt tolerance. */
+export interface PoPrintExtras {
+  revision?: number
+  paymentTerms?: string | null
+  tolerancePercent?: number
+}
+
+export function printPurchaseOrder(m: PoPrintModel, displayNumber: string, locale: string, t: PrintCopy, now = new Date(), extras: PoPrintExtras = {}): boolean {
+  return openWindow(`${t("po_title")} ${displayNumber}`, locale === "ar" ? "rtl" : "ltr", locale, purchaseOrderBody(m, displayNumber, locale, t, now, extras))
+}
+
+/** The order's paper, as HTML — pure, so tests read what prints. */
+export function purchaseOrderBody(m: PoPrintModel, displayNumber: string, locale: string, t: PrintCopy, now: Date, extras: PoPrintExtras = {}): string {
+  const revision = extras.revision && extras.revision > 1 ? ` · ${e(t("revision", { n: extras.revision }))}` : ""
   const banner =
     m.status === "cancelled"
       ? `<div class="pdst m">${e(t("po_status_cancelled"))}</div>`
@@ -114,12 +127,13 @@ export function printPurchaseOrder(m: PoPrintModel, displayNumber: string, local
       </tfoot>`
     : `<tfoot><tr><td colspan="4" class="muted">${e(t("no_values_copy"))}</td></tr></tfoot>`
 
-  const payment = m.paymentTerms ? e(m.paymentTerms) : e(t("terms_as_offer"))
+  const worded = extras.paymentTerms || m.paymentTerms
+  const payment = worded ? e(worded) : e(t("terms_as_offer"))
   const delivery = [m.promisedDate ? `<b>${longDate(m.promisedDate, locale)}</b>` : m.leadTimeDays ? `<b>${e(t("lead_days", { days: m.leadTimeDays }))}</b>` : `<b>${e(t("date_on_acceptance"))}</b>`, m.deliveryLocation ? `<span>${e(m.deliveryLocation)}</span>` : ""].join("")
 
-  const body = `
+  return `
     <div class="pdh">
-      <div><h1>${e(t("po_title"))}</h1><div class="sub"><span class="ltr">${e(displayNumber)}</span> · ${longDate(m.date, locale)}</div><div class="sub">${e(t(`basis_${m.basis}`))}</div></div>
+      <div><h1>${e(t("po_title"))}</h1><div class="sub"><span class="ltr">${e(displayNumber)}</span>${revision} · ${longDate(m.date, locale)}</div><div class="sub">${e(t(`basis_${m.basis}`))}</div></div>
       ${companyBlock(m.company, t)}
     </div>
     ${banner}
@@ -134,7 +148,7 @@ export function printPurchaseOrder(m: PoPrintModel, displayNumber: string, local
       <tbody>${rows}</tbody>
       ${foot}
     </table>
-    <div class="clause">${e(t("po_clause"))}</div>
+    <div class="clause">${e(t("po_clause", { pct: extras.tolerancePercent ?? 5 }))}</div>
     <div class="pdsg">
       <div><small>${e(t("prepared_by"))}</small><b>${e(m.preparedBy)}</b><span class="muted">${longDate(m.preparedAt, locale)}</span><div class="line">${e(t("signature"))}</div></div>
       <div><small>${e(t("approved_by"))}</small><b>${e(m.approvedBy || "—")}</b><span class="muted">${m.approvedAt ? longDate(m.approvedAt, locale) : ""}${m.selfApproved ? ` · ${e(t("self_approved"))}` : ""}</span><div class="line">${e(t("signature"))}</div></div>
@@ -142,7 +156,6 @@ export function printPurchaseOrder(m: PoPrintModel, displayNumber: string, local
     </div>
     ${footer(t, locale, m.company.name, now.toISOString(), t("po_footer_extra"))}
   `
-  return openWindow(`${t("po_title")} ${displayNumber}`, dir, locale, body)
 }
 
 // ---------------------------------------------------------------------------
@@ -151,50 +164,59 @@ export function printPurchaseOrder(m: PoPrintModel, displayNumber: string, local
 
 export function printReceiptStatement(m: StatementModel, displayNumber: string, displayReceipt: (n: string) => string, locale: string, t: PrintCopy): boolean {
   const dir: "rtl" | "ltr" = locale === "ar" ? "rtl" : "ltr"
+  return openWindow(`${t("st_title")} ${displayNumber}`, dir, locale, buildReceiptStatementHtml(m, displayNumber, displayReceipt, locale, t))
+}
+
+const dash = (n: number) => (n ? figure(n) : "—")
+
+/** The statement's body — pure (tested). */
+export function buildReceiptStatementHtml(m: StatementModel, displayNumber: string, displayReceipt: (n: string) => string, locale: string, t: PrintCopy): string {
   const banner = m.complete ? `<div class="pdst g">${e(t("st_complete"))}</div>` : `<div class="pdst w">${e(t("st_incomplete"))}</div>`
   const lines = m.lines
     .map(
       (l) =>
-        `<tr><td class="num">${l.index}</td><td>${e(l.name)}</td><td class="num">${figure(l.ordered)}</td><td class="num"><b>${figure(l.accepted)}</b></td><td class="num">${figure(l.rejected)}</td><td class="num">${figure(l.held)}</td><td class="num">${figure(l.cancelled)}</td><td class="num">${figure(l.outstanding)}</td><td>${e(l.unit || "—")}</td></tr>`
+        `<tr><td class="num">${l.index}</td><td>${e(l.name)}</td><td class="num">${figure(l.ordered)}</td><td class="num"><b>${figure(l.accepted)}</b></td><td class="num">${dash(l.rejected)}</td><td class="num">${dash(l.held)}</td><td class="num">${dash(l.onTheWay)}</td><td class="num">${dash(l.notShipped)}</td><td>${e(l.unit || "—")}</td></tr>`
     )
     .join("")
   const receipts = m.receipts.length
     ? m.receipts
         .map(
           (r) =>
-            `<tr><td><span class="ltr">${e(displayReceipt(r.number))}</span></td><td>${longDate(r.date, locale)}</td><td class="num">${figure(r.accepted)}</td><td class="num">${figure(r.rejected)}</td><td class="num">${figure(r.held)}</td><td>${e(r.receiver || "—")}</td></tr>`
+            `<tr><td><span class="ltr">${e(displayReceipt(r.number))}</span></td><td>${longDate(r.date, locale)}</td><td class="num">${figure(r.accepted)}</td><td class="num">${dash(r.rejected)}</td><td class="num">${dash(r.held)}</td><td>${e(r.place || "—")}</td><td>${e(r.receiver || "—")}</td></tr>`
         )
         .join("")
-    : `<tr><td colspan="6" class="empty">${e(t("st_no_receipts"))}</td></tr>`
+    : `<tr><td colspan="7" class="empty">${e(t("st_no_receipts"))}</td></tr>`
+  const sup = m.supplier
+  const supIds = sup ? `<span>${e(t("cr"))} <span class="ltr">${e(sup.cr || "—")}</span> · ${e(t("vat_no"))} <span class="ltr">${e(sup.vat || "—")}</span></span>` : ""
+  const supPlace = sup && (sup.city || sup.phone) ? `<span>${[sup.city ? e(sup.city) : "", sup.phone ? `<span class="ltr">${e(sup.phone)}</span>` : ""].filter(Boolean).join(" · ")}</span>` : ""
   const outstanding = m.outstanding.length ? `<div class="clause">${e(t("st_outstanding", { lines: m.outstanding.map((l) => `${l.name} ${quantityText(l.quantity, l.unit)}`).join("، "), date: m.promisedDate ? longDate(m.promisedDate, locale) : "—" }))}</div>` : ""
 
-  const body = `
+  return `
     <div class="pdh">
       <div><h1>${e(t("st_title"))}</h1><div class="sub"><span class="ltr">${e(displayNumber)}</span> · ${e(m.supplierName)}</div></div>
       ${companyBlock(m.company, t)}
     </div>
     ${banner}
     <div class="pdg">
-      <div><small>${e(t("to_supplier"))}</small><b>${e(m.supplierName || "—")}</b></div>
+      <div><small>${e(t("to_supplier"))}</small><b>${e(m.supplierName || "—")}</b>${supIds}${supPlace}</div>
       <div><small>${e(t("st_order"))}</small><b>${e(t("approved_on"))} ${longDate(m.approvedAt, locale)}</b><span>${e(t("supplier_date"))}: ${m.promisedDate ? longDate(m.promisedDate, locale) : "—"}</span></div>
       <div><small>${e(t("st_destination"))}</small><b>${e(m.deliveryLocation || "—")}</b>${m.projectName ? `<span>${e(m.projectName)}</span>` : ""}</div>
     </div>
     <table>
-      <thead><tr><th class="num">#</th><th>${e(t("col_description"))}</th><th class="num">${e(t("st_col_ordered"))}</th><th class="num">${e(t("st_col_accepted"))}</th><th class="num">${e(t("st_col_rejected"))}</th><th class="num">${e(t("st_col_held"))}</th><th class="num">${e(t("st_col_cancelled"))}</th><th class="num">${e(t("st_col_outstanding"))}</th><th>${e(t("col_unit"))}</th></tr></thead>
+      <thead><tr><th class="num">#</th><th>${e(t("col_description"))}</th><th class="num">${e(t("st_col_ordered"))}</th><th class="num">${e(t("st_col_accepted"))}</th><th class="num">${e(t("st_col_rejected"))}</th><th class="num">${e(t("st_col_held"))}</th><th class="num">${e(t("st_col_on_the_way"))}</th><th class="num">${e(t("st_col_not_shipped"))}</th><th>${e(t("col_unit"))}</th></tr></thead>
       <tbody>${lines}</tbody>
     </table>
     <h3 style="margin:16px 0 4px;font-size:13px">${e(t("st_receipts"))}</h3>
     <table>
-      <thead><tr><th>${e(t("st_col_receipt"))}</th><th>${e(t("st_col_date"))}</th><th class="num">${e(t("st_col_accepted"))}</th><th class="num">${e(t("st_col_rejected"))}</th><th class="num">${e(t("st_col_held"))}</th><th>${e(t("st_col_receiver"))}</th></tr></thead>
+      <thead><tr><th>${e(t("st_col_receipt"))}</th><th>${e(t("st_col_date"))}</th><th class="num">${e(t("st_col_accepted"))}</th><th class="num">${e(t("st_col_rejected"))}</th><th class="num">${e(t("st_col_held"))}</th><th>${e(t("st_col_place"))}</th><th>${e(t("st_col_receiver"))}</th></tr></thead>
       <tbody>${receipts}</tbody>
     </table>
     ${outstanding}
     <div class="pdsg">
-      <div><small>${e(t("supplier_rep"))}</small><b>&nbsp;</b><div class="line">${e(t("signature"))}</div></div>
-      <div><small>${e(t("buyer"))}</small><b>&nbsp;</b><div class="line">${e(t("signature"))}</div></div>
-      <div><small>${e(t("proc_manager"))}</small><b>&nbsp;</b><div class="line">${e(t("signature"))}</div></div>
+      <div><small>${e(t("supplier_rep"))}</small><b>${e(m.supplierName || "") || "&nbsp;"}</b><div class="line">${e(t("signature"))}</div></div>
+      <div><small>${e(t("buyer"))}</small><b>${e(m.preparedBy || "") || "&nbsp;"}</b><div class="line">${e(t("signature"))}</div></div>
+      <div><small>${e(t("proc_manager"))}</small><b>${e(m.approvedBy || "") || "&nbsp;"}</b><div class="line">${e(t("signature"))}</div></div>
     </div>
     ${footer(t, locale, m.company.name, m.printedAt, m.complete ? t("st_footer_final") : t("st_footer_interim"))}
   `
-  return openWindow(`${t("st_title")} ${displayNumber}`, dir, locale, body)
 }

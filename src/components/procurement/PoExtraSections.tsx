@@ -14,7 +14,8 @@ import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { collection } from "firebase/firestore"
-import { AlertTriangle, CheckCircle2, Clock, Loader2 } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Clock, Loader2, Paperclip } from "lucide-react"
+import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
@@ -22,7 +23,10 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { cn } from "@/lib/utils"
-import { todayOf } from "@/lib/procurement/po"
+import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
+import { poStatus, receiptDay, todayOf } from "@/lib/procurement/po"
+import type { NoticeRouting } from "@/lib/procurement/policies"
+import { destKind, recordedBy } from "@/lib/procurement/receipt-desk"
 import {
   DATE_REASONS,
   HOLD_DECISIONS,
@@ -35,9 +39,12 @@ import {
   advanceState,
   dateMissesNeed,
   docTrail,
+  noticeState,
   openHolds,
   paidTotal,
   paymentsNewestFirst,
+  receiptQuantities,
+  scheduleStates,
   type BoqGateItem,
   type DateReason,
   type HoldReason,
@@ -51,6 +58,7 @@ import type { PoLine, ProcActor, ReceiptFact } from "@/lib/procurement/types"
 import { Money, useDateText } from "./PoBits"
 import { moneyTrail } from "./PoModel"
 import type { Submit } from "./PoActionDialogs"
+import { RecordedByPill } from "./ReceiptDrawer"
 
 type Tone = "red" | "amber" | "blue" | "green"
 
@@ -157,6 +165,7 @@ export function FinanceBannerCallout({ po, seesPrices }: { po: PurchaseOrderX; s
     return (
       <XCallout tone="green">
         <b>{t("rfqpo.po.banner.back")}</b> {t(`rfqpo.po.pay.kind.${p.kind}`)} {seesPrices ? <Money value={p.amount} /> : null} {t("rfqpo.po.banner.paid", { ref: p.reference, date: fmt(p.valueDate) })}
+        {p.file && <> — <SlipLink file={p.file} /></>}
       </XCallout>
     )
   }
@@ -165,6 +174,18 @@ export function FinanceBannerCallout({ po, seesPrices }: { po: PurchaseOrderX; s
     <XCallout tone="green">
       <b>{t("rfqpo.po.banner.sent_title")}</b> {seesPrices ? t("rfqpo.po.banner.sent_value") : ""} {seesPrices && <Money value={moneyTrail(po).commitment} />} {t("rfqpo.po.banner.sent_body")}
     </XCallout>
+  )
+}
+
+/** «ومعه صورة الحوالة» — a link when Finance stored where the copy lives. */
+function SlipLink({ file }: { file: string }) {
+  const t = useTranslations("Portal.Procurement")
+  if (!/^https?:\/\//i.test(file)) return <span>{t("rfqpo.po.pay.with_slip")}</span>
+  return (
+    <a href={file} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <Paperclip size={12} aria-hidden="true" />
+      {t("rfqpo.po.pay.with_slip")}
+    </a>
   )
 }
 
@@ -262,6 +283,7 @@ export function FinanceTrailSection({
                 )}
                 <p className="text-muted-foreground">
                   {t("rfqpo.po.pay.of_po", { pct: pctOf(p.amount) })} · {t("rfqpo.po.pay.by", { name: p.byName })}
+                  {p.file && <> · <SlipLink file={p.file} /></>}
                 </p>
               </div>
               <div className="shrink-0 text-end">
@@ -366,10 +388,12 @@ export function FinanceTrailSection({
 // Schedule and warranty (R-30)
 // ---------------------------------------------------------------------------
 
-export function ScheduleSection({ po, schedule, notices }: { po: PurchaseOrderX; schedule: Array<{ quantity: number; date: string }>; notices: number }) {
+export function ScheduleSection({ po, schedule, deliveries }: { po: PurchaseOrderX; schedule: Array<{ quantity: number; date: string }>; deliveries: ReceiptFact[] }) {
   const t = useTranslations("Portal.Procurement")
+  const locale = useLocale()
   const fmt = useDateText()
   const today = todayOf(new Date())
+  const states = scheduleStates(schedule, po, deliveries, today)
   if (!schedule.length && !po.callOff) return null
   return (
     <Box title={t("rfqpo.po.schedule.title")}>
@@ -385,9 +409,13 @@ export function ScheduleSection({ po, schedule, notices }: { po: PurchaseOrderX;
                   {s.quantity.toLocaleString("en-US")}
                 </b>
                 · {fmt(s.date)}
-                {i < notices ? (
+                {states[i]?.kind === "received" ? (
+                  <span dir="ltr" className="rounded-full bg-success/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-success">
+                    {displayReceiptNumber((states[i] as { number: string }).number, locale) || t("receiptState.received")}
+                  </span>
+                ) : states[i]?.kind === "notified" ? (
                   <span className="rounded-full bg-cta/10 px-2 py-0.5 text-[11px] font-semibold text-cta">{t("rfqpo.po.schedule.notified")}</span>
-                ) : s.date < today ? (
+                ) : states[i]?.kind === "no_notice" ? (
                   <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive">{t("rfqpo.po.schedule.no_notice")}</span>
                 ) : null}
               </span>
@@ -396,6 +424,159 @@ export function ScheduleSection({ po, schedule, notices }: { po: PurchaseOrderX;
         </ul>
       )}
     </Box>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Delivery notices and goods receipts on the order (prototype `poAsnSec` and
+// «سندات الاستلام»): what the supplier announced — day, window, driver, plate,
+// his delivery note, the quality papers, whom we forwarded it to — and what the
+// receiver recorded, by module, with the quantities per line
+// ---------------------------------------------------------------------------
+
+type OrderDeliveryRow = ReceiptFact & {
+  createdAt?: unknown
+  receivedByName?: string | null
+  deliveryPersonName?: string | null
+  attachmentUrls?: string[] | null
+  forwardedTo?: { name?: string | null; userId?: string | null; byName?: string | null; at?: string | null } | null
+  warehouseId?: string | null
+}
+
+const createdKey = (d: OrderDeliveryRow): string => {
+  const v = d.createdAt as { toDate?: () => Date } | string | null | undefined
+  if (typeof v === "string") return v
+  if (v && typeof v.toDate === "function") return v.toDate().toISOString()
+  return d.deliveryDate || d.confirmedAt || ""
+}
+
+function Pill({ tone, children }: { tone: "green" | "red" | "blue" | "amber"; children: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        "shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-bold",
+        tone === "green" && "bg-success/10 text-success",
+        tone === "red" && "bg-destructive/10 text-destructive",
+        tone === "blue" && "bg-module/10 text-module",
+        tone === "amber" && "bg-warning/10 text-warning"
+      )}
+    >
+      {children}
+    </span>
+  )
+}
+
+export function OrderDeliveriesSections({
+  po,
+  deliveries,
+  warehouses,
+  routing,
+  now,
+}: {
+  po: PurchaseOrderX
+  deliveries: ReceiptFact[]
+  warehouses: Array<{ id: string; projectId?: string | null }>
+  routing: NoticeRouting
+  now: Date
+}) {
+  const t = useTranslations("Portal.Procurement")
+  const tr = useTranslations("Portal.ProcReceipts")
+  const tOrders = useTranslations("Portal.ProcOrders")
+  const locale = useLocale()
+  const fmt = useDateText()
+  const today = todayOf(now)
+  const mine = (deliveries as OrderDeliveryRow[]).filter((d) => d.poId === po.id)
+  const sent = [...mine].sort((a, b) => createdKey(a).localeCompare(createdKey(b)))
+  const notices = mine.filter((d) => d.status !== "confirmed").sort((a, b) => (b.deliveryDate || "").localeCompare(a.deliveryDate || ""))
+  const receipts = mine.filter((d) => d.status === "confirmed").sort((a, b) => receiptDay(b).localeCompare(receiptDay(a)))
+  const st = poStatus(po)
+  const unitOf = (lineId: string) => po.lines.find((l) => l.id === lineId)?.unit || ""
+  const qtyText = (lines: Array<{ q: number; lineId: string }>) => lines.map((x) => `${x.q.toLocaleString("en-US")} ${unitOf(x.lineId)}`.trim()).join(" + ")
+  const href = (d: OrderDeliveryRow) => `/contractor/goods-received?delivery=${d.id}`
+  const rowClass = "flex items-start justify-between gap-3 rounded-lg border px-3 py-2 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
+  const noticeRows = notices.map((d) => {
+    const ns = noticeState(d, po, today)
+    const n = sent.findIndex((x) => x.id === d.id) + 1
+    const fw = d.forwardedTo
+    const papers = (d.qualityPapers || []).map((p) => tr(`incoming.paper_${p}`))
+    const facts = [
+      [fmt(d.deliveryDate), d.deliveryWindow ? t(`deliveryWindow.${d.deliveryWindow}` as "deliveryWindow.morning") : ""].filter(Boolean).join(" "),
+      d.deliveryPersonName || tr("incoming.driverUnknown"),
+      d.driverPhone || "",
+      d.vehiclePlate || "",
+      d.paperNoteNumber ? `${tr("incoming.note")} ${d.paperNoteNumber}` : "",
+      papers.join("، "),
+    ].filter(Boolean)
+    return (
+      <Link key={d.id} href={href(d)} className={rowClass}>
+        <div className="min-w-0 space-y-0.5">
+          <p className="font-bold">
+            {tOrders("deliveries.notice")} · <span dir="ltr" className="tabular-nums">{qtyText((d.lines || []).map((l) => ({ q: Number(l.noticeQuantity) || 0, lineId: l.poLineId })))}</span>
+            {sent.length > 1 && n > 0 && <span className="ms-1 font-normal text-muted-foreground">· {tr("incoming.shipment", { n })}</span>}
+          </p>
+          <p className="text-xs text-muted-foreground" dir="auto">
+            {facts.join(" · ")}
+            {(d.attachmentUrls || []).length > 0 && <Paperclip size={12} className="ms-1 inline" aria-label={tr("incoming.attachments", { n: (d.attachmentUrls || []).length })} />}
+          </p>
+          <p className="text-xs">
+            {fw?.name ? (
+              <>
+                {tr("incoming.forwardedTo", { name: fw.name })}
+                {!fw.userId && ` ${tr("incoming.byLink")}`}
+                {fw.byName && <span className="text-muted-foreground"> · {tr("incoming.forwardedBy", { name: fw.byName, when: fmt(fw.at) })}</span>}
+              </>
+            ) : routing === "procurement" && !d.noNotice ? (
+              <span className="text-warning">{tr("incoming.toForward")}</span>
+            ) : null}
+          </p>
+        </div>
+        {ns.kind === "passed" ? (
+          <Pill tone="red">{tr("incoming.passedNoReceipt")}</Pill>
+        ) : ns.kind === "after_promise" ? (
+          <Pill tone="red">{tr("incoming.afterPromise", { days: ns.days })}</Pill>
+        ) : (
+          <Pill tone="blue">{t("receiptState.on_the_way")}</Pill>
+        )}
+      </Link>
+    )
+  })
+
+  const receiptRows = receipts.map((d) => {
+    const placeId = d.landedWarehouseId || d.warehouseId
+    const kind = destKind(placeId ? warehouses.find((w) => w.id === placeId) || { projectId: null } : null, d.projectId || po.projectId)
+    const q = receiptQuantities(d)
+    return (
+      <Link key={d.id} href={href(d)} className={rowClass}>
+        <div className="min-w-0 space-y-0.5">
+          <p className="flex flex-wrap items-center gap-1.5 font-bold">
+            <span dir="ltr" className="tabular-nums">
+              {d.docNumber ? displayReceiptNumber(d.docNumber, locale) : tOrders("deliveries.notice")}
+            </span>
+            <RecordedByPill by={recordedBy(d, kind)} manual={d.source === "manual"} />
+          </p>
+          <p className="text-xs text-muted-foreground" dir="auto">
+            {fmt(receiptDay(d))}
+            {d.receivedByName ? ` · ${d.receivedByName.split(" — ")[0]}` : ""}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span dir="ltr" className="text-sm font-bold tabular-nums">
+            {qtyText((d.lines || []).map((l, i) => ({ q: q.accepted[i] ?? 0, lineId: l.poLineId })))}
+          </span>
+          {q.rejected > 0 && <Pill tone="amber">{t("rfqpo.po.receipts.rejected", { qty: q.rejected.toLocaleString("en-US") })}</Pill>}
+        </div>
+      </Link>
+    )
+  })
+
+  return (
+    <>
+      {(notices.length > 0 || st === "in_delivery" || st === "part_received") && (
+        <Box title={t("rfqpo.po.notices.title")}>{notices.length ? noticeRows : <p className="text-sm text-muted-foreground">{t("rfqpo.po.notices.none_yet")}</p>}</Box>
+      )}
+      {receipts.length > 0 && <Box title={t("rfqpo.po.receipts.title")}>{receiptRows}</Box>}
+    </>
   )
 }
 
@@ -620,6 +801,9 @@ export function DecideHoldDialog({
   onSubmit: Submit<{ decision: string; note: string | null; price: number | null }>
 }) {
   const t = useTranslations("Portal.Procurement")
+  const locale = useLocale()
+  const fmt = useDateText()
+  const accepted = moneyTrail(po).accepted
   const schema = z
     .object({ decision: z.string().min(1, t("rfqpo.po.hold.pick")), note: z.string().trim().optional(), price: z.string().optional() })
     .refine((v) => v.decision !== "new_price" || Number(v.price) > 0, { path: ["price"], message: t("rfqpo.po.hold.price_required") })
@@ -642,10 +826,27 @@ export function DecideHoldDialog({
               if (await onSubmit({ decision: v.decision, note: v.note?.trim() || null, price: v.decision === "new_price" ? Number(v.price) : null })) onOpenChange(false)
             })}
           >
+            <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+              <p className="font-bold" dir="auto">
+                {po.supplierName}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <span dir="ltr" className="tabular-nums">
+                  {displayPoNumber(po.docNumber, locale)}
+                </span>{" "}
+                · {t("rfqpo.po.hold.picked_invoice")}{" "}
+                <span dir="ltr" className="tabular-nums">
+                  {hold.invoiceNo}
+                </span>{" "}
+                · <Money value={hold.amount} />
+              </p>
+            </div>
             <dl className="space-y-1 rounded-lg border px-3 py-2 text-sm">
               <div className="flex justify-between gap-2">
                 <dt className="text-muted-foreground">{t("rfqpo.po.hold.reason_label")}</dt>
-                <dd className="font-semibold">{t(`rfqpo.po.hold.reason.${hold.reason}`)}</dd>
+                <dd className="text-end font-semibold">
+                  {t(`rfqpo.po.hold.reason.${hold.reason}`)} — {fmt(hold.at)}
+                </dd>
               </div>
               <div className="flex justify-between gap-2">
                 <dt className="text-muted-foreground">{t("rfqpo.po.hold.recorded")}</dt>
@@ -657,6 +858,18 @@ export function DecideHoldDialog({
                   <dd dir="auto">{hold.need}</dd>
                 </div>
               )}
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted-foreground">{t("rfqpo.po.hold.accepted_on_receipts")}</dt>
+                <dd className="text-end">
+                  {accepted == null ? (
+                    "—"
+                  ) : (
+                    <>
+                      <Money value={Math.round(accepted * (1 + (Number(po.vatRate) || 0)) * 100) / 100} /> <span className="text-xs text-muted-foreground">{t("rfqpo.po.hold.incl_vat")}</span>
+                    </>
+                  )}
+                </dd>
+              </div>
             </dl>
             <div className="space-y-2">
               <p className="text-sm font-medium">{t("rfqpo.po.hold.our_decision")}</p>

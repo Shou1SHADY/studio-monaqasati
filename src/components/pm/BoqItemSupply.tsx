@@ -1,9 +1,9 @@
 "use client"
 
 // The Supply side of a BOQ item's drawer (prototype openItem: «المواد» · «مواد
-// البند» · «طلبات المواد على البند», and the purchase orders among the item's
-// commitments). Read from the project store ledger, the material requests on
-// the item and the orders Procurement placed for them. Money is not shown here.
+// البند» · «طلبات المواد على البند»). Read from the project store ledger and the
+// material requests on the item; the orders Procurement placed for it are among
+// the item's commitments, above. Money is not shown here.
 
 import { useMemo } from "react"
 import { useTranslations } from "next-intl"
@@ -12,7 +12,7 @@ import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useSupplyWorld } from "@/hooks/useSupplyWorld"
 import { todayDay } from "@/lib/pm/format"
 import { ratedOn, storeBalance, storeState, type StoreItem, type StoreState } from "@/lib/pm/store"
-import { lineGot, needsWithin, onTheWay, reqNo, reqPct, reqState, type ReqState } from "@/lib/pm/supply"
+import { needsWithin, onTheWay, reqNo, reqPct, reqState, type ReqState } from "@/lib/pm/supply"
 
 const qty = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US")
 const ST_TONE: Record<StoreState, PillTone> = { open: "info", close: "warn", done: "ok", zero: "mute", neg: "bad", pend: "warn" }
@@ -42,8 +42,13 @@ export function BoqItemSupply({
     () => needsWithin({ stores: mats, items, requests: world.requests, activities: world.activities, startOn: startOn ?? null, today }),
     [mats, items, world.requests, world.activities, startOn, today]
   )
+  // What 30 days of work on the item consume, before anything on site or on the way:
+  // the same reckoning with an empty ledger and no requests, so every row is the need itself.
+  const need30 = useMemo(
+    () => needsWithin({ stores: mats.map((x) => ({ ...x, moves: [] })), items, requests: [], activities: world.activities, startOn: startOn ?? null, today }).gaps,
+    [mats, items, world.activities, startOn, today]
+  )
   const reqs = useMemo(() => world.requests.filter((r) => r.lines.some((l) => l.itemId === item.id)).filter((r) => reqState(r) !== "rej" && reqState(r) !== "cx"), [world.requests, item.id])
-  const pos = reqs.filter((r) => r.poId || r.poNumber)
 
   return (
     <>
@@ -53,13 +58,14 @@ export function BoqItemSupply({
             const row = need.gaps.find((g) => g.key === x.key && g.itemId === item.id)
             const bal = Math.max(0, storeBalance(x, items))
             const way = onTheWay(world.requests, x.key)
+            const n = need30.find((g) => g.key === x.key && g.itemId === item.id)?.need ?? 0
             return (
               <div key={x.id} className="flex items-center justify-between gap-2 py-2 text-xs">
                 <span className="min-w-0 truncate font-semibold" dir="auto">
                   {x.name}
                 </span>
                 <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
-                  <span dir="ltr">{t("boqsup.need_line", { site: qty(bal), way: qty(way) })}</span>
+                  <span>{t("boqsup.need_line_30", { need: qty(n), site: qty(bal), way: qty(way) })}</span>
                   {row ? <StatusPill tone="bad">{t("boqsup.gap", { q: qty(row.gap) })}</StatusPill> : <StatusPill tone="ok">{t("boqsup.covered")}</StatusPill>}
                 </span>
               </div>
@@ -132,28 +138,6 @@ export function BoqItemSupply({
                   <StatusPill tone={RQ_TONE[st]}>{t(`sup.st.${st}`)}</StatusPill>
                   {st === "go" && <span className="text-muted-foreground">{t("boqsup.in_pct", { pct: Math.round(reqPct(r) * 100) })}</span>}
                 </span>
-              </div>
-            )
-          })}
-        </DrawerSection>
-      )}
-      {pos.length > 0 && (
-        <DrawerSection title={t("boqsup.po_title")} count={pos.length}>
-          {pos.map((r) => {
-            const mine = r.lines.filter((l) => l.itemId === item.id)
-            const ordered = mine.reduce((a, l) => a + l.qty, 0)
-            const got = mine.reduce((a, l) => a + lineGot(l), 0)
-            return (
-              <div key={r.id} className="flex items-center justify-between gap-2 py-2 text-xs">
-                <span className="min-w-0">
-                  <b className="block" dir="ltr">
-                    {r.poNumber || r.poId}
-                  </b>
-                  <span className="text-muted-foreground">
-                    {t("boqsup.po_from", { no: r.seq ? reqNo(r.seq) : "—" })} · <span className="font-semibold text-cta">{t("boqsup.po_proc")}</span>
-                  </span>
-                </span>
-                <span className="shrink-0 text-muted-foreground">{t("boqsup.recv", { pct: ordered > 0 ? Math.round(Math.min(1, got / ordered) * 100) : 0 })}</span>
               </div>
             )
           })}

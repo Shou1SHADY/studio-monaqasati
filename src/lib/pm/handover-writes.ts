@@ -52,12 +52,26 @@ const today = () => new Date().toISOString().slice(0, 10)
 // CRM sends the file — it creates no project (HO-01, conflict 3)
 // ---------------------------------------------------------------------------
 
+/** What a file carries beyond PmHandover's contract fields: the region and the
+ * supervising consultant CRM knew (the prototype's HO.reg / HO.cons). */
+export interface HandoverExtras {
+  region?: string | null
+  consultantName?: string | null
+  /** The CRM deal's own number, when the deal carries one. */
+  dealNo?: string | null
+}
+export const fileExtras = (h: PmHandover): HandoverExtras => {
+  const x = h as PmHandover & HandoverExtras
+  return { region: x.region?.trim() || null, consultantName: x.consultantName?.trim() || null, dealNo: x.dealNo?.trim() || null }
+}
+
 export interface SendHandoverInput {
   organizationId: string
   actor: PmActor
   opportunity: CrmOpportunity
   clientType: string | null
   location: string | null
+  region?: string | null
   contractNumber: string | null
   value: number
   durationDays: number
@@ -73,7 +87,10 @@ export interface SendHandoverInput {
 }
 
 export async function sendHandoverFile(firestore: Firestore, input: SendHandoverInput): Promise<string> {
-  const file: Omit<PmHandover, "id"> = {
+  const file: Omit<PmHandover, "id"> & HandoverExtras = {
+    region: input.region?.trim() || null,
+    consultantName: input.opportunity.consultantName?.trim() || null,
+    dealNo: (input.opportunity as CrmOpportunity & { docNumber?: string | null }).docNumber?.trim() || null,
     organizationId: input.organizationId,
     status: "wait",
     to: input.to,
@@ -190,6 +207,8 @@ export interface AcceptSeat {
 export interface AcceptInput {
   kind: ProjectKind
   location: string | null
+  /** The region — the file's, unless the acceptor states it; null = not stated. */
+  region?: string | null
   enabledSections: string[]
   terms?: ContractTerms
   /** The project's manager — the acceptor by default; no project is born without one. */
@@ -236,7 +255,8 @@ export async function acceptHandover(firestore: Firestore, actor: PmActor, hando
       name: h.title,
       description: h.note,
       location: input.location ?? h.location,
-      region: null,
+      region: input.region?.trim() || fileExtras(h).region || null,
+      consultant: fileExtras(h).consultantName || null,
       budget: h.value,
       status: "approved_waiting_start",
       projectType: input.kind,

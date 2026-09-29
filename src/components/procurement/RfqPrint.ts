@@ -19,6 +19,8 @@ export interface RfqPrintModel {
   lines: Array<{ name: string; spec: string | null; quantity: number; unit: string; needBy: string | null }>
   notes: string | null
   warranty: boolean
+  /** The guest link a supplier off the platform quotes through, when one exists. */
+  guestUrl?: string | null
 }
 
 const e = escapeHtml
@@ -61,9 +63,26 @@ const CSS = (dir: "rtl" | "ltr") => {
 }
 
 export function printRfq(m: RfqPrintModel, locale: string, t: RfqPrintCopy, now = new Date()): boolean {
-  const dir: "rtl" | "ltr" = locale === "ar" ? "rtl" : "ltr"
-  const w = window.open("", "_blank", "width=1000,height=760")
+  const w = openRfqPrintWindow()
   if (!w) return false
+  writeRfqPrint(w, m, locale, t, now)
+  return true
+}
+
+/** Opened inside the click — a window opened after an await is a popup the browser blocks. */
+export const openRfqPrintWindow = (): Window | null => window.open("", "_blank", "width=1000,height=760")
+
+/** The document with the guest link, which is fetched after the window opened. */
+export async function printRfqWithLink(m: RfqPrintModel, locale: string, t: RfqPrintCopy, guestUrl: Promise<string | null>, now = new Date()): Promise<boolean> {
+  const w = openRfqPrintWindow()
+  if (!w) return false
+  const url = await guestUrl.catch(() => null)
+  writeRfqPrint(w, { ...m, guestUrl: url }, locale, t, now)
+  return true
+}
+
+export function writeRfqPrint(w: Window, m: RfqPrintModel, locale: string, t: RfqPrintCopy, now = new Date()): void {
+  const dir: "rtl" | "ltr" = locale === "ar" ? "rtl" : "ltr"
   const rows = m.lines
     .map(
       (l, i) =>
@@ -97,12 +116,12 @@ export function printRfq(m: RfqPrintModel, locale: string, t: RfqPrintCopy, now 
     </div>
     ${m.notes || m.warranty ? `<p>${m.notes ? `<b>${e(t("notes"))}:</b> ${e(m.notes)}<br>` : ""}${m.warranty ? e(t("warranty")) : ""}</p>` : ""}
     <p>${e(t("how_to_quote"))}</p>
+    ${m.guestUrl ? `<p><b>${e(t("guest_link"))}:</b> <span class="ltr">${e(m.guestUrl)}</span></p>` : ""}
     <div class="pdg"><div><small>${e(t("supplier"))}</small><b>&nbsp;</b></div><div><small>${e(t("supplier_vat"))}</small><b>&nbsp;</b></div><div><small>${e(t("stamp"))}</small><b>&nbsp;</b></div></div>
     <div class="pdf2">${e(t("footer", { company: m.company.name || "—", date: longDate(now.toISOString(), locale) }))}</div>
   `
   w.document.write(`<!doctype html><html dir="${dir}" lang="${e(locale)}"><head><meta charset="utf-8"><title>${e(`${t("title")} ${m.number}`)}</title><style>${CSS(dir)}</style></head><body><div class="pd">${body}</div><script>window.onload = function () { window.print() }</script></body></html>`)
   w.document.close()
-  return true
 }
 
 /** The model from a stored RFQ. */

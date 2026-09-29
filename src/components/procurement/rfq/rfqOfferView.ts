@@ -29,6 +29,10 @@ export interface RfqOfferView extends NoteOffer {
   guestContact?: { name?: string | null; email?: string | null; phone?: string | null; vatNumber?: string | null; phoneVerified?: boolean | null } | null
   /** The guest's CR and VAT certificate, uploaded through the guest link. */
   guestPapers?: Array<{ kind: "cr" | "vat"; name: string; url: string }> | null
+  /** A registered supplier's CR and VAT certificate, attached from his profile when he offered. */
+  supplierPapers?: Array<{ kind: "cr" | "vat"; name: string; url: string }> | null
+  /** A registered supplier's note to us, written with the offer. */
+  supplierNote?: string | null
   priceHistory?: Array<{ price?: string | number | null; replacedAt?: string | null }> | null
   reductionRound?: boolean | null
 }
@@ -75,7 +79,32 @@ export interface RfqView extends NoteRfq {
     needBy?: string | null
     boqItemId?: string | null
     requiresWarranty?: boolean | null
+    /** The project this line is charged to, and its name when it was written. */
+    projectId?: string | null
+    projectName?: string | null
+    /** The need the line was picked from (the form's «من الاحتياج المفتوح»). */
+    needSource?: { kind: string; workOrderId?: string; purchaseRequestId?: string; projectId?: string; warehouseId?: string; itemId?: string } | null
+    needLine?: number | null
   }> | null
+  needSources?: Array<{ kind: string; workOrderId?: string; purchaseRequestId?: string; projectId?: string; warehouseId?: string; itemId?: string }> | null
+}
+
+/** Who a line is for: its own project, else the RFQ's, else the workshop or general stock. */
+export function lineForKey(rfq: Pick<RfqView, "products" | "projectId" | "purchaseSource">, index: number): { kind: "project"; id: string; name: string | null } | { kind: "workshop" } | { kind: "general" } {
+  const line = rfq.products?.[index]
+  if (line?.projectId) return { kind: "project", id: line.projectId, name: line.projectName || null }
+  if (rfq.projectId) return { kind: "project", id: rfq.projectId, name: null }
+  return rfq.purchaseSource?.kind === "mfg_purchase" ? { kind: "workshop" } : { kind: "general" }
+}
+
+/** The papers a registered supplier's offer carries — his CR and VAT certificate from his profile. */
+export function profilePapers(legal: { cr?: { url?: string | null } | null; vat?: { url?: string | null } | null } | null | undefined): Array<{ kind: "cr" | "vat"; name: string; url: string }> {
+  const out: Array<{ kind: "cr" | "vat"; name: string; url: string }> = []
+  for (const kind of ["cr", "vat"] as const) {
+    const url = (legal?.[kind]?.url || "").trim()
+    if (url) out.push({ kind, name: kind, url })
+  }
+  return out
 }
 
 export const supplierNameOf = (o: Pick<RfqOfferView, "companyName" | "supplierName" | "guestContact">, fallback: string) =>

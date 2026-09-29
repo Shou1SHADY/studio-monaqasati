@@ -99,7 +99,7 @@ export const DECISION_GROUP: Record<DecisionKind, DecisionGroup> = {
   addendum_unsigned: "risk",
   letters_late: "risk",
   obstacle_unprotected: "risk",
-  cvr_stale: "money",
+  cvr_stale: "appr",
   wir_failed: "block",
   sample_rejected: "block",
   sample_late: "block",
@@ -144,6 +144,18 @@ export const GROUP_ORDER: Record<"owner" | "pm" | "site" | "qs", DecisionGroup[]
   qs: ["money", "risk", "appr", "block"],
 }
 
+/** The facts a row's sub-line names (the prototype's `s:`); `date` is a day the row formats. */
+export interface DecisionVars {
+  name?: string
+  cause?: string
+  date?: string
+  payer?: string
+  why?: string
+  points?: number
+  rate?: number
+  cap?: number
+}
+
 export interface PmDecision {
   kind: DecisionKind
   severity: "red" | "amber" | "blue"
@@ -152,6 +164,11 @@ export interface PmDecision {
   /** Days since the oldest cause. */
   age?: number
   tab: DecisionTab
+  /** The sub-line's key under `dec.<kind>` when it names facts (default `detail`). */
+  detail?: string
+  /** The action's key under `dec.<kind>` (default `act`). */
+  act?: string
+  vars?: DecisionVars
 }
 
 export interface DecisionViewer {
@@ -173,14 +190,14 @@ export interface DecisionFacts {
   items: Array<{ id?: string; code?: string; unit?: string; quantity: number; rate: number; executed: number; billed?: number; gate?: { pmInspect?: boolean | null; pmWir?: string | null } | null; pmSample?: boolean | null; pmSub?: string | null }>
   sheets: Array<{ status: string; day: string }>
   addenda: Array<{ status: string; day: string }>
-  certificates: Array<{ status: CertificateStatus; net: number; dueOn?: string | null; collected?: number | null; prepOn?: string | null; prep?: string | null }>
+  certificates: Array<{ status: CertificateStatus; net: number; dueOn?: string | null; collected?: number | null; prepOn?: string | null; prep?: string | null; prepName?: string | null }>
   punch: Array<{ status: PunchStatus; unit?: string | null }>
   /** Inspections, for the delivery units they block. */
   inspections?: Array<{ status: string; unit?: string | null }>
   /** Delivery units (section `zone`). */
   units?: PmUnit[]
   variations: Array<{ seq?: number; status: VoStatus; value: number; executedPct: number; day: string }>
-  claims: Array<{ status: ClaimStatus; eventOn: string; response?: { days: number } | null; obstacleId?: string | null }>
+  claims: Array<{ status: ClaimStatus; eventOn: string; response?: { days: number } | null; obstacleId?: string | null; kind?: string; cause?: string }>
   submittals?: Array<{ itemId: string; status: string; rev: number; day: string }>
   subCertificates?: Array<{ status: string; gross: number; prepOn: string }>
   documents?: Array<Pick<PmDocument, "type" | "revisions">>
@@ -194,6 +211,11 @@ export interface DecisionFacts {
   curveK?: number
   /** When the project was put on hold, if it is. */
   holdSince?: string | null
+  holdWhy?: string | null
+  /** Indirect spend to date (staff, site, plant): what a hold keeps burning. */
+  indirectSpent?: number | null
+  /** Who pays the certificates — Finance chases them. */
+  payer?: string | null
   /** The project's switched-on sections; absent = every kind applies. */
   sections?: readonly string[] | null
   /** The project manager's uid: the owner hears of store moves only when the manager logged them. */
@@ -254,7 +276,7 @@ const REACHES: Record<DecisionKind, (h: (k: string) => boolean) => boolean> = {
   letters_late: (h) => h("corr") || h("approve"),
   obstacle_blocking: () => true,
   obstacle_unprotected: (h) => h("approve") || h("prep"),
-  cvr_stale: (h) => h("approve") && h("money"),
+  cvr_stale: (h) => h("approve"),
   req_waiting: (h) => h("req") || h("approve"),
   req_stop: (h) => h("req") || h("approve"),
   req_incoming: (h) => h("req"),
@@ -402,7 +424,20 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
   if (f.lifecycle === "plan" && f.plannedStart && f.plannedStart < f.today) out.push({ kind: "plan_overdue", severity: "amber", age: days(f.plannedStart, f.today), tab: "info" })
   if (f.lifecycle === "hold") {
     const age = f.holdSince ? days(f.holdSince, f.today) : undefined
-    out.push({ kind: "hold", severity: (age ?? 0) > 30 ? "red" : "amber", age, tab: "info" })
+    // The way out of a hold is an extension claim — follow the open one, or log it.
+    const claimsOn = !f.sections || pmTabVisible(f.sections as readonly SectionId[], "claim", 0)
+    const eot = f.claims.some((c) => (c.kind === "time" || c.kind === "both") && (c.status === "draft" || c.status === "notice" || c.status === "sub"))
+    const why = f.holdWhy?.trim()
+    out.push({
+      kind: "hold",
+      severity: (age ?? 0) > 30 ? "red" : "amber",
+      age,
+      amount: f.indirectSpent && f.indirectSpent > 0 ? r2(f.indirectSpent) : undefined,
+      tab: claimsOn ? "pmClaims" : "info",
+      detail: why ? "detail_why" : "detail_burn",
+      act: claimsOn ? (eot ? "act_follow" : "act_log") : undefined,
+      vars: why ? { why } : undefined,
+    })
   }
 
   const waiting = f.sheets.filter((s) => s.status === "wait")
@@ -442,10 +477,15 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
   const voWait = f.variations.filter((v) => v.status === "wait")
   if (voWait.length) out.push({ kind: "vo_waiting", severity: "amber", count: voWait.length, amount: r2(voWait.reduce((a, v) => a + v.value, 0)), age: oldest(voWait.map((v) => v.day), f.today), tab: "pmVo" })
 
-  const noticeOver = f.claims.filter((c) => noticeLate(c, f.terms, f.today)).length
-  if (noticeOver) out.push({ kind: "claim_notice_late", severity: "red", count: noticeOver, tab: "pmClaims" })
+  // The sub-line names the earliest event: its deadline bites first.
+  const eventOf = (cs: DecisionFacts["claims"]): Pick<PmDecision, "detail" | "vars"> => {
+    const c = cs.reduce((m, x) => (x.eventOn < m.eventOn ? x : m))
+    return c.cause?.trim() ? { detail: "detail_event", vars: { cause: c.cause.trim(), date: c.eventOn } } : {}
+  }
+  const noticeOver = f.claims.filter((c) => noticeLate(c, f.terms, f.today))
+  if (noticeOver.length) out.push({ kind: "claim_notice_late", severity: "red", count: noticeOver.length, tab: "pmClaims", ...eventOf(noticeOver) })
   const noticeSoon = f.claims.filter((c) => c.status === "draft" && !noticeLate(c, f.terms, f.today) && days(f.today, noticeDeadline(c.eventOn, f.terms)) <= 7)
-  if (noticeSoon.length) out.push({ kind: "claim_notice_due", severity: "amber", count: noticeSoon.length, tab: "pmClaims" })
+  if (noticeSoon.length) out.push({ kind: "claim_notice_due", severity: "amber", count: noticeSoon.length, tab: "pmClaims", ...eventOf(noticeSoon) })
   const claimWait = f.claims.filter((c) => c.status === "sub").length
   if (claimWait) out.push({ kind: "claim_waiting", severity: "amber", count: claimWait, tab: "pmClaims" })
 
@@ -466,14 +506,34 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
   const internal = f.certificates.filter((c) => c.status === "int")
   const mine = internal.filter((c) => f.viewer && c.prep === f.viewer.uid)
   const others = internal.filter((c) => !mine.includes(c))
-  if (others.length) out.push({ kind: "cert_internal", severity: "red", count: others.length, amount: r2(others.reduce((a, c) => a + c.net, 0)), age: oldest(others.map((c) => c.prepOn ?? f.today), f.today), tab: "ipc" })
+  if (others.length) {
+    const names = Array.from(new Set(others.map((c) => c.prepName?.trim()).filter((n): n is string => Boolean(n))))
+    out.push({
+      kind: "cert_internal",
+      severity: "red",
+      count: others.length,
+      amount: r2(others.reduce((a, c) => a + c.net, 0)),
+      age: oldest(others.map((c) => c.prepOn ?? f.today), f.today),
+      tab: "ipc",
+      ...(names.length ? { detail: "detail_by", vars: { name: names.join(" · ") } } : {}),
+    })
+  }
   if (mine.length) out.push({ kind: "cert_mine", severity: "amber", count: mine.length, amount: r2(mine.reduce((a, c) => a + c.net, 0)), age: oldest(mine.map((c) => c.prepOn ?? f.today), f.today), tab: "ipc" })
   const withConsultant = f.certificates.filter((c) => c.status === "sub")
   if (withConsultant.length) out.push({ kind: "cert_consultant", severity: "blue", count: withConsultant.length, amount: r2(withConsultant.reduce((a, c) => a + c.net, 0)), tab: "ipc" })
   const overdue = f.certificates.filter((c) => (c.status === "appr" || c.status === "part") && c.dueOn && c.dueOn < f.today)
   if (overdue.length) {
     const age = oldest(overdue.map((c) => c.dueOn as string), f.today)
-    out.push({ kind: "collection_overdue", severity: age > 30 ? "red" : "amber", count: overdue.length, age, amount: r2(overdue.reduce((a, c) => a + c.net * (1 - Math.min(1, Math.max(0, c.collected ?? 0))), 0)), tab: "ipc" })
+    const payer = f.payer?.trim()
+    out.push({
+      kind: "collection_overdue",
+      severity: age > 30 ? "red" : "amber",
+      count: overdue.length,
+      age,
+      amount: r2(overdue.reduce((a, c) => a + c.net * (1 - Math.min(1, Math.max(0, c.collected ?? 0))), 0)),
+      tab: "ipc",
+      ...(payer ? { detail: "detail_payer", vars: { payer } } : {}),
+    })
   }
 
   const itemsWithId = f.items.filter((i): i is typeof i & { id: string } => Boolean(i.id)).map((i) => ({ id: i.id, rate: i.rate }))
@@ -488,7 +548,18 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
     today: f.today,
     curveK: f.curveK,
   })
-  if (delay && delay.damages > 0) out.push({ kind: "damages", severity: f.margin != null && delay.damages > f.margin ? "red" : "amber", count: delay.delayDays, amount: delay.damages, tab: "pmProgramme" })
+  if (delay && delay.damages > 0) {
+    const overMargin = f.margin != null && delay.damages > f.margin
+    out.push({
+      kind: "damages",
+      severity: overMargin ? "red" : "amber",
+      count: delay.delayDays,
+      amount: delay.damages,
+      tab: "pmProgramme",
+      detail: overMargin ? "detail_pace_over" : "detail_pace",
+      vars: { points: Math.max(0, Math.round(delay.planned - (progress ?? 0))), rate: r2(f.terms.damages.weeklyRate * 100), cap: r2(f.terms.damages.cap * 100) },
+    })
+  }
   if (f.lifecycle === "live" && delay && progress !== null && delay.planned - progress > 4) out.push({ kind: "slip", severity: "amber", count: Math.round(delay.planned - progress), tab: "pmProgramme" })
 
   // The estimate at completion goes stale after 35 days of work (CVR-01).

@@ -149,7 +149,7 @@ jest.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ isLoading:
 
 // The header derives its numbers itself (useProcurementShell) over the same
 // mocked world; its one direct read (the workshop's purchase requests) is empty here.
-jest.mock("@/firebase", () => ({ useFirestore: () => null, useMemoFirebase: (f: () => unknown) => f(), useCollection: () => ({ data: null, isLoading: false }) }))
+jest.mock("@/firebase", () => ({ useFirestore: () => null, useMemoFirebase: (f: () => unknown) => f(), useCollection: () => ({ data: null, isLoading: false }), useDoc: () => ({ data: null, isLoading: false }) }))
 
 let mockWorld: ProcurementWorld
 jest.mock("@/hooks/useProcurementWorld", () => ({ useProcurementWorld: () => mockWorld }))

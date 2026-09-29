@@ -41,7 +41,7 @@ import { SignAddendumDialog } from "./SignAddendumDialog"
 import { TermChangeList } from "./TermChangeList"
 import { WithdrawAddendumDialog } from "./WithdrawAddendumDialog"
 
-type View = "force" | "original" | "record"
+type View = "force" | "original"
 
 const PAID_ONLY: readonly TermKey[] = ["advance", "advanceRecovery", "retention", "retentionCap", "retentionRelease", "paymentDays", "consultantDays"]
 const shownFor = (terms: ContractTerms) => ADDENDUM_TERMS.filter((k) => terms.payer !== "none" || !PAID_ONLY.includes(k))
@@ -145,247 +145,253 @@ export function ContractInForce({
         })}
       </Callout>
 
-      {drafts.length > 0 && (
-        <ul className="divide-y overflow-hidden rounded-xl border">
-          {drafts.map((a) => {
-            const mayWithdraw = open && mayWithdrawAddendum(access.ctx, access.uid ?? "", a.by)
-            const stale = staleChanges(a.changes, terms).length > 0
-            return (
-              <DecisionRow
-                key={a.id}
-                severity="amber"
-                icon={FileSignature}
-                title={t("amend.awaiting", { no: addendumNo(a.seq) })}
-                detail={
-                  <>
-                    <span className="block">
-                      {t("amend.drafted_by", {
-                        who: a.byName || "—",
-                        date: pmDate(a.day, locale),
-                        reason:
-                          a.reason === "other"
-                            ? t("amend.other_stated", {
-                                text: a.reasonText ?? "",
-                              })
-                            : t(`amend.reasons.${a.reason}`),
-                      })}
-                    </span>
-                    <TermChangeList changes={a.changes} className="mt-1 text-xs" />
-                    {a.note && (
-                      <span className="mt-1 block text-xs" dir="auto">
-                        {a.note}
-                      </span>
-                    )}
-                    <FileLinks files={a.files} className="mt-1" />
-                    {stale && (
-                      <Callout tone="block" className="mt-2 py-2 text-xs">
-                        {t("amend.stale_inline")}
-                      </Callout>
-                    )}
-                  </>
-                }
-                age={t("days", { count: draftAge(a.day, today) })}
-                action={
-                  (canSign && !stale) || mayWithdraw ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {canSign && !stale && (
-                        <Button size="sm" onClick={() => setSigning(a)}>
-                          <PenLine size={14} className="me-1.5" aria-hidden="true" />
-                          {t("amend.sign")}
-                        </Button>
-                      )}
-                      {mayWithdraw && (
-                        <Button size="sm" variant="outline" onClick={() => setWithdrawing(a)}>
-                          <Undo2 size={14} className="me-1.5" aria-hidden="true" />
-                          {t("amend.withdraw")}
-                        </Button>
-                      )}
-                    </div>
-                  ) : undefined
-                }
-              />
-            )
-          })}
-        </ul>
-      )}
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <SegmentedNav
-          ariaLabel={t("amend.views")}
-          active={view}
-          onSelect={(id) => setView(id as View)}
-          segments={[
-            { id: "force", label: t("amend.view_force") },
-            { id: "original", label: t("amend.view_original") },
-            {
-              id: "record",
-              label: t("amend.view_record"),
-              count: record.length,
-              tone: "mute",
-            },
-          ]}
-        />
-        {canDraft && (
-          <Button size="sm" onClick={() => setDrafting(true)}>
-            <FilePen size={15} className="me-1.5" aria-hidden="true" />
-            {t("amend.new")}
-          </Button>
-        )}
-      </div>
-
-      {view === "force" && (
-        <div>
-          <TermRow
-            label={t("terms.contract_value")}
-            value={access.has("money") ? pmMoney(liveValue) : "•••"}
-            note={
-              approvedVos.length
-                ? t("terms.value_note_vos", {
-                    orig: access.has("money") ? pmMoney(contractValue) : "•••",
-                    count: approvedVos.length,
-                  })
-                : t("terms.value_note")
-            }
-          />
-          <TermRow
-            label={t("terms.duration")}
-            value={t("days", { count: durationDays + eot })}
-            note={
-              eot > 0
-                ? t("terms.duration_note_eot", {
-                    orig: t("days", { count: durationDays }),
-                    eot: t("days", { count: eot }),
-                  })
-                : t("terms.duration_note")
-            }
-          />
-          {shownFor(terms).map(
-            (k) => {
-              const by = marks[k]
-              const m = meaning(k, terms)
-              return (
-                <TermRow
-                  key={k}
-                  label={t(`terms.${k}` as "terms.save")}
-                  value={text(k, terms[k])}
-                  note={m.note}
-                  warn={m.warn}
-                  mark={
-                    by
-                      ? t("amend.mark", {
-                          no: addendumNo(by.seq),
-                          was: text(k, originalOf(k)),
-                          date: pmDate(by.signedOn, locale),
-                        })
-                      : undefined
-                  }
-                />
-              )
-            },
-          )}
-          <TermRow label={t("terms.vat")} value="15%" note={t("terms.vat_note")} />
-          <AdvanceLogNote log={advLog} />
-        </div>
-      )}
-
-      {view === "original" && (
-        <div>
-          <p className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Lock size={13} aria-hidden="true" />
-            {t("amend.original_note")}
-          </p>
-          <TermRow label={t("terms.contract_value")} value={access.has("money") ? pmMoney(contractValue) : "•••"} note={t("amend.orig_value_note")} />
-          <TermRow label={t("terms.duration")} value={t("days", { count: durationDays })} note={t("amend.orig_duration_note", { date: pmDate(startedAt?.slice(0, 10), locale) })} />
-          {shownFor(original).map((k) => (
-            <KeyValueRow key={k} label={t(`terms.${k}` as "terms.save")} value={text(k, original[k])} />
-          ))}
-        </div>
-      )}
-
-      {view === "record" && (
-        <div>
-          <p className="mb-2 text-xs text-muted-foreground">{t("amend.record_sub")}</p>
-          {record.length === 0 ? (
-            <EmptyState icon={FileSignature} title={t("amend.record_empty")} description={t("amend.record_starts")} />
-          ) : (
-            <ol className="divide-y rounded-xl border">
-              {record.map((e) => (
-                <li key={`${e.kind}-${e.seq ?? 0}`} className="flex items-start gap-3 px-3 py-2.5">
-                  <StatusPill tone={RECORD_TONE[e.kind]} className="shrink-0">
-                    {t(`amend.kind.${e.kind}`)}
-                  </StatusPill>
-                  <div className="min-w-0 flex-1 text-sm">
-                    {e.kind === "orig" && (
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <div className="min-w-0 space-y-4">
+          {drafts.length > 0 && (
+            <ul className="divide-y overflow-hidden rounded-xl border">
+              {drafts.map((a) => {
+                const mayWithdraw = open && mayWithdrawAddendum(access.ctx, access.uid ?? "", a.by)
+                const stale = staleChanges(a.changes, terms).length > 0
+                return (
+                  <DecisionRow
+                    key={a.id}
+                    severity="amber"
+                    icon={FileSignature}
+                    title={t("amend.awaiting", { no: addendumNo(a.seq) })}
+                    detail={
                       <>
-                        <b className="block">{t("amend.orig_line")}</b>
-                        <span className="text-xs text-muted-foreground">
-                          {t("amend.orig_sub", {
-                            value: access.has("money") ? pmMoney(e.value ?? 0) : "•••",
-                            days: t("days", { count: e.days ?? 0 }),
+                        <span className="block">
+                          {t("amend.drafted_by", {
+                            who: a.byName || "—",
+                            date: pmDate(a.day, locale),
+                            reason:
+                              a.reason === "other"
+                                ? t("amend.other_stated", {
+                                    text: a.reasonText ?? "",
+                                  })
+                                : t(`amend.reasons.${a.reason}`),
                           })}
                         </span>
-                      </>
-                    )}
-                    {e.kind === "vo" && (
-                      <>
-                        <b className="block" dir="auto">
-                          {t("vo.no", { no: voNo(e.seq ?? 0) })} — {e.title}
-                        </b>
-                        <span className="text-xs text-muted-foreground" dir="ltr">
-                          + {access.has("money") ? pmMoney(e.value ?? 0) : "•••"}
-                        </span>
-                      </>
-                    )}
-                    {e.kind === "eot" && (
-                      <>
-                        <b className="block" dir="auto">
-                          {t("claim.no", { no: claimNo(e.seq ?? 0) })} — {e.title}
-                        </b>
-                        <span className="text-xs text-muted-foreground">+ {t("days", { count: e.days ?? 0 })}</span>
-                      </>
-                    )}
-                    {(e.kind === "amd" || e.kind === "void") && e.addendum && (
-                      <>
-                        <b className="block">{t("amend.no", { no: addendumNo(e.addendum.seq) })}</b>
-                        <span className="block text-xs text-muted-foreground">
-                          {e.kind === "amd"
-                            ? t("amend.signed_line", {
-                                date: pmDate(e.addendum.signedOn, locale),
-                                who: e.addendum.signedByName || "—",
-                                signatory: e.addendum.signatory || "—",
-                              })
-                            : t("amend.void_line", {
-                                date: pmDate(e.addendum.voidOn, locale),
-                                who: e.addendum.voidByName || "—",
-                                reason:
-                                  e.addendum.voidReason === "other"
-                                    ? t("amend.other_stated", {
-                                        text: e.addendum.voidText ?? "",
-                                      })
-                                    : e.addendum.voidReason
-                                      ? t(`amend.withdraw_reasons.${e.addendum.voidReason}`)
-                                      : "—",
-                              })}
-                        </span>
-                        <TermChangeList changes={e.addendum.changes} className="mt-1 text-xs" />
-                        {e.addendum.note && (
-                          <span className="mt-1 block text-xs text-muted-foreground" dir="auto">
-                            {e.addendum.note}
+                        <TermChangeList changes={a.changes} className="mt-1 text-xs" />
+                        {a.note && (
+                          <span className="mt-1 block text-xs" dir="auto">
+                            {a.note}
                           </span>
                         )}
-                        <FileLinks files={e.addendum.files} className="mt-1" />
+                        <FileLinks files={a.files} className="mt-1" />
+                        {stale && (
+                          <Callout tone="block" className="mt-2 py-2 text-xs">
+                            {t("amend.stale_inline")}
+                          </Callout>
+                        )}
                       </>
-                    )}
-                  </div>
-                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{pmDate(e.day, locale)}</span>
-                </li>
-              ))}
-            </ol>
+                    }
+                    age={t("days", { count: draftAge(a.day, today) })}
+                    action={
+                      (canSign && !stale) || mayWithdraw ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {canSign && !stale && (
+                            <Button size="sm" onClick={() => setSigning(a)}>
+                              <PenLine size={14} className="me-1.5" aria-hidden="true" />
+                              {t("amend.sign")}
+                            </Button>
+                          )}
+                          {mayWithdraw && (
+                            <Button size="sm" variant="outline" onClick={() => setWithdrawing(a)}>
+                              <Undo2 size={14} className="me-1.5" aria-hidden="true" />
+                              {t("amend.withdraw")}
+                            </Button>
+                          )}
+                        </div>
+                      ) : undefined
+                    }
+                  />
+                )
+              })}
+            </ul>
           )}
-        </div>
-      )}
 
-      {access.has("money") && <TermsCashPanel terms={terms} contractValue={liveValue} />}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <SegmentedNav
+              ariaLabel={t("amend.views")}
+              active={view}
+              onSelect={(id) => setView(id as View)}
+              segments={[
+                { id: "force", label: t("amend.view_force") },
+                { id: "original", label: t("amend.view_original") },
+              ]}
+            />
+            {canDraft && (
+              <Button size="sm" onClick={() => setDrafting(true)}>
+                <FilePen size={15} className="me-1.5" aria-hidden="true" />
+                {t("amend.new")}
+              </Button>
+            )}
+          </div>
+
+          <div>
+            <h3 className="text-sm font-bold">{view === "original" ? t("amend.orig_head") : t("amend.force_head")}</h3>
+            <p className="text-xs text-muted-foreground">{view === "original" ? t("amend.orig_head_sub") : t("amend.force_head_sub")}</p>
+          </div>
+
+          {view === "force" && (
+            <div>
+              <TermRow
+                label={t("terms.contract_value")}
+                value={access.has("money") ? pmMoney(liveValue) : "•••"}
+                note={
+                  approvedVos.length
+                    ? t("terms.value_note_vos", {
+                        orig: access.has("money") ? pmMoney(contractValue) : "•••",
+                        count: approvedVos.length,
+                      })
+                    : t("terms.value_note")
+                }
+              />
+              <TermRow
+                label={t("terms.duration")}
+                value={t("days", { count: durationDays + eot })}
+                note={
+                  eot > 0
+                    ? t("terms.duration_note_eot", {
+                        orig: t("days", { count: durationDays }),
+                        eot: t("days", { count: eot }),
+                      })
+                    : t("terms.duration_note")
+                }
+              />
+              {shownFor(terms).map(
+                (k) => {
+                  const by = marks[k]
+                  const m = meaning(k, terms)
+                  return (
+                    <TermRow
+                      key={k}
+                      label={t(`terms.${k}` as "terms.save")}
+                      value={text(k, terms[k])}
+                      note={m.note}
+                      warn={m.warn}
+                      mark={
+                        by
+                          ? t("amend.mark", {
+                              no: addendumNo(by.seq),
+                              was: text(k, originalOf(k)),
+                              date: pmDate(by.signedOn, locale),
+                            })
+                          : undefined
+                      }
+                    />
+                  )
+                },
+              )}
+              <TermRow label={t("terms.vat")} value="15%" note={t("terms.vat_note")} />
+              <AdvanceLogNote log={advLog} />
+            </div>
+          )}
+
+          {view === "original" && (
+            <div>
+              <p className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Lock size={13} aria-hidden="true" />
+                {t("amend.original_note")}
+              </p>
+              <TermRow label={t("terms.contract_value")} value={access.has("money") ? pmMoney(contractValue) : "•••"} note={t("amend.orig_value_note")} />
+              <TermRow label={t("terms.duration")} value={t("days", { count: durationDays })} note={t("amend.orig_duration_note", { date: pmDate(startedAt?.slice(0, 10), locale) })} />
+              {shownFor(original).map((k) => (
+                <KeyValueRow key={k} label={t(`terms.${k}` as "terms.save")} value={text(k, original[k])} />
+              ))}
+            </div>
+          )}
+
+        </div>
+        <div className="min-w-0 space-y-4">
+          <section className="rounded-xl border p-3" aria-labelledby="contract-record-title">
+            <h3 id="contract-record-title" className="flex items-center gap-2 text-sm font-bold">
+              {t("amend.view_record")}
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">{record.length}</span>
+            </h3>
+            <p className="mb-2 text-xs text-muted-foreground">{t("amend.record_sub")}</p>
+            {record.length === 0 ? (
+              <EmptyState icon={FileSignature} title={t("amend.record_empty")} description={t("amend.record_starts")} />
+            ) : (
+              <ol className="divide-y rounded-xl border">
+                {record.map((e) => (
+                  <li key={`${e.kind}-${e.seq ?? 0}`} className="flex items-start gap-3 px-3 py-2.5">
+                    <StatusPill tone={RECORD_TONE[e.kind]} className="shrink-0">
+                      {t(`amend.kind.${e.kind}`)}
+                    </StatusPill>
+                    <div className="min-w-0 flex-1 text-sm">
+                      {e.kind === "orig" && (
+                        <>
+                          <b className="block">{t("amend.orig_line")}</b>
+                          <span className="text-xs text-muted-foreground">
+                            {t("amend.orig_sub", {
+                              value: access.has("money") ? pmMoney(e.value ?? 0) : "•••",
+                              days: t("days", { count: e.days ?? 0 }),
+                            })}
+                          </span>
+                        </>
+                      )}
+                      {e.kind === "vo" && (
+                        <>
+                          <b className="block" dir="auto">
+                            {t("vo.no", { no: voNo(e.seq ?? 0) })} — {e.title}
+                          </b>
+                          <span className="text-xs text-muted-foreground" dir="ltr">
+                            + {access.has("money") ? pmMoney(e.value ?? 0) : "•••"}
+                          </span>
+                        </>
+                      )}
+                      {e.kind === "eot" && (
+                        <>
+                          <b className="block" dir="auto">
+                            {t("claim.no", { no: claimNo(e.seq ?? 0) })} — {e.title}
+                          </b>
+                          <span className="text-xs text-muted-foreground">+ {t("days", { count: e.days ?? 0 })}</span>
+                        </>
+                      )}
+                      {(e.kind === "amd" || e.kind === "void") && e.addendum && (
+                        <>
+                          <b className="block">{t("amend.no", { no: addendumNo(e.addendum.seq) })}</b>
+                          <span className="block text-xs text-muted-foreground">
+                            {e.kind === "amd"
+                              ? t("amend.signed_line", {
+                                  date: pmDate(e.addendum.signedOn, locale),
+                                  who: e.addendum.signedByName || "—",
+                                  signatory: e.addendum.signatory || "—",
+                                })
+                              : t("amend.void_line", {
+                                  date: pmDate(e.addendum.voidOn, locale),
+                                  who: e.addendum.voidByName || "—",
+                                  reason:
+                                    e.addendum.voidReason === "other"
+                                      ? t("amend.other_stated", {
+                                          text: e.addendum.voidText ?? "",
+                                        })
+                                      : e.addendum.voidReason
+                                        ? t(`amend.withdraw_reasons.${e.addendum.voidReason}`)
+                                        : "—",
+                                })}
+                          </span>
+                          <TermChangeList changes={e.addendum.changes} className="mt-1 text-xs" />
+                          {e.addendum.note && (
+                            <span className="mt-1 block text-xs text-muted-foreground" dir="auto">
+                              {e.addendum.note}
+                            </span>
+                          )}
+                          <FileLinks files={e.addendum.files} className="mt-1" />
+                        </>
+                      )}
+                    </div>
+                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{pmDate(e.day, locale)}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+          {access.has("money") && <TermsCashPanel terms={terms} contractValue={liveValue} />}
+        </div>
+      </div>
 
       {canDraft && (
         <DraftAddendumDialog

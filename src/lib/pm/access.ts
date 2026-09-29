@@ -167,6 +167,8 @@ type Req = { all?: PmKey[]; any?: PmKey[] }
 export const PM_GUARD = {
   "measurement.write": { all: ["measure"] },
   "obstacle.record": { any: ["daily", "approve"] },
+  // «سجّل متابعة» carries no duty gate in the prototype: anyone on the project (any duty) chases.
+  "obstacle.chase": { any: ["measure", "daily", "qa", "hse", "req", "rcv", "sub", "approve", "vo", "prep", "ipc", "ipcOk", "client", "corr"] },
   "item.rate.set": { all: ["measure", "money"] },
   "daily.write": { all: ["daily"] },
   "qa.record": { all: ["qa"] },

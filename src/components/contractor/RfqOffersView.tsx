@@ -40,7 +40,9 @@ import { awardMode, bestOfferIds, offerTotal, pickOffer, ratesByOffer, type Orde
 import { rfqNotes } from "@/lib/procurement/rfq-notes"
 import { answerRecipients, canAskReductionRound, canCancelRfq, invitedRows, priceTrail, unansweredCount, type InquiryLike } from "@/lib/procurement/rfq-detail"
 import { actsOnRfq, awardsOnRfq, closesRfqEarly, ownerReadsRfqs, rfqMine, runsRfqs } from "@/lib/procurement/rfq-access"
-import { daysToDeadline, rfqPageTab, rfqStage } from "@/lib/procurement/rfq-view"
+import { daysToDeadline, rfqNeedSources, rfqPageTab, rfqStage, type NeedLinkedRfq } from "@/lib/procurement/rfq-view"
+import { unlinkNeedsFromRfq } from "@/lib/procurement/needs-writes"
+import { guestLinkUrl } from "@/components/procurement/rfq/guestLinkUrl"
 import { useRfqRunner } from "@/hooks/useRfqRunner"
 import { useSearchParams } from "next/navigation"
 import { RfqNumber, RfqStagePill } from "@/components/procurement/RfqCard"
@@ -48,7 +50,7 @@ import { RfqGuestLinkPanel } from "@/components/procurement/rfq/RfqGuestLinkPane
 import { RfqRegisterGuestDialog, type GuestToRegister } from "@/components/procurement/rfq/RfqRegisterGuestDialog"
 import { ShareRfqLinkDialog } from "@/components/contractor/ShareRfqLinkDialog"
 import { RfqExtendDialog, type ExtendTarget } from "@/components/procurement/RfqExtendDialog"
-import { printRfq, rfqPrintModel } from "@/components/procurement/RfqPrint"
+import { printRfqWithLink, rfqPrintModel } from "@/components/procurement/RfqPrint"
 import { useSupplierRecipientOptions } from "@/components/contractor/SupplierRecipientsPicker"
 import { displayDocNumber } from "@/lib/procurement/format"
 import { leadDaysOf } from "@/components/procurement/rfq/RfqComparison"
@@ -879,12 +881,14 @@ ${t("offers_notif_reduction_note", { note })}`
   const deadlinePassed = daysLeft !== null && daysLeft < 0
   const stage = rfqView ? rfqStage(rfqView, new Date(), sealed) : null
   const extendable = acts && rfqOpen && !rfqView?.directAward && (!deadlinePassed || offerViews.length === 0 || !policies.sealOffersUntilDeadline)
-  const printDoc = () => {
+  const printDoc = async () => {
     if (!rfqView) return
     const p = (profile || {}) as { companyName?: string; name?: string; taxNumber?: string; crNumber?: string }
     const number = rfqView.rfqNumber ? displayDocNumber(rfqView.rfqNumber, locale) : `#${rfqId.slice(0, 6)}`
     const model = rfqPrintModel(rfqView as unknown as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procOrgName || p.name || "", vat: p.taxNumber || null, cr: p.crNumber || null }, number, displayCity(rfqView.city || "", locale))
-    if (!printRfq(model, locale, (k, params) => tProc(`rfqpo.print.${k}`, params))) {
+    // The document a supplier off the platform receives carries the link he quotes through.
+    const link = acts ? guestLinkUrl(user, { id: rfqId, status: rfqView.status, directAward: rfqView.directAward }) : Promise.resolve(null)
+    if (!(await printRfqWithLink(model, locale, (k, params) => tProc(`rfqpo.print.${k}`, params), link))) {
       toast({ title: tProc("rfqpo.popup_blocked"), variant: "destructive" })
       return
     }
@@ -899,8 +903,10 @@ ${t("offers_notif_reduction_note", { note })}`
         await releaseBoqDrawsForRfq(firestore, projectId, rfqId)
         await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayRemove(rfqId) })
       }
+      // Its needs go back to the desk before it goes (R-19).
+      const stuck = await unlinkNeedsFromRfq(firestore, rfqId, rfqNeedSources(rfq as NeedLinkedRfq))
       await deleteDoc(doc(firestore, "rfqs", rfqId))
-      toast({ title: t("rfq_delete_success") })
+      toast({ title: t("rfq_delete_success"), description: stuck > 0 ? tProc("p2c.rfq.needs_not_released", { count: stuck }) : undefined })
       router.push("/contractor/rfqs")
     } catch (err) {
       console.error("draft not deleted:", (err as { code?: string })?.code || err)
@@ -1131,12 +1137,14 @@ ${t("offers_notif_reduction_note", { note })}`
                     offer.status === "مقبول" ? "border-success/30" :
                     offer.status === "مرفوض" ? "border-slate-200 opacity-65" :
                     isMdmak ? "border-accent/40 bg-accent/[0.015]" :
+                    offer.isGuestOffer ? "border-violet/30" :
                     isBestOffer ? "border-amber-300/70 shadow-amber-50" : "border-slate-100"
                   )} style={{
                     borderInlineStart: `3px solid ${
                       offer.status === "مقبول" ? "hsl(155 80% 35%)" :
                       offer.status === "مرفوض" ? "hsl(215 16% 75%)" :
                       isMdmak ? "hsl(186 79% 46%)" :
+                      offer.isGuestOffer ? "hsl(var(--violet))" :
                       isBestOffer ? "hsl(35 92% 50%)" : "hsl(214 32% 88%)"
                     }`
                   }}>
@@ -1259,7 +1267,7 @@ ${t("offers_notif_reduction_note", { note })}`
                                         {tx("card.register")}
                                       </button>
                                     )}
-                                    {guestEventForOffer(offer) && (
+                                    {guestEventForOffer(offer) ? (
                                       <button
                                         type="button"
                                         onClick={() =>
@@ -1273,10 +1281,24 @@ ${t("offers_notif_reduction_note", { note })}`
                                         <Send size={10} />
                                         {t("guest_notify_resend")}
                                       </button>
-                                    )}
+                                    ) : acts && offer.guestContact.phone ? (
+                                      // Nothing to announce yet: «أبلغ المورد» opens the sender's own WhatsApp chat with him.
+                                      <a
+                                        href={waChatLink(offer.guestContact.phone)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 rounded text-xs font-bold text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                      >
+                                        <Phone size={10} aria-hidden="true" />
+                                        {t("guest_notify_resend")}
+                                      </a>
+                                    ) : null}
                                   </div>
                                 ) : (
-                                  <p className="text-xs text-muted-foreground font-mono mt-0.5">{offer.supplierId?.substring(0, 10)}...</p>
+                                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                                    <p className="text-xs text-muted-foreground font-mono">{offer.supplierId?.substring(0, 10)}...</p>
+                                    <GuestOfferProof offer={{ guestContact: null, guestPapers: offer.supplierPapers }} />
+                                  </div>
                                 )}
                                 {offer.supplierWebsite && (
                                   <a
@@ -1362,6 +1384,14 @@ ${t("offers_notif_reduction_note", { note })}`
                               </p>
                               <p className="text-sm text-slate-700 leading-relaxed" dir="auto">
                                 {offer.guestReplyNote || offer.guestMessage}
+                              </p>
+                            </div>
+                          )}
+                          {!offer.isGuestOffer && offer.supplierNote && (
+                            <div className="mt-3 rounded-xl border bg-muted/40 p-3">
+                              <p className="mb-1 text-[11px] font-bold text-muted-foreground">{tProc("p2c.offer.supplier_note")}</p>
+                              <p className="text-sm leading-relaxed text-foreground/80" dir="auto">
+                                «{offer.supplierNote}»
                               </p>
                             </div>
                           )}
@@ -1706,6 +1736,7 @@ ${t("offers_notif_reduction_note", { note })}`
                 onCloseEarly={() => setCloseNowOpen(true)}
                 round={canAskReductionRound(rfqView, liveOffers.length, sealed) ? (acts ? "can" : "none") : rfqView.reductionRound ? "done" : "none"}
                 onAskRound={() => setRoundOpen(true)}
+                projectName={(project as { name?: string } | null)?.name || null}
               />
             )}
           </TabsContent>
@@ -1744,7 +1775,7 @@ ${t("offers_notif_reduction_note", { note })}`
                     : null
                 }
                 extendLabel={deadlinePassed && offerViews.length === 0 ? tProc("rfqpo.list.republish") : t("rfqv_edit_open")}
-                onPrint={printDoc}
+                onPrint={() => void printDoc()}
                 projectName={(project as { name?: string } | null)?.name || null}
               />
             )}
@@ -1936,7 +1967,7 @@ ${t("offers_notif_reduction_note", { note })}`
       {/* Guest supplier notification — pushes the workflow step out to a
           share-link supplier on WhatsApp or email */}
       <GuestNotifyDialog target={guestNotify} onClose={() => setGuestNotify(null)} />
-      <ShareRfqLinkDialog rfq={shareOpen && rfq ? { id: rfqId, title: (rfq as { title?: string }).title } : null} isOpen={shareOpen} onClose={() => setShareOpen(false)} onPrint={printDoc} />
+      <ShareRfqLinkDialog rfq={shareOpen && rfq ? { id: rfqId, title: (rfq as { title?: string }).title } : null} isOpen={shareOpen} onClose={() => setShareOpen(false)} onPrint={() => void printDoc()} />
       <RfqExtendDialog target={extendTarget} actor={writeActor} options={supplierOptions} orgId={procOrgId} onOpenChange={(o) => !o && setExtendTarget(null)} />
       <RfqRegisterGuestDialog guest={registerGuest} rfqId={rfqId} rfqTitle={(rfq as { title?: string } | null)?.title || ""} orgName={procOrgName || activeCompanyName || ""} actor={writeActor} onOpenChange={(o) => !o && setRegisterGuest(null)} />
       <Dialog open={draftDeleteOpen} onOpenChange={(o) => !deletingDraft && setDraftDeleteOpen(o)}>
@@ -2158,6 +2189,11 @@ function PoStatusPill({ poId, poNumber }: { poId: string; poNumber?: string | nu
       {status && <span className="block text-[11px] text-slate-600 mt-0.5">{tProc(`status.${status}`)}</span>}
     </Link>
   )
+}
+
+const waChatLink = (phone: string): string => {
+  const cleaned = phone.replace(/\D/g, "")
+  return `https://wa.me/${cleaned.startsWith("0") ? "966" + cleaned.slice(1) : cleaned}`
 }
 
 function SupplierWhatsAppButton({ supplierId, guestPhone }: { supplierId: string; guestPhone?: string | null }) {

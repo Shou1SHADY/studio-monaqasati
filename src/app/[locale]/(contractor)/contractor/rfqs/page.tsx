@@ -9,11 +9,14 @@ import { RfqTable } from "@/components/procurement/RfqTable"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { offersSealed } from "@/lib/procurement/award"
-import { DEADLINE_FILTERS, GENERAL_STOCK, RFQ_SEGMENTS, WORKSHOP, bulkDeleteSplit, bulkPublishPatch, estimateAtLastPrice, inRfqSegment, optionCount, passesFilters, rfqCategories, rfqInScope, rfqPage, rfqProjectKey, segmentCounts, sortRfqs, type DeadlineFilter, type RfqFilterKey, type RfqFilters, type RfqSegment } from "@/lib/procurement/rfq-view"
+import { DEADLINE_FILTERS, GENERAL_STOCK, RFQ_SEGMENTS, WORKSHOP, bulkDeleteSplit, bulkPublishPatch, estimateAtLastPrice, inRfqSegment, lineProjectNames, offerersByRfq, optionCount, passesFilters, rfqCategories, rfqInScope, rfqNeedSources, rfqPage, rfqProjectKeys, segmentCounts, sortRfqs, type DeadlineFilter, type NeedLinkedRfq, type RfqFilterKey, type RfqFilters, type RfqSegment } from "@/lib/procurement/rfq-view"
 import { actsOnRfq, ownerReadsRfqs, runsRfqs } from "@/lib/procurement/rfq-access"
 import { useRfqRunner } from "@/hooks/useRfqRunner"
 import { RfqExtendDialog, type ExtendTarget } from "@/components/procurement/RfqExtendDialog"
-import { printRfq, rfqPrintModel } from "@/components/procurement/RfqPrint"
+import { printRfqWithLink, rfqPrintModel } from "@/components/procurement/RfqPrint"
+import { guestLinkUrl } from "@/components/procurement/rfq/guestLinkUrl"
+import { logRfqDocument } from "@/lib/procurement/rfq-writes"
+import { unlinkNeedsFromRfq } from "@/lib/procurement/needs-writes"
 import { useSupplierRecipientOptions } from "@/components/contractor/SupplierRecipientsPicker"
 import { displayDocNumber } from "@/lib/procurement/format"
 import { cn } from "@/lib/utils"
@@ -185,6 +188,7 @@ const handleBatchPublish = async () => {
           await releaseBoqDrawsForRfq(firestore, rfq.projectId, rfq.id)
           await updateDoc(doc(firestore, "projects", rfq.projectId), { rfqIds: arrayRemove(rfq.id) })
         }
+        await unlinkNeedsFromRfq(firestore, rfq.id, rfqNeedSources(rfq as NeedLinkedRfq))
         await deleteDoc(doc(firestore, "rfqs", rfq.id))
         deleted++
       } catch (error) {
@@ -215,10 +219,13 @@ const handleBatchPublish = async () => {
         await releaseBoqDrawsForRfq(firestore, deleteTarget.projectId, deleteTarget.id)
         await updateDoc(doc(firestore, "projects", deleteTarget.projectId), { rfqIds: arrayRemove(deleteTarget.id) })
       }
+      // Its needs go back to the desk before it goes (R-19).
+      const stuck = await unlinkNeedsFromRfq(firestore, deleteTarget.id, rfqNeedSources(deleteTarget as NeedLinkedRfq))
 
       await deleteDoc(doc(firestore, "rfqs", deleteTarget.id))
       toast({
         title: t("rfq_delete_success"),
+        description: stuck > 0 ? tp("p2c.rfq.needs_not_released", { count: stuck }) : undefined,
       })
       setDeleteTarget(null)
     } catch (error) {
@@ -252,12 +259,17 @@ const handleBatchPublish = async () => {
   }, [firestore, user, isUserLoading, profile?.organizationId])
   const { data: projects } = useCollection(projectsQuery)
   const projectNameOf = (id: string | null | undefined): string | null => (id ? ((projects || []).find((p: any) => p.id === id) as { name?: string } | undefined)?.name ?? null : null)
-  const projectLabel = (rfq: RfqRow): string => {
-    const key = rfqProjectKey(rfq)
+  const labelOfKey = (key: string, carried?: string | null): string => {
     if (key === GENERAL_STOCK) return tp("rfqpo.list.general_stock")
     if (key === WORKSHOP) return tp("rfqpo.list.workshop")
-    return projectNameOf(key) || tp("rfqpo.list.project_unknown")
+    return projectNameOf(key) || carried || tp("rfqpo.list.project_unknown")
   }
+  // One label per place its lines are charged to (R-35).
+  const projectLabels = (rfq: RfqRow): string[] => {
+    const carried = lineProjectNames(rfq)
+    return rfqProjectKeys(rfq).map((k) => labelOfKey(k, carried.get(k)))
+  }
+  const projectLabel = (rfq: RfqRow): string => projectLabels(rfq).join(" · ")
   // Sealed rounds and the estimate at the last price paid (the prototype's list).
   const procWorld = useProcurementWorld()
   const { history: priceHistory } = useProcurementPrices(procWorld.orgId)
@@ -293,11 +305,17 @@ const handleBatchPublish = async () => {
   const { data: supplierLinks } = useCollection(linksQuery)
   const supplierOptions = useSupplierRecipientOptions(supplierLinks as any[], ((profile as { favoriteSuppliers?: string[] } | null)?.favoriteSuppliers) || [], t("suppliers_registered_supplier"))
 
-  const printOne = (rfq: RfqRow) => {
+  // The document carries the guest link when the round has one, and the RFQ's log says it went out (R-39).
+  const printOne = async (rfq: RfqRow) => {
     const p = (profile || {}) as { companyName?: string; name?: string; taxNumber?: string; crNumber?: string }
     const number = rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : `#${rfq.id.slice(0, 6)}`
     const model = rfqPrintModel(rfq as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procWorld.orgName || p.name || "", vat: p.taxNumber || null, cr: p.crNumber || null }, number, displayCity(rfq.city || "", locale))
-    if (!printRfq(model, locale, (k, params) => tp(`rfqpo.print.${k}`, params))) toast({ title: tp("rfqpo.popup_blocked"), variant: "destructive" })
+    const link = actsOn(rfq) ? guestLinkUrl(user, rfq) : Promise.resolve(null)
+    if (!(await printRfqWithLink(model, locale, (k, params) => tp(`rfqpo.print.${k}`, params), link))) {
+      toast({ title: tp("rfqpo.popup_blocked"), variant: "destructive" })
+      return
+    }
+    if (firestore && actsOn(rfq)) void logRfqDocument(firestore, runner, rfq.id).catch((err) => console.warn("print not logged:", (err as { code?: string })?.code || err))
   }
 
   const { data: rfqs, isLoading: isCollectionLoading, error } = useCollection(rfqsQuery)
@@ -310,23 +328,25 @@ const handleBatchPublish = async () => {
   const buyerCategories = ((profile as { procurementCategories?: string[] } | null)?.procurementCategories) || null
   const allRfqs = ((rfqs || []) as RfqRow[]).filter((r) => rfqInScope(r, procWorld.actor, buyerCategories))
   const counts = segmentCounts(allRfqs, filters, now)
+  // A supplier's name finds the RFQs he offered on (R-10).
+  const offerers = offerersByRfq(procWorld.offers)
   const filteredRfqs = sortRfqs((allRfqs as any[]).filter((rfq: any) => {
     if (!searching && !inRfqSegment(rfq, segment)) return false
     if (!passesFilters(rfq, filters, now)) return false
-    if (searching && !matchesSearch(searchQuery, [rfq.title, rfq.rfqNumber, rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : null, rfq.category, rfq.subCategory, rfq.city, rfq.id, rfq.description, projectLabel(rfq), directSupplierOf(rfq), ...(Array.isArray(rfq.products) ? rfq.products.map((p: { name?: string; description?: string }) => p?.name || p?.description) : [])])) {
+    if (searching && !matchesSearch(searchQuery, [rfq.title, rfq.rfqNumber, rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : null, rfq.category, rfq.subCategory, rfq.city, rfq.id, rfq.description, ...projectLabels(rfq), directSupplierOf(rfq), ...(offerers.get(rfq.id) || []), ...(Array.isArray(rfq.products) ? rfq.products.map((p: { name?: string; description?: string }) => p?.name || p?.description) : [])])) {
       return false
     }
     return true
   }))
   const { shown: shownRfqs, hasMore } = rfqPage(filteredRfqs, pages)
 
-  const projectKeys = Array.from(new Set(allRfqs.map((r) => rfqProjectKey(r))))
+  const projectKeys = Array.from(new Set(allRfqs.flatMap((r) => rfqProjectKeys(r))))
   const filterOptions: Record<RfqFilterKey, Array<{ value: string; label: string }>> = {
     project: [
       ...projectOptions.map((o: { value: string; label: string }) => o),
       { value: GENERAL_STOCK, label: tp("rfqpo.list.general_stock") },
       { value: WORKSHOP, label: tp("rfqpo.list.workshop") },
-      ...projectKeys.filter((k) => k !== GENERAL_STOCK && k !== WORKSHOP && !projectOptions.some((o: { value: string }) => o.value === k)).map((k) => ({ value: k, label: projectNameOf(k) || tp("rfqpo.list.project_unknown") })),
+      ...projectKeys.filter((k) => k !== GENERAL_STOCK && k !== WORKSHOP && !projectOptions.some((o: { value: string }) => o.value === k)).map((k) => ({ value: k, label: labelOfKey(k, allRfqs.map((r) => lineProjectNames(r).get(k)).find(Boolean)) })),
     ],
     category: Array.from(new Set([...PREDEFINED_CATEGORIES, ...allRfqs.flatMap((r) => rfqCategories(r))])).map((c) => ({ value: c, label: displayCategory(c, locale) })),
     city: Array.from(new Set([...SAUDI_CITIES, ...allRfqs.map((r) => r.city || "").filter(Boolean)])).map((c) => ({ value: c, label: displayCity(c, locale) })),
@@ -531,7 +551,7 @@ const handleBatchPublish = async () => {
                 <RfqCard
                   key={rfq.id}
                   rfq={rfq}
-                  projectLabel={projectLabel(rfq)}
+                  projectLabels={projectLabels(rfq)}
                   sealed={offersSealed(rfq, procWorld.policies, now)}
                   now={now}
                   offersHref={offersHref}
@@ -542,7 +562,7 @@ const handleBatchPublish = async () => {
                   onGlance={() => setGlanceRfq(rfq)}
                   onShare={() => setShareTarget(rfq)}
                   onDelete={() => setDeleteTarget(rfq)}
-                  onPrint={() => printOne(rfq)}
+                  onPrint={() => void printOne(rfq)}
                   onExtend={() =>
                     setExtendTarget({
                       id: rfq.id,
@@ -591,7 +611,7 @@ const handleBatchPublish = async () => {
         rfq={shareTarget}
         isOpen={!!shareTarget}
         onClose={() => setShareTarget(null)}
-        onPrint={shareTarget ? () => printOne(shareTarget) : null}
+        onPrint={shareTarget ? () => void printOne(shareTarget) : null}
       />
 
       <RfqExtendDialog target={extendTarget} actor={runner} options={supplierOptions} orgId={procWorld.orgId} onOpenChange={(o) => !o && setExtendTarget(null)} />

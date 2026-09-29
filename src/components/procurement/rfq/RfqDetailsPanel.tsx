@@ -25,10 +25,29 @@ import { poValue } from "@/lib/procurement/po"
 import { invitedRows, rfqLog, type InviteOfferLike, type RfqLogEntry } from "@/lib/procurement/rfq-detail"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import type { RfqView } from "./rfqOfferView"
-import { rfqFiles } from "@/lib/procurement/rfq-view"
+import { useLineFor } from "./RfqComparison"
+import { lineNeed, needKeyOfSource, rfqFiles } from "@/lib/procurement/rfq-view"
+import { NEED_LINE_HREF } from "@/lib/procurement/today"
 import { guestLinkLine } from "@/lib/procurement/rfq-extras"
 
 const SOURCE_KEY: Record<string, string> = { mfg_purchase: "source.mfg", project_request: "source.project", stock_gap: "source.stock" }
+
+/** Where a line came from — the need it answers, opened on the needs desk — or
+ * «بلا احتياج مربوط» when the buyer added it himself (R-13, R-19). */
+function LineSource({ rfq, index }: { rfq: RfqView; index: number }) {
+  const t = useTranslations("Portal.Procurement.rfqd")
+  const tp = useTranslations("Portal.Procurement")
+  const need = lineNeed(rfq, index)
+  const key = need ? needKeyOfSource(need.source) : null
+  if (!need) return <>{`${t("source.direct")} — ${tp("p2c.rfq.no_linked_need")}`}</>
+  const label = t(SOURCE_KEY[need.source.kind] || "source.direct")
+  if (!key) return <>{label}</>
+  return (
+    <Link href={NEED_LINE_HREF(`${key}#${need.line}`)} className="rounded-sm font-semibold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      {label}
+    </Link>
+  )
+}
 
 export function RfqDetailsPanel({
   rfq,
@@ -64,6 +83,7 @@ export function RfqDetailsPanel({
   const now = new Date()
   const products = pricedProducts(rfq)
   const privacy = rfq.directAward ? "direct" : rfq.visibility === "private" ? "private" : "public"
+  const forText = useLineFor(rfq, projectName ?? null)
 
   return (
     <div className="space-y-4">
@@ -149,9 +169,9 @@ export function RfqDetailsPanel({
                   <b className="block" dir="auto">
                     {p.name || "—"}
                   </b>
-                  <span className="text-[11px] text-muted-foreground">
-                    {rfq.purchaseSource?.kind ? t(SOURCE_KEY[rfq.purchaseSource.kind] || "source.direct") : t("source.direct")}
-                    {` · ${projectName || tx("details.for_general")}`}
+                  <span className="text-[11px] text-muted-foreground" dir="auto">
+                    <LineSource rfq={rfq} index={p.rfqProductIndex} />
+                    {` · ${forText(p.rfqProductIndex)}`}
                     {need ? ` · ${t("details.need", { date: date(need) })}` : ""}
                   </span>
                 </span>
@@ -314,6 +334,7 @@ export function RfqDraftPanel({
   const date = useDateText()
   const products = pricedProducts(rfq)
   const privacy = rfq.directAward ? "direct" : rfq.visibility === "private" ? "private" : "public"
+  const forText = useLineFor(rfq, projectName)
   return (
     <div className="space-y-4">
       <Callout tone="info">{tx("draft.note")}</Callout>
@@ -345,9 +366,9 @@ export function RfqDraftPanel({
                 <b className="block" dir="auto">
                   {p.name || "—"}
                 </b>
-                <span className="text-[11px] text-muted-foreground">
-                  {rfq.purchaseSource?.kind ? t(SOURCE_KEY[rfq.purchaseSource.kind] || "source.direct") : t("source.direct")}
-                  {` · ${projectName || tx("details.for_general")}`}
+                <span className="text-[11px] text-muted-foreground" dir="auto">
+                  <LineSource rfq={rfq} index={p.rfqProductIndex} />
+                  {` · ${forText(p.rfqProductIndex)}`}
                 </span>
               </span>
               <span className="flex items-center gap-2">

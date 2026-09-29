@@ -18,7 +18,7 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { useSupplyWorld } from "@/hooks/useSupplyWorld"
 import { pmDate, pmMoney } from "@/lib/pm/format"
-import { poReceivedShare } from "@/lib/pm/supply"
+import { ESTIMATE_GAP_PERCENT, poReceivedShare, poVsEstimate } from "@/lib/pm/supply"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { acceptedValue, poValue } from "@/lib/procurement/po"
 import { PRICE_RISE_ALARM_PERCENT } from "@/lib/procurement/prices"
@@ -96,6 +96,7 @@ export function ProjectPurchasingPanel({ projectId, orgId, items, startOn, acces
                   const share = poReceivedShare(o.lines)
                   const firstItem = o.lines.map((l) => codeOf(l.boqItemId)).find(Boolean)
                   const acc = acceptedValue(o)
+                  const dif = money ? poVsEstimate(o.lines, (id) => codeOf(id)?.estCost ?? 0) : null
                   return (
                     <tr key={o.id}>
                       <td className="px-4 py-2">
@@ -117,6 +118,11 @@ export function ProjectPurchasingPanel({ projectId, orgId, items, startOn, acces
                       {money && (
                         <td className="px-2 py-2 text-end tabular-nums" dir="ltr">
                           {pmMoney(poValue(o))}
+                          {dif !== null && Math.abs(dif) > ESTIMATE_GAP_PERCENT && (
+                            <p className={cn("text-xs", dif > 0 ? "text-destructive" : "text-success")} dir="auto">
+                              {dif > 0 ? t("po.above_est", { pct: Math.round(dif) }) : t("po.below_est", { pct: Math.round(-dif) })}
+                            </p>
+                          )}
                         </td>
                       )}
                       {money && (

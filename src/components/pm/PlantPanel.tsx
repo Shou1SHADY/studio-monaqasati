@@ -57,6 +57,7 @@ import {
 } from "@/lib/pm/plant"
 import { handBackPlant, logPlantDay, PmPlantError, receivePlant, recordOffHireConfirmation, requestOffHire } from "@/lib/pm/plant-writes"
 import { addDays } from "@/lib/pm/programme"
+import { PM_PLANT as PM_PLANT_REQUESTS, plantBooked, plantNo as plantReqNo, type PmPlantRequest } from "@/lib/pm/supply"
 import { cn } from "@/lib/utils"
 import { PmFilesField } from "./PmAttachments"
 
@@ -75,6 +76,9 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
   const { data } = useCollection(q)
   const list = useMemo(() => ((data ?? []) as unknown as PmPlant[]).slice().sort((a, b) => a.seq - b.seq), [data])
   const on = onSite(list)
+  const rq = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_PLANT_REQUESTS) : null), [firestore, projectId])
+  const { data: reqData } = useCollection(rq)
+  const booked = useMemo(() => ((reqData ?? []) as unknown as PmPlantRequest[]).filter((r) => plantBooked(r, today)).sort((a, b) => a.from.localeCompare(b.from) || a.seq - b.seq), [reqData, today])
   const back = list.filter((p) => p.status === "back")
   const money = access.has("money")
   const canReq = !access.ctx.archived && access.allowed("plant.request")
@@ -214,7 +218,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
       }
     >
       <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("plant.sub")}</p>
-      {on.length === 0 ? (
+      {on.length === 0 && booked.length === 0 ? (
         <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t("plant.empty")}</p>
       ) : (
         <ul className="divide-y">
@@ -289,7 +293,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                         {t("plant.log_today")}
                       </Button>
                     )}
-                    {canReq && p.status === "use" && (
+                    {canDay && p.status === "use" && (
                       <Button size="sm" variant="outline" onClick={() => open({ kind: "off", p }, { ready: today })}>
                         {t("plant.off_hire")}
                       </Button>
@@ -299,7 +303,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                         {t("plant.desk_record")}
                       </Button>
                     )}
-                    {canReq && p.status === "req" && p.offOk && (
+                    {canDay && p.status === "req" && p.offOk && (
                       <Button size="sm" onClick={() => open({ kind: "back", p }, { condition: "ok", acc: p.handover.accessories ?? "" })}>
                         <Check size={14} className="me-1.5" aria-hidden="true" />
                         {t("plant.hand_back")}
@@ -310,6 +314,18 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
               </li>
             )
           })}
+          {booked.map((r) => (
+            <li key={`b-${r.id}`} className="flex flex-wrap items-center gap-3 px-4 py-3">
+              <div className="min-w-0 flex-1 basis-60">
+                <p className="text-sm font-bold" dir="auto">
+                  {r.rep?.k === "alloc" && r.rep.unit ? <span dir="ltr">{r.rep.unit}</span> : t("plantreq.no", { no: plantReqNo(r.seq) })}
+                  {r.qty > 1 ? ` × ${r.qty}` : ""} — {r.rep?.k === "alt" && r.rep.text ? r.rep.text : r.what}
+                </p>
+                <p className="text-xs text-muted-foreground">{t("plant.booked_line", { from: pmDate(r.from, locale), to: pmDate(r.to, locale) })}</p>
+              </div>
+              <StatusPill tone="info">{t("plant.booked")}</StatusPill>
+            </li>
+          ))}
         </ul>
       )}
       {on.some((p) => p.category === "tool") && (

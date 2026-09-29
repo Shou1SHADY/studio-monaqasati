@@ -11,6 +11,7 @@
 
 import { dayOf, lineToArrive, poCommitment, poStatus, round2 } from "./po"
 import { DEFAULT_OPERATING_POLICIES, resolvePolicies } from "./policies"
+import { GENERAL_STOCK, WORKSHOP } from "./rfq-view"
 import type { PoLine, ProcActor, PurchaseOrder, ReceiptFact } from "./types"
 
 export type PaymentKind = "adv" | "part" | "inv"
@@ -417,3 +418,160 @@ export type DateReason = (typeof DATE_REASONS)[number]
 
 /** The new date falls after what we told the supplier we need it by. */
 export const dateMissesNeed = (po: Pick<PurchaseOrder, "requestedDeliveryDate">, date: string): boolean => Boolean(po.requestedDeliveryDate && date && date > dayOf(po.requestedDeliveryDate))
+
+// ---------------------------------------------------------------------------
+// The list (prototype `vPo`): each line's project, the quantity net of what was
+// cancelled, and the project filter over the lines
+// ---------------------------------------------------------------------------
+
+type ProjectedRfq = { id: string; products?: Array<{ projectId?: string | null } | null | undefined> | null }
+
+/** The project a line serves: the RFQ line's own project (a multi-project
+ * request), else the order's, else the workshop or general stock. */
+export function poLineProjectKey(po: Pick<PurchaseOrder, "projectId" | "purchaseSource">, line: Pick<PoLine, "rfqProductIndex">, rfq?: ProjectedRfq | null): string {
+  const own = line.rfqProductIndex != null ? rfq?.products?.[line.rfqProductIndex]?.projectId : null
+  if (own) return own
+  if (po.projectId) return po.projectId
+  if (po.purchaseSource?.projectId) return po.purchaseSource.projectId
+  return po.purchaseSource?.kind === "mfg_purchase" || po.purchaseSource?.workOrderId ? WORKSHOP : GENERAL_STOCK
+}
+
+/** Every project the order's lines serve, in line order, each once. */
+export function poProjectKeys(po: Pick<PurchaseOrder, "projectId" | "purchaseSource" | "rfqId" | "lines">, rfqs: ProjectedRfq[]): string[] {
+  const rfq = po.rfqId ? rfqs.find((r) => r.id === po.rfqId) ?? null : null
+  const keys = po.lines.map((l) => poLineProjectKey(po, l, rfq))
+  return Array.from(new Set(keys.length ? keys : [poLineProjectKey(po, {}, rfq)]))
+}
+
+/** "all" passes everything; otherwise the order must serve that project on at least one line. */
+export const inProjectFilter = (keys: string[], filter: string): boolean => filter === "all" || keys.includes(filter)
+
+export const netQuantity = (l: Pick<PoLine, "quantity" | "cancelled">): number => Math.max(0, round2((Number(l.quantity) || 0) - (Number(l.cancelled) || 0)))
+
+// ---------------------------------------------------------------------------
+// Who the order waits for (prototype `apprWho`)
+// ---------------------------------------------------------------------------
+
+export interface ApproverCandidate {
+  id: string
+  name: string
+  isOwner: boolean
+  canApprove: boolean
+}
+
+/** The people an order awaiting approval is routed to: the owner when it is
+ * his, else whoever holds `po.approve` and did not prepare it — the owner when
+ * nobody does. */
+export function approverNames(po: Pick<PurchaseOrder, "approverKind" | "preparedById">, members: ApproverCandidate[]): string[] {
+  const owners = members.filter((m) => m.isOwner && m.name)
+  if (po.approverKind === "owner") return owners.map((m) => m.name)
+  const managers = members.filter((m) => !m.isOwner && m.canApprove && m.id !== po.preparedById && m.name)
+  return (managers.length ? managers : owners).map((m) => m.name)
+}
+
+// ---------------------------------------------------------------------------
+// Payment terms — the advance and the credit days are terms, not prices
+// ---------------------------------------------------------------------------
+
+export type PoTerms = { kind: "advance"; percent: number; days: number } | { kind: "credit"; days: number } | { kind: "text"; text: string } | null
+
+export function poTerms(po: Pick<PurchaseOrderX, "advancePercent" | "creditDays" | "paymentTerms">): PoTerms {
+  const adv = pct(po.advancePercent)
+  const days = Math.max(0, Math.round(Number(po.creditDays) || 0))
+  if (adv > 0) return { kind: "advance", percent: adv, days: adv < 100 ? days : 0 }
+  if (days > 0) return { kind: "credit", days }
+  const text = (po.paymentTerms || "").trim()
+  return text ? { kind: "text", text } : null
+}
+
+// ---------------------------------------------------------------------------
+// The award's facts (prototype `dPo` wait state)
+// ---------------------------------------------------------------------------
+
+export interface AwardOfferFact {
+  id: string
+  rfqId?: string | null
+  isGuestOffer?: boolean | null
+  validUntil?: string | null
+  isManualOffer?: boolean | null
+  recordedByName?: string | null
+}
+
+/** Offers on the order's RFQ from registered suppliers — a guest's does not count until he registers. */
+export function registeredOfferCount(po: Pick<PurchaseOrder, "rfqId" | "offersCount">, offers: AwardOfferFact[]): number {
+  if (!po.rfqId) return 0
+  const mine = offers.filter((o) => o.rfqId === po.rfqId)
+  return mine.length ? mine.filter((o) => !o.isGuestOffer).length : Number(po.offersCount) || 0
+}
+
+/** The chosen offer's validity, `YYYY-MM-DD`, when it was recorded. */
+export function chosenOfferValidity(po: Pick<PurchaseOrder, "offerId">, offers: AwardOfferFact[]): string | null {
+  const o = po.offerId ? offers.find((x) => x.id === po.offerId) : null
+  return o?.validUntil ? dayOf(o.validUntil) || null : null
+}
+
+/** Who keyed the chosen offer in by hand — null when the supplier sent it himself. */
+export function manualOfferBy(po: Pick<PurchaseOrder, "offerId">, offers: AwardOfferFact[]): string | null {
+  const o = po.offerId ? offers.find((x) => x.id === po.offerId) : null
+  return o?.isManualOffer ? (o.recordedByName || "").trim() || "—" : null
+}
+
+// ---------------------------------------------------------------------------
+// Deliveries on the order — the receiver's reject reasons, the receipts'
+// quantities, the notices' lateness, the agreed schedule's shipments
+// ---------------------------------------------------------------------------
+
+type OrderDelivery = ReceiptFact & { createdAt?: unknown }
+
+/** Why the receiver rejected on this line, each reason once, in receipt order. */
+export function lineRejectReasons(po: Pick<PurchaseOrder, "id">, line: Pick<PoLine, "id">, deliveries: OrderDelivery[]): Array<{ code: string; note: string | null }> {
+  const out: Array<{ code: string; note: string | null }> = []
+  for (const d of deliveries) {
+    if (d.poId !== po.id || d.status !== "confirmed") continue
+    for (const l of d.lines || []) {
+      if (l.poLineId !== line.id || !(Number(l.rejected) > 0) || !l.rejectReason) continue
+      const note = (l.rejectNote || "").trim() || null
+      if (!out.some((x) => x.code === l.rejectReason && x.note === note)) out.push({ code: l.rejectReason, note })
+    }
+  }
+  return out
+}
+
+/** A receipt's accepted quantity per line and its rejected total. */
+export function receiptQuantities(d: Pick<ReceiptFact, "lines">): { accepted: number[]; rejected: number } {
+  const lines = d.lines || []
+  return { accepted: lines.map((l) => round2(Number(l.accepted) || 0)), rejected: round2(lines.reduce((s, l) => s + (Number(l.rejected) || 0), 0)) }
+}
+
+export type NoticeState = { kind: "received" } | { kind: "passed" } | { kind: "after_promise"; days: number } | { kind: "on_the_way" }
+
+/** A notice the supplier sent: received, its day passed with no receipt, set
+ * after the date he committed to, or on its way. */
+export function noticeState(d: Pick<ReceiptFact, "status" | "deliveryDate">, po: Pick<PurchaseOrder, "promisedDate">, today: string): NoticeState {
+  if (d.status === "confirmed") return { kind: "received" }
+  const day = dayOf(d.deliveryDate)
+  if (day && day < today) return { kind: "passed" }
+  const promised = dayOf(po.promisedDate)
+  if (day && promised && day > promised) return { kind: "after_promise", days: Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${promised}T00:00:00Z`)) / 86400000) }
+  return { kind: "on_the_way" }
+}
+
+const createdIso = (d: OrderDelivery): string => {
+  const v = d.createdAt as { toDate?: () => Date } | string | null | undefined
+  if (typeof v === "string") return v
+  if (v && typeof v.toDate === "function") return v.toDate().toISOString()
+  return d.deliveryDate || d.confirmedAt || ""
+}
+
+export type ScheduleRowState = { kind: "received"; number: string } | { kind: "notified" } | { kind: "no_notice" } | { kind: "pending" }
+
+/** The agreed shipments against the deliveries in the order they were sent:
+ * shipment n is the n-th delivery; a received one shows its receipt number. */
+export function scheduleStates(schedule: Array<{ date: string }>, po: Pick<PurchaseOrder, "id">, deliveries: OrderDelivery[], today: string): ScheduleRowState[] {
+  const mine = deliveries.filter((d) => d.poId === po.id).sort((a, b) => createdIso(a).localeCompare(createdIso(b)))
+  return schedule.map((s, i) => {
+    const d = mine[i]
+    if (d) return d.status === "confirmed" ? { kind: "received", number: d.docNumber || "" } : { kind: "notified" }
+    return s.date && s.date < today ? { kind: "no_notice" } : { kind: "pending" }
+  })
+}

@@ -7,7 +7,7 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { collection } from "firebase/firestore"
+import { collection, query, where } from "firebase/firestore"
 import { Loader2, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -19,20 +19,23 @@ import { Callout } from "@/components/module-ui/Callout"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { useOrgStock } from "@/hooks/useOrgStock"
+import { usePmIndirect } from "@/hooks/usePmIndirect"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import type { SupplyWorld } from "@/hooks/useSupplyWorld"
 import { PmAccessError } from "@/lib/pm/access"
 import type { PmAttachment } from "@/lib/pm/attachments"
-import { todayDay } from "@/lib/pm/format"
+import { INVENTORY_UNIT_CODES, unitMessageKey } from "@/lib/inventory-units"
+import { pmMoney, todayDay } from "@/lib/pm/format"
 import { addDays } from "@/lib/pm/programme"
-import { itemMaterials, lineDays, lineGot, lineInTransit, lineKind, lineNeed, lineOut, linePhase, reqNo, reqTitle, CLOSE_WHY, type CloseWhy, type LineDraft, type PmMaterialRequest } from "@/lib/pm/supply"
+import { itemMaterials, lineDays, lineGot, lineInTransit, lineKind, lineNeed, lineOut, linePhase, mainStock, reqNo, reqTitle, siteOverheadLeft, stockCatalogue, CLOSE_WHY, type CloseWhy, type LineDraft, type MainStockRow, type PmMaterialRequest } from "@/lib/pm/supply"
 import { materialKeyOf, r2, ratedOn, storeBalance, type StoreItem } from "@/lib/pm/store"
 import { PM_VARIATIONS, voNo, type PmVariation } from "@/lib/pm/variation"
 import { createMaterialRequest, decideChange, PmSupplyError, receiveOnProject, rejectMaterialRequest, stopLine, type SupplyActor } from "@/lib/pm/supply-writes"
 import { ChoiceChips, FormHint } from "./ContractBits"
 import { PmFilesField } from "./PmAttachments"
 
-export type SupplyItem = StoreItem & { division?: string; pmSample?: boolean | null; pmSub?: string | null }
+export type SupplyItem = StoreItem & { division?: string; pmSample?: boolean | null; pmSub?: string | null; estCost?: number }
 
 export const qty = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString("en-US")
 const SELECT = "h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -63,13 +66,18 @@ export function useSupplyRun() {
 
 // ── A new request ────────────────────────────────────────────────────────────
 
-type LineState = { itemId: string; mat: string; name: string; unit: string; q: string; why: string }
+type LineState = { itemId: string; mat: string; name: string; unit: string; unitOther?: boolean; q: string; why: string }
 const GEN = "_gen"
 const NEW = "__new"
+/** A general line's pick from the Inventory catalogue (`cat:` + material key). */
+const CAT = "cat:"
+const OTHER_UNIT = "__other"
 const blankLine = (itemId = ""): LineState => ({ itemId, mat: "", name: "", unit: "", q: "", why: "" })
+type Catalogue = Array<{ key: string; name: string; unit: string }>
 
 export function NewRequestDialog({
   projectId,
+  orgId,
   access,
   actor,
   items,
@@ -79,6 +87,7 @@ export function NewRequestDialog({
   onClose,
 }: {
   projectId: string
+  orgId?: string | null
   access: PmAccess
   actor: SupplyActor
   items: SupplyItem[]
@@ -96,12 +105,24 @@ export function NewRequestDialog({
   const [title, setTitle] = useState("")
   const [notes, setNotes] = useState("")
 
+  const whQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "warehouses"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const { data: whData } = useCollection(whQ)
+  const mains = useMemo(() => ((whData ?? []) as Array<{ id: string; projectId?: string | null; isOutbound?: boolean }>).filter((w) => !w.projectId && !w.isOutbound), [whData])
+  const stock = useOrgStock(mains, mains.length > 0)
+  const stockRows = useMemo(() => [...stock.byWarehouse.values()].flat(), [stock])
+  const catalogue = useMemo(() => stockCatalogue(stockRows), [stockRows])
+  const money = access.has("money")
+  const hasGen = lines.some((l) => l.itemId === GEN)
+  const indirect = usePmIndirect(projectId, orgId ?? null, money && hasGen)
+  const ovhLeft = money ? siteOverheadLeft(indirect.budgets.ovh, indirect.byKind.ovh) : undefined
+
   const resolve = (l: LineState): LineDraft | null => {
-    if (!l.itemId || !l.mat) return null
+    const mat = l.itemId === GEN && !l.mat && !catalogue.length ? NEW : l.mat
+    if (!l.itemId || !mat) return null
     const q = Number(l.q)
-    const store = l.mat !== NEW ? world.stores.find((s) => s.key === l.mat) : null
-    const name = store ? store.name : l.name.trim()
-    const unit = store ? store.unit : l.unit.trim()
+    const picked = mat.startsWith(CAT) ? catalogue.find((c) => c.key === mat.slice(CAT.length)) : mat !== NEW ? world.stores.find((s) => s.key === mat) : null
+    const name = picked ? picked.name : l.name.trim()
+    const unit = picked ? picked.unit : l.unit.trim()
     if (!name || !unit || !(q > 0)) return null
     return { itemId: l.itemId === GEN ? null : l.itemId, name, unit, qty: q, why: l.why }
   }
@@ -137,6 +158,9 @@ export function NewRequestDialog({
                 world={world}
                 startOn={startOn}
                 today={today}
+                catalogue={catalogue}
+                stockRows={!whData || stock.loading ? null : stockRows}
+                ovhLeft={ovhLeft}
                 removable={lines.length > 1}
                 onChange={(p) => set(i, p)}
                 onRemove={() => setLines((ls) => ls.filter((_, j) => j !== i))}
@@ -194,6 +218,9 @@ function LineEditor({
   world,
   startOn,
   today,
+  catalogue,
+  stockRows,
+  ovhLeft,
   removable,
   onChange,
   onRemove,
@@ -203,19 +230,29 @@ function LineEditor({
   world: SupplyWorld
   startOn: string | null
   today: string
+  /** The Inventory catalogue a general line picks from. */
+  catalogue: Catalogue
+  /** What the main stores hold (null while it is read). */
+  stockRows: MainStockRow[] | null
+  /** Money holders: the site-overheads budget left (null = none recorded); undefined for everyone else. */
+  ovhLeft: number | null | undefined
   removable: boolean
   onChange: (p: Partial<LineState>) => void
   onRemove: () => void
 }) {
   const t = useTranslations("Portal.PM")
+  const tc = useTranslations("Portal.Contractor")
   const gen = line.itemId === GEN
   const item = !gen ? items.find((i) => i.id === line.itemId) : undefined
   const own = item ? itemMaterials(world.stores, item.id) : []
   const others = item ? world.stores.filter((s) => !own.some((o) => o.key === s.key)) : []
   const first = Boolean(item) && own.length === 0
-  const store = line.mat && line.mat !== NEW ? world.stores.find((s) => s.key === line.mat) : null
-  const name = store ? store.name : line.name.trim()
-  const unit = store ? store.unit : line.unit.trim()
+  const mat = gen && !line.mat && !catalogue.length ? NEW : line.mat
+  const store = !gen && mat && mat !== NEW ? world.stores.find((s) => s.key === mat) : null
+  const fromCat = gen && mat.startsWith(CAT) ? catalogue.find((c) => c.key === mat.slice(CAT.length)) : undefined
+  const picked = store ?? fromCat ?? null
+  const name = picked ? picked.name : line.name.trim()
+  const unit = picked ? picked.unit : line.unit.trim()
   const q = Number(line.q) || 0
   const key = name && unit ? materialKeyOf(name, unit) : ""
   const kind = line.itemId && name && unit ? lineKind(world.stores, { itemId: gen ? null : line.itemId, name, unit }) : null
@@ -223,12 +260,15 @@ function LineEditor({
   const days = item && key ? lineDays({ stores: world.stores, items, itemId: item.id, key, qty: q, startOn, today }) : null
   const rate = item && store ? ratedOn(store, item.id) : null
   const onHand = store ? Math.max(0, storeBalance(store, items)) : null
+  const inMain = stockRows && name && unit ? mainStock(stockRows, name, unit) : null
   const divisions = [...new Set(items.map((i) => i.division || ""))]
+  const units = INVENTORY_UNIT_CODES.map((c) => tc(unitMessageKey(c) as Parameters<typeof tc>[0]))
+  const unitValue = line.unitOther ? OTHER_UNIT : units.includes(line.unit) ? line.unit : ""
 
   return (
     <div className="space-y-2 rounded-lg border p-3">
       <div className="flex items-center gap-2">
-        <select aria-label={t("sup.form.which_item")} className={SELECT} value={line.itemId} onChange={(e) => onChange({ itemId: e.target.value, mat: "", name: "", unit: "" })}>
+        <select aria-label={t("sup.form.which_item")} className={SELECT} value={line.itemId} onChange={(e) => onChange({ itemId: e.target.value, mat: "", name: "", unit: "", unitOther: false })}>
           <option value="">{t("sup.form.which_item")}</option>
           {divisions.map((d) => (
             <optgroup key={d || "_"} label={d || t("sup.general_items")}>
@@ -274,18 +314,49 @@ function LineEditor({
               )}
               <option value={NEW}>{first ? t("sup.form.new_mat") : t("sup.form.new_mat_chg")}</option>
             </select>
+          ) : catalogue.length > 0 ? (
+            <select aria-label={t("sup.form.choose_mat")} className={`${SELECT} min-w-0 flex-1`} value={line.mat} onChange={(e) => onChange({ mat: e.target.value })}>
+              <option value="">{t("sup.form.choose_mat")}</option>
+              <optgroup label={t("sup.form.consumables_cat")}>
+                {catalogue.map((c) => (
+                  <option key={c.key} value={`${CAT}${c.key}`}>
+                    {c.name} ({c.unit})
+                  </option>
+                ))}
+              </optgroup>
+              <option value={NEW}>{t("sup.form.new_mat")}</option>
+            </select>
           ) : null}
           <Input aria-label={t("sup.form.qty")} type="number" min={0} dir="ltr" className="h-9 w-28" placeholder={t("sup.form.qty")} value={line.q} onChange={(e) => onChange({ q: e.target.value })} />
-          {store && <span className="text-xs text-muted-foreground">{store.unit}</span>}
+          {picked && <span className="text-xs text-muted-foreground">{picked.unit}</span>}
         </div>
       )}
-      {(gen || line.mat === NEW) && (
+      {line.itemId && mat === NEW && (
         <div className="flex flex-wrap gap-2">
           <Input aria-label={t("sup.form.mat_name")} dir="auto" className="h-9 min-w-0 flex-1" placeholder={t("sup.form.mat_name")} value={line.name} onChange={(e) => onChange({ name: e.target.value })} />
-          <Input aria-label={t("sup.form.unit")} dir="auto" className="h-9 w-28" placeholder={t("sup.form.unit")} value={line.unit} onChange={(e) => onChange({ unit: e.target.value })} />
+          <select
+            aria-label={t("sup.form.unit")}
+            className={`${SELECT} w-32`}
+            value={unitValue}
+            onChange={(e) => onChange(e.target.value === OTHER_UNIT ? { unitOther: true, unit: "" } : { unitOther: false, unit: e.target.value })}
+          >
+            <option value="">{t("sup.form.unit")}</option>
+            {units.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+            <option value={OTHER_UNIT}>{t("sup.form.unit_other")}</option>
+          </select>
+          {line.unitOther && <Input aria-label={t("sup.form.unit")} dir="auto" className="h-9 w-28" placeholder={t("sup.form.unit")} value={line.unit} onChange={(e) => onChange({ unit: e.target.value })} />}
         </div>
       )}
-      {gen && name && <p className="text-xs text-muted-foreground">{t("sup.form.gen_note")}</p>}
+      {gen && name && (
+        <p className="text-xs text-muted-foreground">
+          {t("sup.form.gen_note")}
+          {ovhLeft !== undefined && ` ${ovhLeft === null ? t("sup.form.ovh_none") : t("sup.form.ovh_left", { amount: pmMoney(ovhLeft) })}`}
+        </p>
+      )}
       {kind === "change" && (
         <div className="space-y-1.5 rounded-md border border-warning/30 bg-warning/5 p-2 text-xs">
           <p>
@@ -306,7 +377,12 @@ function LineEditor({
           {days !== null && days > 45 && <p className="font-bold text-warning">{t("sup.form.long", { days })}</p>}
         </div>
       )}
-      {kind && kind !== "general" && q > 0 && <p className="text-xs text-muted-foreground">{t("sup.form.route_line")}</p>}
+      {kind && kind !== "general" && q > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {t("sup.form.route_line")}
+          {inMain !== null && ` · ${inMain > 0 ? t("sup.form.main_stock", { q: qty(inMain) }) : t("sup.form.main_none")}`}
+        </p>
+      )}
     </div>
   )
 }

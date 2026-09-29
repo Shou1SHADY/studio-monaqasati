@@ -371,7 +371,7 @@ describe("Today — the rows the audit found missing", () => {
 
   it("the forward task names where the goods go; an expediter gets no overdue/late-date rows (prototype `see`)", () => {
     const notice: ReceiptFact = { id: "n1", status: "pending_confirmation", poId: "po1", supplierName: "Al-Hadid", deliveryDate: "2026-09-18", lines: [] }
-    expect(todayTasks(world({ orders: [po()], receipts: [notice] }), MANAGER, NOW).find((t) => t.kind === "notice_forward")).toMatchObject({ subKey: "task.notice_forward.sub_place", subParams: { place: "Tower A", hasPlace: 1 } })
+    expect(todayTasks(world({ orders: [po()], receipts: [notice] }), MANAGER, NOW).find((t) => t.kind === "notice_forward")).toMatchObject({ subKey: "task.notice_forward.sub_place_rcv", subParams: { place: "Tower A", hasPlace: 1, hasReceiver: 0 } })
     const told = { ...notice, forwardedTo: { name: "Majed" } }
     expect(kinds(world({ orders: [po()], receipts: [told] }), MANAGER)).toContain("notice_overdue")
     expect(kinds(world({ orders: [po()], receipts: [told] }), EXPEDITER)).toEqual([])

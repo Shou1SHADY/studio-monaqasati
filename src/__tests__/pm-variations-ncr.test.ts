@@ -81,8 +81,8 @@ describe("variations — the one door the contract value changes through", () =>
 })
 
 describe("non-conformance", () => {
-  it("needs the item and the root cause; open → plan → closed on acceptance (NCR-01)", async () => {
-    expect(ncrBlocks({ archived: false, itemId: null, root: " ", cost: -1 })).toEqual(["no_item", "no_root", "bad_cost"])
+  it("needs the root cause (the item is optional); open → plan → closed on acceptance (NCR-01)", async () => {
+    expect(ncrBlocks({ archived: false, root: " ", cost: -1 })).toEqual(["no_root", "bad_cost"])
     const seq = await raiseNcr(db, site, "p1", seA, { itemId: "i1", severity: "a", root: "Cover to rebar under spec", cost: 4_500 })
     expect(ncr("01")).toMatchObject({ status: "open", code: "03-01", severity: "a" })
     await expect(acceptNcr(db, site, "p1", seA, seq)).rejects.toBeInstanceOf(PmNcrError)
@@ -91,6 +91,12 @@ describe("non-conformance", () => {
     await acceptNcr(db, site, "p1", seA, seq)
     expect(ncr("01")).toMatchObject({ status: "done", plan: { text: "Break out and recast" } })
     expect(isOpenNcr(ncr("01"))).toBe(false)
+  })
+
+  it("may name no BOQ line («— غير محدّد»); a named line must exist", async () => {
+    await raiseNcr(db, site, "p1", seA, { itemId: "", severity: "b", root: "Wrong mix delivered", cost: 0 })
+    expect(ncr("01")).toMatchObject({ itemId: "", code: null, status: "open" })
+    await expect(raiseNcr(db, site, "p1", seA, { itemId: "gone", severity: "b", root: "x", cost: 0 })).rejects.toMatchObject({ blocks: ["no_item"] })
   })
 
   it("is quality's — the QS office raises none", async () => {

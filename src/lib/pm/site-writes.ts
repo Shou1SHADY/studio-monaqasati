@@ -149,7 +149,7 @@ export async function chaseObstacle(firestore: Firestore, ctx: PmContext, projec
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
-    assertPm(fresh, "obstacle.record")
+    assertPm(fresh, "obstacle.chase")
     const { ref, obstacle } = await readObstacle(tx, firestore, projectId, id)
     const blocks = chaseBlocks({ archived: fresh.archived, closeOn: obstacle.closeOn })
     if (blocks.length) throw new PmSiteError("blocked", blocks)

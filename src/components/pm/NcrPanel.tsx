@@ -81,10 +81,11 @@ export function NcrPanel({
   const canQa = !access.ctx.archived && access.allowed("qa.record")
   const money = access.has("money")
   const costNum = num(cost) ?? 0
-  const blocks = ncrBlocks({ archived: access.ctx.archived, itemId: itemId || null, root, cost: costNum, what, day, today })
+  const blocks = ncrBlocks({ archived: access.ctx.archived, root, cost: costNum, what, day, today })
   const planBlocks = planning ? ncrStepBlocks({ archived: access.ctx.archived, status: planning.status, step: "plan", text: planText, cost: money ? num(planCost) : undefined }) : []
   const closeBlocks = closing ? ncrStepBlocks({ archived: access.ctx.archived, status: closing.status, step: "accept", cost: money ? num(closeCost) : undefined, day: closeOn, today, after: closing.plan?.on ?? closing.day }) : []
   const itemName = (id: string) => {
+    if (!id) return t("ncr.item_none")
     const i = items.find((x) => x.id === id)
     return i ? [i.code, i.description].filter(Boolean).join(" · ") : id
   }
@@ -112,7 +113,7 @@ export function NcrPanel({
       count={open.length}
       bodyClassName="p-0"
       actions={
-        canQa && items.length > 0 ? (
+        canQa ? (
           <Button size="sm" onClick={() => setRaising(true)}>
             <Plus size={15} className="me-1.5" aria-hidden="true" />
             {t("ncr.new")}
@@ -138,7 +139,13 @@ export function NcrPanel({
                     {t("ncr.no", { no: ncrNo(n.seq) })} — {n.what || itemName(n.itemId)}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground" dir="auto">
-                    <span dir="ltr">{n.code ?? "?"}</span> · {pmDate(n.day, locale)} · {n.byName || "—"}
+                    {n.itemId ? (
+                      <>
+                        <span dir="ltr">{n.code ?? "?"}</span>
+                        {" · "}
+                      </>
+                    ) : null}
+                    {pmDate(n.day, locale)} · {n.byName || "—"}
                     {money && c > 0 ? (
                       <>
                         {` · ${t("ncr.rework_cost")} `}
@@ -215,8 +222,8 @@ export function NcrPanel({
                 <SearchableSelect
                   value={itemId}
                   onChange={setItemId}
-                  options={items.map((i) => ({ value: i.id, label: itemName(i.id), keywords: i.code }))}
-                  placeholder={t("ncr.pick_item")}
+                  options={[{ value: "", label: t("ncr.item_none") }, ...items.map((i) => ({ value: i.id, label: itemName(i.id), keywords: i.code }))]}
+                  placeholder={t("ncr.item_none")}
                   searchPlaceholder={t("ncr.search_item")}
                   noResultsText={t("ncr.no_item")}
                   ariaLabel={t("ncr.item")}

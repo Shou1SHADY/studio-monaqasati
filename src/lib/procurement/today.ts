@@ -40,7 +40,7 @@ import {
   type RefusalCode,
 } from "./po"
 import { agreementDaysLeft, agreementState, lastPaid, type PriceAgreement, type PriceHistoryEntry } from "./prices"
-import { buyerRollups, inBuyerScope, isActionState, needKpi, rollupOf, type BuyerRollup, type BuyerScope, type NeedRow } from "./need-desk"
+import { buyerRollups, categoryOf, inBuyerScope, isActionState, needKpi, rollupOf, type BuyerRollup, type BuyerScope, type NeedRow } from "./need-desk"
 import { forwardUrgency } from "./receivers"
 import { priceDrift } from "./reports"
 import { acceptsHoldPrice, advanceAmount, advanceNumber, advanceState, asX, HOLD_OWNER, holdVariance, openHolds, pmCancelOpen, type HoldOwner } from "./po-extras"
@@ -137,6 +137,8 @@ export interface ProcWorld {
   budgetOverruns?: Record<string, number>
   /** By need row key: the workshop's readiness date for a line being made. */
   readyDates?: Record<string, string>
+  /** By delivery id: where a notice's goods land and who the register names to receive them there. */
+  forwardFacts?: Record<string, { place: string | null; receiver: string | null }>
   /** Projects' boundary events Procurement reads (`pmEvents` SRET · NOPO · EQH). */
   pmEvents?: PmBoundaryFact[]
 }
@@ -225,6 +227,8 @@ export interface Task {
 }
 
 export const ORDER_HREF = (id: string) => `/contractor/rfqs/orders?po=${id}`
+/** «أرسِله للمورد» opens the order with its send form (the orders page reads `act=send`). */
+export const SEND_HREF = (id: string) => `/contractor/rfqs/orders?po=${id}&act=send`
 /** The Suppliers tab, on its agreements segment. */
 export const AGREEMENTS_HREF = "/contractor/suppliers?segment=agreements"
 export const RECEIPT_HREF = (id: string) => `/contractor/goods-received?tab=incoming&delivery=${id}`
@@ -394,7 +398,7 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
     if (st === "approved" && chases && mine(po)) {
       // T5c · approved, with Finance as a commitment, and the supplier has not heard.
       const approved = daysFromNow(dayOf(po.approvedAt), now) ?? created
-      add({ id: `send:${po.id}`, kind: "send", priority: 1, severity: "amber", sortDays: approved, titleKey: "task.send.title", titleParams: base, subKey: "task.send.sub", subParams: {}, amount: money(actor, value), href: ORDER_HREF(po.id), actionKey: "actions.send" })
+      add({ id: `send:${po.id}`, kind: "send", priority: 1, severity: "amber", sortDays: approved, titleKey: "task.send.title", titleParams: base, subKey: "task.send.sub", subParams: {}, amount: money(actor, value), href: SEND_HREF(po.id), actionKey: "actions.send" })
       continue
     }
 
@@ -518,8 +522,11 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
     if (!told && chases) {
       // The prototype's forward task: the receiver must know before the truck leaves.
       const due = d != null && (d <= 0 || chase)
-      const place = po?.projectName || ""
-      add({ id: `notice_forward:${r.id}`, kind: "notice_forward", priority: due ? 0 : 2, severity: d != null && d <= 0 ? "red" : due ? "amber" : "blue", sortDays: d ?? 9, titleKey: "task.notice_forward.title", titleParams: { supplier, inDays: d ?? 0, hasDate: d == null ? 0 : 1, overdue: d != null && d < 0 ? 1 : 0 }, subKey: "task.notice_forward.sub_place", subParams: { number, lines, place, hasPlace: place ? 1 : 0 }, amount: null, href: FORWARD_HREF(r.id), actionKey: "actions.forward" })
+      // «… إلى {المستودع} · المقترح {المستلم}»: the store the goods land in, and the register's person for it.
+      const fwd = w.forwardFacts?.[r.id]
+      const place = fwd?.place || po?.projectName || ""
+      const receiver = fwd?.receiver || ""
+      add({ id: `notice_forward:${r.id}`, kind: "notice_forward", priority: due ? 0 : 2, severity: d != null && d <= 0 ? "red" : due ? "amber" : "blue", sortDays: d ?? 9, titleKey: "task.notice_forward.title", titleParams: { supplier, inDays: d ?? 0, hasDate: d == null ? 0 : 1, overdue: d != null && d < 0 ? 1 : 0 }, subKey: "task.notice_forward.sub_place_rcv", subParams: { number, lines, place, hasPlace: place ? 1 : 0, receiver, hasReceiver: receiver ? 1 : 0 }, amount: null, href: FORWARD_HREF(r.id), actionKey: "actions.forward" })
     } else if (!sees) {
       continue
     } else if (d != null && d < 0) {
@@ -544,13 +551,20 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
 
   if (!expediter) {
     // T11 · a receipt with no order — informational; the regularisation is a retroactive order.
+    const catFacts = { orders: w.orders, rfqs: w.rfqs.map((x) => ({ category: x.category, createdAt: x.createdAt, products: (x.products || []).map((p) => ({ name: p.name, unit: p.unit ?? undefined })) })) }
     for (const r of w.receipts) {
       if (r.source !== "manual" || r.poId || r.offerId || r.status !== "confirmed") continue
+      // Settled already — booked as an expense, or regularised by a retroactive order.
+      if (r.regularisation === "expense" || r.regularisedByName) continue
       const day = receiptDay(r)
       const age = day ? -(daysFromNow(day, now) ?? 0) : 0
       if (!day || age > NO_PO_WINDOW_DAYS) continue
-      if (buyerOnly && cats?.length && !receiptInCategories(r, cats)) continue
-      add({ id: `nopo:${r.id}`, kind: "receipt_no_po", priority: 1, severity: "amber", sortDays: -age, titleKey: "task.receipt_no_po.title", titleParams: { supplier: r.supplierName || "", hasSupplier: r.supplierName ? 1 : 0 }, subKey: "task.receipt_no_po.sub", subParams: { number: r.docNumber || "", date: day }, amount: null, href: RECEIPT_HREF(r.id), actionKey: look("actions.openReceipt") })
+      const lines = r.lines || []
+      const category = (r as { category?: string | null }).category || lines.map((l) => categoryOf(l.name, l.unit, null, catFacts)).find(Boolean) || null
+      if (buyerOnly && cats?.length && !receiptInCategories({ ...r, category }, cats)) continue
+      const first = lines[0]
+      const qty = first ? Number(first.accepted ?? first.counted ?? first.noticeQuantity) || 0 : 0
+      add({ id: `nopo:${r.id}`, kind: "receipt_no_po", priority: 1, severity: "amber", sortDays: -age, titleKey: first ? "task.receipt_no_po.title_line" : "task.receipt_no_po.title", titleParams: { supplier: r.supplierName || "", hasSupplier: r.supplierName ? 1 : 0, qty, unit: first?.unit || "", material: first?.name || "", more: Math.max(0, lines.length - 1) }, subKey: "task.receipt_no_po.sub", subParams: { number: r.docNumber || "", date: day }, amount: null, href: RECEIPT_HREF(r.id), actionKey: look("actions.openReceipt") })
     }
   }
 
@@ -1070,6 +1084,8 @@ export const TODAY_KEYS = [
   "task.finance_hold.sup.title",
   "task.finance_hold.sup.sub",
   "task.notice_forward.sub_place",
+  "task.notice_forward.sub_place_rcv",
+  "task.receipt_no_po.title_line",
   "task.arrived_today.sub_flags",
   "wait.invoice_hold.title",
   "wait.invoice_hold.sub",

@@ -214,7 +214,7 @@ describe("sub-tab badges (SEGS)", () => {
     expect(b.pmMatch).toEqual({ n: 2, tone: "bad" })
     expect(b.pmCvr).toEqual({ n: "!", tone: "warn" })
     expect(b.pmClose).toEqual({ n: 4, tone: "warn" })
-    expect(b.team).toEqual({ n: 3, tone: "warn" })
+    expect(b.team).toEqual({ n: 3, tone: "mute" })
     expect(tabBadges({ today: TODAY, hasManager: false, liveSeats: 3 }).team).toEqual({ n: "!", tone: "bad" })
   })
 })

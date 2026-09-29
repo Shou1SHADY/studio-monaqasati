@@ -13,7 +13,7 @@ import { escapeHtml } from "@/components/accounting/print"
 import { acceptedOf, lineToArrive, round2 } from "./po"
 import type { DeliveryLine, PurchaseOrder, ReceiptCheck } from "./types"
 import type { DeskDelivery } from "./receipt-desk"
-import { receiptLinesOf } from "./receipt-desk"
+import { noPoInvoiceValue, receiptLinesOf } from "./receipt-desk"
 import { RECEIPT_CHECKS } from "./po"
 
 const e = escapeHtml
@@ -29,10 +29,31 @@ export interface ReceiptPrintCompany {
   email?: string | null
 }
 
+/** The supplier's identity as the paper prints it — whatever of it we know. */
+export interface SupplierIdentity {
+  cr: string | null
+  vat: string | null
+  city: string | null
+  phone: string | null
+}
+
+const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : typeof v === "number" ? String(v) : null)
+
+/** A supplier's profile (a user or a secondary company) read as its identity. */
+export function supplierIdentityOf(profile: Record<string, unknown> | null | undefined, vatFallback?: string | null): SupplierIdentity | null {
+  const p = profile || {}
+  const id = { cr: str(p.crNumber), vat: str(p.taxNumber) || str(vatFallback), city: str(p.city) || str(p.location), phone: str(p.phone) || str(p.phoneNumber) }
+  return id.cr || id.vat || id.city || id.phone ? id : null
+}
+
 export interface ReceiptPrintInput {
   delivery: DeskDelivery
   po: PurchaseOrder | null
   company: ReceiptPrintCompany
+  /** The supplier's CR, VAT, city and phone, when known (the order's supplier, or the one a no-PO receipt guessed). */
+  supplier?: SupplierIdentity | null
+  /** Our number for the supplier's notice, already in the reader's script (`displayNoticeNumber`). */
+  noticeNumber?: string | null
   /** Where the goods went, resolved by the caller (warehouse name, project). */
   placeName: string | null
   projectName: string | null
@@ -132,15 +153,26 @@ export function buildReceiptPrintHtml(m: ReceiptPrintInput): string {
       ? `<div class="pdst g">${e(t("status_final"))}</div>`
       : `<div class="pdst w">${e(t("status_partial", { list: outstanding.map((l) => `${figure(lineToArrive(l))} ${l.unit} ${l.name}`).join("، ") }))}</div>`
 
+  const idLine = (cr: string | null | undefined, vat: string | null | undefined) =>
+    `${e(t("cr"))} <span class="ltr">${e(cr || "—")}</span> · ${e(t("vat_no"))} <span class="ltr">${e(vat || "—")}</span>`
+  const sup = m.supplier || null
+  const stored = d as { supplierCrNumber?: string | null; supplierVatNumber?: string | null }
+  // A no-PO receipt prints the CR/VAT typed on it; else those of the registered supplier it names; else says it is not registered.
+  const noPoIdentity =
+    stored.supplierCrNumber || stored.supplierVatNumber ? idLine(stored.supplierCrNumber, stored.supplierVatNumber) : sup && (sup.cr || sup.vat) ? idLine(sup.cr, sup.vat) : e(t("not_registered"))
+  const place = [sup?.city ? e(sup.city) : "", sup?.phone ? `<span class="ltr">${e(sup.phone)}</span>` : ""].filter(Boolean).join(" · ")
+  const noticeBits = d.noNotice
+    ? e(t("no_prior_notice"))
+    : [m.noticeNumber ? `<bdi>${e(m.noticeNumber)}</bdi>` : "", d.paperNoteNumber ? `${e(t("paper_note"))} <span class="ltr">${e(d.paperNoteNumber)}</span>` : ""].filter(Boolean).join(" · ")
   const grid = noPo
     ? `<div class="pdg">
-        <div><small>${e(t("supplier_as_written"))}</small><b>${e(d.supplierName || "—")}</b><span>${e(t("not_registered"))}</span></div>
+        <div><small>${e(t("supplier_as_written"))}</small><b>${e(d.supplierName || "—")}</b><span>${noPoIdentity}</span></div>
         <div><small>${e(t("reference"))}</small><b>${d.paperNoteNumber ? `<span class="ltr">${e(d.paperNoteNumber)}</span>` : "—"}</b><span>${e(t("no_purchase_order"))}</span></div>
         <div><small>${e(t("place"))}</small><b>${e(m.placeName || t("general_stock"))}</b>${m.projectName ? `<span>${e(m.projectName)}</span>` : ""}</div>
       </div>`
     : `<div class="pdg">
-        <div><small>${e(t("supplier"))}</small><b>${e(po?.supplierName || d.supplierName || "—")}</b></div>
-        <div><small>${e(t("po_and_notice"))}</small><b><span class="ltr">${e(m.displayPoNumber || d.poNumber || "—")}</span></b><span>${d.noNotice ? e(t("no_prior_notice")) : d.paperNoteNumber ? `${e(t("paper_note"))} <span class="ltr">${e(d.paperNoteNumber)}</span>` : ""}${po?.rfqTitle ? `<br>${e(t("from_rfq"))} ${e(po.rfqTitle)}` : ""}</span></div>
+        <div><small>${e(t("supplier"))}</small><b>${e(po?.supplierName || d.supplierName || "—")}</b>${sup ? `<span>${idLine(sup.cr, sup.vat)}</span>` : ""}${place ? `<span>${place}</span>` : ""}</div>
+        <div><small>${e(t("po_and_notice"))}</small><b><span class="ltr">${e(m.displayPoNumber || d.poNumber || "—")}</span></b><span>${noticeBits}${po?.rfqTitle ? `<br>${e(t("from_rfq"))} ${e(po.rfqTitle)}` : ""}</span></div>
         <div><small>${e(t("place_project"))}</small><b>${e(m.placeName || t("general_stock"))}</b>${m.projectName ? `<span>${e(m.projectName)}</span>` : ""}</div>
       </div>`
 
@@ -166,7 +198,23 @@ export function buildReceiptPrintHtml(m: ReceiptPrintInput): string {
     .join("")
   const total = withPrices ? round2(lines.reduce((s, l) => s + (l.accepted ?? acceptedOf(l)) * num(priced.get(l.poLineId)?.unitPrice), 0)) : null
   const cols = noPo ? 5 : 9
-  const table = `<table>
+  // A no-PO receipt prints what was typed from the shop invoice — its unit prices and total, for a reader who sees prices.
+  const typed = (d.items || []).filter((it) => it.name)
+  const typedPriced = m.withPrices && typed.some((it) => it.unitPrice != null && Number.isFinite(Number(it.unitPrice)))
+  const noPoTable = `<table>
+    <thead><tr><th class="num">#</th><th>${e(t("col_description"))}</th><th class="num">${e(t("col_qty"))}</th><th>${e(t("col_unit"))}</th>${typedPriced ? `<th class="num">${e(t("col_unit_price"))}</th><th class="num">${e(t("col_value"))}</th>` : ""}</tr></thead>
+    <tbody>${
+      typed
+        .map((it, i) => {
+          const q = num(it.quantity)
+          const p = it.unitPrice != null && Number.isFinite(Number(it.unitPrice)) ? Number(it.unitPrice) : null
+          return `<tr><td class="num">${i + 1}</td><td>${e(it.name || "")}</td><td class="num">${figure(q)}</td><td>${e(it.unitOfMeasure || it.unit || "—")}</td>${typedPriced ? `<td class="num">${p == null ? "—" : figure(p)}</td><td class="num">${p == null ? "—" : figure(round2(q * p))}</td>` : ""}</tr>`
+        })
+        .join("") || `<tr><td colspan="${typedPriced ? 6 : 4}" class="muted">—</td></tr>`
+    }</tbody>
+    ${typedPriced ? `<tfoot><tr><td colspan="5">${e(t("invoice_as_received"))}</td><td class="num">${e(sar(noPoInvoiceValue(d) ?? 0, locale))}</td></tr></tfoot>` : ""}
+  </table>`
+  const table = noPo ? noPoTable : `<table>
     <thead><tr><th class="num">#</th><th>${e(t("col_description"))}</th>${noPo ? "" : `<th class="num">${e(t("col_on_po"))}</th><th class="num">${e(t("col_per_notice"))}</th>`}<th class="num">${e(t("col_counted"))}</th>${noPo ? "" : `<th>${e(t("col_rejected"))}</th><th>${e(t("col_held"))}</th>`}<th class="num">${e(t("col_accepted"))}</th><th>${e(t("col_unit"))}</th>${withPrices ? `<th class="num">${e(t("col_value"))}</th>` : ""}</tr></thead>
     <tbody>${rows || `<tr><td colspan="${cols}" class="muted">—</td></tr>`}</tbody>
     ${withPrices && total != null ? `<tfoot><tr><td colspan="${cols}">${e(t("accepted_value"))}</td><td class="num">${e(sar(total, locale))}</td></tr></tfoot>` : ""}
@@ -177,11 +225,15 @@ export function buildReceiptPrintHtml(m: ReceiptPrintInput): string {
     ? ""
     : `<div class="para"><b>${e(t("checklist"))}</b><div class="chk">${RECEIPT_CHECKS.map((c) => `<div>${checks.includes(c) ? "☑" : "☐"} ${e(tp(`checklist.${c}`))}</div>`).join("")}</div></div>`
   const driver = `<div class="para"><b>${e(t("driver_vehicle"))}</b> ${e(d.deliveryPersonName || "—")}${d.vehiclePlate ? ` · <span class="ltr">${e(d.vehiclePlate)}</span>` : ""}</div>`
+  const fw = d.forwardedTo || null
+  const forwarded = fw
+    ? `<div class="para"><b>${e(t("forwarded_title"))}</b> ${e(fw.name)}${fw.userId ? "" : ` — ${e(t("forwarded_by_link"))} <span class="ltr">${e(fw.phoneMasked)}</span>`} · ${e(t("forwarded_by", { name: fw.byName }))}</div>`
+    : ""
   const note = d.receiptNote || d.notes ? `<div class="para"><b>${e(noPo ? t("reason_outside") : t("receiver_note"))}</b> ${e(d.receiptNote || d.notes || "")}</div>` : ""
 
   const sig = (caption: string, name: string, extra: string, image?: string | null) =>
     `<div><small>${e(caption)}</small><b>${e(name || "—")}</b>${extra ? `<span class="muted">${e(extra)}</span>` : ""}${image ? `<img src="${e(image)}" alt="">` : `<div class="line">${e(t("signature"))}</div>`}</div>`
-  const receivedLine = `${d.selfReceived ? t("self_received") : t("received_by_role")} · ${longDate(when, locale)} ${timeOf(when, locale)}`.trim()
+  const receivedLine = `${d.selfReceived ? t("self_received") : t("received_by_role")} · ${longDate(when, locale)} ${timeOf(when, locale)}`.trim() + (d.receiverReport ? ` · ${t("signed_on_link")}` : "")
   const signatures = `<div class="pdsg">
     ${sig(t("sig_supplier"), po?.supplierName || d.supplierName || "", d.deliveryPersonName || "", (d as { supplierSignatureData?: string | null }).supplierSignatureData)}
     ${sig(t("sig_receiver"), d.receivedByName || "", receivedLine, d.receiverSignatureData || (d as { contractorSignatureData?: string | null }).contractorSignatureData)}
@@ -192,7 +244,7 @@ export function buildReceiptPrintHtml(m: ReceiptPrintInput): string {
   const footer = `<div class="pdf2"><div>${e(footerExtra)}</div><div>${e(t("footer", { company: m.company.name || "—", date: longDate(m.now.toISOString(), locale) }))}</div></div>`
 
   return `<div class="pdh"><div><h1>${e(noPo ? t("title_no_po") : t("title"))}</h1><div class="sub">${sub}</div></div>${companyBlock(m.company, t)}</div>
-    ${banner}${grid}${table}${checklist}${driver}${note}${signatures}${footer}`
+    ${banner}${grid}${table}${checklist}${driver}${forwarded}${note}${signatures}${footer}`
 }
 
 /** Open the document in its own window; false when the browser blocked the pop-up. */

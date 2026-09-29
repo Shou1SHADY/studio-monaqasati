@@ -32,7 +32,7 @@ async function readProject(tx: Transaction, firestore: Firestore, projectId: str
 }
 
 export interface RaiseNcrInput {
-  itemId: string
+  itemId?: string | null
   severity: NcrSeverity
   root: string
   cost: number
@@ -49,15 +49,16 @@ export async function raiseNcr(firestore: Firestore, ctx: PmContext, projectId: 
     const { ref, project, pm } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "qa.record")
-    const item = await tx.get(doc(firestore, "projects", projectId, "boqItems", input.itemId))
+    const item = input.itemId ? await tx.get(doc(firestore, "projects", projectId, "boqItems", input.itemId)) : null
     const today = todayDay()
-    const blocks = ncrBlocks({ archived: fresh.archived, itemId: item.exists() ? input.itemId : null, root: input.root, cost: input.cost, what: input.what, day: input.day ?? today, today })
+    const blocks: string[] = ncrBlocks({ archived: fresh.archived, root: input.root, cost: input.cost, what: input.what, day: input.day ?? today, today })
+    if (item && !item.exists()) blocks.push("no_item")
     if (blocks.length) throw new PmNcrError("blocked", blocks)
     seq = (pm.ncrCount ?? 0) + 1
     const ncr: Omit<PmNcr, "id"> = {
       seq,
-      itemId: input.itemId,
-      code: (item.data() as { itemNo?: string }).itemNo ?? null,
+      itemId: input.itemId || "",
+      code: (item?.data() as { itemNo?: string } | undefined)?.itemNo ?? null,
       what: input.what?.trim() || null,
       severity: input.severity,
       root: input.root.trim(),

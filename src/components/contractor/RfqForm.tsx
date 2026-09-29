@@ -58,12 +58,15 @@ import { SupplierRecipientsPicker, useSupplierRecipientOptions } from "@/compone
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { useOpenNeeds } from "@/hooks/useOpenNeeds"
+import { formNeedChoices } from "@/lib/procurement/need-desk"
+import { isBuyer, lineNeed, spansProjects } from "@/lib/procurement/rfq-view"
+import { MFG_PRODUCTS, itemKey } from "@/lib/manufacturing-engine"
 import { lastPaid } from "@/lib/procurement/prices"
 import { addDays, supplierScore } from "@/lib/procurement/po"
 import type { Need } from "@/lib/procurement/needs"
 import { useSupplierDirectory } from "@/hooks/useSupplierDirectory"
 import { CATEGORIES_DATA, displayCategory } from "@/lib/constants"
-import { earliestNeedBy, invitableRecipients, publicReach, sourcingBlockOf, suggestRfqTitle } from "@/lib/procurement/rfq-extras"
+import { earliestNeedBy, extendPool, invitableRecipients, publicReach, sourcingBlockOf, suggestRfqTitle } from "@/lib/procurement/rfq-extras"
 import type { SourcingBlock } from "@/lib/procurement/supplier-file"
 
 interface ValidationError {
@@ -194,6 +197,19 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const { history: priceHistory } = useProcurementPrices(procWorld.orgId || null)
   const openNeeds = useOpenNeeds(procWorld, !isEditing)
   const [pickedNeeds, setPickedNeeds] = useState<Record<string, Need>>({})
+  const [pickedLines, setPickedLines] = useState<Record<string, number>>({})
+  // An edited RFQ keeps the need each of its lines came from.
+  const [carriedNeeds, setCarriedNeeds] = useState<Record<string, { source: Need["source"]; line: number }>>({})
+  // What our workshop makes: such a need is the workshop's to answer, not an RFQ's (the chips leave it out).
+  const mfgProductsQ = useMemoFirebase(() => (firestore && procWorld.orgId && !isEditing ? query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", procWorld.orgId)) : null), [firestore, procWorld.orgId, isEditing])
+  const { data: mfgProductsData } = useCollection(mfgProductsQ)
+  const makeable = useMemo(() => {
+    const keys = ((mfgProductsData || []) as Array<{ name?: string }>).map((p) => itemKey(p.name || "")).filter(Boolean)
+    return (name: string) => {
+      const k = itemKey(name)
+      return !!k && keys.some((p) => p === k || p.includes(k) || k.includes(p))
+    }
+  }, [mfgProductsData])
   // Direct award (R-17): the agreed unit price of every line, and why one
   // supplier when the total passes the no-competition cap.
   const [directLinePrices, setDirectLinePrices] = useState<Record<string, string>>({})
@@ -327,6 +343,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
               needBy: typeof p.needBy === "string" ? p.needBy.slice(0, 10) : "",
               projectId: typeof p.projectId === "string" ? p.projectId : "",
             })))
+            setCarriedNeeds(Object.fromEntries(data.products.map((_: unknown, idx: number) => [String(idx + 1), lineNeed(data, idx)]).filter(([, n]: [string, unknown]) => n)))
           }
         }
       } catch (err) {
@@ -535,13 +552,41 @@ export function RfqForm({ projectId }: { projectId?: string }) {
     const rows = n.lines.map((l, idx) => ({ ...makeEmptyProductRow(`need-${stamp}-${idx}`), quantity: String(l.quantity), unit: l.unit, description: l.name, otherSubCategory: l.name, needBy: n.needBy?.slice(0, 10) || "", projectId: n.projectId || "" }))
     setProducts((prev) => [...prev.filter((p) => p.quantity.trim() || p.unit.trim() || p.description.trim() || p.category), ...rows])
     setPickedNeeds((prev) => ({ ...prev, ...Object.fromEntries(rows.map((r) => [r.id, n])) }))
+    setPickedLines((prev) => ({ ...prev, ...Object.fromEntries(rows.map((r, idx) => [r.id, idx])) }))
   }
   const liveNeeds = Object.entries(pickedNeeds).filter(([rowId]) => products.some((p) => p.id === rowId))
   const pickedKeys = new Set(liveNeeds.map(([, n]) => n.key))
-  const needChoices = openNeeds.filter((n) => !pickedKeys.has(n.key) && (!purchaseSource || JSON.stringify(n.source) !== JSON.stringify(purchaseSource))).slice(0, 8)
+  const needChoices = formNeedChoices(openNeeds, {
+    exclude: (n) => pickedKeys.has(n.key) || (Boolean(purchaseSource) && JSON.stringify(n.source) === JSON.stringify(purchaseSource)),
+    categories: Array.from(new Set(products.map((p) => p.category).filter(Boolean))),
+    buyerCategories: isBuyer(procWorld.actor) ? ((profile as { procurementCategories?: string[] } | null)?.procurementCategories ?? null) : null,
+    makeable,
+    facts: { orders: procWorld.orders, rfqs: procWorld.rfqs, policies },
+  })
+  // A line is linked when it was picked from a need, arrived with the need the
+  // form was opened for, or — editing — already carried one (R-13, R-19).
+  const lineNeedOf = (p: ProductRow): { source: Need["source"]; line: number } | null => {
+    if (pickedNeeds[p.id]) return { source: pickedNeeds[p.id].source, line: pickedLines[p.id] ?? 0 }
+    if (carriedNeeds[p.id]) return carriedNeeds[p.id]
+    if (purchaseSource && p.id.startsWith("items-")) return { source: purchaseSource, line: Number(p.id.split("-")[2]) || 0 }
+    return null
+  }
+  const lineNeedFields = (p: ProductRow) => {
+    const n = lineNeedOf(p)
+    return n ? { needSource: n.source, needLine: n.line } : {}
+  }
+  const needForText = (n: Need) => n.projectName || (n.kind === "mfg" ? tp("p2c.rfq.for_workshop") : n.kind === "stock" ? n.refLabel : tr("form.general_stock"))
   const needByOf = (rowId: string) => products.find((p) => p.id === rowId)?.needBy || pickedNeeds[rowId]?.needBy || null
   const earliestNeed = earliestNeedBy([...liveNeeds.map(([, n]) => ({ needBy: n.needBy })), ...products.filter(productComplete)])
   const lineProjectOf = (p: ProductRow): string | null => projectId || p.projectId || null
+  // The direct award's supplier (R-17): ours first, favourites on top, then the platform's of the lines' categories.
+  const directPool = extendPool(
+    supplierOptions.map((o) => ({ orgId: o.orgId, name: o.name, isFavorite: Boolean(o.isFavorite) })),
+    platformSuppliers,
+    products.map((p) => p.category),
+    [],
+    CATEGORIES_DATA
+  )
   const latestDeadline = earliestNeed ? addDays(earliestNeed, -policies.awardCycleDays) : null
   const directTotal = products.filter(productComplete).reduce((sum, p) => sum + toAmount(p.quantity) * (Number(directLinePrices[p.id]) || 0), 0)
   const directOverCap = directTotal > policies.directPurchaseCap
@@ -745,6 +790,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           requiresWarranty: !!p.requiresWarranty,
           ...(needByOf(p.id) ? { needBy: needByOf(p.id) } : {}),
           ...(lineProjectOf(p) ? { projectId: lineProjectOf(p), projectName: projectLabelOf(lineProjectOf(p)) } : {}),
+          ...lineNeedFields(p),
         })),
         deadline: formData.deadline,
         estimatedBudget: formData.estimatedBudget
@@ -825,6 +871,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           requiresWarranty: !!p.requiresWarranty,
           ...(needByOf(p.id) ? { needBy: needByOf(p.id) } : {}),
           ...(lineProjectOf(p) ? { projectId: lineProjectOf(p), projectName: projectLabelOf(lineProjectOf(p)) } : {}),
+          ...lineNeedFields(p),
         })),
         ...(catProducts.some((p) => needByOf(p.id)) ? { needBy: catProducts.map((p) => needByOf(p.id)).filter((d): d is string => Boolean(d)).sort()[0] } : {}),
         ...(catProducts.some((p) => pickedNeeds[p.id]) ? { needSources: Array.from(new Map(catProducts.filter((p) => pickedNeeds[p.id]).map((p) => [pickedNeeds[p.id].key, pickedNeeds[p.id].source])).values()) } : {}),
@@ -937,8 +984,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       const rfqTitle = titleToSave
       let directOffer: { id: string; price: string; supplierId: string; organizationId: string; supplierName: string } | null = null
       try {
-        const supplierOption = supplierOptions.find((o) => o.orgId === directSupplierOrgId)
-        const supplierName = supplierOption?.name || ""
+        const supplierName = directPool.find((o) => o.orgId === directSupplierOrgId)?.name || ""
         // The picked id is an ORG id; the notification inbox needs a USER id —
         // a primary org's id IS its owner's uid, a secondary org names its owner.
         let supplierUserId = directSupplierOrgId
@@ -1169,16 +1215,31 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                       copy: { needBy: tr("form.need_by"), project: tr("form.line_project"), general: tr("form.general_stock"), search: tr("form.search_project"), none: t("newrfq_no_results") },
                     }}
                   />
-                  {liveNeeds.length > 0 && (
-                    <ul className="mt-3 space-y-1 rounded-xl border bg-muted/30 p-3 text-xs">
-                      {liveNeeds.map(([rowId, n]) => (
-                        <li key={rowId} className="text-muted-foreground" dir="auto">
-                          <span className="font-semibold text-foreground">{products.find((p) => p.id === rowId)?.description}</span> · {n.refLabel}
-                          {n.context ? ` · ${n.context}` : ""}
-                          {n.needBy ? ` · ${tp("rfqpo.form.needed_by", { date: n.needBy })}` : ""}
-                        </li>
-                      ))}
-                    </ul>
+                  {products.some(productComplete) && (
+                    <div className="mt-3 space-y-2 rounded-xl border bg-muted/30 p-3 text-xs">
+                      <p className="font-bold text-foreground">{tp("p2c.rfq.lines_title")}</p>
+                      <ul className="space-y-1">
+                        {products.filter(productComplete).map((p) => {
+                          const n = pickedNeeds[p.id]
+                          const linked = Boolean(lineNeedOf(p))
+                          return (
+                            <li key={p.id} className="flex flex-wrap items-center gap-1.5 text-muted-foreground" dir="auto">
+                              <span className="font-semibold text-foreground">{productName(p) || p.description}</span>
+                              {n ? (
+                                <span>
+                                  · {n.refLabel}
+                                  {n.context ? ` · ${n.context}` : ""}
+                                  {n.needBy ? ` · ${tp("rfqpo.form.needed_by", { date: n.needBy })}` : ""}
+                                </span>
+                              ) : linked ? null : (
+                                <span className="rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning">{tp("p2c.rfq.no_linked_need")}</span>
+                              )}
+                            </li>
+                          )
+                        })}
+                      </ul>
+                      {products.some((p) => productComplete(p) && !lineNeedOf(p)) && <p className="text-[11px] text-muted-foreground">{tp("p2c.rfq.unlinked_hint")}</p>}
+                    </div>
                   )}
                   {!isEditing && needChoices.length > 0 && (
                     <div className="mt-5 space-y-2">
@@ -1192,6 +1253,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                             className="rounded-full border border-dashed border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             ＋ {n.lines.map((l) => `${l.name} ${l.quantity.toLocaleString("en-US")} ${l.unit}`).join("، ")}
+                            {` · ${needForText(n)}`}
                             {n.needBy ? ` · ${tp("rfqpo.form.needed_by", { date: n.needBy })}` : ""}
                           </button>
                         ))}
@@ -1425,6 +1487,12 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                   <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
                     {storedPricing === "line" ? t("newrfq_pricing_line_desc") : t("newrfq_pricing_total_desc")}
                   </p>
+                  {storedPricing === "total" && spansProjects(products.filter(productComplete).map(lineProjectOf)) && (
+                    <p className="mt-2 flex w-fit items-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-xs font-semibold text-warning">
+                      <AlertCircle size={11} className="shrink-0" aria-hidden="true" />
+                      {tp("p2c.rfq.multi_project")}
+                    </p>
+                  )}
                   {!canPriceLines && (
                     <p className="text-xs text-amber-700 mt-2 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 w-fit">
                       <AlertCircle size={11} className="shrink-0" />
@@ -1481,23 +1549,23 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                     </p>
                   )}
 
-                  {visibilityMode !== "public" && supplierOptions.length === 0 && (
+                  {visibilityMode !== "public" && (visibilityMode === "direct" ? directPool.length === 0 : supplierOptions.length === 0) && (
                     <p className="text-xs text-amber-700 mt-2 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 w-fit">
                       <AlertCircle size={11} className="shrink-0" />
                       {t("newrfq_visibility_no_suppliers")}
                     </p>
                   )}
 
-                  {visibilityMode === "direct" && supplierOptions.length > 0 && (
+                  {visibilityMode === "direct" && directPool.length > 0 && (
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <div className="space-y-1.5">
                         <Label>{t("newrfq_direct_supplier_label")} *</Label>
                         <SearchableSelect
                           value={directSupplierOrgId}
                           onChange={setDirectSupplierOrgId}
-                          options={supplierOptions.map((o) => {
+                          options={directPool.map((o) => {
                             const block = sourcingOf(o.orgId)
-                            return { value: o.orgId, label: `${o.name}${o.isFavorite ? " ★" : ""}${block ? ` — ${tr(`sourcing.${block}`)}` : ""}` }
+                            return { value: o.orgId, label: `${o.name}${o.favourite ? " ★" : ""}${o.platform ? ` — ${tp("p2c.rfq.from_platform")}` : ""}${block ? ` — ${tr(`sourcing.${block}`)}` : ""}` }
                           })}
                           placeholder={t("newrfq_direct_supplier_label")}
                           searchPlaceholder={t("newrfq_direct_supplier_label")}
@@ -1510,7 +1578,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                       </div>
                     </div>
                   )}
-                  {visibilityMode === "direct" && supplierOptions.length > 0 && (
+                  {visibilityMode === "direct" && directPool.length > 0 && (
                     <div className="mt-4 space-y-3">
                       <div className="overflow-hidden rounded-xl border bg-card">
                         <p className="border-b bg-muted/40 px-3 py-2 text-xs font-bold">{tp("rfqpo.form.direct_unit_price")}</p>

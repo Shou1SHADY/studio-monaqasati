@@ -1695,12 +1695,13 @@ service cloud.firestore {
         allow update: if isSignedIn()
           && inProjectOrg(projectId)
           && projectOpen(projectId)
-          && (pmDuty(projectId, 'daily') || pmDuty(projectId, 'approve'))
           && resource.data.closeOn == null
           && ((changedKeys().hasOnly(['chases', 'updatedAt'])
+                && (pmLiveSeat(projectId) || pmCeilingHas('all'))
                 && request.resource.data.chases.size() == resource.data.get('chases', []).size() + 1
                 && request.resource.data.chases[request.resource.data.chases.size() - 1].by == request.auth.uid)
-              || (changedKeys().hasOnly(['closeOn', 'answer', 'closedBy', 'closedByName', 'updatedAt'])
+              || ((pmDuty(projectId, 'daily') || pmDuty(projectId, 'approve'))
+                && changedKeys().hasOnly(['closeOn', 'answer', 'closedBy', 'closedByName', 'updatedAt'])
                 && request.resource.data.closeOn is string
                 && request.resource.data.closeOn >= resource.data.openOn
                 && request.resource.data.closedBy == request.auth.uid));
@@ -1934,13 +1935,13 @@ service cloud.firestore {
           && resource.data.status != 'back'
           && ((pmDuty(projectId, 'daily')
                 && changedKeys().hasOnly(['days', 'updatedAt']))
-              || (pmDuty(projectId, 'req') && resource.data.status == 'use' && request.resource.data.status == 'req'
+              || (pmDuty(projectId, 'daily') && resource.data.status == 'use' && request.resource.data.status == 'req'
                 && request.resource.data.offReq.by == request.auth.uid
                 && changedKeys().hasOnly(['status', 'offReq', 'updatedAt']))
               || (pmDuty(projectId, 'req') && resource.data.status == 'req' && resource.data.get('offOk', null) == null
                 && request.resource.data.offOk.by == request.auth.uid
                 && changedKeys().hasOnly(['offNo', 'offOk', 'updatedAt']))
-              || (pmDuty(projectId, 'req') && resource.data.status == 'req' && resource.data.get('offOk', null) != null
+              || (pmDuty(projectId, 'daily') && resource.data.status == 'req' && resource.data.get('offOk', null) != null
                 && request.resource.data.status == 'back'
                 && request.resource.data.back.by == request.auth.uid
                 && changedKeys().hasOnly(['status', 'back', 'updatedAt'])));
@@ -2154,6 +2155,18 @@ service cloud.firestore {
           && resource.data.get('rfqId', null) == null
           && resource.data.get('poId', null) == null
           && changedKeys().hasOnly(['rfqId', 'rfqNumber', 'poId', 'poNumber', 'orderedAt', 'orderedByName', 'updatedAt']);
+        // A draft RFQ is deleted: the request it held goes back to the desk (R-19).
+        // Only while that RFQ still exists as a Draft — the client unlinks BEFORE deleting it.
+        allow update: if isSignedIn()
+          && inProjectOrg(projectId)
+          && projectOpen(projectId)
+          && (isOrgOwner() || hasOrgPermission('rfq.manage') || hasOrgPermission('rfq.create') || hasOrgPermission('offers.accept'))
+          && resource.data.get('rfqId', null) is string
+          && resource.data.get('poId', null) == null
+          && exists(/databases/$(database)/documents/rfqs/$(resource.data.rfqId))
+          && get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.status == 'Draft'
+          && request.resource.data.get('rfqId', null) == null
+          && changedKeys().hasOnly(['rfqId', 'rfqNumber', 'orderedAt', 'orderedByName', 'updatedAt']);
 
         // Procurement decides without the other module's answer, once (P-33/P-34):
         // after Inventory's one-day window, or buying instead of asking our workshop.
@@ -2733,6 +2746,15 @@ service cloud.firestore {
         && request.resource.data.organizationId == resource.data.organizationId
         && request.resource.data.supplierOrgId == resource.data.supplierOrgId
         && hasOrgPermission('po.approve');
+      // Favouriting a supplier is logged in his file (S-35): whoever manages suppliers may
+      // append exactly one favourite line in his own name, and change nothing else.
+      allow update: if isSignedIn()
+        && isOrgMember(resource.data.organizationId)
+        && (procSupplierManager() || hasOrgPermission('po.approve'))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['log'])
+        && request.resource.data.log.size() == resource.data.get('log', []).size() + 1
+        && request.resource.data.log[request.resource.data.log.size() - 1].action in ['favourite_on', 'favourite_off']
+        && request.resource.data.log[request.resource.data.log.size() - 1].byId == request.auth.uid;
       allow delete: if false;
     }
 

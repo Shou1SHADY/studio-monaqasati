@@ -22,7 +22,7 @@ import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { useDateText } from "@/components/procurement/PoBits"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { ManualReceiptDialog } from "@/components/procurement/ManualReceiptDialog"
-import { RECORDED_TONE, ReceiptDrawer, ReceiptStatePill, RecordedByPill } from "@/components/procurement/ReceiptDrawer"
+import { RECORDED_TONE, ReceiptDrawer, ReceiptStatePill, RecordedByPill, type ReceiptDrawerProps } from "@/components/procurement/ReceiptDrawer"
 import { ReceiveDeliveryDialog } from "@/components/procurement/ReceiveDeliveryDialog"
 import { RegulariseReceiptDialog } from "@/components/procurement/RegulariseReceiptDialog"
 import { Badge } from "@/components/ui/badge"
@@ -32,15 +32,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
-import { useProcurementWorld } from "@/hooks/useProcurementWorld"
+import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
+import { useProcurementWorld, type ProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
+import { useSupplierIdentity } from "@/hooks/useSupplierIdentity"
 import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 import type { Translator } from "@/lib/mfg-events"
 import { operatingPolicies, type NoticeRouting } from "@/lib/procurement/policies"
 import { receiveRight } from "@/lib/procurement/policy-enforce"
 import { procLinks } from "@/lib/procurement/events"
-import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
+import { displayNoticeNumber, displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { lineToArrive, reminderCooldownUntil } from "@/lib/procurement/po"
 import {
   LOG_COMPLETENESS,
@@ -55,6 +57,8 @@ import {
   incomingRows,
   isoOf,
   landingWarehouseId,
+  needForOrder,
+  noticeNumberOf,
   receiptCsv,
   receiptCsvFilename,
   receiptCsvRows,
@@ -225,11 +229,11 @@ export default function GoodsReceivedPage() {
         recordedIn: t("csv.recordedIn"),
       },
       recordedManual: t("csv.recordedManual"),
-      recordedGate: t("csv.recordedGate"),
+      modules: { procurement: t("module.procurement"), inventory: t("module.inventory"), projects: t("module.projects") },
       noPo: t("csv.noPo"),
       noNotice: t("csv.noNotice"),
     }
-    const rows = receiptCsvRows(desk, orders, (id) => warehouseName(id) || "", words)
+    const rows = receiptCsvRows(desk, orders, (id) => warehouseName(id) || "", words, placeKind)
     const blob = new Blob([receiptCsv(rows, words)], { type: "text/csv;charset=utf-8" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -327,7 +331,6 @@ export default function GoodsReceivedPage() {
             all={desk}
             locale={locale}
             now={now}
-            forwardWindowDays={policies.forwardWindowDays}
             routing={routing}
             canReceive={canReceive}
             canFollow={canFollow}
@@ -344,6 +347,7 @@ export default function GoodsReceivedPage() {
           />
         ) : (
           <ReceiptList
+            all={desk}
             rows={tab === "log" ? logShown : nopo}
             total={tab === "log" ? logShown.length : nopo.length}
             locale={locale}
@@ -358,7 +362,8 @@ export default function GoodsReceivedPage() {
         )}
 
         {openDelivery && (
-          <ReceiptDrawer
+          <ReceiptDrawerWithFacts
+            world={world}
             delivery={openDelivery}
             po={poOf(openDelivery)}
             deliveries={desk}
@@ -385,6 +390,7 @@ export default function GoodsReceivedPage() {
             orgId={orgId}
             placeWarehouseId={forwardPlace}
             placeName={warehouseName(forwardPlace) || tc("wh_central_name")}
+            noticeNumber={noticeNumberOf(forwardTarget, desk, forwardPo)}
           />
         )}
         {receiveTarget && (
@@ -442,6 +448,17 @@ export default function GoodsReceivedPage() {
   )
 }
 
+/** The drawer, with what only it reads: the need behind the order (for the
+ * trail) and the supplier's identity (for the print) — loaded while it is open. */
+function ReceiptDrawerWithFacts({ world, ...props }: ReceiptDrawerProps & { world: ProcurementWorld }) {
+  const { needs } = useProcurementNeeds(world)
+  const po = props.po
+  const need = useMemo(() => (po ? needForOrder(needs, po) : null), [needs, po])
+  const supplierOrgId = po ? po.supplierOrgId : (props.delivery as (DeskDelivery & { supplierGuessOrgId?: string | null }) | null)?.supplierGuessOrgId
+  const supplier = useSupplierIdentity(supplierOrgId, po ? world.supplierRecords.find((r) => r.supplierOrgId === po.supplierOrgId)?.vatNumber : null)
+  return <ReceiptDrawer {...props} need={need} supplier={supplier} />
+}
+
 // ---------------------------------------------------------------------------
 // Shared bits
 // ---------------------------------------------------------------------------
@@ -465,7 +482,6 @@ interface IncomingListProps {
   all: DeskDelivery[]
   locale: string
   now: Date
-  forwardWindowDays: number
   routing: NoticeRouting
   canReceive: boolean
   canFollow: boolean
@@ -483,7 +499,7 @@ interface IncomingListProps {
 }
 
 function IncomingList(props: IncomingListProps) {
-  const { rows, all, locale, now, forwardWindowDays, routing, canReceive, followsPo, reminding, receivers, placeOf, warehouseName, projectName, onReceive, onForward, onRemind, onOpen } = props
+  const { rows, all, locale, now, routing, canReceive, followsPo, reminding, receivers, placeOf, warehouseName, projectName, onReceive, onForward, onRemind, onOpen } = props
   const t = useTranslations("Portal.ProcReceipts")
   const dayText = useDateText()
   const tp = useTranslations("Portal.Procurement")
@@ -520,7 +536,8 @@ function IncomingList(props: IncomingListProps) {
             const fw = notice?.forwardedTo || null
             const fwState = notice ? forwardState(notice) : "none"
             const ship = notice ? shipmentOrdinal(notice, all, po) : null
-            const pill = incomingPill(r, forwardWindowDays, routing)
+            const pill = incomingPill(r, routing)
+            const noticeNo = notice ? noticeNumberOf(notice, all, po) : null
             const remindBlocked = po ? reminderCooldownUntil(po, now) != null : true
             const fwModule = fw?.userId ? receivers.find((x) => x.userId === fw.userId)?.module : null
             const attachments = (notice?.attachmentUrls || []).length
@@ -530,7 +547,11 @@ function IncomingList(props: IncomingListProps) {
                   <p className="flex flex-wrap items-center gap-x-2 text-sm">
                     <span className="font-bold" dir="auto">{supplier || "—"}</span>
                     {po && <span className="text-muted-foreground">· {displayPoNumber(po.docNumber, locale)}</span>}
-                    {notice?.paperNoteNumber && <Badge variant="outline" className="text-[10px]" dir="ltr">{notice.paperNoteNumber}</Badge>}
+                    {noticeNo && (
+                      <Badge variant="outline" className="text-[10px]">
+                        <bdi>{displayNoticeNumber(noticeNo, locale)}</bdi>
+                      </Badge>
+                    )}
                   </p>
                   <p className="text-xs text-muted-foreground" dir="auto">
                     {items.length ? items.join(" · ") : notice ? notice.rfqTitle || "—" : po?.rfqTitle}
@@ -659,7 +680,7 @@ function IncomingPillBadge({ pill }: { pill: ReturnType<typeof incomingPill> }) 
   const ok = "bg-success/10 text-success"
   const [tone, text] =
     pill.kind === "to_forward"
-      ? [pill.tone === "bad" ? bad : pill.tone === "warn" ? warn : "bg-cta/10 text-cta", t("incoming.toForward")]
+      ? [pill.tone === "bad" ? bad : warn, t("incoming.toForward")]
       : pill.kind === "due_late"
         ? [bad, t("incoming.lateNoNotice", { days: pill.days })]
         : pill.kind === "due_no_notice"
@@ -677,6 +698,8 @@ function IncomingPillBadge({ pill }: { pill: ReturnType<typeof incomingPill> }) 
 // ---------------------------------------------------------------------------
 
 interface ReceiptListProps {
+  /** Every delivery — a notice's number is its place among its order's notices. */
+  all: DeskDelivery[]
   rows: ReceiptRow[]
   total: number
   locale: string
@@ -689,7 +712,7 @@ interface ReceiptListProps {
   onLogFilter: (f: LogCompleteness) => void
 }
 
-function ReceiptList({ rows, total, locale, onOpen, warehouseName, projectName, placeKind, nopo, logFilter, onLogFilter }: ReceiptListProps) {
+function ReceiptList({ all, rows, total, locale, onOpen, warehouseName, projectName, placeKind, nopo, logFilter, onLogFilter }: ReceiptListProps) {
   const t = useTranslations("Portal.ProcReceipts")
   const tp = useTranslations("Portal.Procurement")
   const when = useWhenText()
@@ -736,6 +759,7 @@ function ReceiptList({ rows, total, locale, onOpen, warehouseName, projectName, 
               const kind = placeKind(d, r.po)
               const by = recordedBy(d, kind)
               const time = isoOf(d.confirmedAt)
+              const noticeNo = noticeNumberOf(d, all, r.po)
               return (
                 <tr key={d.id} onClick={() => onOpen(d.id)} className="grid cursor-pointer grid-cols-1 gap-1 border-t px-3 py-3 hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:outline-none md:table-row md:px-0 md:py-0" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onOpen(d.id)}>
                   <td className="md:px-3 md:py-2.5">
@@ -749,6 +773,12 @@ function ReceiptList({ rows, total, locale, onOpen, warehouseName, projectName, 
                     <p className="font-semibold" dir="auto">{d.supplierName || r.po?.supplierName || "—"}</p>
                     <p className="text-[11px] text-muted-foreground">
                       {r.po ? displayPoNumber(r.po.docNumber, locale) : d.poNumber ? displayPoNumber(d.poNumber, locale) : <span className="font-bold text-destructive">{t("log.noPo")}</span>}
+                      {noticeNo && (
+                        <>
+                          {" · "}
+                          <bdi>{displayNoticeNumber(noticeNo, locale)}</bdi>
+                        </>
+                      )}
                       {d.paperNoteNumber && !d.noNotice && (
                         <>
                           {" · "}

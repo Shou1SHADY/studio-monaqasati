@@ -15,7 +15,7 @@ import { UnitsPanel } from "@/components/pm/UnitsPanel"
 import { Callout } from "@/components/module-ui/Callout"
 import { CloseoutPanel } from "@/components/pm/CloseoutPanel"
 import { HandoverPanel } from "@/components/pm/HandoverPanel"
-import { PmTeamPanel } from "@/components/pm/PmTeamPanel"
+import { PmTeamPanel, PmTeamRoster } from "@/components/pm/PmTeamPanel"
 import { PunchPanel } from "@/components/pm/PunchPanel"
 import { SubcontractorsPanel } from "@/components/pm/SubcontractorsPanel"
 import { SitePanel } from "@/components/pm/SitePanel"
@@ -2158,7 +2158,7 @@ export default function ProjectDetailPage() {
           ...(pmOn.vo ? [{ key: "pmVo" as ActiveTab, label: tPm("vo.title"), icon: <Hammer size={15} /> }] : []),
           ...(pmOn.claim ? [{ key: "pmClaims" as ActiveTab, label: tPm("seg.claim"), icon: <Gavel size={15} /> }] : []),
           ...(pmOn.programme ? [{ key: "pmProgramme" as ActiveTab, label: tPm("prg.tab"), icon: <CalendarRange size={15} /> }] : []),
-          ...(pmOn.close ? [{ key: "pmClose" as ActiveTab, label: tPm("hnd.tab"), icon: <KeyRound size={15} /> }] : []),
+          ...(pmOn.close ? [{ key: "pmClose" as ActiveTab, label: tPm("seg.close"), icon: <KeyRound size={15} /> }] : []),
           ...(pmOn.docs ? [{ key: "pmDocs" as ActiveTab, label: tPm("docs.tab"), icon: <FileStack size={15} /> }] : []),
           ...(pmOn.corr ? [{ key: "pmCorr" as ActiveTab, label: tPm("corr.tab"), icon: <Mail size={15} /> }] : []),
         ]
@@ -2472,6 +2472,7 @@ export default function ProjectDetailPage() {
               </div>
               <div className="space-y-4">
                 <PmTermsGlance projectId={projectId} project={typedProject as ComponentProps<typeof PmTermsGlance>["project"]} items={pmItems} access={pmAccess} actor={pmActor} onOpenTerms={() => handleTabChange("pmTerms")} />
+                <PmTeamRoster projectId={projectId} project={typedProject} access={pmAccess} />
               </div>
             </div>
           ) : (

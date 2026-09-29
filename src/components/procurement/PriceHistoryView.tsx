@@ -22,6 +22,7 @@ import { StatusPill } from "@/components/module-ui/StatusPill"
 import { cn } from "@/lib/utils"
 import { displayCategory } from "@/lib/constants"
 import { matchesSearch } from "@/lib/search-text"
+import type { CatalogItem } from "@/hooks/useInventoryCatalog"
 import { PRICE_RISE_ALARM_PERCENT, priceTrends, sparkHeights, type PriceAgreement, type PriceHistoryEntry } from "@/lib/procurement/prices"
 import { materialCategory, readByManufacturing } from "@/lib/procurement/supplier-file"
 import type { PurchaseOrder, ReceiptFact } from "@/lib/procurement/types"
@@ -41,6 +42,8 @@ export function PriceHistoryView({
   fmtDate,
   focusKey,
   onFocusChange,
+  query,
+  itemOf,
 }: {
   history: PriceHistoryEntry[]
   orders: PurchaseOrder[]
@@ -52,9 +55,14 @@ export function PriceHistoryView({
   fmtDate: (value: unknown, locale: string) => string
   focusKey?: string | null
   onFocusChange?: (key: string | null) => void
+  /** The page's own search, carried across the supplier segments; its box replaces this one. */
+  query?: string
+  /** The stores' item card for a material, when Inventory keeps it. */
+  itemOf?: (name: string) => CatalogItem | null
 }) {
   const t = useTranslations("Portal.ProcPrices")
-  const [q, setQ] = useState("")
+  const [ownQ, setQ] = useState("")
+  const q = query ?? ownQ
   const [openKey, setOpenKey] = useState<string | null>(focusKey || null)
   useEffect(() => setOpenKey(focusKey || null), [focusKey])
   const pick = (key: string | null) => {
@@ -84,10 +92,12 @@ export function PriceHistoryView({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">{t("history.intro")}</p>
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("history.search")} aria-label={t("history.search")} className="ps-9" />
-        </div>
+        {query === undefined && (
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("history.search")} aria-label={t("history.search")} className="ps-9" />
+          </div>
+        )}
       </div>
       <div className="overflow-x-auto rounded-xl border">
         <table className="w-full min-w-[720px] text-sm">
@@ -126,7 +136,7 @@ export function PriceHistoryView({
                       {tr.name}
                     </button>
                     <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                      {[tr.unit, tr.category ? displayCategory(tr.category, locale) : null].filter(Boolean).join(" · ")}
+                      {[itemOf?.(tr.name)?.code || tr.unit, tr.category ? displayCategory(tr.category, locale) : null].filter(Boolean).join(" · ")}
                     </span>
                   </td>
                   <td className="p-3">
@@ -176,6 +186,7 @@ export function PriceHistoryView({
         receipts={receipts}
         agreements={agreements}
         today={today}
+        item={open && itemOf ? itemOf(open.name) : null}
       />
     </div>
   )

@@ -23,6 +23,7 @@ import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { usePmVisibleProjects } from "@/hooks/usePmVisibleProjects"
 import { useSupplyWorld, type SupplyWorld } from "@/hooks/useSupplyWorld"
 import { pmCan } from "@/lib/pm/access"
 import type { PmAttachment } from "@/lib/pm/attachments"
@@ -631,8 +632,13 @@ function MoveDialog({ projectId, orgId, x, items, access, actor, initial, onClos
   const { data: wData } = useCollection(wq)
   const { data: pData } = useCollection(pq)
   const warehouses = ((wData ?? []) as Array<{ id: string; name?: string; projectId?: string | null }>).filter((w) => !w.projectId)
-  const projects = ((pData ?? []) as Array<{ id: string; name?: string; pm?: { lifecycle?: string } | null; enabledSections?: string[] }>).filter((p) => p.id !== projectId && p.pm && p.pm.lifecycle !== "closed" && p.pm.lifecycle !== "done")
-  const xoProjects = projects.filter((p) => (p.enabledSections ?? []).includes("store"))
+  const projects = useMemo(
+    () => ((pData ?? []) as Array<{ id: string; name?: string; pm?: { lifecycle?: string } | null; enabledSections?: string[] }>).filter((p) => p.id !== projectId && p.pm && p.pm.lifecycle !== "closed" && p.pm.lifecycle !== "done"),
+    [pData, projectId]
+  )
+  // A transfer goes only to a project the viewer is on (or sees all of) — «لا مشروع آخر في نطاقك».
+  const { visible: inScope } = usePmVisibleProjects(projects)
+  const xoProjects = inScope.filter((p) => (p.enabledSections ?? []).includes("store"))
   const qn = Number(q)
   const blocks = moveBlocks({ archived: access.ctx.archived, t: m, q: qn, balance: bal, itemId: itemId || null, itemRated: false, warehouseId: wh, toProjectId: tp, why, from, note })
   const it = items.find((i) => i.id === itemId)

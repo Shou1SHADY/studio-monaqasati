@@ -156,6 +156,6 @@ describe("boundary (C-45) and badges (C-46)", () => {
       claimNoticeLate: true,
     })
     expect(b).toEqual({ team: { n: "!", tone: "bad" }, pmClaims: { n: "!", tone: "bad" }, pmWir: { n: 1, tone: "bad" }, pmCorr: { n: 1, tone: "bad" } })
-    expect(tabBadges({ today: "2026-09-27", hasManager: true, liveSeats: 2 }).team).toEqual({ n: 2, tone: "warn" })
+    expect(tabBadges({ today: "2026-09-27", hasManager: true, liveSeats: 2 }).team).toEqual({ n: 2, tone: "mute" })
   })
 })

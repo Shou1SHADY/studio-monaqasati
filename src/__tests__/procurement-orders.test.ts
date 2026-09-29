@@ -21,6 +21,7 @@ import {
   whatsappNumber,
   whatsappUrl,
 } from "@/components/procurement/PoModel"
+import { buildReceiptStatementHtml } from "@/components/procurement/PoPrint"
 import type { PoLine, ProcActor, PurchaseOrder, ReceiptFact } from "@/lib/procurement/types"
 
 const NOW = new Date("2026-09-22T09:00:00+03:00")
@@ -214,5 +215,24 @@ describe("print models", () => {
     expect(m.lines[0]).toMatchObject({ ordered: 100, accepted: 55, rejected: 5, outstanding: 45 })
     expect(m.complete).toBe(false)
     expect(m.outstanding).toEqual([{ name: "أسمنت", quantity: 45, unit: "كيس" }])
+  })
+  it("the statement: on the way from pending notices, not shipped, the place, the supplier's identity and who signs", () => {
+    const receipts: ReceiptFact[] = [
+      { id: "d1", status: "confirmed", poId: "po1", docNumber: "GR-2026/001", confirmedAt: "2026-09-10T10:00:00Z", landedWarehouseId: "wh1", lines: [{ poLineId: "l1", name: "أسمنت", unit: "كيس", noticeQuantity: 30, accepted: 25, rejected: 5 }] } as ReceiptFact,
+      { id: "n1", status: "pending_confirmation", poId: "po1", deliveryDate: "2026-09-25", lines: [{ poLineId: "l1", name: "أسمنت", unit: "كيس", noticeQuantity: 20 }] },
+      { id: "n2", status: "pending_confirmation", poId: "other", deliveryDate: "2026-09-25", lines: [{ poLineId: "l1", name: "أسمنت", unit: "كيس", noticeQuantity: 99 }] },
+    ]
+    const order = po({ lines: [line({ accepted: 25, rejected: 5, held: 5 })], preparedByName: "Badr", approvedByName: "Maha" })
+    const m = buildStatementModel(order, receipts, company, NOW, { supplier: { cr: "7070", vat: "3999", city: "الرياض", phone: null }, placeName: (id) => (id === "wh1" ? "مستودع البرج" : null) })
+    expect(m.lines[0]).toMatchObject({ ordered: 100, accepted: 25, held: 5, onTheWay: 20, notShipped: 50 })
+    expect(m.receipts[0].place).toBe("مستودع البرج")
+    expect(m).toMatchObject({ supplier: { cr: "7070", vat: "3999" }, preparedBy: "Badr", approvedBy: "Maha" })
+    const t = (k: string) => `[${k}]`
+    const html = buildReceiptStatementHtml(m, "ط.ش-2026/001", (n) => n, "ar", t)
+    for (const s of ["[st_col_on_the_way]", "[st_col_not_shipped]", "[st_col_place]", "مستودع البرج", "7070", "3999", "الرياض", "Badr", "Maha"]) expect(html).toContain(s)
+    // Printable before anything arrived: every column zero, the receipts table says so.
+    const none = buildStatementModel(po({ lines: [line({})] }), [], company, NOW)
+    expect(none.lines[0]).toMatchObject({ accepted: 0, onTheWay: 0, notShipped: 100 })
+    expect(buildReceiptStatementHtml(none, "x", (n) => n, "ar", t)).toContain("[st_no_receipts]")
   })
 })

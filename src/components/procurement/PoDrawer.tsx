@@ -12,11 +12,15 @@
 // and the write re-runs it again inside its transaction; a refusal comes back
 // as a `ProcWriteError` code and is shown as the sentence for that code.
 
-import { useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
 import { AlertTriangle, CheckCircle2, Clock, FileText, Info, Printer, Star } from "lucide-react"
-import { useFirestore } from "@/firebase"
+import { collection, doc, query, where } from "firebase/firestore"
+import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
+import { useOrgMembers } from "@/hooks/useOrgMembers"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useSupplierIdentity } from "@/hooks/useSupplierIdentity"
 import { useToast } from "@/hooks/use-toast"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import type { ProcurementWorld } from "@/hooks/useProcurementWorld"
@@ -25,11 +29,37 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
+import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
 import { displayDocNumber, displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
-import { approvalRefusal, canCancelRemainder, canRecordAcceptance, canSend, canUpdateDate, daysLate, isSelfApproval, lineToArrive, poBlocks, poStatus, receiptDay, receiptsOf, reminderCooldownUntil } from "@/lib/procurement/po"
-import { receiptState, type ReceiptState } from "@/lib/procurement/receipts"
+import { approvalRefusal, canCancelRemainder, canRecordAcceptance, canSend, canUpdateDate, daysLate, isSelfApproval, lineToArrive, poBlocks, poStatus, receiptDay, receiptsOf, reminderCooldownUntil, todayOf, dayOf } from "@/lib/procurement/po"
+import { PRICE_AGREEMENTS, agreementState, type PriceAgreement } from "@/lib/procurement/prices"
+import { AGREEMENT_HREF } from "@/lib/procurement/today"
 import type { PoLine, PoLogEntry, PoSendChannel, PurchaseOrder, RejectDecision } from "@/lib/procurement/types"
-import { advanceState, asX, awaitsPmBudget, budgetOverrun, lineInTransit, overrunTotal, pmBudgetAsk, pmCancelOf, pmCancelOpen, poActs, poRevision, samplePending, selfIssueRefusal, type PoFinanceHold, type PoLineX } from "@/lib/procurement/po-extras"
+import {
+  advanceState,
+  approverNames,
+  asX,
+  awaitsPmBudget,
+  budgetOverrun,
+  chosenOfferValidity,
+  lineInTransit,
+  lineRejectReasons,
+  manualOfferBy,
+  overrunTotal,
+  pmBudgetAsk,
+  pmCancelOf,
+  pmCancelOpen,
+  poActs,
+  poRevision,
+  poTerms,
+  registeredOfferCount,
+  samplePending,
+  selfIssueRefusal,
+  type AwardOfferFact,
+  type PoFinanceHold,
+  type PoLineX,
+  type PoTerms,
+} from "@/lib/procurement/po-extras"
 import { cancelRemainderWithFee, answerHoldPrice, decideHold, holdInvoice, logSentOutside, recordFinancePayment, referBudgetToProjects, releaseHold, selfIssuePurchaseOrder, type PoLogAction } from "@/lib/procurement/po-extra-writes"
 import { operatingPolicies } from "@/lib/procurement/policies"
 import {
@@ -58,6 +88,7 @@ import {
   FinanceBannerCallout,
   FinanceTrailSection,
   HoldInvoiceDialog,
+  OrderDeliveriesSections,
   RecordPaymentDialog,
   ScheduleSection,
   SupplierDateDialog,
@@ -137,16 +168,6 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
   )
 }
 
-const RECEIPT_TONE: Record<ReceiptState, string> = {
-  on_the_way: "bg-module/10 text-module",
-  late_notice: "bg-destructive/10 text-destructive",
-  received: "bg-success/10 text-success",
-  received_with_rejects: "bg-destructive/10 text-destructive",
-  received_held: "bg-warning/10 text-warning",
-  received_short: "bg-warning/10 text-warning",
-  manual_no_po: "bg-muted text-muted-foreground",
-}
-
 type DialogState =
   | null
   | { kind: "return" }
@@ -182,6 +203,36 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   // The resolved policy — the self-issue write re-reads it inside its transaction.
   const selfLimit = operatingPolicies(policies).buyerSelfIssueLimit
   const boqItems = useBoqGateItems(po ? asX(po) : null)
+  // The receipt statement's facts: the supplier's identity and where each receipt landed.
+  const statementSupplier = useSupplierIdentity(open && po ? po.supplierOrgId : null, po ? world.supplierRecords.find((r) => r.supplierOrgId === po.supplierOrgId)?.vatNumber : null)
+  const warehousesQ = useMemoFirebase(() => (firestore && open && world.orgId ? query(collection(firestore, "warehouses"), where("organizationId", "==", world.orgId)) : null), [firestore, open, world.orgId])
+  const { data: warehousesData } = useCollection<{ name?: string; projectId?: string | null }>(warehousesQ)
+
+  // Who an order awaiting approval is routed to, by name (prototype `apprWho`).
+  const { orgMembers } = useOrgMembers(po?.status === "awaiting_approval" ? world.orgId || null : null)
+  const approvers = useMemo(
+    () =>
+      po && po.status === "awaiting_approval"
+        ? approverNames(
+            po,
+            orgMembers.map((m) => ({
+              id: m.id,
+              name: (m.name as string) || (m.email as string) || "",
+              isOwner: m.id === world.orgId || m.organizationRole === "owner",
+              canApprove: resolveCan("po.approve", { organizationRole: (m.organizationRole as string | null | undefined) ?? null, defaultGroupId: (m.defaultGroupId as string | undefined) || null, groups: perms.groups as TeamGroup[] }),
+            }))
+          )
+        : [],
+    [po, orgMembers, world.orgId, perms.groups]
+  )
+
+  // The agreement the order was placed on — a link, and «مؤرشف» once it has ended.
+  const agreementRef = useMemoFirebase(() => (firestore && po?.agreementId ? doc(firestore, PRICE_AGREEMENTS, po.agreementId) : null), [firestore, po?.agreementId])
+  const { data: agreement, isLoading: agreementLoading } = useDoc<PriceAgreement>(agreementRef)
+  const agreementArchived = Boolean(po?.agreementId) && !agreementLoading && (!agreement || agreementState(agreement, todayOf(now)) === "expired")
+
+  // Where each receipt landed decides which module recorded it.
+  const warehouses = useMemo(() => (warehousesData || []).map((w) => ({ id: w.id, projectId: w.projectId ?? null })), [warehousesData])
 
   const receipts = useMemo(() => (po ? receiptsOf(po, world.deliveries) : []), [po, world.deliveries])
   const deliveries = useMemo(
@@ -223,6 +274,16 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
 
   const tPrint = (key: string, params?: Record<string, string | number>) => t(`print.${key}`, params)
 
+  // Today's «أرسِله للمورد» lands here with `act=send`: the send form opens once.
+  const searchParams = useSearchParams()
+  const sendAsked = useRef<string | null>(null)
+  const wantsSend = open && po?.status === "approved" && searchParams?.get("act") === "send" && Boolean(firestore) && actorCanExpedite(actor) && poActs(po, actor).acts && canSend(po)
+  useEffect(() => {
+    if (!wantsSend || !po || sendAsked.current === po.id) return
+    sendAsked.current = po.id
+    setDialog({ kind: "send" })
+  }, [wantsSend, po])
+
   if (!po) return null
   const px = asX(po)
   const status = poStatus(po)
@@ -242,20 +303,38 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
       : (offerDoc?.deliveryBatches || []).length > 1
         ? (offerDoc?.deliveryBatches || []).map((b) => ({ quantity: Number(b.quantity) || 0, date: String(b.deliveryDate || "").slice(0, 10) })).filter((b) => b.date)
         : []
-  const noticesCount = deliveries.length
   const warranty = Boolean(px.requiresWarranty ?? rfqDoc?.requiresWarranty)
   const sourceKey = po.purchaseSource?.kind === "mfg_purchase" ? "mfg" : po.purchaseSource?.kind === "project_request" ? "project" : po.purchaseSource?.kind === "stock_gap" ? "stock" : null
 
   const number = displayPoNumber(po.docNumber, locale)
   const money = moneyTrail(po)
   const f = firestore
+  const offerFacts = world.offers as AwardOfferFact[]
+  const manualBy = manualOfferBy(po, offerFacts)
+  const offerValidity = chosenOfferValidity(po, offerFacts)
+  const rfqKnown = Boolean(po.rfqId && world.rfqs.some((r) => r.id === po.rfqId))
+  const termsText = (x: PoTerms): string | null =>
+    !x ? null : x.kind === "advance" ? tProc("rfqpo.po.terms_adv", { pct: x.percent, days: x.days }) : x.kind === "credit" ? tProc("rfqpo.po.terms_credit", { days: x.days }) : x.text
+  const terms = termsText(poTerms(px))
 
   const printOrder = () => {
-    if (!printPurchaseOrder(buildPoPrintModel(po, company, actor.seesPrices), number, locale, tPrint, now)) toast({ title: t("toast.popup_blocked"), variant: "destructive" })
+    const extras = { revision, paymentTerms: terms, tolerancePercent: policies.overReceiptTolerancePercent }
+    if (!printPurchaseOrder(buildPoPrintModel(po, company, actor.seesPrices), number, locale, tPrint, now, extras)) toast({ title: t("toast.popup_blocked"), variant: "destructive" })
   }
   const printStatement = () => {
-    if (!printReceiptStatement(buildStatementModel(po, world.deliveries, company, now), number, (n) => displayReceiptNumber(n, locale), locale, tPrint)) toast({ title: t("toast.popup_blocked"), variant: "destructive" })
+    const placeName = (id: string | null | undefined) => (id ? (warehousesData || []).find((w) => w.id === id)?.name || null : null)
+    if (!printReceiptStatement(buildStatementModel(po, world.deliveries, company, now, { supplier: statementSupplier, placeName }), number, (n) => displayReceiptNumber(n, locale), locale, tPrint)) toast({ title: t("toast.popup_blocked"), variant: "destructive" })
   }
+
+  const ratedBlock = (r: NonNullable<PurchaseOrder["rating"]>): ReactNode => (
+    <div className="rounded-lg border px-3 py-2 text-sm">
+      <p className="font-bold">{t("next.rated_title", { conformity: r.conformity, cooperation: r.cooperation })}</p>
+      <p className="text-xs text-muted-foreground">
+        {r.byName} · {fmt(r.at)} · {r.publishAnonymously ? t("next.rated_published") : t("next.rated_internal")}
+      </p>
+      {r.note && <p className="mt-1 text-xs">{r.note}</p>}
+    </div>
+  )
 
   // ── Next step ──────────────────────────────────────────────────────────
   const nextStep = (): ReactNode => {
@@ -297,7 +376,15 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               {po.awardReasonText ? ` — ${po.awardReasonText}` : ""}
             </Callout>
           )
-        if (po.noOfficialQuote && po.basis !== "retroactive" && !po.agreementId) flags.push(<Callout key="quote" tone="amber">{t("next.flag_no_official_quote")}</Callout>)
+        if (manualBy) flags.push(<Callout key="manual" tone="amber">{tProc("rfqpo.po.manual_offer_by", { name: manualBy })}</Callout>)
+        else if (po.noOfficialQuote && po.basis !== "retroactive" && !po.agreementId) flags.push(<Callout key="quote" tone="amber">{t("next.flag_no_official_quote")}</Callout>)
+        if (po.basis === "rfq" && po.rfqId)
+          flags.push(
+            <Callout key="offers" tone="blue">
+              {tProc("rfqpo.po.offers_registered", { count: registeredOfferCount(po, offerFacts) })}
+              {offerValidity ? ` · ${tProc("rfqpo.po.offer_valid_until", { date: fmt(offerValidity) })}` : ""}
+            </Callout>
+          )
         if (po.agreementId) flags.push(<Callout key="agreement" tone="blue">{t("next.flag_agreement", { number: displayDocNumber(po.agreementNo || "", locale) })}</Callout>)
         else if (po.basis === "direct" && !po.rfqId) flags.push(<Callout key="direct" tone="amber">{t("next.flag_direct", { reason: po.awardReasonText || "—" })}</Callout>)
         if (pmWait)
@@ -375,7 +462,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             ) : (
               <>
                 <Callout tone="blue">
-                  {t("next.awaiting_approver", { approver: tProc(`approver.${po.approverKind}`) })}
+                  {t("next.awaiting_approver", { approver: approvers.length ? approvers.join(tProc("rfqpo.po.approver_or")) : tProc(`approver.${po.approverKind}`) })}
                   {refusal && actor.canApprove && refusal.code !== "not_awaiting" ? ` — ${tProc(`refusal.${refusal.code}`, refusal.params)}` : ""}
                 </Callout>
                 {f && actorCanReturn(actor) && refusal?.code === "own_order" && (
@@ -473,6 +560,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
         return (
           <>
             <Callout tone="green">{t("next.received_body")}</Callout>
+            {po.rating && ratedBlock(po.rating)}
             <div className="flex flex-wrap items-center gap-2">
               {f && acts.acts && canCloseComplete(po, actor) && (
                 <Button disabled={busy != null} onClick={() => run("close", () => closePurchaseOrder(f, actor, po.id, {}, opts), "toast.closed")}>
@@ -496,13 +584,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               {po.closedAt ? ` · ${fmt(po.closedAt)}` : ""}
             </Callout>
             {po.rating ? (
-              <div className="rounded-lg border px-3 py-2 text-sm">
-                <p className="font-bold">{t("next.rated_title", { conformity: po.rating.conformity, cooperation: po.rating.cooperation })}</p>
-                <p className="text-xs text-muted-foreground">
-                  {po.rating.byName} · {fmt(po.rating.at)} · {po.rating.publishAnonymously ? t("next.rated_published") : t("next.rated_internal")}
-                </p>
-                {po.rating.note && <p className="mt-1 text-xs">{po.rating.note}</p>}
-              </div>
+              ratedBlock(po.rating)
             ) : (
               f &&
               acts.acts &&
@@ -580,7 +662,13 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                   </Badge>
                 </SheetTitle>
                 <SheetDescription className="text-sm text-foreground">
-                  <span className="font-bold">{po.supplierName}</span>
+                  {po.supplierOrgId ? (
+                    <Link href={`/contractor/suppliers?supplier=${encodeURIComponent(po.supplierOrgId)}`} className="font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
+                      {po.supplierName}
+                    </Link>
+                  ) : (
+                    <span className="font-bold">{po.supplierName}</span>
+                  )}
                   {po.rfqTitle ? ` · ${po.rfqTitle}` : ""}
                   {po.projectName ? ` · ${po.projectName}` : ""}
                 </SheetDescription>
@@ -608,13 +696,6 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 <Row label={t("money.open")} hint={money.lumpSum ? t("money.open_lump_hint") : undefined}>
                   <Money value={money.open} />
                 </Row>
-                {(px.advancePercent || px.creditDays) && (
-                  <Row label={tProc("rfqpo.po.terms")}>
-                    <span className="font-normal">
-                      {px.advancePercent ? tProc("rfqpo.po.terms_adv", { pct: px.advancePercent, days: px.creditDays || 0 }) : tProc("rfqpo.po.terms_credit", { days: px.creditDays || 0 })}
-                    </span>
-                  </Row>
-                )}
               </Section>
             )}
             {actor.seesPrices && (
@@ -680,6 +761,15 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                         )}
                       </div>
                     )}
+                    {(Number(l.rejected) || 0) > 0 && !l.rejectDecision && (
+                      <Callout tone="red">
+                        {tProc("rfqpo.po.rejected_at_receipt", { qty: figure(l.rejected), unit: l.unit })}
+                        {(() => {
+                          const reasons = lineRejectReasons(po, l, world.deliveries)
+                          return reasons.length ? ` — ${reasons.map((r) => (r.note ? `${tProc(`rejectReason.${r.code}`)} (${r.note})` : tProc(`rejectReason.${r.code}`))).join("، ")}` : ""
+                        })()}
+                      </Callout>
+                    )}
                     {l.rejectDecision && (
                       <p className="text-xs text-muted-foreground">
                         {t("line.reject_decided", { decision: tProc(`rejectDecision.${l.rejectDecision}`) })}
@@ -707,36 +797,10 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               {po.lines.length === 0 && <p className="text-sm text-muted-foreground">{t("line.none")}</p>}
             </Section>
 
-            <ScheduleSection po={px} schedule={schedule} notices={noticesCount} />
+            <ScheduleSection po={px} schedule={schedule} deliveries={world.deliveries} />
             {warranty && <WarrantyCallout />}
 
-            <Section title={t("sec.deliveries")}>
-              {deliveries.length === 0 ? (
-                <p className="text-sm text-muted-foreground">{status === "in_delivery" || status === "part_received" ? t("deliveries.none_yet") : t("deliveries.none")}</p>
-              ) : (
-                deliveries.map((d) => {
-                  const st = receiptState(d, now)
-                  const accepted = (d.lines || []).reduce((s, l) => s + (Number(l.accepted) || 0), 0)
-                  return (
-                    <Link key={d.id} href={`/contractor/goods-received?delivery=${d.id}`} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                      <div className="min-w-0">
-                        <p className="font-bold">
-                          <span dir="ltr" className="tabular-nums">
-                            {d.docNumber ? displayReceiptNumber(d.docNumber, locale) : t("deliveries.notice")}
-                          </span>
-                          {d.status === "confirmed" && <span className="ms-2 text-xs font-normal text-muted-foreground">{t("deliveries.accepted_qty", { qty: figure(accepted) })}</span>}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {fmt(receiptDay(d))}
-                          {d.receivedByName ? ` · ${d.receivedByName}` : ""}
-                        </p>
-                      </div>
-                      <Badge className={cn("shrink-0 border-none text-[11px] font-bold", RECEIPT_TONE[st])}>{tProc(`receiptState.${st}`)}</Badge>
-                    </Link>
-                  )
-                })
-              )}
-            </Section>
+            <OrderDeliveriesSections po={px} deliveries={world.deliveries} warehouses={warehouses} routing={operatingPolicies(policies).noticeRouting} now={now} />
 
             <Section title={t("sec.award")}>
               <Row label={t("award.basis")}>{tProc(`basis.${po.basis}`)}</Row>
@@ -758,7 +822,16 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                   )}
                 </>
               )}
-              {po.agreementId && <Row label={t("award.agreement")}>{displayDocNumber(po.agreementNo || "", locale)}</Row>}
+              {po.agreementId && (
+                <Row label={t("award.agreement")}>
+                  <Link href={AGREEMENT_HREF(po.agreementId)} className="text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <span dir="ltr" className="tabular-nums">
+                      {displayDocNumber(po.agreementNo || "", locale) || "—"}
+                    </span>
+                  </Link>
+                  {agreementArchived && <span className="block text-end text-[11px] font-normal text-muted-foreground">{tProc("rfqpo.po.source_archived")}</span>}
+                </Row>
+              )}
               {po.basis === "direct" && !po.rfqId && !po.agreementId && po.awardReasonText && (
                 <Row label={t("award.reason")}>
                   <span className="font-normal">{po.awardReasonText}</span>
@@ -774,11 +847,16 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 {po.noOfficialQuote && !po.agreementId && <Badge className="border-none bg-warning/10 text-[11px] text-warning">{tProc("exception.no_official_quote")}</Badge>}
                 {po.approvedById && po.approvedById === po.preparedById && <Badge className="border-none bg-warning/10 text-[11px] text-warning">{tProc("exception.self_approval")}</Badge>}
               </div>
-              {po.rfqId && (
-                <Link href={`/contractor/rfqs/${po.rfqId}/offers`} className="text-xs font-bold text-cta hover:underline">
-                  {t("award.open_rfq")}
-                </Link>
-              )}
+              {po.rfqId &&
+                (rfqKnown || world.loading ? (
+                  <Link href={`/contractor/rfqs/${po.rfqId}/offers`} className="text-xs font-bold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    {t("award.open_rfq")}
+                  </Link>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    <span dir="auto">{po.rfqTitle || "—"}</span> · {tProc("rfqpo.po.source_archived")}
+                  </p>
+                ))}
             </Section>
 
             <Section title={t("sec.documents")}>
@@ -788,11 +866,17 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                   {t("docs.print_po")}
                   {!actor.seesPrices && <span className="text-[10px] text-muted-foreground">({t("docs.no_values")})</span>}
                 </Button>
-                {deliveries.length > 0 && (
+                {(deliveries.length > 0 || ["in_delivery", "part_received", "received", "closed"].includes(poStatus(po))) && (
                   <Button variant="outline" size="sm" className="gap-2" onClick={printStatement}>
                     <Printer size={14} aria-hidden="true" />
                     {t("docs.print_statement")}
                   </Button>
+                )}
+                {po.rating && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2.5 py-1 text-[11px] font-bold text-success">
+                    <Star size={12} aria-hidden="true" />
+                    {tProc("rfqpo.po.rated")}
+                  </span>
                 )}
               </div>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
@@ -804,10 +888,10 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                     <HonestDateText po={po} now={now} />
                   )}
                 </dd>
-                {po.paymentTerms && (
+                {terms && (
                   <>
                     <dt className="text-muted-foreground">{t("docs.payment_terms")}</dt>
-                    <dd dir="auto">{po.paymentTerms}</dd>
+                    <dd dir="auto">{terms}</dd>
                   </>
                 )}
                 {po.deliveryLocation && (
@@ -896,7 +980,8 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             description={t("accept.desc")}
             dateLabel={t("accept.date")}
             submitLabel={t("accept.submit")}
-            effects={[t("accept.effect")]}
+            defaultDate={po.promisedDate || dayOf(po.requestedDeliveryDate) || null}
+            effects={[t("accept.effect"), ...(advance === "requested" || advance === "pending" ? [tProc("rfqpo.po.accept_advance_effect", { pct: Number(px.advancePercent) || 0 })] : [])]}
             now={now}
             onSubmit={({ date }) => run("accept", () => recordSupplierAcceptance(f, actor, po.id, { promisedDate: date, by: "buyer" }, opts), "toast.accepted")}
           />

@@ -3,7 +3,7 @@ import { randomBytes } from "crypto"
 import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
-import { sendEmail, buildSupplierInviteEmail, buildTeamInviteEmail } from "@/lib/email"
+import { sendEmail, buildTeamInviteEmail } from "@/lib/email"
 import { resolveIdentityAdmin } from "@/lib/org-identity-admin"
 import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
 import { mayInviteSuppliers } from "@/lib/procurement/team"
@@ -305,39 +305,14 @@ export async function POST(req: NextRequest) {
 
     const inviteUrl = isExistingUser ? `${baseUrl}/login` : `${baseUrl}/register?invite=${inviteToken}`
 
-    // WhatsApp: the sender's own chat opens with the link; the platform sends nothing.
-    if (channel === "wa") {
-      await invitationRef
-        .update({ sentChannel: "wa", sentAt: FieldValue.serverTimestamp() })
-        .catch((err) => console.error("Failed to record sentChannel:", err))
-      return NextResponse.json({
-        success: true,
-        data: { invitationId: invitationRef.id, emailSent: false, isExistingUser, joinUrl: inviteUrl },
-      })
-    }
-
-    const { subject, html } = buildSupplierInviteEmail({
-      contractorName,
-      companyName,
-      inviteUrl,
-      isExistingUser,
-    })
-    const result = await sendEmail({ to: email, subject, html })
-
-    if (result.sent) {
-      await invitationRef
-        .update({ emailSentAt: FieldValue.serverTimestamp(), sentChannel: "email", sentAt: FieldValue.serverTimestamp() })
-        .catch((err) => console.error("Failed to record emailSentAt:", err))
-    }
-
+    // WhatsApp or e-mail, the sender's own chat or mail opens with the link: the
+    // platform never sends a supplier invite in his name (supplier-file.ts).
+    await invitationRef
+      .update({ sentChannel: channel, sentAt: FieldValue.serverTimestamp() })
+      .catch((err) => console.error("Failed to record sentChannel:", err))
     return NextResponse.json({
       success: true,
-      data: {
-        invitationId: invitationRef.id,
-        emailSent: result.sent,
-        isExistingUser,
-        joinUrl: inviteUrl,
-      },
+      data: { invitationId: invitationRef.id, emailSent: false, isExistingUser, joinUrl: inviteUrl },
     })
   } catch (err) {
     console.error("Invitation send error:", err)

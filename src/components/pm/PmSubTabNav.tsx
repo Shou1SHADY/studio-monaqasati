@@ -20,7 +20,8 @@ import type { Acceptances } from "@/lib/pm/acceptance"
 import { PM_ADDENDA } from "@/lib/pm/addenda"
 import { PM_CERTIFICATES, type CertificateStatus } from "@/lib/pm/certificate"
 import { noticeLate, PM_CLAIMS, type PmClaim } from "@/lib/pm/claim"
-import { closeoutRows, storeHoldings, type CloseRow } from "@/lib/pm/closeout"
+import { closeoutRows, storeHoldings, subDues } from "@/lib/pm/closeout"
+import { openCloseRows } from "@/lib/pm/closeout-view"
 import { PM_LETTERS, type PmLetter } from "@/lib/pm/correspondence"
 import { PM_DOCS, staleDocuments, type PmDocument } from "@/lib/pm/documents"
 import { todayDay } from "@/lib/pm/format"
@@ -30,7 +31,7 @@ import type { ProjectGroup } from "@/lib/pm/project-tabs"
 import { isOpenOrFailed, PM_INSPECTIONS, type PmInspection } from "@/lib/pm/inspection"
 import { PM_PUNCH, type PunchStatus } from "@/lib/pm/punch"
 import { PM_STORE, storeGroup, storeLineOf, storeState, type PmStoreLine, type StoreItem } from "@/lib/pm/store"
-import { PM_SUB_CERTIFICATES } from "@/lib/pm/subcontract"
+import { PM_SUB_CERTIFICATES, PM_SUBCONTRACTS, type PmSubcontract, type SubCertStatus } from "@/lib/pm/subcontract"
 import { PURCHASE_REQUESTS, reqState, requestOf } from "@/lib/pm/supply"
 import { tabBadges } from "@/lib/pm/tab-badges"
 import type { ContractTerms } from "@/lib/pm/terms"
@@ -40,8 +41,6 @@ import type { LookItem } from "@/lib/pm/weekly-plan"
 import { usePmUnits } from "@/hooks/usePmUnits"
 
 const READ_ONLY = new Set(["pmPo", "pmMatch"])
-// The client-money closeout rows are counted only for whoever reads the certificates (as CloseoutPanel shows them).
-const MONEY_ROWS = new Set<CloseRow["key"]>(["unbilled", "in_progress", "overdue", "retention", "vo_pending"])
 const DAY_MS = 86_400_000
 
 function useRows<T>(projectId: string, name: string, on: boolean) {
@@ -108,7 +107,8 @@ export function PmSubTabNav({
   const addenda = useRows<{ status: string }>(projectId, PM_ADDENDA, contract && (money || access.has("approve")))
   const variations = useRows<{ status: VoStatus; value?: number; executedPct?: number; billedPct?: number }>(projectId, PM_VARIATIONS, contract || close)
   const claims = useRows<PmClaim>(projectId, PM_CLAIMS, contract)
-  const subCerts = useRows<{ status: string }>(projectId, PM_SUB_CERTIFICATES, group === "exec")
+  const subCerts = useRows<{ status: string }>(projectId, PM_SUB_CERTIFICATES, group === "exec" || close)
+  const subcontracts = useRows<PmSubcontract>(projectId, PM_SUBCONTRACTS, close)
   const docs = useRows<PmDocument>(projectId, PM_DOCS, file)
   const letters = useRows<PmLetter>(projectId, PM_LETTERS, file)
   const requests = useRows<Record<string, unknown> & { id: string }>(projectId, PURCHASE_REQUESTS, supply)
@@ -145,6 +145,8 @@ export function PmSubTabNav({
           retentionHeld: project.retentionHeld ?? 0,
           retentionReleased: project.retentionReleased === true,
           storeLines: project.storeOn ? storeHoldings(lines, storeItems).lines : null,
+          // The panel adds the row when the section is on or a contract exists; with neither it would hold (ok), so it never counts.
+          subs: subcontracts.length || subCerts.length ? subDues(subcontracts, subCerts as Array<{ status: SubCertStatus }>) : null,
           letters,
           today,
         })
@@ -160,7 +162,7 @@ export function PmSubTabNav({
       subCertificates: subCerts,
       staleDocuments: staleDocuments(docs, lastIpcOn).length,
       letters,
-      closeoutOpen: rows.filter((r) => !r.ok && (money || !MONEY_ROWS.has(r.key))).length,
+      closeoutOpen: openCloseRows(rows, money && access.has("client")),
       requestsWaiting: requests.map(requestOf).filter((r) => reqState(r) === "wait").length,
       storeAct: states.filter((st) => storeGroup(st) === "act").length,
       storeNegative: states.includes("neg"),
@@ -170,7 +172,7 @@ export function PmSubTabNav({
       matchOver: money ? matchRows(cost.pos, cost.invoices).filter((r) => r.state === "over").length : 0,
       cvrStale: project.lifecycle === "live" && (eacAge === null || eacAge > 35),
     })
-  }, [today, hasManager, members, addenda, variations, claims, terms, subCerts, docs, lastIpcOn, letters, requests, stores, items, certs, punch, ncrs, close, project, money, cost.pos, cost.invoices])
+  }, [today, hasManager, members, addenda, variations, claims, terms, subCerts, subcontracts, docs, lastIpcOn, letters, requests, stores, items, certs, punch, ncrs, close, project, money, access, cost.pos, cost.invoices])
 
   const segments: Segment[] = tabs.map((x) => {
     const e = x.key === "pmUnits" ? (unitsReady ? { count: unitsReady, tone: "ok" as SegmentTone } : undefined) : (exec as Record<string, { count?: number; tone?: SegmentTone } | undefined>)[x.key]

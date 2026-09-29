@@ -17,6 +17,7 @@ import { materialCategory, materialPurchases, usualLeadDays } from "@/lib/procur
 import type { PurchaseOrder, ReceiptFact } from "@/lib/procurement/types"
 import { useDateText } from "./PoBits"
 import { sarLtr } from "@/lib/riyal"
+import type { CatalogItem } from "@/hooks/useInventoryCatalog"
 
 /** A unit price, as the prototype's R2: two decimals, the riyal sign on its left. */
 const priceText = (n: number) => sarLtr(Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
@@ -39,6 +40,7 @@ export function MaterialDrawer({
   receipts,
   agreements,
   today,
+  item,
 }: {
   material: { key: string; name: string; unit: string } | null
   open: boolean
@@ -48,6 +50,8 @@ export function MaterialDrawer({
   receipts: ReceiptFact[]
   agreements: PriceAgreement[]
   today: string
+  /** The stores' card for this material, when Inventory keeps it. */
+  item?: CatalogItem | null
 }) {
   const t = useTranslations("Portal.ProcPrices")
   const locale = useLocale()
@@ -67,7 +71,14 @@ export function MaterialDrawer({
           <SheetTitle className="text-lg" dir="auto">
             {material.name}
           </SheetTitle>
-          <SheetDescription>{[category ? displayCategory(category, locale) : null, material.unit].filter(Boolean).join(" · ")}</SheetDescription>
+          <SheetDescription className="flex flex-wrap items-center gap-x-1">
+            <span>{[item?.code || null, category ? displayCategory(category, locale) : null, item?.code ? null : material.unit].filter(Boolean).join(" · ")}</span>
+            {item && (
+              <Link href={`/contractor/warehouses/${item.warehouseId}`} className="rounded-sm font-semibold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                · {t("p2c.item_card")}
+              </Link>
+            )}
+          </SheetDescription>
         </SheetHeader>
         <div className="space-y-3 px-5 py-4">
           <div className="grid grid-cols-2 gap-2">

@@ -10271,7 +10271,7 @@
       "rfqv_stage_open": "Open for offers",
       "rfqv_stage_open_sealed": "Open — prices sealed",
       "rfqv_stage_compare": "Ready to compare",
-      "rfqv_stage_closed_empty": "Closed without offers",
+      "rfqv_stage_closed_empty": "Expired — no offers",
       "rfqv_stage_awarded": "Awarded",
       "rfqv_chip_all": "All",
       "rfqv_chip_Draft": "Drafts",
@@ -10873,7 +10873,8 @@
         "wrong_spec": "Off-spec",
         "expired": "Expired",
         "excess": "More than ordered",
-        "other": "Other reason"
+        "other": "Other reason",
+        "sample": "Does not match the approved sample"
       },
       "holdReason": {
         "certificate": "Awaiting the mill certificate",
@@ -10990,9 +10991,9 @@
       "err_no_lines": "Add at least one material with its agreed price",
       "err_bad_receiver": "A receiver needs a name, what they are called, and a mobile the code can reach",
       "deliveryWindow": {
-        "morning": "Morning",
-        "afternoon": "Afternoon",
-        "evening": "Evening"
+        "morning": "Morning 6–10",
+        "afternoon": "Midday 10–2",
+        "evening": "Afternoon 2–6"
       },
       "err_order_no_lines": "The need has no material with a quantity",
       "err_order_supplier_missing": "Pick the supplier",
@@ -11301,7 +11302,8 @@
           "supplier": "Supplier",
           "supplier_vat": "VAT no. · mobile",
           "stamp": "Stamp & signature",
-          "footer": "Issued electronically by Mdmak Tech — {company} · printed {date}."
+          "footer": "Issued electronically by Mdmak Tech — {company} · printed {date}.",
+          "guest_link": "Quote online"
         },
         "extend": {
           "title": "Edit deadline / invitees",
@@ -11447,7 +11449,8 @@
             "recovered": "advance recovery {amount}",
             "of_po": "{pct} of the PO value",
             "by": "recorded by {name}",
-            "paid_on": "paid {date}"
+            "paid_on": "paid {date}",
+            "with_slip": "with the transfer copy"
           },
           "hold": {
             "reason": {
@@ -11515,7 +11518,10 @@
             "effect_history": "The settled price enters the price history",
             "submit_approval": "Send for approval",
             "line": "Order line",
-            "invoice_unit_price": "Invoice unit price"
+            "invoice_unit_price": "Invoice unit price",
+            "picked_invoice": "its invoice",
+            "accepted_on_receipts": "Accepted on receipts",
+            "incl_vat": "incl. VAT"
           },
           "fin": {
             "record_payment": "Record a payment",
@@ -11574,7 +11580,24 @@
           },
           "row_budget": "Awaiting the project's budget decision",
           "discount_wait": "{qty} {unit} kept at a discount — on hold until the requester accepts them and Inventory releases them",
-          "discount_release": "Release them"
+          "discount_release": "Release them",
+          "manual_offer_by": "Awarded on an offer keyed in by {name} — check the attachment.",
+          "offers_registered": "{count, plural, one {# offer from verified suppliers} other {# offers from verified suppliers}}",
+          "offer_valid_until": "the chosen offer is valid until {date}",
+          "approver_or": " or ",
+          "source_archived": "archived — outside the offer period",
+          "rated": "Rated",
+          "rejected_at_receipt": "The receiver rejected {qty} {unit} at receipt",
+          "accept_advance_effect": "Finance holds the {pct}% advance request — the supplier's lead time starts once it is paid",
+          "send_approved_by": "Approved by {name} on {date} and with Finance as a commitment. Sending it to the supplier is our step.",
+          "notices": {
+            "title": "Delivery notices",
+            "none_yet": "No shipment notified yet — the notice reaches us and the receiver before the truck leaves."
+          },
+          "receipts": {
+            "title": "Goods receipts",
+            "rejected": "rejected {qty}"
+          }
         },
         "desk": {
           "advances_title": "Advances to pay",
@@ -11754,6 +11777,31 @@
           "finance_pays": "Finance pays before delivery",
           "no_order_yet": "No PO before its record is complete (VAT number and verification) — the order waits"
         }
+      },
+      "p2c": {
+        "rfq": {
+          "needs_not_released": "{count, plural, one {One linked need could not be handed back — open it on the needs desk} other {# linked needs could not be handed back — open them on the needs desk}}",
+          "no_linked_need": "no linked need",
+          "unlinked_hint": "A product with no linked need is flagged to the approver",
+          "lines_title": "Where each line comes from",
+          "multi_project": "Spans several projects — the breakdown is essential to charge each project its cost.",
+          "from_platform": "platform",
+          "for_workshop": "Workshop",
+          "close_warn_public": "{offered, plural, =0 {No offer has come in yet.} one {One offer has come in.} other {# offers have come in.}} Closing early shuts out whoever has not offered — logged in your name."
+        },
+        "need": {
+          "sample_block": "Item sample {no} is with the consultant{hasBrand, select, 1 { — submitted: {brand}. The sample is approved for that brand: ask for quotes on it, not on the item} other {}}. Collect quotes now; no order is approved before it.",
+          "project_item": "Project & item",
+          "not_stocked": "Not stocked — direct",
+          "cover_unconfirmed": "Computed cover {qty} — unconfirmed",
+          "covers": "Covers {qty}",
+          "log_by": "{what} — {name}"
+        },
+        "offer": {
+          "supplier_note": "Supplier's message",
+          "note_label": "A note to the contractor (optional)",
+          "note_placeholder": "Anything the price depends on — stock on hand, an alternative brand, a delivery condition…"
+        }
       }
     },
     "ProcToday": {
@@ -11864,7 +11912,8 @@
         },
         "receipt_no_po": {
           "title": "Receipt with no purchase order{hasSupplier, select, 0 {} other { — {supplier}}}",
-          "sub": "{number} · {date} · regularise with a retroactive order the owner approves, or book it as an expense"
+          "sub": "{number} · {date} · regularise with a retroactive order the owner approves, or book it as an expense",
+          "title_line": "Receipt with no PO: {qty} {unit} {material}{more, plural, =0 {} other { +#}}{hasSupplier, select, 0 {} other { — {supplier}}}"
         },
         "rfq_draft": {
           "title": "Unpublished draft: {title}",
@@ -11910,7 +11959,8 @@
         "notice_forward": {
           "title": "Forward {supplier}’s delivery notice to the receiver{overdue, select, 1 { — its date has passed} other {{hasDate, select, 1 { — arrives {inDays, plural, =0 {today} =1 {tomorrow} other {in # days}}} other {}}}}",
           "sub": "{number} · {lines}",
-          "sub_place": "{number} · {lines}{hasPlace, select, 1 { · to {place}} other {}}"
+          "sub_place": "{number} · {lines}{hasPlace, select, 1 { · to {place}} other {}}",
+          "sub_place_rcv": "{number} · {lines}{hasPlace, select, 1 { · to {place}} other {}}{hasReceiver, select, 1 { · suggested: {receiver}} other {}}"
         },
         "finance_hold": {
           "proc": {
@@ -12127,7 +12177,6 @@
         "money": "The money trail",
         "money_badge": "What Finance reads",
         "lines": "Lines ({count})",
-        "deliveries": "Deliveries & receipts",
         "award": "Award facts",
         "documents": "Documents",
         "log": "Log"
@@ -12189,10 +12238,7 @@
         "none": "No lines on this order"
       },
       "deliveries": {
-        "none_yet": "Nothing has arrived yet — every receipt is recorded at the goods-received desk and shows here with its number",
-        "none": "No deliveries on this order",
-        "notice": "Delivery notice",
-        "accepted_qty": "{qty} accepted"
+        "notice": "Delivery notice"
       },
       "award": {
         "basis": "Basis",
@@ -12380,7 +12426,7 @@
         "vat_line": "VAT {rate}%",
         "total_incl": "Total incl. VAT",
         "no_values_copy": "Copy without values — for expediting and receiving",
-        "po_clause": "Quote this PO number on the delivery note and the invoice — no invoice is paid without a PO number and a goods receipt. Only what is accepted at receipt is invoiced.",
+        "po_clause": "Quote this PO number on the delivery note and the invoice — no invoice is paid without a PO number and a goods receipt. Only what is accepted at receipt is invoiced. Over-delivery above {pct}% is refused.",
         "prepared_by": "Prepared by",
         "approved_by": "Approved by",
         "self_approved": "issued by its preparer",
@@ -12394,7 +12440,7 @@
         "approved_on": "Approved",
         "supplier_date": "Supplier date",
         "st_destination": "Destination · project",
-        "st_col_ordered": "Ordered",
+        "st_col_ordered": "On the order",
         "st_col_accepted": "Accepted",
         "st_col_rejected": "Rejected",
         "st_col_held": "On hold",
@@ -12410,7 +12456,12 @@
         "buyer": "Buyer",
         "proc_manager": "Procurement manager",
         "st_footer_final": "Final statement: delivery on this order is complete.",
-        "st_footer_interim": "Interim statement: reissued after each shipment until delivery is complete."
+        "st_footer_interim": "Interim statement: reissued after each shipment until delivery is complete.",
+        "revision": "Rev. {n}",
+        "st_col_in_transit": "On the way",
+        "st_col_on_the_way": "On the way",
+        "st_col_not_shipped": "Not shipped",
+        "st_col_place": "Place"
       },
       "project_filter": "Project",
       "project_all": "All projects",
@@ -12420,8 +12471,8 @@
       "forward": {
         "button": "Forward to receiver",
         "again": "Forward again",
-        "title": "Forward the receipt",
-        "desc": "Choose who will receive it on site or at the store. They get a link to count what arrived and sign, confirmed by a code to their phone.",
+        "title": "Forward the notice to the receiver",
+        "desc": "The supplier's notice reached us — we pick who receives it and send them the receiving link with a code to their phone",
         "toMember": "Team member",
         "toPerson": "Someone without an account",
         "member": "Member",
@@ -12452,10 +12503,13 @@
         "effectLink": "The link opens with a one-time code sent to that phone — never given to the driver, and no signature before the code",
         "effectMember": "It also reaches them inside their module — fastest and safest for anyone with an account",
         "effectTrail": "Recorded on the trail: who forwarded, to whom, when and to which number",
-        "effectNoTimer": "Nothing forwards itself: a notice not forwarded by its day is flagged on this desk until someone does"
+        "effectNoTimer": "Nothing forwards itself: a notice not forwarded by its day is flagged on this desk until someone does",
+        "reachesIn": "Reaches them in {module}: the “Expected” list and an alert on their phone {phone}",
+        "sendLink": "Send the link & code",
+        "forwardMember": "Forward to receiver"
       },
       "title": "Goods receipts",
-      "subtitle": "What is on the way, what arrived and was counted, and what came with no purchase order",
+      "subtitle": "Everything on the way and everything received — who recorded it and where it went. We follow up and read; whoever receives records it; what was bought off the platform, we issue its receipt here by hand.",
       "searchPlaceholder": "Search by receipt, order, supplier or line…",
       "projectFilter": "Project",
       "allProjects": "All projects",
@@ -12480,7 +12534,7 @@
         "afterPromise": "{days, plural, one {# day} other {# days}} after its date",
         "inDays": "{days, plural, =0 {today} =1 {tomorrow} one {in # day} other {in # days}}",
         "driverUnknown": "Driver not named yet",
-        "dueHint": "The supplier's date is here and no notice came — remind them from the order; if the truck shows up, record it without notice",
+        "dueHint": "The supplier's date is here and no notice came — remind them from this row; if the truck shows up, record it without notice",
         "details": "Details",
         "openOrder": "Open PO",
         "record": "Record the receipt",
@@ -12590,7 +12644,8 @@
         "effectHeld": "Held goods are neither issued nor paid until you release them",
         "effectFinance": "Finance matches the invoice to the accepted only, and the supplier sees your count",
         "submit": "Record the receipt — accepted {qty}",
-        "selfReceiveOwn": "You prepared this order and are receiving it yourself — the receipt will carry «received by the order's preparer» and show in the exceptions report."
+        "selfReceiveOwn": "You prepared this order and are receiving it yourself — the receipt will carry «received by the order's preparer» and show in the exceptions report.",
+        "effectProject": "A receipt is issued in your name — the accepted goes into the project store"
       },
       "toast": {
         "recorded": "Receipt {number} issued",
@@ -12673,7 +12728,7 @@
         "noAttachments": "No attachments",
         "driverUnknown": "Driver not named",
         "paperNote": "Note",
-        "retention": "Attachments stay with the receipt and are never copied: Finance reads them with the invoice. The receipt is never edited after recording — a correction is a later receipt from the receiver or a return to the supplier. Tax records are kept at least 6 years in Saudi Arabia.",
+        "retention": "Attachments stay with the receipt and are never copied: Finance reads them with the invoice, and conformity certificates move to the project handover file. The receipt is never edited after recording — a correction is a later receipt from the receiver or a return to the supplier. Tax records are kept at least 6 years in Saudi Arabia (longer for capital assets).",
         "whereTitle": "Where it went — the material trail",
         "wentToWarehouse": "Stock of \"{name}\" in Inventory — available to issue or transfer to sites",
         "wentToProject": "The project store of {name} — consumed against items by measurement in Projects",
@@ -12747,7 +12802,13 @@
         "registered": "Registered with us?",
         "offPlatform": "No — off-platform",
         "photo": "Photo of the invoice or note (optional)",
-        "chooseFile": "Choose a file"
+        "chooseFile": "Choose a file",
+        "errLineDesc": "Describe line {n}",
+        "errLineQty": "Enter the quantity of line {n}",
+        "errReceiver": "Enter who received it",
+        "errDate": "The date is today or earlier",
+        "errCountOne": "Enter the count for at least one line",
+        "errCountNumber": "A count is a number, zero or more"
       },
       "regularise": {
         "title": "Regularise with a retroactive PO",
@@ -12832,7 +12893,14 @@
         "self_received": "Received by the order's preparer",
         "footer_accepted_only": "Only the accepted quantity counts against the purchase order and is invoiced. Rejects went back with the rep; held goods are neither issued nor paid before release.",
         "footer_no_po": "No-PO receipt: not payable before it is regularised by an order or approved as a cash expense.",
-        "footer": "Issued electronically by Mdmak Tech — {company} · printed {date} · This document is never edited after recording; any correction is a later document."
+        "footer": "Issued electronically by Mdmak Tech — {company} · printed {date} · This document is never edited after recording; any correction is a later document.",
+        "col_qty": "Qty",
+        "col_unit_price": "Unit price",
+        "invoice_as_received": "Invoice total as received",
+        "forwarded_title": "Forwarded by Procurement to the receiver:",
+        "forwarded_by_link": "by link & code to",
+        "forwarded_by": "by {name}",
+        "signed_on_link": "signed on the receiving link with the code"
       },
       "place": {
         "general": "General stock",
@@ -12875,7 +12943,10 @@
         "received_link": "signed on the link with the code",
         "finance_match": "Matches the supplier invoice to the accepted only",
         "finance_closed": "The order is closed — Finance settles on the accepted",
-        "forwarded_both": "The notice reached the receiver and Procurement at once"
+        "forwarded_both": "The notice reached the receiver and Procurement at once",
+        "requested_by": "requested by {name}",
+        "finance_paid": "Paid",
+        "finance_held_price": "Supplier invoice held — price variance"
       },
       "rlog": {
         "title": "Log",
@@ -12885,7 +12956,8 @@
         "recorded": "Receipt {number} recorded",
         "po_raised": "Retroactive PO {number} prepared",
         "regularised": "Tied to purchase order {number}",
-        "expensed": "Sent to Finance as a cash expense"
+        "expensed": "Sent to Finance as a cash expense",
+        "noticed_numbered": "Supplier notified the delivery {notice} for {day}"
       },
       "received_by": "Received by"
     },
@@ -12930,7 +13002,6 @@
       },
       "cols": {
         "requester": "Requester",
-        "noProject": "No project — general",
         "orders": "Orders",
         "lines": "Lines",
         "ordered": "Ordered",
@@ -12957,7 +13028,7 @@
         "invited": "Invited",
         "offers": "Offers",
         "awarded": "Awarded",
-        "days": "Days publish → award",
+        "days": "Days arrival → award",
         "lowest": "Lowest offer",
         "awardedValue": "Awarded value",
         "competition": "Short competition",
@@ -12985,8 +13056,9 @@
         "cycle": "Fewer than {min} offers above ⃁ {threshold} = short competition, shown to the approver and in the Exceptions report.",
         "exceptions": "Everything off the usual path, by name and by approver. Not violations — what the owner should see monthly.",
         "commitments": "Finance's cash forecast only sees a PO once invoiced — this fills the gap. Due = the supplier's date or the receipt date + payment terms. An advance is due now until Finance records it paid on the order; what Finance paid against invoices comes off \"received\". \"Received\" counts the accepted only.",
-        "saving": "Saving = the average of the offers still in the running − what we awarded (every order on the RFQ). Positive = saved.",
-        "commitmentsTerms": "Terms are read from our supplier record first, then the offer's credit days, then days written on the order. An advance is shown until goods arrive on the order — Finance does not tell us when it paid one."
+        "saving": "Saving = for each awarded line, (the average unit price quoted by the offers still in the running − the awarded price) × its quantity; where no offer quoted unit prices, the average offer − what we awarded. Positive = saved.",
+        "commitmentsTerms": "Terms are read from our supplier record first, then the offer's credit days, then days written on the order.",
+        "cycleArrival": "Days are counted from when the need reached Procurement; an RFQ no need raised counts from its publication."
       },
       "drift": {
         "totals": "Period impact {impact} on a base of {base} ({percent}%)",
@@ -13139,6 +13211,9 @@
         "days": "{count, plural, one {# day} other {# days}}",
         "live_agreement": "Live agreement {number} with {supplier} at {price} until {date}.",
         "purchases": "How much, from whom, when"
+      },
+      "p2c": {
+        "item_card": "Item card in Inventory"
       }
     },
     "ProcReceivers": {
@@ -13302,37 +13377,6 @@
         "receiver": {
           "name": "Receiver",
           "desc": "Records the goods receipt at the gate: the count, the rejects, what is held for inspection — never prepares an order"
-        }
-      },
-      "boundaries": {
-        "title": "Boundaries",
-        "subtitle": "What we own · what we read · what we never do, even if asked",
-        "owns": {
-          "title": "We own",
-          "item1": "The RFQ and its cycle",
-          "item2": "Offers, comparison, the award and its reason",
-          "item3": "The purchase order, its approval and dispatch",
-          "item4": "Expediting the supplier's date until close-out",
-          "item5": "The decision on rejects and on the order's remainder",
-          "item6": "The supplier rating — computed, never typed"
-        },
-        "reads": {
-          "title": "We read",
-          "item1": "The need, its quantity and date — from Projects and Manufacturing",
-          "item2": "Items and units — from Inventory",
-          "item3": "The goods receipt and stock movement — Inventory records them",
-          "item4": "Invoice and payment — from Finance",
-          "item5": "The supplier's platform profile and verification",
-          "item6": "The order's state with the supplier — from his portal"
-        },
-        "never": {
-          "title": "We never",
-          "item1": "Create a need or change its quantity",
-          "item2": "Record a receipt on the receiver's behalf",
-          "item3": "Pay or match an invoice",
-          "item4": "Approve an order we prepared",
-          "item5": "Show a price to someone who may not see it",
-          "item6": "Message the supplier beyond dispatch and reminders"
         }
       },
       "seg": {
@@ -13851,7 +13895,12 @@
         },
         "done_crm": "{number} accepted — project created and the priced BOQ transferred ({count, plural, one {# item} other {# items}})",
         "done_xl": "{number} accepted — {count, plural, one {# item} other {# items}} imported",
-        "done_empty": "{number} accepted — no BOQ yet; measurement and IPCs wait for it"
+        "done_empty": "{number} accepted — no BOQ yet; measurement and IPCs wait for it",
+        "row_consultant": "Consultant",
+        "xl_review_title": "Review what was imported before saving",
+        "xl_review_all_priced": "{count, plural, one {# item} other {# items}} — all priced",
+        "xl_review_unpriced": "{count, plural, one {# item} other {# items}} — {unpriced} without a rate: flagged, and not in the contract value",
+        "xl_unpriced": "No rate"
       },
       "terms": {
         "title": "Contract terms",
@@ -14227,7 +14276,11 @@
         "record_starts_title": "The record starts when work starts",
         "orig_value_note": "Priced items as signed",
         "orig_duration_note": "from {date}",
-        "withdraw_changes": "What it would have changed"
+        "withdraw_changes": "What it would have changed",
+        "force_head": "The contract in force",
+        "force_head_sub": "The original plus signed addenda — these decide when you are paid and what is withheld",
+        "orig_head": "The original contract as signed",
+        "orig_head_sub": "As work started on it — never overwritten"
       },
       "meas": {
         "title": "Measurement",
@@ -14264,7 +14317,7 @@
         "self": "Self-approved",
         "line": "Measured {day} by {by} · decided by {ok}",
         "status": {
-          "wait": "Awaiting the PM",
+          "wait": "Awaiting the PM's approval",
           "ok": "Approved",
           "no": "Sent back"
         },
@@ -14328,7 +14381,7 @@
       },
       "unknown_state": "Unknown state",
       "wir": {
-        "title": "Inspections",
+        "title": "Inspection requests",
         "new": "Request an inspection",
         "new_desc": "The item, where, who inspects and when. An item that requires inspection is measured only after a passed one.",
         "item": "BOQ item",
@@ -14362,15 +14415,15 @@
         "required_desc": "A ticked item cannot be measured until its last inspection passed (with or without comments).",
         "required_save": "Save the list",
         "required_saved": "List saved",
-        "empty": "No inspection yet",
+        "empty": "No inspection requests yet",
         "empty_desc": "{count, plural, =0 {No item requires inspection yet.} one {# item requires inspection before it is measured.} other {# items require inspection before they are measured.}}",
         "no": "Inspection {no}",
         "attempt": "Attempt {n} · {date} · {result} · recorded by {who}",
         "status": {
-          "open": "Awaiting result",
+          "open": "Open — with consultant",
           "pass": "Passed",
           "cond": "Passed with comments",
-          "fail": "Failed"
+          "fail": "Failed — re-inspect"
         },
         "block": {
           "archived": "The project is archived",
@@ -14436,7 +14489,7 @@
         "certify_desc": "Submitted gross {gross}. Record what the consultant certified — never more; less returns the difference to unbilled.",
         "certified_value": "Certified value (SAR, excl. VAT)",
         "cut_note": "Deduction {amount}: it returns to unbilled and can be claimed again.",
-        "cut_reason": "Why the consultant deducted it",
+        "cut_reason": "Reason for the deduction",
         "consultant_ref": "Consultant's reference (optional)",
         "certify": "Record certification",
         "certified_done": "Certificate {no} certified — Finance is told the certified amount",
@@ -14515,7 +14568,7 @@
         "fixed": "Fix recorded on {no} — it closes when {party} confirms",
         "closed": "{no} closed — {count, plural, =0 {the punch list is complete} one {# item left before acceptance} other {# items left before acceptance}}",
         "blocks_final": "{count, plural, one {# open item blocks} other {# open items block}} final acceptance — a fixed item counts until its confirmation is recorded.",
-        "empty": "No punch item",
+        "empty": "No items logged",
         "empty_desc": "Items the consultant, the client or our own walk-through raise before handover land here.",
         "no": "Item {no}",
         "line": "{location} · raised by {party} on {date}",
@@ -14880,8 +14933,9 @@
           "no": "no"
         },
         "rejected_title": "Rejected by the client {date}",
-        "rejected_body": " Whatever was executed will not be paid.",
-        "files": "Documents"
+        "rejected_body": " Whatever was executed will not be paid — each linked material is back in your decisions.",
+        "files": "Documents",
+        "rej_linked_back": "{count, plural, one {# linked material returns} other {# linked materials return}} to your decisions: on us, or stop it."
       },
       "ncr": {
         "title": "Non-conformance",
@@ -14960,7 +15014,8 @@
         "consultant_date": "Consultant acceptance date",
         "actual_cost": "Actual rework cost",
         "acceptance_files": "The consultant’s acceptance",
-        "close_btn": "Close"
+        "close_btn": "Close",
+        "item_none": "— none"
       },
       "claim": {
         "tab": "Claims & programme",
@@ -15218,7 +15273,8 @@
         "claim_notice_late": {
           "title": "{count, plural, one {# claim is} other {# claims are}} past the notice deadline",
           "detail": "A draft past the contract's notice period may lose the right to claim.",
-          "act": "Give notice"
+          "act": "Give notice",
+          "detail_event": "{cause} · event {date}"
         },
         "claim_waiting": {
           "title": "{count, plural, one {# claim awaits} other {# claims await}} the client's response",
@@ -15233,7 +15289,8 @@
         "cert_internal": {
           "title": "{count, plural, one {A certificate awaits} other {# certificates await}} your internal approval before submission",
           "detail": "Prepared by someone else — review it and submit.",
-          "act": "Review & approve"
+          "act": "Review & approve",
+          "detail_by": "Prepared by {name}"
         },
         "cert_consultant": {
           "title": "{count, plural, one {# certificate is} other {# certificates are}} with the consultant",
@@ -15243,12 +15300,15 @@
         "collection_overdue": {
           "title": "{count, plural, one {# certificate is} other {# certificates are}} past due and not collected",
           "detail": "Collection is Finance's; the lateness is ours to chase.",
-          "act": "Open collection"
+          "act": "Open collection",
+          "detail_payer": "Finance chases {payer} · the contractual follow-up is yours"
         },
         "damages": {
           "title": "Expected delay damages — {count} days behind",
           "detail": "On the effective duration, capped by the contract.",
-          "act": "Open plan vs actual"
+          "act": "Open plan vs actual",
+          "detail_pace": "{points, plural, one {# point} other {# points}} behind = {count, plural, one {# day} other {# days}} · {rate}% a week, capped at {cap}%",
+          "detail_pace_over": "{points, plural, one {# point} other {# points}} behind = {count, plural, one {# day} other {# days}} · {rate}% a week, capped at {cap}% — it exceeds your realised margin"
         },
         "provisional_ready": {
           "title": "Ready for provisional handover",
@@ -15290,7 +15350,8 @@
           "title": "Handover from CRM: {name} — pending {days, plural, =0 {since today} one {# day} other {# days}}",
           "detail": "{client} · {value} · contract starts {start}",
           "no_value": "Value not fixed",
-          "act": "Accept or reassign"
+          "act": "Accept or reassign",
+          "deal": "Deal {no}"
         },
         "sample_rejected": {
           "title": "{count, plural, one {A sample was} other {# samples were}} rejected by the consultant",
@@ -15305,7 +15366,8 @@
         "claim_notice_due": {
           "title": "{count, plural, one {A claim's notice deadline} other {# claims' notice deadlines}} within 7 days",
           "detail": "Send the notice before the right lapses.",
-          "act": "Give notice"
+          "act": "Give notice",
+          "detail_event": "{cause} · event {date}"
         },
         "ipc_ready": {
           "title": "IPC ready — executed work not yet claimed",
@@ -15325,7 +15387,11 @@
         "hold": {
           "title": "Project on hold — indirect costs still running",
           "detail": "Decide: resume, claim the time and cost, or close.",
-          "act": "Decide"
+          "act": "Decide",
+          "detail_burn": "Spent on staff and site with no production",
+          "detail_why": "Spent on staff and site with no production · {why}",
+          "act_log": "Log an EOT claim",
+          "act_follow": "Follow the EOT claim"
         },
         "final_overdue": {
           "title": "Defects period over — final acceptance not recorded",
@@ -15359,7 +15425,7 @@
           "act": "Log a claim"
         },
         "cvr_stale": {
-          "title": "{count, plural, =0 {No monthly reconciliation approved yet} one {Last reconciliation approved a day ago} other {Last reconciliation approved # days ago}}",
+          "title": "{count, plural, =0 {Monthly reconciliation not approved since the start} one {Monthly reconciliation not approved for a day} other {Monthly reconciliation not approved for # days}}",
           "title_never": "Monthly reconciliation never approved",
           "detail": "Finance books revenue on the last approved estimate — approve the new one and send it",
           "act": "Approve"
@@ -15595,7 +15661,13 @@
           "plant_on_site": "Plant on site",
           "plant_charged": "Charged so far",
           "plant_requests": "Open plant requests",
-          "units": "Delivery units"
+          "units": "Delivery units",
+          "lookahead_blocked": "Blocked activities",
+          "samples_with_consultant": "With the consultant",
+          "samples_required": "Items needing samples",
+          "petty_moves": "Petty-cash moves",
+          "letters_open": "Open letters",
+          "close_open": "Open closeout items"
         },
         "loss": {
           "docs": "No alert when a drawing revision lands after measurement",
@@ -15613,7 +15685,12 @@
           "claim": "Notice deadlines stop being tracked — and a claim that misses its notice is time-barred",
           "wwp": "PPC and its reasons stop being collected",
           "eqp": "Plant keeps running with no daily log, no computed cost and no return alert",
-          "zone": "No phased handover and no retention per unit"
+          "zone": "No phased handover and no retention per unit",
+          "subm": "The sample gate opens: work proceeds without approval",
+          "sched": "No critical path, no computed delay",
+          "corr": "No send/reply record — in a dispute the question is not «did you say» but «when did you send»",
+          "close": "Nothing stops archiving a project with dues",
+          "petty": "No site-cash ceiling or settlement"
         },
         "help": {
           "title": "Why sections are switched off",
@@ -15918,7 +15995,11 @@
         "sec_plan": "plan {pct}%",
         "act_permit": "Needs a work permit",
         "act_permit_hint": "It cannot start without a live permit — the look-ahead checks it",
-        "act_permit_pill": "permit"
+        "act_permit_pill": "permit",
+        "hover_planned": "{date} · planned {rev} {pct}%",
+        "hover_r0": "original R0 {pct}%",
+        "hover_actual": "actual {pct}%",
+        "hover_hint": "Point at the curve (or focus it and use the arrow keys) to read a date"
       },
       "seat": {
         "chip": "Your authority: {role}",
@@ -16585,7 +16666,7 @@
           "AMD": "When an addendum changing a financial term is signed — never a second advance event"
         },
         "log_title": "Boundary log",
-        "log_sub": "what we sent",
+        "log_sub": "sent and received",
         "log_empty": "Nothing has crossed yet",
         "out": "out",
         "to_finance": "Finance",
@@ -16609,6 +16690,14 @@
           "crm_months": "The contract duration is in months in CRM's handover form, in days here and in the programme.",
           "store_twice": "The project store is now a ledger PM owns (receipt on site, use, returns, moves, losses); Inventory still keeps site stores and write-offs for the same thing — Inventory should keep the main stores only.",
           "prefix": "«أ.ت» is our variation and «أت» the workshop's work order — nearly identical prefixes for two different documents."
+        },
+        "in": "In",
+        "in_kind": {
+          "po": "Purchase order {no} to {supplier}",
+          "collection": "Collection on certificate {no}",
+          "retention": "{stage, select, final {Retention released — final acceptance} other {Retention released — substantial handover}}",
+          "inv_reply": "{reply, select, issue {Store issued {name}} other {Store has no {name} — to be bought}}",
+          "return_in": "{name} — {q} {unit} received back at {wh}"
         }
       },
       "tab": {
@@ -16924,7 +17013,8 @@
           "missing": "{count, plural, one {# missing item} other {# missing items}}",
           "store_return_to": "to {wh} — the keeper confirms receipt",
           "books_off": "sent to Finance {date} · Accounting is off — invoiced and collected outside the books",
-          "retention_books_off": "claimed and collected by Finance outside the books (Accounting is off)"
+          "retention_books_off": "claimed and collected by Finance outside the books (Accounting is off)",
+          "sret_claim": "Procurement claims it from the supplier"
         },
         "src": {
           "proc": "Procurement",
@@ -16934,7 +17024,9 @@
         },
         "none_late": "{count, plural, one {# line} other {# lines}} with other modules — nothing older than {days, plural, one {# day} other {# days}}",
         "show_all": "Show all ({count}) — {by}",
-        "store_return": "{name} — {q} {unit} returned, awaiting the main store"
+        "store_return": "{name} — {q} {unit} returned, awaiting the main store",
+        "request_inv": "{title} — awaiting store authorisation",
+        "store_sret": "Non-conforming, back to the supplier: {q} {unit} {name}"
       },
       "own": {
         "pm": "Project Management",
@@ -16959,7 +17051,9 @@
         "lgd": {
           "proc": "with Procurement — it asks the store",
           "expected": "expected — sent on approval",
-          "way": "part in, or a change"
+          "way": "part in, or a change",
+          "store": "main store",
+          "buy": "buy"
         },
         "no": "MR {no}",
         "grn": "GR {no}",
@@ -17191,7 +17285,13 @@
           "consumables_body": "expensed to site overheads on arrival",
           "price": "Price",
           "price_body": "No price — Inventory values stock, Procurement prices purchases",
-          "send": "Send request"
+          "send": "Send request",
+          "consumables_cat": "Consumables — Inventory catalogue",
+          "unit_other": "Other…",
+          "ovh_left": "Site overhead budget left: {amount}.",
+          "ovh_none": "No site overhead budget recorded on this project.",
+          "main_stock": "{q} in the main stores — may be committed elsewhere; the store decides",
+          "main_none": "no stock in the main stores"
         },
         "rcv": {
           "title": "Receive on the project",
@@ -17706,7 +17806,9 @@
           "no_number": "Enter the off-hire number",
           "not_confirmed": "The desk has not confirmed the off-hire yet",
           "meter_back": "The reading is below the handover's — meters do not run backwards"
-        }
+        },
+        "booked": "booked",
+        "booked_line": "booked {from} → {to} — not arrived yet"
       },
       "petty": {
         "title": "Direct site purchases",
@@ -17758,7 +17860,9 @@
         },
         "full": "Fully received",
         "pct": "{pct}% received",
-        "link_note": "Orders reach this project when Procurement answers its material requests."
+        "link_note": "Orders reach this project when Procurement answers its material requests.",
+        "above_est": "{pct}% above your estimate",
+        "below_est": "{pct}% below your estimate"
       },
       "price": {
         "title": "Material price history",
@@ -17970,7 +18074,13 @@
           "clear": "clear",
           "committed": "Materials committed",
           "committed_pct": "{pct} of the scope under contract",
-          "no_commitment": "no order or subcontract yet"
+          "no_commitment": "no order or subcontract yet",
+          "committed_value": "Committed by orders and contracts",
+          "committed_value_of": "{value} ({pct} of scope)",
+          "commit_po": "PO — Procurement",
+          "commit_sub": "Subcontract — PM",
+          "commit_recv": "received {pct}",
+          "committed_count": "{count, plural, one {# order or contract} other {# orders and contracts}} on this item"
         },
         "price_title": "Price an item",
         "price_note": "An unpriced item cannot be billed. Pricing it adds it to the contract and makes whatever was measured claimable at once — so do not price it with a rate nobody agreed.",
@@ -18244,7 +18354,8 @@
         "po_title": "Purchase orders on this item",
         "po_from": "from request {no}",
         "po_proc": "PO — Procurement",
-        "recv": "{pct}% received"
+        "recv": "{pct}% received",
+        "need_line_30": "need 30d {need} · on site {site} · on the way {way}"
       },
       "hold": {
         "hold": "Postpone",
@@ -18271,7 +18382,8 @@
         "terms": "Terms & amendments",
         "meas": "Measurement",
         "claim": "Claims",
-        "po": "Purchase orders"
+        "po": "Purchase orders",
+        "close": "Closeout"
       },
       "manual": {
         "title": "New project",
@@ -19784,7 +19896,9 @@
       "log": {
         "added": "Added from the platform directory — awaiting its record",
         "verified": "Supplier verified",
-        "record_updated": "Supplier record updated"
+        "record_updated": "Supplier record updated",
+        "favourite_on": "Added to favourites",
+        "favourite_off": "Removed from favourites"
       },
       "record": {
         "title": "Edit supplier record",
@@ -19880,6 +19994,10 @@
         "title": "Suppliers & prices",
         "subtitle": "Supplier file, agreements and price history — rating is computed from its orders, not typed stars",
         "empty_desc": "Add one from the platform directory, or invite a supplier who is not on the platform yet."
+      },
+      "p2c": {
+        "off_platform": "Off-platform supplier: gets requests and orders by link; its file lives here only — no Mdmak profile and no ratings from other contractors.",
+        "search_all": "Search a supplier, material or agreement"
       }
     },
     "InvPm": {
@@ -20331,7 +20449,7 @@
     "closed_revoked": "This link was replaced by a newer one. Use the latest link you received.",
     "closed_missing": "The link is not valid. Check you copied all of it.",
     "err_count_every_line": "Enter the received quantity for every line (zero if nothing came).",
-    "err_rejected_over": "More rejected than received for “{name}”.",
+    "err_rejected_over": "More rejected and on hold than received for “{name}”.",
     "err_reason_needed": "Choose a reason for rejecting “{name}”.",
     "err_nothing_counted": "Nothing has been counted as received.",
     "err_name": "Enter your name.",
@@ -20341,7 +20459,11 @@
     "err_wrong_code": "That code is not right.",
     "err_code_expired": "The code has expired or had too many tries. Ask for a new one.",
     "err_generic": "That did not save. Try again.",
-    "procurement_note": "Note from Procurement"
+    "procurement_note": "Note from Procurement",
+    "blank_hint": "A line that did not arrive — leave it blank; it is recorded as zero.",
+    "held": "Of which on hold",
+    "hold_reason": "Why on hold?",
+    "err_hold_reason_needed": "Choose why “{name}” is on hold."
   },
   "PmPortal": {
     "eyebrow": "Consultant portal",

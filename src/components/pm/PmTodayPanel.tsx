@@ -5,7 +5,7 @@
 // prototype opens the work itself (prepare the IPC), the page is told the kind.
 
 import { useState } from "react"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import {
   Activity,
   AlertTriangle,
@@ -48,7 +48,7 @@ import { Panel } from "@/components/module-ui/Panel"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { usePmDecisions, type PmDecisionProject } from "@/hooks/usePmDecisions"
 import type { DecisionKind, DecisionTab, PmDecision } from "@/lib/pm/decisions"
-import { pmMoney } from "@/lib/pm/format"
+import { pmDate, pmMoney } from "@/lib/pm/format"
 import { cn } from "@/lib/utils"
 
 export const DECISION_ICON: Record<DecisionKind, LucideIcon> = {
@@ -108,7 +108,19 @@ export const DECISION_ICON: Record<DecisionKind, LucideIcon> = {
 /** One decision row: the kind's own action, filled when it is red (the prototype's rule). */
 export function DecisionItem({ d, money, onOpen, project }: { d: PmDecision; money: boolean; onOpen: () => void; project?: string }) {
   const t = useTranslations("Portal.PM")
-  const detail = t(`dec.${d.kind}.detail`, { count: d.count ?? 0 })
+  const locale = useLocale()
+  const v = d.vars ?? {}
+  const detail = t(`dec.${d.kind}.${d.detail ?? "detail"}`, {
+    count: d.count ?? 0,
+    name: v.name ?? "—",
+    cause: v.cause ?? "—",
+    date: v.date ? pmDate(v.date, locale) : "—",
+    payer: v.payer ?? "—",
+    why: v.why ?? "—",
+    points: v.points ?? 0,
+    rate: v.rate ?? 0,
+    cap: v.cap ?? 0,
+  })
   return (
     <DecisionRow
       severity={d.severity}
@@ -120,7 +132,7 @@ export function DecisionItem({ d, money, onOpen, project }: { d: PmDecision; mon
       amount={d.amount && money ? pmMoney(d.amount) : undefined}
       action={
         <Button size="sm" variant={d.severity === "red" ? "default" : "outline"} className={cn(d.severity === "red" ? "bg-module text-module-foreground hover:bg-module/90" : "border border-border bg-card text-foreground shadow-none hover:bg-muted")} onClick={onOpen}>
-          {t(`dec.${d.kind}.act`)}
+          {t(`dec.${d.kind}.${d.act ?? "act"}`)}
         </Button>
       }
     />

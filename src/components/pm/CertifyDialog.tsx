@@ -55,7 +55,7 @@ export function CertifyDialog({
   const [ref, setRef] = useState("")
   const [busy, setBusy] = useState(false)
   const projectRef = useMemoFirebase(() => (firestore ? doc(firestore, "projects", projectId) : null), [firestore, projectId])
-  const { data: projectDoc } = useDoc<{ pm?: { no?: string } }>(projectRef)
+  const { data: projectDoc } = useDoc<{ name?: string; pm?: { no?: string } }>(projectRef)
   const projectNo = projectDoc?.pm?.no ?? null
 
   useEffect(() => {
@@ -98,7 +98,7 @@ export function CertifyDialog({
       <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("ipc.certify_title_consultant")}</DialogTitle>
-          <DialogDescription>{t("ipc.no", { no: certificateNo(cert.seq) })}</DialogDescription>
+          <DialogDescription dir="auto">{[t("ipc.no", { no: certificateNo(cert.seq) }), projectDoc?.name].filter(Boolean).join(" — ")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">

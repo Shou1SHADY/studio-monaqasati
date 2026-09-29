@@ -40,14 +40,14 @@ jest.mock("@/lib/firebaseAdmin", () => ({
   getAdminFirestore: () => ({ collection: (name: string) => collectionRef(name) }),
 }))
 
-import { buildReport, linkRefusal, receiverFrom } from "@/lib/receipt-links"
+import { buildReport, linkRefusal, receiverFrom, signBody } from "@/lib/receipt-links"
 import { GET } from "@/app/api/receipt-links/[token]/route"
 
 const base: DeliveryLine[] = [
   { poLineId: "l1", name: "Cement", unit: "bag", noticeQuantity: 100 },
   { poLineId: "l2", name: "Sand", unit: "m3", noticeQuantity: 20 },
 ]
-const answer = (over: Partial<{ poLineId: string; counted: number; rejected: number; rejectReason: "damaged" | null }> = {}) => ({
+const answer = (over: Partial<{ poLineId: string; counted: number; rejected: number; rejectReason: "damaged" | "sample" | null; held: number; holdReason: "test" | null }> = {}) => ({
   poLineId: "l1",
   counted: 100,
   rejected: 0,
@@ -74,6 +74,20 @@ describe("the receiver's count", () => {
   it("refuses a line that is not on the delivery, or one answered twice", () => {
     expect(buildReport({ lines: [answer({ poLineId: "ghost" }), answer({ poLineId: "l2" })] }, base)).toMatchObject({ error: "unknown_line" })
     expect(buildReport({ lines: [answer(), answer()] }, base)).toMatchObject({ error: "unknown_line" })
+  })
+
+  it("carries a quantity held for inspection with its reason, like the office form (#128)", () => {
+    const r = buildReport({ lines: [answer({ rejected: 3, rejectReason: "sample", held: 10, holdReason: "test" }), answer({ poLineId: "l2", counted: 0 })] }, base)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.lines.map((l) => [l.poLineId, l.counted, l.rejected, l.rejectReason, l.held, l.holdReason])).toEqual([["l1", 100, 3, "sample", 10, "test"], ["l2", 0, 0, null, 0, null]])
+    expect(buildReport({ lines: [answer({ held: 5 }), answer({ poLineId: "l2" })] }, base)).toMatchObject({ error: "hold_needs_reason" })
+    expect(buildReport({ lines: [answer({ counted: 10, rejected: 6, rejectReason: "damaged", held: 5, holdReason: "test" }), answer({ poLineId: "l2" })] }, base)).toMatchObject({ error: "rejected_over_counted" })
+  })
+
+  it("the link's request accepts a hold and the approved-sample reject (#121)", () => {
+    const parsed = signBody.safeParse({ challengeId: "c", code: "123456", receiverName: "Nasser", lines: [{ poLineId: "l1", counted: 5, rejected: 1, rejectReason: "sample", held: 2, holdReason: "certificate" }] })
+    expect(parsed.success).toBe(true)
+    expect(signBody.safeParse({ challengeId: "c", code: "123456", receiverName: "Nasser", lines: [{ poLineId: "l1", counted: 5, rejected: 0, held: 2, holdReason: "whim" }] }).success).toBe(false)
   })
 
   it("refuses a signature for nothing at all", () => {

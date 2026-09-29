@@ -413,6 +413,30 @@ function SCurve({
   const stepDays = Math.max(30, Math.round(span / 7 / 30) * 30)
   for (let d = 0; d <= span; d += stepDays) ticks.push(d)
   const dayLabel = (d: number) => pmDate(new Date(Date.parse(`${start}T00:00:00Z`) + d * 86_400_000).toISOString().slice(0, 10), locale)
+  const [hover, setHover] = useState<number | null>(null)
+  const clampDay = (d: number) => Math.max(0, Math.min(span, Math.round(d)))
+  const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const box = e.currentTarget.getBoundingClientRect()
+    const x = ((e.clientX - box.left) / Math.max(1, box.width)) * W
+    setHover(clampDay(((x - L) / (W - L - R)) * span))
+  }
+  const onKey = (e: React.KeyboardEvent<SVGSVGElement>) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
+    e.preventDefault()
+    setHover((h) => clampDay((h ?? now) + (e.key === "ArrowRight" ? 7 : -7)))
+  }
+  // The actual line at a day: the last approved measurement on or before it — nothing after today.
+  const actualAt = (d: number) => (d > now ? null : (act.filter(([x]) => x <= d).pop()?.[1] ?? null))
+  const readout =
+    hover === null
+      ? null
+      : [
+          t("prg.hover_planned", { date: dayLabel(hover), rev, pct: Math.round(planF(Math.min(1, hover / effective), k)) }),
+          original !== null ? t("prg.hover_r0", { pct: Math.round(planF(Math.min(1, hover / original), k)) }) : null,
+          actualAt(hover) !== null ? t("prg.hover_actual", { pct: actualAt(hover) as number }) : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")
   return (
     <div>
       <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -431,8 +455,22 @@ function SCurve({
           {t("prg.legend_actual")}
         </span>
       </div>
+      <p className="mb-1 min-h-5 text-xs font-semibold tabular-nums text-foreground" aria-live="polite">
+        {readout ?? <span className="font-normal text-muted-foreground">{t("prg.hover_hint")}</span>}
+      </p>
       <div dir="ltr">
-        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t("prg.curve_aria")} className="block h-auto w-full">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          role="img"
+          aria-label={t("prg.curve_aria")}
+          tabIndex={0}
+          onPointerMove={onMove}
+          onPointerLeave={() => setHover(null)}
+          onFocus={() => setHover(now)}
+          onBlur={() => setHover(null)}
+          onKeyDown={onKey}
+          className="block h-auto w-full touch-none rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           {[0, 25, 50, 75, 100].map((v) => (
             <g key={v}>
               <line x1={L} x2={W - R} y1={Y(v)} y2={Y(v)} className="stroke-muted" strokeWidth={1} />
@@ -454,6 +492,7 @@ function SCurve({
               <title>{`${dayLabel(d)} · ${t("prg.planned")} ${Math.round(planF(d / effective, k))}% · ${t("prg.actual")} ${v}%`}</title>
             </circle>
           ))}
+          {hover !== null && <line x1={X(hover)} x2={X(hover)} y1={T} y2={H - B} className="stroke-cta" strokeWidth={1} />}
           <line x1={X(now)} x2={X(now)} y1={T} y2={H - B} className="stroke-foreground/60" strokeWidth={1} strokeDasharray="2 3" />
           <text x={X(now) + 5} y={T + 9} fontSize={10} fontWeight={700} className="fill-foreground/70">
             {t("prg.today")}

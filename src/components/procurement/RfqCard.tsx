@@ -2,7 +2,7 @@
 
 // One RFQ as a card (the reference prototype's RFQ grid): a coloured top edge
 // and a status pill that say its stage at a glance, its number, its title, the
-// project (or general stock / the workshop) and the categories of its lines,
+// projects its lines are charged to (or general stock / the workshop) and their categories,
 // what it asks and what came back — offers, or the supplier of a direct award —
 // its unanswered queries, its city, deadline ("n left" always) and author, and
 // the actions its stage allows: complete a draft, view offers and queries,
@@ -126,7 +126,8 @@ export function UnansweredTag({ count }: { count: number }) {
 
 export interface RfqCardProps {
   rfq: RfqRow
-  projectLabel: string
+  /** One chip per place the lines are charged to (`rfqProjectKeys`). */
+  projectLabels: string[]
   sealed: boolean
   now: Date
   offersHref: string
@@ -167,9 +168,11 @@ export function RfqCard(p: RfqCardProps) {
         </h3>
 
         <div className="flex flex-wrap gap-1.5">
-          <Tag icon={LayoutGrid} tone="info">
-            {p.projectLabel}
-          </Tag>
+          {p.projectLabels.map((label, i) => (
+            <Tag key={`${label}-${i}`} icon={LayoutGrid} tone="info">
+              <span dir="auto">{label}</span>
+            </Tag>
+          ))}
           {rfqCategories(rfq).map((c) => (
             <Tag key={c}>{displayCategory(c, locale)}</Tag>
           ))}

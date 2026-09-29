@@ -47,7 +47,7 @@ import {
   type PmHandover,
   type ProjectKind,
 } from "@/lib/pm/handover"
-import { acceptHandover, PmHandoverError, type PmActor } from "@/lib/pm/handover-writes"
+import { acceptHandover, fileExtras, PmHandoverError, type PmActor } from "@/lib/pm/handover-writes"
 import type { PmContext } from "@/lib/pm/access"
 import {
   ADVANCE_CHOICES,
@@ -134,6 +134,7 @@ export function AcceptHandoverWizard({
   const [draft, setDraft] = useState<ManualProjectDraft>(blankDraft)
   const [kind, setKind] = useState<ProjectKind>(handover?.kind ?? "bld")
   const [location, setLocation] = useState(handover?.location ?? "")
+  const [region, setRegion] = useState(handover ? (fileExtras(handover).region ?? "") : "")
   const [managerUid, setManagerUid] = useState("")
   const [siteUid, setSiteUid] = useState("")
   const [note, setNote] = useState("")
@@ -153,6 +154,7 @@ export function AcceptHandoverWizard({
     setDraft(blankDraft())
     setKind(handover?.kind ?? "bld")
     setLocation(handover?.location ?? "")
+    setRegion(handover ? (fileExtras(handover).region ?? "") : "")
     setSiteUid("")
     setNote("")
     setSections(sectionsForKind(handover?.kind ?? "bld"))
@@ -209,6 +211,7 @@ export function AcceptHandoverWizard({
   }
 
   const xlItems = (boq?.items ?? []).filter((i) => i.selected)
+  const xlUnpriced = xlItems.filter((i) => !(i.rate > 0)).length
   const selfDev = isSelfDevelopment(kind)
   const manualBlocks = manual ? manualProjectBlocks({ ...draft, kind, location }, managerUid || null) : []
   const blocks = [
@@ -225,7 +228,7 @@ export function AcceptHandoverWizard({
     if (!firestore || blocks.length || !manager) return
     setBusy(true)
     try {
-      const central = resolveCentralForRegion(centrals, null)
+      const central = resolveCentralForRegion(centrals, (handover ? region : draft.region).trim() || null)
       const managerSeat = { uid: manager.uid, name: manager.name, groupId: manager.groupId }
       const siteSeat = site ? { uid: site.uid, name: site.name, groupId: site.groupId } : null
       const store = storeOn ? { name: tC("proj_auto_warehouse_name", { name: title }), centralWarehouseId: central?.id ?? null } : null
@@ -234,6 +237,7 @@ export function AcceptHandoverWizard({
         ? await acceptHandover(firestore, actor, handover.id, {
             kind,
             location: location.trim() || null,
+            region: region.trim() || null,
             enabledSections: sections,
             manager: managerSeat,
             siteEngineer: siteSeat,
@@ -518,11 +522,18 @@ export function AcceptHandoverWizard({
               />
               <KeyValueRow label={t("wizard.row_signed_start")} value={t("wizard.signed_start", { signed: pmDate(handover.signedOn, locale), start: pmDate(handover.startOn, locale) })} />
               <KeyValueRow label={t("wizard.row_terms")} value={t("wizard.terms_line", { advance: pmPct(handover.advance), retention: pmPct(handover.retention) })} />
+              {fileExtras(handover).consultantName && <KeyValueRow label={t("wizard.row_consultant")} value={<span dir="auto">{fileExtras(handover).consultantName}</span>} />}
               <KeyValueRow label={t("wizard.row_boq")} value={crmCount ? t("wizard.boq_from_bid", { count: crmCount }) : <span className="font-bold text-destructive">{t("wizard.boq_not_attached")}</span>} />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="acc-loc">{t("wizard.site_location")}</Label>
-              <Input id="acc-loc" dir="auto" value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t("wizard.site_location_ph")} disabled={busy} />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="acc-region">{t("manual.region")}</Label>
+                <Input id="acc-region" dir="auto" value={region} onChange={(e) => setRegion(e.target.value)} placeholder={t("manual.region_ph")} disabled={busy} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="acc-loc">{t("wizard.site_location")}</Label>
+                <Input id="acc-loc" dir="auto" value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t("wizard.site_location_ph")} disabled={busy} />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="acc-pm">{t("wizard.pm_label")}</Label>
@@ -698,6 +709,39 @@ export function AcceptHandoverWizard({
                   <input type="file" accept=".xlsx,.xls,.csv" className="sr-only" onChange={(e) => void onFile(e.target.files?.[0])} disabled={parsing || busy} />
                 </label>
                 {boq && <p className="text-sm font-semibold text-success">{t("wizard.boq_loaded", { count: xlItems.length })}</p>}
+                {boq && xlItems.length > 0 && (
+                  <section className="rounded-xl border" aria-labelledby="xl-review-title">
+                    <div className="border-b px-3 py-2">
+                      <p id="xl-review-title" className="text-sm font-bold">
+                        {t("wizard.xl_review_title")}
+                      </p>
+                      <p className={cn("text-xs", xlUnpriced ? "font-semibold text-warning" : "text-muted-foreground")}>
+                        {xlUnpriced ? t("wizard.xl_review_unpriced", { count: xlItems.length, unpriced: xlUnpriced }) : t("wizard.xl_review_all_priced", { count: xlItems.length })}
+                      </p>
+                    </div>
+                    <ul className="max-h-64 divide-y overflow-y-auto">
+                      {xlItems.map((item) => {
+                        const unpriced = !(item.rate > 0)
+                        return (
+                          <li key={item.id} className={cn("flex items-start gap-3 px-3 py-2 text-xs", unpriced && "bg-warning/5")}>
+                            <span className="w-16 shrink-0 font-mono tabular-nums text-muted-foreground" dir="ltr">
+                              {item.itemNo || "—"}
+                            </span>
+                            <span className="min-w-0 flex-1" dir="auto">
+                              {(locale === "ar" ? item.descriptionAr || item.descriptionEn : item.descriptionEn || item.descriptionAr) || "—"}
+                            </span>
+                            <span className="shrink-0 tabular-nums" dir="ltr">
+                              {item.quantity} {item.unit}
+                            </span>
+                            <span className="w-24 shrink-0 text-end">
+                              {unpriced ? <StatusPill tone="warn">{t("wizard.xl_unpriced")}</StatusPill> : <span className="tabular-nums">{pmMoney(item.rate)}</span>}
+                            </span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </section>
+                )}
               </>
             )}
             <div className="rounded-xl border px-4">

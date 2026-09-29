@@ -46,6 +46,7 @@ import {
   type VoStatus,
 } from "@/lib/pm/variation"
 import { approveVariation, logVariation, PmVariationError, priceVariation, recordVariationProgress, rejectVariation, submitVariation, type VoActor } from "@/lib/pm/variation-writes"
+import { PURCHASE_REQUESTS, requestOf } from "@/lib/pm/supply"
 import { cn } from "@/lib/utils"
 import { CheckLine, ChoiceChips, FileLinks, FormHint } from "./ContractBits"
 
@@ -101,6 +102,17 @@ export function VariationsPanel({
   const { data } = useCollection(q)
   const vos = useMemo(() => ((data ?? []) as unknown as PmVariation[]).slice().sort((a, b) => b.seq - a.seq), [data])
   const open = vos.find((v) => v.id === openId) ?? null
+  const rejecting = decide !== null && !decide.approve
+  const reqQ = useMemoFirebase(() => (firestore && rejecting ? collection(firestore, "projects", projectId, PURCHASE_REQUESTS) : null), [firestore, projectId, rejecting])
+  const { data: reqData } = useCollection(reqQ)
+  // Material lines put "on the client" under this variation: its rejection hands each back to the manager.
+  const linkedBack = useMemo(
+    () =>
+      decide && !decide.approve
+        ? ((reqData ?? []) as Array<Record<string, unknown> & { id: string }>).map(requestOf).reduce((a, r) => a + r.lines.filter((l) => l.chg?.st === "own" && l.chg.voSeq === decide.vo.seq).length, 0)
+        : 0,
+    [reqData, decide]
+  )
   const money = access.has("money")
   const canLog = !access.ctx.archived && access.allowed("variation.log")
   const canDecide = !access.ctx.archived && access.allowed("variation.decide")
@@ -643,6 +655,7 @@ export function VariationsPanel({
               {!decide.approve && decide.vo.executedPct > 0 && (
                 <Callout tone="block">{money ? t("vo.rej_executed", { pct: Math.round(decide.vo.executedPct * 100), amount: pmMoney(voAtRisk(decide.vo)) }) : t("vo.rej_executed_nomoney", { pct: Math.round(decide.vo.executedPct * 100) })}</Callout>
               )}
+              {!decide.approve && linkedBack > 0 && <Callout tone="warn">{t("vo.rej_linked_back", { count: linkedBack })}</Callout>}
               <BlockingReasons title={t("cannot_save")} reasons={decideBlocks.map((b) => t(`vo.block.${b}`))} />
             </div>
           )}

@@ -405,12 +405,17 @@ export interface StatementLine {
   index: number
   name: string
   unit: string
+  /** On the order: what was ordered less what was cancelled. */
   ordered: number
   accepted: number
   rejected: number
   held: number
   cancelled: number
   outstanding: number
+  /** Announced on a supplier's notice not yet received. */
+  onTheWay: number
+  /** Still owed and on no notice: outstanding − held − on the way. */
+  notShipped: number
 }
 
 export interface StatementReceipt {
@@ -419,13 +424,26 @@ export interface StatementReceipt {
   accepted: number
   rejected: number
   held: number
+  place: string | null
   receiver: string | null
+}
+
+/** The supplier as the statement names it — whatever of its identity we know. */
+export interface StatementSupplier {
+  cr: string | null
+  vat: string | null
+  city: string | null
+  phone: string | null
 }
 
 export interface StatementModel {
   number: string
   supplierName: string
+  supplier: StatementSupplier | null
   company: PrintCompany
+  /** Who signs: the buyer who prepared the order and the manager who approved it. */
+  preparedBy: string | null
+  approvedBy: string | null
   projectName: string | null
   deliveryLocation: string | null
   approvedAt: string | null
@@ -437,38 +455,60 @@ export interface StatementModel {
   printedAt: string
 }
 
-/** The receipt statement — quantities only, safe for anyone. Receipts oldest first. */
-export function buildStatementModel(po: PurchaseOrder, receipts: ReceiptFact[], company: PrintCompany, now: Date): StatementModel {
-  const mine = receiptsOf(po, receipts).sort((a, b) => (receiptDay(a) < receiptDay(b) ? -1 : 1))
+/** The receipt statement — quantities only, safe for anyone. Receipts oldest
+ * first; printable before anything arrived (every column zero). `deliveries`
+ * may hold the pending notices too: they are what is "on the way". */
+export function buildStatementModel(
+  po: PurchaseOrder,
+  deliveries: ReceiptFact[],
+  company: PrintCompany,
+  now: Date,
+  facts: { supplier?: StatementSupplier | null; placeName?: (warehouseId: string | null | undefined) => string | null } = {}
+): StatementModel {
+  const mine = receiptsOf(po, deliveries).sort((a, b) => (receiptDay(a) < receiptDay(b) ? -1 : 1))
   const sum = (r: ReceiptFact, k: "accepted" | "rejected" | "held") => round2((r.lines || []).reduce((s, l) => s + (Number(l[k]) || 0), 0))
+  const pending = deliveries.filter((d) => d.poId === po.id && d.status !== "confirmed" && !(d as ReceiptFact & { closedByReceipt?: unknown }).closedByReceipt)
+  const onTheWay = (lineId: string) => round2(pending.reduce((s, d) => s + (d.lines || []).filter((l) => l.poLineId === lineId).reduce((a, l) => a + (Number(l.noticeQuantity) || 0), 0), 0))
   return {
     number: po.docNumber,
     supplierName: po.supplierName,
+    supplier: facts.supplier ?? null,
     company,
+    preparedBy: po.preparedByName || null,
+    approvedBy: po.approvedByName || null,
     projectName: po.projectName || null,
     deliveryLocation: po.deliveryLocation || null,
     approvedAt: dayOf(po.approvedAt) || null,
     promisedDate: po.promisedDate || null,
     complete: isReceived(po) || po.status === "closed",
-    lines: po.lines.map((l, i) => ({
-      index: i + 1,
-      name: l.name,
-      unit: l.unit,
-      ordered: Number(l.quantity) || 0,
-      accepted: Number(l.accepted) || 0,
-      rejected: Number(l.rejected) || 0,
-      held: Number(l.held) || 0,
-      cancelled: Number(l.cancelled) || 0,
-      outstanding: lineOutstanding(l),
-    })),
-    receipts: mine.map((r) => ({
-      number: r.docNumber || r.id,
-      date: receiptDay(r),
-      accepted: sum(r, "accepted"),
-      rejected: sum(r, "rejected"),
-      held: sum(r, "held"),
-      receiver: (r as ReceiptFact & { receivedByName?: string | null }).receivedByName || null,
-    })),
+    lines: po.lines.map((l, i) => {
+      const transit = Math.min(onTheWay(l.id), lineToArrive(l))
+      return {
+        index: i + 1,
+        name: l.name,
+        unit: l.unit,
+        ordered: round2((Number(l.quantity) || 0) - (Number(l.cancelled) || 0)),
+        accepted: Number(l.accepted) || 0,
+        rejected: Number(l.rejected) || 0,
+        held: Number(l.held) || 0,
+        cancelled: Number(l.cancelled) || 0,
+        outstanding: lineOutstanding(l),
+        onTheWay: transit,
+        notShipped: Math.max(0, round2(lineToArrive(l) - transit)),
+      }
+    }),
+    receipts: mine.map((r) => {
+      const x = r as ReceiptFact & { receivedByName?: string | null; landedWarehouseId?: string | null; warehouseId?: string | null }
+      return {
+        number: r.docNumber || r.id,
+        date: receiptDay(r),
+        accepted: sum(r, "accepted"),
+        rejected: sum(r, "rejected"),
+        held: sum(r, "held"),
+        place: facts.placeName?.(x.landedWarehouseId || x.warehouseId) || null,
+        receiver: x.receivedByName || null,
+      }
+    }),
     outstanding: outstandingLines(po),
     printedAt: now.toISOString(),
   }

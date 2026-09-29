@@ -34,10 +34,12 @@ import {
   daysBetween,
   lineDays,
   lineGot,
+  lineInTransit,
   lineNeed,
   lineOut,
   linePhase,
   lineRejected,
+  lineSplit,
   needsWithin,
   openChanges,
   receivable,
@@ -127,6 +129,8 @@ export function SupplyRequestsPanel({
         )}
         {live.length > 0 && (
           <div className="flex flex-wrap gap-2 border-t px-4 py-2 text-[11px] text-muted-foreground">
+            <Seg icon={ArrowLeftRight}>{t("sup.lgd.store")}</Seg>
+            <Seg icon={ShoppingCart}>{t("sup.lgd.buy")}</Seg>
             <Seg icon={Link2}>{t("sup.lgd.proc")}</Seg>
             <Seg tone="prp">{t("sup.lgd.expected")}</Seg>
             <Seg tone="w">{t("sup.lgd.way")}</Seg>
@@ -214,7 +218,7 @@ export function SupplyRequestsPanel({
         }}
         onOpenStore={onOpenStore}
       />
-      {composer && <NewRequestDialog projectId={projectId} access={access} actor={actor} items={items} world={world} startOn={startOn} seed={composer.seed} onClose={() => setComposer(null)} />}
+      {composer && <NewRequestDialog projectId={projectId} orgId={orgId} access={access} actor={actor} items={items} world={world} startOn={startOn} seed={composer.seed} onClose={() => setComposer(null)} />}
       {lineDialog?.kind === "rcv" && <ReceiveDialog projectId={projectId} orgId={orgId} withStore={withStore} access={access} actor={actor} request={lineDialog.request} index={lineDialog.index} onClose={() => setLineDialog(null)} />}
       {lineDialog?.kind === "stop" && <StopLineDialog projectId={projectId} access={access} actor={actor} request={lineDialog.request} index={lineDialog.index} onClose={() => setLineDialog(null)} />}
       {lineDialog?.kind === "own" && <ChangeOnClientDialog projectId={projectId} access={access} actor={actor} request={lineDialog.request} index={lineDialog.index} onClose={() => setLineDialog(null)} />}
@@ -279,6 +283,28 @@ function PhaseSegs({ r, l }: { r: PmMaterialRequest; l: ReqLine }) {
   )
 }
 
+/** The line's portions once Inventory replied: from a main store, and bought. */
+function SplitSegs({ r, l }: { r: PmMaterialRequest; l: ReqLine }) {
+  const t = useTranslations("Portal.PM")
+  const split = lineSplit(l)
+  const p = linePhase(r, l)
+  if (!split || p === "prop" || p === "held" || p === "refused" || p === "cx") return null
+  return (
+    <>
+      {split.store > 0 && (
+        <Seg tone={lineInTransit(l) > 0 ? "w" : undefined} icon={ArrowLeftRight} title={l.inv?.warehouseName ?? undefined}>
+          {qty(split.store)} · {t("sup.lgd.store")}
+        </Seg>
+      )}
+      {split.buy > 0 && (
+        <Seg icon={ShoppingCart}>
+          {qty(split.buy)} · {t("sup.lgd.buy")}
+        </Seg>
+      )}
+    </>
+  )
+}
+
 const phaseIcon = (r: PmMaterialRequest, p: LinePhase) => (p === "mfg" ? Factory : p === "ask" ? Link2 : r.poId ? ShoppingCart : ArrowLeftRight)
 
 function ChangeTag({ l }: { l: ReqLine }) {
@@ -334,6 +360,7 @@ function RequestRow({ r, world, items, access, actor, projectId, onOpen, onRejec
               </span>
               <ChangeTag l={l} />
               <PhaseSegs r={r} l={l} />
+              <SplitSegs r={r} l={l} />
               <CloseTag l={l} />
             </div>
           ))}

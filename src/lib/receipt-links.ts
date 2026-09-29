@@ -17,8 +17,8 @@ import { z } from "zod"
 import type { Firestore } from "firebase-admin/firestore"
 import { can as resolveCan, type PermissionId, type TeamGroup } from "@/lib/permissions"
 import { linesForReceipt } from "@/lib/procurement/receipts"
-import { REJECT_REASON_CODES } from "@/lib/procurement/po"
-import { PURCHASE_ORDERS, type DeliveryLine, type PurchaseOrder } from "@/lib/procurement/types"
+import { HOLD_REASON_CODES, REJECT_REASON_CODES } from "@/lib/procurement/po"
+import { PURCHASE_ORDERS, type DeliveryLine, type HoldReasonCode, type PurchaseOrder } from "@/lib/procurement/types"
 import { maskPhone } from "@/lib/otp"
 import { normalizePhoneE164 } from "@/lib/sms"
 
@@ -61,6 +61,9 @@ export interface ReceiverReportLine {
   counted: number
   rejected: number
   rejectReason: string | null
+  /** Set aside for inspection — neither issued nor paid until released. */
+  held: number
+  holdReason: HoldReasonCode | null
   note: string | null
 }
 
@@ -101,6 +104,8 @@ export const signBody = z.object({
         counted: z.number().finite().min(0).max(1e9),
         rejected: z.number().finite().min(0).max(1e9),
         rejectReason: z.enum(REJECT_REASON_CODES).nullable().optional(),
+        held: z.number().finite().min(0).max(1e9).optional(),
+        holdReason: z.enum(HOLD_REASON_CODES).nullable().optional(),
         note: z.string().trim().max(500).nullable().optional(),
       })
     )
@@ -115,13 +120,14 @@ export const signBody = z.object({
 })
 export type SignInput = z.infer<typeof signBody>
 
-export type ReportError = "unknown_line" | "missing_line" | "rejected_over_counted" | "reject_needs_reason" | "nothing_counted"
+export type ReportError = "unknown_line" | "missing_line" | "rejected_over_counted" | "reject_needs_reason" | "hold_needs_reason" | "nothing_counted"
 
 /**
  * Check a receiver's count against the delivery's own lines — pure, and the
- * part the tests read. Every line must be answered exactly once (a line left
- * out would read as "nothing arrived"), rejected can never exceed counted, and
- * a rejection names its reason, as the office's receiving form requires.
+ * part the tests read. Every line must be answered exactly once (a line that
+ * did not arrive is answered with 0, never left out), rejected + held can never
+ * exceed counted, and a rejection or a hold names its reason, as the office's
+ * receiving form requires.
  */
 export function buildReport(
   input: Pick<SignInput, "lines">,
@@ -134,8 +140,10 @@ export function buildReport(
     const line = byId.get(row.poLineId)
     if (!line || seen.has(row.poLineId)) return { ok: false, error: "unknown_line", poLineId: row.poLineId }
     seen.add(row.poLineId)
-    if (row.rejected > row.counted) return { ok: false, error: "rejected_over_counted", poLineId: row.poLineId }
+    const held = row.held ?? 0
+    if (row.rejected + held > row.counted) return { ok: false, error: "rejected_over_counted", poLineId: row.poLineId }
     if (row.rejected > 0 && !row.rejectReason) return { ok: false, error: "reject_needs_reason", poLineId: row.poLineId }
+    if (held > 0 && !row.holdReason) return { ok: false, error: "hold_needs_reason", poLineId: row.poLineId }
     lines.push({
       poLineId: row.poLineId,
       name: line.name,
@@ -143,6 +151,8 @@ export function buildReport(
       counted: row.counted,
       rejected: row.rejected,
       rejectReason: row.rejected > 0 ? row.rejectReason ?? null : null,
+      held,
+      holdReason: held > 0 ? row.holdReason ?? null : null,
       note: row.note?.trim() || null,
     })
   }

@@ -106,7 +106,7 @@ export interface ReceiveDeliveryDialogProps {
   /** A legacy notice's value (the offer's price ex-VAT). */
   legacyNet?: number | null
   purchaseSource?: PurchaseSource
-  warehouses: Array<{ id: string; name: string }>
+  warehouses: Array<{ id: string; name: string; projectId?: string | null }>
   /** Where the goods go by default (the project's warehouse, else central). */
   defaultWarehouseId?: string | null
   onDone: (result: RecordReceiptResult) => void
@@ -169,20 +169,22 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
       checklist: [],
       lines: base.map((l) => {
         const s = signed.get(l.poLineId)
+        // A line the link left at 0 did not arrive: blank here, as the office form skips it.
+        const arrived = s && (s.counted > 0 || s.rejected > 0 || (s.held ?? 0) > 0)
         return {
           poLineId: l.poLineId,
-          counted: s ? String(s.counted) : "",
+          counted: arrived ? String(s.counted) : "",
           rejected: s && s.rejected > 0 ? String(s.rejected) : "",
           rejectReason: s?.rejectReason || "",
           rejectNote: s?.note || "",
-          held: "",
-          holdReason: "",
+          held: s && (s.held ?? 0) > 0 ? String(s.held) : "",
+          holdReason: s?.holdReason || "",
         }
       }),
     })
     setSignature(report?.signatureData || null)
     setOpenReject(Object.fromEntries((report?.lines || []).filter((l) => l.rejected > 0).map((l) => [l.poLineId, true])))
-    setOpenHold({})
+    setOpenHold(Object.fromEntries((report?.lines || []).filter((l) => (l.held ?? 0) > 0).map((l) => [l.poLineId, true])))
   }, [open, base, actor.name, delivery, defaultWarehouseId, reset])
 
   // useWatch, not watch: watch("lines") hands back the same array RHF mutates in
@@ -266,6 +268,10 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
   // Under `buyerReceives` the buyer records it himself — never blocked, always flagged.
   const noReceiver = receiveRight(actor, policies) === "buyer"
   const selfReceive = noReceiver || Boolean(po && po.preparedById === actor.uid)
+  // Where the accepted goes, as the write will land it: the store picked, else the project's own store, else stock.
+  const landing = watch("landedWarehouseId")
+  const pickedStore = landing ? warehouses.find((w) => w.id === landing) : null
+  const toProjectStore = pickedStore ? Boolean(pickedStore.projectId) : Boolean(delivery?.projectId || po?.projectId)
 
   return (
     <Dialog open={open} onOpenChange={(next) => !saving && onOpenChange(next)}>
@@ -526,7 +532,7 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
 
             {!legacy && (
               <ul className="space-y-1 rounded-md bg-muted/40 p-3 text-[11px] leading-relaxed text-muted-foreground">
-                <li>{t("receive.effectStock")}</li>
+                <li>{toProjectStore ? t("receive.effectProject") : t("receive.effectStock")}</li>
                 <li>{t("receive.effectRejects")}</li>
                 <li>{t("receive.effectHeld")}</li>
                 <li>{t("receive.effectFinance")}</li>

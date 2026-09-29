@@ -23,6 +23,11 @@ import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 import { LINE_STATE_TONE, PATH_ICON, fmtDay, qty } from "@/components/procurement/need-bits"
 import { useItemBudgetLeft } from "@/hooks/useItemBudgetLeft"
+import { collection, doc, query, where } from "firebase/firestore"
+import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
+import { PURCHASE_ORDERS } from "@/lib/procurement/types"
+import { MANUFACTURING_REQUESTS } from "@/lib/sales-orders"
+import { sampleNo, type PmSubmittal } from "@/lib/pm/sample"
 
 export interface NeedLineActs {
   canAct: boolean
@@ -43,7 +48,9 @@ const SOURCE_ICON = { mfg: Factory, project: FolderKanban, stock: Boxes }
 
 export function NeedLineDrawer({ row, agreements, history, cap, today, acts, orgId, onClose }: { row: NeedRow; agreements: PriceAgreement[]; history: PriceHistoryEntry[]; cap: number; today: string; acts: NeedLineActs; orgId?: string | null; onClose: () => void }) {
   const t = useTranslations("Portal.Shared")
+  const tp = useTranslations("Portal.Procurement")
   const budgetLeft = useItemBudgetLeft(row.need.kind === "project" ? row.need.projectId : null, orgId ?? null, row.itemId, acts.seesPrices)
+  const facts = useNeedLineFacts(row)
   const locale = useLocale()
   const isRtl = locale === "ar"
   const n = row.need
@@ -124,6 +131,17 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, org
       )
   }
 
+  // «فحص المخزون» (P-29): not stocked at all, a computed cover the stores have not confirmed, or the cover relied on.
+  const stockCheckText = (): string => {
+    if (n.kind === "stock") return row.onHand == null ? t("pri_not_in_stock") : t("pri_on_hand", { qty: `${qty(row.onHand)} ${row.unit}` })
+    if (row.onHand == null) return tp("p2c.need.not_stocked")
+    const computed = qty(Math.min(row.onHand, row.total))
+    if (row.state === "chk" || row.state === "late") return tp("p2c.need.cover_unconfirmed", { qty: computed })
+    return tp("p2c.need.covers", { qty: n.decision?.kind === "proceed_short" ? qty(cover) : computed })
+  }
+
+  const byLine = (what: string, name: string | null | undefined) => (name ? tp("p2c.need.log_by", { what, name }) : what)
+
   const whereWent: Array<{ label: ReactNode; qty: number }> = []
   if (cover > 0) whereWent.push({ label: t("nd_went_stock"), qty: cover })
   if (row.state === "rfq") whereWent.push({ label: n.rfqId ? <Link href={`/contractor/rfqs/${n.rfqId}/offers`} className="font-semibold text-module hover:underline">{t("pri_in_rfq", { ref: n.rfqNumber || "" })}</Link> : t("pri_in_rfq", { ref: "" }), qty: row.open })
@@ -156,7 +174,11 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, org
               {step}
             </section>
           )}
-          {act && row.samplePending && <Callout tone="warn">{t("nd_sample_pending_block")}</Callout>}
+          {act && row.samplePending && (
+            <Callout tone="warn">
+              {facts.sample ? tp("p2c.need.sample_block", { no: facts.sample.no, brand: facts.sample.brand || "", hasBrand: facts.sample.brand ? 1 : 0 }) : t("nd_sample_pending_block")}
+            </Callout>
+          )}
           {(acts.onArrived || acts.onSendBack) && (
             <div className="flex flex-wrap gap-2">
               {acts.onArrived && (
@@ -189,10 +211,20 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, org
 
           <DrawerSection title={t("nd_where_from")}>
             <KeyValueRow label={t("nd_source")} value={`${t(`pri_from_${n.kind}`)} · ${n.refLabel}`} />
-            {n.projectName && <KeyValueRow label={t("nd_project")} value={n.projectName} />}
+            {n.projectName && (
+              <KeyValueRow
+                label={facts.item ? tp("p2c.need.project_item") : t("nd_project")}
+                value={
+                  <span className="block text-end" dir="auto">
+                    {n.projectName}
+                    {facts.item && <span className="block text-[11px] font-normal text-muted-foreground">{[facts.item.code, facts.item.description].filter(Boolean).join(" · ")}</span>}
+                  </span>
+                }
+              />
+            )}
             {n.requestedBy && <KeyValueRow label={t("nd_requested_by")} value={`${n.requestedBy}${n.at ? ` · ${fmtDay(n.at, locale)}` : ""}`} />}
             {n.kind === "stock" && n.stock ? <KeyValueRow label={t("nd_deliver_to")} value={n.refLabel} /> : n.projectName ? <KeyValueRow label={t("nd_deliver_to")} value={n.projectName} /> : n.kind === "mfg" ? <KeyValueRow label={t("nd_deliver_to")} value={t("nd_deliver_workshop")} /> : null}
-            <KeyValueRow label={t("nd_stock_check")} value={row.onHand == null ? t("pri_not_in_stock") : t("pri_on_hand", { qty: `${qty(row.onHand)} ${row.unit}` })} />
+            <KeyValueRow label={t("nd_stock_check")} value={stockCheckText()} />
             {row.category && <KeyValueRow label={t("nd_category")} value={displayCategory(row.category, locale)} />}
             {acts.seesPrices && budgetLeft !== null && <KeyValueRow label={t("nd_item_budget_left")} value={money(budgetLeft)} ltr />}
             {n.note && <p className="py-2 text-sm text-muted-foreground" dir="auto">{n.note}</p>}
@@ -212,14 +244,44 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, org
           <DrawerSection title={t("nd_log")} defaultOpen={false}>
             {n.at && <KeyValueRow label={fmtDay(n.at, locale)} value={t("nd_log_requested", { name: n.requestedBy || "—" })} />}
             {n.decision && <KeyValueRow label={fmtDay(n.decision.at, locale)} value={t(`nd_log_${n.decision.kind}`, { name: n.decision.byName })} />}
-            {n.mfgRequestId && <KeyValueRow label="—" value={t("nd_log_asked_workshop")} />}
-            {n.rfqNumber && <KeyValueRow label="—" value={t("pri_in_rfq", { ref: n.rfqNumber })} />}
-            {n.poNumber && <KeyValueRow label="—" value={t("pri_in_order", { ref: displayDocNumber(n.poNumber, locale) })} />}
+            {n.mfgRequestId && <KeyValueRow label={facts.workshop?.at ? fmtDay(facts.workshop.at, locale) : "—"} value={byLine(t("nd_log_asked_workshop"), facts.workshop?.by)} />}
+            {(n.rfqNumber || n.rfqId) && <KeyValueRow label={facts.rfq?.at ? fmtDay(facts.rfq.at, locale) : "—"} value={byLine(t("pri_in_rfq", { ref: n.rfqNumber || facts.rfq?.ref || "" }), facts.rfq?.by)} />}
+            {n.poNumber && <KeyValueRow label={facts.po?.at ? fmtDay(facts.po.at, locale) : "—"} value={byLine(t("pri_in_order", { ref: displayDocNumber(n.poNumber, locale) }), facts.po?.by)} />}
           </DrawerSection>
         </div>
       </SheetContent>
     </Sheet>
   )
+}
+
+/** What the drawer reads beyond the row: the BOQ item's code, the sample with the
+ * consultant, and who moved the need on and when (the RFQ, the order, the workshop). */
+function useNeedLineFacts(row: NeedRow) {
+  const firestore = useFirestore()
+  const n = row.need
+  const projectId = n.kind === "project" ? n.projectId : null
+  const itemRef = useMemoFirebase(() => (firestore && projectId && row.itemId ? doc(firestore, "projects", projectId, "boqItems", row.itemId) : null), [firestore, projectId, row.itemId])
+  const samplesQ = useMemoFirebase(
+    () => (firestore && projectId && row.itemId && row.samplePending ? query(collection(firestore, "projects", projectId, "pmSubmittals"), where("itemId", "==", row.itemId)) : null),
+    [firestore, projectId, row.itemId, row.samplePending]
+  )
+  const rfqRef = useMemoFirebase(() => (firestore && n.rfqId ? doc(firestore, "rfqs", n.rfqId) : null), [firestore, n.rfqId])
+  const poRef = useMemoFirebase(() => (firestore && n.poId ? doc(firestore, PURCHASE_ORDERS, n.poId) : null), [firestore, n.poId])
+  const mfgRef = useMemoFirebase(() => (firestore && n.mfgRequestId ? doc(firestore, MANUFACTURING_REQUESTS, n.mfgRequestId) : null), [firestore, n.mfgRequestId])
+  const { data: item } = useDoc<{ itemNo?: string | number | null; code?: string | null; description?: string | null }>(itemRef)
+  const { data: samples } = useCollection<Omit<PmSubmittal, "id">>(samplesQ)
+  const { data: rfq } = useDoc<{ createdAt?: string | null; createdByUserName?: string | null; rfqNumber?: string | null }>(rfqRef)
+  const { data: po } = useDoc<{ createdAt?: string | null; preparedByName?: string | null }>(poRef)
+  const { data: mfg } = useDoc<{ requestedAt?: string | null; createdByUserName?: string | null }>(mfgRef)
+  const latest = ((samples || []) as PmSubmittal[]).slice().sort((a, b) => b.rev - a.rev || b.seq - a.seq)[0]
+  const code = item ? String(item.itemNo ?? item.code ?? "").trim() : ""
+  return {
+    item: item && (code || item.description) ? { code, description: (item.description || "").trim() } : null,
+    sample: latest ? { no: sampleNo(latest.seq), brand: (latest.what || latest.supplier || "").trim() } : null,
+    rfq: rfq ? { at: typeof rfq.createdAt === "string" ? rfq.createdAt : null, by: rfq.createdByUserName || null, ref: rfq.rfqNumber || null } : null,
+    po: po ? { at: typeof po.createdAt === "string" ? po.createdAt : null, by: po.preparedByName || null } : null,
+    workshop: mfg ? { at: mfg.requestedAt || null, by: mfg.createdByUserName || null } : null,
+  }
 }
 
 function Stat({ label, value, bad }: { label: string; value: string; bad?: boolean }) {

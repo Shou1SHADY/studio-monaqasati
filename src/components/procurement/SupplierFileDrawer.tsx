@@ -30,6 +30,7 @@ import {
   effectiveCrExpiry,
   effectiveVat,
   canVouchSuppliers,
+  isOffPlatform,
   isUnverified,
   ordersOfSupplier,
   ourRatings,
@@ -179,6 +180,7 @@ export function SupplierFileDrawer({
                 )}
               </Callout>
             )}
+            {isOffPlatform(supplier) && <Callout tone="info">{t("p2c.off_platform")}</Callout>}
             {docs.state === "cr_expired" && docs.crDays != null && <Callout tone="block">{t("file.cr_expired", { days: -docs.crDays })}</Callout>}
             {!vat && <Callout tone="warn">{t("file.no_vat")}</Callout>}
 

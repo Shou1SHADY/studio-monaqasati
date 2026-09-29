@@ -49,7 +49,7 @@ export type AwardReasonCode =
 /** What Procurement decided about a quantity rejected at the gate (§5.2-8). */
 export type RejectDecision = "replace" | "discount" | "reduce"
 
-export type RejectReasonCode = "damaged" | "wrong_item" | "wrong_spec" | "expired" | "excess" | "other"
+export type RejectReasonCode = "damaged" | "wrong_item" | "wrong_spec" | "sample" | "expired" | "excess" | "other"
 export type HoldReasonCode = "certificate" | "test" | "consultant"
 
 /** The non-blocking checklist at the gate (§6.3). */

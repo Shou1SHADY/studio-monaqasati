@@ -100,6 +100,7 @@ function Shell({ open, onOpenChange, title, sub, children, error, busy, submitLa
 
 export function CloseNowDialog({ open, onOpenChange, rfqId, actor, offered, invited, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; rfqId: string; actor: RfqWriteActor; offered: number; invited: number; onDone: () => void }) {
   const t = useTranslations("Portal.Procurement.rfqd")
+  const tp = useTranslations("Portal.Procurement")
   const firestore = useFirestore()
   const refusalText = useRefusalText()
   const [why, setWhy] = useState("")
@@ -127,7 +128,8 @@ export function CloseNowDialog({ open, onOpenChange, rfqId, actor, offered, invi
         </Label>
         <Textarea id="rfq-close-why" rows={3} value={why} onChange={(e) => setWhy(e.target.value)} placeholder={t("close.placeholder")} className="resize-none text-sm" />
       </div>
-      <Callout tone="warn">{t("close.warn", { offered, invited })}</Callout>
+      {/* A public round invites nobody by name — «n من 0» would read as nonsense. */}
+      <Callout tone="warn">{invited > 0 ? t("close.warn", { offered, invited }) : tp("p2c.rfq.close_warn_public", { offered })}</Callout>
     </Shell>
   )
 }

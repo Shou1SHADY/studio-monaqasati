@@ -15,8 +15,8 @@ export function Panel({
   title: ReactNode
   icon?: ElementType
   count?: number
-  /** Red when something in the count is urgent (the prototype's `.n r`). */
-  countTone?: "mute" | "bad"
+  /** Red when something in the count is urgent (the prototype's `.n r`); green when all is well (`.n g`). */
+  countTone?: "mute" | "bad" | "ok"
   actions?: ReactNode
   children: ReactNode
   className?: string
@@ -29,7 +29,7 @@ export function Panel({
           {Icon && <Icon size={16} className="shrink-0 text-module" aria-hidden="true" />}
           <span className="truncate">{title}</span>
           {count !== undefined && (
-            <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums", countTone === "bad" ? "bg-destructive text-destructive-foreground" : "bg-muted text-muted-foreground")}>{count}</span>
+            <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums", countTone === "bad" ? "bg-destructive text-destructive-foreground" : countTone === "ok" ? "bg-success/15 text-success" : "bg-muted text-muted-foreground")}>{count}</span>
           )}
         </h3>
         {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}

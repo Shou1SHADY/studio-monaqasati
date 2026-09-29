@@ -32,8 +32,20 @@ export type SupplierKind = (typeof SUPPLIER_KINDS)[number]
 export const SUPPLIER_SOURCES = ["directory", "invite", "guest_link", "link"] as const
 export type SupplierSource = (typeof SUPPLIER_SOURCES)[number]
 
-export const SUPPLIER_LOG_ACTIONS = ["added", "verified", "record_updated"] as const
+export const SUPPLIER_LOG_ACTIONS = ["added", "verified", "record_updated", "favourite_on", "favourite_off"] as const
 export type SupplierLogAction = (typeof SUPPLIER_LOG_ACTIONS)[number]
+
+/** «أُضيف إلى المفضّلين / أُزيل من المفضّلين» — a line in the record's log, with who and when. */
+export const favouriteLogEntry = (actor: Pick<ProcActor, "uid" | "name">, on: boolean, at: string): SupplierLogEntry => ({
+  action: on ? "favourite_on" : "favourite_off",
+  at,
+  byId: actor.uid,
+  byName: actor.name,
+})
+
+/** A supplier we keep a file on who has no account on the platform: requests and orders reach him by link. */
+export const isOffPlatform = (s: { memberIds: string[]; record: Pick<SupplierRecord, "source"> | null }): boolean =>
+  s.memberIds.length === 0 || s.record?.source === "guest_link"
 
 export interface SupplierLogEntry {
   action: SupplierLogAction
@@ -526,6 +538,8 @@ export interface DirectSupplierOption {
   name: string
   crExpired: boolean
   unverified: boolean
+  /** On the platform, not yet in our records or orders — «— من المنصة». */
+  platform?: boolean
 }
 
 /** Material suppliers only (a service company or a subcontractor is not a
@@ -538,6 +552,9 @@ export function directSupplierOptions(input: {
   keyOf: (po: PurchaseOrder) => string
   categories: string[]
   today: string
+  /** Platform suppliers already matched to the lines' categories (`publicReach`) — the
+   * supplier file beyond our own, so an order never names a company typed by hand. */
+  platform?: Array<{ orgId: string; memberIds?: string[]; name: string; profileCrExpiry?: string | null }>
 }): DirectSupplierOption[] {
   const known = new Map<string, Set<string>>()
   for (const o of input.orders) {
@@ -564,7 +581,16 @@ export function directSupplierOptions(input: {
     if (out.has(key) || skip.has(key)) continue
     out.set(key, { key, orgId: o.isGuestSupplier ? null : o.supplierOrgId, userId: o.supplierUserId, name: o.supplierName, crExpired: false, unverified: false })
   }
-  return Array.from(out.values())
+  const ours = Array.from(out.values())
     .filter((s) => fits(s.key))
     .sort((a, b) => a.name.localeCompare(b.name))
+  const taken = new Set([...Array.from(out.keys()), ...Array.from(skip)])
+  const platform = (input.platform || [])
+    .filter((p) => !taken.has(p.orgId) && !(p.memberIds || []).some((m) => taken.has(m)))
+    .map((p): DirectSupplierOption => {
+      const cr = dayOf(text(p.profileCrExpiry)) || null
+      return { key: p.orgId, orgId: p.orgId, userId: p.orgId, name: p.name, crExpired: Boolean(cr && cr < input.today), unverified: false, platform: true }
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+  return [...ours, ...platform]
 }

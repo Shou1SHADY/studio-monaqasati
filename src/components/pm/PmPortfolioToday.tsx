@@ -35,6 +35,7 @@ import { pmSeesProject } from "@/lib/pm/access"
 import { DECISION_GROUP, GROUP_ORDER, type DecisionGroup, type PmDecision } from "@/lib/pm/decisions"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
 import { handoverAge, handoverFlags, PM_HANDOVERS, type PmHandover } from "@/lib/pm/handover"
+import { fileExtras } from "@/lib/pm/handover-writes"
 import { lifecycleOf } from "@/lib/pm/lifecycle"
 import { cn } from "@/lib/utils"
 
@@ -54,6 +55,8 @@ type Feed = {
   shortages: number
   costBudget: number
   committed: number
+  /** Approved variations — they add to the contract value. */
+  variations: number
 }
 type Item = { key: string; severity: PmDecision["severity"]; age: number; amount: number; group: DecisionGroup; node: React.ReactNode }
 
@@ -61,7 +64,7 @@ const SEVERITY_RANK = { red: 0, amber: 1, blue: 2 } as const
 const CLIP = 7
 
 const signature = (f: Feed) =>
-  `${f.visible}|${f.money}|${f.client}|${f.progress}|${f.behind}|${f.unbilled}|${f.cash}|${f.overdue}|${f.obstacles}|${f.requests}|${f.shortages}|${f.costBudget}|${f.committed}|${f.decisions.map((d) => `${d.kind}:${d.count ?? ""}:${d.amount ?? ""}:${d.age ?? ""}:${d.severity}`).join(",")}`
+  `${f.visible}|${f.money}|${f.client}|${f.progress}|${f.behind}|${f.unbilled}|${f.cash}|${f.overdue}|${f.obstacles}|${f.requests}|${f.shortages}|${f.costBudget}|${f.committed}|${f.variations}|${f.decisions.map((d) => `${d.kind}:${d.count ?? ""}:${d.amount ?? ""}:${d.age ?? ""}:${d.severity}:${d.detail ?? ""}:${d.act ?? ""}:${JSON.stringify(d.vars ?? {})}`).join(",")}`
 
 /** Reads one project's facts and reports them up; renders nothing. */
 function ProjectFeed({ project, onFeed }: { project: Row; onFeed: (id: string, f: Feed) => void }) {
@@ -91,6 +94,7 @@ function ProjectFeed({ project, onFeed }: { project: Row; onFeed: (id: string, f
         shortages: facts.shortages,
         costBudget: facts.costBudget,
         committed,
+        variations: facts.approvedVariations,
       })
   }, [access.isLoading, visible, money, client, decisions, fig.progress, fig.behind, fig.unbilled, fig.cash, overdue, facts, committed, project.id, onFeed])
   return null
@@ -173,7 +177,7 @@ export function PmPortfolioToday() {
             severity={f.severity}
             icon={Hand}
             title={t("dec.ho.title", { name: h.title, days: age })}
-            detail={t("dec.ho.detail", { client: h.clientName || "—", value: h.value ? pmMoney(h.value) : t("dec.ho.no_value"), start: h.startOn ? pmDate(h.startOn, locale) : "—" })}
+            detail={[fileExtras(h).dealNo ? t("dec.ho.deal", { no: fileExtras(h).dealNo as string }) : null, t("dec.ho.detail", { client: h.clientName || "—", value: h.value ? pmMoney(h.value) : t("dec.ho.no_value"), start: h.startOn ? pmDate(h.startOn, locale) : "—" })].filter(Boolean).join(" · ")}
             age={age ? t("days", { count: age }) : undefined}
             ageDays={age}
             action={
@@ -211,7 +215,7 @@ export function PmPortfolioToday() {
   const live = mine.filter((p) => lifecycleOf(p as { pm?: { lifecycle?: string }; status?: string }) === "live")
   const withProgress = mine.filter((p) => feeds[p.id].progress !== null)
   const avgProgress = withProgress.length ? Math.round(withProgress.reduce((a, p) => a + (feeds[p.id].progress ?? 0), 0) / withProgress.length) : null
-  const liveValue = live.reduce((a, p) => a + (p.budget ?? 0), 0)
+  const liveValue = live.reduce((a, p) => a + (p.budget ?? 0) + feeds[p.id].variations, 0)
   const liveBudget = live.reduce((a, p) => a + feeds[p.id].costBudget, 0)
   const unbilled = mine.reduce((a, p) => a + feeds[p.id].unbilled, 0)
   const cash = mine.reduce((a, p) => a + feeds[p.id].cash, 0)
@@ -285,7 +289,11 @@ export function PmPortfolioToday() {
       ) : (
         <div className="grid items-start gap-4 lg:grid-cols-[1.35fr_1fr]">
           <Panel title={t("dec.panel_title")} icon={Zap} count={items.length || undefined} countTone={red ? "bad" : "mute"} bodyClassName="p-0">
-            {items.length > 0 && <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("dec.subline", { urgent: red, oldest })}</p>}
+            {items.length > 0 && (red > 0 || oldest > 0) && (
+              <p className="border-b px-4 py-2 text-xs text-muted-foreground">
+                {[red ? t("dec.sub_urgent", { count: red }) : null, oldest ? t("dec.sub_oldest", { count: oldest }) : null].filter(Boolean).join(" · ")}
+              </p>
+            )}
             {items.length > 0 && groupChips.length > 1 && (
               <div className="border-b px-4 py-3">
                 <ProcChipGroup

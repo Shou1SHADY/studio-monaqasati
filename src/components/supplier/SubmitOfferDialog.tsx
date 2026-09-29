@@ -6,6 +6,8 @@ import { parseOfferTerms } from "@/lib/procurement/offer-terms"
 import { useRouter } from "@/i18n/routing"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { profilePapers } from "@/components/procurement/rfq/rfqOfferView"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { MapPicker } from "@/components/ui/map-picker"
 import { Input } from "@/components/ui/input"
@@ -110,6 +112,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
   const [tempLocation, setTempLocation] = useState<{lat: number, lng: number} | null>(null)
   const [executionDuration, setExecutionDuration] = useState("")
   const [executionDurationUnit, setExecutionDurationUnit] = useState("أيام")
+  const [supplierNote, setSupplierNote] = useState("")
   const [terms, setTerms] = useState<OfferTermsValue>(EMPTY_OFFER_TERMS)
   const tTerms = useTranslations("Portal.Procurement")
   const [offerPdfFile, setOfferPdfFile] = useState<File | null>(null)
@@ -142,6 +145,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
     setTempLocation(null)
     setExecutionDuration("")
     setExecutionDurationUnit("أيام")
+    setSupplierNote("")
     setTerms(EMPTY_OFFER_TERMS)
     setOfferPdfFile(null)
     setOfferPdfUrl(null)
@@ -354,6 +358,10 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       if (offerPdfUrl) {
         offerData.offerPdfUrl = offerPdfUrl;
       }
+      // His note, and the CR and VAT certificate his profile holds, travel with the offer.
+      if (supplierNote.trim()) offerData.supplierNote = supplierNote.trim().slice(0, 1000)
+      const papers = profilePapers((profile as { legalDocuments?: Parameters<typeof profilePapers>[0] } | null)?.legalDocuments)
+      if (papers.length) offerData.supplierPapers = papers
 
       const offerRef = await addDoc(collection(firestore, "offers"), offerData);
 
@@ -765,6 +773,11 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
             )}
 
             <OfferTermsFields value={terms} onChange={setTerms} idPrefix="submit-offer-terms" />
+
+            <div className="space-y-2">
+              <Label htmlFor="submit-offer-note" className="text-sm font-semibold">{tTerms("p2c.offer.note_label")}</Label>
+              <Textarea id="submit-offer-note" rows={2} maxLength={1000} value={supplierNote} onChange={(e) => setSupplierNote(e.target.value)} placeholder={tTerms("p2c.offer.note_placeholder")} dir="auto" className="resize-none" />
+            </div>
 
             {/* PDF Upload */}
             <div className="space-y-3">

@@ -44,7 +44,10 @@ import { MFG_PRODUCTS } from "@/lib/manufacturing-engine"
 import { poStatus, supplierScore, todayOf } from "@/lib/procurement/po"
 import {
   OPEN_WITH_SUPPLIER,
+  SUPPLIER_RECORDS,
   canManageSuppliers,
+  favouriteLogEntry,
+  filterDirectory,
   canRenewAgreements,
   canSignAgreements,
   makeOrBuyKeys,
@@ -64,6 +67,8 @@ import { SupplierInvitations, type InvitationDoc } from "@/components/procuremen
 import { InviteSupplierDialog } from "@/components/procurement/InviteSupplierDialog"
 import { PriceAgreementsView } from "@/components/procurement/PriceAgreementsView"
 import { PriceHistoryView } from "@/components/procurement/PriceHistoryView"
+import { displayAgreementNumber } from "@/lib/procurement/format"
+import { useInventoryCatalog } from "@/hooks/useInventoryCatalog"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -168,6 +173,13 @@ export default function SuppliersPage() {
     return [...rows.filter((r) => r.isFavorite), ...rows.filter((r) => !r.isFavorite)]
   }, [suppliers, orders, deliveries, rfqs, offers, now, team.viewerCategories])
   const shownMine = mineRows.filter((s) => matchesSearch(searchQuery, [s.name, s.city, ...s.categories, ...s.categories.map((c) => displayCategory(c, locale))]))
+  // One search box across the four segments (S-45): the query stays when the segment changes.
+  const shownPlatform = useMemo(() => filterDirectory(suppliers, { q: searchQuery, category: "", city: "" }, (c) => displayCategory(c, locale)), [suppliers, searchQuery, locale])
+  const shownAgreements = useMemo(
+    () => agreements.filter((a) => matchesSearch(searchQuery, [a.docNumber, displayAgreementNumber(a.docNumber, locale), a.supplierName, ...(a.lines || []).map((l) => l.name)])),
+    [agreements, searchQuery, locale]
+  )
+  const catalog = useInventoryCatalog(orgId, actor.seesPrices && segment === "history")
 
   const fileSupplier = suppliers.find((s) => s.orgId === fileId) || null
   const fileRow = mineRows.find((s) => s.orgId === fileId) || null
@@ -195,6 +207,13 @@ export default function SuppliersPage() {
         })
       }
       await updateDoc(userDocRef, { favoriteSuppliers: isExplicit ? arrayRemove(...stored) : arrayUnion(supplier.orgId) })
+      // The supplier file's log says who favoured him and when (S-35). Best-effort:
+      // the rules let only a manager write the record, so a buyer's toggle is not logged yet.
+      if (supplier.record?.id) {
+        void updateDoc(doc(firestore, SUPPLIER_RECORDS, supplier.record.id), { log: arrayUnion(favouriteLogEntry(actor, !isExplicit, new Date().toISOString())) }).catch((err) =>
+          console.warn("favourite not logged:", (err as { code?: string })?.code || err)
+        )
+      }
       toast({
         title: isExplicit ? tC("suppliers_fav_removed") : tC("suppliers_fav_added"),
         description: isExplicit ? tC("suppliers_fav_removed_desc") : supplier.linkId ? tC("suppliers_fav_added_desc") : tC("suppliers_fav_added_connected_desc"),
@@ -247,22 +266,20 @@ export default function SuppliersPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           <ProcChipGroup items={segments.map((s) => ({ id: s, label: t(`seg.${s}`), count: counts[s] }))} active={segment} onPick={pickSegment} label={tC("suppliers_scope_label")} />
-          {segment === "mine" && (
-            <div className="relative ms-auto w-full sm:w-72">
-              <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <Input placeholder={tC("suppliers_search")} aria-label={tC("suppliers_search")} className="pe-8 ps-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  aria-label={tC("suppliers_search_clear")}
-                  className="absolute end-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <X size={14} aria-hidden="true" />
-                </button>
-              )}
-            </div>
-          )}
+          <div className="relative ms-auto w-full sm:w-72">
+            <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input placeholder={t("p2c.search_all")} aria-label={t("p2c.search_all")} className="pe-8 ps-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} dir="auto" />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                aria-label={tC("suppliers_search_clear")}
+                className="absolute end-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <X size={14} aria-hidden="true" />
+              </button>
+            )}
+          </div>
         </div>
 
         {segment === "agreements" ? (
@@ -270,7 +287,7 @@ export default function SuppliersPage() {
             spinner
           ) : (
             <PriceAgreementsView
-              agreements={agreements}
+              agreements={shownAgreements}
               history={history}
               orders={orders}
               actor={actor}
@@ -290,6 +307,8 @@ export default function SuppliersPage() {
             spinner
           ) : (
             <PriceHistoryView
+              query={searchQuery}
+              itemOf={catalog.itemOf}
               history={history}
               orders={orders}
               receipts={deliveries}
@@ -307,7 +326,7 @@ export default function SuppliersPage() {
         ) : loading ? (
           spinner
         ) : segment === "platform" ? (
-          <SupplierDirectory suppliers={suppliers} onOpen={setDirId} />
+          <SupplierDirectory suppliers={shownPlatform} onOpen={setDirId} />
         ) : (
           <div className="space-y-4">
             <SupplierInvitations invitations={invitations} canManage={canManage} orgName={orgName} now={now} />

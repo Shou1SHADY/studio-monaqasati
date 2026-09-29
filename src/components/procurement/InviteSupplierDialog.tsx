@@ -2,10 +2,9 @@
 
 // «ادعُ مورداً إلى منصة مدماك» (prototype FORMS.supInv). A supplier we deal
 // with who is not on the platform gets a join link in his company's name. The
-// channel decides which contact is required; WhatsApp opens the sender's own
-// chat with the ready text, e-mail is sent by the platform (and falls back to
-// the sender's mail when the platform cannot send). Until he joins, a guest
-// RFQ link still reaches him — the invitation blocks no purchase.
+// channel decides which contact is required; either way the sender's own tool
+// opens with the ready text — his WhatsApp chat or his mail — and he sends it.
+// Until he joins, a guest RFQ link still reaches him — the invitation blocks no purchase.
 
 import { useLocale, useTranslations } from "next-intl"
 import { useForm } from "react-hook-form"
@@ -81,9 +80,8 @@ export function InviteSupplierDialog({ open, onOpenChange, orgName }: { open: bo
           chat.location.href = link
         } else window.open(link, "_blank", "noopener,noreferrer")
         toast({ title: t("inv.toast_wa") })
-      } else if (data.data.emailSent) {
-        toast({ title: t("inv.toast_email_sent") })
       } else {
+        // The sender's own mail, like WhatsApp: the platform never sends in his name (supplier-file.ts).
         window.location.href = mailtoLink(v.email, t("inv.subject"), body)
         toast({ title: t("inv.toast_email") })
       }

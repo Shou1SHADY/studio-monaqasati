@@ -668,7 +668,8 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
                         const memberIsOwner = member.organizationRole === "owner"
                         // P-21/P-40: a buyer's categories, set by the owner or a purchasing manager.
                         const memberCtx = { organizationRole: (member.organizationRole as string | null | undefined) ?? null, defaultGroupId: (member.defaultGroupId as string | undefined) || null, groups }
-                        const isBuyer = role === "Contractor" && !memberIsOwner && groupCan("offers.accept", memberCtx)
+                        // A buyer prepares orders (offers.accept) or only runs RFQs (rfq.manage) — Today and the needs desk scope both by these categories.
+                        const isBuyer = role === "Contractor" && !memberIsOwner && (groupCan("offers.accept", memberCtx) || groupCan("rfq.manage", memberCtx))
                         const buyerCats = cleanBuyerCategories(member.procurementCategories)
                         const setsCategories = (isOwner || perms.can("po.approve")) && member.id !== user?.uid
                         return (

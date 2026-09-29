@@ -197,6 +197,14 @@ export const lineOut = (l: ReqLine) => (l.cl || refused(l) ? 0 : Math.max(0, r2(
  * (the prototype's lnTransit: authorised portions less what arrived). */
 export const lineInTransit = (l: ReqLine) => (l.cl ? 0 : l.inv?.k === "issue" ? Math.max(0, r2(Math.min(Number(l.inv.q) || 0, l.qty) - lineGot(l))) : 0)
 
+/** How the line is served once Inventory replied (the prototype's lnPlan portions):
+ * what a main store issues, and the rest — bought. Null before the reply. */
+export function lineSplit(l: Pick<ReqLine, "qty" | "inv">): { store: number; buy: number } | null {
+  if (!l.inv) return null
+  const store = l.inv.k === "issue" ? Math.max(0, Math.min(Number(l.inv.q) || 0, l.qty)) : 0
+  return { store: r2(store), buy: r2(Math.max(0, l.qty - store)) }
+}
+
 /** Share received, over the lines not cancelled. */
 export function reqPct(r: Pick<PmMaterialRequest, "lines">): number {
   const ls = r.lines.filter((l) => l.cl?.t !== "cancel" && !refused(l))
@@ -645,6 +653,10 @@ export function plantReplyBlocks(input: { archived: boolean; r: Pick<PmPlantRequ
 /** Received on site once allocated from our fleet or hired in its place. */
 export const plantReceivable = (r: Pick<PmPlantRequest, "status" | "rep" | "got">) => r.status === "go" && !r.got && (r.rep?.k === "alloc" || r.rep?.k === "alt" || r.rep?.k === "hire")
 
+/** «محجوزة … لم تصل بعد»: the desk reserved it (our unit, an alternative or a hire)
+ * for a period that has not started, and nothing has arrived against it. */
+export const plantBooked = (r: Pick<PmPlantRequest, "status" | "rep" | "got" | "from">, today: string) => plantReceivable(r) && r.from > today
+
 /** «استأجر بدلها»: the fleet cannot serve it (busy or none) — the approver sends it to Procurement. */
 export const plantHireable = (r: Pick<PmPlantRequest, "status" | "rep" | "got">) => r.status === "go" && !r.got && (r.rep?.k === "late" || r.rep?.k === "none")
 
@@ -691,3 +703,54 @@ export function poReceivedShare(lines: ProjectPoLine[]): number {
   const ordered = lines.reduce((a, l) => a + Math.max(0, l.quantity - (l.cancelled || 0)), 0)
   return ordered > 0 ? Math.min(1, lines.reduce((a, l) => a + (l.accepted || 0), 0) / ordered) : 0
 }
+
+/** «فوق/تحت تقديرك»: the order's priced lines on a BOQ item against the item's
+ * estimated unit cost, % (positive = above). Null when no line can be compared. */
+export function poVsEstimate(lines: Array<Pick<ProjectPoLine, "quantity" | "cancelled" | "unitPrice" | "boqItemId">>, estOf: (itemId: string) => number): number | null {
+  let paid = 0
+  let est = 0
+  for (const l of lines) {
+    const e = l.boqItemId ? estOf(l.boqItemId) : 0
+    const q = Math.max(0, l.quantity - (l.cancelled || 0))
+    if (!(e > 0) || !(Number(l.unitPrice) > 0) || !(q > 0)) continue
+    paid += q * Number(l.unitPrice)
+    est += q * e
+  }
+  return est > 0 ? r2(((paid - est) / est) * 100) : null
+}
+
+/** Beyond this the purchasing panel says above / below the estimate (the prototype's 4%). */
+export const ESTIMATE_GAP_PERCENT = 4
+
+// ── What the main stores hold (read when composing a request) ───────────────
+
+export interface MainStockRow {
+  name?: string | null
+  unit?: string | null
+  quantity?: number | null
+  trackingMode?: string | null
+  lot?: string | null
+  remnant?: boolean | null
+}
+
+const plainStock = (r: MainStockRow) => Boolean(r.name?.trim() && r.unit?.trim()) && r.trackingMode !== "unit" && !r.lot && !r.remnant
+
+/** On hand of a material across the main stores (same material once folded). */
+export function mainStock(rows: MainStockRow[], name: string, unit: string): number {
+  const key = materialKeyOf(name, unit)
+  return r2(rows.filter((r) => plainStock(r) && materialKeyOf(r.name as string, r.unit as string) === key).reduce((a, r) => a + Math.max(0, Number(r.quantity) || 0), 0))
+}
+
+/** The Inventory catalogue a general-consumables line picks from: each material once. */
+export function stockCatalogue(rows: MainStockRow[]): Array<{ key: string; name: string; unit: string }> {
+  const seen = new Map<string, { key: string; name: string; unit: string }>()
+  for (const r of rows) {
+    if (!plainStock(r)) continue
+    const key = materialKeyOf(r.name as string, r.unit as string)
+    if (!seen.has(key)) seen.set(key, { key, name: (r.name as string).trim(), unit: (r.unit as string).trim() })
+  }
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** «المتبقي من موازنة مصاريف الموقع»: the site-overheads budget less its spend; null with no budget. */
+export const siteOverheadLeft = (budget: number | null | undefined, spent: number | null | undefined): number | null => (budget != null && Number.isFinite(budget) && budget > 0 ? r2(budget - (Number(spent) || 0)) : null)

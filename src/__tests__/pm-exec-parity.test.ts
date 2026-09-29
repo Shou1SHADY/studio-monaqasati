@@ -112,8 +112,8 @@ describe("punch (E-11)", () => {
 
 describe("NCR (E-13, E-14)", () => {
   it("the description is required from the screen; the latest cost stands", () => {
-    expect(ncrBlocks({ archived: false, itemId: "i1", root: "r", cost: 0, what: "" })).toEqual(["no_what"])
-    expect(ncrBlocks({ archived: false, itemId: "i1", root: "r", cost: 0 })).toEqual([])
+    expect(ncrBlocks({ archived: false, root: "r", cost: 0, what: "" })).toEqual(["no_what"])
+    expect(ncrBlocks({ archived: false, root: "r", cost: 0 })).toEqual([])
     expect(ncrCost({ cost: 100, plan: { on: "d", by: "u", text: "t", cost: 150 }, accepted: { on: "d", by: "u", cost: 180 } })).toBe(180)
     expect(ncrCost({ cost: 100, plan: { on: "d", by: "u", text: "t" }, accepted: null })).toBe(100)
     expect(ncrStepBlocks({ archived: false, status: "plan", step: "accept", day: "2026-09-01", today: "2026-09-28", after: "2026-09-10" })).toEqual(["bad_date"])
@@ -252,7 +252,7 @@ describe("the Execution sub-tab counts (E-00a)", () => {
       subCertificates: [{ status: "int" }],
       lookaheadBlocked: null,
     })
-    expect(c).toEqual({ pmMeasure: { count: 1, tone: "warn" }, pmQa: { count: 4, tone: "bad" }, pmSite: { count: 1, tone: "warn" }, pmSubs: { count: 1, tone: "warn" } })
+    expect(c).toEqual({ pmMeasure: { count: 1, tone: "warn" }, pmQa: { count: 3, tone: "bad" }, pmSite: { count: 1, tone: "warn" }, pmSubs: { count: 1, tone: "warn" } })
     expect(execCounts({ sheets: [], inspections: [], punch: [], ncrs: [], obstacles: [{ closeOn: null }], subCertificates: [], lookaheadBlocked: 3 }).pmSite).toEqual({ count: 3, tone: "warn" })
   })
 })

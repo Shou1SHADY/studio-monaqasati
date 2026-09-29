@@ -10,6 +10,7 @@ import { useMemo } from "react"
 import { collection, query, where } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { usePmIndirect } from "@/hooks/usePmIndirect"
 import { usePulseCost } from "@/hooks/usePulseCost"
 import { progressOf, type Acceptances } from "@/lib/pm/acceptance"
 import { inForce, PM_ADDENDA, type PmAddendum } from "@/lib/pm/addenda"
@@ -33,7 +34,7 @@ import { PM_STORE, storeLineOf, type PmStoreLine } from "@/lib/pm/store"
 import { PM_SUB_CERTIFICATES } from "@/lib/pm/subcontract"
 import { needsWithin, PM_PLANT as PM_PLANT_REQUESTS, PURCHASE_REQUESTS, reqState, requestOf, type PmPlantRequest } from "@/lib/pm/supply"
 import { defaultTerms, type ContractTerms } from "@/lib/pm/terms"
-import { PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
+import { approvedValue, PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
 import { PURCHASE_ORDERS } from "@/lib/procurement/types"
 import { usePmPlan } from "@/hooks/usePmPlan"
 import { lastPaid, PRICE_HISTORY, type PriceHistoryEntry } from "@/lib/procurement/prices"
@@ -45,6 +46,7 @@ export interface PmDecisionProject {
   organizationId?: string
   warehouseId?: string | null
   enabledSections?: string[]
+  clientName?: string | null
   pm?: {
     lifecycle?: string
     terms?: ContractTerms
@@ -52,6 +54,7 @@ export interface PmDecisionProject {
     startOn?: string | null
     startedAt?: string | null
     holdSince?: string | null
+    holdWhy?: string | null
     lastIpcOn?: string | null
     eac?: { on: string } | null
     durationDays?: number
@@ -67,6 +70,8 @@ export interface PmSiteFacts {
   pendingRequests: number
   shortages: number
   costBudget: number
+  /** Approved variations: part of the contract value (INV-01). */
+  approvedVariations: number
 }
 
 const num = (v: unknown) => {
@@ -138,6 +143,8 @@ export function usePmDecisions(
   )
   const damagesOn = Boolean(terms0?.damages?.on)
   const cost = usePulseCost(projectId, project?.organizationId ?? null, project?.warehouseId ?? null, project?.budget ?? 0, on && money && client && damagesOn)
+  const onHold = on && project?.pm?.lifecycle === "hold"
+  const indirect = usePmIndirect(projectId, project?.organizationId ?? null, onHold && money && client)
 
   const today = todayDay()
   const planItems = useMemo(() => items.rows.map((d) => ({ id: d.id, quantity: num(d.quantity), rate: num(d.unitPrice) })), [items.rows])
@@ -153,8 +160,9 @@ export function usePmDecisions(
       pendingRequests: supply.requests.filter((r) => reqState(r) === "wait").length,
       shortages,
       costBudget: items.rows.reduce((a, d) => a + num(d.quantity) * num(d.estCost), 0),
+      approvedVariations: approvedValue(vos.rows.map((v) => ({ status: v.status, value: num(v.value) }))),
     }
-  }, [on, supply.stores, supply.requests, supply.activities, storeItems, project?.pm?.startedAt, today, obstacles.rows, items.rows])
+  }, [on, supply.stores, supply.requests, supply.activities, storeItems, project?.pm?.startedAt, today, obstacles.rows, items.rows, vos.rows])
 
   const decisions = useMemo(() => {
     const pm = project?.pm
@@ -197,6 +205,9 @@ export function usePmDecisions(
       obstacles: obstacles.rows,
       eac: pm.eac ?? null,
       holdSince: pm.holdSince ?? null,
+      holdWhy: pm.holdWhy ?? null,
+      indirectSpent: onHold && money && client ? indirect.actual : null,
+      payer: project.clientName ?? null,
       curveK: plan.curveK,
       sections: project.enabledSections?.length ? project.enabledSections : null,
       managerId: project.projectManagerId ?? null,
@@ -211,7 +222,7 @@ export function usePmDecisions(
       today,
       viewer: access.uid ? { uid: access.uid, has: (k) => access.has(k as Parameters<PmAccess["has"]>[0]), owner: access.has("admin") } : null,
     })
-  }, [project, items.rows, sheets.rows, addenda.rows, certs.rows, punch.rows, units.rows, inspections.rows, zoneOn, vos.rows, claims.rows, submittals.rows, subCerts.rows, docs.rows, letters.rows, obstacles.rows, supply.requests, supply.stores, facts.shortages, plantRequests.rows, plant.rows, cost, budgetReferrals, storeCostOf, money, access, today, plan])
+  }, [project, items.rows, sheets.rows, addenda.rows, certs.rows, punch.rows, units.rows, inspections.rows, zoneOn, vos.rows, claims.rows, submittals.rows, subCerts.rows, docs.rows, letters.rows, obstacles.rows, supply.requests, supply.stores, facts.shortages, plantRequests.rows, plant.rows, cost, budgetReferrals, storeCostOf, money, client, onHold, indirect.actual, access, today, plan])
 
   const progress = useMemo(() => progressOf(items.rows.map((d) => ({ quantity: num(d.quantity), rate: num(d.unitPrice), executed: num(d.executedQuantity) }))), [items.rows])
 

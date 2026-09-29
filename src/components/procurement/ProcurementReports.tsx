@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label"
 import { Link, useRouter } from "@/i18n/routing"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
+import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { useProcurementWorld, type ProcOffer, type ProcRfq } from "@/hooks/useProcurementWorld"
 import { displayDocNumber } from "@/lib/procurement/format"
 import { todayOf } from "@/lib/procurement/po"
@@ -90,16 +91,25 @@ export function ProcurementReports() {
   const { data: projectDocs } = useCollection<{ pm?: { no?: string | null } | null }>(projectsQ)
   // The project's own number (PM 1.0 `pm.no`, PJ-yyyy/NNN) beside its name, as the prototype lists them.
   const projectNo = useMemo(() => new Map((projectDocs || []).map((p) => [p.id, p.pm?.no || ""])), [projectDocs])
+  // When each RFQ's need reached us — the cycle report counts from there. The
+  // page head already reads the same needs desk, so its listeners are shared.
+  const { needs } = useProcurementNeeds(loaded)
+  const needArrivals = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const n of needs) if (n.rfqId && n.at && (!out[n.rfqId] || n.at < out[n.rfqId])) out[n.rfqId] = n.at
+    return out
+  }, [needs])
   const world = useMemo(
     () =>
       reportWorld(toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts }), {
         // The raw documents carry what the Today world drops: an early close, a
-        // keyed-in offer, the offer's credit days and advance.
+        // keyed-in offer, the offer's credit days, advance and quoted rates.
         rfqs: rfqs as Array<ProcRfq & RawReportRfq>,
         offers: offers as Array<ProcOffer & RawReportOffer>,
         supplierRecords,
+        needArrivals,
       }),
-    [orders, deliveries, rfqs, offers, policies, supplierFacts, supplierRecords]
+    [orders, deliveries, rfqs, offers, policies, supplierFacts, supplierRecords, needArrivals]
   )
 
   const sees = actor.seesPrices
@@ -160,7 +170,7 @@ export function ProcurementReports() {
       rows.push([t("total"), null, null, null, null, null, null, drift.totals.impact])
     } else if (cycle) {
       head = [t("cols.rfq"), t("cols.invited"), t("cols.offers"), t("cols.awarded"), t("cols.days"), t("cols.lowest"), t("cols.average"), t("cols.awardedValue"), t("cols.saving"), t("cols.competition")]
-      rows = cycle.rows.map((r) => [r.title, r.invitedCount, r.offersCount, r.awarded ? 1 : 0, r.publishToAwardDays, sees ? r.lowestTotal : null, sees ? r.averageOffer : null, sees ? r.awardedTotal : null, sees ? r.saving : null, r.shortCompetition ? 1 : 0])
+      rows = cycle.rows.map((r) => [r.title, r.invitedCount, r.offersCount, r.awarded ? 1 : 0, r.daysToAward, sees ? r.lowestTotal : null, sees ? r.averageOffer : null, sees ? r.awardedTotal : null, sees ? r.saving : null, r.shortCompetition ? 1 : 0])
     } else if (exc) {
       head = [t("cols.day"), t("cols.document"), t("cols.supplier"), t("cols.exception"), t("cols.by"), t("cols.approvedBy")]
       rows = exc.map((r) => [r.day, r.docNumber, r.supplierName, excText(r.kind, r.params), r.byName, r.approvedByName])
@@ -178,7 +188,10 @@ export function ProcurementReports() {
     <div className="space-y-6">
       {/* The printed report is the report: the portal's header and sidebar stay on screen. */}
       <style media="print">{`header, [data-sidebar], [data-mobile], nav { display: none !important; } main { padding: 0 !important; margin: 0 !important; }`}</style>
-      <ProcurementHeader title={t("page.title")} description={t("page.subtitle")} />
+      {/* The shell's tiles, search, tab rail and buttons are the screen's, not the report's. */}
+      <div className="print:hidden">
+        <ProcurementHeader title={t("page.title")} description={t("page.subtitle")} />
+      </div>
 
       {!sees && (
         <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -188,7 +201,7 @@ export function ProcurementReports() {
       )}
 
       {/* ── Which report, and over which days ── */}
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+      <div className="flex flex-col gap-3 print:hidden xl:flex-row xl:items-center xl:justify-between">
         <div className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:thin] sm:mx-0 sm:px-0">
           <ProcChipGroup items={reports.map((id) => ({ id, label: t(`report.${id}`) }))} active={report} onPick={setReport} label={t("page.title")} />
         </div>
@@ -212,7 +225,7 @@ export function ProcurementReports() {
       </div>
 
       {periodFiltered && preset === "custom" && (
-        <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-3">
+        <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-3 print:hidden">
           <div className="grid gap-1">
             <Label htmlFor="proc-rep-from" className="text-[11px]">{t("period.from")}</Label>
             <Input id="proc-rep-from" type="date" value={customFrom} max={customTo || undefined} onChange={(e) => setCustomFrom(e.target.value)} className="h-9 w-40" />
@@ -390,7 +403,7 @@ export function ProcurementReports() {
                       </Td>
                       <Td end num>{num(r.invitedCount)}</Td>
                       <Td end num>{num(r.offersCount)}</Td>
-                      <Td end num>{r.publishToAwardDays == null ? "—" : t("days", { count: r.publishToAwardDays })}</Td>
+                      <Td end num>{r.daysToAward == null ? "—" : t("days", { count: r.daysToAward })}</Td>
                       <Td end num>{sees && r.saving != null ? <b className={r.saving > 0 ? "text-success" : r.saving < 0 ? "text-warning" : ""}>{signed(r.saving)}</b> : "—"}</Td>
                     </tr>
                   ))}
@@ -405,6 +418,7 @@ export function ProcurementReports() {
                   />
                 </Table>
               )}
+              <Note>{t("notes.cycleArrival")}</Note>
               <Note>{t("notes.cycle", { threshold: policies.competitionThreshold.toLocaleString("en-US"), min: policies.minOffers })}</Note>
               {sees && <Note>{t("notes.saving")}</Note>}
             </>

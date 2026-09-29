@@ -39,6 +39,14 @@ export interface RfqEarlyCloseFact {
 
 export interface ReportRfqFact extends RfqFact {
   closedEarly?: RfqEarlyCloseFact | null
+  /** ISO — when the earliest need behind the RFQ reached Procurement (the needs desk's `at`). */
+  needArrivedAt?: string | null
+}
+
+/** A quoted rate: the offer's unit price for one of the RFQ's products. */
+export interface OfferRateFact {
+  rfqProductIndex: number
+  unitPrice: number
 }
 
 export interface ReportOfferFact extends OfferFact {
@@ -48,6 +56,7 @@ export interface ReportOfferFact extends OfferFact {
   createdAt?: string | null
   creditDays?: number | null
   advancePercent?: number | null
+  lines?: OfferRateFact[] | null
 }
 
 export interface ReportWorld extends ProcWorld {
@@ -71,6 +80,7 @@ export interface RawReportOffer {
   createdAt?: unknown
   creditDays?: unknown
   advancePercent?: unknown
+  lines?: Array<{ rfqProductIndex?: unknown; unitPrice?: unknown }> | null
 }
 
 export interface RawSupplierTerms {
@@ -91,8 +101,17 @@ const isoOrNull = (v: unknown): string | null => {
   return typeof ts.toDate === "function" ? ts.toDate().toISOString() : null
 }
 
-export function reportWorld(base: ProcWorld, raw: { rfqs?: RawReportRfq[] | null; offers?: RawReportOffer[] | null; supplierRecords?: RawSupplierTerms[] | null }): ReportWorld {
+const quotedRates = (lines: RawReportOffer["lines"]): OfferRateFact[] =>
+  (lines || [])
+    .map((l) => ({ rfqProductIndex: Number(l.rfqProductIndex), unitPrice: numberOrNull(l.unitPrice) ?? 0 }))
+    .filter((l) => Number.isInteger(l.rfqProductIndex) && l.rfqProductIndex >= 0 && l.unitPrice > 0)
+
+export function reportWorld(
+  base: ProcWorld,
+  raw: { rfqs?: RawReportRfq[] | null; offers?: RawReportOffer[] | null; supplierRecords?: RawSupplierTerms[] | null; needArrivals?: Record<string, string> | null }
+): ReportWorld {
   const rfqById = new Map((raw.rfqs || []).map((r) => [r.id, r]))
+  const arrivals = raw.needArrivals || {}
   const offerById = new Map((raw.offers || []).map((o) => [o.id, o]))
   const supplierTermsDays: Record<string, number> = {}
   for (const rec of raw.supplierRecords || []) {
@@ -103,7 +122,8 @@ export function reportWorld(base: ProcWorld, raw: { rfqs?: RawReportRfq[] | null
     ...base,
     rfqs: base.rfqs.map((r) => {
       const x = rfqById.get(r.id)
-      return x?.closedEarly ? { ...r, closedEarly: x.closedEarly } : r
+      const out: ReportRfqFact = x?.closedEarly ? { ...r, closedEarly: x.closedEarly } : r
+      return arrivals[r.id] ? { ...out, needArrivedAt: arrivals[r.id] } : out
     }),
     offers: base.offers.map((o) => {
       const x = offerById.get(o.id)
@@ -117,6 +137,7 @@ export function reportWorld(base: ProcWorld, raw: { rfqs?: RawReportRfq[] | null
         createdAt: isoOrNull(x.createdAt),
         creditDays: numberOrNull(x.creditDays),
         advancePercent: advance == null ? null : Math.min(100, advance),
+        lines: quotedRates(x.lines),
       }
     }),
     supplierTermsDays,
@@ -390,12 +411,21 @@ export interface CycleRow {
   awarded: boolean
   /** Publish → award, in days, when both dates exist. */
   publishToAwardDays: number | null
+  /** The need's arrival at Procurement → award; the RFQ's publication stands in
+   * for an RFQ no need raised (a buyer's own). */
+  daysToAward: number | null
+  /** `daysToAward` is counted from the need's arrival, not from publication. */
+  fromNeed: boolean
+  /** The saving was priced line by line from the quoted rates. */
+  savingByLine: boolean
   lowestTotal: number | null
   /** Every order laid over the RFQ (a split award has one per supplier). */
   awardedTotal: number | null
   /** Mean of the priced offers still in the running. */
   averageOffer: number | null
-  /** averageOffer − awardedTotal; positive = saved. Null until awarded. */
+  /** Per awarded line: (the mean of the rates quoted for it − the rate awarded)
+   * × its quantity, summed; the totals (averageOffer − awardedTotal) only when
+   * no offer quoted rates. Positive = saved. Null until awarded. */
   saving: number | null
   shortCompetition: boolean
 }
@@ -407,14 +437,32 @@ export interface CycleReport {
 
 const OFFER_REJECTED = "مرفوض"
 
-export function cycleAndCompetition(w: ProcWorld, period?: Period | null): CycleReport {
-  const offersByRfq = new Map<string, OfferFact[]>()
-  for (const o of w.offers) offersByRfq.set(o.rfqId, [...(offersByRfq.get(o.rfqId) || []), o])
+/** The line-by-line saving over the awarded orders, or null when no awarded line has a quoted rate to compare. */
+export function lineSaving(orders: PurchaseOrder[], offers: ReportOfferFact[]): number | null {
+  const competing = offers.filter((o) => o.status !== OFFER_REJECTED)
+  let saving = 0
+  let priced = false
+  for (const po of orders) {
+    for (const l of po.lines) {
+      if (l.unitPrice == null || l.rfqProductIndex == null) continue
+      const rates = competing.map((o) => (o.lines || []).find((r) => r.rfqProductIndex === l.rfqProductIndex)?.unitPrice).filter((r): r is number => r != null && r > 0)
+      if (!rates.length) continue
+      const mean = rates.reduce((s, r) => s + r, 0) / rates.length
+      saving += (mean - l.unitPrice) * (Number(l.quantity) || 0)
+      priced = true
+    }
+  }
+  return priced ? round2(saving) : null
+}
+
+export function cycleAndCompetition(w: ProcWorld | ReportWorld, period?: Period | null): CycleReport {
+  const offersByRfq = new Map<string, ReportOfferFact[]>()
+  for (const o of w.offers as ReportOfferFact[]) offersByRfq.set(o.rfqId, [...(offersByRfq.get(o.rfqId) || []), o])
   const ordersByRfq = new Map<string, PurchaseOrder[]>()
   for (const po of w.orders) if (po.rfqId && po.status !== "cancelled") ordersByRfq.set(po.rfqId, [...(ordersByRfq.get(po.rfqId) || []), po])
 
-  const rows: CycleRow[] = w.rfqs
-    .filter((r: RfqFact) => r.status !== "Draft" && (!r.createdAt || inPeriod(dayOf(r.createdAt), period)))
+  const rows: CycleRow[] = (w.rfqs as ReportRfqFact[])
+    .filter((r) => r.status !== "Draft" && (!r.createdAt || inPeriod(dayOf(r.createdAt), period)))
     .map((r) => {
       const offers = offersByRfq.get(r.id) || []
       const count = offers.length || Number(r.offersCount) || 0
@@ -428,11 +476,31 @@ export function cycleAndCompetition(w: ProcWorld, period?: Period | null): Cycle
       const awardedTotal = pos.length ? round2(pos.reduce((s, x) => s + poValue(x), 0)) : offers.filter((o) => o.status === "مقبول").map(offerPrice).find((p) => p != null) ?? null
       const prices = offers.filter((o) => o.status !== OFFER_REJECTED).map(offerPrice).filter((p): p is number => p != null)
       const averageOffer = prices.length ? round2(prices.reduce((s, p) => s + p, 0) / prices.length) : null
-      const saving = awarded && awardedTotal != null && averageOffer != null ? round2(averageOffer - awardedTotal) : null
+      const byLine = awarded ? lineSaving(pos, offers) : null
+      const saving = byLine != null ? byLine : awarded && awardedTotal != null && averageOffer != null ? round2(averageOffer - awardedTotal) : null
       const short = po ? po.shortCompetition : isShortCompetition(awardedTotal ?? lowestTotal, count, w.policies)
-      return { rfqId: r.id, title: r.title || "", offersCount: count, invitedCount: r.invitedCount ?? null, awarded, publishToAwardDays: awarded && publish && awardDay ? daysBetween(publish, awardDay) : null, lowestTotal, awardedTotal, averageOffer, saving, shortCompetition: short }
+      const arrived = dayOf(r.needArrivedAt)
+      const start = arrived && (!publish || arrived <= publish) ? arrived : publish
+      const publishToAwardDays = awarded && publish && awardDay ? daysBetween(publish, awardDay) : null
+      const daysToAward = awarded && start && awardDay ? daysBetween(start, awardDay) : null
+      return {
+        rfqId: r.id,
+        title: r.title || "",
+        offersCount: count,
+        invitedCount: r.invitedCount ?? null,
+        awarded,
+        publishToAwardDays,
+        daysToAward,
+        fromNeed: Boolean(arrived && start === arrived && start !== publish),
+        lowestTotal,
+        awardedTotal,
+        averageOffer,
+        saving,
+        savingByLine: byLine != null,
+        shortCompetition: short,
+      }
     })
-  const days = rows.map((r) => r.publishToAwardDays).filter((d): d is number => d != null)
+  const days = rows.map((r) => r.daysToAward).filter((d): d is number => d != null)
   return {
     rows,
     totals: {

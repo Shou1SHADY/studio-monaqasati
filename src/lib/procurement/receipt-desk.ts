@@ -9,16 +9,18 @@
 import { daysFromNow, dayOf, lineToArrive, poStatus, receiptDay, round2 } from "./po"
 import { receiptState, shortVsNotice, type ReceiptState } from "./receipts"
 import { acceptedOf } from "./po"
+import { noticeNumberFor } from "./format"
 import type { NoticeRouting } from "./policies"
-import { forwardUrgency, receiversForPlace, type ProcReceiver, type ReceiverChoice, type ReceiverModule } from "./receivers"
-import type { DeliveryLine, PoLine, PurchaseOrder, ReceiptFact } from "./types"
+import type { PoExtras } from "./po-extras"
+import { receiversForPlace, type ProcReceiver, type ReceiverChoice, type ReceiverModule } from "./receivers"
+import type { DeliveryLine, HoldReasonCode, PoLine, PurchaseOrder, ReceiptFact } from "./types"
 import { matchesSearch } from "../search-text"
 
 export const RECEIPT_SEGMENTS = ["incoming", "log", "nopo"] as const
 export type ReceiptSegment = (typeof RECEIPT_SEGMENTS)[number]
 
-/** How far ahead "on the way" looks for an order with no notice. */
-export const INCOMING_HORIZON_DAYS = 7
+/** How far ahead "on the way" looks for an order with no notice (prototype `prom<=3`). */
+export const INCOMING_HORIZON_DAYS = 3
 
 /** The delivery as the desk reads it (the world's `ProcDelivery`, reduced). */
 export interface DeskDelivery extends ReceiptFact {
@@ -59,7 +61,7 @@ export interface ReceiverReportFact {
   receiverName: string
   receiverUserId: string | null
   phoneMasked: string
-  lines: Array<{ poLineId: string; name: string; unit: string; counted: number; rejected: number; rejectReason: string | null; note: string | null }>
+  lines: Array<{ poLineId: string; name: string; unit: string; counted: number; rejected: number; rejectReason: string | null; held?: number; holdReason?: HoldReasonCode | null; note: string | null }>
   note: string | null
   signatureData: string | null
   signedAt: string
@@ -263,15 +265,28 @@ export type ReceiptCsvColumn = (typeof RECEIPT_CSV_COLUMNS)[number]
 
 export interface CsvWords {
   headers: Record<ReceiptCsvColumn, string>
-  /** "recorded in": manual / at the gate / no PO. */
+  /** "recorded in": Procurement by hand, else the module that keeps the place. */
   recordedManual: string
-  recordedGate: string
+  modules: Record<RecordedBy, string>
   noPo: string
   noNotice: string
 }
 
+/** The module that recorded it — and who, when that is not the receiver named on it. */
+function recordedCell(d: DeskDelivery, kind: DestKind | null, words: CsvWords): string {
+  const module = d.source === "manual" ? words.recordedManual : words.modules[recordedBy(d, kind)]
+  const who = (d.confirmedByName || "").trim()
+  return who && who !== (d.receivedByName || "").split(" — ")[0].trim() ? `${module} — ${who}` : module
+}
+
 /** Cells per line of every confirmed receipt (the whole log, filters ignored). */
-export function receiptCsvRows(deliveries: DeskDelivery[], orders: PurchaseOrder[], warehouseName: (id: string | null | undefined) => string, words: CsvWords): string[][] {
+export function receiptCsvRows(
+  deliveries: DeskDelivery[],
+  orders: PurchaseOrder[],
+  warehouseName: (id: string | null | undefined) => string,
+  words: CsvWords,
+  kindOf: (d: DeskDelivery, po: PurchaseOrder | null) => DestKind | null = () => null
+): string[][] {
   const rows: string[][] = []
   const byId = new Map(orders.map((o) => [o.id, o]))
   const confirmed = deliveries.filter((d) => d.status === "confirmed").sort((a, b) => receiptDay(b).localeCompare(receiptDay(a)))
@@ -279,7 +294,7 @@ export function receiptCsvRows(deliveries: DeskDelivery[], orders: PurchaseOrder
     const po = d.poId ? byId.get(d.poId) || null : null
     const lines = receiptLinesOf(d)
     const place = warehouseName(d.landedWarehouseId || (d as { warehouseId?: string | null }).warehouseId)
-    const recorded = d.source === "manual" ? words.recordedManual : words.recordedGate
+    const recorded = recordedCell(d, kindOf(d, po), words)
     const poCell = po?.docNumber || d.poNumber || (isNoPo(d) ? words.noPo : "")
     if (!lines.length) {
       rows.push([d.docNumber || "", receiptDay(d), d.supplierName || "", poCell, "", "", "", "", "", "", place, d.receivedByName || "", recorded])
@@ -322,7 +337,7 @@ export const receiptCsvFilename = (now: Date) => `receipts-${dayOf(now.toISOStri
 // ---------------------------------------------------------------------------
 
 export type IncomingPill =
-  | { kind: "to_forward"; tone: "bad" | "warn" | "info" }
+  | { kind: "to_forward"; tone: "bad" | "warn" }
   | { kind: "due_late"; days: number }
   | { kind: "due_no_notice" }
   | { kind: "after_promise"; days: number }
@@ -330,16 +345,13 @@ export type IncomingPill =
   | { kind: "in_days"; days: number | null }
 
 /** First match wins, in the prototype's order: a notice still with us is OUR
- * task (red past the day, amber inside the forwarding window, blue before it) —
- * unless the notice reaches the receiver directly (`noticeRouting: both`); an
- * order with no notice is the supplier's; then lateness against the promise;
- * then a notice whose day passed with no receipt; else how far off it is. */
-export function incomingPill(r: IncomingRow, forwardWindowDays: number, routing: NoticeRouting = "procurement"): IncomingPill {
+ * task (red from its day on, amber before it) — unless the notice reaches the
+ * receiver directly (`noticeRouting: both`); an order with no notice is the
+ * supplier's; then lateness against the promise; then a notice whose day
+ * passed with no receipt; else how far off it is. */
+export function incomingPill(r: IncomingRow, routing: NoticeRouting = "procurement"): IncomingPill {
   if (r.kind === "due") return r.daysLate > 0 ? { kind: "due_late", days: r.daysLate } : { kind: "due_no_notice" }
-  if (routing === "procurement" && forwardState(r.delivery) === "none") {
-    const u = forwardUrgency(r.daysFromNow, forwardWindowDays)
-    return { kind: "to_forward", tone: u === "overdue" || (u === "due" && (r.daysFromNow ?? 0) <= 0) ? "bad" : u === "due" ? "warn" : "info" }
-  }
+  if (routing === "procurement" && forwardState(r.delivery) === "none") return { kind: "to_forward", tone: r.daysFromNow != null && r.daysFromNow <= 0 ? "bad" : "warn" }
   if (r.afterPromise > 0) return { kind: "after_promise", days: r.afterPromise }
   if (r.daysFromNow != null && r.daysFromNow < 0) return { kind: "passed_no_receipt" }
   return { kind: "in_days", days: r.daysFromNow }
@@ -371,6 +383,25 @@ export function shipmentOrdinal(d: DeskDelivery, deliveries: DeskDelivery[], po:
   return { n, m }
 }
 
+const isNotice = (d: Pick<DeskDelivery, "source" | "noNotice">) => d.source !== "manual" && !d.noNotice
+const noticeKey = (d: DeskDelivery) => `${isoOf(d.createdAt) || "9999"}|${d.id}`
+
+/** The notice's place among its order's notices, by when each was written —
+ * stable, since a notice is never re-dated. Null for a receipt with no notice. */
+export function noticeOrdinal(d: DeskDelivery, deliveries: DeskDelivery[]): number | null {
+  if (!d.poId || !isNotice(d)) return null
+  const mine = deliveries
+    .filter((x) => x.poId === d.poId && isNotice(x) && x.id !== d.id)
+    .concat(d)
+    .sort((a, b) => noticeKey(a).localeCompare(noticeKey(b)))
+  return mine.findIndex((x) => x.id === d.id) + 1
+}
+
+/** Our number for the supplier's notice (`ASN-2026/126-2`) — derived, see `noticeNumberFor`. */
+export function noticeNumberOf(d: DeskDelivery, deliveries: DeskDelivery[], po?: Pick<PurchaseOrder, "docNumber"> | null): string | null {
+  return noticeNumberFor(po?.docNumber || d.poNumber, noticeOrdinal(d, deliveries))
+}
+
 /** Where the goods of an order will land: the project's warehouse, else the central one. */
 export function landingWarehouseId(projectId: string | null | undefined, projects: Array<{ id: string; warehouseId?: string | null }>, orgId: string): string | null {
   const own = projectId ? projects.find((p) => p.id === projectId)?.warehouseId || null : null
@@ -398,10 +429,12 @@ export function destKind(warehouse: { projectId?: string | null } | null | undef
 
 export type RecordedBy = "procurement" | ReceiverModule
 
-/** Which module recorded the receipt: Procurement when it typed it (manual)
- * or its own buyer received it; otherwise the module that keeps the place. */
-export function recordedBy(d: Pick<DeskDelivery, "source" | "selfReceived">, kind: DestKind | null): RecordedBy {
-  if (d.source === "manual" || d.selfReceived) return "procurement"
+/** Which module recorded the receipt: Procurement when it typed it by hand;
+ * otherwise the module that keeps the place — a buyer who received it himself
+ * still recorded it in that place's module (prototype `recM`), and is flagged
+ * separately (`selfReceived`). */
+export function recordedBy(d: Pick<DeskDelivery, "source">, kind: DestKind | null): RecordedBy {
+  if (d.source === "manual") return "procurement"
   return kind === "prj" ? "projects" : "inventory"
 }
 
@@ -461,17 +494,56 @@ export interface TrailStep {
   params: Record<string, string | number>
 }
 
+/** The need an order answers, as the trail names it: its reference, who asked, and for what. */
+export interface TrailNeed {
+  ref: string
+  by: string
+  for: string
+}
+
+type NeedLike = { poId: string | null; refLabel: string; requestedBy: string; projectName: string | null; context: string; source: { kind: string; workOrderId?: string; purchaseRequestId?: string } }
+
+/** The need behind an order — the one the order was raised from (by id), else the one its source names. */
+export function needForOrder(needs: NeedLike[], po: Pick<PurchaseOrder, "id" | "purchaseSource">): TrailNeed | null {
+  const src = po.purchaseSource
+  const n =
+    needs.find((x) => x.poId === po.id) ||
+    (src?.purchaseRequestId
+      ? needs.find((x) => x.source.kind === src.kind && x.source.purchaseRequestId === src.purchaseRequestId && (x.source.workOrderId || null) === (src.workOrderId || null))
+      : undefined)
+  return n ? { ref: n.refLabel, by: n.requestedBy, for: n.projectName || n.context || "" } : null
+}
+
+export interface TrailFacts {
+  /** The need the order answers, when the needs desk knows it. */
+  need?: TrailNeed | null
+  /** Our number for the supplier's notice (`noticeNumberOf`). */
+  noticeNumber?: string | null
+}
+
 /** Pure: the trail of a receipt on an order. Rendering is the screen's. */
-export function receiptTrail(d: DeskDelivery, po: PurchaseOrder, routing: NoticeRouting = "procurement"): TrailStep[] {
+export function receiptTrail(d: DeskDelivery, po: PurchaseOrder & PoExtras, routing: NoticeRouting = "procurement", facts: TrailFacts = {}): TrailStep[] {
   const src = po.purchaseSource?.kind || null
   const fw = d.forwardedTo || null
   const held = (d.lines || []).some((l) => num(l.held) > 0)
+  const need = facts.need || null
+  const priceHold = (po.financeHolds || []).find((h) => h.state === "open" && h.reason === "price") || null
+  const paid = [...(po.financePayments || [])].filter((p) => p.kind !== "adv").sort((a, b) => (b.valueDate || "").localeCompare(a.valueDate || ""))[0] || null
+  const finance: TrailStep = priceHold
+    ? { key: "finance", state: "bad", at: priceHold.at || null, variant: "held_price", params: {} }
+    : paid
+      ? { key: "finance", state: "ok", at: paid.valueDate || null, variant: "paid", params: {} }
+      : po.status === "closed"
+        ? { key: "finance", state: "ok", at: po.closedAt || null, variant: "closed", params: {} }
+        : { key: "finance", state: "now", at: null, variant: "match", params: {} }
   const steps: TrailStep[] = [
-    { key: "requested", state: "ok", at: null, variant: src ? `source_${src}` : "direct", params: {} },
+    need
+      ? { key: "requested", state: "ok", at: null, variant: "need", params: { ref: need.ref, by: need.by, for: need.for } }
+      : { key: "requested", state: "ok", at: null, variant: src ? `source_${src}` : "direct", params: {} },
     { key: "purchased", state: "ok", at: po.approvedAt || po.createdAt || null, variant: "po", params: { number: po.docNumber, supplier: po.supplierName, rfq: po.rfqTitle || "" } },
     d.noNotice
       ? { key: "notified", state: "bad", at: null, variant: "none", params: {} }
-      : { key: "notified", state: "ok", at: isoOf(d.createdAt), variant: "notice", params: { day: dayOf(d.deliveryDate), note: d.paperNoteNumber || "", driver: d.deliveryPersonName || "" } },
+      : { key: "notified", state: "ok", at: isoOf(d.createdAt), variant: "notice", params: { number: facts.noticeNumber || "", day: dayOf(d.deliveryDate), window: d.deliveryWindow || "", note: d.paperNoteNumber || "", driver: d.deliveryPersonName || "" } },
     fw
       ? { key: "forwarded", state: "ok", at: fw.at, variant: fw.userId ? "member" : "link", params: { name: fw.name, phone: fw.phoneMasked, by: fw.byName } }
       : routing === "both" && !d.noNotice
@@ -479,7 +551,7 @@ export function receiptTrail(d: DeskDelivery, po: PurchaseOrder, routing: Notice
         : { key: "forwarded", state: "bad", at: null, variant: d.noNotice ? "unannounced" : "direct", params: {} },
     { key: "received", state: "ok", at: d.confirmedAt || d.deliveryDate || null, variant: d.receiverReport ? "link" : "gate", params: { receiver: d.receivedByName || "", number: d.docNumber || "" } },
     { key: "went", state: held ? "now" : "ok", at: null, variant: held ? "held" : "landed", params: {} },
-    { key: "finance", state: po.status === "closed" ? "ok" : "now", at: po.closedAt || null, variant: po.status === "closed" ? "closed" : "match", params: {} },
+    finance,
   ]
   return steps
 }
@@ -505,10 +577,10 @@ export function isoOf(v: unknown): string | null {
   return null
 }
 
-export function receiptLog(d: DeskDelivery, po: PurchaseOrder | null): ReceiptLogEntry[] {
+export function receiptLog(d: DeskDelivery, po: PurchaseOrder | null, noticeNumber: string | null = null): ReceiptLogEntry[] {
   const out: ReceiptLogEntry[] = []
   const created = isoOf(d.createdAt)
-  if (created && !d.noNotice && d.source !== "manual") out.push({ at: created, action: "noticed", by: d.supplierName || "", params: { day: dayOf(d.deliveryDate) } })
+  if (created && !d.noNotice && d.source !== "manual") out.push({ at: created, action: "noticed", by: d.supplierName || "", params: { day: dayOf(d.deliveryDate), notice: noticeNumber || "" } })
   const fw = d.forwardedTo
   if (fw?.at) out.push({ at: fw.at, action: "forwarded", by: fw.byName, params: { name: fw.name } })
   const rr = d.receiverReport

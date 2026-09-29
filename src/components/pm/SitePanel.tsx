@@ -139,6 +139,7 @@ export function SitePanel({
   const canDaily = !archived && access.allowed("daily.write")
   const canHse = !archived && access.allowed("hse.record")
   const canObs = !archived && access.allowed("obstacle.record")
+  const canChase = !archived && access.allowed("obstacle.chase")
   const canClaim = !archived && sections.claim && access.allowed("request.decide") && Boolean(onLogClaim)
   const filedToday = reports.some((r) => r.day === today)
 
@@ -175,7 +176,7 @@ export function SitePanel({
     const cover = coverOf(o)
     return (
       <div className={cn("flex shrink-0 flex-wrap gap-1.5", stacked && "flex-col items-end")}>
-        {canObs && (
+        {canChase && (
           <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => chase(o)}>
             {busy === `c${o.id}` && <Loader2 size={14} className="me-1.5 animate-spin" aria-hidden="true" />}
             {t("site.obs.chase")}

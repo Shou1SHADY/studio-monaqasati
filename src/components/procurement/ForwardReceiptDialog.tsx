@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useUser } from "@/firebase"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
-import { displayPoNumber } from "@/lib/procurement/format"
+import { displayNoticeNumber, displayPoNumber } from "@/lib/procurement/format"
 import type { DeskDelivery } from "@/lib/procurement/receipt-desk"
 import { receiversForPlace } from "@/lib/procurement/receivers"
 import type { PurchaseOrder } from "@/lib/procurement/types"
@@ -39,12 +39,15 @@ export function ForwardReceiptDialog({
   orgId,
   placeWarehouseId,
   placeName,
+  noticeNumber,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   delivery: DeskDelivery
   po: PurchaseOrder | null
   orgId: string
+  /** Our number for this notice (`noticeNumberOf`), when it has one. */
+  noticeNumber?: string | null
   /** Where this delivery would land (the project's warehouse, else the central
    * one, as `resolveLandingWarehouse` decides), so the register offers the
    * people named for that place first. */
@@ -79,6 +82,10 @@ export function ForwardReceiptDialog({
   const member = orgMembers.find((m) => m.id === userId)
   const memberPhone = (member?.phone as string | undefined) || ""
   const chosen = choices.find((c) => c.id === receiverId)
+  // By link: someone with no account gets the link and a code; anyone with one is forwarded inside their module.
+  const byLink = mode === "person" || (mode === "register" && Boolean(chosen) && !chosen?.userId)
+  const inApp = mode === "register" && chosen?.userId ? chosen : mode === "user" && userId ? receivers.find((r) => r.userId === userId && r.active !== false) || null : null
+  const inAppPhone = inApp ? inApp.phone || memberPhone || phone.trim() : ""
   const ready =
     mode === "register"
       ? Boolean(chosen)
@@ -175,7 +182,11 @@ export function ForwardReceiptDialog({
             <div className="space-y-1 rounded-lg border bg-muted/20 p-3 text-xs">
               <p className="text-sm font-bold" dir="auto">
                 {supplierName}
-                {po && <span className="font-medium text-muted-foreground"> · {displayPoNumber(po.docNumber, locale)}</span>}
+                {noticeNumber ? (
+                  <span className="font-medium text-muted-foreground"> · <bdi>{displayNoticeNumber(noticeNumber, locale)}</bdi></span>
+                ) : (
+                  po && <span className="font-medium text-muted-foreground"> · {displayPoNumber(po.docNumber, locale)}</span>
+                )}
               </p>
               <p className="text-muted-foreground" dir="auto">
                 {lines.join(" · ") || delivery.rfqTitle || "—"}
@@ -280,12 +291,17 @@ export function ForwardReceiptDialog({
                 </div>
               </div>
             )}
+            {inApp && (
+              <p className="text-xs text-module" dir="auto">
+                {t("forward.reachesIn", { module: t(`module.${inApp.module}`), phone: inAppPhone })}
+              </p>
+            )}
             <div className="space-y-1">
               <Label htmlFor="fw-note" className="text-xs">{t("forward.noteToReceiver")}</Label>
               <Textarea id="fw-note" rows={2} maxLength={500} dir="auto" placeholder={t("forward.notePlaceholder")} value={note} onChange={(e) => setNote(e.target.value)} />
             </div>
             <ul className="space-y-1 rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
-              {[mode === "person" || (mode === "register" && chosen && !chosen.userId) ? t("forward.effectLink") : t("forward.effectMember"), t("forward.effectTrail"), t("forward.effectNoTimer")].map((x) => (
+              {[byLink ? t("forward.effectLink") : t("forward.effectMember"), t("forward.effectTrail"), t("forward.effectNoTimer")].map((x) => (
                 <li key={x} className="flex gap-2">
                   <span aria-hidden="true">•</span>
                   <span>{x}</span>
@@ -301,7 +317,7 @@ export function ForwardReceiptDialog({
           <DialogFooter>
             <Button type="button" className="gap-1.5" disabled={busy || !ready} onClick={submit}>
               {busy ? <Loader2 className="animate-spin" size={14} aria-hidden="true" /> : <Send size={14} aria-hidden="true" />}
-              {t("forward.create")}
+              {byLink ? t("forward.sendLink") : t("forward.forwardMember")}
             </Button>
           </DialogFooter>
         )}

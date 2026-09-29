@@ -119,9 +119,10 @@ describe("receiptState — first match wins", () => {
     expect(receiptState(delivery({ deliveryDate: null }), NOW)).toBe("on_the_way")
   })
 
-  it("at the gate: rejects > held > short > matched; a legacy delivery with no lines is received", () => {
+  it("at the gate: held > rejects > short > matched (the prototype's GST, #55); a legacy delivery with no lines is received", () => {
     const confirmed = (l: Partial<DeliveryLine>) => delivery({ status: "confirmed", lines: [dl({ counted: 645, ...l })] })
-    expect(receiptState(confirmed({ rejected: 45, held: 10 }), NOW)).toBe("received_with_rejects")
+    expect(receiptState(confirmed({ rejected: 45, held: 10 }), NOW)).toBe("received_held")
+    expect(receiptState(confirmed({ rejected: 45 }), NOW)).toBe("received_with_rejects")
     expect(receiptState(confirmed({ held: 10 }), NOW)).toBe("received_held")
     expect(receiptState(confirmed({}), NOW)).toBe("received_short")
     expect(receiptState(confirmed({ counted: 650 }), NOW)).toBe("received")

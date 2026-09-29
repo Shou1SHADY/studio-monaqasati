@@ -36,7 +36,14 @@ export interface MatchRow {
   invoicedAmount: number | null
   invoice: { no: string; date: string | null } | null
   state: MatchState
+  /** The project's material request the order was raised from, when it was. */
+  requestId: string | null
 }
+
+/** An order as Procurement stores it: the need it answers rides on `purchaseSource`. */
+export type MatchPo = CostPo & { purchaseSource?: { kind?: string | null; purchaseRequestId?: string | null } | null }
+
+const requestOfPo = (po: MatchPo) => (po.purchaseSource?.kind === "project_request" && po.purchaseSource.purchaseRequestId) || null
 
 /** Orders that reach the match: approved onwards (a cancelled one only if something arrived). */
 const MATCHING = new Set(["approved", "sent", "accepted", "closed"])
@@ -47,7 +54,7 @@ export function matchState(received: number, invoiced: number | null): MatchStat
   return invoiced > received ? "over" : "under"
 }
 
-export function matchRows(pos: CostPo[], invoices: InvoiceFact[]): MatchRow[] {
+export function matchRows(pos: MatchPo[], invoices: InvoiceFact[]): MatchRow[] {
   const out: MatchRow[] = []
   for (const po of pos) {
     if (!MATCHING.has(po.status) && !(po.status === "cancelled" && po.lines.some((l) => l.accepted > 0))) continue
@@ -79,6 +86,7 @@ export function matchRows(pos: CostPo[], invoices: InvoiceFact[]): MatchRow[] {
         invoicedAmount: hit ? r2(amount) : null,
         invoice: hit ? { no: hit.no, date: hit.date } : null,
         state: matchState(r2(l.accepted), invoiced),
+        requestId: requestOfPo(po),
       })
     }
   }

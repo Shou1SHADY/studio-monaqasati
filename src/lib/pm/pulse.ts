@@ -14,7 +14,9 @@
 // A figure with no source (the cost budget before items carry an estimated
 // cost) is null and says so; it is never invented.
 
+import { awaitingReply } from "../inventory/project-supply"
 import { daysBetween } from "./site"
+import type { ReqLine } from "./supply"
 
 const r1 = (n: number) => Math.round(n * 10) / 10
 const r2 = (n: number) => Math.round(n * 100) / 100
@@ -177,7 +179,7 @@ export const WAIT_CAP = 4
 
 export type WaitModule = "proc" | "fin" | "inv" | "crm"
 
-export type WaitKind = "po" | "request" | "request_rfq" | "cert_invoice" | "retention" | "crm_returned" | "store_return"
+export type WaitKind = "po" | "request" | "request_rfq" | "request_inv" | "cert_invoice" | "retention" | "crm_returned" | "store_return" | "store_sret"
 
 export interface WaitRow {
   id: string
@@ -221,33 +223,47 @@ export function poWaitRows(
   })
 }
 
-/** A project's approved material request that Procurement has not answered with an order yet. */
+/** A project's approved material request, one row per module holding a part of
+ * it (the prototype's waitingOn): lines Inventory has not answered yet wait on
+ * the store's authorisation; what is left to buy waits on Procurement. A line
+ * issued from stock in full is on its way to us — ours to receive, nobody's wait. */
 export function requestWaitRows(
-  requests: Array<{ id: string; title: string; status: string; withdrawn?: boolean; rfqId?: string | null; rfqNumber?: string | null; poId?: string | null; mfgRequestId?: string | null; approvedOn?: string | null; day?: string | null; needBy?: string | null; lines: Array<{ cl?: unknown }> }>,
+  requests: Array<{ id: string; title: string; status: string; pm?: boolean; withdrawn?: boolean; rfqId?: string | null; rfqNumber?: string | null; poId?: string | null; mfgRequestId?: string | null; approvedOn?: string | null; day?: string | null; needBy?: string | null; lines: Array<Partial<ReqLine>> }>,
   projectId: string,
   today: string
 ): WaitRow[] {
   return requests
     .filter((r) => r.status === "approved" && !r.withdrawn && !r.poId && !r.mfgRequestId && r.lines.some((l) => !l.cl))
-    .map((r): WaitRow => {
+    .flatMap((r): WaitRow[] => {
       const age = ageOf(r.approvedOn ?? r.day, today)
       // Late when it has waited, or when the site needs it within three days (the prototype's need ≤ 3).
       const needSoon = Boolean(d10(r.needBy)) && daysBetween(today, d10(r.needBy)) <= WAIT_LATE_DAYS
-      return {
-        id: `req:${r.id}`,
-        module: "proc",
-        kind: r.rfqId ? "request_rfq" : "request",
-        params: { title: r.title, rfq: r.rfqNumber ?? "" },
-        sub: { kind: "request_items", params: { count: r.lines.filter((l) => !l.cl).length } },
-        age,
-        late: age >= WAIT_LATE_DAYS || needSoon,
-        projectId,
-        tab: "pmReq",
-      }
+      const late = age >= WAIT_LATE_DAYS || needSoon
+      const open = r.lines.filter((l) => !l.cl)
+      const atStore = r.pm ? open.filter((l) => awaitingReply({ pm: r.pm, status: "approved", withdrawn: r.withdrawn, poId: r.poId }, l as ReqLine)) : []
+      const toBuy = r.pm ? open.filter((l) => !atStore.includes(l) && (l.inv?.k !== "issue" || (Number(l.inv.kept) || 0) > 0)) : open
+      const out: WaitRow[] = []
+      if (atStore.length)
+        out.push({ id: `reqinv:${r.id}`, module: "inv", kind: "request_inv", params: { title: r.title }, sub: { kind: "request_items", params: { count: atStore.length } }, age, late, projectId, tab: "pmReq" })
+      if (toBuy.length)
+        out.push({
+          id: `req:${r.id}`,
+          module: "proc",
+          kind: r.rfqId ? "request_rfq" : "request",
+          params: { title: r.title, rfq: r.rfqNumber ?? "" },
+          sub: { kind: "request_items", params: { count: toBuy.length } },
+          age,
+          late,
+          projectId,
+          tab: "pmReq",
+        })
+      return out
     })
 }
 
-/** Material the site sent back to a main warehouse that the keeper has not received yet (prj:RET). */
+/** Material the site sent back to a main warehouse that the keeper has not received
+ * yet (prj:RET) — and non-conforming material going back to the supplier, which
+ * Procurement claims. */
 export function storeWaitRows(
   stores: Array<{ id: string; name: string; unit: string; moves: Array<{ t: string; st?: string | null; q: number; on: string; warehouseName?: string | null }> }>,
   projectId: string,
@@ -256,15 +272,16 @@ export function storeWaitRows(
   return stores.flatMap((x) =>
     x.moves
       .map((m, i) => ({ m, i }))
-      .filter(({ m }) => m.t === "ret" && m.st === "wait")
+      .filter(({ m }) => (m.t === "ret" || m.t === "sret") && m.st === "wait")
       .map(({ m, i }): WaitRow => {
         const age = ageOf(m.on, today)
+        const ret = m.t === "ret"
         return {
-          id: `inv:${x.id}:${i}`,
-          module: "inv",
-          kind: "store_return",
+          id: `${ret ? "inv" : "sret"}:${x.id}:${i}`,
+          module: ret ? "inv" : "proc",
+          kind: ret ? "store_return" : "store_sret",
           params: { name: x.name, q: m.q, unit: x.unit },
-          sub: { kind: "store_return_to", params: { wh: m.warehouseName || "—" } },
+          sub: ret ? { kind: "store_return_to", params: { wh: m.warehouseName || "—" } } : { kind: "sret_claim", params: {} },
           age,
           late: age >= WAIT_LATE_DAYS,
           projectId,

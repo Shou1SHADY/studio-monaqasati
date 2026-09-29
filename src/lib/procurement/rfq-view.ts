@@ -154,13 +154,32 @@ export interface RfqListLike extends RfqLike {
   createdByUserId?: string | null
   contractorId?: string | null
   purchaseSource?: { kind?: string | null } | null
-  products?: Array<{ description?: string | null; name?: string | null; quantity?: string | number | null; unit?: string | null; category?: string | null }> | null
+  products?: Array<{ description?: string | null; name?: string | null; quantity?: string | number | null; unit?: string | null; category?: string | null; projectId?: string | null; projectName?: string | null }> | null
 }
 
 export function rfqProjectKey(rfq: Pick<RfqListLike, "projectId" | "purchaseSource">): string {
   if (rfq.projectId) return rfq.projectId
   return rfq.purchaseSource?.kind === "mfg_purchase" ? WORKSHOP : GENERAL_STOCK
 }
+
+/** Each line is charged to its own project (`products[].projectId`); a line
+ * that names none falls back to the RFQ's. One key per place, in line order. */
+export function rfqProjectKeys(rfq: Pick<RfqListLike, "projectId" | "purchaseSource" | "products">): string[] {
+  const whole = rfqProjectKey(rfq)
+  const lines = Array.isArray(rfq.products) ? rfq.products : []
+  if (!lines.length) return [whole]
+  return Array.from(new Set(lines.map((p) => p?.projectId || whole)))
+}
+
+/** The project name a line carries with it, for when the org's project list does not know the id. */
+export function lineProjectNames(rfq: Pick<RfqListLike, "products">): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const p of rfq.products || []) if (p?.projectId && p.projectName && !out.has(p.projectId)) out.set(p.projectId, p.projectName)
+  return out
+}
+
+/** Lines charged to more than one project: a whole-request price must then be broken down per line. */
+export const spansProjects = (projectIds: Array<string | null | undefined>): boolean => new Set(projectIds.map((p) => p || "")).size > 1
 
 /** The categories come from the lines: a multi-category request shows each. */
 export function rfqCategories(rfq: Pick<RfqListLike, "category" | "products">): string[] {
@@ -179,7 +198,7 @@ export interface RfqFilters {
 export type RfqFilterKey = keyof RfqFilters
 
 function passes(rfq: RfqListLike, key: RfqFilterKey, value: string, now: Date): boolean {
-  if (key === "project") return rfqProjectKey(rfq) === value
+  if (key === "project") return rfqProjectKeys(rfq).includes(value)
   if (key === "category") return rfqCategories(rfq).includes(value)
   if (key === "city") return (rfq.city || "") === value
   return matchesDeadline(rfq, value as DeadlineFilter, now)
@@ -290,6 +309,60 @@ export function bulkDeleteSplit<T extends BulkRfqLike>(rows: T[]): { drafts: T[]
 export function bulkPublishPatch(rfq: BulkRfqLike, at: string): { status: "New"; visibility: "public" | "private"; publishedAt: string } | null {
   if (rfq.status !== "Draft") return null
   return { status: "New", visibility: rfq.visibility === "private" ? "private" : "public", publishedAt: at }
+}
+
+/** The companies that offered on each RFQ — a search for a supplier finds the RFQs he quoted on. */
+export function offerersByRfq(offers: Array<{ rfqId?: string | null; companyName?: string | null; supplierName?: string | null; guestContact?: { name?: string | null } | null }>): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  for (const o of offers) {
+    const name = (o.companyName || o.supplierName || o.guestContact?.name || "").trim()
+    if (!o.rfqId || !name) continue
+    const list = out.get(o.rfqId) || []
+    if (!list.includes(name)) out.set(o.rfqId, [...list, name])
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// The need behind each line (R-13, R-19): a line picked from the open needs
+// carries its source; an older RFQ answering one need carries it once for all.
+// ---------------------------------------------------------------------------
+
+export type LineNeedSource =
+  | { kind: "mfg_purchase"; workOrderId?: string; purchaseRequestId?: string }
+  | { kind: "project_request"; projectId?: string; purchaseRequestId?: string }
+  | { kind: "stock_gap"; warehouseId?: string; itemId?: string }
+
+export interface NeedLinkedRfq {
+  purchaseSource?: { kind: string; workOrderId?: string; purchaseRequestId?: string; projectId?: string; warehouseId?: string; itemId?: string } | null
+  needSources?: Array<{ kind: string; workOrderId?: string; purchaseRequestId?: string; projectId?: string; warehouseId?: string; itemId?: string }> | null
+  products?: Array<{ needSource?: { kind: string; workOrderId?: string; purchaseRequestId?: string; projectId?: string; warehouseId?: string; itemId?: string } | null; needLine?: number | null } | null> | null
+}
+
+const asSource = (s: { kind: string; workOrderId?: string; purchaseRequestId?: string; projectId?: string; warehouseId?: string; itemId?: string } | null | undefined): LineNeedSource | null =>
+  s && (s.kind === "mfg_purchase" || s.kind === "project_request" || s.kind === "stock_gap") ? (s as LineNeedSource) : null
+
+/** The need a line answers: its own, else the RFQ's only one while no line names its own. */
+export function lineNeed(rfq: NeedLinkedRfq, index: number): { source: LineNeedSource; line: number } | null {
+  const lines = rfq.products || []
+  const own = asSource(lines[index]?.needSource)
+  if (own) return { source: own, line: Number(lines[index]?.needLine) || 0 }
+  if (lines.some((p) => p?.needSource)) return null
+  const whole = asSource(rfq.purchaseSource) || ((rfq.needSources || []).length === 1 ? asSource(rfq.needSources?.[0]) : null)
+  return whole ? { source: whole, line: 0 } : null
+}
+
+/** The desk's key for a need (`needs.ts`), so a line opens its row there. */
+export function needKeyOfSource(s: LineNeedSource): string | null {
+  if (s.kind === "project_request") return s.projectId && s.purchaseRequestId ? `project:${s.projectId}:${s.purchaseRequestId}` : null
+  if (s.kind === "stock_gap") return s.warehouseId && s.itemId ? `stock:${s.warehouseId}:${s.itemId}` : null
+  return s.workOrderId && s.purchaseRequestId ? `mfg:${s.workOrderId}:${s.purchaseRequestId}` : null
+}
+
+/** Every need the RFQ was linked to — what deleting a draft must hand back to the desk. */
+export function rfqNeedSources(rfq: NeedLinkedRfq): LineNeedSource[] {
+  const all = [rfq.purchaseSource, ...(rfq.needSources || []), ...(rfq.products || []).map((p) => p?.needSource)].map(asSource).filter((s): s is LineNeedSource => s !== null)
+  return Array.from(new Map(all.map((s) => [JSON.stringify(s), s])).values())
 }
 
 /** The RFQ page's tab from `?tab=` — the card's «الاستفسارات» opens the queries. */

@@ -32,12 +32,17 @@ import { linkNeed } from "@/lib/procurement/needs-writes"
 import { addDays, supplierKey, todayOf } from "@/lib/procurement/po"
 import { buyerSelfIssueLimit } from "@/lib/procurement/po-extras"
 import { directSupplierOptions } from "@/lib/procurement/supplier-file"
+import { publicReach } from "@/lib/procurement/rfq-extras"
+import { useSupplierDirectory } from "@/hooks/useSupplierDirectory"
+import type { ProcOffer } from "@/hooks/useProcurementWorld"
+import { CATEGORIES_DATA } from "@/lib/constants"
 import type { ProcActor, ProcurementPolicies, PurchaseOrder } from "@/lib/procurement/types"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 
-const OTHER = "__other__"
+const NO_IDS: string[] = []
+const NO_OFFERS: ProcOffer[] = []
 const money = (n: number) => sarLtr(n.toLocaleString("en-US", { maximumFractionDigits: 2 }))
 
 export function DirectOrderDialog({
@@ -71,16 +76,25 @@ export function DirectOrderDialog({
   const { toast } = useToast()
   const today = todayOf(new Date())
 
-  const suppliers = useMemo(
-    () => directSupplierOptions({ records: supplierRecords, orders, keyOf: (o) => (o.isGuestSupplier ? supplierKey(o) : o.supplierOrgId), categories: rows.map((r) => r.category).filter((c): c is string => Boolean(c)), today }),
-    [orders, supplierRecords, rows, today]
-  )
+  // The supplier file, never a name typed by hand (P-36): our records and past
+  // suppliers, then the platform's of the lines' categories.
+  const { suppliers: platformSuppliers } = useSupplierDirectory(orgId, NO_IDS, NO_OFFERS)
+  const suppliers = useMemo(() => {
+    const categories = rows.map((r) => r.category).filter((c): c is string => Boolean(c))
+    return directSupplierOptions({
+      records: supplierRecords,
+      orders,
+      keyOf: (o) => (o.isGuestSupplier ? supplierKey(o) : o.supplierOrgId),
+      categories,
+      today,
+      platform: publicReach(platformSuppliers, categories, CATEGORIES_DATA),
+    })
+  }, [orders, supplierRecords, rows, today, platformSuppliers])
   const lastOf = (r: NeedRow) => lastPaid(history, r.name, r.unit)
   const [supplierPick, setSupplierPick] = useState(() => {
     const first = rows.map(lastOf).find(Boolean)
     return (first && suppliers.find((s) => s.orgId === first.supplierOrgId)?.key) || ""
   })
-  const [otherName, setOtherName] = useState("")
   const [prices, setPrices] = useState<string[]>(() => rows.map(() => ""))
   const [reason, setReason] = useState<SingleSourceReason | "">("")
   const needDays = rows.map((r) => r.needBy).filter((d): d is string => Boolean(d)).sort()
@@ -93,8 +107,8 @@ export function DirectOrderDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const picked = supplierPick === OTHER ? null : suppliers.find((s) => s.key === supplierPick) ?? null
-  const supplierName = mode === "agreement" ? agreement?.supplierName || "" : picked ? picked.name : supplierPick === OTHER ? otherName : ""
+  const picked = suppliers.find((s) => s.key === supplierPick) ?? null
+  const supplierName = mode === "agreement" ? agreement?.supplierName || "" : picked ? picked.name : ""
   const lines = rows.map((r, i) => ({ name: r.name, unit: r.unit, quantity: r.open, unitPrice: prices[i] ? Number(prices[i]) : null }))
   const reasonText = reason ? t(`dor_why_${reason}`) : ""
   const check = { mode, lines, supplierName, reason: reasonText, agreement, policies, today, deliverBy, requireDeliverBy: true }
@@ -180,19 +194,13 @@ export function DirectOrderDialog({
                     {suppliers.map((s) => (
                       <SelectItem key={s.key} value={s.key}>
                         {s.name}
+                        {s.platform ? ` — ${tProc("p2c.rfq.from_platform")}` : ""}
                         {s.crExpired ? ` — ${t("dor_cr_expired")}` : s.unverified ? ` — ${t("dor_unverified")}` : ""}
                       </SelectItem>
                     ))}
-                    <SelectItem value={OTHER}>{t("dor_other_supplier")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              {supplierPick === OTHER && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="dor-other">{t("dor_other_name")}</Label>
-                  <Input id="dor-other" value={otherName} onChange={(e) => setOtherName(e.target.value)} dir="auto" />
-                </div>
-              )}
             </div>
           )}
 

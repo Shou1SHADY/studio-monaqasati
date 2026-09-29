@@ -14,6 +14,7 @@ import { fakeFirestore, readDoc, resetFakeDb, seed } from "@/test-utils/fake-fir
 import type { Firestore } from "firebase/firestore"
 import { onGoodsReceived } from "@/lib/accounting/hooks"
 import {
+  INCOMING_HORIZON_DAYS,
   PLACE_GENERAL,
   PLACE_WORKSHOP,
   acceptedBefore,
@@ -22,7 +23,10 @@ import {
   incomingPill,
   incomingRows,
   landingWarehouseId,
+  needForOrder,
   noPoInvoiceValue,
+  noticeNumberOf,
+  noticeOrdinal,
   receiptLog,
   receiptRows,
   receiptTrail,
@@ -33,6 +37,7 @@ import {
   suggestedReceiver,
   type DeskDelivery,
 } from "@/lib/procurement/receipt-desk"
+import { displayNoticeNumber, noticeNumberFor } from "@/lib/procurement/format"
 import { matchReceiptToOrder, openOrdersForReceipt, priceAboveReference, priceReference, regulariseProblem, registeredSuppliers, defaultChoice, parseChoice, choiceKey } from "@/lib/procurement/receipt-regularise"
 import { linkReceiptToOrder, markReceiptAsExpense } from "@/lib/procurement/receipt-writes"
 import { applyDiscountRelease, applyRejectDecision, decideReject, type RejectTermsLine } from "@/lib/procurement/writes"
@@ -110,22 +115,48 @@ describe("the desk: filters, pills, shipments, receivers", () => {
   it("the pill: a notice still with us inside the window is ours to forward; red on its day", () => {
     const notice = (day: string, over: Partial<DeskDelivery> = {}): DeskDelivery => ({ id: `n-${day}`, status: "pending_confirmation", poId: "po1", deliveryDate: day, lines: [], ...over })
     const rowsOf = (d: DeskDelivery) => incomingRows([d], [po], NOW)[0]
-    expect(incomingPill(rowsOf(notice("2026-09-23")), 1)).toEqual({ kind: "to_forward", tone: "warn" })
-    expect(incomingPill(rowsOf(notice("2026-09-22")), 1)).toEqual({ kind: "to_forward", tone: "bad" })
-    expect(incomingPill(rowsOf(notice("2026-09-21")), 1)).toEqual({ kind: "to_forward", tone: "bad" })
+    expect(incomingPill(rowsOf(notice("2026-09-23")))).toEqual({ kind: "to_forward", tone: "warn" })
+    expect(incomingPill(rowsOf(notice("2026-09-22")))).toEqual({ kind: "to_forward", tone: "bad" })
+    expect(incomingPill(rowsOf(notice("2026-09-21")))).toEqual({ kind: "to_forward", tone: "bad" })
     const fw = { linkId: "k", name: "ناصر", userId: null, phoneMasked: "•••12", byName: "Badr", at: "2026-09-21T08:00:00Z" }
-    expect(incomingPill(rowsOf(notice("2026-09-23", { forwardedTo: fw })), 1)).toEqual({ kind: "after_promise", days: 3 })
+    expect(incomingPill(rowsOf(notice("2026-09-23", { forwardedTo: fw })))).toEqual({ kind: "after_promise", days: 3 })
     const early = order({ promisedDate: "2026-10-30" })
-    expect(incomingPill(incomingRows([notice("2026-09-21", { forwardedTo: fw })], [early], NOW)[0], 1)).toEqual({ kind: "passed_no_receipt" })
-    expect(incomingPill(incomingRows([notice("2026-09-28", { forwardedTo: fw })], [early], NOW)[0], 1)).toEqual({ kind: "in_days", days: 6 })
-    // Unforwarded before the window: still ours to forward (blue) — the prototype shows it on every one.
-    expect(incomingPill(incomingRows([notice("2026-09-28")], [early], NOW)[0], 1)).toEqual({ kind: "to_forward", tone: "info" })
+    expect(incomingPill(incomingRows([notice("2026-09-21", { forwardedTo: fw })], [early], NOW)[0])).toEqual({ kind: "passed_no_receipt" })
+    expect(incomingPill(incomingRows([notice("2026-09-28", { forwardedTo: fw })], [early], NOW)[0])).toEqual({ kind: "in_days", days: 6 })
+    // Unforwarded before the window: still ours to forward (amber, not blue) — the prototype shows it on every one.
+    expect(incomingPill(incomingRows([notice("2026-09-28")], [early], NOW)[0])).toEqual({ kind: "to_forward", tone: "warn" })
     // Routed to both at once: nothing waits on us.
-    expect(incomingPill(incomingRows([notice("2026-09-28")], [early], NOW)[0], 1, "both")).toEqual({ kind: "in_days", days: 6 })
+    expect(incomingPill(incomingRows([notice("2026-09-28")], [early], NOW)[0], "both")).toEqual({ kind: "in_days", days: 6 })
     // A notice a receipt already took is no longer on the way.
     expect(incomingRows([notice("2026-09-28", { closedByReceipt: { deliveryId: "d2", docNumber: "GR-2026/002" } })], [], NOW)).toEqual([])
     const due = incomingRows([], [order({ promisedDate: "2026-09-18" })], NOW)[0]
-    expect(incomingPill(due, 1)).toEqual({ kind: "due_late", days: 4 })
+    expect(incomingPill(due)).toEqual({ kind: "due_late", days: 4 })
+  })
+
+  it("our notice number is derived from the order and the notice's place among its notices — never for a receipt with no notice", () => {
+    const n = (id: string, createdAt: string, over: Partial<DeskDelivery> = {}): DeskDelivery => ({ id, status: "pending_confirmation", poId: "po1", createdAt, deliveryDate: "2026-09-25", lines: [], ...over })
+    const a = n("a", "2026-09-10T08:00:00Z", { status: "confirmed", deliveryDate: "2026-09-30" })
+    const b = n("b", "2026-09-12T08:00:00Z", { deliveryDate: "2026-09-12" })
+    const manual = n("m", "2026-09-11T08:00:00Z", { status: "confirmed", source: "manual" })
+    const blind = n("x", "2026-09-11T09:00:00Z", { status: "confirmed", noNotice: true })
+    const all = [b, manual, a, blind]
+    expect(noticeOrdinal(a, all)).toBe(1)
+    expect(noticeOrdinal(b, all)).toBe(2)
+    expect(noticeNumberOf(b, all, po)).toBe("ASN-2026/001-2")
+    expect(noticeNumberOf(manual, all, po)).toBeNull()
+    expect(noticeNumberOf(blind, all, po)).toBeNull()
+    expect(noticeNumberOf(n("q", "2026-09-01T00:00:00Z", { poId: null }), all, null)).toBeNull()
+    // The order's number stored on the notice serves when the order is not loaded.
+    expect(noticeNumberOf({ ...a, poNumber: "PO-2026/001" }, all, null)).toBe("ASN-2026/001-1")
+    expect(displayNoticeNumber("ASN-2026/001-2", "ar")).toBe("إ.ت-2026/001-2")
+    expect(displayNoticeNumber("ASN-2026/001-2", "en")).toBe("ASN-2026/001-2")
+    expect(noticeNumberFor("not a number", 1)).toBeNull()
+  })
+
+  it("on the way looks 3 days ahead for an order with no notice (prototype prom<=3)", () => {
+    expect(INCOMING_HORIZON_DAYS).toBe(3)
+    expect(incomingRows([], [order({ promisedDate: "2026-09-25" })], NOW)).toHaveLength(1)
+    expect(incomingRows([], [order({ promisedDate: "2026-09-26" })], NOW)).toHaveLength(0)
   })
 
   it("shipment n of m: m only when the pending notices cover what is left", () => {
@@ -154,7 +185,8 @@ describe("the desk: filters, pills, shipments, receivers", () => {
     expect(destKind(null, "p1")).toBe("prj")
     expect(destKind(null, null)).toBeNull()
     expect(recordedBy({ source: "manual" }, "inv")).toBe("procurement")
-    expect(recordedBy({ selfReceived: true }, "prj")).toBe("procurement")
+    // A buyer who received it himself recorded it in the place's module (#48) — the flag says the rest.
+    expect(recordedBy({ selfReceived: true } as DeskDelivery, "prj")).toBe("projects")
     expect(recordedBy({}, "prj")).toBe("projects")
     expect(recordedBy({}, "inv")).toBe("inventory")
   })
@@ -191,9 +223,35 @@ describe("the trail and the log", () => {
     expect(bare[3].variant).toBe("unannounced")
   })
 
+  it("the first step names the need, its requester and what for; the notice step its number and window", () => {
+    const need = needForOrder(
+      [
+        { poId: null, refLabel: "ط.م-2026/044", requestedBy: "م. ياسر", projectName: "برج النرجس", context: "", source: { kind: "project_request", purchaseRequestId: "pr9" } },
+        { poId: "po1", refLabel: "WO-2026/010", requestedBy: "Workshop", projectName: null, context: "Stairs", source: { kind: "mfg_purchase", workOrderId: "wo1", purchaseRequestId: "pr1" } },
+      ],
+      po
+    )
+    expect(need).toEqual({ ref: "WO-2026/010", by: "Workshop", for: "Stairs" })
+    expect(needForOrder([{ poId: null, refLabel: "R-1", requestedBy: "Ali", projectName: "P", context: "", source: { kind: "project_request", purchaseRequestId: "pr9" } }], order({ purchaseSource: { kind: "project_request", purchaseRequestId: "pr9" } }))).toEqual({ ref: "R-1", by: "Ali", for: "P" })
+    expect(needForOrder([], po)).toBeNull()
+    const steps = receiptTrail({ ...d, deliveryWindow: "morning" }, po, "procurement", { need: { ref: "R-1", by: "Ali", for: "P" }, noticeNumber: "ASN-2026/001-1" })
+    expect(steps[0]).toMatchObject({ variant: "need", params: { ref: "R-1", by: "Ali", for: "P" } })
+    expect(steps[2].params).toMatchObject({ number: "ASN-2026/001-1", window: "morning", note: "DN-77" })
+  })
+
+  it("finance: an open price hold is red; a payment reads paid; else it matches on the accepted", () => {
+    const hold = { id: "h1", invoiceNo: "INV-1", amount: 100, reason: "price" as const, text: "", need: "", at: "2026-09-23T00:00:00Z", byName: "Fin", state: "open" as const }
+    expect(receiptTrail(d, { ...po, financeHolds: [hold] })[6]).toMatchObject({ state: "bad", variant: "held_price", at: "2026-09-23T00:00:00Z" })
+    expect(receiptTrail(d, { ...po, financeHolds: [{ ...hold, state: "decided" as const }] })[6].variant).toBe("match")
+    const pay = { no: "PV-1", kind: "inv" as const, amount: 100, valueDate: "2026-09-24", reference: "TRX-1", byName: "Fin", at: "2026-09-24T08:00:00Z" }
+    expect(receiptTrail(d, { ...po, financePayments: [{ ...pay, kind: "adv" as const }] })[6].variant).toBe("match")
+    expect(receiptTrail(d, { ...po, financePayments: [pay] })[6]).toMatchObject({ state: "ok", variant: "paid", at: "2026-09-24" })
+  })
+
   it("the log is assembled newest first from the documents", () => {
     const log = receiptLog(d, po)
     expect(log.map((e) => e.action)).toEqual(["recorded", "forwarded", "noticed"])
+    expect(receiptLog(d, po, "ASN-2026/001-1").find((e) => e.action === "noticed")?.params.notice).toBe("ASN-2026/001-1")
     const manual: DeskDelivery = { id: "m1", status: "confirmed", source: "manual", docNumber: "GR-2026/009", confirmedAt: "2026-09-21T10:00:00Z", confirmedByName: "Badr", regularisation: "expense", regularisedAt: "2026-09-22T10:00:00Z", regularisedByName: "Badr" }
     expect(receiptLog(manual, null).map((e) => e.action)).toEqual(["expensed", "recorded"])
   })

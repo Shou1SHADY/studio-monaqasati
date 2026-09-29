@@ -28,6 +28,7 @@ import type { Acceptances } from "@/lib/pm/acceptance"
 import { PM_CERTIFICATES } from "@/lib/pm/certificate"
 import type { PmCertificate } from "@/lib/pm/certificate-writes"
 import { CLOSE_ROW_TAB, closeBlocks, closeoutRows, materialLost, projectLessons, storeHoldings, subDues, type ArchiveSnapshot, type CloseRow } from "@/lib/pm/closeout"
+import { shownCloseRows } from "@/lib/pm/closeout-view"
 import { itemCosts, projectCost } from "@/lib/pm/cost"
 import { closeAndArchive, PmCloseError, type CloseActor } from "@/lib/pm/closeout-writes"
 import { PM_LETTERS, type PmLetter } from "@/lib/pm/correspondence"
@@ -40,9 +41,6 @@ import { PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
 import { usePmIndirect } from "@/hooks/usePmIndirect"
 
-// The client-money rows: shown to holders of money who also see the client side
-// (prototype closeRows `CAN('client')`); the gate itself counts them for everyone.
-const MONEY_ROWS = new Set<CloseRow["key"]>(["unbilled", "in_progress", "overdue", "retention"])
 const AMOUNT_ROWS = new Set<CloseRow["key"]>(["unbilled", "overdue", "retention"])
 const FINANCE_ROWS = new Set<CloseRow["key"]>(["overdue", "retention", "subs"])
 
@@ -152,7 +150,7 @@ export function CloseoutPanel({
   const blocked = closeBlocks(rows)
   // Without money the certificates are not read — their rows are not shown rather
   // than shown wrong; without the client side they are not this person's to see.
-  const shown = clientMoney ? rows : rows.filter((r) => !MONEY_ROWS.has(r.key))
+  const shown = shownCloseRows(rows, clientMoney)
   const left = shown.filter((r) => !r.ok)
   const canClose = access.allowed("project.close") && lifecycle === "done"
 

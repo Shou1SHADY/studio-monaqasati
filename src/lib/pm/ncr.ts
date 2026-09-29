@@ -18,6 +18,7 @@ export type NcrSeverity = (typeof NCR_SEVERITIES)[number]
 export interface PmNcr {
   id: string
   seq: number
+  /** The BOQ line, or "" when none was named (the prototype's «— غير محدّد»). */
   itemId: string
   code?: string | null
   /** What went against the specification («ما المخالفة»). */
@@ -45,12 +46,11 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/
 const badDay = (day: string | undefined, today: string | undefined, after?: string | null) => day !== undefined && today !== undefined && (!DAY.test(day) || day > today || (after ? day < after : false))
 const badCost = (c: number | null | undefined) => c !== undefined && c !== null && !(Number.isFinite(c) && c >= 0)
 
-export type NcrBlock = "archived" | "no_item" | "no_what" | "no_root" | "bad_cost" | "bad_date"
+export type NcrBlock = "archived" | "no_what" | "no_root" | "bad_cost" | "bad_date"
 
-export function ncrBlocks(input: { archived: boolean; itemId: string | null; root: string; cost: number; what?: string | null; day?: string; today?: string }): NcrBlock[] {
+export function ncrBlocks(input: { archived: boolean; root: string; cost: number; what?: string | null; day?: string; today?: string }): NcrBlock[] {
   const out: NcrBlock[] = []
   if (input.archived) out.push("archived")
-  if (!input.itemId) out.push("no_item")
   if (input.what !== undefined && !input.what?.trim()) out.push("no_what")
   if (!input.root.trim()) out.push("no_root")
   if (!(Number.isFinite(input.cost) && input.cost >= 0)) out.push("bad_cost")

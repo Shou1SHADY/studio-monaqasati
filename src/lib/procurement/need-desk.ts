@@ -220,6 +220,47 @@ export function buildNeedRows(needs: Need[], facts: DeskFacts): NeedRow[] {
 }
 
 // ---------------------------------------------------------------------------
+// The RFQ form's «من الاحتياج المفتوح» (R-19): open needs the request can
+// take — in the lines' categories, inside a buyer's scope, never one whose
+// path is our own workshop — nearest last order day first, eight at most.
+// ---------------------------------------------------------------------------
+
+export const FORM_NEED_CHOICES = 8
+
+/** A project need our workshop makes and nobody has asked it yet — its path is the workshop, not an RFQ. */
+export const goesToWorkshop = (need: Need, makeable: (name: string) => boolean): boolean =>
+  need.kind === "project" && !need.mfgRequestId && need.decision?.kind !== "buy" && need.lines.some((l) => makeable(l.name))
+
+export function formNeedChoices(
+  needs: Need[],
+  opts: {
+    exclude: (need: Need) => boolean
+    /** The categories already on the form's lines; none = any. */
+    categories: string[]
+    /** A buyer's categories; null or empty = everything. */
+    buyerCategories: string[] | null
+    makeable: (name: string) => boolean
+    facts: Pick<DeskFacts, "orders" | "rfqs" | "policies">
+    max?: number
+  }
+): Need[] {
+  const far = "9999-12-31"
+  const scored = needs
+    .filter((n) => !opts.exclude(n) && !goesToWorkshop(n, opts.makeable))
+    .map((n) => {
+      const cats = Array.from(new Set(n.lines.map((l) => categoryOf(l.name, l.unit, l.category, opts.facts)).filter((c): c is string => Boolean(c))))
+      const days = n.lines.map((l) => lastOrderDayOf(l.needBy || n.needBy, leadDaysOf(opts.facts.orders, l.name, l.unit), "rfq", opts.facts.policies)).filter((d): d is string => Boolean(d))
+      return { n, cats, last: days.length ? days.sort()[0] : far }
+    })
+    .filter(({ cats }) => !cats.length || !opts.categories.length || cats.some((c) => opts.categories.includes(c)))
+    .filter(({ cats }) => !cats.length || !opts.buyerCategories?.length || cats.some((c) => (opts.buyerCategories as string[]).includes(c)))
+  return scored
+    .sort((a, b) => a.last.localeCompare(b.last) || (a.n.needBy || far).localeCompare(b.n.needBy || far) || a.n.key.localeCompare(b.n.key))
+    .slice(0, opts.max ?? FORM_NEED_CHOICES)
+    .map(({ n }) => n)
+}
+
+// ---------------------------------------------------------------------------
 // The list: segments, order, scope
 // ---------------------------------------------------------------------------
 

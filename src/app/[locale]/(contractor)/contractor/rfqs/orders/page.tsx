@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
+import { collection, query, where } from "firebase/firestore"
 import { ClipboardList, LayoutGrid, Loader2, Search, X } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
@@ -18,11 +19,14 @@ import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DEFAULT_SEGMENT, PO_SEGMENTS, isPoSegment, segmentCounts, visibleOrders, type PoSegment } from "@/components/procurement/PoModel"
 import { Input } from "@/components/ui/input"
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { poValue } from "@/lib/procurement/po"
-import { advanceState, asX, openHolds, poRevision } from "@/lib/procurement/po-extras"
-import { poInScope } from "@/lib/procurement/rfq-view"
+import { advanceState, asX, inProjectFilter, netQuantity, openHolds, poProjectKeys, poRevision } from "@/lib/procurement/po-extras"
+import { GENERAL_STOCK, WORKSHOP, poInScope } from "@/lib/procurement/rfq-view"
+import type { PurchaseOrder } from "@/lib/procurement/types"
+import { cn } from "@/lib/utils"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 
 /** Keeps `?filter=` and `?po=` in the address bar without a navigation. */
@@ -60,15 +64,27 @@ export default function PurchaseOrdersPage() {
     replaceParams((p) => (s === DEFAULT_SEGMENT ? p.delete("filter") : p.set("filter", s)))
   }
 
-  const counts = useMemo(() => segmentCounts(orders, now), [orders, now])
-  const visible = useMemo(() => visibleOrders(orders, segment, search, now, (n) => displayPoNumber(n, locale)), [orders, segment, search, now, locale])
-  // The project filter (the prototype's "all projects"), over the projects the orders name.
+  // The project filter (the prototype's "all projects"): a line may serve its
+  // own project, so an order answers to every project its lines serve — and to
+  // general stock or the workshop when a line serves no project. The segment
+  // counts are taken after it, as the prototype's are.
+  const firestore = useFirestore()
+  const projectsQ = useMemoFirebase(() => (firestore && world.orgId ? query(collection(firestore, "projects"), where("organizationId", "==", world.orgId)) : null), [firestore, world.orgId])
+  const { data: projectDocs } = useCollection<{ name?: string }>(projectsQ)
+  const projectNames = useMemo(() => new Map((projectDocs || []).map((p) => [p.id, p.name || ""])), [projectDocs])
+  const keysById = useMemo(() => new Map(orders.map((o) => [o.id, poProjectKeys(o, world.rfqs as Array<{ id: string; products?: Array<{ projectId?: string | null }> | null }>)])), [orders, world.rfqs])
+  const keysOf = (o: PurchaseOrder) => keysById.get(o.id) || []
+  const projectLabel = (key: string): string => {
+    if (key === GENERAL_STOCK) return tp("rfqpo.list.general_stock")
+    if (key === WORKSHOP) return tp("rfqpo.list.workshop")
+    return projectNames.get(key) || orders.find((o) => o.projectId === key)?.projectName || tp("rfqpo.list.project_unknown")
+  }
   const [project, setProject] = useState("all")
-  const projects = useMemo(
-    () => Array.from(new Map(orders.filter((o) => o.projectId).map((o) => [o.projectId as string, { id: o.projectId as string, name: o.projectName || (o.projectId as string) }])).values()).sort((a, b) => a.name.localeCompare(b.name)),
-    [orders]
-  )
-  const shown = project === "all" ? visible : visible.filter((o) => o.projectId === project)
+  const projectOptions = useMemo(() => Array.from(new Set(Array.from(keysById.values()).flat().filter((k) => k !== GENERAL_STOCK && k !== WORKSHOP))), [keysById])
+  const inProject = useMemo(() => orders.filter((o) => inProjectFilter(keysById.get(o.id) || [], project)), [orders, keysById, project])
+
+  const counts = useMemo(() => segmentCounts(inProject, now), [inProject, now])
+  const shown = useMemo(() => visibleOrders(inProject, segment, search, now, (n) => displayPoNumber(n, locale)), [inProject, segment, search, now, locale])
 
   // `?po=<id>` opens the drawer; opening and closing keep the address in step,
   // so a refresh lands on the same order and a copied link opens it.
@@ -118,11 +134,16 @@ export default function PurchaseOrdersPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{t("project_all")}</SelectItem>
-                {projects.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
+                {projectOptions
+                  .map((id) => ({ id, name: projectLabel(id) }))
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                <SelectItem value={GENERAL_STOCK}>{tp("rfqpo.list.general_stock")}</SelectItem>
+                <SelectItem value={WORKSHOP}>{tp("rfqpo.list.workshop")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -176,19 +197,14 @@ export default function PurchaseOrdersPage() {
                           {po.supplierName}
                           {po.preparedByName ? ` · ${po.preparedByName}` : ""}
                         </p>
-                        {po.projectName && (
-                          <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-cta/20 bg-cta/5 px-2 py-0.5 text-[11px] font-semibold text-cta">
-                            <LayoutGrid size={12} aria-hidden="true" />
-                            {po.projectName}
-                          </span>
-                        )}
+                        <ProjectChips keys={keysOf(po)} label={projectLabel} />
                       </td>
                       <td className="px-4 py-3 align-top">
                         <ul className="space-y-1.5">
                           {po.lines.slice(0, 3).map((l) => (
                             <li key={l.id} className="max-w-[34ch]">
                               <p className="truncate" dir="auto">
-                                {l.name} <span className="tabular-nums" dir="ltr">{l.quantity.toLocaleString("en-US")}</span> {l.unit}
+                                {l.name} <span className="tabular-nums" dir="ltr">{netQuantity(l).toLocaleString("en-US")}</span> {l.unit}
                               </p>
                               {l.accepted > 0 && <LineBar line={l} className="mt-1" />}
                             </li>
@@ -204,9 +220,7 @@ export default function PurchaseOrdersPage() {
                       </td>
                       <td className="px-4 py-3 align-top">
                         <PoStatusPill po={po} now={now} />
-                        {openHolds(asX(po)).length > 0 && <p className="mt-1 text-[11px] text-destructive">{tp("rfqpo.po.row_held")}</p>}
-                        {advanceState(asX(po)) === "requested" && <p className="mt-1 text-[11px] text-muted-foreground">{tp("rfqpo.po.row_advance")}</p>}
-                        {asX(po).pmBudget?.state === "pending" && <p className="mt-1 text-[11px] text-warning">{tp("rfqpo.po.row_budget")}</p>}
+                        <RowNotes po={po} />
                       </td>
                     </tr>
                   ))}
@@ -224,22 +238,36 @@ export default function PurchaseOrdersPage() {
                     className="w-full rounded-xl border bg-card p-3 text-start transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <span dir="ltr" className="font-bold tabular-nums">
-                        {displayPoNumber(po.docNumber, locale)}
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span dir="ltr" className="font-bold tabular-nums">
+                          {displayPoNumber(po.docNumber, locale)}
+                        </span>
+                        {poRevision(po) > 1 && <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{tp("rfqpo.po.revision", { n: poRevision(po) })}</span>}
                       </span>
                       <Money value={poValue(po)} masked={!actor.seesPrices} className="font-bold" />
                     </div>
                     <p className="mt-1 font-bold" dir="auto">
                       {po.supplierName}
                     </p>
-                    <p className="truncate text-xs text-muted-foreground" dir="auto">
-                      {po.rfqTitle}
-                      {po.projectName ? ` · ${po.projectName}` : ""}
-                    </p>
+                    {po.rfqTitle && (
+                      <p className="truncate text-xs text-muted-foreground" dir="auto">
+                        {po.rfqTitle}
+                      </p>
+                    )}
+                    <ProjectChips keys={keysOf(po)} label={projectLabel} />
+                    <ul className="mt-2 space-y-0.5 text-xs">
+                      {po.lines.slice(0, 3).map((l) => (
+                        <li key={l.id} className="truncate" dir="auto">
+                          {l.name} <span className="tabular-nums" dir="ltr">{netQuantity(l).toLocaleString("en-US")}</span> {l.unit}
+                        </li>
+                      ))}
+                      {po.lines.length > 3 && <li className="text-[11px] text-muted-foreground">{t("more_lines", { count: po.lines.length - 3 })}</li>}
+                    </ul>
                     <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
                       <PoStatusPill po={po} now={now} />
                       <HonestDateText po={po} now={now} />
                     </div>
+                    <RowNotes po={po} />
                   </button>
                 </li>
               ))}
@@ -250,5 +278,38 @@ export default function PurchaseOrdersPage() {
         <PoDrawer po={openOrder} world={world} open={Boolean(openOrder)} onOpenChange={(o) => !o && show(null)} now={now} />
       </div>
     </PortalLayout>
+  )
+}
+
+function ProjectChips({ keys, label }: { keys: string[]; label: (key: string) => string }) {
+  if (!keys.length) return null
+  return (
+    <span className="mt-1 flex flex-wrap gap-1">
+      {keys.map((k) => (
+        <span
+          key={k}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+            k === GENERAL_STOCK || k === WORKSHOP ? "border-border bg-muted text-muted-foreground" : "border-cta/20 bg-cta/5 text-cta"
+          )}
+        >
+          <LayoutGrid size={12} aria-hidden="true" />
+          <span dir="auto">{label(k)}</span>
+        </span>
+      ))}
+    </span>
+  )
+}
+
+/** Held invoice, unpaid advance, budget referred to Projects — the prototype's row notes, on both layouts. */
+function RowNotes({ po }: { po: PurchaseOrder }) {
+  const tp = useTranslations("Portal.Procurement")
+  const px = asX(po)
+  return (
+    <>
+      {openHolds(px).length > 0 && <p className="mt-1 text-[11px] text-destructive">{tp("rfqpo.po.row_held")}</p>}
+      {advanceState(px) === "requested" && <p className="mt-1 text-[11px] text-muted-foreground">{tp("rfqpo.po.row_advance")}</p>}
+      {px.pmBudget?.state === "pending" && <p className="mt-1 text-[11px] text-warning">{tp("rfqpo.po.row_budget")}</p>}
+    </>
   )
 }

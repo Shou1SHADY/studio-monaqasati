@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { collection } from "firebase/firestore"
+import { collection, query, where } from "firebase/firestore"
 import { AlertTriangle, CircleDollarSign, Flame, ListTree, Loader2, Plus, Search, TableProperties } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { BoqItemSupply } from "./BoqItemSupply"
@@ -59,9 +59,13 @@ import {
   type PmBoqLine,
 } from "@/lib/pm/boq"
 import { importBoq, PmBoqError, priceItem, type BoqActor } from "@/lib/pm/boq-writes"
-import { pmMoney, pmPct, todayDay } from "@/lib/pm/format"
+import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
+import { itemCommitments, type CommitPo } from "@/lib/pm/item-commitments"
 import { isOpenObstacle, obstacleDays, obstacleSeq, PM_OBSTACLES, type PmObstacle } from "@/lib/pm/site"
-import { PM_SUBCONTRACTS, type PmSubcontract } from "@/lib/pm/subcontract"
+import { PM_SUBCONTRACTS, subcontractNo, type PmSubcontract } from "@/lib/pm/subcontract"
+import { PURCHASE_REQUESTS, requestOf } from "@/lib/pm/supply"
+import { PURCHASE_ORDERS } from "@/lib/procurement/types"
+import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { PM_VARIATIONS, voNo, type PmVariation } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
 import { CheckLine, FormHint } from "./ContractBits"
@@ -422,11 +426,24 @@ function ItemDrawer({ projectId, orgId, line, lines, money, onClose }: { project
   const { data: obsData } = useCollection(obsQ)
   const scQ = useMemoFirebase(() => (firestore && on ? collection(firestore, "projects", projectId, PM_SUBCONTRACTS) : null), [firestore, projectId, on])
   const { data: scData } = useCollection(scQ)
+  const poQ = useMemoFirebase(
+    () => (firestore && on && orgId ? query(collection(firestore, PURCHASE_ORDERS), where("organizationId", "==", orgId), where("projectId", "==", projectId)) : null),
+    [firestore, on, orgId, projectId]
+  )
+  const { data: poData } = useCollection(poQ)
+  const reqQ = useMemoFirebase(() => (firestore && on ? collection(firestore, "projects", projectId, PURCHASE_REQUESTS) : null), [firestore, projectId, on])
+  const { data: reqData } = useCollection(reqQ)
   if (!line) return <Sheet open={false} onOpenChange={() => onClose()} />
   const vos = ((voData ?? []) as unknown as PmVariation[]).filter((v) => (v.itemIds ?? []).includes(line.id))
   const obs = ((obsData ?? []) as unknown as PmObstacle[]).filter((o) => isOpenObstacle(o) && o.itemIds.includes(line.id))
-  const subs = ((scData ?? []) as unknown as PmSubcontract[]).flatMap((c) => c.lines.filter((l) => l.itemId === line.id).map((l) => ({ c, l })))
-  const committed = subs.reduce((a, s) => a + s.l.qty, 0)
+  const commit = itemCommitments({
+    itemId: line.id,
+    budget: line.quantity * line.estCost,
+    quantity: line.quantity,
+    subs: (scData ?? []) as unknown as PmSubcontract[],
+    pos: (poData ?? []) as unknown as CommitPo[],
+    requestLines: ((reqData ?? []) as Array<Record<string, unknown> & { id: string }>).map(requestOf).flatMap((r) => r.lines.filter((l) => l.itemId === line.id).map((l) => ({ poId: r.poId, name: l.name, unit: l.unit }))),
+  })
   const unit = actualUnitCost(line)
   const over = lineOverBudget(line)
   const remaining = Math.max(0, line.quantity - line.executed)
@@ -505,6 +522,11 @@ function ItemDrawer({ projectId, orgId, line, lines, money, onClose }: { project
               <KeyValueRow label={t("boq.d.budget_ex")} value={fmt(lineBudgetEx(line))} ltr />
               <KeyValueRow label={t("boq.d.actual")} value={line.actual === null ? "—" : fmt(line.actual)} ltr />
               <KeyValueRow
+                label={t("boq.d.committed_value")}
+                value={commit.share === null ? fmt(commit.value) : t("boq.d.committed_value_of", { value: fmt(commit.value), pct: pct(commit.share * 100) })}
+                ltr
+              />
+              <KeyValueRow
                 label={t("boq.d.margin")}
                 value={<span className={mg > 12 ? "text-success" : mg > 5 ? "text-warning" : "text-destructive"}>{`${fmt(lineMargin(line))} · ${Math.round(mg)}%`}</span>}
                 ltr
@@ -521,22 +543,31 @@ function ItemDrawer({ projectId, orgId, line, lines, money, onClose }: { project
               })}
             </Callout>
           )}
-          <DrawerSection title={t("boq.d.commitments")} count={subs.length}>
-            {subs.length === 0 ? (
+          <DrawerSection title={t("boq.d.commitments")} count={commit.rows.length}>
+            {commit.rows.length === 0 ? (
               <p className="py-2 text-xs text-muted-foreground">{t("boq.d.no_commitments")}</p>
             ) : (
-              subs.map(({ c, l }) => (
-                <div key={`${c.id}-${l.itemId}`} className="flex items-center justify-between gap-2 py-2 text-sm">
+              commit.rows.map((c) => (
+                <div key={`${c.kind}-${c.id}`} className="flex items-center justify-between gap-2 py-2 text-sm">
                   <span className="min-w-0">
                     <b className="block truncate" dir="auto">
-                      {c.party.name}
+                      {c.party}
                     </b>
-                    <span className="text-xs text-muted-foreground">{t("boq.d.subcontract", { qty: fmt(l.qty) })}</span>
+                    <span className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                      <span dir={c.kind === "po" ? "ltr" : "auto"}>{c.kind === "po" ? c.no : t("subs.contract_no", { no: subcontractNo(Number(c.no)) })}</span>
+                      <span aria-hidden="true">·</span>
+                      <SourceBadge module={c.kind === "po" ? "procurement" : "project-management"} label={t(c.kind === "po" ? "boq.d.commit_po" : "boq.d.commit_sub")} />
+                      <span aria-hidden="true">·</span>
+                      <span>{pmDate(c.day, locale)}</span>
+                    </span>
                   </span>
                   {money && (
-                    <b className="tabular-nums" dir="ltr">
-                      {fmt(l.value)}
-                    </b>
+                    <span className="shrink-0 text-end">
+                      <b className="block tabular-nums" dir="ltr">
+                        {fmt(c.value)}
+                      </b>
+                      <span className="text-[11px] text-muted-foreground">{t("boq.d.commit_recv", { pct: pct(c.recv * 100) })}</span>
+                    </span>
                   )}
                 </div>
               ))
@@ -591,14 +622,14 @@ function ItemDrawer({ projectId, orgId, line, lines, money, onClose }: { project
             />
             <CheckLine ok={obs.length === 0} title={t("boq.d.no_obstacle")} note={obs.length ? t("boq.d.blocking", { count: obs.length }) : t("boq.d.clear")} />
             <CheckLine
-              ok={committed > 0 || line.executed === 0}
+              ok={commit.rows.length > 0 || line.executed === 0}
               title={t("boq.d.committed")}
               note={
-                committed > 0
-                  ? t("boq.d.committed_pct", {
-                      pct: pct((committed / Math.max(line.quantity, 1e-9)) * 100),
-                    })
-                  : t("boq.d.no_commitment")
+                commit.rows.length === 0
+                  ? t("boq.d.no_commitment")
+                  : commit.share === null
+                    ? t("boq.d.committed_count", { count: commit.rows.length })
+                    : t("boq.d.committed_pct", { pct: pct(commit.share * 100) })
               }
             />
           </DrawerSection>
