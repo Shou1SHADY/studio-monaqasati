@@ -64,7 +64,7 @@ export interface TrailInput {
   /** The signed contract value (`project.budget`); the priced BOQ when it is not set. */
   contractBase: number
   items: TrailItem[]
-  variations: Array<{ status: string; value: number; cost: number; executedPct: number }>
+  variations: Array<{ status: string; value: number; cost: number; executedPct: number; billedPct?: number }>
   /** Consultant deductions returned to "unbilled" until claimed again. */
   cutPool: number
   certificates: Array<{ status: string; net: number; collected?: number | null }>
@@ -106,7 +106,9 @@ export function moneyTrail(i: TrailInput): MoneyTrail {
   const contract = r2((i.contractBase > 0 ? i.contractBase : boqValue) + voApproved)
   const voEarned = i.variations.filter((v) => v.status === "appr").reduce((a, v) => a + v.value * v.executedPct, 0)
   const executed = r2(priced.reduce((a, x) => a + x.executed * x.rate, 0) + voEarned)
-  const billed = r2(Math.max(0, priced.reduce((a, x) => a + x.billed * x.rate, 0) - i.cutPool))
+  // Variation work billed (its billed share) counts as billed, as in the prototype's pBilled.
+  const voBilled = i.variations.filter((v) => v.status === "appr").reduce((a, v) => a + v.value * (v.billedPct ?? 0), 0)
+  const billed = r2(Math.max(0, priced.reduce((a, x) => a + x.billed * x.rate, 0) + voBilled - i.cutPool))
   const collected = r2(i.certificates.filter((c) => c.status !== "void").reduce((a, c) => a + c.net * collectedShare(c), 0))
   const voRisk = r2(i.variations.filter((v) => v.status !== "appr" && v.executedPct > 0).reduce((a, v) => a + v.value * v.executedPct, 0))
   return {

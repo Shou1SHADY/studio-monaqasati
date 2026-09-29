@@ -18,7 +18,8 @@ import { usePulseCost } from "@/hooks/usePulseCost"
 import { progressOf } from "@/lib/pm/acceptance"
 import { inForce, PM_ADDENDA, type PmAddendum } from "@/lib/pm/addenda"
 import { PM_CERTIFICATES } from "@/lib/pm/certificate"
-import { delayAndDamages, grantedDays, PM_CLAIMS, type PmClaim } from "@/lib/pm/claim"
+import { delayAndDamages } from "@/lib/pm/claim"
+import { usePmPlan } from "@/hooks/usePmPlan"
 import { pmMoney, todayDay } from "@/lib/pm/format"
 import { lifecycleOf } from "@/lib/pm/lifecycle"
 import { moneyTrail, penaltyNote, showMoneyTrail, TRAIL_GAP } from "@/lib/pm/pulse"
@@ -61,14 +62,15 @@ export function PulseMoneyTrail({ projectId, project, access, ipcOn, costOn }: {
   const items = useRows<Record<string, unknown>>(projectId, "boqItems", money)
   const certs = useRows<{ status: string; net: number; collected?: number | null }>(projectId, PM_CERTIFICATES, money)
   const vos = useRows<{ status: string; value: number; cost: number; executedPct: number }>(projectId, PM_VARIATIONS, money)
-  const claims = useRows<PmClaim>(projectId, PM_CLAIMS, money)
   const addenda = useRows<PmAddendum>(projectId, PM_ADDENDA, money)
   const cost = usePulseCost(projectId, project.organizationId, project.warehouseId, project.budget ?? 0, money)
+  const planItems = useMemo(() => (items ?? []).map((d, n) => ({ id: String(d.id ?? n), quantity: num(d.quantity), rate: num(d.unitPrice) })), [items])
+  const plan = usePmPlan(projectId, project, planItems)
 
   const view = useMemo(() => {
     if (!items || !cost) return null
     const lines = items.map((d) => ({ quantity: num(d.quantity), rate: num(d.unitPrice), executed: num(d.executedQuantity), billed: num(d.billedQuantity) }))
-    const variations = (vos ?? []).map((v) => ({ status: v.status, value: num(v.value), cost: num(v.cost), executedPct: num(v.executedPct) }))
+    const variations = (vos ?? []).map((v) => ({ status: v.status, value: num(v.value), cost: num(v.cost), executedPct: num(v.executedPct), billedPct: num((v as { billedPct?: unknown }).billedPct) }))
     const trail = moneyTrail({
       contractBase: project.budget ?? 0,
       items: lines,
@@ -82,11 +84,12 @@ export function PulseMoneyTrail({ projectId, project, access, ipcOn, costOn }: {
     const delay = delayAndDamages({
       lifecycle: lifecycleOf(project),
       startOn: project.pm?.startedAt ?? null,
-      effectiveDays: (project.pm?.durationDays ?? 0) + grantedDays(claims ?? []),
+      effectiveDays: plan.effectiveDays,
       progress,
       contractValue: trail.contract,
       damages: terms.damages,
       today: todayDay(),
+      curveK: plan.curveK,
     })
     return {
       trail,
@@ -94,7 +97,7 @@ export function PulseMoneyTrail({ projectId, project, access, ipcOn, costOn }: {
       penalty: penaltyNote({ damages: terms.damages, contract: trail.contract, delay, progress, margin: trail.margin }),
       show: showMoneyTrail({ money, contract: trail.contract, itemCount: lines.length, unpricedCount: lines.filter((l) => !(l.rate > 0)).length, ipcOn, costOn }),
     }
-  }, [items, cost, vos, certs, claims, addenda, project, money, ipcOn, costOn])
+  }, [items, cost, vos, certs, plan, addenda, project, money, ipcOn, costOn])
 
   if (!view || !view.show) return null
   const { trail, penalty } = view

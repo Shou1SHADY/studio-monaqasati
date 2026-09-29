@@ -15,6 +15,9 @@ import { progressOf } from "@/lib/pm/acceptance"
 import { PM_CERTIFICATES } from "@/lib/pm/certificate"
 import type { PmCertificate } from "@/lib/pm/certificate-writes"
 import { delayAndDamages } from "@/lib/pm/claim"
+import { usePmPlan } from "@/hooks/usePmPlan"
+import { moneyTrail } from "@/lib/pm/pulse"
+import { PM_VARIATIONS } from "@/lib/pm/variation"
 import { todayDay } from "@/lib/pm/format"
 import { lifecycleOf } from "@/lib/pm/lifecycle"
 
@@ -44,7 +47,7 @@ export interface ProjectFigures {
 
 export function useProjectFigures(
   projectId: string,
-  project: { status?: string | null; pm?: { lifecycle?: string; startedAt?: string | null; durationDays?: number } | null } | null,
+  project: { status?: string | null; budget?: number | null; pm?: { lifecycle?: string; startedAt?: string | null; durationDays?: number; cutPool?: number } | null } | null,
   access: Pick<PmAccess, "has">
 ): ProjectFigures {
   const firestore = useFirestore()
@@ -54,14 +57,24 @@ export function useProjectFigures(
   const certQ = useMemoFirebase(() => (firestore && money ? collection(firestore, "projects", projectId, PM_CERTIFICATES) : null), [firestore, projectId, money])
   const { data: certs } = useCollection(certQ)
   const flow = useProjectMoneyFlow(money ? projectId : null)
+  const voQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_VARIATIONS) : null), [firestore, projectId])
+  const { data: vos } = useCollection(voQ)
+  const items = useMemo(
+    () => ((itemData ?? []) as Array<Record<string, unknown>>).map((d, n) => ({ id: String(d.id ?? n), quantity: num(d.quantity), rate: num(d.unitPrice), executed: num(d.executedQuantity), billed: num(d.billedQuantity) })),
+    [itemData]
+  )
+  const plan0 = usePmPlan(projectId, project, items)
 
   return useMemo(() => {
-    const items = ((itemData ?? []) as Array<Record<string, unknown>>).map((d) => ({ quantity: num(d.quantity), rate: num(d.unitPrice), executed: num(d.executedQuantity), billed: num(d.billedQuantity) }))
     const progress = progressOf(items)
+    // One planned line everywhere: the current baseline on the programme's S-curve (the prototype's pPlan).
     const plan = project?.pm
-      ? delayAndDamages({ lifecycle: lifecycleOf(project), startOn: project.pm.startedAt ?? null, effectiveDays: project.pm.durationDays ?? 0, progress, contractValue: 0, damages: { on: false, weeklyRate: 0, cap: 0 }, today: todayDay() })
+      ? delayAndDamages({ lifecycle: lifecycleOf(project), startOn: project.pm.startedAt ?? null, effectiveDays: plan0.effectiveDays, progress, contractValue: 0, damages: { on: false, weeklyRate: 0, cap: 0 }, today: todayDay(), curveK: plan0.curveK })
       : null
-    const unbilled = r2(items.reduce((a, i) => a + (i.rate > 0 ? Math.max(0, i.executed - i.billed) * i.rate : 0), 0))
+    // Unbilled as the prototype's pUnbilled: BOQ + approved-variation work, less what was billed net of the consultant's cuts.
+    const variations = ((vos ?? []) as Array<Record<string, unknown>>).map((v) => ({ status: String(v.status ?? ""), value: num(v.value), cost: num(v.cost), executedPct: num(v.executedPct), billedPct: num(v.billedPct) }))
+    const trail = moneyTrail({ contractBase: project?.budget ?? 0, items, variations, cutPool: project?.pm?.cutPool ?? 0, certificates: [], cost: { budget: null, committed: 0, actual: 0, paid: 0 } })
+    const unbilled = r2(Math.max(0, trail.gap))
     const list = ((certs ?? []) as unknown as PmCertificate[]).filter((c) => c.status !== "void")
     const shareOf = (c: PmCertificate) => (c.status === "paid" ? 1 : c.status === "part" ? Math.min(1, Math.max(0, (c as { collected?: number }).collected ?? 0)) : 0)
     const pmIn = list.reduce((a, c) => a + c.net * shareOf(c), 0)
@@ -87,5 +100,5 @@ export function useProjectFigures(
       cash: r2(cashIn - paid),
       overdue: r2(overdue),
     }
-  }, [itemData, certs, flow.collected, flow.paid, project])
+  }, [items, vos, plan0, certs, flow.collected, flow.paid, project])
 }

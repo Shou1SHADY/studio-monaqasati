@@ -33,6 +33,7 @@ import { needsWithin, PM_PLANT as PM_PLANT_REQUESTS, PURCHASE_REQUESTS, reqState
 import { defaultTerms, type ContractTerms } from "@/lib/pm/terms"
 import { PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
 import { PURCHASE_ORDERS } from "@/lib/procurement/types"
+import { usePmPlan } from "@/hooks/usePmPlan"
 
 export interface PmDecisionProject {
   budget?: number
@@ -127,6 +128,8 @@ export function usePmDecisions(
   const cost = usePulseCost(projectId, project?.organizationId ?? null, project?.warehouseId ?? null, project?.budget ?? 0, on && money && client && damagesOn)
 
   const today = todayDay()
+  const planItems = useMemo(() => items.rows.map((d) => ({ id: d.id, quantity: num(d.quantity), rate: num(d.unitPrice) })), [items.rows])
+  const plan = usePmPlan(projectId, project ?? null, planItems)
   const storeItems = useMemo(
     () => items.rows.map((d) => ({ id: d.id, code: String(d.itemNo ?? ""), description: "", unit: String(d.unit ?? ""), quantity: num(d.quantity), executed: num(d.executedQuantity) })),
     [items.rows]
@@ -180,6 +183,7 @@ export function usePmDecisions(
       obstacles: obstacles.rows,
       eac: pm.eac ?? null,
       holdSince: pm.holdSince ?? null,
+      curveK: plan.curveK,
       sections: project.enabledSections?.length ? project.enabledSections : null,
       managerId: project.projectManagerId ?? null,
       requests: supply.requests,
@@ -192,7 +196,7 @@ export function usePmDecisions(
       today,
       viewer: access.uid ? { uid: access.uid, has: (k) => access.has(k as Parameters<PmAccess["has"]>[0]), owner: access.has("admin") } : null,
     })
-  }, [project, items.rows, sheets.rows, addenda.rows, certs.rows, punch.rows, vos.rows, claims.rows, submittals.rows, subCerts.rows, docs.rows, letters.rows, obstacles.rows, supply.requests, supply.stores, facts.shortages, plantRequests.rows, plant.rows, cost, budgetReferrals, money, access, today])
+  }, [project, items.rows, sheets.rows, addenda.rows, certs.rows, punch.rows, vos.rows, claims.rows, submittals.rows, subCerts.rows, docs.rows, letters.rows, obstacles.rows, supply.requests, supply.stores, facts.shortages, plantRequests.rows, plant.rows, cost, budgetReferrals, money, access, today, plan])
 
   const progress = useMemo(() => progressOf(items.rows.map((d) => ({ quantity: num(d.quantity), rate: num(d.unitPrice), executed: num(d.executedQuantity) }))), [items.rows])
 

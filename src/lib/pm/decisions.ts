@@ -181,6 +181,8 @@ export interface DecisionFacts {
   obstacles?: Array<Pick<PmObstacle, "id" | "type" | "closeOn" | "itemIds" | "openOn">>
   /** The last approved monthly reconciliation (CVR-01), if any. */
   eac?: { on: string } | null
+  /** The programme's S-curve shape (usePmPlan); absent = linear. */
+  curveK?: number
   /** When the project was put on hold, if it is. */
   holdSince?: string | null
   /** The project's switched-on sections; absent = every kind applies. */
@@ -462,6 +464,7 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
     contractValue: f.baseValue + approvedValue(f.variations),
     damages: f.terms.damages,
     today: f.today,
+    curveK: f.curveK,
   })
   if (delay && delay.damages > 0) out.push({ kind: "damages", severity: f.margin != null && delay.damages > f.margin ? "red" : "amber", count: delay.delayDays, amount: delay.damages, tab: "pmProgramme" })
   if (f.lifecycle === "live" && delay && progress !== null && delay.planned - progress > 4) out.push({ kind: "slip", severity: "amber", count: Math.round(delay.planned - progress), tab: "pmProgramme" })

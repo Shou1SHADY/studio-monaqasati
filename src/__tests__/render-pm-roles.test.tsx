@@ -390,6 +390,9 @@ describe.each(ROLES)("as %s", (role) => {
     for (const title of spec.money ?? []) {
       expect({ tab, role, title, shown: text().includes(title) }).toEqual({ tab, role, title, shown: offered && role !== "site" })
     }
+    // The Pulse shows five decisions and folds the rest behind «عرض N قرارات أخرى» (the prototype's cap).
+    const more = Array.from(document.querySelectorAll("button")).find((b) => /قرارات? أخرى|قراران آخران|قرار آخر/.test(b.textContent ?? ""))
+    if (more) await act(async () => { more.click() })
     const now = buttons()
     for (const [label, who] of Object.entries(HEAD_ACTS)) expect({ tab, role, label, shown: now.includes(label) }).toEqual({ tab, role, label, shown: who.includes(role) })
     for (const [label, who] of Object.entries(spec.acts ?? {})) expect({ tab, role, label, shown: now.includes(label) }).toEqual({ tab, role, label, shown: offered && who.includes(role) })

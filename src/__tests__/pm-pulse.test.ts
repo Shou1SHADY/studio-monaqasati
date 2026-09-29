@@ -228,3 +228,19 @@ describe("the project log", () => {
     expect(log.find((e) => e.kind === "vo")?.params.value).toBe(0)
   })
 })
+
+describe("money trail — variation work", () => {
+  it("counts approved variation work as executed, and its billed share as billed (the prototype's pEarned / pBilled)", () => {
+    const trail = moneyTrail({
+      contractBase: 1_000_000,
+      items: [{ quantity: 100, rate: 1000, executed: 50, billed: 50 }],
+      variations: [{ status: "appr", value: 85_000, cost: 60_000, executedPct: 0.4, billedPct: 0.1 }],
+      cutPool: 0,
+      certificates: [],
+      cost: { budget: null, committed: 0, actual: 0, paid: 0 },
+    })
+    expect(trail.executed).toBe(84_000)
+    expect(trail.billed).toBe(58_500)
+    expect(trail.gap).toBe(25_500)
+  })
+})
