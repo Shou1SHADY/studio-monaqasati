@@ -233,6 +233,15 @@ describe("the price history an approval leaves", () => {
       ...over,
     }) as Omit<PurchaseOrder, "id">
 
+  it("an approved price becomes the make-or-buy yardstick of the product our workshop makes («سعر مرجعي يقرؤه التصنيع»)", async () => {
+    seed("purchaseOrders/po1", order())
+    seed("mfgProducts/m1", { organizationId: ORG, name: "حديد 12مم", unit: "طن", referenceBuyPrice: null })
+    seed("mfgProducts/m2", { organizationId: ORG, name: "بلاط", unit: "م2", referenceBuyPrice: 90 })
+    await approvePurchaseOrder(db, approver, "po1", { policies: DEFAULT_POLICIES }, { now: NOW })
+    expect(readDoc("mfgProducts/m1")).toMatchObject({ referenceBuyPrice: 2780, referenceBuyPo: "PO-2026/014" })
+    expect(readDoc("mfgProducts/m2")).toMatchObject({ referenceBuyPrice: 90 })
+  })
+
   it("records the priced lines at approval, not before", async () => {
     seed("purchaseOrders/po1", order())
     expect(history()).toHaveLength(0)

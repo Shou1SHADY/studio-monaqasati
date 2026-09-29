@@ -43,7 +43,7 @@ import { agreementDaysLeft, agreementState, lastPaid, type PriceAgreement, type 
 import { buyerRollups, inBuyerScope, isActionState, needKpi, rollupOf, type BuyerRollup, type BuyerScope, type NeedRow } from "./need-desk"
 import { forwardUrgency } from "./receivers"
 import { priceDrift } from "./reports"
-import { advanceAmount, advanceNumber, advanceState, asX, HOLD_OWNER, openHolds, pmCancelOpen, type HoldOwner } from "./po-extras"
+import { acceptsHoldPrice, advanceAmount, advanceNumber, advanceState, asX, HOLD_OWNER, holdVariance, openHolds, pmCancelOpen, type HoldOwner } from "./po-extras"
 import { noticeTold } from "./policy-enforce"
 import { poInScope, rfqInScope } from "./rfq-view"
 import type { ProcActor, ProcurementPolicies, PurchaseOrder, ReceiptFact, SupplierFacts } from "./types"
@@ -465,7 +465,20 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
         const at = daysFromNow(dayOf(h.at), now) ?? 0
         const common = { sortDays: at, amount: money(actor, h.amount), href: ORDER_HREF(po.id), reasonCode: h.reason }
         const params = { supplier: po.supplierName, invoice: h.invoiceNo, holdReason: h.reason, need: h.need || h.text || "", number: po.docNumber }
-        if (owner === "proc" && sources && !ownerRO) {
+        const v = holdVariance(po, h)
+        if (h.pend) {
+          // A higher price someone asked for waits on the order's approver — nobody else has a move.
+          if (acceptsHoldPrice(po, actor) && (h.pend.byUid !== actor.uid || actor.isOwner)) {
+            const asked = v ? round2((h.pend.price - v.poPrice) * v.received) : h.amount
+            add({ id: `hold:${po.id}:${h.id}`, kind: "finance_hold", priority: 0, severity: "red", titleKey: "task.finance_hold.pend.title", titleParams: params, subKey: "task.finance_hold.pend.sub", subParams: { ...params, name: h.pend.byName, why: h.pend.why }, actionKey: "actions.review", ...common, amount: money(actor, asked) })
+          }
+          continue
+        }
+        if (owner === "proc" && sources && !ownerRO && v) {
+          // A price variance is Procurement's call, not the accountant's: the variance on what was received is the amount.
+          const fig = (n: number) => n.toLocaleString("en-US")
+          add({ id: `hold:${po.id}:${h.id}`, kind: "finance_hold", priority: 0, severity: "red", titleKey: "task.finance_hold.price.title", titleParams: params, subKey: "task.finance_hold.price.sub", subParams: { ...params, inv: fig(v.invoicePrice), po: fig(v.poPrice) }, actionKey: "actions.decide", ...common, amount: money(actor, v.variance) })
+        } else if (owner === "proc" && sources && !ownerRO) {
           add({ id: `hold:${po.id}:${h.id}`, kind: "finance_hold", priority: 0, severity: "red", titleKey: "task.finance_hold.proc.title", titleParams: params, subKey: "task.finance_hold.proc.sub", subParams: params, actionKey: "actions.decide", ...common })
         } else if (owner === "rcv" && chases) {
           add({ id: `hold:${po.id}:${h.id}`, kind: "finance_hold", priority: 1, severity: "amber", titleKey: "task.finance_hold.rcv.title", titleParams: params, subKey: "task.finance_hold.rcv.sub", subParams: { ...params, where: po.projectId ? "projects" : "inventory" }, actionKey: "actions.open", ...common })
@@ -961,6 +974,10 @@ export const TODAY_KEYS = [
   "task.need_rollup.sub",
   "task.rfq_query.title",
   "task.rfq_query.sub",
+  "task.finance_hold.pend.title",
+  "task.finance_hold.pend.sub",
+  "task.finance_hold.price.title",
+  "task.finance_hold.price.sub",
   "task.cancel_remainder.title",
   "task.cancel_remainder.sub",
   "task.notice_forward.title",

@@ -56,6 +56,8 @@ import {
   plantReplyBlocks,
   PM_PETTY,
   PM_PLANT,
+  pendingKept,
+  pendingSamples,
   procurementItems,
   PURCHASE_REQUESTS,
   receivable,
@@ -211,7 +213,7 @@ export async function createMaterialRequest(firestore: Firestore, ctx: PmContext
       needBy: input.needBy || null,
       notes: input.notes?.trim() || null,
       lines,
-      items: procurementItems({ lines }),
+      items: procurementItems({ lines }, pendingSamples(items)),
       status: "pending",
       requestedByUserId: actor.uid,
       requestedByUserName: actor.name,
@@ -245,7 +247,7 @@ export async function approveMaterialRequest(firestore: Firestore, ctx: PmContex
     tx.update(ref, {
       pm: true,
       lines,
-      items: procurementItems({ lines }),
+      items: procurementItems({ lines }, pendingSamples(items)),
       status: outcome,
       approvedOn: outcome === "approved" ? day : null,
       approvedBy: outcome === "approved" ? actor.uid : null,
@@ -367,7 +369,7 @@ export async function decideChange(
       await addItemMaterial(tx, firestore, projectId, line, { r: null, w: 5, src: "chg", ref: request.seq ? reqNo(request.seq) : null, voSeq: seq }, item?.executed ?? 0, cache)
     }
     const lines = request.lines.map((l, i) => (i === lineIndex ? next : l))
-    tx.update(ref, { lines, items: procurementItems({ lines }), updatedAt: serverTimestamp() })
+    tx.update(ref, { lines, items: procurementItems({ lines }, pendingKept(request)), updatedAt: serverTimestamp() })
     flushStores(tx, cache, project.organizationId ?? null)
   })
   return { voSeq }
@@ -402,7 +404,7 @@ export async function stopLine(firestore: Firestore, ctx: PmContext, projectId: 
         if ((err as { code?: string })?.code !== "order_missing") throw err
       })
     }
-    tx.update(ref, { pm: true, lines, items: procurementItems({ lines }), updatedAt: serverTimestamp() })
+    tx.update(ref, { pm: true, lines, items: procurementItems({ lines }, pendingKept(request)), updatedAt: serverTimestamp() })
   })
   return kind
 }
@@ -447,7 +449,7 @@ export async function receiveOnProject(firestore: Firestore, ctx: PmContext, pro
       storeWrite = { ref: got.ref, line: { ...base, moves: [...base.moves, move] } }
     }
     const lines = request.lines.map((l, i) => (i === lineIndex ? next : l))
-    tx.update(ref, { pm: true, lines, items: procurementItems({ lines }), updatedAt: serverTimestamp() })
+    tx.update(ref, { pm: true, lines, items: procurementItems({ lines }, pendingKept(request)), updatedAt: serverTimestamp() })
     if (storeWrite) tx.set(storeWrite.ref, { key: storeWrite.line.key, name: storeWrite.line.name, unit: storeWrite.line.unit, rates: storeWrite.line.rates, moves: storeWrite.line.moves, organizationId: project.organizationId ?? null, updatedAt: serverTimestamp() }, { merge: true })
     tx.update(pref, { pm: { ...pm, grnCount: seq }, updatedAt: serverTimestamp() })
   })

@@ -61,6 +61,8 @@ export function RfqRegisterGuestDialog({
       phone: z.string().trim().max(30),
       email: z.string().trim().max(200),
       vatNumber: z.string().trim().max(20),
+      crExpiry: z.string().trim(),
+      paymentTermsDays: z.string().trim().refine((v) => v === "" || (Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= 365)),
       channel: z.enum(INVITE_CHANNELS),
     })
     .superRefine((v, ctx) => {
@@ -71,11 +73,11 @@ export function RfqRegisterGuestDialog({
       if (v.vatNumber && !isSaudiVat(v.vatNumber)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["vatNumber"], message: t("err.vat_invalid") })
     })
   type Values = z.infer<typeof schema>
-  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { companyName: "", phone: "", email: "", vatNumber: "", channel: "wa" } })
+  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { companyName: "", phone: "", email: "", vatNumber: "", crExpiry: "", paymentTermsDays: "", channel: "wa" } })
   const channel = useWatch({ control: form.control, name: "channel" })
 
   useEffect(() => {
-    if (guest) form.reset({ companyName: guest.name, phone: guest.phone || "", email: guest.email || "", vatNumber: guest.vatNumber || "", channel: guest.phone ? "wa" : "email" })
+    if (guest) form.reset({ companyName: guest.name, phone: guest.phone || "", email: guest.email || "", vatNumber: guest.vatNumber || "", crExpiry: "", paymentTermsDays: "", channel: guest.phone ? "wa" : "email" })
   }, [guest, form])
 
   const submit = form.handleSubmit(async (v) => {
@@ -93,6 +95,12 @@ export function RfqRegisterGuestDialog({
           phone: v.phone || undefined,
           message: t("message", { rfq: rfqTitle }),
           channel: v.channel,
+          // Carried onto his supplier record when he joins, tagged «سُجّل من رابط زوار».
+          guest: {
+            ...(v.vatNumber ? { vatNumber: v.vatNumber } : {}),
+            ...(v.crExpiry ? { crExpiry: v.crExpiry } : {}),
+            ...(v.paymentTermsDays ? { paymentTermsDays: Number(v.paymentTermsDays) } : {}),
+          },
         }),
       })
       const data = (await res.json().catch(() => null)) as { success?: boolean; data?: { joinUrl?: string; emailSent?: boolean; invitationId?: string } } | null
@@ -202,6 +210,33 @@ export function RfqRegisterGuestDialog({
                 </FormItem>
               )}
             />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="crExpiry"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("cr_expiry")}</FormLabel>
+                    <FormControl>
+                      <Input type="date" dir="ltr" {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="paymentTermsDays"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("payment_terms")}</FormLabel>
+                    <FormControl>
+                      <Input type="number" min="0" max="365" dir="ltr" inputMode="numeric" placeholder="30" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <FormField
               control={form.control}
               name="channel"

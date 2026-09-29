@@ -235,6 +235,7 @@ export async function POST(req: NextRequest) {
             invitedById: (inv.invitedBy as string | undefined) ?? null,
             invitedByName: (inv.invitedByName as string | undefined) ?? null,
             at: new Date().toISOString(),
+            guest: (inv.guest as { vatNumber?: string | null; crExpiry?: string | null; paymentTermsDays?: number | null } | null | undefined) ?? null,
           })
         )
       })

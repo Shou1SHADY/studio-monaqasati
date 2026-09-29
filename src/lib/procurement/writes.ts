@@ -16,7 +16,7 @@ import { approvalGateBlocks, gateItemIds, noticeReachesReceiver } from "./policy
 import { poActs, type BoqGateItem, type PurchaseOrderX } from "./po-extras"
 import { drawProcDocNumber, drawProcDocNumbers } from "./numbering"
 import { rfqLogEntry, type RfqLogEntry } from "./rfq-detail"
-import { PRICE_HISTORY, historyRowsForApproval } from "./prices"
+import { PRICE_HISTORY, historyRowsForApproval, materialKey } from "./prices"
 import { pricedProducts, quotedRatesReconcile } from "./offer-pricing"
 import {
   acceptedValue,
@@ -751,11 +751,30 @@ export async function afterApproval(firestore: Firestore, actor: ProcActor, po: 
 async function recordApprovedPrices(firestore: Firestore, po: PurchaseOrder, at: string): Promise<void> {
   const rows = historyRowsForApproval(po, at)
   if (!rows.length) return
-  await Promise.all(
-    rows.map(({ id, ...row }) =>
+  await Promise.all([
+    ...rows.map(({ id, ...row }) =>
       setDoc(doc(firestore, PRICE_HISTORY, id), row).catch((err) => console.warn("price history not recorded:", (err as { code?: string })?.code || err))
+    ),
+    shareReferencePrices(firestore, po, rows, at),
+  ])
+}
+
+/** «سعر مرجعي يقرؤه التصنيع»: a product our workshop makes and we just bought
+ * takes the approved price as its make-or-buy yardstick (same name and unit). */
+async function shareReferencePrices(firestore: Firestore, po: PurchaseOrder, rows: Array<{ materialKey: string; price: number }>, at: string): Promise<void> {
+  try {
+    const snap = await getDocs(query(collection(firestore, "mfgProducts"), where("organizationId", "==", po.organizationId)))
+    const byKey = new Map(rows.map((r) => [r.materialKey, r.price]))
+    await Promise.all(
+      snap.docs.map((d) => {
+        const p = d.data() as { name?: string; unit?: string; archived?: boolean }
+        const price = p.archived ? undefined : byKey.get(materialKey(p.name || "", p.unit || ""))
+        return price ? updateDoc(d.ref, { referenceBuyPrice: price, referenceBuyAt: at, referenceBuyPo: po.docNumber, updatedAt: serverTimestamp() }) : Promise.resolve()
+      })
     )
-  )
+  } catch (err) {
+    console.warn("reference price not shared:", (err as { code?: string })?.code || err)
+  }
 }
 
 /** Return to the preparer with a reason: the order stays awaiting approval

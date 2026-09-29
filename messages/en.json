@@ -8414,7 +8414,9 @@
       "pn_po_hold_inv_price": "The invoice price is accepted",
       "pn_portal_answer_title": "The consultant answered through the portal",
       "pn_portal_answer": "{name} answered through the consultant portal on {project}: {record}",
-      "nd_returned_from": "back from {po} — cancelled there"
+      "nd_returned_from": "back from {po} — cancelled there",
+      "nd_item_budget_left": "Item material budget left",
+      "nd_not_in_catalogue": "Not in Inventory's catalogue: bought by free description; Inventory registers it on receipt if it is stocked."
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -11669,7 +11671,9 @@
             "phone_invalid": "Enter a valid mobile number",
             "vat_invalid": "A VAT number is 15 digits starting and ending with 3",
             "failed": "The invitation was not sent — try again"
-          }
+          },
+          "cr_expiry": "Commercial registration expires",
+          "payment_terms": "Payment terms (days)"
         },
         "guest_link": {
           "title": "Guest link — for off-platform suppliers",
@@ -11924,6 +11928,14 @@
           "sup": {
             "title": "{supplier}’s invoice rejected: {reason}",
             "sub": "{need} — we talk to the supplier, not Finance"
+          },
+          "pend": {
+            "title": "Approve accepting the price variance on {number} — {supplier}",
+            "sub": "{name} asks for a new price: {why}"
+          },
+          "price": {
+            "title": "A price variance held {supplier}'s invoice — the decision is yours, not the accountant's",
+            "sub": "{invoice} at {inv} against {po} on {number}"
           }
         },
         "pm_supplier_return": {

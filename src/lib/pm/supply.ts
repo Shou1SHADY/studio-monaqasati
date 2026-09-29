@@ -114,7 +114,7 @@ export interface PmMaterialRequest {
   approvedOn?: string | null
   approvedByName?: string | null
   decidedByUserName?: string | null
-  items?: Array<{ name: string; quantity: number; unit: string }>
+  items?: Array<{ name: string; quantity: number; unit: string; itemId?: string; samplePending?: boolean }>
   rfqId?: string | null
   rfqNumber?: string | null
   poId?: string | null
@@ -244,12 +244,23 @@ export const receivable = (r: Pick<PmMaterialRequest, "status" | "withdrawn" | "
 }
 
 /** What Procurement sees: every approved line not held or refused — a closed line
- * at what arrived (none when nothing did). */
-export function procurementItems(r: Pick<PmMaterialRequest, "lines">): Array<{ name: string; quantity: number; unit: string }> {
+ * at what arrived (none when nothing did). A line whose item's sample is with
+ * the consultant carries `samplePending`: Procurement collects offers, but no
+ * order is issued before the consultant approves (the prototype's wait). */
+export function procurementItems(r: Pick<PmMaterialRequest, "lines">, samplePending?: ReadonlySet<string>): Array<{ name: string; quantity: number; unit: string; itemId?: string; samplePending?: boolean }> {
   return r.lines
     .filter((l) => !held(l) && !refused(l))
-    .map((l) => ({ name: l.name, unit: l.unit, quantity: l.cl ? lineGot(l) : l.qty }))
+    .map((l) => ({ name: l.name, unit: l.unit, quantity: l.cl ? lineGot(l) : l.qty, ...(l.itemId ? { itemId: l.itemId } : {}), ...(l.itemId && samplePending?.has(l.itemId) ? { samplePending: true } : {}) }))
     .filter((i) => i.quantity > 0)
+}
+
+/** The items whose sample is with the consultant now. */
+export const pendingSamples = (items: Array<{ id: string; pmSample?: boolean | null; pmSub?: string | null }>): Set<string> => new Set(items.filter((i) => sampleStateOf(i) === "with_consultant").map((i) => i.id))
+
+/** The pending marks a request already carries, kept across a rewrite of its items. */
+export const pendingKept = (r: Pick<PmMaterialRequest, "lines"> & { items?: Array<{ name?: string; samplePending?: boolean | null }> | null }): Set<string> => {
+  const names = new Set((r.items ?? []).filter((i) => i.samplePending).map((i) => i.name))
+  return new Set(r.lines.filter((l) => l.itemId && names.has(l.name)).map((l) => l.itemId as string))
 }
 
 export const reqTitle = (lines: Array<Pick<ReqLine, "name">>, fallback: string) => {

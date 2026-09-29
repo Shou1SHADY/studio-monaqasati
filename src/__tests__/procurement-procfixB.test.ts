@@ -165,6 +165,12 @@ describe("a supplier who joins through our invitation lands UNVERIFIED (P-16, pr
     const t = todayTasks(world({ supplierRecords: [{ ...r, supplierName: r.supplierName }] }), MANAGER, NOW)
     expect(t.find((x) => x.kind === "supplier_verify")).toMatchObject({ titleParams: { supplier: "Najd Steel" }, subParams: { name: "Sara" } })
   })
+
+  it("a guest registered from his offer keeps what the buyer recorded, tagged «سُجّل من رابط زوار»", () => {
+    const r = invitedSupplierRecord({ organizationId: "org", supplierOrgId: "s9", supplierName: "Najd Steel", vat: null, invitedById: "buyer", invitedByName: "Sara", at: "2026-09-22T08:00:00Z", guest: { vatNumber: "300000000000003", crExpiry: "2027-03-01", paymentTermsDays: 45 } })
+    expect(r).toMatchObject({ source: "guest_link", verified: false, vatNumber: "300000000000003", crExpiry: "2027-03-01", paymentTermsDays: 45 })
+    expect(r.log?.[0]?.params).toEqual({ source: "guest_link" })
+  })
 })
 
 describe("the buyer's categories (P-21/P-40) — who sets them, who they scope", () => {
@@ -310,8 +316,18 @@ describe("Today — the rows the audit found missing", () => {
     expect(todayTasks(w("price"), OWNER, NOW).find((t) => t.kind === "finance_hold")).toMatchObject({ titleKey: "task.finance_hold.owner.title", subParams: { holdOwner: "proc" }, actionKey: "actions.view" })
     // Finance's own hold is a wait, not a task; and a held order is not yet «سداد وإقفال».
     expect(kinds(w("dup"), MANAGER)).not.toContain("finance_hold")
+
     expect(todayWaits(w("dup"), MANAGER, NOW).map((x) => [x.kind, x.module])).toContainEqual(["invoice_hold", "finance"])
     expect(todayWaits(w("nogrn"), MANAGER, NOW).map((x) => [x.kind, x.module])).toContainEqual(["invoice_hold", "projects"])
+  })
+
+  it("G5 · a price hold names its variance; a higher price asked by the buyer waits on the approver", () => {
+    const priced = { ...hold("price"), price: 2900, lineId: "l1" }
+    const received = po({ lines: [line({ id: "l1", accepted: 40 })], financeHolds: [priced] })
+    expect(todayTasks(world({ orders: [received] }), MANAGER, NOW).find((t) => t.kind === "finance_hold")).toMatchObject({ titleKey: "task.finance_hold.price.title", amount: 4000 })
+    const asked = po({ lines: [line({ id: "l1", accepted: 40 })], financeHolds: [{ ...priced, pend: { price: 2850, why: "mill circular", byUid: "buyer", byName: "Buyer", at: "2026-09-22T08:00:00Z" } }] })
+    expect(todayTasks(world({ orders: [asked] }), MANAGER, NOW).find((t) => t.kind === "finance_hold")).toMatchObject({ titleKey: "task.finance_hold.pend.title", subParams: { name: "Buyer", why: "mill circular" }, actionKey: "actions.review", amount: 2000 })
+    expect(kinds(world({ orders: [asked] }), BUYER)).not.toContain("finance_hold")
   })
 
   it("G6 · the project manager's budget decision and the supplier's advance are waits", () => {

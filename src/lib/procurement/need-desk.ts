@@ -73,6 +73,8 @@ export interface NeedRow {
   estimate: number | null
   category: string | null
   samplePending: boolean
+  /** The project's BOQ item, for a project request's line. */
+  itemId: string | null
   /** Our cover in stock, as the stores read now (null = not stocked). */
   onHand: number | null
   selectable: boolean
@@ -208,6 +210,7 @@ export function buildNeedRows(needs: Need[], facts: DeskFacts): NeedRow[] {
         estimate: unitEstimate == null ? null : round2(unitEstimate * open),
         category: categoryOf(l.name, l.unit, l.category, facts),
         samplePending,
+        itemId: l.itemId ?? null,
         onHand: need.kind === "stock" ? need.stock?.onHand ?? null : facts.onHand(l.name),
         selectable: (state === "open" || state === "mfgl") && p?.path !== "mfg" && p?.path !== "stock",
       })

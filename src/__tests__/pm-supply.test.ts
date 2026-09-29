@@ -11,6 +11,7 @@ import { fakeFirestore, listCollection, readDoc, resetFakeDb, seed } from "@/tes
 import type { Firestore } from "firebase/firestore"
 import { PmAccessError, pmCeiling, type PmContext } from "@/lib/pm/access"
 import { todayDay } from "@/lib/pm/format"
+import { recordSampleReply } from "@/lib/pm/sample-writes"
 import {
   decideRefusal,
   materialKeyOf,
@@ -130,7 +131,7 @@ describe("requests", () => {
     expect(linePhase(half, half.lines[0])).toBe("part")
     expect(receivable(req(), line())).toBe(false)
     expect(receivable(req({ poId: "po1" }), line())).toBe(true)
-    expect(procurementItems({ lines: [line({ chg: { st: "wait" } }), line({ name: "Sand" })] })).toEqual([{ name: "Sand", unit: "bag", quantity: 100 }])
+    expect(procurementItems({ lines: [line({ chg: { st: "wait" } }), line({ name: "Sand" })] })).toEqual([{ name: "Sand", unit: "bag", quantity: 100, itemId: "i1" }])
   })
   it("a closed line shows what arrived; stopping with nothing received cancels", () => {
     expect(stoppedLine(line(), { on: "d", by: "u" }).cl?.t).toBe("cancel")
@@ -195,6 +196,16 @@ describe("writes", () => {
     const after = requestOf({ id: "01", ...(readDoc<Record<string, unknown>>(`${P}/purchaseRequests/01`) as Record<string, unknown>) })
     expect(after.lines[0].cl?.t).toBe("short")
     expect(reqState(after)).toBe("shut")
+  })
+
+  it("a line whose sample is with the consultant reaches Procurement as «عيّنة قيد الاعتماد» until the consultant approves", async () => {
+    seed(`${P}/boqItems/i1`, { itemNo: "04-02-01", descriptionAr: "لياسة", unit: "m2", quantity: 10000, executedQuantity: 2000, pmSample: true, pmSub: "sub" })
+    seed(`${P}/pmSubmittals/01`, { seq: 1, itemId: "i1", status: "sub", day: "2026-09-01", supplier: "Al Jazira", what: "Cement 42.5", by: "se1" })
+    await createMaterialRequest(db, site, "p1", siteActor, { title: "", needBy: null, notes: null, lines: [{ itemId: "i1", name: "Cement", unit: "bag", qty: 100 }] })
+    await approveMaterialRequest(db, pm, "p1", pmActor, "01")
+    expect(readDoc<{ items: unknown[] }>(`${P}/purchaseRequests/01`)?.items).toEqual([{ name: "Cement", quantity: 100, unit: "bag", itemId: "i1", samplePending: true }])
+    await recordSampleReply(db, pm, "p1", pmActor, 1, { reply: "appA", note: null })
+    expect(readDoc<{ items: unknown[] }>(`${P}/purchaseRequests/01`)?.items).toEqual([{ name: "Cement", quantity: 100, unit: "bag", itemId: "i1" }])
   })
 
   it("stopping a line with an order out asks Procurement to cancel the rest (P-19)", async () => {

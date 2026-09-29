@@ -489,23 +489,26 @@ export function invitedSupplierRecord(input: {
   invitedById: string | null
   invitedByName: string | null
   at: string
+  /** A guest registered from his offer («سجّله مورداً»): what the buyer recorded of him — the record is tagged «سُجّل من رابط زوار». */
+  guest?: { vatNumber?: string | null; crExpiry?: string | null; paymentTermsDays?: number | null } | null
 }): Omit<SupplierRecord, "id"> {
   const by = { byId: input.invitedById || "", byName: input.invitedByName || "" }
+  const source = input.guest ? "guest_link" : "invite"
   return {
     organizationId: input.organizationId,
     supplierOrgId: input.supplierOrgId,
     supplierName: input.supplierName,
     kind: "mat",
-    source: "invite",
-    vatNumber: text(input.vat) || null,
-    crExpiry: null,
-    paymentTermsDays: 30,
+    source,
+    vatNumber: text(input.guest?.vatNumber) || text(input.vat) || null,
+    crExpiry: input.guest?.crExpiry || null,
+    paymentTermsDays: input.guest?.paymentTermsDays ?? 30,
     leadTimeDays: null,
     verified: false,
     addedById: input.invitedById,
     addedByName: input.invitedByName,
     addedAt: input.at,
-    log: [{ action: "added", at: input.at, ...by, params: { source: "invite" } }],
+    log: [{ action: "added", at: input.at, ...by, params: { source } }],
   }
 }
 

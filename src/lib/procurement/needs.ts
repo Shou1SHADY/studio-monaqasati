@@ -24,6 +24,8 @@ export interface NeedLine {
   category?: string
   /** The line waits on a sample the consultant has not approved yet. */
   samplePending?: boolean
+  /** The project's BOQ item the material is for (a project request's line). */
+  itemId?: string
   /** Its own need-by date, when it differs from the request's. */
   needBy?: string
 }
@@ -114,7 +116,7 @@ export function mfgNeed(order: { id: string; ref: string; context: string; proje
 export interface ProjectRequestDoc {
   id: string
   title?: string
-  items?: Array<{ name?: string; quantity?: string | number; unit?: string; category?: string | null; samplePending?: boolean | null; needBy?: string | null }>
+  items?: Array<{ name?: string; quantity?: string | number; unit?: string; category?: string | null; samplePending?: boolean | null; needBy?: string | null; itemId?: string | null }>
   /** Optional until Projects' requests carry one (PM 1.0 E-26). */
   needBy?: string | null
   procDecision?: ProcDecision | null
@@ -158,6 +160,7 @@ export function projectNeed(project: { id: string; name: string }, pr: ProjectRe
       const l: NeedLine = { name: (i.name || "").trim(), unit: (i.unit || "").trim(), quantity: kept ?? (Number(i.quantity) || 0) }
       if (i.category) l.category = i.category
       if (i.samplePending) l.samplePending = true
+      if (i.itemId) l.itemId = i.itemId
       if (i.needBy) l.needBy = i.needBy.slice(0, 10)
       return l
     })

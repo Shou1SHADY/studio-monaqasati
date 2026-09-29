@@ -22,6 +22,7 @@ import { displayCategory } from "@/lib/constants"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 import { LINE_STATE_TONE, PATH_ICON, fmtDay, qty } from "@/components/procurement/need-bits"
+import { useItemBudgetLeft } from "@/hooks/useItemBudgetLeft"
 
 export interface NeedLineActs {
   canAct: boolean
@@ -40,8 +41,9 @@ export interface NeedLineActs {
 
 const SOURCE_ICON = { mfg: Factory, project: FolderKanban, stock: Boxes }
 
-export function NeedLineDrawer({ row, agreements, history, cap, today, acts, onClose }: { row: NeedRow; agreements: PriceAgreement[]; history: PriceHistoryEntry[]; cap: number; today: string; acts: NeedLineActs; onClose: () => void }) {
+export function NeedLineDrawer({ row, agreements, history, cap, today, acts, orgId, onClose }: { row: NeedRow; agreements: PriceAgreement[]; history: PriceHistoryEntry[]; cap: number; today: string; acts: NeedLineActs; orgId?: string | null; onClose: () => void }) {
   const t = useTranslations("Portal.Shared")
+  const budgetLeft = useItemBudgetLeft(row.need.kind === "project" ? row.need.projectId : null, orgId ?? null, row.itemId, acts.seesPrices)
   const locale = useLocale()
   const isRtl = locale === "ar"
   const n = row.need
@@ -192,8 +194,10 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, onC
             {n.kind === "stock" && n.stock ? <KeyValueRow label={t("nd_deliver_to")} value={n.refLabel} /> : n.projectName ? <KeyValueRow label={t("nd_deliver_to")} value={n.projectName} /> : n.kind === "mfg" ? <KeyValueRow label={t("nd_deliver_to")} value={t("nd_deliver_workshop")} /> : null}
             <KeyValueRow label={t("nd_stock_check")} value={row.onHand == null ? t("pri_not_in_stock") : t("pri_on_hand", { qty: `${qty(row.onHand)} ${row.unit}` })} />
             {row.category && <KeyValueRow label={t("nd_category")} value={displayCategory(row.category, locale)} />}
+            {acts.seesPrices && budgetLeft !== null && <KeyValueRow label={t("nd_item_budget_left")} value={money(budgetLeft)} ltr />}
             {n.note && <p className="py-2 text-sm text-muted-foreground" dir="auto">{n.note}</p>}
           </DrawerSection>
+          {row.onHand == null && n.kind !== "stock" && <Callout tone="info">{t("nd_not_in_catalogue")}</Callout>}
 
           {acts.seesPrices && (
             <DrawerSection title={t("nd_price")}>

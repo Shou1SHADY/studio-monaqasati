@@ -3696,6 +3696,12 @@ service cloud.firestore {
         && hasOrgPermission('manufacturing.manage');
       allow update, delete: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
         && hasOrgPermission('manufacturing.manage'));
+      // Procurement's approved price is the product's make-or-buy yardstick
+      // («سعر مرجعي يقرؤه التصنيع») — that field and its trace, nothing else.
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && (hasOrgPermission('po.approve') || hasOrgPermission('offers.accept'))
+        && changedKeys().hasOnly(['referenceBuyPrice', 'referenceBuyAt', 'referenceBuyPo', 'updatedAt'])
+        && request.resource.data.referenceBuyPrice is number && request.resource.data.referenceBuyPrice > 0;
     }
 
     // Cost statements — cost, lead time and validity; no price, no margin

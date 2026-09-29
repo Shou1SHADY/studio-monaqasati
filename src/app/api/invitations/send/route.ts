@@ -24,6 +24,14 @@ const bodySchema = z
     category: z.string().trim().max(120).optional(),
     message: z.string().trim().max(1000).optional(),
     channel: z.enum(["wa", "email"]).default("email"),
+    // supplier_invite from a guest's offer: what the buyer recorded of him, carried onto his record when he joins.
+    guest: z
+      .object({
+        vatNumber: z.string().trim().max(20).optional(),
+        crExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        paymentTermsDays: z.number().int().min(0).max(365).optional(),
+      })
+      .optional(),
   })
   .superRefine((v, ctx) => {
     if (v.type === "team_invite") {
@@ -59,7 +67,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return errorResponse(parsed.error.issues[0]?.message || "Invalid input", "INVALID_INPUT", 400)
     }
-    const { type, companyName, name, groupId, phone, category, message, channel } = parsed.data
+    const { type, companyName, name, groupId, phone, category, message, channel, guest } = parsed.data
     const email = parsed.data.email || ""
 
     if (email && decoded.email && email === decoded.email.toLowerCase()) {
@@ -264,6 +272,7 @@ export async function POST(req: NextRequest) {
         category: category || null,
         message: message || null,
         channel,
+        guest: guest ?? null,
         invitedBy: decoded.uid,
         invitedByName: (sender.name as string) || senderOrgName,
         contractorOrgId,

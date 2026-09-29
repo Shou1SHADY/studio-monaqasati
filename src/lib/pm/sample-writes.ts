@@ -4,12 +4,13 @@
 // line carries the latest state (`pmSub`) so every screen reads the gate the
 // same way.
 
-import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
+import { collection, doc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
 import { cleanAttachments, type PmAttachment } from "./attachments"
 import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
 import { PM_SUBMITTALS, replyBlocks, sampleNo, submitBlocks, type PmSubmittal, type SampleReply } from "./sample"
+import { pendingKept, procurementItems, PURCHASE_REQUESTS, type PmMaterialRequest } from "./supply"
 
 export class PmSampleError extends Error {
   constructor(readonly code: "missing" | "not_pm_project" | "blocked", readonly blocks: string[] = []) {
@@ -87,6 +88,7 @@ export async function recordSampleReply(
   seq: number,
   input: { reply: unknown; note?: string | null; on?: string; files?: PmAttachment[] | null }
 ): Promise<void> {
+  let decided: { itemId: string; reply: SampleReply } | null = null
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
@@ -105,7 +107,27 @@ export async function recordSampleReply(
       updatedAt: serverTimestamp(),
     })
     tx.update(doc(firestore, "projects", projectId, "boqItems", s.itemId), { pmSub: reply, updatedAt: serverTimestamp() })
+    decided = { itemId: s.itemId, reply }
   })
+  const done = decided as { itemId: string; reply: SampleReply } | null
+  if (done && (done.reply === "appA" || done.reply === "appB")) await clearSamplePending(firestore, projectId, done.itemId)
+}
+
+/** Approved: the requests Procurement is buying for may now be ordered — their
+ * lines on this item lose «عيّنة قيد الاعتماد». Best-effort (the approver's write). */
+async function clearSamplePending(firestore: Firestore, projectId: string, itemId: string): Promise<void> {
+  try {
+    const snap = await getDocs(query(collection(firestore, "projects", projectId, PURCHASE_REQUESTS), where("pm", "==", true)))
+    for (const d of snap.docs) {
+      const r = d.data() as PmMaterialRequest & { items?: Array<{ name?: string; samplePending?: boolean | null }> }
+      if (!r.lines?.some((l) => l.itemId === itemId) || !r.items?.some((i) => i.samplePending)) continue
+      const keep = pendingKept(r)
+      keep.delete(itemId)
+      await updateDoc(d.ref, { items: procurementItems(r, keep), updatedAt: serverTimestamp() })
+    }
+  } catch (err) {
+    console.warn("sample pending not cleared:", (err as { code?: string })?.code || err)
+  }
 }
 
 /** Which lines require a sample (SUB-01) — approve's. */

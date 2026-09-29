@@ -349,7 +349,7 @@ export function PurchaseRequestsInbox() {
         </div>
       )}
 
-      {drawerRow && <NeedLineDrawer row={drawerRow} agreements={agreements} history={history} cap={policies.directPurchaseCap} today={today} acts={actsFor(drawerRow)} onClose={() => setQuery({ line: null })} />}
+      {drawerRow && <NeedLineDrawer row={drawerRow} agreements={agreements} history={history} cap={policies.directPurchaseCap} today={today} acts={actsFor(drawerRow)} orgId={orgId || null} onClose={() => setQuery({ line: null })} />}
 
       {ordering && (
         <DirectOrderDialog
