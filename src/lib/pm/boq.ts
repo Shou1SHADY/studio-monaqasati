@@ -136,6 +136,8 @@ export interface BoqTotals {
   margin: number
   /** Some line's cost is its budget, not a booked cost. */
   estimated: boolean
+  /** Any line carries a cost basis (an estimate or a booked cost); without one, cost and margin are «—». */
+  costed: boolean
 }
 
 export function boqTotals(lines: PmBoqLine[]): BoqTotals {
@@ -150,6 +152,7 @@ export function boqTotals(lines: PmBoqLine[]): BoqTotals {
     cost,
     margin: r2(earned - cost),
     estimated: lines.some((b) => b.executed > 0 && b.actual === null),
+    costed: lines.some((b) => b.actual !== null || (b.estCost ?? 0) > 0),
   }
 }
 

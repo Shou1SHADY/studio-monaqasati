@@ -70,6 +70,9 @@ describe("BOQ view (C-01…C-08)", () => {
     const t = boqTotals(lines)
     expect(t).toMatchObject({ contract: 100_000, earned: 75_000, unbilled: 20_000 })
     expect(t.estimated).toBe(true)
+    expect(t.costed).toBe(true)
+    // Nothing costed (no estimate, no booked cost): cost and margin read «—», not the earned value.
+    expect(boqTotals(lines.map((b) => ({ ...b, estCost: 0, actual: null }))).costed).toBe(false)
   })
 
   it("the unpriced note counts executed unpriced lines and their unweighted share", () => {

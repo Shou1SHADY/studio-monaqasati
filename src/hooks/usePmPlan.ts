@@ -1,8 +1,9 @@
 "use client"
 
 // The project's planned line, the same on every screen (the prototype's pPlan):
-// the current baseline — the duration plus the extensions granted — shaped by
-// the programme's S-curve (programmeK), linear when there are no activities.
+// the current baseline — the duration plus the extensions granted — with the
+// S-curve shaped on the ORIGINAL programme's activities (programmeK) and
+// stretched over the baseline, as the Programme tab draws it; linear without activities.
 // The head, the Pulse's penalty note, Claims and the decisions all read it, so
 // "points behind" is one number wherever it shows.
 
@@ -36,7 +37,7 @@ export function usePmPlan(
     const granted = grantedDays((claims ?? []) as unknown as PmClaim[])
     const durationDays = project?.pm?.durationDays ?? 0
     const effectiveDays = durationDays + granted
-    const curveK = programmeK({ acts: (acts ?? []) as unknown as PmActivity[], items, startOn: project?.pm?.startedAt ?? null, durationDays: effectiveDays, today: todayDay() })
+    const curveK = programmeK({ acts: (acts ?? []) as unknown as PmActivity[], items, startOn: project?.pm?.startedAt ?? null, durationDays, today: todayDay() })
     return { effectiveDays, curveK, granted }
   }, [claims, acts, items, project])
 }

@@ -246,10 +246,10 @@ export function PmBoqPanel({
                   {fmt(totals.unbilled)}
                 </td>
                 <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                  {fmt(totals.cost)}
+                  {totals.costed ? fmt(totals.cost) : "—"}
                 </td>
-                <td className={cn("px-4 py-2 text-end tabular-nums", totals.margin > 0 ? "text-success" : "text-destructive")} dir="ltr">
-                  {fmt(totals.margin)}
+                <td className={cn("px-4 py-2 text-end tabular-nums", !totals.costed ? "text-muted-foreground" : totals.margin > 0 ? "text-success" : "text-destructive")} dir="ltr">
+                  {totals.costed ? fmt(totals.margin) : "—"}
                 </td>
               </tr>
             )}

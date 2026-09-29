@@ -6,6 +6,7 @@
 // project log, the five latest dated facts from the project's own records. Both
 // derived (`@/lib/pm/pulse`); nothing here is stored.
 
+import { usePmPlan } from "@/hooks/usePmPlan"
 import { useMemo } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection } from "firebase/firestore"
@@ -42,6 +43,8 @@ function useRows<T>(projectId: string, name: string, enabled = true): T[] {
 export function SectionsBehindPanel({ projectId, project, items, onProgramme }: { projectId: string; project: PmDecisionProject; items: Item[]; onProgramme?: () => void }) {
   const t = useTranslations("Portal.PM")
   const activities = useRows<PmActivity>(projectId, PM_ACTIVITIES)
+  const planItems = useMemo(() => items.map((i, n) => ({ id: i.id ?? String(n), quantity: i.quantity, rate: i.rate })), [items])
+  const base = usePmPlan(projectId, project as { pm?: { startedAt?: string | null; durationDays?: number } | null }, planItems)
   const rows = useMemo(() => {
     const pm = project.pm
     if (!pm) return []
@@ -49,11 +52,12 @@ export function SectionsBehindPanel({ projectId, project, items, onProgramme }: 
     const plan = delayAndDamages({
       lifecycle: lifecycleOf(project as { pm?: { lifecycle?: string }; status?: string }),
       startOn: pm.startedAt ?? null,
-      effectiveDays: pm.durationDays ?? 0,
+      effectiveDays: base.effectiveDays,
       progress: progressOf(items),
       contractValue: 0,
       damages: { on: false, weeklyRate: 0, cap: 0 },
       today,
+      curveK: base.curveK,
     })
     if (!plan?.planned) return []
     return sectionDeviations(
@@ -61,7 +65,7 @@ export function SectionsBehindPanel({ projectId, project, items, onProgramme }: 
       plan.planned,
       activities.length ? itemPlanFromActivities(activities, today) : undefined
     )
-  }, [project, items, activities])
+  }, [project, items, activities, base])
   if (!rows.length) return null
   return (
     <Panel
