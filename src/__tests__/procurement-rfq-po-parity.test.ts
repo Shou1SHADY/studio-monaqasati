@@ -103,11 +103,10 @@ describe("the RFQ list (R-33 … R-36)", () => {
 describe("a buyer's scope (R-18)", () => {
   const buyer = { uid: "u2", isOwner: false, canApprove: false, canPrepare: true }
   const manager = { uid: "u1", isOwner: false, canApprove: true, canPrepare: true }
-  it("a buyer sees his own and his categories'; a manager everything", () => {
+  it("a buyer's RFQs are his own only; his orders include his categories'; a manager sees everything", () => {
     expect(isBuyer(buyer)).toBe(true)
     expect(rfqInScope({ createdByUserId: "u2" }, buyer)).toBe(true)
-    expect(rfqInScope({ createdByUserId: "u9", products: [{ category: "steel" }] }, buyer)).toBe(false)
-    expect(rfqInScope({ createdByUserId: "u9", products: [{ category: "steel" }] }, buyer, ["steel"])).toBe(true)
+    expect(rfqInScope({ createdByUserId: "u9" }, buyer)).toBe(false)
     expect(rfqInScope({ createdByUserId: "u9" }, manager)).toBe(true)
     expect(poInScope({ preparedById: "u9", category: "steel" }, buyer, ["steel"])).toBe(true)
     expect(poInScope({ preparedById: "u9", category: "elec" }, buyer, ["steel"])).toBe(false)

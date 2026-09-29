@@ -53,6 +53,7 @@ export function MfgPurchaseRequestsPanel({
   canStartRfq,
   canMarkArrived,
   canClaim,
+  inScope,
 }: {
   /** rfq.manage || rfq.create */
   canStartRfq: boolean
@@ -60,6 +61,8 @@ export function MfgPurchaseRequestsPanel({
   canMarkArrived: boolean
   /** rfq.manage || rfq.create */
   canClaim: boolean
+  /** A buyer's categories: only the shortfalls he buys. Absent = all. */
+  inScope?: (itemName: string, unit: string) => boolean
 }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
@@ -90,9 +93,9 @@ export function MfgPurchaseRequestsPanel({
     () =>
       orders
         .filter((o) => o.status === "open")
-        .flatMap((o) => (o.purchaseRequests || []).filter((p) => p.state === "sent").map((p) => ({ order: o, request: p })))
+        .flatMap((o) => (o.purchaseRequests || []).filter((p) => p.state === "sent" && (!inScope || inScope(p.itemName, p.unit))).map((p) => ({ order: o, request: p })))
         .sort((a, b) => (a.request.needBy || "9999").localeCompare(b.request.needBy || "9999")),
-    [orders]
+    [orders, inScope]
   )
 
   const notices = useMemo(

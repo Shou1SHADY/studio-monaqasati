@@ -16,6 +16,7 @@ import { useRfqQueries } from "@/hooks/useRfqQueries"
 import { actionRows, inBuyerScope } from "@/lib/procurement/need-desk"
 import { isBuyer, rfqInScope } from "@/lib/procurement/rfq-view"
 import { useBudgetOverruns, useForwardFacts, useMfgReadyDates } from "@/hooks/useProcShellFacts"
+import { useSampleNumbers } from "@/hooks/useSampleNumbers"
 import { procRole, procTabCounts, toProcWorld, type ProcRole, type ProcTabCounts } from "@/lib/procurement/shell"
 import { todayKpis, todayTasks, type ProcKpis, type ProcWorld, type RfqFact, type TodayActor } from "@/lib/procurement/today"
 
@@ -44,10 +45,13 @@ export function useProcTodayWorld(): ProcTodayWorld {
   const budgetOverruns = useBudgetOverruns(orders)
   const readyDates = useMfgReadyDates(orgId, needs.rows, needs.mfgRequests)
   const forwardFacts = useForwardFacts(orgId, deliveries, orders, policies)
-  const world = useMemo(
-    () => ({ ...toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts }), agreements, history, supplierRecords, needDesk, rfqQueries, pmEvents, ownerHasTeam: needs.ownerHasTeam, budgetOverruns, readyDates, forwardFacts }),
-    [orders, deliveries, rfqs, offers, policies, supplierFacts, agreements, history, supplierRecords, needDesk, rfqQueries, pmEvents, needs.ownerHasTeam, budgetOverruns, readyDates, forwardFacts]
-  )
+  const sampleNos = useSampleNumbers(needs.rows)
+  const world = useMemo(() => {
+    const base = toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts })
+    const raw = new Map(rfqs.map((r) => [r.id, r as typeof r & { rfqNumber?: string | null; closedEarly?: { at?: string | null } | null }]))
+    const withRecord = base.rfqs.map((r) => ({ ...r, number: raw.get(r.id)?.rfqNumber ?? null, closedEarly: raw.get(r.id)?.closedEarly ?? null }))
+    return { ...base, rfqs: withRecord, agreements, history, supplierRecords, needDesk, rfqQueries, pmEvents, ownerHasTeam: needs.ownerHasTeam, budgetOverruns, readyDates, forwardFacts, sampleNos }
+  }, [orders, deliveries, rfqs, offers, policies, supplierFacts, agreements, history, supplierRecords, needDesk, rfqQueries, pmEvents, needs.ownerHasTeam, budgetOverruns, readyDates, forwardFacts, sampleNos])
   return { loaded, needs, world, actor, now }
 }
 
@@ -77,9 +81,9 @@ export function useProcurementShell(): ProcurementShell {
     // The badge counts what the RFQ list shows: the list scopes a buyer by `isBuyer` (rfq-view), so the badge does too.
     const scope = { uid: actor.uid, isOwner: actor.isOwner, canApprove: actor.canApprove, canPrepare: actor.canPrepare }
     const byId = new Map(world.rfqs.map((r) => [r.id, r]))
-    const inScope = isBuyer(scope) ? (r: { status?: string | null }) => rfqInScope(byId.get((r as { id: string }).id) as RfqFact, scope, needs.viewerCategories) : undefined
+    const inScope = isBuyer(scope) ? (r: { status?: string | null }) => rfqInScope(byId.get((r as { id: string }).id) as RfqFact, scope) : undefined
     return procTabCounts({ tasks: tasks.length, incomingRequests, rfqs, orders, receipts: deliveries, now, rfqInScope: inScope })
-  }, [tasks.length, incomingRequests, rfqs, orders, deliveries, now, actor, world.rfqs, needs.viewerCategories])
+  }, [tasks.length, incomingRequests, rfqs, orders, deliveries, now, actor, world.rfqs])
   const approvalLimit = actor.isOwner ? "any" : actor.canApprove ? policies.managerApprovalLimit : null
 
   return { loading, kpis, counts, approvalLimit, role: procRole(actor, needs.ownerHasTeam), categories: needs.viewerCategories, ownerReadOnly: actor.isOwner && needs.ownerHasTeam, loaded, actor }

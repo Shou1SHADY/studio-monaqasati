@@ -130,7 +130,8 @@ async function buildWorld() {
   seed(`users/${ORG}`, { organizationId: ORG, organizationRole: "owner", name: NAME.owner, companyName: "شركة البناء المتقدم", email: "owner@test.sa" })
   for (const r of ["manager", "buyer", "expediter"] as const) {
     seed(`teamGroups/g_${r}`, { organizationId: ORG, name: r, key: null, permissions: [...PERMS[r], "projects.view"] })
-    seed(`users/${UID[r]}`, { organizationId: ORG, organizationRole: "member", defaultGroupId: `g_${r}`, name: NAME[r], email: `${UID[r]}@test.sa` })
+    // The buyer buys Construction Materials — the manager's RFQ r2 is in his category, and must still not be his.
+    seed(`users/${UID[r]}`, { organizationId: ORG, organizationRole: "member", defaultGroupId: `g_${r}`, name: NAME[r], email: `${UID[r]}@test.sa`, ...(r === "buyer" ? { procurementCategories: ["Construction Materials"] } : {}) })
   }
   seed(`users/${SUP_A}`, { organizationId: SUP_A, role: "Supplier", companyName: "مصنع الحديد الوطني", name: "مصنع الحديد الوطني", taxNumber: "300000000000003", isVerified: true })
   seed(`users/${SUP_B}`, { organizationId: SUP_B, role: "Supplier", companyName: "مؤسسة الإسمنت", name: "مؤسسة الإسمنت", taxNumber: "300000000000004", isVerified: true })
@@ -178,6 +179,8 @@ async function buildWorld() {
       deliveryPersonName: "سائق المؤسسة",
       createdAt: iso(-1),
     })
+  // The workshop is short of a material: Procurement's «طلبات شراء من التصنيع» strip on the RFQs tab.
+  seed("workOrders/w1", { organizationId: ORG, productId: "prod1", status: "open", docNumber: "WO-2026/001", sourceKind: "stock", purchaseRequests: [{ id: "pr1", itemName: "ألواح زنك", unit: "لوح", quantity: 40, needBy: d(8), note: null, by: "مدير الورشة", byId: "wm", at: iso(-1), state: "sent" }] })
   seed("deliveries/m1", { contractorOrgId: ORG, supplierName: "محل مواد البناء", status: "confirmed", deliveryDate: d(-2), confirmedAt: iso(-2), selfReceived: true, noPo: true, items: [{ name: "مسامير", quantity: 10, unit: "كرتون" }], receivedByName: NAME.owner, createdAt: iso(-2) })
 
   // A project's approved material request — the needs desk's row.
@@ -297,7 +300,8 @@ const SPECS: Record<string, ScreenSpec> = {
     acts: { "اطلب جولة تخفيض من كل العروض": MB, "اختر الأقل لكل بند": B, "أرسِ وأعِدّ أوامر الشراء": B },
   },
   rfqInquiries: { titles: ["الاستفسارات"] },
-  rfqDetails: { titles: ["تفاصيل الطلب", "المنتجات المطلوبة"], acts: { "ألغِ الطلب": MB, "سجّل عرضاً وصل خارج المنصة": MB, "تعديل الموعد أو المدعوين": MB } },
+  // Prices are sealed until the deadline by default: r1 closed with offers whose prices are now open, so nobody extends it.
+  rfqDetails: { titles: ["تفاصيل الطلب", "المنتجات المطلوبة"], acts: { "ألغِ الطلب": MB, "سجّل عرضاً وصل خارج المنصة": MB, "تعديل الموعد أو المدعوين": [] } },
   rfqOther: { titles: ["رابط الزوار — لموردين خارج المنصة", "العروض المقدمة"], acts: { "مشاركة كرابط للزوار": M } },
   orders: {
     titles: ["أوامر الشراء", "بانتظار اعتماد أو قرار", "عند الموردين", "متأخرة", "مستلمة ومقفلة", "كل الأوامر", "الأمر والمورد", "البنود", "موعد المورد", "القيمة قبل الضريبة", "الحالة", "مؤسسة الإسمنت"],
@@ -364,12 +368,27 @@ describe("owner of a company with a procurement team reads, the team acts", () =
     view.unmount()
   })
 
-  it("the buyer sees only the RFQs he raised; the manager sees every one", async () => {
+  it("the buyer sees only the RFQs he raised — even one in his category; the manager sees every one", async () => {
     let view = await openAs("buyer", "rfqs")
     expect(text()).not.toContain("بلوك خرساني")
     view.unmount()
     view = await openAs("manager", "rfqs")
     expect(text()).toContain("بلوك خرساني")
+    view.unmount()
+  })
+
+  it("the workshop's shortfalls show on the RFQs tab to whoever runs RFQs, never to the reading owner", async () => {
+    for (const [role, shown] of [["owner", false], ["manager", true], ["buyer", true]] as const) {
+      const view = await openAs(role, "rfqs")
+      expect({ role, shown: text().includes("طلبات شراء من التصنيع") }).toEqual({ role, shown })
+      view.unmount()
+    }
+  })
+
+  it("an RFQ card's title opens the RFQ on its details", async () => {
+    const view = await openAs("manager", "rfqs")
+    const title = Array.from(document.querySelectorAll("h3 a")).find((a) => (a.textContent ?? "").includes("بلوك خرساني"))
+    expect(title?.getAttribute("href")).toBe("/contractor/rfqs/r2/offers?tab=details")
     view.unmount()
   })
 

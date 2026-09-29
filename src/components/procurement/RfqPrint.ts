@@ -4,6 +4,7 @@
 // window like the order's print; every value goes through escapeHtml.
 
 import { escapeHtml } from "@/components/accounting/print"
+import type { ProcurementPolicies } from "@/lib/procurement/types"
 
 export type RfqPrintCopy = (key: string, params?: Record<string, string | number>) => string
 
@@ -19,6 +20,8 @@ export interface RfqPrintModel {
   lines: Array<{ name: string; spec: string | null; quantity: number; unit: string; needBy: string | null }>
   notes: string | null
   warranty: boolean
+  /** The org seals prices until the deadline — only then may the document promise it. */
+  sealed: boolean
   /** The guest link a supplier off the platform quotes through, when one exists. */
   guestUrl?: string | null
 }
@@ -115,7 +118,7 @@ export function writeRfqPrint(w: Window, m: RfqPrintModel, locale: string, t: Rf
       <div><small>${e(t("terms"))}</small><b>________ · ${e(t("until"))} ____</b></div>
     </div>
     ${m.notes || m.warranty ? `<p>${m.notes ? `<b>${e(t("notes"))}:</b> ${e(m.notes)}<br>` : ""}${m.warranty ? e(t("warranty")) : ""}</p>` : ""}
-    <p>${e(t("how_to_quote"))}</p>
+    <p>${e(t("how_to_quote", { sealed: m.sealed ? 1 : 0 }))}</p>
     ${m.guestUrl ? `<p><b>${e(t("guest_link"))}:</b> <span class="ltr">${e(m.guestUrl)}</span></p>` : ""}
     <div class="pdg"><div><small>${e(t("supplier"))}</small><b>&nbsp;</b></div><div><small>${e(t("supplier_vat"))}</small><b>&nbsp;</b></div><div><small>${e(t("stamp"))}</small><b>&nbsp;</b></div></div>
     <div class="pdf2">${e(t("footer", { company: m.company.name || "—", date: longDate(now.toISOString(), locale) }))}</div>
@@ -142,10 +145,12 @@ export function rfqPrintModel(
   },
   company: RfqPrintModel["company"],
   displayNumber: string,
-  cityLabel: string
+  cityLabel: string,
+  policies: Pick<ProcurementPolicies, "sealOffersUntilDeadline">
 ): RfqPrintModel {
   const created = typeof rfq.createdAt === "string" ? rfq.createdAt : null
   return {
+    sealed: policies.sealOffersUntilDeadline && !rfq.directAward,
     number: displayNumber,
     title: rfq.title || "",
     issuedAt: created,

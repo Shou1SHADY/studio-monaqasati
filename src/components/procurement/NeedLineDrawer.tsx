@@ -33,6 +33,8 @@ export interface NeedLineActs {
   canAct: boolean
   /** May raise an RFQ (rfq.create / rfq.manage); a buyer who only prepares orders may not. */
   canRfq?: boolean
+  /** May prepare an order (offers.accept / owner); a member who only runs RFQs may not. */
+  canOrder?: boolean
   seesPrices: boolean
   onRfq: (row: NeedRow) => void
   onOrder: (row: NeedRow, mode: "agreement" | "direct") => void
@@ -65,6 +67,7 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, org
   let step: ReactNode = null
   if (act) {
     const rfqOk = acts.canRfq !== false
+    const orderOk = acts.canOrder !== false
     const btn = (label: string, onClick: () => void, primary = false, icon?: ReactNode) => (
       <Button key={label} size="sm" variant={primary ? "default" : "outline"} onClick={onClick} className={cn("h-9 gap-1.5", primary ? "bg-module text-module-foreground hover:bg-module/90" : "border border-border bg-card text-foreground shadow-none hover:bg-muted")}>
         {icon}
@@ -100,8 +103,8 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, org
         <>
           <Callout tone="info">{t("nd_step_agreement", { number: displayDocNumber(ag.agreement.docNumber, locale), supplier: ag.agreement.supplierName, price: acts.seesPrices ? money(ag.price) : "—" })}</Callout>
           <div className="flex flex-wrap gap-2">
-            {btn(t("dor_open_agreement"), () => acts.onOrder(row, "agreement"), true, <FileSignature size={14} aria-hidden="true" />)}
-            {rfqOk && btn(t("nd_rfq_anyway"), () => acts.onRfq(row))}
+            {orderOk && btn(t("dor_open_agreement"), () => acts.onOrder(row, "agreement"), true, <FileSignature size={14} aria-hidden="true" />)}
+            {rfqOk && btn(t("nd_rfq_anyway"), () => acts.onRfq(row), !orderOk)}
           </div>
         </>
       )
@@ -110,8 +113,8 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, org
         <>
           <Callout tone="info">{t("nd_step_direct", { value: acts.seesPrices && row.estimate != null ? money(row.estimate) : "—", cap: money(cap) })}</Callout>
           <div className="flex flex-wrap gap-2">
-            {btn(t("dor_open_direct"), () => acts.onOrder(row, "direct"), true, <ShoppingCart size={14} aria-hidden="true" />)}
-            {rfqOk && btn(t("nd_rfq"), () => acts.onRfq(row))}
+            {orderOk && btn(t("dor_open_direct"), () => acts.onOrder(row, "direct"), true, <ShoppingCart size={14} aria-hidden="true" />)}
+            {rfqOk && btn(t("nd_rfq"), () => acts.onRfq(row), !orderOk)}
           </div>
         </>
       )
@@ -126,7 +129,7 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, org
       step = (
         <div className="flex flex-wrap gap-2">
           {rfqOk && btn(t("nd_request_quotes"), () => acts.onRfq(row), true, <Scale size={14} aria-hidden="true" />)}
-          {row.estimate != null && btn(t("nd_single_source"), () => acts.onOrder(row, "direct"), !rfqOk)}
+          {orderOk && row.estimate != null && btn(t("nd_single_source"), () => acts.onOrder(row, "direct"), !rfqOk)}
         </div>
       )
   }

@@ -162,7 +162,7 @@ export function RfqCard(p: RfqCardProps) {
         </div>
 
         <h3 className="text-base font-black leading-snug text-foreground">
-          <Link href={p.offersHref} className="rounded-sm text-start hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
+          <Link href={`${p.offersHref}?tab=details`} className="rounded-sm text-start hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
             {rfq.title}
           </Link>
         </h3>

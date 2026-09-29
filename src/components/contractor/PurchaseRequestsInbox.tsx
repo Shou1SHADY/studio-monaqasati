@@ -178,6 +178,7 @@ export function PurchaseRequestsInbox() {
     return {
       canAct: canAct && inBuyerScope(row, desk.viewerCategories),
       canRfq: canStartRfq,
+      canOrder,
       seesPrices: procActor.seesPrices,
       onRfq: (r: NeedRow) => router.push(rfqHref(siblings(r))),
       onOrder: (r: NeedRow, mode: "agreement" | "direct") => setOrdering({ rows: siblings(r), mode }),

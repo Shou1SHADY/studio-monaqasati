@@ -13,6 +13,7 @@ import { addDays, daysBetween, round2, todayOf } from "./po"
 import { agreementFor, lastPaid, materialKey, type PriceAgreement, type PriceHistoryEntry } from "./prices"
 import { needRoute, type NeedRoute, type RouteResult } from "./route"
 import type { Need } from "./needs"
+import { sampleNo } from "@/lib/pm/sample"
 import { replyWindowHours } from "./policy-enforce"
 import type { ProcurementPolicies, PurchaseOrder } from "./types"
 
@@ -295,6 +296,17 @@ export function sortRows(rows: NeedRow[], seg: DeskSegment): NeedRow[] {
 export function inBuyerScope(row: Pick<NeedRow, "category">, categories: string[] | null | undefined): boolean {
   if (!categories || !categories.length || !row.category) return true
   return categories.includes(row.category)
+}
+
+/** The number of an item's sample now with the consultant: its latest submittal (highest revision, then sequence). */
+export function latestSampleNo(submittals: Array<{ seq: number; rev: number }>): string | null {
+  const latest = submittals.slice().sort((a, b) => b.rev - a.rev || b.seq - a.seq)[0]
+  return latest ? sampleNo(latest.seq) : null
+}
+
+/** A bare material (a workshop shortfall) against a buyer's categories — read as the desk reads a line. */
+export function materialInScope(name: string, unit: string, categories: string[] | null | undefined, facts: Pick<DeskFacts, "orders" | "rfqs">): boolean {
+  return inBuyerScope({ category: categoryOf(name, unit, null, facts) }, categories)
 }
 
 // ---------------------------------------------------------------------------

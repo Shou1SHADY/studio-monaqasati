@@ -9,8 +9,9 @@ import { RfqTable } from "@/components/procurement/RfqTable"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { offersSealed } from "@/lib/procurement/award"
-import { DEADLINE_FILTERS, GENERAL_STOCK, RFQ_SEGMENTS, WORKSHOP, bulkDeleteSplit, bulkPublishPatch, estimateAtLastPrice, inRfqSegment, lineProjectNames, offerersByRfq, optionCount, passesFilters, rfqCategories, rfqInScope, rfqNeedSources, rfqPage, rfqProjectKeys, segmentCounts, sortRfqs, type DeadlineFilter, type NeedLinkedRfq, type RfqFilterKey, type RfqFilters, type RfqSegment } from "@/lib/procurement/rfq-view"
+import { DEADLINE_FILTERS, GENERAL_STOCK, RFQ_SEGMENTS, WORKSHOP, bulkDeleteSplit, bulkPublishPatch, estimateAtLastPrice, inRfqSegment, lineProjectNames, offerersByRfq, optionCount, passesFilters, isBuyer, rfqCategories, rfqInScope, rfqNeedSources, rfqPage, rfqProjectKeys, segmentCounts, sortRfqs, type DeadlineFilter, type NeedLinkedRfq, type RfqFilterKey, type RfqFilters, type RfqSegment } from "@/lib/procurement/rfq-view"
 import { actsOnRfq, ownerReadsRfqs, runsRfqs } from "@/lib/procurement/rfq-access"
+import { materialInScope } from "@/lib/procurement/need-desk"
 import { useRfqRunner } from "@/hooks/useRfqRunner"
 import { RfqExtendDialog, type ExtendTarget } from "@/components/procurement/RfqExtendDialog"
 import { printRfqWithLink, rfqPrintModel } from "@/components/procurement/RfqPrint"
@@ -309,7 +310,7 @@ const handleBatchPublish = async () => {
   const printOne = async (rfq: RfqRow) => {
     const p = (profile || {}) as { companyName?: string; name?: string; taxNumber?: string; crNumber?: string }
     const number = rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : `#${rfq.id.slice(0, 6)}`
-    const model = rfqPrintModel(rfq as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procWorld.orgName || p.name || "", vat: p.taxNumber || null, cr: p.crNumber || null }, number, displayCity(rfq.city || "", locale))
+    const model = rfqPrintModel(rfq as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procWorld.orgName || p.name || "", vat: p.taxNumber || null, cr: p.crNumber || null }, number, displayCity(rfq.city || "", locale), procWorld.policies)
     const link = actsOn(rfq) ? guestLinkUrl(user, rfq) : Promise.resolve(null)
     if (!(await printRfqWithLink(model, locale, (k, params) => tp(`rfqpo.print.${k}`, params), link))) {
       toast({ title: tp("rfqpo.popup_blocked"), variant: "destructive" })
@@ -324,9 +325,11 @@ const handleBatchPublish = async () => {
   // Every status is loaded so the chips can count; the chip filters here. A
   // search looks in every status: whoever types a tender's name does not know
   // — and should not need to know — whether it is a draft or awarded. A buyer
-  // sees his own RFQs and those in his categories (R-18).
+  // sees the RFQs he raised (the prototype's `rfqMine`).
+  const allRfqs = ((rfqs || []) as RfqRow[]).filter((r) => rfqInScope(r, procWorld.actor))
+  // His categories still scope the workshop's shortfalls he is asked to buy.
   const buyerCategories = ((profile as { procurementCategories?: string[] } | null)?.procurementCategories) || null
-  const allRfqs = ((rfqs || []) as RfqRow[]).filter((r) => rfqInScope(r, procWorld.actor, buyerCategories))
+  const shortfallInScope = isBuyer(procWorld.actor) && buyerCategories?.length ? (name: string, unit: string) => materialInScope(name, unit, buyerCategories, procWorld) : undefined
   const counts = segmentCounts(allRfqs, filters, now)
   // A supplier's name finds the RFQs he offered on (R-10).
   const offerers = offerersByRfq(procWorld.offers)
@@ -376,7 +379,7 @@ const handleBatchPublish = async () => {
       <div className="space-y-5">
         <ProcurementHeader
           title={t("rfqv_title")}
-          description={t("rfqv_desc")}
+          description={t("rfqv_desc", { sealed: procWorld.policies.sealOffersUntilDeadline ? 1 : 0 })}
           action={
             canCreate ? (
               <Button asChild className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90">
@@ -391,12 +394,15 @@ const handleBatchPublish = async () => {
           }
         />
 
-        {/* Manufacturing's material shortfalls and supplier claims — Procurement acts on them here (MAT-05) */}
-        <MfgPurchaseRequestsPanel
-          canStartRfq={canCreate}
-          canMarkArrived={!ownerReads && (can("rfq.manage") || can("warehouses.manage"))}
-          canClaim={canCreate}
-        />
+        {/* Manufacturing's material shortfalls and supplier claims — shown to whoever runs RFQs, who acts on them here (MAT-05) */}
+        {canCreate && (
+          <MfgPurchaseRequestsPanel
+            canStartRfq={canCreate}
+            canMarkArrived={can("rfq.manage") || can("warehouses.manage")}
+            canClaim={canCreate}
+            inScope={shortfallInScope}
+          />
+        )}
 
         {/* Status chips with their counts · the view toggle (the prototype's list head). */}
         <div className="flex flex-wrap items-center justify-between gap-3">
