@@ -16738,7 +16738,29 @@
           "bleeding_sub": "ranked by riyal impact",
           "no_bleeding": "No item exceeds its budget by more than 2%",
           "unit_line": "{code} · unit cost {actual} vs {est} (+{pct}%)",
-          "paid_note": "Paid shows what the project can read from Finance (subcontractors). Finance pays suppliers on their balance, not per order."
+          "paid_note": "Paid shows what the project can read from Finance (subcontractors). Finance pays suppliers on their balance, not per order.",
+          "indirect": "Indirect costs",
+          "indirect_sub": "Not loaded on items — full budget vs spent",
+          "indirect_left": "{amount} left",
+          "indirect_title": "Indirect costs",
+          "indirect_panel_sub": "Project-level, not per item",
+          "indirect_edit": "Budgets",
+          "indirect_empty": "No indirect budget or spend yet — set the budgets for site staff, support plant, site overheads and fees",
+          "indirect_kind": {
+            "stf": "Site staff — manager, engineers, security",
+            "eq": "Support plant & site set-up",
+            "ovh": "Site overheads (housing, transport, utilities)",
+            "ins": "Insurance, fees & permits"
+          },
+          "indirect_budget": "budget {amount}",
+          "indirect_no_budget": "no budget set",
+          "indirect_plant": "{amount} from logged plant days",
+          "indirect_sources": "Spent = payroll and vouchers the books tag to this project, and for plant the cost of the days logged on site. Nothing here is typed.",
+          "indirect_edit_title": "Indirect-cost budgets",
+          "indirect_edit_desc": "For the whole project — they enter the budget, the committed figure and the forecast at completion",
+          "indirect_bad": "A number, not negative",
+          "indirect_save": "Save",
+          "indirect_saved": "Indirect budgets saved"
         },
         "match": {
           "title": "Three-way match",

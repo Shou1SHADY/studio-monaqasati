@@ -7,12 +7,14 @@
 
 import { Fragment, useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
-import { ChevronDown, Flame, Hand, List, Receipt, TrendingUp } from "lucide-react"
+import { ChevronDown, Flame, Hand, List, Pencil, Receipt, TrendingUp, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Callout } from "@/components/module-ui/Callout"
 import { Panel } from "@/components/module-ui/Panel"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { usePmIndirect } from "@/hooks/usePmIndirect"
 import { useProjectCost } from "@/hooks/useProjectCost"
+import { IndirectBudgetDialog } from "./IndirectBudgetDialog"
 import { bleeding, itemCosts, projectCost, sectionOf, sectionRows, type CostItem } from "@/lib/pm/cost"
 import { pmMoney } from "@/lib/pm/format"
 import { cn } from "@/lib/utils"
@@ -64,7 +66,10 @@ export function CostPanel({
   const t = useTranslations("Portal.PM")
   const money = access.has("money")
   const world = useProjectCost(projectId, orgId, money)
+  const indirect = usePmIndirect(projectId, orgId, money)
   const [open, setOpen] = useState<string | null>(null)
+  const [editing, setEditing] = useState(false)
+  const canBudget = money && !access.ctx.archived && access.allowed("reconciliation.manage")
 
   const costItems = useMemo<CostItem[]>(() => items.map((i) => ({ ...i, estCost: i.estCost ?? 0 })), [items])
   const { costs, unassigned } = useMemo(() => {
@@ -72,7 +77,10 @@ export function CostPanel({
     return { costs: r.items, unassigned: r.unassigned }
   }, [costItems, world.pos, world.issues, world.subcontracts, world.direct, projectWarehouseId])
   const rows = useMemo(() => sectionRows(costItems, costs), [costItems, costs])
-  const total = useMemo(() => projectCost({ items: costItems, costs, unassigned, variations: world.variations, baseValue, penalty: 0 }), [costItems, costs, unassigned, world.variations, baseValue])
+  const total = useMemo(
+    () => projectCost({ items: costItems, costs, unassigned, variations: world.variations, baseValue, penalty: 0, indirect: { budget: indirect.budget, actual: indirect.actual } }),
+    [costItems, costs, unassigned, world.variations, baseValue, indirect.budget, indirect.actual]
+  )
   const leaks = useMemo(() => bleeding(costItems, costs), [costItems, costs])
 
   if (!money) return <Callout tone="info">{t("money.money_only")}</Callout>
@@ -217,6 +225,23 @@ export function CostPanel({
                     </td>
                   </tr>
                 )}
+                {indirect.rows.length > 0 && (
+                  <tr className="border-b bg-muted/20">
+                    <td className="px-4 py-2.5">
+                      <p className="font-bold">{t("money.cost.indirect")}</p>
+                      <p className="text-xs text-muted-foreground">{t("money.cost.indirect_sub")}</p>
+                    </td>
+                    <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">
+                      {pmMoney(indirect.budget)}
+                    </td>
+                    <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">
+                      {pmMoney(indirect.actual)}
+                    </td>
+                    <td className={cn("px-4 py-2.5 text-end tabular-nums", indirect.actual > indirect.budget && "font-bold text-destructive")}>
+                      {t("money.cost.indirect_left", { amount: pmMoney(indirect.budget - indirect.actual) })}
+                    </td>
+                  </tr>
+                )}
                 {rows.length > 0 && (
                   <tr className="bg-muted/40 font-bold">
                     <td className="px-4 py-2.5">{t("money.total")}</td>
@@ -267,6 +292,52 @@ export function CostPanel({
           )}
         </Panel>
       </div>
+
+      <Panel
+        title={t("money.cost.indirect_title")}
+        icon={Users}
+        actions={
+          <span className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{t("money.cost.indirect_panel_sub")}</span>
+            {canBudget && (
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setEditing(true)}>
+                <Pencil size={13} aria-hidden="true" />
+                {t("money.cost.indirect_edit")}
+              </Button>
+            )}
+          </span>
+        }
+        bodyClassName="p-0"
+      >
+        {indirect.rows.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("money.cost.indirect_empty")}</p>
+        ) : (
+          <ul className="divide-y">
+            {indirect.rows.map((r) => {
+              const share = r.budget > 0 ? r.actual / r.budget : r.actual > 0 ? 1 : 0
+              return (
+                <li key={r.kind} className="flex items-center gap-3 px-4 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold">{t(`money.cost.indirect_kind.${r.kind}`)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {r.budget > 0 ? t("money.cost.indirect_budget", { amount: pmMoney(r.budget) }) : t("money.cost.indirect_no_budget")}
+                      {r.kind === "eq" && indirect.plantLogged > 0 && <b> · {t("money.cost.indirect_plant", { amount: pmMoney(indirect.plantLogged) })}</b>}
+                    </p>
+                  </div>
+                  <div className="h-2 w-20 overflow-hidden rounded-full bg-muted" role="presentation">
+                    <span className={cn("block h-full rounded-full", share > 1 ? "bg-destructive" : "bg-module")} style={{ width: `${Math.min(100, share * 100)}%` }} />
+                  </div>
+                  <span className="min-w-24 text-end text-sm font-bold tabular-nums" dir="ltr">
+                    {pmMoney(r.actual)}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">{t("money.cost.indirect_sources")}</p>
+      </Panel>
+      {canBudget && <IndirectBudgetDialog open={editing} onOpenChange={setEditing} projectId={projectId} access={access} budgets={indirect.budgets} />}
       <p className="text-xs text-muted-foreground">{t("money.cost.paid_note")}</p>
     </div>
   )

@@ -38,6 +38,7 @@ import { PM_OBSTACLES, type PmObstacle } from "@/lib/pm/site"
 import { PM_SUB_CERTIFICATES, PM_SUBCONTRACTS, type PmSubCertificate, type PmSubcontract } from "@/lib/pm/subcontract"
 import { PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
+import { usePmIndirect } from "@/hooks/usePmIndirect"
 
 // The client-money rows: shown to holders of money who also see the client side
 // (prototype closeRows `CAN('client')`); the gate itself counts them for everyone.
@@ -98,6 +99,7 @@ export function CloseoutPanel({
   // The project's OWN store ledger (pmStore) — a company warehouse is not its custody.
   const supply = useSupplyWorld(projectId, orgId)
   const costWorld = useProjectCost(projectId, orgId, money)
+  const indirect = usePmIndirect(projectId, orgId, money)
 
   const sub = (name: string, on = true) => (firestore && on ? collection(firestore, "projects", projectId, name) : null)
   const punchQ = useMemoFirebase(() => sub(PM_PUNCH), [firestore, projectId])
@@ -124,9 +126,9 @@ export function CloseoutPanel({
     if (!money || costWorld.isLoading) return null
     const costItems = items.map((i) => ({ ...i, estCost: i.estCost ?? 0 }))
     const { items: costs, unassigned } = itemCosts({ items: costItems, pos: costWorld.pos, issues: costWorld.issues, projectWarehouseId: warehouseId ?? null, subcontracts: costWorld.subcontracts, direct: costWorld.direct })
-    const c = projectCost({ items: costItems, costs, unassigned, variations: costWorld.variations, baseValue: 0, penalty: 0 })
+    const c = projectCost({ items: costItems, costs, unassigned, variations: costWorld.variations, baseValue: 0, penalty: 0, indirect: { budget: indirect.budget, actual: indirect.actual } })
     return { actual: c.actual, earned: c.earned }
-  }, [money, costWorld, items, warehouseId])
+  }, [money, costWorld, items, warehouseId, indirect.budget, indirect.actual])
 
   const rows = useMemo(() => {
     const scList = (contracts ?? []) as unknown as PmSubcontract[]

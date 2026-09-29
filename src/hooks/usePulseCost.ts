@@ -12,6 +12,7 @@ import { PM_SUBCONTRACTS } from "@/lib/pm/subcontract"
 import { PM_PETTY } from "@/lib/pm/supply"
 import { PM_VARIATIONS } from "@/lib/pm/variation"
 import { PURCHASE_ORDERS } from "@/lib/procurement/types"
+import { usePmIndirect } from "@/hooks/usePmIndirect"
 
 const num = (v: unknown) => {
   const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(/,/g, ""))
@@ -28,6 +29,7 @@ export interface PulseCost {
 
 export function usePulseCost(projectId: string, organizationId: string | null | undefined, warehouseId: string | null | undefined, baseValue: number, enabled: boolean): PulseCost | null {
   const firestore = useFirestore()
+  const indirect = usePmIndirect(projectId, organizationId ?? null, enabled)
   const sub = (name: string) => (firestore && enabled ? collection(firestore, "projects", projectId, name) : null)
   const itemQ = useMemoFirebase(() => sub("boqItems"), [firestore, projectId, enabled])
   const issueQ = useMemoFirebase(() => sub("wasteRecords"), [firestore, projectId, enabled])
@@ -63,6 +65,6 @@ export function usePulseCost(projectId: string, organizationId: string | null | 
     const direct = ((pettyData ?? []) as Array<{ amount?: number }>).map((p) => ({ itemId: null, amount: num(p.amount), paid: true }))
     const variations = ((voData ?? []) as Array<{ status?: string; value?: number; cost?: number; executedPct?: number }>).map((v) => ({ status: v.status ?? "", value: num(v.value), cost: num(v.cost), executedPct: num(v.executedPct) }))
     const { items: costs, unassigned } = itemCosts({ items, pos: pos.map((p) => ({ ...p, lines: p.lines || [] })), issues, projectWarehouseId: warehouseId ?? null, subcontracts: subcontracts.map((s) => ({ ...s, lines: s.lines || [] })), direct })
-    return { items, costs, total: projectCost({ items, costs, unassigned, variations, baseValue, penalty: 0 }), estimated: items.some((i) => i.estCost > 0) }
-  }, [enabled, itemData, poData, issueData, scData, pettyData, voData, warehouseId, baseValue])
+    return { items, costs, total: projectCost({ items, costs, unassigned, variations, baseValue, penalty: 0, indirect: { budget: indirect.budget, actual: indirect.actual } }), estimated: items.some((i) => i.estCost > 0) }
+  }, [enabled, itemData, poData, issueData, scData, pettyData, voData, warehouseId, baseValue, indirect.budget, indirect.actual])
 }

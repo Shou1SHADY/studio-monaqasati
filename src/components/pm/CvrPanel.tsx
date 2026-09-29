@@ -29,6 +29,7 @@ import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
 import type { ContractTerms } from "@/lib/pm/terms"
 import { cn } from "@/lib/utils"
 import { Tile, type CostPanelItem } from "./CostPanel"
+import { usePmIndirect } from "@/hooks/usePmIndirect"
 
 const pct = (n: number) => `${Math.round(n * 10) / 10}%`
 
@@ -65,6 +66,7 @@ export function CvrPanel({
   const { toast } = useToast()
   const money = access.has("money")
   const world = useProjectCost(projectId, orgId, money)
+  const indirect = usePmIndirect(projectId, orgId, money)
   const [busy, setBusy] = useState(false)
   const today = todayDay()
 
@@ -87,10 +89,10 @@ export function CvrPanel({
       damages: terms.damages,
       today,
     })
-    const total = projectCost({ items: costItems, costs, unassigned, variations: world.variations, baseValue, penalty: delay?.damages ?? 0 })
+    const total = projectCost({ items: costItems, costs, unassigned, variations: world.variations, baseValue, penalty: delay?.damages ?? 0, indirect: { budget: indirect.budget, actual: indirect.actual } })
     const rows = sectionRows(costItems, costs)
     return { total, rows }
-  }, [costItems, world, projectWarehouseId, original, addenda, claims, lifecycle, startOn, durationDays, baseValue, today])
+  }, [costItems, world, projectWarehouseId, original, addenda, claims, lifecycle, startOn, durationDays, baseValue, today, indirect.budget, indirect.actual])
 
   if (!money) return <Callout tone="info">{t("money.money_only")}</Callout>
 

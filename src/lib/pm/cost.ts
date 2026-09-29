@@ -320,6 +320,8 @@ export function projectCost(input: {
   variations: CostVariation[]
   baseValue: number
   penalty: number
+  /** Indirect costs (indirect.ts): the project manager's budget and the booked spend. */
+  indirect?: { budget: number; actual: number } | null
 }): ProjectCost {
   const appr = input.variations.filter((v) => v.status === "appr")
   const voValue = appr.reduce((a, v) => a + v.value, 0)
@@ -332,17 +334,19 @@ export function projectCost(input: {
   const sum = (f: (c: ItemCost) => number) => cs.reduce((a, c) => a + f(c), 0)
   const budgetLines = sum((c) => c.budget ?? 0)
   const budgetExecuted = r2(sum((c) => c.budgetExecuted ?? 0))
-  const budget = r2(budgetLines + voCost)
-  const actual = r2(sum((c) => c.actual) + input.unassigned.actual)
+  const ib = Math.max(0, input.indirect?.budget ?? 0)
+  const ia = input.indirect?.actual ?? 0
+  const budget = r2(budgetLines + voCost + ib)
+  const actual = r2(sum((c) => c.actual) + input.unassigned.actual + ia)
   const estimatedActual = sum((c) => (c.budgetExecuted !== null ? c.actual : 0))
-  const forecastCost = r2(sum((c) => c.forecast) + voCost + input.unassigned.actual)
+  const forecastCost = r2(sum((c) => c.forecast) + voCost + input.unassigned.actual + Math.max(ib, ia))
   const penalty = r2(Math.max(0, input.penalty))
   return {
     contract,
     earned,
     budget,
     budgetExecuted,
-    committed: r2(sum((c) => c.committed) + input.unassigned.committed),
+    committed: r2(sum((c) => c.committed) + input.unassigned.committed + ia),
     actual,
     paid: r2(sum((c) => c.paid) + input.unassigned.paid),
     variance: r2(sum((c) => c.deviation ?? 0)),
