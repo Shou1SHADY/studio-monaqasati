@@ -30,7 +30,7 @@ import { approvalRefusal, canCancelRemainder, canRecordAcceptance, canSend, canU
 import { receiptState, type ReceiptState } from "@/lib/procurement/receipts"
 import type { PoLine, PoLogEntry, PoSendChannel, PurchaseOrder, RejectDecision } from "@/lib/procurement/types"
 import { advanceState, asX, awaitsPmBudget, budgetOverrun, lineInTransit, overrunTotal, pmBudgetAsk, pmCancelOf, pmCancelOpen, poActs, poRevision, samplePending, selfIssueRefusal, type PoFinanceHold, type PoLineX } from "@/lib/procurement/po-extras"
-import { cancelRemainderWithFee, decideHold, holdInvoice, logSentOutside, recordFinancePayment, referBudgetToProjects, releaseHold, selfIssuePurchaseOrder, type PoLogAction } from "@/lib/procurement/po-extra-writes"
+import { cancelRemainderWithFee, answerHoldPrice, decideHold, holdInvoice, logSentOutside, recordFinancePayment, referBudgetToProjects, releaseHold, selfIssuePurchaseOrder, type PoLogAction } from "@/lib/procurement/po-extra-writes"
 import { operatingPolicies } from "@/lib/procurement/policies"
 import {
   ProcWriteError,
@@ -85,6 +85,7 @@ import {
 import { printPurchaseOrder, printReceiptStatement } from "./PoPrint"
 import { PoRateDialog } from "./PoRateDialog"
 import { PoSendDialog } from "./PoSendDialog"
+import { PoReceiverLine } from "./PoReceiverLine"
 
 type Tone = "red" | "amber" | "blue" | "green"
 
@@ -614,9 +615,11 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             {actor.seesPrices && (
               <FinanceTrailSection
                 po={px}
+                actor={actor}
                 canDecide={acts.acts && actorCanDecideLines(actor)}
                 isFinance={isFinance}
                 onDecide={(hold) => setDialog({ kind: "decide_hold", hold })}
+                onAnswerPrice={(hold, accept) => f && void run("hold", () => answerHoldPrice(f, actor, po.id, { holdId: hold.id, accept }, opts), "toast.saved")}
                 onRecordPayment={() => setDialog({ kind: "pay" })}
                 onHold={() => setDialog({ kind: "hold_invoice" })}
                 onRelease={(hold) => f && void run("release", () => releaseHold(f, actor, isFinance, po.id, hold.id), "toast.saved")}
@@ -649,8 +652,8 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                         .filter(Boolean)
                         .join(" · ")}
                     </p>
-                    <LineBar line={l} />
-                    {transit > 0 && <p className="text-[11px] font-semibold text-cta">{tProc("rfqpo.po.in_transit", { qty: figure(transit), unit: l.unit })}</p>}
+                    <PoReceiverLine organizationId={po.organizationId} projectId={po.projectId} />
+                    <LineBar line={l} inTransit={transit} />
                     {lx.rejectReplaceBy && <p className="text-[11px] text-muted-foreground">{tProc("rfqpo.po.replace_by", { date: fmt(lx.rejectReplaceBy) })}</p>}
                     {pmCancelOpen(px, l) && (
                       <div className="space-y-2">
@@ -885,11 +888,13 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
           <SupplierDateDialog open={dialog?.kind === "date"} onOpenChange={(o) => !o && setDialog(null)} po={px} now={now} onSubmit={({ date, note }) => run("date", () => updatePromisedDate(f, actor, po.id, { date, note }, opts), "toast.date_updated")} />
           <DecideHoldDialog
             hold={dialog?.kind === "decide_hold" ? dialog.hold : null}
+            po={px}
+            actor={actor}
             onOpenChange={(o) => !o && setDialog(null)}
-            onSubmit={({ decision, note }) => (dialog?.kind === "decide_hold" ? run("hold", () => decideHold(f, actor, po.id, { holdId: dialog.hold.id, decision, note }, opts), "toast.saved") : Promise.resolve(false))}
+            onSubmit={({ decision, note, price }) => (dialog?.kind === "decide_hold" ? run("hold", () => decideHold(f, actor, po.id, { holdId: dialog.hold.id, decision, note, price }, opts), "toast.saved") : Promise.resolve(false))}
           />
           <RecordPaymentDialog open={dialog?.kind === "pay"} onOpenChange={(o) => !o && setDialog(null)} po={px} now={now} onSubmit={(input) => run("pay", () => recordFinancePayment(f, actor, isFinance, po.id, input), "toast.saved")} />
-          <HoldInvoiceDialog open={dialog?.kind === "hold_invoice"} onOpenChange={(o) => !o && setDialog(null)} onSubmit={(input) => run("hold_invoice", () => holdInvoice(f, actor, isFinance, po.id, input), "toast.saved")} />
+          <HoldInvoiceDialog open={dialog?.kind === "hold_invoice"} lines={po.lines} onOpenChange={(o) => !o && setDialog(null)} onSubmit={(input) => run("hold_invoice", () => holdInvoice(f, actor, isFinance, po.id, input), "toast.saved")} />
           <RejectDecisionDialog
             open={dialog?.kind === "reject"}
             onOpenChange={(o) => !o && setDialog(null)}

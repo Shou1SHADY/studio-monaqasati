@@ -28,7 +28,9 @@ import {
   HOLD_DECISIONS,
   HOLD_OWNER,
   HOLD_REASONS,
+  acceptsHoldPrice,
   advanceAmount,
+  holdVariance,
   advanceNumber,
   advanceState,
   dateMissesNeed,
@@ -45,7 +47,7 @@ import {
   type TrailStep,
 } from "@/lib/procurement/po-extras"
 import type { PaymentInput, HoldInput } from "@/lib/procurement/po-extra-writes"
-import type { ReceiptFact } from "@/lib/procurement/types"
+import type { PoLine, ProcActor, ReceiptFact } from "@/lib/procurement/types"
 import { Money, useDateText } from "./PoBits"
 import { moneyTrail } from "./PoModel"
 import type { Submit } from "./PoActionDialogs"
@@ -184,17 +186,22 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
 
 export function FinanceTrailSection({
   po,
+  actor,
   canDecide,
   isFinance,
   onDecide,
+  onAnswerPrice,
   onRecordPayment,
   onHold,
   onRelease,
 }: {
   po: PurchaseOrderX
+  actor: ProcActor
   canDecide: boolean
   isFinance: boolean
   onDecide: (hold: PoFinanceHold) => void
+  /** The order's approver answers a higher price someone else asked for. */
+  onAnswerPrice: (hold: PoFinanceHold, accept: boolean) => void
   onRecordPayment: () => void
   onHold: () => void
   onRelease: (hold: PoFinanceHold) => void
@@ -268,12 +275,38 @@ export function FinanceTrailSection({
       {(po.financeHolds || []).map((h) => {
         const owner = HOLD_OWNER[h.reason]
         const open = h.state === "open"
+        const v = holdVariance(po, h)
+        const answers = open && h.pend && acceptsHoldPrice(po, actor) && (h.pend.byUid !== actor.uid || actor.isOwner)
         return (
           <div key={h.id} className="space-y-2">
             <XCallout tone={!open ? "blue" : owner === "fin" ? "amber" : "red"}>
               <p>
                 <b>{t(`rfqpo.po.hold.reason.${h.reason}`)}</b> — <span dir="ltr">{h.invoiceNo}</span> · <Money value={h.amount} />
               </p>
+              {v && (
+                <dl className="my-1 space-y-0.5 rounded-md bg-background/60 px-2 py-1.5">
+                  <div className="flex justify-between gap-2">
+                    <dt>{t("rfqpo.po.hold.po_price")}</dt>
+                    <dd><Money value={v.poPrice} /></dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt>
+                      {t("rfqpo.po.hold.invoice_price")} <span dir="ltr">{h.invoiceNo}</span>
+                    </dt>
+                    <dd><Money value={v.invoicePrice} /></dd>
+                  </div>
+                  <div className="flex justify-between gap-2 border-t pt-0.5 font-bold">
+                    <dt>{t("rfqpo.po.hold.variance")}</dt>
+                    <dd className="text-destructive"><Money value={v.variance} /></dd>
+                  </div>
+                  {open && <p className="pt-0.5 text-[11px] text-muted-foreground">{t("rfqpo.po.hold.ours_to_decide")}</p>}
+                </dl>
+              )}
+              {open && h.pend && (
+                <p className="font-semibold">
+                  {t("rfqpo.po.hold.pend", { name: h.pend.byName, why: h.pend.why })} <Money value={h.pend.price} />
+                </p>
+              )}
               <p dir="auto">{h.text}</p>
               {h.need && (
                 <p className="text-muted-foreground" dir="auto">
@@ -289,11 +322,22 @@ export function FinanceTrailSection({
               </p>
             </XCallout>
             <div className="flex flex-wrap gap-2">
-              {open && canDecide && (owner === "proc" || owner === "sup") && (
+              {open && !h.pend && canDecide && (owner === "proc" || owner === "sup") && (
                 <Button size="sm" onClick={() => onDecide(h)}>
                   {t("rfqpo.po.hold.decide")}
                 </Button>
               )}
+              {answers && (
+                <>
+                  <Button size="sm" onClick={() => onAnswerPrice(h, true)}>
+                    {t("rfqpo.po.hold.pend_accept")}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => onAnswerPrice(h, false)}>
+                    {t("rfqpo.po.hold.pend_refuse")}
+                  </Button>
+                </>
+              )}
+              {open && h.pend && !answers && <p className="text-[11px] text-muted-foreground">{t("rfqpo.po.hold.pend_waiting")}</p>}
               {isFinance && h.state !== "released" && (
                 <Button size="sm" variant="outline" onClick={() => onRelease(h)}>
                   {t("rfqpo.po.hold.release")}
@@ -562,15 +606,32 @@ export function CancelWithFeeDialog({
 }
 
 /** «قرّر وأبلغ المالية» — Procurement's answer to a held payment. */
-export function DecideHoldDialog({ hold, onOpenChange, onSubmit }: { hold: PoFinanceHold | null; onOpenChange: (o: boolean) => void; onSubmit: Submit<{ decision: string; note: string | null }> }) {
+export function DecideHoldDialog({
+  hold,
+  po,
+  actor,
+  onOpenChange,
+  onSubmit,
+}: {
+  hold: PoFinanceHold | null
+  po: PurchaseOrderX
+  actor: ProcActor
+  onOpenChange: (o: boolean) => void
+  onSubmit: Submit<{ decision: string; note: string | null; price: number | null }>
+}) {
   const t = useTranslations("Portal.Procurement")
-  const schema = z.object({ decision: z.string().min(1, t("rfqpo.po.hold.pick")), note: z.string().trim().optional() })
-  const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema), defaultValues: { decision: "", note: "" } })
+  const schema = z
+    .object({ decision: z.string().min(1, t("rfqpo.po.hold.pick")), note: z.string().trim().optional(), price: z.string().optional() })
+    .refine((v) => v.decision !== "new_price" || Number(v.price) > 0, { path: ["price"], message: t("rfqpo.po.hold.price_required") })
+    .refine((v) => !(hold?.reason === "price" && (v.decision === "new_price" || v.decision === "inv_price")) || Boolean(v.note?.trim()), { path: ["note"], message: t("rfqpo.po.hold.why_required") })
+  const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema), defaultValues: { decision: "", note: "", price: "" } })
   useEffect(() => {
-    if (hold) form.reset({ decision: "", note: "" })
+    if (hold) form.reset({ decision: "", note: "", price: "" })
   }, [hold, form])
   const decision = useWatch({ control: form.control, name: "decision" })
   const options = hold ? HOLD_DECISIONS[hold.reason] : []
+  const raises = hold?.reason === "price" && (decision === "new_price" || decision === "inv_price")
+  const settlesNow = acceptsHoldPrice(po, actor)
   return (
     <FormShell open={Boolean(hold)} onOpenChange={onOpenChange} title={t("rfqpo.po.hold.form_title")} description={t("rfqpo.po.hold.form_desc")}>
       {hold && (
@@ -578,7 +639,7 @@ export function DecideHoldDialog({ hold, onOpenChange, onSubmit }: { hold: PoFin
           <form
             className="space-y-4"
             onSubmit={form.handleSubmit(async (v) => {
-              if (await onSubmit({ decision: v.decision, note: v.note?.trim() || null })) onOpenChange(false)
+              if (await onSubmit({ decision: v.decision, note: v.note?.trim() || null, price: v.decision === "new_price" ? Number(v.price) : null })) onOpenChange(false)
             })}
           >
             <dl className="space-y-1 rounded-lg border px-3 py-2 text-sm">
@@ -602,23 +663,48 @@ export function DecideHoldDialog({ hold, onOpenChange, onSubmit }: { hold: PoFin
               <Chips value={decision} options={options} label={(d) => t(`rfqpo.po.hold.decision.${d}`)} onChange={(d) => form.setValue("decision", d, { shouldValidate: true })} />
               {form.formState.errors.decision && <p className="text-xs text-destructive">{form.formState.errors.decision.message}</p>}
             </div>
+            {decision === "new_price" && (
+              <FormField
+                control={form.control}
+                name="price"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("rfqpo.po.hold.agreed_price")}</FormLabel>
+                    <FormControl>
+                      <Input type="number" min="0" step="0.01" dir="ltr" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
             <FormField
               control={form.control}
               name="note"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t("rfqpo.po.hold.note")}</FormLabel>
+                  <FormLabel>{raises ? t("rfqpo.po.hold.why") : t("rfqpo.po.hold.note")}</FormLabel>
                   <FormControl>
-                    <Textarea rows={2} dir="auto" placeholder={t("rfqpo.po.hold.note_ph")} {...field} />
+                    <Textarea rows={2} dir="auto" placeholder={raises ? t("rfqpo.po.hold.why_ph") : t("rfqpo.po.hold.note_ph")} {...field} />
                   </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />
             <ul className="space-y-1 rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
-              <li>• {t("rfqpo.po.hold.effect_1")}</li>
-              <li>• {t("rfqpo.po.hold.effect_2")}</li>
+              {raises ? (
+                <>
+                  <li>• {settlesNow ? t("rfqpo.po.hold.effect_now") : t("rfqpo.po.hold.effect_approver")}</li>
+                  <li>• {t("rfqpo.po.hold.effect_history")}</li>
+                </>
+              ) : (
+                <>
+                  <li>• {t("rfqpo.po.hold.effect_1")}</li>
+                  <li>• {t("rfqpo.po.hold.effect_2")}</li>
+                </>
+              )}
             </ul>
-            <Foot onCancel={() => onOpenChange(false)} submitting={form.formState.isSubmitting} label={t("rfqpo.po.hold.submit")} />
+            <Foot onCancel={() => onOpenChange(false)} submitting={form.formState.isSubmitting} label={raises && !settlesNow ? t("rfqpo.po.hold.submit_approval") : t("rfqpo.po.hold.submit")} />
           </form>
         </Form>
       )}
@@ -691,19 +777,24 @@ export function RecordPaymentDialog({ open, onOpenChange, po, now, onSubmit }: {
 }
 
 /** Finance holds an invoice on the order, with the reason and what would release it. */
-export function HoldInvoiceDialog({ open, onOpenChange, onSubmit }: { open: boolean; onOpenChange: (o: boolean) => void; onSubmit: Submit<HoldInput> }) {
+export function HoldInvoiceDialog({ open, lines, onOpenChange, onSubmit }: { open: boolean; lines: PoLine[]; onOpenChange: (o: boolean) => void; onSubmit: Submit<HoldInput> }) {
   const t = useTranslations("Portal.Procurement")
-  const schema = z.object({
-    reason: z.enum(HOLD_REASONS),
-    invoiceNo: z.string().trim().min(1, t("rfqpo.po.fin.invoice_required")),
-    amount: z.string().refine((v) => Number(v) > 0, t("rfqpo.po.fin.amount_required")),
-    text: z.string().trim().min(1, t("rfqpo.reason_required")),
-    need: z.string().trim().optional(),
-  })
-  const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema), defaultValues: { reason: "qty", invoiceNo: "", amount: "", text: "", need: "" } })
+  const schema = z
+    .object({
+      reason: z.enum(HOLD_REASONS),
+      invoiceNo: z.string().trim().min(1, t("rfqpo.po.fin.invoice_required")),
+      amount: z.string().refine((v) => Number(v) > 0, t("rfqpo.po.fin.amount_required")),
+      text: z.string().trim().min(1, t("rfqpo.reason_required")),
+      need: z.string().trim().optional(),
+      price: z.string().optional(),
+      lineId: z.string().optional(),
+    })
+    .refine((v) => v.reason !== "price" || Number(v.price) > 0, { path: ["price"], message: t("rfqpo.po.hold.price_required") })
+  const firstLine = lines[0]?.id ?? ""
+  const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema), defaultValues: { reason: "qty", invoiceNo: "", amount: "", text: "", need: "", price: "", lineId: firstLine } })
   useEffect(() => {
-    if (open) form.reset({ reason: "qty", invoiceNo: "", amount: "", text: "", need: "" })
-  }, [open, form])
+    if (open) form.reset({ reason: "qty", invoiceNo: "", amount: "", text: "", need: "", price: "", lineId: firstLine })
+  }, [open, form, firstLine])
   const reason = useWatch({ control: form.control, name: "reason" })
   return (
     <FormShell open={open} onOpenChange={onOpenChange} title={t("rfqpo.po.fin.hold_title")}>
@@ -711,7 +802,7 @@ export function HoldInvoiceDialog({ open, onOpenChange, onSubmit }: { open: bool
         <form
           className="space-y-3"
           onSubmit={form.handleSubmit(async (v) => {
-            if (await onSubmit({ reason: v.reason, invoiceNo: v.invoiceNo, amount: Number(v.amount), text: v.text, need: v.need || "" })) onOpenChange(false)
+            if (await onSubmit({ reason: v.reason, invoiceNo: v.invoiceNo, amount: Number(v.amount), text: v.text, need: v.need || "", ...(v.reason === "price" ? { price: Number(v.price), lineId: v.lineId || null } : {}) })) onOpenChange(false)
           })}
         >
           <Chips value={reason} options={HOLD_REASONS} label={(r: HoldReason) => t(`rfqpo.po.hold.reason.${r}`)} onChange={(r) => form.setValue("reason", r)} />
@@ -732,6 +823,43 @@ export function HoldInvoiceDialog({ open, onOpenChange, onSubmit }: { open: bool
               )}
             />
           ))}
+          {reason === "price" && (
+            <>
+              {lines.length > 1 && (
+                <FormField
+                  control={form.control}
+                  name="lineId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t("rfqpo.po.hold.line")}</FormLabel>
+                      <FormControl>
+                        <select {...field} className="h-10 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                          {lines.map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {l.name}
+                            </option>
+                          ))}
+                        </select>
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              )}
+              <FormField
+                control={form.control}
+                name="price"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("rfqpo.po.hold.invoice_unit_price")}</FormLabel>
+                    <FormControl>
+                      <Input type="number" min="0" step="0.01" dir="ltr" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </>
+          )}
           {(["text", "need"] as const).map((name) => (
             <FormField
               key={name}

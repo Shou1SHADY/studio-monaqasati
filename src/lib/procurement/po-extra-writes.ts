@@ -12,16 +12,17 @@
 // `budget_referred`, `budget_decided`, `stop_requested`) are typed locally:
 // `PoLogEntry` is mirrored into the mobile app.
 
-import { doc, runTransaction, serverTimestamp, type DocumentReference, type Firestore, type Transaction } from "firebase/firestore"
+import { doc, runTransaction, serverTimestamp, setDoc, type DocumentReference, type Firestore, type Transaction } from "firebase/firestore"
 import { emitProcEvent, sarText } from "./events"
 import { canCancelRemainder, lineToArrive, poBlocks, round2, type BlockContext } from "./po"
-import { HOLD_DECISIONS, HOLD_OWNER, budgetOverrun, overrunTotal, pmBudgetAsk, selfIssueRefusal, type HoldReason, type PaymentKind, type PmCancel, type PoFinanceHold, type PoFinancePayment, type PurchaseOrderX } from "./po-extras"
+import { acceptsHoldPrice, HOLD_DECISIONS, HOLD_OWNER, holdVariance, type HoldPricePending, budgetOverrun, overrunTotal, pmBudgetAsk, selfIssueRefusal, type HoldReason, type PaymentKind, type PmCancel, type PoFinanceHold, type PoFinancePayment, type PurchaseOrderX } from "./po-extras"
 import { resolvePolicies, type ResolvedPolicies } from "./policies"
+import { materialKey, PRICE_HISTORY } from "./prices"
 import { approvalGateBlocks } from "./policy-enforce"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type PoLogEntry, type ProcActor, type PurchaseOrder } from "./types"
 import { afterApproval, assertActs, ProcWriteError, readGateItems, type WriteOpts } from "./writes"
 
-export type PoLogAction = PoLogEntry["action"] | "hold_decided" | "budget_referred" | "budget_decided" | "stop_requested"
+export type PoLogAction = PoLogEntry["action"] | "hold_decided" | "hold_price_asked" | "hold_price_accepted" | "hold_price_refused" | "budget_referred" | "budget_decided" | "stop_requested"
 export type PoLogEntryX = Omit<PoLogEntry, "action"> & { action: PoLogAction }
 
 const entry = (actor: Pick<ProcActor, "uid" | "name">, action: PoLogAction, at: string, extra?: { note?: string | null; params?: PoLogEntry["params"] }): PoLogEntryX => ({
@@ -210,11 +211,15 @@ export interface HoldInput {
   reason: HoldReason
   text: string
   need: string
+  /** A price hold: the invoice's unit price, and the order line it prices. */
+  price?: number | null
+  lineId?: string | null
 }
 
 export async function holdInvoice(firestore: Firestore, actor: ProcActor, isFinance: boolean, poId: string, input: HoldInput, now = new Date()): Promise<PurchaseOrderX> {
   if (!isFinance) throw new ProcWriteError("no_permission")
   if (!input.invoiceNo.trim() || !input.text.trim() || !(Number(input.amount) > 0) || !(input.reason in HOLD_OWNER)) throw new ProcWriteError("reason_required")
+  if (input.reason === "price" && !(Number(input.price) > 0)) throw new ProcWriteError("reason_required")
   const at = now.toISOString()
   return apply(firestore, poId, (po) => {
     if (!po.approvedAt) throw new ProcWriteError("wrong_state")
@@ -228,6 +233,7 @@ export async function holdInvoice(firestore: Firestore, actor: ProcActor, isFina
       at,
       byName: actor.name,
       state: "open",
+      ...(input.reason === "price" ? { price: round2(Number(input.price)), lineId: input.lineId && po.lines.some((l) => l.id === input.lineId) ? input.lineId : (po.lines[0]?.id ?? null) } : {}),
     }
     return { patch: { financeHolds: [...(po.financeHolds || []), hold] } }
   })
@@ -245,8 +251,18 @@ export async function releaseHold(firestore: Firestore, actor: ProcActor, isFina
 
 /** «قرّر وأبلغ المالية»: Procurement's answer to a hold it owns (or the supplier's,
  * which it chases). Logged on the order, and Finance is told — the hold stays
- * on Finance's desk as «decided» until Finance releases it. */
-export async function decideHold(firestore: Firestore, actor: ProcActor, poId: string, input: { holdId: string; decision: string; note?: string | null }, opts?: WriteOpts | Date): Promise<PurchaseOrderX> {
+ * on Finance's desk as «decided» until Finance releases it. A price hold settled
+ * above the PO price (an agreed middle price, or the invoice's) needs the reason
+ * and is the order approver's to accept: from anyone else it waits as `pend`
+ * (the prototype's «لا يقبل رفعَ السعر مَن أعدّ الأمر»). The settled price enters
+ * the price history. */
+export async function decideHold(
+  firestore: Firestore,
+  actor: ProcActor,
+  poId: string,
+  input: { holdId: string; decision: string; note?: string | null; price?: number | null },
+  opts?: WriteOpts | Date
+): Promise<PurchaseOrderX> {
   const o = optsOf(opts)
   if (!decides(actor)) throw new ProcWriteError("no_permission")
   const at = (o.now ?? new Date()).toISOString()
@@ -254,32 +270,90 @@ export async function decideHold(firestore: Firestore, actor: ProcActor, poId: s
   const po = await apply(firestore, poId, (po) => {
     assertActs(po, actor)
     const hold = (po.financeHolds || []).find((h) => h.id === input.holdId)
-    if (!hold || hold.state !== "open") throw new ProcWriteError("wrong_state")
+    if (!hold || hold.state !== "open" || hold.pend) throw new ProcWriteError("wrong_state")
     const owner = HOLD_OWNER[hold.reason]
     if (owner !== "proc" && owner !== "sup") throw new ProcWriteError("no_permission")
     if (!HOLD_DECISIONS[hold.reason].includes(input.decision)) throw new ProcWriteError("reason_required")
     const note = input.note?.trim() || null
-    decided = { ...hold, state: "decided", decision: input.decision, decisionNote: note, decidedByName: actor.name, decidedAt: at }
+    const raises = hold.reason === "price" && (input.decision === "new_price" || input.decision === "inv_price")
+    if (raises) {
+      const price = input.decision === "inv_price" ? Number(hold.price) : Number(input.price)
+      if (!(price > 0) || !note) throw new ProcWriteError("reason_required")
+      if (!acceptsHoldPrice(po, actor)) {
+        const pend: HoldPricePending = { price: round2(price), why: note, byUid: actor.uid, byName: actor.name, at }
+        return {
+          patch: { financeHolds: (po.financeHolds || []).map((h) => (h.id === hold.id ? { ...h, pend } : h)) },
+          log: entry(actor, "hold_price_asked", at, { note, params: { invoice: hold.invoiceNo, price: round2(price) } }),
+        }
+      }
+      decided = { ...hold, state: "decided", decision: input.decision, decisionNote: note, decidedByName: actor.name, decidedAt: at, newPrice: round2(price), pend: null }
+    } else {
+      decided = { ...hold, state: "decided", decision: input.decision, decisionNote: note, decidedByName: actor.name, decidedAt: at, pend: null }
+    }
+    const done = decided
     return {
-      patch: { financeHolds: (po.financeHolds || []).map((h) => (h.id === hold.id ? decided : h)) },
+      patch: { financeHolds: (po.financeHolds || []).map((h) => (h.id === hold.id ? done : h)) },
       log: entry(actor, "hold_decided", at, { note, params: { invoice: hold.invoiceNo, reason: hold.reason, decision: input.decision } }),
     }
   })
-  const hold = decided as PoFinanceHold | null
-  if (hold) {
-    await emitProcEvent(firestore, actor, {
-      kind: "po_hold_decided",
-      organizationId: po.organizationId,
-      to: [{ permission: "invoices.manage" }, { permission: "accounting.post" }],
-      params: { number: po.docNumber, invoice: hold.invoiceNo, decision: `@pn_po_hold_${hold.decision}`, note: hold.decisionNote || "" },
-      poId: po.id,
-      rfqId: po.rfqId,
-      offerId: po.offerId,
-      link: "/contractor/accounting/procurement-desk",
-      copy: o.copy,
-    })
-  }
+  if (decided) await afterHoldDecided(firestore, actor, po, decided, at, o)
   return po
+}
+
+/** The order's approver answers a higher price someone else asked for: accept
+ * it (settled at that price) or refuse it (the supplier honours the PO price). */
+export async function answerHoldPrice(firestore: Firestore, actor: ProcActor, poId: string, input: { holdId: string; accept: boolean; note?: string | null }, opts?: WriteOpts | Date): Promise<PurchaseOrderX> {
+  const o = optsOf(opts)
+  const at = (o.now ?? new Date()).toISOString()
+  let decided: PoFinanceHold | null = null
+  const po = await apply(firestore, poId, (po) => {
+    const hold = (po.financeHolds || []).find((h) => h.id === input.holdId)
+    if (!hold || hold.state !== "open" || !hold.pend) throw new ProcWriteError("wrong_state")
+    if (!acceptsHoldPrice(po, actor) || (hold.pend.byUid === actor.uid && !actor.isOwner)) throw new ProcWriteError("no_permission")
+    const pend = hold.pend
+    const note = input.note?.trim() || null
+    const done: PoFinanceHold = input.accept
+      ? { ...hold, state: "decided", decision: round2(pend.price) === round2(Number(hold.price)) ? "inv_price" : "new_price", decisionNote: pend.why, decidedByName: actor.name, decidedAt: at, newPrice: pend.price, pend: null }
+      : { ...hold, state: "decided", decision: "po_price", decisionNote: note, decidedByName: actor.name, decidedAt: at, pend: null }
+    decided = done
+    return {
+      patch: { financeHolds: (po.financeHolds || []).map((h) => (h.id === hold.id ? done : h)) },
+      log: entry(actor, input.accept ? "hold_price_accepted" : "hold_price_refused", at, { note, params: { invoice: hold.invoiceNo, price: pend.price, by: pend.byName } }),
+    }
+  })
+  if (decided) await afterHoldDecided(firestore, actor, po, decided, at, o)
+  return po
+}
+
+/** Finance hears the decision; a settled price enters the price history (best-effort). */
+async function afterHoldDecided(firestore: Firestore, actor: ProcActor, po: PurchaseOrderX, hold: PoFinanceHold, at: string, o: WriteOpts): Promise<void> {
+  await emitProcEvent(firestore, actor, {
+    kind: "po_hold_decided",
+    organizationId: po.organizationId,
+    to: [{ permission: "invoices.manage" }, { permission: "accounting.post" }],
+    params: { number: po.docNumber, invoice: hold.invoiceNo, decision: `@pn_po_hold_${hold.decision}`, note: hold.decisionNote || "" },
+    poId: po.id,
+    rfqId: po.rfqId,
+    offerId: po.offerId,
+    link: "/contractor/accounting/procurement-desk",
+    copy: o.copy,
+  })
+  const v = hold.newPrice ? holdVariance(po, hold) : null
+  if (v && hold.newPrice) {
+    await setDoc(doc(firestore, PRICE_HISTORY, `${po.id}__${v.line.id}__${hold.id}`), {
+      organizationId: po.organizationId,
+      materialKey: materialKey(v.line.name, v.line.unit),
+      name: v.line.name,
+      unit: v.line.unit,
+      supplierOrgId: po.supplierOrgId,
+      supplierName: po.supplierName,
+      price: hold.newPrice,
+      day: at.slice(0, 10),
+      kind: "variance",
+      poId: po.id,
+      poNumber: po.docNumber,
+    }).catch((err) => console.warn("price history not recorded:", (err as { code?: string })?.code || err))
+  }
 }
 
 // ---------------------------------------------------------------------------

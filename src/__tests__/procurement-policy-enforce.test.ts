@@ -19,7 +19,7 @@ import { resolvePolicies } from "@/lib/procurement/policies"
 import { approvalGateBlocks, noticeAudience, noticeTold, receiveRight, replyLapsed, selfReceivedFlag } from "@/lib/procurement/policy-enforce"
 import type { PurchaseOrderX } from "@/lib/procurement/po-extras"
 import { approvePurchaseOrder, assertActs, cancelRemainder, sendPurchaseOrder } from "@/lib/procurement/writes"
-import { cancelRemainderWithFee, decideHold, decidePmBudget, pmStopLine, referBudgetToProjects, requestPmStopInTx, selfIssuePurchaseOrder } from "@/lib/procurement/po-extra-writes"
+import { answerHoldPrice, cancelRemainderWithFee, decideHold, decidePmBudget, pmStopLine, referBudgetToProjects, requestPmStopInTx, selfIssuePurchaseOrder } from "@/lib/procurement/po-extra-writes"
 import { createArrivalWithoutNotice, recordReceipt, trimNotices } from "@/lib/procurement/receipt-writes"
 import { recordNeedDecision } from "@/lib/procurement/need-decision-writes"
 import { boundaryLog } from "@/lib/procurement/boundary"
@@ -220,14 +220,30 @@ describe("cancelling a remainder and deciding a hold tell the others", () => {
     expect(kinds("store")).toContain("po_remainder_cancelled")
     await expect(cancelRemainder(db, owner, "po1", { lineId: "l1", reason: "x" })).rejects.toMatchObject({ code: "owner_read_only" })
   })
-  it("the hold decision is logged on the order and sent to Finance", async () => {
-    seedOrder(order({ status: "accepted", approvedAt: "2026-09-02T00:00:00Z", financeHolds: [{ id: "h1", invoiceNo: "INV-9", amount: 100, reason: "price", text: "t", need: "n", at: "2026-09-10T00:00:00Z", byName: "F", state: "open" }] }))
-    await decideHold(db, buyer, "po1", { holdId: "h1", decision: "new_price", note: "اتفقنا" })
-    const po = read()
-    expect(po.financeHolds?.[0]).toMatchObject({ state: "decided", decision: "new_price" })
-    expect(po.log.at(-1)).toMatchObject({ action: "hold_decided" })
+  it("a price hold: the preparer's higher price waits for the order's approver, who settles it and Finance is told", async () => {
+    const hold = { id: "h1", invoiceNo: "INV-9", amount: 100, reason: "price" as const, price: 110, text: "t", need: "n", at: "2026-09-10T00:00:00Z", byName: "F", state: "open" as const }
+    seedOrder(order({ status: "accepted", approvedAt: "2026-09-02T00:00:00Z", financeHolds: [hold] }))
+    await expect(decideHold(db, buyer, "po1", { holdId: "h1", decision: "new_price", price: 105 })).rejects.toMatchObject({ code: "reason_required" })
+    await decideHold(db, buyer, "po1", { holdId: "h1", decision: "new_price", note: "اتفقنا", price: 105 })
+    let po = read()
+    expect(po.financeHolds?.[0]).toMatchObject({ state: "open", pend: { price: 105, byUid: "buyer", why: "اتفقنا" } })
+    expect(po.log.at(-1)).toMatchObject({ action: "hold_price_asked" })
+    expect(kinds("fin")).not.toContain("po_hold_decided")
+    await expect(answerHoldPrice(db, buyer, "po1", { holdId: "h1", accept: true })).rejects.toMatchObject({ code: "no_permission" })
+    await answerHoldPrice(db, actorOf({ uid: "mgr", name: "Hind", canApprove: true, canPrepare: false }), "po1", { holdId: "h1", accept: true })
+    po = read()
+    expect(po.financeHolds?.[0]).toMatchObject({ state: "decided", decision: "new_price", newPrice: 105, pend: null })
+    expect(po.log.at(-1)).toMatchObject({ action: "hold_price_accepted" })
     expect(kinds("fin")).toContain("po_hold_decided")
     expect(exceptions({ orders: [po], receipts: [], rfqs: [], offers: [], policies: DEFAULT_POLICIES, supplierFacts: {} } as never).map((e) => e.kind)).toContain("variance_accepted")
+  })
+  it("holding the PO price is the preparer's own decision, sent to Finance at once", async () => {
+    seedOrder(order({ status: "accepted", approvedAt: "2026-09-02T00:00:00Z", financeHolds: [{ id: "h1", invoiceNo: "INV-9", amount: 100, reason: "price", price: 110, text: "t", need: "n", at: "2026-09-10T00:00:00Z", byName: "F", state: "open" }] }))
+    await decideHold(db, buyer, "po1", { holdId: "h1", decision: "po_price" })
+    const po = read()
+    expect(po.financeHolds?.[0]).toMatchObject({ state: "decided", decision: "po_price" })
+    expect(po.log.at(-1)).toMatchObject({ action: "hold_decided" })
+    expect(kinds("fin")).toContain("po_hold_decided")
   })
 })
 

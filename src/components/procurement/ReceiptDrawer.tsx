@@ -576,16 +576,26 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
               </div>
             )}
             <AttachmentsList urls={attachments} label={(n) => tc("goods_received_document_label", { num: n })} empty={t("drawer.noAttachments")} />
-            {(d.deliveryPersonName || d.vehiclePlate || d.paperNoteNumber) && (
+            {(d.deliveryPersonName || d.vehiclePlate || d.paperNoteNumber || d.driverPhone) && (
               <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                 <Truck size={12} aria-hidden="true" />
                 <span dir="auto">{d.deliveryPersonName || t("drawer.driverUnknown")}</span>
+                {d.driverPhone && (
+                  <a href={`tel:${d.driverPhone.replace(/\s/g, "")}`} dir="ltr" className="font-semibold text-cta underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    {d.driverPhone}
+                  </a>
+                )}
                 {d.vehiclePlate && <bdi>· {d.vehiclePlate}</bdi>}
                 {d.paperNoteNumber && (
                   <span>
                     · {t("drawer.paperNote")} <span dir="ltr">{d.paperNoteNumber}</span>
                   </span>
                 )}
+              </p>
+            )}
+            {(d.qualityPapers?.length ?? 0) > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {t("drawer.qualityPapers", { papers: (d.qualityPapers ?? []).map((q) => t(`drawer.paper_${q}`)).join(" · ") })}
               </p>
             )}
             {(d.receiptNote || d.notes) && <p className="rounded-md bg-muted/40 p-2 text-xs" dir="auto">{d.receiptNote || d.notes}</p>}

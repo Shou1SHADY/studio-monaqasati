@@ -199,6 +199,8 @@ describe("the delivery document", () => {
       deliveryWindow: "morning",
       driverName: "  Salem ",
       vehiclePlate: "ABC 1234",
+      driverPhone: " 0550013416 ",
+      qualityPapers: ["conf", "mill", "conf"],
       paperNoteNumber: "DN-77",
       notes: "crane needed",
       fileUrl: "https://storage/x.pdf",
@@ -236,6 +238,9 @@ describe("the delivery document", () => {
     expect(d.poNumber).toBe("PO-2026/014")
     expect(d.lines).toEqual([{ poLineId: "l1", name: "Cement", unit: "bag", noticeQuantity: 60 }])
     expect(d.vehiclePlate).toBe("ABC 1234")
+    // The prototype's notice: the driver's mobile and the quality papers with the load, once each.
+    expect(d.driverPhone).toBe("0550013416")
+    expect(d.qualityPapers).toEqual(["mill", "conf"])
     expect(d.paperNoteNumber).toBe("DN-77")
     expect(d.deliveryWindow).toBe("morning")
     expect(d.attachmentUrls).toEqual(["https://storage/x.pdf"])
@@ -251,6 +256,8 @@ describe("the delivery document", () => {
     })
     expect(d.deliveryPersonName).toBeNull()
     expect(d.vehiclePlate).toBeNull()
+    expect(d.driverPhone).toBeNull()
+    expect(d.qualityPapers).toEqual([])
     expect(d.paperNoteNumber).toBeNull()
     expect(d.deliveryWindow).toBeNull()
     expect(d.notes).toBeNull()

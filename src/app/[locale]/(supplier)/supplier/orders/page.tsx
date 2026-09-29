@@ -34,7 +34,7 @@ import { cn } from "@/lib/utils"
 import { sarLtr } from "@/lib/riyal"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { isLumpSum, poStatus, poValue } from "@/lib/procurement/po"
-import { PURCHASE_ORDERS, type PoStatus, type PurchaseOrder } from "@/lib/procurement/types"
+import { PURCHASE_ORDERS, QUALITY_PAPERS, type PoStatus, type PurchaseOrder, type QualityPaper } from "@/lib/procurement/types"
 import { ProcWriteError, supplierAcceptPurchaseOrder } from "@/lib/procurement/writes"
 import { noticeAudience } from "@/lib/procurement/policy-enforce"
 import {
@@ -666,7 +666,9 @@ export default function SupplierOrdersPage() {
               deliveryDate: values.deliveryDate,
               deliveryWindow: values.deliveryWindow,
               driverName: values.driverName,
+              driverPhone: values.driverPhone,
               vehiclePlate: values.vehiclePlate,
+              qualityPapers: values.qualityPapers,
               paperNoteNumber: values.paperNoteNumber,
               notes: values.notes,
               fileUrl,
@@ -966,7 +968,9 @@ interface NoticeValues {
   deliveryDate: string
   deliveryWindow: DeliveryWindow | null
   driverName: string
+  driverPhone: string
   vehiclePlate: string
+  qualityPapers: QualityPaper[]
   paperNoteNumber: string
   notes: string
 }
@@ -1000,7 +1004,9 @@ function DeliveryNoticeDialog({
         deliveryDate: z.string().min(1),
         deliveryWindow: z.enum(DELIVERY_WINDOWS).nullable(),
         driverName: z.string().trim().max(200),
+        driverPhone: z.string().trim().max(30).regex(/^[+\d\s-]*$/),
         vehiclePlate: z.string().trim().max(40),
+        qualityPapers: z.array(z.enum(QUALITY_PAPERS)),
         paperNoteNumber: z.string().trim().max(80),
         notes: z.string().trim().max(2000),
       }),
@@ -1013,7 +1019,9 @@ function DeliveryNoticeDialog({
       deliveryDate: po.promisedDate && po.promisedDate >= min ? po.promisedDate : min,
       deliveryWindow: null,
       driverName: "",
+      driverPhone: "",
       vehiclePlate: "",
+      qualityPapers: [],
       paperNoteNumber: "",
       notes: "",
     },
@@ -1021,6 +1029,7 @@ function DeliveryNoticeDialog({
   const { register, handleSubmit, watch, setValue, formState } = form
   const deliveryDate = watch("deliveryDate")
   const window_ = watch("deliveryWindow")
+  const papers = watch("qualityPapers")
   const lateBy = noticeLatenessDays(po, deliveryDate)
 
   const errorText = (e: NoticeError) => {
@@ -1137,6 +1146,10 @@ function DeliveryNoticeDialog({
               <Input id="notice-driver" placeholder={t("po_notice_driver_placeholder")} {...register("driverName")} disabled={formState.isSubmitting} />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="notice-driver-phone">{t("po_notice_driver_phone_label")}</Label>
+              <Input id="notice-driver-phone" type="tel" dir="ltr" inputMode="tel" placeholder="05xxxxxxxx" {...register("driverPhone")} disabled={formState.isSubmitting} />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="notice-plate">{t("po_notice_plate_label")}</Label>
               <Input id="notice-plate" dir="ltr" {...register("vehiclePlate")} disabled={formState.isSubmitting} />
             </div>
@@ -1148,6 +1161,30 @@ function DeliveryNoticeDialog({
               <Label htmlFor="notice-file">{t("po_notice_file_label")}</Label>
               <Input id="notice-file" type="file" accept=".pdf,image/*" onChange={onFile} disabled={formState.isSubmitting} />
               <p className="text-xs text-muted-foreground">{t("po_notice_file_hint")}</p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">{t("po_notice_papers_label")}</p>
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t("po_notice_papers_label")}>
+              {QUALITY_PAPERS.map((q) => {
+                const on = papers.includes(q)
+                return (
+                  <button
+                    key={q}
+                    type="button"
+                    aria-pressed={on}
+                    disabled={formState.isSubmitting}
+                    onClick={() => setValue("qualityPapers", on ? papers.filter((x) => x !== q) : [...papers, q])}
+                    className={cn(
+                      "min-h-11 rounded-full border px-4 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                      on ? "border-transparent bg-module/10 font-bold text-module" : "border-border hover:bg-muted"
+                    )}
+                  >
+                    {t(`po_notice_paper_${q}`)}
+                  </button>
+                )
+              })}
             </div>
           </div>
 

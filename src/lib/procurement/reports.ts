@@ -507,7 +507,7 @@ export function exceptions(w: ReportWorld | ProcWorld, period?: Period | null): 
     else if (po.approvedById && po.approvedById === po.preparedById) out.push({ ...base, kind: "self_approval", params: {}, day: dayOf(po.approvedAt) || base.day })
     // Procurement accepted an invoice's new price on a price hold (prototype `varAcc`).
     for (const h of px.financeHolds || []) {
-      if (h.reason === "price" && h.decision === "new_price") out.push({ ...base, kind: "variance_accepted", params: { invoice: h.invoiceNo }, byName: h.decidedByName || base.byName, day: dayOf(h.decidedAt) || base.day })
+      if (h.reason === "price" && (h.decision === "new_price" || h.decision === "inv_price")) out.push({ ...base, kind: "variance_accepted", params: { invoice: h.invoiceNo }, byName: h.decidedByName || base.byName, day: dayOf(h.decidedAt) || base.day })
     }
     if (po.noOfficialQuote && !po.agreementId) out.push({ ...base, kind: "no_official_quote", params: {} })
     if (po.offerId && offerById.get(po.offerId)?.isManualOffer) out.push({ ...base, kind: "awarded_manual_offer", params: {} })

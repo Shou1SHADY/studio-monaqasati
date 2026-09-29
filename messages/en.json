@@ -1378,7 +1378,11 @@
       "po_err_date_invalid": "The date is not valid.",
       "po_err_generic": "Could not save — try again.",
       "po_open_order": "Open the order",
-      "po_offer_order_label": "Purchase order"
+      "po_offer_order_label": "Purchase order",
+      "po_notice_driver_phone_label": "Mobile",
+      "po_notice_papers_label": "Quality papers with the load",
+      "po_notice_paper_mill": "Mill certificate",
+      "po_notice_paper_conf": "Conformity certificate"
     },
     "Errors": {
       "access_denied_title": "Sorry, you don't have sufficient permissions",
@@ -8299,9 +8303,9 @@
       "pn_receipt_expensed": "{actor} ruled receipt {receipt} from {supplier} a cash expense with no PO. Book the invoice as an expense.",
       "pn_po_budget_accepted": "accepted the budget overrun — the order goes on to its approver",
       "pn_po_budget_renegotiate": "asked to renegotiate the price",
-      "pn_po_hold_po_price": "The PO price stands — we asked for a corrected invoice",
+      "pn_po_hold_po_price": "Rejected — the supplier honours the PO price",
       "pn_po_hold_credit": "We asked the supplier for a credit note",
-      "pn_po_hold_new_price": "The new price is agreed — the PO is revised",
+      "pn_po_hold_new_price": "An agreed middle price",
       "pn_po_hold_supply": "Complete the delivery, then invoice",
       "pn_po_hold_grn": "The receipt is not recorded yet — we chase the receiver",
       "pn_po_hold_ack": "We told Finance we are following up",
@@ -8406,7 +8410,10 @@
       "pn_rfq_invited_title": "Invitation to quote",
       "pn_rfq_invited": "You were invited to quote on «{rfq}» by {date}",
       "sec_zone_title": "Delivery units",
-      "sec_zone_desc": "Villas · floors · sites — progress and handover per unit"
+      "sec_zone_desc": "Villas · floors · sites — progress and handover per unit",
+      "pn_po_hold_inv_price": "The invoice price is accepted",
+      "pn_portal_answer_title": "The consultant answered through the portal",
+      "pn_portal_answer": "{name} answered through the consultant portal on {project}: {record}"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -10919,7 +10926,10 @@
         "hold_decided": "{by} decided on held invoice {invoice}: {decision}",
         "budget_referred": "{by} referred the budget overrun ({over}) to the project manager",
         "budget_decided": "{by} (Projects): {decision}",
-        "stop_requested": "{by} (Projects) asked to stop what has not arrived"
+        "stop_requested": "{by} (Projects) asked to stop what has not arrived",
+        "hold_price_asked": "{by} asked to accept a new price on held invoice {invoice}",
+        "hold_price_accepted": "{by} approved the new price on held invoice {invoice}",
+        "hold_price_refused": "{by} refused the new price on held invoice {invoice} — the PO price stands"
       },
       "exception": {
         "retroactive": "Retroactive PO for a receipt with no order",
@@ -11453,9 +11463,9 @@
               "fin": "Finance"
             },
             "decision": {
-              "po_price": "The PO price stands — we asked for a corrected invoice",
+              "po_price": "Reject — the supplier honours the PO price",
               "credit": "We asked the supplier for a credit note",
-              "new_price": "The new price is agreed — the PO is revised",
+              "new_price": "An agreed middle price",
               "supply": "Complete the delivery, then invoice",
               "grn": "The receipt is not recorded yet — we chase the receiver",
               "ack": "We told Finance we are following up",
@@ -11463,7 +11473,8 @@
               "cancel": "Cancel it; the supplier re-issues against the right PO",
               "letter": "We sent Finance a bank letter in the supplier’s own name",
               "fix": "We corrected the supplier master and told Finance",
-              "stop": "Hold the payment until the supplier fixes its account"
+              "stop": "Hold the payment until the supplier fixes its account",
+              "inv_price": "Accept the invoice price"
             },
             "needed": "Needed to release",
             "next_with": "Next step with: {owner}",
@@ -11481,7 +11492,26 @@
             "note_ph": "The credit-note number or the completion date, if known",
             "effect_1": "We never pay or release a payment — Finance does, once the reason is cleared",
             "effect_2": "It stays on the PO: why payment was delayed and who decided",
-            "submit": "Send the decision to Finance"
+            "submit": "Send the decision to Finance",
+            "po_price": "PO price",
+            "invoice_price": "Invoice price",
+            "variance": "Variance on received qty",
+            "ours_to_decide": "Finance will not pay until we decide: a price variance is a procurement decision.",
+            "pend": "{name} asks to accept a new price — {why} —",
+            "pend_accept": "Approve the new price",
+            "pend_refuse": "Reject — PO price stands",
+            "pend_waiting": "Awaiting the order's approver",
+            "price_required": "Enter the price",
+            "why_required": "Write the reason and the evidence",
+            "agreed_price": "Agreed price",
+            "why": "Why — and on what evidence?",
+            "why_ph": "Mill price circular dated… attached",
+            "effect_now": "You approve this PO and did not prepare it — the new price is approved now and Finance is told",
+            "effect_approver": "The preparer cannot accept a higher price: it goes to the order's approver — and Finance waits",
+            "effect_history": "The settled price enters the price history",
+            "submit_approval": "Send for approval",
+            "line": "Order line",
+            "invoice_unit_price": "Invoice unit price"
           },
           "fin": {
             "record_payment": "Record a payment",
@@ -12069,7 +12099,9 @@
         "rejected": "Sent back",
         "cancelled": "Cancelled",
         "to_arrive": "To arrive",
-        "aria": "Accepted {accepted}, held {held}, rejected {rejected}, cancelled {cancelled}, to arrive {toArrive} {unit}"
+        "aria": "Accepted {accepted}, held {held}, rejected {rejected}, cancelled {cancelled}, to arrive {toArrive} {unit}",
+        "in_transit": "On the way",
+        "not_shipped": "Not shipped"
       },
       "head": {
         "prepared": "Prepared by {by} · {date}"
@@ -12453,7 +12485,9 @@
         "remind": "Remind supplier",
         "toForward": "With you — to forward",
         "passedNoReceipt": "Passed — no receipt",
-        "panelSubBoth": "The supplier's notice reaches us and the receiver at the same time. If its date falls after the supplier's commitment, we know of the delay before it happens."
+        "panelSubBoth": "The supplier's notice reaches us and the receiver at the same time. If its date falls after the supplier's commitment, we know of the delay before it happens.",
+        "paper_mill": "mill certificate",
+        "paper_conf": "conformity certificate"
       },
       "log": {
         "colReceipt": "Receipt",
@@ -12655,7 +12689,10 @@
         "heldFollowsIn": "{qty} {unit} of \"{line}\" {reason} — neither issued nor paid until released in {module}.",
         "waitingOn": "Waiting on {module}",
         "closingBy": "Recorded by {name} in {module}; not editable here. We read it and follow up: decide rejects with the supplier, chase the rest until complete, then rate the supplier.",
-        "closingSelf": "Recorded by {name} in {module}. We read it and follow up: decide rejects with the supplier, chase the rest until complete, then rate the supplier."
+        "closingSelf": "Recorded by {name} in {module}. We read it and follow up: decide rejects with the supplier, chase the rest until complete, then rate the supplier.",
+        "qualityPapers": "With the load: {papers}",
+        "paper_mill": "mill certificate",
+        "paper_conf": "conformity certificate"
       },
       "manual": {
         "button": "Record a receipt manually",
@@ -12833,7 +12870,8 @@
         "po_raised": "Retroactive PO {number} prepared",
         "regularised": "Tied to purchase order {number}",
         "expensed": "Sent to Finance as a cash expense"
-      }
+      },
+      "received_by": "Received by"
     },
     "ProcReports": {
       "page": {
@@ -16273,7 +16311,30 @@
         "accept": "Accept",
         "reject": "Reject with a note",
         "nothing": "Nothing",
-        "preview_foot": "The buttons are disabled on purpose: this is his screen, not ours. When he answers, the answer appears in its place here at once."
+        "preview_foot": "The buttons are disabled on purpose: this is his screen, not ours. When he answers, the answer appears in its place here at once.",
+        "sent_to": "to {name} · {phone}",
+        "send_title": "Send the portal link",
+        "resend_title": "Send a new portal link",
+        "send_desc": "One link for the project. The consultant opens it with a one-time code sent to this mobile, sees only what waits on his reply, and never a price.",
+        "resend_note": "The link sent before stops working the moment this one is made. His earlier answers stay recorded.",
+        "consultant_name": "Consultant's name",
+        "consultant_phone": "His mobile",
+        "phone_hint": "The one-time code goes to this number — only its last four digits are shown afterwards.",
+        "send_submit": "Create the link",
+        "done": "Done",
+        "link_texted": "The link was sent to {phone}",
+        "link_ready": "The link is ready — it was not texted, so send it to {phone} yourself",
+        "link_label": "Portal link",
+        "copy": "Copy the link",
+        "copied": "Copied",
+        "whatsapp": "Share by WhatsApp",
+        "share_text": "What waits on your reply in the project {project}: {url} — a one-time code reaches your mobile when you open it.",
+        "send_how": "Whatever he answers is recorded in his name and date, and his first opening is marked on this panel.",
+        "err_phone": "That mobile number cannot receive a code — check it",
+        "err_forbidden": "Only the owner or the project's manager sends the portal link",
+        "err_closed": "The project is closed — the portal is no longer sent",
+        "err_send": "The link could not be created — try again",
+        "v_can_live": "Accept or reject with a note, record an inspection result, reply to a letter — never edit our data"
       },
       "dec_docs": {
         "stale_title": "{name} {code} was issued after the last certificate",
@@ -20241,5 +20302,123 @@
     "err_code_expired": "The code has expired or had too many tries. Ask for a new one.",
     "err_generic": "That did not save. Try again.",
     "procurement_note": "Note from Procurement"
+  },
+  "PmPortal": {
+    "eyebrow": "Consultant portal",
+    "project_unknown": "Project",
+    "intro": "{name}, this page lists what waits on your reply in this project. What you record here reaches the project team at once, in your name and with its date, as a letter would.",
+    "no_prices": "You add answers only — you cannot change a quantity, a price or a date.",
+    "verify_title": "Confirm it is you",
+    "verify_body": "We will send a one-time code to {phone}.",
+    "send_code": "Send the code",
+    "code_sent": "Code sent to {phone}",
+    "test_code": "Test environment — the code is {code}",
+    "code_label": "The six-digit code",
+    "open": "Open",
+    "resend": "Send a new code",
+    "loading": "Loading",
+    "closed_title": "This link does not open",
+    "closed_expired": "The link has expired. Ask the project team for a new one.",
+    "closed_revoked": "A newer link was sent for this project — use the latest one you received.",
+    "closed_missing": "The link is not valid. Check that it was copied whole.",
+    "err_too_soon": "A code was sent less than a minute ago — wait a moment",
+    "err_code_send": "The code could not be sent — try again",
+    "err_wrong_code": "Wrong code",
+    "err_code_expired": "The code has expired — ask for a new one",
+    "err_generic": "Something went wrong — try again",
+    "err_session": "Your session ended — enter a new code",
+    "err_not_waiting": "This no longer waits on you — the list has been refreshed",
+    "read_only": "This project is closed — nothing can be answered here any more",
+    "pending_title": "Waiting on your reply",
+    "pending_count": "{count, plural, =0 {none} one {# item} other {# items}}",
+    "nothing": "Nothing waits on you now. Thank you.",
+    "waiting": "{count, plural, =0 {today} one {for # day} other {for # days}}",
+    "kind": {
+      "subm": "Samples awaiting your approval",
+      "wir": "Inspections awaiting your result",
+      "punch": "Fixed items awaiting your confirmation",
+      "corr": "Letters awaiting your reply",
+      "ncr": "Corrective plans awaiting your acceptance"
+    },
+    "no": {
+      "subm": "Sample {no}",
+      "wir": "Inspection {no}",
+      "punch": "Item {no}",
+      "corr": "Letter {no}",
+      "ncr": "NCR {no}"
+    },
+    "f": {
+      "item": "BOQ item",
+      "what": "Submitted for approval",
+      "rev_label": "Submission",
+      "rev": "Revision {rev}",
+      "submitted": "Submitted on",
+      "location": "Location",
+      "unit": "Delivery unit",
+      "attempt_label": "Attempt",
+      "attempt": "Attempt {n}",
+      "booked": "Booked for",
+      "severity": "Severity",
+      "raised": "Raised on",
+      "fixed": "Fixed on",
+      "fix_note": "What was done",
+      "sent": "Sent on",
+      "due_label": "Reply due",
+      "due": "{count, plural, one {within # day} other {within # days}}",
+      "refs": "References",
+      "what_wrong": "What went against the specification",
+      "root": "Root cause",
+      "plan": "Corrective plan",
+      "plan_on": "Plan submitted on",
+      "files": "Files"
+    },
+    "sev": {
+      "a": "Critical",
+      "b": "Normal"
+    },
+    "a": {
+      "choose": "Your decision",
+      "appA": "Approved",
+      "appB": "Approved as noted",
+      "rej": "Rejected",
+      "pass": "Passed",
+      "cond": "Passed with comments",
+      "fail": "Failed",
+      "result_on": "Inspection day",
+      "note": "Your note (optional)",
+      "note_required": "Your note (required for this choice)",
+      "reply": "Your reply",
+      "punch_hint": "Confirm only after you have seen the fix — the item then closes.",
+      "ncr_hint": "Accepting the plan closes the non-conformance.",
+      "confirm_punch": "Confirm it is closed",
+      "accept_ncr": "Accept the corrective plan",
+      "send_reply": "Send my reply",
+      "submit": "Record my decision",
+      "done": "Recorded — thank you"
+    },
+    "what": {
+      "appA": "approved",
+      "appB": "approved as noted",
+      "rej": "rejected",
+      "pass": "passed",
+      "cond": "passed with comments",
+      "fail": "failed",
+      "confirmed": "closure confirmed",
+      "replied": "replied",
+      "accepted": "plan accepted"
+    },
+    "history_title": "What you answered through this link",
+    "history_empty": "Nothing yet",
+    "end_session": "End the session on this device",
+    "footer": "Mdmak Tech — this link is for {name} only. Do not forward it.",
+    "block": {
+      "no_note": "A note is required with this choice",
+      "bad_date": "The date cannot be in the future or before the record",
+      "no_choice": "Choose one of the options",
+      "no_text": "Write your reply",
+      "before_letter": "The reply cannot be dated before the letter",
+      "future_day": "The date cannot be in the future",
+      "bad_day": "The date is not valid"
+    }
   }
 }

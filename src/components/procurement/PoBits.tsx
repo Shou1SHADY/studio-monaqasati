@@ -94,10 +94,11 @@ export function HonestDateText({ po, now, className }: { po: PurchaseOrder; now:
   }
 }
 
-/** accepted · held · rejected (undecided) · cancelled · to arrive — the bar partitions the ordered quantity. */
-export function LineBar({ line, className }: { line: PoLine; className?: string }) {
+/** accepted · held · in transit · rejected (undecided) · cancelled · not shipped — the bar partitions the ordered quantity. */
+export function LineBar({ line, inTransit = 0, className }: { line: PoLine; inTransit?: number; className?: string }) {
   const t = useTranslations("Portal.ProcOrders")
   const p = lineParts(line)
+  const transit = Math.min(Math.max(0, inTransit), p.toArrive)
   const seg = (n: number, cls: string, label: string) =>
     n > 0 ? <div className={cn("h-full", cls)} style={{ width: `${percentOf(n, p.ordered)}%` }} title={label} aria-hidden="true" /> : null
   return (
@@ -105,6 +106,7 @@ export function LineBar({ line, className }: { line: PoLine; className?: string 
       <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted" role="img" aria-label={t("bar.aria", { accepted: p.accepted, held: p.held, rejected: p.rejected, cancelled: p.cancelled, toArrive: p.toArrive, unit: line.unit })}>
         {seg(p.accepted, "bg-success", t("bar.accepted"))}
         {seg(p.held, "bg-warning", t("bar.held"))}
+        {seg(transit, "bg-cta", t("bar.in_transit"))}
         {seg(p.rejected, "bg-destructive", t("bar.rejected"))}
         {seg(p.cancelled, "bg-muted-foreground/40", t("bar.cancelled"))}
       </div>
@@ -127,8 +129,13 @@ export function LineBar({ line, className }: { line: PoLine; className?: string 
             {t("bar.cancelled")} {figure(p.cancelled)}
           </span>
         )}
+        {transit > 0 && (
+          <span className="text-cta">
+            {t("bar.in_transit")} {figure(transit)}
+          </span>
+        )}
         <span>
-          {t("bar.to_arrive")} {figure(p.toArrive)}
+          {transit > 0 ? t("bar.not_shipped") : t("bar.to_arrive")} {figure(p.toArrive - transit)}
         </span>
         <span>{quantityText(p.ordered, line.unit)}</span>
       </p>

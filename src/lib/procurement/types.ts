@@ -228,6 +228,10 @@ export interface DeliveryLine {
   accepted?: number
 }
 
+/** «مرفقات الجودة مع الشحنة»: a mill certificate, a conformity certificate. */
+export const QUALITY_PAPERS = ["mill", "conf"] as const
+export type QualityPaper = (typeof QUALITY_PAPERS)[number]
+
 export interface DeliveryPoFields {
   poId?: string | null
   poNumber?: string | null
@@ -235,6 +239,10 @@ export interface DeliveryPoFields {
   docNumber?: string | null
   lines?: DeliveryLine[]
   vehiclePlate?: string | null
+  /** The driver's or rep's mobile, from the supplier's notice. */
+  driverPhone?: string | null
+  /** Quality papers the supplier says travel with the load. */
+  qualityPapers?: QualityPaper[] | null
   paperNoteNumber?: string | null
   deliveryWindow?: string | null
   checklist?: ReceiptCheck[]

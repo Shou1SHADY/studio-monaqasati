@@ -561,6 +561,11 @@ function IncomingList(props: IncomingListProps) {
                     <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
                       <Truck size={11} aria-hidden="true" />
                       <span dir="auto">{notice.deliveryPersonName || t("incoming.driverUnknown")}</span>
+                      {notice.driverPhone && (
+                        <a href={`tel:${notice.driverPhone.replace(/\s/g, "")}`} dir="ltr" className="font-semibold text-cta underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                          {notice.driverPhone}
+                        </a>
+                      )}
                       {notice.vehiclePlate && <bdi>· {notice.vehiclePlate}</bdi>}
                       <span>·</span>
                       {notice.paperNoteNumber ? (
@@ -570,6 +575,7 @@ function IncomingList(props: IncomingListProps) {
                       ) : (
                         <span>{t("incoming.noNoteYet")}</span>
                       )}
+                      {(notice.qualityPapers?.length ?? 0) > 0 && <span>· {(notice.qualityPapers ?? []).map((q) => t(`incoming.paper_${q}`)).join(" · ")}</span>}
                       {attachments > 0 && (
                         <span className="inline-flex items-center gap-0.5" aria-label={t("incoming.attachments", { n: attachments })}>
                           <Paperclip size={11} aria-hidden="true" />

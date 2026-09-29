@@ -52,7 +52,9 @@ export const HOLD_OWNER: Record<HoldReason, HoldOwner> = {
 
 /** Procurement's answers per reason (prototype `FROPT`); anything else is acknowledged. */
 export const HOLD_DECISIONS: Record<HoldReason, string[]> = {
-  price: ["po_price", "credit", "new_price"],
+  // The prototype's price-variance decision: the supplier honours the PO price,
+  // an agreed middle price, or the invoice's price.
+  price: ["po_price", "new_price", "inv_price"],
   qty: ["credit", "supply", "grn"],
   nogrn: ["ack"],
   nopo: ["ack"],
@@ -77,7 +79,37 @@ export interface PoFinanceHold {
   decisionNote?: string | null
   decidedByName?: string | null
   decidedAt?: string | null
+  /** A price hold: the invoice's unit price, and the order line it prices (else the first). */
+  price?: number | null
+  lineId?: string | null
+  /** A higher price asked by someone who may not accept it — waits for the order's approver. */
+  pend?: HoldPricePending | null
+  /** The price settled by the decision (new_price / inv_price). */
+  newPrice?: number | null
 }
+
+export interface HoldPricePending {
+  price: number
+  why: string
+  byUid: string
+  byName: string
+  at: string
+}
+
+/** The PO price against the invoice's, and what the difference costs on what was received. */
+export function holdVariance(po: Pick<PurchaseOrder, "lines">, hold: Pick<PoFinanceHold, "reason" | "price" | "lineId">): { line: PoLine; poPrice: number; invoicePrice: number; received: number; variance: number } | null {
+  if (hold.reason !== "price" || !(Number(hold.price) > 0)) return null
+  const line = (hold.lineId && po.lines.find((l) => l.id === hold.lineId)) || po.lines[0]
+  if (!line || line.unitPrice == null) return null
+  const poPrice = round2(Number(line.unitPrice))
+  const invoicePrice = round2(Number(hold.price))
+  const received = round2(Number(line.accepted) || 0)
+  return { line, poPrice, invoicePrice, received, variance: round2((invoicePrice - poPrice) * received) }
+}
+
+/** A higher price is accepted only by someone who approves orders and did not prepare this one (the owner excepted, as with approving the order). */
+export const acceptsHoldPrice = (po: Pick<PurchaseOrder, "preparedById">, actor: Pick<ProcActor, "uid" | "isOwner" | "canApprove">): boolean =>
+  actor.isOwner || (actor.canApprove && actor.uid !== po.preparedById)
 
 export interface PoExtras {
   /** The advance share of the value, 0–100 — carried from the awarded offer. */
