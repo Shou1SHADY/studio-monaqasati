@@ -8,10 +8,11 @@ jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-u
 import { fakeFirestore, listCollection, resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import type { Firestore } from "firebase/firestore"
 import { extendRfq } from "@/lib/procurement/rfq-extend-writes"
+import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
 
 const db = fakeFirestore as unknown as Firestore
 const NOW = new Date("2026-09-20T09:00:00Z")
-const manager = { uid: "mgr", name: "Hind", isOwner: false, canPrepare: false, canApprove: true }
+const manager: RfqWriteActor = { uid: "mgr", name: "Hind", isOwner: false, canPrepare: false, canApprove: true, canExpedite: true, canReceive: false, seesPrices: true }
 
 describe("extending an RFQ", () => {
   beforeEach(() => {
