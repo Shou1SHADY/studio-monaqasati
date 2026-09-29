@@ -30,6 +30,8 @@ import { usePermissions } from "@/hooks/usePermissions"
 import { usePmRail } from "@/hooks/usePmRail"
 import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
 import { acceptBlocks, handoverAge, handoverBoqCount, handoverFlags, inboxKpis, mayActOnHandover, openReturns, PM_HANDOVERS, type PmHandover } from "@/lib/pm/handover"
+import { fileExtras } from "@/lib/pm/handover-writes"
+import { displayDocNumber } from "@/lib/sales-numbering"
 import { cn } from "@/lib/utils"
 
 type Dialog = { kind: "accept" | "reassign" | "return"; handover: PmHandover } | null
@@ -114,6 +116,7 @@ export function HandoverInbox() {
           const age = handoverAge(h, today)
           const boqN = handoverBoqCount(h)
           const ct = clientTypeKey(h.clientType)
+          const dealNo = fileExtras(h).dealNo
           return (
             <Panel
               key={h.id}
@@ -130,7 +133,7 @@ export function HandoverInbox() {
                       {h.contractNumber}
                     </span>
                   )}
-                  {crmTag}
+                  {dealNo ? <SourceBadge module="crm" label={t("dec.ho.deal", { no: displayDocNumber(dealNo, locale) })} /> : crmTag}
                 </>
               }
             >

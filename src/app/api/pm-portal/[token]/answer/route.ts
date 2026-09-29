@@ -51,6 +51,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     const to = project.projectManagerId || link.createdById
     const projectName = project.name || project.pm?.no || ""
     const record = `${KIND_AR[entry.kind]} ${entry.no}`
+    // A refused fix or plan goes back to our people with his reason — they act on it.
+    const refused = entry.what === "fix_rejected" || entry.what === "plan_rejected"
+    const why = "note" in parsed.data ? (parsed.data.note ?? "") : ""
     await db
       .collection("users")
       .doc(to)
@@ -59,13 +62,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
         userId: to,
         organizationId: link.organizationId,
         type: "pm_portal_answer",
-        i18n: {
-          title: "pn_portal_answer_title",
-          message: "pn_portal_answer",
-          params: { name: entry.byName, project: projectName, record: `${entry.no} — ${entry.title}` },
-        },
-        title: "ردّ الاستشاري عبر البوابة",
-        message: `ردّ ${entry.byName} عبر بوابة الاستشاري في مشروع ${projectName}: ${record} — ${entry.title}`,
+        i18n: refused
+          ? { title: "pn_portal_reject_title", message: "pn_portal_reject", params: { name: entry.byName, project: projectName, record: `${entry.no} — ${entry.title}`, note: why } }
+          : { title: "pn_portal_answer_title", message: "pn_portal_answer", params: { name: entry.byName, project: projectName, record: `${entry.no} — ${entry.title}` } },
+        title: refused ? "رفض الاستشاري عبر البوابة" : "ردّ الاستشاري عبر البوابة",
+        message: refused
+          ? `رفض ${entry.byName} عبر بوابة الاستشاري في مشروع ${projectName}: ${record} — ${entry.title} — ${why}`
+          : `ردّ ${entry.byName} عبر بوابة الاستشاري في مشروع ${projectName}: ${record} — ${entry.title}`,
         projectId: link.projectId,
         link: `/contractor/projects/${link.projectId}?tab=pmCorr`,
         createdAt: entry.at,

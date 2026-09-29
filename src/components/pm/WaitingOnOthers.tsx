@@ -7,7 +7,9 @@
 // files CRM has not completed since we returned them. No action button: the act
 // is theirs. Only what has waited past its time is listed; the rest is counted
 // behind "show all". A row opens where the thing sits. Given one project it
-// reads that project's records; given several it names the project on each row.
+// reads that project's records; given several it names the project on each row,
+// and takes each project's request / store rows and collectable certificates
+// from the caller, which already reads them per project.
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -40,6 +42,8 @@ export function WaitingOnOthers({
   money = false,
   crm = null,
   onOpenTab,
+  extra,
+  openCerts,
   cap = WAIT_CAP,
 }: {
   organizationId: string
@@ -52,6 +56,10 @@ export function WaitingOnOthers({
   crm?: { uid: string | null; owner: boolean } | null
   /** On a project page: open one of its tabs in place. */
   onOpenTab?: (tab: string) => void
+  /** Several projects: their request and store rows, built per project by the caller. */
+  extra?: WaitRow[]
+  /** Several projects: certificates still collectable (`projectId:seq`), read per project by the caller. */
+  openCerts?: ReadonlySet<string>
   cap?: number
 }) {
   const t = useTranslations("Portal.PM")
@@ -113,13 +121,16 @@ export function WaitingOnOthers({
     out.push(...poWaitRows(pos.map((po) => ({ ...po, docNumber: displayPoNumber(po.docNumber, locale) })), today))
     if (single) out.push(...requestWaitRows(((reqData ?? []) as Array<Record<string, unknown> & { id: string }>).map(requestOf), single, today))
     if (single) out.push(...storeWaitRows(((storeData ?? []) as Array<Partial<PmStoreLine> & { id: string }>).map((d) => storeLineOf(d.id, d)), single, today))
-    if (finance && (booksOn || single)) {
+    if (!single && extra) out.push(...extra.filter((r) => r.projectId && nameOf.has(r.projectId)))
+    if (finance && (booksOn || single || openCerts)) {
       const events = ((evData ?? []) as unknown as PmEvent[]).filter((e) => nameOf.has(e.projectId))
       const posted = new Set(((jData ?? []) as Array<{ sourceId?: string }>).map((e) => e.sourceId || ""))
       const released = new Set(projects.filter((p) => p.retentionReleased).map((p) => p.id))
       const open = booksOn
         ? undefined
-        : new Set(((certData ?? []) as Array<{ seq?: number; status?: string }>).filter((c) => c.status === "appr" || c.status === "part").map((c) => `${single}:${c.seq ?? 0}`))
+        : single
+          ? new Set(((certData ?? []) as Array<{ seq?: number; status?: string }>).filter((c) => c.status === "appr" || c.status === "part").map((c) => `${single}:${c.seq ?? 0}`))
+          : openCerts
       out.push(...financeWaitRows({ events, posted, released, open, booksOff: !booksOn, today }))
     }
     if (crm) {
@@ -127,7 +138,7 @@ export function WaitingOnOthers({
       out.push(...crmWaitRows(files, today))
     }
     return out
-  }, [poData, reqData, storeData, evData, jData, certData, hoData, nameOf, projects, single, finance, booksOn, crm, locale, today])
+  }, [poData, reqData, storeData, evData, jData, certData, hoData, nameOf, projects, single, finance, booksOn, crm, extra, openCerts, locale, today])
 
   if (!rows.length) return null
   const view = waitingView(rows, showAll, cap)

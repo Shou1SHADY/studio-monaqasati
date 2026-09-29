@@ -39,7 +39,9 @@ import { fileDailyReport, openObstacle } from "@/lib/pm/site-writes"
 import { registerDocument } from "@/lib/pm/documents-writes"
 import { logLetter } from "@/lib/pm/correspondence-writes"
 import ProjectPage from "@/app/[locale]/(contractor)/contractor/projects/[id]/page"
+import ProjectsListPage from "@/app/[locale]/(contractor)/contractor/projects/page"
 import { PmPortfolioToday } from "@/components/pm/PmPortfolioToday"
+import { pmMoney } from "@/lib/pm/format"
 import { HandoverInbox } from "@/components/pm/HandoverInbox"
 
 installDomShims()
@@ -254,6 +256,7 @@ async function buildWorld() {
     advance: 0.1,
     retention: 0.05,
     note: null,
+    dealNo: "OP-2026/118",
     requestedBy: ORG,
     requestedByName: NAME.owner,
     createdAt: iso(-2),
@@ -461,6 +464,27 @@ describe("PM portfolio screens", () => {
     view.unmount()
   })
 
+  it.each(ROLES)("Portfolio list for %s: contract value = BOQ + approved variations; without money the tiles and figures stay, masked (V1-01, V1-02)", async (role) => {
+    setSignedIn(UID[role])
+    setPathname("/contractor/projects")
+    missingKeys.clear()
+    const view = render(<ProjectsListPage />)
+    await flush()
+    dump(role, "portfolio")
+    expect(text()).toContain("مجمع الياسمين السكني")
+    expect(text()).toContain("إجمالي قيمة عقودها")
+    expect(text()).toContain("قيمة العقد")
+    if (role === "site") {
+      expect(text()).toContain("•••")
+      expect(text()).not.toContain(RIYAL)
+    } else {
+      expect(text()).toContain(pmMoney(BUDGET + 85_000))
+      expect(text()).not.toContain("•••")
+    }
+    expect([...missingKeys]).toEqual([])
+    view.unmount()
+  })
+
   it.each(ROLES)("New projects renders for %s; the file is the addressed manager's and the owner's", async (role) => {
     setSignedIn(UID[role])
     setPathname("/contractor/projects/inbox")
@@ -472,6 +496,8 @@ describe("PM portfolio screens", () => {
     expect(text()).not.toMatch(/MISSING/)
     expect({ role, shown: text().includes("مدرسة الرياض الأهلية — المبنى الجديد") }).toEqual({ role, shown: role === "owner" || role === "pm" })
     expect({ role, accept: buttons().includes("اقبل وأنشئ المشروع") }).toEqual({ role, accept: role === "owner" || role === "pm" })
+    // The file card names the CRM deal it came from (V1-03).
+    expect({ role, deal: text().includes("الصفقة OP-2026/118") }).toEqual({ role, deal: role === "owner" || role === "pm" })
     view.unmount()
   })
 })
