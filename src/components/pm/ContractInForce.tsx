@@ -147,70 +147,6 @@ export function ContractInForce({
 
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <div className="min-w-0 space-y-4">
-          {drafts.length > 0 && (
-            <ul className="divide-y overflow-hidden rounded-xl border">
-              {drafts.map((a) => {
-                const mayWithdraw = open && mayWithdrawAddendum(access.ctx, access.uid ?? "", a.by)
-                const stale = staleChanges(a.changes, terms).length > 0
-                return (
-                  <DecisionRow
-                    key={a.id}
-                    severity="amber"
-                    icon={FileSignature}
-                    title={t("amend.awaiting", { no: addendumNo(a.seq) })}
-                    detail={
-                      <>
-                        <span className="block">
-                          {t("amend.drafted_by", {
-                            who: a.byName || "—",
-                            date: pmDate(a.day, locale),
-                            reason:
-                              a.reason === "other"
-                                ? t("amend.other_stated", {
-                                    text: a.reasonText ?? "",
-                                  })
-                                : t(`amend.reasons.${a.reason}`),
-                          })}
-                        </span>
-                        <TermChangeList changes={a.changes} className="mt-1 text-xs" />
-                        {a.note && (
-                          <span className="mt-1 block text-xs" dir="auto">
-                            {a.note}
-                          </span>
-                        )}
-                        <FileLinks files={a.files} className="mt-1" />
-                        {stale && (
-                          <Callout tone="block" className="mt-2 py-2 text-xs">
-                            {t("amend.stale_inline")}
-                          </Callout>
-                        )}
-                      </>
-                    }
-                    age={t("days", { count: draftAge(a.day, today) })}
-                    action={
-                      (canSign && !stale) || mayWithdraw ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {canSign && !stale && (
-                            <Button size="sm" onClick={() => setSigning(a)}>
-                              <PenLine size={14} className="me-1.5" aria-hidden="true" />
-                              {t("amend.sign")}
-                            </Button>
-                          )}
-                          {mayWithdraw && (
-                            <Button size="sm" variant="outline" onClick={() => setWithdrawing(a)}>
-                              <Undo2 size={14} className="me-1.5" aria-hidden="true" />
-                              {t("amend.withdraw")}
-                            </Button>
-                          )}
-                        </div>
-                      ) : undefined
-                    }
-                  />
-                )
-              })}
-            </ul>
-          )}
-
           <div className="flex flex-wrap items-center justify-between gap-2">
             <SegmentedNav
               ariaLabel={t("amend.views")}
@@ -303,6 +239,77 @@ export function ContractInForce({
             </div>
           )}
 
+          {drafts.length > 0 && (
+            <section className="space-y-2" aria-labelledby="addenda-drafts-title">
+              <div>
+                <h3 id="addenda-drafts-title" className="text-sm font-bold">
+                  {t("amend.drafts_title")}
+                </h3>
+                <p className="text-xs text-muted-foreground">{t("amend.drafts_sub")}</p>
+              </div>
+              <ul className="divide-y overflow-hidden rounded-xl border">
+                {drafts.map((a) => {
+                  const mayWithdraw = open && mayWithdrawAddendum(access.ctx, access.uid ?? "", a.by)
+                  const stale = staleChanges(a.changes, terms).length > 0
+                  return (
+                    <DecisionRow
+                      key={a.id}
+                      severity="amber"
+                      icon={FileSignature}
+                      title={t("amend.awaiting", { no: addendumNo(a.seq) })}
+                      detail={
+                        <>
+                          <span className="block">
+                            {t("amend.drafted_by", {
+                              who: a.byName || "—",
+                              date: pmDate(a.day, locale),
+                              reason:
+                                a.reason === "other"
+                                  ? t("amend.other_stated", {
+                                      text: a.reasonText ?? "",
+                                    })
+                                  : t(`amend.reasons.${a.reason}`),
+                            })}
+                          </span>
+                          <TermChangeList changes={a.changes} className="mt-1 text-xs" />
+                          {a.note && (
+                            <span className="mt-1 block text-xs" dir="auto">
+                              {a.note}
+                            </span>
+                          )}
+                          <FileLinks files={a.files} className="mt-1" />
+                          {stale && (
+                            <Callout tone="block" className="mt-2 py-2 text-xs">
+                              {t("amend.stale_inline")}
+                            </Callout>
+                          )}
+                        </>
+                      }
+                      age={t("days", { count: draftAge(a.day, today) })}
+                      action={
+                        (canSign && !stale) || mayWithdraw ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {canSign && !stale && (
+                              <Button size="sm" onClick={() => setSigning(a)}>
+                                <PenLine size={14} className="me-1.5" aria-hidden="true" />
+                                {t("amend.sign")}
+                              </Button>
+                            )}
+                            {mayWithdraw && (
+                              <Button size="sm" variant="outline" onClick={() => setWithdrawing(a)}>
+                                <Undo2 size={14} className="me-1.5" aria-hidden="true" />
+                                {t("amend.withdraw")}
+                              </Button>
+                            )}
+                          </div>
+                        ) : undefined
+                      }
+                    />
+                  )
+                })}
+              </ul>
+            </section>
+          )}
         </div>
         <div className="min-w-0 space-y-4">
           <section className="rounded-xl border p-3" aria-labelledby="contract-record-title">

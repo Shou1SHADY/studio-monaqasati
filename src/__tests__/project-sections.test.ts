@@ -66,9 +66,9 @@ describe("SECTION_REGISTRY", () => {
     })
   })
 
-  it("exactly contract and procure are required", () => {
+  it("exactly contract, procure and cost are required (cost control is core, prototype CAPS)", () => {
     const required = SECTION_IDS.filter((id) => SECTION_REGISTRY[id].required)
-    expect(required.sort()).toEqual(["contract", "procure"])
+    expect(required.sort()).toEqual(["contract", "cost", "procure"])
   })
 
   it("required sections have no dependsOn (nothing to cascade)", () => {
@@ -79,7 +79,7 @@ describe("SECTION_REGISTRY", () => {
 
   it("marks exactly the expected sections as built vs ghost", () => {
     const built = SECTION_IDS.filter((id) => SECTION_REGISTRY[id].status === "built").sort()
-    expect(built).toEqual(["collect", "contract", "daily", "docs", "hse", "ipc", "mfg", "procure", "receive", "rfi", "store", "subs", "wwp", "eqp", "vo", "progress", "claim", "subm", "petty", "price", "cvr", "match", "sched", "qa", "corr", "close", "zone"].sort())
+    expect(built).toEqual(["collect", "contract", "daily", "docs", "hse", "ipc", "mfg", "procure", "receive", "rfi", "store", "subs", "wwp", "eqp", "vo", "progress", "claim", "subm", "petty", "price", "cvr", "match", "sched", "qa", "corr", "close", "zone", "cost"].sort())
   })
 })
 
@@ -176,7 +176,7 @@ describe("cascadeDisable", () => {
 describe("defaultEnabledSections", () => {
   it("returns only the required sections", () => {
     const result = defaultEnabledSections()
-    expect(Array.from(result).sort()).toEqual(["contract", "procure"])
+    expect(Array.from(result).sort()).toEqual(["contract", "cost", "procure"])
   })
 
   it("returns a fresh Set each call (not a shared reference)", () => {

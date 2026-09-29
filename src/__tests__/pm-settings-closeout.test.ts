@@ -53,9 +53,9 @@ beforeEach(() => resetFakeDb())
 
 describe("closeout rows (C-37)", () => {
   it("store, subcontractors and letters join only when given, in the prototype's order", () => {
-    expect(closeoutRows(base).map((r) => r.key)).toEqual(["punch", "ncr", "prov", "final", "unpriced"])
+    expect(closeoutRows(base).map((r) => r.key)).toEqual(["punch", "ncr", "prov", "final"])
     const rows = closeoutRows({ ...base, storeLines: 0, subs: { due: 0, pending: 0 }, letters: [] })
-    expect(rows.map((r) => r.key)).toEqual(["punch", "ncr", "store", "prov", "final", "unpriced", "subs", "corr"])
+    expect(rows.map((r) => r.key)).toEqual(["punch", "ncr", "store", "prov", "final", "subs", "corr"])
     expect(closeBlocks(rows)).toEqual([])
   })
 
