@@ -31,12 +31,16 @@ import {
   dayBlocks,
   dayCost,
   dayLog,
+  dayRateOf,
   FUEL_LEVELS,
   handoverBlocks,
   hasMeter,
+  hoursRun,
   IDLE_ALERT_DAYS,
+  idleCharge,
   idleSince,
-  licenceState,
+  plantGates,
+  SERVICE_WARN_HOURS,
   offBlocks,
   OFF_REASONS,
   onSite,
@@ -48,6 +52,7 @@ import {
   plantCost,
   PM_PLANT,
   utilisation,
+  workedNear,
   type OffReason,
   type PlantCategory,
   type PlantCondition,
@@ -96,19 +101,24 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
     setMode(m)
   }
   const numOrNull = (v?: string) => (v === undefined || v.trim() === "" ? null : Number(v))
+  const fmt = (n: number) => n.toLocaleString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { maximumFractionDigits: 1 })
 
   const cat = (f.category as PlantCategory) || "light"
   const blocks: string[] = !mode
     ? []
     : mode.kind === "receive"
-      ? handoverBlocks({ archived: access.ctx.archived, name: f.name ?? "", qty: Number(f.qty || 0), from: f.from ?? "", to: f.to ?? "", category: cat, meter: numOrNull(f.meter), dayRate: numOrNull(f.rate), licenceTo: f.licence || null, condition: (f.condition as PlantCondition) || "ok", remark: f.remark, today })
+      ? handoverBlocks({ archived: access.ctx.archived, name: f.name ?? "", qty: Number(f.qty || 0), from: f.from ?? "", to: f.to ?? "", category: cat, meter: numOrNull(f.meter), dayRate: numOrNull(f.rate), licenceTo: f.licence || null, hercNo: f.herc, serviceAt: numOrNull(f.service), condition: (f.condition as PlantCondition) || "ok", remark: f.remark, today })
       : mode.kind === "day"
-        ? dayBlocks({ archived: access.ctx.archived, status: mode.p.status, day: f.day ?? "", from: mode.p.from, today, st: f.st })
+        ? dayBlocks({ archived: access.ctx.archived, status: mode.p.status, day: f.day ?? "", from: mode.p.from, today, st: f.st, hours: numOrNull(f.hours) })
         : mode.kind === "off"
           ? offBlocks({ archived: access.ctx.archived, status: mode.p.status, why: (f.why as OffReason) || null, whyText: f.whyText, ready: f.ready ?? "", today })
           : mode.kind === "desk"
             ? [...(f.no?.trim() ? [] : ["no_number"]), ...(f.on && f.on <= today ? [] : ["bad_day"])]
             : backBlocks({ archived: access.ctx.archived, plant: mode.p, meter: numOrNull(f.meter), condition: (f.condition as PlantCondition) || "ok", remark: f.remark })
+
+  const svcLeft = mode?.kind === "receive" && hasMeter(cat) && numOrNull(f.service) !== null && numOrNull(f.meter) !== null ? Number(f.service) - Number(f.meter) : null
+  const serviceSoon = svcLeft !== null && svcLeft > 0 && svcLeft <= SERVICE_WARN_HOURS ? svcLeft : null
+  const run = mode?.kind === "back" && hasMeter(mode.p.category) ? hoursRun(mode.p.handover.meter, numOrNull(f.meter)) : null
 
   const save = async () => {
     if (!firestore || !mode || blocks.length) return
@@ -126,6 +136,8 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
           from: f.from ?? today,
           to: f.to ?? today,
           licenceTo: f.licence || null,
+          hercNo: f.herc,
+          serviceAt: numOrNull(f.service),
           meter: numOrNull(f.meter),
           fuel: f.fuel,
           accessories: f.acc,
@@ -135,7 +147,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
         })
         toast({ title: t("plant.received", { no: seq }) })
       } else if (mode.kind === "day") {
-        await logPlantDay(firestore, access.ctx, projectId, mode.p.seq, { day: f.day ?? today, st: f.st as PlantDayState })
+        await logPlantDay(firestore, access.ctx, projectId, mode.p.seq, { day: f.day ?? today, st: f.st as PlantDayState, hours: f.st === "work" ? numOrNull(f.hours) : null })
         toast({ title: t("plant.logged") })
       } else if (mode.kind === "off") {
         await requestOffHire(firestore, access.ctx, projectId, actor, mode.p.seq, { ready: f.ready ?? today, why: (f.why as OffReason) || null, whyText: f.whyText })
@@ -228,7 +240,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
             const last = dayLog(p)[0]
             const since = idleSince(p)
             const late = overdueDays(p, today)
-            const lic = licenceState(p, today)
+            const gates = plantGates(p, today)
             const rated = p.category !== "tool" && (p.dayRate ?? 0) > 0
             return (
               <li key={p.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
@@ -252,18 +264,18 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                       </span>
                     </div>
                   )}
-                  {lic === "expired" && (
-                    <p className="mt-1 flex items-center gap-1 text-xs font-bold text-destructive">
-                      <X size={11} aria-hidden="true" />
-                      {t("plant.lic_expired")}
+                  {gates.map((g) => (
+                    <p key={g.k} className={cn("mt-1 flex items-center gap-1 text-xs font-bold", g.lv === "bad" ? "text-destructive" : "text-warning")}>
+                      {g.lv === "bad" ? <X size={11} aria-hidden="true" /> : <AlertTriangle size={11} aria-hidden="true" />}
+                      {g.k === "herc"
+                        ? t("plant.gate.herc")
+                        : g.k === "lic"
+                          ? g.lv === "bad"
+                            ? t("plant.lic_expired")
+                            : t("plant.lic_warn", { count: dayDiff(today, p.licenceTo ?? today) })
+                          : t(g.lv === "bad" ? "plant.gate.srv_over" : "plant.gate.srv_in", { h: fmt(g.hours) })}
                     </p>
-                  )}
-                  {lic === "warn" && (
-                    <p className="mt-1 flex items-center gap-1 text-xs font-bold text-warning">
-                      <AlertTriangle size={11} aria-hidden="true" />
-                      {t("plant.lic_warn", { count: dayDiff(today, p.licenceTo ?? today) })}
-                    </p>
-                  )}
+                  ))}
                   {since >= IDLE_ALERT_DAYS && <p className="mt-1 text-xs font-bold text-destructive">{t("plant.idle", { count: since })}</p>}
                   {late > 0 && <p className="mt-1 text-xs font-bold text-destructive">{t("plant.late", { count: late })}</p>}
                   {p.status === "req" && p.offReq && (
@@ -375,8 +387,15 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                     {money && cat !== "tool" && field("rate", t("plant.rate"), { type: "number", min: "0", dir: "ltr" })}
                     {hasMeter(cat) && field("licence", t("plant.licence"), { type: "date", dir: "ltr" })}
                   </div>
+                  {hasMeter(cat) && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {field("herc", t("plant.herc"), { dir: "ltr" })}
+                      {field("service", t("plant.service_at"), { type: "number", min: "0", dir: "ltr" })}
+                    </div>
+                  )}
                   <Callout tone="info">{t("plant.handover_note")}</Callout>
                   {noteFields(hasMeter(cat))}
+                  {serviceSoon !== null && <Callout tone="warn">{t("plant.gate.srv_in", { h: fmt(serviceSoon) })}</Callout>}
                 </>
               )}
               {mode.kind === "day" && (
@@ -384,21 +403,43 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                   <Callout tone="info">{t("plant.day_note")}</Callout>
                   {choice("st", t("plant.day_state"), PLANT_DAY_STATES, (o) => t(`plant.st.${o}`))}
                   {f.st && ["idle", "stby", "down"].includes(f.st) && <p className="-mt-2 text-[11px] text-muted-foreground">{t(`plant.st_hint.${f.st}`)}</p>}
-                  {field("day", t("plant.day"), { type: "date", dir: "ltr", max: today, min: mode.p.from })}
-                  {money && (mode.p.dayRate ?? 0) > 0 && f.st && f.day && (
-                    <div className="flex items-center justify-between rounded-xl border bg-muted/30 px-4 py-3 text-sm">
-                      <span>{t("plant.charged")}</span>
-                      <b className="tabular-nums" dir="ltr">
-                        {pmMoney(dayCost({ ...mode.p, days: { ...(mode.p.days ?? {}), [f.day]: f.st as PlantDayState } }, f.day))}
-                      </b>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {field("day", t("plant.day"), { type: "date", dir: "ltr", max: today, min: mode.p.from })}
+                    {f.st === "work" && field("hours", t("plant.hours"), { type: "number", min: "0", max: "24", step: "0.5", dir: "ltr" })}
+                  </div>
+                  {mode.p.category === "tool" ? (
+                    <Callout tone="info">{t("plant.day_tools")}</Callout>
+                  ) : !money || !dayRateOf(mode.p) ? (
+                    <Callout tone="info">{t("plant.day_rule")}</Callout>
+                  ) : f.st && f.day ? (
+                    <div className="divide-y rounded-xl border bg-muted/30 text-sm">
+                      <div className="flex items-center justify-between px-4 py-2">
+                        <span>{t("plant.day_rate")}</span>
+                        <span className="tabular-nums" dir="ltr">
+                          {pmMoney(dayRateOf(mode.p))}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-2 font-bold">
+                        <span>{t("plant.charged")}</span>
+                        <b className="tabular-nums" dir="ltr">
+                          {pmMoney(dayCost({ ...mode.p, days: { ...(mode.p.days ?? {}), [f.day]: f.st as PlantDayState } }, f.day))}
+                        </b>
+                      </div>
+                      {(f.st === "idle" || f.st === "stby") && (
+                        <p className="px-4 py-2 text-xs text-muted-foreground">{t(workedNear(mode.p, f.day) ? "plant.worked_near" : "plant.idle_two_thirds")}</p>
+                      )}
                     </div>
-                  )}
+                  ) : null}
                 </>
               )}
               {mode.kind === "off" && (
                 <>
                   <Callout tone="warn">{t("plant.off_note")}</Callout>
-                  {idleSince(mode.p) >= 3 && <Callout tone="warn">{t("plant.idle_warn", { count: idleSince(mode.p) })}</Callout>}
+                  {idleSince(mode.p) >= 3 && (
+                    <Callout tone="warn">
+                      {money && dayRateOf(mode.p) > 0 ? t("plant.idle_warn_money", { count: idleSince(mode.p), amount: pmMoney(idleCharge(mode.p)) }) : t("plant.idle_warn", { count: idleSince(mode.p) })}
+                    </Callout>
+                  )}
                   {field("ready", t("plant.ready"), { type: "date", dir: "ltr", min: today })}
                   <p className="-mt-2 text-[11px] text-muted-foreground">{t("plant.ready_hint")}</p>
                   {choice("why", t("plant.reason"), OFF_REASONS, (o) => t(`plant.off_why.${o}`))}
@@ -419,6 +460,14 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                   <Callout tone="info">{t("plant.back_note")}</Callout>
                   {hasMeter(mode.p.category) && mode.p.handover.meter != null && <p className="text-xs text-muted-foreground">{t("plant.was_meter", { meter: mode.p.handover.meter })}</p>}
                   {noteFields(hasMeter(mode.p.category))}
+                  {run !== null && (
+                    <div className="flex items-center justify-between rounded-xl border bg-muted/30 px-4 py-3 text-sm font-bold">
+                      <span>{t("plant.hours_run")}</span>
+                      <b className="tabular-nums" dir="ltr">
+                        {fmt(run)}
+                      </b>
+                    </div>
+                  )}
                 </>
               )}
               <BlockingReasons title={t("cannot_save")} reasons={blocks.map((b) => t(`plant.block.${b}`))} />

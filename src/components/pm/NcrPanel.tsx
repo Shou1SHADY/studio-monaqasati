@@ -27,8 +27,10 @@ import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { usePmProjectNo } from "@/hooks/usePmProjectNo"
 import { PmAccessError } from "@/lib/pm/access"
 import type { PmAttachment } from "@/lib/pm/attachments"
+import { projectDocNo } from "@/lib/pm/exec-numbers"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
 import { isOpenNcr, NCR_SEVERITIES, NCR_STATUSES, ncrBlocks, ncrCost, ncrNo, ncrStepBlocks, PM_NCRS, type NcrSeverity, type NcrStatus, type PmNcr } from "@/lib/pm/ncr"
 import { acceptNcr, PmNcrError, raiseNcr, submitNcrPlan, type NcrActor } from "@/lib/pm/ncr-writes"
@@ -54,6 +56,7 @@ export function NcrPanel({
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const firestore = useFirestore()
+  const projectNo = usePmProjectNo(projectId)
   const { toast } = useToast()
   const today = todayDay()
   const [raising, setRaising] = useState(false)
@@ -136,7 +139,7 @@ export function NcrPanel({
                 </span>
                 <div className="min-w-0 flex-1 basis-56">
                   <p className="text-sm font-bold" dir="auto">
-                    {t("ncr.no", { no: ncrNo(n.seq) })} — {n.what || itemName(n.itemId)}
+                    {t("ncr.no", { no: projectDocNo(projectNo, n.seq) })} — {n.what || itemName(n.itemId)}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground" dir="auto">
                     {n.itemId ? (
@@ -301,7 +304,7 @@ export function NcrPanel({
         <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("ncr.plan_title")}</DialogTitle>
-            <DialogDescription dir="auto">{planning ? `${t("ncr.no", { no: ncrNo(planning.seq) })} — ${planning.what || itemName(planning.itemId)}` : ""}</DialogDescription>
+            <DialogDescription dir="auto">{planning ? `${t("ncr.no", { no: projectDocNo(projectNo, planning.seq) })} — ${planning.what || itemName(planning.itemId)}` : ""}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
@@ -344,7 +347,7 @@ export function NcrPanel({
         <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("ncr.close_title")}</DialogTitle>
-            <DialogDescription dir="auto">{closing ? `${t("ncr.no", { no: ncrNo(closing.seq) })} — ${closing.what || itemName(closing.itemId)}` : ""}</DialogDescription>
+            <DialogDescription dir="auto">{closing ? `${t("ncr.no", { no: projectDocNo(projectNo, closing.seq) })} — ${closing.what || itemName(closing.itemId)}` : ""}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {closing?.plan && <Callout tone="info">{t("ncr.submitted_plan", { text: closing.plan.text })}</Callout>}
