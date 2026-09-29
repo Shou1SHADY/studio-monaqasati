@@ -276,6 +276,8 @@ function ReceiveOnSiteDialog({ projectId, orgId, r, access, actor, onClose }: { 
   const [rate, setRate] = useState("")
   const [meter, setMeter] = useState("")
   const [licence, setLicence] = useState("")
+  const [herc, setHerc] = useState("")
+  const [service, setService] = useState("")
   const [fuel, setFuel] = useState<string>("full")
   const [acc, setAcc] = useState("")
   const [cond, setCond] = useState<PlantCondition>("ok")
@@ -283,7 +285,7 @@ function ReceiveOnSiteDialog({ projectId, orgId, r, access, actor, onClose }: { 
   const [files, setFiles] = useState<PmAttachment[]>([])
   const [busy, setBusy] = useState(false)
   const numOrNull = (v: string) => (v.trim() === "" ? null : Number(v))
-  const blocks = handoverBlocks({ archived: access.ctx.archived, name, qty: r.qty, from, to, category: r.category, meter: numOrNull(meter), dayRate: numOrNull(rate), licenceTo: licence || null, condition: cond, remark, today })
+  const blocks = handoverBlocks({ archived: access.ctx.archived, name, qty: r.qty, from, to, category: r.category, meter: numOrNull(meter), dayRate: numOrNull(rate), licenceTo: licence || null, hercNo: herc, serviceAt: numOrNull(service), condition: cond, remark, today })
 
   const save = async () => {
     if (!firestore || blocks.length) return
@@ -300,6 +302,8 @@ function ReceiveOnSiteDialog({ projectId, orgId, r, access, actor, onClose }: { 
         from,
         to,
         licenceTo: licence || null,
+        hercNo: herc,
+        serviceAt: numOrNull(service),
         meter: numOrNull(meter),
         fuel,
         accessories: acc,
@@ -367,6 +371,14 @@ function ReceiveOnSiteDialog({ projectId, orgId, r, access, actor, onClose }: { 
                 <div className="space-y-1.5">
                   <Label htmlFor="rv-lic">{t("plantreq.rv.licence")}</Label>
                   <Input id="rv-lic" type="date" dir="ltr" value={licence} onChange={(e) => setLicence(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rv-herc">{t("plant.herc")} *</Label>
+                  <Input id="rv-herc" dir="ltr" value={herc} onChange={(e) => setHerc(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rv-svc">{t("plant.service_at")}</Label>
+                  <Input id="rv-svc" type="number" min={0} dir="ltr" value={service} onChange={(e) => setService(e.target.value)} />
                 </div>
               </>
             )}

@@ -25,8 +25,10 @@ import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { usePmProjectNo } from "@/hooks/usePmProjectNo"
 import { PmAccessError } from "@/lib/pm/access"
 import type { PmAttachment } from "@/lib/pm/attachments"
+import { projectDocNo } from "@/lib/pm/exec-numbers"
 import { pmDate, todayDay } from "@/lib/pm/format"
 import { isOpenPunch, PM_PUNCH, PUNCH_SEVERITIES, PUNCH_SOURCES, PUNCH_STATUSES, punchBlocks, punchNo, punchStepBlocks, type PunchItem, type PunchSeverity, type PunchSource, type PunchStatus } from "@/lib/pm/punch"
 import { PmPunchError, raisePunch, recordConfirmation, recordFix, type PunchActor } from "@/lib/pm/punch-writes"
@@ -41,6 +43,7 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const firestore = useFirestore()
+  const projectNo = usePmProjectNo(projectId)
   const { toast } = useToast()
   const today = todayDay()
   const [raising, setRaising] = useState(false)
@@ -193,7 +196,7 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0 flex-1 basis-56">
                       <p className="text-sm font-bold" dir="auto">
-                        {t("punch.no", { no: punchNo(p.seq) })} — {p.what}
+                        {t("punch.no", { no: projectDocNo(projectNo, p.seq) })} — {p.what}
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground" dir="auto">
                         {t("punch.line2", { location: p.location, party: partyName(p), date: pmDate(p.day, locale), who: p.byName || "—" })}
@@ -369,7 +372,7 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
         <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("punch.conf_title")}</DialogTitle>
-            <DialogDescription dir="auto">{confirming ? `${t("punch.no", { no: punchNo(confirming.seq) })} — ${confirming.what}` : ""}</DialogDescription>
+            <DialogDescription dir="auto">{confirming ? `${t("punch.no", { no: projectDocNo(projectNo, confirming.seq) })} — ${confirming.what}` : ""}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <Callout tone="info">{t("punch.conf_note")}</Callout>

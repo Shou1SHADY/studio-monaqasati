@@ -5,7 +5,7 @@
 // the project numbers the units it receives. Nothing is ever deleted. A unit
 // received against an equipment request closes that request in the same write.
 
-import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
+import { deleteField, doc, runTransaction, serverTimestamp, type FieldValue, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, type PmAction, type PmContext } from "./access"
 import { cleanAttachments, type PmAttachment } from "./attachments"
 import { todayDay } from "./format"
@@ -13,6 +13,7 @@ import {
   backBlocks,
   dayBlocks,
   handoverBlocks,
+  hasMeter,
   offBlocks,
   PM_PLANT,
   plantNo,
@@ -74,6 +75,10 @@ export interface HandoverInput extends NoteInput {
   from: string
   to: string
   licenceTo?: string | null
+  /** Heavy/lift: the regulator's registration number — none, and it is not received. */
+  hercNo?: string | null
+  /** Heavy/lift: the meter reading its next service is due at — at or below the handover reading, and it is not received. */
+  serviceAt?: number | null
   /** The equipment request it answers (`pmPlantRequests/{NN}`), when there is one. */
   requestSeq?: number | null
 }
@@ -96,7 +101,7 @@ export async function receivePlant(firestore: Firestore, ctx: PmContext, project
   await runTransaction(firestore, async (tx) => {
     const { ref, project, pm, fresh } = await readProject(tx, firestore, ctx, projectId, "plant.request")
     const today = todayDay()
-    const blocks = handoverBlocks({ archived: fresh.archived, name: input.name, qty: input.qty, from: input.from, to: input.to, category: input.category, meter: input.meter, dayRate: input.dayRate, licenceTo: input.licenceTo, condition: input.condition, remark: input.remark, today })
+    const blocks = handoverBlocks({ archived: fresh.archived, name: input.name, qty: input.qty, from: input.from, to: input.to, category: input.category, meter: input.meter, dayRate: input.dayRate, licenceTo: input.licenceTo, hercNo: input.hercNo, serviceAt: input.serviceAt, condition: input.condition, remark: input.remark, today })
     if (blocks.length) throw new PmPlantError("blocked", blocks)
     let reqRef: ReturnType<typeof doc> | null = null
     if (input.requestSeq) {
@@ -118,6 +123,8 @@ export async function receivePlant(firestore: Firestore, ctx: PmContext, project
       from: input.from,
       to: input.to,
       licenceTo: input.licenceTo || null,
+      hercNo: hasMeter(input.category) ? input.hercNo?.trim() || null : null,
+      serviceAt: hasMeter(input.category) && typeof input.serviceAt === "number" && Number.isFinite(input.serviceAt) ? input.serviceAt : null,
       status: "use",
       handover: note(input, actor, input.from),
       days: {},
@@ -135,14 +142,18 @@ export async function receivePlant(firestore: Firestore, ctx: PmContext, project
   return seq
 }
 
-/** Log what the unit did on a day — one of five states; a second entry for the day replaces the first. */
-export async function logPlantDay(firestore: Firestore, ctx: PmContext, projectId: string, seq: number, input: { day: string; st: PlantDayState }): Promise<void> {
+/** Log what the unit did on a day — one of five states, with the hours on a working day;
+ * a second entry for the day replaces the first. */
+export async function logPlantDay(firestore: Firestore, ctx: PmContext, projectId: string, seq: number, input: { day: string; st: PlantDayState; hours?: number | null }): Promise<void> {
   await runTransaction(firestore, async (tx) => {
     const { fresh } = await readProject(tx, firestore, ctx, projectId, "daily.write")
     const { ref, plant } = await readPlant(tx, firestore, projectId, seq)
-    const blocks = dayBlocks({ archived: fresh.archived, status: plant.status, day: input.day, from: plant.from, today: todayDay(), st: input.st })
+    const blocks = dayBlocks({ archived: fresh.archived, status: plant.status, day: input.day, from: plant.from, today: todayDay(), st: input.st, hours: input.hours })
     if (blocks.length) throw new PmPlantError("blocked", blocks)
-    tx.update(ref, { [`days.${input.day}`]: input.st, updatedAt: serverTimestamp() })
+    const patch: Record<string, FieldValue | string | number> = { [`days.${input.day}`]: input.st, updatedAt: serverTimestamp() }
+    if (input.st === "work" && input.hours != null) patch[`hours.${input.day}`] = input.hours
+    else if (plant.hours?.[input.day] != null) patch[`hours.${input.day}`] = deleteField()
+    tx.update(ref, patch)
   })
 }
 
