@@ -744,6 +744,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // PM consultant portal links (src/lib/pm/portal-links.ts): the token and
+    // the hashed sessions are the consultant's keys to a project, and the
+    // mobile number is his — only the server reads or writes them.
+    match /pmPortalLinks/{linkId} {
+      allow read, write: if false;
+    }
+
     match /otpChallenges/{challengeId} {
       allow read, write: if false;
     }

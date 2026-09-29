@@ -8,6 +8,8 @@ describe("Sentry never sees a guest link's token", () => {
     expect(scrubTokens("/api/receipt-links/abc/code")).toBe("/api/receipt-links/[token]/code")
     expect(scrubTokens("/api/guest-offer/abc/action")).toBe("/api/guest-offer/[token]/action")
     expect(scrubTokens("/api/rfq-share/abc/offer")).toBe("/api/rfq-share/[token]/offer")
+    expect(scrubTokens("https://mdmaktech.sa/en/portal/abc")).toBe("https://mdmaktech.sa/en/portal/[token]")
+    expect(scrubTokens("/api/pm-portal/abc/answer")).toBe("/api/pm-portal/[token]/answer")
   })
 
   it("leaves portal routes alone", () => {

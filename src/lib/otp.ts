@@ -21,7 +21,7 @@ export const OTP_MAX_ATTEMPTS = 5
 export const OTP_RESEND_MS = 60 * 1000
 
 /** What a code protects. A challenge issued for one purpose never answers another. */
-export type OtpPurpose = "receipt_sign" | "guest_offer"
+export type OtpPurpose = "receipt_sign" | "guest_offer" | "pm_portal"
 
 export interface OtpChallenge {
   purpose: OtpPurpose
