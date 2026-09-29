@@ -5,7 +5,7 @@
 
 import { collection, doc, getDocs, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
-import { finalBlocks, handoverEvent, progressOf, provisionalBlocks, retentionClaimable, type Acceptances } from "./acceptance"
+import { finalBlocks, handoverEvent, progressOf, provisionalBlocks, retentionIncrement, type Acceptances } from "./acceptance"
 import { readContract } from "./addendum-writes"
 import { eventDocId, PM_EVENTS } from "./events"
 import { todayDay } from "./format"
@@ -27,6 +27,9 @@ export interface AcceptanceActor {
 }
 
 /** Progress by value, read from the project's BOQ now. */
+/** Retention already sent claimable by earlier handover events (provisional, delivery units). */
+export const freedOf = (pm: object) => Number((pm as { retentionFreed?: number }).retentionFreed) || 0
+
 export async function readProgress(firestore: Firestore, projectId: string): Promise<number | null> {
   const snap = await getDocs(collection(firestore, "projects", projectId, "boqItems"))
   return progressOf(snap.docs.map((d) => measuredItem(d.id, d.data() as Record<string, unknown>)))
@@ -56,11 +59,11 @@ export async function recordProvisional(firestore: Firestore, ctx: PmContext, pr
       projectNo: pm.no ?? projectId,
       stage: "prov",
       on,
-      claimable: retentionClaimable(pm.retentionHeld ?? 0, terms.retentionRelease, next),
+      claimable: retentionIncrement(pm.retentionHeld ?? 0, terms.retentionRelease, next, freedOf(pm)),
       by: actor.uid,
       at: new Date().toISOString(),
     })
-    tx.update(pRef, { pm: { ...pm, acceptances: next }, updatedAt: serverTimestamp() })
+    tx.update(pRef, { pm: { ...pm, acceptances: next, retentionFreed: freedOf(pm) + event.amount }, updatedAt: serverTimestamp() })
     tx.set(doc(firestore, PM_EVENTS, eventDocId(event.key)), event)
   })
 }
@@ -84,11 +87,11 @@ export async function recordFinal(firestore: Firestore, ctx: PmContext, projectI
       projectNo: pm.no ?? projectId,
       stage: "final",
       on,
-      claimable: retentionClaimable(pm.retentionHeld ?? 0, terms.retentionRelease, next),
+      claimable: retentionIncrement(pm.retentionHeld ?? 0, terms.retentionRelease, next, freedOf(pm)),
       by: actor.uid,
       at: new Date().toISOString(),
     })
-    tx.update(pRef, { pm: { ...pm, acceptances: next, lifecycle: "done" }, status: "remaining_payment", updatedAt: serverTimestamp() })
+    tx.update(pRef, { pm: { ...pm, acceptances: next, lifecycle: "done", retentionFreed: freedOf(pm) + event.amount }, status: "remaining_payment", updatedAt: serverTimestamp() })
     tx.set(doc(firestore, PM_EVENTS, eventDocId(event.key)), event)
   })
 }

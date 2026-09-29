@@ -73,5 +73,8 @@ describe("the writes", () => {
     const p = readDoc<Record<string, any>>("projects/p1") as Record<string, any>
     expect(p.pm).toMatchObject({ lifecycle: "done", acceptances: { final: { by: "pm1" } } })
     expect(listCollection<{ key: string }>(PM_EVENTS).map((e) => e.key).sort()).toEqual(["prj:HND:PJ-2026/004:final", "prj:HND:PJ-2026/004:prov"])
+    // Finance posts each event: the final carries only the half not yet sent — never the whole held again.
+    expect(readDoc(`${PM_EVENTS}/prj:HND:PJ-2026_004:final`)).toMatchObject({ amount: 20_000 })
+    expect(p.pm.retentionFreed).toBe(40_000)
   })
 })

@@ -4,7 +4,8 @@
 // days) and, on a "half" release term, makes half the retention claimable at
 // Finance. Final needs the provisional first and no open punch item; it moves
 // the project to "handed over" and the rest of the retention becomes claimable.
-// Each sends prj:HND:<project>:<prov|final> once. Claiming and collecting the
+// Each sends prj:HND:<project>:<prov|final> once, carrying only what it newly
+// makes claimable (`pm.retentionFreed` keeps the running total). Claiming and collecting the
 // retention are Finance's (S-02). Pure: no I/O.
 
 import type { PmEvent } from "./events"
@@ -76,6 +77,13 @@ export function retentionClaimable(held: number, release: RetentionRelease, acce
   if (acceptances.final) return held
   if (acceptances.prov && release === "half") return Math.round(held * 50) / 100
   return 0
+}
+
+/** What ONE handover event makes newly claimable: the cumulative claimable less
+ * what earlier events (the provisional, delivery units) already sent — Finance
+ * posts each event's amount, so a cumulative figure would release twice. */
+export function retentionIncrement(held: number, release: RetentionRelease, acceptances: Acceptances, freed: number): number {
+  return Math.max(0, Math.round((retentionClaimable(held, release, acceptances) - freed) * 100) / 100)
 }
 
 /** prj:HND:<project>:<prov|final> — the key carries the delivery unit when there

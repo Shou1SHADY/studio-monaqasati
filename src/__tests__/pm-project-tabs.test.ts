@@ -15,6 +15,9 @@ describe("the project's seven tabs", () => {
     expect(groupOf("pmToday")).toBe("pulse")
     expect(groupOf("boq")).toBe("contract")
     expect(groupOf("pmMeasure")).toBe("exec")
+    // The site record (daily, obstacles, safety, weekly plan, plant) and the delivery units are Execution's.
+    expect(groupOf("pmSite")).toBe("exec")
+    expect(groupOf("pmUnits")).toBe("exec")
     expect(groupOf("rfqs")).toBe("supply")
     expect(groupOf("ipc")).toBe("money")
     expect(groupOf("team")).toBe("settings")
