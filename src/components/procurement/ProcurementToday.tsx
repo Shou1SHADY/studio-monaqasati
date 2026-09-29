@@ -13,6 +13,7 @@ import { useLocale, useTranslations } from "next-intl"
 import { AlertTriangle, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Clock, Hourglass, Info, Loader2, Truck } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
+import { useProcActor } from "@/hooks/useProcActor"
 import { useProcTodayWorld } from "@/hooks/useProcurementShell"
 import { ORDER_HREF, RECEIPT_HREF, TASK_GROUPS, todayTasks, todayWaits, type Task, type TaskGroup, type TaskSeverity, type Wait } from "@/lib/procurement/today"
 import { displayDocNumber } from "@/lib/procurement/format"
@@ -77,7 +78,10 @@ export function ProcurementToday() {
   const tasks = useMemo(() => todayTasks(world, actor, now), [world, actor, now])
   const waits = useMemo(() => todayWaits(world, actor, now), [world, actor, now])
   const arriving = useMemo(() => arrivingWithinWeek(world, now, ORDER_HREF, RECEIPT_HREF), [world, now])
-  const firstName = (actor.name || "").replace(/^(أ|م|د)\.\s*/, "").split(/\s+/)[0] || ""
+  const { orgName } = useProcActor()
+  // An account named only by its company has no first name to greet.
+  const personal = actor.name && actor.name.trim() !== orgName.trim() ? actor.name : ""
+  const firstName = personal.replace(/^(أ|م|د)\.\s*/, "").split(/\s+/)[0] || ""
 
   const [group, setGroup] = useState<TaskGroup | "all">("all")
   const [allTasks, setAllTasks] = useState(false)

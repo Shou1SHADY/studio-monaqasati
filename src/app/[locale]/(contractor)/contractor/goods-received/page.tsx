@@ -19,6 +19,7 @@ import { AlertTriangle, BellRing, ClipboardCheck, Download, ExternalLink, Forwar
 import { ForwardReceiptDialog } from "@/components/procurement/ForwardReceiptDialog"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
+import { useDateText } from "@/components/procurement/PoBits"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { ManualReceiptDialog } from "@/components/procurement/ManualReceiptDialog"
 import { RECORDED_TONE, ReceiptDrawer, ReceiptStatePill, RecordedByPill } from "@/components/procurement/ReceiptDrawer"
@@ -480,6 +481,7 @@ interface IncomingListProps {
 function IncomingList(props: IncomingListProps) {
   const { rows, all, locale, now, forwardWindowDays, routing, canReceive, canFollow, reminding, receivers, placeOf, warehouseName, projectName, onReceive, onForward, onRemind, onOpen } = props
   const t = useTranslations("Portal.ProcReceipts")
+  const dayText = useDateText()
   const tp = useTranslations("Portal.Procurement")
   const tc = useTranslations("Portal.Contractor")
   const when = useWhenText()
@@ -599,7 +601,7 @@ function IncomingList(props: IncomingListProps) {
                 </div>
                 <div className="flex shrink-0 flex-col gap-2 sm:items-end">
                   <div className="flex items-center gap-2 sm:flex-col sm:items-end">
-                    <span className="text-sm font-bold tabular-nums" dir="ltr">{r.day || "—"}</span>
+                    <span className="text-sm font-bold tabular-nums">{r.day ? dayText(r.day) : "—"}</span>
                     <span className="text-[11px] text-muted-foreground">{notice ? (notice.deliveryWindow ? tp(`deliveryWindow.${notice.deliveryWindow}` as "deliveryWindow.morning") : "") : t("incoming.supplierDate")}</span>
                     <IncomingPillBadge pill={pill} />
                   </div>
