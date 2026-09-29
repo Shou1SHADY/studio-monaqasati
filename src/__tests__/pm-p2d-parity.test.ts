@@ -183,9 +183,9 @@ describe("the closeout tab and panel count by one rule", () => {
     { key: "vo_pending" as const, ok: false },
     { key: "final" as const, ok: true },
   ]
-  it("hides the client-money rows from whoever does not see the client side, never vo_pending", () => {
-    expect(openCloseRows(rows, true)).toBe(3)
-    expect(openCloseRows(rows, false)).toBe(2)
-    expect(shownCloseRows(rows, false).map((r) => r.key)).toEqual(["punch", "vo_pending", "final"])
+  it("hides the client-money rows from whoever does not see the client side; a pending VO is open money, not a row", () => {
+    expect(openCloseRows(rows, true)).toBe(2)
+    expect(openCloseRows(rows, false)).toBe(1)
+    expect(shownCloseRows(rows, false).map((r) => r.key)).toEqual(["punch", "final"])
   })
 })

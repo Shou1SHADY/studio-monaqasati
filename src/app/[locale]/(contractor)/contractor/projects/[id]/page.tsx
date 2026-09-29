@@ -20,7 +20,8 @@ import { PunchPanel } from "@/components/pm/PunchPanel"
 import { SubcontractorsPanel } from "@/components/pm/SubcontractorsPanel"
 import { SitePanel } from "@/components/pm/SitePanel"
 import { PmSubTabNav } from "@/components/pm/PmSubTabNav"
-import { pmTabVisible } from "@/lib/pm/sections"
+import { pmTabVisible, qualityPanelsOn } from "@/lib/pm/sections"
+import type { ProjectKind } from "@/lib/pm/handover"
 import { PmBoqPanel } from "@/components/pm/PmBoqPanel"
 import { PmInfoPanel, PmStartPanel, PmTermsGlance } from "@/components/pm/PmFilePanels"
 import { ItpPanel } from "@/components/pm/ItpPanel"
@@ -2035,7 +2036,8 @@ export default function ProjectDetailPage() {
   )
 
   const pmOrg = (project as { organizationId?: string } | null)?.organizationId || myOrgId
-  const pmItemCost = usePmItemActualCost(projectId, pmOrg || null, boqItems.map((i) => i.id), (project as { warehouseId?: string } | null)?.warehouseId ?? null, pmAccess.has("money") && isPmProject)
+  // Every PM viewer: the BOQ's «بنود تنزف» count and «ينزف» pill need the booked cost; only money holders see an amount.
+  const pmItemCost = usePmItemActualCost(projectId, pmOrg || null, boqItems.map((i) => i.id), (project as { warehouseId?: string } | null)?.warehouseId ?? null, isPmProject)
 
   if (projectLoading) {
     return (
@@ -2109,21 +2111,25 @@ export default function ProjectDetailPage() {
     store: enabledSectionIds.includes("store"),
     zone: enabledSectionIds.includes("zone"),
   }
-  // The handover and the close-out (the prototype's fileInfo «الاستلام والضمان» and
-  // «إغلاق المشروع وأرشفته»): in their own tab when the close section is on, else
-  // on the File's info tab — a project must always be able to hand over and close.
-  const pmHandoverPanel = typedProject.pm?.terms ? (
-    <HandoverPanel
-      projectId={projectId}
-      lifecycle={lifecycleOf(typedProject)}
-      original={typedProject.pm.original ?? typedProject.pm.terms}
-      acceptances={(typedProject.pm as { acceptances?: Acceptances }).acceptances ?? {}}
-      retentionHeld={typedProject.pm.retentionHeld ?? 0}
-      items={pmItems}
-      access={pmAccess}
-      actor={pmActor}
-    />
-  ) : null
+  // The handover & defects period sits on the File's info tab for every started,
+  // unarchived project (prototype fileInfo → handPanel); the close-out has its own
+  // tab when the close section is on, else it joins the info tab — a project must
+  // always be able to hand over and close.
+  const pmHandoverPanel =
+    typedProject.pm?.terms && lifecycleOf(typedProject) !== "plan" && !pmAccess.ctx.archived ? (
+      <HandoverPanel
+        projectId={projectId}
+        lifecycle={lifecycleOf(typedProject)}
+        original={typedProject.pm.original ?? typedProject.pm.terms}
+        acceptances={(typedProject.pm as { acceptances?: Acceptances }).acceptances ?? {}}
+        retentionHeld={typedProject.pm.retentionHeld ?? 0}
+        retentionReleased={(typedProject.pm as { retentionReleased?: boolean }).retentionReleased === true}
+        retentionHalfReleased={(typedProject.pm as { retentionHalfReleased?: boolean }).retentionHalfReleased === true}
+        items={pmItems}
+        access={pmAccess}
+        actor={pmActor}
+      />
+    ) : null
   const pmCloseoutPanel = typedProject.pm?.terms ? (
     <CloseoutPanel
       projectId={projectId}
@@ -2466,7 +2472,7 @@ export default function ProjectDetailPage() {
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-4">
                 <PmInfoPanel projectId={projectId} project={typedProject as ComponentProps<typeof PmInfoPanel>["project"]} access={pmAccess} />
-                {!pmOn.close && lifecycleOf(typedProject) !== "plan" && pmHandoverPanel}
+                {pmHandoverPanel}
                 {!pmOn.close && lifecycleOf(typedProject) === "done" && pmAccess.has("money") && pmCloseoutPanel}
                 <PmStartPanel projectId={projectId} project={typedProject as ComponentProps<typeof PmStartPanel>["project"]} boqItems={boqItems.length} access={pmAccess} />
               </div>
@@ -3590,10 +3596,7 @@ export default function ProjectDetailPage() {
           />
         )}
         {current === "pmClose" && typedProject.pm?.terms && (
-          <div className="space-y-4">
-            {pmHandoverPanel}
-            {pmCloseoutPanel}
-          </div>
+          <div className="space-y-4">{pmCloseoutPanel}</div>
         )}
         {current === "pmQa" && typedProject.pm && (
           <div className="space-y-4">
@@ -3601,8 +3604,12 @@ export default function ProjectDetailPage() {
               <InspectionsPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} access={pmAccess} actor={pmActor} bare onItemsChanged={() => void loadBoqItems()} unitsOn={pmOn.zone} />
               <PunchPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} access={pmAccess} actor={pmActor} bare unitsOn={pmOn.zone} />
             </div>
-            <ItpPanel projectId={projectId} items={pmItems} access={pmAccess} actor={pmActor} />
-            <NcrPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} access={pmAccess} actor={pmActor} />
+            {qualityPanelsOn((typedProject.pm as { kind?: ProjectKind | null }).kind, pmCount("itpCount") + pmCount("ncrCount")) && (
+              <>
+                <ItpPanel projectId={projectId} items={pmItems} access={pmAccess} actor={pmActor} />
+                <NcrPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} access={pmAccess} actor={pmActor} />
+              </>
+            )}
           </div>
         )}
 
@@ -3641,7 +3648,7 @@ export default function ProjectDetailPage() {
               totals={typedProject.pm as { retentionHeld?: number; advanceRecovered?: number; cutPool?: number }}
               retentionReleased={Boolean((typedProject.pm as { retentionReleased?: boolean }).retentionReleased)}
               showCollection={enabledSectionIds.includes("collect" as SectionId)}
-              onOpenHandover={() => handleTabChange("pmClose")}
+              onOpenHandover={() => handleTabChange("info")}
               items={pmItems}
               access={pmAccess}
               actor={pmActor}

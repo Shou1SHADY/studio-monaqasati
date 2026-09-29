@@ -43,6 +43,7 @@ import {
   type SectionLogEntry,
   type SectionOffReason,
 } from "@/lib/pm/sections-governance"
+import { notBuiltYet } from "@/lib/pm/sections"
 import { cascadeDisable, cascadeEnable, SECTION_GROUPS, SECTION_REGISTRY, sectionDescKey, sectionLabelKey, type SectionId } from "@/lib/project-sections"
 import { cn } from "@/lib/utils"
 
@@ -69,7 +70,7 @@ export function SectionsPanel({
   const canSwitch = access.allowed("sections.manage")
   const enabled = useMemo(() => new Set((project.enabledSections ?? []) as SectionId[]), [project.enabledSections])
   const built = builtSections()
-  const onCount = built.filter((id) => enabled.has(id)).length
+  const onCount = built.filter((id) => enabled.has(id) || SECTION_REGISTRY[id].required).length
   const name = (id: string) => (id in SECTION_REGISTRY ? tShared(sectionLabelKey(id as SectionId)) : id)
 
   const refresh = useCallback(() => {
@@ -100,7 +101,7 @@ export function SectionsPanel({
   }
 
   const log = sectionLogRows(project.pm?.secLog)
-  const soon = unbuiltSections()
+  const soon = notBuiltYet(unbuiltSections())
   const soonOurs = soon.filter((id) => !SECTION_OWNER[id])
   const soonElsewhere = soon.filter((id) => SECTION_OWNER[id])
   const censusText = (id: SectionId) =>

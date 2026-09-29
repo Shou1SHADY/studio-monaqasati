@@ -1,10 +1,11 @@
 "use client"
 
-// File › Handover on a PM 1.0 project (WF-25). Provisional handover at ≥ 99%
-// progress starts the defects period from the contract in force; final
-// acceptance needs the provisional and a closed punch list. Each tells Finance
-// once (prj:HND); the retention they make claimable is shown to money holders —
-// claiming it is Finance's.
+// File › Contract details › Handover & defects period on a PM 1.0 project
+// (WF-25, prototype handPanel). Provisional handover at ≥ 99% progress starts
+// the defects period from the contract in force; final acceptance needs the
+// provisional and a closed punch list. Each tells Finance once (prj:HND); where
+// the retention stands is shown to money holders — claiming and releasing it
+// are Finance's.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -24,6 +25,7 @@ import { defectsEnd, defectsLeft, finalBlocks, progressOf, provisionalBlocks, PR
 import { PmAcceptanceError, recordFinal, recordProvisional, type AcceptanceActor } from "@/lib/pm/acceptance-writes"
 import { inForce, PM_ADDENDA, type PmAddendum } from "@/lib/pm/addenda"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
+import { retentionPhase } from "@/lib/pm/retention-phase"
 import { isOpenPunch, PM_PUNCH, type PunchItem } from "@/lib/pm/punch"
 import type { ContractTerms } from "@/lib/pm/terms"
 import { cn } from "@/lib/utils"
@@ -37,12 +39,17 @@ export function HandoverPanel({
   items,
   access,
   actor,
+  retentionReleased = false,
+  retentionHalfReleased = false,
 }: {
   projectId: string
   lifecycle: string
   original: ContractTerms
   acceptances: Acceptances
   retentionHeld: number
+  /** Finance's facts: the whole retention, or the provisional half, has been released. */
+  retentionReleased?: boolean
+  retentionHalfReleased?: boolean
   items: Array<{ quantity: number; rate: number; executed: number }>
   access: PmAccess
   actor: AcceptanceActor
@@ -68,6 +75,7 @@ export function HandoverPanel({
   const finB = finalBlocks({ archived, lifecycle, acceptances, openPunch, defectsEnd: dlpEnd, today: todayDay() })
   const dlpOver = dlpEnd ? dlpEnd <= todayDay() : false
   const left = dlpEnd ? defectsLeft(dlpEnd, todayDay()) : null
+  const phase = retentionPhase({ acceptances, release: terms.retentionRelease, halfReleased: retentionHalfReleased, released: retentionReleased })
   const sent = <SourceBadge module="payments" label={t("hnd.sent_finance")} className="ms-1.5" />
 
   const run = async (which: "prov" | "final") => {
@@ -90,6 +98,7 @@ export function HandoverPanel({
 
   return (
     <Panel title={t("hnd.title")} icon={KeyRound}>
+      <p className="mb-3 text-xs text-muted-foreground">{t("hnd.sub")}</p>
       <div className="grid gap-4 md:grid-cols-2">
         <section className="rounded-xl border p-3">
           <h4 className="flex items-center gap-2 text-sm font-bold">
@@ -173,7 +182,16 @@ export function HandoverPanel({
 
       {access.has("client") && access.has("money") && retentionHeld > 0 && (
         <div className="mt-4 rounded-xl border p-3">
-          <KeyValueRow label={t("hnd.ret_held")} value={pmMoney(retentionHeld)} ltr />
+          <KeyValueRow
+            label={t("hnd.ret_held")}
+            value={
+              <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                <span dir="ltr">{pmMoney(retentionHeld)}</span>
+                <span className="text-xs font-normal text-muted-foreground">· {t(`hnd.ret_phase.${phase}`)}</span>
+                <SourceBadge module="payments" label={t("money.from_finance")} />
+              </span>
+            }
+          />
           <KeyValueRow label={t("hnd.ret_claimable", { rule: t(`terms.opt.retentionRelease.${terms.retentionRelease}`) })} value={pmMoney(retentionClaimable(retentionHeld, terms.retentionRelease, acceptances))} ltr strong />
           <p className="mt-1 text-xs text-muted-foreground">{t("hnd.ret_note")}</p>
         </div>

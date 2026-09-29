@@ -51,7 +51,7 @@ export const SECTION_REGISTRY: Record<SectionId, SectionDef> = {
 
   invoice: { id: "invoice", group: "money", required: false, dependsOn: ["receive"], stages: ["inv"], reconciliationId: "r4", source: "auto", status: "ghost", tabRoute: "invoices" },
   pay: { id: "pay", group: "money", required: false, dependsOn: ["invoice"], stages: ["paid"], reconciliationId: "r7", source: "auto", status: "ghost", tabRoute: "payments" },
-  cost: { id: "cost", group: "money", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "auto", status: "ghost", tabRoute: "cost" },
+  cost: { id: "cost", group: "money", required: true, dependsOn: [], stages: [], reconciliationId: null, source: "auto", status: "built", tabRoute: null },
   ipc: { id: "ipc", group: "money", required: false, dependsOn: ["progress"], stages: ["claim"], reconciliationId: "r5", source: "mix", status: "built", tabRoute: "ipc" },
   collect: { id: "collect", group: "money", required: false, dependsOn: ["ipc"], stages: ["coll"], reconciliationId: "r6", source: "mix", status: "built", tabRoute: "ipc" },
   cvr: { id: "cvr", group: "money", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "mix", status: "built", tabRoute: null },
