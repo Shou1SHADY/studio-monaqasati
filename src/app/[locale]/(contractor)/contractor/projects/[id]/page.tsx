@@ -925,6 +925,7 @@ export default function ProjectDetailPage() {
         pmSample: data.pmSample === true,
         pmSub: data.pmSub ?? null,
         billedQuantity: Number(data.billedQuantity) || 0,
+        estCost: Number(data.estCost) || 0,
       }
     })
     const groups: BoqGroupMeta[] = groupsSnap.docs.map((d) => {

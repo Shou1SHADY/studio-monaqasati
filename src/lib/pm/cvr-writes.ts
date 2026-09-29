@@ -28,7 +28,7 @@ export async function approveReconciliation(
   ctx: PmContext,
   projectId: string,
   actor: { uid: string; name: string | null },
-  cost: Pick<ProjectCost, "forecastCost" | "contract" | "actual" | "forecastMargin">
+  cost: Pick<ProjectCost, "forecastCost" | "contract" | "actual" | "forecastMargin" | "estimatedLines">
 ): Promise<ApprovedEstimate> {
   let out: ApprovedEstimate = { v: 0, on: "", by: "", rev: 0 }
   await runTransaction(firestore, async (tx) => {
@@ -40,7 +40,7 @@ export async function approveReconciliation(
     if (!pm) throw new PmCvrError("not_pm_project")
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "reconciliation.manage")
-    const blocks = estimateBlocks({ archived: fresh.archived, lifecycle: lifecycleOf(project), estimate: cost.forecastCost })
+    const blocks = estimateBlocks({ archived: fresh.archived, lifecycle: lifecycleOf(project), estimate: cost.forecastCost, estimatedLines: cost.estimatedLines })
     if (blocks.length) throw new PmCvrError("blocked", blocks)
     const rev = (pm.budCount ?? 0) + 1
     const eac: ApprovedEstimate = { v: Math.round(cost.forecastCost * 100) / 100, on: todayDay(), by: actor.uid, byName: actor.name, rev }

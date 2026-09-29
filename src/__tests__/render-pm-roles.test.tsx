@@ -183,6 +183,8 @@ async function buildWorld() {
       unit: i.unit,
       quantity: i.qty,
       unitPrice: i.rate,
+      // Every prototype BOQ line carries an estimated unit cost (ucost) — here 80% of the rate.
+      estCost: r2(i.rate * 0.8),
       totalPrice: r2(i.qty * i.rate),
       executedQuantity: i.exec,
       billedQuantity: billed.get(i.id) ?? 0,

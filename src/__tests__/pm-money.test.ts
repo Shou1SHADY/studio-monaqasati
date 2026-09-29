@@ -187,7 +187,7 @@ describe("approving the reconciliation (CVR-01 → prj:BUD)", () => {
   })
 
   it("keeps the estimate on the project and appends one event per approval", async () => {
-    const cost = { forecastCost: 800_000, contract: 1_000_000, actual: 300_000, forecastMargin: 200_000 }
+    const cost = { forecastCost: 800_000, contract: 1_000_000, actual: 300_000, forecastMargin: 200_000, estimatedLines: 4 }
     await approveReconciliation(db, pm, "p1", { uid: "pm1", name: "Abdullah" }, cost)
     await approveReconciliation(db, pm, "p1", { uid: "pm1", name: "Abdullah" }, { ...cost, forecastCost: 820_000 })
     const block = (readDoc<Record<string, { eac: { v: number; rev: number }; budCount: number }>>("projects/p1") as Record<string, { eac: { v: number; rev: number }; budCount: number }>).pm
@@ -198,6 +198,10 @@ describe("approving the reconciliation (CVR-01 → prj:BUD)", () => {
   })
 
   it("only approve may approve it", async () => {
-    await expect(approveReconciliation(db, qs, "p1", { uid: "qs1", name: "Huda" }, { forecastCost: 1, contract: 1, actual: 0, forecastMargin: 0 })).rejects.toBeInstanceOf(PmAccessError)
+    await expect(approveReconciliation(db, qs, "p1", { uid: "qs1", name: "Huda" }, { forecastCost: 1, contract: 1, actual: 0, forecastMargin: 0, estimatedLines: 1 })).rejects.toBeInstanceOf(PmAccessError)
+  })
+
+  it("refuses an estimate when no BOQ line carries an estimated cost (UAT click-through)", async () => {
+    await expect(approveReconciliation(db, pm, "p1", { uid: "pm1", name: "Abdullah" }, { forecastCost: 62_000, contract: 1, actual: 62_000, forecastMargin: 0, estimatedLines: 0 })).rejects.toMatchObject({ blocks: ["no_budget"] })
   })
 })

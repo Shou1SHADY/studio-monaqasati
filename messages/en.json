@@ -14266,7 +14266,8 @@
         "proof": "Proof behind it: {list}",
         "sheet_value": "Sheet value",
         "unpriced_warn": "It contains unpriced items: quantities are recorded and consume materials, but carry no value in the sheet or a certificate until priced.",
-        "not_self": "You measure but do not approve — the sheet goes to the project manager, and nothing moves or enters a certificate before approval."
+        "not_self": "You measure but do not approve — the sheet goes to the project manager, and nothing moves or enters a certificate before approval.",
+        "last_billed_nodate": "Last measurement billed: certificate {no}."
       },
       "unknown_state": "Unknown state",
       "wir": {
@@ -16691,7 +16692,8 @@
           "block": {
             "archived": "The project is archived",
             "not_started": "The project has not started",
-            "no_estimate": "There is no estimate to approve"
+            "no_estimate": "There is no estimate to approve",
+            "no_budget": "No line carries an estimated cost"
           },
           "approve_title": "Approve and send the forecast to Finance",
           "last_approved": "last approved {date} — {who}",
@@ -16725,7 +16727,9 @@
             "fcost": "Forecast cost",
             "fmargin": "Forecast margin"
           },
-          "footer": "“Budget of executed” covers items only · approved variations, work not tied to an item and the projected penalty are in the total forecast"
+          "footer": "“Budget of executed” covers items only · approved variations, work not tied to an item and the projected penalty are in the total forecast",
+          "no_budget_title": "No estimated cost on the BOQ yet",
+          "no_budget": "The reconciliation compares each line's estimated cost with what it actually costs. Price the estimates on the BOQ first («سعّره» or the import) — without them there is no margin to forecast and nothing to send Finance."
         }
       },
       "head": {

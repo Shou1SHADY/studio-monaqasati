@@ -137,7 +137,9 @@ export function MeasurementPanel({
     <div className="space-y-4">
       <Callout tone="info">
         {t("meas.intro")}
-        {lastIpc && lastIpc.seq > 0 ? ` ${t("meas.last_billed", { no: certificateNo(lastIpc.seq), date: pmDate(lastIpc.on, locale) })}` : ""}
+        {lastIpc && lastIpc.seq > 0
+          ? ` ${lastIpc.on ? t("meas.last_billed", { no: certificateNo(lastIpc.seq), date: pmDate(lastIpc.on, locale) }) : t("meas.last_billed_nodate", { no: certificateNo(lastIpc.seq) })}`
+          : ""}
       </Callout>
 
       <Panel

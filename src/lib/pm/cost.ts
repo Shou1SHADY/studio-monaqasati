@@ -306,6 +306,8 @@ export interface ProjectCost {
   /** Budget of executed ÷ actual on estimated lines: below 1, every budget riyal costs more. */
   cpi: number
   unestimated: number
+  /** Lines carrying an estimated cost — none means there is nothing to reconcile against. */
+  estimatedLines: number
 }
 
 /** The project roll-up (CST-03, CVR-01). Approved variations add their value to
@@ -351,6 +353,7 @@ export function projectCost(input: {
     penalty,
     cpi: estimatedActual > 0 ? sum((c) => (c.budgetExecuted !== null && c.actual > 0 ? c.budgetExecuted : 0)) / estimatedActual : 1,
     unestimated: input.items.filter((i) => !(i.estCost > 0)).length,
+    estimatedLines: input.items.filter((i) => i.estCost > 0).length,
   }
 }
 
@@ -374,13 +377,15 @@ export function estimateAge(e: Pick<ApprovedEstimate, "on"> | null | undefined, 
   return Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${e.on.slice(0, 10)}T00:00:00Z`)) / 86_400_000)
 }
 
-export type EstimateBlock = "archived" | "not_started" | "no_estimate"
+export type EstimateBlock = "archived" | "not_started" | "no_estimate" | "no_budget"
 
-export function estimateBlocks(input: { archived: boolean; lifecycle: string; estimate: number }): EstimateBlock[] {
+export function estimateBlocks(input: { archived: boolean; lifecycle: string; estimate: number; estimatedLines?: number }): EstimateBlock[] {
   const out: EstimateBlock[] = []
   if (input.archived) out.push("archived")
   else if (input.lifecycle === "plan") out.push("not_started")
-  if (!(input.estimate > 0)) out.push("no_estimate")
+  // No line carries an estimated cost: the forecast would be actuals alone — not an estimate to send Finance.
+  if (input.estimatedLines === 0) out.push("no_budget")
+  else if (!(input.estimate > 0)) out.push("no_estimate")
   return out
 }
 

@@ -99,7 +99,8 @@ export function CvrPanel({
   const stale = age !== null && age > EAC_STALE_DAYS
   const change = eac ? c.forecastCost - eac.v : 0
   const canApprove = !access.ctx.archived && access.allowed("reconciliation.manage")
-  const blocks = estimateBlocks({ archived: access.ctx.archived, lifecycle, estimate: c.forecastCost })
+  const blocks = estimateBlocks({ archived: access.ctx.archived, lifecycle, estimate: c.forecastCost, estimatedLines: c.estimatedLines })
+  const noBudget = c.estimatedLines === 0
   const fmTone = c.forecastMargin <= 0 || c.forecastMargin < c.plannedMargin * 0.75 ? "bad" : "good"
 
   const approve = async () => {
@@ -119,7 +120,7 @@ export function CvrPanel({
   return (
     <div className="space-y-4">
       <Panel title={t("money.cvr.approve_title")} icon={ShieldCheck} actions={<span className="text-xs text-muted-foreground">{eac ? t("money.cvr.last_approved", { date: pmDate(eac.on, locale), who: eac.byName || "—" }) : t("money.cvr.never")}</span>}>
-        <KeyValueRow label={t("money.cvr.eac_today")} value={pmMoney(c.forecastCost)} ltr strong />
+        <KeyValueRow label={t("money.cvr.eac_today")} value={noBudget ? "—" : pmMoney(c.forecastCost)} ltr strong />
         {eac && (
           <>
             <KeyValueRow label={t("money.cvr.eac_finance")} value={pmMoney(eac.v)} ltr />
@@ -147,8 +148,11 @@ export function CvrPanel({
       </Panel>
 
       <Callout tone="info">{t("money.cvr.intro")}</Callout>
-      {c.unestimated > 0 && <Callout tone="warn">{t("money.cost.some_unestimated", { count: c.unestimated })}</Callout>}
+      {noBudget && <Callout tone="block" title={t("money.cvr.no_budget_title")}>{t("money.cvr.no_budget")}</Callout>}
+      {!noBudget && c.unestimated > 0 && <Callout tone="warn">{t("money.cost.some_unestimated", { count: c.unestimated })}</Callout>}
 
+      {!noBudget && (
+      <>
       <div className="grid gap-3 sm:grid-cols-3">
         <Tile icon={ClipboardList} label={t("money.cvr.planned")} value={pmMoney(c.plannedMargin)} note={t("money.cvr.of_contract", { pct: c.contract ? pct((c.plannedMargin / c.contract) * 100) : "—" })} />
         <Tile
@@ -235,6 +239,8 @@ export function CvrPanel({
         </div>
         <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">{t("money.cvr.footer")}</p>
       </Panel>
+      </>
+      )}
     </div>
   )
 }
