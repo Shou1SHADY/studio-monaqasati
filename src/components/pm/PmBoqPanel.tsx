@@ -5,7 +5,8 @@
 // the one write here is pricing an unpriced line by its agreed rate («سعّره»),
 // and importing a BOQ into a project that has none. Money columns are for
 // holders of money — the site engineer sees quantities and progress, and •••
-// where a riyal would be. A bleeding line (actual unit cost > estimate + 2%)
+// where a riyal would be; the view chips (bleeding, unbilled) and the «ينزف»
+// pill carry no amount, so he sees them too (prototype scopeBOQ). A bleeding line (actual unit cost > estimate + 2%)
 // needs a booked cost: the lead passes it as `actualCost` when the cost
 // section reports it; without it the margin is taken on the budget.
 
@@ -165,26 +166,18 @@ export function PmBoqPanel({
               count: counts.all,
               tone: "mute",
             },
-            ...(money
-              ? [
-                  {
-                    id: "leak",
-                    label: t("boq.view.leak"),
-                    count: counts.leak,
-                    tone: counts.leak ? ("bad" as const) : ("mute" as const),
-                  },
-                ]
-              : []),
-            ...(money
-              ? [
-                  {
-                    id: "ub",
-                    label: t("boq.view.ub"),
-                    count: counts.ub,
-                    tone: counts.ub ? ("warn" as const) : ("mute" as const),
-                  },
-                ]
-              : []),
+            {
+              id: "leak",
+              label: t("boq.view.leak"),
+              count: counts.leak,
+              tone: counts.leak ? "bad" : "mute",
+            },
+            {
+              id: "ub",
+              label: t("boq.view.ub"),
+              count: counts.ub,
+              tone: counts.ub ? "warn" : "mute",
+            },
             {
               id: "ns",
               label: t("boq.view.ns"),
@@ -347,7 +340,7 @@ function BoqGroupRows({
                     {t("boq.price_it")}
                   </Button>
                 )}
-                {money && lineBleeding(b) && (
+                {lineBleeding(b) && (
                   <StatusPill tone="bad" className="px-1.5 py-0 text-[10px]">
                     <Flame size={10} aria-hidden="true" />
                     {t("boq.bleeding")}
@@ -458,7 +451,7 @@ function ItemDrawer({ projectId, orgId, line, lines, money, onClose }: { project
               <span dir="ltr">{line.code}</span>
             </StatusPill>
             {line.division && <span dir="auto">{line.division}</span>}
-            {money && lineBleeding(line) && (
+            {lineBleeding(line) && (
               <StatusPill tone="bad">
                 <Flame size={11} aria-hidden="true" />
                 {t("boq.bleeding")}

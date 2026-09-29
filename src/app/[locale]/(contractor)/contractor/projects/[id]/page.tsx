@@ -2036,7 +2036,8 @@ export default function ProjectDetailPage() {
   )
 
   const pmOrg = (project as { organizationId?: string } | null)?.organizationId || myOrgId
-  const pmItemCost = usePmItemActualCost(projectId, pmOrg || null, boqItems.map((i) => i.id), (project as { warehouseId?: string } | null)?.warehouseId ?? null, pmAccess.has("money") && isPmProject)
+  // Every PM viewer: the BOQ's «بنود تنزف» count and «ينزف» pill need the booked cost; only money holders see an amount.
+  const pmItemCost = usePmItemActualCost(projectId, pmOrg || null, boqItems.map((i) => i.id), (project as { warehouseId?: string } | null)?.warehouseId ?? null, isPmProject)
 
   if (projectLoading) {
     return (
