@@ -15454,7 +15454,7 @@
           "finance": "Finance",
           "manufacturing": "Manufacturing"
         },
-        "never_deletes": "Switching off hides and silences; it never deletes. Money and custody block it outright: no record of stock in the store, a subcontractor still owed, or an uncollected certificate is ever hidden.",
+        "never_deletes": "Switching off hides and silences; it never deletes. Money and custody block it outright: no record of stock in the store, plant in your custody, a subcontractor still owed, or an uncollected certificate is ever hidden.",
         "read_only": "Only the project manager (approve) switches sections.",
         "on_done": "“{name}” enabled",
         "on_with": "“{name}” on, with its prerequisite: {list}",
