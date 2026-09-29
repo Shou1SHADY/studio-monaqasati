@@ -72,6 +72,7 @@ const NO_OFFERS: never[] = []
 function ExtendBody({ target, actor, options, orgId, onOpenChange }: { target: ExtendTarget; actor: RfqWriteActor; options: Option[]; orgId: string; onOpenChange: (open: boolean) => void }) {
   const t = useTranslations("Portal.Procurement")
   const tr = useTranslations("Portal.Procurement.rfqextras")
+  const tShared = useTranslations("Portal.Shared")
   const firestore = useFirestore()
   const { toast } = useToast()
   const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
@@ -105,7 +106,7 @@ function ExtendBody({ target, actor, options, orgId, onOpenChange }: { target: E
         onSubmit={form.handleSubmit(async (v) => {
           if (!firestore) return
           try {
-            const added = await extendRfq(firestore, actor, target.id, { deadline: v.deadline, addSupplierOrgIds: v.add.filter((id) => !blockOf(id)) })
+            const added = await extendRfq(firestore, actor, target.id, { deadline: v.deadline, addSupplierOrgIds: v.add.filter((id) => !blockOf(id)) }, new Date(), tShared)
             toast({ title: t("rfqpo.extend.done", { count: added }) })
             onOpenChange(false)
           } catch (err) {

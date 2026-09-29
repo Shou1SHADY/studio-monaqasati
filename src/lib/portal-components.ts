@@ -198,7 +198,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
             icon: FileText,
             requiredAnyPermission: PROC_TAB_GATES.rfqs,
             children: [
-              { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: FilePlus, requiredPermission: "rfq.create" },
+              { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: FilePlus, requiredAnyPermission: ["rfq.create", "offers.accept", "po.approve"] },
               { titleKey: "contractor_purchase_requests", href: "/contractor/rfqs/requests", icon: Inbox, requiredAnyPermission: PROC_TAB_GATES.requests },
             ],
           },

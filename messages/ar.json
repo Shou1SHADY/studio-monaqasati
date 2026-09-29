@@ -8401,7 +8401,9 @@
       "acc_src_pm_sub_payment": "سداد مقاول باطن",
       "acc_src_pm_cash": "مشتريات نثرية للموقع",
       "acc_src_pm_loss": "فاقد مخزن الموقع",
-      "acc_src_pm_xfer": "نقل مواد بين المشاريع"
+      "acc_src_pm_xfer": "نقل مواد بين المشاريع",
+      "pn_rfq_invited_title": "دعوة لتقديم عرض",
+      "pn_rfq_invited": "دُعيت لتقديم عرض في «{rfq}» حتى {date}"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",

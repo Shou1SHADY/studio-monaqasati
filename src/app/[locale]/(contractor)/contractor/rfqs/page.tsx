@@ -83,7 +83,7 @@ export default function ContractorRfqsPage() {
   const runs = runsRfqs(runner)
   const ownerReads = ownerReadsRfqs(runner)
   const actsOn = (rfq: RfqRow) => actsOnRfq(rfq, runner)
-  const canCreate = runs && (can("rfq.create") || can("projects.publish"))
+  const canCreate = runs && (can("rfq.create") || can("projects.publish") || can("offers.accept") || can("po.approve"))
   const [pages, setPages] = useState(1)
   const { profile } = useResolvedProfile(isUserLoading ? null : user?.uid)
 

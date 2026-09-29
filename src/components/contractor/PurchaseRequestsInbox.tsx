@@ -71,7 +71,7 @@ export function PurchaseRequestsInbox() {
   const today = todayOf(now)
 
   const ownerRO = procActor.isOwner && desk.ownerHasTeam
-  const canStartRfq = !ownerRO && (procActor.isOwner || can("rfq.manage") || can("rfq.create"))
+  const canStartRfq = !ownerRO && (procActor.isOwner || can("rfq.manage") || can("rfq.create") || can("offers.accept") || can("po.approve"))
   const canOrder = !ownerRO && (procActor.isOwner || procActor.canPrepare)
   const canAct = canStartRfq || canOrder
   const canMarkArrived = !ownerRO && (procActor.isOwner || can("rfq.manage") || can("warehouses.manage"))

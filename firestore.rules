@@ -432,8 +432,11 @@ service cloud.firestore {
               && get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.organizationId == getOrganizationId()
             )
           )
+          // Whoever sources raises an RFQ: rfq.create, or the manager / a buyer (rfq-access.ts).
           && (hasRfqPermission(request.resource.data, 'rfq.create')
-              || hasRfqPermission(request.resource.data, 'projects.publish'))
+              || hasRfqPermission(request.resource.data, 'projects.publish')
+              || hasRfqPermission(request.resource.data, 'offers.accept')
+              || hasRfqPermission(request.resource.data, 'po.approve'))
         );
       // Org members / admins can update everything, but re-verify projectId ownership
       // on every update too (not just create) so an RFQ can't be re-pointed at a

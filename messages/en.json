@@ -8401,7 +8401,9 @@
       "acc_src_pm_sub_payment": "Subcontractor payment",
       "acc_src_pm_cash": "Site petty purchase",
       "acc_src_pm_loss": "Site store loss",
-      "acc_src_pm_xfer": "Material moved between projects"
+      "acc_src_pm_xfer": "Material moved between projects",
+      "pn_rfq_invited_title": "Invitation to quote",
+      "pn_rfq_invited": "You were invited to quote on «{rfq}» by {date}"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
