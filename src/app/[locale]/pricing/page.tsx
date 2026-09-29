@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { getTranslations } from 'next-intl/server';
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { buildPageMetadata } from '@/lib/seo';
+import { messageList } from '@/lib/message-list';
 import type { Metadata } from 'next';
 
 type Props = {
@@ -49,7 +50,7 @@ export default function Pricing() {
               <span className="text-5xl font-black">{t("free")}</span>
             </div>
             <ul className="space-y-4 mb-10 flex-1">
-              {t.raw("free_features").map((feature: string) => (
+              {messageList(t.raw("free_features")).map((feature) => (
                 <li key={feature} className="flex items-center gap-3 text-slate-300">
                   <CheckCircle2 size={18} className="text-sky-400 shrink-0" />
                   <span>{feature}</span>
@@ -72,7 +73,7 @@ export default function Pricing() {
               <span className="text-5xl font-black text-white">{t("contact_us")}</span>
             </div>
             <ul className="space-y-4 mb-10 flex-1">
-              {t.raw("growth_features").map((feature: string) => (
+              {messageList(t.raw("growth_features")).map((feature) => (
                 <li key={feature} className="flex items-center gap-3 text-white">
                   <CheckCircle2 size={18} className="text-sky-300 shrink-0" />
                   <span>{feature}</span>
@@ -92,7 +93,7 @@ export default function Pricing() {
               <span className="text-5xl font-black">{t("custom")}</span>
             </div>
             <ul className="space-y-4 mb-10 flex-1">
-              {t.raw("enterprise_features").map((feature: string) => (
+              {messageList(t.raw("enterprise_features")).map((feature) => (
                 <li key={feature} className="flex items-center gap-3 text-slate-300">
                   <CheckCircle2 size={18} className="text-sky-400 shrink-0" />
                   <span>{feature}</span>
