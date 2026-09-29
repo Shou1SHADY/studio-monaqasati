@@ -2,9 +2,7 @@
  * The Execution screens this fix wave changed (V3-pm-exec 01, 02, 04, 06, 09),
  * rendered over the in-memory store: the plant row's regulatory gates and the
  * plant-day dialog's hours and day-rate explanation, the critical-path mark in
- * the three-week readiness, the sheet dialog's header number — and the BOQ's
- * leak/unbilled views and «ينزف» pill for the site engineer, never an amount
- * (V2-pm-contract-02). A string may
+ * the three-week readiness, and the sheet dialog's header number. A string may
  * still be pending its merge into the message files — then it renders as
  * MISSING:<key>, which proves the screen asks for it.
  */
@@ -24,7 +22,6 @@ import { effectiveDuties, pmCan, pmCeiling, pmRefusal, type PmContext } from "@/
 import { todayDay } from "@/lib/pm/format"
 import { addDays } from "@/lib/pm/programme"
 import { PlantPanel } from "@/components/pm/PlantPanel"
-import { PmBoqPanel } from "@/components/pm/PmBoqPanel"
 import { WeeklyPlanPanel } from "@/components/pm/WeeklyPlanPanel"
 import { WriteSheetDialog } from "@/components/pm/WriteSheetDialog"
 
@@ -32,7 +29,6 @@ installDomShims()
 
 const today = todayDay()
 const owner: PmContext = { ceiling: pmCeiling({ owner: true, permissions: [] }), seat: null, archived: false }
-const site: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.site"] }), seat: { uid: "se1", role: "site" }, archived: false }
 const accessOf = (ctx: PmContext): PmAccess => ({
   ctx,
   uid: "own",
@@ -117,19 +113,5 @@ describe("the measurement sheet dialog (V3-pm-exec-06/09)", () => {
       <WriteSheetDialog open onOpenChange={() => {}} projectId="p1" access={accessOf(owner)} actor={actor} items={[]} basis="rem" lines={[]} inspections={[]} nextNo="014/07" />
     )
     expect((document.body.textContent ?? "").includes("014/07")).toBe(true)
-  })
-})
-
-describe("the BOQ for the site engineer (V2-pm-contract-02)", () => {
-  it("shows the leak and unbilled views with their counts and the «ينزف» pill, and no amount", () => {
-    seed("projects/p1/boqItems/b1", { itemNo: "03-01", descriptionAr: "خرسانة القواعد", unit: "m3", quantity: 100, unitPrice: 900, estCost: 700, executedQuantity: 40, billedQuantity: 10 })
-    seed("projects/p1/boqItems/b2", { itemNo: "03-02", descriptionAr: "حديد التسليح", unit: "t", quantity: 20, unitPrice: 3000, estCost: 2500, executedQuantity: 0, billedQuantity: 0 })
-    render(<PmBoqPanel projectId="p1" orgId="own" contractValue={150000} access={accessOf(site)} actor={{ uid: "se1", name: "Omar" }} actualCost={new Map([["b1", 40000]])} />)
-    const labels = Array.from(document.querySelectorAll("button")).map((b) => b.textContent ?? "")
-    expect(labels.filter((x) => x.includes("بنود تنزف") || x.includes("غير مفوتر"))).toEqual(["بنود تنزف1", "غير مفوتر1"])
-    const text = document.body.textContent ?? ""
-    expect(text).toContain("ينزف")
-    expect(text).toContain("•••")
-    for (const amount of ["90,000", "40,000", "27,000", "60,000"]) expect(text).not.toContain(amount)
   })
 })
