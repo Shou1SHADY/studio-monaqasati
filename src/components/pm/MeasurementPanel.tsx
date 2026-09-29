@@ -21,6 +21,7 @@ import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { usePmUnits } from "@/hooks/usePmUnits"
 import { PmAccessError } from "@/lib/pm/access"
 import { certificateNo } from "@/lib/pm/certificate"
 import { pmDate, pmMoney } from "@/lib/pm/format"
@@ -46,6 +47,7 @@ export function MeasurementPanel({
   lastIpc,
   onItemsChanged,
   startMeasuring,
+  unitsOn,
 }: {
   projectId: string
   /** For attachments; without it the sheet saves without files. */
@@ -59,6 +61,8 @@ export function MeasurementPanel({
   onItemsChanged?: () => void
   /** Opened from the head's «قياس»: the writer is open on arrival. */
   startMeasuring?: boolean
+  /** The delivery-units section is on: each line may name its unit. */
+  unitsOn?: boolean
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
@@ -70,6 +74,11 @@ export function MeasurementPanel({
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [all, setAll] = useState(false)
+  const [unitOf, setUnitOf] = useState<Record<string, string>>({})
+  const { units } = usePmUnits(projectId, Boolean(unitsOn))
+  const openUnits = units.filter((u) => !u.ho)
+  const unitName = (id: string) => units.find((u) => u.id === id)?.name ?? null
+  const allocated = (itemId: string) => openUnits.some((u) => (u.lines[itemId]?.q ?? 0) > 0)
 
   const sheetsQuery = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_SHEETS) : null), [firestore, projectId])
   const wirQuery = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_INSPECTIONS) : null), [firestore, projectId])
@@ -89,10 +98,11 @@ export function MeasurementPanel({
   const lines = useMemo(
     () =>
       Object.entries(qty)
-        .map(([itemId, v]) => ({ itemId, code: byId.get(itemId)?.code ?? null, qty: v.trim() === "" ? 0 : Number(v) }))
+        .map(([itemId, v]) => ({ itemId, code: byId.get(itemId)?.code ?? null, qty: v.trim() === "" ? 0 : Number(v), unit: unitOf[itemId] || null }))
         .filter((l) => l.qty !== 0),
-    [qty, byId]
+    [qty, byId, unitOf]
   )
+  const noUnit = lines.filter((l) => l.qty > 0 && !l.unit && allocated(l.itemId)).length
   const sum = measureSummary(basis, lines, items)
   const blocked = sum.over > 0 || sum.noPass > 0 || sum.count === 0 || lines.some((l) => !(l.qty > 0))
   const fmt = (n: number) => n.toLocaleString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { maximumFractionDigits: 2 })
@@ -123,13 +133,14 @@ export function MeasurementPanel({
       .map((l) => {
         const i = byId.get(l.itemId)
         const q = s.status === "ok" && l.approved != null ? l.approved : l.qty
-        return `${i?.code ?? l.code ?? "?"} × ${fmt(q)}${s.status === "ok" && l.approved != null && l.approved < l.qty ? ` (${t("meas.cut", { qty: l.qty })})` : ""}`
+        return `${i?.code ?? l.code ?? "?"}${l.unit && unitName(l.unit) ? ` (${unitName(l.unit)})` : ""} × ${fmt(q)}${s.status === "ok" && l.approved != null && l.approved < l.qty ? ` (${t("meas.cut", { qty: l.qty })})` : ""}`
       })
       .join(" · ")
 
   const stop = () => {
     setMeasuring(false)
     setQty({})
+    setUnitOf({})
     setSearch("")
   }
 
@@ -224,6 +235,24 @@ export function MeasurementPanel({
                     </div>
                     {measuring ? (
                       <div className="flex items-center gap-2">
+                        {openUnits.length > 0 && allocated(i.id) && (
+                          <select
+                            aria-label={t("units.field")}
+                            value={unitOf[i.id] ?? ""}
+                            onChange={(e) => setUnitOf((u) => ({ ...u, [i.id]: e.target.value }))}
+                            className={cn(
+                              "h-11 rounded-md border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              n > 0 && !unitOf[i.id] && "border-warning"
+                            )}
+                          >
+                            <option value="">{t("units.meas_pick")}</option>
+                            {openUnits.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                         <Input
                           aria-label={t("meas.qty_for", { code: i.code })}
                           type="number"
@@ -268,6 +297,7 @@ export function MeasurementPanel({
                   {sum.unpriced > 0 && <p className="text-xs font-semibold text-warning">{t("meas.sum_unpriced", { count: sum.unpriced })}</p>}
                   {sum.over > 0 && <p className="text-xs font-semibold text-destructive">{t("meas.sum_over", { count: sum.over })}</p>}
                   {sum.noPass > 0 && <p className="text-xs font-semibold text-destructive">{t("meas.sum_nopass", { count: sum.noPass })}</p>}
+                  {noUnit > 0 && <p className="text-xs font-semibold text-warning">{t("units.meas_unassigned", { count: noUnit })}</p>}
                 </dl>
                 <Button onClick={() => setConfirming(true)} disabled={blocked} variant={blocked ? "outline" : "default"}>
                   <Check size={15} className="me-1.5" aria-hidden="true" />
@@ -358,6 +388,7 @@ export function MeasurementPanel({
           basis={basis}
           lines={lines}
           inspections={inspections}
+          unitName={unitName}
           onSaved={() => {
             stop()
             onItemsChanged?.()

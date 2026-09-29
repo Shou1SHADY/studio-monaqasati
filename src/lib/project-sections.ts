@@ -32,7 +32,7 @@ export const SECTION_IDS = [
   "contract", "procure", "docs",
   "receive", "store", "mats", "subm", "petty", "price",
   "invoice", "pay", "cost", "ipc", "collect", "cvr", "match",
-  "mfg", "daily", "progress", "sched", "vo", "claim", "subs", "wwp", "eqp",
+  "mfg", "daily", "progress", "zone", "sched", "vo", "claim", "subs", "wwp", "eqp",
   "qa", "hse", "rfi", "corr", "close",
 ] as const
 export type SectionId = (typeof SECTION_IDS)[number]
@@ -60,6 +60,7 @@ export const SECTION_REGISTRY: Record<SectionId, SectionDef> = {
   mfg: { id: "mfg", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: "mfg" },
   daily: { id: "daily", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: "daily" },
   progress: { id: "progress", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: "progress" },
+  zone: { id: "zone", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: null },
   sched: { id: "sched", group: "execution", required: false, dependsOn: ["progress"], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: null },
   vo: { id: "vo", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "mix", status: "built", tabRoute: "vo" },
   claim: { id: "claim", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: null },

@@ -32,10 +32,12 @@ import { isOpenPunch, PM_PUNCH, PUNCH_SEVERITIES, PUNCH_SOURCES, PUNCH_STATUSES,
 import { PmPunchError, raisePunch, recordConfirmation, recordFix, type PunchActor } from "@/lib/pm/punch-writes"
 import { cn } from "@/lib/utils"
 import { AttachmentTag, PmFilesField } from "./PmAttachments"
+import { usePmUnits } from "@/hooks/usePmUnits"
+import { UnitField } from "./UnitField"
 
 const TONE: Record<PunchStatus, PillTone> = { open: "warn", fix: "info", done: "ok" }
 
-export function PunchPanel({ projectId, orgId, access, actor, bare }: { projectId: string; orgId?: string | null; access: PmAccess; actor: PunchActor; bare?: boolean }) {
+export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: { projectId: string; orgId?: string | null; access: PmAccess; actor: PunchActor; bare?: boolean; unitsOn?: boolean }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const firestore = useFirestore()
@@ -44,6 +46,8 @@ export function PunchPanel({ projectId, orgId, access, actor, bare }: { projectI
   const [raising, setRaising] = useState(false)
   const [what, setWhat] = useState("")
   const [location, setLocation] = useState("")
+  const [unit, setUnit] = useState("")
+  const { units } = usePmUnits(projectId, Boolean(unitsOn))
   const [severity, setSeverity] = useState<PunchSeverity>("b")
   const [source, setSource] = useState<PunchSource>("cons")
   const [sourceText, setSourceText] = useState("")
@@ -86,11 +90,12 @@ export function PunchPanel({ projectId, orgId, access, actor, bare }: { projectI
     if (!firestore || blocks.length) return
     setBusy("raise")
     try {
-      const seq = await raisePunch(firestore, access.ctx, projectId, actor, { what, location, severity, source, sourceText, day, files })
+      const seq = await raisePunch(firestore, access.ctx, projectId, actor, { what, location, unit, severity, source, sourceText, day, files })
       toast({ title: t("punch.raised", { no: punchNo(seq) }) })
       setRaising(false)
       setWhat("")
       setLocation("")
+      setUnit("")
       setSourceText("")
       setDay(todayDay())
       setFiles([])
@@ -266,6 +271,7 @@ export function PunchPanel({ projectId, orgId, access, actor, bare }: { projectI
                 <Input id="pn-loc" value={location} placeholder={t("punch.location_ph")} onChange={(e) => setLocation(e.target.value)} disabled={busy !== null} dir="auto" />
                 <p className="text-[11px] text-muted-foreground">{t("punch.location_hint")}</p>
               </div>
+              <UnitField id="pn-unit" units={units} value={unit} onChange={setUnit} disabled={busy !== null} />
               <div className="space-y-1.5">
                 <Label htmlFor="pn-day">{t("punch.day")}</Label>
                 <Input id="pn-day" type="date" dir="ltr" max={today} value={day} onChange={(e) => setDay(e.target.value)} disabled={busy !== null} />

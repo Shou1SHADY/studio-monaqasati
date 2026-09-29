@@ -27,6 +27,7 @@ import { todayDay } from "@/lib/pm/format"
 import { matchRows } from "@/lib/pm/match"
 import { PM_NCRS, type NcrStatus } from "@/lib/pm/ncr"
 import type { ProjectGroup } from "@/lib/pm/project-tabs"
+import { isOpenOrFailed, PM_INSPECTIONS, type PmInspection } from "@/lib/pm/inspection"
 import { PM_PUNCH, type PunchStatus } from "@/lib/pm/punch"
 import { PM_STORE, storeGroup, storeLineOf, storeState, type PmStoreLine, type StoreItem } from "@/lib/pm/store"
 import { PM_SUB_CERTIFICATES } from "@/lib/pm/subcontract"
@@ -34,7 +35,9 @@ import { PURCHASE_REQUESTS, reqState, requestOf } from "@/lib/pm/supply"
 import { tabBadges } from "@/lib/pm/tab-badges"
 import type { ContractTerms } from "@/lib/pm/terms"
 import { PM_VARIATIONS, type VoStatus } from "@/lib/pm/variation"
+import { unitBlocks, unitDone } from "@/lib/pm/units"
 import type { LookItem } from "@/lib/pm/weekly-plan"
+import { usePmUnits } from "@/hooks/usePmUnits"
 
 const READ_ONLY = new Set(["pmPo", "pmMatch"])
 // The client-money closeout rows are counted only for whoever reads the certificates (as CloseoutPanel shows them).
@@ -111,7 +114,14 @@ export function PmSubTabNav({
   const requests = useRows<Record<string, unknown> & { id: string }>(projectId, PURCHASE_REQUESTS, supply)
   const stores = useRows<Partial<PmStoreLine> & { id: string }>(projectId, PM_STORE, supply || (close && project.storeOn))
   const certs = useRows<{ status: CertificateStatus; net: number; dueOn?: string | null; collected?: number | null }>(projectId, PM_CERTIFICATES, (moneyGroup || close) && money)
-  const punch = useRows<{ status: PunchStatus }>(projectId, PM_PUNCH, close)
+  const unitsOn = group === "exec" && has("pmUnits")
+  const punch = useRows<{ status: PunchStatus; unit?: string | null }>(projectId, PM_PUNCH, close || unitsOn)
+  const inspections = useRows<Pick<PmInspection, "status" | "unit">>(projectId, PM_INSPECTIONS, unitsOn)
+  const { units } = usePmUnits(projectId, unitsOn)
+  const unitsReady = useMemo(() => {
+    const open = { punch: punch.filter((p) => p.status !== "done"), inspections: inspections.filter(isOpenOrFailed) }
+    return units.filter((u) => !unitDone(u) && unitBlocks(u, items, open).length === 0).length
+  }, [units, items, punch, inspections])
   const ncrs = useRows<{ status: NcrStatus }>(projectId, PM_NCRS, close)
   const members = useRows<Record<string, unknown> & { id: string }>(projectId, "members", group === "settings")
   const cost = useProjectCost(projectId, orgId, moneyGroup && money && has("pmMatch"))
@@ -163,7 +173,7 @@ export function PmSubTabNav({
   }, [today, hasManager, members, addenda, variations, claims, terms, subCerts, docs, lastIpcOn, letters, requests, stores, items, certs, punch, ncrs, close, project, money, cost.pos, cost.invoices])
 
   const segments: Segment[] = tabs.map((x) => {
-    const e = (exec as Record<string, { count?: number; tone?: SegmentTone } | undefined>)[x.key]
+    const e = x.key === "pmUnits" ? (unitsReady ? { count: unitsReady, tone: "ok" as SegmentTone } : undefined) : (exec as Record<string, { count?: number; tone?: SegmentTone } | undefined>)[x.key]
     const b = badges[x.key]
     const count = e?.count ?? b?.n
     const tone: SegmentTone | undefined = e?.tone ?? (b ? b.tone : undefined)

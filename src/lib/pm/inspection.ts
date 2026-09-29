@@ -46,6 +46,8 @@ export interface PmInspection {
   itemId: string
   code?: string | null
   location: string
+  /** The delivery unit inspected — open or failed, it blocks that unit's handover. */
+  unit?: string | null
   party: WirParty
   partyText?: string | null
   status: WirStatus

@@ -278,7 +278,7 @@ function RetentionRow({ event, projectName, released, booksOn, mayAct, ctx }: { 
   const firestore = useFirestore()
   const { toast } = useToast()
   const [busy, setBusy] = useState(false)
-  const stage = event.params.stage === "final" ? "final" : "prov"
+  const stage = event.params.stage === "final" ? "final" : event.params.stage === "unit" ? "unit" : "prov"
 
   const release = async () => {
     if (!firestore) return
@@ -296,7 +296,7 @@ function RetentionRow({ event, projectName, released, booksOn, mayAct, ctx }: { 
 
   return (
     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
-      <ProjectCell event={event} projectName={projectName} sub={t(`fpj_ret_stage_${stage}`, { date: pmDate(String(event.params.on || event.at), locale) })} />
+      <ProjectCell event={event} projectName={projectName} sub={t(`fpj_ret_stage_${stage}`, { date: pmDate(String(event.params.on || event.at), locale), unit: String(event.params.unit ?? "") })} />
       <span className="font-bold tabular-nums" dir="ltr">{pmMoney(event.amount)}</span>
       {released ? (
         <Badge className="border-none bg-success/10 text-[11px] text-success">{t("fpj_ret_released")}</Badge>

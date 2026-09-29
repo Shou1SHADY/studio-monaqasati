@@ -25,6 +25,8 @@ import { PM_SHEETS, type PmSheet } from "@/lib/pm/measurement"
 import { PM_PLANT as PM_PLANT_ON_SITE, type PmPlant } from "@/lib/pm/plant"
 import { PM_ACTIVITIES, type PmActivity } from "@/lib/pm/programme"
 import { PM_PUNCH, type PunchItem } from "@/lib/pm/punch"
+import { PM_INSPECTIONS } from "@/lib/pm/inspection"
+import { PM_UNITS, type PmUnit } from "@/lib/pm/units"
 import { PM_SUBMITTALS, type PmSubmittal } from "@/lib/pm/sample"
 import { isOpenObstacle, PM_OBSTACLES, type PmObstacle } from "@/lib/pm/site"
 import { PM_STORE, storeLineOf, type PmStoreLine } from "@/lib/pm/store"
@@ -93,6 +95,9 @@ export function usePmDecisions(
   const addenda = useSub<PmAddendum>(projectId, PM_ADDENDA, on && seesTerms)
   const certs = useSub<PmCertificate>(projectId, PM_CERTIFICATES, on && money)
   const punch = useSub<PunchItem>(projectId, PM_PUNCH, on)
+  const zoneOn = on && Boolean(project?.enabledSections?.includes("zone"))
+  const units = useSub<PmUnit>(projectId, PM_UNITS, zoneOn)
+  const inspections = useSub<{ status: string; unit?: string | null }>(projectId, PM_INSPECTIONS, zoneOn)
   const vos = useSub<PmVariation>(projectId, PM_VARIATIONS, on)
   const claims = useSub<PmClaim>(projectId, PM_CLAIMS, on)
   const submittals = useSub<PmSubmittal>(projectId, PM_SUBMITTALS, on)
@@ -173,6 +178,8 @@ export function usePmDecisions(
       addenda: addenda.rows,
       certificates: certs.rows,
       punch: punch.rows,
+      units: zoneOn ? units.rows.map((u) => ({ ...u, lines: u.lines ?? {}, ho: u.ho ?? null, plan: u.plan ?? null })) : undefined,
+      inspections: inspections.rows,
       variations: vos.rows,
       claims: claims.rows,
       submittals: submittals.rows,
@@ -196,7 +203,7 @@ export function usePmDecisions(
       today,
       viewer: access.uid ? { uid: access.uid, has: (k) => access.has(k as Parameters<PmAccess["has"]>[0]), owner: access.has("admin") } : null,
     })
-  }, [project, items.rows, sheets.rows, addenda.rows, certs.rows, punch.rows, vos.rows, claims.rows, submittals.rows, subCerts.rows, docs.rows, letters.rows, obstacles.rows, supply.requests, supply.stores, facts.shortages, plantRequests.rows, plant.rows, cost, budgetReferrals, money, access, today, plan])
+  }, [project, items.rows, sheets.rows, addenda.rows, certs.rows, punch.rows, units.rows, inspections.rows, zoneOn, vos.rows, claims.rows, submittals.rows, subCerts.rows, docs.rows, letters.rows, obstacles.rows, supply.requests, supply.stores, facts.shortages, plantRequests.rows, plant.rows, cost, budgetReferrals, money, access, today, plan])
 
   const progress = useMemo(() => progressOf(items.rows.map((d) => ({ quantity: num(d.quantity), rate: num(d.unitPrice), executed: num(d.executedQuantity) }))), [items.rows])
 

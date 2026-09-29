@@ -36,6 +36,8 @@ export interface PunchItem {
   by: string
   byName?: string | null
   itemId?: string | null
+  /** The delivery unit it is on — it blocks that unit's handover only. */
+  unit?: string | null
   /** Photo of the item (optional). */
   files?: PmAttachment[]
   fix?: { on: string; by: string; byName?: string | null; note?: string | null; files?: PmAttachment[] } | null

@@ -137,7 +137,7 @@ async function buildWorld() {
     status: "in_progress",
     projectType: "bld",
     clientName: "شركة الياسمين للتطوير العقاري",
-    enabledSections: sectionsForKind("bld"),
+    enabledSections: [...sectionsForKind("bld"), "zone"],
     rfqIds: [],
     projectManagerId: UID.pm,
     projectManagerName: NAME.pm,
@@ -224,6 +224,8 @@ async function buildWorld() {
   seed(`projects/${P}/pmCertificates/02`, { seq: 2, status: "int", lines: cert2, cutsIncluded: 0, terms: SNAP, contractValue: BUDGET, ...a2, prep: UID.qs, prepName: NAME.qs, prepOn: d(-2), appr: null, apprName: null, apprOn: null, selfApp: false, certified: null, cut: null, cutReason: null, consultantRef: null, certOn: null, certBy: null, certByName: null, dueOn: null, submitted: null, ...stamp })
   seed(`projects/${P}/pmPunch/01`, { seq: 1, what: "تشققات شعرية في لياسة الممر", location: "الفيلا 1 — الممر الرئيسي", severity: "b", source: "cons", status: "open", day: d(-8), ...by, itemId: "i06", fix: null, conf: null, ...stamp })
   seed(`projects/${P}/pmPunch/02`, { seq: 2, what: "ميول تصريف السطح غير كافية", location: "الفيلا 2 — السطح", severity: "a", source: "int", status: "fix", day: d(-20), ...by, itemId: "i05", fix: { on: d(-4), by: ORG, byName: NAME.owner, note: "أُعيدت الميول" }, conf: null, ...stamp })
+  seed(`projects/${P}/pmUnits/01`, { seq: 1, name: "الفيلا 1", plan: d(20), ho: null, lines: { i03: { q: 450, ex: 380 }, i07: { q: 2.5, ex: 1 } }, ...by, ...stamp })
+  seed(`projects/${P}/pmUnits/02`, { seq: 2, name: "الفيلا 2", plan: null, ho: null, lines: { i03: { q: 450, ex: 230 }, i07: { q: 2.5, ex: 0 } }, ...by, ...stamp })
   seed(`projects/${P}/pmNcrs/01`, { seq: 1, itemId: "i06", code: "09-01-01", severity: "a", root: "لم تُستخدم أدلة السماكة قبل اللياسة", cost: 12500, status: "open", day: d(-9), ...by, plan: null, accepted: null, ...stamp })
   const activity = (seq: number, name: string, from: number, to: number, itemIds: string[], pred: number | null) =>
     seed(`projects/${P}/pmActivities/0${seq}`, { seq, name, from: d(from), to: d(to), itemIds, pred: pred ? `0${pred}` : null, by: ORG, byName: NAME.owner, at: iso(-140), ...stamp })
@@ -340,6 +342,7 @@ const VIEWS: Record<string, ViewSpec> = {
   info: { titles: ["معلومات المشروع"], money: ["شروط العقد باختصار"], acts: { تعديل: OP, "افتح الشروط": OPQ, "مسموح ويُسجَّل": O } },
   boq: { titles: ["البند", "متعاقد", "المنفَّذ", "حفر وردم للقواعد"], money: ["غير مفوتر", "التكلفة", "الهامش"], acts: { "بنود تنزف": OPQ } },
   pmTerms: { titles: ["العقد الساري", "ما يعنيه هذا العقد نقداً", "الأصلي كما وُقّع"], acts: { "تسجيل التوقيع": OP, سحب: OP, "تعديل العقد": OPQ }, only: OPQ },
+  pmUnits: { titles: ["متوسط المشروع", "جاهزة للاستلام", "موعدها غير واقعي", "الفيلا 1", "الفيلا 2", "المتبقي من قيمتها", "لا تُسلَّم قبل:"], money: ["قيمة الوحدة"], acts: { "بنود الوحدة": ALL, "سلّم الوحدة": OP } },
   pmMeasure: { titles: ["قياس الفترة", "محاضر القياس"], acts: { "ابدأ قياساً": ALL, اعتماد: OP, إعادة: OP } },
   pmQa: {
     titles: ["الفحوصات", "قائمة الملاحظات", "خطة الفحص والاختبار", "تقارير عدم المطابقة"],

@@ -27,6 +27,8 @@ export interface SheetLine {
   /** The item's code as the sheet was written (read, not relied on). */
   code?: string | null
   qty: number
+  /** The delivery unit measured — approval moves that unit's executed too. */
+  unit?: string | null
   /** Set at approval: what actually moved "executed" after the cap. */
   approved?: number | null
 }

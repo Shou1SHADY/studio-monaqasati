@@ -38,6 +38,8 @@ export interface RaiseInput {
   source: PunchSource
   sourceText?: string | null
   itemId?: string | null
+  /** The delivery unit it is on. */
+  unit?: string | null
   /** The day it was raised (defaults to today). */
   day?: string | null
   files?: PmAttachment[] | null
@@ -65,6 +67,7 @@ export async function raisePunch(firestore: Firestore, ctx: PmContext, projectId
       by: actor.uid,
       byName: actor.name,
       itemId: input.itemId ?? null,
+      unit: input.unit || null,
       files: cleanAttachments(input.files),
       fix: null,
       conf: null,

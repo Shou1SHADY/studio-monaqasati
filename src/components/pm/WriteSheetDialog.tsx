@@ -45,6 +45,7 @@ export function WriteSheetDialog({
   basis,
   lines,
   inspections,
+  unitName,
   onSaved,
 }: {
   open: boolean
@@ -57,6 +58,8 @@ export function WriteSheetDialog({
   basis: PricingBasis
   lines: SheetLine[]
   inspections: PmInspection[]
+  /** The delivery unit a line names, by its id. */
+  unitName?: (unitId: string) => string | null
   onSaved?: () => void
 }) {
   const t = useTranslations("Portal.PM")
@@ -124,6 +127,7 @@ export function WriteSheetDialog({
                     </p>
                     <p className="text-xs text-muted-foreground">
                       <span dir="ltr">{i?.code ?? l.code}</span>
+                      {l.unit && unitName?.(l.unit) ? ` · ${unitName(l.unit)}` : ""}
                       {passed ? ` · ${t("meas.passed_insp")}` : ""}
                     </p>
                   </div>

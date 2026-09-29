@@ -8111,6 +8111,7 @@
       "fpj_ret_empty": "No retention is claimable yet.",
       "fpj_ret_stage_prov": "Provisional handover · {date}",
       "fpj_ret_stage_final": "Final acceptance · {date}",
+      "fpj_ret_stage_unit": "Provisional handover — {unit} · {date}",
       "fpj_ret_release": "Release retention",
       "fpj_ret_released": "Released",
       "fpj_ret_done": "Retention released",
@@ -8403,7 +8404,9 @@
       "acc_src_pm_loss": "Site store loss",
       "acc_src_pm_xfer": "Material moved between projects",
       "pn_rfq_invited_title": "Invitation to quote",
-      "pn_rfq_invited": "You were invited to quote on «{rfq}» by {date}"
+      "pn_rfq_invited": "You were invited to quote on «{rfq}» by {date}",
+      "sec_zone_title": "Delivery units",
+      "sec_zone_desc": "Villas · floors · sites — progress and handover per unit"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -15413,6 +15416,16 @@
           "title": "{count, plural, one {# purchase order} other {# purchase orders}} above the item's budget — your decision",
           "detail": "Procurement referred it: accept the overrun, or send it back to renegotiate.",
           "act": "Decide"
+        },
+        "zone": {
+          "title": "{count, plural, one {One delivery unit meets every handover condition and has not been handed over} other {# delivery units meet every handover condition and have not been handed over}}",
+          "detail": "No open punch items or inspections — handover releases retention and starts the defects year",
+          "act": "Hand it over"
+        },
+        "ztight": {
+          "title": "{count, plural, one {One delivery unit} other {# delivery units}} with an unrealistic date at its current rate",
+          "detail": "It needs to run faster than it has since the start",
+          "act": "Review the unit dates"
         }
       },
       "sec": {
@@ -15526,7 +15539,8 @@
           "weeks": "Weekly plans",
           "plant_on_site": "Plant on site",
           "plant_charged": "Charged so far",
-          "plant_requests": "Open plant requests"
+          "plant_requests": "Open plant requests",
+          "units": "Delivery units"
         },
         "loss": {
           "docs": "No alert when a drawing revision lands after measurement",
@@ -15543,7 +15557,8 @@
           "progress": "No critical path, no computed delay",
           "claim": "Notice deadlines stop being tracked — and a claim that misses its notice is time-barred",
           "wwp": "PPC and its reasons stop being collected",
-          "eqp": "Plant keeps running with no daily log, no computed cost and no return alert"
+          "eqp": "Plant keeps running with no daily log, no computed cost and no return alert",
+          "zone": "No phased handover and no retention per unit"
         },
         "help": {
           "title": "Why sections are switched off",
@@ -16488,7 +16503,7 @@
           "SC": "When approved by someone other than its preparer, within his limit",
           "ADV": "When the handover is accepted and the project created",
           "BUD": "On monthly reconciliation approval — replaces the last",
-          "HND": "When a handover is recorded",
+          "HND": "When a handover is recorded — project or unit",
           "AMD": "When an addendum changing a financial term is signed — never a second advance event"
         },
         "log_title": "Boundary log",
@@ -18212,6 +18227,92 @@
         "note_required": "A reason is required to renegotiate",
         "done_accepted": "Overrun accepted on {no}",
         "done_renegotiate": "{no} sent back to renegotiate"
+      },
+      "units": {
+        "tab": "Delivery units",
+        "intro": "One project percentage cannot describe several units: it may mean one unit about to hand over and another not started. Here each unit is measured on its own, and cannot be handed over before its work, punch items and inspections are all closed.",
+        "setup_title": "Define the delivery units",
+        "setup_sub": "Once, when the section is switched on",
+        "setup_note": "An equal split of quantities is a starting assumption, not a fact. Nothing executed is attributed to a unit except through measurement — work done before the split stays visibly unallocated rather than being guessed.",
+        "setup_who": "The project manager or the owner defines the units.",
+        "count": "Number of units",
+        "label": "Unit label",
+        "label_default": "Villa",
+        "label_ph": "Villa · Floor · Site · Block",
+        "create": "Create the units",
+        "created": "{count} delivery units created with an equal quantity split — prior execution stays unallocated until measured.",
+        "avg": "Project average",
+        "avg_spread": "hiding a {n}-point spread between the highest and lowest unit",
+        "avg_loose": "execution is not yet attributed to units — measurement does that",
+        "avg_level": "the units are level — no meaningful spread",
+        "ready": "Ready to hand over",
+        "of": "{n} of {total}",
+        "done_n": "{count} already handed over",
+        "done_none": "none handed over yet",
+        "tight": "Unrealistic dates",
+        "tight_sub": "need to run faster than they ever have",
+        "value": "Unit value {amount}",
+        "lines": "{count, plural, =0 {No items} one {One item} other {# items}}",
+        "state": {
+          "done": "Handed over",
+          "ready": "Ready",
+          "risk": "Date at risk",
+          "work": "In progress"
+        },
+        "left": "Value remaining",
+        "date": "Handover date",
+        "ret": "Retention released",
+        "handed_note": "Handed over {on} — the defects period ends {end}",
+        "not_until": "Not until:",
+        "all_met": "All conditions met — handover releases retention and starts the defects period",
+        "pace": "To hit its date it needs {need} per week, and it has never exceeded {rate} per week since the project began. Not realistic unless something changes on site.",
+        "items": "Unit items",
+        "hand_over": "Hand over",
+        "plan_aria": "Planned handover of {name}",
+        "handed": "{name} handed over — the event reached Finance; {amount} of retention is now claimable there",
+        "loose_title": "Not attributable to a single unit",
+        "loose_sub": "Stated as-is, never split by guesswork",
+        "common": "Project-wide works",
+        "executed_amt": "executed {amount}",
+        "loose": "Executed, not attributed to a unit",
+        "loose_note": "Measured without naming a unit — it counts on the project and on no unit. Name the unit at the next measurement.",
+        "drawer_sub": "{count, plural, one {One allocated item} other {# allocated items}}",
+        "d_value": "Unit value",
+        "d_executed": "Executed",
+        "not_set": "not set",
+        "money": "This unit's money",
+        "m_share": "Share of the contract",
+        "m_executed": "Executed to date",
+        "m_cost": "Actual cost",
+        "m_margin": "Margin to date",
+        "m_ret": "Retention released on handover",
+        "conditions": "Handover conditions",
+        "conditions_met": "All conditions met",
+        "q_of": "{ex} of {q} {unit}",
+        "block": {
+          "no_alloc": "No quantities allocated to this unit",
+          "progress": "Execution at {pct} — incomplete",
+          "punch": "{count, plural, one {One open punch item} other {# open punch items}} on the unit",
+          "wir": "{count, plural, one {One open or failed inspection} other {# open or failed inspections}}"
+        },
+        "err": {
+          "missing": "The unit was not found",
+          "exists": "The units are already defined",
+          "bad_count": "Between 2 and 40 units",
+          "no_label": "Name the unit",
+          "done": "The unit is already handed over",
+          "blocked": "The unit does not meet its handover conditions",
+          "archived": "The project is not live"
+        },
+        "field": "Delivery unit",
+        "field_none": "— none",
+        "field_hint": "An item tied to a unit blocks only that unit",
+        "meas_pick": "— unit?",
+        "meas_unassigned": "{count, plural, one {One line} other {# lines}} without a unit — it will count on the project and on no unit",
+        "pulse_details": "Details",
+        "pulse_done": "done",
+        "pulse_ready": "ready",
+        "pulse_risk": "at risk"
       }
     },
     "HR": {

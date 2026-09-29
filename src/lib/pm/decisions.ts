@@ -22,6 +22,7 @@ import { lineGot, lineNeed, lineOut, lineOver, openChanges, plantHireable, plant
 import type { ContractTerms } from "./terms"
 import { approvedValue, workBeforeApproval, type VoStatus } from "./variation"
 import type { SectionId } from "../project-sections"
+import { unitBlocks, unitDone, unitFigures, unitRetention, unitTight, type PmUnit } from "./units"
 
 export type DecisionKind =
   | "no_pm"
@@ -73,8 +74,10 @@ export type DecisionKind =
   | "eqp_licence"
   | "rerate"
   | "po_budget"
+  | "zone"
+  | "ztight"
 
-export type DecisionTab = "pmMeasure" | "pmQa" | "pmSubm" | "pmVo" | "pmClaims" | "pmClose" | "pmProgramme" | "pmTerms" | "pmSubs" | "pmDocs" | "pmCorr" | "pmSite" | "pmCvr" | "pmReq" | "pmStore" | "pmPo" | "boq" | "ipc" | "team" | "info"
+export type DecisionTab = "pmUnits" | "pmMeasure" | "pmQa" | "pmSubm" | "pmVo" | "pmClaims" | "pmClose" | "pmProgramme" | "pmTerms" | "pmSubs" | "pmDocs" | "pmCorr" | "pmSite" | "pmCvr" | "pmReq" | "pmStore" | "pmPo" | "boq" | "ipc" | "team" | "info"
 
 /** The prototype's four groups (DGRP): money on hold, contract risk, what
  * stops the site, and what waits on you. */
@@ -129,6 +132,8 @@ export const DECISION_GROUP: Record<DecisionKind, DecisionGroup> = {
   eqp_overdue: "appr",
   eqp_offhire: "appr",
   eqp_licence: "appr",
+  zone: "money",
+  ztight: "risk",
 }
 
 /** The order of the group chips for each seat (the prototype's GORD). */
@@ -169,7 +174,11 @@ export interface DecisionFacts {
   sheets: Array<{ status: string; day: string }>
   addenda: Array<{ status: string; day: string }>
   certificates: Array<{ status: CertificateStatus; net: number; dueOn?: string | null; collected?: number | null; prepOn?: string | null; prep?: string | null }>
-  punch: Array<{ status: PunchStatus }>
+  punch: Array<{ status: PunchStatus; unit?: string | null }>
+  /** Inspections, for the delivery units they block. */
+  inspections?: Array<{ status: string; unit?: string | null }>
+  /** Delivery units (section `zone`). */
+  units?: PmUnit[]
   variations: Array<{ seq?: number; status: VoStatus; value: number; executedPct: number; day: string }>
   claims: Array<{ status: ClaimStatus; eventOn: string; response?: { days: number } | null; obstacleId?: string | null }>
   submittals?: Array<{ itemId: string; status: string; rev: number; day: string }>
@@ -261,6 +270,8 @@ const REACHES: Record<DecisionKind, (h: (k: string) => boolean) => boolean> = {
   eqp_licence: () => true,
   rerate: (h) => h("client"),
   po_budget: (h) => h("approve"),
+  zone: (h) => h("measure") || h("approve"),
+  ztight: (h) => h("measure") || h("approve"),
 }
 
 /** A kind that lives in a section, and the section (the prototype's HAS2 guards). */
@@ -285,6 +296,8 @@ export const SECTION_OF: Partial<Record<DecisionKind, SectionId>> = {
   eqp_overdue: "eqp",
   eqp_offhire: "eqp",
   eqp_licence: "eqp",
+  zone: "zone",
+  ztight: "zone",
 }
 
 // Site chores the owner is never sent (the prototype's `CU().role!=='owner'`).
@@ -455,6 +468,7 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
     out.push({ kind: "collection_overdue", severity: age > 30 ? "red" : "amber", count: overdue.length, age, amount: r2(overdue.reduce((a, c) => a + c.net * (1 - Math.min(1, Math.max(0, c.collected ?? 0))), 0)), tab: "ipc" })
   }
 
+  const itemsWithId = f.items.filter((i): i is typeof i & { id: string } => Boolean(i.id)).map((i) => ({ id: i.id, rate: i.rate }))
   const progress = progressOf(f.items)
   const delay = delayAndDamages({
     lifecycle: f.lifecycle,
@@ -481,6 +495,17 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
   }
 
   supplyDecisions(f, out)
+
+  // A unit meeting every handover condition is money left on the table; one
+  // whose date needs a pace it has never reached is a contract risk.
+  if (f.units?.length) {
+    const open = { punch: f.punch.filter(isOpenPunch), inspections: (f.inspections ?? []).filter((w) => w.status === "open" || w.status === "fail") }
+    const rows = f.units.filter((u) => !unitDone(u)).map((u) => ({ u, f: unitFigures(u, itemsWithId), blocks: unitBlocks(u, itemsWithId, open) }))
+    const ready = rows.filter((r) => !r.blocks.length)
+    if (ready.length) out.push({ kind: "zone", severity: "red", count: ready.length, amount: r2(ready.reduce((a, r) => a + unitRetention(r.f.contract, f.terms), 0)), tab: "pmUnits" })
+    const tight = rows.filter((r) => unitTight(r.u, r.f, f.startOn, f.today))
+    if (tight.length) out.push({ kind: "ztight", severity: "amber", count: tight.length, tab: "pmUnits" })
+  }
 
   if (f.lifecycle === "live" && !f.acceptances.prov && progress !== null && progress >= PROVISIONAL_AT) out.push({ kind: "provisional_ready", severity: "blue", tab: "pmClose" })
   if (f.acceptances.prov && !f.acceptances.final) {

@@ -1983,6 +1983,26 @@ service cloud.firestore {
         allow delete: if isAdmin();
       }
 
+      // PM 1.0 delivery units — `pmUnits/{NN}`, created together by approve; the
+      // planned day, the handover (never undone) and the measured share move by approve.
+      match /pmUnits/{unitId} {
+        allow read: if isSignedIn()
+          && inProjectOrg(projectId);
+        allow create: if isSignedIn()
+          && inProjectOrg(projectId)
+          && projectOpen(projectId)
+          && pmDuty(projectId, 'approve')
+          && request.resource.data.seq is int
+          && request.resource.data.ho == null;
+        allow update: if isSignedIn()
+          && inProjectOrg(projectId)
+          && projectOpen(projectId)
+          && pmDuty(projectId, 'approve')
+          && resource.data.get('ho', null) == null
+          && changedKeys().hasOnly(['plan', 'ho', 'lines', 'updatedAt']);
+        allow delete: if isAdmin();
+      }
+
       // BOQ groups (sections) — plain org-scoped CRUD, same org as the project.
       // Groups themselves are never hard-locked; a locked item's groupId is already
       // frozen by the boqItems update rule above (groupId isn't in the unlock allowlist).

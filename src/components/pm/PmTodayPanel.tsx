@@ -39,6 +39,7 @@ import {
   Users,
   Wallet,
   type LucideIcon,
+  Boxes,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DecisionRow } from "@/components/module-ui/DecisionRow"
@@ -100,6 +101,8 @@ export const DECISION_ICON: Record<DecisionKind, LucideIcon> = {
   rerate: Ruler,
   eqp_hire: Truck,
   po_budget: Scale,
+  zone: Boxes,
+  ztight: Clock,
 }
 
 /** One decision row: the kind's own action, filled when it is red (the prototype's rule). */

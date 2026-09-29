@@ -36,6 +36,7 @@ const MAP: Record<string, SectionId> = {
   base: "progress",
   sched: "sched",
   wwp: "wwp",
+  zone: "zone",
   claim: "claim",
   eqp: "eqp",
 }

@@ -18,6 +18,7 @@ import { openClaims, PM_CLAIMS, type ClaimStatus } from "./claim"
 import { storeDocOf, storeHoldings, storeItemOf, subDues } from "./closeout"
 import { PM_DOCS } from "./documents"
 import { PM_INSPECTIONS } from "./inspection"
+import { PM_UNITS } from "./units"
 import { onSite, plantCost, PM_PLANT, type PmPlant } from "./plant"
 import { PM_ACTIVITIES } from "./programme"
 import { PM_STORE } from "./store"
@@ -66,6 +67,7 @@ export interface SectionFacts {
   claimsOpen?: number
   activities?: number
   weeks?: number
+  units?: number
   /** Plant still on site in the project's custody — it blocks switching `eqp` off. */
   plantOnSite?: number
   plantCharged?: number
@@ -165,6 +167,7 @@ export function sectionCensus(id: SectionId, f: SectionFacts): CensusRow[] {
   if (id === "claim") add("claims_open", f.claimsOpen, "w")
   if (id === "progress") add("activities", f.activities)
   if (id === "wwp") add("weeks", f.weeks)
+  if (id === "zone") add("units", f.units)
   if (id === "eqp") {
     add("plant_on_site", f.plantOnSite, "r")
     add("plant_charged", f.plantCharged, "", true)
@@ -176,7 +179,7 @@ export function sectionCensus(id: SectionId, f: SectionFacts): CensusRow[] {
 
 /** Sections with their own "what goes silent" sentence (SECLOSS); the rest say
  * their screen and decisions disappear. */
-export const SECTION_LOSS: ReadonlySet<SectionId> = new Set<SectionId>(["docs", "store", "ipc", "collect", "daily", "rfi", "hse", "subs", "vo", "qa", "progress", "receive", "claim", "wwp", "eqp"])
+export const SECTION_LOSS: ReadonlySet<SectionId> = new Set<SectionId>(["docs", "store", "ipc", "collect", "daily", "rfi", "hse", "subs", "vo", "qa", "progress", "receive", "claim", "wwp", "eqp", "zone"])
 
 /** Sections another module owns: we only read them here (the prototype's «يُقرأ من»). */
 export type SectionOwner = "procurement" | "finance" | "manufacturing"
@@ -239,7 +242,7 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
   const col = (name: string) => getDocs(collection(firestore, "projects", projectId, name)).catch(() => null)
   const pSnap = await getDoc(doc(firestore, "projects", projectId)).catch(() => null)
   const orgId = (pSnap?.exists() ? (pSnap.data() as { organizationId?: string }).organizationId : null) ?? null
-  const [certs, store, boq, history, subs, subCerts, docs, daily, obstacles, incidents, permits, vos, wirs, punch, claims, acts, weeks, plant, plantReqs] = await Promise.all([
+  const [certs, store, boq, history, subs, subCerts, docs, daily, obstacles, incidents, permits, vos, wirs, punch, claims, acts, weeks, plant, plantReqs, zones] = await Promise.all([
     col(PM_CERTIFICATES),
     col(PM_STORE),
     col("boqItems"),
@@ -259,6 +262,7 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
     col(PM_WEEKS),
     col(PM_PLANT),
     col(PM_PLANT_REQUESTS),
+    col(PM_UNITS),
   ])
   const certList = (certs?.docs ?? []).map((d) => d.data() as PmCertificate & { collected?: number | null })
   const open = certList.filter((c) => (c.status === "appr" || c.status === "part") && (c.collected ?? 0) < 1)
@@ -294,6 +298,7 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
     claimsOpen: openClaims((claims?.docs ?? []).map((d) => d.data() as { status: ClaimStatus })).length,
     activities: acts?.size ?? 0,
     weeks: weeks?.size ?? 0,
+    units: zones?.size ?? 0,
     plantOnSite: onSite(units).length,
     plantCharged: Math.round(units.reduce((a, p) => a + (p.dayRate ? plantCost(p) : 0), 0)),
     plantRequestsOpen: (plantReqs?.docs ?? []).filter((d) => {

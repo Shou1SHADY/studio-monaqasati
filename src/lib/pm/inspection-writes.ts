@@ -37,6 +37,8 @@ async function readProject(tx: Transaction, firestore: Firestore, projectId: str
 export interface RequestInput {
   itemId: string
   location: string
+  /** The delivery unit inspected. */
+  unit?: string | null
   party: WirParty
   partyText?: string | null
   on: string
@@ -62,6 +64,7 @@ export async function requestInspection(firestore: Firestore, ctx: PmContext, pr
       itemId: input.itemId,
       code: data.itemNo ?? null,
       location: input.location.trim(),
+      unit: input.unit || null,
       party: input.party,
       partyText: input.party === "other" ? input.partyText?.trim() ?? null : null,
       status: "open",

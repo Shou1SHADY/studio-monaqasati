@@ -11,6 +11,7 @@ import { ProjectHandoverBanner } from "@/components/contractor/ProjectHandoverBa
 import { CertificatesPanel } from "@/components/pm/CertificatesPanel"
 import { InspectionsPanel } from "@/components/pm/InspectionsPanel"
 import { MeasurementPanel } from "@/components/pm/MeasurementPanel"
+import { UnitsPanel } from "@/components/pm/UnitsPanel"
 import { Callout } from "@/components/module-ui/Callout"
 import { CloseoutPanel } from "@/components/pm/CloseoutPanel"
 import { HandoverPanel } from "@/components/pm/HandoverPanel"
@@ -188,7 +189,7 @@ import {
   sectionLabelKey,
   type SectionId,
 } from "@/lib/project-sections"
-import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, KeyRound, Hammer, Gavel, Gauge, CalendarRange } from "lucide-react"
+import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, KeyRound, Hammer, Gavel, Gauge, CalendarRange, Boxes } from "lucide-react"
 import { ProjectPulse, type PulseProject } from "@/components/pm/ProjectPulse"
 import { ProjectHead, type PmHeadProject } from "@/components/pm/ProjectHead"
 import { PmHoldControl } from "@/components/pm/PmHoldControl"
@@ -2105,6 +2106,7 @@ export default function ProjectDetailPage() {
     close: pmSectionOn("close", (typedProject.pm as { acceptances?: { prov?: unknown } } | null | undefined)?.acceptances?.prov ? 1 : 0) && Boolean(typedProject.pm?.terms),
     eqp: pmSectionOn("eqp", pmCount("plantReqCount") + pmCount("plantCount")),
     store: enabledSectionIds.includes("store"),
+    zone: enabledSectionIds.includes("zone"),
   }
   const lookSections = { docs: pmOn.docs, subm: pmItems.some((i) => i.pmSample), wir: true, rfi: enabledSectionIds.includes("rfi" as SectionId), hse: enabledSectionIds.includes("hse" as SectionId), stock: pmOn.store, eqp: pmOn.eqp }
   const tabs: { key: ActiveTab; label: string; icon: React.ReactNode }[] = [
@@ -2115,6 +2117,7 @@ export default function ProjectDetailPage() {
       ? [
           { key: "pmToday" as ActiveTab, label: tPm("grp.pulse"), icon: <Gauge size={15} /> },
           ...(pmAccess.has("money") || pmAccess.has("approve") ? [{ key: "pmTerms" as ActiveTab, label: tPm("seg.terms"), icon: <ScrollText size={15} /> }] : []),
+          ...(pmOn.zone ? [{ key: "pmUnits" as ActiveTab, label: tPm("units.tab"), icon: <Boxes size={15} /> }] : []),
           { key: "pmMeasure" as ActiveTab, label: tPm("seg.meas"), icon: <Ruler size={15} /> },
           ...(pmOn.qa ? [{ key: "pmQa" as ActiveTab, label: tPm("qa.tab"), icon: <SearchCheck size={15} /> }] : []),
           ...((["daily", "rfi", "hse", "wwp", "eqp"] as SectionId[]).some((s) => enabledSectionIds.includes(s))
@@ -3398,6 +3401,17 @@ export default function ProjectDetailPage() {
           <ProjectPulse projectId={projectId} organizationId={typedProject.organizationId || myOrgId} project={typedProject as PulseProject} items={pmItems} access={pmAccess} onOpen={(tab, kind) => (kind === "ipc_ready" ? openWork("prepare") : handleTabChange(tab))} sections={enabledSectionIds} programmeOn={pmOn.programme} />
         )}
 
+        {current === "pmUnits" && typedProject.pm && (
+          <UnitsPanel
+            projectId={projectId}
+            items={pmItems}
+            startedOn={typedProject.pm.startedAt ?? typedProject.pm.startOn ?? null}
+            terms={typedProject.pm.terms ?? null}
+            access={pmAccess}
+            actor={pmActor}
+            actualCost={pmItemCost}
+          />
+        )}
         {/* ── TABS: MEASUREMENT · INSPECTIONS (PM 1.0) ── */}
         {current === "pmMeasure" && typedProject.pm && (
           <MeasurementPanel
@@ -3410,6 +3424,7 @@ export default function ProjectDetailPage() {
             actor={pmActor}
             onItemsChanged={() => void loadBoqItems()}
             startMeasuring={work?.what === "measure"}
+            unitsOn={pmOn.zone}
             key={work?.what === "measure" ? `write-${work.n}` : "sheets"}
           />
         )}
@@ -3567,8 +3582,8 @@ export default function ProjectDetailPage() {
         {current === "pmQa" && typedProject.pm && (
           <div className="space-y-4">
             <div className="grid gap-4 xl:grid-cols-2">
-              <InspectionsPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} access={pmAccess} actor={pmActor} bare onItemsChanged={() => void loadBoqItems()} />
-              <PunchPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} access={pmAccess} actor={pmActor} bare />
+              <InspectionsPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} access={pmAccess} actor={pmActor} bare onItemsChanged={() => void loadBoqItems()} unitsOn={pmOn.zone} />
+              <PunchPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} access={pmAccess} actor={pmActor} bare unitsOn={pmOn.zone} />
             </div>
             <ItpPanel projectId={projectId} items={pmItems} access={pmAccess} actor={pmActor} />
             <NcrPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} access={pmAccess} actor={pmActor} />

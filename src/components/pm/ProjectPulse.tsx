@@ -2,7 +2,7 @@
 
 // A PM 1.0 project's Pulse (the prototype's first tab): a note when there is
 // no BOQ or no item has a rate, what needs a decision (five, then "show more"),
-// the money trail; and beside them the divisions furthest from their plan, what
+// the money trail; and beside them the delivery units, the divisions furthest from their plan, what
 // we are waiting on from other modules (no button — the act is theirs) and the
 // project log.
 
@@ -13,6 +13,7 @@ import { PmTodayPanel } from "@/components/pm/PmTodayPanel"
 import { PulseMoneyTrail, type TrailProject } from "@/components/pm/PulseMoneyTrail"
 import { WaitingOnOthers } from "@/components/pm/WaitingOnOthers"
 import { ProjectLogPanel, SectionsBehindPanel } from "@/components/pm/PulseExtras"
+import { UnitsPulsePanel } from "@/components/pm/UnitsPulsePanel"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import type { PmDecisionProject } from "@/hooks/usePmDecisions"
 import type { DecisionKind, DecisionTab } from "@/lib/pm/decisions"
@@ -66,6 +67,7 @@ export function ProjectPulse({
           <PulseMoneyTrail projectId={projectId} project={trailProject} access={access} ipcOn={has("ipc")} costOn={has("cost")} />
         </div>
         <div className="space-y-4">
+          {has("zone") && sections && <UnitsPulsePanel projectId={projectId} items={items} startedOn={project.pm?.startedAt ?? null} onDetails={() => open("pmUnits")} />}
           <SectionsBehindPanel projectId={projectId} project={project} items={items} onProgramme={programmeOn ? () => open("pmProgramme") : undefined} />
           <WaitingOnOthers
             organizationId={organizationId}

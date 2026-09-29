@@ -27,6 +27,8 @@ import { PmInspectionError, requestInspection, type InspectionActor } from "@/li
 import { addDays } from "@/lib/pm/programme"
 import { PmFilesField } from "./PmAttachments"
 import type { SheetItem } from "./WriteSheetDialog"
+import type { PmUnit } from "@/lib/pm/units"
+import { UnitField } from "./UnitField"
 
 export function RequestInspectionDialog({
   open,
@@ -37,6 +39,7 @@ export function RequestInspectionDialog({
   actor,
   items,
   inspections = [],
+  units = [],
   onSaved,
 }: {
   open: boolean
@@ -47,6 +50,8 @@ export function RequestInspectionDialog({
   actor: InspectionActor
   items: SheetItem[]
   inspections?: PmInspection[]
+  /** The project's delivery units, when the section is on. */
+  units?: PmUnit[]
   onSaved?: () => void
 }) {
   const t = useTranslations("Portal.PM")
@@ -54,6 +59,7 @@ export function RequestInspectionDialog({
   const { toast } = useToast()
   const [itemId, setItemId] = useState("")
   const [location, setLocation] = useState("")
+  const [unit, setUnit] = useState("")
   const [party, setParty] = useState<WirParty | null>("consultant")
   const [partyText, setPartyText] = useState("")
   const [on, setOn] = useState(addDays(todayDay(), 1))
@@ -64,6 +70,7 @@ export function RequestInspectionDialog({
     if (open) {
       setItemId("")
       setLocation("")
+      setUnit("")
       setParty("consultant")
       setPartyText("")
       setOn(addDays(todayDay(), 1))
@@ -80,7 +87,7 @@ export function RequestInspectionDialog({
     if (!firestore || blocks.length || !party) return
     setBusy(true)
     try {
-      const seq = await requestInspection(firestore, access.ctx, projectId, actor, { itemId, location, party, partyText, on, files })
+      const seq = await requestInspection(firestore, access.ctx, projectId, actor, { itemId, location, unit, party, partyText, on, files })
       toast({ title: t("wir.requested", { no: wirNo(seq) }) })
       onSaved?.()
       onOpenChange(false)
@@ -122,6 +129,7 @@ export function RequestInspectionDialog({
             <Input id="wir-loc" value={location} placeholder={t("wir.what_where_ph")} onChange={(e) => setLocation(e.target.value)} disabled={busy} dir="auto" />
             <p className="text-[11px] text-muted-foreground">{t("wir.what_where_hint")}</p>
           </div>
+          <UnitField id="wir-unit" units={units} value={unit} onChange={setUnit} disabled={busy} />
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="wir-on">{t("wir.requested_on")}</Label>

@@ -34,6 +34,7 @@ import { AttachmentTag } from "./PmAttachments"
 import { RecordResultDialog } from "./RecordResultDialog"
 import { RequestInspectionDialog } from "./RequestInspectionDialog"
 import type { SheetItem } from "./WriteSheetDialog"
+import { usePmUnits } from "@/hooks/usePmUnits"
 
 const TONE: Record<WirStatus, PillTone> = { open: "warn", pass: "ok", cond: "info", fail: "bad" }
 const TILE: Record<WirStatus, string> = { open: "bg-warning/10 text-warning", pass: "bg-success/10 text-success", cond: "bg-success/10 text-success", fail: "bg-destructive/10 text-destructive" }
@@ -46,6 +47,7 @@ export function InspectionsPanel({
   actor,
   bare,
   onItemsChanged,
+  unitsOn,
 }: {
   projectId: string
   orgId?: string | null
@@ -55,9 +57,12 @@ export function InspectionsPanel({
   /** Inside the combined «الفحص والملاحظات» view: no intro note. */
   bare?: boolean
   onItemsChanged?: () => void
+  /** The delivery-units section is on: a request may name its unit. */
+  unitsOn?: boolean
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
+  const { units } = usePmUnits(projectId, Boolean(unitsOn))
   const firestore = useFirestore()
   const { toast } = useToast()
   const today = todayDay()
@@ -242,7 +247,7 @@ export function InspectionsPanel({
         )}
       </Panel>
 
-      {canQa && <RequestInspectionDialog open={requesting} onOpenChange={setRequesting} projectId={projectId} orgId={orgId} access={access} actor={actor} items={items} inspections={list} onSaved={onItemsChanged} />}
+      {canQa && <RequestInspectionDialog open={requesting} onOpenChange={setRequesting} projectId={projectId} orgId={orgId} access={access} actor={actor} items={items} inspections={list} units={units} onSaved={onItemsChanged} />}
       {recording && (
         <RecordResultDialog
           open
