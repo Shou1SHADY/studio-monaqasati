@@ -16,7 +16,7 @@ import { MFG_PRODUCTS, type MfgProduct } from "@/lib/manufacturing-engine"
 import { isV2Order, type WorkOrderV2 } from "@/lib/manufacturing-writes"
 import { orderRef } from "@/lib/manufacturing-view"
 import { purchaseRequestRef } from "@/lib/mfg-outside"
-import { mfgNeed, projectNeed, sortNeeds, stockNeeds, type Need } from "@/lib/procurement/needs"
+import { mfgNeed, projectNeed, returnedNeeds, sortNeeds, stockNeeds, type Need } from "@/lib/procurement/needs"
 
 export function useOpenNeeds(world: Pick<ProcurementWorld, "orgId" | "rfqs" | "orders">, enabled: boolean): Need[] {
   const firestore = useFirestore()
@@ -40,6 +40,7 @@ export function useOpenNeeds(world: Pick<ProcurementWorld, "orgId" | "rfqs" | "o
       for (const r of o.purchaseRequests || []) out.push(mfgNeed({ id: o.id, ref: orderRef(o), context: o.productName || p?.name || o.projectName || "", projectId: o.projectId ?? null, projectName: o.projectName ?? null }, r))
     }
     for (const { project, requests } of projectRequests.rows) for (const pr of requests) out.push(projectNeed(project, pr, purchaseRequestRef(pr.id)))
+    out.push(...returnedNeeds(out, world.orders))
     const names = new Map(warehouses.map((w) => [w.id, w.name || ""]))
     const rows = Array.from(stock.byWarehouse.entries()).flatMap(([warehouseId, items]) => items.filter((r) => !r.isManufactured).map((r) => ({ ...r, warehouseId, warehouseName: names.get(warehouseId) || "" })))
     out.push(...stockNeeds(rows, { rfqs: world.rfqs, orders: world.orders }))

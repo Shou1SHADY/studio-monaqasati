@@ -106,6 +106,15 @@ describe("supply decisions (G-12)", () => {
     expect(find({ stores: [line], sections: ["contract", "procure", "vo"], viewer: viewer(["approve"], "pm1") }, "store_move")).toBeUndefined()
   })
 
+  it("the owner hears of a store move the manager logged, or of one worth 5,000 or more whoever logged it", () => {
+    const line = (q: number) =>
+      storeLineOf("s1", { key: "steel|t", name: "Steel", unit: "t", rates: {}, moves: [{ t: "rc", q: 10, on: "2026-09-01", by: "se1" }, { t: "loss", q, on: "2026-09-20", by: "se1", st: "wait", why: "dmg" }] })
+    const owner = viewer(["approve", "admin"], "o", true)
+    const priced = { storeCostOf: () => 3000, managerId: "pm1" }
+    expect(find({ ...priced, stores: [line(1)], viewer: owner }, "store_move")).toBeUndefined()
+    expect(find({ ...priced, stores: [line(2)], viewer: owner }, "store_move")).toMatchObject({ count: 1, amount: 6000 })
+  })
+
   it("equipment: waiting approval, idle and charging, past its return", () => {
     const days: Record<string, "idle"> = { "2026-09-22": "idle", "2026-09-23": "idle", "2026-09-24": "idle", "2026-09-25": "idle", "2026-09-26": "idle" }
     const plant = [{ status: "use" as const, to: "2026-09-20", days, dayRate: 900, category: "heavy" as const, qty: 1, licenceTo: null, offOk: null }]

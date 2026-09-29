@@ -75,6 +75,7 @@ import type { ProcReceiver } from "@/lib/procurement/receivers"
 import { type PurchaseSource, type RecordReceiptResult } from "@/lib/procurement/receipt-writes"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import { ProcWriteError, remindSupplier } from "@/lib/procurement/writes"
+import { poActs } from "@/lib/procurement/po-extras"
 
 const isSegment = (v: string | null): v is ReceiptSegment => RECEIPT_SEGMENTS.includes(v as ReceiptSegment)
 const fmt = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n)
@@ -330,6 +331,7 @@ export default function GoodsReceivedPage() {
             routing={routing}
             canReceive={canReceive}
             canFollow={canFollow}
+            followsPo={(po) => canFollow && (!po || poActs(po, actor).acts)}
             reminding={reminding}
             receivers={receivers}
             placeOf={(d, po) => (d ? d.landedWarehouseId || landingWarehouseId(d.projectId || po?.projectId, projects, orgId) : landingWarehouseId(po?.projectId, projects, orgId))}
@@ -467,6 +469,8 @@ interface IncomingListProps {
   routing: NoticeRouting
   canReceive: boolean
   canFollow: boolean
+  /** Follow-up on an order: the owner only reads others' orders once the company has buyers (poActs). */
+  followsPo: (po: PurchaseOrder | null | undefined) => boolean
   reminding: string | null
   receivers: ProcReceiver[]
   placeOf: (d: DeskDelivery | null, po: PurchaseOrder | null) => string | null
@@ -479,7 +483,7 @@ interface IncomingListProps {
 }
 
 function IncomingList(props: IncomingListProps) {
-  const { rows, all, locale, now, forwardWindowDays, routing, canReceive, canFollow, reminding, receivers, placeOf, warehouseName, projectName, onReceive, onForward, onRemind, onOpen } = props
+  const { rows, all, locale, now, forwardWindowDays, routing, canReceive, followsPo, reminding, receivers, placeOf, warehouseName, projectName, onReceive, onForward, onRemind, onOpen } = props
   const t = useTranslations("Portal.ProcReceipts")
   const dayText = useDateText()
   const tp = useTranslations("Portal.Procurement")
@@ -619,13 +623,13 @@ function IncomingList(props: IncomingListProps) {
                         </Link>
                       </Button>
                     )}
-                    {canFollow && notice && fwState !== "signed" && (
+                    {followsPo(po) && notice && fwState !== "signed" && (
                       <Button size="sm" variant={fwState === "forwarded" ? "outline" : "default"} className="h-8 gap-1 text-xs" onClick={() => onForward(notice)}>
                         <Forward size={12} aria-hidden="true" />
                         {fwState === "forwarded" ? t("forward.again") : t("forward.button")}
                       </Button>
                     )}
-                    {canFollow && duePo && (
+                    {duePo && followsPo(duePo) && (
                       <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" disabled={remindBlocked || reminding === duePo.id} onClick={() => onRemind(duePo)} title={remindBlocked ? tp("err_reminded_recently") : undefined}>
                         {reminding === duePo.id ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <BellRing size={12} aria-hidden="true" />}
                         {t("incoming.remind")}

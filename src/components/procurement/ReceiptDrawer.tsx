@@ -148,7 +148,8 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
   const canAct = receiveRight(actor, policies) !== null
   // Procurement's own acts on a receipt (regularise, expense, rate) — buyer or manager (S-13, S-17).
   const canPrepare = actor.isOwner || actor.canPrepare || actor.canApprove
-  const canDecide = actor.isOwner || actor.canPrepare || actor.canApprove
+  // The owner only reads an order a buyer prepared (poActs) — as the write refuses him.
+  const canDecide = (actor.isOwner || actor.canPrepare || actor.canApprove) && (!po || poActs(po as PurchaseOrder, actor).acts)
   const rateable = Boolean(po) && canPrepare && canRate(po as PurchaseOrder, deliveries) && poActs(po as PurchaseOrder, actor).acts
   const opts = { copy: tShared as unknown as Translator, locale: locale as "ar" | "en", orgName }
 

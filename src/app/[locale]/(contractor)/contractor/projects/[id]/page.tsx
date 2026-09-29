@@ -949,6 +949,7 @@ export default function ProjectDetailPage() {
     }
   }, [boqLoaded, fetchBoqItems])
 
+  const [boqOpenItem, setBoqOpenItem] = useState<string | null>(null)
   const handleTabChange = (next: ActiveTab) => {
     const tab = next === "pmWir" || next === "pmPunch" ? "pmQa" : next
     setLastInGroup((prev) => ({ ...prev, [groupOf(tab)]: tab }))
@@ -2108,6 +2109,36 @@ export default function ProjectDetailPage() {
     store: enabledSectionIds.includes("store"),
     zone: enabledSectionIds.includes("zone"),
   }
+  // The handover and the close-out (the prototype's fileInfo «الاستلام والضمان» and
+  // «إغلاق المشروع وأرشفته»): in their own tab when the close section is on, else
+  // on the File's info tab — a project must always be able to hand over and close.
+  const pmHandoverPanel = typedProject.pm?.terms ? (
+    <HandoverPanel
+      projectId={projectId}
+      lifecycle={lifecycleOf(typedProject)}
+      original={typedProject.pm.original ?? typedProject.pm.terms}
+      acceptances={(typedProject.pm as { acceptances?: Acceptances }).acceptances ?? {}}
+      retentionHeld={typedProject.pm.retentionHeld ?? 0}
+      items={pmItems}
+      access={pmAccess}
+      actor={pmActor}
+    />
+  ) : null
+  const pmCloseoutPanel = typedProject.pm?.terms ? (
+    <CloseoutPanel
+      projectId={projectId}
+      lifecycle={lifecycleOf(typedProject)}
+      hasClient={typedProject.pm.terms.payer !== "none"}
+      pm={typedProject.pm as ComponentProps<typeof CloseoutPanel>["pm"]}
+      items={pmItems}
+      access={pmAccess}
+      actor={pmActor}
+      sections={enabledSectionIds}
+      warehouseId={typedProject.warehouseId ?? null}
+      managerName={(typedProject as { projectManagerName?: string | null }).projectManagerName ?? null}
+      onOpen={(tab) => handleTabChange(tab as ActiveTab)}
+    />
+  ) : null
   const lookSections = { docs: pmOn.docs, subm: pmItems.some((i) => i.pmSample), wir: true, rfi: enabledSectionIds.includes("rfi" as SectionId), hse: enabledSectionIds.includes("hse" as SectionId), stock: pmOn.store, eqp: pmOn.eqp }
   const tabs: { key: ActiveTab; label: string; icon: React.ReactNode }[] = [
     { key: "info", label: typedProject.pm ? tPm("seg.info") : t("proj_tab_info"), icon: <FolderOpen size={15} /> },
@@ -2435,6 +2466,8 @@ export default function ProjectDetailPage() {
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-4">
                 <PmInfoPanel projectId={projectId} project={typedProject as ComponentProps<typeof PmInfoPanel>["project"]} access={pmAccess} />
+                {!pmOn.close && lifecycleOf(typedProject) !== "plan" && pmHandoverPanel}
+                {!pmOn.close && lifecycleOf(typedProject) === "done" && pmAccess.has("money") && pmCloseoutPanel}
                 <PmStartPanel projectId={projectId} project={typedProject as ComponentProps<typeof PmStartPanel>["project"]} boqItems={boqItems.length} access={pmAccess} />
               </div>
               <div className="space-y-4">
@@ -2625,7 +2658,7 @@ export default function ProjectDetailPage() {
 
         {/* ── TAB: BOQ ── */}
         {current === "boq" && typedProject.pm && (
-          <PmBoqPanel projectId={projectId} orgId={pmOrg} contractValue={typedProject.budget ?? 0} access={pmAccess} actor={pmActor} actualCost={pmItemCost} />
+          <PmBoqPanel projectId={projectId} orgId={pmOrg} contractValue={typedProject.budget ?? 0} access={pmAccess} actor={pmActor} actualCost={pmItemCost} openItemId={boqOpenItem} />
         )}
         {current === "boq" && !typedProject.pm && (
           <div className="space-y-4">
@@ -3460,7 +3493,10 @@ export default function ProjectDetailPage() {
         )}
         {current === "pmBoundary" && typedProject.pm && <BoundaryPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} access={pmAccess} />}
         {current === "pmCost" && typedProject.pm && (
-          <CostPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} projectWarehouseId={typedProject.warehouseId ?? null} baseValue={typedProject.budget ?? 0} access={pmAccess} />
+          <CostPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} projectWarehouseId={typedProject.warehouseId ?? null} baseValue={typedProject.budget ?? 0} access={pmAccess} onOpenItem={(id) => {
+              setBoqOpenItem(id)
+              handleTabChange("boq")
+            }} />
         )}
         {current === "pmMatch" && typedProject.pm && <MatchPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} access={pmAccess} />}
         {current === "pmCvr" && typedProject.pm?.terms && (
@@ -3554,29 +3590,8 @@ export default function ProjectDetailPage() {
         )}
         {current === "pmClose" && typedProject.pm?.terms && (
           <div className="space-y-4">
-            <HandoverPanel
-              projectId={projectId}
-              lifecycle={lifecycleOf(typedProject)}
-              original={typedProject.pm.original ?? typedProject.pm.terms}
-              acceptances={(typedProject.pm as { acceptances?: Acceptances }).acceptances ?? {}}
-              retentionHeld={typedProject.pm.retentionHeld ?? 0}
-              items={pmItems}
-              access={pmAccess}
-              actor={pmActor}
-            />
-            <CloseoutPanel
-              projectId={projectId}
-              lifecycle={lifecycleOf(typedProject)}
-              hasClient={typedProject.pm.terms.payer !== "none"}
-              pm={typedProject.pm as ComponentProps<typeof CloseoutPanel>["pm"]}
-              items={pmItems}
-              access={pmAccess}
-              actor={pmActor}
-              sections={enabledSectionIds}
-              warehouseId={typedProject.warehouseId ?? null}
-              managerName={(typedProject as { projectManagerName?: string | null }).projectManagerName ?? null}
-              onOpen={(tab) => handleTabChange(tab as ActiveTab)}
-            />
+            {pmHandoverPanel}
+            {pmCloseoutPanel}
           </div>
         )}
         {current === "pmQa" && typedProject.pm && (

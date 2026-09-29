@@ -514,11 +514,11 @@ describe("line decisions", () => {
     await expect(cancelRemainder(db, buyer, id, { lineId: "l1", reason: "again" })).rejects.toMatchObject({ code: "nothing_outstanding" })
   })
 
-  it("applyRejectDecision: replace keeps it owed, reduce cancels it, discount keeps the goods", () => {
+  it("applyRejectDecision: replace keeps it owed, reduce cancels it, discount keeps the goods on hold until released", () => {
     const lines = [{ id: "l1", name: "x", unit: "u", quantity: 10, unitPrice: 5, accepted: 7, rejected: 3, held: 0, cancelled: 0 }]
     expect(applyRejectDecision(lines, "l1", "replace", null, "t")[0]).toMatchObject({ accepted: 7, cancelled: 0, rejectDecision: "replace", rejectDecidedAt: "t" })
     expect(applyRejectDecision(lines, "l1", "reduce", "n", "t")[0]).toMatchObject({ accepted: 7, cancelled: 3, rejectDecisionNote: "n" })
-    expect(applyRejectDecision(lines, "l1", "discount", null, "t")[0]).toMatchObject({ accepted: 10, rejected: 3, cancelled: 0 })
+    expect(applyRejectDecision(lines, "l1", "discount", null, "t")[0]).toMatchObject({ accepted: 7, rejected: 3, cancelled: 0, rejectDiscountState: "wait" })
   })
 
   it("decideReject needs something rejected and tells the supplier with a translatable decision", async () => {

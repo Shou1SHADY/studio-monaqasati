@@ -278,6 +278,7 @@ export function PurchaseRequestsInbox() {
                           <span dir="auto">{r.need.refLabel}</span>
                           <span dir="auto">· {r.need.projectName || r.need.context || t("nd_for_stock")}</span>
                           {r.samplePending && <span className="font-semibold text-warning">· {t("nd_sample_pending")}</span>}
+                          {r.need.returnedFrom && <span className="font-semibold text-cta">· {t("nd_returned_from", { po: r.need.returnedFrom })}</span>}
                         </p>
                       </td>
                       <td className="px-4 py-3 text-end">

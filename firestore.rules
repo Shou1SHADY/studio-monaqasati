@@ -456,7 +456,11 @@ service cloud.firestore {
             )
           )
           && (hasRfqPermission(resource.data, 'rfq.manage')
-              || hasRfqPermission(resource.data, 'projects.publish'))
+              || hasRfqPermission(resource.data, 'projects.publish')
+              // The manager and the buyers complete and publish their own drafts.
+              || ((hasRfqPermission(resource.data, 'offers.accept') || hasRfqPermission(resource.data, 'po.approve'))
+                  && actsOnRfq(resource.data)
+                  && resource.data.get('status', '') == 'Draft'))
         )
         // R-01 — the award from the comparison: New → Awarded, with the lines
         // nobody won and one log entry. The offers and orders are written in
@@ -823,7 +827,8 @@ service cloud.firestore {
         );
       // Contractors can accept/reject (update status); suppliers can cancel their own request
       allow update: if isSignedIn() && (
-        (resource.data.contractorOrgId == getOrganizationId() && (hasOrgPermission('suppliers.manage') || procSupplierManager())) ||
+        // Our side is Procurement's buyers and manager (not an expediter who only reads the list).
+        (resource.data.contractorOrgId == getOrganizationId() && procSupplierManager()) ||
         (resource.data.supplierOrgId == getOrganizationId() && resource.data.requestedBy == "supplier") ||
         isAdmin()
       );
@@ -1554,8 +1559,8 @@ service cloud.firestore {
 
       // PM 1.0 subcontractor custody (STK-03/04) — `pmSubCustody/{NN}`: material
       // issued into a sub's custody against a line of his contract. Issues, returns
-      // and counts are appended by `req` (one move per write); recoveries (with their
-      // accounting return) and their deduction marks are `sub`'s. Never deleted.
+      // are appended by `req` (one move per write), a count by `approve`; a recovery
+      // (with its accounting return) is `approve`'s, its deduction marks `sub`'s. Never deleted.
       match /pmSubCustody/{custodyId} {
         allow read: if isSignedIn()
           && inProjectOrg(projectId);
@@ -1572,13 +1577,16 @@ service cloud.firestore {
         allow update: if isSignedIn()
           && inProjectOrg(projectId)
           && projectOpen(projectId)
-          && ((pmDuty(projectId, 'req')
+          // A count and a new recovery are the approver's (the prototype's CAN('approve')).
+          && (((pmDuty(projectId, 'req') || pmDuty(projectId, 'approve'))
                 && changedKeys().hasOnly(['moves', 'updatedAt'])
-                && request.resource.data.moves.size() == resource.data.moves.size() + 1)
-              || (pmDuty(projectId, 'sub')
+                && request.resource.data.moves.size() == resource.data.moves.size() + 1
+                && (request.resource.data.moves[resource.data.moves.size()].t != 'cnt' || pmDuty(projectId, 'approve')))
+              || ((pmDuty(projectId, 'sub') || pmDuty(projectId, 'approve'))
                 && changedKeys().hasOnly(['moves', 'recoveries', 'updatedAt'])
                 && request.resource.data.moves.size() >= resource.data.moves.size()
-                && request.resource.data.recoveries.size() >= resource.data.recoveries.size()));
+                && request.resource.data.recoveries.size() >= resource.data.recoveries.size()
+                && (pmDuty(projectId, 'approve') || request.resource.data.recoveries.size() == resource.data.recoveries.size())));
 
         allow delete: if isAdmin();
       }
@@ -2491,7 +2499,7 @@ service cloud.firestore {
     // held goods). An arrival on an order the supplier never acknowledged
     // records his acceptance for him.
     function poReceives() {
-      return (hasOrgPermission('deliveries.confirm') || hasOrgPermission('offers.accept'))
+      return (hasOrgPermission('deliveries.confirm') || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve'))
         && poFrom() in ['sent', 'accepted'] && poTo() == 'accepted'
         && poChanged().hasOnly(['status', 'lines', 'supplierAcceptedAt', 'acceptanceRecordedBy', 'log', 'updatedAt']);
     }

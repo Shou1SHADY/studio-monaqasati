@@ -40,12 +40,14 @@ import {
   decideReject,
   ratePurchaseOrder,
   recordSupplierAcceptance,
+  releaseDiscounted,
   remindSupplier,
   resubmitPurchaseOrder,
   returnPurchaseOrder,
   sendPurchaseOrder,
   updatePromisedDate,
   type RatingInput,
+  type RejectTermsLine,
   type WriteOpts,
 } from "@/lib/procurement/writes"
 import { DateDialog, ReasonDialog, RejectDecisionDialog } from "./PoActionDialogs"
@@ -175,7 +177,8 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const [dialog, setDialog] = useState<DialogState>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const perms = usePermissions()
-  const isFinance = perms.isOrgOwner || perms.can("invoices.manage") || perms.can("accounting.post")
+  // Finance's acts; the owner acts as Finance here only on an order he may act on (not one a buyer prepared).
+  const isFinance = perms.isOrgOwner ? !(po && poActs(po, actor).ownerReadOnly) : perms.can("invoices.manage") || perms.can("accounting.post")
   // The resolved policy — the self-issue write re-reads it inside its transaction.
   const selfLimit = operatingPolicies(policies).buyerSelfIssueLimit
   const boqItems = useBoqGateItems(po ? asX(po) : null)
@@ -538,6 +541,8 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             : tProc(`rejectDecision.${String(p.decision) as RejectDecision}`),
       over: p.over != null ? Number(p.over).toLocaleString("en-US") : "",
       invoice: p.invoice ? String(p.invoice) : "",
+      line: p.line ? String(p.line) : "",
+      qty: p.qty != null ? figure(Number(p.qty)) : "",
     }
     let s = tProc(`log.${e.action}`, params)
     if (e.action === "approved" && p.selfApproved) s += ` · ${tProc("selfApproval")}`
@@ -655,6 +660,16 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                     <PoReceiverLine organizationId={po.organizationId} projectId={po.projectId} />
                     <LineBar line={l} inTransit={transit} />
                     {lx.rejectReplaceBy && <p className="text-[11px] text-muted-foreground">{tProc("rfqpo.po.replace_by", { date: fmt(lx.rejectReplaceBy) })}</p>}
+                    {(lx as RejectTermsLine).rejectDiscountState === "wait" && (
+                      <div className="flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 px-2.5 py-1.5 text-[11px] text-warning">
+                        <span className="flex-1">{tProc("rfqpo.po.discount_wait", { qty: figure(l.rejected), unit: l.unit })}</span>
+                        {(actor.isOwner || actor.canReceive) && f && (
+                          <Button size="sm" variant="outline" onClick={() => void run("release", () => releaseDiscounted(f, actor, po.id, l.id, opts), "toast.saved")}>
+                            {tProc("rfqpo.po.discount_release")}
+                          </Button>
+                        )}
+                      </div>
+                    )}
                     {pmCancelOpen(px, l) && (
                       <div className="space-y-2">
                         <Callout tone="amber">{tProc("rfqpo.po.pm_cancel", { reason: pmCancelOf(px, l)?.reason || "—", by: pmCancelOf(px, l)?.byName || "—" })}</Callout>

@@ -5,7 +5,8 @@
 // and each runs the guard first with the archived state it just read (RL-02).
 // Completing the original records who did it last (`termsBy`), and an advance
 // changed after Finance received prj:ADV is logged on the project (`advLog`,
-// newest first) and told to Finance under its own key — never a second prj:ADV.
+// newest first) — never a second prj:ADV, and no event: Finance takes one advance
+// term per project, so the manager tells them by letter (the prototype's toast).
 
 import { doc, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"

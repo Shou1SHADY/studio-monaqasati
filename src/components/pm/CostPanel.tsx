@@ -55,6 +55,7 @@ export function CostPanel({
   projectWarehouseId,
   baseValue,
   access,
+  onOpenItem,
 }: {
   projectId: string
   orgId: string | null
@@ -62,6 +63,8 @@ export function CostPanel({
   projectWarehouseId: string | null
   baseValue: number
   access: PmAccess
+  /** Open a BOQ item's drawer (the prototype's openItem). */
+  onOpenItem?: (itemId: string) => void
 }) {
   const t = useTranslations("Portal.PM")
   const money = access.has("money")
@@ -282,7 +285,7 @@ export function CostPanel({
                     <span className="shrink-0 font-bold tabular-nums text-destructive" dir="ltr">
                       +{pmMoney(cost.deviation ?? 0)}
                     </span>
-                    <Button size="sm" variant="outline" onClick={() => setOpen(sectionOf(item))}>
+                    <Button size="sm" variant="outline" onClick={() => (onOpenItem ? onOpenItem(item.id) : setOpen(sectionOf(item)))}>
                       {t("money.open")}
                     </Button>
                   </li>

@@ -149,6 +149,8 @@ export function PmPortfolioToday() {
   const router = useRouter()
   const seat = usePmSeat()
   const { orgId, projects, handovers, isLoading } = usePortfolioSources()
+  const { user } = useUser()
+  const { isOrgOwner, can } = usePermissions()
   const today = todayDay()
   const { feeds, onFeed } = useFeeds()
   const [group, setGroup] = useState<DecisionGroup | "all">("all")
@@ -356,7 +358,15 @@ export function PmPortfolioToday() {
                 </ul>
               )}
             </Panel>
-            {orgId && <WaitingOnOthers organizationId={orgId} projects={mine.map((p) => ({ id: p.id, name: p.name }))} />}
+            {orgId && (
+              <WaitingOnOthers
+                organizationId={orgId}
+                projects={mine.map((p) => ({ id: p.id, name: p.name, retentionReleased: (p.pm as { retentionReleased?: boolean } | null | undefined)?.retentionReleased }))}
+                finance={client}
+                money={money}
+                crm={isOrgOwner || can("pm.manage") ? { uid: user?.uid ?? null, owner: isOrgOwner } : null}
+              />
+            )}
           </div>
         </div>
       )}

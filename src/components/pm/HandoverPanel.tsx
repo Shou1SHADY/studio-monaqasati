@@ -64,8 +64,8 @@ export function HandoverPanel({
   const progress = progressOf(items)
   const archived = access.ctx.archived
   const provB = provisionalBlocks({ archived, lifecycle, acceptances, progress })
-  const finB = finalBlocks({ archived, lifecycle, acceptances, openPunch })
   const dlpEnd = acceptances.prov ? defectsEnd(acceptances.prov.on, terms.defectsDays) : null
+  const finB = finalBlocks({ archived, lifecycle, acceptances, openPunch, defectsEnd: dlpEnd, today: todayDay() })
   const dlpOver = dlpEnd ? dlpEnd <= todayDay() : false
   const left = dlpEnd ? defectsLeft(dlpEnd, todayDay()) : null
   const sent = <SourceBadge module="payments" label={t("hnd.sent_finance")} className="ms-1.5" />
@@ -159,7 +159,7 @@ export function HandoverPanel({
             canFinal && (
               <div className="mt-3 space-y-2">
                 {acceptances.prov && dlpEnd && !dlpOver && <Callout tone="warn">{t("hnd.before_dlp", { date: pmDate(dlpEnd, locale) })}</Callout>}
-                <BlockingReasons title={t("hnd.cannot")} reasons={finB.map((b) => t(`hnd.block.${b}`, { at: PROVISIONAL_AT, count: openPunch }))} />
+                <BlockingReasons title={t("hnd.cannot")} reasons={finB.map((b) => t(`hnd.block.${b}`, { at: PROVISIONAL_AT, count: openPunch, date: dlpEnd ? pmDate(dlpEnd, locale) : "" }))} />
                 <Button onClick={() => void run("final")} disabled={busy !== null || finB.length > 0}>
                   {busy === "final" && <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" />}
                   {t("hnd.record_final")}

@@ -1003,7 +1003,12 @@ export async function cancelRemainder(firestore: Firestore, actor: ProcActor, po
  * date the supplier committed to, or the discounted unit price. Optional
  * fields on the stored line — `PoLine` (mirrored into the mobile app) is not
  * widened for them; `rejectTermsOf` in receipt-desk.ts reads them back. */
-export type RejectTermsLine = PoLine & { rejectReplaceBy?: string | null; rejectDiscountPrice?: number | null }
+export type RejectTermsLine = PoLine & {
+  rejectReplaceBy?: string | null
+  rejectDiscountPrice?: number | null
+  /** A discount keeps the goods on hold until Inventory releases them, once the requester accepted them technically. */
+  rejectDiscountState?: "wait" | "released" | null
+}
 
 export interface RejectDecisionTerms {
   /** `YYYY-MM-DD` — on `replace`, optional ("until the replacement arrives" with no date helps nobody, but it is not refused). */
@@ -1015,8 +1020,9 @@ export interface RejectDecisionTerms {
 /**
  * Pure: Procurement's decision on a line's rejected quantity. `replace` keeps
  * it owed by the supplier; `reduce` cancels it (the order shrinks); `discount`
- * keeps the goods — they count as accepted at a price Finance will settle —
- * while `rejected` stays as the gate's record.
+ * keeps the goods on hold — they count as accepted only when Inventory releases
+ * them after the requester's technical acceptance (`releaseDiscounted`), at a
+ * price Finance will settle — while `rejected` stays as the gate's record.
  */
 export function applyRejectDecision(lines: PoLine[], lineId: string, decision: RejectDecision, note: string | null, at: string, terms: RejectDecisionTerms = {}): PoLine[] {
   return lines.map((l) => {
@@ -1029,10 +1035,38 @@ export function applyRejectDecision(lines: PoLine[], lineId: string, decision: R
       rejectDecidedAt: at,
       rejectReplaceBy: decision === "replace" ? terms.replaceBy || null : null,
       rejectDiscountPrice: decision === "discount" ? round2(Number(terms.discountPrice) || 0) : null,
+      rejectDiscountState: decision === "discount" ? "wait" : null,
     }
     if (decision === "reduce") next.cancelled = round2(l.cancelled + q)
-    if (decision === "discount") next.accepted = round2(l.accepted + q)
     return next
+  })
+}
+
+/** Pure: Inventory releases the discounted rejects of a line — they join what
+ * was accepted (the invoicing ceiling) at the discounted price. */
+export function applyDiscountRelease(lines: PoLine[], lineId: string): PoLine[] {
+  return lines.map((l) => {
+    const x = l as RejectTermsLine
+    if (l.id !== lineId || x.rejectDecision !== "discount" || x.rejectDiscountState !== "wait") return l
+    return { ...x, accepted: round2(l.accepted + Math.max(0, l.rejected)), rejectDiscountState: "released" as const }
+  })
+}
+
+/** «فكّ الإيقاف»: whoever receives (Inventory, or the site) releases the goods
+ * Procurement kept at a discount, once the requester has accepted them. */
+export async function releaseDiscounted(firestore: Firestore, actor: ProcActor, poId: string, lineId: string, opts: WriteOpts = {}): Promise<PurchaseOrder> {
+  if (!actor.isOwner && !actor.canReceive) throw new ProcWriteError("no_permission")
+  const at = (opts.now ?? new Date()).toISOString()
+  let line: RejectTermsLine | undefined
+  return transition(firestore, poId, (po) => {
+    if (po.status !== "accepted") throw new ProcWriteError("wrong_state")
+    line = po.lines.find((l) => l.id === lineId) as RejectTermsLine | undefined
+    if (!line) throw new ProcWriteError("line_missing")
+    if (line.rejectDecision !== "discount" || line.rejectDiscountState !== "wait") throw new ProcWriteError("wrong_state")
+    return {
+      patch: { lines: applyDiscountRelease(po.lines, lineId) },
+      log: entry(actor, "reject_discount_released", at, { params: { line: line.name, lineId, qty: line.rejected, price: line.rejectDiscountPrice ?? 0 } }),
+    }
   })
 }
 
@@ -1068,7 +1102,8 @@ export async function decideReject(
   await emitProcEvent(firestore, actor, {
     kind: "po_rejects_decided",
     organizationId: po.organizationId,
-    to: [{ users: [po.supplierUserId] }, { permission: "invoices.manage" }],
+    // A discount waits on Inventory's release (after the requester accepts): they hear of it too.
+    to: [{ users: [po.supplierUserId] }, { permission: "invoices.manage" }, ...(input.decision === "discount" ? [{ permission: "warehouses.manage" as const }, { permission: "deliveries.confirm" as const }] : [])],
     supplier: { userId: po.supplierUserId, orgId: po.supplierOrgId },
     params: { number: po.docNumber, company: opts.orgName || actor.name, line: line?.name || "", qty: line?.rejected || 0, decision: `@pn_po_decision_${input.decision}`, note: [replaceBy, note].filter(Boolean).join(" — ") },
     poId: po.id,

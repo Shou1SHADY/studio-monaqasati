@@ -36,7 +36,7 @@ export function progressOf(items: Array<{ quantity: number; rate: number; execut
 }
 
 export type ProvisionalBlock = "archived" | "not_live" | "already" | "progress"
-export type FinalBlock = "archived" | "not_live" | "no_provisional" | "already" | "punch_open"
+export type FinalBlock = "archived" | "not_live" | "no_provisional" | "already" | "punch_open" | "in_defects"
 
 export function provisionalBlocks(input: { archived: boolean; lifecycle: string; acceptances: Acceptances; progress: number | null }): ProvisionalBlock[] {
   const out: ProvisionalBlock[] = []
@@ -47,14 +47,17 @@ export function provisionalBlocks(input: { archived: boolean; lifecycle: string;
   return out
 }
 
-/** No final before provisional (INV-09); an open punch item blocks it (PN-03). */
-export function finalBlocks(input: { archived: boolean; lifecycle: string; acceptances: Acceptances; openPunch: number }): FinalBlock[] {
+/** No final before provisional (INV-09); an open punch item blocks it (PN-03);
+ * and none before the defects period ends (WF-25 — the prototype offers the
+ * final only once it has). */
+export function finalBlocks(input: { archived: boolean; lifecycle: string; acceptances: Acceptances; openPunch: number; defectsEnd?: string | null; today?: string }): FinalBlock[] {
   const out: FinalBlock[] = []
   if (input.archived) out.push("archived")
   else if (input.lifecycle !== "live") out.push("not_live")
   if (!input.acceptances.prov) out.push("no_provisional")
   if (input.acceptances.final) out.push("already")
   if (input.openPunch > 0) out.push("punch_open")
+  if (input.acceptances.prov && input.defectsEnd && input.today && input.today < input.defectsEnd) out.push("in_defects")
   return out
 }
 

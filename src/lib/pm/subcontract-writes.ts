@@ -407,7 +407,7 @@ export async function recordCustodyMove(
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
-    assertPm(fresh, "store.move")
+    assertPm(fresh, input.t === "cnt" ? "reconciliation.manage" : "store.move")
     const { ref, custody } = await readCustody(tx, firestore, projectId, seq)
     const item = await readItem(tx, firestore, projectId, custody.itemId)
     const before = custodyFigures(custody, item?.executed ?? custody.executedAtStart)
@@ -435,7 +435,7 @@ export async function recordRecovery(
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
-    assertPm(fresh, "subcontract.manage")
+    assertPm(fresh, "reconciliation.manage")
     const { ref, custody } = await readCustody(tx, firestore, projectId, seq)
     const blocks = recoveryBlocks({ archived: fresh.archived, q: input.q, rate: input.rate })
     if (blocks.length) throw new PmSubError("blocked", blocks)
@@ -486,7 +486,7 @@ export async function recordSubStoreMove(firestore: Firestore, ctx: PmContext, p
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
-    assertPm(fresh, "store.move")
+    assertPm(fresh, input.t === "cnt" ? "reconciliation.manage" : "store.move")
     const { ref, line, items } = await readStoreFacts(tx, firestore, projectId, storeId)
     const party = contracts.find((c) => c.partyKey === input.partyKey)?.party ?? null
     const blocks = subStoreBlocks({
@@ -527,7 +527,7 @@ export async function recordStoreRecovery(
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
-    assertPm(fresh, "subcontract.manage")
+    assertPm(fresh, "reconciliation.manage")
     const { ref, line } = await readStoreFacts(tx, firestore, projectId, storeId)
     const party = contracts.find((c) => c.partyKey === input.partyKey)?.party ?? null
     const blocks: string[] = [...recoveryBlocks({ archived: fresh.archived, q: input.q, rate: input.rate }), ...(party ? [] : ["no_sub"])]

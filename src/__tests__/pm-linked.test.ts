@@ -185,7 +185,9 @@ describe("writes", () => {
 
   it("issues, counts and recovers on the ledger; the certificate deducts the recovery once", async () => {
     await recordSubStoreMove(db, site, "p1", siteActor, sid, { t: "iss", partyKey: "n:al-itqan", q: 1000, day: today, note: "reason: second floor" })
-    const out = await recordSubStoreMove(db, site, "p1", siteActor, sid, { t: "cnt", partyKey: "n:al-itqan", q: 300, day: today, note: null, files: [{ url: "https://x/s.pdf", name: "s.pdf" }] })
+    // The count is the approver's (the prototype's CAN('approve')), not the site engineer's.
+    await expect(recordSubStoreMove(db, site, "p1", siteActor, sid, { t: "cnt", partyKey: "n:al-itqan", q: 300, day: today, note: null })).rejects.toMatchObject({ code: "no_duty" })
+    const out = await recordSubStoreMove(db, pm, "p1", pmActor, sid, { t: "cnt", partyKey: "n:al-itqan", q: 300, day: today, note: null, files: [{ url: "https://x/s.pdf", name: "s.pdf" }] })
     expect(out.gap).toBe(50)
     const led = readDoc<PmStoreLine>(`${P}/pmStore/${sid}`)!
     expect(led.moves.map((m) => m.t)).toEqual(["rc", "iss", "cnt"])

@@ -25,7 +25,7 @@ import { PmAccessError } from "@/lib/pm/access"
 import type { PmAttachment } from "@/lib/pm/attachments"
 import { todayDay } from "@/lib/pm/format"
 import { addDays } from "@/lib/pm/programme"
-import { itemMaterials, lineDays, lineGot, lineKind, lineNeed, lineOut, linePhase, reqNo, reqTitle, CLOSE_WHY, type CloseWhy, type LineDraft, type PmMaterialRequest } from "@/lib/pm/supply"
+import { itemMaterials, lineDays, lineGot, lineInTransit, lineKind, lineNeed, lineOut, linePhase, reqNo, reqTitle, CLOSE_WHY, type CloseWhy, type LineDraft, type PmMaterialRequest } from "@/lib/pm/supply"
 import { materialKeyOf, r2, ratedOn, storeBalance, type StoreItem } from "@/lib/pm/store"
 import { PM_VARIATIONS, voNo, type PmVariation } from "@/lib/pm/variation"
 import { createMaterialRequest, decideChange, PmSupplyError, receiveOnProject, rejectMaterialRequest, stopLine, type SupplyActor } from "@/lib/pm/supply-writes"
@@ -441,6 +441,7 @@ export function StopLineDialog({ projectId, access, actor, request, index, onClo
   const [why, setWhy] = useState<CloseWhy | null>(null)
   const [note, setNote] = useState("")
   const whyOk = why !== "oth" || note.trim().length > 0
+  const transit = lineInTransit(line)
   const phase = linePhase(request, line)
   const fate = phase === "ask" || phase === "rfq" ? t("sup.stop.fate_now") : phase === "mfg" ? t("sup.stop.fate_mfg") : t("sup.stop.fate_po", { no: request.poNumber || "—" })
 
@@ -472,13 +473,13 @@ export function StopLineDialog({ projectId, access, actor, request, index, onClo
             <ChoiceChips label={t("sup.stop.why")} options={CLOSE_WHY.map((w) => ({ id: w, label: t(`sup.close_why.${w}`) }))} value={why} onChange={(v) => setWhy(v === why ? null : v)} />
             {why === "oth" && <Input aria-label={t("sup.stop.oth_ph")} dir="auto" placeholder={t("sup.stop.oth_ph")} value={note} onChange={(e) => setNote(e.target.value)} />}
           </div>
-          <Callout tone="info">{t("sup.stop.note")}</Callout>
+          {transit > 0 ? <Callout tone="block">{t("sup.block.in_transit", { q: qty(transit), unit: line.unit })}</Callout> : <Callout tone="info">{t("sup.stop.note")}</Callout>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy !== null}>
             {t("sup.back")}
           </Button>
-          <Button variant={mode === "cancel" ? "destructive" : "default"} onClick={() => void save()} disabled={!whyOk || busy !== null}>
+          <Button variant={mode === "cancel" ? "destructive" : "default"} onClick={() => void save()} disabled={!whyOk || transit > 0 || busy !== null}>
             {busy && <Loader2 size={14} className="me-1.5 animate-spin" aria-hidden="true" />}
             {mode === "close" ? t("sup.stop.title") : t("sup.stop.cancel_title")}
           </Button>

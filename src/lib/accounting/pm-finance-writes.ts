@@ -71,7 +71,8 @@ export async function recordPmCollection(
 }
 
 /** Release the retention a handover made claimable: the ledger moves it to the
- * client's receivable; the final release also clears the close-out gate. */
+ * client's receivable; the provisional one marks the half received, the final
+ * release clears the close-out gate. */
 export async function releasePmRetention(
   firestore: Firestore,
   ctx: PostingContext,
@@ -80,6 +81,9 @@ export async function releasePmRetention(
   if (input.postToBooks) await postToLedger(firestore, ctx, pmRetentionReleasePosting(input.event, { date: input.date, projectName: input.projectName }))
   if (input.event.params.stage === "final") {
     await updateDoc(doc(firestore, "projects", input.event.projectId), { "pm.retentionReleased": true, updatedAt: serverTimestamp() })
+  } else if (input.event.params.stage === "prov") {
+    // The provisional half is in: the certificates' collection side now holds the other half only.
+    await updateDoc(doc(firestore, "projects", input.event.projectId), { "pm.retentionHalfReleased": true, updatedAt: serverTimestamp() })
   }
 }
 

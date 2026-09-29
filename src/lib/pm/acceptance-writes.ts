@@ -5,7 +5,7 @@
 
 import { collection, doc, getDocs, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
-import { finalBlocks, handoverEvent, progressOf, provisionalBlocks, retentionIncrement, type Acceptances } from "./acceptance"
+import { defectsEnd, finalBlocks, handoverEvent, progressOf, provisionalBlocks, retentionIncrement, type Acceptances } from "./acceptance"
 import { readContract } from "./addendum-writes"
 import { eventDocId, PM_EVENTS } from "./events"
 import { todayDay } from "./format"
@@ -77,7 +77,8 @@ export async function recordFinal(firestore: Firestore, ctx: PmContext, projectI
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "handover.final")
     const acceptances = ((pm as { acceptances?: Acceptances }).acceptances ?? {}) as Acceptances
-    const blocks = finalBlocks({ archived: fresh.archived, lifecycle: lifecycleOf(project), acceptances, openPunch })
+    const today = todayDay()
+    const blocks = finalBlocks({ archived: fresh.archived, lifecycle: lifecycleOf(project), acceptances, openPunch, defectsEnd: acceptances.prov ? defectsEnd(acceptances.prov.on, terms.defectsDays) : null, today })
     if (blocks.length) throw new PmAcceptanceError("blocked", blocks)
     const on = todayDay()
     const next: Acceptances = { ...acceptances, final: { on, by: actor.uid, byName: actor.name } }

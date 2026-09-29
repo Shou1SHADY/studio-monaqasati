@@ -4,7 +4,7 @@
  * RFQ, on an agreement or as a direct purchase under the cap.
  */
 
-import { gapQuantity, mfgNeed, needCounts, needSourceParam, parseNeedSource, projectNeed, stockNeeds, type ProjectRequestDoc } from "@/lib/procurement/needs"
+import { gapQuantity, mfgNeed, needCounts, needSourceParam, parseNeedSource, projectNeed, returnedNeeds, stockNeeds, type ProjectRequestDoc } from "@/lib/procurement/needs"
 import { directOrderRefusal, directLinePrices, directTotal, isSingleSource } from "@/lib/procurement/direct"
 import { DEFAULT_POLICIES, type PurchaseOrder } from "@/lib/procurement/types"
 import { splitSiblings } from "@/lib/procurement/po"
@@ -131,5 +131,17 @@ describe("an order on a price agreement", () => {
     expect(splitSiblings(onAgreement, [direct("b")], DEFAULT_POLICIES)).toEqual([])
     expect(splitSiblings(direct("b"), [onAgreement], DEFAULT_POLICIES)).toEqual([])
     expect(splitSiblings(direct("b"), [direct("c")], DEFAULT_POLICIES).map((o) => o.id)).toEqual(["c"])
+  })
+})
+
+describe("what an order gives back (orders #108, receipts #159)", () => {
+  it("a quantity cancelled on the request's order comes back as an action need; nothing else does", () => {
+    const p = { id: "p1", name: "Villa" }
+    const need = projectNeed(p, { id: "r1", status: "approved", poId: "po1", items: [{ name: "Rebar", quantity: 10, unit: "t" }, { name: "Sand", quantity: 5, unit: "m3" }] } as never, "PR-1")
+    const po = { id: "po1", docNumber: "PO-2026/001", lines: [{ id: "l1", name: "Rebar", unit: "t", quantity: 10, accepted: 6, rejected: 0, held: 0, cancelled: 4 }, { id: "l2", name: "Sand", unit: "m3", quantity: 5, accepted: 5, rejected: 0, held: 0, cancelled: 0 }] } as never
+    const back = returnedNeeds([need], [po])
+    expect(back).toHaveLength(1)
+    expect(back[0]).toMatchObject({ state: "action", poId: null, returnedFrom: "PO-2026/001", lines: [expect.objectContaining({ name: "Rebar", quantity: 4 })] })
+    expect(returnedNeeds([need], [{ ...(po as object), lines: [] } as never])).toEqual([])
   })
 })

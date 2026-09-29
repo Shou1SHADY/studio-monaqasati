@@ -8413,7 +8413,8 @@
       "sec_zone_desc": "Villas · floors · sites — progress and handover per unit",
       "pn_po_hold_inv_price": "The invoice price is accepted",
       "pn_portal_answer_title": "The consultant answered through the portal",
-      "pn_portal_answer": "{name} answered through the consultant portal on {project}: {record}"
+      "pn_portal_answer": "{name} answered through the consultant portal on {project}: {record}",
+      "nd_returned_from": "back from {po} — cancelled there"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -10929,7 +10930,8 @@
         "stop_requested": "{by} (Projects) asked to stop what has not arrived",
         "hold_price_asked": "{by} asked to accept a new price on held invoice {invoice}",
         "hold_price_accepted": "{by} approved the new price on held invoice {invoice}",
-        "hold_price_refused": "{by} refused the new price on held invoice {invoice} — the PO price stands"
+        "hold_price_refused": "{by} refused the new price on held invoice {invoice} — the PO price stands",
+        "reject_discount_released": "{by} released {qty} discounted rejects of {line}"
       },
       "exception": {
         "retroactive": "Retroactive PO for a receipt with no order",
@@ -11568,7 +11570,9 @@
             "effect_revision": "Finance and Inventory get a revised PO under the same number",
             "submit": "Confirm"
           },
-          "row_budget": "Awaiting the project's budget decision"
+          "row_budget": "Awaiting the project's budget decision",
+          "discount_wait": "{qty} {unit} kept at a discount — on hold until the requester accepts them and Inventory releases them",
+          "discount_release": "Release them"
         },
         "desk": {
           "advances_title": "Advances to pay",
@@ -13953,7 +13957,7 @@
           "gap": "The gap you fund yourself",
           "note": "Retention is not deferred profit — it is money you worked for and do not hold. The advance is not profit either: it is recovered from you certificate by certificate. What lies between them is what you fund from your own capital."
         },
-        "saved_adv": "Terms saved — the advance change goes to Finance as its own event; Finance still holds the original advance until it applies it.",
+        "saved_adv": "Terms saved — the advance change does not reach Finance automatically: Finance takes one advance term per project. Notify them by letter.",
         "title_plan": "The original contract — complete before start",
         "title_force": "The contract in force",
         "sub_plan": "Frozen when work starts — after that every change is an addendum",
@@ -14586,7 +14590,7 @@
         "record_final": "Record final acceptance",
         "prov_done": "Provisional handover recorded — the defects period started and Finance was told",
         "final_done": "Final acceptance recorded — the project is handed over and Finance was told",
-        "before_dlp": "The defects period runs until {date}. Record final acceptance early only if the client has granted it.",
+        "before_dlp": "The defects period runs until {date} — final acceptance is recorded once it ends.",
         "dlp_over": "The defects period has ended with no final acceptance recorded.",
         "ret_held": "Retention held",
         "ret_claimable": "Claimable at Finance now ({rule})",
@@ -14597,7 +14601,8 @@
           "already": "Already recorded",
           "progress": "Progress has not reached {at}% — execution is not complete",
           "no_provisional": "Record the provisional handover first",
-          "punch_open": "{count, plural, one {# punch item is} other {# punch items are}} still open — close the punch list first"
+          "punch_open": "{count, plural, one {# punch item is} other {# punch items are}} still open — close the punch list first",
+          "in_defects": "The defects period has not ended — it ends {date}; final acceptance is recorded after it"
         },
         "sent_finance": "sent to Finance",
         "dlp_left": "{count, plural, one {# day} other {# days}} left",
@@ -17270,7 +17275,8 @@
           "no_unit": "Name the unit allocated",
           "no_free": "Give the date it is free",
           "no_text": "Say what was offered",
-          "not_hireable": "Hire only when the fleet is busy or has none"
+          "not_hireable": "Hire only when the fleet is busy or has none",
+          "in_transit": "{q} {unit} on the way — what left the store is not cancelled; receive it, then return it if unwanted"
         },
         "err": {
           "missing": "The document is missing — it may have changed on another device",

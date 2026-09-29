@@ -41,6 +41,9 @@ describe("the pure rules", () => {
     expect(provisionalBlocks({ archived: false, lifecycle: "live", acceptances: {}, progress: 98.9 })).toEqual(["progress"])
     expect(finalBlocks({ archived: false, lifecycle: "live", acceptances: {}, openPunch: 0 })).toEqual(["no_provisional"])
     expect(finalBlocks({ archived: false, lifecycle: "live", acceptances: { prov: { on: "x", by: "u" } }, openPunch: 2 })).toEqual(["punch_open"])
+    // WF-25: never before the defects period ends.
+    expect(finalBlocks({ archived: false, lifecycle: "live", acceptances: { prov: { on: "2026-01-01", by: "u" } }, openPunch: 0, defectsEnd: "2026-06-30", today: "2026-06-29" })).toEqual(["in_defects"])
+    expect(finalBlocks({ archived: false, lifecycle: "live", acceptances: { prov: { on: "2026-01-01", by: "u" } }, openPunch: 0, defectsEnd: "2026-06-30", today: "2026-06-30" })).toEqual([])
   })
 
   it("the defects period is the contract's; half the retention at provisional on a half term (IPC-05)", () => {
@@ -65,6 +68,10 @@ describe("the writes", () => {
   it("final waits for every punch item to be confirmed, then the project is handed over", async () => {
     seedProject(100)
     await recordProvisional(db, pm, "p1", pmA)
+    await expect(recordFinal(db, pm, "p1", pmA)).rejects.toMatchObject({ blocks: ["in_defects"] })
+    // The defects period (180 days in this contract) has run its course.
+    const p0 = readDoc<Record<string, any>>("projects/p1") as Record<string, any>
+    seed("projects/p1", { ...p0, pm: { ...p0.pm, acceptances: { prov: { ...p0.pm.acceptances.prov, on: "2025-01-01" } } } })
     const n = await raisePunch(db, site, "p1", seA, { what: "Paint", location: "Lobby", severity: "b", source: "cons" })
     await recordFix(db, site, "p1", seA, n)
     await expect(recordFinal(db, pm, "p1", pmA)).rejects.toBeInstanceOf(PmAcceptanceError)

@@ -17,7 +17,7 @@ import { IDLE_ALERT_DAYS, IDLE_SHARE, idleSince, licenceState, onSite, overdueDa
 import { isOpenPunch, type PunchStatus } from "./punch"
 import { pmTabVisible } from "./sections"
 import { blockingObstacles, unprotectedObstacles, type PmObstacle } from "./site"
-import { itemProgress, storeState, type PmStoreLine, type StoreItem } from "./store"
+import { itemProgress, storeBalance, storeState, type PmStoreLine, type StoreItem } from "./store"
 import { lineGot, lineNeed, lineOut, lineOver, openChanges, plantHireable, plantReceivable, receivable, reqState, type PmMaterialRequest, type PmPlantRequest } from "./supply"
 import type { ContractTerms } from "./terms"
 import { approvedValue, workBeforeApproval, type VoStatus } from "./variation"
@@ -201,6 +201,8 @@ export interface DecisionFacts {
   /** Supply: material requests, the project store, equipment requests and plant on site. */
   requests?: PmMaterialRequest[]
   stores?: PmStoreLine[]
+  /** A store line's last paid unit price (price history): what a loss or a use is worth. */
+  storeCostOf?: (x: Pick<PmStoreLine, "name" | "unit">) => number | null
   /** Materials short within 30 days with no live request (needsWithin, computed with the programme). */
   shortages?: number
   plantRequests?: Array<Pick<PmPlantRequest, "status" | "rep" | "got" | "day" | "from">>
@@ -218,6 +220,8 @@ const days = (from: string, to: string) => Math.max(0, Math.round((Date.parse(`$
 const oldest = (dates: string[], today: string) => dates.reduce((m, d) => Math.max(m, days(d, today)), 0)
 const r2 = (n: number) => Math.round(n * 100) / 100
 const RANK = { red: 0, amber: 1, blue: 2 }
+/** A store move the owner hears of even when the manager did not log it (the prototype's 5,000). */
+export const OWNER_STORE_VALUE = 5000
 
 /** Who each decision reaches (the prototype's filter over decisions()). */
 const REACHES: Record<DecisionKind, (h: (k: string) => boolean) => boolean> = {
@@ -351,20 +355,24 @@ function supplyDecisions(f: DecisionFacts, out: PmDecision[]): void {
   if (referred.length)
     out.push({ kind: "po_budget", severity: "amber", count: referred.length, amount: r2(referred.reduce((a, r) => a + (r.over ?? 0), 0)) || undefined, age: oldest(referred.map((r) => r.askedAt ?? f.today), f.today), tab: "pmPo" })
 
+  // The owner hears of a move the manager logged — or of one worth 5,000 or more, whoever logged it.
+  const worth = (x: PmStoreLine, q: number) => r2(q * (f.storeCostOf?.(x) ?? 0))
   const moves = stores.flatMap((x) =>
     x.moves
       .filter((m) => (m.t === "loss" || m.t === "use" || m.t === "rx") && m.st === "wait")
       .filter((m) => !viewer || m.by !== viewer.uid || viewer.owner)
-      .filter((m) => !viewer?.owner || m.by === f.managerId)
+      .filter((m) => !viewer?.owner || m.by === f.managerId || worth(x, m.q) >= OWNER_STORE_VALUE)
+      .map((m) => ({ on: m.on, value: worth(x, m.q) }))
   )
-  if (moves.length) out.push({ kind: "store_move", severity: "amber", count: moves.length, age: oldest(moves.map((m) => m.on), f.today), tab: "pmStore" })
+  if (moves.length) out.push({ kind: "store_move", severity: "amber", count: moves.length, amount: r2(moves.reduce((a, m) => a + m.value, 0)) || undefined, age: oldest(moves.map((m) => m.on), f.today), tab: "pmStore" })
   const incoming = stores.flatMap((x) => x.moves.filter((m) => m.t === "xi" && m.st === "wait"))
   if (incoming.length) out.push({ kind: "store_incoming", severity: "blue", count: incoming.length, tab: "pmStore" })
   const states = stores.map((x) => storeState(x, storeItems))
+  const balanceValue = (want: string) => r2(stores.reduce((a, x, i) => (states[i] === want ? a + Math.abs(storeBalance(x, storeItems)) * (f.storeCostOf?.(x) ?? 0) : a), 0))
   const toClose = states.filter((st) => st === "close").length
-  if (toClose) out.push({ kind: "store_close", severity: "amber", count: toClose, tab: "pmStore" })
+  if (toClose) out.push({ kind: "store_close", severity: "amber", count: toClose, amount: balanceValue("close") || undefined, tab: "pmStore" })
   const negative = states.filter((st) => st === "neg").length
-  if (negative) out.push({ kind: "store_negative", severity: "amber", count: negative, tab: "pmStore" })
+  if (negative) out.push({ kind: "store_negative", severity: "amber", count: negative, amount: balanceValue("neg") || undefined, tab: "pmStore" })
 
   const eqWait = (f.plantRequests ?? []).filter((r) => r.status === "wait")
   if (eqWait.length) out.push({ kind: "eqp_waiting", severity: "amber", count: eqWait.length, age: oldest(eqWait.map((r) => r.day), f.today), tab: "pmReq" })

@@ -35,7 +35,7 @@ import {
 } from "@/lib/procurement/receipt-desk"
 import { matchReceiptToOrder, openOrdersForReceipt, priceAboveReference, priceReference, regulariseProblem, registeredSuppliers, defaultChoice, parseChoice, choiceKey } from "@/lib/procurement/receipt-regularise"
 import { linkReceiptToOrder, markReceiptAsExpense } from "@/lib/procurement/receipt-writes"
-import { applyRejectDecision, decideReject, type RejectTermsLine } from "@/lib/procurement/writes"
+import { applyDiscountRelease, applyRejectDecision, decideReject, type RejectTermsLine } from "@/lib/procurement/writes"
 import type { ProcReceiver } from "@/lib/procurement/receivers"
 import type { PriceAgreement, PriceHistoryEntry } from "@/lib/procurement/prices"
 import type { ProcActor, PurchaseOrder } from "@/lib/procurement/types"
@@ -266,7 +266,11 @@ describe("the writes", () => {
     expect(rejectTermsOf(rep)).toEqual({ replaceBy: "2026-09-30", discountPrice: null })
     const disc = applyRejectDecision(lines, "l1", "discount", null, "t", { discountPrice: 2500 })[0] as RejectTermsLine
     expect(rejectTermsOf(disc)).toEqual({ replaceBy: null, discountPrice: 2500 })
-    expect(disc.accepted).toBe(10)
+    // Kept on hold until Inventory releases it (the prototype's «يُطلب من المخزون فكّ إيقافها بعد قبول صاحب الحاجة»).
+    expect(disc.accepted).toBe(7)
+    expect(disc.rejectDiscountState).toBe("wait")
+    expect(applyDiscountRelease([disc], "l1")[0]).toMatchObject({ accepted: 10, rejectDiscountState: "released" })
+    expect(applyDiscountRelease(applyDiscountRelease([disc], "l1"), "l1")[0].accepted).toBe(10)
     const { id, ...rest } = order({ lines })
     seed(`purchaseOrders/${id}`, rest)
     await expect(decideReject(db, buyer, "po1", { lineId: "l1", decision: "discount" }, { now: NOW })).rejects.toMatchObject({ code: "price_missing" })

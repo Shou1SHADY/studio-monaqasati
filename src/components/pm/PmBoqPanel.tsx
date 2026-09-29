@@ -9,7 +9,7 @@
 // needs a booked cost: the lead passes it as `actualCost` when the cost
 // section reports it; without it the margin is taken on the budget.
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection } from "firebase/firestore"
 import { AlertTriangle, CircleDollarSign, Flame, ListTree, Loader2, Plus, Search, TableProperties } from "lucide-react"
@@ -76,6 +76,7 @@ export function PmBoqPanel({
   actor,
   actualCost,
   orgId,
+  openItemId,
 }: {
   projectId: string
   /** The org — the item drawer reads the store ledger and the org's price history. */
@@ -86,6 +87,8 @@ export function PmBoqPanel({
   actor: BoqActor
   /** Actual cost booked per BOQ line, SAR — from the cost section when it reports it. */
   actualCost?: ReadonlyMap<string, number>
+  /** Open this item's drawer on arrival (Cost's «افتح» on a bleeding item). */
+  openItemId?: string | null
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
@@ -94,7 +97,10 @@ export function PmBoqPanel({
   const [view, setView] = useState<BoqView>("all")
   const [search, setSearch] = useState("")
   const [bySection, setBySection] = useState(false)
-  const [openId, setOpenId] = useState<string | null>(null)
+  const [openId, setOpenId] = useState<string | null>(openItemId ?? null)
+  useEffect(() => {
+    if (openItemId) setOpenId(openItemId)
+  }, [openItemId])
   const [pricing, setPricing] = useState<PmBoqLine | null>(null)
   const [importing, setImporting] = useState(false)
 

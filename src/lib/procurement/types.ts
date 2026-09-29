@@ -100,6 +100,7 @@ export interface PoLogEntry {
     | "received"
     | "remainder_cancelled"
     | "reject_decided"
+    | "reject_discount_released"
     | "closed"
     | "cancelled"
     | "rated"

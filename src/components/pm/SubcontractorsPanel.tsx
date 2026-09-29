@@ -124,6 +124,8 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
   const money = access.has("money")
   const canSub = !access.ctx.archived && access.allowed("subcontract.manage")
   const canStore = !access.ctx.archived && access.allowed("store.move")
+  // The count and the recovery are the approver's (the prototype's CAN('approve')); issuing and returning are the store's.
+  const canReconcile = !access.ctx.archived && access.allowed("reconciliation.manage")
   const limit = pmApprovalLimit(access.ctx.ceiling)
   const rows = useMemo(() => subSummaries(contracts), [contracts])
   const totals = subTotals(rows)
@@ -406,11 +408,13 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap justify-end gap-1.5">
+                          {canReconcile && (
+                            <Button size="sm" variant="outline" onClick={() => setLedMove({ t: "cnt", storeId: r.storeId, partyKey: r.partyKey })}>
+                              {r.count ? t("subs.recon.recount") : t("subs.recon.count")}
+                            </Button>
+                          )}
                           {canStore && (
                             <>
-                              <Button size="sm" variant="outline" onClick={() => setLedMove({ t: "cnt", storeId: r.storeId, partyKey: r.partyKey })}>
-                                {r.count ? t("subs.recon.recount") : t("subs.recon.count")}
-                              </Button>
                               <Button size="sm" variant="ghost" onClick={() => setLedMove({ t: "iss", storeId: r.storeId, partyKey: r.partyKey })} aria-label={t("subs.recon.issue_more")}>
                                 <Plus size={14} aria-hidden="true" />
                               </Button>
@@ -419,7 +423,7 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
                               </Button>
                             </>
                           )}
-                          {canSub && short && (
+                          {canReconcile && short && (
                             <Button size="sm" variant="destructive" onClick={() => setLedRecover(r)}>
                               {t("subs.recon.recover")}
                             </Button>
@@ -486,11 +490,13 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap justify-end gap-1.5">
+                          {canReconcile && (
+                            <Button size="sm" variant="outline" onClick={() => setMoveOf({ c, t: "cnt" })}>
+                              {f.count ? t("subs.recon.recount") : t("subs.recon.count")}
+                            </Button>
+                          )}
                           {canStore && (
                             <>
-                              <Button size="sm" variant="outline" onClick={() => setMoveOf({ c, t: "cnt" })}>
-                                {f.count ? t("subs.recon.recount") : t("subs.recon.count")}
-                              </Button>
                               <Button size="sm" variant="ghost" onClick={() => setMoveOf({ c, t: "iss" })} aria-label={t("subs.recon.issue_more")}>
                                 <Plus size={14} aria-hidden="true" />
                               </Button>
@@ -499,7 +505,7 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
                               </Button>
                             </>
                           )}
-                          {canSub && short && (
+                          {canReconcile && short && (
                             <Button size="sm" variant="destructive" onClick={() => setRecoverOf(c)}>
                               {t("subs.recon.recover")}
                             </Button>

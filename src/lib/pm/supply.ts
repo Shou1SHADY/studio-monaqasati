@@ -193,6 +193,10 @@ const refused = (l: ReqLine) => l.chg?.st === "no"
 /** Still owed on the line: requested − received, unless it was closed. */
 export const lineOut = (l: ReqLine) => (l.cl || refused(l) ? 0 : Math.max(0, r2(l.qty - lineGot(l))))
 
+/** Issued from a main store and not yet received on the project — on the way
+ * (the prototype's lnTransit: authorised portions less what arrived). */
+export const lineInTransit = (l: ReqLine) => (l.cl ? 0 : l.inv?.k === "issue" ? Math.max(0, r2(Math.min(Number(l.inv.q) || 0, l.qty) - lineGot(l))) : 0)
+
 /** Share received, over the lines not cancelled. */
 export function reqPct(r: Pick<PmMaterialRequest, "lines">): number {
   const ls = r.lines.filter((l) => l.cl?.t !== "cancel" && !refused(l))
@@ -235,7 +239,8 @@ export function linePhase(r: Pick<PmMaterialRequest, "status" | "withdrawn" | "r
  * with the supplier, a workshop order, or a part already in. */
 export const receivable = (r: Pick<PmMaterialRequest, "status" | "withdrawn" | "rfqId" | "poId" | "mfgRequestId">, l: ReqLine) => {
   const p = linePhase(r, l)
-  return (p === "po" || p === "mfg" || p === "part") && lineOut(l) > 0
+  // What a main store issued is received on the project like what a supplier sends.
+  return (p === "po" || p === "mfg" || p === "part" || lineInTransit(l) > 0) && lineOut(l) > 0
 }
 
 /** What Procurement sees: every approved line not held or refused — a closed line
@@ -398,7 +403,7 @@ export function approveBlocks(input: { archived: boolean; request: Pick<PmMateri
 
 // ── Stopping what has not arrived ───────────────────────────────────────────
 
-export type StopBlock = "archived" | "not_open" | "closed" | "nothing_left" | "why_text"
+export type StopBlock = "archived" | "not_open" | "closed" | "nothing_left" | "why_text" | "in_transit"
 
 /** Stop the rest: what nobody started on is withdrawn; an order's remainder is
  * cancelled by Procurement with the supplier. What arrived stays in the store. */
@@ -408,6 +413,8 @@ export function stopBlocks(input: { archived: boolean; request: Pick<PmMaterialR
   if (reqState(input.request) !== "go") out.push("not_open")
   if (input.line.cl) out.push("closed")
   else if (lineOut(input.line) <= 0) out.push("nothing_left")
+  // What left a main store is not cancelled — it is received, then returned if unwanted.
+  if (lineInTransit(input.line) > 0) out.push("in_transit")
   if (input.why === "oth" && !input.whyNote?.trim()) out.push("why_text")
   return out
 }

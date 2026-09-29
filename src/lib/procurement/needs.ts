@@ -72,6 +72,8 @@ export interface Need {
   /** The manufacturing request a project need was routed to, if any. */
   mfgRequestId: string | null
   decision: ProcDecision | null
+  /** The order whose cancelled quantity came back to the desk (`returnedNeeds`). */
+  returnedFrom?: string | null
 }
 
 const blank = { needBy: null, note: null, rfqId: null, rfqNumber: null, poId: null, poNumber: null, endNote: null, endKind: null, waitingOn: null, projectId: null, projectName: null, stock: null, mfgRequestId: null, decision: null }
@@ -200,6 +202,32 @@ export function projectNeed(project: { id: string; name: string }, pr: ProjectRe
     mfgRequestId: pr.mfgRequestId ?? null,
     decision,
   }
+}
+
+/**
+ * What an order gave back: a project request is `order` while its order lives,
+ * but a quantity cancelled on that order — its remainder with the supplier, or
+ * rejects the order was reduced by — is owed to the site again («يعود المتبقي
+ * إلى «الاحتياج»»). Each such request yields one more `action` need for those
+ * quantities, matched to the order's lines by material and unit.
+ */
+export function returnedNeeds(needs: Need[], orders: PurchaseOrder[]): Need[] {
+  const byId = new Map(orders.map((o) => [o.id, o]))
+  const out: Need[] = []
+  for (const n of needs) {
+    if (n.kind !== "project" || n.state !== "order" || !n.poId) continue
+    const po = byId.get(n.poId)
+    if (!po) continue
+    const lines = n.lines
+      .map((l) => {
+        const cancelled = po.lines.filter((pl) => nameKey(pl.name) === nameKey(l.name) && (pl.unit || "").trim() === l.unit).reduce((a, pl) => a + (Number(pl.cancelled) || 0), 0)
+        return { ...l, quantity: Math.min(l.quantity, Math.round(cancelled * 100) / 100) }
+      })
+      .filter((l) => l.quantity > 0)
+    if (!lines.length) continue
+    out.push({ ...n, key: `${n.key}:returned:${po.id}`, state: "action", lines, rfqId: null, rfqNumber: null, poId: null, poNumber: null, returnedFrom: po.docNumber })
+  }
+  return out
 }
 
 // ── A stock gap ────────────────────────────────────────────────────────────

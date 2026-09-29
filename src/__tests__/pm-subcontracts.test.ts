@@ -208,7 +208,10 @@ describe("the writes", () => {
     await register(owner, "own")
     await openCustody(db, pm, "p1", { uid: "pm1", name: "PM" }, { subcontractSeq: 1, itemId: "i1", material: "Block", unit: "pc", unitCost: 3, perUnit: 12.5, waste: 4, issueQty: 6000, day: todayDay(), note: null })
     await recordCustodyMove(db, pm, "p1", { uid: "pm1", name: "PM" }, 1, { t: "cnt", q: 5800, day: todayDay(), note: null })
-    const amt = await recordRecovery(db, qs, "p1", { uid: "qs1", name: "QS" }, 1, { q: 100, rate: 3, double: false, note: null })
+    // Counting and recovering are the approver's (the prototype's CAN('approve')), not the QS's or the site's.
+    await expect(recordRecovery(db, qs, "p1", { uid: "qs1", name: "QS" }, 1, { q: 100, rate: 3, double: false, note: null })).rejects.toBeInstanceOf(PmAccessError)
+    await expect(recordCustodyMove(db, site, "p1", { uid: "se1", name: "SE" }, 1, { t: "cnt", q: 5800, day: todayDay(), note: null })).rejects.toBeInstanceOf(PmAccessError)
+    const amt = await recordRecovery(db, pm, "p1", { uid: "pm1", name: "PM" }, 1, { q: 100, rate: 3, double: false, note: null })
     expect(amt).toBe(300)
 
     const k = lineKey(1, 0)
