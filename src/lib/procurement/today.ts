@@ -45,7 +45,8 @@ import { forwardUrgency } from "./receivers"
 import { priceDrift } from "./reports"
 import { acceptsHoldPrice, advanceAmount, advanceNumber, advanceState, asX, HOLD_OWNER, holdVariance, openHolds, pmCancelOpen, type HoldOwner } from "./po-extras"
 import { noticeTold } from "./policy-enforce"
-import { poInScope, rfqInScope } from "./rfq-view"
+import { offersSealed } from "./award"
+import { rfqInScope } from "./rfq-view"
 import type { ProcActor, ProcurementPolicies, PurchaseOrder, ReceiptFact, SupplierFacts } from "./types"
 
 /** The viewer as Today reads him: `canSource` = rfq.manage (or offers.accept) —
@@ -78,6 +79,10 @@ export interface RfqFact {
   /** Who raised it — a buyer's own RFQs are his (the prototype's `rfqMine`). */
   createdByUserId?: string | null
   contractorId?: string | null
+  /** The stored `RFQ-yyyy/NNN`, when it has one. */
+  number?: string | null
+  /** A manager closed the round before its date — its prices are open. */
+  closedEarly?: { at?: string | null } | null
 }
 
 /** What the queue needs to know about an offer. Status literals are the
@@ -137,6 +142,8 @@ export interface ProcWorld {
   budgetOverruns?: Record<string, number>
   /** By need row key: the workshop's readiness date for a line being made. */
   readyDates?: Record<string, string>
+  /** By need row key: the number of the sample with the consultant (`sampleNo`). */
+  sampleNos?: Record<string, string>
   /** By delivery id: where a notice's goods land and who the register names to receive them there. */
   forwardFacts?: Record<string, { place: string | null; receiver: string | null }>
   /** Projects' boundary events Procurement reads (`pmEvents` SRET · NOPO · EQH). */
@@ -337,7 +344,9 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
   const buyerOnly = sourcesOnly(actor)
   const cats = w.needDesk?.viewerCategories ?? null
   const scope = { uid: actor.uid, isOwner: actor.isOwner, canApprove: actor.canApprove, canPrepare: buyerOnly }
-  const mine = (po: PurchaseOrder | undefined) => !buyerOnly || !po || poInScope(po, scope, cats)
+  // A buyer's order rows are the orders he prepared (the prototype's `p.by===USER`):
+  // his categories widen the orders list, never his Today.
+  const mine = (po: PurchaseOrder | undefined) => !buyerOnly || !po || po.preparedById === actor.uid
   const chases = actor.canExpedite && !ownerRO
   const look = (key: string) => (ownerRO ? "actions.view" : key)
 
@@ -577,27 +586,29 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
     for (const o of w.offers) offersByRfq.set(o.rfqId, [...(offersByRfq.get(o.rfqId) || []), o])
 
     for (const r of w.rfqs) {
-      if (buyerOnly && !rfqInScope(r, scope, cats)) continue
+      if (buyerOnly && !rfqInScope(r, scope)) continue
       const title = r.title || ""
       const deadline = daysFromNow(r.deadline, now)
       if (r.status === "Draft") {
         // T3 · never published: its lines are held for nothing.
-        add({ id: `rfq_draft:${r.id}`, kind: "rfq_draft", priority: 2, severity: "blue", sortDays: deadline ?? 9, titleKey: "task.rfq_draft.title", titleParams: { title }, subKey: "task.rfq_draft.sub", subParams: {}, amount: null, href: DRAFT_HREF(r.id), actionKey: "actions.openDraft" })
+        add({ id: `rfq_draft:${r.id}`, kind: "rfq_draft", priority: 2, severity: "blue", sortDays: deadline ?? 9, titleKey: "task.rfq_draft.title", titleParams: { title }, subKey: "task.rfq_draft.sub", subParams: { number: r.number || "", hasNumber: r.number ? 1 : 0 }, amount: null, href: DRAFT_HREF(r.id), actionKey: "actions.openDraft" })
         continue
       }
       if (r.status !== "New") continue
       const offers = offersByRfq.get(r.id) || []
       const pending = offers.filter((o) => OFFER_PENDING.has(o.status || ""))
       const count = offers.length || Number(r.offersCount) || 0
-      if (deadline != null && deadline <= 0 && pending.length) {
-        // T4a · the window closed and offers wait: compare and award. Red once the award cycle is overrun.
+      const closed = deadline != null && deadline <= 0
+      if (pending.length && (closed || !offersSealed(r, w.policies, now))) {
+        // T4a · offers wait and their prices are open — the window closed, or the round is
+        // unsealed (the prototype's `rfqReady`): compare and award. Red once the award cycle is overrun.
         const best = lowestOffer(pending)
         // The nearest offer validity: a price about to lapse is red whatever the cycle says.
         const valid = pending.map((o) => daysFromNow(o.validUntil, now)).filter((x): x is number => x != null)
         const nearest = valid.length ? Math.min(...valid) : null
         const lapsing = nearest != null && nearest <= 2
         const estimate = rfqEstimate(r, w.history)
-        add({ id: `rfq_award:${r.id}`, kind: "rfq_award", priority: 2, severity: lapsing || -deadline > w.policies.awardCycleDays ? "red" : "amber", sortDays: lapsing ? (nearest as number) - 5 : deadline, titleKey: "task.rfq_award.title", titleParams: { title, count: pending.length }, subKey: lapsing ? "task.rfq_award.sub_validity" : "task.rfq_award.sub", subParams: lapsing ? { inDays: Math.max(0, nearest as number) } : { ago: -deadline }, amount: money(actor, estimate ?? (best ? offerPrice(best) : null)), href: RFQ_HREF(r.id), actionKey: "actions.compare" })
+        add({ id: `rfq_award:${r.id}`, kind: "rfq_award", priority: 2, severity: lapsing || (closed && -(deadline as number) > w.policies.awardCycleDays) ? "red" : "amber", sortDays: lapsing ? (nearest as number) - 5 : deadline ?? 9, titleKey: "task.rfq_award.title", titleParams: { title, count: pending.length }, subKey: lapsing ? "task.rfq_award.sub_validity" : closed ? "task.rfq_award.sub" : "task.rfq_award.sub_open", subParams: lapsing ? { inDays: Math.max(0, nearest as number) } : closed ? { ago: -(deadline as number) } : { inDays: deadline ?? 0, hasDate: deadline == null ? 0 : 1 }, amount: money(actor, estimate ?? (best ? offerPrice(best) : null)), href: RFQ_HREF(r.id), actionKey: "actions.compare" })
       } else if (deadline != null && deadline < 0 && count === 0) {
         // T4b · closed with nothing: extend, add suppliers or share the guest link.
         add({ id: `rfq_no_offers:${r.id}`, kind: "rfq_no_offers", priority: 2, severity: "red", sortDays: deadline, titleKey: "task.rfq_no_offers.title", titleParams: { title }, subKey: "task.rfq_no_offers.sub", subParams: {}, amount: null, href: RFQ_HREF(r.id), actionKey: "actions.openRfq" })
@@ -690,7 +701,7 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
         subParams: whenParams(u.nearest),
         amount: null,
         href: NEEDS_HREF,
-        actionKey: look("actions.openNeeds"),
+        actionKey: "actions.openNeeds",
       })
     if (managerView) {
       const { rollups, uncovered } = buyerRollups(rows, desk.buyers)
@@ -855,7 +866,7 @@ export function todayWaits(w: ProcWorld, actor: TodayActor, now: Date): Wait[] {
         const ready = w.readyDates?.[r.key] || ""
         out.push({ id: `w_mfg:${r.key}`, kind: "being_made", module: "manufacturing", titleKey: "wait.being_made.title", titleParams: base, subKey: "wait.being_made.sub_ready", subParams: { ref: r.need.refLabel, date: r.needBy || "", hasDate: r.needBy ? 1 : 0, ready, hasReady: ready ? 1 : 0 }, href })
       }
-      if (isActionState(r.state) && r.samplePending) out.push({ id: `w_sample:${r.key}`, kind: "sample_approval", module: "projects", titleKey: "wait.sample_approval.title", titleParams: { name: r.name }, subKey: "wait.sample_approval.sub", subParams: {}, href })
+      if (isActionState(r.state) && r.samplePending) out.push({ id: `w_sample:${r.key}`, kind: "sample_approval", module: "projects", titleKey: "wait.sample_approval.title", titleParams: { name: r.name, no: w.sampleNos?.[r.key] || "", hasNo: w.sampleNos?.[r.key] ? 1 : 0 }, subKey: "wait.sample_approval.sub", subParams: {}, href })
     }
   }
   return out

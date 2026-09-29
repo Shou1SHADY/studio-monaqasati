@@ -40,9 +40,10 @@ describe("sealed prices until the deadline", () => {
     expect(offersSealed({ deadline: "2026-09-21" }, SEALING, NOW)).toBe(false)
   })
 
-  it("does nothing while the policy is off — which is how it ships", () => {
-    expect(DEFAULT_POLICIES.sealOffersUntilDeadline).toBe(false)
-    expect(offersSealed({ deadline: "2026-09-25" }, DEFAULT_POLICIES, NOW)).toBe(false)
+  it("seals by default (the PRD and the prototype) and does nothing once the policy is switched off", () => {
+    expect(DEFAULT_POLICIES.sealOffersUntilDeadline).toBe(true)
+    expect(offersSealed({ deadline: "2026-09-25" }, DEFAULT_POLICIES, NOW)).toBe(true)
+    expect(offersSealed({ deadline: "2026-09-25" }, { ...DEFAULT_POLICIES, sealOffersUntilDeadline: false }, NOW)).toBe(false)
   })
 
   it("opens an RFQ with no deadline rather than sealing it for ever", () => {

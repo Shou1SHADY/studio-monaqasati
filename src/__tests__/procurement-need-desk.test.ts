@@ -144,7 +144,8 @@ describe("Today reads the desk", () => {
     const withBuyer = { ...w, needDesk: { rows, buyers: [{ uid: "u2", name: "Turki", categories: ["steel"] }], viewerCategories: null } }
     expect(todayTasks(withBuyer, MANAGER, NOW).filter((x) => x.group === "need").map((x) => x.kind)).toEqual(["need_rollup"])
     const owner = todayTasks({ ...withBuyer, ownerHasTeam: true }, OWNER, NOW).filter((x) => x.group === "need")
-    expect(owner.every((x) => x.kind === "need_rollup" && x.actionKey === "actions.view")).toBe(true)
+    // The roll-up row has no «اطّلع» variant in the prototype: the owner's button reads «افتح الاحتياج» too.
+    expect(owner.every((x) => x.kind === "need_rollup" && x.actionKey === "actions.openNeeds")).toBe(true)
   })
 
   it("waits: the stock check with Inventory, the sample with Projects", () => {
