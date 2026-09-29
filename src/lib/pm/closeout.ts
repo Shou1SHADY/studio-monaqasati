@@ -54,7 +54,7 @@ export interface CloseInput {
   /** Non-conformance reports — an open one blocks closing (NCR-01). */
   ncrs?: Array<{ status: NcrStatus }>
   /** Variations — a priced one still undecided is open money (ARC-01). */
-  variations?: Array<{ status: VoStatus; value: number }>
+  variations?: Array<{ status: VoStatus; value: number; executedPct?: number; billedPct?: number }>
   items: Array<{ rate: number; executed: number; billed: number }>
   cutPool: number
   certificates: Array<{ status: CertificateStatus; net: number; dueOn?: string | null; collected?: number | null }>
@@ -90,7 +90,10 @@ export function closeoutRows(input: CloseInput): CloseRow[] {
     { key: "unpriced", ok: unpricedExecuted === 0, n: unpricedExecuted }
   )
   if (input.hasClient) {
-    const unbilled = r2(input.items.reduce((a, i) => a + (i.rate > 0 ? Math.max(0, i.executed - i.billed) * i.rate : 0), 0) + input.cutPool)
+    const voUnbilled = (input.variations ?? [])
+      .filter((v) => v.status === "appr")
+      .reduce((a, v) => a + Math.max(0, (v.executedPct ?? 0) - (v.billedPct ?? 0)) * v.value, 0)
+    const unbilled = r2(input.items.reduce((a, i) => a + (i.rate > 0 ? Math.max(0, i.executed - i.billed) * i.rate : 0), 0) + voUnbilled + input.cutPool)
     const inProgress = input.certificates.filter((c) => c.status === "int" || c.status === "sub").length
     const overdue = r2(
       input.certificates

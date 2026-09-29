@@ -35,6 +35,7 @@ import { defaultTerms, termProblems, type ContractTerms } from "@/lib/pm/terms"
 import { approvedValue, PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
 import { displayDocNumber } from "@/lib/sales-numbering"
 import { CheckLine, ChoiceChips, FormHint } from "./ContractBits"
+import { clientTypeKey } from "./AcceptHandoverWizard"
 
 export interface PmFileProject {
   name?: string | null
@@ -75,6 +76,10 @@ const useClaims = (projectId: string) => {
 export function PmInfoPanel({ projectId, project, access }: { projectId: string; project: PmFileProject; access: PmAccess }) {
   const t = useTranslations("Portal.PM")
   const tShared = useTranslations("Portal.Shared")
+  const clientTypeText = (v: string | null | undefined) => {
+    const k = clientTypeKey(v)
+    return k ? tShared(k.key as "pm_kind_bld") : v
+  }
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
@@ -141,7 +146,7 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
           </span>
         }
       />
-      <KeyValueRow label={t("info.types")} value={[project.clientType, pm.kind ? tShared(`pm_kind_${pm.kind}` as "pm_kind_bld") : null].filter(Boolean).join(" · ") || "—"} />
+      <KeyValueRow label={t("info.types")} value={[clientTypeText(project.clientType), pm.kind ? tShared(`pm_kind_${pm.kind}` as "pm_kind_bld") : null].filter(Boolean).join(" · ") || "—"} />
       <KeyValueRow label={t("info.location")} value={project.location || "—"} />
       <KeyValueRow label={t("info.consultant")} value={project.consultant || "—"} />
       <KeyValueRow label={t("info.manager")} value={project.projectManagerName || "—"} />

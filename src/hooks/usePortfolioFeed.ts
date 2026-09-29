@@ -110,7 +110,7 @@ export function usePortfolioFeed(project: PortfolioProject): PortfolioFeed {
             acceptances: (pm.acceptances ?? {}) as Acceptances,
             punch: ((punch ?? []) as Array<{ status: PunchStatus }>).map((p) => ({ status: p.status })),
             ncrs: ((ncrs ?? []) as Array<{ status: NcrStatus }>).map((n) => ({ status: n.status })),
-            variations: ((vos ?? []) as Array<{ status: VoStatus; value?: number }>).map((v) => ({ status: v.status, value: num(v.value) })),
+            variations: ((vos ?? []) as Array<{ status: VoStatus; value?: number; executedPct?: number; billedPct?: number }>).map((v) => ({ status: v.status, value: num(v.value), executedPct: num(v.executedPct), billedPct: num(v.billedPct) })),
             items: rows.map((d) => ({ rate: num(d.unitPrice), executed: num(d.executedQuantity), billed: num(d.billedQuantity) })),
             cutPool: pm.cutPool ?? 0,
             certificates: money ? ((certs ?? []) as unknown as PmCertificate[]) : [],

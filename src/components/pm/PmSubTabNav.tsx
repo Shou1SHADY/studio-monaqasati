@@ -103,7 +103,7 @@ export function PmSubTabNav({
   const file = group === "file"
   const close = file && has("pmClose")
   const addenda = useRows<{ status: string }>(projectId, PM_ADDENDA, contract && (money || access.has("approve")))
-  const variations = useRows<{ status: VoStatus; value?: number }>(projectId, PM_VARIATIONS, contract || close)
+  const variations = useRows<{ status: VoStatus; value?: number; executedPct?: number; billedPct?: number }>(projectId, PM_VARIATIONS, contract || close)
   const claims = useRows<PmClaim>(projectId, PM_CLAIMS, contract)
   const subCerts = useRows<{ status: string }>(projectId, PM_SUB_CERTIFICATES, group === "exec")
   const docs = useRows<PmDocument>(projectId, PM_DOCS, file)
@@ -128,7 +128,7 @@ export function PmSubTabNav({
           acceptances: project.acceptances ?? {},
           punch,
           ncrs,
-          variations: variations.map((v) => ({ status: v.status, value: Number(v.value) || 0 })),
+          variations: variations.map((v) => ({ status: v.status, value: Number(v.value) || 0, executedPct: Number(v.executedPct) || 0, billedPct: Number(v.billedPct) || 0 })),
           items: items.map((i) => ({ rate: i.rate, executed: i.executed, billed: (i as LookItem & { billed?: number }).billed ?? 0 })),
           cutPool: project.cutPool ?? 0,
           certificates: certs,

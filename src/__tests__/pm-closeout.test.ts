@@ -52,6 +52,13 @@ describe("the one gate", () => {
     expect(closeBlocks(closeoutRows(base))).toEqual([])
   })
 
+  it("approved variation work not yet billed is open money (the prototype's pUnbilled)", () => {
+    const vo = { status: "appr" as const, value: 50_000, executedPct: 0.4, billedPct: 0 }
+    const row = closeoutRows({ ...base, variations: [vo] }).find((r) => r.key === "unbilled")
+    expect(row).toMatchObject({ ok: false, n: 20_000 })
+    expect(closeoutRows({ ...base, variations: [{ ...vo, billedPct: 0.4 }] }).find((r) => r.key === "unbilled")?.ok).toBe(true)
+  })
+
   it("open money blocks: unbilled, a certificate in progress, overdue collection, retention held (AC-12)", () => {
     expect(closeBlocks(closeoutRows({ ...base, items: [{ rate: 100, executed: 12, billed: 10 }] })).map((r) => r.key)).toEqual(["unbilled"])
     expect(closeBlocks(closeoutRows({ ...base, certificates: [{ status: "sub", net: 5 }] })).map((r) => r.key)).toEqual(["in_progress"])

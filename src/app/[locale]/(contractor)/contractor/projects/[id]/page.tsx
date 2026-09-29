@@ -2598,7 +2598,7 @@ export default function ProjectDetailPage() {
             </Card>
           )}
 
-          {can("offers.accept") && (
+          {!isPmProject && can("offers.accept") && (
             <Card className="border-primary/15">
               <CardContent className="p-6">
                 <h3 className="font-bold text-base flex items-center gap-2 text-slate-800 mb-4">
@@ -2610,7 +2610,7 @@ export default function ProjectDetailPage() {
             </Card>
           )}
 
-          {can("offers.accept") && (
+          {!isPmProject && can("offers.accept") && (
             <Card className="border-primary/15">
               <CardContent className="p-6">
                 <FinanceAuditLog projectId={isDeleting ? undefined : projectId} />
