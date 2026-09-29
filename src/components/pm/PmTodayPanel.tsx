@@ -110,8 +110,13 @@ export function DecisionItem({ d, money, onOpen, project }: { d: PmDecision; mon
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const v = d.vars ?? {}
-  const detail = t(`dec.${d.kind}.${d.detail ?? "detail"}`, {
+  const values = {
     count: d.count ?? 0,
+    no: v.no ?? "—",
+    n: v.n ?? 0,
+    pct: v.pct ?? 0,
+    note: v.note ?? "—",
+    days: v.days ?? 0,
     name: v.name ?? "—",
     cause: v.cause ?? "—",
     date: v.date ? pmDate(v.date, locale) : "—",
@@ -120,12 +125,13 @@ export function DecisionItem({ d, money, onOpen, project }: { d: PmDecision; mon
     points: v.points ?? 0,
     rate: v.rate ?? 0,
     cap: v.cap ?? 0,
-  })
+  }
+  const detail = t(`dec.${d.kind}.${d.detail ?? "detail"}`, values)
   return (
     <DecisionRow
       severity={d.severity}
       icon={DECISION_ICON[d.kind]}
-      title={t(`dec.${d.kind}.title`, { count: d.count ?? 0 })}
+      title={t(`dec.${d.kind}.${d.title ?? "title"}`, values)}
       detail={project ? `${project} · ${detail}` : detail}
       age={d.age ? t("days", { count: d.age }) : undefined}
       ageDays={d.age}

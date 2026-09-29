@@ -4,7 +4,9 @@
 // read — terms and certificates only for money or approve holders, as the
 // rules allow; the cost (for "damages above the margin") only for whoever sees
 // both money and the client — and derives the list. Nothing here is stored.
-// It also hands back the few site facts the Today figures show beside it.
+// It also hands back the few site facts the Today figures show beside it, and
+// the supply records and certificates it read (what the project waits on from
+// other modules is built from them, on the portfolio too).
 
 import { useMemo } from "react"
 import { collection, query, where } from "firebase/firestore"
@@ -26,13 +28,13 @@ import { PM_SHEETS, type PmSheet } from "@/lib/pm/measurement"
 import { PM_PLANT as PM_PLANT_ON_SITE, type PmPlant } from "@/lib/pm/plant"
 import { PM_ACTIVITIES, type PmActivity } from "@/lib/pm/programme"
 import { PM_PUNCH, type PunchItem } from "@/lib/pm/punch"
-import { PM_INSPECTIONS } from "@/lib/pm/inspection"
+import { PM_INSPECTIONS, type PmInspection } from "@/lib/pm/inspection"
 import { PM_UNITS, type PmUnit } from "@/lib/pm/units"
 import { PM_SUBMITTALS, type PmSubmittal } from "@/lib/pm/sample"
 import { isOpenObstacle, PM_OBSTACLES, type PmObstacle } from "@/lib/pm/site"
 import { PM_STORE, storeLineOf, type PmStoreLine } from "@/lib/pm/store"
 import { PM_SUB_CERTIFICATES } from "@/lib/pm/subcontract"
-import { needsWithin, PM_PLANT as PM_PLANT_REQUESTS, PURCHASE_REQUESTS, reqState, requestOf, type PmPlantRequest } from "@/lib/pm/supply"
+import { needsWithin, PM_PLANT as PM_PLANT_REQUESTS, PURCHASE_REQUESTS, reqState, requestOf, type PmMaterialRequest, type PmPlantRequest } from "@/lib/pm/supply"
 import { defaultTerms, type ContractTerms } from "@/lib/pm/terms"
 import { approvedValue, PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
 import { PURCHASE_ORDERS } from "@/lib/procurement/types"
@@ -90,7 +92,14 @@ export function usePmDecisions(
   projectId: string,
   project: PmDecisionProject | null | undefined,
   access: PmAccess
-): { decisions: PmDecision[]; progress: number | null; ready: boolean; facts: PmSiteFacts } {
+): {
+  decisions: PmDecision[]
+  progress: number | null
+  ready: boolean
+  facts: PmSiteFacts
+  supply: { requests: PmMaterialRequest[]; stores: PmStoreLine[] }
+  certificates: PmCertificate[]
+} {
   const on = Boolean(project?.pm)
   const seesTerms = access.has("money") || access.has("approve")
   const money = access.has("money")
@@ -103,7 +112,7 @@ export function usePmDecisions(
   const punch = useSub<PunchItem>(projectId, PM_PUNCH, on)
   const zoneOn = on && Boolean(project?.enabledSections?.includes("zone"))
   const units = useSub<PmUnit>(projectId, PM_UNITS, zoneOn)
-  const inspections = useSub<{ status: string; unit?: string | null }>(projectId, PM_INSPECTIONS, zoneOn)
+  const inspections = useSub<PmInspection>(projectId, PM_INSPECTIONS, on)
   const vos = useSub<PmVariation>(projectId, PM_VARIATIONS, on)
   const claims = useSub<PmClaim>(projectId, PM_CLAIMS, on)
   const submittals = useSub<PmSubmittal>(projectId, PM_SUBMITTALS, on)
@@ -226,5 +235,5 @@ export function usePmDecisions(
 
   const progress = useMemo(() => progressOf(items.rows.map((d) => ({ quantity: num(d.quantity), rate: num(d.unitPrice), executed: num(d.executedQuantity) }))), [items.rows])
 
-  return { decisions, progress, ready: !items.isLoading && !sheets.isLoading, facts }
+  return { decisions, progress, ready: !items.isLoading && !sheets.isLoading, facts, supply, certificates: certs.rows }
 }

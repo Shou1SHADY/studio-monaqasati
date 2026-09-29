@@ -40,7 +40,19 @@ export interface PortalSession {
   expiresAt: string
 }
 
-export type PortalAnswerWhat = "appA" | "appB" | "rej" | "pass" | "cond" | "fail" | "confirmed" | "replied" | "accepted"
+export type PortalAnswerWhat = "appA" | "appB" | "rej" | "pass" | "cond" | "fail" | "confirmed" | "fix_rejected" | "replied" | "accepted" | "plan_rejected"
+
+/** A fix or a corrective plan the consultant refused, with his reason — kept on
+ * the record so the refused step stays visible after it goes back to open. */
+export interface PortalRejection {
+  on: string
+  by: string
+  byName: string
+  note: string
+  /** The fix or plan he refused, as it stood. */
+  refused: Record<string, unknown> | null
+  viaPortal: true
+}
 
 export interface PortalHistoryEntry {
   kind: PortalKind
@@ -90,13 +102,18 @@ export const verifyBody = z.object({
 const seq = z.number().int().min(1).max(99_999)
 const note = z.string().trim().max(1000).optional()
 
-export const answerBody = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("subm"), seq, decision: z.enum(SAMPLE_REPLIES), note }),
-  z.object({ kind: z.literal("wir"), seq, result: z.enum(WIR_RESULTS), note, on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
-  z.object({ kind: z.literal("punch"), seq }),
-  z.object({ kind: z.literal("corr"), seq, text: z.string().trim().min(1).max(2000) }),
-  z.object({ kind: z.literal("ncr"), seq, accept: z.literal(true) }),
-])
+// A punch fix or a corrective plan is accepted or refused; a refusal carries his reason.
+export const answerBody = z
+  .discriminatedUnion("kind", [
+    z.object({ kind: z.literal("subm"), seq, decision: z.enum(SAMPLE_REPLIES), note }),
+    z.object({ kind: z.literal("wir"), seq, result: z.enum(WIR_RESULTS), note, on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
+    z.object({ kind: z.literal("punch"), seq, accept: z.boolean(), note }),
+    z.object({ kind: z.literal("corr"), seq, text: z.string().trim().min(1).max(2000) }),
+    z.object({ kind: z.literal("ncr"), seq, accept: z.boolean(), note }),
+  ])
+  .superRefine((a, ctx) => {
+    if ((a.kind === "punch" || a.kind === "ncr") && !a.accept && !a.note) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["note"], message: "no_note" })
+  })
 export type PortalAnswer = z.infer<typeof answerBody>
 
 export const newToken = () => randomBytes(32).toString("hex")
@@ -376,10 +393,22 @@ export function planAnswer(input: PortalAnswer, record: Record<string, unknown> 
       }
     }
     case "punch": {
-      const p = record as unknown as PunchItem
+      const p = record as unknown as PunchItem & { rejects?: PortalRejection[] }
       if (p.status !== "fix" || p.source !== "cons") return notWaiting
       const blocks = punchStepBlocks({ archived: false, status: p.status, step: "confirm", day: today, today, after: p.fix?.on ?? p.day, party: "cons" })
       if (blocks.length) return blocked(blocks)
+      if (!input.accept) {
+        if (!note) return blocked(["no_note"])
+        const reject: PortalRejection = { on: today, by, byName, note, refused: (p.fix as Record<string, unknown> | null | undefined) ?? null, viaPortal: true }
+        return {
+          ok: true,
+          plan: {
+            patch: { status: "open", fix: null, rejects: [...(p.rejects ?? []), reject] },
+            line: null,
+            entry: { kind: "punch", no: punchNo(p.seq), title: p.what, what: "fix_rejected" },
+          },
+        }
+      }
       return {
         ok: true,
         plan: {
@@ -404,10 +433,22 @@ export function planAnswer(input: PortalAnswer, record: Record<string, unknown> 
       }
     }
     case "ncr": {
-      const n = record as unknown as PmNcr
+      const n = record as unknown as PmNcr & { rejects?: PortalRejection[] }
       if (n.status !== "plan") return notWaiting
       const blocks = ncrStepBlocks({ archived: false, status: n.status, step: "accept", day: today, today, after: n.plan?.on ?? n.day })
       if (blocks.length) return blocked(blocks)
+      if (!input.accept) {
+        if (!note) return blocked(["no_note"])
+        const reject: PortalRejection = { on: today, by, byName, note, refused: (n.plan as Record<string, unknown> | null | undefined) ?? null, viaPortal: true }
+        return {
+          ok: true,
+          plan: {
+            patch: { status: "open", plan: null, rejects: [...(n.rejects ?? []), reject] },
+            line: null,
+            entry: { kind: "ncr", no: ncrNo(n.seq), title: n.what || n.root, what: "plan_rejected" },
+          },
+        }
+      }
       return {
         ok: true,
         plan: {

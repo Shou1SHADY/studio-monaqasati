@@ -3,8 +3,9 @@
 // One project in the portfolio (the PM 1.0 prototype's pcard): name, number,
 // client and region, its state; a postponed project says since when and why; a
 // project with no BOQ says it can be neither measured nor billed; otherwise
-// progress against the plan. For holders of money: contract value (unpriced /
-// estimated), unbilled and the cash position. Pills: urgent decisions, open
+// progress against the plan. Contract value (BOQ + approved variations;
+// unpriced / estimated), unbilled and the cash position — «•••» for anyone
+// without money, as the prototype's moneyM. Pills: urgent decisions, open
 // obstacles, overdue collection, and — once technically complete — whether it
 // is ready to archive. A project made before PM 1.0 shows what it has.
 
@@ -58,7 +59,8 @@ export function PmProjectCard({ project, onFeed }: { project: PortfolioProject; 
   const lifecycle = lifecycleOf(project as { pm?: { lifecycle?: string }; status?: string })
   const noBoq = feed.itemCount === 0
   const holdDays = lifecycle === "hold" && project.pm?.holdSince ? Math.max(0, Math.round(dayNum(todayDay()) - dayNum(project.pm.holdSince))) : null
-  const value = project.budget ?? 0
+  const value = feed.contract
+  const shown = (v: number) => (feed.money ? pmMoney(v) : "•••")
 
   useEffect(() => {
     if (onFeed) onFeed(project.id, feed)
@@ -103,29 +105,27 @@ export function PmProjectCard({ project, onFeed }: { project: PortfolioProject; 
         <ProgressLine feed={feed} />
       )}
 
-      {feed.money && (
-        <dl className="grid grid-cols-3 gap-2 border-t pt-3 text-xs">
-          <div>
-            <dt className="text-muted-foreground">{t("list.contract_value")}</dt>
-            <dd className="font-black tabular-nums text-foreground" dir="ltr">
-              {value > 0 ? pmMoney(value) : t("list.unpriced")}
-            </dd>
-            {value > 0 && noBoq && <dd className="text-[10px] text-muted-foreground">{t("list.estimated")}</dd>}
-          </div>
-          <div>
-            <dt className="text-muted-foreground">{t("list.unbilled")}</dt>
-            <dd className={cn("font-black tabular-nums", feed.unbilled > 50_000 ? "text-destructive" : "text-foreground")} dir="ltr">
-              {noBoq ? "—" : pmMoney(feed.unbilled)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">{t("list.cash")}</dt>
-            <dd className={cn("font-black tabular-nums", noBoq ? "text-foreground" : feed.cash < 0 ? "text-destructive" : "text-success")} dir="ltr">
-              {noBoq ? "—" : pmMoney(feed.cash)}
-            </dd>
-          </div>
-        </dl>
-      )}
+      <dl className="grid grid-cols-3 gap-2 border-t pt-3 text-xs">
+        <div>
+          <dt className="text-muted-foreground">{t("list.contract_value")}</dt>
+          <dd className="font-black tabular-nums text-foreground" dir="ltr">
+            {value > 0 ? shown(value) : t("list.unpriced")}
+          </dd>
+          {value > 0 && noBoq && <dd className="text-[10px] text-muted-foreground">{t("list.estimated")}</dd>}
+        </div>
+        <div>
+          <dt className="text-muted-foreground">{t("list.unbilled")}</dt>
+          <dd className={cn("font-black tabular-nums", feed.money && feed.unbilled > 50_000 ? "text-destructive" : "text-foreground")} dir="ltr">
+            {noBoq ? "—" : shown(feed.unbilled)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground">{t("list.cash")}</dt>
+          <dd className={cn("font-black tabular-nums", noBoq || !feed.money ? "text-foreground" : feed.cash < 0 ? "text-destructive" : "text-success")} dir="ltr">
+            {noBoq ? "—" : shown(feed.cash)}
+          </dd>
+        </div>
+      </dl>
 
       {(feed.red > 0 || feed.obstacles > 0 || (feed.overdue > 0 && feed.money) || feed.archivable !== null) && (
         <p className="mt-auto flex flex-wrap gap-1.5">

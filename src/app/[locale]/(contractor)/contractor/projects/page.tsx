@@ -6,11 +6,13 @@
 // region with «N من M», cards or a table for projects in play, and the archive's
 // dense table of frozen figures with its sort, CSV and paging. Only projects the
 // viewer may see are listed (pmSeesProject via usePmVisibleProjects), and money
-// orders or leaves the page only for a holder of money (sorts, CSV columns).
+// orders or leaves the page only for a holder of money (sorts, CSV columns); on
+// screen its tiles, figures and columns stay, reading «•••» (the prototype's moneyM).
+// A project's contract value is its BOQ plus approved variations, as Today reads it.
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
-import { Activity, ArrowDownUp, Coins, Download, FolderKanban, FolderOpen, LayoutGrid, List, Loader2, PlusCircle, Search, TrendingUp } from "lucide-react"
+import { ArrowDownUp, Coins, Download, FolderKanban, FolderOpen, LayoutGrid, List, Loader2, PlusCircle, Search, TrendingUp } from "lucide-react"
 import { collection, query, where } from "firebase/firestore"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Button } from "@/components/ui/button"
@@ -68,7 +70,8 @@ function getTimeMs(v: unknown): number {
   return isNaN(parsed) ? 0 : parsed
 }
 
-const feedSig = (f: PortfolioFeed) => `${f.ready}|${f.progress}|${f.planned}|${f.behind}|${f.budget}`
+const feedSig = (f: PortfolioFeed) => `${f.ready}|${f.progress}|${f.planned}|${f.behind}|${f.budget}|${f.contract}`
+const MASK = "•••"
 
 export default function ProjectsListPage() {
   const t = useTranslations("Portal.Contractor")
@@ -131,11 +134,11 @@ export default function ProjectsListPage() {
         managerId: p.projectManagerId ?? null,
         managerName: p.projectManagerName ?? null,
         lifecycle: lifecycleOf(p as { pm?: { lifecycle?: string }; status?: string }),
-        value: p.budget ?? 0,
+        value: feeds[p.id]?.contract ?? p.budget ?? 0,
         fin: p.pm?.fin ?? null,
         createdMs: getTimeMs(p.createdAt),
       })),
-    [typedProjects, locale]
+    [typedProjects, locale, feeds]
   )
   const byId = useMemo(() => new Map(typedProjects.map((p) => [p.id, p])), [typedProjects])
   const counts = portfolioCounts(rows)
@@ -203,17 +206,22 @@ export default function ProjectsListPage() {
     if (arch) {
       const k = archiveKpis(list, counts.arch)
       const countKpi: ModuleKpi = { id: "count", label: tPm("list.kpi_archived"), value: String(k.count), note: k.count < k.of ? tPm("list.kpi_archived_of", { of: k.of }) : tPm("list.kpi_archived_all"), tone: "neutral", icon: FolderKanban }
-      const late: ModuleKpi = { id: "late", label: tPm("list.kpi_overran"), value: String(k.late), note: tPm("list.kpi_overran_note", { late: k.late, count: k.count }), tone: k.late ? "warn" : "good", icon: Activity }
-      if (!money) return [countKpi, late]
       return [
         countKpi,
-        { id: "value", label: tPm("list.kpi_arch_value"), value: pmMoney(k.value), note: k.cost !== null ? tPm("list.kpi_at_cost", { cost: pmMoney(k.cost) }) : tPm("list.kpi_cost_pending"), tone: "neutral", icon: Coins },
+        {
+          id: "value",
+          label: tPm("list.kpi_arch_value"),
+          value: money ? pmMoney(k.value) : MASK,
+          note: k.cost !== null ? tPm("list.kpi_at_cost", { cost: money ? pmMoney(k.cost) : MASK }) : tPm("list.kpi_cost_pending"),
+          tone: "neutral",
+          icon: Coins,
+        },
         {
           id: "margin",
           label: tPm("list.kpi_margin"),
-          value: k.marginPct !== null ? `${k.marginPct}%` : "—",
+          value: !money ? MASK : k.marginPct !== null ? `${k.marginPct}%` : "—",
           note: tPm("list.kpi_overran_note", { late: k.late, count: k.count }),
-          tone: k.marginPct !== null && k.marginPct > 9 ? "good" : "warn",
+          tone: !money ? "neutral" : k.marginPct !== null && k.marginPct > 9 ? "good" : "warn",
           icon: TrendingUp,
         },
       ]
@@ -225,9 +233,14 @@ export default function ProjectsListPage() {
     const stateLabel = st === "all" ? tPm("list.chip_all") : tPm(`list.chip.${st}`)
     return [
       { id: "shown", label: tPm("list.kpi_shown"), value: String(list.length), note: stateLabel, tone: "neutral", icon: FolderKanban },
-      ...(money
-        ? [{ id: "value", label: tPm("list.kpi_value"), value: pmMoney(list.reduce((a, r) => a + r.value, 0)), note: budget > 0 ? tPm("list.kpi_at_budget", { budget: pmMoney(budget) }) : tPm("list.kpi_no_budget"), tone: "neutral" as const, icon: Coins }]
-        : []),
+      {
+        id: "value",
+        label: tPm("list.kpi_value"),
+        value: money ? pmMoney(list.reduce((a, r) => a + r.value, 0)) : MASK,
+        note: !money ? tPm("list.kpi_at_budget", { budget: MASK }) : budget > 0 ? tPm("list.kpi_at_budget", { budget: pmMoney(budget) }) : tPm("list.kpi_no_budget"),
+        tone: "neutral",
+        icon: Coins,
+      },
       { id: "progress", label: tPm("list.kpi_progress"), value: `${Math.round(avg)}%`, note: tPm("list.kpi_behind", { count: behind }), tone: behind ? ("warn" as const) : ("good" as const), icon: TrendingUp },
     ]
   })()
