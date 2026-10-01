@@ -722,6 +722,33 @@ export function poVsEstimate(lines: Array<Pick<ProjectPoLine, "quantity" | "canc
 /** Beyond this the purchasing panel says above / below the estimate (the prototype's 4%). */
 export const ESTIMATE_GAP_PERCENT = 4
 
+/** The price table's «فوق/تحت تقديرك»: a material's last price against the
+ * estimated unit cost of the items the project's orders bought it for, weighted
+ * by quantity, % (positive = above). Null when no order line names an estimated item. */
+export function priceVsEstimate(lastPrice: number, key: string, lines: Array<Pick<ProjectPoLine, "name" | "unit" | "quantity" | "cancelled" | "boqItemId">>, estOf: (itemId: string) => number): number | null {
+  let q = 0
+  let est = 0
+  for (const l of lines) {
+    if (!l.boqItemId || materialKeyOf(l.name, l.unit) !== key) continue
+    const e = estOf(l.boqItemId)
+    const n = Math.max(0, l.quantity - (l.cancelled || 0))
+    if (!(e > 0) || !(n > 0)) continue
+    q += n
+    est += n * e
+  }
+  if (!(q > 0) || !(lastPrice > 0)) return null
+  const unit = est / q
+  return r2(((lastPrice - unit) / unit) * 100)
+}
+
+/** The store's «بانتظار الاستلام»: every receivable line of an approved request —
+ * what a main store already issued first (it is on the road), then by need-by. */
+export function awaitingReceipt<R extends Pick<PmMaterialRequest, "status" | "withdrawn" | "rfqId" | "poId" | "mfgRequestId" | "lines" | "needBy">>(requests: R[]): Array<{ r: R; index: number; left: boolean }> {
+  const out: Array<{ r: R; index: number; left: boolean }> = []
+  for (const r of requests) if (r.status === "approved") r.lines.forEach((l, index) => receivable(r, l) && out.push({ r, index, left: lineInTransit(l) > 0 }))
+  return out.sort((a, b) => Number(b.left) - Number(a.left) || (a.r.needBy || "9999").localeCompare(b.r.needBy || "9999"))
+}
+
 // ── What the main stores hold (read when composing a request) ───────────────
 
 export interface MainStockRow {

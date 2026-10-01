@@ -58,7 +58,7 @@ import {
   type StoreState,
 } from "@/lib/pm/store"
 import { engineerHold, PM_SUBCONTRACTS, type PmSubcontract } from "@/lib/pm/subcontract"
-import { lineOut, linePhase, receivable, reqNo, type PmMaterialRequest } from "@/lib/pm/supply"
+import { awaitingReceipt, lineOut, linePhase, reqNo, type PmMaterialRequest } from "@/lib/pm/supply"
 import { confirmMoveIn, decideStoreMove, logStoreMove, setMaterialRate, type SupplyActor } from "@/lib/pm/supply-writes"
 import { cn } from "@/lib/utils"
 import { ChoiceChips, FormHint } from "./ContractBits"
@@ -109,11 +109,8 @@ export function ProjectStorePanel({
   const list = groups[f].slice().sort((a, b) => Math.max(0, storeBalance(b, items)) * cost(b) - Math.max(0, storeBalance(a, items)) * cost(a))
   const shownLed = ledId ?? openStoreId ?? null
 
-  const rows = useMemo(() => {
-    const out: Array<{ r: PmMaterialRequest; index: number }> = []
-    for (const r of world.requests) if (r.status === "approved") r.lines.forEach((l, index) => receivable(r, l) && out.push({ r, index }))
-    return out.sort((a, b) => (a.r.needBy || "9999").localeCompare(b.r.needBy || "9999"))
-  }, [world.requests])
+  const rows = useMemo(() => awaitingReceipt(world.requests), [world.requests])
+  const anyLeft = rows.some((x) => x.left)
   const ww = useMemo(() => whereWent(lines, items, (x) => world.costOf(x)), [lines, items, world])
 
   return (
@@ -158,13 +155,24 @@ export function ProjectStorePanel({
         </Panel>
 
         <div className="space-y-4">
-          <Panel title={t("store.rcv.title")} icon={Truck} count={rows.length} bodyClassName="p-0">
+          <Panel
+            title={
+              <span className="flex items-center gap-2">
+                {t("store.rcv.title")}
+                <StatusPill tone={anyLeft ? "warn" : "mute"} className="tabular-nums">
+                  {rows.length}
+                </StatusPill>
+              </span>
+            }
+            icon={Truck}
+            bodyClassName="p-0"
+          >
             <p className="px-4 pt-3 text-xs text-muted-foreground">{t("store.rcv.sub")}</p>
             {rows.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("store.rcv.none")}</p>
             ) : (
               <div className="divide-y">
-                {rows.slice(0, allRcv ? undefined : 5).map(({ r, index }) => {
+                {rows.slice(0, allRcv ? undefined : 5).map(({ r, index, left }) => {
                   const l = r.lines[index]
                   const ph = linePhase(r, l)
                   return (
@@ -174,11 +182,11 @@ export function ProjectStorePanel({
                           {qty(lineOut(l))} {l.unit} {l.name}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {r.seq ? t("sup.no", { no: reqNo(r.seq) }) : t("sup.legacy")} · {ph === "mfg" ? t("store.rcv.from_mfg") : `${r.poNumber ? `${r.poNumber} · ` : ""}${t("store.rcv.with_supplier")}`}
+                          {r.seq ? t("sup.no", { no: reqNo(r.seq) }) : t("sup.legacy")} · {left ? t("store.rcv.left_store", { store: l.inv?.warehouseName || t("store.rcv.main_store") }) : ph === "mfg" ? t("store.rcv.from_mfg") : `${r.poNumber ? `${r.poNumber} · ` : ""}${t("store.rcv.with_supplier")}`}
                         </p>
                       </div>
                       {canRcv && (
-                        <Button size="sm" variant="outline" className="h-7" onClick={() => setRcv({ request: r, index })}>
+                        <Button size="sm" variant={left ? "default" : "outline"} className="h-7" onClick={() => setRcv({ request: r, index })}>
                           {t("sup.receive")}
                         </Button>
                       )}
