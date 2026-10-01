@@ -573,7 +573,7 @@ function IncomingList(props: IncomingListProps) {
                             <Badge className="border-none bg-module/10 text-[10px] font-bold text-module">{t("incoming.byLink")}</Badge>
                           </>
                         )}
-                        <span>{t("incoming.forwardedBy", { name: fw.byName, when: when(fw.at) })}</span>
+                        <span>{fw.auto ? t("incoming.forwardedAuto", { when: when(fw.at) }) : t("incoming.forwardedBy", { name: fw.byName, when: when(fw.at) })}</span>
                       </>
                     ) : suggested ? (
                       <>
@@ -681,6 +681,8 @@ function IncomingPillBadge({ pill }: { pill: ReturnType<typeof incomingPill> }) 
   const [tone, text] =
     pill.kind === "to_forward"
       ? [pill.tone === "bad" ? bad : warn, t("incoming.toForward")]
+      : pill.kind === "auto_forwarded"
+        ? [warn, t("incoming.autoForwarded")]
       : pill.kind === "due_late"
         ? [bad, t("incoming.lateNoNotice", { days: pill.days })]
         : pill.kind === "due_no_notice"

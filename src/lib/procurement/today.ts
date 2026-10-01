@@ -512,9 +512,10 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
     const lines = (r.lines || []).map((l) => `${l.name} ${l.noticeQuantity} ${l.unit}`).join(" · ")
     const action = actor.canReceive && !ownerRO ? "actions.receive" : "actions.open"
     // §5.2-3b: a notice nobody has forwarded is a delivery whose receiver does
-    // not know it is coming. The PRD auto-forwards once the window lapses;
-    // nothing here runs on a schedule, so instead the notice says so and turns
-    // amber inside the window. Receiving it centrally is a perfectly good answer
+    // not know it is coming. The daily job auto-forwards once the window lapses
+    // (auto-forward.ts) where the register names a receiver; until it runs, or
+    // where it cannot, the notice turns amber inside the window and stays this
+    // task. Receiving it centrally is a perfectly good answer
     // — which is why this colours a row and never blocks one.
     const told = noticeTold(r, w.policies)
     const chase = !told && forwardUrgency(d, w.policies.forwardWindowDays) !== "none"

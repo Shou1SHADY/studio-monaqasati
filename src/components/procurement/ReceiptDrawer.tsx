@@ -357,7 +357,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
               .filter(Boolean)
               .join(" · ")
       case "forwarded":
-        return variant === "link" ? t("trail.forwarded_link", params) : variant === "member" ? t("trail.forwarded_member", params) : variant === "unannounced" ? t("trail.forwarded_unannounced") : variant === "both" ? t("trail.forwarded_both") : t("trail.forwarded_direct")
+        return variant === "auto" ? t("trail.forwarded_auto", params) : variant === "link" ? t("trail.forwarded_link", params) : variant === "member" ? t("trail.forwarded_member", params) : variant === "unannounced" ? t("trail.forwarded_unannounced") : variant === "both" ? t("trail.forwarded_both") : t("trail.forwarded_direct")
       case "received":
         return [place || project || "—", receiverName, number, variant === "link" ? t("trail.received_link") : ""].filter(Boolean).join(" · ")
       case "went":
@@ -467,6 +467,12 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
             <Stat label={t("drawer.place")} value={place || (project ? t("drawer.projectCustody") : pending ? "—" : t("drawer.generalStock"))} sub={kind ? `${t(`dest.${kind}`)}${project ? ` · ${project}` : ""}` : project || undefined} />
             <Stat label={t("drawer.receiver")} value={pending ? d.forwardedTo?.name || "—" : receiverName} sub={pending ? undefined : moduleName} />
           </div>
+
+          {pending && d.forwardedTo?.auto && !d.receiverReport && (
+            <Callout tone="amber">
+              <b>{t("incoming.autoForwarded")}</b> <span>{t("drawer.autoForwardedBody", { name: d.forwardedTo.name })}</span>
+            </Callout>
+          )}
 
           {pending && d.forwardedTo?.note && (
             <Callout tone="blue">

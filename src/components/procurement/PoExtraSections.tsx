@@ -439,7 +439,7 @@ type OrderDeliveryRow = ReceiptFact & {
   receivedByName?: string | null
   deliveryPersonName?: string | null
   attachmentUrls?: string[] | null
-  forwardedTo?: { name?: string | null; userId?: string | null; byName?: string | null; at?: string | null } | null
+  forwardedTo?: { name?: string | null; userId?: string | null; byName?: string | null; at?: string | null; auto?: boolean } | null
   warehouseId?: string | null
 }
 
@@ -524,7 +524,11 @@ export function OrderDeliveriesSections({
               <>
                 {tr("incoming.forwardedTo", { name: fw.name })}
                 {!fw.userId && ` ${tr("incoming.byLink")}`}
-                {fw.byName && <span className="text-muted-foreground"> · {tr("incoming.forwardedBy", { name: fw.byName, when: fmt(fw.at) })}</span>}
+                {fw.auto ? (
+                  <Pill tone="amber">{tr("incoming.autoForwarded")}</Pill>
+                ) : (
+                  fw.byName && <span className="text-muted-foreground"> · {tr("incoming.forwardedBy", { name: fw.byName, when: fmt(fw.at) })}</span>
+                )}
               </>
             ) : routing === "procurement" && !d.noNotice ? (
               <span className="text-warning">{tr("incoming.toForward")}</span>
