@@ -9,13 +9,13 @@
 import { useMemo } from "react"
 import { collection } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
-import { staleDocuments, PM_DOCS, type PmDocument } from "@/lib/pm/documents"
-import { lastApprovedDay, PM_SHEETS, type PmSheet } from "@/lib/pm/measurement"
+import { staleDrawings, PM_DOCS, type PmDocument } from "@/lib/pm/documents"
+import { PM_SHEETS, type PmSheet } from "@/lib/pm/measurement"
 import { PM_ACTIVITIES } from "@/lib/pm/programme"
 import { livePermits, PM_OBSTACLES, PM_PERMITS, type PmObstacle, type PmPermit } from "@/lib/pm/site"
 import { PM_STORE, storeLineOf, type PmStoreLine } from "@/lib/pm/store"
 import { PM_PLANT, PURCHASE_REQUESTS, requestOf } from "@/lib/pm/supply"
-import { lookahead, type LookActivity, type LookFacts, type LookItem, type LookPlant, type LookRow } from "@/lib/pm/weekly-plan"
+import { lookahead, lookObstacle, type LookActivity, type LookFacts, type LookItem, type LookPlant, type LookRow } from "@/lib/pm/weekly-plan"
 
 export interface LookaheadSections {
   docs: boolean
@@ -50,13 +50,12 @@ export function usePmLookahead(projectId: string, items: LookItem[], on: Lookahe
   const plant = useCollection(plantQ)
 
   return useMemo(() => {
-    const lastDay = lastApprovedDay((sheets.data ?? []) as unknown as PmSheet[])
     const facts: LookFacts = {
       items,
       activities: (acts.data ?? []) as unknown as LookActivity[],
-      obstacles: ((obs.data ?? []) as unknown as PmObstacle[]).map((o) => ({ title: o.title, party: o.partyName || o.party, itemIds: o.itemIds ?? [], closeOn: o.closeOn ?? null })),
+      obstacles: ((obs.data ?? []) as unknown as PmObstacle[]).map(lookObstacle),
       livePermits: livePermits((pmt.data ?? []) as unknown as PmPermit[], today).length,
-      staleDrawings: staleDocuments((docs.data ?? []) as unknown as PmDocument[], lastDay).length,
+      staleDrawings: staleDrawings((docs.data ?? []) as unknown as PmDocument[], (sheets.data ?? []) as unknown as PmSheet[]).length,
       stores: ((store.data ?? []) as Array<Partial<PmStoreLine> & { id: string }>).map((d) => storeLineOf(d.id, d)),
       requests: ((reqs.data ?? []) as Array<Record<string, unknown> & { id: string }>).map(requestOf),
       plant: (plant.data ?? []) as unknown as LookPlant[],

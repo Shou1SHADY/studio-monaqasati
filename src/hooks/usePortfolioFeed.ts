@@ -23,6 +23,7 @@ import { PM_PUNCH, type PunchStatus } from "@/lib/pm/punch"
 import { isOpenObstacle, PM_OBSTACLES, type PmObstacle } from "@/lib/pm/site"
 import type { ContractTerms } from "@/lib/pm/terms"
 import { PM_VARIATIONS, type VoStatus } from "@/lib/pm/variation"
+import { certificatesApply, termsNow } from "@/lib/pm/terms"
 
 export type PortfolioProject = PmDecisionProject & {
   id: string
@@ -106,7 +107,7 @@ export function usePortfolioFeed(project: PortfolioProject): PortfolioFeed {
       archivable =
         closeBlocks(
           closeoutRows({
-            hasClient: (pm.terms?.payer ?? "client") !== "none",
+            hasClient: certificatesApply(pm.original ?? pm.terms, termsNow(pm)),
             acceptances: (pm.acceptances ?? {}) as Acceptances,
             punch: ((punch ?? []) as Array<{ status: PunchStatus }>).map((p) => ({ status: p.status })),
             ncrs: ((ncrs ?? []) as Array<{ status: NcrStatus }>).map((n) => ({ status: n.status })),

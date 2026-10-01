@@ -69,6 +69,15 @@ describe("supply decisions (G-12)", () => {
     expect(find({ requests: [r], viewer: viewer(["req", "approve", "admin"], "o", true) }, "req_incoming")).toBeUndefined()
   })
 
+  it("an order still awaiting approval — or cancelled — brings nothing; one the viewer cannot read is taken as coming", () => {
+    const r = request({ status: "approved", poId: "po1" })
+    const v = viewer(["req"])
+    expect(find({ requests: [r], viewer: v, orderStatus: { po1: "awaiting_approval" } }, "req_incoming")).toBeUndefined()
+    expect(find({ requests: [r], viewer: v, orderStatus: { po1: "cancelled" } }, "req_incoming")).toBeUndefined()
+    expect(find({ requests: [r], viewer: v, orderStatus: { po1: "sent" } }, "req_incoming")).toMatchObject({ count: 1 })
+    expect(find({ requests: [r], viewer: v, orderStatus: {} }, "req_incoming")).toMatchObject({ count: 1 })
+  })
+
   it("stop what has not arrived once the item is complete", () => {
     const r = request({ status: "approved", poId: "po1" })
     const items = [{ id: "i1", code: "03-01", quantity: 100, rate: 10_000, executed: 100, billed: 90 }]

@@ -9,7 +9,7 @@
 import { doc, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
 import { budgetEvent, estimateBlocks, type ApprovedEstimate, type ProjectCost } from "./cost"
-import { eventDocId, PM_EVENTS } from "./events"
+import { PM_EVENTS, pmEventDocId } from "./events"
 import { todayDay } from "./format"
 import { lifecycleOf } from "./lifecycle"
 import { withFreshState } from "./project-writes"
@@ -46,7 +46,7 @@ export async function approveReconciliation(
     const eac: ApprovedEstimate = { v: Math.round(cost.forecastCost * 100) / 100, on: todayDay(), by: actor.uid, byName: actor.name, rev }
     const event = budgetEvent({ organizationId: project.organizationId ?? "", projectId, projectNo: pm.no ?? projectId, rev, cost, by: actor.uid, at: new Date().toISOString() })
     tx.update(pRef, { pm: { ...pm, eac, budCount: rev }, updatedAt: serverTimestamp() })
-    tx.set(doc(firestore, PM_EVENTS, eventDocId(event.key)), event)
+    tx.set(doc(firestore, PM_EVENTS, pmEventDocId(event.organizationId, event.key)), event)
     out = eac
   })
   return out

@@ -7,6 +7,8 @@
 import { foldSearchText } from "../search-text"
 import type { PurchaseRequestRecord } from "../manufacturing-engine"
 import { poStatus } from "./po"
+import { materialKey } from "./prices"
+import { lineNeed, rfqNeedSources, type NeedLinkedRfq } from "./rfq-view"
 import type { PurchaseOrder } from "./types"
 
 export type NeedKind = "mfg" | "project" | "stock"
@@ -42,6 +44,11 @@ export interface ProcDecision {
   cover?: number[]
 }
 
+/** Where a need came from — carried onto the RFQ and the order. A project
+ * request's line that is sourced apart from its request (added after the request
+ * already had an RFQ or an order) names its index in the request's `lines`. */
+export type NeedSource = NonNullable<PurchaseOrder["purchaseSource"]> & { line?: number }
+
 export interface Need {
   key: string
   kind: NeedKind
@@ -67,7 +74,7 @@ export interface Need {
   projectId: string | null
   projectName: string | null
   /** Carried onto the RFQ and the order, so the need can be closed from them. */
-  source: NonNullable<PurchaseOrder["purchaseSource"]>
+  source: NeedSource
   stock: { onHand: number; min: number } | null
   /** The work order (mfg) or the project (project) it belongs to, for its link. */
   ownerId: string
@@ -76,6 +83,9 @@ export interface Need {
   decision: ProcDecision | null
   /** The order whose cancelled quantity came back to the desk (`returnedNeeds`). */
   returnedFrom?: string | null
+  /** A project request's lines added after it was sourced — each its own need,
+   * put on the desk by `returnedNeeds`. */
+  added?: Need[]
 }
 
 const blank = { needBy: null, note: null, rfqId: null, rfqNumber: null, poId: null, poNumber: null, endNote: null, endKind: null, waitingOn: null, projectId: null, projectName: null, stock: null, mfgRequestId: null, decision: null }
@@ -113,8 +123,26 @@ export function mfgNeed(order: { id: string; ref: string; context: string; proje
 
 // ── A project's internal purchase request ───────────────────────────────────
 
+/** A PM 1.0 request's line, as far as the desk reads it. */
+export interface ProjectRequestLine {
+  name?: string
+  unit?: string
+  qty?: number
+  itemId?: string | null
+  /** Inventory's reply: what it issued from stock is not bought. */
+  inv?: { k?: string; q?: number | null; kept?: number | null } | null
+  chg?: { st?: string | null } | null
+  cl?: { t?: string | null } | null
+  /** Project receipts; `src` says which portion one arrived against (`stk` the store's issue). */
+  receipts?: Array<{ q?: number | null; src?: string | null }> | null
+  /** Added after the request was sourced: bought on its own. */
+  late?: { on?: string | null } | null
+}
+
 export interface ProjectRequestDoc {
   id: string
+  /** A PM 1.0 request: born `pending` = awaiting the project manager's technical approval. */
+  pm?: boolean
   title?: string
   items?: Array<{ name?: string; quantity?: string | number; unit?: string; category?: string | null; samplePending?: boolean | null; needBy?: string | null; itemId?: string | null }>
   /** Optional until Projects' requests carry one (PM 1.0 E-26). */
@@ -131,19 +159,40 @@ export interface ProjectRequestDoc {
   poNumber?: string | null
   decidedByUserName?: string | null
   /** A PM 1.0 request's own lines — Inventory's reply on each says what it issued from stock. */
-  lines?: Array<{ name?: string; unit?: string; inv?: { k?: string; kept?: number | null } | null }>
+  lines?: ProjectRequestLine[]
+  /** A line's own RFQ and order, by its index in `lines`. */
+  lineLinks?: Record<string, { rfqId?: string | null; rfqNumber?: string | null; poId?: string | null; poNumber?: string | null }> | null
 }
 
-const lineKey = (name: string | undefined, unit: string | undefined) => `${(name || "").trim().toLowerCase()}|${(unit || "").trim().toLowerCase()}`
+const received = (l: ProjectRequestLine) => (l.receipts || []).reduce((a, x) => a + (Number(x.q) || 0), 0)
 
-/** What Inventory issued from stock is not bought: a line it answered «issue» leaves only
- * what it kept (0 for a full issue); «none» leaves the whole line to Procurement. */
-function stockAdjusted(pr: ProjectRequestDoc): Map<string, number> {
-  const out = new Map<string, number>()
-  for (const l of pr.lines || []) {
-    if (l.inv?.k === "issue") out.set(lineKey(l.name, l.unit), Math.max(0, Number(l.inv.kept) || 0))
-  }
-  return out
+/** What a line asks Procurement for. What Inventory issued from stock is not
+ * bought: a line it answered «issue» leaves only what it kept (0 for a full
+ * issue); «none» leaves the whole line. Once the line was closed it is what
+ * arrived — less what arrived from the store, counted as pm/supply.ts counts it
+ * (a receipt that names no portion is the store's issue first). */
+function toSource(l: ProjectRequestLine): number {
+  const issued = l.inv?.k === "issue" ? Math.max(0, Number(l.inv.q) || 0) : 0
+  if (!l.cl) return l.inv?.k === "issue" ? Math.max(0, Number(l.inv.kept) || 0) : Number(l.qty) || 0
+  const sum = (src: string | null) => (l.receipts || []).filter((x) => (x.src ?? null) === src).reduce((a, x) => a + (Number(x.q) || 0), 0)
+  return Math.round((sum("buy") + Math.max(0, sum(null) - Math.max(0, issued - sum("stk")))) * 1000) / 1000
+}
+
+/** The request line behind each of `items`, by index. `items` is written from the
+ * lines in order (pm/supply.ts `procurementItems`: not a change still held or
+ * refused, not one added after sourcing, nothing for a line closed with nothing
+ * in) — the same walk reads them back, so two lines of one material on two BOQ
+ * items each keep their own reply from Inventory. */
+function linesOfItems(pr: ProjectRequestDoc): Array<ProjectRequestLine | null> {
+  const lines = (pr.lines || []).filter((l) => l.chg?.st !== "wait" && l.chg?.st !== "no" && !l.late && !(l.cl && !(received(l) > 0)))
+  let at = 0
+  return (pr.items || []).map((i) => {
+    const want = materialKey(i.name, i.unit)
+    const hit = lines.findIndex((l, k) => k >= at && materialKey(l.name, l.unit) === want && (!i.itemId || l.itemId === i.itemId))
+    if (hit < 0) return null
+    at = hit + 1
+    return lines[hit]
+  })
 }
 
 const iso = (v: unknown): string => {
@@ -152,12 +201,51 @@ const iso = (v: unknown): string => {
   return t && typeof t.toDate === "function" ? t.toDate().toISOString() : ""
 }
 
+/** A line of the request added after it was sourced (a change the manager
+ * decided late): a new line to buy. It answers to its own RFQ and order
+ * (`lineLinks`), never to the request's. */
+function addedNeeds(base: Need, pr: ProjectRequestDoc): Need[] {
+  if (pr.status !== "approved") return []
+  const out: Need[] = []
+  ;(pr.lines || []).forEach((l, index) => {
+    if (!l.late || l.chg?.st === "wait" || l.chg?.st === "no") return
+    const quantity = toSource(l)
+    const name = (l.name || "").trim()
+    if (!name || !(quantity > 0)) return
+    const link = pr.lineLinks?.[String(index)] ?? null
+    const line: NeedLine = { name, unit: (l.unit || "").trim(), quantity }
+    if (l.itemId) line.itemId = l.itemId
+    out.push({
+      ...base,
+      key: `${base.key}:L${index}`,
+      state: link?.poId ? "order" : link?.rfqId ? "rfq" : "action",
+      lines: [line],
+      at: l.late.on || base.at,
+      rfqId: link?.rfqId ?? null,
+      rfqNumber: link?.rfqNumber ?? null,
+      poId: link?.poId ?? null,
+      poNumber: link?.poNumber ?? null,
+      endNote: null,
+      endKind: null,
+      waitingOn: null,
+      source: { ...base.source, line: index },
+      mfgRequestId: null,
+      decision: null,
+    })
+  })
+  return out
+}
+
 export function projectNeed(project: { id: string; name: string }, pr: ProjectRequestDoc, ref: string): Need {
-  const issued = stockAdjusted(pr)
-  const lines = (pr.items || [])
-    .map((i) => {
-      const kept = issued.get(lineKey(i.name, i.unit))
-      const l: NeedLine = { name: (i.name || "").trim(), unit: (i.unit || "").trim(), quantity: kept ?? (Number(i.quantity) || 0) }
+  // A PM request is born awaiting the project manager's TECHNICAL approval
+  // (REQ-02): until he approves, nothing of it is Procurement's — it is not a
+  // request the warehouse is slow to answer, and nobody proceeds on it.
+  const unapproved = Boolean(pr.pm) && pr.status === "pending"
+  const behind = linesOfItems(pr)
+  const lines = (unapproved ? [] : pr.items || [])
+    .map((i, k) => {
+      const own = behind[k]
+      const l: NeedLine = { name: (i.name || "").trim(), unit: (i.unit || "").trim(), quantity: own?.inv?.k === "issue" ? toSource(own) : Number(i.quantity) || 0 }
       if (i.category) l.category = i.category
       if (i.samplePending) l.samplePending = true
       if (i.itemId) l.itemId = i.itemId
@@ -170,6 +258,7 @@ export function projectNeed(project: { id: string; name: string }, pr: ProjectRe
   let state: NeedState = "action"
   let waitingOn: Need["waitingOn"] = null
   if (pr.status === "rejected") state = "done"
+  else if (unapproved) state = "waiting"
   else if (pr.status !== "approved" && !(proceeded && pr.status === "pending")) {
     state = "waiting"
     waitingOn = "warehouse"
@@ -179,7 +268,7 @@ export function projectNeed(project: { id: string; name: string }, pr: ProjectRe
     state = "waiting"
     waitingOn = "workshop"
   }
-  return {
+  const need: Need = {
     ...blank,
     key: `project:${project.id}:${pr.id}`,
     kind: "project",
@@ -205,18 +294,25 @@ export function projectNeed(project: { id: string; name: string }, pr: ProjectRe
     mfgRequestId: pr.mfgRequestId ?? null,
     decision,
   }
+  const added = addedNeeds(need, pr)
+  return added.length ? { ...need, added } : need
 }
 
 /**
+ * What comes back to the desk from a project request already in hand.
+ *
  * What an order gave back: a project request is `order` while its order lives,
  * but a quantity cancelled on that order — its remainder with the supplier, or
  * rejects the order was reduced by — is owed to the site again («يعود المتبقي
  * إلى «الاحتياج»»). Each such request yields one more `action` need for those
  * quantities, matched to the order's lines by material and unit.
+ *
+ * And what the project added to it: a line decided after the request was
+ * sourced (`Need.added`) is a need of its own, whatever state the request is in.
  */
 export function returnedNeeds(needs: Need[], orders: PurchaseOrder[]): Need[] {
   const byId = new Map(orders.map((o) => [o.id, o]))
-  const out: Need[] = []
+  const out: Need[] = needs.flatMap((n) => n.added ?? [])
   for (const n of needs) {
     if (n.kind !== "project" || n.state !== "order" || !n.poId) continue
     const po = byId.get(n.poId)
@@ -231,6 +327,87 @@ export function returnedNeeds(needs: Need[], orders: PurchaseOrder[]): Need[] {
     out.push({ ...n, key: `${n.key}:returned:${po.id}`, state: "action", lines, rfqId: null, rfqNumber: null, poId: null, poNumber: null, returnedFrom: po.docNumber })
   }
   return out
+}
+
+// ── The award: which order answers a project's request ─────────────────────
+
+/** The RFQ as the award reads its needs: the links (`rfq-view.ts`), and enough of
+ * each line to recognise the material it asks for. */
+export interface AwardedRfq extends NeedLinkedRfq {
+  products?: Array<(NonNullable<NonNullable<NeedLinkedRfq["products"]>[number]> & { name?: string | null; description?: string | null; unitOfMeasure?: string | null; unit?: string | null }) | null> | null
+}
+
+export interface ServedRequest {
+  projectId: string
+  purchaseRequestId: string
+  /** The one line the RFQ answers, when it was sourced apart from its request. */
+  line: number | null
+}
+
+/** One order of the award, with the RFQ lines it carries (null = all of them). */
+export interface AwardedOrder {
+  id: string
+  docNumber: string
+  products: number[] | null
+}
+
+/** The project requests an RFQ answers — its own source, the needs picked on
+ * the form, a line's own — each once. */
+export function rfqProjectRequests(rfq: NeedLinkedRfq): ServedRequest[] {
+  const out = new Map<string, ServedRequest>()
+  for (const src of rfqNeedSources(rfq)) {
+    if (src.kind !== "project_request" || !src.projectId || !src.purchaseRequestId) continue
+    const line = (src as NeedSource).line ?? null
+    out.set(`${src.projectId}/${src.purchaseRequestId}/${line ?? ""}`, { projectId: src.projectId, purchaseRequestId: src.purchaseRequestId, line })
+  }
+  return [...out.values()]
+}
+
+/**
+ * What the award writes on a project request its RFQ answered: the order that
+ * now carries it — without which the project's line stays "an RFQ is out" for
+ * ever and can never be received. Null when there is nothing to write: the
+ * request has moved on (another RFQ answers it, or it already names an order),
+ * or none of its lines was awarded.
+ *
+ * A split award gives one request's lines to several suppliers: the request
+ * names the first order, and a line another order carries names its own
+ * (`lineLinks`) — recognised by its material, read off the RFQ line's
+ * description or name, since an RFQ line does not say which request line it is.
+ * A line that cannot be told apart stays under the request's order.
+ */
+export function awardLinkPatch(rfqId: string, rfq: AwardedRfq, served: ServedRequest, request: ProjectRequestDoc, orders: AwardedOrder[]): Record<string, string> | null {
+  const products = rfq.products || []
+  const answers = (index: number) => {
+    const src = lineNeed(rfq, index)?.source
+    return src?.kind === "project_request" && src.projectId === served.projectId && src.purchaseRequestId === served.purchaseRequestId && ((src as NeedSource).line ?? null) === served.line
+  }
+  const carrying = orders.filter((o) => o.products === null || !products.length || o.products.some(answers))
+  if (!carrying.length) return null
+  const [first, ...others] = carrying
+  if (served.line != null) {
+    const own = request.lineLinks?.[String(served.line)]
+    if (own?.rfqId !== rfqId || own.poId) return null
+    return { [`lineLinks.${served.line}.poId`]: first.id, [`lineLinks.${served.line}.poNumber`]: first.docNumber }
+  }
+  if (request.rfqId !== rfqId || request.poId) return null
+  const patch: Record<string, string> = { poId: first.id, poNumber: first.docNumber }
+  const carries = (o: AwardedOrder, l: ProjectRequestLine) =>
+    (o.products || []).some((index) => {
+      const p = products[index]
+      const unit = p?.unitOfMeasure || p?.unit
+      const want = materialKey(l.name, l.unit)
+      return answers(index) && ((Boolean(p?.description) && materialKey(p?.description, unit) === want) || (Boolean(p?.name) && materialKey(p?.name, unit) === want))
+    })
+  if (others.length)
+    (request.lines || []).forEach((l, index) => {
+      if (l.late || carries(first, l)) return
+      const other = others.find((o) => carries(o, l))
+      if (!other) return
+      patch[`lineLinks.${index}.poId`] = other.id
+      patch[`lineLinks.${index}.poNumber`] = other.docNumber
+    })
+  return patch
 }
 
 // ── A stock gap ────────────────────────────────────────────────────────────
@@ -311,16 +488,18 @@ export function needCounts(needs: Need[]): Record<NeedState | "all", number> {
 
 // ── The `?source=` an RFQ or an order is started with ─────────────────────
 
-/** `prj:<project>:<request>` · `stock:<warehouse>:<item>` · `<workOrder>:<request>`
- * (the older form, a work order's shortfall). */
+/** `prj:<project>:<request>` (`…:L<line>` for a line sourced apart) ·
+ * `stock:<warehouse>:<item>` · `<workOrder>:<request>` (the older form, a work
+ * order's shortfall). */
 export function needSourceParam(s: Need["source"]): string {
-  if (s.kind === "project_request") return `prj:${s.projectId}:${s.purchaseRequestId}`
+  if (s.kind === "project_request") return `prj:${s.projectId}:${s.purchaseRequestId}${s.line == null ? "" : `:L${s.line}`}`
   if (s.kind === "stock_gap") return `stock:${s.warehouseId}:${s.itemId}`
   return `${s.workOrderId}:${s.purchaseRequestId}`
 }
 
 export function parseNeedSource(raw: string | null | undefined): Need["source"] | null {
   const parts = (raw || "").split(":")
+  if (parts[0] === "prj" && parts.length === 4 && parts[1] && parts[2] && /^L\d+$/.test(parts[3])) return { kind: "project_request", projectId: parts[1], purchaseRequestId: parts[2], line: Number(parts[3].slice(1)) }
   if (parts[0] === "prj" && parts.length === 3 && parts[1] && parts[2]) return { kind: "project_request", projectId: parts[1], purchaseRequestId: parts[2] }
   if (parts[0] === "stock" && parts.length === 3 && parts[1] && parts[2]) return { kind: "stock_gap", warehouseId: parts[1], itemId: parts[2] }
   if (parts.length === 2 && parts[0] && parts[1]) return { kind: "mfg_purchase", workOrderId: parts[0], purchaseRequestId: parts[1] }

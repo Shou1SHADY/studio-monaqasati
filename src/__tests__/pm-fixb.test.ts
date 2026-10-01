@@ -159,7 +159,8 @@ describe("an advance changed before start after Finance received it (termsMain a
 
   it("logs the change and warns — Finance gets no second event (the prototype) — and records who completed the terms", async () => {
     seedPlan()
-    seed(`${PM_EVENTS}/prj:ADV:PJ-2026_007`, { key: "prj:ADV:PJ-2026/007", kind: "ADV" })
+    // An event sent before the outbox id carried the organisation: still found, by its key within the organisation.
+    seed(`${PM_EVENTS}/prj:ADV:PJ-2026_007`, { key: "prj:ADV:PJ-2026/007", kind: "ADV", organizationId: "org" })
     const r = await savePlanTerms(db, pm, "p1", { ...terms, advance: 0.15 }, { uid: "pm1", name: "Abdullah" })
     expect(r.advanceChanged).toBe(true)
     const block = readDoc<{ pm: Record<string, unknown> }>("projects/p1")!.pm

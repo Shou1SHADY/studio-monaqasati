@@ -15,7 +15,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { z } from "zod"
-import { FieldValue, type Firestore, type QuerySnapshot } from "firebase-admin/firestore"
+import { FieldValue, type DocumentReference, type Firestore, type QuerySnapshot } from "firebase-admin/firestore"
 import { maskPhone } from "@/lib/otp"
 import { cleanAttachments, type PmAttachment } from "./attachments"
 import { portalItems, type PortalKind } from "./consultant-portal"
@@ -25,6 +25,7 @@ import { lifecycleOf } from "./lifecycle"
 import { ncrNo, ncrStepBlocks, PM_NCRS, type PmNcr } from "./ncr"
 import { PM_PUNCH, punchNo, punchStepBlocks, type PunchItem } from "./punch"
 import { PM_SUBMITTALS, replyBlocks as sampleReplyBlocks, SAMPLE_REPLIES, sampleNo, type PmSubmittal } from "./sample"
+import { itemsAfterSampleApproval, PURCHASE_REQUESTS } from "./supply"
 
 export const PM_PORTAL_LINKS = "pmPortalLinks"
 export const PORTAL_LINK_TTL_MS = 180 * 86_400_000
@@ -309,6 +310,9 @@ export type AnswerRefusal = "NOT_FOUND" | "NOT_WAITING" | "BLOCKED"
 export interface AnswerPlan {
   patch: Record<string, unknown>
   line: { itemId: string; patch: Record<string, unknown> } | null
+  /** A sample approved on this BOQ item: the material requests' lines on it lose
+   * «عيّنة قيد الاعتماد» — Procurement may order them. */
+  sampleApproved?: string | null
   entry: Pick<PortalHistoryEntry, "kind" | "no" | "title" | "what">
 }
 
@@ -355,6 +359,7 @@ export function planAnswer(input: PortalAnswer, record: Record<string, unknown> 
         plan: {
           patch: { status: input.decision, reply: { on: today, by, byName, note, files: [], recordedOn: today, viaPortal: true } },
           line: s.itemId ? { itemId: s.itemId, patch: { pmSub: input.decision } } : null,
+          sampleApproved: s.itemId && (input.decision === "appA" || input.decision === "appB") ? s.itemId : null,
           entry: { kind: "subm", no: sampleNo(s.seq), title: s.what || s.code || "", what: input.decision },
         },
       }
@@ -457,9 +462,21 @@ export async function applyPortalAnswer(
     const { plan } = result
     const lineRef = plan.line ? projectRef.collection("boqItems").doc(plan.line.itemId) : null
     const lineExists = lineRef ? (await tx.get(lineRef)).exists : false
+    // The internal record of an approval lifts the mark off the live requests in
+    // its own transaction (sample-writes.ts); his answer here does the same.
+    const lifted: Array<{ ref: DocumentReference; items: unknown[] }> = []
+    if (plan.sampleApproved) {
+      const requests = await tx.get(projectRef.collection(PURCHASE_REQUESTS))
+      for (const d of requests.docs ?? []) {
+        const r = d.data() as { status?: string } & Parameters<typeof itemsAfterSampleApproval>[0]
+        const items = r.status === "pending" || r.status === "approved" ? itemsAfterSampleApproval(r, plan.sampleApproved) : null
+        if (items) lifted.push({ ref: d.ref, items })
+      }
+    }
 
     tx.update(recordRef, { ...plan.patch, updatedAt: FieldValue.serverTimestamp() })
     if (lineRef && lineExists && plan.line) tx.update(lineRef, { ...plan.line.patch, updatedAt: FieldValue.serverTimestamp() })
+    for (const l of lifted) tx.update(l.ref, { items: l.items, updatedAt: FieldValue.serverTimestamp() })
     const entry: PortalHistoryEntry = { ...plan.entry, at: nowIso, byName }
     tx.update(linkRef, { history: [entry, ...(link.history ?? [])].slice(0, PORTAL_HISTORY_KEEP) })
     return { entry, link, project: project as PortalProjectDoc }

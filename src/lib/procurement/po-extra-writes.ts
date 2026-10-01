@@ -437,6 +437,9 @@ export async function decidePmBudget(firestore: Firestore, actor: { uid: string;
  * the ORDER — `pmCancels[lineId]` + `pmCancelKey` — so the buyer's drawer shows
  * «أكّد الإلغاء مع المورد» and Procurement Today raises its task. Nothing is
  * cancelled here: only Procurement cancels with the supplier (and his fee).
+ * Recorded at whatever stage the order is — awaiting approval, approved, sent or
+ * accepted: the project's line closes in this same transaction, and an order
+ * that goes on without the stop on it would bring what nobody wants any more.
  * Returns the line id, or null when the order has nothing of it left to arrive.
  * Reads first, then writes — the caller must have done all its own reads.
  */
@@ -445,23 +448,42 @@ export async function requestPmStopInTx(
   firestore: Firestore,
   poId: string,
   match: { name: string; unit: string; boqItemId?: string | null },
-  cancel: { reason: string; byName: string; at: string; projectId: string; requestId: string }
+  cancel: { reason: string; byName: string; at: string; projectId: string; requestId: string; line?: number | null }
 ): Promise<string | null> {
   const ref = doc(firestore, PURCHASE_ORDERS, poId) as DocumentReference
   const po = await readOrder(tx, ref)
-  const line = pmStopLine(po, match)
+  // An order born of an RFQ names its lines as the RFQ did — often the category
+  // picked on the form, with the material itself in the line's description.
+  const rfq = po.rfqId ? await tx.get(doc(firestore, "rfqs", po.rfqId)) : null
+  const products = (rfq?.exists() ? (rfq.data() as { products?: Array<{ description?: string | null } | null> | null }).products : null) || []
+  const line = pmStopLine(po, match, (l) => (l.rfqProductIndex == null ? null : products[l.rfqProductIndex]?.description ?? null))
   if (!line) return null
-  const entryValue: PmCancel = { reason: cancel.reason, byName: cancel.byName, at: cancel.at, projectId: cancel.projectId, requestId: cancel.requestId }
+  // `line` — the request line it was — lets the rules follow a line that names its
+  // own order (`lineLinks`) back to this one when the order serves several projects.
+  const entryValue: PmCancel & { line?: string } = { reason: cancel.reason, byName: cancel.byName, at: cancel.at, projectId: cancel.projectId, requestId: cancel.requestId, ...(cancel.line == null ? {} : { line: String(cancel.line) }) }
   tx.update(ref, { pmCancels: { ...(po.pmCancels || {}), [line.id]: entryValue }, pmCancelKey: line.id, updatedAt: serverTimestamp() })
   return line.id
 }
 
-/** The order's line for a material Projects stopped: by BOQ item, else by name + unit; only while something is owed. */
-export function pmStopLine(po: Pick<PurchaseOrder, "lines" | "status">, match: { name: string; unit: string; boqItemId?: string | null }): PurchaseOrder["lines"][number] | null {
-  if (!canCancelRemainder(po as PurchaseOrder)) return null
-  const key = (s: string) => (s || "").trim().toLowerCase()
-  const line =
-    (match.boqItemId ? po.lines.find((l) => l.boqItemId === match.boqItemId && lineToArrive(l) > 0) : undefined) ||
-    po.lines.find((l) => key(l.name) === key(match.name) && key(l.unit) === key(match.unit) && lineToArrive(l) > 0)
-  return line ?? null
+/** An order still lives — and takes Projects' stop — until it is closed or cancelled. */
+const PM_STOPPABLE: ReadonlyArray<PurchaseOrder["status"]> = ["awaiting_approval", "approved", "sent", "accepted"]
+
+/**
+ * The order's line for a material Projects stopped, only while something of it
+ * is still to arrive. The MATERIAL decides (name + unit, folded as the price
+ * history folds them — or the description of the RFQ line it came from, through
+ * `describedAs`); the BOQ item only tells two lines of that material apart. An
+ * order carrying blocks and cement on one item must never take cement's stop on
+ * its blocks, so the item alone matches nothing.
+ */
+export function pmStopLine(
+  po: Pick<PurchaseOrder, "lines" | "status">,
+  match: { name: string; unit: string; boqItemId?: string | null },
+  describedAs?: (line: PurchaseOrder["lines"][number]) => string | null | undefined
+): PurchaseOrder["lines"][number] | null {
+  if (!PM_STOPPABLE.includes(po.status)) return null
+  const want = materialKey(match.name, match.unit)
+  const is = (name: string | null | undefined, unit: string) => Boolean(name) && materialKey(name, unit) === want
+  const same = po.lines.filter((l) => lineToArrive(l) > 0 && (is(l.name, l.unit) || is(describedAs?.(l), l.unit)))
+  return (match.boqItemId ? same.find((l) => l.boqItemId === match.boqItemId) : undefined) ?? same[0] ?? null
 }

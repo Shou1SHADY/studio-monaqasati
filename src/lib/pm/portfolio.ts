@@ -23,10 +23,16 @@ export type FilterSelection = Partial<Record<PortfolioFilter, string[]>>
 /** The close year only means something in the archive. */
 export const filtersFor = (st: PortfolioState): PortfolioFilter[] => (st === "arch" ? ["kind", "reg", "pm", "yr"] : ["kind", "reg", "pm"])
 
-/** The final figures frozen at archive (closeout.ts `ArchiveSnapshot`); cost is
- * absent until the cost section freezes it — never invented. */
+/** The final figures frozen at archive — exactly what closing stores in `pm.fin`
+ * (closeout.ts `ArchiveSnapshot`): the actual cost, the realised margin (earned −
+ * actual) and its %. They are absent when the closer could not see cost — never
+ * invented, and never recomputed here. */
 export interface PortfolioFin {
   contractValue: number
+  actualCost?: number | null
+  margin?: number | null
+  marginPct?: number | null
+  /** An older shape some rows carried; read only when `actualCost` is absent. */
   cost?: number | null
   contractDays: number | null
   actualDays: number | null
@@ -107,8 +113,18 @@ export type ArchiveSort = (typeof ARCHIVE_SORTS)[number]
 /** Value and margin order the archive by money: only a holder of money is offered them. */
 export const archiveSortsFor = (money: boolean): ArchiveSort[] => (money ? [...ARCHIVE_SORTS] : ["d", "l"])
 
-export const marginOf = (fin: PortfolioFin | null): { amount: number; pct: number } | null =>
-  fin && fin.cost != null && fin.contractValue > 0 ? { amount: fin.contractValue - fin.cost, pct: Math.round(((fin.contractValue - fin.cost) / fin.contractValue) * 1000) / 10 } : null
+/** The frozen actual cost. */
+export const costOf = (fin: PortfolioFin | null): number | null => fin?.actualCost ?? fin?.cost ?? null
+
+/** The frozen margin as closing computed it (earned − actual cost); only a row
+ * frozen before the margin was stored falls back to contract − cost. */
+export function marginOf(fin: PortfolioFin | null): { amount: number; pct: number } | null {
+  if (!fin || !(fin.contractValue > 0)) return null
+  const pct = (amount: number) => Math.round((amount / fin.contractValue) * 1000) / 10
+  if (fin.margin != null) return { amount: fin.margin, pct: fin.marginPct ?? pct(fin.margin) }
+  const cost = costOf(fin)
+  return cost != null ? { amount: fin.contractValue - cost, pct: pct(fin.contractValue - cost) } : null
+}
 
 /** Recently closed · highest value · best margin · most delayed. */
 export function sortArchive<R extends PortfolioRow>(rows: R[], sort: ArchiveSort): R[] {
@@ -137,14 +153,16 @@ export interface ArchiveKpis {
 
 export function archiveKpis(list: PortfolioRow[], archivedTotal: number): ArchiveKpis {
   const value = list.reduce((a, r) => a + (r.fin?.contractValue ?? r.value), 0)
-  const costed = list.length > 0 && list.every((r) => r.fin?.cost != null)
-  const cost = costed ? list.reduce((a, r) => a + (r.fin?.cost ?? 0), 0) : null
+  const costed = list.length > 0 && list.every((r) => costOf(r.fin) != null)
+  const cost = costed ? list.reduce((a, r) => a + (costOf(r.fin) ?? 0), 0) : null
+  // The average realised margin: the frozen margins over the value shown.
+  const margin = costed ? list.reduce((a, r) => a + (marginOf(r.fin)?.amount ?? 0), 0) : null
   return {
     count: list.length,
     of: archivedTotal,
     value,
     cost,
-    marginPct: cost !== null && value > 0 ? Math.round(((value - cost) / value) * 1000) / 10 : null,
+    marginPct: margin !== null && value > 0 ? Math.round((margin / value) * 1000) / 10 : null,
     late: list.filter((r) => (r.fin?.delayDays ?? 0) > 0).length,
   }
 }
@@ -175,7 +193,7 @@ export function archiveCsvRows(
       kind: label.kind(r.kind),
       region: r.region ?? "",
       contract: Math.round(r.fin?.contractValue ?? r.value),
-      cost: r.fin?.cost != null ? Math.round(r.fin.cost) : "",
+      cost: costOf(r.fin) != null ? Math.round(costOf(r.fin) as number) : "",
       margin: m ? m.pct : "",
       actual_days: r.fin?.actualDays ?? "",
       contract_days: r.fin?.contractDays ?? "",

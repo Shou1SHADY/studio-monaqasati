@@ -193,8 +193,8 @@ describe("approving the reconciliation (CVR-01 → prj:BUD)", () => {
     const block = (readDoc<Record<string, { eac: { v: number; rev: number }; budCount: number }>>("projects/p1") as Record<string, { eac: { v: number; rev: number }; budCount: number }>).pm
     expect(block.budCount).toBe(2)
     expect(block.eac).toMatchObject({ v: 820_000, rev: 2 })
-    expect(readDoc("pmEvents/prj:BUD:PJ-2026_009:1")).toMatchObject({ kind: "BUD", amount: 800_000 })
-    expect(readDoc("pmEvents/prj:BUD:PJ-2026_009:2")).toMatchObject({ amount: 820_000 })
+    expect(readDoc("pmEvents/org__prj:BUD:PJ-2026_009:1")).toMatchObject({ kind: "BUD", amount: 800_000 })
+    expect(readDoc("pmEvents/org__prj:BUD:PJ-2026_009:2")).toMatchObject({ amount: 820_000 })
   })
 
   it("only approve may approve it", async () => {

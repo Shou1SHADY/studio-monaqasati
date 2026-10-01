@@ -120,3 +120,38 @@ describe("the writes (WF-04)", () => {
     await expect(writeSheet(db, site, "p1", seA, { day: "2026-09-27", lines: [{ itemId: "i1", qty: 0 }] })).rejects.toBeInstanceOf(PmSheetError)
   })
 })
+
+describe("what the audit of 2 Oct 2026 found on measurement", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const m = require("@/lib/pm/measurement") as typeof import("@/lib/pm/measurement")
+
+  it("re-measurement: an item at its contract quantity is still measured — extra quantity needs no variation (CON-05); a lump sum hides it", () => {
+    const items = [item("i1", 100, 10, 100), item("i2", 50, 10, 20)]
+    expect(m.openItems(items, "rem").open.map((i) => i.id)).toEqual(["i1", "i2"])
+    expect(m.openItems(items, "rem").done).toBe(0)
+    expect(m.openItems(items, "lump").open.map((i) => i.id)).toEqual(["i2"])
+    expect(m.openItems(items).open.map((i) => i.id)).toEqual(["i2"])
+  })
+
+  it("the inspection gate goes with its section: switched off, a flagged item is measured (MS-03, the prototype's HAS('wir'))", () => {
+    const flagged = [{ id: "i1", gate: { pmInspect: true, pmWir: null } }]
+    const lines = [{ itemId: "i1", qty: 5 }]
+    expect(m.sheetBlocks({ archived: false, lines, items: flagged })).toEqual(["not_measurable"])
+    expect(m.sheetBlocks({ archived: false, lines, items: flagged, gateOn: false })).toEqual([])
+  })
+
+  it("the measuring day is checked in the write, not only in the dialog: never a future or malformed day", async () => {
+    seedProject("rem")
+    await expect(writeSheet(db, site, "p1", seA, { day: "2099-01-01", lines: [{ itemId: "i1", qty: 1 }] })).rejects.toMatchObject({ code: "blocked", blocks: ["bad_day"] })
+    await expect(writeSheet(db, site, "p1", seA, { day: "soon", lines: [{ itemId: "i1", qty: 1 }] })).rejects.toMatchObject({ code: "blocked", blocks: ["bad_day"] })
+  })
+
+  it("a project whose inspections section is off measures a flagged item; with it on, the write refuses", async () => {
+    seedProject("rem")
+    seed("projects/p1/boqItems/i1", { itemNo: "03-01", quantity: "100", unitPrice: "118", executedQuantity: 90, pmInspect: true, pmWir: null })
+    await expect(writeSheet(db, site, "p1", seA, { day: "2026-09-27", lines: [{ itemId: "i1", qty: 1 }] })).rejects.toMatchObject({ blocks: ["not_measurable"] })
+    const p = readDoc<Record<string, unknown>>("projects/p1") as Record<string, unknown>
+    seed("projects/p1", { ...p, enabledSections: ["contract", "procure", "docs"] })
+    await expect(writeSheet(db, site, "p1", seA, { day: "2026-09-27", lines: [{ itemId: "i1", qty: 1 }] })).resolves.toMatchObject({ seq: 1 })
+  })
+})

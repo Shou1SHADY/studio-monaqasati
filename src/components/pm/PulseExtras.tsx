@@ -30,6 +30,7 @@ import { itemPlanFromActivities, projectLog, sectionDeviations, type LogEntry, t
 import { PM_OBSTACLES } from "@/lib/pm/site"
 import { PM_VARIATIONS } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
+import { termsNow } from "@/lib/pm/terms"
 
 type Item = { id?: string; division?: string; quantity: number; rate: number; executed: number }
 
@@ -157,7 +158,7 @@ export function ProjectLogPanel({
       startedAt: project.pm?.startedAt ?? null,
       location: project.location ?? null,
       durationDays: project.pm?.durationDays ?? 0,
-      defectsDays: project.pm?.terms?.defectsDays ?? 0,
+      defectsDays: termsNow(project.pm)?.defectsDays ?? 0,
       acceptances: project.pm?.acceptances ?? null,
       sheets,
       variations,

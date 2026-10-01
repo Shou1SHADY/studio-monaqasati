@@ -92,6 +92,40 @@ describe("the one gate", () => {
     })
     expect(s).toMatchObject({ earned: 1000, certified: 900, contractDays: 90, actualDays: 123, delayDays: 33 })
   })
+
+  it("the actual duration runs to the PROVISIONAL handover — the defects period is not delay (CST-04, the prototype's archiveNow)", () => {
+    // 300 days of work handed over on day 300; the final acceptance comes a year later, as the contract requires.
+    const s = archiveSnapshot({
+      contractValue: 1000,
+      items: [],
+      certificates: [],
+      retentionHeld: 0,
+      advanceRecovered: 0,
+      durationDays: 300,
+      startedAt: "2025-01-01T08:00:00Z",
+      provisionalOn: "2025-10-28",
+      finalOn: "2026-10-28",
+      today: "2026-11-02",
+    })
+    expect(s).toMatchObject({ contractDays: 300, actualDays: 300, delayDays: 0 })
+  })
+
+  it("earned, the margin and its base are one figure: variations earned are in all three (CST-04)", () => {
+    const s = archiveSnapshot({
+      contractValue: 1_200_000,
+      items: [{ rate: 1000, executed: 1000 }],
+      certificates: [{ status: "paid", gross: 1_200_000 }],
+      retentionHeld: 0,
+      advanceRecovered: 0,
+      durationDays: 300,
+      startedAt: "2025-01-01T08:00:00Z",
+      provisionalOn: "2025-10-28",
+      finalOn: "2026-10-28",
+      today: "2026-11-02",
+      cost: { actual: 1_000_000, earned: 1_200_000 },
+    })
+    expect(s).toMatchObject({ earned: 1_200_000, certified: 1_200_000, actualCost: 1_000_000, margin: 200_000, marginPct: 16.7 })
+  })
 })
 
 describe("close and archive (WF-26)", () => {
@@ -118,5 +152,17 @@ describe("close and archive (WF-26)", () => {
     seedDone()
     seed("projects/p1/pmPunch/01", { seq: 1, status: "open", what: "x", location: "y" })
     await expect(closeAndArchive(db, pm, "p1", pmA)).rejects.toBeInstanceOf(PmCloseError)
+  })
+})
+
+describe("plant still on site blocks closing", () => {
+  it("an archived project accepts no change — a unit left on it could never be handed back", () => {
+    const rows = closeoutRows({ ...base, plantOnSite: 2 })
+    expect(rows.find((r) => r.key === "plant")).toEqual({ key: "plant", ok: false, n: 2 })
+    expect(closeBlocks(rows).map((r) => r.key)).toContain("plant")
+  })
+  it("all handed back clears the row; a project that never had plant has no row", () => {
+    expect(closeoutRows({ ...base, plantOnSite: 0 }).find((r) => r.key === "plant")).toMatchObject({ ok: true })
+    expect(closeoutRows(base).some((r) => r.key === "plant")).toBe(false)
   })
 })

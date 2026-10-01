@@ -6,6 +6,8 @@
 // only on a pending request older than the window, read from the org's
 // policies inside the transaction (the rules read the same document). The need then shows on the
 // desk as Purchasing's move and is answered with an RFQ or an order as usual.
+// «Pending» means that only on a request Inventory approves: a PM 1.0 request
+// (`pm: true`) is pending until the project manager approves it, and is refused.
 
 import { doc, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
 import type { ProcDecision } from "./needs"
@@ -39,8 +41,11 @@ export async function recordNeedDecision(firestore: Firestore, actor: ProcActor,
     const policies = resolvePolicies(settings?.exists() ? (settings.data() as Partial<ResolvedPolicies>) : null)
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new ProcWriteError("line_missing")
-    const pr = snap.data() as { status?: string; procDecision?: unknown; rfqId?: string | null; poId?: string | null; mfgRequestId?: string | null; createdAt?: unknown }
+    const pr = snap.data() as { pm?: boolean; status?: string; procDecision?: unknown; rfqId?: string | null; poId?: string | null; mfgRequestId?: string | null; createdAt?: unknown }
     if (pr.procDecision || pr.rfqId || pr.poId) throw new ProcWriteError("need_decided")
+    // A PM request still pending awaits the project manager's technical approval
+    // (REQ-02) — not the warehouse: no window lapses on it, and nothing of it is bought.
+    if (pr.pm && pr.status === "pending") throw new ProcWriteError("need_awaits_pm")
     if (input.kind === "buy") {
       if (pr.status !== "approved" || pr.mfgRequestId) throw new ProcWriteError("need_not_waiting")
     } else {

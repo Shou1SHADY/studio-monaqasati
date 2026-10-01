@@ -7,7 +7,7 @@ import { addDoc, collection, doc, runTransaction, serverTimestamp, setDoc, updat
 import { CRM_OPPORTUNITIES, type CrmOpportunity } from "../crm"
 import { defaultEnabledSections } from "../project-sections"
 import { drawYearlyDocNumber } from "../sales-numbering"
-import { advanceEvent, eventDocId, PM_EVENTS } from "./events"
+import { advanceEvent, PM_EVENTS, pmEventDocId } from "./events"
 import {
   acceptBlocks,
   isSelfDevelopment,
@@ -294,7 +294,7 @@ export async function acceptHandover(firestore: Firestore, actor: PmActor, hando
       projectManagerName: input.manager.name,
       updatedAt: serverTimestamp(),
     })
-    if (event) tx.set(doc(firestore, PM_EVENTS, eventDocId(event.key)), event)
+    if (event) tx.set(doc(firestore, PM_EVENTS, pmEventDocId(event.organizationId, event.key)), event)
   })
 
   // The seats follow the project, as the CRM handover did: separate writes so

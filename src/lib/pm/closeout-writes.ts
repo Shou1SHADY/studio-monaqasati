@@ -21,7 +21,9 @@ import { PM_PUNCH, type PunchItem } from "./punch"
 import { PM_STORE } from "./store"
 import { PM_SUB_CERTIFICATES, PM_SUBCONTRACTS, type PmSubCertificate, type PmSubcontract } from "./subcontract"
 import { approvedValue, PM_VARIATIONS, type PmVariation } from "./variation"
-import { hasClientSide } from "./terms"
+import { certificatesApply } from "./terms"
+import { liveContractValue } from "./contract-value"
+import { onSite, PM_PLANT, type PmPlant } from "./plant"
 
 export class PmCloseError extends Error {
   constructor(readonly code: "not_done" | "blocked", readonly blocks: string[] = []) {
@@ -48,7 +50,7 @@ export async function readCloseFacts(firestore: Firestore, projectId: string) {
   const project = (pSnap.exists() ? pSnap.data() : {}) as { enabledSections?: string[] }
   const sections = project.enabledSections ?? []
   const col = (name: string) => getDocs(collection(firestore, "projects", projectId, name))
-  const [items, punch, certs, ncrs, vos, subs, subCerts, letters, store] = await Promise.all([
+  const [items, punch, certs, ncrs, vos, subs, subCerts, letters, plant, store] = await Promise.all([
     col("boqItems"),
     col(PM_PUNCH),
     col(PM_CERTIFICATES),
@@ -57,6 +59,7 @@ export async function readCloseFacts(firestore: Firestore, projectId: string) {
     col(PM_SUBCONTRACTS),
     col(PM_SUB_CERTIFICATES),
     col(PM_LETTERS),
+    col(PM_PLANT),
     sections.includes("store") ? col(PM_STORE) : Promise.resolve(null),
   ])
   const contracts = subs.docs.map((d) => ({ ...(d.data() as PmSubcontract), id: d.id }))
@@ -73,6 +76,7 @@ export async function readCloseFacts(firestore: Firestore, projectId: string) {
     storeLines: store ? storeHoldings(store.docs.map((d) => storeDocOf(d.id, d.data() as Record<string, unknown>)), storeItems).lines : null,
     subs: sections.includes("subs") || contracts.length ? subDues(contracts, subCerts.docs.map((d) => d.data() as PmSubCertificate)) : null,
     letters: letters.docs.map((d) => d.data() as PmLetter),
+    plantOnSite: plant.docs.length ? onSite(plant.docs.map((d) => d.data() as Pick<PmPlant, "status">)).length : null,
   }
 }
 
@@ -84,13 +88,13 @@ export async function readCloseFacts(firestore: Firestore, projectId: string) {
 export async function closeAndArchive(firestore: Firestore, ctx: PmContext, projectId: string, actor: CloseActor, cost?: ClosingCost | null): Promise<void> {
   const facts = await readCloseFacts(firestore, projectId)
   await runTransaction(firestore, async (tx) => {
-    const { pRef, project, pm, terms } = await readContract(tx, firestore, projectId)
+    const { pRef, project, pm, terms, original } = await readContract(tx, firestore, projectId)
     assertPm(withFreshState(ctx, project), "project.close")
     if (lifecycleOf(project) !== "done") throw new PmCloseError("not_done")
     const block = pm as { acceptances?: Acceptances; cutPool?: number; retentionHeld?: number; advanceRecovered?: number; retentionReleased?: boolean; durationDays?: number; startedAt?: string | null }
     const today = todayDay()
     const input: CloseInput = {
-      hasClient: hasClientSide(terms),
+      hasClient: certificatesApply(original, terms),
       acceptances: block.acceptances ?? {},
       punch: facts.punch,
       ncrs: facts.ncrs,
@@ -103,19 +107,21 @@ export async function closeAndArchive(firestore: Firestore, ctx: PmContext, proj
       storeLines: facts.storeLines,
       subs: facts.subs,
       letters: facts.letters,
+      plantOnSite: facts.plantOnSite,
       today,
     }
     const blocked = closeBlocks(closeoutRows(input))
     if (blocked.length) throw new PmCloseError("blocked", blocked.map((r) => r.key))
     const fin = archiveSnapshot({
-      // INV-01: the value in force is the handover value plus approved variations.
-      contractValue: (project.budget ?? 0) + approvedValue(facts.variations),
+      // INV-01: priced items + approved variations (the handover's figure only with no priced BOQ).
+      contractValue: liveContractValue({ budget: project.budget, items: facts.items.map((i) => ({ quantity: i.quantity ?? 0, rate: i.rate })), approvedVariations: approvedValue(facts.variations) }),
       items: facts.items,
       certificates: facts.certificates,
       retentionHeld: block.retentionHeld ?? 0,
       advanceRecovered: block.advanceRecovered ?? 0,
       durationDays: block.durationDays ?? null,
       startedAt: block.startedAt ?? null,
+      provisionalOn: block.acceptances?.prov?.on ?? null,
       finalOn: block.acceptances?.final?.on ?? null,
       today,
       cost: cost ?? null,

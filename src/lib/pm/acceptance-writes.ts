@@ -7,7 +7,7 @@ import { collection, doc, getDocs, runTransaction, serverTimestamp, type Firesto
 import { assertPm, type PmContext } from "./access"
 import { defectsEnd, finalBlocks, handoverEvent, progressOf, provisionalBlocks, retentionIncrement, type Acceptances } from "./acceptance"
 import { readContract } from "./addendum-writes"
-import { eventDocId, PM_EVENTS } from "./events"
+import { PM_EVENTS, pmEventDocId } from "./events"
 import { todayDay } from "./format"
 import { lifecycleOf } from "./lifecycle"
 import { measuredItem } from "./measurement-writes"
@@ -64,7 +64,7 @@ export async function recordProvisional(firestore: Firestore, ctx: PmContext, pr
       at: new Date().toISOString(),
     })
     tx.update(pRef, { pm: { ...pm, acceptances: next, retentionFreed: freedOf(pm) + event.amount }, updatedAt: serverTimestamp() })
-    tx.set(doc(firestore, PM_EVENTS, eventDocId(event.key)), event)
+    tx.set(doc(firestore, PM_EVENTS, pmEventDocId(event.organizationId, event.key)), event)
   })
 }
 
@@ -93,6 +93,6 @@ export async function recordFinal(firestore: Firestore, ctx: PmContext, projectI
       at: new Date().toISOString(),
     })
     tx.update(pRef, { pm: { ...pm, acceptances: next, lifecycle: "done", retentionFreed: freedOf(pm) + event.amount }, status: "remaining_payment", updatedAt: serverTimestamp() })
-    tx.set(doc(firestore, PM_EVENTS, eventDocId(event.key)), event)
+    tx.set(doc(firestore, PM_EVENTS, pmEventDocId(event.organizationId, event.key)), event)
   })
 }

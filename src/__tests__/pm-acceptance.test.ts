@@ -62,7 +62,7 @@ describe("the writes", () => {
     await expect(recordProvisional(db, site, "p1", seA)).rejects.toBeInstanceOf(PmAccessError)
     await recordProvisional(db, pm, "p1", pmA)
     expect((readDoc<Record<string, any>>("projects/p1") as Record<string, any>).pm.acceptances.prov).toMatchObject({ by: "pm1" })
-    expect(readDoc(`${PM_EVENTS}/prj:HND:PJ-2026_004:prov`)).toMatchObject({ kind: "HND", amount: 20_000 })
+    expect(readDoc(`${PM_EVENTS}/org__prj:HND:PJ-2026_004:prov`)).toMatchObject({ kind: "HND", amount: 20_000 })
   })
 
   it("final waits for every punch item to be confirmed, then the project is handed over", async () => {
@@ -81,7 +81,7 @@ describe("the writes", () => {
     expect(p.pm).toMatchObject({ lifecycle: "done", acceptances: { final: { by: "pm1" } } })
     expect(listCollection<{ key: string }>(PM_EVENTS).map((e) => e.key).sort()).toEqual(["prj:HND:PJ-2026/004:final", "prj:HND:PJ-2026/004:prov"])
     // Finance posts each event: the final carries only the half not yet sent — never the whole held again.
-    expect(readDoc(`${PM_EVENTS}/prj:HND:PJ-2026_004:final`)).toMatchObject({ amount: 20_000 })
+    expect(readDoc(`${PM_EVENTS}/org__prj:HND:PJ-2026_004:final`)).toMatchObject({ amount: 20_000 })
     expect(p.pm.retentionFreed).toBe(40_000)
   })
 })

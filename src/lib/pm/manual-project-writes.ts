@@ -9,7 +9,7 @@ import { collection, doc, runTransaction, serverTimestamp, setDoc, addDoc, type 
 import { defaultEnabledSections } from "../project-sections"
 import { drawYearlyDocNumber } from "../sales-numbering"
 import { assertPm, type PmContext } from "./access"
-import { advanceEvent, eventDocId, PM_EVENTS } from "./events"
+import { advanceEvent, PM_EVENTS, pmEventDocId } from "./events"
 import type { AcceptSeat, PmActor } from "./handover-writes"
 import { manualDuration, manualProjectBlocks, manualTerms, manualValue, type ManualBlock, type ManualProjectDraft } from "./manual-project"
 import { termProblems } from "./terms"
@@ -79,7 +79,7 @@ export async function createManualProject(firestore: Firestore, ctx: PmContext, 
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     })
-    if (event && value > 0) tx.set(doc(firestore, PM_EVENTS, eventDocId(event.key)), event)
+    if (event && value > 0) tx.set(doc(firestore, PM_EVENTS, pmEventDocId(event.organizationId, event.key)), event)
   })
 
   const seat = (who: AcceptSeat, pmRole: "pm" | "site") =>

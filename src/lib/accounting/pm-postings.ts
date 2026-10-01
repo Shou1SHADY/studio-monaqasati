@@ -78,8 +78,16 @@ export function pmRetentionReleasePosting(e: PmEvent, input: { date: string; pro
   }
 }
 
-/** A certificate's collected share (0–1) after a collection of `amount` on its net. */
-export const collectedAfter = (net: number, collectedBefore: number, amount: number) => (net > 0 ? Math.min(1, Math.round(((Math.max(0, collectedBefore) * net + amount) / net) * 10000) / 10000) : 1)
+/** A certificate's collected share (0–1) after a collection of `amount` on its net.
+ * Never rounded to a few decimals: on a net of millions a fourth decimal is
+ * hundreds of riyals — the remainder shown was not the remainder owed, and a
+ * small collection left the share where it was. Within a halala of the net is
+ * the whole net. */
+export const collectedAfter = (net: number, collectedBefore: number, amount: number) => {
+  if (!(net > 0)) return 1
+  const paid = Math.max(0, collectedBefore) * net + amount
+  return paid >= net - 0.005 ? 1 : paid / net
+}
 
 /** Still to collect on a certificate. */
 export const outstandingOf = (net: number, collected: number) => round2(Math.max(0, net * (1 - Math.min(1, Math.max(0, collected)))))

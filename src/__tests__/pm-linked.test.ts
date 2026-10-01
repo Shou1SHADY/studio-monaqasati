@@ -204,14 +204,14 @@ describe("writes", () => {
 
   it("a return reaches Inventory, which confirms it; a cash inbound approved reaches Procurement", async () => {
     await logStoreMove(db, site, "p1", siteActor, sid, { t: "ret", q: 100, warehouseId: "w1", warehouseName: "Main" })
-    expect(readDoc(`pmEvents/prj:RET:PJ-2026_001:${sid}:1`)).toMatchObject({ kind: "RET", params: { qty: 100, warehouseId: "w1" } })
+    expect(readDoc(`pmEvents/org__prj:RET:PJ-2026_001:${sid}:1`)).toMatchObject({ kind: "RET", params: { qty: 100, warehouseId: "w1" } })
     await confirmStoreReturn(db, "p1", { uid: "inv1", name: "Keeper" }, sid, 1)
     expect(readDoc<PmStoreLine>(`${P}/pmStore/${sid}`)!.moves[1]).toMatchObject({ st: "done", invByName: "Keeper" })
 
     await logStoreMove(db, site, "p1", siteActor, sid, { t: "rx", q: 10, from: "cash" })
     await expect(decideStoreMove(db, pm, "p1", siteActor, sid, 2, "ok", 3)).rejects.toBeInstanceOf(PmAccessError)
     await decideStoreMove(db, pm, "p1", pmActor, sid, 2, "ok", 3)
-    expect(readDoc(`pmEvents/prj:NOPO:PJ-2026_001:${sid}:2`)).toMatchObject({ kind: "NOPO", amount: 30 })
+    expect(readDoc(`pmEvents/org__prj:NOPO:PJ-2026_001:${sid}:2`)).toMatchObject({ kind: "NOPO", amount: 30 })
   })
 
   it("the logger approves their own move only when the company allows it", async () => {
@@ -239,7 +239,7 @@ describe("writes", () => {
     await recordPlantReply(db, site, "p1", siteActor, 5, { k: "none", text: null, on: today })
     await expect(hirePlantInstead(db, site, "p1", siteActor, 5)).rejects.toBeInstanceOf(PmAccessError)
     await hirePlantInstead(db, pm, "p1", pmActor, 5)
-    expect(readDoc(`pmEvents/prj:EQH:PJ-2026_001:05`)).toMatchObject({ kind: "EQH", params: { what: "Mixer" } })
+    expect(readDoc(`pmEvents/org__prj:EQH:PJ-2026_001:05`)).toMatchObject({ kind: "EQH", params: { what: "Mixer" } })
     await expect(recordPlantReply(db, site, "p1", siteActor, 5, { k: "alloc", unit: "M-1", on: today })).rejects.toBeInstanceOf(PmSupplyError)
 
     const unit = await receivePlant(db, site, "p1", siteActor, { tag: "H-7", name: "Mixer", category: "light", ownership: "hire", supplier: "Rent Co", qty: 1, from: today, to: today, condition: "ok", requestSeq: 5 })

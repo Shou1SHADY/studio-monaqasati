@@ -156,14 +156,19 @@ export type BoqSource = (typeof BOQ_SOURCES)[number]
 
 export const boqSourcesFor = (h: Pick<PmHandover, "boq">): BoqSource[] => (handoverBoqCount(h) > 0 ? ["crm", "xl", "man", "later"] : ["xl", "man", "later"])
 
-export type AcceptStepBlock = "no_boq_source" | "no_manager" | "no_boq_file"
+export type AcceptStepBlock = "no_boq_source" | "no_manager" | "no_boq_file" | "boq_bad_rows" | "boq_nothing_read"
 
-/** Saving waits for a named manager and a chosen BOQ source; an Excel source needs its file. */
-export function acceptStepBlocks(input: { source: BoqSource | null; managerUid: string | null; xlItems: number }): AcceptStepBlock[] {
+/** Saving waits for a named manager and a chosen BOQ source; an Excel source needs its
+ * file — read whole: a file with a rejected row is corrected and chosen again, never
+ * imported in part (the contract value and every progress % would sit on what was left). */
+export function acceptStepBlocks(input: { source: BoqSource | null; managerUid: string | null; xlItems: number; xlBad?: number; xlLoaded?: boolean }): AcceptStepBlock[] {
   const out: AcceptStepBlock[] = []
   if (!input.managerUid) out.push("no_manager")
   if (!input.source) out.push("no_boq_source")
-  if (input.source === "xl" && input.xlItems === 0) out.push("no_boq_file")
+  if (input.source === "xl") {
+    if ((input.xlBad ?? 0) > 0) out.push("boq_bad_rows")
+    else if (input.xlItems === 0) out.push(input.xlLoaded ? "boq_nothing_read" : "no_boq_file")
+  }
   return out
 }
 

@@ -371,6 +371,8 @@ function ReceiveOnSiteDialog({ projectId, orgId, r, access, actor, onClose }: { 
               </>
             )}
           </div>
+          {/* The rate is an amount: without `money` it is left unset here, and the unit shows as unrated on site until a money holder sets it. */}
+          {!money && r.category !== "tool" && <Callout tone="info">{t("plant.rate_later")}</Callout>}
           <div className="space-y-1.5">
             <Label>{t("plantreq.rv.fuel")}</Label>
             <ChoiceChips label={t("plantreq.rv.fuel")} options={FUEL_LEVELS.map((x) => ({ id: x, label: x === "full" ? t("plantreq.rv.fuel_full") : x }))} value={fuel} onChange={setFuel} />

@@ -4,6 +4,7 @@ import {
   archiveCsvRows,
   archiveSortsFor,
   archiveKpis,
+  marginOf,
   filterOptions,
   filtersFor,
   inPortfolioState,
@@ -103,6 +104,28 @@ describe("the archive (G-22)", () => {
     expect(toCsv([['say "hi"']])).toContain('"say ""hi"""')
   })
 
+  it("the archive reads what closing froze — actualCost, margin and its % — never a field nothing writes (CST-04)", () => {
+    // Exactly what closeAndArchive stores in pm.fin (closeout.ts ArchiveSnapshot).
+    const frozen = row({
+      id: "g",
+      name: "Closed tower",
+      lifecycle: "closed",
+      fin: { contractValue: 1_000_000, earned: 1_000_000, certified: 1_000_000, actualCost: 850_000, margin: 150_000, marginPct: 15, retentionHeld: 0, advanceRecovered: 0, contractDays: 300, actualDays: 300, delayDays: 0, closedOn: "2026-10-01" } as PortfolioRow["fin"],
+    })
+    expect(marginOf(frozen.fin)).toEqual({ amount: 150_000, pct: 15 })
+    expect(archiveKpis([frozen], 1)).toMatchObject({ cost: 850_000, marginPct: 15 })
+    const head = archiveCsvHead(true)
+    const [cells] = archiveCsvRows([frozen], { kind: (k) => k ?? "", manager: (r) => r.managerName ?? "" }, true)
+    expect(cells[head.indexOf("cost")]).toBe(850_000)
+    expect(cells[head.indexOf("margin")]).toBe(15)
+  })
+
+  it("the frozen margin is the one shown — earned less actual cost — not contract less cost recomputed", () => {
+    // A project closed short of its full value: earned 900,000 of 1,000,000, cost 800,000 → margin 100,000 (10%), not 200,000.
+    const fin = { contractValue: 1_000_000, actualCost: 800_000, margin: 100_000, marginPct: 10, contractDays: 300, actualDays: 300, delayDays: 0, closedOn: "2026-10-01", retentionHeld: 0 } as PortfolioRow["fin"]
+    expect(marginOf(fin)).toEqual({ amount: 100_000, pct: 10 })
+  })
+
   it("P0: without money the archive offers no value/margin sort and exports no contract, cost or margin", () => {
     expect(archiveSortsFor(false)).toEqual(["d", "l"])
     expect(archiveSortsFor(true)).toEqual(["d", "v", "m", "l"])
@@ -161,6 +184,10 @@ describe("the handover inbox (G-30…G-41)", () => {
     expect(acceptStepBlocks({ source: null, managerUid: "u", xlItems: 0 })).toEqual(["no_boq_source"])
     expect(acceptStepBlocks({ source: "xl", managerUid: null, xlItems: 0 })).toEqual(["no_manager", "no_boq_file"])
     expect(acceptStepBlocks({ source: "later", managerUid: "u", xlItems: 0 })).toEqual([])
+    // A file with a rejected row is never imported in part; a file nothing was read from says so.
+    expect(acceptStepBlocks({ source: "xl", managerUid: "u", xlItems: 9, xlBad: 1, xlLoaded: true })).toEqual(["boq_bad_rows"])
+    expect(acceptStepBlocks({ source: "xl", managerUid: "u", xlItems: 0, xlBad: 0, xlLoaded: true })).toEqual(["boq_nothing_read"])
+    expect(acceptStepBlocks({ source: "xl", managerUid: "u", xlItems: 10, xlBad: 0, xlLoaded: true })).toEqual([])
   })
 
   it("reassign candidates: approvers only, not the current manager, least loaded first", () => {

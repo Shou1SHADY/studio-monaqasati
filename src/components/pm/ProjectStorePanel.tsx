@@ -58,13 +58,13 @@ import {
   type StoreState,
 } from "@/lib/pm/store"
 import { engineerHold, PM_SUBCONTRACTS, type PmSubcontract } from "@/lib/pm/subcontract"
-import { lineOut, linePhase, receivable, reqNo, type PmMaterialRequest } from "@/lib/pm/supply"
+import { lineLink, lineOut, linePhase, receivable, reqNo, type PmMaterialRequest } from "@/lib/pm/supply"
 import { confirmMoveIn, decideStoreMove, logStoreMove, setMaterialRate, type SupplyActor } from "@/lib/pm/supply-writes"
 import { cn } from "@/lib/utils"
 import { ChoiceChips, FormHint } from "./ContractBits"
 import { AttachmentTag, PmFilesField } from "./PmAttachments"
 import { SubStoreMoveDialog } from "./SubCustodyDialogs"
-import { qty, ReceiveDialog, StopLineDialog, useLocaleDir, useSupplyRun, type SupplyItem } from "./SupplyDialogs"
+import { qty, ReceiveDialog, StopLineDialog, useLocaleDir, useProjectOrderFacts, useSupplyRun, type SupplyItem } from "./SupplyDialogs"
 
 const ST_TONE: Record<StoreState, PillTone> = { open: "info", close: "warn", done: "ok", zero: "mute", neg: "bad", pend: "warn" }
 const CAP = 7
@@ -109,11 +109,13 @@ export function ProjectStorePanel({
   const list = groups[f].slice().sort((a, b) => Math.max(0, storeBalance(b, items)) * cost(b) - Math.max(0, storeBalance(a, items)) * cost(a))
   const shownLed = ledId ?? openStoreId ?? null
 
+  const orderOf = useProjectOrderFacts(projectId, orgId)
   const rows = useMemo(() => {
     const out: Array<{ r: PmMaterialRequest; index: number }> = []
-    for (const r of world.requests) if (r.status === "approved") r.lines.forEach((l, index) => receivable(r, l) && out.push({ r, index }))
+    // An order still awaiting approval (or cancelled) brings nothing — as the receipt itself judges.
+    for (const r of world.requests) if (r.status === "approved") r.lines.forEach((l, index) => receivable(r, l, orderOf(lineLink(r, l).poId)) && out.push({ r, index }))
     return out.sort((a, b) => (a.r.needBy || "9999").localeCompare(b.r.needBy || "9999"))
-  }, [world.requests])
+  }, [world.requests, orderOf])
   const ww = useMemo(() => whereWent(lines, items, (x) => world.costOf(x)), [lines, items, world])
 
   return (

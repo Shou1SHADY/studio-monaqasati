@@ -40,6 +40,8 @@ import type { ContractTerms } from "@/lib/pm/terms"
 import { cn } from "@/lib/utils"
 
 export interface CertItem extends BillableItem {
+  /** The contract quantity — with the rate, the item's share of the contract value (INV-01). */
+  quantity?: number
   code: string
   description: string
   unit: string
@@ -63,6 +65,7 @@ export function PrepareCertificateDialog({
   items,
   variations,
   terms,
+  payer,
   lifecycle,
   contractValue,
   held,
@@ -81,6 +84,8 @@ export function PrepareCertificateDialog({
   items: CertItem[]
   variations: ClaimableVariation[]
   terms: ContractTerms
+  /** Who the certificate is addressed to (terms.ts `certificatePayer`); the payer in force when not given. */
+  payer?: string
   lifecycle: string
   contractValue: number
   held: number
@@ -118,7 +123,7 @@ export function PrepareCertificateDialog({
   const voLines = certificateVoLines(variations, vos)
   const gross = lines.reduce((a, l) => a + l.amount, 0) + voLines.reduce((a, l) => a + l.amount, 0) + (cuts ? cutPool : 0)
   const amounts = certificateAmounts({ gross, terms, contractValue, held, recovered })
-  const blocks = prepareBlocks({ archived: access.ctx.archived, lifecycle, payer: terms.payer, gross })
+  const blocks = prepareBlocks({ archived: access.ctx.archived, lifecycle, payer: payer ?? terms.payer, gross })
   const capped = gross * terms.retention - amounts.retention > 0.005
   const byId = new Map(items.map((i) => [i.id, i]))
   const nothing = billable.length === 0 && claimable.length === 0 && cutPool <= 0

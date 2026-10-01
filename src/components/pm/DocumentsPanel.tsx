@@ -2,10 +2,10 @@
 
 // File › Documents on a PM 1.0 project (DOC-01): the register of documents and
 // their revisions, answering which revision is current. A drawing revised
-// after the last certificate is stale — the work was measured against an older
-// drawing. The last certificate is read only by those who see amounts (the
-// rules keep certificates from everyone else); for them the project's
-// `pm.lastIpcOn` is used when the certificate write keeps it.
+// after the last approved measurement is stale — the work was measured against
+// an older drawing (MS-05) — whether or not a certificate was prepared since:
+// the same yardstick as the look-ahead's current-drawing constraint, read from
+// the measurement sheets, which every member of the project may read.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -25,13 +25,12 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { PmAccessError } from "@/lib/pm/access"
-import { PM_CERTIFICATES } from "@/lib/pm/certificate"
 import {
   currentRevision,
   DOC_TYPES,
   isStale,
   issuedAfterCertificate,
-  lastCertificateDay,
+  lastMeasuredDay,
   nextRevisionCode,
   PM_DOCS,
   previousCode,
@@ -42,6 +41,7 @@ import {
 } from "@/lib/pm/documents"
 import { issueRevision, PmDocError, registerDocument, type DocActor } from "@/lib/pm/documents-writes"
 import { pmDate, todayDay } from "@/lib/pm/format"
+import { PM_SHEETS } from "@/lib/pm/measurement"
 import { cn } from "@/lib/utils"
 
 const chip = (on: boolean) =>
@@ -54,13 +54,13 @@ export function DocumentsPanel({
   projectId,
   orgId,
   projectName,
-  lastIpcOn,
   access,
   actor,
 }: {
   projectId: string
   orgId: string
   projectName: string
+  /** No longer read: the register asks the last approved measurement, not the last certificate. */
   lastIpcOn?: string | null
   access: PmAccess
   actor: DocActor
@@ -69,18 +69,14 @@ export function DocumentsPanel({
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
-  const money = access.has("money")
 
   const docsQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_DOCS) : null), [firestore, projectId])
-  const certsQ = useMemoFirebase(() => (firestore && money ? collection(firestore, "projects", projectId, PM_CERTIFICATES) : null), [firestore, projectId, money])
+  const sheetsQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_SHEETS) : null), [firestore, projectId])
   const { data: docsData } = useCollection(docsQ)
-  const { data: certData } = useCollection(certsQ)
+  const { data: sheetData } = useCollection(sheetsQ)
   const docs = useMemo(() => ((docsData ?? []) as unknown as PmDocument[]).map((d) => ({ ...d, revisions: d.revisions ?? [] })).sort((a, b) => a.seq - b.seq), [docsData])
-  const lastCert = useMemo(
-    () => (money ? lastCertificateDay((certData ?? []) as unknown as Array<{ status: string; prepOn?: string | null }>) : lastIpcOn ?? null),
-    [money, certData, lastIpcOn],
-  )
-  const stale = docs.filter((d) => isStale(d, lastCert))
+  const lastMeasured = useMemo(() => lastMeasuredDay((sheetData ?? []) as unknown as Array<{ status: string; day: string }>), [sheetData])
+  const stale = docs.filter((d) => isStale(d, lastMeasured))
   const canManage = !access.ctx.archived && access.allowed("document.manage")
 
   const [open, setOpen] = useState(false)
@@ -95,7 +91,7 @@ export function DocumentsPanel({
   const picked = pick === "new" ? null : docs.find((d) => d.seq === pick) ?? null
   const pickedCurrent = picked ? currentRevision(picked) : null
   const blocks = revisionBlocks({ archived: access.ctx.archived, isNew: pick === "new", doc: picked, name, code, day, today: todayDay() })
-  const warnAfterIpc = issuedAfterCertificate({ type: picked?.type ?? null, hasCurrent: Boolean(pickedCurrent), day, lastCertDay: lastCert })
+  const warnAfterMeasure = issuedAfterCertificate({ type: picked?.type ?? null, hasCurrent: Boolean(pickedCurrent), day, lastCertDay: lastMeasured })
 
   const choose = (next: number | "new") => {
     setPick(next)
@@ -121,7 +117,7 @@ export function DocumentsPanel({
         toast({ title: code.trim() ? t("docs.saved") : t("docs.registered") })
       } else {
         await issueRevision(firestore, access.ctx, projectId, actor, pick, { code, day, file })
-        toast({ title: warnAfterIpc ? t("docs.saved_stale") : t("docs.saved") })
+        toast({ title: warnAfterMeasure ? t("docs.saved_stale") : t("docs.saved") })
       }
       setOpen(false)
     } catch (err) {
@@ -196,7 +192,7 @@ export function DocumentsPanel({
                     </a>
                   )}
                   {cur ? (
-                    <StatusPill tone={isStale(d, lastCert) ? "bad" : "ok"}>{t("docs.current", { code: cur.code })}</StatusPill>
+                    <StatusPill tone={isStale(d, lastMeasured) ? "bad" : "ok"}>{t("docs.current", { code: cur.code })}</StatusPill>
                   ) : (
                     <StatusPill tone="mute">{t("docs.no_revisions")}</StatusPill>
                   )}
@@ -262,7 +258,7 @@ export function DocumentsPanel({
               </div>
             </div>
 
-            {warnAfterIpc && (
+            {warnAfterMeasure && (
               <Callout tone="warn">{t("docs.after_ipc")}</Callout>
             )}
 

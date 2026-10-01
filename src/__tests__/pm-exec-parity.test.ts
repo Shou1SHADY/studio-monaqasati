@@ -223,7 +223,7 @@ describe("plant on site (E-22)", () => {
     expect(dayCost(x, "2026-09-12")).toBe(900)
     expect(plantCost(x)).toBe(3300)
     expect(plantCost(p({ "2026-09-01": "work" }, { category: "tool" }))).toBe(0)
-    expect(idleSince(x)).toBe(4)
+    expect(idleSince(x)).toBe(2) // two idle days; the breakdown and the transit day are not idle days
     expect(utilisation(x)).toBe(20)
     expect(plantOverdue(x, "2026-10-03")).toBe(3)
   })

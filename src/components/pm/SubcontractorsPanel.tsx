@@ -4,12 +4,14 @@
 // summary per subcontractor, the registered contracts, the custody
 // reconciliation, and the sub certificates. Amounts show only to `money`
 // holders; the site engineer sees scope and progress. Paid is Finance's figure.
+// A prepared certificate is approved by someone else — or by its preparer when
+// the company records self-approval — and can be withdrawn before that.
 // Custody comes from the project store ledger (issue / return / count moves with
 // his party key); custody lines recorded before the ledger still show, marked.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { collection, query, where } from "firebase/firestore"
+import { collection, doc, query, where } from "firebase/firestore"
 import { Boxes, Check, CheckCheck, ClipboardList, FileText, Loader2, Plus, Search, Undo2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -24,12 +26,13 @@ import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { useSupplyWorld } from "@/hooks/useSupplyWorld"
 import { PmAccessError } from "@/lib/pm/access"
 import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
+import { PM_SETTINGS, type PmOrgSettings } from "@/lib/pm/info-writes"
 import { matchesSearch } from "@/lib/search-text"
 import {
   custodyFigures,
@@ -61,6 +64,7 @@ import {
   subcontractValue,
   subSummaries,
   subTotals,
+  subWithdrawRefusal,
   type LedgerCustodyRow,
   type PmSubcontract,
   type PmSubCertificate,
@@ -74,6 +78,7 @@ import {
   recordCustodyMove,
   recordRecovery,
   registerSubcontract,
+  withdrawSubCertificate,
   type SubActor,
 } from "@/lib/pm/subcontract-writes"
 import type { PmAttachment } from "@/lib/pm/attachments"
@@ -117,6 +122,10 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
   const { data: cData } = useCollection(cq)
   const { data: sData } = useCollection(sq)
   const { data: kData } = useCollection(kq)
+  // The company's recorded self-approval — the same setting owner certificates read.
+  const settingsRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, PM_SETTINGS, orgId) : null), [firestore, orgId])
+  const { data: settings } = useDoc<PmOrgSettings>(settingsRef)
+  const selfApproval = settings?.selfApproval === true
   const contracts = useMemo(() => ((cData ?? []) as unknown as PmSubcontract[]).slice().sort((a, b) => b.seq - a.seq), [cData])
   const certs = useMemo(() => ((sData ?? []) as unknown as PmSubCertificate[]).slice().sort((a, b) => b.seq - a.seq), [sData])
   const custody = useMemo(() => ((kData ?? []) as unknown as PmSubCustody[]).slice().sort((a, b) => a.seq - b.seq), [kData])
@@ -553,7 +562,9 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
         ) : (
           <ul className="space-y-2">
             {certs.map((s) => {
-              const refusal = subApproveRefusal({ archived: access.ctx.archived, ipcOk: access.has("ipcOk"), actorUid: access.uid ?? "", prep: s.prep, amount: s.gross, limit })
+              const refusal = subApproveRefusal({ archived: access.ctx.archived, ipcOk: access.has("ipcOk"), actorUid: access.uid ?? "", prep: s.prep, amount: s.gross, limit, selfApproval })
+              const mayWithdraw = subWithdrawRefusal({ archived: access.ctx.archived, status: s.status, actorUid: access.uid ?? "", prep: s.prep, sub: access.has("sub"), ipcOk: access.has("ipcOk") }) === null
+              const self = s.prep === access.uid
               return (
                 <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3">
                   <div className="min-w-0">
@@ -563,23 +574,32 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {pmDate(s.prepOn, locale)} · {t("subs.certs.prepared_by", { who: s.prepName || "—" })}
                       {s.appr ? ` · ${t("subs.certs.approved_by", { who: s.apprName || "—" })}` : ""}
+                      {s.selfApp ? ` · ${t("money.dr.self_app")}` : ""}
+                      {s.status === "void" ? ` · ${t("subs.certs.withdrawn_by", { who: s.voidByName || "—" })}` : ""}
                       {money ? ` · ${t("subs.certs.retention_line", { amount: pmMoney(s.retention) })}` : ""}
                       {money && s.recovery > 0 ? ` · ${t("subs.certs.recovery_line", { amount: pmMoney(s.recovery) })}` : ""}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {money && (
-                      <b className="tabular-nums" dir="ltr">
+                      <b className={cn("tabular-nums", s.status === "void" && "font-normal text-muted-foreground line-through")} dir="ltr">
                         {pmMoney(s.gross)}
                       </b>
                     )}
-                    <StatusPill tone={s.status === "ok" ? "ok" : "warn"}>{s.status === "ok" ? t("subs.certs.status.ok") : t("subs.certs.status.int")}</StatusPill>
+                    {s.status === "void" ? (
+                      <StatusPill tone="mute">{t("ipc.status.void")}</StatusPill>
+                    ) : (
+                      <StatusPill tone={s.status === "ok" ? "ok" : "warn"}>{s.status === "ok" ? t("subs.certs.status.ok") : t("subs.certs.status.int")}</StatusPill>
+                    )}
                     {s.status === "int" &&
                       (refusal === null ? (
                         <Button
                           size="sm"
                           disabled={busy !== null}
-                          onClick={() => firestore && void run(`ok${s.seq}`, () => approveSubCertificate(firestore, access.ctx, projectId, actor, s.seq), t("subs.certs.approved", { no: subCertificateNo(s.seq) }))}
+                          onClick={() =>
+                            firestore &&
+                            void run(`ok${s.seq}`, () => approveSubCertificate(firestore, access.ctx, projectId, actor, s.seq), self ? t("subs.certs.approved_self", { no: subCertificateNo(s.seq) }) : t("subs.certs.approved", { no: subCertificateNo(s.seq) }))
+                          }
                         >
                           {busy === `ok${s.seq}` ? <Loader2 size={14} className="me-1.5 animate-spin" aria-hidden="true" /> : <Check size={14} className="me-1.5" aria-hidden="true" />}
                           {t("subs.certs.approve")}
@@ -589,6 +609,17 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
                       ) : refusal === "over_limit" ? (
                         <span className="text-xs text-muted-foreground">{t("subs.certs.over_limit", { limit: pmMoney(limit) })}</span>
                       ) : null)}
+                    {mayWithdraw && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy !== null}
+                        onClick={() => firestore && void run(`void${s.seq}`, () => withdrawSubCertificate(firestore, access.ctx, projectId, actor, s.seq), t("subs.certs.withdrawn", { no: subCertificateNo(s.seq) }))}
+                      >
+                        {busy === `void${s.seq}` ? <Loader2 size={14} className="me-1.5 animate-spin" aria-hidden="true" /> : <Undo2 size={14} className="me-1.5" aria-hidden="true" />}
+                        {t("ipc.withdraw")}
+                      </Button>
+                    )}
                   </div>
                 </li>
               )
@@ -953,6 +984,8 @@ function CertDialog({
   const prepared = subCertificateLines(mine, percents, caps)
   const recovery = recoveryDue(custody, key) + ledgerRecoveryDue(ledger, key)
   const amounts = subCertificateAmounts(prepared.lines, recovery)
+  // A certificate takes only the recovery it can bear; the rest waits for his next one.
+  const carried = Math.round((recovery - amounts.recovery) * 100) / 100
   const pending = certs.some((c) => c.partyKey === key && c.status === "int")
   const blocks = subCertBlocks({ archived, gross: amounts.gross, over: prepared.over.length, below: prepared.below.length, pending })
   const rates = [...new Set(mine.map((c) => c.retention))]
@@ -1038,6 +1071,7 @@ function CertDialog({
             </div>
           )}
           {amounts.recovery > 0 && <Callout tone="warn">{t("subs.certs.recovery_note")}</Callout>}
+          {money && amounts.gross > 0 && carried > 0.005 && <Callout tone="warn">{t("subs.certs.recovery_carried", { amount: pmMoney(carried) })}</Callout>}
           <Callout tone="info">{t("subs.certs.two_people")}</Callout>
           <BlockingReasons title={t("cannot_save")} reasons={blocks.filter((b) => b !== "archived").map((b) => t(`subs.block.${b}`))} />
         </div>
@@ -1079,8 +1113,9 @@ function MoveDialog({
   const [note, setNote] = useState("")
   const f = custodyFigures(custody, executed)
   const qn = num(q)
-  const blocks = moveBlocks({ archived, kind, q: qn, issued: f.issued, day, today: todayDay() })
-  const gap = kind === "cnt" && Number.isFinite(qn) ? Math.round((f.book - qn) * 100) / 100 : null
+  const blocks = moveBlocks({ archived, kind, q: qn, issued: f.issued, day, today: todayDay(), lastCount: f.count?.day ?? null })
+  // What this count would find: the book as of its day less what is counted.
+  const gap = kind === "cnt" && day && Number.isFinite(qn) ? custodyFigures({ ...custody, moves: [...custody.moves, { t: "cnt", q: qn, day, by: custody.by }] }, executed).gap : null
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md">
@@ -1167,7 +1202,7 @@ function RecoverDialog({
   const [rate, setRate] = useState(custody.unitCost > 0 ? String(custody.unitCost) : "")
   const [double, setDouble] = useState(false)
   const [note, setNote] = useState("")
-  const blocks = recoveryBlocks({ archived, q: num(q), rate: num(rate) })
+  const blocks = recoveryBlocks({ archived, q: num(q), rate: num(rate), gap: f.gap })
   const amount = recoveryAmount(num(q) || 0, num(rate) || 0, double)
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -1180,6 +1215,9 @@ function RecoverDialog({
         </DialogHeader>
         <div className="space-y-4">
           <Callout tone="info">{t("subs.recon.recover_note")}</Callout>
+          <div className="rounded-xl border px-3">
+            <KeyValueRow label={t("subs.recon.open_gap")} value={`${qty(Math.max(0, f.gap ?? 0))} ${custody.unit}`} ltr strong />
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="rc-q">

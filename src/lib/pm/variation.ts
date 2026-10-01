@@ -112,11 +112,11 @@ export function decisionDateBlocks(input: { on: string | null; requestedOn: stri
   return out
 }
 
-export type VoStepBlock = "archived" | "wrong_state" | "unpriced" | "no_reason" | "price_locked" | "bad_pct"
+export type VoStepBlock = "archived" | "wrong_state" | "unpriced" | "no_reason" | "price_locked" | "bad_pct" | "below_billed"
 
 /** draft → wait (priced) → appr | rej. A reason is required to reject; the price
  * is fixed once submitted; the executed share keeps moving until decided. */
-export function stepBlocks(input: { archived: boolean; status: VoStatus; step: "submit" | "approve" | "reject" | "progress" | "reprice"; value?: number; reason?: string | null; executedPct?: number }): VoStepBlock[] {
+export function stepBlocks(input: { archived: boolean; status: VoStatus; step: "submit" | "approve" | "reject" | "progress" | "reprice"; value?: number; reason?: string | null; executedPct?: number; billedPct?: number | null }): VoStepBlock[] {
   const out: VoStepBlock[] = []
   if (input.archived) out.push("archived")
   const from: Record<typeof input.step, VoStatus[]> = { submit: ["draft"], approve: ["wait"], reject: ["wait"], progress: ["draft", "wait", "appr"], reprice: ["draft"] }
@@ -124,5 +124,7 @@ export function stepBlocks(input: { archived: boolean; status: VoStatus; step: "
   if (input.step === "submit" && !((input.value ?? 0) > 0)) out.push("unpriced")
   if (input.step === "reject" && !input.reason?.trim()) out.push("no_reason")
   if (input.step === "progress" && !(Number.isFinite(input.executedPct) && (input.executedPct as number) >= 0 && (input.executedPct as number) <= 1)) out.push("bad_pct")
+  // INV-03: what a certificate billed was executed — the share cannot go back under it.
+  else if (input.step === "progress" && (input.executedPct as number) < (input.billedPct ?? 0) - 0.0001) out.push("below_billed")
   return out
 }

@@ -24,7 +24,7 @@ import type { PmAccess } from "@/hooks/usePmAccess"
 import { Callout } from "@/components/module-ui/Callout"
 import { PM_DUTIES, PM_DUTY_GROUPS, PM_PROJECT_ROLES, PM_ROLE_TEMPLATES, PmAccessError, type PmDuty, type PmKey, type PmProjectRole, type PmSeat } from "@/lib/pm/access"
 import { pmMoney, todayDay } from "@/lib/pm/format"
-import { assignBlocks, defaultTicked, offFromTicked, replacedManager } from "@/lib/pm/team"
+import { assignBlocks, defaultTicked, replacedManager, seatOff } from "@/lib/pm/team"
 import { assignSeat, PmTeamError, type TeamActor } from "@/lib/pm/team-writes"
 import { cn } from "@/lib/utils"
 import { FormHint } from "./ContractBits"
@@ -125,7 +125,7 @@ export function AssignSeatDialog({
         name: person.name,
         role,
         roleName: role === "other" ? roleName : null,
-        off: offFromTicked(role, effective),
+        off: seatOff(role, ticked),
         groupId: person.groupId,
         from: seat ? null : from,
       })

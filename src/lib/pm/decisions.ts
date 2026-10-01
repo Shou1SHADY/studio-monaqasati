@@ -11,18 +11,18 @@ import { defectsEnd, progressOf, PROVISIONAL_AT, type Acceptances } from "./acce
 import { CERTIFICATE_READY_AT, type CertificateStatus } from "./certificate"
 import { delayAndDamages, grantedDays, noticeDeadline, noticeLate, type ClaimStatus } from "./claim"
 import { isLetterLate, type PmLetter } from "./correspondence"
-import { staleDocuments, type PmDocument } from "./documents"
+import { staleDrawings, type PmDocument } from "./documents"
 import { RERATE_SHARE } from "./measurement"
-import { IDLE_ALERT_DAYS, IDLE_SHARE, idleSince, licenceState, onSite, overdueDays, type PmPlant } from "./plant"
+import { IDLE_ALERT_DAYS, idleCharge, idleSince, licenceState, onSite, overdueDays, type PmPlant } from "./plant"
 import { isOpenPunch, type PunchStatus } from "./punch"
 import { pmTabVisible } from "./sections"
 import { blockingObstacles, unprotectedObstacles, type PmObstacle } from "./site"
 import { itemProgress, storeBalance, storeState, type PmStoreLine, type StoreItem } from "./store"
-import { lineGot, lineNeed, lineOut, lineOver, openChanges, plantHireable, plantReceivable, receivable, reqState, type PmMaterialRequest, type PmPlantRequest } from "./supply"
+import { lineGot, lineLink, lineNeed, lineOut, lineOver, openChanges, plantHireable, plantReceivable, receivable, reqState, type PmMaterialRequest, type PmPlantRequest } from "./supply"
 import type { ContractTerms } from "./terms"
 import { approvedValue, workBeforeApproval, type VoStatus } from "./variation"
 import type { SectionId } from "../project-sections"
-import { unitBlocks, unitDone, unitFigures, unitRetention, unitTight, type PmUnit } from "./units"
+import { boqValue, unitBlocks, unitDone, unitFigures, unitRetention, unitTight, type PmUnit } from "./units"
 
 export type DecisionKind =
   | "no_pm"
@@ -196,13 +196,16 @@ export interface DecisionFacts {
   inspections?: Array<{ status: string; unit?: string | null }>
   /** Delivery units (section `zone`). */
   units?: PmUnit[]
-  variations: Array<{ seq?: number; status: VoStatus; value: number; executedPct: number; day: string }>
+  variations: Array<{ seq?: number; status: VoStatus; value: number; executedPct: number; billedPct?: number; day: string }>
   claims: Array<{ status: ClaimStatus; eventOn: string; response?: { days: number } | null; obstacleId?: string | null; kind?: string; cause?: string }>
   submittals?: Array<{ itemId: string; status: string; rev: number; day: string }>
   subCertificates?: Array<{ status: string; gross: number; prepOn: string }>
   documents?: Array<Pick<PmDocument, "type" | "revisions">>
-  /** The last certificate's day — a drawing issued after it is stale. */
-  lastCertDay?: string | null
+  /** What a certificate re-claims of the consultant's earlier deductions (`pm.cutPool`). */
+  cutPool?: number
+  /** Retention held on certificates, and what handovers already made claimable — a ready unit frees a share of it. */
+  retentionHeld?: number
+  retentionFreed?: number
   letters?: Array<Pick<PmLetter, "status" | "day" | "due" | "party">>
   obstacles?: Array<Pick<PmObstacle, "id" | "type" | "closeOn" | "itemIds" | "openOn">>
   /** The last approved monthly reconciliation (CVR-01), if any. */
@@ -222,6 +225,9 @@ export interface DecisionFacts {
   managerId?: string | null
   /** Supply: material requests, the project store, equipment requests and plant on site. */
   requests?: PmMaterialRequest[]
+  /** The status of the project's orders, by id, where the viewer reads them: an order
+   * still awaiting approval (or cancelled) brings nothing. Absent = taken as coming. */
+  orderStatus?: Record<string, string | null>
   stores?: PmStoreLine[]
   /** A store line's last paid unit price (price history): what a loss or a use is worth. */
   storeCostOf?: (x: Pick<PmStoreLine, "name" | "unit">) => number | null
@@ -238,7 +244,12 @@ export interface DecisionFacts {
   viewer?: DecisionViewer | null
 }
 
-const days = (from: string, to: string) => Math.max(0, Math.round((Date.parse(`${to.slice(0, 10)}T00:00:00Z`) - Date.parse(`${from.slice(0, 10)}T00:00:00Z`)) / 86_400_000))
+// One record with a missing or malformed date must not take Today down (NFR-06): it ages 0.
+const dayMs = (d: unknown) => (typeof d === "string" && d.length >= 10 ? Date.parse(`${d.slice(0, 10)}T00:00:00Z`) : NaN)
+const days = (from: string, to: string) => {
+  const n = Math.round((dayMs(to) - dayMs(from)) / 86_400_000)
+  return Number.isFinite(n) ? Math.max(0, n) : 0
+}
 const oldest = (dates: string[], today: string) => dates.reduce((m, d) => Math.max(m, days(d, today)), 0)
 const r2 = (n: number) => Math.round(n * 100) / 100
 const RANK = { red: 0, amber: 1, blue: 2 }
@@ -302,6 +313,15 @@ const REACHES: Record<DecisionKind, (h: (k: string) => boolean) => boolean> = {
 
 /** A kind that lives in a section, and the section (the prototype's HAS2 guards). */
 export const SECTION_OF: Partial<Record<DecisionKind, SectionId>> = {
+  vo_work: "vo",
+  vo_waiting: "vo",
+  ipc_ready: "ipc",
+  cert_internal: "ipc",
+  cert_mine: "ipc",
+  cert_consultant: "ipc",
+  collection_overdue: "collect",
+  sub_cert_waiting: "subs",
+  letters_late: "corr",
   claim_notice_late: "claim",
   claim_notice_due: "claim",
   claim_waiting: "claim",
@@ -329,7 +349,10 @@ export const SECTION_OF: Partial<Record<DecisionKind, SectionId>> = {
 // Site chores the owner is never sent (the prototype's `CU().role!=='owner'`).
 const NOT_FOR_OWNER = new Set<DecisionKind>(["req_stop", "req_incoming", "store_incoming", "store_close", "need_short"])
 
-const until = (from: string, to: string) => Math.round((Date.parse(`${to.slice(0, 10)}T00:00:00Z`) - Date.parse(`${from.slice(0, 10)}T00:00:00Z`)) / 86_400_000)
+const until = (from: string, to: string) => {
+  const n = Math.round((dayMs(to) - dayMs(from)) / 86_400_000)
+  return Number.isFinite(n) ? n : 0
+}
 
 function supplyDecisions(f: DecisionFacts, out: PmDecision[]): void {
   const requests = f.requests ?? []
@@ -359,7 +382,8 @@ function supplyDecisions(f: DecisionFacts, out: PmDecision[]): void {
     out.push({ kind: "req_stop", severity: "amber", count: stoppable.length, age: age || undefined, tab: "pmReq" })
   }
 
-  const coming = going.flatMap((r) => r.lines.filter((l) => receivable(r, l)))
+  const orderOf = (poId: string | null) => (poId && f.orderStatus && poId in f.orderStatus ? { status: f.orderStatus[poId] } : undefined)
+  const coming = going.flatMap((r) => r.lines.filter((l) => receivable(r, l, orderOf(lineLink(r, l).poId))))
   if (coming.length) out.push({ kind: "req_incoming", severity: "blue", count: coming.length, tab: "pmReq" })
 
   const held = going.flatMap((r) => openChanges(r).map(() => r))
@@ -405,7 +429,8 @@ function supplyDecisions(f: DecisionFacts, out: PmDecision[]): void {
   const site = onSite(f.plant ?? [])
   const idle = site.filter((p) => (p.dayRate ?? 0) > 0 && p.category !== "tool" && idleSince(p) >= IDLE_ALERT_DAYS)
   if (idle.length) {
-    const cost = idle.reduce((a, p) => a + (p.dayRate ?? 0) * Math.max(1, p.qty || 1) * IDLE_SHARE * idleSince(p), 0)
+    // What those idle days are really charged (the day-cost rule: full within ±3 days of work, then two-thirds).
+    const cost = idle.reduce((a, p) => a + idleCharge(p), 0)
     out.push({ kind: "eqp_idle", severity: "red", count: idle.length, age: idle.reduce((m, p) => Math.max(m, idleSince(p)), 0), amount: r2(cost), tab: "pmSite" })
   }
   const late = site.filter((p) => overdueDays(p, f.today) > 0)
@@ -447,9 +472,16 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
   }
 
   const unpriced = f.items.filter((i) => !(i.rate > 0) && i.executed > 0).length
-  if (unpriced) out.push({ kind: "unpriced_executed", severity: "red", count: unpriced, tab: "pmMeasure" })
+  // Priced on the BOQ (Contract › BOQ), not on the measurement screen.
+  if (unpriced) out.push({ kind: "unpriced_executed", severity: "red", count: unpriced, tab: "boq" })
 
-  const unbilled = r2(f.items.reduce((a, i) => a + (i.rate > 0 ? Math.max(0, i.executed - (i.billed ?? 0)) * i.rate : 0), 0))
+  // The figure the project head and the certificates screen show: unbilled BOQ work, the
+  // executed share of approved variations not yet billed, and deductions returned to unbilled.
+  const unbilled = r2(
+    f.items.reduce((a, i) => a + (i.rate > 0 ? Math.max(0, i.executed - (i.billed ?? 0)) * i.rate : 0), 0) +
+      f.variations.reduce((a, v) => a + (v.status === "appr" ? v.value * Math.max(0, v.executedPct - (v.billedPct ?? 0)) : 0), 0) +
+      Math.max(0, f.cutPool ?? 0)
+  )
   if (unbilled > CERTIFICATE_READY_AT) out.push({ kind: "ipc_ready", severity: "red", amount: unbilled, tab: "ipc" })
 
   const failed = f.items.filter((i) => i.gate?.pmWir === "fail").length
@@ -492,7 +524,8 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
   const subWait = (f.subCertificates ?? []).filter((c) => c.status === "int")
   if (subWait.length) out.push({ kind: "sub_cert_waiting", severity: "amber", count: subWait.length, amount: r2(subWait.reduce((a, c) => a + c.gross, 0)), age: oldest(subWait.map((c) => c.prepOn), f.today), tab: "pmSubs" })
 
-  const stale = staleDocuments(f.documents ?? [], f.lastCertDay ?? null)
+  // MS-05: a revision issued after the last APPROVED MEASUREMENT — the same test the documents tab and the look-ahead use.
+  const stale = staleDrawings(f.documents ?? [], f.sheets)
   if (stale.length) out.push({ kind: "doc_stale", severity: "amber", count: stale.length, age: oldest(stale.map((d) => d.revisions[d.revisions.length - 1]?.day ?? f.today), f.today), tab: "pmDocs" })
 
   // A letter to the client or the consultant left unanswered builds or loses a claim (COR-01).
@@ -581,7 +614,13 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
     const open = { punch: f.punch.filter(isOpenPunch), inspections: (f.inspections ?? []).filter((w) => w.status === "open" || w.status === "fail") }
     const rows = f.units.filter((u) => !unitDone(u)).map((u) => ({ u, f: unitFigures(u, itemsWithId), blocks: unitBlocks(u, itemsWithId, open) }))
     const ready = rows.filter((r) => !r.blocks.length)
-    if (ready.length) out.push({ kind: "zone", severity: "red", count: ready.length, amount: r2(ready.reduce((a, r) => a + unitRetention(r.f.contract, f.terms), 0)), tab: "pmUnits" })
+    if (ready.length) {
+      // What handing them over frees: a share of the retention actually held, under the
+      // contract's release term — never more than the half the term has not freed yet.
+      const held = { held: f.retentionHeld ?? 0, of: boqValue(f.items) }
+      const room = Math.max(0, r2(held.held * 0.5 - (f.retentionFreed ?? 0)))
+      out.push({ kind: "zone", severity: "red", count: ready.length, amount: Math.min(room, r2(ready.reduce((a, r) => a + unitRetention(r.f.contract, f.terms, held), 0))), tab: "pmUnits" })
+    }
     const tight = rows.filter((r) => unitTight(r.u, r.f, f.startOn, f.today))
     if (tight.length) out.push({ kind: "ztight", severity: "amber", count: tight.length, tab: "pmUnits" })
   }

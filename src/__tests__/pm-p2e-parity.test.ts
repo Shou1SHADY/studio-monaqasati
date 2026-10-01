@@ -12,6 +12,7 @@ import type { Firestore } from "firebase/firestore"
 import { PmAccessError, pmAllowed, pmCeiling, type PmContext } from "@/lib/pm/access"
 import { handBackPlant, recordOffHireConfirmation, requestOffHire } from "@/lib/pm/plant-writes"
 import { lineSplit, mainStock, plantBooked, poVsEstimate, siteOverheadLeft, stockCatalogue } from "@/lib/pm/supply"
+import { todayDay } from "@/lib/pm/format"
 
 const db = fakeFirestore as unknown as Firestore
 const pm: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.manage"] }), seat: { uid: "pm1", role: "pm" }, archived: false }
@@ -45,7 +46,7 @@ describe("plant on site — off-hire and hand-back are the daily duty (row 100)"
     await expect(requestOffHire(db, pm, "p1", pmA, 1, { ready: "2099-01-01", why: "done" })).rejects.toBeInstanceOf(PmAccessError)
     await requestOffHire(db, site, "p1", seA, 1, { ready: "2099-01-01", why: "done" })
     expect(readDoc("projects/p1/pmPlant/01")).toMatchObject({ status: "req" })
-    await recordOffHireConfirmation(db, site, "p1", seA, 1, { no: "OH-7", on: "2026-09-02" })
+    await recordOffHireConfirmation(db, site, "p1", seA, 1, { no: "OH-7", on: todayDay() })
     await expect(handBackPlant(db, pm, "p1", pmA, 1, { meter: 150, condition: "ok" })).rejects.toBeInstanceOf(PmAccessError)
     await handBackPlant(db, site, "p1", seA, 1, { meter: 150, condition: "ok" })
     expect(readDoc("projects/p1/pmPlant/01")).toMatchObject({ status: "back" })

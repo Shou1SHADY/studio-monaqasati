@@ -50,7 +50,9 @@ describe("a collection", () => {
   })
   it("moves the collected share up to one, never past it", () => {
     expect(collectedAfter(177300, 0, 100000)).toBeCloseTo(0.564, 3)
-    expect(collectedAfter(177300, 0.564, 77300)).toBe(1)
+    // The share is exact now (not rounded to four decimals): the remainder of 100,000 on 177,300 is 77,300.
+    expect(collectedAfter(177300, 100000 / 177300, 77300)).toBe(1)
+    expect(collectedAfter(177300, 100000 / 177300, 77000)).toBeLessThan(1)
     expect(collectedAfter(177300, 0.9, 50000)).toBe(1)
     expect(outstandingOf(177300, 0.5)).toBe(88650)
     expect(outstandingOf(177300, 1)).toBe(0)

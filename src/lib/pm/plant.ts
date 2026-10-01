@@ -7,8 +7,11 @@
 //   idle/standby, no work within ±3 days → two-thirds (CPA clause 25)
 //   idle/standby with work within ±3     → a full day
 //   breakdown                            → nothing — it is the owner's
+//   a state we do not know                → nothing, and shown as unknown
 // Tools are custody, never day-rated. A request alone stops nothing: the
-// charge runs until the desk confirms. A meter never runs backwards.
+// charge runs until the desk confirms — and stops there: no day after the
+// confirmation is logged or charged. The three off-hire dates run in order
+// (arrival ≤ request ≤ confirmation). A meter never runs backwards.
 // Pure: no I/O.
 
 import type { PmAttachment } from "./attachments"
@@ -52,6 +55,16 @@ export interface PlantNote {
   byName?: string | null
 }
 
+/** One logged day: what the unit did, who logged it and when — a past day
+ * logged again names whoever rewrote it. Days logged before this was kept are a
+ * bare state. */
+export interface PlantDayEntry {
+  st: PlantDayState
+  by?: string | null
+  byName?: string | null
+  on?: string | null
+}
+
 export interface PmPlant {
   id: string
   seq: number
@@ -62,8 +75,11 @@ export interface PmPlant {
   ownership: PlantOwnership
   supplier?: string | null
   qty: number
-  /** Day rate — money; 0/absent = not rated (custody). */
+  /** Day rate — money. A tool has none (custody); on any other unit 0/absent
+   * means nobody has set it yet, and its days cost nothing until someone does. */
   dayRate?: number | null
+  /** Who set (or corrected) the rate after the handover, when, and what it was before. */
+  rateSet?: { on: string; by: string; byName?: string | null; was: number | null } | null
   from: string
   /** The planned return date. */
   to: string
@@ -72,8 +88,8 @@ export interface PmPlant {
   /** use = on site · req = off-hire requested · back = returned. */
   status: "use" | "req" | "back"
   handover: PlantNote
-  /** Day log: date → state. */
-  days: Record<string, PlantDayState>
+  /** Day log: date → what it did that day (with who logged it). */
+  days: Record<string, PlantDayState | PlantDayEntry>
   offReq?: { on: string; ready: string; why: OffReason; whyText?: string | null; by: string; byName?: string | null } | null
   offNo?: string | null
   offOk?: { on: string; by: string; byName?: string | null } | null
@@ -88,30 +104,63 @@ const DAY_MS = 86_400_000
 const dn = (d: string) => Date.parse(`${d.slice(0, 10)}T00:00:00Z`) / DAY_MS
 const r2 = (n: number) => Math.round(n * 100) / 100
 
+const isState = (v: unknown): v is PlantDayState => (PLANT_DAY_STATES as readonly unknown[]).includes(v)
+
+/** What the log holds for a day: its state, "unknown" for a value we do not
+ * recognise (never read as idle), null when nothing was logged. */
+export function dayState(p: Pick<PmPlant, "days">, day: string): PlantDayState | "unknown" | null {
+  const v: unknown = p.days?.[day]
+  if (v === undefined || v === null) return null
+  const st: unknown = typeof v === "object" ? (v as { st?: unknown }).st : v
+  return isState(st) ? st : "unknown"
+}
+
 /** The day log, newest first. */
 export const dayLog = (p: Pick<PmPlant, "days">) =>
   Object.entries(p.days ?? {})
-    .map(([day, st]) => ({ day, st }))
+    .map(([day, v]) => {
+      const who = v && typeof v === "object" ? v : null
+      return { day, st: dayState(p, day) ?? ("unknown" as const), by: who?.by ?? null, byName: who?.byName ?? null }
+    })
     .sort((a, b) => b.day.localeCompare(a.day))
 
-/** What one logged day charges the project. */
-export function dayCost(p: Pick<PmPlant, "dayRate" | "category" | "days" | "qty">, day: string): number {
+type Costed = Pick<PmPlant, "dayRate" | "category" | "days" | "qty" | "offOk">
+const IDLE_STATES: readonly PlantDayState[] = ["idle", "stby"]
+
+/** What one logged day charges the project. Only the five states are priced —
+ * a value we do not recognise charges nothing rather than passing for idle —
+ * and nothing is charged past the day the desk confirmed the off-hire. */
+export function dayCost(p: Costed, day: string): number {
   const rate = p.category === "tool" ? 0 : Math.max(0, p.dayRate ?? 0) * Math.max(1, p.qty || 1)
-  const st = p.days?.[day]
-  if (!rate || !st || st === "down") return 0
+  const st = dayState(p, day)
+  if (!rate || !st || (p.offOk && day > p.offOk.on)) return 0
   if (st === "work" || st === "move") return rate
-  const worked = Object.entries(p.days).some(([d, s]) => s === "work" && Math.abs(dn(d) - dn(day)) <= 3)
+  if (!IDLE_STATES.includes(st as PlantDayState)) return 0
+  const worked = Object.keys(p.days).some((d) => dayState(p, d) === "work" && Math.abs(dn(d) - dn(day)) <= 3)
   return worked ? rate : r2(rate * IDLE_SHARE)
 }
 
-export const plantCost = (p: Pick<PmPlant, "dayRate" | "category" | "days" | "qty">) => r2(Object.keys(p.days ?? {}).reduce((a, d) => a + dayCost(p, d), 0))
+export const plantCost = (p: Costed) => r2(Object.keys(p.days ?? {}).reduce((a, d) => a + dayCost(p, d), 0))
 
-/** Days logged since it last worked (all logged days when it never worked). */
-export function idleSince(p: Pick<PmPlant, "days">): number {
+/** The idle and standby days logged since it last worked. Breakdown and transit
+ * days in between are not idle days — a breakdown charges nothing, and "idle
+ * five days" is the call to send it back. */
+const idleDays = (p: Pick<PmPlant, "days">): string[] => {
   const L = dayLog(p)
   const i = L.findIndex((x) => x.st === "work")
-  return i < 0 ? L.length : i
+  return (i < 0 ? L : L.slice(0, i)).filter((x) => IDLE_STATES.includes(x.st as PlantDayState)).map((x) => x.day)
 }
+
+/** How many days it has sat idle or on standby since it last worked. */
+export const idleSince = (p: Pick<PmPlant, "days">): number => idleDays(p).length
+
+/** What those idle days have charged — the sum the day-cost rule gives each of
+ * them (full within ±3 days of work, two-thirds beyond), not a flat share. */
+export const idleCharge = (p: Costed): number => r2(idleDays(p).reduce((a, d) => a + dayCost(p, d), 0))
+
+/** Rated plant nobody has given a day rate: its days cost nothing, so its cost
+ * is missing from the project until a money holder sets one. Never a tool. */
+export const unrated = (p: Pick<PmPlant, "category" | "dayRate">) => p.category !== "tool" && !((p.dayRate ?? 0) > 0)
 
 /** Working days ÷ logged days, %; null with nothing logged. */
 export function utilisation(p: Pick<PmPlant, "days">): number | null {
@@ -161,14 +210,17 @@ export function handoverBlocks(input: {
   return out
 }
 
-export type DayBlock = "archived" | "returned" | "bad_day" | "no_state"
+export type DayBlock = "archived" | "returned" | "bad_day" | "after_off" | "no_state"
 
-export function dayBlocks(input: { archived: boolean; status: PmPlant["status"]; day: string; from: string; today: string; st: unknown }): DayBlock[] {
+/** A day between its arrival and today — and not after the desk's confirmation
+ * (`offOn`): from there the unit is the desk's, and the project logs nothing. */
+export function dayBlocks(input: { archived: boolean; status: PmPlant["status"]; day: string; from: string; today: string; st: unknown; offOn?: string | null }): DayBlock[] {
   const out: DayBlock[] = []
   if (input.archived) out.push("archived")
   if (input.status === "back") out.push("returned")
   if (!DAY.test(input.day) || input.day > input.today || input.day < input.from) out.push("bad_day")
-  if (!(PLANT_DAY_STATES as readonly unknown[]).includes(input.st)) out.push("no_state")
+  else if (input.offOn && input.day > input.offOn) out.push("after_off")
+  if (!isState(input.st)) out.push("no_state")
   return out
 }
 
@@ -180,6 +232,33 @@ export function offBlocks(input: { archived: boolean; status: PmPlant["status"];
   if (input.status !== "use") out.push("wrong_state")
   if (!input.why || (input.why === "oth" && !input.whyText?.trim())) out.push("no_reason")
   if (!DAY.test(input.ready) || input.ready < input.today) out.push("bad_day")
+  return out
+}
+
+export type DeskBlock = "archived" | "wrong_state" | "no_number" | "bad_day" | "before_request"
+
+/** The desk's confirmation: once, on a requested off-hire, with its number, and
+ * dated in order — not before the request (nor before the unit arrived), never ahead. */
+export function deskBlocks(input: { archived: boolean; plant: Pick<PmPlant, "status" | "offOk" | "offReq" | "from">; no: string; on: string; today: string }): DeskBlock[] {
+  const out: DeskBlock[] = []
+  if (input.archived) out.push("archived")
+  if (input.plant.status !== "req" || input.plant.offOk) out.push("wrong_state")
+  if (!input.no.trim()) out.push("no_number")
+  if (!DAY.test(input.on) || input.on > input.today) out.push("bad_day")
+  else if (input.on < input.plant.from || (input.plant.offReq && input.on < input.plant.offReq.on)) out.push("before_request")
+  return out
+}
+
+export type RateBlock = "archived" | "returned" | "tool_rate" | "rate_required"
+
+/** Setting the day rate after the handover: on a unit still on site, above
+ * zero, and never on a tool (custody — its cost is a share of labour). */
+export function rateBlocks(input: { archived: boolean; status: PmPlant["status"]; category: PlantCategory; dayRate: number }): RateBlock[] {
+  const out: RateBlock[] = []
+  if (input.archived) out.push("archived")
+  if (input.status === "back") out.push("returned")
+  if (input.category === "tool") out.push("tool_rate")
+  if (!(Number.isFinite(input.dayRate) && input.dayRate > 0)) out.push("rate_required")
   return out
 }
 

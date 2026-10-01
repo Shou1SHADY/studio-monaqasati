@@ -209,31 +209,100 @@ const toNumber = (v: string | undefined) => {
   return Number.isFinite(n) ? n : NaN
 }
 
+/** Every row is judged the same way wherever it came from; a bad row is never imported. */
+function judge(rows: Array<{ line: number; cells: Array<string | undefined> }>, existingCodes: Iterable<string>): { ok: ImportRow[]; bad: ImportRow[] } {
+  const seen = new Set(existingCodes)
+  const ok: ImportRow[] = []
+  const bad: ImportRow[] = []
+  rows.forEach(({ line, cells: c }) => {
+    const qty = toNumber(c[3])
+    const row: ImportRow = { line, code: (c[0] || "").trim(), description: (c[1] || "").trim(), unit: (c[2] || "").trim(), quantity: qty ?? NaN, rate: toNumber(c[4]), cost: toNumber(c[5]), problems: [] }
+    if (!CODE.test(row.code)) row.problems.push("code_format")
+    else if (seen.has(row.code)) row.problems.push("duplicate")
+    if (!row.description) row.problems.push("no_description")
+    if (!(row.quantity > 0)) row.problems.push("bad_qty")
+    if (row.rate !== null && !(row.rate >= 0)) row.problems.push("bad_rate")
+    if (row.cost !== null && !(row.cost >= 0)) row.problems.push("bad_cost")
+    seen.add(row.code)
+    ;(row.problems.length ? bad : ok).push(row)
+  })
+  return { ok, bad }
+}
+
 /** One line per item: code · description · unit · quantity · rate · budget cost,
  * tab-separated (a paste from Excel) or split by | or ;. Rate and cost are
  * optional; every row is judged and a bad row is never imported. */
 export function parseBoqPaste(raw: string, existingCodes: Iterable<string> = []): { ok: ImportRow[]; bad: ImportRow[] } {
-  const seen = new Set(existingCodes)
-  const ok: ImportRow[] = []
-  const bad: ImportRow[] = []
-  String(raw || "")
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .forEach((l, i) => {
-      const c = (l.includes("\t") ? l.split("\t") : l.split(/\s*[|;]\s*/)).map((s) => s.trim())
-      const qty = toNumber(c[3])
-      const row: ImportRow = { line: i + 1, code: c[0] || "", description: c[1] || "", unit: c[2] || "", quantity: qty ?? NaN, rate: toNumber(c[4]), cost: toNumber(c[5]), problems: [] }
-      if (!CODE.test(row.code)) row.problems.push("code_format")
-      else if (seen.has(row.code)) row.problems.push("duplicate")
-      if (!row.description) row.problems.push("no_description")
-      if (!(row.quantity > 0)) row.problems.push("bad_qty")
-      if (row.rate !== null && !(row.rate >= 0)) row.problems.push("bad_rate")
-      if (row.cost !== null && !(row.cost >= 0)) row.problems.push("bad_cost")
-      seen.add(row.code)
-      ;(row.problems.length ? bad : ok).push(row)
-    })
-  return { ok, bad }
+  return judge(
+    String(raw || "")
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l, i) => ({ line: i + 1, cells: (l.includes("\t") ? l.split("\t") : l.split(/\s*[|;]\s*/)).map((s) => s.trim()) })),
+    existingCodes
+  )
+}
+
+// ── Import: the BOQ template as a file (CSV) ───────────────────────────────
+
+/** The template's columns, by the names a header row may give them. */
+const CSV_COLUMNS: string[][] = [
+  ["code", "item", "itemno", "no", "الكود", "الرمز", "رقمالبند", "البند"],
+  ["description", "desc", "الوصف", "البيان", "وصفالبند"],
+  ["unit", "uom", "الوحدة"],
+  ["qty", "quantity", "الكمية"],
+  ["rate", "price", "unitprice", "unitrate", "السعر", "سعرالوحدة", "سعرالبيع"],
+  ["unitcost", "cost", "estcost", "estimatedcost", "التكلفة", "تكلفةالوحدة", "التكلفةالتقديرية"],
+]
+const headerName = (v: string) => v.toLowerCase().replace(/[\s_\-.]/g, "")
+
+/** A CSV's records: quoted cells (with the separator, a doubled quote or a line
+ * break inside them), `,` `;` or a tab as the separator — whichever the first
+ * line uses most. */
+function csvRecords(text: string): string[][] {
+  const first = text.split(/\r?\n/, 1)[0] ?? ""
+  const count = (ch: string) => first.split(ch).length - 1
+  const sep = [",", ";", "\t"].reduce((a, b) => (count(b) > count(a) ? b : a))
+  const out: string[][] = []
+  let row: string[] = []
+  let cell = ""
+  let quoted = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++ }
+      else if (ch === '"') quoted = false
+      else cell += ch
+    } else if (ch === '"' && cell.trim() === "") { cell = ""; quoted = true }
+    else if (ch === sep) { row.push(cell); cell = "" }
+    else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++
+      row.push(cell); out.push(row); row = []; cell = ""
+    } else cell += ch
+  }
+  if (cell !== "" || row.length) { row.push(cell); out.push(row) }
+  return out
+}
+
+/** The BOQ template as a file (R1: `boq-template.csv`): a header row, then one
+ * item per line. Columns are found by the header's names in any order; a file
+ * with no header is read in the template's order. Judged exactly like a paste —
+ * an unpriced line stays unpriced, a bad line is named with the file's line
+ * number and never imported. */
+export function parseBoqCsv(raw: string, existingCodes: Iterable<string> = []): { ok: ImportRow[]; bad: ImportRow[] } {
+  const records = csvRecords(String(raw || "").replace(/^\uFEFF/, ""))
+    .map((cells, i) => ({ line: i + 1, cells: cells.map((c) => c.trim()) }))
+    .filter((r) => r.cells.some(Boolean))
+  if (!records.length) return { ok: [], bad: [] }
+  const names = records[0].cells.map(headerName)
+  const at = CSV_COLUMNS.map((aliases) => names.findIndex((n) => aliases.includes(n)))
+  // A header names at least the code and the description; anything else is data.
+  const hasHeader = at[0] >= 0 && at[1] >= 0
+  if (!hasHeader) return judge(records, existingCodes)
+  return judge(
+    records.slice(1).map((r) => ({ line: r.line, cells: at.map((i) => (i >= 0 ? r.cells[i] : undefined)) })),
+    existingCodes
+  )
 }
 
 /** A BOQ is written in one transaction; above this it is split in the source. */

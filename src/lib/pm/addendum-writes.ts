@@ -20,11 +20,12 @@ import {
   type PmAddendum,
   type WithdrawReason,
 } from "./addenda"
-import { eventDocId, PM_EVENTS } from "./events"
+import { PM_EVENTS, pmEventDocId } from "./events"
 import { todayDay } from "./format"
 import { lifecycleOf } from "./lifecycle"
 import { withFreshState } from "./project-writes"
 import { termChanges, type ContractTerms } from "./terms"
+import { readContractValue } from "./contract-value"
 
 export class PmAddendumError extends Error {
   constructor(readonly code: "missing" | "not_pm_project" | "not_started" | "blocked", readonly blocks: string[] = []) {
@@ -47,6 +48,9 @@ export interface PmBlockData {
   signedCount?: number
   /** Retention held on certificates so far — maintained by the certificate writes. */
   retentionHeld?: number
+  /** The contract in force after the last signature (terms.ts `termsNow`): what
+   * everyone on the project reads, since the addenda themselves are money's or approve's. */
+  inForce?: ContractTerms
 }
 
 type ProjectData = { organizationId?: string; budget?: number; status?: string; projectManagerId?: string | null; pm?: PmBlockData }
@@ -71,7 +75,7 @@ export async function readContract(tx: Transaction, firestore: Firestore, projec
   if (!pm?.terms) throw new PmAddendumError("not_pm_project")
   const addenda = await readAddenda(tx, firestore, projectId, pm.addendaCount ?? 0)
   const original = pm.original ?? pm.terms
-  return { pRef, project, pm, addenda, terms: inForce(original, addenda) }
+  return { pRef, project, pm, addenda, original, terms: inForce(original, addenda) }
 }
 
 const stage = (project: ProjectData) => ({ lifecycle: lifecycleOf(project), archived: Boolean(project.pm) && lifecycleOf(project) === "closed" })
@@ -104,7 +108,7 @@ export async function draftAddendum(firestore: Firestore, ctx: PmContext, projec
       next: input.next,
       reason: input.reason,
       reasonText: input.reasonText,
-      contractValue: project.budget ?? 0,
+      contractValue: await readContractValue(firestore, projectId, project.budget),
       retentionHeld: pm.retentionHeld ?? 0,
     })
     if (blocks.length) throw new PmAddendumError("blocked", blocks)
@@ -119,7 +123,7 @@ export async function draftAddendum(firestore: Firestore, ctx: PmContext, projec
         signedOn: signNow.signedOn || null,
         lastSignedOn: lastSignedOn(addenda),
         today: todayDay(),
-        contractValue: project.budget ?? 0,
+        contractValue: await readContractValue(firestore, projectId, project.budget),
         retentionHeld: pm.retentionHeld ?? 0,
       })
       if (sBlocks.length) throw new PmAddendumError("blocked", sBlocks)
@@ -148,10 +152,11 @@ export async function draftAddendum(firestore: Firestore, ctx: PmContext, projec
       voidText: null,
     }
     tx.set(doc(firestore, "projects", projectId, PM_ADDENDA, addendumNo(seq)), { ...addendum, organizationId: project.organizationId ?? null, createdAt: serverTimestamp() })
-    tx.update(pRef, { pm: { ...pm, addendaCount: seq, ...(signedSeq ? { signedCount: signedSeq } : {}) }, updatedAt: serverTimestamp() })
+    // Signed in the same step: `next` IS the contract in force from now on.
+    tx.update(pRef, { pm: { ...pm, addendaCount: seq, ...(signedSeq ? { signedCount: signedSeq, inForce: input.next } : {}) }, updatedAt: serverTimestamp() })
     if (signNow) {
       const event = amendmentEvent({ organizationId: project.organizationId ?? "", projectId, projectNo: pm.no ?? projectId, addendum: { seq, changes: addendum.changes }, signedOn: signNow.signedOn, by: actor.uid, at: new Date().toISOString() })
-      if (event) tx.set(doc(firestore, PM_EVENTS, eventDocId(event.key)), event)
+      if (event) tx.set(doc(firestore, PM_EVENTS, pmEventDocId(event.organizationId, event.key)), event)
     }
   })
   return seq
@@ -168,7 +173,7 @@ export async function signAddendum(
   input: { signedOn: string; signatory?: string | null; files?: AddendumFile[] }
 ): Promise<void> {
   await runTransaction(firestore, async (tx) => {
-    const { pRef, project, pm, addenda, terms } = await readContract(tx, firestore, projectId)
+    const { pRef, project, pm, addenda, original, terms } = await readContract(tx, firestore, projectId)
     assertPm(withFreshState(ctx, project), "addendum.sign")
     const a = addenda.find((x) => x.seq === seq)
     if (!a) throw new PmAddendumError("missing")
@@ -179,7 +184,7 @@ export async function signAddendum(
       signedOn: input.signedOn || null,
       lastSignedOn: lastSignedOn(addenda),
       today: todayDay(),
-      contractValue: project.budget ?? 0,
+      contractValue: await readContractValue(firestore, projectId, project.budget),
       retentionHeld: pm.retentionHeld ?? 0,
     })
     if (blocks.length) throw new PmAddendumError("blocked", blocks)
@@ -203,8 +208,11 @@ export async function signAddendum(
       ...(input.files?.length ? { files: [...(a.files ?? []), ...input.files] } : {}),
       updatedAt: serverTimestamp(),
     })
-    tx.update(pRef, { pm: { ...pm, signedCount: signedSeq }, updatedAt: serverTimestamp() })
-    if (event) tx.set(doc(firestore, PM_EVENTS, eventDocId(event.key)), event)
+    // The contract in force with this addendum signed, left on the project for
+    // those who cannot read the addenda (measurement, units, deadlines).
+    const now = inForce(original, addenda.map((x) => (x.seq === seq ? { ...x, status: "signed" as const, signedSeq } : x)))
+    tx.update(pRef, { pm: { ...pm, signedCount: signedSeq, inForce: now }, updatedAt: serverTimestamp() })
+    if (event) tx.set(doc(firestore, PM_EVENTS, pmEventDocId(event.organizationId, event.key)), event)
   })
 }
 

@@ -62,11 +62,19 @@ export async function adoptProject(firestore: Firestore, projectId: string, acto
     if (data.pm) throw new PmAdoptError("already")
     orgId = data.organizationId ?? actor.uid
     const lifecycle = lifecycleOf(data as { status?: string })
+    // A cancelled project would be born archived: its seat and its billed
+    // quantities are then refused, and it accepts no change ever after.
+    if (lifecycle === "closed") throw new PmAdoptError("invalid")
     const legacy = data.ipcTerms ?? {}
-    const terms: ContractTerms = defaultTerms({
+    const base: ContractTerms = defaultTerms({
       retention: legacy.retentionPercent != null ? legacy.retentionPercent / 100 : 0.1,
       advance: legacy.advanceRecoveryPercent != null ? legacy.advanceRecoveryPercent / 100 : 0,
     })
+    // The old terms had a retention rate and no cap. The default cap (5% of the
+    // contract) would be invented and then frozen as "original as signed" — and
+    // on a contract already past it, nothing more would be retained. No cap is
+    // a cap at the rate itself.
+    const terms: ContractTerms = { ...base, retentionCap: Math.max(base.retentionCap, base.retention) }
     projectNo = await drawYearlyDocNumber(firestore, tx, orgId, "PJ")
     const started = lifecycle !== "plan"
     tx.update(pRef, {
@@ -79,7 +87,10 @@ export async function adoptProject(firestore: Firestore, projectId: string, acto
         signedOn: null,
         terms,
         original: started ? terms : null,
-        startedAt: started ? new Date().toISOString() : null,
+        // The day the work really started when the owner gives it: duration, planned
+        // progress and delay are counted from `startedAt`, and the adoption day would
+        // have set every running project back to day zero.
+        startedAt: started ? (input.startOn ? `${input.startOn}T00:00:00.000Z` : new Date().toISOString()) : null,
         startedBy: started ? "adoption" : null,
         retentionHeld: billing.retentionHeld,
         advanceRecovered: billing.advanceRecovered,

@@ -28,10 +28,11 @@ import type { PmAttachment } from "@/lib/pm/attachments"
 import { INVENTORY_UNIT_CODES, unitMessageKey } from "@/lib/inventory-units"
 import { pmMoney, todayDay } from "@/lib/pm/format"
 import { addDays } from "@/lib/pm/programme"
-import { itemMaterials, lineDays, lineGot, lineInTransit, lineKind, lineNeed, lineOut, linePhase, mainStock, reqNo, reqTitle, siteOverheadLeft, stockCatalogue, CLOSE_WHY, type CloseWhy, type LineDraft, type MainStockRow, type PmMaterialRequest } from "@/lib/pm/supply"
+import { itemMaterials, lineDays, lineGot, lineInTransit, lineKind, lineLink, lineNeed, lineOut, mainStock, receivablePortions, reqNo, reqTitle, siteOverheadLeft, stockCatalogue, CLOSE_WHY, type CloseWhy, type LineDraft, type MainStockRow, type OrderFact, type PmMaterialRequest, type PortionKind } from "@/lib/pm/supply"
 import { materialKeyOf, r2, ratedOn, storeBalance, type StoreItem } from "@/lib/pm/store"
 import { PM_VARIATIONS, voNo, type PmVariation } from "@/lib/pm/variation"
 import { createMaterialRequest, decideChange, PmSupplyError, receiveOnProject, rejectMaterialRequest, stopLine, type SupplyActor } from "@/lib/pm/supply-writes"
+import { PURCHASE_ORDERS } from "@/lib/procurement/types"
 import { ChoiceChips, FormHint } from "./ContractBits"
 import { PmFilesField } from "./PmAttachments"
 
@@ -62,6 +63,20 @@ export function useSupplyRun() {
     }
   }
   return { busy, run }
+}
+
+/** The project's purchase orders, as far as Supply needs them: is the order
+ * behind a line coming yet? An order the project cannot see here (one raised for
+ * several projects, or an award older than orders) answers undefined — the line
+ * is shown as coming and the receipt's own transaction decides. */
+export function useProjectOrderFacts(projectId: string, orgId: string | null | undefined): (poId: string | null | undefined) => OrderFact {
+  const firestore = useFirestore()
+  const q = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, PURCHASE_ORDERS), where("organizationId", "==", orgId), where("projectId", "==", projectId)) : null), [firestore, orgId, projectId])
+  const { data } = useCollection(q)
+  return useMemo(() => {
+    const byId = new Map(((data ?? []) as Array<{ id: string; status?: string | null }>).map((o) => [o.id, { status: o.status ?? null }]))
+    return (poId) => (poId ? byId.get(poId) : undefined)
+  }, [data])
 }
 
 // ── A new request ────────────────────────────────────────────────────────────
@@ -413,7 +428,14 @@ export function ReceiveDialog({
   const firestore = useFirestore()
   const { busy, run } = useSupplyRun()
   const line = request.lines[index]
-  const left = lineOut(line)
+  const orderOf = useProjectOrderFacts(projectId, orgId)
+  const by = lineLink(request, line)
+  // A receipt is recorded against one portion — what the store issued, or what was
+  // bought — and never above what that portion still expects.
+  const open = receivablePortions(request, line, orderOf(by.poId))
+  const [picked, setPicked] = useState<PortionKind | null>(null)
+  const portion = open.find((p) => p.k === picked) ?? (open.length === 1 ? open[0] : null)
+  const left = portion?.left ?? 0
   const [acc, setAcc] = useState("")
   const [rej, setRej] = useState("")
   const [dn, setDn] = useState("")
@@ -422,10 +444,9 @@ export function ReceiveDialog({
   const [files, setFiles] = useState<PmAttachment[]>([])
   const a = Number(acc) || 0
   const r = Number(rej) || 0
-  const over = a > left + 0.005
-  const bad = a < 0 || r < 0 || a + r <= 0 || over
-  const phase = linePhase(request, line)
-  const source = request.poNumber ? t("sup.rcv.from_po", { no: request.poNumber }) : phase === "mfg" ? t("sup.rcv.from_mfg") : t("sup.rcv.from_proc")
+  const over = Boolean(portion) && a > left + 0.005
+  const bad = !portion || a < 0 || r < 0 || a + r <= 0 || over
+  const sourceOf = (k: PortionKind) => (k === "stk" ? line.inv?.warehouseName || t("sup.lgd.store") : by.poNumber ? t("sup.rcv.from_po", { no: by.poNumber }) : by.mfgRequestId ? t("sup.rcv.from_mfg") : t("sup.rcv.from_proc"))
 
   const save = async () => {
     if (!firestore) return
@@ -433,7 +454,7 @@ export function ReceiveDialog({
     const done = await run(
       "rcv",
       async () => {
-        grn = await receiveOnProject(firestore, access.ctx, projectId, actor, request.id, index, { acc: a, rej: r, dn, note, short, files, withStore })
+        grn = await receiveOnProject(firestore, access.ctx, projectId, actor, request.id, index, { acc: a, rej: r, dn, note, short, files, withStore, portion: portion?.k ?? null })
       },
       () => t(dn.trim() ? "sup.rcv.done" : "sup.rcv.done_no_dn", { no: grn, q: qty(a), unit: line.unit, name: line.name })
     )
@@ -450,8 +471,15 @@ export function ReceiveDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
+          {open.length > 1 && (
+            <div className="space-y-1.5">
+              <Label>{t("sup.rcv.source")} *</Label>
+              <ChoiceChips label={t("sup.rcv.source")} options={open.map((p) => ({ id: p.k, label: `${sourceOf(p.k)} · ${qty(p.left)} ${line.unit}` }))} value={portion?.k ?? null} onChange={setPicked} />
+              {!portion && <FormHint>{t("sup.block.no_source")}</FormHint>}
+            </div>
+          )}
           <div className="rounded-lg border bg-muted/30 p-3">
-            <KeyValueRow label={t("sup.rcv.source")} value={source} />
+            {portion ? <KeyValueRow label={t("sup.rcv.source")} value={sourceOf(portion.k)} /> : open.length === 0 ? <KeyValueRow label={t("sup.rcv.source")} value={t("sup.block.not_receivable")} /> : null}
             <KeyValueRow label={t("sup.rcv.in_line")} value={`${qty(line.qty)} ${line.unit}`} />
             {lineGot(line) > 0 && <KeyValueRow label={t("sup.rcv.before")} value={`${qty(lineGot(line))} ${line.unit}`} />}
             <KeyValueRow label={t("sup.rcv.left")} value={`${qty(left)} ${line.unit}`} strong />
@@ -467,7 +495,7 @@ export function ReceiveDialog({
                 {t("sup.rcv.rej")} <span className="text-xs text-muted-foreground">{t("sup.form.optional")}</span>
               </Label>
               <Input id="rc-rej" type="number" min={0} dir="ltr" placeholder="0" value={rej} onChange={(e) => setRej(e.target.value)} />
-              <FormHint>{request.poId ? t("sup.rcv.rej_buy") : t("sup.rcv.rej_stk")}</FormHint>
+              <FormHint>{portion?.k === "stk" ? t("sup.rcv.rej_stk") : t("sup.rcv.rej_buy")}</FormHint>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="rc-dn">
@@ -518,8 +546,9 @@ export function StopLineDialog({ projectId, access, actor, request, index, onClo
   const [note, setNote] = useState("")
   const whyOk = why !== "oth" || note.trim().length > 0
   const transit = lineInTransit(line)
-  const phase = linePhase(request, line)
-  const fate = phase === "ask" || phase === "rfq" ? t("sup.stop.fate_now") : phase === "mfg" ? t("sup.stop.fate_mfg") : t("sup.stop.fate_po", { no: request.poNumber || "—" })
+  // What stops is the line's own order — or, with none out yet, nothing anyone started on.
+  const by = lineLink(request, line)
+  const fate = by.poId ? t("sup.stop.fate_po", { no: by.poNumber || "—" }) : by.mfgRequestId ? t("sup.stop.fate_mfg") : t("sup.stop.fate_now")
 
   const save = async () => {
     if (!firestore) return

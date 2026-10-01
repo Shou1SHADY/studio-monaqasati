@@ -28,12 +28,14 @@ import {
   type CertificateVoLine,
   type ClaimableVariation,
 } from "./certificate"
-import { eventDocId, PM_EVENTS, type PmEvent } from "./events"
+import { PM_EVENTS, pmEventDocId, type PmEvent } from "./events"
 import { todayDay } from "./format"
 import { lifecycleOf } from "./lifecycle"
 import { readSelfApproval } from "./info-writes"
 import { withFreshState } from "./project-writes"
 import { PM_VARIATIONS } from "./variation"
+import { readContractValue } from "./contract-value"
+import { certificatePayer } from "./terms"
 
 export class PmCertificateError extends Error {
   constructor(readonly code: "missing" | "not_pm_project" | "wrong_state" | "blocked", readonly blocks: string[] = []) {
@@ -139,7 +141,7 @@ export interface PrepareInput {
 export async function prepareCertificate(firestore: Firestore, ctx: PmContext, projectId: string, actor: CertificateActor, input: PrepareInput): Promise<{ seq: number; amounts: Amounts }> {
   let out = { seq: 0, amounts: { gross: 0, recovery: 0, retention: 0, vat: 0, net: 0 } as Amounts }
   await runTransaction(firestore, async (tx) => {
-    const { pRef, project, pm, terms } = await readContract(tx, firestore, projectId)
+    const { pRef, project, pm, terms, original } = await readContract(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "certificate.prepare")
     const items = await readBillable(tx, firestore, projectId, input.itemIds)
@@ -149,10 +151,12 @@ export async function prepareCertificate(firestore: Firestore, ctx: PmContext, p
     const voLines = certificateVoLines(vos, new Set(input.voIds ?? []))
     const cuts = input.includeCuts === false ? 0 : r2(totals.cutPool ?? 0)
     const gross = r2(lines.reduce((a, l) => a + l.amount, 0) + voLines.reduce((a, l) => a + l.amount, 0) + cuts)
-    const blocks = prepareBlocks({ archived: fresh.archived, lifecycle: lifecycleOf(project), payer: terms.payer, gross })
+    // AMD-09: an addendum to "nobody pays" does not stop the billing of work already done.
+    const blocks = prepareBlocks({ archived: fresh.archived, lifecycle: lifecycleOf(project), payer: certificatePayer(original, terms), gross })
     if (blocks.length) throw new PmCertificateError("blocked", blocks)
 
-    const contractValue = project.budget ?? 0
+    // INV-01: priced items + approved variations (the handover's figure only while no BOQ is priced).
+    const contractValue = await readContractValue(firestore, projectId, project.budget)
     const amounts = certificateAmounts({ gross, terms, contractValue, held: totals.retentionHeld ?? 0, recovered: totals.advanceRecovered ?? 0 })
     const seq = (totals.ipcCount ?? 0) + 1
     const prepOn = todayDay()
@@ -287,7 +291,7 @@ export async function certifyCertificate(
       by: actor.uid,
       at: new Date().toISOString(),
     })
-    tx.set(doc(firestore, PM_EVENTS, eventDocId(event.key)), event)
+    tx.set(doc(firestore, PM_EVENTS, pmEventDocId(event.organizationId, event.key)), event)
     result = { ...amounts, event }
   })
   return result

@@ -134,7 +134,7 @@ describe("the writes (WF-08)", () => {
     const p = readDoc<Record<string, any>>("projects/p1")!
     expect(p.pm.original.paymentDays).toBe(30)
     expect(inForce(p.pm.original, allAddenda()).paymentDays).toBe(45)
-    expect(readDoc(`${PM_EVENTS}/prj:AMD:PJ-2026_007:1`)).toMatchObject({ kind: "AMD", changes: [{ key: "paymentDays", from: 30, to: 45 }] })
+    expect(readDoc(`${PM_EVENTS}/org__prj:AMD:PJ-2026_007:1`)).toMatchObject({ kind: "AMD", changes: [{ key: "paymentDays", from: 30, to: 45 }] })
     expect(listCollection(PM_EVENTS)).toHaveLength(1)
   })
 

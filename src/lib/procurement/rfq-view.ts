@@ -330,7 +330,9 @@ export function offerersByRfq(offers: Array<{ rfqId?: string | null; companyName
 
 export type LineNeedSource =
   | { kind: "mfg_purchase"; workOrderId?: string; purchaseRequestId?: string }
-  | { kind: "project_request"; projectId?: string; purchaseRequestId?: string }
+  // `line` — one line of the request sourced apart from it (a change decided after
+  // the request already had an RFQ or an order): its own need on the desk.
+  | { kind: "project_request"; projectId?: string; purchaseRequestId?: string; line?: number }
   | { kind: "stock_gap"; warehouseId?: string; itemId?: string }
 
 export interface NeedLinkedRfq {
@@ -354,7 +356,7 @@ export function lineNeed(rfq: NeedLinkedRfq, index: number): { source: LineNeedS
 
 /** The desk's key for a need (`needs.ts`), so a line opens its row there. */
 export function needKeyOfSource(s: LineNeedSource): string | null {
-  if (s.kind === "project_request") return s.projectId && s.purchaseRequestId ? `project:${s.projectId}:${s.purchaseRequestId}` : null
+  if (s.kind === "project_request") return s.projectId && s.purchaseRequestId ? `project:${s.projectId}:${s.purchaseRequestId}${s.line == null ? "" : `:L${s.line}`}` : null
   if (s.kind === "stock_gap") return s.warehouseId && s.itemId ? `stock:${s.warehouseId}:${s.itemId}` : null
   return s.workOrderId && s.purchaseRequestId ? `mfg:${s.workOrderId}:${s.purchaseRequestId}` : null
 }

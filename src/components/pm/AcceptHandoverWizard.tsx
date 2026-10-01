@@ -33,6 +33,7 @@ import { useHandoverPeople } from "@/hooks/useHandoverPeople"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "@/i18n/routing"
 import { parseBoqFile, type BoqParseResult } from "@/lib/boq-parser"
+import { divisionOfCode, parseBoqCsv, type ImportRow } from "@/lib/pm/boq"
 import type { PortalComponentId } from "@/lib/portal-components"
 import { cascadeDisable, cascadeEnable, SECTION_GROUPS, SECTION_IDS, SECTION_REGISTRY, sectionDescKey, sectionLabelKey, type SectionId } from "@/lib/project-sections"
 import { pmDate, pmMoney, pmPct } from "@/lib/pm/format"
@@ -74,6 +75,19 @@ const READS_FROM: Partial<Record<SectionId, PortalComponentId>> = {
   pay: "payments",
   collect: "payments",
   mfg: "manufacturing",
+}
+
+/** One line the wizard is about to import, whichever reader produced it. */
+interface XlItem {
+  id: string
+  itemNo: string
+  descriptionAr: string
+  descriptionEn: string
+  unit: string
+  quantity: number
+  rate: number
+  groupId: string | null
+  extra: Record<string, unknown>
 }
 
 const SOURCE_ICON: Record<BoqSource, typeof Link2> = { crm: Link2, xl: FileSpreadsheet, man: List, later: Clock }
@@ -141,6 +155,8 @@ export function AcceptHandoverWizard({
   const [sections, setSections] = useState<SectionId[]>(sectionsForKind(handover?.kind ?? "bld"))
   const [source, setSource] = useState<BoqSource | null>(null)
   const [boq, setBoq] = useState<BoqParseResult | null>(null)
+  // The package's template is a CSV: read as the template is written, row by row.
+  const [csv, setCsv] = useState<{ ok: ImportRow[]; bad: ImportRow[] } | null>(null)
   const [parsing, setParsing] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -160,6 +176,7 @@ export function AcceptHandoverWizard({
     setSections(sectionsForKind(handover?.kind ?? "bld"))
     setSource(null)
     setBoq(null)
+    setCsv(null)
   }, [open, handover])
 
   useEffect(() => {
@@ -201,7 +218,13 @@ export function AcceptHandoverWizard({
     if (!file) return
     setParsing(true)
     try {
-      setBoq(await parseBoqFile(file))
+      if (/\.csv$/i.test(file.name)) {
+        setBoq(null)
+        setCsv(parseBoqCsv(await file.text()))
+      } else {
+        setCsv(null)
+        setBoq(await parseBoqFile(file))
+      }
     } catch (err) {
       console.error(err)
       toast({ title: t("wizard.boq_parse_error"), variant: "destructive" })
@@ -210,13 +233,49 @@ export function AcceptHandoverWizard({
     }
   }
 
-  const xlItems = (boq?.items ?? []).filter((i) => i.selected)
+  const xlItems: XlItem[] = csv
+    ? csv.ok.map((r) => ({
+        id: `csv-${r.line}`,
+        itemNo: r.code,
+        descriptionAr: r.description,
+        descriptionEn: r.description,
+        unit: r.unit,
+        quantity: r.quantity,
+        rate: r.rate && r.rate > 0 ? r.rate : 0,
+        groupId: null,
+        extra: { estCost: r.cost && r.cost > 0 ? r.cost : null, divisionNo: divisionOfCode(r.code) },
+      }))
+    : (boq?.items ?? [])
+        .filter((i) => i.selected)
+        .map((item) => ({
+          id: item.id,
+          itemNo: item.itemNo,
+          descriptionAr: item.descriptionAr,
+          descriptionEn: item.descriptionEn,
+          unit: item.unit,
+          quantity: item.quantity,
+          rate: item.rate || 0,
+          groupId: item.groupId as string | null,
+          extra: {
+            sheet: item.sheet,
+            divisionNo: item.divisionNo,
+            divisionNameEn: item.divisionNameEn,
+            divisionNameAr: item.divisionNameAr,
+            subCategoryCode: item.subCategoryCode,
+            subCategoryNameEn: item.subCategoryNameEn,
+            subCategoryNameAr: item.subCategoryNameAr,
+            suggestedCategory: item.suggestedCategory,
+            suggestedSubCategory: item.suggestedSubCategory,
+          },
+        }))
+  const xlBad = csv?.bad ?? []
+  const xlLoaded = !!(csv || boq)
   const xlUnpriced = xlItems.filter((i) => !(i.rate > 0)).length
   const selfDev = isSelfDevelopment(kind)
   const manualBlocks = manual ? manualProjectBlocks({ ...draft, kind, location }, managerUid || null) : []
   const blocks = [
     ...(handover ? acceptBlocks(handover).map((b) => t(`accept_block.${b}`)) : manualBlocks.filter((b) => b !== "no_manager").map((b) => t(`manual.block.${b}`))),
-    ...acceptStepBlocks({ source, managerUid: managerUid || null, xlItems: xlItems.length }).map((b) => t(`wizard.block.${b}`)),
+    ...acceptStepBlocks({ source, managerUid: managerUid || null, xlItems: xlItems.length, xlBad: xlBad.length, xlLoaded }).map((b) => t(`wizard.block.${b}`)),
   ]
   const title = handover ? handover.title : draft.name.trim()
   const advance = handover ? handover.advance : draft.advance
@@ -264,26 +323,7 @@ export function AcceptHandoverWizard({
               .filter((l) => l.quantity > 0)
               .map((l) => ({ itemNo: l.code, descriptionAr: l.descriptionAr, descriptionEn: l.descriptionEn ?? l.descriptionAr, unit: l.unit, quantity: l.quantity, unitPrice: l.rate, groupId: null as string | null, extra: {} }))
           : source === "xl"
-            ? xlItems.map((item) => ({
-                itemNo: item.itemNo,
-                descriptionAr: item.descriptionAr,
-                descriptionEn: item.descriptionEn,
-                unit: item.unit,
-                quantity: item.quantity,
-                unitPrice: item.rate || 0,
-                groupId: item.groupId as string | null,
-                extra: {
-                  sheet: item.sheet,
-                  divisionNo: item.divisionNo,
-                  divisionNameEn: item.divisionNameEn,
-                  divisionNameAr: item.divisionNameAr,
-                  subCategoryCode: item.subCategoryCode,
-                  subCategoryNameEn: item.subCategoryNameEn,
-                  subCategoryNameAr: item.subCategoryNameAr,
-                  suggestedCategory: item.suggestedCategory,
-                  suggestedSubCategory: item.suggestedSubCategory,
-                },
-              }))
+            ? xlItems.map((item) => ({ itemNo: item.itemNo, descriptionAr: item.descriptionAr, descriptionEn: item.descriptionEn, unit: item.unit, quantity: item.quantity, unitPrice: item.rate, groupId: item.groupId, extra: item.extra }))
             : []
       if (lines.length) {
         const batch = writeBatch(firestore)
@@ -708,8 +748,21 @@ export function AcceptHandoverWizard({
                   {t("wizard.boq_upload")}
                   <input type="file" accept=".xlsx,.xls,.csv" className="sr-only" onChange={(e) => void onFile(e.target.files?.[0])} disabled={parsing || busy} />
                 </label>
-                {boq && <p className="text-sm font-semibold text-success">{t("wizard.boq_loaded", { count: xlItems.length })}</p>}
-                {boq && xlItems.length > 0 && (
+                {xlLoaded && xlBad.length === 0 && <p className="text-sm font-semibold text-success">{t("wizard.boq_loaded", { count: xlItems.length })}</p>}
+                {xlBad.length > 0 && (
+                  <Callout tone="block">
+                    <p className="font-bold">{t("wizard.xl_bad", { count: xlBad.length })}</p>
+                    <ul className="mt-1 space-y-0.5 text-xs">
+                      {xlBad.slice(0, 8).map((r) => (
+                        <li key={r.line}>
+                          {t("wizard.xl_bad_row", { line: r.line })} <span dir="ltr">{r.code}</span> — {r.problems.map((p) => t(`boq.problem.${p}`)).join(" · ")}
+                        </li>
+                      ))}
+                    </ul>
+                    {xlBad.length > 8 && <p className="mt-1 text-xs">{t("wizard.xl_bad_more", { count: xlBad.length - 8 })}</p>}
+                  </Callout>
+                )}
+                {xlLoaded && xlItems.length > 0 && (
                   <section className="rounded-xl border" aria-labelledby="xl-review-title">
                     <div className="border-b px-3 py-2">
                       <p id="xl-review-title" className="text-sm font-bold">

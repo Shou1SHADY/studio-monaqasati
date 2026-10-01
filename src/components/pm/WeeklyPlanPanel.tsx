@@ -5,7 +5,9 @@
 // starts or runs soon with its computed constraints (nothing is committed
 // before its constraints are cleared) — and the weekly plan: what we commit to
 // this week, closed at its end with done or a reason for each task, PPC over
-// the weeks and the most frequent reasons.
+// the weeks and the most frequent reasons. A plan left open past its week
+// stays in hand — the oldest first — until it is closed: it is closed exactly
+// as the current one, and only then is a new week planned.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -25,7 +27,8 @@ import type { PmAccess } from "@/hooks/usePmAccess"
 import { usePmLookahead, type LookaheadSections } from "@/hooks/usePmLookahead"
 import { PmAccessError } from "@/lib/pm/access"
 import { pmDate, todayDay } from "@/lib/pm/format"
-import { closeWeekBlocks, commitBlocks, currentWeek, lookahead, MISS_REASONS, missReasonsTop, PM_WEEKS, ppc, ppcAverage, ppcTone, weekStart, type Constraint, type LookItem, type LookRow, type MissReason, type PmWeek } from "@/lib/pm/weekly-plan"
+import { OBSTACLE_PARTIES } from "@/lib/pm/site"
+import { closeWeekBlocks, commitBlocks, lookahead, MISS_REASONS, missReasonsTop, PM_WEEKS, ppc, ppcAverage, ppcTone, weekInHand, weekStart, type Constraint, type LookItem, type LookRow, type MissReason, type PmWeek } from "@/lib/pm/weekly-plan"
 import { closeWeek, commitWeek, PmWeekError } from "@/lib/pm/weekly-plan-writes"
 import { cn } from "@/lib/utils"
 
@@ -53,7 +56,8 @@ export function WeeklyPlanPanel({
   const weeksQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_WEEKS) : null), [firestore, projectId])
   const { data } = useCollection(weeksQ)
   const weeks = useMemo(() => ((data ?? []) as unknown as PmWeek[]).slice().sort((a, b) => b.week.localeCompare(a.week)), [data])
-  const cur = currentWeek(weeks, today)
+  const cur = weekInHand(weeks, today)
+  const late = cur !== null && cur.status === "open" && cur.week < weekStart(today)
   const hist = weeks.filter((w) => w.status === "done")
   const avg = ppcAverage(weeks)
   const top = missReasonsTop(weeks)
@@ -79,8 +83,11 @@ export function WeeklyPlanPanel({
         return t("wwp.cx.pred", { name: d.name, pc: Math.round(d.pc) })
       case "failed":
         return t("wwp.cx.failed", { code: d.code })
-      case "obstacle":
-        return t("wwp.cx.obstacle", { title: d.title, party: d.party })
+      case "obstacle": {
+        // The name typed for the party, else its code in the reader's language; addressed to nobody, the title stands alone.
+        const party = d.partyName || (d.party !== "none" && (OBSTACLE_PARTIES as readonly string[]).includes(d.party) ? t(`site.obs.party.${d.party}`) : "")
+        return party ? t("wwp.cx.obstacle", { title: d.title, party }) : d.title
+      }
       case "no_permit":
         return t("wwp.cx.no_permit")
       case "materials":
@@ -220,10 +227,14 @@ export function WeeklyPlanPanel({
         <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("wwp.sub")}</p>
         {cur && cur.status === "open" ? (
           <>
-            <p className="px-4 pt-3 text-xs text-muted-foreground">
-              {t("wwp.committed_n", { count: cur.tasks.length })}
-              {cur.tasks.some((x) => !x.ready) ? ` — ${t("wwp.with_open", { count: cur.tasks.filter((x) => !x.ready).length })}` : ""}
-            </p>
+            {late ? (
+              <p className="px-4 pt-3 text-xs font-semibold text-warning">{t("wwp.late_week", { date: pmDate(cur.week, locale) })}</p>
+            ) : (
+              <p className="px-4 pt-3 text-xs text-muted-foreground">
+                {t("wwp.committed_n", { count: cur.tasks.length })}
+                {cur.tasks.some((x) => !x.ready) ? ` — ${t("wwp.with_open", { count: cur.tasks.filter((x) => !x.ready).length })}` : ""}
+              </p>
+            )}
             <ul className="divide-y">
               {cur.tasks.map((x, i) => (
                 <li key={`${x.activityId}-${i}`} className="flex items-center gap-3 px-4 py-2.5">

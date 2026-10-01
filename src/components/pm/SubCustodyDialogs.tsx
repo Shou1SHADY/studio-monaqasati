@@ -121,10 +121,12 @@ export function SubStoreMoveDialog({
   const hold = x ? engineerHold(x, items, contracts) : 0
   const left = c ? subIssueLeft(c) : 0
   const over = kind === "iss" && c && Number.isFinite(qn) ? Math.max(0, Math.round((qn - left) * 1000) / 1000) : 0
-  const gap = kind === "cnt" && c && Number.isFinite(qn) ? Math.round((c.book - qn) * 100) / 100 : null
+  // What this count would find: the book AS OF its day less what is counted — a
+  // move dated after it is no part of his waste, so the write's own figure is asked.
+  const gap = kind === "cnt" && x && sub && day && Number.isFinite(qn) ? ledgerCustody({ ...x, moves: [...x.moves, { t: "cnt", q: qn, on: day, by: actor.uid, sub }] }, items, contracts, sub).gap : null
   const blocks = [
     ...(x ? [] : ["no_material"]),
-    ...subStoreBlocks({ archived: access.ctx.archived, t: kind, hasSub: Boolean(sub), q: qn, hold, custody: c ?? { issued: 0, cap: 0 }, note, day, today }),
+    ...subStoreBlocks({ archived: access.ctx.archived, t: kind, hasSub: Boolean(sub), q: qn, hold, custody: c ?? { issued: 0, cap: 0 }, note, day, today, lastCount: c?.count?.on ?? null }),
   ]
   const subName = subs.find((s) => s.key === sub)?.name ?? ""
 
@@ -245,6 +247,7 @@ export function SubStoreRecoverDialog({
   line: PmStoreLine
   partyKey: string
   name: string
+  /** The gap still open on his last count — the most a recovery may charge. */
   gap: number | null
   /** Our last price paid for the material — the default recovery rate. */
   unitCost: number | null
@@ -260,7 +263,7 @@ export function SubStoreRecoverDialog({
   const [rate, setRate] = useState(unitCost && unitCost > 0 ? String(unitCost) : "")
   const [double, setDouble] = useState(false)
   const [note, setNote] = useState("")
-  const blocks = recoveryBlocks({ archived: access.ctx.archived, q: num(q), rate: num(rate) })
+  const blocks = recoveryBlocks({ archived: access.ctx.archived, q: num(q), rate: num(rate), gap })
   const amount = recoveryAmount(num(q) || 0, num(rate) || 0, double)
 
   const save = async () => {
@@ -283,12 +286,15 @@ export function SubStoreRecoverDialog({
         </DialogHeader>
         <div className="space-y-4">
           <Callout tone="info">{t("subs.recon.recover_note")}</Callout>
+          <div className="rounded-xl border px-3">
+            <KeyValueRow label={t("subs.recon.open_gap")} value={`${qty(Math.max(0, gap ?? 0))} ${x.unit}`} ltr strong />
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="sr-q">
                 {t("subs.recon.recover_qty")} ({x.unit}) *
               </Label>
-              <Input id="sr-q" dir="ltr" type="number" min={0} step={0.01} value={q} onChange={(e) => setQ(e.target.value)} />
+              <Input id="sr-q" dir="ltr" type="number" min={0} max={Math.max(0, gap ?? 0)} step={0.01} value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="sr-rate">{t("subs.recon.recover_rate")} *</Label>

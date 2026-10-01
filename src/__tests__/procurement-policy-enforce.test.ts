@@ -122,9 +122,10 @@ describe("pure: the operating policies", () => {
     expect(approvalGateBlocks(order({ pmBudget: { state: "accepted" } }), items, [])).toEqual([])
     expect(approvalGateBlocks(order(), [{ id: "b1", pmSample: true, pmSub: "sub", description: "بلاط" }], []).map((b) => b.code)).toEqual(["sample_pending"])
   })
-  it("the stop request finds the owed line by BOQ item, else by name and unit", () => {
+  it("the stop request finds the owed line by material; the BOQ item alone matches nothing", () => {
     const po = order({ status: "accepted" })
-    expect(pmStopLine(po, { name: "x", unit: "y", boqItemId: "b1" })?.id).toBe("l1")
+    // Blocks and cement on one item: an item-only match would stop the wrong material.
+    expect(pmStopLine(po, { name: "x", unit: "y", boqItemId: "b1" })).toBeNull()
     expect(pmStopLine(po, { name: " أسمنت ", unit: "كيس" })?.id).toBe("l1")
     expect(pmStopLine(order({ status: "accepted", lines: [{ ...po.lines[0], accepted: 100 }] }), { name: "أسمنت", unit: "كيس" })).toBeNull()
   })

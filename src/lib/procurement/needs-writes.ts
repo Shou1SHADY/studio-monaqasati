@@ -1,7 +1,10 @@
 // Telling a need which RFQ or order answers it. A work order's shortfall is
 // linked through Manufacturing's own write; a project's request gets the link
 // on its document (the rules let Procurement write only these fields, once);
-// a stock gap stores nothing — it reads the open RFQs and orders.
+// a stock gap stores nothing — it reads the open RFQs and orders. A project
+// request's line sourced apart from its request (`source.line` — added after the
+// request already had an RFQ or an order) keeps its own link under
+// `lineLinks.<line>`: the request's links stay with what they were raised for.
 
 import { deleteField, doc, getDoc, runTransaction, serverTimestamp, updateDoc, type Firestore } from "firebase/firestore"
 import { linkPurchaseRequestOrder, linkPurchaseRequestRfq } from "../manufacturing-writes"
@@ -23,6 +26,16 @@ export async function linkNeed(
   }
   if (source.kind === "project_request" && source.projectId && source.purchaseRequestId) {
     const fields = "rfqId" in link ? { rfqId: link.rfqId, rfqNumber: link.rfqNumber ?? null } : { poId: link.poId, poNumber: link.poNumber }
+    if (source.line != null) {
+      const at = `lineLinks.${source.line}`
+      await updateDoc(doc(firestore, "projects", source.projectId, "purchaseRequests", source.purchaseRequestId), {
+        ...Object.fromEntries(Object.entries(fields).map(([k, v]) => [`${at}.${k}`, v])),
+        [`${at}.orderedAt`]: new Date().toISOString(),
+        [`${at}.orderedByName`]: byName,
+        updatedAt: serverTimestamp(),
+      })
+      return
+    }
     await updateDoc(doc(firestore, "projects", source.projectId, "purchaseRequests", source.purchaseRequestId), {
       ...fields,
       orderedAt: new Date().toISOString(),
@@ -43,7 +56,7 @@ export function releaseRfqFromRequests(rows: PurchaseRequestRecord[], purchaseRe
  * alone. Each need is its own write; one refused does not stop the others.
  * Returns how many could not be handed back.
  */
-export async function unlinkNeedsFromRfq(firestore: Firestore, rfqId: string, sources: LineNeedSource[]): Promise<number> {
+export async function unlinkNeedsFromRfq(firestore: Firestore, rfqId: string, sources: Array<LineNeedSource & { line?: number }>): Promise<number> {
   let failed = 0
   for (const s of sources) {
     try {
@@ -60,8 +73,11 @@ export async function unlinkNeedsFromRfq(firestore: Firestore, rfqId: string, so
       } else if (s.kind === "project_request" && s.projectId && s.purchaseRequestId) {
         const ref = doc(firestore, "projects", s.projectId, "purchaseRequests", s.purchaseRequestId)
         const snap = await getDoc(ref)
-        const data = snap.exists() ? (snap.data() as { rfqId?: string | null; poId?: string | null }) : null
-        if (data?.rfqId === rfqId && !data.poId) await updateDoc(ref, { rfqId: deleteField(), rfqNumber: deleteField(), orderedAt: deleteField(), orderedByName: deleteField(), updatedAt: serverTimestamp() })
+        const data = snap.exists() ? (snap.data() as { rfqId?: string | null; poId?: string | null; lineLinks?: Record<string, { rfqId?: string | null; poId?: string | null }> | null }) : null
+        if (s.line != null) {
+          const own = data?.lineLinks?.[String(s.line)]
+          if (own?.rfqId === rfqId && !own.poId) await updateDoc(ref, { [`lineLinks.${s.line}`]: deleteField(), updatedAt: serverTimestamp() })
+        } else if (data?.rfqId === rfqId && !data.poId) await updateDoc(ref, { rfqId: deleteField(), rfqNumber: deleteField(), orderedAt: deleteField(), orderedByName: deleteField(), updatedAt: serverTimestamp() })
       }
     } catch (err) {
       console.error("need ↔ RFQ unlink failed:", err)

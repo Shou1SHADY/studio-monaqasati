@@ -1,11 +1,17 @@
 // PM 1.0 — the document register (DOC-01): documents and drawings with their
 // revisions, and the one question that matters — which revision is current.
-// The real risk is a drawing revised after the last certificate: the work was
-// measured and billed against an older drawing. That makes the document
-// "stale" until the next certificate, and it is a decision (amber, "blocking
-// execution"). No certificate yet means nothing was billed, so nothing is
-// stale — the prototype flagged every revised drawing on a project without
-// one. Revisions are appended, never edited. Pure: no I/O.
+// The real risk is a drawing revised after the last approved measurement: the
+// work was measured against an older drawing (MS-05, DOC-01). That makes the
+// document "stale" until the work is measured again, and it is a decision
+// (amber, "blocking execution"). Nothing measured yet means nothing was
+// measured against an older drawing, so nothing is stale — the prototype
+// flagged every revised drawing on a project without a certificate. The
+// register, its tab badge and the look-ahead's current-drawing constraint all
+// ask `staleDrawings`: one yardstick, the last approved measurement, not the
+// last certificate — approved work not yet billed was measured all the same.
+// Revisions are appended, never edited. Pure: no I/O.
+
+import { lastApprovedDay } from "./measurement"
 
 /** `projects/{id}/pmDocs/{NN}`, numbered by the project's `pm.docCount`. */
 export const PM_DOCS = "pmDocs"
@@ -58,15 +64,24 @@ export function lastCertificateDay(certificates: Array<{ status: string; prepOn?
   return certificates.reduce<string | null>((m, c) => (c.status === "void" || !c.prepOn ? m : !m || c.prepOn > m ? c.prepOn : m), null)
 }
 
-/** A drawing whose current revision superseded another after the last certificate. */
-export function isStale(d: Pick<PmDocument, "type" | "revisions">, lastCertDay: string | null): boolean {
+/** The day drawings are judged against: the last approved measurement (a sheet
+ * still waiting, or returned, measured nothing). Null before any. */
+export const lastMeasuredDay = (sheets: Array<{ status: string; day: string }>): string | null => lastApprovedDay(sheets as Parameters<typeof lastApprovedDay>[0])
+
+/** A drawing whose current revision superseded another after `lastDay` — the last approved measurement. */
+export function isStale(d: Pick<PmDocument, "type" | "revisions">, lastDay: string | null): boolean {
   const cur = currentRevision(d)
-  return d.type === "dwg" && lastCertDay !== null && previousCode(d) !== null && cur !== null && cur.day > lastCertDay
+  return d.type === "dwg" && lastDay !== null && previousCode(d) !== null && cur !== null && cur.day > lastDay
 }
 
-export const staleDocuments = <T extends Pick<PmDocument, "type" | "revisions">>(docs: T[], lastCertDay: string | null): T[] => docs.filter((d) => isStale(d, lastCertDay))
+export const staleDocuments = <T extends Pick<PmDocument, "type" | "revisions">>(docs: T[], lastDay: string | null): T[] => docs.filter((d) => isStale(d, lastDay))
 
-/** The form's warning: a new revision of an existing drawing dated after the last certificate. */
+/** The drawings revised after the project's last approved measurement — what every screen asks. */
+export const staleDrawings = <T extends Pick<PmDocument, "type" | "revisions">>(docs: T[], sheets: Array<{ status: string; day: string }>): T[] => staleDocuments(docs, lastMeasuredDay(sheets))
+
+/** The form's warning: a new revision of an existing drawing dated after the
+ * last approved measurement (`lastCertDay` carries that day; the names date
+ * from when the last certificate was asked). */
 export function issuedAfterCertificate(input: { type: DocType | null; hasCurrent: boolean; day: string; lastCertDay: string | null }): boolean {
   return input.type === "dwg" && input.hasCurrent && input.lastCertDay !== null && /^\d{4}-\d{2}-\d{2}$/.test(input.day) && input.day > input.lastCertDay
 }
