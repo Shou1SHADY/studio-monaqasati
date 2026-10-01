@@ -534,7 +534,7 @@ describe("line decisions", () => {
 })
 
 describe("close-out, cancellation, rating", () => {
-  it("a complete order closes as it is; an incomplete one only short, with a reason", async () => {
+  it("Procurement closes an incomplete order short, with a reason; a complete one is Finance's to close by paying it", async () => {
     const id = await acceptedOrder()
     await expect(closePurchaseOrder(db, buyer, id, {})).rejects.toMatchObject({ code: "reason_required" })
     await closePurchaseOrder(db, buyer, id, { reason: "المورد أفلس" }, { now: NOW })
@@ -549,8 +549,9 @@ describe("close-out, cancellation, rating", () => {
       { poLineId: "l2", name: "y", unit: "طن", noticeQuantity: 5, counted: 5 },
     ])
     expect(poStatus(po(id2))).toBe("received")
-    await closePurchaseOrder(db, buyer, id2)
-    expect(po(id2)).toMatchObject({ status: "closed", closedShort: false, closeReason: null })
+    await expect(closePurchaseOrder(db, buyer, id2)).rejects.toMatchObject({ code: "wrong_state" })
+    await expect(closePurchaseOrder(db, buyer, id2, { reason: "x" })).rejects.toMatchObject({ code: "wrong_state" })
+    expect(po(id2).status).toBe("accepted")
   })
 
   it("cancelling is refused once goods arrived; before that it tells the supplier only if the order had reached him", async () => {

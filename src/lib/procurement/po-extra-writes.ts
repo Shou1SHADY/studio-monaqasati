@@ -15,7 +15,7 @@
 import { doc, runTransaction, serverTimestamp, setDoc, type DocumentReference, type Firestore, type Transaction } from "firebase/firestore"
 import { emitProcEvent, sarText } from "./events"
 import { canCancelRemainder, lineToArrive, poBlocks, round2, type BlockContext } from "./po"
-import { acceptsHoldPrice, HOLD_DECISIONS, HOLD_OWNER, holdVariance, type HoldPricePending, budgetOverrun, overrunTotal, pmBudgetAsk, selfIssueRefusal, type HoldReason, type PaymentKind, type PmCancel, type PoFinanceHold, type PoFinancePayment, type PurchaseOrderX } from "./po-extras"
+import { acceptsHoldPrice, closesOnPayment, HOLD_DECISIONS, HOLD_OWNER, holdVariance, type HoldPricePending, budgetOverrun, overrunTotal, pmBudgetAsk, selfIssueRefusal, type HoldReason, type PaymentKind, type PmCancel, type PoFinanceHold, type PoFinancePayment, type PurchaseOrderX } from "./po-extras"
 import { resolvePolicies, type ResolvedPolicies } from "./policies"
 import { materialKey, PRICE_HISTORY } from "./prices"
 import { approvalGateBlocks } from "./policy-enforce"
@@ -201,7 +201,14 @@ export async function recordFinancePayment(firestore: Firestore, actor: ProcActo
       byName: actor.name,
       at,
     }
-    return { patch: { financePayments: [...(po.financePayments || []), payment] } }
+    const financePayments = [...(po.financePayments || []), payment]
+    // Paid in full on a received order: Finance's payment closes it (prototype «أقفلته المالية بالسداد»).
+    if (closesOnPayment({ ...po, financePayments }))
+      return {
+        patch: { financePayments, status: "closed", closedAt: at, closedShort: false, closedByPayment: true },
+        log: entry(actor, "closed", at, { params: { byPayment: 1, payment: payment.no } }),
+      }
+    return { patch: { financePayments } }
   })
 }
 

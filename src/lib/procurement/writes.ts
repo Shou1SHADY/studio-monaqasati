@@ -43,6 +43,7 @@ import {
   type BlockContext,
 } from "./po"
 import { orderTermsOf } from "./offer-terms"
+import { SUPPLIER_RECORDS, supplierRecordId } from "./supplier-file"
 import {
   PURCHASE_ORDERS,
   type AwardReasonCode,
@@ -830,8 +831,38 @@ const canExpedite = (actor: ProcActor) => actor.isOwner || actor.canExpedite || 
 /** Send to the supplier. The portal channel notifies his user; for WhatsApp
  * and e-mail the screen opens the message and this only RECORDS the fact
  * (channel, time, sender) — PRD §10.7. The acceptance clock starts here. */
-export async function sendPurchaseOrder(firestore: Firestore, actor: ProcActor, poId: string, channel: PoSendChannel, opts: WriteOpts = {}): Promise<PurchaseOrder> {
-  return sendOrder(firestore, actor, poId, channel, opts, true)
+/** The phone or e-mail typed in the send form — kept on our supplier record for next time. */
+export interface SendContact {
+  phone?: string | null
+  email?: string | null
+}
+
+/** What the send form's contact adds to `supplierRecords`: only the channel used, only when typed. */
+export function sendContactPatch(channel: PoSendChannel, contact: SendContact | null | undefined, actor: Pick<ProcActor, "name">, at: string): Record<string, string> | null {
+  const phone = (contact?.phone || "").trim()
+  const email = (contact?.email || "").trim()
+  if (channel === "whatsapp" && phone) return { contactPhone: phone, contactSavedAt: at, contactSavedByName: actor.name }
+  if (channel === "email" && email) return { contactEmail: email, contactSavedAt: at, contactSavedByName: actor.name }
+  return null
+}
+
+export async function sendPurchaseOrder(firestore: Firestore, actor: ProcActor, poId: string, channel: PoSendChannel, opts: WriteOpts = {}, contact?: SendContact | null): Promise<PurchaseOrder> {
+  const po = await sendOrder(firestore, actor, poId, channel, opts, true)
+  const patch = sendContactPatch(channel, contact, actor, (opts.now ?? new Date()).toISOString())
+  // A guest has no stable record (his contact lives on his offer). Best-effort: the order is sent either way.
+  if (patch && !po.isGuestSupplier && po.supplierOrgId && po.supplierOrgId !== "guest") {
+    try {
+      const ref = doc(firestore, SUPPLIER_RECORDS, supplierRecordId(po.organizationId, po.supplierOrgId))
+      await runTransaction(firestore, async (tx) => {
+        const snap = await tx.get(ref)
+        if (snap.exists()) tx.update(ref, patch)
+        else tx.set(ref, { organizationId: po.organizationId, supplierOrgId: po.supplierOrgId, supplierName: po.supplierName, ...patch })
+      })
+    } catch (err) {
+      console.warn("supplier contact not saved:", err)
+    }
+  }
+  return po
 }
 
 /** `checkActs` is off only for the send that rides the approval (policy
@@ -1215,23 +1246,23 @@ export async function emitReceiptRecorded(
 // Close-out, cancellation, rating
 // ---------------------------------------------------------------------------
 
-/** Complete orders close as they are; an incomplete one closes short with a reason. */
+/** Procurement closes an incomplete order short, with a reason. A complete
+ * order is closed by Finance's payment (`recordFinancePayment`), never here. */
 export async function closePurchaseOrder(firestore: Firestore, actor: ProcActor, poId: string, input: { reason?: string | null } = {}, opts: WriteOpts = {}): Promise<PurchaseOrder> {
   if (!canDecideLines(actor)) throw new ProcWriteError("no_permission")
   const at = (opts.now ?? new Date()).toISOString()
   const reason = input.reason?.trim() || null
   const po = await transition(firestore, poId, (po) => {
     assertActs(po, actor)
-    if (po.status !== "accepted") throw new ProcWriteError("wrong_state")
+    if (po.status !== "accepted" || !closeIsShort(po)) throw new ProcWriteError("wrong_state")
     if (!canClose(po, reason)) throw new ProcWriteError("reason_required")
-    const short = closeIsShort(po)
-    return { patch: { status: "closed", closedAt: at, closedShort: short, closeReason: short ? reason : null }, log: entry(actor, "closed", at, { note: short ? reason : null, params: { short: short ? 1 : 0 } }) }
+    return { patch: { status: "closed", closedAt: at, closedShort: true, closeReason: reason }, log: entry(actor, "closed", at, { note: reason, params: { short: 1 } }) }
   })
   await emitProcEvent(firestore, actor, {
     kind: "po_closed",
     organizationId: po.organizationId,
     to: [{ users: [po.preparedById] }, { permission: "invoices.manage" }],
-    params: { number: po.docNumber, outcome: po.closedShort ? "@pn_po_closed_short_flag" : "@pn_po_closed_complete", reason: po.closeReason || "" },
+    params: { number: po.docNumber, outcome: "@pn_po_closed_short_flag", reason: po.closeReason || "" },
     poId: po.id,
     rfqId: po.rfqId,
     offerId: po.offerId,

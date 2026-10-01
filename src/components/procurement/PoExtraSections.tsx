@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { cn } from "@/lib/utils"
+import { withSarSign } from "@/lib/riyal"
 import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { poStatus, receiptDay, todayOf } from "@/lib/procurement/po"
 import type { NoticeRouting } from "@/lib/procurement/policies"
@@ -34,11 +35,13 @@ import {
   HOLD_REASONS,
   acceptsHoldPrice,
   advanceAmount,
+  holdEffectKeys,
   holdVariance,
   advanceNumber,
   advanceState,
   dateMissesNeed,
   docTrail,
+  noticeSent,
   noticeState,
   openHolds,
   paidTotal,
@@ -228,6 +231,7 @@ export function FinanceTrailSection({
   onRelease: (hold: PoFinanceHold) => void
 }) {
   const t = useTranslations("Portal.Procurement")
+  const locale = useLocale()
   const fmt = useDateText()
   const money = moneyTrail(po)
   const adv = advanceState(po)
@@ -251,7 +255,7 @@ export function FinanceTrailSection({
       <Row label={t("rfqpo.po.money.accepted")} hint={t("rfqpo.po.money.accepted_hint")}>
         {money.accepted == null ? <span className="text-muted-foreground">—</span> : <Money value={Math.round(money.accepted * (1 + (Number(po.vatRate) || 0)) * 100) / 100} />}
       </Row>
-      <Row label={t("rfqpo.po.money.paid")} hint={t("rfqpo.po.money.paid_hint", { pct: pctOf(paid), left: Math.max(0, Math.round((commitment - paid) * 100) / 100).toLocaleString("en-US") })}>
+      <Row label={t("rfqpo.po.money.paid")} hint={t("rfqpo.po.money.paid_hint", { pct: pctOf(paid), left: withSarSign(Math.max(0, Math.round((commitment - paid) * 100) / 100).toLocaleString("en-US"), locale) })}>
         <Money value={paid} />
       </Row>
       {(po.financePayments || []).length === 0 ? (
@@ -441,6 +445,8 @@ type OrderDeliveryRow = ReceiptFact & {
   attachmentUrls?: string[] | null
   forwardedTo?: { name?: string | null; userId?: string | null; byName?: string | null; at?: string | null } | null
   warehouseId?: string | null
+  isGuestDelivery?: boolean | null
+  notes?: string | null
 }
 
 const createdKey = (d: OrderDeliveryRow): string => {
@@ -500,6 +506,7 @@ export function OrderDeliveriesSections({
     const n = sent.findIndex((x) => x.id === d.id) + 1
     const fw = d.forwardedTo
     const papers = (d.qualityPapers || []).map((p) => tr(`incoming.paper_${p}`))
+    const sentFact = noticeSent(d)
     const facts = [
       [fmt(d.deliveryDate), d.deliveryWindow ? t(`deliveryWindow.${d.deliveryWindow}` as "deliveryWindow.morning") : ""].filter(Boolean).join(" "),
       d.deliveryPersonName || tr("incoming.driverUnknown"),
@@ -518,6 +525,10 @@ export function OrderDeliveriesSections({
           <p className="text-xs text-muted-foreground" dir="auto">
             {facts.join(" · ")}
             {(d.attachmentUrls || []).length > 0 && <Paperclip size={12} className="ms-1 inline" aria-label={tr("incoming.attachments", { n: (d.attachmentUrls || []).length })} />}
+          </p>
+          <p className="text-[11px] text-muted-foreground" dir="auto">
+            {tOrders("deliveries.sent_via", { hasWhen: sentFact.at ? 1 : 0, when: sentFact.at ? fmt(sentFact.at) : "", via: sentFact.via })}
+            {sentFact.note && ` · ${sentFact.note}`}
           </p>
           <p className="text-xs">
             {fw?.name ? (
@@ -905,17 +916,9 @@ export function DecideHoldDialog({
               )}
             />
             <ul className="space-y-1 rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
-              {raises ? (
-                <>
-                  <li>• {settlesNow ? t("rfqpo.po.hold.effect_now") : t("rfqpo.po.hold.effect_approver")}</li>
-                  <li>• {t("rfqpo.po.hold.effect_history")}</li>
-                </>
-              ) : (
-                <>
-                  <li>• {t("rfqpo.po.hold.effect_1")}</li>
-                  <li>• {t("rfqpo.po.hold.effect_2")}</li>
-                </>
-              )}
+              {holdEffectKeys(hold.reason, decision, settlesNow).map((k) => (
+                <li key={k}>• {t(`rfqpo.po.hold.${k}` as "rfqpo.po.hold.effect_1")}</li>
+              ))}
             </ul>
             <Foot onCancel={() => onOpenChange(false)} submitting={form.formState.isSubmitting} label={raises && !settlesNow ? t("rfqpo.po.hold.submit_approval") : t("rfqpo.po.hold.submit")} />
           </form>

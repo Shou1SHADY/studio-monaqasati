@@ -203,7 +203,7 @@ export function buildReceiptStatementHtml(m: StatementModel, displayNumber: stri
       <div><small>${e(t("st_destination"))}</small><b>${e(m.deliveryLocation || "—")}</b>${m.projectName ? `<span>${e(m.projectName)}</span>` : ""}</div>
     </div>
     <table>
-      <thead><tr><th class="num">#</th><th>${e(t("col_description"))}</th><th class="num">${e(t("st_col_ordered"))}</th><th class="num">${e(t("st_col_accepted"))}</th><th class="num">${e(t("st_col_rejected"))}</th><th class="num">${e(t("st_col_held"))}</th><th class="num">${e(t("st_col_on_the_way"))}</th><th class="num">${e(t("st_col_not_shipped"))}</th><th>${e(t("col_unit"))}</th></tr></thead>
+      <thead><tr><th class="num">#</th><th>${e(t("col_description"))}</th><th class="num">${e(t("st_col_ordered"))}</th><th class="num">${e(t("st_col_accepted_so_far"))}</th><th class="num">${e(t("st_col_rejected"))}</th><th class="num">${e(t("st_col_held"))}</th><th class="num">${e(t("st_col_on_the_way"))}</th><th class="num">${e(t("st_col_not_shipped"))}</th><th>${e(t("col_unit"))}</th></tr></thead>
       <tbody>${lines}</tbody>
     </table>
     <h3 style="margin:16px 0 4px;font-size:13px">${e(t("st_receipts"))}</h3>

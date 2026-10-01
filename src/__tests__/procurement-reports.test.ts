@@ -149,6 +149,22 @@ describe("3 · delivery performance", () => {
       { supplierKey: "s2", supplierName: "Beta", orders: 1, onTimePercent: null, avgDaysLate: null, rejectPercent: null },
     ])
   })
+
+  it("a remainder Projects asked to stop, still undecided, reads «cancellation pending» — unless the supplier is already late (prototype repData del)", () => {
+    const stop = { l1: { reason: "Material closed", byName: "PM" } }
+    const w = world({
+      orders: [
+        po({ id: "s", promisedDate: "2026-09-29", lines: [line({ accepted: 40 })], pmCancels: stop } as Partial<PurchaseOrder>),
+        po({ id: "l", promisedDate: "2026-09-19", lines: [line({ accepted: 40 })], pmCancels: stop } as Partial<PurchaseOrder>),
+        po({ id: "done", promisedDate: "2026-09-29", lines: [line({ accepted: 40, cancelled: 60 })], pmCancels: stop } as Partial<PurchaseOrder>),
+      ],
+    })
+    expect(deliveryPerformance(w, PERIOD, NOW).orders.map((o) => [o.orderId, o.gap, o.state])).toEqual([
+      ["s", null, "cancel_pending"],
+      ["l", 3, "late"],
+      ["done", null, "on_time_so_far"],
+    ])
+  })
 })
 
 describe("4 · price drift vs last buy", () => {
