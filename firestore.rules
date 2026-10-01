@@ -79,8 +79,13 @@ service cloud.firestore {
     }
 
     function hasProjectPermission(projectId, perm) {
+      // A seat that carries no group (a PM 1.0 seat made at adoption, or one whose
+      // group was cleared) leaves the person's DEFAULT group in force — what the
+      // client reads (`projectGroupId ?? defaultGroupId`). Reading a missing
+      // `groupId` straight off the seat was an evaluation error: a refusal.
       return isOrgOwner()
-        || (exists(/databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid))
+        || ((exists(/databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid))
+              && get(/databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid)).data.get('groupId', null) != null)
             ? groupGrants(get(/databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid)).data.groupId, perm)
             : groupGrants(memberDefaultGroupId(), perm));
     }
@@ -151,6 +156,14 @@ service cloud.firestore {
         && get(pmMemberPath(projectId)).data.get('to', null) == null;
     }
 
+    // A seat's permission group overrides the person's default group on that
+    // project (hasProjectPermission), so whoever seats someone may give him his
+    // OWN default group or none — never a group picked to widen him.
+    function pmSeatGroupOk(memberId) {
+      return request.resource.data.get('groupId', null) == null
+        || request.resource.data.groupId == get(/databases/$(database)/documents/users/$(memberId)).data.get('defaultGroupId', null);
+    }
+
     function pmArchivedData(data) {
       return data.get('pm', {}).get('lifecycle', '') == 'closed';
     }
@@ -165,8 +178,11 @@ service cloud.firestore {
     function pmDuty(projectId, duty) {
       return !pmArchivedData(projectData(projectId))
         && pmCeilingHas(duty)
+        // The client clears the manager with null; `null != ''` is true, so the
+        // test must ask for a real id.
         && (duty != 'approve' || pmCeilingHas('admin')
-            || projectData(projectId).get('projectManagerId', '') != '')
+            || (projectData(projectId).get('projectManagerId', '') is string
+                && projectData(projectId).get('projectManagerId', '') != ''))
         && (pmLiveSeat(projectId)
               ? (duty in pmTemplate(get(pmMemberPath(projectId)).data.pmRole)
                   && !(duty in get(pmMemberPath(projectId)).data.get('off', [])))
@@ -270,9 +286,10 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isOrgMember(resource.data.organizationId) || isSignedIn();
       allow list: if isSignedIn();
       // Self-updates must not touch org membership fields — joining a team goes
-      // through the server-side invitation accept API (or a legacy invitation
-      // doc addressed to the caller's email, which acts as the authorization).
-      // Without this, anyone could write organizationId and join any org.
+      // through the server-side invitation accept API, and nothing else. (A
+      // branch here used to accept "an invitation doc addressed to the caller's
+      // email" as the authorization; any signed-in user could write that doc
+      // himself and make himself owner of any organisation, or platform Admin.)
       allow update: if isAdmin()
         || (
           // The owner or a purchasing manager sets a member's purchasing categories — that field only.
@@ -300,17 +317,6 @@ service cloud.firestore {
           // are only allowed via the dedicated branches below.
           !changedKeys()
             .hasAny(['organizationId', 'organizationRole', 'defaultGroupId', 'role', 'primaryRole', 'procurementCategories'])
-          || (
-            request.auth.token.email is string
-            && exists(/databases/$(database)/documents/invitations/$(request.auth.token.email))
-            && get(/databases/$(database)/documents/invitations/$(request.auth.token.email)).data.organizationId
-               == request.resource.data.organizationId
-            && (
-              !changedKeys().hasAny(['role'])
-              || request.resource.data.role
-                 == get(/databases/$(database)/documents/invitations/$(request.auth.token.email)).data.get('role', resource.data.get('role', ''))
-            )
-          )
           || (
             // Anchoring the account's original role when creating the first
             // secondary company — may only record the CURRENT effective primary
@@ -692,14 +698,24 @@ service cloud.firestore {
         resource.data.invitedBy == request.auth.uid ||
         (resource.data.get('type', '') == 'supplier_invite' && isOrgMember(resource.data.get('contractorOrgId', '')))
       ));
-      allow create: if isSignedIn();
+      // An invitation is an authorization: the accept API reads its organisation,
+      // role and group and writes them on the accepting account. So it is written
+      // only by the server (/api/invitations/send, Admin SDK) — never by a client,
+      // who could otherwise invite himself anywhere as anything.
+      allow create: if isAdmin();
       allow get: if isSignedIn() && (resource == null || resource.data.email == request.auth.token.email || resource.data.invitedBy == request.auth.uid
         || (resource.data.get('type', '') == 'supplier_invite' && isOrgMember(resource.data.get('contractorOrgId', ''))));
-      // Supplier accepts/declines; contractor cancels their own invitation;
-      // a colleague with suppliers.manage records that he re-sent it.
+      // The invitee answers a pending one (accept · decline); whoever sent it
+      // cancels it or records that he re-sent it; a colleague with
+      // suppliers.manage records a re-send. Nobody changes what it authorizes.
       allow update: if isSignedIn() && (
-        resource.data.email == request.auth.token.email ||
-        resource.data.invitedBy == request.auth.uid ||
+        (resource.data.email == request.auth.token.email
+          && resource.data.get('status', 'pending') == 'pending'
+          && request.resource.data.status in ['accepted', 'declined']
+          && changedKeys().hasOnly(['status', 'acceptedAt', 'declinedAt', 'respondedAt', 'updatedAt'])) ||
+        (resource.data.invitedBy == request.auth.uid
+          && request.resource.data.get('status', 'pending') in [resource.data.get('status', 'pending'), 'cancelled']
+          && changedKeys().hasOnly(['status', 'cancelledAt', 'sentChannel', 'sentAt', 'updatedAt'])) ||
         (resource.data.get('type', '') == 'supplier_invite'
           && isOrgMember(resource.data.get('contractorOrgId', ''))
           && procSupplierManager()
@@ -848,7 +864,11 @@ service cloud.firestore {
         resource.data.organizationId == getOrganizationId() ||
         isAdmin()
       );
-      allow list: if isSignedIn();
+      // Every query filters on the caller's organisation; without the condition
+      // any signed-in account of any company could list every company's projects.
+      // (A solo account is its own organisation: its uid, whatever its user doc carries.)
+      allow list: if isSignedIn()
+        && (resource.data.organizationId == request.auth.uid || resource.data.organizationId == getOrganizationId() || isAdmin());
       // A CRM handover creates the project too — that path is gated by
       // crm.close and is only allowed to write a project that names its deal.
       // A manual project is a PM 1.0 project, created only with the PM `create` key
@@ -868,10 +888,12 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (isSignedIn() && resource.data.organizationId == getOrganizationId()
             && (((hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'))
-                  // C-02: on a PM project the handover's facts move only through the PM branches.
-                  && (!('pm' in resource.data)
-                      || !changedKeys()
-                            .hasAny(['budget', 'clientName', 'clientType', 'status', 'pm', 'projectType', 'contractNumber', 'projectManagerId'])))
+                  // C-02: on a PM project the handover's facts move only through the PM branches;
+                  // and a legacy project is brought into PM 1.0 (given a `pm` block) by the owner alone.
+                  && (('pm' in resource.data)
+                      ? !changedKeys()
+                            .hasAny(['budget', 'clientName', 'clientType', 'status', 'pm', 'projectType', 'contractNumber', 'projectManagerId'])
+                      : (!('pm' in request.resource.data) || pmCeilingHas('admin'))))
                 || (('handover' in resource.data)
                     && resource.data.handover.pmId == request.auth.uid
                     && changedKeys().hasOnly(['handover', 'updatedAt']))
@@ -930,6 +952,17 @@ service cloud.firestore {
                     && pmDuty(projectId, 'corr')
                     && changedKeys().hasOnly(['pm', 'updatedAt'])
                     && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['letterCount', 'lettersOut', 'lettersIn']))
+                // RL-07: the owner appoints, replaces and removes the project manager — the
+                // team write names him on the project in the same transaction as his seat.
+                || (('pm' in resource.data)
+                    && pmCeilingHas('admin')
+                    && changedKeys().hasOnly(['projectManagerId', 'projectManagerName', 'updatedAt']))
+                // AMD-03: whoever drafts an addendum numbers it — `pm.addendaCount`, nothing
+                // else; signing (which moves `signedCount`) stays with approve, below.
+                || (('pm' in resource.data)
+                    && pmDuty(projectId, 'prep')
+                    && changedKeys().hasOnly(['pm', 'updatedAt'])
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['addendaCount']))
                 // C-02: on a PM project the file edits location + consultant only (approve).
                 || (('pm' in resource.data)
                     && pmDuty(projectId, 'approve')
@@ -938,7 +971,9 @@ service cloud.firestore {
                 || (('pm' in resource.data)
                     && pmDuty(projectId, 'approve')
                     && changedKeys().hasOnly(['pm', 'updatedAt'])
-                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['addendaCount', 'signedCount']))
+                    // …and leaves the contract in force on the project (`pm.inForce`) for
+                    // those who may not read the addenda. `pm.terms` / `pm.original` stay frozen (below).
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['addendaCount', 'signedCount', 'inForce']))
                 // …whoever requests material numbers requests, direct purchases and
                 // equipment requests (`req`); whoever receives on site numbers the
                 // project receipts (`rcv`).
@@ -1112,10 +1147,21 @@ service cloud.firestore {
         allow read: if isSignedIn()
           && inProjectOrg(projectId);
 
-        allow create, update: if isAdmin() || (isSignedIn()
+        // The legacy assignment (a permission group on a project). On a PM project
+        // it may not set or change the PM 1.0 seat — its role, the duties removed,
+        // its exit or its log: those go through the PM branches below (RL-07, TM-01).
+        allow create: if isAdmin() || (isSignedIn()
           && inProjectOrg(projectId)
           && projectOpen(projectId)
-          && hasOrgPermission('team.manage'));
+          && hasOrgPermission('team.manage')
+          && (!('pm' in projectData(projectId))
+              || !request.resource.data.keys().hasAny(['pmRole', 'off', 'to', 'log'])));
+        allow update: if isAdmin() || (isSignedIn()
+          && inProjectOrg(projectId)
+          && projectOpen(projectId)
+          && hasOrgPermission('team.manage')
+          && (!('pm' in projectData(projectId))
+              || !changedKeys().hasAny(['pmRole', 'off', 'to', 'log', 'from', 'why', 'byOut'])));
         // A seat on a PM 1.0 project is never deleted: an exit closes it and the
         // person's records stay in their name (TM-01).
         allow delete: if isAdmin() || (isSignedIn()
@@ -1135,7 +1181,8 @@ service cloud.firestore {
           && request.resource.data.userId == memberId
           && request.resource.data.get('pmRole', '') in ['pm', 'site', 'qs', 'hse', 'supervisor', 'other']
           && request.resource.data.get('to', null) == null
-          && (request.resource.data.pmRole != 'pm' || pmCeilingHas('admin'));
+          && (request.resource.data.pmRole != 'pm' || pmCeilingHas('admin'))
+          && pmSeatGroupOk(memberId);
         allow update: if isSignedIn()
           && inProjectOrg(projectId)
           && projectOpen(projectId)
@@ -1144,7 +1191,9 @@ service cloud.firestore {
           && (pmCeilingHas('all') || pmDuty(projectId, 'approve'))
           && request.resource.data.userId == resource.data.userId
           && request.resource.data.get('pmRole', '') in ['pm', 'site', 'qs', 'hse', 'supervisor', 'other']
-          && ((request.resource.data.pmRole != 'pm' && resource.data.get('pmRole', '') != 'pm') || pmCeilingHas('admin'));
+          && ((request.resource.data.pmRole != 'pm' && resource.data.get('pmRole', '') != 'pm') || pmCeilingHas('admin'))
+          // …and on an existing assignment the group stays, or becomes his default.
+          && (request.resource.data.get('groupId', null) == resource.data.get('groupId', null) || pmSeatGroupOk(memberId));
         // A CRM handover seats the project manager on the project it just
         // created — one member, flagged as such, on a project that names its deal.
         allow create: if isSignedIn()
@@ -1160,6 +1209,7 @@ service cloud.firestore {
           && request.resource.data.userId == memberId
           && request.resource.data.viaHandover == true
           && request.resource.data.get('pmRole', '') == 'pm'
+          && pmSeatGroupOk(memberId)
           && isPmProjectManager(projectId);
         // …and whoever accepted it (the project's `contractorId`) seats the manager
         // the project names and, optionally, a site engineer — only before start.
@@ -1170,6 +1220,7 @@ service cloud.firestore {
           && projectData(projectId).pm.get('lifecycle', '') == 'plan'
           && request.resource.data.userId == memberId
           && request.resource.data.viaHandover == true
+          && pmSeatGroupOk(memberId)
           && ((request.resource.data.get('pmRole', '') == 'pm'
                && projectData(projectId).get('projectManagerId', '') == memberId)
               || request.resource.data.get('pmRole', '') == 'site');
@@ -1181,6 +1232,7 @@ service cloud.firestore {
           && projectData(projectId).pm.get('lifecycle', '') == 'plan'
           && request.resource.data.userId == memberId
           && request.resource.data.viaManual == true
+          && pmSeatGroupOk(memberId)
           && ((request.resource.data.get('pmRole', '') == 'pm'
                && projectData(projectId).get('projectManagerId', '') == memberId)
               || request.resource.data.get('pmRole', '') == 'site');
@@ -1308,10 +1360,12 @@ service cloud.firestore {
           && request.resource.data.gross is number && request.resource.data.gross > 0
           && request.resource.data.seq is int;
 
+        // The project's own acts need it open. Finance's collection does not: the
+        // close gate lets a project archive with a certified certificate that is
+        // not yet due, and the client's payment on it must still be recordable.
         allow update: if isSignedIn()
           && inProjectOrg(projectId)
-          && projectOpen(projectId)
-          && ((resource.data.status == 'int' && request.resource.data.status == 'sub'
+          && ((projectOpen(projectId) && ((resource.data.status == 'int' && request.resource.data.status == 'sub'
                 && pmDuty(projectId, 'ipcOk')
                 && request.resource.data.appr == request.auth.uid
                 // Two people (IPC-02). A small firm's recorded self-approval needs a company
@@ -1331,7 +1385,7 @@ service cloud.firestore {
               || (resource.data.status == 'int' && request.resource.data.status == 'void'
                 && (pmDuty(projectId, 'approve') || (resource.data.prep == request.auth.uid && pmDuty(projectId, 'prep')))
                 && changedKeys()
-                     .hasOnly(['status', 'voidBy', 'voidByName', 'voidOn', 'updatedAt']))
+                     .hasOnly(['status', 'voidBy', 'voidByName', 'voidOn', 'updatedAt']))))
               // Finance records what the client paid on a certified certificate: the
               // collected share only grows, and "paid" is reached only at the whole net.
               || ((resource.data.status == 'appr' || resource.data.status == 'part')
@@ -1545,16 +1599,29 @@ service cloud.firestore {
           && (
             (pmDuty(projectId, 'ipcOk')
               && resource.data.status == 'int' && request.resource.data.status == 'ok'
-              && resource.data.prep != request.auth.uid
               && request.resource.data.appr == request.auth.uid
               && (pmCeilingHas('admin') || (pmCeilingHas('approve') && resource.data.gross <= 75000))
-              && changedKeys().hasOnly(['status', 'appr', 'apprName', 'apprOn', 'updatedAt']))
-            // Finance pays an approved sub certificate — once.
+              // Two people (SC-02) — or its preparer under the company's recorded
+              // self-approval, flagged `selfApp` (the setting pmCertificates reads).
+              && ((resource.data.prep != request.auth.uid && request.resource.data.get('selfApp', false) == false)
+                  || (resource.data.prep == request.auth.uid && request.resource.data.selfApp == true
+                      && exists(/databases/$(database)/documents/pmSettings/$(projectData(projectId).organizationId))
+                      && get(/databases/$(database)/documents/pmSettings/$(projectData(projectId).organizationId)).data.get('selfApproval', false) == true))
+              && changedKeys().hasOnly(['status', 'appr', 'apprName', 'apprOn', 'selfApp', 'updatedAt']))
+            // Withdrawn before approval — by its preparer or whoever approves certificates.
+            // Terminal: without it a certificate prepared by mistake, or by the only
+            // person above the limit, blocked every later one and the close-out for good.
+            || (resource.data.status == 'int' && request.resource.data.status == 'void'
+              && (pmDuty(projectId, 'ipcOk') || (resource.data.prep == request.auth.uid && pmDuty(projectId, 'sub')))
+              && request.resource.data.voidBy == request.auth.uid
+              && changedKeys().hasOnly(['status', 'voidBy', 'voidByName', 'voidOn', 'updatedAt']))
+            // Finance pays an approved sub certificate — once. One whose material
+            // recovery took its whole net has nothing to pay and is settled at zero.
             || (hasOrgPermission('invoices.manage')
               && resource.data.status == 'ok'
               && resource.data.get('paidOn', null) == null
               && request.resource.data.paidOn is string
-              && request.resource.data.paidAmount is number && request.resource.data.paidAmount > 0
+              && request.resource.data.paidAmount is number && request.resource.data.paidAmount >= 0
               && request.resource.data.paidBy == request.auth.uid
               && changedKeys().hasOnly(['paidOn', 'paidAmount', 'paidBy', 'paidByName', 'updatedAt']))
           );
@@ -1591,7 +1658,8 @@ service cloud.firestore {
                 && changedKeys().hasOnly(['moves', 'recoveries', 'updatedAt'])
                 && request.resource.data.moves.size() >= resource.data.moves.size()
                 && request.resource.data.recoveries.size() >= resource.data.recoveries.size()
-                && (pmDuty(projectId, 'approve') || request.resource.data.recoveries.size() == resource.data.recoveries.size())));
+                // A certificate that can bear only part of a recovery leaves the rest as a new one.
+                && (pmDuty(projectId, 'approve') || request.resource.data.recoveries.size() <= resource.data.recoveries.size() + 1)));
 
         allow delete: if isAdmin();
       }
@@ -1949,7 +2017,16 @@ service cloud.firestore {
               || (pmDuty(projectId, 'daily') && resource.data.status == 'req' && resource.data.get('offOk', null) != null
                 && request.resource.data.status == 'back'
                 && request.resource.data.back.by == request.auth.uid
-                && changedKeys().hasOnly(['status', 'back', 'updatedAt'])));
+                && changedKeys().hasOnly(['status', 'back', 'updatedAt']))
+              // The day rate, set after the handover by someone who sees money and runs
+              // the plant or approves here — never on a tool; who and when ride with it.
+              // (Received by a site engineer, who sees no amounts, a unit had no rate
+              // and no way to get one: its logged days cost the project nothing.)
+              || (pmCeilingHas('money') && (pmDuty(projectId, 'req') || pmDuty(projectId, 'approve'))
+                && resource.data.get('category', '') != 'tool'
+                && request.resource.data.dayRate is number && request.resource.data.dayRate > 0
+                && request.resource.data.rateSet.by == request.auth.uid
+                && changedKeys().hasOnly(['dayRate', 'rateSet', 'updatedAt'])));
 
         allow delete: if isAdmin();
       }
@@ -2035,7 +2112,9 @@ service cloud.firestore {
           && inProjectOrg(projectId)
           && projectOpen(projectId)
           && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish')
-              || isPmProjectManager(projectId));
+              || isPmProjectManager(projectId)
+              // …as the BOQ lines themselves: the wizard writes both in one batch.
+              || (pmCeilingHas('create') && ('pm' in projectData(projectId))));
       }
 
       // Site measurement ledger (حصر الكميات المنفذة) — one entry per quantity
@@ -2138,6 +2217,8 @@ service cloud.firestore {
           && projectOpen(projectId)
           && hasProjectPermission(projectId, 'warehouses.manage')
           && resource.data.status == 'pending'
+          // A PM 1.0 request is approved technically by the project manager, never from here (REQ-02).
+          && resource.data.get('pm', false) != true
           && changedKeys().hasOnly(['status', 'decidedByUserId', 'decidedByUserName', 'decidedAt', 'updatedAt'])
           && (request.resource.data.status == 'approved' || request.resource.data.status == 'rejected');
 
@@ -2156,10 +2237,39 @@ service cloud.firestore {
           && (isOrgOwner() || hasOrgPermission('rfq.manage') || hasOrgPermission('rfq.create') || hasOrgPermission('offers.accept'))
           && (resource.data.status == 'approved'
               || (resource.data.status == 'pending'
+                  && resource.data.get('pm', false) != true
                   && resource.data.get('procDecision', {}).get('kind', '') in ['proceed_short', 'proceed_full']))
           && resource.data.get('rfqId', null) == null
           && resource.data.get('poId', null) == null
           && changedKeys().hasOnly(['rfqId', 'rfqNumber', 'poId', 'poNumber', 'orderedAt', 'orderedByName', 'updatedAt']);
+        // The award: the RFQ that answers this request became an order. Whoever awards
+        // records it on the request — once, in the award's own transaction, and only an
+        // order that names that RFQ. A split award also records, under `lineLinks`, the
+        // lines another supplier's order carries. (Without it the project never learns
+        // an order is out, and the material can never be received.)
+        allow update: if isSignedIn()
+          && changedKeys().hasOnly(['poId', 'poNumber', 'lineLinks', 'updatedAt'])
+          && inProjectOrg(projectId)
+          && projectOpen(projectId)
+          && (isOrgOwner() || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve'))
+          && resource.data.get('rfqId', null) is string
+          && resource.data.get('poId', null) == null
+          && request.resource.data.get('poId', null) is string
+          && request.resource.data.get('poNumber', null) is string
+          && getAfter(/databases/$(database)/documents/purchaseOrders/$(request.resource.data.poId)).data.get('rfqId', '') == resource.data.rfqId;
+        // A line sourced apart from its request — a change decided after the request
+        // already had an RFQ or an order — carries its own RFQ and order under
+        // `lineLinks.<index in lines>`. One line's entry at a time; the request's own
+        // links never move here.
+        allow update: if isSignedIn()
+          && changedKeys().hasOnly(['lineLinks', 'updatedAt'])
+          && inProjectOrg(projectId)
+          && projectOpen(projectId)
+          && (isOrgOwner() || hasOrgPermission('rfq.manage') || hasOrgPermission('rfq.create') || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve'))
+          && resource.data.get('pm', false) == true
+          && resource.data.status == 'approved'
+          && request.resource.data.get('lineLinks', {}) is map
+          && request.resource.data.get('lineLinks', {}).diff(resource.data.get('lineLinks', {})).affectedKeys().size() <= 1;
         // A draft RFQ is deleted: the request it held goes back to the desk (R-19).
         // Only while that RFQ still exists as a Draft — the client unlinks BEFORE deleting it.
         allow update: if isSignedIn()
@@ -2190,6 +2300,8 @@ service cloud.firestore {
               && resource.data.get('mfgRequestId', null) == null)
             || (request.resource.data.procDecision.kind in ['proceed_short', 'proceed_full']
               && resource.data.status == 'pending'
+              // Nothing of a PM request is bought before the manager's technical approval (REQ-02).
+              && resource.data.get('pm', false) != true
               && resource.data.createdAt is timestamp
               && request.time > resource.data.createdAt + duration.value(procReplyWindowDays(), 'd'))
           );
@@ -2254,6 +2366,18 @@ service cloud.firestore {
           && request.resource.data.status == resource.data.status
           && request.resource.data.lines.size() == resource.data.get('lines', request.resource.data.lines).size()
           && changedKeys().hasOnly(['pm', 'lines', 'items', 'updatedAt']);
+
+        // PM 1.0: the consultant approved a sample — whoever records the reply
+        // (`measure` or `approve`) lifts the "sample pending" mark off `items`, in the
+        // reply's own transaction. Nothing else moves, and no entry is added or dropped.
+        allow update: if isSignedIn()
+          && changedKeys().hasOnly(['items', 'updatedAt'])
+          && inProjectOrg(projectId)
+          && ('pm' in projectData(projectId))
+          && resource.data.status in ['pending', 'approved']
+          && (pmDuty(projectId, 'measure') || pmDuty(projectId, 'approve'))
+          && request.resource.data.items is list
+          && request.resource.data.items.size() == resource.data.get('items', []).size();
       }
     }
 
@@ -2583,20 +2707,33 @@ service cloud.firestore {
     // check that exactly that entry changed. By a holder of `approve` on the project, or the
     // requester (duty `req`) of the material request the entry names. Nothing is cancelled —
     // Procurement cancels with the supplier.
+    function pmRequestNamesOrder(projectId, entry, poId) {
+      let req = get(/databases/$(database)/documents/projects/$(projectId)/purchaseRequests/$(entry.requestId)).data;
+      return req.get('poId', '') == poId
+        || req.get('lineLinks', {}).get(entry.get('line', ''), {}).get('poId', '') == poId;
+    }
     function poPmStops() {
       let key = request.resource.data.get('pmCancelKey', '');
       let entry = request.resource.data.pmCancels[key];
-      let projectId = resource.data.get('projectId', '');
+      let projectId = entry.get('projectId', '');
+      let orderProject = resource.data.get('projectId', null);
       return key is string && key != ''
-        && poTo() == poFrom() && poFrom() in ['approved', 'sent', 'accepted']
+        // At whatever stage the order is: the project's line closes in the same
+        // transaction, and an order approved without the stop on it would bring
+        // what nobody wants any more.
+        && poTo() == poFrom() && poFrom() in ['awaiting_approval', 'approved', 'sent', 'accepted']
         && poChanged().hasOnly(['pmCancels', 'pmCancelKey', 'updatedAt'])
         && request.resource.data.pmCancels.diff(resource.data.get('pmCancels', {})).affectedKeys().hasOnly([key])
         && entry.reason is string && entry.reason.size() > 0
         && entry.byName is string
-        && projectId is string && projectId != '' && entry.projectId == projectId
+        && projectId is string && projectId != ''
+        && entry.requestId is string
+        // The project's own order — or one raised for several projects (it names no
+        // project), and then the request the entry names must itself name this order.
+        && (orderProject == projectId
+            || ((orderProject == null || orderProject == '') && inProjectOrg(projectId) && pmRequestNamesOrder(projectId, entry, resource.id)))
         && (pmDuty(projectId, 'approve')
             || (pmDuty(projectId, 'req')
-                && entry.requestId is string
                 && get(/databases/$(database)/documents/projects/$(projectId)/purchaseRequests/$(entry.requestId)).data.get('requestedByUserId', '') == request.auth.uid));
     }
 
@@ -3838,7 +3975,7 @@ service cloud.firestore {
     // only the manager it is addressed to answers it: accept · return · reassign.
     match /pmHandovers/{handoverId} {
       allow get: if isSignedIn() && (resource == null || isOrgMember(resource.data.organizationId));
-      allow list: if isSignedIn();
+      allow list: if isSignedIn() && isOrgMember(resource.data.organizationId);
       allow create: if isSignedIn()
         && request.resource.data.organizationId == getOrganizationId()
         && hasOrgPermission('crm.close')
@@ -3856,15 +3993,18 @@ service cloud.firestore {
 
     // PM 1.0 — what projects tell Finance (prj:ADV/IPC/SC/BUD/HND/AMD). The id IS the
     // idempotency key, so a second send is refused rather than posted twice; the
-    // outbox is append-only.
+    // outbox is append-only. The id carries the ORGANISATION in front of the key
+    // (`{orgId}__{key}`): project numbers are drawn per organisation, so two
+    // companies both own PJ-2026/001, and under the key alone the second company's
+    // event was an update of the first's — refused, with the whole transaction.
     match /pmEvents/{eventId} {
       allow get: if isSignedIn() && (resource == null || isOrgMember(resource.data.organizationId));
-      allow list: if isSignedIn();
+      allow list: if isSignedIn() && isOrgMember(resource.data.organizationId);
       allow create: if isSignedIn()
         && request.resource.data.organizationId == getOrganizationId()
         && request.resource.data.by == request.auth.uid
         && request.resource.data.key is string
-        && request.resource.data.key.replace('/', '_') == eventId;
+        && eventId == request.resource.data.organizationId + '__' + request.resource.data.key.replace('/', '_');
       allow update, delete: if false;
     }
 

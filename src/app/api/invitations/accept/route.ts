@@ -25,6 +25,11 @@ function errorResponse(message: string, code: string, status: number) {
   return NextResponse.json({ error: true, message, code }, { status })
 }
 
+/** The only roles an invitation may confer. The platform's Admin is never one of
+ * them, whatever the invitation document says: accounts become Admin through the
+ * admin API alone. */
+const portalRole = (role: unknown): "Contractor" | "Supplier" | null => (role === "Contractor" || role === "Supplier" ? role : null)
+
 export async function POST(req: NextRequest) {
   try {
     // --- Authentication ---
@@ -82,7 +87,7 @@ export async function POST(req: NextRequest) {
     if (!profile) {
       justCreatedProfile = true
       const email = (decoded.email || "").toLowerCase()
-      const role = inv.type === "supplier_invite" ? "Supplier" : (inv.role as string) || "Contractor"
+      const role = inv.type === "supplier_invite" ? "Supplier" : portalRole(inv.role) || "Contractor"
       const provider = decoded.firebase?.sign_in_provider === "google.com" ? "google.com" : "password"
       profile = {
         id: decoded.uid,
@@ -122,7 +127,7 @@ export async function POST(req: NextRequest) {
       await db.collection("users").doc(decoded.uid).update({
         organizationId: inv.organizationId,
         organizationRole: "member",
-        role: inv.role || profile.role || "Contractor",
+        role: portalRole(inv.role) || portalRole(profile.role) || "Contractor",
         defaultGroupId: inv.groupId || null,
       })
 
