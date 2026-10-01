@@ -8418,7 +8418,9 @@
       "nd_item_budget_left": "Item material budget left",
       "nd_not_in_catalogue": "Not in Inventory's catalogue: bought by free description; Inventory registers it on receipt if it is stocked.",
       "pn_portal_reject_title": "The consultant rejected through the portal",
-      "pn_portal_reject": "{name} rejected through the consultant portal on {project}: {record} — {note}"
+      "pn_portal_reject": "{name} rejected through the consultant portal on {project}: {record} — {note}",
+      "pn_receipt_auto_forwarded_title": "📦 A receipt auto-forwarded to you",
+      "pn_receipt_auto_forwarded": "The system forwarded you a delivery from {supplier} that Procurement had not forwarded in time — open the link, count what arrived and sign."
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -10956,7 +10958,8 @@
         "manual_offer": "Offer keyed in by our staff, not the supplier",
         "early_close": "Early closing before the deadline",
         "self_issued": "Issued by the buyer in his own name, under his limit",
-        "variance_accepted": "An invoice price above the PO price was accepted ({invoice})"
+        "variance_accepted": "An invoice price above the PO price was accepted ({invoice})",
+        "auto_forwarded": "Notice auto-forwarded to {name} — Procurement did not forward it within the window"
       },
       "deliveryState": {
         "on_time": "On time",
@@ -12530,7 +12533,7 @@
         "effectLink": "The link opens with a one-time code sent to that phone — never given to the driver, and no signature before the code",
         "effectMember": "It also reaches them inside their module — fastest and safest for anyone with an account",
         "effectTrail": "Recorded on the trail: who forwarded, to whom, when and to which number",
-        "effectNoTimer": "Nothing forwards itself: a notice not forwarded by its day is flagged on this desk until someone does",
+        "effectNoTimer": "Left alone, a notice not forwarded within the window is forwarded by the system to the suggested receiver and tagged automatic",
         "reachesIn": "Reaches them in {module}: the “Expected” list and an alert on their phone {phone}",
         "sendLink": "Send the link & code",
         "forwardMember": "Forward to receiver"
@@ -12567,7 +12570,7 @@
         "record": "Record the receipt",
         "recordNoNotice": "Arrived without notice — record it",
         "panelTitle": "On the way — notified by suppliers or due",
-        "panelSub": "The supplier's notice reaches us first; we forward it to the receiver with a link and a one-time code to their phone. If its date is after the supplier's promise, we know of the delay before it happens.",
+        "panelSub": "The supplier's notice reaches us first; we forward it to the receiver with a link and a one-time code to their phone. If it is not forwarded within the window, the system forwards it and tags it — so the truck is never left standing. If its date is after the supplier's promise, we know of the delay before it happens.",
         "shipment": "shipment {n}",
         "shipmentOf": "shipment {n} of {m}",
         "forwardedTo": "forwarded to {name}",
@@ -12584,7 +12587,9 @@
         "passedNoReceipt": "Passed — no receipt",
         "panelSubBoth": "The supplier's notice reaches us and the receiver at the same time. If its date falls after the supplier's commitment, we know of the delay before it happens.",
         "paper_mill": "mill certificate",
-        "paper_conf": "conformity certificate"
+        "paper_conf": "conformity certificate",
+        "autoForwarded": "Auto-forwarded after the window",
+        "forwardedAuto": "auto-forwarded · {when}"
       },
       "log": {
         "colReceipt": "Receipt",
@@ -12791,7 +12796,8 @@
         "qualityPapers": "With the load: {papers}",
         "paper_mill": "mill certificate",
         "paper_conf": "conformity certificate",
-        "regulariseWithPo": "Regularise with a PO"
+        "regulariseWithPo": "Regularise with a PO",
+        "autoForwardedBody": "Procurement did not forward it within the window, so the system forwarded it to {name}."
       },
       "manual": {
         "button": "Record a receipt manually",
@@ -12928,7 +12934,9 @@
         "forwarded_title": "Forwarded by Procurement to the receiver:",
         "forwarded_by_link": "by link & code to",
         "forwarded_by": "by {name}",
-        "signed_on_link": "signed on the receiving link with the code"
+        "signed_on_link": "signed on the receiving link with the code",
+        "forwarded_title_auto": "Forwarded to the receiver:",
+        "forwarded_by_auto": "auto-forwarded after the window"
       },
       "place": {
         "general": "General stock",
@@ -12974,7 +12982,8 @@
         "forwarded_both": "The notice reached the receiver and Procurement at once",
         "requested_by": "requested by {name}",
         "finance_paid": "Paid",
-        "finance_held_price": "Supplier invoice held — price variance"
+        "finance_held_price": "Supplier invoice held — price variance",
+        "forwarded_auto": "{name} · link & code to {phone} · auto-forwarded after the window"
       },
       "rlog": {
         "title": "Log",
@@ -12985,7 +12994,8 @@
         "po_raised": "Retroactive PO {number} prepared",
         "regularised": "Tied to purchase order {number}",
         "expensed": "Sent to Finance as a cash expense",
-        "noticed_numbered": "Supplier notified the delivery {notice} for {day}"
+        "noticed_numbered": "Supplier notified the delivery {notice} for {day}",
+        "forwarded_auto": "Auto-forwarded to {name} after the window"
       },
       "received_by": "Received by"
     },
@@ -13111,7 +13121,8 @@
         "cash_expense": "Cash expense",
         "awarded_manual_offer": "Keyed offer",
         "manual_offer": "Keyed by us",
-        "early_close": "Early close"
+        "early_close": "Early close",
+        "auto_forwarded": "Auto-forwarded"
       },
       "print": "Print",
       "commitNotCost": "The value here is a commitment, not a cost: the actual cost of a line is read from Finance's books after the invoice.",
@@ -13347,8 +13358,8 @@
           "desc": "Days over which direct orders to one supplier are added up against the direct-order cap"
         },
         "forwardWindowDays": {
-          "label": "Forwarding window before a delivery",
-          "desc": "Days before the delivery date at which a notice still sitting with Procurement becomes a task to forward"
+          "label": "Forwarding window before a delivery — then an automatic, tagged forward",
+          "desc": "Days before the delivery date at which a notice still with Procurement becomes a task to forward; once the window lapses the system forwards it to the suggested receiver and tags it"
         },
         "sealOffersUntilDeadline": {
           "label": "Seal offer prices until the deadline",
