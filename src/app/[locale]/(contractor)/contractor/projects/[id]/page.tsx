@@ -2668,7 +2668,7 @@ export default function ProjectDetailPage() {
 
         {/* ── TAB: BOQ ── */}
         {current === "boq" && typedProject.pm && (
-          <PmBoqPanel projectId={projectId} orgId={pmOrg} contractValue={typedProject.budget ?? 0} access={pmAccess} actor={pmActor} actualCost={pmItemCost} openItemId={boqOpenItem} />
+          <PmBoqPanel projectId={projectId} orgId={pmOrg} contractValue={typedProject.budget ?? 0} access={pmAccess} actor={pmActor} actualCost={pmItemCost} openItemId={boqOpenItem} planning={(typedProject.pm.lifecycle ?? "plan") === "plan"} />
         )}
         {current === "boq" && !typedProject.pm && (
           <div className="space-y-4">

@@ -141,7 +141,17 @@
       "err_company": "Company name is required",
       "err_phone": "A valid phone number is required",
       "err_email": "A valid email address is required",
-      "server_error": "Something went wrong. Please try again."
+      "server_error": "Something went wrong. Please try again.",
+      "form_type_label": "Your business type",
+      "type_manufacturer": "Manufacturer",
+      "type_other": "Other",
+      "form_type_other_label": "What is your business?",
+      "form_type_other_ph": "Contractor, supplier, engineering office…",
+      "form_date_hint": "We hold demos Sunday to Thursday, within the next four months.",
+      "form_date_label": "Convenient date",
+      "err_type": "Choose your business type",
+      "err_type_other": "Tell us your business type",
+      "err_date": "Pick a date from today onwards"
     },
     "Stats": {
       "goal_500": "Goal: 500+",
@@ -2675,6 +2685,7 @@
       "crm_activity_opportunity": "Linked opportunity",
       "crm_activity_no_opportunity": "No opportunity",
       "crm_activity_due": "Due date",
+      "crm_activity_when": "Date of the meeting or visit",
       "crm_activity_saved": "Activity saved",
       "crm_activity_deleted": "Activity deleted",
       "crm_activity_delete_confirm_title": "Delete activity",
@@ -10578,7 +10589,11 @@
         "email_in_use_title": "Email already in use",
         "email_in_use_desc": "An account with this email already exists. Please check manually before proceeding.",
         "error": "Error",
-        "error_generic": "Failed to create the account"
+        "error_generic": "Failed to create the account",
+        "business_type": "Business type",
+        "preferred_date": "Preferred date",
+        "type_manufacturer": "Manufacturer",
+        "type_other": "Other"
       },
       "Rfqs": {
         "page_title": "Manage RFQs",
@@ -17202,6 +17217,7 @@
         "sub": "The engineer asks; Inventory and Procurement execute",
         "new": "New request",
         "empty": "No requests yet",
+        "no_seat": "You are not seated on this project, so you cannot raise a material request. Ask the project manager or the owner to add you in the Team tab.",
         "none_open": "No open requests",
         "show_more": "Show {count} more",
         "closed_title": "Delivered & stopped",
@@ -17412,6 +17428,8 @@
           "materials": "Materials",
           "add_line": "Add material",
           "remove_line": "Remove the material",
+          "need_line": "Fill in at least one material line: the item, the material, and a quantity above zero.",
+          "need_date": "The need-by date cannot be in the past.",
           "which_item": "For which item?",
           "choose_mat": "Choose a material…",
           "own_mats": "This item's materials",
@@ -18326,14 +18344,29 @@
           "no_rows": "Nothing to import",
           "blocked": "Some rows have errors",
           "missing": "The project no longer exists",
-          "not_pm_project": "Not a PM project"
+          "not_pm_project": "Not a PM project",
+          "started": "The project has started — quantity and rate change only by variation",
+          "locked": "This item is locked by a tender"
         },
         "fill_sample": "Fill with a sample",
         "sample": "02-01-01\tExcavation and grading of the road alignment\tm3\t18400\t24\t18.5\n02-02-01\tCompacted base course 30 cm\tm3\t9600\t58\t44\n22-04-01\tAsphalt binder course 7 cm\tm2\t32000\t46\t37\n22-04-02\tAsphalt wearing course 5 cm\tm2\t32000\t39\t31\n22-05-01\tPrecast concrete kerbs\tlm\t6400\t62\t\n22-06-01\tRoad markings and paint\tm2\t2100\t\t",
         "expand_all": "Expand all",
         "collapse_all": "Collapse all",
         "expand_section": "Show the items of {name}",
-        "collapse_section": "Hide the items of {name}"
+        "collapse_section": "Hide the items of {name}",
+        "item_add": "Add item",
+        "item_add_title": "Add a BOQ item",
+        "item_edit_title": "Edit BOQ item",
+        "item_edit": "Edit item {code}",
+        "edit": "Edit",
+        "item_desc": "Only while the project is being planned. After the start, quantity and rate change only by variation.",
+        "f_code": "Item code",
+        "f_desc": "Description",
+        "f_unit": "Unit",
+        "item_save": "Save",
+        "item_added": "Item {code} added",
+        "item_saved": "Item {code} saved",
+        "item_executed_note": "{qty} already executed on this item."
       },
       "info": {
         "title": "Project information",

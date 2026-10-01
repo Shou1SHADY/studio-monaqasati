@@ -12,7 +12,7 @@ import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
 
 export class PmBoqError extends Error {
-  constructor(readonly code: "missing" | "not_pm_project" | "has_items" | "too_many" | "no_rows" | "blocked", readonly blocks: string[] = []) {
+  constructor(readonly code: "missing" | "not_pm_project" | "has_items" | "too_many" | "no_rows" | "blocked" | "started" | "locked", readonly blocks: string[] = []) {
     super(code)
     this.name = "PmBoqError"
   }
@@ -90,4 +90,45 @@ export async function importBoq(firestore: Firestore, ctx: PmContext, projectId:
     }
   })
   return rows.length
+}
+
+/** One line added or corrected by hand — only while the project is still planning: after the start, quantity and rate move by variation. */
+export async function saveBoqItem(firestore: Firestore, ctx: PmContext, projectId: string, row: ImportRow, itemId: string | null): Promise<void> {
+  if (row.problems.length) throw new PmBoqError("blocked", row.problems)
+  await runTransaction(firestore, async (tx) => {
+    const pSnap = await tx.get(doc(firestore, "projects", projectId))
+    if (!pSnap.exists()) throw new PmBoqError("missing")
+    const project = pSnap.data() as ProjectData
+    if (!project.pm) throw new PmBoqError("not_pm_project")
+    assertPm(withFreshState(ctx, project), "boq.import")
+    if ((project.pm.lifecycle ?? "plan") !== "plan") throw new PmBoqError("started")
+    const fields = {
+      itemNo: row.code,
+      descriptionAr: row.description,
+      descriptionEn: row.description,
+      unit: row.unit,
+      quantity: row.quantity,
+      unitPrice: row.rate && row.rate > 0 ? row.rate : 0,
+      estCost: row.cost && row.cost > 0 ? row.cost : null,
+      divisionNo: divisionOfCode(row.code),
+      updatedAt: serverTimestamp(),
+    }
+    if (itemId) {
+      const ref = doc(firestore, "projects", projectId, "boqItems", itemId)
+      const snap = await tx.get(ref)
+      if (!snap.exists()) throw new PmBoqError("missing")
+      if ((snap.data() as { isEditable?: boolean }).isEditable === false) throw new PmBoqError("locked")
+      tx.update(ref, fields)
+      return
+    }
+    tx.set(doc(collection(firestore, "projects", projectId, "boqItems")), {
+      ...fields,
+      tenderId: null,
+      isEditable: true,
+      groupId: null,
+      executedQuantity: 0,
+      billedQuantity: 0,
+      createdAt: serverTimestamp(),
+    })
+  })
 }

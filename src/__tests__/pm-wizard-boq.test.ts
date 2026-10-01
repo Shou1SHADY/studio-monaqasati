@@ -1,4 +1,4 @@
-import { blankDraftRow, draftRowProblems, draftTotal, isBlankDraftRow, withDescription, type BoqDraftRow } from "@/lib/pm/boq"
+import { blankDraftRow, draftRowProblems, draftTotal, isBlankDraftRow, judgeBoqRow, withDescription, type BoqDraftRow } from "@/lib/pm/boq"
 import { acceptStepBlocks } from "@/lib/pm/handover"
 
 const row = (over: Partial<BoqDraftRow>): BoqDraftRow => ({ ...blankDraftRow("r"), ...over })
@@ -37,5 +37,24 @@ describe("wizard BOQ rows", () => {
     expect(acceptStepBlocks({ source: "man", managerUid: "u", xlItems: 0 })).toEqual(["boq_no_lines"])
     expect(acceptStepBlocks({ source: "crm", managerUid: "u", xlItems: 3, xlBad: 1 })).toEqual(["boq_bad_rows"])
     expect(acceptStepBlocks({ source: "man", managerUid: "u", xlItems: 2, xlBad: 0 })).toEqual([])
+  })
+})
+
+describe("judgeBoqRow", () => {
+  const good = { code: "02-01-01", description: "Concrete", unit: "m3", quantity: "10", rate: "", cost: "" }
+
+  it("passes a valid single item", () => {
+    const r = judgeBoqRow(good, [])
+    expect(r.problems).toEqual([])
+    expect(r.quantity).toBe(10)
+  })
+
+  it("refuses a code that another item already holds", () => {
+    expect(judgeBoqRow(good, ["02-01-01"]).problems).toContain("duplicate")
+  })
+
+  it("refuses a missing quantity and description", () => {
+    const r = judgeBoqRow({ ...good, quantity: "", description: "" }, [])
+    expect(r.problems).toEqual(expect.arrayContaining(["bad_qty", "no_description"]))
   })
 })

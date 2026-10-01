@@ -33,6 +33,9 @@ type Lead = {
   email: string
   status: string
   createdAt: any
+  preferredDate: string
+  businessType: string
+  businessOther: string
 }
 
 function getTs(ts: any): number {
@@ -74,6 +77,9 @@ export default function AdminLeadsPage() {
       email: d.email || "",
       status: d.status || "new",
       createdAt: d.createdAt,
+      preferredDate: d.preferredDate || "",
+      businessType: d.businessType || "",
+      businessOther: d.businessOther || "",
     }))
     const onboarding: Lead[] = (onboardingRequests || []).map((d: any) => ({
       id: d.id,
@@ -84,6 +90,9 @@ export default function AdminLeadsPage() {
       email: d.email || "",
       status: d.status || "new",
       createdAt: d.createdAt,
+      preferredDate: "",
+      businessType: "",
+      businessOther: "",
     }))
     setLocalLeads([...demo, ...onboarding].sort((a, b) => getTs(b.createdAt) - getTs(a.createdAt)))
   }, [demoRequests, onboardingRequests])
@@ -198,6 +207,8 @@ export default function AdminLeadsPage() {
                     <TableHead className="text-right hidden sm:table-cell">{t("company")}</TableHead>
                     <TableHead className="text-right hidden md:table-cell">{t("email")}</TableHead>
                     <TableHead className="text-right hidden md:table-cell">{t("phone")}</TableHead>
+                    <TableHead className="text-right hidden lg:table-cell">{t("business_type")}</TableHead>
+                    <TableHead className="text-right hidden lg:table-cell">{t("preferred_date")}</TableHead>
                     <TableHead className="text-right">{t("source")}</TableHead>
                     <TableHead className="text-right">{t("status")}</TableHead>
                     <TableHead className="text-left">{t("actions")}</TableHead>
@@ -210,6 +221,14 @@ export default function AdminLeadsPage() {
                       <TableCell className="hidden sm:table-cell text-muted-foreground">{lead.company || "—"}</TableCell>
                       <TableCell className="hidden md:table-cell text-xs text-muted-foreground" dir="ltr">{lead.email}</TableCell>
                       <TableCell className="hidden md:table-cell text-xs text-muted-foreground" dir="ltr">{lead.phone || "—"}</TableCell>
+                      <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
+                        {lead.businessType === "manufacturer"
+                          ? t("type_manufacturer")
+                          : lead.businessType === "other"
+                            ? lead.businessOther || t("type_other")
+                            : "—"}
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell text-xs text-muted-foreground tabular-nums" dir="ltr">{lead.preferredDate || "—"}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="text-xs">
                           {lead.source === "demo" ? t("source_demo") : t("source_onboarding")}

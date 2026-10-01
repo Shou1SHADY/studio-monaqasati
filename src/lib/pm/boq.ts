@@ -229,6 +229,12 @@ function judge(rows: Array<{ line: number; cells: Array<string | undefined> }>, 
   return { ok, bad }
 }
 
+/** One line typed by hand is judged exactly like a pasted one. */
+export function judgeBoqRow(input: { code: string; description: string; unit: string; quantity: string; rate: string; cost: string }, existingCodes: Iterable<string>): ImportRow {
+  const { ok, bad } = judge([{ line: 1, cells: [input.code, input.description, input.unit, input.quantity, input.rate, input.cost] }], existingCodes)
+  return (ok[0] ?? bad[0]) as ImportRow
+}
+
 /** One line per item: code · description · unit · quantity · rate · budget cost,
  * tab-separated (a paste from Excel) or split by | or ;. Rate and cost are
  * optional; every row is judged and a bad row is never imported. */

@@ -12,6 +12,7 @@
 // Procurement or Inventory hold, store returns) and its collectable certificates
 // with the org-wide orders, events and CRM files WaitingOnOthers reads itself.
 
+import { ShowMoreRow } from "@/components/module-ui/ShowMoreRow"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { AlertTriangle, Banknote, CalendarCheck2, ClipboardList, Coins, FolderKanban, Hand, HandCoins, TrendingUp, Wallet, Zap } from "lucide-react"
@@ -330,9 +331,9 @@ export function PmPortfolioToday() {
               <ul className="divide-y">{shown.map((r) => r.node)}</ul>
             )}
             {inGroup.length > CLIP && (
-              <button type="button" onClick={() => setAll((v) => !v)} className="w-full border-t py-3 text-sm font-bold text-cta hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+              <ShowMoreRow onClick={() => setAll((v) => !v)}>
                 {all ? t("dec.show_less") : t("dec.show_more", { count: inGroup.length - CLIP })}
-              </button>
+              </ShowMoreRow>
             )}
           </Panel>
 

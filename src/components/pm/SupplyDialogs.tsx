@@ -214,6 +214,11 @@ export function NewRequestDialog({
           )}
         </div>
         <DialogFooter>
+          {!ok && (
+            <p role="status" className="me-auto self-center text-xs text-muted-foreground">
+              {needBy < today ? t("sup.form.need_date") : t("sup.form.need_line")}
+            </p>
+          )}
           <Button variant="outline" onClick={onClose} disabled={busy !== null}>
             {t("sup.cancel")}
           </Button>

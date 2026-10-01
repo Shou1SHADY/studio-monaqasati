@@ -13,8 +13,9 @@
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
-import { AlertTriangle, ChevronDown, CircleDollarSign, Flame, ListTree, Loader2, Plus, Search, TableProperties } from "lucide-react"
+import { AlertTriangle, ChevronDown, CircleDollarSign, Flame, ListTree, Loader2, Pencil, Plus, Search, TableProperties } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { BoqItemDialog } from "./BoqItemDialog"
 import { BoqItemSupply } from "./BoqItemSupply"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -82,6 +83,7 @@ export function PmBoqPanel({
   actualCost,
   orgId,
   openItemId,
+  planning = false,
 }: {
   projectId: string
   /** The org — the item drawer reads the store ledger and the org's price history. */
@@ -94,6 +96,8 @@ export function PmBoqPanel({
   actualCost?: ReadonlyMap<string, number>
   /** Open this item's drawer on arrival (Cost's «افتح» on a bleeding item). */
   openItemId?: string | null
+  /** The project has not started: lines may still be added and corrected one by one. */
+  planning?: boolean
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
@@ -109,6 +113,7 @@ export function PmBoqPanel({
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [pricing, setPricing] = useState<PmBoqLine | null>(null)
   const [importing, setImporting] = useState(false)
+  const [editing, setEditing] = useState<PmBoqLine | "new" | null>(null)
 
   const q = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, "boqItems") : null), [firestore, projectId])
   const { data, isLoading } = useCollection(q)
@@ -128,6 +133,7 @@ export function PmBoqPanel({
   // itself still accepts prep, as the prototype's handler does.
   const canPrice = money && !access.ctx.archived && access.allowed("item.price") && access.has("approve")
   const canImport = !access.ctx.archived && access.allowed("boq.import")
+  const canEditLines = canImport && planning
   const open = lines.find((b) => b.id === openId) ?? null
   const cols = money ? 6 : 3
   const filtering = search.trim() !== "" || view !== "all"
@@ -151,14 +157,23 @@ export function PmBoqPanel({
           className="p-8"
           action={
             canImport ? (
-              <Button onClick={() => setImporting(true)}>
-                <Plus size={15} className="me-1.5" aria-hidden="true" />
-                {t("boq.add")}
-              </Button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button onClick={() => setImporting(true)}>
+                  <Plus size={15} className="me-1.5" aria-hidden="true" />
+                  {t("boq.add")}
+                </Button>
+                {planning && (
+                  <Button variant="outline" onClick={() => setEditing("new")}>
+                    <Plus size={15} className="me-1.5" aria-hidden="true" />
+                    {t("boq.item_add")}
+                  </Button>
+                )}
+              </div>
             ) : undefined
           }
         />
         {canImport && <ImportDialog open={importing} onOpenChange={setImporting} projectId={projectId} access={access} contractValue={contractValue} money={money} />}
+        {editing && <BoqItemDialog projectId={projectId} access={access} money={money} line={null} existingCodes={[]} onClose={() => setEditing(null)} />}
       </section>
     )
   }
@@ -212,6 +227,12 @@ export function PmBoqPanel({
             <ListTree size={14} className="me-1.5" aria-hidden="true" />
             {t("boq.group")}
           </Button>
+          {canEditLines && (
+            <Button size="sm" onClick={() => setEditing("new")}>
+              <Plus size={14} className="me-1.5" aria-hidden="true" />
+              {t("boq.item_add")}
+            </Button>
+          )}
           {bySection && divisionKeys.length > 1 && !filtering && (
             <Button size="sm" variant="outline" onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(divisionKeys))}>
               {t(allCollapsed ? "boq.expand_all" : "boq.collapse_all")}
@@ -256,10 +277,12 @@ export function PmBoqPanel({
                 cols={cols}
                 money={money}
                 canPrice={canPrice}
+                canEdit={canEditLines}
                 folded={!filtering && g.division !== null && collapsed.has(g.division)}
                 onToggle={toggleDivision}
                 onOpen={setOpenId}
                 onPrice={setPricing}
+                onEdit={setEditing}
               />
             ))}
             {money && shown.length > 0 && (
@@ -288,6 +311,17 @@ export function PmBoqPanel({
       {money && totals.estimated && <FormHint>{t("boq.cost_estimated")}</FormHint>}
 
       <ItemDrawer projectId={projectId} orgId={orgId ?? null} line={open} lines={lines} money={money} onClose={() => setOpenId(null)} />
+      {editing && (
+        <BoqItemDialog
+          key={editing === "new" ? "new" : editing.id}
+          projectId={projectId}
+          access={access}
+          money={money}
+          line={editing === "new" ? null : editing}
+          existingCodes={lines.filter((l) => editing === "new" || l.id !== editing.id).map((l) => l.code)}
+          onClose={() => setEditing(null)}
+        />
+      )}
       {pricing && <PriceDialog projectId={projectId} line={pricing} access={access} actor={actor} onClose={() => setPricing(null)} />}
     </div>
   )
@@ -298,19 +332,23 @@ function BoqGroupRows({
   cols,
   money,
   canPrice,
+  canEdit,
   folded,
   onToggle,
   onOpen,
   onPrice,
+  onEdit,
 }: {
   group: ReturnType<typeof groupLines>[number]
   cols: number
   money: boolean
   canPrice: boolean
+  canEdit: boolean
   folded: boolean
   onToggle: (division: string) => void
   onOpen: (id: string) => void
   onPrice: (b: PmBoqLine) => void
+  onEdit: (b: PmBoqLine) => void
 }) {
   const t = useTranslations("Portal.PM")
   return (
@@ -384,6 +422,21 @@ function BoqGroupRows({
                     }}
                   >
                     {t("boq.price_it")}
+                  </Button>
+                )}
+                {canEdit && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[11px]"
+                    aria-label={t("boq.item_edit", { code: b.code })}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onEdit(b)
+                    }}
+                  >
+                    <Pencil size={11} className="me-1" aria-hidden="true" />
+                    {t("boq.edit")}
                   </Button>
                 )}
                 {lineBleeding(b) && (
