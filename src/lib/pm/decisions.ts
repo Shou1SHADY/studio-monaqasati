@@ -660,11 +660,11 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
     if (tight.length) out.push({ kind: "ztight", severity: "amber", count: tight.length, tab: "pmUnits" })
   }
 
-  if (f.lifecycle === "live" && !f.acceptances.prov && progress !== null && progress >= PROVISIONAL_AT) out.push({ kind: "provisional_ready", severity: "blue", tab: "pmClose" })
+  if (f.lifecycle === "live" && !f.acceptances.prov && progress !== null && progress >= PROVISIONAL_AT) out.push({ kind: "provisional_ready", severity: "blue", tab: "info" })
   if (f.acceptances.prov && !f.acceptances.final) {
     const end = defectsEnd(f.acceptances.prov.on, f.terms.defectsDays)
-    if (end < f.today) out.push({ kind: "final_overdue", severity: "red", age: days(end, f.today), tab: "pmClose" })
-    else if (!f.punch.some(isOpenPunch)) out.push({ kind: "final_ready", severity: "blue", tab: "pmClose" })
+    if (end < f.today) out.push({ kind: "final_overdue", severity: "red", age: days(end, f.today), tab: "info" })
+    else if (!f.punch.some(isOpenPunch)) out.push({ kind: "final_ready", severity: "blue", tab: "info" })
   }
 
   const h = f.viewer?.has

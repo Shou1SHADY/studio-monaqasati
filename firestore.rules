@@ -1934,7 +1934,7 @@ service cloud.firestore {
           && projectOpen(projectId)
           && resource.data.status != 'back'
           && ((pmDuty(projectId, 'daily')
-                && changedKeys().hasOnly(['days', 'updatedAt']))
+                && changedKeys().hasOnly(['days', 'hours', 'updatedAt']))
               || (pmDuty(projectId, 'daily') && resource.data.status == 'use' && request.resource.data.status == 'req'
                 && request.resource.data.offReq.by == request.auth.uid
                 && changedKeys().hasOnly(['status', 'offReq', 'updatedAt']))
@@ -2551,6 +2551,17 @@ service cloud.firestore {
         && poFrom() in ['approved', 'sent', 'accepted', 'closed']
         && poChanged().hasOnly(['financePayments', 'financeHolds', 'updatedAt']);
     }
+    // The payment that covers a received order closes it (prototype: closed by Finance's payment).
+    // The sum is re-checked by the write inside its transaction; the rule pins the shape.
+    function poFinanceCloses() {
+      return (isOrgOwner() || hasOrgPermission('invoices.manage') || hasOrgPermission('accounting.post'))
+        && poFrom() == 'accepted' && poTo() == 'closed'
+        && request.resource.data.get('closedByPayment', false) == true
+        && request.resource.data.get('closedShort', true) == false
+        && request.resource.data.financePayments.size() == resource.data.get('financePayments', []).size() + 1
+        && request.resource.data.log.size() == resource.data.get('log', []).size() + 1
+        && poChanged().hasOnly(['financePayments', 'status', 'closedAt', 'closedShort', 'closedByPayment', 'log', 'updatedAt']);
+    }
 
     // R-25: Procurement refers an overrun to the project's manager — once; the order then waits.
     function poRefersBudget() {
@@ -2635,7 +2646,7 @@ service cloud.firestore {
       allow update: if isSignedIn() && poIdentityUntouched() && (isAdmin()
         || (isOrgMember(resource.data.organizationId)
             && (poApproves() || poReturns() || poResubmits() || poExpedites() || poDecides() || poReceives() || poRates()
-                || poSelfIssues() || poDecidesHold() || poFinance()
+                || poSelfIssues() || poDecidesHold() || poFinance() || poFinanceCloses()
                 || poRefersBudget() || poPmDecidesBudget() || poPmStops()))
         || poSupplierAccepts());
       // Orders are records other documents point at — only an admin removes one.
@@ -2755,6 +2766,19 @@ service cloud.firestore {
         && request.resource.data.log.size() == resource.data.get('log', []).size() + 1
         && request.resource.data.log[request.resource.data.log.size() - 1].action in ['favourite_on', 'favourite_off']
         && request.resource.data.log[request.resource.data.log.size() - 1].byId == request.auth.uid;
+      // The send form keeps the phone / e-mail the sender typed: whoever may send an order
+      // touches only the contact fields.
+      allow update: if isSignedIn()
+        && isOrgMember(resource.data.organizationId)
+        && (hasOrgPermission('po.expedite') || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve'))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['contactPhone', 'contactEmail', 'contactSavedAt', 'contactSavedByName'])
+        && request.resource.data.get('contactSavedByName', '') is string;
+      allow create: if isSignedIn()
+        && isOrgMember(request.resource.data.organizationId)
+        && recordId == request.resource.data.organizationId + '__' + request.resource.data.supplierOrgId
+        && request.resource.data.supplierOrgId != 'guest'
+        && (hasOrgPermission('po.expedite') || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve'))
+        && request.resource.data.keys().hasOnly(['organizationId', 'supplierOrgId', 'supplierName', 'contactPhone', 'contactEmail', 'contactSavedAt', 'contactSavedByName']);
       allow delete: if false;
     }
 
