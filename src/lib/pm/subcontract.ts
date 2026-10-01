@@ -7,7 +7,11 @@
 // Custody: material issued to a subcontractor stays ours until his measured
 // work consumes it. book = issued − returned − (theoretical use + allowed
 // waste); a count below the book is his waste, recovered from his next
-// certificate — never a variation. Issues, returns and counts are moves on the
+// certificate — never a variation. The gap belongs to the COUNT: the book as of
+// that count less what was counted, less what was already recovered against it
+// — what is issued or returned afterwards changes what he holds, not his waste.
+// A certificate takes recoveries only up to what it can bear (work − retention);
+// the rest waits for his next one. Issues, returns and counts are moves on the
 // project store ledger (`pmStore`, iss/back/cnt with his party key); his
 // theoretical use comes from the store's own rate on each item of his contract.
 // Projects that recorded custody before the ledger keep their `pmSubCustody`
@@ -219,11 +223,21 @@ export function subCertificateLines(
   return out
 }
 
-/** Work value this period − retention (each line at its contract's rate) − material recovery = due before VAT. */
-export function subCertificateAmounts(lines: Array<Pick<SubCertLine, "amount" | "retentionRate">>, recovery: number): SubCertAmounts {
-  const gross = r2(lines.reduce((a, l) => a + l.amount, 0))
-  const retention = r2(lines.reduce((a, l) => a + l.amount * l.retentionRate, 0))
-  const rec = r2(Math.max(0, recovery))
+type AmountLine = Pick<SubCertLine, "amount" | "retentionRate">
+const grossOf = (lines: AmountLine[]) => r2(lines.reduce((a, l) => a + l.amount, 0))
+const retentionOf = (lines: AmountLine[]) => r2(lines.reduce((a, l) => a + l.amount * l.retentionRate, 0))
+
+/** What a certificate can bear in recoveries: its work less its retention, never
+ * below zero. Beyond it the net would turn negative — a sum Finance cannot pay,
+ * so the certificate would never settle and his dues would never clear (SC-04). */
+export const recoveryRoom = (lines: AmountLine[]) => r2(Math.max(0, grossOf(lines) - retentionOf(lines)))
+
+/** Work value this period − retention (each line at its contract's rate) −
+ * material recovery (no more than it can bear) = due before VAT, never negative. */
+export function subCertificateAmounts(lines: AmountLine[], recovery: number): SubCertAmounts {
+  const gross = grossOf(lines)
+  const retention = retentionOf(lines)
+  const rec = r2(Math.min(Math.max(0, recovery), recoveryRoom(lines)))
   return { gross, retention, recovery: rec, net: r2(gross - retention - rec) }
 }
 
@@ -237,7 +251,9 @@ export function subCertBlocks(input: { archived: boolean; gross: number; over: n
   return out
 }
 
-export const SUB_CERT_STATUSES = ["int", "ok"] as const
+/** int = prepared, awaiting approval · ok = approved, with Finance · void =
+ * withdrawn before approval (terminal; its number is never reused). */
+export const SUB_CERT_STATUSES = ["int", "ok", "void"] as const
 export type SubCertStatus = (typeof SUB_CERT_STATUSES)[number]
 
 export interface SubCertRecovery {
@@ -246,8 +262,52 @@ export interface SubCertRecovery {
   /** The store ledger line the recovery is kept on. */
   storeId?: string
   index: number
+  /** What THIS certificate deducts of it — the entry's stamped amount. */
   amount: number
 }
+
+/** A recovery as a certificate takes it: `rest` is the part that does not fit
+ * and stays awaiting deduction (0 = taken whole). */
+export type FittedRecovery = SubCertRecovery & { rest: number }
+
+/** Fit the recoveries awaiting deduction into what the certificate can bear, in
+ * the order given: whole while they fit, the one that straddles the room cut in
+ * two, everything after it left for his next certificate. */
+export function fitRecoveries(due: SubCertRecovery[], room: number): { taken: FittedRecovery[]; carried: number } {
+  const taken: FittedRecovery[] = []
+  let left = r2(Math.max(0, room))
+  let carried = 0
+  for (const d of due) {
+    const take = r2(Math.min(d.amount, left))
+    if (take > 0.005) taken.push({ ...d, amount: take, rest: r2(d.amount - take) })
+    left = r2(left - take)
+    carried += d.amount - take
+  }
+  return { taken, carried: r2(carried) }
+}
+
+type StampedEntry = { q: number; amount: number; certSeq: number | null }
+const q3 = (n: number) => Math.round(n * 1000) / 1000
+
+/** Mark what a certificate took on one custody line's recoveries. An entry cut
+ * in two keeps its place with the part taken (stamped) and the remainder is
+ * appended, still awaiting — so the indices earlier certificates recorded hold. */
+export function stampRecoveries<R extends StampedEntry>(list: R[], picks: Array<Pick<FittedRecovery, "index" | "amount" | "rest">>, certSeq: number): R[] {
+  const out = list.slice()
+  for (const p of picks) {
+    const r = list[p.index]
+    if (!r || r.certSeq !== null) continue
+    if (p.rest > 0.005) {
+      const q = r.amount > 0 ? q3((r.q * p.amount) / r.amount) : 0
+      out[p.index] = { ...r, q, amount: p.amount, certSeq }
+      out.push({ ...r, q: q3(r.q - q), amount: p.rest, certSeq: null })
+    } else out[p.index] = { ...r, certSeq }
+  }
+  return out
+}
+
+/** A withdrawn certificate gives back what it took: available again, as it was. */
+export const unstampRecoveries = <R extends StampedEntry>(list: R[], certSeq: number): R[] => list.map((r) => (r.certSeq === certSeq ? { ...r, certSeq: null } : r))
 
 export interface PmSubCertificate extends SubCertAmounts {
   id: string
@@ -263,16 +323,34 @@ export interface PmSubCertificate extends SubCertAmounts {
   appr?: string | null
   apprName?: string | null
   apprOn?: string | null
+  /** Approved by its preparer under the company's recorded self-approval. */
+  selfApp?: boolean
+  voidBy?: string | null
+  voidByName?: string | null
+  voidOn?: string | null
 }
 
 export type SubApproveRefusal = "archived" | "no_duty" | "self_approval" | "over_limit"
 
-/** Why this person may not approve it (null = may): `ipcOk`, not its preparer, within their limit. */
-export function subApproveRefusal(input: { archived: boolean; ipcOk: boolean; actorUid: string; prep: string; amount: number; limit: number }): SubApproveRefusal | null {
+/** Why this person may not approve it (null = may): `ipcOk`, within their limit,
+ * and not its preparer — unless the company records self-approval (a firm of
+ * one, `pmSettings.selfApproval`), the same setting owner certificates use. */
+export function subApproveRefusal(input: { archived: boolean; ipcOk: boolean; actorUid: string; prep: string; amount: number; limit: number; selfApproval?: boolean }): SubApproveRefusal | null {
   if (input.archived) return "archived"
   if (!input.ipcOk) return "no_duty"
-  if (input.actorUid === input.prep) return "self_approval"
+  if (input.actorUid === input.prep && !input.selfApproval) return "self_approval"
   if (input.amount > input.limit) return "over_limit"
+  return null
+}
+
+export type SubWithdrawRefusal = "archived" | "no_duty" | "wrong_state"
+
+/** Why this person may not withdraw it (null = may): only before approval, by
+ * its preparer (still holding `sub`) or by whoever approves certificates. */
+export function subWithdrawRefusal(input: { archived: boolean; status: SubCertStatus; actorUid: string; prep: string; sub: boolean; ipcOk: boolean }): SubWithdrawRefusal | null {
+  if (input.archived) return "archived"
+  if (!(input.ipcOk || (input.actorUid === input.prep && input.sub))) return "no_duty"
+  if (input.status !== "int") return "wrong_state"
   return null
 }
 
@@ -416,18 +494,49 @@ export interface CustodyFigures {
 
 const sumMoves = (c: Pick<PmSubCustody, "moves">, t: CustodyMoveKind) => r2(c.moves.filter((m) => m.t === t).reduce((a, m) => a + m.q, 0))
 
+/** One custody move in the terms the count needs, whichever book it is kept in. */
+type CountedMove = { t: string; q: number; day: string; recovery?: boolean | null }
+
+/** The count the gap is measured from: the latest by date, the later entry on a tie. */
+function lastCountAt(moves: CountedMove[]): number {
+  let at = -1
+  moves.forEach((m, i) => {
+    if (m.t === "cnt" && (at < 0 || m.day >= moves[at].day)) at = i
+  })
+  return at
+}
+
+/** What the count found short, still open: his issues less his returns AS OF the
+ * count, less what his work entitles him to, less the count — less what was
+ * already recovered against it. A move dated after the count (or entered after
+ * it on its day) is no part of it: a later issue is material he now holds, not
+ * waste, and a recovery booked since has already been charged. His entitlement
+ * (`cap`) is today's: the ledger keeps no measurement as of the count. */
+function openGap(moves: CountedMove[], cap: number): number | null {
+  const at = lastCountAt(moves)
+  if (at < 0) return null
+  const count = moves[at]
+  let issuedThen = 0
+  let recovered = 0
+  moves.forEach((m, i) => {
+    const after = m.day > count.day || (m.day === count.day && i > at)
+    if (!after) issuedThen += m.t === "iss" ? m.q : m.t === "back" ? -m.q : 0
+    else if (m.t === "back" && m.recovery) recovered += m.q
+  })
+  return r2(issuedThen - cap - count.q - recovered)
+}
+
 /** Issued − returned; theoretical from measured work; allowed waste; the book;
- * the latest count and the gap to it (positive = short = his waste). */
+ * the latest count and the open gap to it (positive = short = his waste). */
 export function custodyFigures(c: Pick<PmSubCustody, "moves" | "perUnit" | "waste" | "executedAtStart" | "unitCost">, executedNow: number): CustodyFigures {
   const issued = r2(sumMoves(c, "iss") - sumMoves(c, "back"))
   const theoretical = r2(Math.max(0, executedNow - c.executedAtStart) * c.perUnit)
   const allowed = r2((theoretical * c.waste) / 100)
   const book = r2(issued - theoretical - allowed)
-  const counts = c.moves.filter((m) => m.t === "cnt")
-  const count = counts.length ? counts.reduce((a, m) => (m.day >= a.day ? m : a)) : null
-  const gap = count ? r2(book - count.q) : null
+  const at = lastCountAt(c.moves)
+  const gap = openGap(c.moves, r2(theoretical + allowed))
   const gapValue = gap !== null && gap > 0.005 ? r2(gap * c.unitCost * RECOVERY_RATE) : 0
-  return { issued, theoretical, allowed, book, count, gap, gapValue }
+  return { issued, theoretical, allowed, book, count: at < 0 ? null : c.moves[at], gap, gapValue }
 }
 
 export const recoveryAmount = (q: number, rate: number, double: boolean) => r2(q * rate * (double ? 2 : 1))
@@ -452,26 +561,36 @@ export function custodyBlocks(input: { archived: boolean; contract: boolean; ite
   return out
 }
 
-export type MoveBlock = "archived" | "bad_qty" | "over_return" | "future"
+export type MoveBlock = "archived" | "bad_qty" | "over_return" | "future" | "older_count"
 
-/** Issue > 0; a return no more than he holds as issued; a count ≥ 0; never dated ahead. */
-export function moveBlocks(input: { archived: boolean; kind: CustodyMoveKind; q: number; issued: number; day: string; today: string }): MoveBlock[] {
+/** A count dated before the one on record would be passed over in silence (the
+ * gap is read from the latest) — so it is refused, with the reason. */
+const olderCount = (kind: CustodyMoveKind, day: string, lastCount?: string | null) => kind === "cnt" && Boolean(day) && Boolean(lastCount) && day < (lastCount as string)
+
+/** Issue > 0; a return no more than he holds as issued; a count ≥ 0 and not
+ * dated before the last count; never dated ahead. */
+export function moveBlocks(input: { archived: boolean; kind: CustodyMoveKind; q: number; issued: number; day: string; today: string; lastCount?: string | null }): MoveBlock[] {
   const out: MoveBlock[] = []
   if (input.archived) out.push("archived")
   const okQ = Number.isFinite(input.q) && (input.kind === "cnt" ? input.q >= 0 : input.q > 0)
   if (!okQ) out.push("bad_qty")
   if (okQ && input.kind === "back" && input.q > input.issued + 0.005) out.push("over_return")
   if (!input.day || input.day > input.today) out.push("future")
+  else if (olderCount(input.kind, input.day, input.lastCount)) out.push("older_count")
   return out
 }
 
-export type RecoveryBlock = "archived" | "bad_qty" | "bad_rate"
+export type RecoveryBlock = "archived" | "bad_qty" | "bad_rate" | "over_gap"
 
-export function recoveryBlocks(input: { archived: boolean; q: number; rate: number }): RecoveryBlock[] {
+/** A recovery charges him for what a count found short — so never more than the
+ * gap still open on that count (`gap`; null = never counted), and never twice. */
+export function recoveryBlocks(input: { archived: boolean; q: number; rate: number; gap: number | null }): RecoveryBlock[] {
   const out: RecoveryBlock[] = []
   if (input.archived) out.push("archived")
-  if (!(Number.isFinite(input.q) && input.q > 0)) out.push("bad_qty")
+  const okQ = Number.isFinite(input.q) && input.q > 0
+  if (!okQ) out.push("bad_qty")
   if (!(Number.isFinite(input.rate) && input.rate > 0)) out.push("bad_rate")
+  if (okQ && input.q > Math.max(0, input.gap ?? 0) + 0.005) out.push("over_gap")
   return out
 }
 
@@ -512,7 +631,8 @@ export interface LedgerCustody {
 
 /** One subcontractor's custody of one material: issued − returned against his
  * theoretical use (the store's rate × his share of each item's executed work
- * since tracking began) and its allowed waste; the latest count and the gap. */
+ * since tracking began) and its allowed waste; the latest count and the gap
+ * still open on it (see `openGap`). */
 export function ledgerCustody(x: Pick<PmStoreLine, "moves" | "rates">, items: StoreItem[], contracts: ContractScope[], key: string): LedgerCustody {
   const issued = r2(subSum(x, "iss", key) - subSum(x, "back", key))
   let theoretical = 0
@@ -529,9 +649,10 @@ export function ledgerCustody(x: Pick<PmStoreLine, "moves" | "rates">, items: St
   allowed = r2(allowed)
   const cap = r2(theoretical + allowed)
   const book = r2(issued - cap)
-  const counts = subMoves(x, "cnt", key)
-  const count = counts.length ? counts.reduce((a, m) => (m.on >= a.on ? m : a)) : null
-  return { issued, theoretical, allowed, cap, book, count, gap: count ? r2(book - count.q) : null }
+  const mine = x.moves.filter((m) => m.sub === key)
+  const counted = mine.map((m) => ({ t: m.t, q: m.q, day: m.on, recovery: m.recovery }))
+  const at = lastCountAt(counted)
+  return { issued, theoretical, allowed, cap, book, count: at < 0 ? null : mine[at], gap: openGap(counted, cap) }
 }
 
 /** What the project's engineer holds: the balance less what is in subcontractors' custody. */
@@ -569,12 +690,24 @@ export function ledgerRecoveryDue(lines: Array<Pick<PmStoreLine, "recoveries">>,
   return r2(lines.reduce((a, x) => a + (x.recoveries ?? []).filter((r) => r.sub === key && r.certSeq === null).reduce((b, r) => b + r.amount, 0), 0))
 }
 
-export type SubStoreBlock = "archived" | "no_sub" | "bad_qty" | "over_hold" | "over_return" | "over_cap_reason" | "future"
+export type SubStoreBlock = "archived" | "no_sub" | "bad_qty" | "over_hold" | "over_return" | "over_cap_reason" | "future" | "older_count"
 
 /** An issue: from what the engineer holds, over his entitlement only with a
  * reason (not blocked — the excess is on him); a return: no more than he holds;
- * a count: ≥ 0; never dated ahead. */
-export function subStoreBlocks(input: { archived: boolean; t: "iss" | "back" | "cnt"; hasSub: boolean; q: number; hold: number; custody: Pick<LedgerCustody, "issued" | "cap">; note: string | null; day: string; today: string }): SubStoreBlock[] {
+ * a count: ≥ 0, not dated before his last count; never dated ahead. */
+export function subStoreBlocks(input: {
+  archived: boolean
+  t: "iss" | "back" | "cnt"
+  hasSub: boolean
+  q: number
+  hold: number
+  custody: Pick<LedgerCustody, "issued" | "cap">
+  note: string | null
+  day: string
+  today: string
+  /** The day of his latest count on this material, when there is one. */
+  lastCount?: string | null
+}): SubStoreBlock[] {
   const out: SubStoreBlock[] = []
   if (input.archived) out.push("archived")
   if (!input.hasSub) out.push("no_sub")
@@ -585,6 +718,7 @@ export function subStoreBlocks(input: { archived: boolean; t: "iss" | "back" | "
     else if (input.q > subIssueLeft(input.custody) + 0.005 && !input.note?.trim()) out.push("over_cap_reason")
   } else if (input.t === "back" && input.q > input.custody.issued + 0.005) out.push("over_return")
   if (!input.day || input.day > input.today) out.push("future")
+  else if (olderCount(input.t, input.day, input.lastCount)) out.push("older_count")
   return out
 }
 

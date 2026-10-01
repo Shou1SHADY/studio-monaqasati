@@ -211,6 +211,8 @@ import { VariationsPanel } from "@/components/pm/VariationsPanel"
 import { ManufacturingView } from "@/components/manufacturing/ManufacturingView"
 import { ProjectWorkshopPanel } from "@/components/projects/ProjectWorkshopPanel"
 import { ProjectManpowerPanel } from "@/components/projects/ProjectManpowerPanel"
+import { certificatesApply, termsNow } from "@/lib/pm/terms"
+import { inspectionGateOn } from "@/lib/pm/measurement"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -2083,7 +2085,8 @@ export default function ProjectDetailPage() {
     executed: i.executedQuantity || 0,
     billed: i.billedQuantity || 0,
     division: (isRtl ? i.divisionNameAr || i.divisionNameEn : i.divisionNameEn || i.divisionNameAr) || i.divisionNo || "",
-    gate: { pmInspect: i.pmInspect, pmWir: i.pmWir },
+    // The inspection gate goes with its section: switched off, no item is gated (as the write reads it).
+    gate: inspectionGateOn(typedProject?.enabledSections) ? { pmInspect: i.pmInspect, pmWir: i.pmWir } : undefined,
     pmSample: i.pmSample,
     pmSub: i.pmSub,
     estCost: parseFloat(String(i.estCost ?? "").replace(/,/g, "")) || 0,
@@ -2134,7 +2137,7 @@ export default function ProjectDetailPage() {
     <CloseoutPanel
       projectId={projectId}
       lifecycle={lifecycleOf(typedProject)}
-      hasClient={typedProject.pm.terms.payer !== "none"}
+      hasClient={certificatesApply(typedProject.pm.original ?? typedProject.pm.terms, termsNow(typedProject.pm))}
       pm={typedProject.pm as ComponentProps<typeof CloseoutPanel>["pm"]}
       items={pmItems}
       access={pmAccess}
@@ -2434,7 +2437,7 @@ export default function ProjectDetailPage() {
                 cutPool: (typedProject.pm as { cutPool?: number }).cutPool ?? 0,
                 retentionHeld: typedProject.pm.retentionHeld ?? 0,
                 retentionReleased: Boolean((typedProject.pm as { retentionReleased?: boolean }).retentionReleased),
-                hasClient: (typedProject.pm.terms?.payer ?? "owner") !== "none",
+                hasClient: certificatesApply(typedProject.pm.original ?? typedProject.pm.terms, termsNow(typedProject.pm)),
                 storeOn: pmOn.store,
               }}
             />
@@ -3446,7 +3449,7 @@ export default function ProjectDetailPage() {
             projectId={projectId}
             items={pmItems}
             startedOn={typedProject.pm.startedAt ?? typedProject.pm.startOn ?? null}
-            terms={typedProject.pm.terms ?? null}
+            terms={termsNow(typedProject.pm)}
             access={pmAccess}
             actor={pmActor}
             actualCost={pmItemCost}
@@ -3458,7 +3461,7 @@ export default function ProjectDetailPage() {
             projectId={projectId}
             orgId={typedProject.organizationId || myOrgId}
             lastIpc={(typedProject.pm as { ipcCount?: number }).ipcCount ? { seq: (typedProject.pm as { ipcCount?: number }).ipcCount ?? 0, on: (typedProject.pm as { lastIpcOn?: string | null }).lastIpcOn ?? null } : null}
-            basis={typedProject.pm.terms?.basis ?? "rem"}
+            basis={termsNow(typedProject.pm)?.basis ?? "rem"}
             items={pmItems}
             access={pmAccess}
             actor={pmActor}

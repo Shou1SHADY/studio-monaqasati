@@ -95,7 +95,7 @@ export function MeasurementPanel({
   const canApprove = !access.ctx.archived && access.allowed("measurement.approve")
   const self = access.has("approve")
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items])
-  const { open, done: hidden } = openItems(items)
+  const { open, done: hidden } = openItems(items, basis)
   const shownItems = measuring && search.trim() ? open.filter((i) => matchesSearch(search, [i.code, i.description])) : open
 
   const lines = useMemo(
@@ -125,7 +125,9 @@ export function MeasurementPanel({
       }
     } catch (err) {
       console.error(err)
-      toast({ title: t(err instanceof PmAccessError ? `refused.${err.code}` : err instanceof PmSheetError && err.code === "not_waiting" ? "meas.not_waiting" : "error.save"), variant: "destructive" })
+      // The gate may refuse an approval the screen offered: an inspection failed since the sheet was written.
+      const key = err instanceof PmAccessError ? `refused.${err.code}` : !(err instanceof PmSheetError) ? "error.save" : err.code === "not_waiting" ? "meas.not_waiting" : err.blocks[0] ? `meas.block.${err.blocks[0]}` : "error.save"
+      toast({ title: t(key), variant: "destructive" })
     } finally {
       setBusy(null)
     }

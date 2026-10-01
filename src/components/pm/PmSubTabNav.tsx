@@ -23,9 +23,10 @@ import { noticeLate, PM_CLAIMS, type PmClaim } from "@/lib/pm/claim"
 import { closeoutRows, storeHoldings, subDues } from "@/lib/pm/closeout"
 import { openCloseRows } from "@/lib/pm/closeout-view"
 import { PM_LETTERS, type PmLetter } from "@/lib/pm/correspondence"
-import { PM_DOCS, staleDocuments, type PmDocument } from "@/lib/pm/documents"
+import { PM_DOCS, staleDrawings, type PmDocument } from "@/lib/pm/documents"
 import { todayDay } from "@/lib/pm/format"
 import { matchRows } from "@/lib/pm/match"
+import { PM_SHEETS } from "@/lib/pm/measurement"
 import { PM_NCRS, type NcrStatus } from "@/lib/pm/ncr"
 import type { ProjectGroup } from "@/lib/pm/project-tabs"
 import { isOpenOrFailed, PM_INSPECTIONS, type PmInspection } from "@/lib/pm/inspection"
@@ -75,7 +76,6 @@ export function PmSubTabNav({
   sections,
   weeklyPlan,
   terms,
-  lastIpcOn,
   hasManager,
   project,
 }: {
@@ -90,7 +90,8 @@ export function PmSubTabNav({
   sections: LookaheadSections
   weeklyPlan: boolean
   terms: ContractTerms | null
-  lastIpcOn: string | null
+  /** No longer read: a drawing is stale against the last approved measurement, which this reads itself. */
+  lastIpcOn?: string | null
   hasManager: boolean
   project: SubTabProject
 }) {
@@ -110,6 +111,8 @@ export function PmSubTabNav({
   const subCerts = useRows<{ status: string }>(projectId, PM_SUB_CERTIFICATES, group === "exec" || close)
   const subcontracts = useRows<PmSubcontract>(projectId, PM_SUBCONTRACTS, close)
   const docs = useRows<PmDocument>(projectId, PM_DOCS, file)
+  // The Documents badge asks what the register and the look-ahead ask: revised after the last approved measurement.
+  const sheets = useRows<{ status: string; day: string }>(projectId, PM_SHEETS, file)
   const letters = useRows<PmLetter>(projectId, PM_LETTERS, file)
   const requests = useRows<Record<string, unknown> & { id: string }>(projectId, PURCHASE_REQUESTS, supply)
   const stores = useRows<Partial<PmStoreLine> & { id: string }>(projectId, PM_STORE, supply || (close && project.storeOn))
@@ -160,7 +163,7 @@ export function PmSubTabNav({
       claimsOpen: claims.filter((c) => c.status === "draft" || c.status === "notice" || c.status === "sub").length,
       claimNoticeLate: terms ? claims.some((c) => noticeLate(c, terms, today)) : false,
       subCertificates: subCerts,
-      staleDocuments: staleDocuments(docs, lastIpcOn).length,
+      staleDocuments: staleDrawings(docs, sheets).length,
       letters,
       closeoutOpen: openCloseRows(rows, money && access.has("client")),
       requestsWaiting: requests.map(requestOf).filter((r) => reqState(r) === "wait").length,
@@ -172,7 +175,7 @@ export function PmSubTabNav({
       matchOver: money ? matchRows(cost.pos, cost.invoices).filter((r) => r.state === "over").length : 0,
       cvrStale: project.lifecycle === "live" && (eacAge === null || eacAge > 35),
     })
-  }, [today, hasManager, members, addenda, variations, claims, terms, subCerts, subcontracts, docs, lastIpcOn, letters, requests, stores, items, certs, punch, ncrs, close, project, money, access, cost.pos, cost.invoices])
+  }, [today, hasManager, members, addenda, variations, claims, terms, subCerts, subcontracts, docs, sheets, letters, requests, stores, items, certs, punch, ncrs, close, project, money, access, cost.pos, cost.invoices])
 
   const segments: Segment[] = tabs.map((x) => {
     const e = x.key === "pmUnits" ? (unitsReady ? { count: unitsReady, tone: "ok" as SegmentTone } : undefined) : (exec as Record<string, { count?: number; tone?: SegmentTone } | undefined>)[x.key]

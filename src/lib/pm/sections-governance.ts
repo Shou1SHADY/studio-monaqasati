@@ -18,16 +18,16 @@ import { openClaims, PM_CLAIMS, type ClaimStatus } from "./claim"
 import type { Acceptances } from "./acceptance"
 import { closeoutRows, storeDocOf, storeHoldings, storeItemOf, subDues } from "./closeout"
 import { isLetterOpen, PM_LETTERS, type LetterStatus } from "./correspondence"
-import { PM_DOCS, staleDocuments, type PmDocument } from "./documents"
+import { PM_DOCS, staleDrawings, type PmDocument } from "./documents"
 import { PM_INSPECTIONS } from "./inspection"
-import { lastApprovedDay, PM_SHEETS, type PmSheet } from "./measurement"
+import { PM_SHEETS, type PmSheet } from "./measurement"
 import { PM_NCRS, type NcrStatus } from "./ncr"
 import { PM_UNITS } from "./units"
 import { onSite, plantCost, PM_PLANT, type PmPlant } from "./plant"
 import { PM_ACTIVITIES } from "./programme"
 import { PM_STORE, storeLineOf, type PmStoreLine } from "./store"
 import { PM_PETTY, PM_PLANT as PM_PLANT_REQUESTS, PURCHASE_REQUESTS, requestOf } from "./supply"
-import { lookahead, PM_WEEKS, type LookActivity, type LookItem, type LookPlant } from "./weekly-plan"
+import { lookahead, lookObstacle, PM_WEEKS, type LookActivity, type LookItem, type LookPlant } from "./weekly-plan"
 import { lastPaid, PRICE_HISTORY, type PriceHistoryEntry } from "../procurement/prices"
 import { withFreshState } from "./project-writes"
 import { isOpenPunch, PM_PUNCH, type PunchStatus } from "./punch"
@@ -35,6 +35,7 @@ import { livePermits, PM_DAILY, PM_INCIDENTS, PM_OBSTACLES, PM_PERMITS, type PmO
 import { PM_SUB_CERTIFICATES, PM_SUBCONTRACTS, type PmSubCertificate, type PmSubcontract } from "./subcontract"
 import { PM_VARIATIONS, type VoStatus } from "./variation"
 import { SECTION_IDS, SECTION_REGISTRY, type SectionId } from "../project-sections"
+import { certificatesApply, termsNow } from "./terms"
 
 /** The prototype's reasons (SECWHY): outside the contract · another module
  * handles it · too small to need it · later · other, stated. */
@@ -294,7 +295,7 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
   ])
   const project = (pSnap?.exists() ? pSnap.data() : {}) as {
     enabledSections?: string[]
-    pm?: { terms?: { payer?: string } | null; acceptances?: Acceptances; cutPool?: number; retentionHeld?: number; retentionReleased?: boolean } | null
+    pm?: { terms?: { payer?: string } | null; original?: { payer?: string } | null; inForce?: { payer?: string } | null; acceptances?: Acceptances; cutPool?: number; retentionHeld?: number; retentionReleased?: boolean } | null
   }
   const on = new Set(project.enabledSections ?? [])
   const today = new Date().toISOString().slice(0, 10)
@@ -318,9 +319,9 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
     {
       items: lookItems,
       activities: (acts?.docs ?? []).map((d) => ({ ...(d.data() as LookActivity), id: d.id })),
-      obstacles: (obstacles?.docs ?? []).map((d) => d.data() as PmObstacle).map((o) => ({ title: o.title, party: o.partyName || o.party, itemIds: o.itemIds ?? [], closeOn: o.closeOn ?? null })),
+      obstacles: (obstacles?.docs ?? []).map((d) => d.data() as PmObstacle).map(lookObstacle),
       livePermits: livePermits((permits?.docs ?? []).map((d) => d.data() as PmPermit), today).length,
-      staleDrawings: staleDocuments((docs?.docs ?? []).map((d) => d.data() as PmDocument), lastApprovedDay((sheets?.docs ?? []).map((d) => d.data() as PmSheet))).length,
+      staleDrawings: staleDrawings((docs?.docs ?? []).map((d) => d.data() as PmDocument), (sheets?.docs ?? []).map((d) => d.data() as PmSheet)).length,
       stores: storeDocs,
       requests: requestDocs,
       plant: (plantReqs?.docs ?? []).map((d) => d.data() as LookPlant),
@@ -341,7 +342,7 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
   const dues = subDues(contracts, (subCerts?.docs ?? []).map((d) => d.data() as PmSubCertificate))
   const voList = (vos?.docs ?? []).map((d) => d.data() as { status: VoStatus; value?: number; executedPct?: number; billedPct?: number })
   const closeOpen = closeoutRows({
-    hasClient: (project.pm?.terms?.payer ?? "client") !== "none",
+    hasClient: project.pm ? certificatesApply(project.pm.original ?? project.pm.terms, termsNow(project.pm)) : true,
     acceptances: project.pm?.acceptances ?? {},
     punch: (punch?.docs ?? []).map((d) => d.data() as { status: PunchStatus }),
     ncrs: (ncrs?.docs ?? []).map((d) => d.data() as { status: NcrStatus }),

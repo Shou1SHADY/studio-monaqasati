@@ -59,3 +59,33 @@ describe("C-47 — variations, claims and programme follow their sections", () =
     expect(pmTabVisible(["contract", "claim"], "claim", 0)).toBe(true)
   })
 })
+
+describe("switching a section off takes its dependents with it — and nothing else (INV-17, the prototype's toggleSec)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { cascadeDisable, SECTION_REGISTRY } = require("@/lib/project-sections") as typeof import("@/lib/project-sections")
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { sectionsForKind } = require("@/lib/pm/sections") as typeof import("@/lib/pm/sections")
+
+  it("an infrastructure or O&M project keeps its certificates when Documents goes off", () => {
+    for (const kind of ["infra", "mnt"] as const) {
+      const on = new Set(sectionsForKind(kind))
+      expect(on.has("ipc")).toBe(true)
+      const after = cascadeDisable(on, "docs")
+      expect([...on].filter((s) => !after.has(s))).toEqual(["docs"])
+    }
+  })
+
+  it("the store goes with receiving, and collection with certificates", () => {
+    const on = new Set(sectionsForKind("bld"))
+    expect(cascadeDisable(on, "receive").has("store")).toBe(false)
+    const noIpc = cascadeDisable(on, "ipc")
+    expect(noIpc.has("ipc")).toBe(false)
+    expect(noIpc.has("collect")).toBe(false)
+  })
+
+  it("a required section never goes off", () => {
+    const on = new Set(sectionsForKind("bld"))
+    const required = (Object.keys(SECTION_REGISTRY) as Array<keyof typeof SECTION_REGISTRY>).find((k) => SECTION_REGISTRY[k].required)!
+    expect(cascadeDisable(on, required)).toBe(on)
+  })
+})

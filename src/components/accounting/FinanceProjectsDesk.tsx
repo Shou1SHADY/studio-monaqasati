@@ -66,6 +66,14 @@ export function FinanceProjectsDesk({ portal }: { portal: CrmPortal }) {
 
   const names = useMemo(() => new Map(((projectsData || []) as Array<{ id: string; name?: string }>).map((p) => [p.id, p.name || ""])), [projectsData])
   const retentionReleased = useMemo(() => new Set(((projectsData || []) as Array<{ id: string; pm?: { retentionReleased?: boolean } | null }>).filter((p) => p.pm?.retentionReleased).map((p) => p.id)), [projectsData])
+  const retentionHalfReleased = useMemo(() => new Set(((projectsData || []) as Array<{ id: string; pm?: { retentionHalfReleased?: boolean } | null }>).filter((p) => p.pm?.retentionHalfReleased).map((p) => p.id)), [projectsData])
+  // A release is done when the project carries its flag — and, with the books
+  // on, its entry is posted too: one without the other keeps the row actionable.
+  const isReleased = (e: PmEvent) => {
+    const entry = posted.has(eventDocId(e.key))
+    const flag = e.params.stage === "final" ? retentionReleased.has(e.projectId) : e.params.stage === "prov" ? retentionHalfReleased.has(e.projectId) : entry
+    return booksOn === true ? flag && entry : flag || entry
+  }
   const journal = useMemo(() => (journalData || []) as Array<{ sourceType?: SourceType; sourceId?: string; lines?: JournalLine[] }>, [journalData])
   const posted = useMemo(() => new Set(journal.filter((e) => e.sourceType === "ipc_claim" || e.sourceType === "retention_release").map((e) => e.sourceId || "")), [journal])
   const postedEntries: PostedEntries = useMemo(() => new Map(journal.filter((e) => e.sourceType && e.sourceId).map((e) => [postedKey(e.sourceType as SourceType, e.sourceId as string), { lines: e.lines || [] }])), [journal])
@@ -102,13 +110,13 @@ export function FinanceProjectsDesk({ portal }: { portal: CrmPortal }) {
             )}
           </Section>
 
-          <Section icon={Wallet} title={t("fpj_ret_title")} sub={t("fpj_ret_sub")} count={handovers.filter((e) => !posted.has(eventDocId(e.key))).length}>
+          <Section icon={Wallet} title={t("fpj_ret_title")} sub={t("fpj_ret_sub")} count={handovers.filter((e) => !isReleased(e)).length}>
             {handovers.length === 0 ? (
               <Empty>{t("fpj_ret_empty")}</Empty>
             ) : (
               <ul className="divide-y">
                 {handovers.map((e) => (
-                  <RetentionRow key={e.key} event={e} projectName={names.get(e.projectId) || ""} released={posted.has(eventDocId(e.key)) || (e.params.stage === "final" && retentionReleased.has(e.projectId))} booksOn={booksOn === true} mayAct={mayAct} ctx={ctx} />
+                  <RetentionRow key={e.key} event={e} projectName={names.get(e.projectId) || ""} released={isReleased(e)} booksOn={booksOn === true} mayAct={mayAct} ctx={ctx} />
                 ))}
               </ul>
             )}

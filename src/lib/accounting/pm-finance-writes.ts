@@ -12,7 +12,7 @@ import { ACC } from "./accounts"
 import { ClosedPeriodError, JOURNAL_ENTRIES, buildEntry, entryDocId, isPeriodClosed, periodOf, round2, type JournalEntry } from "./journal"
 import { loadPeriods, nextNumber, postToLedger } from "./post"
 import type { PostingContext, PostingResult } from "./posting-rules"
-import { collectedAfter, outstandingOf, pmCertificatePosting, pmCertificateSeq, pmCollectionPosting, pmRetentionReleasePosting, pmSubCertificatePosting, pmSubPayable, pmSubPaymentPosting, pmSubVat, subWorkByContract } from "./pm-postings"
+import { collectedAfter, pmCertificatePosting, pmCertificateSeq, pmCollectionPosting, pmRetentionReleasePosting, pmSubCertificatePosting, pmSubPayable, pmSubPaymentPosting, pmSubVat, subWorkByContract } from "./pm-postings"
 
 export class PmFinanceError extends Error {
   constructor(readonly code: "certificate_missing" | "not_certified" | "amount_invalid" | "over_outstanding" | "not_approved" | "already_paid" | "not_posted") {
@@ -42,6 +42,13 @@ export async function recordPmCollection(
 ): Promise<{ collected: number; posted: boolean }> {
   const amount = Math.round(input.amount * 100) / 100
   if (!(amount > 0)) throw new PmFinanceError("amount_invalid")
+  // The books are asked FIRST: once the certificate says "collected", a refusal
+  // by a locked month would leave the cash recorded on the project and nowhere
+  // in the ledger, with no way to post it afterwards.
+  if (input.postToBooks) {
+    const periods = await loadPeriods(firestore, ctx.organizationId)
+    if (isPeriodClosed(periods, input.date)) throw new ClosedPeriodError(periodOf(input.date))
+  }
   const ref = doc(firestore, "projects", input.event.projectId, PM_CERTIFICATES, certificateNo(pmCertificateSeq(input.event)))
   const { collected, n } = await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(ref)
@@ -49,8 +56,12 @@ export async function recordPmCollection(
     const cert = snap.data() as { status?: string; net?: number; collected?: number; collections?: Collection[] }
     if (cert.status !== "appr" && cert.status !== "part") throw new PmFinanceError("not_certified")
     const net = Number(cert.net) || 0
-    const before = Number(cert.collected) || 0
-    if (amount > outstandingOf(net, before) + 0.01) throw new PmFinanceError("over_outstanding")
+    // What was collected is the sum of the collections recorded — riyals, not a
+    // share of the net; the share is derived from it (a certificate recorded
+    // before the list existed has only its share).
+    const paid = cert.collections?.length ? round2(cert.collections.reduce((a, c) => a + (Number(c.amount) || 0), 0)) : round2(net * (Number(cert.collected) || 0))
+    const before = net > 0 ? paid / net : 0
+    if (amount > round2(net - paid) + 0.01) throw new PmFinanceError("over_outstanding")
     const after = collectedAfter(net, before, amount)
     const collections = [...(cert.collections || []), { on: input.date, amount, by: ctx.userId, byName: ctx.userName }]
     tx.update(ref, {
@@ -78,7 +89,19 @@ export async function releasePmRetention(
   ctx: PostingContext,
   input: { event: PmEvent; projectName?: string | null; date: string; postToBooks: boolean }
 ): Promise<void> {
-  if (input.postToBooks) await postToLedger(firestore, ctx, pmRetentionReleasePosting(input.event, { date: input.date, projectName: input.projectName }))
+  // The books are asked first, then the flag, then the entry: a locked month
+  // refuses before anything moves, and a posting that fails after the flag
+  // leaves the row on Finance's desk to post again (the flag only ever turns on).
+  if (input.postToBooks) {
+    const periods = await loadPeriods(firestore, ctx.organizationId)
+    if (isPeriodClosed(periods, input.date)) throw new ClosedPeriodError(periodOf(input.date))
+  }
+  await markRetentionReleased(firestore, input.event)
+  if (input.postToBooks) await postToLedger(firestore, ctx, pmRetentionReleasePosting(input.event, { date: input.date, projectName: input.projectName }), { skipPeriodCheck: true })
+}
+
+async function markRetentionReleased(firestore: Firestore, event: PmEvent): Promise<void> {
+  const input = { event }
   if (input.event.params.stage === "final") {
     await updateDoc(doc(firestore, "projects", input.event.projectId), { "pm.retentionReleased": true, updatedAt: serverTimestamp() })
   } else if (input.event.params.stage === "prov") {
@@ -140,7 +163,10 @@ export async function paySubCertificate(
       const lines = (posted.data() as Pick<JournalEntry, "lines">).lines || []
       amount = round2(lines.filter((l) => l.account === ACC.suppliersPayable).reduce((a, l) => a + l.credit - l.debit, 0))
     }
-    if (!(amount > 0)) throw new PmFinanceError("amount_invalid")
+    // A certificate whose material recovery took its whole net has nothing to pay:
+    // it is settled at zero — the contracts' paid share still moves, so his dues
+    // clear and the close-out gate opens. Only a negative figure is refused.
+    if (amount < 0) throw new PmFinanceError("amount_invalid")
 
     const work = subWorkByContract(cert.lines || [])
     const contracts: Array<{ ref: ReturnType<typeof doc>; paid: number; add: number }> = []
@@ -153,7 +179,7 @@ export async function paySubCertificate(
     for (const c of contracts) tx.update(c.ref, { paid: round2(c.paid + c.add), updatedAt: serverTimestamp() })
     const payment: SubPayment = { on: input.date, amount, by: ctx.userId, byName: ctx.userName }
     tx.update(certRef, { paidOn: input.date, paidAmount: amount, paidBy: payment.by, paidByName: payment.byName, updatedAt: serverTimestamp() })
-    if (input.postToBooks) {
+    if (input.postToBooks && amount > 0) {
       const r = pmSubPaymentPosting(e, { amount, date: input.date, bankAccount: input.bankAccount, projectName: input.projectName })
       const entry = buildEntry({
         organizationId: ctx.organizationId,

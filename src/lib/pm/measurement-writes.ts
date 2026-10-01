@@ -10,10 +10,12 @@ import { assertPm, pmCan, type PmContext } from "./access"
 import { cleanAttachments, type PmAttachment } from "./attachments"
 import type { GateFields } from "./inspection"
 import { lifecycleOf } from "./lifecycle"
-import { applySheet, PM_SHEETS, sheetBlocks, sheetNo, sheetWriteBlocks, type MeasuredItem, type PmSheet, type SheetLine } from "./measurement"
-import { goLive, withFreshState } from "./project-writes"
+import { applySheet, inspectionGateOn, PM_SHEETS, sheetBlocks, sheetNo, sheetWriteBlocks, type MeasuredItem, type PmSheet, type SheetLine } from "./measurement"
+import { advanceDueAtStart, goLive, sendAdvance, withFreshState } from "./project-writes"
 import type { ContractTerms } from "./terms"
 import { attributeToUnits, PM_UNITS, type PmUnit } from "./units"
+import { termsNow } from "./terms"
+import { todayDay } from "./format"
 
 export class PmSheetError extends Error {
   constructor(readonly code: "missing" | "not_pm_project" | "not_waiting" | "blocked", readonly blocks: string[] = []) {
@@ -27,8 +29,8 @@ export interface SheetActor {
   name: string | null
 }
 
-type PmData = { lifecycle?: string; terms?: ContractTerms; original?: ContractTerms | null; sheetCount?: number } & Record<string, unknown>
-type ProjectData = { organizationId?: string; status?: string; projectManagerId?: string | null; pm?: PmData }
+type PmData = { lifecycle?: string; terms?: ContractTerms; original?: ContractTerms | null; inForce?: ContractTerms | null; sheetCount?: number } & Record<string, unknown>
+type ProjectData = { organizationId?: string; status?: string; projectManagerId?: string | null; enabledSections?: string[] | null; budget?: number | null; pm?: PmData }
 
 const num = (v: unknown) => {
   const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(/,/g, ""))
@@ -74,7 +76,8 @@ async function readUnits(tx: Transaction, firestore: Firestore, projectId: strin
 
 /** Apply an approved sheet: items move — and the units it names — and a planning project goes live. */
 function approveInto(tx: Transaction, firestore: Firestore, projectId: string, project: ProjectData, items: MeasuredItem[], lines: SheetLine[], units: PmUnit[]) {
-  const applied = applySheet(lines, items, project.pm?.terms?.basis ?? "rem")
+  // The basis IN FORCE: a signed addendum may have changed it since the original (CON-05, AMD-04).
+  const applied = applySheet(lines, items, termsNow(project.pm)?.basis ?? "rem")
   for (const [id, executed] of Object.entries(applied.executed)) {
     const before = items.find((i) => i.id === id)?.executed
     if (before !== executed) tx.update(doc(firestore, "projects", projectId, "boqItems", id), { executedQuantity: executed, updatedAt: serverTimestamp() })
@@ -107,7 +110,7 @@ export async function writeSheet(firestore: Firestore, ctx: PmContext, projectId
     const lines = input.lines.filter((l) => l.qty !== 0).map((l) => ({ itemId: l.itemId, code: l.code ?? null, qty: l.qty, unit: l.unit || null, approved: null }))
     const items = await readItems(tx, firestore, projectId, lines.map((l) => l.itemId))
     const units = await readUnits(tx, firestore, projectId, lines)
-    const blocks = sheetWriteBlocks({ archived: fresh.archived, basis: pm.terms?.basis ?? "rem", lines, items })
+    const blocks = sheetWriteBlocks({ archived: fresh.archived, basis: termsNow(pm)?.basis ?? "rem", lines, items, gateOn: inspectionGateOn(project.enabledSections), day: input.day, today: todayDay() })
     if (blocks.length) throw new PmSheetError("blocked", blocks)
 
     seq = (pm.sheetCount ?? 0) + 1
@@ -123,6 +126,7 @@ export async function writeSheet(firestore: Firestore, ctx: PmContext, projectId
       if (wentLive) {
         nextPm = goLive(nextPm, "measurement")
         status = "working"
+        sendAdvance(tx, firestore, await advanceDueAtStart(firestore, projectId, project, actor.uid))
       }
     }
     const sheet: Omit<PmSheet, "id"> = {
@@ -161,11 +165,14 @@ export async function approveSheet(firestore: Firestore, ctx: PmContext, project
     const items = await readItems(tx, firestore, projectId, sheet.lines.map((l) => l.itemId))
     const units = await readUnits(tx, firestore, projectId, sheet.lines)
     // The gate again: an inspection may have failed since the sheet was written (MS-03).
-    const gate = sheetBlocks({ archived: false, lines: sheet.lines, items }).filter((b) => b === "not_measurable")
+    const gate = sheetBlocks({ archived: false, lines: sheet.lines, items, gateOn: inspectionGateOn(project.enabledSections) }).filter((b) => b === "not_measurable")
     if (gate.length) throw new PmSheetError("blocked", gate)
     const { applied, wentLive } = approveInto(tx, firestore, projectId, project, items, sheet.lines, units)
     tx.update(sRef, { status: "ok", lines: applied.lines, okBy: actor.uid, okByName: actor.name, okAt: new Date().toISOString(), self: sheet.by === actor.uid, updatedAt: serverTimestamp() })
-    if (wentLive) tx.update(ref, { pm: goLive(pm, "measurement"), status: "working", updatedAt: serverTimestamp() })
+    if (wentLive) {
+      sendAdvance(tx, firestore, await advanceDueAtStart(firestore, projectId, project, actor.uid))
+      tx.update(ref, { pm: goLive(pm, "measurement"), status: "working", updatedAt: serverTimestamp() })
+    }
     result = { value: applied.value, moved: applied.moved, wentLive }
   })
   return result

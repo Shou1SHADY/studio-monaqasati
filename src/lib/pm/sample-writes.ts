@@ -4,13 +4,13 @@
 // line carries the latest state (`pmSub`) so every screen reads the gate the
 // same way.
 
-import { collection, doc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, type Firestore, type Transaction } from "firebase/firestore"
+import { collection, doc, getDocs, query, runTransaction, serverTimestamp, where, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
 import { cleanAttachments, type PmAttachment } from "./attachments"
 import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
 import { PM_SUBMITTALS, replyBlocks, sampleNo, submitBlocks, type PmSubmittal, type SampleReply } from "./sample"
-import { pendingKept, procurementItems, PURCHASE_REQUESTS, type PmMaterialRequest } from "./supply"
+import { itemsAfterSampleApproval, PURCHASE_REQUESTS, type ReqLine } from "./supply"
 
 export class PmSampleError extends Error {
   constructor(readonly code: "missing" | "not_pm_project" | "blocked", readonly blocks: string[] = []) {
@@ -79,7 +79,21 @@ export async function submitSample(
   return seq
 }
 
-/** The consultant's reply: approved · approved as noted · rejected — never without a choice. */
+type RequestData = { status?: string; lines?: ReqLine[]; items?: Array<{ name?: string; itemId?: string | null; samplePending?: boolean | null }> }
+
+/** The project's PM requests — where the «عيّنة قيد الاعتماد» marks live. A
+ * transaction cannot query, so the candidates are listed first and each one is
+ * read again inside it. */
+async function pmRequestIds(firestore: Firestore, projectId: string): Promise<string[]> {
+  const snap = await getDocs(query(collection(firestore, "projects", projectId, PURCHASE_REQUESTS), where("pm", "==", true)))
+  return snap.docs.filter((d) => (d.data() as RequestData).items?.some((i) => i.samplePending)).map((d) => d.id)
+}
+
+/** The consultant's reply: approved · approved as noted · rejected — never without
+ * a choice. An approval also lifts «عيّنة قيد الاعتماد» off the live requests'
+ * lines on that item, in the same transaction: Procurement may order them from
+ * the moment the approval is on record, and a refusal to lift the mark refuses
+ * the reply — it is never left on unseen. */
 export async function recordSampleReply(
   firestore: Firestore,
   ctx: PmContext,
@@ -88,7 +102,7 @@ export async function recordSampleReply(
   seq: number,
   input: { reply: unknown; note?: string | null; on?: string; files?: PmAttachment[] | null }
 ): Promise<void> {
-  let decided: { itemId: string; reply: SampleReply } | null = null
+  const marked = input.reply === "appA" || input.reply === "appB" ? await pmRequestIds(firestore, projectId) : []
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
@@ -101,33 +115,23 @@ export async function recordSampleReply(
     const blocks = replyBlocks({ archived: fresh.archived, status: s.status, reply: input.reply, note: input.note, on: input.on ?? today, today, submittedOn: s.day })
     if (blocks.length) throw new PmSampleError("blocked", blocks)
     const reply = input.reply as SampleReply
+    // Only a request still live is rewritten: a rejected or withdrawn one buys nothing.
+    const lifted: Array<{ ref: ReturnType<typeof doc>; items: NonNullable<RequestData["items"]> }> = []
+    for (const id of marked) {
+      const rref = doc(firestore, "projects", projectId, PURCHASE_REQUESTS, id)
+      const rs = await tx.get(rref)
+      const r = rs.exists() ? (rs.data() as RequestData) : null
+      const items = r && (r.status === "pending" || r.status === "approved") ? itemsAfterSampleApproval(r, s.itemId) : null
+      if (items) lifted.push({ ref: rref, items })
+    }
     tx.update(ref, {
       status: reply,
       reply: { on: input.on || today, by: actor.uid, byName: actor.name, note: input.note?.trim() || null, files: cleanAttachments(input.files), recordedOn: today },
       updatedAt: serverTimestamp(),
     })
     tx.update(doc(firestore, "projects", projectId, "boqItems", s.itemId), { pmSub: reply, updatedAt: serverTimestamp() })
-    decided = { itemId: s.itemId, reply }
+    for (const l of lifted) tx.update(l.ref, { items: l.items, updatedAt: serverTimestamp() })
   })
-  const done = decided as { itemId: string; reply: SampleReply } | null
-  if (done && (done.reply === "appA" || done.reply === "appB")) await clearSamplePending(firestore, projectId, done.itemId)
-}
-
-/** Approved: the requests Procurement is buying for may now be ordered — their
- * lines on this item lose «عيّنة قيد الاعتماد». Best-effort (the approver's write). */
-async function clearSamplePending(firestore: Firestore, projectId: string, itemId: string): Promise<void> {
-  try {
-    const snap = await getDocs(query(collection(firestore, "projects", projectId, PURCHASE_REQUESTS), where("pm", "==", true)))
-    for (const d of snap.docs) {
-      const r = d.data() as PmMaterialRequest & { items?: Array<{ name?: string; samplePending?: boolean | null }> }
-      if (!r.lines?.some((l) => l.itemId === itemId) || !r.items?.some((i) => i.samplePending)) continue
-      const keep = pendingKept(r)
-      keep.delete(itemId)
-      await updateDoc(d.ref, { items: procurementItems(r, keep), updatedAt: serverTimestamp() })
-    }
-  } catch (err) {
-    console.warn("sample pending not cleared:", (err as { code?: string })?.code || err)
-  }
 }
 
 /** Which lines require a sample (SUB-01) — approve's. */

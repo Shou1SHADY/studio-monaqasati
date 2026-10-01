@@ -64,7 +64,7 @@ import { cn } from "@/lib/utils"
 import { ChoiceChips, FormHint } from "./ContractBits"
 import { AttachmentTag, PmFilesField } from "./PmAttachments"
 import { SubStoreMoveDialog } from "./SubCustodyDialogs"
-import { qty, ReceiveDialog, StopLineDialog, useLocaleDir, useSupplyRun, type SupplyItem } from "./SupplyDialogs"
+import { qty, ReceiveDialog, StopLineDialog, useLocaleDir, useProjectOrderFacts, useSupplyRun, type SupplyItem } from "./SupplyDialogs"
 
 const ST_TONE: Record<StoreState, PillTone> = { open: "info", close: "warn", done: "ok", zero: "mute", neg: "bad", pend: "warn" }
 const CAP = 7
@@ -109,7 +109,9 @@ export function ProjectStorePanel({
   const list = groups[f].slice().sort((a, b) => Math.max(0, storeBalance(b, items)) * cost(b) - Math.max(0, storeBalance(a, items)) * cost(a))
   const shownLed = ledId ?? openStoreId ?? null
 
-  const rows = useMemo(() => awaitingReceipt(world.requests), [world.requests])
+  // An order still awaiting approval (or cancelled) brings nothing — as the receipt itself judges.
+  const orderOf = useProjectOrderFacts(projectId, orgId)
+  const rows = useMemo(() => awaitingReceipt(world.requests, orderOf), [world.requests, orderOf])
   const anyLeft = rows.some((x) => x.left)
   const ww = useMemo(() => whereWent(lines, items, (x) => world.costOf(x)), [lines, items, world])
 

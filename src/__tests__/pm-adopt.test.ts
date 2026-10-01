@@ -53,3 +53,36 @@ describe("adopting a legacy project", () => {
     expect(readDoc<{ pm: { lifecycle: string; original: unknown } }>("projects/new")!.pm).toMatchObject({ lifecycle: "plan", original: null })
   })
 })
+
+describe("an adopted project keeps the contract it was running under", () => {
+  beforeEach(() => {
+    resetFakeDb()
+    seed("projects/run", { organizationId: "owner", status: "working", ipcTerms: { retentionPercent: 10, advanceRecoveryPercent: 0 } })
+    seed("projects/dead", { organizationId: "owner", status: "canceled" })
+  })
+
+  it("its clock runs from the day the work started — not from the day it was adopted", async () => {
+    await adoptProject(db, "run", owner, { isOwner: true, managerId: "pm1", managerName: null, startOn: "2026-01-01", durationDays: 365 })
+    const pm = readDoc<{ pm: { startedAt: string; startOn: string; adopted: { on: string } } }>("projects/run")!.pm
+    expect(pm.startedAt.slice(0, 10)).toBe("2026-01-01")
+    expect(pm.adopted.on).not.toBe("2026-01-01")
+  })
+
+  it("with no start date given, the clock starts at adoption — as before", async () => {
+    await adoptProject(db, "run", owner, { isOwner: true, managerId: "pm1", managerName: null, startOn: null, durationDays: 365 })
+    const pm = readDoc<{ pm: { startedAt: string; adopted: { on: string } } }>("projects/run")!.pm
+    expect(pm.startedAt.slice(0, 4)).toBe(pm.adopted.on.slice(0, 4))
+  })
+
+  it("a retention that had no cap is not given one: 10% stays 10% of the contract, never an invented 5%", async () => {
+    await adoptProject(db, "run", owner, { isOwner: true, managerId: "pm1", managerName: null, startOn: "2026-01-01", durationDays: 365 })
+    const terms = readDoc<{ pm: { terms: ContractTerms } }>("projects/run")!.pm.terms
+    expect(terms.retention).toBe(0.1)
+    expect(terms.retentionCap).toBe(0.1)
+  })
+
+  it("a cancelled project is not adopted: it would be born archived, with its seat and billing refused", async () => {
+    await expect(adoptProject(db, "dead", owner, { isOwner: true, managerId: "pm1", managerName: null, startOn: null, durationDays: 10 })).rejects.toMatchObject({ code: "invalid" })
+    expect(readDoc<{ pm?: unknown }>("projects/dead")!.pm).toBeUndefined()
+  })
+})

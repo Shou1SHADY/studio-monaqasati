@@ -96,22 +96,23 @@ export function cascadeEnable(enabled: Set<SectionId>, id: SectionId): Set<Secti
 }
 
 /**
- * Returns the new enabled-set after turning `id` OFF, cascading off to anything
- * that depends on it (transitively), but refusing to remove `required` sections.
+ * Returns the new enabled-set after turning `id` OFF: the section itself and
+ * whatever depends on it (transitively) — and nothing else. Required sections
+ * never go off. A section that was already on without one of its dependencies
+ * (a preset that offers certificates without the progress tab) is left alone:
+ * switching Documents off must not take Certificates and Collection with it.
  */
 export function cascadeDisable(enabled: Set<SectionId>, id: SectionId): Set<SectionId> {
   if (SECTION_REGISTRY[id].required) return enabled
   const next = new Set(enabled)
-  next.delete(id)
-  let changed = true
-  while (changed) {
-    changed = false
+  const stack: SectionId[] = [id]
+  while (stack.length) {
+    const cur = stack.pop() as SectionId
+    if (!next.has(cur) && cur !== id) continue
+    next.delete(cur)
     for (const secId of Array.from(next)) {
       const def = SECTION_REGISTRY[secId]
-      if (!def.required && def.dependsOn.some((dep) => !next.has(dep as SectionId))) {
-        next.delete(secId)
-        changed = true
-      }
+      if (!def.required && def.dependsOn.includes(cur)) stack.push(secId)
     }
   }
   return next

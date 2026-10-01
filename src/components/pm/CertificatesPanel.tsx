@@ -41,11 +41,13 @@ import type { CertificateActor, PmCertificate } from "@/lib/pm/certificate-write
 import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
 import { subSummaries, subTotals, PM_SUBCONTRACTS, type PmSubcontract } from "@/lib/pm/subcontract"
 import type { ContractTerms } from "@/lib/pm/terms"
-import { PM_VARIATIONS } from "@/lib/pm/variation"
+import { approvedValue, PM_VARIATIONS } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
 import { CERT_TONE, CertificateDrawer } from "./CertificateDrawer"
 import { CertifyDialog } from "./CertifyDialog"
 import { PrepareCertificateDialog, type CertItem } from "./PrepareCertificateDialog"
+import { liveContractValue } from "@/lib/pm/contract-value"
+import { certificatePayer } from "@/lib/pm/terms"
 
 
 const Row = ({ label, value, tone }: { label: ReactNode; value: string; tone?: "bad" | "total" }) => (
@@ -110,14 +112,22 @@ export function CertificatesPanel({
   const voQuery = useMemoFirebase(() => (firestore && money ? collection(firestore, "projects", projectId, PM_VARIATIONS) : null), [firestore, projectId, money])
   const { data: voData } = useCollection(voQuery)
   const vos = useMemo(() => (voData ?? []) as unknown as ClaimableVariation[], [voData])
+  // INV-01: what the cap and the advance are measured against — priced items + approved variations —
+  // the same figure the write computes, so the preview is what is saved.
+  const liveValue = useMemo(
+    () => liveContractValue({ budget: contractValue, items: items.map((i) => ({ quantity: i.quantity ?? 0, rate: i.rate })), approvedVariations: approvedValue(vos as unknown as Array<{ status: "draft" | "wait" | "appr" | "rej"; value: number }>) }),
+    [contractValue, items, vos]
+  )
+  // AMD-09: an addendum to "nobody pays" does not stop the billing of work already done.
+  const certPayer = certificatePayer(original, terms)
   const subQuery = useMemoFirebase(() => (firestore && money && showCollection ? collection(firestore, "projects", projectId, PM_SUBCONTRACTS) : null), [firestore, projectId, money, showCollection])
   const { data: subData } = useCollection(subQuery)
 
   const periods = useMemo(() => certificatePeriods(certs, startOn ?? null), [certs, startOn])
   const sum = useMemo(() => certificateTotals(certs), [certs])
   const coll = useMemo(
-    () => collectionFigures({ certs, today, contractValue, advance: terms.advance, started: lifecycle !== "plan", retentionReleased: Boolean(retentionReleased), retentionHalfReleased: totals.retentionHalfReleased === true }),
-    [certs, today, contractValue, terms.advance, lifecycle, retentionReleased, totals.retentionHalfReleased]
+    () => collectionFigures({ certs, today, contractValue: liveValue, advance: terms.advance, started: lifecycle !== "plan", retentionReleased: Boolean(retentionReleased), retentionHalfReleased: totals.retentionHalfReleased === true }),
+    [certs, today, liveValue, terms.advance, lifecycle, retentionReleased, totals.retentionHalfReleased]
   )
   const subRetention = useMemo(() => subTotals(subSummaries((subData ?? []) as unknown as PmSubcontract[])).retention, [subData])
 
@@ -125,8 +135,8 @@ export function CertificatesPanel({
   const recovered = totals.advanceRecovered ?? 0
   const cutPool = totals.cutPool ?? 0
   const unbilled = items.reduce((a, i) => a + unbilledValue(i), 0) + voClaimable(vos).reduce((a, v) => a + voClaimAmount(v), 0) + cutPool
-  const canPrepare = !access.ctx.archived && access.allowed("certificate.prepare") && terms.payer !== "none"
-  const payer = t(`money.payer.${terms.payer === "main" ? "main" : "owner"}`)
+  const canPrepare = !access.ctx.archived && access.allowed("certificate.prepare") && certPayer !== "none"
+  const payer = t(`money.payer.${certPayer === "main" ? "main" : "owner"}`)
   const opened = openSeq === null ? null : certs.find((c) => c.seq === openSeq) ?? null
 
   if (!money) return <Callout tone="info">{t("ipc.money_only")}</Callout>
@@ -134,8 +144,8 @@ export function CertificatesPanel({
 
   const list = (
     <div className="space-y-3">
-      {terms.payer === "none" && <Callout tone="info">{t("ipc.no_client")}</Callout>}
-      {terms.payer !== "none" && unbilled > 1000 && (
+      {certPayer === "none" && <Callout tone="info">{t("ipc.no_client")}</Callout>}
+      {certPayer !== "none" && unbilled > 1000 && (
         <Callout tone={unbilled > 50_000 ? "block" : "warn"} title={t("money.unbilled_title", { amount: pmMoney(unbilled) })}>
           <span className="block">{t("money.unbilled_body")}</span>
           {canPrepare && (
@@ -283,8 +293,9 @@ export function CertificatesPanel({
           items={items}
           variations={vos}
           terms={terms}
+          payer={certPayer}
           lifecycle={lifecycle}
-          contractValue={contractValue}
+          contractValue={liveValue}
           held={held}
           recovered={recovered}
           cutPool={cutPool}

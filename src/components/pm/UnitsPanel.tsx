@@ -2,17 +2,21 @@
 
 // Execution › Delivery units (the prototype's execZones / zSetup / openZone).
 // Before the units exist: the one-time setup (count and label, an equal split —
-// an assumption, stated). After: three figures (the project average and the
-// spread it hides, units ready to hand over, units whose date is unrealistic),
+// an assumption, stated; not before the BOQ has quantities). After: three
+// figures (the project average and the spread it hides, units ready to hand
+// over, units whose date is unrealistic),
 // a card per unit (value, progress, what is left, planned day, the retention its
 // handover releases, what blocks it, its pace against its date), what belongs
-// to no unit, and a drawer with the unit's money, conditions and items.
+// to no unit, and a drawer with the unit's money, conditions and items. While
+// nothing was measured on a unit and none is handed over, a split older than
+// the BOQ can be made again. The retention shown is what the handover would
+// free under the contract's release term, from what is held today.
 // Money is shown only to those who see money.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { collection } from "firebase/firestore"
-import { Box, Check, Clock, Eye, Hand, List, Loader2, Lock, TrendingUp, X } from "lucide-react"
+import { collection, doc } from "firebase/firestore"
+import { Box, Check, Clock, Eye, Hand, List, Loader2, Lock, RefreshCw, TrendingUp, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -22,7 +26,7 @@ import { DrawerSection } from "@/components/module-ui/DrawerSection"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { usePmUnits } from "@/hooks/usePmUnits"
@@ -32,12 +36,16 @@ import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
 import { isOpenOrFailed, PM_INSPECTIONS, type PmInspection } from "@/lib/pm/inspection"
 import { isOpenPunch, PM_PUNCH, type PunchItem } from "@/lib/pm/punch"
 import type { ContractTerms } from "@/lib/pm/terms"
-import { handOverUnit, PmUnitError, setUnitPlan, setUpUnits, type UnitActor } from "@/lib/pm/unit-writes"
+import { handOverUnit, PmUnitError, resplitUnits, setUnitPlan, setUpUnits, type UnitActor } from "@/lib/pm/unit-writes"
 import {
+  boqValue,
   commonItems,
+  resplitBlocks,
+  splitGaps,
   unattributed,
   UNIT_DONE_AT,
   unitBlocks,
+  unitClaimable,
   unitFigures,
   unitNeed,
   unitRate,
@@ -77,7 +85,7 @@ export function UnitsPanel({
   projectId: string
   items: UnitsItem[]
   startedOn: string | null
-  terms: Pick<ContractTerms, "retention" | "retentionCap" | "defectsDays"> | null
+  terms: Pick<ContractTerms, "retention" | "retentionCap" | "retentionRelease" | "defectsDays"> | null
   access: PmAccess
   actor: UnitActor
   /** Actual cost of each item's executed work so far — the cost section's. */
@@ -95,6 +103,11 @@ export function UnitsPanel({
   const wirQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_INSPECTIONS) : null), [firestore, projectId])
   const { data: punchData } = useCollection(punchQ)
   const { data: wirData } = useCollection(wirQ)
+  // What is held and what the handovers already freed — the handover write reads the same two figures.
+  const projectRef = useMemoFirebase(() => (firestore && money ? doc(firestore, "projects", projectId) : null), [firestore, projectId, money])
+  const { data: projectDoc } = useDoc<{ pm?: { retentionHeld?: number; retentionFreed?: number } }>(projectRef)
+  const held = Number(projectDoc?.pm?.retentionHeld) || 0
+  const freed = Number(projectDoc?.pm?.retentionFreed) || 0
   const open = useMemo(
     () => ({
       punch: ((punchData ?? []) as unknown as PunchItem[]).filter(isOpenPunch),
@@ -107,16 +120,17 @@ export function UnitsPanel({
   const [busy, setBusy] = useState<string | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
 
-  const rows = useMemo(
-    () =>
-      units.map((u) => {
-        const f = unitFigures(u, items)
-        const blocks = unitBlocks(u, items, open)
-        const tight = unitTight(u, f, startedOn, today)
-        return { u, f, blocks, tight, state: unitState(u, blocks, tight), ret: terms ? unitRetention(f.contract, terms) : 0 }
-      }),
-    [units, items, open, startedOn, today, terms]
-  )
+  const rows = useMemo(() => {
+    const of = boqValue(items)
+    return units.map((u) => {
+      const f = unitFigures(u, items)
+      const blocks = unitBlocks(u, items, open)
+      const tight = unitTight(u, f, startedOn, today)
+      // A unit still to hand over: what its handover would send now. One handed over: its half of what is held against it.
+      const ret = !terms ? 0 : u.ho ? unitRetention(f.contract, terms, { held, of }) : unitClaimable(f.contract, terms, { held, of, freed })
+      return { u, f, blocks, tight, state: unitState(u, blocks, tight), ret }
+    })
+  }, [units, items, open, startedOn, today, terms, held, freed])
 
   const fail = (err: unknown) => {
     console.error(err)
@@ -154,6 +168,19 @@ export function UnitsPanel({
     }
   }
 
+  const resplit = async () => {
+    if (!firestore) return
+    setBusy("resplit")
+    try {
+      const n = await resplitUnits(firestore, access.ctx, projectId)
+      toast({ title: t("units.resplit_done", { count: n }) })
+    } catch (err) {
+      fail(err)
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const plan = async (u: PmUnit, day: string) => {
     if (!firestore) return
     try {
@@ -182,12 +209,14 @@ export function UnitsPanel({
 
   if (!units.length) {
     const n = parseInt(count, 10)
+    // Units share out the BOQ's quantities: with none, the write refuses — say so before the click.
+    const noBoq = !items.some((i) => i.quantity > 0)
     return (
       <div className="flex flex-col gap-4">
         {intro}
         <Panel title={t("units.setup_title")} icon={Box} actions={<span className="text-xs text-muted-foreground">{t("units.setup_sub")}</span>}>
           <div className="flex flex-col gap-4">
-            <Callout tone="warn">{t("units.setup_note")}</Callout>
+            {noBoq ? <Callout tone="block">{t("units.err.no_boq")}</Callout> : <Callout tone="warn">{t("units.setup_note")}</Callout>}
             <div className="grid gap-3 sm:grid-cols-[1fr_1.4fr]">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="units-count">{t("units.count")}</Label>
@@ -200,7 +229,7 @@ export function UnitsPanel({
             </div>
             {canManage ? (
               <div>
-                <Button onClick={setup} disabled={busy !== null || !(n >= UNITS_MIN && n <= UNITS_MAX) || !label.trim()} className="gap-1.5">
+                <Button onClick={setup} disabled={busy !== null || noBoq || !(n >= UNITS_MIN && n <= UNITS_MAX) || !label.trim()} className="gap-1.5">
                   {busy === "setup" ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Check size={15} aria-hidden="true" />}
                   {t("units.create")}
                 </Button>
@@ -225,6 +254,10 @@ export function UnitsPanel({
   const loose = unattributed(units, items)
   const avg = progressOf(items)
   const opened = rows.find((r) => r.u.id === openId) ?? null
+  // BOQ lines the units do not share out as they stand — and whether the split may still be made again
+  // (the write re-reads both, and the sheets, inside its transaction).
+  const gaps = splitGaps(units, items)
+  const canResplit = canManage && gaps > 0 && resplitBlocks(units, []).length === 0
 
   return (
     <div className="flex flex-col gap-4">
@@ -234,6 +267,18 @@ export function UnitsPanel({
         <Figure icon={Hand} label={t("units.ready")} value={t("units.of", { n: ready, total: units.length })} sub={done ? t("units.done_n", { count: done }) : t("units.done_none")} tone={ready ? "pos" : undefined} />
         <Figure icon={Clock} label={t("units.tight")} value={String(tight.length)} sub={t("units.tight_sub")} tone={tight.length ? "neg" : undefined} />
       </div>
+
+      {canResplit && (
+        <Callout tone="warn">
+          <span className="flex flex-wrap items-center gap-3">
+            <span className="min-w-0 flex-1 basis-64">{t("units.resplit_note", { count: gaps })}</span>
+            <Button size="sm" variant="outline" className="gap-1.5" disabled={busy !== null} onClick={resplit}>
+              {busy === "resplit" ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />}
+              {t("units.resplit")}
+            </Button>
+          </span>
+        </Callout>
+      )}
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {rows.map(({ u, f, blocks, tight: tt, state, ret }) => {
@@ -297,6 +342,7 @@ export function UnitsPanel({
               {!u.ho && tt && need !== null && (
                 <Callout tone="warn">{t("units.pace", { need: pmPct(need / 100), rate: pmPct(unitRate(f.progress, startedOn, today) / 100) })}</Callout>
               )}
+              {!u.ho && tt && need === null && <Callout tone="warn">{t("units.pace_passed", { date: pmDate(u.plan, locale) })}</Callout>}
               <footer className="mt-auto flex flex-wrap items-center gap-2">
                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setOpenId(u.id)}>
                   <Eye size={14} aria-hidden="true" />

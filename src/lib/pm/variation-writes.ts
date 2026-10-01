@@ -129,7 +129,7 @@ export const priceVariation = (firestore: Firestore, ctx: PmContext, projectId: 
 
 /** How much of its work is executed — moves until it is decided, and after approval. */
 export const recordVariationProgress = (firestore: Firestore, ctx: PmContext, projectId: string, seq: number, executedPct: number, instructionNo?: string | null) =>
-  step(firestore, ctx, projectId, seq, "variation.log", (vo, archived) => stepBlocks({ archived, status: vo.status, step: "progress", executedPct }), (vo) => ({
+  step(firestore, ctx, projectId, seq, "variation.log", (vo, archived) => stepBlocks({ archived, status: vo.status, step: "progress", executedPct, billedPct: vo.billedPct }), (vo) => ({
     executedPct,
     ...(instructionNo !== undefined ? { instructionNo: instructionNo?.trim() || vo.instructionNo || null } : {}),
   }))

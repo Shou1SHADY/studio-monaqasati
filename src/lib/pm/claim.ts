@@ -127,7 +127,9 @@ export function respondBlocks(input: { archived: boolean; status: ClaimStatus; k
   if (input.status !== "sub") out.push("not_submitted")
   if (!(CLAIM_RESPONSES as readonly unknown[]).includes(input.response)) return [...out, "no_choice"]
   if (input.response === "rej") return out
-  if (input.kind !== "cost" && !(input.days !== null && Number.isInteger(input.days) && input.days >= 0)) out.push("days_required")
+  // "Approved" with no day granted is not an approval (the prototype refuses unless got > 0):
+  // it would read approved while the programme never moved.
+  if (input.kind !== "cost" && !(input.days !== null && Number.isInteger(input.days) && input.days > 0)) out.push("days_required")
   if (input.kind !== "time" && !(input.amount !== null && Number.isFinite(input.amount) && input.amount >= 0)) out.push("bad_amount")
   return out
 }

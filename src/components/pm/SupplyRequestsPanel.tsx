@@ -32,9 +32,11 @@ import {
   approvalChecks,
   approveBlocks,
   daysBetween,
+  invWhyText,
   lineDays,
   lineGot,
   lineInTransit,
+  lineLink,
   lineNeed,
   lineOut,
   linePhase,
@@ -48,6 +50,7 @@ import {
   reqPct,
   reqState,
   type LinePhase,
+  type OrderFact,
   type PmMaterialRequest,
   type ReqLine,
   type ReqState,
@@ -57,7 +60,7 @@ import { lastPaid } from "@/lib/procurement/prices"
 import { cn } from "@/lib/utils"
 import { CheckLine } from "./ContractBits"
 import { PlantRequestsPanel } from "./PlantRequestsPanel"
-import { ChangeOnClientDialog, NewRequestDialog, qty, ReceiveDialog, RejectRequestDialog, StopLineDialog, useLocaleDir, useSupplyRun, type SupplyItem } from "./SupplyDialogs"
+import { ChangeOnClientDialog, NewRequestDialog, qty, ReceiveDialog, RejectRequestDialog, StopLineDialog, useLocaleDir, useProjectOrderFacts, useSupplyRun, type SupplyItem } from "./SupplyDialogs"
 
 const STATE_TONE: Record<ReqState, PillTone> = { wait: "warn", rej: "bad", go: "info", done: "ok", shut: "module", cx: "mute" }
 const CAP = 7
@@ -87,6 +90,7 @@ export function SupplyRequestsPanel({
 }) {
   const t = useTranslations("Portal.PM")
   const world = useSupplyWorld(projectId, orgId)
+  const orderOf = useProjectOrderFacts(projectId, orgId)
   const today = todayDay()
   const [all, setAll] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
@@ -204,6 +208,7 @@ export function SupplyRequestsPanel({
         projectId={projectId}
         world={world}
         items={items}
+        orderOf={orderOf}
         startOn={startOn}
         access={access}
         actor={actor}
@@ -272,12 +277,12 @@ function PhaseSegs({ r, l }: { r: PmMaterialRequest; l: ReqLine }) {
     )
   if (p === "part")
     return (
-      <Seg tone="w" icon={phaseIcon(r, p)}>
+      <Seg tone="w" icon={phaseIcon(r, l, p)}>
         {qty(l.qty)} · {t("sup.ph_s.part", { q: qty(got) })}
       </Seg>
     )
   return (
-    <Seg tone={p === "done" ? "ok" : p === "cx" ? "cx" : undefined} icon={phaseIcon(r, p)} title={t(`sup.ph.${p}`)}>
+    <Seg tone={p === "done" ? "ok" : p === "cx" ? "cx" : undefined} icon={phaseIcon(r, l, p)} title={t(`sup.ph.${p}`)}>
       {qty(l.qty)} · {t(`sup.ph_s.${p}`)}
     </Seg>
   )
@@ -305,7 +310,7 @@ function SplitSegs({ r, l }: { r: PmMaterialRequest; l: ReqLine }) {
   )
 }
 
-const phaseIcon = (r: PmMaterialRequest, p: LinePhase) => (p === "mfg" ? Factory : p === "ask" ? Link2 : r.poId ? ShoppingCart : ArrowLeftRight)
+const phaseIcon = (r: PmMaterialRequest, l: ReqLine, p: LinePhase) => (p === "mfg" ? Factory : p === "ask" ? Link2 : lineLink(r, l).poId ? ShoppingCart : ArrowLeftRight)
 
 function ChangeTag({ l }: { l: ReqLine }) {
   const t = useTranslations("Portal.PM")
@@ -405,6 +410,7 @@ function RequestDrawer({
   projectId,
   world,
   items,
+  orderOf,
   startOn,
   access,
   actor,
@@ -417,6 +423,8 @@ function RequestDrawer({
   projectId: string
   world: SupplyWorld
   items: SupplyItem[]
+  /** The order behind a line, as far as the project sees it (is it coming yet?). */
+  orderOf: (poId: string | null | undefined) => OrderFact
   startOn: string | null
   access: PmAccess
   actor: SupplyActor
@@ -482,6 +490,7 @@ function RequestDrawer({
                   index={i}
                   world={world}
                   items={items}
+                  order={orderOf(lineLink(r, l).poId)}
                   startOn={startOn}
                   approver={approver}
                   money={access.has("money")}
@@ -585,6 +594,7 @@ function DrawerLine({
   index,
   world,
   items,
+  order,
   startOn,
   approver,
   money,
@@ -603,6 +613,7 @@ function DrawerLine({
   index: number
   world: SupplyWorld
   items: SupplyItem[]
+  order: OrderFact
   startOn: string | null
   approver: boolean
   money: boolean
@@ -619,8 +630,13 @@ function DrawerLine({
   onOpenStore?: (storeId: string) => void
 }) {
   const t = useTranslations("Portal.PM")
+  // Inventory's reason is stored as a code: it is read here in the reader's
+  // language, from the messages Inventory's own desk writes it with.
+  const ti = useTranslations("Portal.InvPm")
   const { locale } = useLocaleDir()
   const today = todayDay()
+  const invWhy = invWhyText(l.inv, (code) => (ti.has(`rep.why.${code}`) ? ti(`rep.why.${code}`) : null)) ?? "—"
+  const by = lineLink(r, l)
   const item = l.itemId ? items.find((i) => i.id === l.itemId) : undefined
   const prop = r.status === "pending"
   const store = world.stores.find((s) => s.key === l.key)
@@ -670,8 +686,8 @@ function DrawerLine({
             ? l.inv.warehouseName
               ? t("sup.inv.issue_wh", { q: qty(l.inv.q ?? 0), unit: l.unit, warehouse: l.inv.warehouseName })
               : t("sup.inv.issue", { q: qty(l.inv.q ?? 0), unit: l.unit })
-            : t("sup.inv.none", { why: l.inv.why ?? "—" })}
-          {l.inv.k === "issue" && (l.inv.kept ?? 0) > 0 && ` · ${t("sup.inv.kept", { q: qty(l.inv.kept ?? 0), unit: l.unit, why: l.inv.why ?? "—" })}`}
+            : t("sup.inv.none", { why: invWhy })}
+          {l.inv.k === "issue" && (l.inv.kept ?? 0) > 0 && ` · ${t("sup.inv.kept", { q: qty(l.inv.kept ?? 0), unit: l.unit, why: invWhy })}`}
           {l.inv.note ? ` · ${l.inv.note}` : ""}
           {l.inv.byName ? ` · ${l.inv.byName}` : ""}
         </p>
@@ -756,7 +772,7 @@ function DrawerLine({
               {qty(l.qty)}
             </b>{" "}
             {prop ? t("sup.ph.prop") : t(`sup.ph.${phase}`)}
-            {r.poNumber && !prop ? ` · ${r.poNumber}` : ""}
+            {by.poNumber && !prop ? ` · ${by.poNumber}` : ""}
             {(l.receipts || []).length > 0 && ` · ${(l.receipts || []).map((x) => `${t("sup.grn", { no: x.grn })} ${qty(x.q)}${x.rej ? ` (${t("sup.rej_s", { q: qty(x.rej) })})` : ""}`).join(" · ")}`}
           </span>
           {prop ? (
@@ -765,7 +781,7 @@ function DrawerLine({
             <StatusPill tone="ok">{t("sup.ph_s.done")}</StatusPill>
           ) : phase === "cx" ? (
             <StatusPill tone="mute">{got ? t("sup.cx_rest", { q: qty(Math.max(0, l.qty - got)) }) : t("sup.ph_s.cx")}</StatusPill>
-          ) : receivable(r, l) && canRcv ? (
+          ) : receivable(r, l, order) && canRcv ? (
             <Button size="sm" className="h-7" onClick={() => onLine({ kind: "rcv", request: r, index })}>
               {t("sup.receive")}
             </Button>
@@ -779,7 +795,7 @@ function DrawerLine({
           <div className="rounded-md border bg-muted/30 p-2 text-xs">
             <p>
               <b>{t(`sup.cl.${l.cl.t}`)}</b> · {pmDate(l.cl.on, locale)} · {l.cl.by === "sys" ? t("sup.cl.auto") : l.cl.byName || "—"}
-              {l.cl.why && l.cl.why !== "chg" ? ` · ${l.cl.why === "oth" ? l.cl.whyNote || "" : t(`sup.close_why.${l.cl.why}`)}` : l.cl.why === "chg" ? ` · ${t("sup.chg.rejected")}` : ""}
+              {l.cl.why === "chg" ? ` · ${t("sup.chg.rejected")}` : l.cl.why === "rcv" ? ` · ${t("sup.rcv.short")}` : l.cl.why ? ` · ${l.cl.why === "oth" ? l.cl.whyNote || "" : t(`sup.close_why.${l.cl.why}`)}` : ""}
             </p>
             <p className="mt-1 flex flex-wrap gap-3 text-muted-foreground">
               <span>

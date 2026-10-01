@@ -24,8 +24,16 @@ export interface PmEvent {
   at: string
 }
 
-/** Firestore ids cannot hold "/", and project numbers do ("PJ-2026/014"). */
+/** The key made safe as an id: Firestore ids cannot hold "/", and project
+ * numbers do ("PJ-2026/014"). This is the journal's SOURCE id for the event —
+ * the journal's own document id already carries the organisation in front. */
 export const eventDocId = (key: string) => key.replace(/\//g, "_")
+
+/** The outbox document id: the ORGANISATION in front of the key. Project
+ * numbers are drawn per organisation, so two companies both own PJ-2026/001;
+ * under the key alone the second company's event fell on the first's document
+ * — an update, which the outbox refuses, and with it the whole transaction. */
+export const pmEventDocId = (organizationId: string, key: string) => `${organizationId}__${eventDocId(key)}`
 
 /** The advance-payment term, sent when the project is born — only if there is
  * an advance and someone pays (WF-01 step 4). Never a second advance event: a

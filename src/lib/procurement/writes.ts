@@ -15,6 +15,7 @@ import { emitProcEvent, procLinks, sarText } from "./events"
 import { approvalGateBlocks, gateItemIds, noticeReachesReceiver } from "./policy-enforce"
 import { poActs, type BoqGateItem, type PurchaseOrderX } from "./po-extras"
 import { drawProcDocNumber, drawProcDocNumbers } from "./numbering"
+import { awardLinkPatch, rfqProjectRequests, type AwardedOrder, type AwardedRfq, type ProjectRequestDoc, type ServedRequest } from "./needs"
 import { rfqLogEntry, type RfqLogEntry } from "./rfq-detail"
 import { PRICE_HISTORY, historyRowsForApproval, materialKey } from "./prices"
 import { pricedProducts, quotedRatesReconcile } from "./offer-pricing"
@@ -100,6 +101,7 @@ export type ProcWriteErrorCode =
   // A decision on a project need (need-decision-writes.ts).
   | "need_decided"
   | "need_not_waiting"
+  | "need_awaits_pm"
   // Regularising a receipt with no order (receipt-writes.ts).
   | "not_no_po"
   | "no_matching_order"
@@ -356,10 +358,47 @@ export function draftPurchaseOrder(actor: ProcActor, input: CreateFromAwardInput
   return { ...base, approverKind: requiredApprover(routed, policies, actor.isOwner || actor.canApprove) }
 }
 
+type ServedDoc = { served: ServedRequest; ref: DocumentReference; request: ProjectRequestDoc }
+
+/** The project requests the RFQ answers, read in the award's transaction — before
+ * its first write. A request is not told when its project is archived (nothing
+ * on a closed project changes, and nothing more is received there) or cannot be
+ * read (the project is gone): the award itself must not fail for it. */
+async function readServedRequests(tx: Transaction, firestore: Firestore, rfq: AwardedRfq): Promise<ServedDoc[]> {
+  const out: ServedDoc[] = []
+  const open = new Map<string, boolean>()
+  for (const served of rfqProjectRequests(rfq)) {
+    const ref = doc(firestore, "projects", served.projectId, "purchaseRequests", served.purchaseRequestId) as DocumentReference
+    try {
+      if (!open.has(served.projectId)) {
+        const project = await tx.get(doc(firestore, "projects", served.projectId))
+        open.set(served.projectId, project.exists() && (project.data() as { pm?: { lifecycle?: string | null } | null }).pm?.lifecycle !== "closed")
+      }
+      if (!open.get(served.projectId)) continue
+      const snap = await tx.get(ref)
+      if (snap.exists()) out.push({ served, ref, request: { ...(snap.data() as Omit<ProjectRequestDoc, "id">), id: snap.id } })
+    } catch (err) {
+      if ((err as { code?: string })?.code !== "permission-denied") throw err
+    }
+  }
+  return out
+}
+
+/** Each request the RFQ answered is told which order it became, in the award's
+ * own transaction: the project reads `poId` on its request to know an order is
+ * out and the material can be received (`awardLinkPatch`). */
+function linkServedRequests(tx: Transaction, rfqId: string, rfq: AwardedRfq, served: ServedDoc[], orders: AwardedOrder[]): void {
+  for (const s of served) {
+    const patch = awardLinkPatch(rfqId, rfq, s.served, s.request, orders)
+    if (patch) tx.update(s.ref, { ...patch, updatedAt: serverTimestamp() })
+  }
+}
+
 /**
  * The award's second half: a purchase order laid over the accepted offer. The
  * offer stays the award (its status, the RFQ's "Awarded" and the supplier's
- * bell are untouched); the order gets the number, the routing and the log.
+ * bell are untouched); the order gets the number, the routing and the log, and
+ * the project requests the RFQ was raised for get the order.
  * Idempotent: an offer that already names its order returns it.
  */
 export async function createPurchaseOrderFromAward(
@@ -374,16 +413,22 @@ export async function createPurchaseOrderFromAward(
   const draft = draftPurchaseOrder(actor, input, now)
   const at = now.toISOString()
   const offerRef = doc(firestore, "offers", input.offer.id)
+  const rfqRef = doc(firestore, "rfqs", input.rfq.id)
   const poRef = doc(collection(firestore, PURCHASE_ORDERS))
   const result = await runTransaction(firestore, async (tx) => {
     const offerSnap = await tx.get(offerRef)
     if (!offerSnap.exists()) throw new ProcWriteError("offer_missing")
     const existing = offerSnap.data().poId as string | undefined
     if (existing) return { id: existing, docNumber: (offerSnap.data().poNumber as string) || "", created: false }
+    // The needs the RFQ answers are on the RFQ itself (the screen hands over only part of it).
+    const rfqSnap = await tx.get(rfqRef)
+    const linked: AwardedRfq = rfqSnap.exists() ? (rfqSnap.data() as AwardedRfq) : input.rfq
+    const served = await readServedRequests(tx, firestore, linked)
     const docNumber = await drawProcDocNumber(firestore, tx, draft.organizationId, "PO", now.getUTCFullYear())
     const po = { ...draft, docNumber, log: [entry(actor, "created", at, { params: { basis: draft.basis, number: docNumber } })], updatedAt: serverTimestamp() }
     tx.set(poRef, po)
     tx.update(offerRef, { poId: poRef.id, poNumber: docNumber, updatedAt: serverTimestamp() })
+    linkServedRequests(tx, input.rfq.id, linked, served, [{ id: poRef.id, docNumber, products: null }])
     return { id: poRef.id, docNumber, created: true }
   })
   if (result.created) {
@@ -540,6 +585,8 @@ export async function awardRfq(
       const o = snap.data() as { status?: string; poId?: string }
       if (o.poId || o.status === "مرفوض" || o.status === "مقبول") throw new ProcWriteError("offer_taken")
     }
+    const linked = rfqSnap.data() as AwardedRfq
+    const served = await readServedRequests(tx, firestore, linked)
     const numbers = await drawProcDocNumbers(firestore, tx, drafts[0].organizationId, "PO", drafts.length, now.getUTCFullYear())
     drafts.forEach((draft, k) => {
       const g = input.groups[k]
@@ -570,6 +617,13 @@ export async function awardRfq(
       log: [...(rfqData.log || []), logEntry],
       updatedAt: serverTimestamp(),
     })
+    linkServedRequests(
+      tx,
+      input.rfq.id,
+      linked,
+      served,
+      numbers.map((docNumber, k) => ({ id: poRefs[k].id, docNumber, products: input.groups[k].lines.map((l) => l.rfqProductIndex) }))
+    )
     return numbers.map((docNumber, k) => ({ id: poRefs[k].id, docNumber, offerId: input.groups[k].offer.id }))
   })
   await Promise.all(

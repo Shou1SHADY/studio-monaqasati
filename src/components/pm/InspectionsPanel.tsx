@@ -2,8 +2,10 @@
 
 // Execution › Inspections on a PM 1.0 project (WF-15), as the prototype's
 // execWIR: one list, newest first — what and where, the item, who raised it
-// and who inspects; an open request shows its due day and how long it has
-// been overdue, a decided one its result day and who recorded it; the
+// (and the day it was raised — the day the request was created, never the day
+// it is booked for) and who inspects; an open request shows its due day and
+// how long it has been overdue, a decided one the day it was booked for, its
+// result day and who recorded it; the
 // request's documents and the signed form sit beside it. A failed one is
 // re-inspected as the next attempt. The footer names the items that still need
 // a passed inspection before their measurement can be approved. The items that
@@ -28,7 +30,7 @@ import type { PmAccess } from "@/hooks/usePmAccess"
 import { PmAccessError } from "@/lib/pm/access"
 import { pmDate, todayDay } from "@/lib/pm/format"
 import { currentAttempt, isKnownStatus, isOpenOrFailed, itemsNeedingPass, overdueDays, PM_INSPECTIONS, resultDay, wirNo, type PmInspection, type WirStatus } from "@/lib/pm/inspection"
-import { reinspect, setInspectionRequired, type InspectionActor } from "@/lib/pm/inspection-writes"
+import { PmInspectionError, reinspect, setInspectionRequired, type InspectionActor } from "@/lib/pm/inspection-writes"
 import { cn } from "@/lib/utils"
 import { AttachmentTag } from "./PmAttachments"
 import { RecordResultDialog } from "./RecordResultDialog"
@@ -38,6 +40,25 @@ import { usePmUnits } from "@/hooks/usePmUnits"
 
 const TONE: Record<WirStatus, PillTone> = { open: "warn", pass: "ok", cond: "info", fail: "bad" }
 const TILE: Record<WirStatus, string> = { open: "bg-warning/10 text-warning", pass: "bg-success/10 text-success", cond: "bg-success/10 text-success", fail: "bg-destructive/10 text-destructive" }
+
+/** The day a request was raised: the day it was created, as the reader's own
+ * day (like `todayDay`). The stamp is the server's — a Timestamp, or its text.
+ * While it is still pending there is no day to show; the booked day is never
+ * shown in its place. */
+export function raisedDay(w: { createdAt?: unknown }): string | null {
+  const v = w.createdAt
+  const d = typeof v === "string" ? new Date(v) : v && typeof (v as { toDate?: unknown }).toDate === "function" ? (v as { toDate: () => Date }).toDate() : null
+  if (!d || Number.isNaN(d.getTime())) return null
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+}
+
+/** The message for a refused write: the guard's refusal, else the write's own
+ * reason (`wir.block.*` — not failed, no day, archived), else "could not save". */
+export function wirRefusalKey(err: unknown): string {
+  if (err instanceof PmAccessError) return `refused.${err.code}`
+  if (err instanceof PmInspectionError && err.blocks[0]) return `wir.block.${err.blocks[0]}`
+  return "error.save"
+}
 
 export function InspectionsPanel({
   projectId,
@@ -97,7 +118,7 @@ export function InspectionsPanel({
       onItemsChanged?.()
     } catch (err) {
       console.error(err)
-      toast({ title: t(err instanceof PmAccessError ? `refused.${err.code}` : "error.save"), variant: "destructive" })
+      toast({ title: t(wirRefusalKey(err)), variant: "destructive" })
     } finally {
       setBusy(false)
     }
@@ -162,6 +183,7 @@ export function InspectionsPanel({
               const st: WirStatus = isKnownStatus(w.status) ? w.status : "open"
               const item = byId.get(w.itemId)
               const late = a ? overdueDays(a, today) : 0
+              const raised = raisedDay(w as { createdAt?: unknown })
               const Icon = st === "fail" ? X : st === "open" ? Clock : Check
               return (
                 <li key={w.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
@@ -175,7 +197,7 @@ export function InspectionsPanel({
                     </p>
                     <p className="mt-0.5 text-xs text-muted-foreground" dir="auto">
                       <span dir="ltr">{item?.code ?? w.code ?? "?"}</span>
-                      {item?.description ? ` · ${item.description.slice(0, 40)}` : ""} · {t("wir.raised", { who: w.attempts[0]?.byName || "—", date: pmDate(w.attempts[0]?.on, locale) })} · {partyName(w)}
+                      {item?.description ? ` · ${item.description.slice(0, 40)}` : ""} · {t("wir.raised", { who: w.attempts[0]?.byName || "—", date: raised ? pmDate(raised, locale) : "" })} · {partyName(w)}
                     </p>
                     {a &&
                       (st === "open" ? (
@@ -185,7 +207,7 @@ export function InspectionsPanel({
                         </p>
                       ) : (
                         <p className="mt-0.5 text-xs text-muted-foreground">
-                          {t("wir.result_on", { date: pmDate(resultDay(a), locale) })}
+                          {t("wir.on")} {pmDate(a.on, locale)} · {t("wir.result_on", { date: pmDate(resultDay(a), locale) })}
                           {a.rByName ? ` · ${a.rByName}` : ""}
                         </p>
                       ))}

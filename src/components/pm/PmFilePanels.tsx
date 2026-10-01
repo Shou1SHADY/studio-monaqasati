@@ -240,11 +240,14 @@ export function PmTermsGlance({
   const firestore = useFirestore()
   const { toast } = useToast()
   const orgId = project.organizationId ?? ""
-  const addQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_ADDENDA) : null), [firestore, projectId])
+  // The addenda are money's or approve's to read (the rules): without the
+  // check a site engineer opening the file tab drew a refused read each time.
+  const seesTerms = access.has("money")
+  const addQ = useMemoFirebase(() => (firestore && seesTerms ? collection(firestore, "projects", projectId, PM_ADDENDA) : null), [firestore, projectId, seesTerms])
   const { data: addenda } = useCollection(addQ)
-  const voQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_VARIATIONS) : null), [firestore, projectId])
+  const voQ = useMemoFirebase(() => (firestore && seesTerms ? collection(firestore, "projects", projectId, PM_VARIATIONS) : null), [firestore, projectId, seesTerms])
   const { data: vos } = useCollection(voQ)
-  const setQ = useMemoFirebase(() => (firestore && orgId ? doc(firestore, PM_SETTINGS, orgId) : null), [firestore, orgId])
+  const setQ = useMemoFirebase(() => (firestore && orgId && seesTerms ? doc(firestore, PM_SETTINGS, orgId) : null), [firestore, orgId, seesTerms])
   const { data: settings } = useDoc(setQ)
   const [busy, setBusy] = useState(false)
   const plan = usePmPlan(projectId, project, items)
@@ -343,7 +346,7 @@ export function PmStartPanel({ projectId, project, boqItems, access }: { project
     if (!firestore || blocks.length) return
     setBusy(true)
     try {
-      await startProject(firestore, access.ctx, projectId, boqItems)
+      await startProject(firestore, access.ctx, projectId, boqItems, access.uid ? { uid: access.uid } : undefined)
       toast({ title: t("terms.started") })
     } catch (err) {
       console.error(err)

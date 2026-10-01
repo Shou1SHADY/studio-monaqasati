@@ -13,13 +13,13 @@
 import type { Acceptances } from "./acceptance"
 import type { CertificateStatus } from "./certificate"
 import { isLetterOpen } from "./correspondence"
-import { isOpenNcr, type NcrStatus } from "./ncr"
+import { isOpenNcr, ncrCost, type NcrStatus } from "./ncr"
 import { isOpenPunch, type PunchStatus } from "./punch"
 import { storeBalance, storeLineOf, type PmStoreLine, type StoreItem } from "./store"
 import { awaitingSubCertificates, subSummaries, type PmSubcontract, type SubCertStatus } from "./subcontract"
 import { pricedPending, type VoStatus } from "./variation"
 
-export type CloseRowKey = "punch" | "ncr" | "store" | "prov" | "final" | "unpriced" | "unbilled" | "in_progress" | "overdue" | "retention" | "vo_pending" | "subs" | "corr"
+export type CloseRowKey = "punch" | "ncr" | "store" | "plant" | "prov" | "final" | "unpriced" | "unbilled" | "in_progress" | "overdue" | "retention" | "vo_pending" | "subs" | "corr"
 
 export interface CloseRow {
   key: CloseRowKey
@@ -35,6 +35,7 @@ export const CLOSE_ROW_TAB: Record<CloseRowKey, string> = {
   punch: "pmQa",
   ncr: "pmQa",
   store: "pmStore",
+  plant: "pmSite",
   prov: "info",
   final: "info",
   unpriced: "boq",
@@ -63,6 +64,9 @@ export interface CloseInput {
   retentionReleased: boolean
   /** Lines with stock left in the project store; null = the store is not in play. */
   storeLines?: number | null
+  /** Plant still on site — not handed back. An archived project accepts no change, so a
+   * unit left on it could never be handed back; null = no plant was ever received. */
+  plantOnSite?: number | null
   /** Subcontractor dues; null = no subcontracts and the section is off. */
   subs?: { due: number; pending: number } | null
   /** Formal letters — one still open (sent or received, no reply) blocks. */
@@ -83,6 +87,7 @@ export function closeoutRows(input: CloseInput): CloseRow[] {
     { key: "ncr", ok: openNcr === 0, n: openNcr },
   ]
   if (input.storeLines != null) rows.push({ key: "store", ok: input.storeLines === 0, n: input.storeLines })
+  if (input.plantOnSite != null) rows.push({ key: "plant", ok: input.plantOnSite === 0, n: input.plantOnSite })
   // Executed but unpriced: closing means giving it up — decided, not slipped past
   // (CON-04). Listed only while the BOQ has an unpriced item (prototype bqUnpriced).
   if (input.items.some((i) => !(i.rate > 0))) rows.push({ key: "unpriced", ok: unpricedExecuted === 0, n: unpricedExecuted })
@@ -137,14 +142,15 @@ export interface Lessons {
 }
 
 export function projectLessons(input: {
-  ncrs: Array<{ cost?: number | null }>
+  /** Each report's cost as it stands: actual at closing, else the plan's, else the first estimate (ncr.ts `ncrCost`). */
+  ncrs: Array<Parameters<typeof ncrCost>[0]>
   obstacles: Array<{ openOn: string; closeOn?: string | null }>
   seats: number
 }): Lessons {
   const closed = input.obstacles.filter((o) => o.closeOn)
   const spans = closed.map((o) => Math.max(0, days(o.openOn, o.closeOn as string)))
   return {
-    rework: r2(input.ncrs.reduce((a, n) => a + (Number(n.cost) || 0), 0)),
+    rework: r2(input.ncrs.reduce((a, n) => a + ncrCost(n), 0)),
     ncrs: input.ncrs.length,
     obstaclesClosed: closed.length,
     avgResponseDays: spans.length ? Math.round(spans.reduce((a, d) => a + d, 0) / spans.length) : null,
@@ -228,16 +234,23 @@ export function archiveSnapshot(input: {
   advanceRecovered: number
   durationDays: number | null
   startedAt: string | null
+  /** The provisional handover: where the works' duration ends (the defects period after it is not delay). */
+  provisionalOn?: string | null
   finalOn: string | null
   today: string
   cost?: ClosingCost | null
 }): ArchiveSnapshot {
-  // Earned = approved executed × rate (§8); unpriced items earn nothing.
-  const earned = r2(input.items.reduce((a, i) => a + (i.rate > 0 ? i.executed * i.rate : 0), 0))
-  const certified = r2(input.certificates.filter((c) => c.status === "appr" || c.status === "part" || c.status === "paid").reduce((a, c) => a + c.gross, 0))
-  const actualDays = input.startedAt ? days(input.startedAt, input.finalOn ?? input.today) : null
-  const contractDays = input.durationDays ?? null
   const c = input.cost
+  // Earned = approved executed × rate (§8), unpriced items earning nothing — and
+  // the variations earned with them: the cost section's figure when it is there,
+  // so "earned", the margin and what was certified are one and the same base.
+  const earned = c ? r2(c.earned) : r2(input.items.reduce((a, i) => a + (i.rate > 0 ? i.executed * i.rate : 0), 0))
+  const certified = r2(input.certificates.filter((c) => c.status === "appr" || c.status === "part" || c.status === "paid").reduce((a, c) => a + c.gross, 0))
+  // Start → the provisional handover (the prototype's archiveNow). The final
+  // acceptance cannot come before the defects period ends, so measuring to it
+  // froze every project a year "late".
+  const actualDays = input.startedAt ? days(input.startedAt, input.provisionalOn ?? input.finalOn ?? input.today) : null
+  const contractDays = input.durationDays ?? null
   const margin = c ? r2(c.earned - c.actual) : null
   return {
     contractValue: input.contractValue,

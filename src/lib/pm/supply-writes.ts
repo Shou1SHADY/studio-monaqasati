@@ -13,10 +13,11 @@ import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestam
 import { assertPm, PmAccessError, pmCan, type PmContext } from "./access"
 import { cleanAttachments, type PmAttachment } from "./attachments"
 import { readSelfApproval } from "./info-writes"
-import { eventDocId, PM_EVENTS } from "./events"
+import { PM_EVENTS, pmEventDocId } from "./events"
 import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
 import { lastPaid, PRICE_HISTORY, type PriceHistoryEntry } from "../procurement/prices"
+import { PURCHASE_ORDERS } from "../procurement/types"
 import { pmApprovalLimit } from "./subcontract"
 import { PM_VARIATIONS, voNo } from "./variation"
 import {
@@ -47,7 +48,7 @@ import {
   approveBlocks,
   buildLines,
   changeBlocks,
-  lineOut,
+  lineLink,
   pettyBlocks,
   pettyNo,
   plantBlocks,
@@ -60,7 +61,7 @@ import {
   pendingSamples,
   procurementItems,
   PURCHASE_REQUESTS,
-  receivable,
+  receivablePortions,
   receiveBlocks,
   receivedLine,
   reqNo,
@@ -71,10 +72,12 @@ import {
   stoppedLine,
   type CloseWhy,
   type LineDraft,
+  type OrderFact,
   type PlantCategory,
   type PlantReplyKind,
   type PlantWhy,
   type PmPlantRequest,
+  type PortionKind,
   type ReqLine,
 } from "./supply"
 
@@ -128,6 +131,20 @@ async function readRequest(tx: Transaction, firestore: Firestore, projectId: str
   const snap = await tx.get(ref)
   if (!snap.exists()) throw new PmSupplyError("missing")
   return { ref, request: requestOf({ id: requestId, ...(snap.data() as Record<string, unknown>) }) }
+}
+
+/** The status of the order behind a line, read in the act's own transaction. An
+ * award older than purchase orders left no order document (the offer was the
+ * order), and the rules answer a read of a missing one with a refusal: either
+ * way there is nothing to judge by, and the line is taken as coming. */
+async function readOrderFact(tx: Transaction, firestore: Firestore, poId: string): Promise<OrderFact> {
+  try {
+    const snap = await tx.get(doc(firestore, PURCHASE_ORDERS, poId))
+    return snap.exists() ? { status: (snap.data() as { status?: string | null }).status ?? null } : null
+  } catch (err) {
+    if ((err as { code?: string })?.code !== "permission-denied") throw err
+    return undefined
+  }
 }
 
 async function readStore(tx: Transaction, firestore: Firestore, projectId: string, storeId: string) {
@@ -325,6 +342,9 @@ export async function decideChange(
     if (decision.st === "us" && estimate !== null && estimate > pmApprovalLimit(fresh.ceiling)) refuse("owner_only", "change.decide")
     const day = todayDay()
     const stamp = { by: actor.uid, byName: actor.name, on: day }
+    // A change accepted once the request is with an RFQ, an order or the workshop is
+    // a new line to buy (the prototype's planLate): what is out was raised without it.
+    const late = line.chg?.st === "wait" && request.status === "approved" && Boolean(request.rfqId || request.poId || request.mfgRequestId) ? { late: { on: day } } : {}
     const cache = new Map<string, { ref: ReturnType<typeof doc>; line: PmStoreLine | null }>()
     const item = line.itemId ? await readItem(tx, firestore, projectId, line.itemId) : null
     if (line.itemId) cache.set(storeIdOf(line.key), await readStore(tx, firestore, projectId, storeIdOf(line.key)))
@@ -332,7 +352,7 @@ export async function decideChange(
     if (decision.st === "no") {
       next = { ...line, chg: { ...line.chg, ...stamp, st: "no" }, cl: request.status === "approved" ? { t: "cancel", on: day, by: actor.uid, byName: actor.name, why: "chg" } : line.cl ?? null }
     } else if (decision.st === "us") {
-      next = { ...line, chg: { ...line.chg, ...stamp, st: "us" } }
+      next = { ...line, chg: { ...line.chg, ...stamp, st: "us" }, ...late }
       await addItemMaterial(tx, firestore, projectId, line, { r: null, w: 5, src: "chg", ref: request.seq ? reqNo(request.seq) : null }, item?.executed ?? 0, cache)
     } else {
       assertPm(fresh, "variation.log")
@@ -365,11 +385,13 @@ export async function decideChange(
         tx.update(pref, { pm: { ...pm, voCount: seq }, updatedAt: serverTimestamp() })
       }
       voSeq = seq
-      next = { ...line, chg: { ...line.chg, ...stamp, st: "own", voSeq: seq, ref: decision.ref?.trim() || null } }
+      next = { ...line, chg: { ...line.chg, ...stamp, st: "own", voSeq: seq, ref: decision.ref?.trim() || null }, ...late }
       await addItemMaterial(tx, firestore, projectId, line, { r: null, w: 5, src: "chg", ref: request.seq ? reqNo(request.seq) : null, voSeq: seq }, item?.executed ?? 0, cache)
     }
     const lines = request.lines.map((l, i) => (i === lineIndex ? next : l))
-    tx.update(ref, { lines, items: procurementItems({ lines }, pendingKept(request)), updatedAt: serverTimestamp() })
+    // The accepted line joins what Procurement reads with its item's sample state as it stands.
+    const pending = new Set([...pendingKept(request), ...pendingSamples(item ? [item] : [])])
+    tx.update(ref, { lines, items: procurementItems({ lines }, pending), updatedAt: serverTimestamp() })
     flushStores(tx, cache, project.organizationId ?? null)
   })
   return { voSeq }
@@ -393,13 +415,15 @@ export async function stopLine(firestore: Firestore, ctx: PmContext, projectId: 
     // P-19: with an order out, Procurement is asked to cancel the rest with the supplier —
     // the order is read (and flagged) before this transaction writes anything.
     // A legacy award has no order document — then there is nothing to flag.
-    if (request.poId) {
-      await requestPmStopInTx(tx, firestore, request.poId, { name: line.name, unit: line.unit, boqItemId: line.itemId }, {
+    const poId = lineLink(request, line).poId
+    if (poId) {
+      await requestPmStopInTx(tx, firestore, poId, { name: line.name, unit: line.unit, boqItemId: line.itemId }, {
         reason: whyNote?.trim() || why || "stop",
         byName: actor.name || "",
         at: new Date().toISOString(),
         projectId,
         requestId,
+        line: lineIndex,
       }).catch((err: unknown) => {
         if ((err as { code?: string })?.code !== "order_missing") throw err
       })
@@ -418,11 +442,17 @@ export interface ReceiveInput {
   files?: PmAttachment[] | null
   /** The project keeps a store (section `store`); without one a receipt is expensed to site overheads. */
   withStore?: boolean
+  /** Which portion the delivery note is for — what a main store issued, or what
+   * was bought. Needed only while both are on their way. */
+  portion?: PortionKind | null
 }
 
 /** The project-side receipt: the site confirms what arrived from the delivery
  * note. The accepted quantity enters the project store (a line on an item); the
- * receipt is numbered by the project and stays on the request for Procurement. */
+ * receipt is numbered by the project and stays on the request for Procurement.
+ * It is recorded against ONE portion of the line and never above what that
+ * portion still expects: what the store issued is not received as the supplier's,
+ * and an order still awaiting approval (or cancelled) brings nothing. */
 export async function receiveOnProject(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, requestId: string, lineIndex: number, input: ReceiveInput): Promise<string> {
   let grn = ""
   await runTransaction(firestore, async (tx) => {
@@ -432,20 +462,26 @@ export async function receiveOnProject(firestore: Firestore, ctx: PmContext, pro
     const { ref, request } = await readRequest(tx, firestore, projectId, requestId)
     const line = request.lines[lineIndex]
     if (!line) throw new PmSupplyError("missing")
-    blocked(receiveBlocks({ archived: fresh.archived, receivable: receivable(request, line), remaining: lineOut(line), acc: input.acc, rej: input.rej }))
+    const by = lineLink(request, line)
+    const open = receivablePortions(request, line, by.poId ? await readOrderFact(tx, firestore, by.poId) : undefined)
+    // With the store's issue and the supplier's delivery both on their way, the receiver says which this note is.
+    if (!input.portion && open.length > 1 && !fresh.archived) blocked(["no_source"])
+    const portion = (input.portion ? open.find((p) => p.k === input.portion) : open[0]) ?? null
+    blocked(receiveBlocks({ archived: fresh.archived, receivable: Boolean(portion), remaining: portion?.left ?? 0, acc: input.acc, rej: input.rej }))
+    if (!portion) throw new PmSupplyError("blocked", ["not_receivable"])
     const seq = (pm.grnCount ?? 0) + 1
     grn = reqNo(seq)
     const day = todayDay()
     const acc = r3(Math.max(0, input.acc))
     const rej = r3(Math.max(0, input.rej))
     const files = cleanAttachments(input.files)
-    const next = receivedLine(line, { grn, q: acc, rej, on: day, by: actor.uid, byName: actor.name, dn: input.dn?.trim() || null, note: input.note?.trim() || null, short: input.short, ...(files.length ? { files } : {}) }, day, actor.uid)
+    const next = receivedLine(line, { grn, q: acc, rej, on: day, by: actor.uid, byName: actor.name, dn: input.dn?.trim() || null, note: input.note?.trim() || null, short: input.short, src: portion.k, ...(files.length ? { files } : {}) }, day, actor.uid)
     let storeWrite: { ref: ReturnType<typeof doc>; line: PmStoreLine } | null = null
     if (acc > 0 && line.itemId && input.withStore !== false) {
       const id = storeIdOf(line.key)
       const got = await readStore(tx, firestore, projectId, id)
       const base: PmStoreLine = got.line ?? { id, key: line.key, name: line.name, unit: line.unit, rates: {}, moves: [] }
-      const move: StoreMove = { t: "rc", q: acc, on: day, by: actor.uid, byName: actor.name, itemId: line.itemId, code: line.code, reqId: requestId, reqSeq: request.seq ?? null, grn, dn: input.dn?.trim() || null, rej: rej || null, source: request.poNumber || null, ...(files.length ? { files } : {}) }
+      const move: StoreMove = { t: "rc", q: acc, on: day, by: actor.uid, byName: actor.name, itemId: line.itemId, code: line.code, reqId: requestId, reqSeq: request.seq ?? null, grn, dn: input.dn?.trim() || null, rej: rej || null, source: (portion.k === "stk" ? line.inv?.warehouseName : by.poNumber) || null, ...(files.length ? { files } : {}) }
       storeWrite = { ref: got.ref, line: { ...base, moves: [...base.moves, move] } }
     }
     const lines = request.lines.map((l, i) => (i === lineIndex ? next : l))
@@ -493,7 +529,7 @@ export interface MoveInput {
  * Inventory (prj:RET), supplier returns to Procurement (prj:SRET), a cash
  * inbound with no order to Procurement (prj:NOPO). Create-only outbox. */
 function outbox(tx: Transaction, firestore: Firestore, e: { key: string; kind: string; project: ProjectData; projectId: string; projectNo: string; amount: number; params: Record<string, string | number>; by: string }) {
-  tx.set(doc(firestore, PM_EVENTS, eventDocId(e.key)), {
+  tx.set(doc(firestore, PM_EVENTS, pmEventDocId(e.project.organizationId ?? "", e.key)), {
     key: e.key,
     kind: e.kind,
     organizationId: e.project.organizationId ?? "",
@@ -585,7 +621,7 @@ export async function decideStoreMove(firestore: Firestore, ctx: PmContext, proj
     if (decision === "ok" && move.t === "loss") {
       const projectNo = pm.no ?? projectId
       const key = `prj:LOSS:${projectNo}:${storeId}:${index}`
-      tx.set(doc(firestore, PM_EVENTS, eventDocId(key)), {
+      tx.set(doc(firestore, PM_EVENTS, pmEventDocId(project.organizationId ?? "", key)), {
         key,
         kind: "LOSS",
         organizationId: project.organizationId ?? "",
@@ -620,7 +656,7 @@ export async function confirmMoveIn(firestore: Firestore, ctx: PmContext, projec
     }
     const projectNo = pm.no ?? projectId
     const key = `prj:XFER:${projectNo}:${storeId}:${index}`
-    tx.set(doc(firestore, PM_EVENTS, eventDocId(key)), {
+    tx.set(doc(firestore, PM_EVENTS, pmEventDocId(project.organizationId ?? "", key)), {
       key,
       kind: "XFER",
       organizationId: project.organizationId ?? "",
@@ -709,7 +745,7 @@ export async function logDirectPurchase(firestore: Firestore, ctx: PmContext, pr
     })
     const projectNo = pm.no ?? projectId
     const key = `prj:CASH:${projectNo}:${pettyNo(seq)}`
-    tx.set(doc(firestore, PM_EVENTS, eventDocId(key)), {
+    tx.set(doc(firestore, PM_EVENTS, pmEventDocId(project.organizationId ?? "", key)), {
       key,
       kind: "CASH",
       organizationId: project.organizationId ?? "",
@@ -841,7 +877,7 @@ export async function hirePlantInstead(firestore: Firestore, ctx: PmContext, pro
     tx.update(ref, { rep: { k: "hire", unit: null, free: null, text: r.rep?.k ?? null, on: day, by: actor.uid, byName: actor.name }, updatedAt: serverTimestamp() })
     const projectNo = pm.no ?? projectId
     const key = `prj:EQH:${projectNo}:${plantNo(seq)}`
-    tx.set(doc(firestore, PM_EVENTS, eventDocId(key)), {
+    tx.set(doc(firestore, PM_EVENTS, pmEventDocId(project.organizationId ?? "", key)), {
       key,
       kind: "EQH",
       organizationId: project.organizationId ?? "",

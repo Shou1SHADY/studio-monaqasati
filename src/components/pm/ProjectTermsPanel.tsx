@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { doc } from "firebase/firestore"
+import { collection, query, where } from "firebase/firestore"
 import { FileSignature, Loader2, Play, ScrollText, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
@@ -20,12 +20,12 @@ import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
-import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { PmAccessError } from "@/lib/pm/access"
 import type { AddendumActor } from "@/lib/pm/addendum-writes"
-import { eventDocId, PM_EVENTS } from "@/lib/pm/events"
+import { PM_EVENTS } from "@/lib/pm/events"
 import { displayDocNumber } from "@/lib/sales-numbering"
 import { pmDate } from "@/lib/pm/format"
 import { lifecycleOf, plannedEnd, startBlocks, type PmLifecycle } from "@/lib/pm/lifecycle"
@@ -48,6 +48,8 @@ export interface PmProjectBlock {
   lifecycle?: string
   terms?: ContractTerms
   original?: ContractTerms | null
+  /** The contract in force after the last signed addendum (terms.ts `termsNow`). */
+  inForce?: ContractTerms | null
   startOn?: string | null
   durationDays?: number
   startedAt?: string | null
@@ -94,10 +96,15 @@ export function ProjectTermsPanel({
 
   useEffect(() => setDraft(pm.terms ?? defaultTerms()), [pm.terms])
 
-  // Finance holds the advance once prj:ADV was sent at handover.
-  const advRef = useMemoFirebase(() => (firestore && pm.no ? doc(firestore, PM_EVENTS, eventDocId(`prj:ADV:${pm.no}`)) : null), [firestore, pm.no])
-  const { data: advEvent } = useDoc(advRef)
-  const financeAdvance = advEvent ? stored.advance : null
+  // Finance holds the advance once prj:ADV was sent at handover — found by its
+  // key inside this organisation (the outbox id carries the organisation, and
+  // older events sit under the key alone).
+  const advQuery = useMemoFirebase(
+    () => (firestore && pm.no && orgId ? query(collection(firestore, PM_EVENTS), where("organizationId", "==", orgId), where("key", "==", `prj:ADV:${pm.no}`)) : null),
+    [firestore, pm.no, orgId]
+  )
+  const { data: advEvents } = useCollection(advQuery)
+  const financeAdvance = advEvents && advEvents.length > 0 ? stored.advance : null
 
   // Completing the original: money + (all | approve); Start: approve (PRD §4).
   const editable = access.allowed("terms.complete") && termsEditable(lifecycle)
@@ -133,7 +140,7 @@ export function ProjectTermsPanel({
     if (!firestore || starts.length || dirty) return
     setBusy("start")
     try {
-      await startProject(firestore, access.ctx, projectId, boqItems)
+      await startProject(firestore, access.ctx, projectId, boqItems, actor)
       toast({ title: t("terms.started") })
     } catch (err) {
       console.error(err)

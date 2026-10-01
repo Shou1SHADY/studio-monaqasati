@@ -355,13 +355,11 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
         const data = await res.json().catch(() => null)
         if (!res.ok || !data?.success) throw new Error(data?.message || "accept failed")
       } else {
-        // Legacy invite (email-as-doc-id, no token): client-side accept.
-        await updateDoc(doc(firestore, "users", user.uid), {
-          organizationId: invitation.organizationId,
-          organizationRole: invitation.organizationRole || "member",
-          role: invitation.role || profile.role,
-        })
-        await deleteDoc(doc(firestore, "invitations", invitation.id))
+        // An old invitation with no token. Joining a team is the server's act alone
+        // now (the rules no longer let an account write its own organisation —
+        // that path let anyone invite himself anywhere): it must be sent again.
+        toast({ title: t("team_error"), description: t("team_invite_outdated"), variant: "destructive" })
+        return
       }
       toast({ title: t("team_joined"), description: t("team_joined_desc") })
       // Accepting changes the caller's own organizationId, which every

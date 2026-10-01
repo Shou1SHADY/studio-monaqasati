@@ -30,6 +30,15 @@ export interface StoredSeat extends PmSeat {
  * every duty and grants none until ticked (PRD §3), which this also covers. */
 export const offFromTicked = (role: PmProjectRole, ticked: readonly PmDuty[]): PmDuty[] => PM_ROLE_TEMPLATES[role].filter((d) => !ticked.includes(d))
 
+/**
+ * What a seat stores as removed: the role's duties the ASSIGNER unticked —
+ * whatever the person's system role allows today. The ceiling narrows the
+ * effective duties at read time (access.ts); writing it into `off` made it
+ * permanent: someone seated as project manager before he was given the group
+ * had all fourteen duties "removed", and stayed without them once he had it.
+ */
+export const seatOff = (role: PmProjectRole, ticked: readonly PmDuty[]): PmDuty[] => offFromTicked(role, ticked.filter((d) => PM_ROLE_TEMPLATES[role].includes(d)))
+
 /** The duties a new seat starts with ticked: the template — except `other`, which starts empty. */
 export const defaultTicked = (role: PmProjectRole): PmDuty[] => (role === "other" ? [] : [...PM_ROLE_TEMPLATES[role]])
 

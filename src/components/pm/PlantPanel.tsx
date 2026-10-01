@@ -6,6 +6,8 @@
 // for money holders — what it has cost, charged on possession not use. Idle
 // five days or past its return date is red. A request alone stops nothing:
 // the charge runs until the desk confirms. Tools are custody, never day-rated.
+// Any other unit received without a day rate says so — its cost is not counted
+// until someone who sees money sets one.
 
 import { useMemo, useState, type ComponentProps } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -32,6 +34,8 @@ import {
   dayCost,
   dayLog,
   dayRateOf,
+  dayState,
+  deskBlocks,
   FUEL_LEVELS,
   handoverBlocks,
   hasMeter,
@@ -51,6 +55,8 @@ import {
   PLANT_OWNERSHIP,
   plantCost,
   PM_PLANT,
+  rateBlocks,
+  unrated,
   utilisation,
   workedNear,
   type OffReason,
@@ -60,16 +66,17 @@ import {
   type PlantOwnership,
   type PmPlant,
 } from "@/lib/pm/plant"
-import { handBackPlant, logPlantDay, PmPlantError, receivePlant, recordOffHireConfirmation, requestOffHire } from "@/lib/pm/plant-writes"
+import { handBackPlant, logPlantDay, plantRateRefusal, PmPlantError, receivePlant, recordOffHireConfirmation, requestOffHire, setPlantDayRate } from "@/lib/pm/plant-writes"
 import { addDays } from "@/lib/pm/programme"
 import { PM_PLANT as PM_PLANT_REQUESTS, plantBooked, plantNo as plantReqNo, type PmPlantRequest } from "@/lib/pm/supply"
 import { cn } from "@/lib/utils"
 import { PmFilesField } from "./PmAttachments"
 
-const SQUARE: Record<PlantDayState, string> = { work: "bg-success", down: "bg-destructive", idle: "bg-warning", stby: "bg-cta", move: "bg-muted-foreground/40" }
+// A value the log does not know is drawn as its own square — never as one of the five.
+const SQUARE: Record<PlantDayState | "unknown", string> = { work: "bg-success", down: "bg-destructive", idle: "bg-warning", stby: "bg-cta", move: "bg-muted-foreground/40", unknown: "border border-destructive bg-background" }
 const dayDiff = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000)
 
-type Mode = { kind: "receive" } | { kind: "day"; p: PmPlant } | { kind: "off"; p: PmPlant } | { kind: "desk"; p: PmPlant } | { kind: "back"; p: PmPlant }
+type Mode = { kind: "receive" } | { kind: "day"; p: PmPlant } | { kind: "off"; p: PmPlant } | { kind: "desk"; p: PmPlant } | { kind: "back"; p: PmPlant } | { kind: "rate"; p: PmPlant }
 
 export function PlantPanel({ projectId, orgId, access, actor }: { projectId: string; orgId?: string | null; access: PmAccess; actor: { uid: string; name: string | null } }) {
   const t = useTranslations("Portal.PM")
@@ -88,6 +95,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
   const money = access.has("money")
   const canReq = !access.ctx.archived && access.allowed("plant.request")
   const canDay = !access.ctx.archived && access.allowed("daily.write")
+  const canRate = plantRateRefusal(access.ctx) === null
   const red = on.some((p) => overdueDays(p, today) > 0 || idleSince(p) >= IDLE_ALERT_DAYS)
   const cost = list.reduce((a, p) => a + plantCost(p), 0)
   const [mode, setMode] = useState<Mode | null>(null)
@@ -101,6 +109,13 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
     setMode(m)
   }
   const numOrNull = (v?: string) => (v === undefined || v.trim() === "" ? null : Number(v))
+  const stLabel = (st: PlantDayState | "unknown") => (st === "unknown" ? t("unknown_state") : t(`plant.st.${st}`))
+  // Nothing is logged after the day the desk confirmed the off-hire.
+  const lastDay = (p: PmPlant) => (p.offOk && p.offOk.on < today ? p.offOk.on : today)
+  const loggedOr = (p: PmPlant, day: string, otherwise: PlantDayState) => {
+    const st = dayState(p, day)
+    return st && st !== "unknown" ? st : otherwise
+  }
   const fmt = (n: number) => n.toLocaleString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { maximumFractionDigits: 1 })
 
   const cat = (f.category as PlantCategory) || "light"
@@ -109,12 +124,14 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
     : mode.kind === "receive"
       ? handoverBlocks({ archived: access.ctx.archived, name: f.name ?? "", qty: Number(f.qty || 0), from: f.from ?? "", to: f.to ?? "", category: cat, meter: numOrNull(f.meter), dayRate: numOrNull(f.rate), licenceTo: f.licence || null, hercNo: f.herc, serviceAt: numOrNull(f.service), condition: (f.condition as PlantCondition) || "ok", remark: f.remark, today })
       : mode.kind === "day"
-        ? dayBlocks({ archived: access.ctx.archived, status: mode.p.status, day: f.day ?? "", from: mode.p.from, today, st: f.st, hours: numOrNull(f.hours) })
+        ? dayBlocks({ archived: access.ctx.archived, status: mode.p.status, day: f.day ?? "", from: mode.p.from, today, st: f.st, offOn: mode.p.offOk?.on ?? null, hours: numOrNull(f.hours) })
         : mode.kind === "off"
           ? offBlocks({ archived: access.ctx.archived, status: mode.p.status, why: (f.why as OffReason) || null, whyText: f.whyText, ready: f.ready ?? "", today })
           : mode.kind === "desk"
-            ? [...(f.no?.trim() ? [] : ["no_number"]), ...(f.on && f.on <= today ? [] : ["bad_day"])]
-            : backBlocks({ archived: access.ctx.archived, plant: mode.p, meter: numOrNull(f.meter), condition: (f.condition as PlantCondition) || "ok", remark: f.remark })
+            ? deskBlocks({ archived: access.ctx.archived, plant: mode.p, no: f.no ?? "", on: f.on ?? "", today })
+            : mode.kind === "rate"
+              ? rateBlocks({ archived: access.ctx.archived, status: mode.p.status, category: mode.p.category, dayRate: Number(f.rate ?? "") || 0 })
+              : backBlocks({ archived: access.ctx.archived, plant: mode.p, meter: numOrNull(f.meter), condition: (f.condition as PlantCondition) || "ok", remark: f.remark })
 
   const svcLeft = mode?.kind === "receive" && hasMeter(cat) && numOrNull(f.service) !== null && numOrNull(f.meter) !== null ? Number(f.service) - Number(f.meter) : null
   const serviceSoon = svcLeft !== null && svcLeft > 0 && svcLeft <= SERVICE_WARN_HOURS ? svcLeft : null
@@ -147,7 +164,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
         })
         toast({ title: t("plant.received", { no: seq }) })
       } else if (mode.kind === "day") {
-        await logPlantDay(firestore, access.ctx, projectId, mode.p.seq, { day: f.day ?? today, st: f.st as PlantDayState, hours: f.st === "work" ? numOrNull(f.hours) : null })
+        await logPlantDay(firestore, access.ctx, projectId, actor, mode.p.seq, { day: f.day ?? today, st: f.st as PlantDayState, hours: f.st === "work" ? numOrNull(f.hours) : null })
         toast({ title: t("plant.logged") })
       } else if (mode.kind === "off") {
         await requestOffHire(firestore, access.ctx, projectId, actor, mode.p.seq, { ready: f.ready ?? today, why: (f.why as OffReason) || null, whyText: f.whyText })
@@ -155,6 +172,9 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
       } else if (mode.kind === "desk") {
         await recordOffHireConfirmation(firestore, access.ctx, projectId, actor, mode.p.seq, { no: f.no ?? "", on: f.on ?? today })
         toast({ title: t("plant.desk_recorded") })
+      } else if (mode.kind === "rate") {
+        await setPlantDayRate(firestore, access.ctx, projectId, actor, mode.p.seq, { dayRate: Number(f.rate) })
+        toast({ title: t("plant.rate_set") })
       } else {
         await handBackPlant(firestore, access.ctx, projectId, actor, mode.p.seq, { meter: numOrNull(f.meter), fuel: f.fuel, accessories: f.acc, condition: (f.condition as PlantCondition) || "ok", remark: f.remark, files })
         toast({ title: t("plant.handed_back") })
@@ -241,7 +261,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
             const since = idleSince(p)
             const late = overdueDays(p, today)
             const gates = plantGates(p, today)
-            const rated = p.category !== "tool" && (p.dayRate ?? 0) > 0
+            const noRate = unrated(p)
             return (
               <li key={p.id} className="flex flex-wrap items-start gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1 basis-60">
@@ -256,11 +276,12 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                   {L.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap items-center gap-1">
                       {L.map((x) => (
-                        <span key={x.day} title={`${pmDate(x.day, locale)} · ${t(`plant.st.${x.st}`)}`} className={cn("inline-block h-3.5 w-3.5 rounded-sm", SQUARE[x.st])} aria-label={`${x.day}: ${t(`plant.st.${x.st}`)}`} />
+                        <span key={x.day} title={`${pmDate(x.day, locale)} · ${stLabel(x.st)}${x.byName ? ` · ${x.byName}` : ""}`} className={cn("inline-block h-3.5 w-3.5 rounded-sm", SQUARE[x.st])} aria-label={`${x.day}: ${stLabel(x.st)}`} />
                       ))}
                       <span className="ms-1.5 text-xs text-muted-foreground">
                         {u !== null ? t("plant.util", { pc: u }) : ""}
-                        {last ? ` · ${t("plant.last_day")}: ${t(`plant.st.${last.st}`)}` : ""}
+                        {last ? ` · ${t("plant.last_day")}: ` : ""}
+                        {last ? <span className={last.st === "unknown" ? "font-bold text-destructive" : undefined}>{stLabel(last.st)}</span> : null}
                       </span>
                     </div>
                   )}
@@ -287,8 +308,10 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                   )}
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
-                  {!rated ? (
+                  {p.category === "tool" ? (
                     <StatusPill tone="mute">{t("plant.custody")}</StatusPill>
+                  ) : noRate ? (
+                    <StatusPill tone="warn">{t("plant.no_rate")}</StatusPill>
                   ) : money ? (
                     <>
                       <b className="text-xs tabular-nums" dir="ltr">
@@ -300,8 +323,13 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                     </>
                   ) : null}
                   <div className="flex flex-wrap justify-end gap-1.5">
+                    {noRate && canRate && (
+                      <Button size="sm" onClick={() => open({ kind: "rate", p }, { rate: "" })}>
+                        {t("plant.set_rate")}
+                      </Button>
+                    )}
                     {canDay && (
-                      <Button size="sm" variant="outline" onClick={() => open({ kind: "day", p }, { day: today, st: p.days?.[today] ?? "work" })}>
+                      <Button size="sm" variant="outline" onClick={() => open({ kind: "day", p }, { day: lastDay(p), st: loggedOr(p, lastDay(p), "work") })}>
                         {t("plant.log_today")}
                       </Button>
                     )}
@@ -387,6 +415,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                     {money && cat !== "tool" && field("rate", t("plant.rate"), { type: "number", min: "0", dir: "ltr" })}
                     {hasMeter(cat) && field("licence", t("plant.licence"), { type: "date", dir: "ltr" })}
                   </div>
+                  {!money && cat !== "tool" && <Callout tone="info">{t("plant.rate_later")}</Callout>}
                   {hasMeter(cat) && (
                     <div className="grid gap-3 sm:grid-cols-2">
                       {field("herc", t("plant.herc"), { dir: "ltr" })}
@@ -404,7 +433,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                   {choice("st", t("plant.day_state"), PLANT_DAY_STATES, (o) => t(`plant.st.${o}`))}
                   {f.st && ["idle", "stby", "down"].includes(f.st) && <p className="-mt-2 text-[11px] text-muted-foreground">{t(`plant.st_hint.${f.st}`)}</p>}
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {field("day", t("plant.day"), { type: "date", dir: "ltr", max: today, min: mode.p.from })}
+                    {field("day", t("plant.day"), { type: "date", dir: "ltr", max: lastDay(mode.p), min: mode.p.from })}
                     {f.st === "work" && field("hours", t("plant.hours"), { type: "number", min: "0", max: "24", step: "0.5", dir: "ltr" })}
                   </div>
                   {mode.p.category === "tool" ? (
@@ -451,8 +480,14 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                   <Callout tone="info">{t("plant.desk_note")}</Callout>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {field("no", t("plant.off_number"), { dir: "ltr" })}
-                    {field("on", t("plant.desk_date"), { type: "date", dir: "ltr", max: today })}
+                    {field("on", t("plant.desk_date"), { type: "date", dir: "ltr", max: today, min: mode.p.offReq?.on ?? mode.p.from })}
                   </div>
+                </>
+              )}
+              {mode.kind === "rate" && (
+                <>
+                  <Callout tone="warn">{t("plant.rate_note")}</Callout>
+                  {field("rate", t("plant.rate"), { type: "number", min: "0", dir: "ltr" })}
                 </>
               )}
               {mode.kind === "back" && (

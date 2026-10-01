@@ -125,3 +125,24 @@ describe("the writes", () => {
     await expect(removeSeat(db, owner, "p1", ownerActor, "pm1", { exitDate: todayDay(), reason: "x" })).rejects.toMatchObject({ code: "archived" })
   })
 })
+
+describe("what a seat stores as removed (RL-01, RL-05)", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { seatOff } = require("@/lib/pm/team") as typeof import("@/lib/pm/team")
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { PM_ROLE_TEMPLATES } = require("@/lib/pm/access") as typeof import("@/lib/pm/access")
+
+  it("a project manager seated with the role's duties ticked has none removed — whatever his system role is that day", () => {
+    expect(seatOff("pm", [...PM_ROLE_TEMPLATES.pm])).toEqual([])
+  })
+
+  it("only what the assigner unticked is removed", () => {
+    const ticked = PM_ROLE_TEMPLATES.qs.filter((d) => d !== "vo")
+    expect(seatOff("qs", ticked)).toEqual(["vo"])
+  })
+
+  it("the named other role starts with every duty removed, and gains what is ticked", () => {
+    expect(seatOff("other", []).length).toBe(PM_ROLE_TEMPLATES.other.length)
+    expect(seatOff("other", ["daily"])).not.toContain("daily")
+  })
+})

@@ -8421,7 +8421,8 @@
       "pn_portal_reject_title": "The consultant rejected through the portal",
       "pn_portal_reject": "{name} rejected through the consultant portal on {project}: {record} — {note}",
       "pn_receipt_auto_forwarded_title": "📦 A receipt auto-forwarded to you",
-      "pn_receipt_auto_forwarded": "The system forwarded you a delivery from {supplier} that Procurement had not forwarded in time — open the link, count what arrived and sign."
+      "pn_receipt_auto_forwarded": "The system forwarded you a delivery from {supplier} that Procurement had not forwarded in time — open the link, count what arrived and sign.",
+      "team_invite_outdated": "This is an old invitation that is no longer valid — ask the company owner to send it again."
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -11877,7 +11878,8 @@
           "note_label": "A note to the contractor (optional)",
           "note_placeholder": "Anything the price depends on — stock on hand, an alternative brand, a delivery condition…"
         }
-      }
+      },
+      "err_need_awaits_pm": "The project manager has not approved this request yet — nothing of it is bought before the technical approval"
     },
     "ProcToday": {
       "title": "Needs your decision",
@@ -13987,7 +13989,9 @@
         "block": {
           "no_boq_source": "Choose where the BOQ comes from",
           "no_manager": "Name the project manager",
-          "no_boq_file": "Upload the Excel file"
+          "no_boq_file": "Upload the Excel file",
+          "boq_bad_rows": "The file has rows with errors — correct them and choose the file again",
+          "boq_nothing_read": "No item could be read from this file — use the BOQ template"
         },
         "done_crm": "{number} accepted — project created and the priced BOQ transferred ({count, plural, one {# item} other {# items}})",
         "done_xl": "{number} accepted — {count, plural, one {# item} other {# items}} imported",
@@ -13996,7 +14000,10 @@
         "xl_review_title": "Review what was imported before saving",
         "xl_review_all_priced": "{count, plural, one {# item} other {# items}} — all priced",
         "xl_review_unpriced": "{count, plural, one {# item} other {# items}} — {unpriced} without a rate: flagged, and not in the contract value",
-        "xl_unpriced": "No rate"
+        "xl_unpriced": "No rate",
+        "xl_bad": "{count, plural, one {One row was rejected} other {# rows were rejected}} — nothing is imported in part. Correct the file and choose it again.",
+        "xl_bad_row": "Line {line}:",
+        "xl_bad_more": "… and {count} more"
       },
       "terms": {
         "title": "Contract terms",
@@ -14809,7 +14816,8 @@
           "vo_pending": "No priced variation left undecided",
           "store": "Project store cleared",
           "subs": "Subcontractors cleared",
-          "corr": "No open correspondence"
+          "corr": "No open correspondence",
+          "plant": "Plant handed back"
         },
         "why": {
           "punch": "{count, plural, one {# item} other {# items}} still open",
@@ -14827,7 +14835,8 @@
           "subs": "{amount} still due — payment is Finance's",
           "subs_hidden": "an amount is still due — payment is Finance's",
           "subs_pending": "{count, plural, one {# sub certificate} other {# sub certificates}} awaiting approval",
-          "corr": "{count, plural, one {# letter awaits} other {# letters await}} a reply"
+          "corr": "{count, plural, one {# letter awaits} other {# letters await}} a reply",
+          "plant": "{count, plural, one {# unit is} other {# units are}} still on site — hand it back before closing: an archived project accepts no change"
         },
         "snap": {
           "contract": "Contract value",
@@ -14866,7 +14875,8 @@
           "subs": "nothing due",
           "corr": "all closed",
           "prov": "recorded",
-          "final": "recorded"
+          "final": "recorded",
+          "plant": "none on site"
         },
         "lessons": {
           "title": "Lessons from this project",
@@ -14954,7 +14964,8 @@
           "bad_days": "Time impact is a whole number of days, 0 or more",
           "no_date": "Enter the date",
           "before_request": "The decision cannot precede the request",
-          "future": "The date cannot be in the future"
+          "future": "The date cannot be in the future",
+          "below_billed": "The executed share cannot go below what a certificate already billed"
         },
         "form_title": "Variation order",
         "sub": "Logged, priced, submitted, approved in writing",
@@ -15186,7 +15197,7 @@
           "wrong_state": "It is no longer at this step — refresh",
           "not_submitted": "Only a submitted claim is answered",
           "no_choice": "Choose the consultant's response",
-          "days_required": "Granted days are required unless rejected",
+          "days_required": "Granted days are required — at least one — unless rejected",
           "bad_amount": "The amount granted is zero or more",
           "no_obstacle": "The linked obstacle no longer exists",
           "cause_text": "State who caused it",
@@ -15524,7 +15535,7 @@
           "one": "SCC {no} for {name} awaiting approval"
         },
         "doc_stale": {
-          "title": "{count, plural, one {A drawing was} other {# drawings were}} issued after the last IPC",
+          "title": "{count, plural, one {A drawing was} other {# drawings were}} issued after the last approved measurement",
           "detail": "Check the effect on quantities before the next measurement.",
           "act": "Open documents"
         },
@@ -16243,7 +16254,11 @@
           "net": "Due before VAT",
           "recovery_note": "The deduction rests on signed count sheets, not an estimate.",
           "two_people": "One person prepares, another approves within their limit — then Finance receives the event. Payment and VAT live there.",
-          "save": "Prepare for approval"
+          "save": "Prepare for approval",
+          "recovery_carried": "{amount} of his material recovery does not fit this certificate — it stays for his next one.",
+          "withdrawn": "SCC {no} withdrawn — nothing was certified, and its recoveries wait for his next certificate",
+          "withdrawn_by": "withdrawn by {who}",
+          "approved_self": "SCC {no} approved by its preparer — recorded as a self-approval — and sent to Finance"
         },
         "recon": {
           "title": "Material reconciliation with subcontractors",
@@ -16314,7 +16329,8 @@
           "basis": "Basis",
           "basis_ph": "The signed count sheet and its date",
           "recover_save": "Record the recovery",
-          "recovered": "Recovery recorded against {name} — deducted from his next certificate before retention"
+          "recovered": "Recovery recorded against {name} — deducted from his next certificate before retention",
+          "open_gap": "Still open on his last count"
         },
         "block": {
           "archived": "The project is archived",
@@ -16341,7 +16357,9 @@
           "future": "The date cannot be in the future",
           "no_sub": "Choose the subcontractor",
           "over_hold": "More than the engineer holds on the project",
-          "over_cap_reason": "Beyond his entitlement — state the reason"
+          "over_cap_reason": "Beyond his entitlement — state the reason",
+          "over_gap": "More than the gap still open on his last count",
+          "older_count": "A later count is already on record — a count cannot be dated before it"
         },
         "err": {
           "missing": "It no longer exists — refresh the page",
@@ -16394,7 +16412,7 @@
         "current": "{code} current",
         "no_revisions": "no revisions",
         "open_file": "Open {name}",
-        "stale_head": "{count, plural, one {A revision was issued after the last certificate.} other {Revisions were issued after the last certificate.}}",
+        "stale_head": "{count, plural, one {A revision was issued after the last approved measurement.} other {Revisions were issued after the last approved measurement.}}",
         "stale_body": "You measured against an older drawing. Check the change's effect on quantities before the next measurement — if they grow, it is a variation, not a quantity difference.",
         "form_title": "New document revision",
         "document": "Document",
@@ -16405,11 +16423,11 @@
         "code_hint": "Current {code} — this supersedes it",
         "code_hint_new": "Leave it empty for a document with no revisions (a permit, the signed contract)",
         "day": "Issue date",
-        "after_ipc": "Issued after the last certificate — a “measured against an older drawing” warning will show until you check its effect on quantities",
+        "after_ipc": "Issued after the last approved measurement — a “measured against an older drawing” warning will show until the work is measured again",
         "attach": "The document — optional",
         "submit": "Log revision",
         "saved": "New revision logged — it is now the current one",
-        "saved_stale": "Revision logged — issued after the last certificate: check its effect on quantities before the next measurement",
+        "saved_stale": "Revision logged — issued after the last approved measurement: check its effect on quantities before the next measurement",
         "registered": "Document registered with no revisions",
         "block": {
           "archived": "The project is archived",
@@ -17857,14 +17875,16 @@
           "day": "Plant day",
           "off": "Request off-hire",
           "desk": "The desk's confirmation",
-          "back": "Off-hire condition note"
+          "back": "Off-hire condition note",
+          "rate": "Day rate"
         },
         "save": {
           "receive": "Receive it",
           "day": "Log",
           "off": "Request",
           "desk": "Record",
-          "back": "Hand it back"
+          "back": "Hand it back",
+          "rate": "Set the rate"
         },
         "tag": "Unit tag",
         "name": "What it is",
@@ -17938,7 +17958,11 @@
           "meter_back": "The reading is below the handover's — meters do not run backwards",
           "not_registered": "Do not receive it: not registered with the heavy-equipment regulator",
           "service_overdue": "Do not receive it: its service is overdue",
-          "bad_hours": "Hours worked are between 0 and 24"
+          "bad_hours": "Hours worked are between 0 and 24",
+          "after_off": "The desk confirmed the off-hire before that day — nothing is logged after it",
+          "before_request": "The confirmation cannot be dated before the off-hire request",
+          "tool_rate": "Tools are custody — they carry no day rate",
+          "rate_required": "Enter a day rate above zero"
         },
         "booked": "booked",
         "booked_line": "booked {from} → {to} — not arrived yet",
@@ -17956,7 +17980,12 @@
         "day_tools": "Tools are not day-rated — logged here for custody and utilisation only.",
         "day_rule": "What you log becomes cost by a fixed rule: any work makes a full day, idle is two-thirds, breakdown is not charged.",
         "idle_warn_money": "Idle {count, plural, one {# day} other {# days}} — roughly {amount} the project has carried for nothing.",
-        "hours_run": "Hours run"
+        "hours_run": "Hours run",
+        "no_rate": "No day rate — its cost is not counted",
+        "set_rate": "Set the day rate",
+        "rate_note": "It was received without a day rate, so its logged days cost the project nothing and it never shows as idle and charging. The rate you set prices every day already logged — work and transit in full, idle at two-thirds unless it worked within three days.",
+        "rate_set": "Day rate set — its logged days are now counted",
+        "rate_later": "The day rate is an amount you do not see. The unit will show “no day rate” until someone who sees amounts sets it — until then its cost is not counted."
       },
       "petty": {
         "title": "Direct site purchases",
@@ -18153,7 +18182,8 @@
           "not_open": "This week is already closed",
           "no_reason": "Every task not done needs a reason — “other” is stated"
         },
-        "critical": "Critical"
+        "critical": "Critical",
+        "late_week": "The week of {date} was never closed — close it before planning a new week. Its tasks count in PPC and the reasons only once it is closed."
       },
       "qa": {
         "tab": "Inspections & punch"
@@ -18669,7 +18699,10 @@
           "no_label": "Name the unit",
           "done": "The unit is already handed over",
           "blocked": "The unit does not meet its handover conditions",
-          "archived": "The project is not live"
+          "archived": "The project is not live",
+          "no_boq": "The bill of quantities has no quantities yet — units share out its quantities. Import the BOQ first.",
+          "handed": "A unit is already handed over — the quantities can no longer be split again",
+          "measured": "A measurement already names a unit — the quantities can no longer be split again"
         },
         "field": "Delivery unit",
         "field_none": "— none",
@@ -18679,7 +18712,11 @@
         "pulse_details": "Details",
         "pulse_done": "done",
         "pulse_ready": "ready",
-        "pulse_risk": "at risk"
+        "pulse_risk": "at risk",
+        "pace_passed": "Its planned handover day ({date}) has come and the unit is not handed over — no weekly pace can meet it. Set a realistic date.",
+        "resplit_note": "{count, plural, one {One BOQ line is} other {# BOQ lines are}} not shared out across the units as the bill of quantities stands today — the split is older than it. Split again to share today's quantities equally; possible until a measurement names a unit or a unit is handed over.",
+        "resplit": "Split again",
+        "resplit_done": "Quantities split again across {count} units"
       }
     },
     "HR": {

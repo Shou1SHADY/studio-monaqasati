@@ -13,12 +13,13 @@ import type { Firestore } from "firebase/firestore"
 import { pmCeiling, type PmContext } from "@/lib/pm/access"
 import { projectDocNo } from "@/lib/pm/exec-numbers"
 import { todayDay } from "@/lib/pm/format"
-import { dayBlocks, dayCost, dayRateOf, handoverBlocks, hoursRun, idleCharge, meterNow, plantGates, serviceLeft, workedNear, type PmPlant } from "@/lib/pm/plant"
+import { dayBlocks, dayCost, dayRateOf, dayState, handoverBlocks, hoursRun, idleCharge, meterNow, plantGates, serviceLeft, workedNear, type PmPlant } from "@/lib/pm/plant"
 import { logPlantDay, receivePlant } from "@/lib/pm/plant-writes"
 
 const db = fakeFirestore as unknown as Firestore
 const site: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.site"] }), seat: { uid: "se1", role: "site" }, archived: false }
 const owner: PmContext = { ceiling: pmCeiling({ owner: true, permissions: [] }), seat: null, archived: false }
+const who = { uid: "se1", name: "Site" }
 const seA = { uid: "se1", name: "Omar" }
 const today = todayDay()
 
@@ -103,13 +104,13 @@ describe("the plant day (V3-pm-exec-02)", () => {
     seed("projects/p1", { organizationId: "org", status: "working", pm: { no: "PJ-2026/014", lifecycle: "live", plantCount: 1 } })
     const { id: _id, ...stored } = unit({ from: today })
     seed("projects/p1/pmPlant/01", stored)
-    await logPlantDay(db, site, "p1", 1, { day: today, st: "work", hours: 7.5 })
-    expect(readDoc<PmPlant>("projects/p1/pmPlant/01")).toMatchObject({ days: { [today]: "work" }, hours: { [today]: 7.5 } })
-    await logPlantDay(db, site, "p1", 1, { day: today, st: "idle" })
+    await logPlantDay(db, site, "p1", who, 1, { day: today, st: "work", hours: 7.5 })
+    expect(readDoc<PmPlant>("projects/p1/pmPlant/01")).toMatchObject({ days: { [today]: { st: "work", by: "se1" } }, hours: { [today]: 7.5 } })
+    await logPlantDay(db, site, "p1", who, 1, { day: today, st: "idle" })
     const after = readDoc<PmPlant>("projects/p1/pmPlant/01")!
-    expect(after.days[today]).toBe("idle")
+    expect(dayState(after, today)).toBe("idle")
     expect(after.hours?.[today]).toBeUndefined()
-    await expect(logPlantDay(db, owner, "p1", 1, { day: today, st: "work", hours: 30 })).rejects.toMatchObject({ blocks: ["bad_hours"] })
+    await expect(logPlantDay(db, owner, "p1", who, 1, { day: today, st: "work", hours: 30 })).rejects.toMatchObject({ blocks: ["bad_hours"] })
   })
 
   it("the day rate and why an idle day is full or two-thirds", () => {
@@ -124,8 +125,10 @@ describe("the plant day (V3-pm-exec-02)", () => {
 })
 
 describe("off-hire and hand-back (V3-pm-exec-03)", () => {
-  it("what standing idle has cost: two-thirds of the rate for each idle day", () => {
-    expect(idleCharge(unit({ days: { "2026-09-01": "work", "2026-09-02": "idle", "2026-09-03": "idle", "2026-09-04": "stby" } }))).toBe(2400)
+  it("what standing idle has cost: what the day rule charged each idle day — full within three days of work, two-thirds beyond", () => {
+    // The figure must equal what those days are charged (plantCost), not a flat share of them.
+    expect(idleCharge(unit({ days: { "2026-09-01": "work", "2026-09-02": "idle", "2026-09-03": "idle", "2026-09-04": "stby" } }))).toBe(3600)
+    expect(idleCharge(unit({ days: { "2026-09-01": "work", "2026-09-06": "idle", "2026-09-07": "idle", "2026-09-08": "stby" } }))).toBe(2400)
     expect(idleCharge(unit({ category: "tool", days: { "2026-09-02": "idle" } }))).toBe(0)
   })
 

@@ -226,7 +226,7 @@ describe("the writes", () => {
     await approveSubCertificate(db, pm, "p1", { uid: "pm1", name: "PM" }, 1)
     expect(readDoc<PmSubCertificate>("projects/p1/pmSubCertificates/01")!.status).toBe("ok")
     expect(readDoc<PmSubcontract>("projects/p1/pmSubcontracts/01")!.lines[0].certified).toBeCloseTo(0.4)
-    expect(readDoc<{ kind: string; amount: number }>("pmEvents/prj:SC:PJ-2026_003:01")).toMatchObject({ kind: "SC", amount: 16000 })
+    expect(readDoc<{ kind: string; amount: number }>("pmEvents/org__prj:SC:PJ-2026_003:01")).toMatchObject({ kind: "SC", amount: 16000 })
   })
 
   it("the preparer never approves; above the limit only the owner does", async () => {

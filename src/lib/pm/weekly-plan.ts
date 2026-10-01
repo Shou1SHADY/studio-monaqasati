@@ -40,7 +40,7 @@ export interface Constraint {
     | { kind: "sample"; code: string; state: "not_submitted" | "rejected" | "with_consultant" }
     | { kind: "pred"; name: string; pc: number }
     | { kind: "failed"; code: string }
-    | { kind: "obstacle"; title: string; party: string }
+    | { kind: "obstacle"; title: string; party: string; partyName?: string | null }
     | { kind: "no_permit" }
     | { kind: "materials"; names: string[]; count: number }
     | { kind: "plant"; what: string; count: number }
@@ -71,8 +71,8 @@ export interface LookPlant {
 export interface LookFacts {
   items: LookItem[]
   activities: LookActivity[]
-  /** Open obstacles and the items they stop. */
-  obstacles: Array<{ title: string; party: string; itemIds: string[]; closeOn?: string | null }>
+  /** Open obstacles and the items they stop. `party` is the stored code; the name is only what was typed. */
+  obstacles: LookObstacle[]
   livePermits: number
   staleDrawings: number
   /** The project store and the material requests (mat), the equipment requests (crew). */
@@ -82,6 +82,25 @@ export interface LookFacts {
   /** Which sections the project has on — a constraint of a section that is off is not evaluated. */
   on: { docs: boolean; subm: boolean; wir: boolean; rfi: boolean; hse: boolean; stock?: boolean; eqp?: boolean }
 }
+
+export interface LookObstacle {
+  title: string
+  party: string
+  partyName?: string | null
+  itemIds: string[]
+  closeOn?: string | null
+}
+
+/** An obstacle as the look-ahead reads it. The party's code and the name typed
+ * for it travel apart: the screen words the code in the reader's language when
+ * no name was typed — a stored code is never shown in a name's place. */
+export const lookObstacle = (o: { title: string; party: string; partyName?: string | null; itemIds?: string[] | null; closeOn?: string | null }): LookObstacle => ({
+  title: o.title,
+  party: o.party,
+  partyName: o.partyName?.trim() || null,
+  itemIds: o.itemIds ?? [],
+  closeOn: o.closeOn ?? null,
+})
 
 /** Materials of the activity's items that are neither on the project nor
  * brought by an approved request within a week of its start. */
@@ -123,7 +142,7 @@ export function activityConstraints(a: LookActivity, f: LookFacts, today = new D
   }
   if (f.on.rfi) {
     const o = f.obstacles.find((x) => !x.closeOn && x.itemIds.some((id) => a.itemIds.includes(id)))
-    out.push({ k: "rfi", ok: !o, detail: o ? { kind: "obstacle", title: o.title, party: o.party } : undefined })
+    out.push({ k: "rfi", ok: !o, detail: o ? { kind: "obstacle", title: o.title, party: o.party, partyName: o.partyName ?? null } : undefined })
   }
   if (f.on.stock) {
     const miss = missingMaterials(a, f, today)
@@ -204,6 +223,16 @@ export function weekStart(day: string): string {
 export function currentWeek<T extends Pick<PmWeek, "week">>(weeks: T[], today: string): T | null {
   const from = addDays(today, -6)
   return weeks.filter((w) => w.week >= weekStart(from)).sort((a, b) => b.week.localeCompare(a.week))[0] ?? null
+}
+
+/** The plan the screen holds. A plan left open past its week is still owed its
+ * close — until then its tasks reach neither PPC nor the reasons (WWP-04/05) —
+ * so the oldest open plan of an earlier week comes first, before this week is
+ * planned; with none, `currentWeek`. */
+export function weekInHand<T extends Pick<PmWeek, "week" | "status">>(weeks: T[], today: string): T | null {
+  const start = weekStart(today)
+  const late = weeks.filter((w) => w.status === "open" && w.week < start).sort((a, b) => a.week.localeCompare(b.week))[0]
+  return late ?? currentWeek(weeks, today)
 }
 
 export const ppc = (w: Pick<PmWeek, "tasks">) => (w.tasks.length ? Math.round((w.tasks.filter((t) => t.done).length / w.tasks.length) * 100) : 0)

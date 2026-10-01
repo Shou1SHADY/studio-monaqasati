@@ -15,7 +15,7 @@ import { usePortfolioFeed, type PortfolioFeed, type PortfolioProject } from "@/h
 import { useRouter } from "@/i18n/routing"
 import { pmDate, pmMoney } from "@/lib/pm/format"
 import { lifecycleOf } from "@/lib/pm/lifecycle"
-import { marginOf, type FilterSelection, type PortfolioFilter, type PortfolioRow } from "@/lib/pm/portfolio"
+import { costOf, marginOf, type FilterSelection, type PortfolioFilter, type PortfolioRow } from "@/lib/pm/portfolio"
 import { displayDocNumber } from "@/lib/sales-numbering"
 import { cn } from "@/lib/utils"
 
@@ -146,7 +146,7 @@ export function PmArchiveTable({ rows, money, kindLabel, managerLabel, shown, on
                     {mask(money, r.fin?.contractValue ?? r.value)}
                   </TableCell>
                   <TableCell className="text-end text-sm tabular-nums" dir="ltr">
-                    {r.fin?.cost != null ? mask(money, r.fin.cost) : "—"}
+                    {costOf(r.fin) != null ? mask(money, costOf(r.fin) as number) : "—"}
                   </TableCell>
                   <TableCell className="text-end">
                     {!money ? (

@@ -77,7 +77,7 @@ export type SheetBlock = "archived" | "no_lines" | "bad_qty" | "unknown_item" | 
 /** What stops writing — or approving — a sheet. Over-remaining on a lump sum is
  * a warning here (the cap applies at approval). An item that requires
  * inspection without a passed last attempt is refused (MS-03). */
-export function sheetBlocks(input: { archived: boolean; lines: Pick<SheetLine, "itemId" | "qty">[]; items: Pick<MeasuredItem, "id" | "gate">[] }): SheetBlock[] {
+export function sheetBlocks(input: { archived: boolean; lines: Pick<SheetLine, "itemId" | "qty">[]; items: Pick<MeasuredItem, "id" | "gate">[]; gateOn?: boolean }): SheetBlock[] {
   const out: SheetBlock[] = []
   if (input.archived) out.push("archived")
   const lines = input.lines.filter((l) => l.qty !== 0)
@@ -85,27 +85,39 @@ export function sheetBlocks(input: { archived: boolean; lines: Pick<SheetLine, "
   if (lines.some((l) => !Number.isFinite(l.qty) || l.qty < 0)) out.push("bad_qty")
   const known = new Set(input.items.map((i) => i.id))
   if (lines.some((l) => !known.has(l.itemId))) out.push("unknown_item")
-  const gated = new Set(input.items.filter((i) => i.gate && !measurable(i.gate)).map((i) => i.id))
+  // The gate lives in the inspections section (the prototype's HAS('wir')): with it
+  // switched off there is no screen to request an inspection — or to lift the flag —
+  // so a flagged item would be refused for good.
+  const gated = new Set(input.gateOn === false ? [] : input.items.filter((i) => i.gate && !measurable(i.gate)).map((i) => i.id))
   if (lines.some((l) => gated.has(l.itemId))) out.push("not_measurable")
   return out
 }
 
-export type WriteBlock = SheetBlock | "over_remaining"
+/** Whether the inspection gate applies on a project: its inspections section is on.
+ * A project that never chose its sections has every section. */
+export const inspectionGateOn = (enabledSections: readonly string[] | null | undefined) => !enabledSections?.length || enabledSections.includes("qa")
+
+export type WriteBlock = SheetBlock | "over_remaining" | "bad_day"
 
 /** Writing adds one rule to `sheetBlocks`: on a lump sum a quantity over the
  * remaining NOW is refused — the extra needs a variation first (CON-05). The
  * cut at approval stays, because sheets waiting for the PM are not in
  * "executed" yet and a later approval can still meet a smaller remaining. */
-export function sheetWriteBlocks(input: { archived: boolean; basis: PricingBasis; lines: Pick<SheetLine, "itemId" | "qty">[]; items: Array<Pick<MeasuredItem, "id" | "gate" | "quantity" | "executed">> }): WriteBlock[] {
+export function sheetWriteBlocks(input: { archived: boolean; basis: PricingBasis; lines: Pick<SheetLine, "itemId" | "qty">[]; items: Array<Pick<MeasuredItem, "id" | "gate" | "quantity" | "executed">>; gateOn?: boolean; day?: string; today?: string }): WriteBlock[] {
   const out: WriteBlock[] = sheetBlocks(input)
+  // The measuring day: a real day, never ahead of today — it becomes "the last
+  // measurement" that drawings are judged stale against.
+  if (input.day !== undefined && input.today !== undefined && !(/^\d{4}-\d{2}-\d{2}$/.test(input.day) && input.day <= input.today)) out.push("bad_day")
   const byId = new Map(input.items.map((i) => [i.id, i]))
   if (input.lines.some((l) => { const i = byId.get(l.itemId); return i !== undefined && l.qty > 0 && overRemaining(input.basis, i, l.qty) > 0 })) out.push("over_remaining")
   return out
 }
 
-/** The items still to measure (executed below the contract quantity), and how many are complete and hidden. */
-export function openItems<T extends Pick<MeasuredItem, "quantity" | "executed">>(items: T[]): { open: T[]; done: number } {
-  const open = items.filter((i) => i.executed < i.quantity - 0.001)
+/** The items still to measure, and how many are complete and hidden. On a lump sum
+ * an item is complete at its contract quantity; on re-measurement extra quantity is
+ * measured without a variation (CON-05), so no item is ever hidden. */
+export function openItems<T extends Pick<MeasuredItem, "quantity" | "executed">>(items: T[], basis: PricingBasis = "lump"): { open: T[]; done: number } {
+  const open = basis === "rem" ? items : items.filter((i) => i.executed < i.quantity - 0.001)
   return { open, done: items.length - open.length }
 }
 

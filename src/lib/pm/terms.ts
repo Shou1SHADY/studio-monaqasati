@@ -113,4 +113,33 @@ export function termsInForce(original: ContractTerms, addenda: Array<{ status: "
 
 /** Terms are edited directly only before start; after it, only an addendum
  * changes them — refused at the button and again at save (TRM-02). */
+/**
+ * The contract in force as the project document carries it. The addenda are
+ * readable by money or approve holders only, so whoever measures, hands a unit
+ * over or reads a deadline cannot compute original + signed addenda himself:
+ * signing an addendum leaves the result on the project (`pm.inForce`). Before
+ * any signature it is the original; before start, the terms being completed.
+ */
+export function termsNow<T = ContractTerms>(pm: { inForce?: T | null; original?: T | null; terms?: T | null } | null | undefined): T | null {
+  return pm?.inForce ?? pm?.original ?? pm?.terms ?? null
+}
+
+/**
+ * Whether the project has a client side to certify and collect from. An
+ * addendum that makes the payer "nobody" does not switch certificates off by
+ * itself (AMD-09) — work already executed must still be billed, and switching
+ * the section off is section governance's, which blocks while a certificate is
+ * uncollected. Only a contract that never had a payer has no certificates.
+ */
+export function certificatesApply(original: { payer?: string } | null | undefined, inForce: { payer?: string } | null | undefined): boolean {
+  return (inForce?.payer ?? "none") !== "none" || (original?.payer ?? "none") !== "none"
+}
+
+/** Who the certificates are addressed to: the payer in force — or, when an
+ * addendum made it "nobody", the original's (see `certificatesApply`). */
+export function certificatePayer(original: { payer?: string } | null | undefined, inForce: { payer?: string } | null | undefined): string {
+  const now = inForce?.payer ?? "none"
+  return now !== "none" ? now : (original?.payer ?? "none")
+}
+
 export const termsEditable = (lifecycle: string) => lifecycle === "plan"

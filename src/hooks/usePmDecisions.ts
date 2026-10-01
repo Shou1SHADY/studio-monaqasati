@@ -88,6 +88,18 @@ function useSub<T>(projectId: string, name: string, enabled = true) {
   return { rows: (data ?? []) as unknown as T[], isLoading }
 }
 
+/** The decisions of one project — or none, with the error logged, when one of
+ * its records is malformed: Today, the portfolio and the inbox all mount this
+ * hook, and a single bad document must not take those screens down (NFR-06). */
+function safeDecisions(facts: Parameters<typeof projectDecisions>[0]): PmDecision[] {
+  try {
+    return projectDecisions(facts)
+  } catch (err) {
+    console.error("PM decisions could not be computed for a project", err)
+    return []
+  }
+}
+
 export function usePmDecisions(
   projectId: string,
   project: PmDecisionProject | null | undefined,
@@ -177,7 +189,9 @@ export function usePmDecisions(
     const pm = project?.pm
     if (!project || !pm) return []
     const original = pm.original ?? pm.terms ?? defaultTerms()
-    return projectDecisions({
+    // The running totals the certificate and handover writes keep on the project.
+    const totals = pm as { cutPool?: number; retentionHeld?: number; retentionFreed?: number }
+    return safeDecisions({
       lifecycle: lifecycleOf(project as { pm?: { lifecycle?: string }; status?: string }),
       managerless: !project.projectManagerId,
       startOn: pm.startedAt ?? null,
@@ -210,6 +224,9 @@ export function usePmDecisions(
       subCertificates: subCerts.rows,
       documents: docs.rows,
       lastCertDay: money ? lastCertificateDay(certs.rows) : (pm.lastIpcOn ?? null),
+      cutPool: Number(totals.cutPool) || 0,
+      retentionHeld: Number(totals.retentionHeld) || 0,
+      retentionFreed: Number(totals.retentionFreed) || 0,
       letters: letters.rows,
       obstacles: obstacles.rows,
       eac: pm.eac ?? null,
@@ -221,6 +238,7 @@ export function usePmDecisions(
       sections: project.enabledSections?.length ? project.enabledSections : null,
       managerId: project.projectManagerId ?? null,
       requests: supply.requests,
+      orderStatus: poData ? Object.fromEntries((poData as Array<{ id: string; status?: string | null }>).map((o) => [o.id, o.status ?? null])) : undefined,
       stores: supply.stores,
       storeCostOf,
       shortages: facts.shortages,
@@ -231,7 +249,7 @@ export function usePmDecisions(
       today,
       viewer: access.uid ? { uid: access.uid, has: (k) => access.has(k as Parameters<PmAccess["has"]>[0]), owner: access.has("admin") } : null,
     })
-  }, [project, items.rows, sheets.rows, addenda.rows, certs.rows, punch.rows, units.rows, inspections.rows, zoneOn, vos.rows, claims.rows, submittals.rows, subCerts.rows, docs.rows, letters.rows, obstacles.rows, supply.requests, supply.stores, facts.shortages, plantRequests.rows, plant.rows, cost, budgetReferrals, storeCostOf, money, client, onHold, indirect.actual, access, today, plan])
+  }, [project, items.rows, sheets.rows, addenda.rows, certs.rows, punch.rows, units.rows, inspections.rows, zoneOn, vos.rows, claims.rows, submittals.rows, subCerts.rows, docs.rows, letters.rows, obstacles.rows, supply.requests, supply.stores, facts.shortages, plantRequests.rows, plant.rows, cost, budgetReferrals, poData, storeCostOf, money, client, onHold, indirect.actual, access, today, plan])
 
   const progress = useMemo(() => progressOf(items.rows.map((d) => ({ quantity: num(d.quantity), rate: num(d.unitPrice), executed: num(d.executedQuantity) }))), [items.rows])
 

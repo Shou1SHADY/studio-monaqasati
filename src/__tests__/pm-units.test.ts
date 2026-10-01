@@ -12,7 +12,7 @@ import { fakeFirestore, readDoc, resetFakeDb, seed } from "@/test-utils/fake-fir
 import type { Firestore } from "firebase/firestore"
 import { PmAccessError, pmCeiling, type PmContext } from "@/lib/pm/access"
 import { recordProvisional } from "@/lib/pm/acceptance-writes"
-import { PM_EVENTS } from "@/lib/pm/events"
+import { PM_EVENTS, pmEventDocId } from "@/lib/pm/events"
 import { writeSheet } from "@/lib/pm/measurement-writes"
 import { raisePunch, recordConfirmation, recordFix } from "@/lib/pm/punch-writes"
 import { defaultTerms } from "@/lib/pm/terms"
@@ -58,8 +58,9 @@ describe("the pure rules", () => {
     expect(unitBlocks(unit("03", {}), items, { punch: [], inspections: [] })).toEqual([{ key: "no_alloc" }])
   })
 
-  it("half the unit's retention, at the lower of the rate and the cap", () => {
-    expect(unitRetention(50_000, { retention: 0.1, retentionCap: 0.05 })).toBe(1250)
+  it("half the unit's retention, at the lower of the rate and the cap — on a half release; nothing when all waits for the final", () => {
+    expect(unitRetention(50_000, { retention: 0.1, retentionCap: 0.05, retentionRelease: "half" })).toBe(1250)
+    expect(unitRetention(50_000, { retention: 0.1, retentionCap: 0.05, retentionRelease: "full" })).toBe(0)
   })
 
   it("a date is unrealistic when it needs a pace the unit has never reached", () => {
@@ -108,14 +109,14 @@ describe("the writes", () => {
 
     // 50,000 × min(10%, 5%) × ½
     expect(await handOverUnit(db, pm, "p1", pmA, "01")).toEqual({ claimable: 1250 })
-    expect(readDoc(`${PM_EVENTS}/prj:HND:PJ-2026_004:U01:prov`)).toMatchObject({ kind: "HND", amount: 1250, params: { stage: "unit", unit: "Villa 1" } })
+    expect(readDoc(`${PM_EVENTS}/${pmEventDocId("org", "prj:HND:PJ-2026/004:U01:prov")}`)).toMatchObject({ kind: "HND", amount: 1250, params: { stage: "unit", unit: "Villa 1" } })
     expect(readDoc<{ pm: { retentionFreed: number } }>("projects/p1")?.pm.retentionFreed).toBe(1250)
     await expect(handOverUnit(db, pm, "p1", pmA, "01")).rejects.toMatchObject({ code: "done" })
 
     // The project's provisional then sends half the held retention LESS what the unit already sent.
     await writeSheet(db, pm, "p1", pmA, { day: "2026-09-21", lines: [{ itemId: "i1", qty: 50, unit: "02" }] })
     await recordProvisional(db, pm, "p1", pmA)
-    expect(readDoc(`${PM_EVENTS}/prj:HND:PJ-2026_004:prov`)).toMatchObject({ amount: 3750 })
+    expect(readDoc(`${PM_EVENTS}/${pmEventDocId("org", "prj:HND:PJ-2026/004:prov")}`)).toMatchObject({ amount: 3750 })
     expect(readDoc<{ pm: { retentionFreed: number } }>("projects/p1")?.pm.retentionFreed).toBe(5000)
   })
 })

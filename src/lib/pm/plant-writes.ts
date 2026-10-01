@@ -4,22 +4,27 @@
 // CAN('daily') on eqSitePanel). One transaction each, guard first;
 // the project numbers the units it receives. Nothing is ever deleted. A unit
 // received against an equipment request closes that request in the same write.
+// The day rate is an amount: whoever receives a unit without seeing money
+// leaves it unrated, and a money holder sets it afterwards (`setPlantDayRate`).
 
 import { deleteField, doc, runTransaction, serverTimestamp, type FieldValue, type Firestore, type Transaction } from "firebase/firestore"
-import { assertPm, type PmAction, type PmContext } from "./access"
+import { assertPm, PmAccessError, pmCan, type PmAction, type PmContext, type PmRefusal } from "./access"
 import { cleanAttachments, type PmAttachment } from "./attachments"
 import { todayDay } from "./format"
 import {
   backBlocks,
   dayBlocks,
+  deskBlocks,
   handoverBlocks,
   hasMeter,
   offBlocks,
   PM_PLANT,
   plantNo,
+  rateBlocks,
   type OffReason,
   type PlantCategory,
   type PlantCondition,
+  type PlantDayEntry,
   type PlantDayState,
   type PlantOwnership,
   type PmPlant,
@@ -37,14 +42,29 @@ export class PmPlantError extends Error {
 type ProjectData = { organizationId?: string; status?: string; projectManagerId?: string | null; pm?: { plantCount?: number } & Record<string, unknown> }
 type Actor = { uid: string; name: string | null }
 
-async function readProject(tx: Transaction, firestore: Firestore, ctx: PmContext, projectId: string, action: PmAction) {
+/** Who may set a day rate: it is an amount, so `money`, held by someone who
+ * runs the project's plant (`req`) or approves on it. PM_GUARD has no action
+ * for this pair yet, so the check is spelled here in the guard's own terms. */
+export function plantRateRefusal(ctx: PmContext): PmRefusal | null {
+  if (ctx.archived) return "archived"
+  if (!ctx.seat && !ctx.ceiling.has("all")) return "not_on_team"
+  return pmCan(ctx, "money") && (pmCan(ctx, "req") || pmCan(ctx, "approve")) ? null : "no_duty"
+}
+
+const assertRate = (ctx: PmContext) => {
+  const refusal = plantRateRefusal(ctx)
+  if (refusal) throw new PmAccessError(refusal, "plant.rate.set")
+}
+
+async function readProject(tx: Transaction, firestore: Firestore, ctx: PmContext, projectId: string, guard: PmAction | ((fresh: PmContext) => void)) {
   const ref = doc(firestore, "projects", projectId)
   const snap = await tx.get(ref)
   if (!snap.exists()) throw new PmPlantError("missing")
   const project = snap.data() as ProjectData
   if (!project.pm) throw new PmPlantError("not_pm_project")
   const fresh = withFreshState(ctx, project)
-  assertPm(fresh, action)
+  if (typeof guard === "function") guard(fresh)
+  else assertPm(fresh, guard)
   return { ref, project, pm: project.pm, fresh }
 }
 
@@ -142,18 +162,36 @@ export async function receivePlant(firestore: Firestore, ctx: PmContext, project
   return seq
 }
 
-/** Log what the unit did on a day — one of five states, with the hours on a working day;
- * a second entry for the day replaces the first. */
-export async function logPlantDay(firestore: Firestore, ctx: PmContext, projectId: string, seq: number, input: { day: string; st: PlantDayState; hours?: number | null }): Promise<void> {
+/** Log what the unit did on a day — one of five states, with the hours on a
+ * working day; a second entry for the day replaces the first, and every entry
+ * names who logged it and when, so a past day rewritten (it reprices the day)
+ * is never anonymous. No day after the desk's confirmation: the charge stopped there. */
+export async function logPlantDay(firestore: Firestore, ctx: PmContext, projectId: string, actor: Actor, seq: number, input: { day: string; st: PlantDayState; hours?: number | null }): Promise<void> {
   await runTransaction(firestore, async (tx) => {
     const { fresh } = await readProject(tx, firestore, ctx, projectId, "daily.write")
     const { ref, plant } = await readPlant(tx, firestore, projectId, seq)
-    const blocks = dayBlocks({ archived: fresh.archived, status: plant.status, day: input.day, from: plant.from, today: todayDay(), st: input.st, hours: input.hours })
+    const today = todayDay()
+    const blocks = dayBlocks({ archived: fresh.archived, status: plant.status, day: input.day, from: plant.from, today, st: input.st, offOn: plant.offOk?.on ?? null, hours: input.hours })
     if (blocks.length) throw new PmPlantError("blocked", blocks)
-    const patch: Record<string, FieldValue | string | number> = { [`days.${input.day}`]: input.st, updatedAt: serverTimestamp() }
+    const entry: PlantDayEntry = { st: input.st, by: actor.uid, byName: actor.name, on: today }
+    const patch: Record<string, FieldValue | PlantDayEntry | number> = { [`days.${input.day}`]: entry, updatedAt: serverTimestamp() }
     if (input.st === "work" && input.hours != null) patch[`hours.${input.day}`] = input.hours
     else if (plant.hours?.[input.day] != null) patch[`hours.${input.day}`] = deleteField()
     tx.update(ref, patch)
+  })
+}
+
+/** Give a unit its day rate after the handover — it arrived with someone who
+ * does not see money, or with the rate not yet agreed. Until then its days
+ * cost nothing and the idle decision never fires. Every logged day is priced
+ * at the rate; who set it, when, and the rate it replaced are kept. */
+export async function setPlantDayRate(firestore: Firestore, ctx: PmContext, projectId: string, actor: Actor, seq: number, input: { dayRate: number }): Promise<void> {
+  await runTransaction(firestore, async (tx) => {
+    const { fresh } = await readProject(tx, firestore, ctx, projectId, assertRate)
+    const { ref, plant } = await readPlant(tx, firestore, projectId, seq)
+    const blocks = rateBlocks({ archived: fresh.archived, status: plant.status, category: plant.category, dayRate: input.dayRate })
+    if (blocks.length) throw new PmPlantError("blocked", blocks)
+    tx.update(ref, { dayRate: input.dayRate, rateSet: { on: todayDay(), by: actor.uid, byName: actor.name, was: plant.dayRate ?? null }, updatedAt: serverTimestamp() })
   })
 }
 
@@ -173,13 +211,14 @@ export async function requestOffHire(firestore: Firestore, ctx: PmContext, proje
   })
 }
 
-/** Record the desk's confirmation, with its off-hire number — from here the charge can stop. */
+/** Record the desk's confirmation, with its off-hire number — the charge stops
+ * on its date, so the date is held in order: not before the request it answers. */
 export async function recordOffHireConfirmation(firestore: Firestore, ctx: PmContext, projectId: string, actor: Actor, seq: number, input: { no: string; on: string }): Promise<void> {
   await runTransaction(firestore, async (tx) => {
     const { fresh } = await readProject(tx, firestore, ctx, projectId, "plant.request")
     const { ref, plant } = await readPlant(tx, firestore, projectId, seq)
-    if (fresh.archived || plant.status !== "req" || plant.offOk || !input.no.trim() || !input.on || input.on > todayDay())
-      throw new PmPlantError("blocked", [fresh.archived ? "archived" : !input.no.trim() ? "no_number" : "wrong_state"])
+    const blocks = deskBlocks({ archived: fresh.archived, plant, no: input.no, on: input.on, today: todayDay() })
+    if (blocks.length) throw new PmPlantError("blocked", blocks)
     tx.update(ref, { offNo: input.no.trim(), offOk: { on: input.on, by: actor.uid, byName: actor.name }, updatedAt: serverTimestamp() })
   })
 }

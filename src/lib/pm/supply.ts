@@ -16,7 +16,7 @@
 
 import type { PmAttachment } from "./attachments"
 import { sampleStateOf } from "./sample"
-import { itemProgress, materialKeyOf, r2, ratedOn, storeBalance, type PmStoreLine, type StoreItem } from "./store"
+import { itemProgress, materialKeyOf, r2, r3, ratedOn, storeBalance, type PmStoreLine, type StoreItem } from "./store"
 
 export const PURCHASE_REQUESTS = "purchaseRequests"
 export const PM_PETTY = "pmPetty"
@@ -43,9 +43,13 @@ export interface ReqClose {
   on: string
   by: string
   byName?: string | null
-  why?: CloseWhy | "chg" | null
+  /** `chg` the change was rejected · `rcv` the receiver recorded that the rest will not arrive. */
+  why?: CloseWhy | "chg" | "rcv" | null
   whyNote?: string | null
 }
+
+/** What serves a line: `stk` issued from a main store · `buy` bought (or made by our workshop). */
+export type PortionKind = "stk" | "buy"
 
 export interface ReqReceipt {
   grn: string
@@ -57,6 +61,8 @@ export interface ReqReceipt {
   dn?: string | null
   note?: string | null
   short?: boolean
+  /** The portion it arrived against. A receipt recorded before portions were kept names none. */
+  src?: PortionKind
   /** The delivery note photographed, or the material itself. */
   files?: PmAttachment[]
 }
@@ -94,6 +100,26 @@ export interface ReqLine {
   cl?: ReqClose | null
   receipts?: ReqReceipt[]
   inv?: ReqInventoryReply | null
+  /** A change decided after the request was sourced: a new line for Procurement
+   * to buy on its own — it never rides the RFQ or the order the request has. */
+  late?: { on: string } | null
+}
+
+/** The RFQ and the order that answer one line. */
+export interface LineLink {
+  rfqId?: string | null
+  rfqNumber?: string | null
+  poId?: string | null
+  poNumber?: string | null
+}
+
+/** One entry of `items` — what Procurement's desk reads of the request. */
+export interface ProcurementItem {
+  name: string
+  quantity: number
+  unit: string
+  itemId?: string
+  samplePending?: boolean
 }
 
 export type ReqStatus = "pending" | "approved" | "rejected"
@@ -114,12 +140,16 @@ export interface PmMaterialRequest {
   approvedOn?: string | null
   approvedByName?: string | null
   decidedByUserName?: string | null
-  items?: Array<{ name: string; quantity: number; unit: string; itemId?: string; samplePending?: boolean }>
+  items?: ProcurementItem[]
   rfqId?: string | null
   rfqNumber?: string | null
   poId?: string | null
   poNumber?: string | null
   mfgRequestId?: string | null
+  /** A line's own RFQ and order, by its index in `lines` — a line added after the
+   * request was sourced, or one a split award gave to another supplier's order.
+   * Written by Procurement. */
+  lineLinks?: Record<string, LineLink> | null
 }
 
 type Raw = Record<string, unknown> & { id: string }
@@ -158,11 +188,14 @@ export function requestOf(d: Raw): PmMaterialRequest {
     approvedOn: str(d.approvedOn) || null,
     approvedByName: str(d.approvedByName) || str(d.decidedByUserName) || null,
     decidedByUserName: str(d.decidedByUserName) || null,
+    // Carried so a rewrite of the lines keeps the marks `items` already holds.
+    ...(Array.isArray(d.items) ? { items: d.items as ProcurementItem[] } : {}),
     rfqId: str(d.rfqId) || null,
     rfqNumber: str(d.rfqNumber) || null,
     poId: str(d.poId) || null,
     poNumber: str(d.poNumber) || null,
     mfgRequestId: str(d.mfgRequestId) || null,
+    lineLinks: d.lineLinks && typeof d.lineLinks === "object" ? (d.lineLinks as Record<string, LineLink>) : null,
   }
 }
 
@@ -190,12 +223,48 @@ export const lineRejected = (l: ReqLine) => r2((l.receipts || []).reduce((a, x) 
 const held = (l: ReqLine) => l.chg?.st === "wait"
 const refused = (l: ReqLine) => l.chg?.st === "no"
 
-/** Still owed on the line: requested − received, unless it was closed. */
-export const lineOut = (l: ReqLine) => (l.cl || refused(l) ? 0 : Math.max(0, r2(l.qty - lineGot(l))))
+export interface LinePortion {
+  k: PortionKind
+  q: number
+  got: number
+  /** Still expected: 0 once it is all in, the receiver shut it, or the line closed. */
+  left: number
+}
+
+/** The line in portions (the prototype's `pl`): what a main store issued, and the
+ * rest — bought. Before Inventory replies the whole line is one bought portion.
+ * A receipt counts against the portion it names, so the supplier's delivery never
+ * hides what is still on the road from the store. One recorded before portions
+ * were kept names none: it is read as the store's issue first, then the purchase. */
+export function linePortions(l: ReqLine): LinePortion[] {
+  const stk = l.inv?.k === "issue" ? r3(Math.max(0, Math.min(Number(l.inv.q) || 0, l.qty))) : 0
+  const size: Record<PortionKind, number> = { stk, buy: r3(Math.max(0, l.qty - stk)) }
+  const got: Record<PortionKind, number> = { stk: 0, buy: 0 }
+  const shut: Record<PortionKind, boolean> = { stk: false, buy: false }
+  let loose = 0
+  for (const x of l.receipts || []) {
+    if (x.src) {
+      got[x.src] += x.q
+      if (x.short) shut[x.src] = true
+    } else {
+      loose += x.q
+      if (x.short) shut.stk = shut.buy = true
+    }
+  }
+  const toStore = Math.min(loose, Math.max(0, size.stk - got.stk))
+  got.stk += toStore
+  got.buy += loose - toStore
+  return (["stk", "buy"] as const)
+    .filter((k) => size[k] > 0)
+    .map((k) => ({ k, q: size[k], got: r3(got[k]), left: l.cl || shut[k] ? 0 : Math.max(0, r3(size[k] - got[k])) }))
+}
+
+/** Still owed on the line: what its portions still expect — nothing once it was closed. */
+export const lineOut = (l: ReqLine) => (l.cl || refused(l) ? 0 : r2(linePortions(l).reduce((a, p) => a + p.left, 0)))
 
 /** Issued from a main store and not yet received on the project — on the way
  * (the prototype's lnTransit: authorised portions less what arrived). */
-export const lineInTransit = (l: ReqLine) => (l.cl ? 0 : l.inv?.k === "issue" ? Math.max(0, r2(Math.min(Number(l.inv.q) || 0, l.qty) - lineGot(l))) : 0)
+export const lineInTransit = (l: ReqLine) => r2(linePortions(l).find((p) => p.k === "stk")?.left ?? 0)
 
 /** How the line is served once Inventory replied (the prototype's lnPlan portions):
  * what a main store issues, and the rest — bought. Null before the reply. */
@@ -228,7 +297,21 @@ export function changeOptions(input: { line: ReqLine; voStatus: string | null; e
  * with the supplier · part part received · done received · cx cancelled. */
 export type LinePhase = "prop" | "held" | "refused" | "ask" | "rfq" | "mfg" | "po" | "part" | "done" | "cx"
 
-export function linePhase(r: Pick<PmMaterialRequest, "status" | "withdrawn" | "rfqId" | "poId" | "mfgRequestId">, l: ReqLine): LinePhase {
+type Linked = Pick<PmMaterialRequest, "rfqId" | "poId" | "mfgRequestId"> & Partial<Pick<PmMaterialRequest, "rfqNumber" | "poNumber" | "lines" | "lineLinks">>
+type Phased = Pick<PmMaterialRequest, "status" | "withdrawn"> & Linked
+
+/** Who is bringing a line — `l` being one of `r.lines`: its own RFQ and order when
+ * it has them, else the request's. A line added after the request was sourced has
+ * only its own: the order already out was never raised for it. */
+export function lineLink(r: Linked, l: ReqLine): Required<LineLink> & { mfgRequestId: string | null } {
+  const i = r.lines ? r.lines.indexOf(l) : -1
+  const own = (i >= 0 ? r.lineLinks?.[String(i)] : null) ?? null
+  if (l.late) return { rfqId: own?.rfqId ?? null, rfqNumber: own?.rfqNumber ?? null, poId: own?.poId ?? null, poNumber: own?.poNumber ?? null, mfgRequestId: null }
+  const po = own?.poId ? own : r
+  return { rfqId: r.rfqId ?? null, rfqNumber: r.rfqNumber ?? null, poId: po.poId ?? null, poNumber: po.poNumber ?? null, mfgRequestId: r.mfgRequestId ?? null }
+}
+
+export function linePhase(r: Phased, l: ReqLine): LinePhase {
   if (refused(l)) return "refused"
   if (r.status === "pending") return "prop"
   if (r.status === "rejected") return "cx"
@@ -237,27 +320,46 @@ export function linePhase(r: Pick<PmMaterialRequest, "status" | "withdrawn" | "r
   if (l.cl) return l.cl.t === "cancel" ? "cx" : "done"
   if (got >= l.qty - 0.005) return "done"
   if (got > 0) return "part"
-  if (r.poId) return "po"
-  if (r.mfgRequestId) return "mfg"
-  if (r.rfqId) return "rfq"
+  const by = lineLink(r, l)
+  if (by.poId) return "po"
+  if (by.mfgRequestId) return "mfg"
+  if (by.rfqId) return "rfq"
   return "ask"
 }
 
-/** A line can be received on the project once someone is bringing it: an order
- * with the supplier, a workshop order, or a part already in. */
-export const receivable = (r: Pick<PmMaterialRequest, "status" | "withdrawn" | "rfqId" | "poId" | "mfgRequestId">, l: ReqLine) => {
-  const p = linePhase(r, l)
-  // What a main store issued is received on the project like what a supplier sends.
-  return (p === "po" || p === "mfg" || p === "part" || lineInTransit(l) > 0) && lineOut(l) > 0
+/** What the project needs of the order behind a line. Undefined = not read;
+ * null = no order document (an award older than purchase orders — the offer was
+ * the order). Either way the line is taken as coming, as it always was. */
+export type OrderFact = { status?: string | null } | null | undefined
+
+/** An order brings material once it is approved: one still awaiting approval may
+ * yet be returned, and a cancelled one brings nothing. */
+export const orderComing = (o: OrderFact) => !o || (o.status !== "awaiting_approval" && o.status !== "cancelled")
+
+/** The portions that can be received on the project now. What a main store issued
+ * is on its way from the moment it is issued; the bought portion once an order
+ * that is coming (or our workshop) has it — never more than each still expects. */
+export function receivablePortions(r: Phased, l: ReqLine, order?: OrderFact): LinePortion[] {
+  if (r.status !== "approved" || l.cl || held(l) || refused(l)) return []
+  const by = lineLink(r, l)
+  const bought = Boolean(by.mfgRequestId) || (Boolean(by.poId) && orderComing(order))
+  return linePortions(l).filter((p) => p.left > 0 && (p.k === "stk" || bought))
 }
 
+/** A line can be received on the project once someone is bringing it. `order` is
+ * the order behind the line (`lineLink(r, l).poId`), when the caller has read it. */
+export const receivable = (r: Phased, l: ReqLine, order?: OrderFact) => receivablePortions(r, l, order).length > 0
+
 /** What Procurement sees: every approved line not held or refused — a closed line
- * at what arrived (none when nothing did). A line whose item's sample is with
- * the consultant carries `samplePending`: Procurement collects offers, but no
- * order is issued before the consultant approves (the prototype's wait). */
-export function procurementItems(r: Pick<PmMaterialRequest, "lines">, samplePending?: ReadonlySet<string>): Array<{ name: string; quantity: number; unit: string; itemId?: string; samplePending?: boolean }> {
+ * at what arrived (none when nothing did). A line added after the request was
+ * sourced is not among them: it is its own need on the desk (needs.ts reads it
+ * from `lines`, and reads these items back onto their lines by the same filter).
+ * A line whose item's sample is with the consultant carries `samplePending`:
+ * Procurement collects offers, but no order is issued before the consultant
+ * approves (the prototype's wait). */
+export function procurementItems(r: Pick<PmMaterialRequest, "lines">, samplePending?: ReadonlySet<string>): ProcurementItem[] {
   return r.lines
-    .filter((l) => !held(l) && !refused(l))
+    .filter((l) => !held(l) && !refused(l) && !l.late)
     .map((l) => ({ name: l.name, unit: l.unit, quantity: l.cl ? lineGot(l) : l.qty, ...(l.itemId ? { itemId: l.itemId } : {}), ...(l.itemId && samplePending?.has(l.itemId) ? { samplePending: true } : {}) }))
     .filter((i) => i.quantity > 0)
 }
@@ -265,10 +367,36 @@ export function procurementItems(r: Pick<PmMaterialRequest, "lines">, samplePend
 /** The items whose sample is with the consultant now. */
 export const pendingSamples = (items: Array<{ id: string; pmSample?: boolean | null; pmSub?: string | null }>): Set<string> => new Set(items.filter((i) => sampleStateOf(i) === "with_consultant").map((i) => i.id))
 
-/** The pending marks a request already carries, kept across a rewrite of its items. */
-export const pendingKept = (r: Pick<PmMaterialRequest, "lines"> & { items?: Array<{ name?: string; samplePending?: boolean | null }> | null }): Set<string> => {
-  const names = new Set((r.items ?? []).filter((i) => i.samplePending).map((i) => i.name))
-  return new Set(r.lines.filter((l) => l.itemId && names.has(l.name)).map((l) => l.itemId as string))
+type MarkedItem = { name?: string; itemId?: string | null; samplePending?: boolean | null }
+
+/** The pending marks a request already carries, kept across a rewrite of its
+ * items: they come off when the consultant approves, never because a line moved. */
+export const pendingKept = (r: Pick<PmMaterialRequest, "lines"> & { items?: MarkedItem[] | null }): Set<string> => {
+  const marked = (r.items ?? []).filter((i) => i.samplePending)
+  const names = new Set(marked.filter((i) => !i.itemId).map((i) => i.name))
+  return new Set([...marked.filter((i) => i.itemId).map((i) => i.itemId as string), ...r.lines.filter((l) => l.itemId && names.has(l.name)).map((l) => l.itemId as string)])
+}
+
+/** The request's `items` once the consultant approved the sample on a BOQ item:
+ * its lines on that item lose the mark and may now be ordered. Null when the
+ * request carries no such mark — then nothing is written. */
+export function itemsAfterSampleApproval<T extends MarkedItem>(r: { lines?: Array<Pick<ReqLine, "itemId" | "name">> | null; items?: T[] | null }, itemId: string): T[] | null {
+  const names = new Set((r.lines ?? []).filter((l) => l.itemId === itemId).map((l) => l.name))
+  const hit = (i: T) => Boolean(i.samplePending) && (i.itemId ? i.itemId === itemId : names.has(i.name ?? ""))
+  if (!(r.items ?? []).some(hit)) return null
+  return (r.items ?? []).map((i) => {
+    if (!hit(i)) return i
+    const rest = { ...i }
+    delete rest.samplePending
+    return rest
+  })
+}
+
+/** Inventory's reason in the READER's language: from its code when the reader has
+ * words for it; the keeper's stored sentence only when it carries no such code. */
+export function invWhyText(inv: Pick<ReqInventoryReply, "why" | "whyK"> | null | undefined, ofCode: (code: string) => string | null): string | null {
+  if (!inv) return null
+  return (inv.whyK ? ofCode(inv.whyK) : null) ?? (inv.why || null)
 }
 
 export const reqTitle = (lines: Array<Pick<ReqLine, "name">>, fallback: string) => {
@@ -449,16 +577,20 @@ export function receiveBlocks(input: { archived: boolean; receivable: boolean; r
   if (input.archived) out.push("archived")
   if (!input.receivable) out.push("not_receivable")
   if (!(input.acc >= 0 && input.rej >= 0 && input.acc + input.rej > 0)) out.push("bad_qty")
-  else if (input.acc > input.remaining + 0.005) out.push("over_remaining")
+  else if (input.receivable && input.acc > input.remaining + 0.005) out.push("over_remaining")
   return out
 }
 
-/** The line after a receipt: fully in closes it; "the rest will not arrive" closes it short. */
+/** The line after a receipt. It closes full only when the requested quantity is
+ * in (within 0.005 — the prototype's portion test): a delivery a little short
+ * stays open for its rest. «الباقي لن يصل» shuts the portion the receipt arrived
+ * against; once no portion expects anything more the line closes short, in the
+ * receiver's name. */
 export function receivedLine(l: ReqLine, receipt: ReqReceipt, on: string, by: string): ReqLine {
   const next: ReqLine = { ...l, receipts: [...(l.receipts || []), receipt] }
   const got = lineGot(next)
-  if (got >= l.qty * 0.995) return { ...next, cl: { t: "full", on, by: "sys" } }
-  if (receipt.short) return { ...next, cl: { t: got > 0 ? "short" : "cancel", on, by, byName: receipt.byName ?? null, why: null } }
+  if (got >= l.qty - 0.005) return { ...next, cl: { t: "full", on, by: "sys" } }
+  if (linePortions(next).every((p) => p.left <= 0)) return { ...next, cl: { t: got > 0 ? "short" : "cancel", on, by, byName: receipt.byName ?? null, why: "rcv" } }
   return next
 }
 
@@ -493,7 +625,9 @@ export interface NeedRow {
 /** For every rated material × unfinished item: what the next 30 days of work on
  * the item consume — the share of its remaining work that falls in the window
  * (from its activity's dates, else its current pace) — less what is on site and
- * on the way. A row is covered when a live request names the material. */
+ * on the way. An item whose every activity has already ended is overdue: all
+ * that remains of it is needed now. A row is covered when a live request names
+ * the material on a line still alive (a refused change asks for nothing). */
 export function needsWithin(input: {
   stores: PmStoreLine[]
   items: StoreItem[]
@@ -511,9 +645,12 @@ export function needsWithin(input: {
       const it = itemById(input.items, id)
       if (!r || !it || itemProgress(it) >= 99.5) continue
       const remaining = Math.max(0, it.quantity - it.executed)
-      const acts = input.activities.filter((a) => a.itemIds.includes(id) && a.to >= input.today && a.from <= addDays(input.today, win))
+      const planned = input.activities.filter((a) => a.itemIds.includes(id))
+      const acts = planned.filter((a) => a.to >= input.today && a.from <= addDays(input.today, win))
       let share = 0
-      if (acts.length) {
+      if (planned.length && planned.every((a) => a.to < input.today)) {
+        share = 1
+      } else if (acts.length) {
         const to = acts.reduce((m, a) => (a.to > m ? a.to : m), acts[0].to)
         const from = acts.reduce((m, a) => (a.from < m ? a.from : m), acts[0].from)
         const left = Math.max(1, daysBetween(from > input.today ? from : input.today, to) + 1)
@@ -538,7 +675,7 @@ export function needsWithin(input: {
     for (const n of list.sort((a, b) => a.code.localeCompare(b.code))) {
       const gap = r2(Math.max(0, n.need - avail))
       avail = Math.max(0, avail - n.need)
-      const requested = input.requests.some((r) => reqLive(r) && r.lines.some((l) => !l.cl && l.key === key))
+      const requested = input.requests.some((r) => reqLive(r) && r.lines.some((l) => !l.cl && !refused(l) && l.key === key))
       if (gap > 0 && !requested) gaps.push({ ...n, gap })
       else covered++
     }
@@ -743,9 +880,13 @@ export function priceVsEstimate(lastPrice: number, key: string, lines: Array<Pic
 
 /** The store's «بانتظار الاستلام»: every receivable line of an approved request —
  * what a main store already issued first (it is on the road), then by need-by. */
-export function awaitingReceipt<R extends Pick<PmMaterialRequest, "status" | "withdrawn" | "rfqId" | "poId" | "mfgRequestId" | "lines" | "needBy">>(requests: R[]): Array<{ r: R; index: number; left: boolean }> {
+export function awaitingReceipt<R extends Pick<PmMaterialRequest, "status" | "withdrawn" | "rfqId" | "poId" | "mfgRequestId" | "lines" | "needBy">>(
+  requests: R[],
+  /** The order behind a line, where the viewer reads it: one still awaiting approval (or cancelled) brings nothing. */
+  orderOf?: (poId: string | null) => OrderFact
+): Array<{ r: R; index: number; left: boolean }> {
   const out: Array<{ r: R; index: number; left: boolean }> = []
-  for (const r of requests) if (r.status === "approved") r.lines.forEach((l, index) => receivable(r, l) && out.push({ r, index, left: lineInTransit(l) > 0 }))
+  for (const r of requests) if (r.status === "approved") r.lines.forEach((l, index) => receivable(r, l, orderOf?.(lineLink(r, l).poId)) && out.push({ r, index, left: lineInTransit(l) > 0 }))
   return out.sort((a, b) => Number(b.left) - Number(a.left) || (a.r.needBy || "9999").localeCompare(b.r.needBy || "9999"))
 }
 
