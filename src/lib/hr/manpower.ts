@@ -55,7 +55,12 @@ export function coverage(input: { trade: string; count: number; from: string; to
     if (drives && !mayDrive({ docs: e.docs ?? {}, drives }, start)) return "licence_expired"
     return null
   }
-  const same = input.employees.filter((e) => e.trade === input.trade && e.status === "active" && e.siteId !== input.siteId)
+  // Available: at work — or recorded ahead of a start date that has come by then
+  // (the record says "expected" until someone looks) — and not already on the
+  // asking workplace. A request from a project with no HR workplace carries no
+  // site, and the unassigned carry none either: they are exactly who it wants.
+  const atWork = (e: HrEmployee) => e.status === "active" || (e.status === "expected" && Boolean(e.join) && e.join <= start)
+  const same = input.employees.filter((e) => e.trade === input.trade && atWork(e) && !(e.siteId && e.siteId === input.siteId))
   let left = input.count
 
   const take = (source: CoverageSource, date: string, people: HrEmployee[]) => {

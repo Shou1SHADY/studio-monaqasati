@@ -6,6 +6,8 @@
  */
 jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-utils/fake-firestore")>("@/test-utils/fake-firestore").firestoreModule)
 
+import fs from "fs"
+import path from "path"
 import { fakeFirestore, readDoc, resetFakeDb } from "@/test-utils/fake-firestore"
 import type { Firestore } from "firebase/firestore"
 import type { HrContext } from "@/lib/hr/access"
@@ -47,7 +49,7 @@ describe("reading and interpreting", () => {
 
   it("rejected rows are named and never saved: no name, bad gender, a duplicate ID, the same name and join already on the record", () => {
     const rows = interpretRows(
-      parseCsv([head, row({ ...good, name_ar: "" }), row({ ...good, id_no: "1", gender: "?" }), row({ ...good, id_no: "2000000001" }), row({ ...good, id_no: "9", name_en: "Old Hand", join_date: "2020-01-01" })].join("\n")),
+      parseCsv([head, row({ ...good, name_ar: "", name_en: "" }), row({ ...good, id_no: "1", gender: "?" }), row({ ...good, id_no: "2000000001" }), row({ ...good, id_no: "9", name_en: "Old Hand", join_date: "2020-01-01" })].join("\n")),
       ctx
     )
     expect(rows.map((r) => r.status)).toEqual(["rejected", "rejected", "rejected", "rejected"])
@@ -73,5 +75,66 @@ describe("saving", () => {
     expect(readDoc<EmployeePay>(`employeePay/${id}`)?.advance).toMatchObject({ balance: 600 })
     expect(onPayroll(e, "2026-08")).toBe(false)
     expect(onPayroll(e, "2026-09")).toBe(true)
+  })
+})
+
+describe("the package's own template and what the audit found", () => {
+  // The labels the import dialog hands over in the Arabic interface — read from the real message file.
+  const ar = JSON.parse(fs.readFileSync(path.join(process.cwd(), "messages", "ar.json"), "utf8")).Portal.HR as { trade: Record<string, string>; nat: Record<string, string> }
+  const arabicUi = {
+    today: TODAY,
+    sites,
+    existing: [],
+    tradeLabels: Object.fromEntries(Object.entries(ar.trade).map(([k, v]) => [v.trim().toLowerCase(), k])),
+    nationalityLabels: Object.fromEntries(Object.entries(ar.nat).map(([k, v]) => [v.trim().toLowerCase(), k])),
+  }
+  // Delivery-HR-1.0/R1-start/employees-template.csv, as delivered (BOM, fourteen columns, countries by name).
+  const TEMPLATE =
+    "\uFEFFname_ar,name_en,nationality,gender,trade,workplace,join_date,basic,iqama_expiry,passport_expiry,insurance_expiry,iban,leave_balance,advance_balance\r\n" +
+    "محمد رفيق الإسلام,Mohammad Rafiqul Islam,بنغلاديش,m,بنّاء,مجمع النرجس السكني,2021-06-15,1800,2027-01-10,2028-05-02,2026-12-01,SA1280000009876543210987,9,1500\r\n" +
+    "هدى العتيبي,Huda Al-Otaibi,السعودية,f,إداري,المكتب الرئيسي,2023-09-01,5200,,,,SA0315000007418529630741,11,0\r\n"
+
+  it("the delivered template imports: a country's name is its nationality, in either language", () => {
+    const rows = interpretRows(parseCsv(TEMPLATE), arabicUi)
+    expect(rows.map((r) => [r.status, r.errors.map((e) => e.key)])).toEqual([["notes", []], ["notes", []]])
+    expect(rows.map((r) => r.input?.nationality)).toEqual(["bd", "sa"])
+    expect(rows.map((r) => r.input?.trade)).toEqual(["mason", "administrator"])
+    expect(rows[0].input).toMatchObject({ gender: "m", join: "2021-06-15", basic: 1_800, advanceBalance: 1_500, docs: { iqama: "2027-01-10", passport: "2028-05-02", insurance: "2026-12-01" } })
+    for (const [value, code] of [["Bangladesh", "bd"], ["saudi arabia", "sa"], ["الأردن", "jo"], ["الاردن", "jo"], ["Egyptian", "eg"], ["pk", "pk"]]) {
+      const [r] = interpretRows(parseCsv(`${head}\n${row({ ...good, nationality: value })}`), { ...ctx, nationalityLabels: {} })
+      expect([value, r.input?.nationality]).toEqual([value, code])
+    }
+  })
+
+  it("the opening balance lands on the file's figure whatever the join date (IM-02)", () => {
+    const off: string[] = []
+    for (let i = 0; i < 400; i++) {
+      const join = new Date(Date.UTC(2019, 0, 1) + i * 5 * 86_400_000).toISOString().slice(0, 10)
+      const [r] = interpretRows(parseCsv(`${head}\n${row({ ...good, join_date: join, leave_balance: "9" })}`), ctx)
+      if (leaveBalance(join, TODAY, 0, r.input!.openingLeave) !== 9) off.push(join)
+    }
+    expect(off).toEqual([])
+  })
+
+  it("a row is never dropped in silence: a join date that is words is rejected by name, on its own line number", () => {
+    const rows = interpretRows(parseCsv([head, row({ ...good, id_no: "11" }), row({ ...good, id_no: "12", join_date: "غير معروف" }), row({ ...good, id_no: "13" })].join("\n")), ctx)
+    expect(rows.map((r) => [r.line, r.status])).toEqual([[2, "clean"], [3, "rejected"], [4, "clean"]])
+    expect(rows[1].errors[0]).toMatchObject({ key: "bad_join" })
+  })
+
+  it("the template's own row of column labels, right under the header, is skipped — and the lines still count from the file", () => {
+    const labels = IMPORT_COLUMNS.map((c) => `label of ${c}`).join(",")
+    const rows = interpretRows(parseCsv([head, labels, row({ ...good, id_no: "21" })].join("\n")), ctx)
+    expect(rows.map((r) => [r.line, r.status])).toEqual([[3, "clean"]])
+  })
+
+  it("a join date still to come is not a move-in; a name in English alone is a name", () => {
+    const [future] = interpretRows(parseCsv(`${head}\n${row({ ...good, join_date: "2026-12-01" })}`), ctx)
+    expect(future).toMatchObject({ status: "rejected", errors: [{ key: "future_join" }] })
+    const [english] = interpretRows(parseCsv(`${head}\n${row({ ...good, name_ar: "" })}`), ctx)
+    expect(english.status).not.toBe("rejected")
+    expect(english.input).toMatchObject({ nameAr: "Ahmed", nameEn: "Ahmed" })
+    const [nameless] = interpretRows(parseCsv(`${head}\n${row({ ...good, name_ar: "", name_en: "" })}`), ctx)
+    expect(nameless.errors[0].key).toBe("no_name")
   })
 })

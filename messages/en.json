@@ -18829,7 +18829,8 @@
           "iqama_clock": "Iqama for {name} due by {date} (90 days from arrival)",
           "probation_end": "Probation of {name} ends {date}",
           "contract_end": "Contract of {name} ends {date}",
-          "manpower": "{project} asks for {count} × {trade} from {date}"
+          "manpower": "{project} asks for {count} × {trade} from {date}",
+          "settlement_ready": "Settlement for {name} — custody cleared"
         },
         "a": {
           "move": "Move",
@@ -18843,7 +18844,8 @@
           "renew": "Renew",
           "decide": "Decide",
           "open": "Open",
-          "answer": "Answer"
+          "answer": "Answer",
+          "settle": "Settle"
         }
       },
       "back": "Back",
@@ -19182,7 +19184,10 @@
         "settlement_approved": "Settlement approved — last day {lastDay}",
         "data_updated": "Details updated by request {no} — {field}",
         "injury_recorded": "Work injury recorded — {on}",
-        "imported": "Record imported — no. {no}, {trade}, {site}"
+        "imported": "Record imported — no. {no}, {trade}, {site}",
+        "data_filed": "Details update request {no} filed",
+        "data_declined": "Details update request {no} declined",
+        "data_cancelled": "Details update request {no} cancelled"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -19274,7 +19279,9 @@
           "not_missing": "A chosen day already has a record",
           "not_over": "The month has not ended",
           "missing": "{n, plural, one {# day has} other {# days have}} no record — record or declare them first"
-        }
+        },
+        "on_leave": "On approved leave",
+        "on_leave_note": "On approved leave this day — not recorded absent and nothing is deducted."
       },
       "leave_type": {
         "annual": "Annual",
@@ -19356,7 +19363,10 @@
           "outstanding": "An advance is still outstanding — no second one before it is repaid",
           "left": "The employee has left",
           "stale": "This request has already moved on",
-          "travel_docs": "Not approvable for travel: the iqama or passport lapses before the return — renew first"
+          "travel_docs": "Not approvable for travel: the iqama or passport lapses before the return — renew first",
+          "no_value": "Enter the new value",
+          "bad_iban": "The IBAN is not valid — SA followed by 22 digits",
+          "no_document": "Give the bank letter's reference"
         },
         "warn": {
           "travel_docs": "The iqama or passport lapses before the return — no travel before renewal; HR cannot approve it for travel.",
@@ -19793,7 +19803,7 @@
           "advance_balance": "Outstanding advance"
         },
         "err": {
-          "no_name": "The Arabic name is missing",
+          "no_name": "The name is missing",
           "bad_nationality": "Nationality not recognised: {value}",
           "bad_gender": "Gender not recognised: {value}",
           "bad_trade": "Trade not recognised: {value}",
@@ -19802,7 +19812,8 @@
           "duplicate_id": "This ID number is already on the record or in the file",
           "duplicate": "Already on the record (same name and join date)",
           "bad_basic": "Basic not a number: {value}",
-          "bad_advance": "Advance not a number: {value}"
+          "bad_advance": "Advance not a number: {value}",
+          "future_join": "The join date is still to come: {value} — add a future joiner from “New employee”"
         },
         "note": {
           "trade_interpreted": "Trade “{value}” read as {trade}",

@@ -49,6 +49,9 @@ export interface PayrollLine extends PayLine {
   leaveAccrual: number
   /** The line's cost to the company: what it earned (gross less sick and unpaid days) + employer GOSI. */
   cost: number
+  /** The basic and housing the line was computed with — the Mudad file and the GOSI statement read these, never a later raise. */
+  basic?: number
+  housing?: number
 }
 
 export interface SupplementaryLine {
@@ -95,10 +98,11 @@ export interface Payroll {
 
 export type PayrollBlock = "not_over" | "unclosed" | "no_pay" | "approved"
 
-/** Every workplace that must be closed: not an office, with anyone on it or a record this month. */
-export function sitesToClose(month: string, sites: HrSite[], employees: Pick<HrEmployee, "siteId" | "status">[], attendance: WorkplaceMonth[]): string[] {
+/** Every workplace that must be closed: not an office, with someone on it who is on THIS month's payroll, or a record this month.
+ * A workplace whose people all joined after the month has nothing to close for it. */
+export function sitesToClose(month: string, sites: HrSite[], employees: Pick<HrEmployee, "siteId" | "status" | "join" | "since" | "lastDay">[], attendance: WorkplaceMonth[]): string[] {
   const ids = new Set<string>()
-  for (const e of employees) if (e.status !== "left" && e.siteId) ids.add(e.siteId)
+  for (const e of employees) if (e.siteId && onPayroll(e, month)) ids.add(e.siteId)
   for (const a of attendance) if (a.month === month) ids.add(a.siteId)
   return [...ids].filter((id) => !assumesPresence(id, sites.find((s) => s.id === id)?.type ?? null))
 }
@@ -121,7 +125,9 @@ export function payrollBlocks(input: { month: string; today: string; sites: HrSi
 /** On the month's payroll: joined by its end, not left, and — if imported — from the import month on.
  * The month of the last day is the settlement's, not the payroll's (EX-05). */
 export function onPayroll(e: Pick<HrEmployee, "join" | "status" | "since" | "lastDay">, month: string): boolean {
-  if (e.status === "left") return false
+  // A settled leaver is still owed every month BEFORE the month of his last
+  // day; only a record marked left with no last day (an old one) is off them all.
+  if (e.status === "left" && !e.lastDay) return false
   if (!e.join || e.join > monthRange(month).end) return false
   if (e.lastDay && e.lastDay.slice(0, 7) <= month) return false
   if (e.since && e.since.slice(0, 7) > month) return false
@@ -134,20 +140,28 @@ function datesOf(from: string, to: string): string[] {
   return out
 }
 
-/** The month's unpaid and sick-leave days from approved leaves (the excess of an annual leave is its LAST days). */
-export function leaveDaysInMonth(requests: HrRequest[], employeeId: string, month: string, holidays: Holiday[] = []): { unpaid: string[]; sick: string[] } {
+/** The month's unpaid and sick-leave days from approved leaves (the excess of an annual leave is its LAST days);
+ * `all` is every day of the month inside ANY approved leave — paid ones too: a day on leave is never an absence;
+ * `sickFromMonth` counts the approved sick-leave days from this month's first day on. */
+export function leaveDaysInMonth(requests: HrRequest[], employeeId: string, month: string, holidays: Holiday[] = []): { unpaid: string[]; sick: string[]; all: string[]; sickFromMonth: number } {
   const { start, end } = monthRange(month)
   const unpaid: string[] = []
   const sick: string[] = []
+  const all: string[] = []
+  let sickFromMonth = 0
   for (const r of requests) {
     if (r.employeeId !== employeeId || r.kind !== "leave" || r.state !== "approved" || !r.leave) continue
     const l = r.leave
-    const counted = datesOf(l.from, l.to).filter((d) => leaveDays(d, d, holidays) === 1)
+    const dates = datesOf(l.from, l.to)
+    const counted = dates.filter((d) => leaveDays(d, d, holidays) === 1)
     const inMonth = (d: string) => d >= start && d <= end
-    if (l.type === "sick") sick.push(...counted.filter(inMonth))
-    else if (l.unpaidDays > 0) unpaid.push(...counted.slice(counted.length - l.unpaidDays).filter(inMonth))
+    all.push(...dates.filter(inMonth))
+    if (l.type === "sick") {
+      sick.push(...counted.filter(inMonth))
+      sickFromMonth += counted.filter((d) => d >= start).length
+    } else if (l.unpaidDays > 0) unpaid.push(...counted.slice(counted.length - l.unpaidDays).filter(inMonth))
   }
-  return { unpaid, sick }
+  return { unpaid, sick, all, sickFromMonth }
 }
 
 export interface ComputeInput {
@@ -174,10 +188,13 @@ function heldOf(pay: EmployeePay): PayrollLine["heldReason"] {
 
 export function computePayroll(input: ComputeInput): { lines: PayrollLine[]; missingPay: string[] } {
   const { month } = input
-  const closed = input.attendance.filter((a) => a.month === month && a.closed)
+  // What counts: a CLOSED month — and an office's or the unassigned bench's
+  // records as they stand: presence is assumed there, nothing asks for a
+  // closing (AT-02), and an exception written on its sheet is still a fact.
+  const closed = input.attendance.filter((a) => a.month === month && (a.closed || assumesPresence(a.siteId, input.sites.find((s) => s.id === a.siteId)?.type ?? null)))
   const lines: PayrollLine[] = []
   const missingPay: string[] = []
-  const { end } = monthRange(month)
+  const { start, end } = monthRange(month)
   for (const e of input.employees) {
     if (!onPayroll(e, month)) continue
     const pay = input.pays.get(e.id)
@@ -192,19 +209,34 @@ export function computePayroll(input: ComputeInput): { lines: PayrollLine[]; mis
     for (const wm of closed) for (const [d, s] of Object.entries(wm.days ?? {})) if (s.listed.includes(e.id) && s.ex?.[e.id]?.status === "sick") sickDates.add(d)
     const sickYear = Math.floor(serviceYears(e.join, end))
     const prev = input.previous?.find((l) => l.employeeId === e.id)
-    const usedBefore = prev && prev.sickYear === sickYear ? prev.sickUsed : e.sick && e.sick.year === sickYear && !prev ? e.sick.days : 0
+    // With no earlier line (a first payroll, a joiner, the import month) the
+    // record's count is the start — less the approved sick leave from this
+    // month on, which approval already wrote there and this month counts itself.
+    const usedBefore = prev && prev.sickYear === sickYear ? prev.sickUsed : e.sick && e.sick.year === sickYear && !prev ? Math.max(0, e.sick.days - leave.sickFromMonth) : 0
     const split = sickSplit(usedBefore, sickDates.size)
-    // Absence on a day already covered by approved leave is not absence.
-    const leaveSet = new Set([...leave.unpaid, ...leave.sick])
-    let absent = 0
-    for (const wm of closed) for (const [d, s] of Object.entries(wm.days ?? {})) if (s.listed.includes(e.id) && s.ex?.[e.id]?.status === "absent" && !leaveSet.has(d)) absent++
+    // A day inside ANY approved leave — paid or not — is not absence; and one
+    // date is one day whatever the number of sheets that list him: absent only
+    // if no workplace recorded him otherwise that day.
+    const onLeave = new Set(leave.all)
+    const absentOn = new Set<string>()
+    const seenOn = new Set<string>()
+    for (const wm of closed)
+      for (const [d, s] of Object.entries(wm.days ?? {})) {
+        if (!s.listed.includes(e.id)) continue
+        if (s.ex?.[e.id]?.status === "absent") absentOn.add(d)
+        else seenOn.add(d)
+      }
+    const absent = [...absentOn].filter((d) => !onLeave.has(d) && !seenOn.has(d)).length
+    // A whole calendar month without pay is the whole 30-day wage (February's 28 days too).
+    const from = e.join > start ? e.join : start
+    const unpaidDays = leave.unpaid.length > 0 && datesOf(from, end).every((d) => leave.unpaid.includes(d)) ? STATUTORY.monthDays : leave.unpaid.length
     const pen = monthPenalties(input.violations ?? [], e.id, month, wageOf(pay))
     const line = payLine({
       pay,
       nationality: e.nationality,
       join: e.join,
       month,
-      attendance: { absent, overtimeHours: att.overtimeHours, sickThreeQuarters: split.threeQuarters, sickUnpaid: split.unpaid + split.beyond, unpaid: leave.unpaid.length },
+      attendance: { absent, overtimeHours: att.overtimeHours, sickThreeQuarters: split.threeQuarters, sickUnpaid: split.unpaid + split.beyond, unpaid: unpaidDays },
       advance: pay.advance ?? null,
       penalties: pen.total,
     })
@@ -245,6 +277,8 @@ export function computePayroll(input: ComputeInput): { lines: PayrollLine[]; mis
       eosAccrual: r2(monthlyEosAccrual(line.wage, years) * share),
       leaveAccrual: r2((line.wage / STATUTORY.monthDays) * (entitlement / 12) * share),
       cost: r2(line.gross - line.sickDeduction - line.unpaidDeduction + line.gosiEmployer),
+      basic: pay.basic,
+      housing: pay.housing,
     })
   }
   lines.sort((a, b) => a.no - b.no)
@@ -399,29 +433,36 @@ const csvCell = (v: string | number | null) => {
 }
 const csv = (rows: Array<Array<string | number | null>>) => "﻿" + rows.map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n"
 
-/** The Mudad wage file: one row per paid line, keyed by the ID number; the row adds up to the net. Held lines stay out. */
+/** The pay a line was computed with: frozen on the line; a line prepared before that reads the pay document. */
+const frozenPay = (l: PayrollLine, pays: Map<string, EmployeePay>) => {
+  const p = pays.get(l.employeeId)
+  return { basic: l.basic ?? p?.basic ?? 0, housing: l.housing ?? p?.housing ?? 0, transport: 0 }
+}
+
+/** The Mudad wage file: one row per paid line, keyed by the ID number; the row adds up to the net. Held lines stay out.
+ * Basic and housing stand whole for the days paid; what else was earned (transport, overtime, commission) is "other";
+ * an absence is a DEDUCTION like every other — earnings are never negative (the prototype's wpsRows). */
 export function mudadCsv(lines: PayrollLine[], pays: Map<string, EmployeePay>): string {
   const rows: Array<Array<string | number | null>> = [["id_no", "name", "iban", "basic", "housing", "other_earnings", "deductions", "net"]]
   for (const l of lines) {
     if (l.held) continue
-    const p = pays.get(l.employeeId)
+    const p = frozenPay(l, pays)
     const share = l.days / STATUTORY.monthDays
-    const basic = r2((p?.basic ?? 0) * share)
-    const housing = r2((p?.housing ?? 0) * share)
-    const deductions = r2(l.gross - l.net)
-    const other = r2(l.net + deductions - basic - housing)
+    const basic = r2(p.basic * share)
+    const housing = r2(p.housing * share)
+    const other = r2(l.monthWage - basic - housing + l.overtime + l.commission)
+    const deductions = r2(basic + housing + other - l.net)
     rows.push([l.idNo, l.name, l.iban, basic.toFixed(2), housing.toFixed(2), other.toFixed(2), deductions.toFixed(2), l.net.toFixed(2)])
   }
   return csv(rows)
 }
 
-/** The GOSI statement: base and both shares per line — its total is the GOSI credit. */
+/** The GOSI statement: base and both shares per line — its total is the GOSI credit. A held transfer still owes
+ * its contributions, so held lines are IN it (they are in the credit). */
 export function gosiCsv(lines: PayrollLine[], pays: Map<string, EmployeePay>): string {
   const rows: Array<Array<string | number | null>> = [["id_no", "name", "nationality", "scheme", "base", "employee", "employer", "total"]]
   for (const l of lines) {
-    if (l.held) continue
-    const p = pays.get(l.employeeId)
-    const base = p ? gosiBase(p, l.days) : 0
+    const base = gosiBase(frozenPay(l, pays), l.days)
     rows.push([l.idNo, l.name, l.nationality, l.gosiScheme, base.toFixed(2), l.gosiEmployee.toFixed(2), l.gosiEmployer.toFixed(2), r2(l.gosiEmployee + l.gosiEmployer).toFixed(2)])
   }
   return csv(rows)

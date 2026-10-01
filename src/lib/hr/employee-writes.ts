@@ -257,8 +257,11 @@ export async function linkUser(firestore: Firestore, ctx: HrContext, id: string,
   assertHr(ctx, "employee.edit")
   await runTransaction(firestore, async (tx) => {
     const { ref, emp } = await readEmployee(tx, firestore, id)
-    // The pay document carries no user: the rules read the link here, so a
-    // role that may not see pay can still give a person his My file.
+    // The pay document carries no user: the rules read the link here — whoever
+    // a record names reads its pay and is "the employee" on his requests. So
+    // nobody links himself onto a record or off one (RL-02; the owner, who has
+    // nobody above him, excepted). The rules refuse it too.
+    if (!ctx.owner && (userId === ctx.uid || emp.userId === ctx.uid)) throw new HrWriteError("own_request")
     tx.update(ref, { userId, updatedAt: serverTimestamp() })
     log(tx, firestore, id, emp.organizationId, actor, "user_linked", { user: userId })
   })

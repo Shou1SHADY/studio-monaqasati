@@ -37,11 +37,12 @@ export interface GosiRates {
   scheme: "saudiOld" | "saudiNew" | "nonSaudi"
 }
 
-/** GOSI rates: non-Saudi 2% employer only; a Saudi on the new scheme if he joined after 3 Jul 2024. */
+/** GOSI rates: non-Saudi 2% employer only; a Saudi on the new scheme if he joined on or after 3 Jul 2024
+ * (the day the new law took effect — the prototype's `join > 2 Jul`). */
 export function gosiRates(nationality: Nationality, join: string): GosiRates {
   const g = STATUTORY.gosi
   if (nationality !== "sa") return { ...g.nonSaudi, scheme: "nonSaudi" }
-  return join > g.newSchemeFrom ? { ...g.saudiNew, scheme: "saudiNew" } : { ...g.saudiOld, scheme: "saudiOld" }
+  return join >= g.newSchemeFrom ? { ...g.saudiNew, scheme: "saudiNew" } : { ...g.saudiOld, scheme: "saudiOld" }
 }
 
 /** The contribution base for the month: (basic + housing) × paid days / 30. */
@@ -107,12 +108,24 @@ export function payLine(input: PayLineInput): PayLine {
   const wage = wageOf(input.pay)
   const daily = wage / STATUTORY.monthDays
   const monthWage = r2((wage * days) / STATUTORY.monthDays)
-  const absenceDeduction = r2(daily * input.attendance.absent)
+  // Days without pay never exceed the days paid: the month is 30 days on the
+  // payroll, so 31 calendar days of unpaid leave take the month's wage, no more.
+  let left = days
+  const within = (n: number) => {
+    const take = Math.max(0, Math.min(n, left))
+    left -= take
+    return take
+  }
+  const absent = within(input.attendance.absent)
+  const unpaid = within(input.attendance.unpaid)
+  const sickUnpaid = within(input.attendance.sickUnpaid)
+  const sickThreeQuarters = within(input.attendance.sickThreeQuarters)
+  const absenceDeduction = r2(daily * absent)
   const overtime = r2(overtimeRate(input.pay) * input.attendance.overtimeHours)
   const commission = r2(input.commission ?? 0)
   const gross = r2(monthWage - absenceDeduction + overtime + commission)
-  const sickDeduction = r2(daily * (input.attendance.sickThreeQuarters * 0.25 + input.attendance.sickUnpaid))
-  const unpaidDeduction = r2(daily * input.attendance.unpaid)
+  const sickDeduction = r2(daily * (sickThreeQuarters * 0.25 + sickUnpaid))
+  const unpaidDeduction = r2(daily * unpaid)
   const penalties = r2(input.penalties ?? 0)
   const rates = gosiRates(input.nationality, input.join)
   const base = gosiBase(input.pay, days)

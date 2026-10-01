@@ -8,10 +8,11 @@
 
 import type { CreateEmployeeInput } from "./employee-writes"
 import { docState } from "./documents"
-import { accruedDays } from "./leave"
+import { accruedDays, leaveBalance } from "./leave"
+import { foldSearchText } from "@/lib/search-text"
 import { UNASSIGNED_SITE, type HrSite } from "./sites"
 import { daysBetween } from "./statutory"
-import { NATIONALITIES, TRADES } from "./trades"
+import { NATIONALITIES, TRADES, type NationalityCode } from "./trades"
 
 /** The template: the prototype's fourteen columns, plus the ID number the Mudad and GOSI rows are keyed by. */
 export const IMPORT_COLUMNS = [
@@ -93,6 +94,36 @@ export interface ImportContext {
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ")
 
+/**
+ * What a file writes in the nationality column: the country or its adjective,
+ * in Arabic or English, whatever language the screen is in (the delivered
+ * template writes "بنغلاديش" and "السعودية"). Compared folded — أ/ا, ة/ه, the case.
+ */
+const NATIONALITY_NAMES: Record<NationalityCode, string[]> = {
+  sa: ["السعودية", "المملكة العربية السعودية", "سعودي", "سعودية", "saudi", "saudi arabia", "ksa"],
+  eg: ["مصر", "مصري", "مصرية", "egypt", "egyptian"],
+  in: ["الهند", "هندي", "هندية", "india", "indian"],
+  pk: ["باكستان", "باكستاني", "باكستانية", "pakistan", "pakistani"],
+  bd: ["بنغلاديش", "بنجلاديش", "بنغلادش", "بنغلاديشي", "بنغالي", "bangladesh", "bangladeshi"],
+  ye: ["اليمن", "يمني", "يمنية", "yemen", "yemeni"],
+  sd: ["السودان", "سوداني", "سودانية", "sudan", "sudanese"],
+  ph: ["الفلبين", "فلبيني", "فلبينية", "philippines", "philippine", "filipino", "filipina"],
+  np: ["نيبال", "نيبالي", "نيبالية", "nepal", "nepali", "nepalese"],
+  sy: ["سوريا", "سورية", "سوري", "syria", "syrian"],
+  jo: ["الأردن", "أردني", "أردنية", "jordan", "jordanian"],
+  lb: ["لبنان", "لبناني", "لبنانية", "lebanon", "lebanese"],
+}
+const NATIONALITY_BY_NAME = new Map<string, NationalityCode>(
+  (Object.entries(NATIONALITY_NAMES) as Array<[NationalityCode, string[]]>).flatMap(([code, names]) => names.map((n) => [foldSearchText(n), code] as [string, NationalityCode]))
+)
+
+function findNationality(v: string, labels: Record<string, string>): string | null {
+  const raw = v.trim()
+  if (!raw) return null
+  if (NATIONALITIES.includes(raw.toLowerCase() as NationalityCode)) return raw.toLowerCase()
+  return labels[norm(raw)] ?? NATIONALITY_BY_NAME.get(foldSearchText(raw)) ?? null
+}
+
 function editDistance(a: string, b: string): number {
   const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)])
   for (let j = 1; j <= b.length; j++) d[0][j] = j
@@ -139,21 +170,25 @@ export function interpretRows(rows: string[][], ctx: ImportContext): ImportRow[]
   }
   const month = ctx.today.slice(0, 7)
   const seenIds = new Set<string>()
-  // A second header row (the template's labels) is skipped, not rejected.
-  const labelRow = (r: string[]) => col(r, "join_date") && !parseDay(col(r, "join_date")) && !/\d/.test(col(r, "join_date"))
+  // The template's own row of column labels — the row right under the header,
+  // and only that one — is skipped, not rejected. Any other row whose join date
+  // is not a date is a row of the file: it is rejected by name, never dropped.
+  const labelRow = (r: string[], i: number) => hasHeader && i === 0 && Boolean(col(r, "join_date")) && !parseDay(col(r, "join_date")) && !/\d/.test(col(r, "join_date"))
 
   return body
-    .filter((r) => !labelRow(r))
-    .map((r, i) => {
-      const line = i + (hasHeader ? 2 : 1)
+    // The line is the file's line, counted before anything is skipped.
+    .map((r, i) => ({ r, line: i + (hasHeader ? 2 : 1), skip: labelRow(r, i) }))
+    .filter((x) => !x.skip)
+    .map(({ r, line }) => {
       const notes: ImportNote[] = []
       const errors: ImportNote[] = []
-      const nameAr = col(r, "name_ar")
       const nameEn = col(r, "name_en")
+      // A name in English alone is a name (the prototype imports it): it stands as the name on the record.
+      const nameAr = col(r, "name_ar") || nameEn
       if (!nameAr) errors.push({ key: "no_name" })
 
       const natRaw = col(r, "nationality")
-      const nat = NATIONALITIES.includes(natRaw.toLowerCase() as (typeof NATIONALITIES)[number]) ? natRaw.toLowerCase() : ctx.nationalityLabels[norm(natRaw)]
+      const nat = findNationality(natRaw, ctx.nationalityLabels)
       if (!nat) errors.push({ key: "bad_nationality", params: { value: natRaw || "—" } })
 
       const g = norm(col(r, "gender"))
@@ -168,6 +203,8 @@ export function interpretRows(rows: string[][], ctx: ImportContext): ImportRow[]
 
       const join = parseDay(col(r, "join_date"))
       if (!join) errors.push({ key: "bad_join", params: { value: col(r, "join_date") || "—" } })
+      // Moving in is for people already at work; someone still to join is a new employee.
+      else if (join > ctx.today) errors.push({ key: "future_join", params: { value: join } })
 
       const idNo = col(r, "id_no") || null
       if (idNo && (seenIds.has(idNo) || ctx.existing.some((e) => e.idNo === idNo))) errors.push({ key: "duplicate_id" })
@@ -219,7 +256,12 @@ export function interpretRows(rows: string[][], ctx: ImportContext): ImportRow[]
             notes.push({ key: "leave_capped", params: { value: lb, cap } })
             lb = cap
           }
-          openingLeave = Math.round((lb - accruedDays(join, ctx.today)) * 100) / 100
+          // Rounded UP to the halala of a day: the balance is floored when read, and
+          // an opening rounded down lands the file's 9 days on 8.
+          openingLeave = Math.ceil((lb - accruedDays(join, ctx.today)) * 100 - 1e-9) / 100
+          // …and checked against the very function that reads it back: a hair of
+          // floating point must not cost the employee a day either.
+          for (let n = 0; n < 3 && leaveBalance(join, ctx.today, 0, openingLeave) < Math.floor(lb); n++) openingLeave = Math.round((openingLeave + 0.01) * 100) / 100
         }
       }
       const abRaw = col(r, "advance_balance")

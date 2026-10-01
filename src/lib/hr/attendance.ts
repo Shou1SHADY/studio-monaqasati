@@ -92,6 +92,28 @@ export function missingDays(wm: Pick<WorkplaceMonth, "days" | "declarations"> | 
 // The day sheet (AT-01)
 // ---------------------------------------------------------------------------
 
+/**
+ * Who is on a workplace's sheet on a day: assigned there, joined by that day
+ * (no attendance before joining — a day back-filled later included), and not
+ * past his last day. Someone serving his notice is still at work: he stays on
+ * the sheet to his last day, and a settled leaver stays on the days he worked.
+ */
+export function onSheet(e: { siteId?: string | null; status: string; join?: string | null; lastDay?: string | null }, siteId: string, day: string): boolean {
+  const here = siteId === UNASSIGNED_SITE ? !e.siteId : e.siteId === siteId
+  if (!here) return false
+  if (!e.join || e.join > day) return false
+  if (e.status === "left") return Boolean(e.lastDay) && day <= (e.lastDay as string)
+  if (e.status === "leaving") return !e.lastDay || day <= e.lastDay
+  return true
+}
+
+/** Everyone inside an approved leave on a day — paid leave too: on leave is never absent (WF-07). */
+export function onLeaveOn(requests: Array<{ employeeId: string; kind: string; state: string; leave?: { from: string; to: string } | null }>, day: string): Set<string> {
+  const out = new Set<string>()
+  for (const r of requests) if (r.kind === "leave" && r.state === "approved" && r.leave && day >= r.leave.from && day <= r.leave.to) out.add(r.employeeId)
+  return out
+}
+
 export type SheetBlock = "future" | "closed" | "not_listed" | "bad_ot" | "no_violation_role"
 
 /** Hours of overtime one day may carry — a day has 24, a sheet row never more than 12. */
@@ -109,13 +131,16 @@ export function sheetBlocks(input: { day: string; today: string; closed: boolean
   return out
 }
 
+/** Someone absent or sick that day worked no overtime — hours typed before the status changed are not kept. */
+const worked = (status: DayException | null | undefined) => status !== "absent" && status !== "sick"
+
 /** Keep only what is an exception — present with no overtime, violation or note is not written. */
 export function compactExceptions(ex: Record<string, AttendanceException>): Record<string, AttendanceException> {
   const out: Record<string, AttendanceException> = {}
   for (const [id, e] of Object.entries(ex)) {
     const clean: AttendanceException = {}
     if (e.status) clean.status = e.status
-    if (e.ot && e.ot > 0) clean.ot = Math.round(e.ot * 4) / 4
+    if (e.ot && e.ot > 0 && worked(e.status)) clean.ot = Math.round(e.ot * 4) / 4
     if (e.violation) clean.violation = e.violation
     if (e.note?.trim()) clean.note = e.note.trim()
     if (Object.keys(clean).length) out[id] = clean
@@ -178,7 +203,7 @@ export function employeeMonth(wm: Pick<WorkplaceMonth, "days" | "declarations"> 
     else if (e?.status === "sick") out.sick++
     else if (e?.status === "permission") out.permission++
     else out.present++
-    if (e?.ot) out.overtimeHours += e.ot
+    if (e?.ot && worked(e.status)) out.overtimeHours += e.ot
     if (e?.violation) out.violations.push({ day, code: e.violation })
   }
   for (const d of wm.declarations ?? []) if (d.employees.includes(employeeId)) out.declared += d.days.length

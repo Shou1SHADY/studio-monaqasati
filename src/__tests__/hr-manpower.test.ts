@@ -43,6 +43,19 @@ describe("coverage", () => {
     expect(c.excluded).toEqual([{ name: "u2", reason: "iqama_expired" }])
     expect(c.covered).toBe(3)
   })
+
+  it("a project with no HR workplace yet still gets the unassigned people (the request carries no site)", () => {
+    const c = coverage({ trade: "mason", count: 1, from: "2026-09-15", today: TODAY, siteId: null, employees, sites, visas: 0 })
+    expect(c.lines).toEqual([{ source: "unassigned", count: 1, date: "2026-09-15", names: ["u1"] }])
+    expect(c.covered).toBe(1)
+  })
+
+  it("someone recorded before his start date is offered once that date has come — and not before", () => {
+    const joined = [emp("n1", { status: "expected", join: "2026-09-01" }), emp("n2", { status: "expected", join: "2026-10-01" })]
+    const c = coverage({ trade: "mason", count: 2, from: "2026-09-15", today: TODAY, siteId: "s1", employees: joined, sites: [], visas: 0 })
+    expect(c.lines[0]).toEqual({ source: "unassigned", count: 1, date: "2026-09-15", names: ["n1"] })
+    expect(c.covered).toBe(1)
+  })
 })
 
 describe("the request", () => {

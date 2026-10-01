@@ -11,7 +11,7 @@ import { docState, DOC_TYPES, iqamaDueBy, legalOnSite, type DocType } from "./do
 import type { EmployeePay, HrEmployee } from "./employee"
 import type { HrExit } from "./exit-writes"
 import { injuryState, type HrInjury } from "./injuries"
-import { sitesToClose, type Payroll } from "./payroll"
+import { onPayroll, sitesToClose, type Payroll } from "./payroll"
 import type { ManpowerRequest } from "./manpower"
 import type { HrRequest } from "./requests"
 import type { HrSite } from "./sites"
@@ -76,7 +76,7 @@ export function todayItems(i: TodayInput): TodayItem[] {
   const mainLast = i.payrolls.find((p) => p.kind === "main" && p.month === lastMonth)
   if (!mainLast || mainLast.state === "prepared") {
     const closed = new Set(i.lastMonth.filter((w) => w.closed).map((w) => w.siteId))
-    for (const siteId of sitesToClose(lastMonth, i.sites, live, i.lastMonth))
+    for (const siteId of sitesToClose(lastMonth, i.sites, i.employees, i.lastMonth))
       if (!closed.has(siteId) && may("attendance.close", siteId))
         out.push({ key: `close:${siteId}`, group: "blocking", severity: "red", kind: "close_month", params: { site: siteName(siteId), month: lastMonth }, href: `sites/${siteId}`, action: "close" })
   }
@@ -92,10 +92,20 @@ export function todayItems(i: TodayInput): TodayItem[] {
     if (p.ibanState === "fixed" && may("iban.approve")) out.push({ key: `ibanok:${id}`, group: "blocking", severity: "amber", kind: "iban_approve", params: { name: name(e) }, href: `people/${id}`, action: "approve_iban" })
   }
 
-  if (may("payroll.prepare") && today > monthRange(lastMonth).end && !mainLast && live.length)
+  // Last month's payroll — only if someone was on it (a company that started this month owes none).
+  if (may("payroll.prepare") && today > monthRange(lastMonth).end && !mainLast && i.employees.some((e) => onPayroll(e, lastMonth)))
     out.push({ key: `pay:prepare:${lastMonth}`, group: "blocking", severity: "amber", kind: "payroll_prepare", params: { month: lastMonth }, href: "payroll", action: "prepare" })
-  if (mainLast?.state === "prepared" && may("payroll.approve") && (ctx.owner || mainLast.prepared.by !== ctx.uid))
-    out.push({ key: `pay:approve:${lastMonth}`, group: "blocking", severity: "amber", kind: "payroll_approve", params: { month: lastMonth }, href: "payroll", action: "approve" })
+  // Every prepared payroll waits for its approval — the supplementary "-D" too — never of whoever prepared it.
+  if (may("payroll.approve"))
+    for (const p of i.payrolls)
+      if (p.state === "prepared" && (ctx.owner || p.prepared?.by !== ctx.uid))
+        out.push({ key: `pay:approve:${p.key}`, group: "blocking", severity: "amber", kind: "payroll_approve", params: { month: p.key }, href: "payroll", action: "approve" })
+
+  // Custody cleared by Inventory: the settlement is now the HR manager's to prepare (WF-16 step 3) — never his own.
+  if (may("exit.manage"))
+    for (const x of i.exits)
+      if (x.state === "leaving" && x.custody?.state === "cleared" && x.employeeId !== ctx.employeeId)
+        out.push({ key: `settle:${x.id}`, group: "blocking", severity: "amber", kind: "settlement_ready", params: { name: x.employeeName }, href: `people/${x.employeeId}`, action: "settle" })
 
   // Today's sheet (the supervisor's own sites, or the HR manager's) — due, not yet blocking.
   const recordedToday = new Set(i.thisMonth.filter((w) => w.days?.[today]).map((w) => w.siteId))
@@ -132,7 +142,9 @@ export function todayItems(i: TodayInput): TodayItem[] {
         if (!exp) continue
         const st = docState(exp, today, i.renewWindowDays)
         if (st === "valid") continue
-        if (st === "expired" && d === "iqama" && e.siteId) continue // already blocking
+        // An expired iqama on a site is the HR manager's block above ("move") —
+        // for him, once. Government relations cannot move anyone: it is his renewal, in red (DC-02).
+        if (st === "expired" && d === "iqama" && e.siteId && may("employee.assign")) continue
         out.push({ key: `doc:${e.id}:${d}`, group: "due", severity: st === "expired" ? "red" : st === "d30" ? "amber" : "blue", kind: "doc_due", params: { name: name(e), doc: d, date: exp }, href: `people/${e.id}`, action: "renew" })
       }
       // DC-05 — a visa arrival's iqama within 90 days of arriving.
