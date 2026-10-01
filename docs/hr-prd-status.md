@@ -6,16 +6,16 @@ Audit of 1 Oct 2026 against `Delivery-HR-1.0` (PRD-HR-1.0: 128 requirements — 
 functions, each finding then re-read in the code before anything was changed; every fix has a test that
 failed before it.
 
-**State (1 Oct 2026, 09:38 UTC):** the rules fix is **live on UAT** (ruleset `6d45e52b…`, matches the file) and
-**not on prod**, which still runs the rules of 29 Sep. The code fixes below are local and uncommitted — the
-UAT app is still the last pushed build, so they are not on UAT yet.
+**State (1 Oct 2026):** the rules fix is **live on UAT** (09:38 UTC, ruleset `6d45e52b…`) **and on prod**
+(10:07 UTC, ruleset `0997e2be…`); both match `firestore.rules` as committed in `47763b3`. The code fixes are
+committed on `main` and `uat` (`47763b3` … `76e4141`) and reach each site when its branch is pushed.
 
-## 1. The blocker: the live rules refuse the module's first-time operations
+## 1. The blocker: the rules refused the module's first-time operations
 
 The Jest suites run the write layers over an in-memory Firestore with no rules, so none of this showed.
 Traced from the rule text to the client's exact reads (not executed against an emulator — none on this machine):
 
-| What fails on UAT and prod today | Why |
+| What failed on UAT and prod until 1 Oct | Why |
 |---|---|
 | New employee, and every imported row | The first log entry is written in the transaction that creates the employee; the log rule `get()`s the parent, which does not exist before that transaction. |
 | The first attendance sheet of every site-month; a declaration or a closing on a month with no document | `hrAttendance` `get` reads `resource.data` of a missing document — an evaluation error, which refuses. |
@@ -26,7 +26,8 @@ Traced from the rule text to the client's exact reads (not executed against an e
 
 Fixed in `firestore.rules` (a missing document reads as missing for the roles that may read it; the log's first
 entry is judged with `getAfter()`), pinned by `src/__tests__/hr-rules.test.ts` — 10 of its 15 cases fail on the
-rules as committed. Google compiled the ruleset at deploy. **Needs a click-through on UAT, then prod.**
+previous rules. Google compiled the ruleset at deploy. **Not yet exercised by a signed-in user: the click-through
+(new employee · a first sheet · prepare and approve a payroll · start an exit) is still owed, on UAT first.**
 The own-record check on `employeePay` is ordered so a payroll approval, which writes many pay documents in
 one transaction, never triggers a record lookup per document (a transaction may look up twenty).
 
@@ -42,8 +43,8 @@ Also in that rules change, because each has a path in the UI:
   for a handover file).
 
 The client follows: `employee.edit` (the "Link user" action) is the HR manager's alone, and `linkUser` refuses
-linking oneself onto or off a record (`hr-link-user.test.ts`). Until that code is pushed, the build on UAT still
-shows "Link" to government relations and the rules refuse it on save. Still open: one user linked to two records.
+linking oneself onto or off a record (`hr-link-user.test.ts`). Until the branches are pushed, the deployed builds
+still show "Link" to government relations and the rules refuse it on save. Still open: one user linked to two records.
 
 ## 2. Fixed, each with a failing test first
 
