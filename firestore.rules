@@ -4028,7 +4028,10 @@ service cloud.firestore {
         && request.resource.data.organizationId == getOrganizationId()
         && request.resource.data.by == request.auth.uid
         && request.resource.data.key is string
-        && eventId == request.resource.data.organizationId + '__' + request.resource.data.key.replace('/', '_');
+        && (eventId == request.resource.data.organizationId + '__' + request.resource.data.key.replace('/', '_')
+            // TRANSITIONAL — a build deployed before the id carried the organisation still
+            // sends under the key alone. Remove this line once main and uat run the new build.
+            || eventId == request.resource.data.key.replace('/', '_'));
       allow update, delete: if false;
     }
 

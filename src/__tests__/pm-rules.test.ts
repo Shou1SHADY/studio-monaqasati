@@ -2,7 +2,7 @@
  * PM 1.0 — what the Jest suites cannot see. The write layers are tested over an
  * in-memory Firestore that has no rules, so a rule that lets too much through
  * (or refuses a legitimate write) passes every test. These pin the properties of
- * firestore.rules the audit of 1–2 Oct 2026 fixed, against the text of the file:
+ * firestore.rules the audit of 1 Oct 2026 fixed, against the text of the file:
  *
  *  - an invitation is an authorization: a client never writes what it grants,
  *    and holding one never lets an account rewrite its own organisation or role;
@@ -76,6 +76,9 @@ describe("an event's id carries its organisation", () => {
   it("the rule builds the id exactly as the writers do", () => {
     const [create] = allow(block("pmEvents"), "create")
     expect(create).toMatch(/eventId == request\.resource\.data\.organizationId \+ '__' \+ request\.resource\.data\.key\.replace\('\/', '_'\)/)
+    // Until both branches run the new build the rule also takes the old id (the key alone);
+    // nothing else is accepted.
+    expect(create.match(/eventId ==/g)).toHaveLength(2)
     expect(pmEventDocId("orgA", "prj:IPC:PJ-2026/001:01")).toBe("orgA__prj:IPC:PJ-2026_001:01")
     expect(pmEventDocId("orgA", "prj:ADV:PJ-2026/001")).not.toBe(pmEventDocId("orgB", "prj:ADV:PJ-2026/001"))
   })
