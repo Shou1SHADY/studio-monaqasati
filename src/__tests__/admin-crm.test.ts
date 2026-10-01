@@ -1,4 +1,4 @@
-import { buildClientRows, summarizeClients, contactsClient, toDateKey, STALE_DAYS } from "@/lib/admin-crm"
+import { buildClientRows, summarizeClients, contactsClient, toDateKey, STALE_DAYS, buildLeadRows, summarizeLeads, leadCrmId, manualLeadSchema } from "@/lib/admin-crm"
 
 const now = new Date(2026, 9, 1, 12, 0, 0)
 const daysAgo = (n: number) => new Date(now.getTime() - n * 86_400_000).toISOString()
@@ -95,5 +95,81 @@ describe("admin client CRM", () => {
     expect(contactsClient("meeting")).toBe(true)
     expect(contactsClient("email")).toBe(true)
     expect(contactsClient("note")).toBe(false)
+  })
+})
+
+describe("admin CRM leads", () => {
+  const secs = (n: number) => ({ seconds: Math.floor((now.getTime() - n * 86_400_000) / 1000) })
+
+  it("keys a lead's CRM record by source and id", () => {
+    expect(leadCrmId("manual", "x1")).toBe("lead_manual_x1")
+  })
+
+  it("starts a lead at new and ignores an unknown stored stage", () => {
+    const rows = buildLeadRows(
+      [
+        { id: "a", source: "demo", name: "A", createdAt: secs(0) },
+        { id: "b", source: "demo", name: "B", createdAt: secs(0) },
+      ],
+      { lead_demo_b: { stage: "vip" } },
+      now,
+    )
+    expect(rows.map((r) => r.stage)).toEqual(["new", "new"])
+  })
+
+  it("reads a converted lead as converted and never stale or due", () => {
+    const [row] = buildLeadRows(
+      [{ id: "a", source: "onboarding", status: "converted", createdAt: secs(30) }],
+      { lead_onboarding_a: { stage: "contacted", nextFollowUp: "2026-01-01" } },
+      now,
+    )
+    expect(row.stage).toBe("converted")
+    expect(row.stale).toBe(false)
+    expect(row.followUpDue).toBe(false)
+  })
+
+  it("marks an untouched lead stale after the limit, from its creation date", () => {
+    const rows = buildLeadRows(
+      [
+        { id: "old", source: "demo", createdAt: secs(STALE_DAYS + 3) },
+        { id: "fresh", source: "demo", createdAt: secs(1) },
+        { id: "touched", source: "demo", createdAt: secs(30) },
+      ],
+      { lead_demo_touched: { lastContactAt: daysAgo(2) } },
+      now,
+    )
+    expect(rows.map((r) => r.stale)).toEqual([true, false, false])
+  })
+
+  it("does not call a lost lead stale", () => {
+    const [row] = buildLeadRows([{ id: "a", source: "demo", createdAt: secs(40) }], { lead_demo_a: { stage: "lost" } }, now)
+    expect(row.stale).toBe(false)
+  })
+
+  it("summarizes open leads, stages, and the unowned ones", () => {
+    const rows = buildLeadRows(
+      [
+        { id: "a", source: "demo", createdAt: secs(0) },
+        { id: "b", source: "manual", createdAt: secs(0) },
+        { id: "c", source: "demo", createdAt: secs(0) },
+      ],
+      { lead_manual_b: { ownerUid: "u1", stage: "demo" }, lead_demo_c: { stage: "lost" } },
+      now,
+    )
+    const s = summarizeLeads(rows)
+    expect(s.total).toBe(3)
+    expect(s.open).toBe(2)
+    expect(s.byStage.demo).toBe(1)
+    expect(s.unowned).toBe(1)
+  })
+
+  it("needs a name and one way to reach the lead", () => {
+    const ok = { name: "Sara", company: "", phone: "0501234567", email: "", note: "" }
+    expect(manualLeadSchema.safeParse(ok).success).toBe(true)
+    expect(manualLeadSchema.safeParse({ ...ok, name: "S" }).success).toBe(false)
+    expect(manualLeadSchema.safeParse({ ...ok, phone: "" }).success).toBe(false)
+    expect(manualLeadSchema.safeParse({ ...ok, phone: "", email: "S@X.sa" }).success).toBe(true)
+    expect(manualLeadSchema.safeParse({ ...ok, email: "nope" }).success).toBe(false)
+    expect(manualLeadSchema.safeParse({ ...ok, phone: "abc12345" }).success).toBe(false)
   })
 })

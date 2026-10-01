@@ -10593,7 +10593,20 @@
         "business_type": "Business type",
         "preferred_date": "Preferred date",
         "type_manufacturer": "Manufacturer",
-        "type_other": "Other"
+        "type_other": "Other",
+        "add_lead": "Add lead",
+        "open_in_crm": "Open in CRM",
+        "source_manual": "Added manually",
+        "add_lead_title": "Add a lead",
+        "add_lead_desc": "Record someone you met or spoke to. They appear here and in the CRM, owned by you.",
+        "add_lead_note": "Note",
+        "add_lead_note_ph": "Where did you meet them, what do they need?",
+        "add_lead_save": "Add lead",
+        "add_lead_saved": "Lead added",
+        "add_lead_failed": "Could not add the lead. Try again.",
+        "err_name": "Enter a name of at least 2 characters.",
+        "err_contact": "Enter a phone number or an email.",
+        "err_email": "Enter a valid email address."
       },
       "Rfqs": {
         "page_title": "Manage RFQs",
@@ -10887,7 +10900,24 @@
         "history_title": "History",
         "history_empty": "No interactions logged yet.",
         "saved": "Saved",
-        "save_failed": "Could not save. Try again."
+        "save_failed": "Could not save. Try again.",
+        "tab_clients": "Clients",
+        "tab_leads": "Leads",
+        "kpi_total_leads": "Leads",
+        "kpi_stale_leads": "Silent for 7+ days",
+        "filter_stale_leads": "Silent",
+        "empty_leads": "No leads yet. Add one or wait for a demo request.",
+        "col_lead": "Lead",
+        "add_lead": "Add lead",
+        "source_demo": "Demo request",
+        "source_onboarding": "Onboarding request",
+        "source_manual": "Added manually",
+        "stage_new": "New",
+        "stage_contacted": "Contacted",
+        "stage_demo": "Demo",
+        "stage_negotiation": "Negotiation",
+        "stage_lost": "Lost",
+        "stage_converted": "Converted"
       }
     },
     "Procurement": {

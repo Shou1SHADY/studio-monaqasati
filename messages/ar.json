@@ -10593,7 +10593,20 @@
         "business_type": "نوع النشاط",
         "preferred_date": "الموعد المناسب",
         "type_manufacturer": "مصنع",
-        "type_other": "أخرى"
+        "type_other": "أخرى",
+        "add_lead": "إضافة عميل محتمل",
+        "open_in_crm": "فتح في إدارة العملاء",
+        "source_manual": "مضاف يدوياً",
+        "add_lead_title": "إضافة عميل محتمل",
+        "add_lead_desc": "سجّل شخصاً قابلته أو تحدثت معه. يظهر هنا وفي إدارة العملاء ويكون مسؤولاً عنه أنت.",
+        "add_lead_note": "ملاحظة",
+        "add_lead_note_ph": "أين قابلته وما احتياجه؟",
+        "add_lead_save": "إضافة",
+        "add_lead_saved": "تمت إضافة العميل المحتمل",
+        "add_lead_failed": "تعذرت الإضافة. حاول مرة أخرى.",
+        "err_name": "أدخل اسماً من حرفين على الأقل.",
+        "err_contact": "أدخل رقم جوال أو بريداً إلكترونياً.",
+        "err_email": "أدخل بريداً إلكترونياً صحيحاً."
       },
       "Rfqs": {
         "page_title": "إدارة طلبات عروض الأسعار",
@@ -10887,7 +10900,24 @@
         "history_title": "السجل",
         "history_empty": "لا توجد تواصلات مسجلة بعد.",
         "saved": "تم الحفظ",
-        "save_failed": "تعذّر الحفظ. حاول مرة أخرى."
+        "save_failed": "تعذّر الحفظ. حاول مرة أخرى.",
+        "tab_clients": "العملاء",
+        "tab_leads": "العملاء المحتملون",
+        "kpi_total_leads": "العملاء المحتملون",
+        "kpi_stale_leads": "بلا تواصل منذ 7 أيام أو أكثر",
+        "filter_stale_leads": "بلا تواصل",
+        "empty_leads": "لا يوجد عملاء محتملون بعد. أضف عميلاً أو انتظر طلب عرض توضيحي.",
+        "col_lead": "العميل المحتمل",
+        "add_lead": "إضافة عميل محتمل",
+        "source_demo": "طلب عرض توضيحي",
+        "source_onboarding": "طلب انضمام",
+        "source_manual": "مضاف يدوياً",
+        "stage_new": "جديد",
+        "stage_contacted": "تم التواصل",
+        "stage_demo": "عرض توضيحي",
+        "stage_negotiation": "تفاوض",
+        "stage_lost": "مفقود",
+        "stage_converted": "تم التحويل"
       }
     },
     "Procurement": {

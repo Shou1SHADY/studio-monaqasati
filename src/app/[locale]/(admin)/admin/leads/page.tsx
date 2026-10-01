@@ -17,16 +17,19 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Inbox, Loader2, UserPlus, Building2, ShoppingCart, ChevronDown, Check, Search, X, CheckCircle2 } from "lucide-react"
+import { Handshake, Inbox, Loader2, Plus, UserPlus, Building2, ShoppingCart, ChevronDown, Check, Search, X, CheckCircle2 } from "lucide-react"
 import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase"
 import { collection } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from "next-intl"
 import { PREDEFINED_CATEGORIES, displayCategory } from "@/lib/constants"
+import { Link } from "@/i18n/routing"
+import { AddLeadDialog } from "@/components/admin/AddLeadDialog"
+import type { LeadSource } from "@/lib/admin-crm"
 
 type Lead = {
   id: string
-  source: "demo" | "onboarding"
+  source: LeadSource
   name: string
   company: string
   phone: string
@@ -70,7 +73,7 @@ export default function AdminLeadsPage() {
   useEffect(() => {
     const demo: Lead[] = (demoRequests || []).map((d: any) => ({
       id: d.id,
-      source: "demo",
+      source: d.origin === "manual" ? "manual" : "demo",
       name: d.name || "",
       company: d.company || "",
       phone: d.phone || "",
@@ -98,6 +101,7 @@ export default function AdminLeadsPage() {
   }, [demoRequests, onboardingRequests])
 
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState({
@@ -153,7 +157,7 @@ export default function AdminLeadsPage() {
           role: formData.role,
           specializations: formData.role === "Supplier" ? formData.specializations : undefined,
           leadId: selectedLead.id,
-          leadCollection: selectedLead.source === "demo" ? "demoRequests" : "onboardingRequests",
+          leadCollection: selectedLead.source === "onboarding" ? "onboardingRequests" : "demoRequests",
         }),
       })
       const data = await res.json().catch(() => null)
@@ -180,9 +184,23 @@ export default function AdminLeadsPage() {
   return (
     <PortalLayout>
       <div className="space-y-6 text-right">
-        <div>
-          <h1 className="text-3xl font-black text-foreground font-headline">{t("page_title")}</h1>
-          <p className="text-muted-foreground mt-1">{t("page_subtitle")}</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-black text-foreground font-headline">{t("page_title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("page_subtitle")}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" asChild className="gap-1.5">
+              <Link href="/admin/crm?tab=leads">
+                <Handshake size={15} aria-hidden="true" />
+                {t("open_in_crm")}
+              </Link>
+            </Button>
+            <Button onClick={() => setAddOpen(true)} className="gap-1.5">
+              <Plus size={15} aria-hidden="true" />
+              {t("add_lead")}
+            </Button>
+          </div>
         </div>
 
         <Card className="border-none shadow-sm overflow-hidden">
@@ -231,7 +249,7 @@ export default function AdminLeadsPage() {
                       <TableCell className="hidden lg:table-cell text-xs text-muted-foreground tabular-nums" dir="ltr">{lead.preferredDate || "—"}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="text-xs">
-                          {lead.source === "demo" ? t("source_demo") : t("source_onboarding")}
+                          {t(`source_${lead.source}`)}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -261,6 +279,8 @@ export default function AdminLeadsPage() {
             )}
           </CardContent>
         </Card>
+
+        <AddLeadDialog open={addOpen} onOpenChange={setAddOpen} ownerName={user?.displayName || user?.email || ""} />
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogContent className="max-w-lg" dir={locale === "ar" ? "rtl" : "ltr"}>

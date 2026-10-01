@@ -5,9 +5,11 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useLocale, useTranslations } from "next-intl"
+import { useSearchParams } from "next/navigation"
 import { addDoc, collection, doc, query, serverTimestamp, setDoc, where } from "firebase/firestore"
-import { CalendarClock, Handshake, Loader2, Search, UserX, UsersRound } from "lucide-react"
+import { CalendarClock, Handshake, Loader2, Plus, Search, UserX, UsersRound } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
+import { AddLeadDialog } from "@/components/admin/AddLeadDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -22,20 +24,42 @@ import { useToast } from "@/hooks/use-toast"
 import {
   ACTIVITY_TYPES,
   CLIENT_STAGES,
+  LEAD_STAGES,
   buildClientRows,
+  buildLeadRows,
   contactsClient,
   summarizeClients,
+  summarizeLeads,
   type ActivityType,
   type ClientRecord,
-  type ClientRow,
   type ClientStage,
   type ClientUser,
+  type LeadDoc,
+  type LeadViewStage,
 } from "@/lib/admin-crm"
 import { cn } from "@/lib/utils"
 
 type StaffUser = { id: string; name?: string; email?: string }
 type ActivityDoc = { id: string; clientId: string; type: ActivityType; note: string; authorName: string; createdAt?: { seconds?: number } }
 type Filter = "all" | "mine" | "due" | "stale" | "unowned"
+type Tab = "clients" | "leads"
+type ListRow = {
+  id: string
+  name: string
+  subtitle: string
+  detail: string
+  stage: string
+  stageStyle: string
+  stages: readonly string[]
+  stageLocked: boolean
+  closed: boolean
+  ownerUid: string
+  ownerName: string
+  nextFollowUp: string
+  daysSinceContact: number | null
+  followUpDue: boolean
+  stale: boolean
+}
 
 const UNASSIGNED = "__none__"
 
@@ -44,6 +68,15 @@ const STAGE_STYLE: Record<ClientStage, string> = {
   active: "bg-success/10 text-success border-success/20",
   at_risk: "bg-warning/10 text-warning border-warning/20",
   churned: "bg-muted text-muted-foreground border-border",
+}
+
+const LEAD_STAGE_STYLE: Record<LeadViewStage, string> = {
+  new: "bg-cta/10 text-cta border-cta/20",
+  contacted: "bg-secondary/10 text-secondary border-secondary/20",
+  demo: "bg-warning/10 text-warning border-warning/20",
+  negotiation: "bg-primary/10 text-primary border-primary/20",
+  lost: "bg-muted text-muted-foreground border-border",
+  converted: "bg-success/10 text-success border-success/20",
 }
 
 const activitySchema = z.object({
@@ -66,6 +99,9 @@ export default function AdminCrmPage() {
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<Filter>("all")
   const [openId, setOpenId] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+  const [tab, setTab] = useState<Tab>(searchParams.get("tab") === "leads" ? "leads" : "clients")
+  const [addLeadOpen, setAddLeadOpen] = useState(false)
 
   const usersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -80,6 +116,17 @@ export default function AdminCrmPage() {
     return collection(firestore, "adminCrmClients")
   }, [firestore, user, isUserLoading])
 
+  const demoQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return collection(firestore, "demoRequests")
+  }, [firestore, user, isUserLoading])
+  const onboardingQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return collection(firestore, "onboardingRequests")
+  }, [firestore, user, isUserLoading])
+
+  const { data: demoDocs, isLoading: demoLoading } = useCollection<Omit<LeadDoc, "id" | "source"> & { origin?: string }>(demoQuery)
+  const { data: onboardingDocs, isLoading: onboardingLoading } = useCollection<Omit<LeadDoc, "id" | "source">>(onboardingQuery)
   const { data: users, isLoading: usersLoading } = useCollection<ClientUser>(usersQuery)
   const { data: staff } = useCollection<StaffUser>(staffQuery)
   const { data: records } = useCollection<ClientRecord>(recordsQuery)
@@ -91,21 +138,90 @@ export default function AdminCrmPage() {
   }, [users, records])
   const summary = useMemo(() => summarizeClients(rows), [rows])
 
+  const leadRows = useMemo(() => {
+    const byId: Record<string, ClientRecord> = {}
+    for (const r of records ?? []) byId[r.id] = r
+    const docs: LeadDoc[] = [
+      ...(demoDocs ?? []).map((d) => ({ ...d, source: d.origin === "manual" ? ("manual" as const) : ("demo" as const) })),
+      ...(onboardingDocs ?? []).map((d) => ({ ...d, source: "onboarding" as const })),
+    ]
+    return buildLeadRows(docs, byId, new Date())
+  }, [demoDocs, onboardingDocs, records])
+  const leadSummary = useMemo(() => summarizeLeads(leadRows), [leadRows])
+
+  const list = useMemo<ListRow[]>(() => {
+    if (tab === "leads") {
+      return leadRows.map((r) => ({
+        id: r.crmId,
+        name: r.name,
+        subtitle: [r.company, t(`source_${r.source}`)].filter(Boolean).join(" · "),
+        detail: [t(`source_${r.source}`), r.company, r.phone, r.email].filter(Boolean).join(" · "),
+        stage: r.stage,
+        stageStyle: LEAD_STAGE_STYLE[r.stage],
+        stages: LEAD_STAGES,
+        stageLocked: r.converted,
+        closed: r.stage === "lost" || r.stage === "converted",
+        ownerUid: r.ownerUid,
+        ownerName: r.ownerName,
+        nextFollowUp: r.nextFollowUp,
+        daysSinceContact: r.daysSinceContact,
+        followUpDue: r.followUpDue,
+        stale: r.stale,
+      }))
+    }
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      subtitle: t(r.role === "Contractor" ? "role_contractor" : "role_supplier"),
+      detail: [t(r.role === "Contractor" ? "role_contractor" : "role_supplier"), r.city, r.phone, r.email].filter(Boolean).join(" · "),
+      stage: r.stage,
+      stageStyle: STAGE_STYLE[r.stage],
+      stages: CLIENT_STAGES,
+      stageLocked: false,
+      closed: r.stage === "churned",
+      ownerUid: r.ownerUid,
+      ownerName: r.ownerName,
+      nextFollowUp: r.nextFollowUp,
+      daysSinceContact: r.daysSinceContact,
+      followUpDue: r.followUpDue,
+      stale: r.stale,
+    }))
+  }, [tab, rows, leadRows, t])
+
+  const searchable = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const r of rows) map.set(r.id, `${r.name} ${r.email} ${r.phone}`)
+    for (const r of leadRows) map.set(r.crmId, `${r.name} ${r.company} ${r.email} ${r.phone}`)
+    return map
+  }, [rows, leadRows])
+
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase()
-    return rows
+    return list
       .filter((r) => {
         if (filter === "mine") return r.ownerUid === user?.uid
         if (filter === "due") return r.followUpDue
         if (filter === "stale") return r.stale
-        if (filter === "unowned") return r.stage !== "churned" && !r.ownerUid
+        if (filter === "unowned") return !r.closed && !r.ownerUid
         return true
       })
-      .filter((r) => !needle || `${r.name} ${r.email} ${r.phone}`.toLowerCase().includes(needle))
+      .filter((r) => !needle || (searchable.get(r.id) ?? r.name).toLowerCase().includes(needle))
       .sort((a, b) => Number(b.followUpDue) - Number(a.followUpDue) || Number(b.stale) - Number(a.stale) || a.name.localeCompare(b.name))
-  }, [rows, filter, search, user?.uid])
+  }, [list, filter, search, user?.uid, searchable])
 
-  const open = rows.find((r) => r.id === openId) ?? null
+  const open = list.find((r) => r.id === openId) ?? null
+  const onLeads = tab === "leads"
+  const shown = onLeads
+    ? { total: leadSummary.total, followUpsDue: leadSummary.followUpsDue, stale: leadSummary.stale, unowned: leadSummary.unowned }
+    : summary
+  const loading = onLeads ? demoLoading || onboardingLoading : usersLoading
+
+  const switchTab = (next: Tab) => {
+    setTab(next)
+    setFilter("all")
+    setSearch("")
+    setOpenId(null)
+  }
 
   const saveRecord = async (clientId: string, patch: Partial<ClientRecord>) => {
     if (!firestore) return
@@ -123,29 +239,57 @@ export default function AdminCrmPage() {
   }
 
   const filters: Array<{ key: Filter; label: string; count?: number }> = [
-    { key: "all", label: t("filter_all"), count: summary.total },
+    { key: "all", label: t("filter_all"), count: shown.total },
     { key: "mine", label: t("filter_mine") },
-    { key: "due", label: t("filter_due"), count: summary.followUpsDue },
-    { key: "stale", label: t("filter_stale"), count: summary.stale },
-    { key: "unowned", label: t("filter_unowned"), count: summary.unowned },
+    { key: "due", label: t("filter_due"), count: shown.followUpsDue },
+    { key: "stale", label: t(onLeads ? "filter_stale_leads" : "filter_stale"), count: shown.stale },
+    { key: "unowned", label: t("filter_unowned"), count: shown.unowned },
   ]
 
   return (
     <PortalLayout>
       <div className="space-y-6" dir={locale === "ar" ? "rtl" : "ltr"}>
-        <div>
-          <h1 className="text-2xl md:text-3xl font-black text-foreground font-headline flex items-center gap-2">
-            <Handshake size={26} className="shrink-0 text-primary" />
-            {t("page_title")}
-          </h1>
-          <p className="text-muted-foreground mt-1 text-sm">{t("page_subtitle")}</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-black text-foreground font-headline flex items-center gap-2">
+              <Handshake size={26} className="shrink-0 text-primary" />
+              {t("page_title")}
+            </h1>
+            <p className="text-muted-foreground mt-1 text-sm">{t("page_subtitle")}</p>
+          </div>
+          {onLeads && (
+            <Button onClick={() => setAddLeadOpen(true)} className="gap-1.5">
+              <Plus size={15} aria-hidden="true" />
+              {t("add_lead")}
+            </Button>
+          )}
+        </div>
+
+        <div role="tablist" aria-label={t("page_title")} className="inline-flex rounded-lg border bg-muted/40 p-1">
+          {(["clients", "leads"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={tab === k}
+              onClick={() => switchTab(k)}
+              className={cn(
+                "rounded-md px-4 py-1.5 text-sm font-semibold transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                tab === k ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {t(`tab_${k}`)}
+              <span className="ms-1.5 opacity-70" dir="ltr">{k === "leads" ? leadSummary.total : summary.total}</span>
+            </button>
+          ))}
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <Kpi icon={UsersRound} label={t("kpi_total")} value={summary.total} />
-          <Kpi icon={CalendarClock} label={t("kpi_followups")} value={summary.followUpsDue} tone={summary.followUpsDue > 0 ? "warning" : undefined} />
-          <Kpi icon={UserX} label={t("kpi_stale")} value={summary.stale} tone={summary.stale > 0 ? "warning" : undefined} />
-          <Kpi icon={Handshake} label={t("kpi_unowned")} value={summary.unowned} />
+          <Kpi icon={UsersRound} label={t(onLeads ? "kpi_total_leads" : "kpi_total")} value={shown.total} />
+          <Kpi icon={CalendarClock} label={t("kpi_followups")} value={shown.followUpsDue} tone={shown.followUpsDue > 0 ? "warning" : undefined} />
+          <Kpi icon={UserX} label={t(onLeads ? "kpi_stale_leads" : "kpi_stale")} value={shown.stale} tone={shown.stale > 0 ? "warning" : undefined} />
+          <Kpi icon={Handshake} label={t("kpi_unowned")} value={shown.unowned} />
         </div>
 
         <Card className="border-none shadow-sm overflow-hidden">
@@ -180,17 +324,17 @@ export default function AdminCrmPage() {
             </div>
           </div>
           <CardContent className="p-0 overflow-x-auto">
-            {usersLoading ? (
+            {loading ? (
               <div className="p-16 flex justify-center">
                 <Loader2 className="animate-spin text-primary" size={28} />
               </div>
             ) : visible.length === 0 ? (
-              <p className="p-12 text-center text-sm text-muted-foreground">{rows.length === 0 ? t("empty") : t("empty_filtered")}</p>
+              <p className="p-12 text-center text-sm text-muted-foreground">{list.length === 0 ? t(onLeads ? "empty_leads" : "empty") : t("empty_filtered")}</p>
             ) : (
               <Table>
                 <TableHeader className="bg-muted/40">
                   <TableRow>
-                    <TableHead>{t("col_client")}</TableHead>
+                    <TableHead>{t(onLeads ? "col_lead" : "col_client")}</TableHead>
                     <TableHead>{t("col_stage")}</TableHead>
                     <TableHead className="hidden md:table-cell">{t("col_owner")}</TableHead>
                     <TableHead className="hidden sm:table-cell">{t("col_last_contact")}</TableHead>
@@ -214,10 +358,10 @@ export default function AdminCrmPage() {
                     >
                       <TableCell>
                         <p className="font-bold">{r.name}</p>
-                        <p className="text-xs text-muted-foreground">{t(r.role === "Contractor" ? "role_contractor" : "role_supplier")}</p>
+                        <p className="text-xs text-muted-foreground">{r.subtitle}</p>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={STAGE_STYLE[r.stage]}>{t(`stage_${r.stage}`)}</Badge>
+                        <Badge variant="outline" className={r.stageStyle}>{t(`stage_${r.stage}`)}</Badge>
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-sm">{r.ownerName || <span className="text-muted-foreground">{t("unassigned")}</span>}</TableCell>
                       <TableCell className="hidden sm:table-cell text-sm">
@@ -253,6 +397,7 @@ export default function AdminCrmPage() {
           )}
         </DialogContent>
       </Dialog>
+      <AddLeadDialog open={addLeadOpen} onOpenChange={setAddLeadOpen} ownerName={ownerNameOf(user?.uid ?? "") || user?.email || ""} />
     </PortalLayout>
   )
 }
@@ -278,7 +423,7 @@ function ClientPanel({
   currentName,
   onSave,
 }: {
-  row: ClientRow
+  row: ListRow
   staff: StaffUser[]
   currentUid: string
   currentName: string
@@ -330,17 +475,17 @@ function ClientPanel({
       <DialogHeader>
         <DialogTitle>{row.name}</DialogTitle>
         <DialogDescription>
-          {[t(row.role === "Contractor" ? "role_contractor" : "role_supplier"), row.city, row.phone, row.email].filter(Boolean).join(" · ")}
+          {row.detail}
         </DialogDescription>
       </DialogHeader>
 
       <div className="grid sm:grid-cols-3 gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="crm-stage">{t("stage_label")}</Label>
-          <Select value={row.stage} onValueChange={(v) => onSave({ stage: v })}>
+          <Select value={row.stage} onValueChange={(v) => onSave({ stage: v })} disabled={row.stageLocked}>
             <SelectTrigger id="crm-stage"><SelectValue /></SelectTrigger>
             <SelectContent>
-              {CLIENT_STAGES.map((s) => <SelectItem key={s} value={s}>{t(`stage_${s}`)}</SelectItem>)}
+              {(row.stageLocked ? [row.stage] : row.stages).map((s) => <SelectItem key={s} value={s}>{t(`stage_${s}`)}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
