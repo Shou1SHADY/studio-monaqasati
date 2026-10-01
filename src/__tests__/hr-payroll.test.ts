@@ -97,8 +97,10 @@ describe("compute", () => {
     const [id, , , basic, housing, other, deductions, net] = rows[0].split(",")
     expect(id).toBe("IDe1")
     expect(r(Number(basic) + Number(housing) + Number(other) - Number(deductions))).toBe(Number(net))
+    // Every line owes its contributions — the held one too: the statement IS the GOSI credit.
     const g = gosiCsv(lines, pays).trim().split("\r\n").slice(1)
-    expect(g).toHaveLength(2)
+    expect(g).toHaveLength(3)
+    expect(r(g.reduce((s, row) => s + Number(row.split(",")[7]), 0))).toBe(payEvent({ key: M, month: M, kind: "main", lines }).credit.gosi)
   })
 
   it("sick days past thirty in the service year are paid at 75% (art. 117)", () => {
