@@ -195,6 +195,11 @@ service cloud.firestore {
     function hrFinance() {
       return isOrgOwner() || hasOrgPermission('invoices.manage') || hasOrgPermission('accounting.post');
     }
+    // The employee record the caller is linked to: the link decides whose pay he
+    // reads (RL-03) and which record is "his own" (RL-02).
+    function hrOwnRecord(employeeId) {
+      return get(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid;
+    }
     // A workplace supervisor acts on his own workplaces only (the site names him).
     function hrSupervises(siteId) {
       return hrRole('hr.supervisor')
@@ -2848,8 +2853,12 @@ service cloud.firestore {
     // declaration by the HR manager or the supervisor only; closed after the
     // month by any of the three — and after that nothing changes, ever.
     match /hrAttendance/{id} {
-      allow get: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
-        && (hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management') || hrSupervises(resource.data.siteId))));
+      // A month is read before it exists (the first sheet, a declaration, the
+      // closing, payroll's check): a missing document must read as missing —
+      // `resource.data` on it is an error, and an error refuses.
+      allow get: if isSignedIn() && (isAdmin() || ((resource == null || isOrgMember(resource.data.organizationId))
+        && (hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management')
+            || (resource == null ? hrRole('hr.supervisor') : hrSupervises(resource.data.siteId)))));
       allow list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
         && (hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management'))));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
@@ -2891,11 +2900,18 @@ service cloud.firestore {
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
         && (hrManager() || hrRole('hr.gov'))
         && !('salary' in request.resource.data);
+      // Government relations records renewals — the documents and nothing else
+      // (assigning, status, probation and balances are the HR manager's). The
+      // link to a user opens that person's pay to him (RL-03): only the HR
+      // manager sets it, and never onto or off himself (the owner excepted).
       allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
-        && (hrManager() || hrRole('hr.gov'))
+        && (hrManager() || (hrRole('hr.gov') && changedKeys().hasOnly(['docs', 'updatedAt'])))
         && request.resource.data.organizationId == resource.data.organizationId
         && request.resource.data.get('no', null) == resource.data.get('no', null)
-        && !('salary' in request.resource.data && request.resource.data.salary != resource.data.get('salary', null));
+        && !('salary' in request.resource.data && request.resource.data.salary != resource.data.get('salary', null))
+        && (request.resource.data.get('userId', null) == resource.data.get('userId', null)
+            || isOrgOwner()
+            || (request.resource.data.get('userId', null) != request.auth.uid && resource.data.get('userId', null) != request.auth.uid));
       // Management decides the HR manager's own leave (LV-05): only its effects.
       allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
         && hrRole('hr.management')
@@ -2908,10 +2924,13 @@ service cloud.firestore {
         allow read: if isSignedIn()
           && isOrgMember(get(/databases/$(database)/documents/employees/$(employeeId)).data.organizationId)
           && (hrStaff() || get(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid);
+        // The first entry is written in the transaction that creates the employee:
+        // get() sees the state BEFORE it (no parent yet — an error, a refusal);
+        // getAfter() sees the record as the transaction leaves it.
         allow create: if isSignedIn()
-          && isOrgMember(get(/databases/$(database)/documents/employees/$(employeeId)).data.organizationId)
+          && isOrgMember(getAfter(/databases/$(database)/documents/employees/$(employeeId)).data.organizationId)
           && request.resource.data.by == request.auth.uid
-          && (hrStaff() || get(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid);
+          && (hrStaff() || getAfter(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid);
         allow update, delete: if false;
       }
     }
@@ -2921,15 +2940,21 @@ service cloud.firestore {
     // relations and supervisors never. Payroll only marks a returned IBAN fixed;
     // the HR manager approves it (RL-02).
     match /employeePay/{employeeId} {
+      // Read before it exists too: a joiner recorded without pay has no document
+      // until the HR manager enters the wage.
       allow get: if isSignedIn() && (isAdmin()
-        || (isOrgMember(resource.data.organizationId)
-            && (hrSeesPay() || hrFinance()
-                || get(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid)));
+        || ((resource == null || isOrgMember(resource.data.organizationId))
+            && (hrSeesPay() || hrFinance() || hrOwnRecord(employeeId))));
       allow list: if isSignedIn() && isOrgMember(resource.data.organizationId) && hrSeesPay();
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId) && hrManager();
       allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
         && request.resource.data.organizationId == resource.data.organizationId
-        && (hrManager()
+        // The HR manager — but never the wage or bank of his OWN record (RL-02;
+        // the owner excepted): on it, only what the payroll he approves moves.
+        // That check comes FIRST: approving a payroll writes many of these at
+        // once, and the record lookup behind hrOwnRecord() must not run for
+        // each (a transaction may look up twenty documents, no more).
+        && ((hrManager() && (changedKeys().hasOnly(['advance', 'retro', 'updatedAt']) || isOrgOwner() || !hrOwnRecord(employeeId)))
             || (hrRole('hr.payroll')
                 && changedKeys().hasOnly(['iban', 'ibanState', 'ibanFixedBy', 'updatedAt'])
                 && request.resource.data.ibanState == 'fixed'
@@ -2940,7 +2965,8 @@ service cloud.firestore {
                 && request.resource.data.ibanState == 'returned')
             // An approved advance: management (the HR manager's own) or Finance (above the limit).
             || ((hrRole('hr.management') || hrFinance())
-                && changedKeys().hasOnly(['advance', 'updatedAt']))
+                && changedKeys().hasOnly(['advance', 'updatedAt'])
+                && (isOrgOwner() || !hrOwnRecord(employeeId)))
             // The HR manager's own data update, decided by management (ES-03, LV-05).
             || (hrRole('hr.management')
                 && changedKeys().hasOnly(['iban', 'ibanState', 'updatedAt'])
@@ -2953,7 +2979,8 @@ service cloud.firestore {
     // org owner excepted, flagged); then Finance marks it posted and paid.
     // Carries every wage: pay roles and Finance only.
     match /hrPayrolls/{payrollId} {
-      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId) && (hrSeesPay() || hrFinance())));
+      // Read before it exists (preparing a month): missing must read as missing.
+      allow get, list: if isSignedIn() && (isAdmin() || ((resource == null || isOrgMember(resource.data.organizationId)) && (hrSeesPay() || hrFinance())));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
         && payrollId == request.resource.data.organizationId + '__' + request.resource.data.key
         && request.resource.data.state == 'prepared'
@@ -2993,7 +3020,8 @@ service cloud.firestore {
     // The outbox to Finance (§7.2): one document per event key, written once by
     // the approving HR manager; Finance only marks it posted / paid.
     match /hrEvents/{eventId} {
-      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId) && (hrSeesPay() || hrFinance())));
+      // "Never sent twice" is a read of an event that does not exist yet.
+      allow get, list: if isSignedIn() && (isAdmin() || ((resource == null || isOrgMember(resource.data.organizationId)) && (hrSeesPay() || hrFinance())));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
         && eventId == request.resource.data.organizationId + '__' + request.resource.data.key
         && request.resource.data.state == 'sent'
@@ -3051,9 +3079,10 @@ service cloud.firestore {
     // the HR manager — never his own; custody cleared by Inventory only; the
     // platform tasks by government relations or the HR manager; paid by Finance.
     match /hrExits/{exitId} {
-      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
-        && (hrStaff() || hrFinance() || resource.data.get('employeeUserId', '') == request.auth.uid
-            || hasOrgPermission('warehouses.manage') || hasOrgPermission('warehouses.receive'))));
+      // Starting an exit first checks that none exists: missing reads as missing.
+      allow get, list: if isSignedIn() && (isAdmin() || ((resource == null || isOrgMember(resource.data.organizationId))
+        && (hrStaff() || hrFinance() || hasOrgPermission('warehouses.manage') || hasOrgPermission('warehouses.receive')
+            || resource.data.get('employeeUserId', '') == request.auth.uid)));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
         && exitId == request.resource.data.organizationId + '__' + request.resource.data.employeeId
         && request.resource.data.state == 'leaving'
@@ -3082,7 +3111,7 @@ service cloud.firestore {
 
     // The settlement (EX-02, EX-04) — money: pay roles, Finance and the employee.
     match /hrSettlements/{settlementId} {
-      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+      allow get, list: if isSignedIn() && (isAdmin() || ((resource == null || isOrgMember(resource.data.organizationId))
         && (hrSeesPay() || hrFinance() || resource.data.get('employeeUserId', '') == request.auth.uid)));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
         && request.resource.data.state == 'approved'
@@ -3124,7 +3153,10 @@ service cloud.firestore {
         && request.resource.data.requested.by == request.auth.uid
         && request.resource.data.get('answer', null) == null
         && (hasOrgPermission('projects.edit') || hasProjectPermission(request.resource.data.projectId, 'projects.edit')
-            || isPmProjectManager(request.resource.data.projectId));
+            || isPmProjectManager(request.resource.data.projectId)
+            // an adopted or hand-made PM project has a manager and no handover file
+            || (projectData(request.resource.data.projectId).get('pm', null) != null
+                && projectData(request.resource.data.projectId).get('projectManagerId', '') == request.auth.uid));
       allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
         && resource.data.state == 'open'
         && (

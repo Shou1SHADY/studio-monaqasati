@@ -46,7 +46,9 @@ export const HR_GUARD = {
   "pay.view": { roles: ["manager", "payroll", "management"] },
   "employee.create": { roles: ["manager", "gov"] },
   "employee.import": { roles: ["manager", "gov"] },
-  "employee.edit": { roles: ["manager", "gov"] },
+  // Linking a record to a platform user: the link decides whose pay that user
+  // reads (RL-03), so it is the HR manager's — never a role that sees no pay.
+  "employee.edit": { roles: ["manager"] },
   "employee.assign": { roles: ["manager"] },
   "assignment.correct": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
   "manpower.answer": { roles: ["manager"] },
