@@ -321,7 +321,7 @@ export function financeWaitRows(
     } else if (e.kind === "HND" && e.amount > 0) {
       const stage = String(e.params.stage) === "final" ? "final" : "prov"
       if (stage === "final" && f.released.has(e.projectId)) continue
-      out.push({ id: `fin:${docId}`, module: "fin", kind: "retention", params: { stage }, sub: { kind: f.booksOff ? "retention_books_off" : "retention_desk", params: {} }, amount: e.amount, age, late: age >= WAIT_LATE_DAYS, projectId: e.projectId, tab: "pmClose" })
+      out.push({ id: `fin:${docId}`, module: "fin", kind: "retention", params: { stage }, sub: { kind: f.booksOff ? "retention_books_off" : "retention_desk", params: {} }, amount: e.amount, age, late: age >= WAIT_LATE_DAYS, projectId: e.projectId, tab: "info" })
     }
   }
   return out

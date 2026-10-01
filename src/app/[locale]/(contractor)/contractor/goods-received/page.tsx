@@ -32,6 +32,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
+import { useProcTeam } from "@/hooks/useProcTeam"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { useProcurementWorld, type ProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
@@ -104,6 +105,7 @@ export default function GoodsReceivedPage() {
   const { user } = useUser()
   const { profile } = useResolvedProfile(user?.uid)
   const { receivers } = useProcReceivers(orgId)
+  const team = useProcTeam(actor.isOwner ? orgId : null, actor)
   const now = useMemo(() => new Date(), [])
 
   const tab: ReceiptSegment = isSegment(searchParams.get("tab")) ? (searchParams.get("tab") as ReceiptSegment) : "incoming"
@@ -204,7 +206,10 @@ export default function GoodsReceivedPage() {
   }, [profile, orgName])
 
   // The gate's right — or the buyer's, when the firm has no separate receiver (`buyerReceives`).
-  const canReceive = receiveRight(actor, policies) !== null
+  // The owner of a company with a procurement team only reads here: receiving
+  // stays in Inventory and Projects, regularising with his buyers.
+  const ownerReadOnly = actor.isOwner && team.ownerHasTeam
+  const canReceive = !ownerReadOnly && receiveRight(actor, policies) !== null
   const routing = operatingPolicies(policies).noticeRouting
   // Follow-up (forward, remind) is the expediter's; a manual receipt and its
   // regularisation are Procurement's — buyer or manager (S-12, S-13).
@@ -378,6 +383,7 @@ export default function GoodsReceivedPage() {
             onReceive={(d) => setReceiveTarget({ delivery: d, po: poOf(d) })}
             onRegularise={(d) => setRegulariseTarget(d)}
             policies={policies}
+            ownerReadOnly={ownerReadOnly}
           />
         )}
 
@@ -573,7 +579,7 @@ function IncomingList(props: IncomingListProps) {
                             <Badge className="border-none bg-module/10 text-[10px] font-bold text-module">{t("incoming.byLink")}</Badge>
                           </>
                         )}
-                        <span>{t("incoming.forwardedBy", { name: fw.byName, when: when(fw.at) })}</span>
+                        <span>{fw.auto ? t("incoming.forwardedAuto", { when: when(fw.at) }) : t("incoming.forwardedBy", { name: fw.byName, when: when(fw.at) })}</span>
                       </>
                     ) : suggested ? (
                       <>
@@ -681,6 +687,8 @@ function IncomingPillBadge({ pill }: { pill: ReturnType<typeof incomingPill> }) 
   const [tone, text] =
     pill.kind === "to_forward"
       ? [pill.tone === "bad" ? bad : warn, t("incoming.toForward")]
+      : pill.kind === "auto_forwarded"
+        ? [warn, t("incoming.autoForwarded")]
       : pill.kind === "due_late"
         ? [bad, t("incoming.lateNoNotice", { days: pill.days })]
         : pill.kind === "due_no_notice"

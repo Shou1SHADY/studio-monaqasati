@@ -46,6 +46,7 @@ export function WriteSheetDialog({
   lines,
   inspections,
   unitName,
+  nextNo,
   onSaved,
 }: {
   open: boolean
@@ -60,6 +61,8 @@ export function WriteSheetDialog({
   inspections: PmInspection[]
   /** The delivery unit a line names, by its id. */
   unitName?: (unitId: string) => string | null
+  /** The number this sheet will get («014/07» — the project's sequence and `pm.sheetCount + 1`). */
+  nextNo?: string | null
   onSaved?: () => void
 }) {
   const t = useTranslations("Portal.PM")
@@ -112,7 +115,10 @@ export function WriteSheetDialog({
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("meas.new_title")}</DialogTitle>
-          <DialogDescription>{t("meas.confirm_note")}</DialogDescription>
+          <DialogDescription>
+            {nextNo ? <b className="me-1">{t("meas.no", { no: nextNo })} —</b> : null}
+            {t("meas.confirm_note")}
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <ul className="divide-y rounded-xl border">

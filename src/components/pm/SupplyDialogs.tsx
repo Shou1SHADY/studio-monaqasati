@@ -446,7 +446,10 @@ export function ReceiveDialog({
   const r = Number(rej) || 0
   const over = Boolean(portion) && a > left + 0.005
   const bad = !portion || a < 0 || r < 0 || a + r <= 0 || over
-  const sourceOf = (k: PortionKind) => (k === "stk" ? line.inv?.warehouseName || t("sup.lgd.store") : by.poNumber ? t("sup.rcv.from_po", { no: by.poNumber }) : by.mfgRequestId ? t("sup.rcv.from_mfg") : t("sup.rcv.from_proc"))
+  const sourceOf = (k: PortionKind) =>
+    k === "stk" ? t("sup.rcv.from_store", { store: line.inv?.warehouseName || t("store.rcv.main_store") }) : by.poNumber ? t("sup.rcv.from_po", { no: by.poNumber }) : by.mfgRequestId ? t("sup.rcv.from_mfg") : t("sup.rcv.from_proc")
+  // What a main store issued is on the road: the hints speak of the store, not a supplier.
+  const fromStore = portion?.k === "stk"
 
   const save = async () => {
     if (!firestore) return
@@ -513,11 +516,11 @@ export function ReceiveDialog({
             <Checkbox checked={short} onCheckedChange={(v) => setShort(v === true)} className="mt-0.5" />
             <span>
               <b className="block">{t("sup.rcv.short")}</b>
-              <span className="text-xs text-muted-foreground">{t("sup.rcv.short_hint")}</span>
+              <span className="text-xs text-muted-foreground">{t(fromStore ? "sup.rcv.short_hint_stk" : "sup.rcv.short_hint")}</span>
             </span>
           </label>
           <PmFilesField orgId={orgId} folder={`projects/${projectId}/receipts`} value={files} onChange={setFiles} label={t("sup.rcv.files")} hint={t("sup.rcv.files_hint")} />
-          <Callout tone="info">{line.itemId && withStore ? t("sup.rcv.enters_store") : t("sup.rcv.expensed")}</Callout>
+          <Callout tone="info">{line.itemId && withStore ? t(fromStore ? "sup.rcv.enters_store_stk" : "sup.rcv.enters_store") : t(fromStore ? "sup.rcv.expensed_stk" : "sup.rcv.expensed")}</Callout>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy !== null}>

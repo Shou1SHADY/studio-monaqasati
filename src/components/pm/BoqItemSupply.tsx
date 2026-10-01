@@ -7,10 +7,14 @@
 
 import { useMemo } from "react"
 import { useTranslations } from "next-intl"
+import { collection } from "firebase/firestore"
 import { DrawerSection } from "@/components/module-ui/DrawerSection"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useSupplyWorld } from "@/hooks/useSupplyWorld"
 import { todayDay } from "@/lib/pm/format"
+import { suppliedBySubcontractor } from "@/lib/pm/item-supply"
+import { PM_SUBCONTRACTS, type PmSubcontract } from "@/lib/pm/subcontract"
 import { ratedOn, storeBalance, storeState, type StoreItem, type StoreState } from "@/lib/pm/store"
 import { needsWithin, onTheWay, reqNo, reqPct, reqState, type ReqState } from "@/lib/pm/supply"
 
@@ -48,6 +52,10 @@ export function BoqItemSupply({
     () => needsWithin({ stores: mats.map((x) => ({ ...x, moves: [] })), items, requests: [], activities: world.activities, startOn: startOn ?? null, today }).gaps,
     [mats, items, world.activities, startOn, today]
   )
+  const firestore = useFirestore()
+  const scQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_SUBCONTRACTS) : null), [firestore, projectId])
+  const { data: contracts } = useCollection(scQ)
+  const bySub = suppliedBySubcontractor(item.id, (contracts ?? []) as unknown as PmSubcontract[], mats.length)
   const reqs = useMemo(() => world.requests.filter((r) => r.lines.some((l) => l.itemId === item.id)).filter((r) => reqState(r) !== "rej" && reqState(r) !== "cx"), [world.requests, item.id])
 
   return (
@@ -75,7 +83,7 @@ export function BoqItemSupply({
       )}
       <DrawerSection title={t("boqsup.mats_title")} count={mats.length}>
         {mats.length === 0 ? (
-          <p className="py-2 text-xs text-muted-foreground">{t("boqsup.no_mats")}</p>
+          <p className="py-2 text-xs text-muted-foreground">{t(bySub ? "boqsup.by_sub" : "boqsup.no_mats")}</p>
         ) : (
           <>
             <p className="pb-1 text-[11px] text-muted-foreground">{t("boqsup.shared")}</p>

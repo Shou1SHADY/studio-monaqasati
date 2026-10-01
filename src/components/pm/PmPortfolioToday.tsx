@@ -8,6 +8,9 @@
 // what waits on other modules. Each project's facts are read by its own feed
 // (the hooks are per project); the feeds report up and this page merges. The
 // same feeds give the other portfolio pages Today's red count (PmTodayRedCount).
+// What waits on other modules merges each project's own supply rows (requests
+// Procurement or Inventory hold, store returns) and its collectable certificates
+// with the org-wide orders, events and CRM files WaitingOnOthers reads itself.
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -34,6 +37,7 @@ import { Link, useRouter } from "@/i18n/routing"
 import { pmSeesProject } from "@/lib/pm/access"
 import { DECISION_GROUP, GROUP_ORDER, type DecisionGroup, type PmDecision } from "@/lib/pm/decisions"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
+import { requestWaitRows, storeWaitRows, type WaitRow } from "@/lib/pm/pulse"
 import { handoverAge, handoverFlags, PM_HANDOVERS, type PmHandover } from "@/lib/pm/handover"
 import { fileExtras } from "@/lib/pm/handover-writes"
 import { lifecycleOf } from "@/lib/pm/lifecycle"
@@ -57,6 +61,10 @@ type Feed = {
   committed: number
   /** Approved variations — they add to the contract value. */
   variations: number
+  /** Its requests and store returns held by Procurement / Inventory (the prototype's waitingOn). */
+  waits: WaitRow[]
+  /** Certificates still collectable, `projectId:seq` — with Accounting off they are what Finance still owes. */
+  openCerts: string[]
 }
 type Item = { key: string; severity: PmDecision["severity"]; age: number; amount: number; group: DecisionGroup; node: React.ReactNode }
 
@@ -64,19 +72,22 @@ const SEVERITY_RANK = { red: 0, amber: 1, blue: 2 } as const
 const CLIP = 7
 
 const signature = (f: Feed) =>
-  `${f.visible}|${f.money}|${f.client}|${f.progress}|${f.behind}|${f.unbilled}|${f.cash}|${f.overdue}|${f.obstacles}|${f.requests}|${f.shortages}|${f.costBudget}|${f.committed}|${f.variations}|${f.decisions.map((d) => `${d.kind}:${d.count ?? ""}:${d.amount ?? ""}:${d.age ?? ""}:${d.severity}:${d.detail ?? ""}:${d.act ?? ""}:${JSON.stringify(d.vars ?? {})}`).join(",")}`
+  `${f.visible}|${f.money}|${f.client}|${f.progress}|${f.behind}|${f.unbilled}|${f.cash}|${f.overdue}|${f.obstacles}|${f.requests}|${f.shortages}|${f.costBudget}|${f.committed}|${f.variations}|${f.waits.map((w) => `${w.id}:${w.age}:${w.late}`).join(",")}|${f.openCerts.join(",")}|${f.decisions.map((d) => `${d.kind}:${d.count ?? ""}:${d.amount ?? ""}:${d.age ?? ""}:${d.severity}:${d.title ?? ""}:${d.detail ?? ""}:${d.act ?? ""}:${JSON.stringify(d.vars ?? {})}`).join(",")}`
 
 /** Reads one project's facts and reports them up; renders nothing. */
 function ProjectFeed({ project, onFeed }: { project: Row; onFeed: (id: string, f: Feed) => void }) {
   const access = usePmAccess(project.id, project as { pm?: { lifecycle?: string } | null; status?: string; projectManagerId?: string | null })
   const visible = !access.isLoading && pmSeesProject(access.ctx)
-  const { decisions, facts } = usePmDecisions(project.id, visible ? project : null, access)
+  const { decisions, facts, supply, certificates } = usePmDecisions(project.id, visible ? project : null, access)
   const fig = useProjectFigures(project.id, visible ? project : null, access)
   const money = access.has("money")
   const client = access.has("client")
   const cost = usePulseCost(project.id, project.organizationId ?? null, project.warehouseId ?? null, project.budget ?? 0, visible && money && !client)
   const committed = cost?.total.committed ?? 0
   const overdue = decisions.find((d) => d.kind === "collection_overdue")?.amount ?? 0
+  const today = todayDay()
+  const waits = useMemo(() => (visible ? [...requestWaitRows(supply.requests, project.id, today), ...storeWaitRows(supply.stores, project.id, today)] : []), [visible, supply.requests, supply.stores, project.id, today])
+  const openCerts = useMemo(() => certificates.filter((c) => c.status === "appr" || c.status === "part").map((c) => `${project.id}:${c.seq ?? 0}`), [certificates, project.id])
   useEffect(() => {
     if (!access.isLoading)
       onFeed(project.id, {
@@ -95,8 +106,10 @@ function ProjectFeed({ project, onFeed }: { project: Row; onFeed: (id: string, f
         costBudget: facts.costBudget,
         committed,
         variations: facts.approvedVariations,
+        waits,
+        openCerts,
       })
-  }, [access.isLoading, visible, money, client, decisions, fig.progress, fig.behind, fig.unbilled, fig.cash, overdue, facts, committed, project.id, onFeed])
+  }, [access.isLoading, visible, money, client, decisions, fig.progress, fig.behind, fig.unbilled, fig.cash, overdue, facts, committed, waits, openCerts, project.id, onFeed])
   return null
 }
 
@@ -228,6 +241,8 @@ export function PmPortfolioToday() {
   const openObstacles = mine.reduce((a, p) => a + feeds[p.id].obstacles, 0)
   const shortages = mine.reduce((a, p) => a + feeds[p.id].shortages, 0)
   const committed = mine.reduce((a, p) => a + feeds[p.id].committed, 0)
+  const waits = useMemo(() => mine.flatMap((p) => feeds[p.id].waits), [mine, feeds])
+  const openCerts = useMemo(() => new Set(mine.flatMap((p) => feeds[p.id].openCerts)), [mine, feeds])
 
   const valueKpi: ModuleKpi = {
     id: "value",
@@ -294,7 +309,7 @@ export function PmPortfolioToday() {
                 {[red ? t("dec.sub_urgent", { count: red }) : null, oldest ? t("dec.sub_oldest", { count: oldest }) : null].filter(Boolean).join(" · ")}
               </p>
             )}
-            {items.length > 0 && groupChips.length > 1 && (
+            {items.length > 0 && groupChips.length > 0 && (
               <div className="border-b px-4 py-3">
                 <ProcChipGroup
                   items={[{ id: "all" as const, label: t("dec.grp.all"), count: items.length }, ...groupChips]}
@@ -372,6 +387,8 @@ export function PmPortfolioToday() {
                 projects={mine.map((p) => ({ id: p.id, name: p.name, retentionReleased: (p.pm as { retentionReleased?: boolean } | null | undefined)?.retentionReleased }))}
                 finance={client}
                 money={money}
+                extra={waits}
+                openCerts={openCerts}
                 crm={isOrgOwner || can("pm.manage") ? { uid: user?.uid ?? null, owner: isOrgOwner } : null}
               />
             )}

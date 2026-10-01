@@ -227,7 +227,7 @@ export function buildReceiptPrintHtml(m: ReceiptPrintInput): string {
   const driver = `<div class="para"><b>${e(t("driver_vehicle"))}</b> ${e(d.deliveryPersonName || "—")}${d.vehiclePlate ? ` · <span class="ltr">${e(d.vehiclePlate)}</span>` : ""}</div>`
   const fw = d.forwardedTo || null
   const forwarded = fw
-    ? `<div class="para"><b>${e(t("forwarded_title"))}</b> ${e(fw.name)}${fw.userId ? "" : ` — ${e(t("forwarded_by_link"))} <span class="ltr">${e(fw.phoneMasked)}</span>`} · ${e(t("forwarded_by", { name: fw.byName }))}</div>`
+    ? `<div class="para"><b>${e(t(fw.auto ? "forwarded_title_auto" : "forwarded_title"))}</b> ${e(fw.name)}${fw.userId ? "" : ` — ${e(t("forwarded_by_link"))} <span class="ltr">${e(fw.phoneMasked)}</span>`} · ${e(fw.auto ? t("forwarded_by_auto") : t("forwarded_by", { name: fw.byName }))}</div>`
     : ""
   const note = d.receiptNote || d.notes ? `<div class="para"><b>${e(noPo ? t("reason_outside") : t("receiver_note"))}</b> ${e(d.receiptNote || d.notes || "")}</div>` : ""
 

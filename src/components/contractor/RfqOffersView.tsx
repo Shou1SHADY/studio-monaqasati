@@ -885,7 +885,7 @@ ${t("offers_notif_reduction_note", { note })}`
     if (!rfqView) return
     const p = (profile || {}) as { companyName?: string; name?: string; taxNumber?: string; crNumber?: string }
     const number = rfqView.rfqNumber ? displayDocNumber(rfqView.rfqNumber, locale) : `#${rfqId.slice(0, 6)}`
-    const model = rfqPrintModel(rfqView as unknown as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procOrgName || p.name || "", vat: p.taxNumber || null, cr: p.crNumber || null }, number, displayCity(rfqView.city || "", locale))
+    const model = rfqPrintModel(rfqView as unknown as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procOrgName || p.name || "", vat: p.taxNumber || null, cr: p.crNumber || null }, number, displayCity(rfqView.city || "", locale), policies)
     // The document a supplier off the platform receives carries the link he quotes through.
     const link = acts ? guestLinkUrl(user, { id: rfqId, status: rfqView.status, directAward: rfqView.directAward }) : Promise.resolve(null)
     if (!(await printRfqWithLink(model, locale, (k, params) => tProc(`rfqpo.print.${k}`, params), link))) {

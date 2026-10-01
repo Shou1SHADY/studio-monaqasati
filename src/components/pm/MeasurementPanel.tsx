@@ -21,9 +21,11 @@ import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { usePmProjectNo } from "@/hooks/usePmProjectNo"
 import { usePmUnits } from "@/hooks/usePmUnits"
 import { PmAccessError } from "@/lib/pm/access"
 import { certificateNo } from "@/lib/pm/certificate"
+import { projectDocNo } from "@/lib/pm/exec-numbers"
 import { pmDate, pmMoney } from "@/lib/pm/format"
 import { gateOf, PM_INSPECTIONS, type PmInspection } from "@/lib/pm/inspection"
 import { aboveContract, measureSummary, openItems, overRemaining, PM_SHEETS, recordedValue, remainingOf, sheetNo, type PmSheet, type SheetStatus } from "@/lib/pm/measurement"
@@ -67,6 +69,7 @@ export function MeasurementPanel({
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const firestore = useFirestore()
+  const projectNo = usePmProjectNo(projectId)
   const { toast } = useToast()
   const [measuring, setMeasuring] = useState(() => Boolean(startMeasuring) && !access.ctx.archived && access.allowed("measurement.write"))
   const [qty, setQty] = useState<Record<string, string>>({})
@@ -322,7 +325,7 @@ export function MeasurementPanel({
               return (
                 <li key={s.seq} className="flex flex-wrap items-start gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1 basis-60">
-                    <p className="text-sm font-bold">{t("meas.no", { no: sheetNo(s.seq) })}</p>
+                    <p className="text-sm font-bold">{t("meas.no", { no: projectDocNo(projectNo, s.seq) })}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {t("meas.row_line", { day: pmDate(s.day, locale), by: s.byName || "—", count: s.lines.length })}
                       {s.status === "ok" ? t("meas.row_ok", { ok: s.okByName || "—", date: pmDate(s.okAt, locale) }) : ""}
@@ -391,6 +394,7 @@ export function MeasurementPanel({
           lines={lines}
           inspections={inspections}
           unitName={unitName}
+          nextNo={projectDocNo(projectNo, sheets.reduce((m, x) => Math.max(m, x.seq), 0) + 1)}
           onSaved={() => {
             stop()
             onItemsChanged?.()

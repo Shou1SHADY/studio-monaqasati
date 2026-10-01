@@ -12,15 +12,17 @@ import { CERTIFICATE_READY_AT, type CertificateStatus } from "./certificate"
 import { delayAndDamages, grantedDays, noticeDeadline, noticeLate, type ClaimStatus } from "./claim"
 import { isLetterLate, type PmLetter } from "./correspondence"
 import { staleDrawings, type PmDocument } from "./documents"
-import { RERATE_SHARE } from "./measurement"
+import { wirNo } from "./inspection"
+import { RERATE_SHARE, sheetNo } from "./measurement"
 import { IDLE_ALERT_DAYS, idleCharge, idleSince, licenceState, onSite, overdueDays, type PmPlant } from "./plant"
 import { isOpenPunch, type PunchStatus } from "./punch"
+import { sampleNo } from "./sample"
 import { pmTabVisible } from "./sections"
 import { blockingObstacles, unprotectedObstacles, type PmObstacle } from "./site"
 import { itemProgress, storeBalance, storeState, type PmStoreLine, type StoreItem } from "./store"
-import { lineGot, lineLink, lineNeed, lineOut, lineOver, openChanges, plantHireable, plantReceivable, receivable, reqState, type PmMaterialRequest, type PmPlantRequest } from "./supply"
+import { lineGot, lineLink, lineNeed, lineOut, lineOver, openChanges, plantHireable, plantReceivable, receivable, reqNo, reqState, type PmMaterialRequest, type PmPlantRequest } from "./supply"
 import type { ContractTerms } from "./terms"
-import { approvedValue, workBeforeApproval, type VoStatus } from "./variation"
+import { approvedValue, voNo, workBeforeApproval, type VoStatus } from "./variation"
 import type { SectionId } from "../project-sections"
 import { boqValue, unitBlocks, unitDone, unitFigures, unitRetention, unitTight, type PmUnit } from "./units"
 
@@ -144,8 +146,17 @@ export const GROUP_ORDER: Record<"owner" | "pm" | "site" | "qs", DecisionGroup[]
   qs: ["money", "risk", "appr", "block"],
 }
 
-/** The facts a row's sub-line names (the prototype's `s:`); `date` is a day the row formats. */
+/** The facts a row's title and sub-line name (the prototype's `t:` / `s:`); `date` is a day the row formats.
+ * A kind raised by ONE document names it — its number (`no`) and what it is — as the prototype's rows do. */
 export interface DecisionVars {
+  no?: string
+  /** Lines on the document (a measurement sheet's items). */
+  n?: number
+  /** A share in whole percent (a variation executed before approval). */
+  pct?: number
+  note?: string
+  /** Days since a fact (the last certificate). */
+  days?: number
   name?: string
   cause?: string
   date?: string
@@ -164,6 +175,8 @@ export interface PmDecision {
   /** Days since the oldest cause. */
   age?: number
   tab: DecisionTab
+  /** The title's key under `dec.<kind>` when it names one document (default `title`). */
+  title?: string
   /** The sub-line's key under `dec.<kind>` when it names facts (default `detail`). */
   detail?: string
   /** The action's key under `dec.<kind>` (default `act`). */
@@ -188,19 +201,22 @@ export interface DecisionFacts {
   terms: ContractTerms
   acceptances: Acceptances
   items: Array<{ id?: string; code?: string; unit?: string; quantity: number; rate: number; executed: number; billed?: number; gate?: { pmInspect?: boolean | null; pmWir?: string | null } | null; pmSample?: boolean | null; pmSub?: string | null }>
-  sheets: Array<{ status: string; day: string }>
+  sheets: Array<{ status: string; day: string; seq?: number; byName?: string | null; lines?: unknown[] }>
   addenda: Array<{ status: string; day: string }>
   certificates: Array<{ status: CertificateStatus; net: number; dueOn?: string | null; collected?: number | null; prepOn?: string | null; prep?: string | null; prepName?: string | null }>
   punch: Array<{ status: PunchStatus; unit?: string | null }>
-  /** Inspections, for the delivery units they block. */
-  inspections?: Array<{ status: string; unit?: string | null }>
+  /** Inspections: the delivery units they block, and the failed one a decision names. */
+  inspections?: Array<{ status: string; unit?: string | null; seq?: number; itemId?: string; location?: string; attempts?: Array<{ on: string; rOn?: string | null; note?: string | null }> }>
   /** Delivery units (section `zone`). */
   units?: PmUnit[]
-  variations: Array<{ seq?: number; status: VoStatus; value: number; executedPct: number; billedPct?: number; day: string }>
+  variations: Array<{ seq?: number; title?: string; status: VoStatus; value: number; executedPct: number; billedPct?: number; day: string }>
   claims: Array<{ status: ClaimStatus; eventOn: string; response?: { days: number } | null; obstacleId?: string | null; kind?: string; cause?: string }>
-  submittals?: Array<{ itemId: string; status: string; rev: number; day: string }>
+  submittals?: Array<{ itemId: string; status: string; rev: number; day: string; seq?: number; what?: string | null; code?: string | null; reply?: { note?: string | null } | null }>
   subCertificates?: Array<{ status: string; gross: number; prepOn: string }>
   documents?: Array<Pick<PmDocument, "type" | "revisions">>
+  /** The last certificate's day: how long what is unbilled has sat. (A stale drawing is
+   * judged against the last approved MEASUREMENT — `sheets` — not this.) */
+  lastCertDay?: string | null
   /** What a certificate re-claims of the consultant's earlier deductions (`pm.cutPool`). */
   cutPool?: number
   /** Retention held on certificates, and what handovers already made claimable — a ready unit frees a share of it. */
@@ -365,7 +381,17 @@ function supplyDecisions(f: DecisionFacts, out: PmDecision[]): void {
   if (waiting.length) {
     const soon = waiting.some((r) => r.needBy && until(f.today, r.needBy) <= 7)
     const over = waiting.some((r) => r.lines.some((l) => lineOver(lineNeed({ key: l.key, stores, items: storeItems, requests, except: r.id }), l.qty) > 0))
-    out.push({ kind: "req_waiting", severity: soon ? "red" : over ? "amber" : "blue", count: waiting.length, age: oldest(waiting.map((r) => r.day ?? f.today), f.today), tab: "pmReq" })
+    const one = waiting.length === 1 && waiting[0].seq ? waiting[0] : null
+    out.push({
+      kind: "req_waiting",
+      severity: soon ? "red" : over ? "amber" : "blue",
+      count: waiting.length,
+      age: oldest(waiting.map((r) => r.day ?? f.today), f.today),
+      tab: "pmReq",
+      ...(one
+        ? { title: "title_one", detail: over ? "detail_one_over" : one.needBy ? "detail_one_need" : "detail_one", vars: { no: reqNo(one.seq as number), name: one.title || "—", ...(one.needBy ? { date: one.needBy } : {}) } }
+        : {}),
+    })
   }
 
   const going = requests.filter((r) => reqState(r) === "go")
@@ -468,7 +494,16 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
   const waiting = f.sheets.filter((s) => s.status === "wait")
   if (waiting.length) {
     const age = oldest(waiting.map((s) => s.day), f.today)
-    out.push({ kind: "sheets_waiting", severity: age > 4 ? "red" : "amber", count: waiting.length, age, tab: "pmMeasure" })
+    const one = waiting.length === 1 && waiting[0].seq ? waiting[0] : null
+    const by = one?.byName?.trim()
+    out.push({
+      kind: "sheets_waiting",
+      severity: age > 4 ? "red" : "amber",
+      count: waiting.length,
+      age,
+      tab: "pmMeasure",
+      ...(one ? { title: by ? "title_one" : "title_one_plain", detail: "detail_one", vars: { no: sheetNo(one.seq as number), n: one.lines?.length ?? 0, ...(by ? { name: by } : {}) } } : {}),
+    })
   }
 
   const unpriced = f.items.filter((i) => !(i.rate > 0) && i.executed > 0).length
@@ -482,20 +517,51 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
       f.variations.reduce((a, v) => a + (v.status === "appr" ? v.value * Math.max(0, v.executedPct - (v.billedPct ?? 0)) : 0), 0) +
       Math.max(0, f.cutPool ?? 0)
   )
-  if (unbilled > CERTIFICATE_READY_AT) out.push({ kind: "ipc_ready", severity: "red", amount: unbilled, tab: "ipc" })
+  if (unbilled > CERTIFICATE_READY_AT) {
+    // How long the last billed measurement has sat — the money we are lending (the prototype's age).
+    const since = f.lastCertDay ? days(f.lastCertDay, f.today) : null
+    out.push({ kind: "ipc_ready", severity: "red", amount: unbilled, tab: "ipc", ...(since !== null ? { age: since || undefined, detail: "detail_since", vars: { days: since } } : {}) })
+  }
 
-  const failed = f.items.filter((i) => i.gate?.pmWir === "fail").length
-  if (failed) out.push({ kind: "wir_failed", severity: "red", count: failed, tab: "pmQa" })
+  const failedItems = f.items.filter((i) => i.gate?.pmWir === "fail")
+  if (failedItems.length) {
+    const wir =
+      failedItems.length === 1 && failedItems[0].id
+        ? (f.inspections ?? []).filter((w) => w.status === "fail" && w.itemId === failedItems[0].id && w.seq).reduce<NonNullable<DecisionFacts["inspections"]>[number] | null>((m, w) => (!m || (w.seq ?? 0) > (m.seq ?? 0) ? w : m), null)
+        : null
+    const last = wir?.attempts?.[wir.attempts.length - 1]
+    const note = last?.note?.trim()
+    out.push({
+      kind: "wir_failed",
+      severity: "red",
+      count: failedItems.length,
+      tab: "pmQa",
+      ...(wir
+        ? { title: "title_one", detail: note ? "detail_one_note" : "detail_one", age: last ? days(last.rOn ?? last.on, f.today) || undefined : undefined, vars: { no: wirNo(wir.seq as number), name: wir.location?.trim() || "—", ...(note ? { note } : {}) } }
+        : {}),
+    })
+  }
 
   // The latest revision per item decides: a rejected sample stops the item; one
   // with the consultant more than 10 days is chased.
-  const latest = new Map<string, { status: string; rev: number; day: string }>()
+  const latest = new Map<string, NonNullable<DecisionFacts["submittals"]>[number]>()
   for (const s of f.submittals ?? []) {
     const cur = latest.get(s.itemId)
     if (!cur || s.rev > cur.rev) latest.set(s.itemId, s)
   }
   const rejected = Array.from(latest.values()).filter((s) => s.status === "rej")
-  if (rejected.length) out.push({ kind: "sample_rejected", severity: "red", count: rejected.length, age: oldest(rejected.map((s) => s.day), f.today), tab: "pmSubm" })
+  if (rejected.length) {
+    const one = rejected.length === 1 && rejected[0].seq ? rejected[0] : null
+    const note = one?.reply?.note?.trim()
+    out.push({
+      kind: "sample_rejected",
+      severity: "red",
+      count: rejected.length,
+      age: oldest(rejected.map((s) => s.day), f.today),
+      tab: "pmSubm",
+      ...(one ? { title: "title_one", detail: note ? "detail_one_note" : "detail_one", vars: { no: sampleNo(one.seq as number), name: one.what?.trim() || one.code?.trim() || "—", ...(note ? { note } : {}) } } : {}),
+    })
+  }
   const late = Array.from(latest.values()).filter((s) => s.status === "sub" && days(s.day, f.today) > 10)
   if (late.length) out.push({ kind: "sample_late", severity: "amber", count: late.length, age: oldest(late.map((s) => s.day), f.today), tab: "pmSubm" })
 
@@ -505,7 +571,18 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
   if (unprotected.length) out.push({ kind: "obstacle_unprotected", severity: "amber", count: unprotected.length, age: oldest(unprotected.map((o) => o.openOn), f.today), tab: "pmClaims" })
 
   const risky = workBeforeApproval(f.variations)
-  if (risky.length) out.push({ kind: "vo_work", severity: "red", count: risky.length, amount: r2(risky.reduce((a, v) => a + v.value * v.executedPct, 0)), tab: "pmVo" })
+  if (risky.length) {
+    const one = risky.length === 1 && risky[0].seq != null ? risky[0] : null
+    out.push({
+      kind: "vo_work",
+      severity: "red",
+      count: risky.length,
+      amount: r2(risky.reduce((a, v) => a + v.value * v.executedPct, 0)),
+      age: oldest(risky.map((v) => v.day), f.today) || undefined,
+      tab: "pmVo",
+      ...(one ? { title: "title_one", ...(one.title?.trim() ? { detail: "detail_one" } : {}), vars: { no: voNo(one.seq as number), pct: Math.round(one.executedPct * 100), name: one.title?.trim() || "—" } } : {}),
+    })
+  }
   const voWait = f.variations.filter((v) => v.status === "wait")
   if (voWait.length) out.push({ kind: "vo_waiting", severity: "amber", count: voWait.length, amount: r2(voWait.reduce((a, v) => a + v.value, 0)), age: oldest(voWait.map((v) => v.day), f.today), tab: "pmVo" })
 
@@ -625,11 +702,11 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
     if (tight.length) out.push({ kind: "ztight", severity: "amber", count: tight.length, tab: "pmUnits" })
   }
 
-  if (f.lifecycle === "live" && !f.acceptances.prov && progress !== null && progress >= PROVISIONAL_AT) out.push({ kind: "provisional_ready", severity: "blue", tab: "pmClose" })
+  if (f.lifecycle === "live" && !f.acceptances.prov && progress !== null && progress >= PROVISIONAL_AT) out.push({ kind: "provisional_ready", severity: "blue", tab: "info" })
   if (f.acceptances.prov && !f.acceptances.final) {
     const end = defectsEnd(f.acceptances.prov.on, f.terms.defectsDays)
-    if (end < f.today) out.push({ kind: "final_overdue", severity: "red", age: days(end, f.today), tab: "pmClose" })
-    else if (!f.punch.some(isOpenPunch)) out.push({ kind: "final_ready", severity: "blue", tab: "pmClose" })
+    if (end < f.today) out.push({ kind: "final_overdue", severity: "red", age: days(end, f.today), tab: "info" })
+    else if (!f.punch.some(isOpenPunch)) out.push({ kind: "final_ready", severity: "blue", tab: "info" })
   }
 
   const h = f.viewer?.has

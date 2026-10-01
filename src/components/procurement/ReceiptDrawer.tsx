@@ -108,13 +108,15 @@ export interface ReceiptDrawerProps {
   need?: TrailNeed | null
   /** The supplier's CR, VAT, city and phone for the printed receipt. */
   supplier?: SupplierIdentity | null
+  /** The owner of a company with a procurement team reads: no receiving, no regularising. */
+  ownerReadOnly?: boolean
 }
 
 const TRAIL_ICON: Record<TrailState, typeof CheckCircle2> = { ok: CheckCircle2, bad: AlertTriangle, now: Clock }
 const TRAIL_TONE: Record<TrailState, string> = { ok: "bg-success/10 text-success", bad: "bg-destructive/10 text-destructive", now: "bg-amber-100 text-amber-800" }
 
 export function ReceiptDrawer(props: ReceiptDrawerProps) {
-  const { delivery: d, po, deliveries, onOpenChange, actor, orgName, company, warehouseName, projectName, placeKind, now, onReceive, onRegularise, policies, need, supplier } = props
+  const { delivery: d, po, deliveries, onOpenChange, actor, orgName, company, warehouseName, projectName, placeKind, now, onReceive, onRegularise, policies, need, supplier, ownerReadOnly = false } = props
   const routing = operatingPolicies(policies).noticeRouting
   const t = useTranslations("Portal.ProcReceipts")
   const tp = useTranslations("Portal.Procurement")
@@ -153,9 +155,11 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
   const shorts = lines.map((l) => ({ l, short: shortVsNotice(l) })).filter((x) => x.short > 0)
   const attachments = (d.attachmentUrls || []) as string[]
   const checks = (d.checklist || []) as ReceiptCheck[]
-  const canAct = receiveRight(actor, policies) !== null
+  // Receiving is Inventory's and Projects' act: the owner who only reads Procurement never records here.
+  const canAct = !ownerReadOnly && receiveRight(actor, policies) !== null
   // Procurement's own acts on a receipt (regularise, expense, rate) — buyer or manager (S-13, S-17).
-  const canPrepare = actor.isOwner || actor.canPrepare || actor.canApprove
+  const canPrepare = !ownerReadOnly && (actor.isOwner || actor.canPrepare || actor.canApprove)
+  const manual = d.source === "manual"
   // The owner only reads an order a buyer prepared (poActs) — as the write refuses him.
   const canDecide = (actor.isOwner || actor.canPrepare || actor.canApprove) && (!po || poActs(po as PurchaseOrder, actor).acts)
   const rateable = Boolean(po) && canPrepare && canRate(po as PurchaseOrder, deliveries) && poActs(po as PurchaseOrder, actor).acts
@@ -282,7 +286,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
               </Button>
               {!expensed && canPrepare && onRegularise && (
                 <Button onClick={() => onRegularise(d)} className="gap-1.5">
-                  {t("drawer.regulariseOrExpense")}
+                  {manual ? t("drawer.regulariseOrExpense") : t("drawer.regulariseWithPo")}
                 </Button>
               )}
             </div>
@@ -357,7 +361,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
               .filter(Boolean)
               .join(" · ")
       case "forwarded":
-        return variant === "link" ? t("trail.forwarded_link", params) : variant === "member" ? t("trail.forwarded_member", params) : variant === "unannounced" ? t("trail.forwarded_unannounced") : variant === "both" ? t("trail.forwarded_both") : t("trail.forwarded_direct")
+        return variant === "auto" ? t("trail.forwarded_auto", params) : variant === "link" ? t("trail.forwarded_link", params) : variant === "member" ? t("trail.forwarded_member", params) : variant === "unannounced" ? t("trail.forwarded_unannounced") : variant === "both" ? t("trail.forwarded_both") : t("trail.forwarded_direct")
       case "received":
         return [place || project || "—", receiverName, number, variant === "link" ? t("trail.received_link") : ""].filter(Boolean).join(" · ")
       case "went":
@@ -467,6 +471,12 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
             <Stat label={t("drawer.place")} value={place || (project ? t("drawer.projectCustody") : pending ? "—" : t("drawer.generalStock"))} sub={kind ? `${t(`dest.${kind}`)}${project ? ` · ${project}` : ""}` : project || undefined} />
             <Stat label={t("drawer.receiver")} value={pending ? d.forwardedTo?.name || "—" : receiverName} sub={pending ? undefined : moduleName} />
           </div>
+
+          {pending && d.forwardedTo?.auto && !d.receiverReport && (
+            <Callout tone="amber">
+              <b>{t("incoming.autoForwarded")}</b> <span>{t("drawer.autoForwardedBody", { name: d.forwardedTo.name })}</span>
+            </Callout>
+          )}
 
           {pending && d.forwardedTo?.note && (
             <Callout tone="blue">

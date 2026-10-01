@@ -11,7 +11,7 @@
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc } from "firebase/firestore"
-import { Archive, BookOpen, CheckCircle2, Clock, Loader2, Lock } from "lucide-react"
+import { Archive, BookOpen, CheckCircle2, Clock, Coins, Loader2, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Callout } from "@/components/module-ui/Callout"
@@ -28,7 +28,7 @@ import type { Acceptances } from "@/lib/pm/acceptance"
 import { PM_CERTIFICATES } from "@/lib/pm/certificate"
 import type { PmCertificate } from "@/lib/pm/certificate-writes"
 import { CLOSE_ROW_TAB, closeBlocks, closeoutRows, materialLost, projectLessons, storeHoldings, subDues, type ArchiveSnapshot, type CloseRow } from "@/lib/pm/closeout"
-import { shownCloseRows } from "@/lib/pm/closeout-view"
+import { openMoneyRows, shownCloseRows } from "@/lib/pm/closeout-view"
 import { itemCosts, projectCost } from "@/lib/pm/cost"
 import { closeAndArchive, PmCloseError, type CloseActor } from "@/lib/pm/closeout-writes"
 import { PM_LETTERS, type PmLetter } from "@/lib/pm/correspondence"
@@ -156,6 +156,7 @@ export function CloseoutPanel({
   // than shown wrong; without the client side they are not this person's to see.
   const shown = shownCloseRows(rows, clientMoney)
   const left = shown.filter((r) => !r.ok)
+  const openMoney = openMoneyRows(rows, clientMoney)
   const canClose = access.allowed("project.close") && lifecycle === "done"
 
   const lessons = useMemo(
@@ -304,10 +305,17 @@ export function CloseoutPanel({
           })}
         </ul>
         {!clientMoney && hasClient && <p className="mt-2 text-xs text-muted-foreground">{t("close.money_hidden")}</p>}
-        <div className="mt-3">
-          {blocked.length > 0 ? (
-            <Callout tone="warn">{t("close.left_note", { count: blocked.length })}</Callout>
-          ) : (
+        <div className="mt-3 space-y-2">
+          {left.length > 0 && <Callout tone="warn">{t("close.left_note", { count: left.length })}</Callout>}
+          {openMoney.length > 0 && (
+            <div role="note" className="flex gap-2.5 rounded-xl border border-destructive/25 bg-destructive/5 px-3.5 py-3 text-sm leading-relaxed">
+              <Coins size={17} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+              <span>
+                {t("close.money_title")}: {openMoney.map((r) => sentence(r)).join(" · ")}
+              </span>
+            </div>
+          )}
+          {blocked.length === 0 && (
             <div role="note" className="flex gap-2.5 rounded-xl border border-success/25 bg-success/5 px-3.5 py-3 text-sm leading-relaxed">
               <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
               <span>{t("close.all_clear")}</span>

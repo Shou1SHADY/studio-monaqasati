@@ -27,6 +27,7 @@ import type { PmAccess } from "@/hooks/usePmAccess"
 import { usePmLookahead, type LookaheadSections } from "@/hooks/usePmLookahead"
 import { PmAccessError } from "@/lib/pm/access"
 import { pmDate, todayDay } from "@/lib/pm/format"
+import { criticalPath } from "@/lib/pm/programme"
 import { OBSTACLE_PARTIES } from "@/lib/pm/site"
 import { closeWeekBlocks, commitBlocks, lookahead, MISS_REASONS, missReasonsTop, PM_WEEKS, ppc, ppcAverage, ppcTone, weekInHand, weekStart, type Constraint, type LookItem, type LookRow, type MissReason, type PmWeek } from "@/lib/pm/weekly-plan"
 import { closeWeek, commitWeek, PmWeekError } from "@/lib/pm/weekly-plan-writes"
@@ -62,6 +63,7 @@ export function WeeklyPlanPanel({
   const avg = ppcAverage(weeks)
   const top = missReasonsTop(weeks)
   const blocked = rows.filter((r) => r.block.length > 0)
+  const critical = useMemo(() => criticalPath(facts.activities), [facts.activities])
   const thisWeek = weeks.some((w) => w.week === weekStart(today))
   const can = !access.ctx.archived && access.allowed("weeklyPlan.manage")
   const [committing, setCommitting] = useState(false)
@@ -167,8 +169,13 @@ export function WeeklyPlanPanel({
                     {ok ? <Check size={15} aria-hidden="true" /> : <AlertTriangle size={15} aria-hidden="true" />}
                   </span>
                   <div className="min-w-0 flex-1 basis-48">
-                    <p className="text-sm font-bold" dir="auto">
-                      {r.a.name}
+                    <p className="flex flex-wrap items-center gap-1.5 text-sm font-bold">
+                      <span dir="auto">{r.a.name}</span>
+                      {critical.has(r.a.id) && (
+                        <StatusPill tone="bad" className="px-2 py-0 text-[11px]">
+                          {t("wwp.critical")}
+                        </StatusPill>
+                      )}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {when(r)} · <span dir="ltr">{codes(r)}</span> · <span dir="ltr">{Math.round(r.pc)}%</span>
@@ -334,6 +341,7 @@ export function WeeklyPlanPanel({
                         </p>
                         <p className="text-xs text-muted-foreground">
                           <span dir="ltr">{codes(r)}</span> · <span dir="ltr">{Math.round(r.pc)}%</span>
+                          {critical.has(r.a.id) && <span className="font-bold text-destructive"> · {t("prg.critical")}</span>}
                         </p>
                         <p className={cn("text-xs font-bold", ok ? "text-success" : "text-destructive")} dir="auto">
                           {ok ? t("wwp.ready_none") : r.block.map(cText).join(" · ")}

@@ -380,11 +380,11 @@ describe("Today — the rows the audit found missing", () => {
     expect(kinds(world({ orders: [po()], receipts: [notice], policies: both }), MANAGER)).not.toContain("notice_forward")
   })
 
-  it("a buyer's orders are his own and those of his categories (poInScope); the agreement task opens that agreement", () => {
+  it("a buyer's Today orders are the ones he prepared — his categories widen the list, not Today; the agreement task opens that agreement", () => {
     const other = po({ id: "x", status: "approved", preparedById: "someone", category: "حديد ومعادن" })
     const w = (cats: string[] | null) => world({ orders: [other], needDesk: { rows: [], buyers: [], viewerCategories: cats } })
     expect(kinds(w(null), BUYER)).not.toContain("send")
-    expect(kinds(w(["حديد ومعادن"]), BUYER)).toContain("send")
+    expect(kinds(w(["حديد ومعادن"]), BUYER)).not.toContain("send")
     const agr = { id: "ag1", organizationId: "org", docNumber: "AG-2026/001", supplierOrgId: "s", supplierName: "Q", from: "2026-01-01", until: "2026-09-30", lines: [{ name: "x", unit: "t", price: 1 }], preparedById: "m", preparedByName: "M", createdAt: "2026-01-01" }
     expect(todayTasks(world({ agreements: [agr] }), MANAGER, NOW).find((t) => t.kind === "agreement_expiring")?.href).toBe("/contractor/suppliers?segment=agreements&agreement=ag1")
   })

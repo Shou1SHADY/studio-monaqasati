@@ -324,6 +324,7 @@ export function CostPanel({
                     <p className="text-sm font-bold">{t(`money.cost.indirect_kind.${r.kind}`)}</p>
                     <p className="text-xs text-muted-foreground">
                       {r.budget > 0 ? t("money.cost.indirect_budget", { amount: pmMoney(r.budget) }) : t("money.cost.indirect_no_budget")}
+                      {` · ${t("money.cost.indirect_paid", { amount: pmMoney(indirect.paid[r.kind] ?? 0) })}`}
                       {r.kind === "eq" && indirect.plantLogged > 0 && <b> · {t("money.cost.indirect_plant", { amount: pmMoney(indirect.plantLogged) })}</b>}
                     </p>
                   </div>

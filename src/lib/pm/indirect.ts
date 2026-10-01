@@ -19,6 +19,7 @@ const ITEM_SOURCES = new Set(["pm_cash", "pm_loss", "pm_xfer"])
 export interface IndirectJournalEntry {
   status?: string | null
   sourceType?: string | null
+  sourceId?: string | null
   lines?: Array<{ account: string; debit?: number; credit?: number; project?: string | null }>
 }
 
@@ -48,6 +49,42 @@ export function indirectActuals(projectId: string, entries: IndirectJournalEntry
   byKind.eq += plantLogged
   for (const k of INDIRECT_KINDS) byKind[k] = r2(byKind[k])
   return { byKind, plantLogged: r2(plantLogged) }
+}
+
+const PAYROLL_PAYABLE = "210202"
+
+/** «مدفوع» per kind: each entry's project spend × the share of its credits that
+ * money has left for — cash credited in the entry itself, and for a payroll the
+ * salary transfers Finance recorded after it (less returned transfers). Plant
+ * days logged on site are a cost, never a payment. */
+export function indirectPaid(projectId: string, entries: IndirectJournalEntry[], payrollPayments: IndirectJournalEntry[] = []): Record<IndirectKind, number> {
+  const paid: Record<IndirectKind, number> = { stf: 0, eq: 0, ovh: 0, ins: 0 }
+  const settled = new Map<string, number>()
+  for (const p of payrollPayments) {
+    if (p.status === "reversed" || p.status === "draft" || !p.sourceId) continue
+    const sign = p.sourceType === "hr_pay_payment" ? 1 : p.sourceType === "hr_pay_return" ? -1 : 0
+    if (!sign) continue
+    const key = p.sourceId.split(":")[0]
+    const amount = (p.lines ?? []).filter((l) => l.account === PAYROLL_PAYABLE).reduce((a, l) => a + (Number(l.debit) || 0) + (Number(l.credit) || 0), 0)
+    settled.set(key, (settled.get(key) ?? 0) + sign * amount)
+  }
+  for (const e of entries) {
+    if (e.status === "reversed" || e.status === "draft" || (e.sourceType && ITEM_SOURCES.has(e.sourceType))) continue
+    const lines = e.lines ?? []
+    const credits = lines.reduce((a, l) => a + (Number(l.credit) || 0), 0)
+    if (!(credits > 0)) continue
+    const cash = lines.filter((l) => l.account.startsWith("1101")).reduce((a, l) => a + (Number(l.credit) || 0), 0)
+    const payroll = e.sourceType === "hr_pay" && e.sourceId ? Math.max(0, settled.get(e.sourceId.replace(/^hr:PAY:/, "")) ?? 0) : 0
+    const share = Math.min(1, (cash + payroll) / credits)
+    if (!(share > 0)) continue
+    for (const l of lines) {
+      if (l.project !== projectId) continue
+      const kind = indirectKindOf(l.account)
+      if (kind) paid[kind] += ((Number(l.debit) || 0) - (Number(l.credit) || 0)) * share
+    }
+  }
+  for (const k of INDIRECT_KINDS) paid[k] = r2(paid[k])
+  return paid
 }
 
 export interface IndirectRow {

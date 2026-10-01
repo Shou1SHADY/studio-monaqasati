@@ -29,6 +29,7 @@ import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
 import type { ContractTerms } from "@/lib/pm/terms"
 import { cn } from "@/lib/utils"
 import { Tile, type CostPanelItem } from "./CostPanel"
+import { usePmPlan } from "@/hooks/usePmPlan"
 import { usePmIndirect } from "@/hooks/usePmIndirect"
 
 const pct = (n: number) => `${Math.round(n * 10) / 10}%`
@@ -67,6 +68,8 @@ export function CvrPanel({
   const money = access.has("money")
   const world = useProjectCost(projectId, orgId, money)
   const indirect = usePmIndirect(projectId, orgId, money)
+  const planProject = useMemo(() => ({ pm: { startedAt: startOn, durationDays } }), [startOn, durationDays])
+  const plan = usePmPlan(projectId, planProject, items)
   const [busy, setBusy] = useState(false)
   const today = todayDay()
 
@@ -88,11 +91,12 @@ export function CvrPanel({
       contractValue: baseValue + voValue,
       damages: terms.damages,
       today,
+      curveK: plan.curveK,
     })
     const total = projectCost({ items: costItems, costs, unassigned, variations: world.variations, baseValue, penalty: delay?.damages ?? 0, indirect: { budget: indirect.budget, actual: indirect.actual } })
     const rows = sectionRows(costItems, costs)
     return { total, rows }
-  }, [costItems, world, projectWarehouseId, original, addenda, claims, lifecycle, startOn, durationDays, baseValue, today, indirect.budget, indirect.actual])
+  }, [costItems, world, projectWarehouseId, original, addenda, claims, lifecycle, startOn, durationDays, baseValue, today, indirect.budget, indirect.actual, plan.curveK])
 
   if (!money) return <Callout tone="info">{t("money.money_only")}</Callout>
 

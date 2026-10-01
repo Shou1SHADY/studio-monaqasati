@@ -130,7 +130,8 @@ async function buildWorld() {
   seed(`users/${ORG}`, { organizationId: ORG, organizationRole: "owner", name: NAME.owner, companyName: "شركة البناء المتقدم", email: "owner@test.sa" })
   for (const r of ["manager", "buyer", "expediter"] as const) {
     seed(`teamGroups/g_${r}`, { organizationId: ORG, name: r, key: null, permissions: [...PERMS[r], "projects.view"] })
-    seed(`users/${UID[r]}`, { organizationId: ORG, organizationRole: "member", defaultGroupId: `g_${r}`, name: NAME[r], email: `${UID[r]}@test.sa` })
+    // The buyer buys Construction Materials — the manager's RFQ r2 is in his category, and must still not be his.
+    seed(`users/${UID[r]}`, { organizationId: ORG, organizationRole: "member", defaultGroupId: `g_${r}`, name: NAME[r], email: `${UID[r]}@test.sa`, ...(r === "buyer" ? { procurementCategories: ["Construction Materials"] } : {}) })
   }
   seed(`users/${SUP_A}`, { organizationId: SUP_A, role: "Supplier", companyName: "مصنع الحديد الوطني", name: "مصنع الحديد الوطني", taxNumber: "300000000000003", isVerified: true })
   seed(`users/${SUP_B}`, { organizationId: SUP_B, role: "Supplier", companyName: "مؤسسة الإسمنت", name: "مؤسسة الإسمنت", taxNumber: "300000000000004", isVerified: true })
@@ -178,6 +179,8 @@ async function buildWorld() {
       deliveryPersonName: "سائق المؤسسة",
       createdAt: iso(-1),
     })
+  // The workshop is short of a material: Procurement's «طلبات شراء من التصنيع» strip on the RFQs tab.
+  seed("workOrders/w1", { organizationId: ORG, productId: "prod1", status: "open", docNumber: "WO-2026/001", sourceKind: "stock", purchaseRequests: [{ id: "pr1", itemName: "ألواح زنك", unit: "لوح", quantity: 40, needBy: d(8), note: null, by: "مدير الورشة", byId: "wm", at: iso(-1), state: "sent" }] })
   seed("deliveries/m1", { contractorOrgId: ORG, supplierName: "محل مواد البناء", status: "confirmed", deliveryDate: d(-2), confirmedAt: iso(-2), selfReceived: true, noPo: true, items: [{ name: "مسامير", quantity: 10, unit: "كرتون" }], receivedByName: NAME.owner, createdAt: iso(-2) })
 
   // A project's approved material request — the needs desk's row.
@@ -263,7 +266,6 @@ it("the fixture's writes all landed", () => {
 // holds the tab; anyone else typing its address is sent to his first tab.
 // ---------------------------------------------------------------------------
 
-const O: Role[] = ["owner"]
 const OM: Role[] = ["owner", "manager"]
 const MB: Role[] = ["manager", "buyer"]
 const OMB: Role[] = ["owner", "manager", "buyer"]
@@ -297,7 +299,8 @@ const SPECS: Record<string, ScreenSpec> = {
     acts: { "اطلب جولة تخفيض من كل العروض": MB, "اختر الأقل لكل بند": B, "أرسِ وأعِدّ أوامر الشراء": B },
   },
   rfqInquiries: { titles: ["الاستفسارات"] },
-  rfqDetails: { titles: ["تفاصيل الطلب", "المنتجات المطلوبة"], acts: { "ألغِ الطلب": MB, "سجّل عرضاً وصل خارج المنصة": MB, "تعديل الموعد أو المدعوين": MB } },
+  // Prices are sealed until the deadline by default: r1 closed with offers whose prices are now open, so nobody extends it.
+  rfqDetails: { titles: ["تفاصيل الطلب", "المنتجات المطلوبة"], acts: { "ألغِ الطلب": MB, "سجّل عرضاً وصل خارج المنصة": MB, "تعديل الموعد أو المدعوين": [] } },
   rfqOther: { titles: ["رابط الزوار — لموردين خارج المنصة", "العروض المقدمة"], acts: { "مشاركة كرابط للزوار": M } },
   orders: {
     titles: ["أوامر الشراء", "بانتظار اعتماد أو قرار", "عند الموردين", "متأخرة", "مستلمة ومقفلة", "كل الأوامر", "الأمر والمورد", "البنود", "موعد المورد", "القيمة قبل الضريبة", "الحالة", "مؤسسة الإسمنت"],
@@ -306,15 +309,19 @@ const SPECS: Record<string, ScreenSpec> = {
   orderA: {
     titles: ["بانتظار الاعتماد", "الخطوة التالية", "وقائع الترسية", "المستندات", "مسار المستند — ومن يملك كل خطوة", "السجل", "مصنع الحديد الوطني"],
     priced: ["مسار المال"],
-    acts: { "اعتمد الأمر": OM, "أعِده لمُعِدّه": OM, "ألغِ الأمر": MB },
+    // Not approved yet: no «أمر الشراء PDF» for anyone (prototype dPo `apprD!=null`).
+    acts: { "اعتمد الأمر": OM, "أعِده لمُعِدّه": OM, "ألغِ الأمر": MB, "اطبع أمر الشراء": [] },
   },
   // orderB was prepared by a buyer: the owner only reads it (poActs), Finance's acts included.
   orderB: {
     titles: ["عند المورد — التوريد جارٍ", "الخطوة التالية", "إشعارات التسليم", "السجل"],
     priced: ["مسار المال"],
-    acts: { "ذكّر المورد": MBE, "حدّث موعد المورد": MBE, "المورد عجز — ألغِ المتبقي": MB, "أقفله ناقصاً": MB, "سجّل دفعة": [] },
+    // In time and nothing received yet: «المورد عجز» is not offered (prototype cxl: late or part-received only).
+    // Approved: the PO prints for whoever sees prices — never the expediter.
+    acts: { "ذكّر المورد": MBE, "حدّث موعد المورد": MBE, "المورد عجز — اسحب المتبقي وأعد طرحه": [], "أقفله ناقصاً": MB, "سجّل دفعة": [], "اطبع أمر الشراء": OMB },
   },
-  receiptsIncoming: { titles: ["سندات الاستلام", "في الطريق", "السندات", "بلا أمر شراء", "في الطريق — ما أشعر به الموردون وما حلّ موعده", "مؤسسة الإسمنت"], acts: { "سجّل الاستلام": O, "سجّل سند استلام يدوياً": MB } },
+  // Receiving is Inventory's and Projects' act: the owner of a company with a procurement team only reads here.
+  receiptsIncoming: { titles: ["سندات الاستلام", "في الطريق", "السندات", "بلا أمر شراء", "في الطريق — ما أشعر به الموردون وما حلّ موعده", "مؤسسة الإسمنت"], acts: { "سجّل الاستلام": [], "سجّل سند استلام يدوياً": MB } },
   receiptsLog: { titles: ["سجل الاستلام", "سند الاستلام", "المورد وأمر الشراء", "ما قُبل", "أين استُلم وإلى أين ذهب", "محل مواد البناء"] },
   receiptsNoPo: { titles: ["بضاعة وصلت بلا أمر شراء", "لا سندات بلا أمر شراء"] },
   suppliers: { titles: ["الموردون والأسعار", "مورّدونا", "دليل موردي المنصة"], priced: ["تاريخ الأسعار", "اتفاقيات الأسعار"], acts: { "ادعُ مورداً إلى المنصة": MB } },
@@ -364,7 +371,7 @@ describe("owner of a company with a procurement team reads, the team acts", () =
     view.unmount()
   })
 
-  it("the buyer sees only the RFQs he raised; the manager sees every one", async () => {
+  it("the buyer sees only the RFQs he raised — even one in his category; the manager sees every one", async () => {
     let view = await openAs("buyer", "rfqs")
     expect(text()).not.toContain("بلوك خرساني")
     view.unmount()
@@ -373,12 +380,27 @@ describe("owner of a company with a procurement team reads, the team acts", () =
     view.unmount()
   })
 
-  it("the expediter reads the order value as —, prints without values, and cannot pick a cell", async () => {
+  it("the workshop's shortfalls show on the RFQs tab to whoever runs RFQs, never to the reading owner", async () => {
+    for (const [role, shown] of [["owner", false], ["manager", true], ["buyer", true]] as const) {
+      const view = await openAs(role, "rfqs")
+      expect({ role, shown: text().includes("طلبات شراء من التصنيع") }).toEqual({ role, shown })
+      view.unmount()
+    }
+  })
+
+  it("an RFQ card's title opens the RFQ on its details", async () => {
+    const view = await openAs("manager", "rfqs")
+    const title = Array.from(document.querySelectorAll("h3 a")).find((a) => (a.textContent ?? "").includes("بلوك خرساني"))
+    expect(title?.getAttribute("href")).toBe("/contractor/rfqs/r2/offers?tab=details")
+    view.unmount()
+  })
+
+  it("the expediter reads the order value as —, never prints the PO, and cannot pick a cell", async () => {
     let view = await openAs("expediter", "orders")
     expect(text()).toContain("—")
     view.unmount()
     view = await openAs("expediter", "orderB")
-    expect(buttons().some((b) => b.startsWith("اطبع أمر الشراء") && b.includes("بلا قيم"))).toBe(true)
+    expect(buttons().some((b) => b.startsWith("اطبع أمر الشراء"))).toBe(false)
     view.unmount()
     view = await openAs("expediter", "rfqCompare")
     const cells = Array.from(document.querySelectorAll("button")).filter((b) => (b.textContent ?? "").trim() === "——")

@@ -245,12 +245,11 @@ type ScopeActor = { uid: string; isOwner: boolean; canApprove: boolean; canPrepa
 /** A buyer prepares and never approves; the owner and approvers see everything. */
 export const isBuyer = (actor: Omit<ScopeActor, "uid">) => !actor.isOwner && !actor.canApprove && actor.canPrepare
 
-/** A buyer sees the RFQs he raised, and — when his member record names
- * categories — the RFQs in them. Everyone else sees the whole list. */
-export function rfqInScope(rfq: Pick<RfqListLike, "createdByUserId" | "contractorId" | "category" | "products">, actor: ScopeActor, categories?: string[] | null): boolean {
+/** A buyer sees only the RFQs he raised (the prototype's `rfqMine`) — his
+ * categories scope needs and orders, not RFQs. Everyone else sees the whole list. */
+export function rfqInScope(rfq: Pick<RfqListLike, "createdByUserId" | "contractorId">, actor: ScopeActor): boolean {
   if (!isBuyer(actor)) return true
-  if ((rfq.createdByUserId || rfq.contractorId) === actor.uid) return true
-  return Boolean(categories?.length) && rfqCategories(rfq).some((c) => (categories as string[]).includes(c))
+  return (rfq.createdByUserId || rfq.contractorId) === actor.uid
 }
 
 /** A buyer's orders: the ones he prepared, and those in his categories. */

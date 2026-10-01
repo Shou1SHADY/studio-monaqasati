@@ -233,7 +233,7 @@ describe("plant on site (E-22)", () => {
     expect(licenceState({ category: "lift", licenceTo: "2026-10-10" }, "2026-09-28")).toBe("warn")
     expect(licenceState({ category: "light", licenceTo: "2026-09-01" }, "2026-09-28")).toBe("none")
     expect(
-      handoverBlocks({ archived: false, name: "Crane", qty: 1, from: "2026-09-20", to: "2026-10-20", category: "lift", meter: null, licenceTo: "2026-09-01", condition: "bad", remark: "", today: "2026-09-28" })
+      handoverBlocks({ archived: false, name: "Crane", qty: 1, from: "2026-09-20", to: "2026-10-20", category: "lift", meter: null, licenceTo: "2026-09-01", hercNo: "HE-1", condition: "bad", remark: "", today: "2026-09-28" })
     ).toEqual(["no_meter", "licence_expired", "no_remark"])
     const plant = { status: "req" as const, offOk: { on: "2026-09-27", by: "u" }, category: "heavy" as const, handover: { on: "2026-09-01", meter: 5000, condition: "ok" as const, by: "u" } }
     expect(backBlocks({ archived: false, plant, meter: 4900, condition: "ok" })).toEqual(["meter_back"])

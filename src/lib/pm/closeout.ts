@@ -36,8 +36,8 @@ export const CLOSE_ROW_TAB: Record<CloseRowKey, string> = {
   ncr: "pmQa",
   store: "pmStore",
   plant: "pmSite",
-  prov: "pmClose",
-  final: "pmClose",
+  prov: "info",
+  final: "info",
   unpriced: "boq",
   unbilled: "ipc",
   in_progress: "ipc",
@@ -88,12 +88,10 @@ export function closeoutRows(input: CloseInput): CloseRow[] {
   ]
   if (input.storeLines != null) rows.push({ key: "store", ok: input.storeLines === 0, n: input.storeLines })
   if (input.plantOnSite != null) rows.push({ key: "plant", ok: input.plantOnSite === 0, n: input.plantOnSite })
-  rows.push(
-    { key: "prov", ok: Boolean(input.acceptances.prov) },
-    { key: "final", ok: Boolean(input.acceptances.final) },
-    // Executed but unpriced: closing means giving it up — decided, not slipped past (CON-04).
-    { key: "unpriced", ok: unpricedExecuted === 0, n: unpricedExecuted }
-  )
+  // Executed but unpriced: closing means giving it up — decided, not slipped past
+  // (CON-04). Listed only while the BOQ has an unpriced item (prototype bqUnpriced).
+  if (input.items.some((i) => !(i.rate > 0))) rows.push({ key: "unpriced", ok: unpricedExecuted === 0, n: unpricedExecuted })
+  rows.push({ key: "prov", ok: Boolean(input.acceptances.prov) }, { key: "final", ok: Boolean(input.acceptances.final) })
   if (input.hasClient) {
     const voUnbilled = (input.variations ?? [])
       .filter((v) => v.status === "appr")
@@ -107,9 +105,9 @@ export function closeoutRows(input: CloseInput): CloseRow[] {
     )
     rows.push(
       { key: "unbilled", ok: unbilled <= 1, n: unbilled },
+      { key: "retention", ok: input.retentionHeld <= 1 || input.retentionReleased, n: input.retentionHeld },
       { key: "in_progress", ok: inProgress === 0, n: inProgress },
-      { key: "overdue", ok: overdue <= 1, n: overdue },
-      { key: "retention", ok: input.retentionHeld <= 1 || input.retentionReleased, n: input.retentionHeld }
+      { key: "overdue", ok: overdue <= 1, n: overdue }
     )
     const pending = pricedPending(input.variations ?? [])
     rows.push({ key: "vo_pending", ok: pending.length === 0, n: pending.length })

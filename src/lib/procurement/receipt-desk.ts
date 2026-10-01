@@ -53,6 +53,8 @@ export interface ForwardedTo {
   at: string
   /** Procurement's note to the receiver («ملاحظة للمستلم»), shown on the link as «ملاحظة المشتريات». */
   note?: string | null
+  /** The scheduled job forwarded it after `forwardWindowDays` lapsed — nobody in Procurement did (`byName` is the system). */
+  auto?: boolean
 }
 
 /** Written by the server when the receiver signs (src/lib/receipt-links.ts). */
@@ -338,6 +340,7 @@ export const receiptCsvFilename = (now: Date) => `receipts-${dayOf(now.toISOStri
 
 export type IncomingPill =
   | { kind: "to_forward"; tone: "bad" | "warn" }
+  | { kind: "auto_forwarded" }
   | { kind: "due_late"; days: number }
   | { kind: "due_no_notice" }
   | { kind: "after_promise"; days: number }
@@ -351,6 +354,7 @@ export type IncomingPill =
  * passed with no receipt; else how far off it is. */
 export function incomingPill(r: IncomingRow, routing: NoticeRouting = "procurement"): IncomingPill {
   if (r.kind === "due") return r.daysLate > 0 ? { kind: "due_late", days: r.daysLate } : { kind: "due_no_notice" }
+  if (r.delivery.forwardedTo?.auto && !r.delivery.receiverReport) return { kind: "auto_forwarded" }
   if (routing === "procurement" && forwardState(r.delivery) === "none") return { kind: "to_forward", tone: r.daysFromNow != null && r.daysFromNow <= 0 ? "bad" : "warn" }
   if (r.afterPromise > 0) return { kind: "after_promise", days: r.afterPromise }
   if (r.daysFromNow != null && r.daysFromNow < 0) return { kind: "passed_no_receipt" }
@@ -545,7 +549,7 @@ export function receiptTrail(d: DeskDelivery, po: PurchaseOrder & PoExtras, rout
       ? { key: "notified", state: "bad", at: null, variant: "none", params: {} }
       : { key: "notified", state: "ok", at: isoOf(d.createdAt), variant: "notice", params: { number: facts.noticeNumber || "", day: dayOf(d.deliveryDate), window: d.deliveryWindow || "", note: d.paperNoteNumber || "", driver: d.deliveryPersonName || "" } },
     fw
-      ? { key: "forwarded", state: "ok", at: fw.at, variant: fw.userId ? "member" : "link", params: { name: fw.name, phone: fw.phoneMasked, by: fw.byName } }
+      ? { key: "forwarded", state: "ok", at: fw.at, variant: fw.auto ? "auto" : fw.userId ? "member" : "link", params: { name: fw.name, phone: fw.phoneMasked, by: fw.byName } }
       : routing === "both" && !d.noNotice
         ? { key: "forwarded", state: "ok", at: isoOf(d.createdAt), variant: "both", params: {} }
         : { key: "forwarded", state: "bad", at: null, variant: d.noNotice ? "unannounced" : "direct", params: {} },
@@ -562,7 +566,7 @@ export function receiptTrail(d: DeskDelivery, po: PurchaseOrder & PoExtras, rout
 
 export interface ReceiptLogEntry {
   at: string
-  action: "noticed" | "forwarded" | "signed" | "recorded" | "regularised" | "expensed" | "po_raised"
+  action: "noticed" | "forwarded" | "forwarded_auto" | "signed" | "recorded" | "regularised" | "expensed" | "po_raised"
   by: string
   params: Record<string, string | number>
 }
@@ -582,7 +586,7 @@ export function receiptLog(d: DeskDelivery, po: PurchaseOrder | null, noticeNumb
   const created = isoOf(d.createdAt)
   if (created && !d.noNotice && d.source !== "manual") out.push({ at: created, action: "noticed", by: d.supplierName || "", params: { day: dayOf(d.deliveryDate), notice: noticeNumber || "" } })
   const fw = d.forwardedTo
-  if (fw?.at) out.push({ at: fw.at, action: "forwarded", by: fw.byName, params: { name: fw.name } })
+  if (fw?.at) out.push({ at: fw.at, action: fw.auto ? "forwarded_auto" : "forwarded", by: fw.byName, params: { name: fw.name } })
   const rr = d.receiverReport
   if (rr?.signedAt) out.push({ at: rr.signedAt, action: "signed", by: rr.receiverName, params: {} })
   const confirmed = isoOf(d.confirmedAt)

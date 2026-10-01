@@ -26,10 +26,10 @@
 // against invoices comes off what is still owed for received goods.
 
 import { acceptedValue, addDays, dayOf, daysBetween, daysFromNow, daysLate, isShortCompetition, lowestOffer, offerPrice, poFacts, poLive, poOpenValue, poStatus, poValue, receiptDay, round2, supplierKey, supplierScore, todayOf } from "./po"
-import { advanceState, asX, paidTotal } from "./po-extras"
+import { advanceState, asX, paidTotal, pmCancelOpen } from "./po-extras"
 import { materialKey } from "./prices"
 import type { OfferFact, ProcWorld, RfqFact } from "./today"
-import type { PurchaseOrder } from "./types"
+import type { PurchaseOrder, ReceiptFact } from "./types"
 
 export interface RfqEarlyCloseFact {
   at?: string | null
@@ -290,7 +290,7 @@ export function spendBySupplier(w: ProcWorld, period: Period | null | undefined,
 // 3 · Delivery performance — receipts are Inventory's; we measure the supplier by them
 // ---------------------------------------------------------------------------
 
-export type DeliveryOrderState = "on_time" | "late" | "on_time_so_far" | "pending"
+export type DeliveryOrderState = "on_time" | "late" | "on_time_so_far" | "pending" | "cancel_pending"
 
 export interface DeliveryOrderRow {
   orderId: string
@@ -332,6 +332,11 @@ export function deliveryPerformance(w: ProcWorld, period: Period | null | undefi
       const d = daysLate(po, now)
       gap = d > 0 ? d : null
       state = d > 0 ? "late" : "on_time_so_far"
+    }
+    // Projects asked to stop the rest and Procurement has not decided: not the supplier's lateness.
+    if (!(daysLate(po, now) > 0) && po.lines.some((l) => pmCancelOpen(asX(po), l))) {
+      gap = null
+      state = "cancel_pending"
     }
     return { orderId: po.id, docNumber: po.docNumber, supplierName: po.supplierName, promisedDate: po.promisedDate || null, lastReceiptDay: facts.lastReceiptDay, gap, state }
   })
@@ -532,6 +537,7 @@ export const EXCEPTION_KINDS = [
   "no_po",
   "self_received",
   "no_notice",
+  "auto_forwarded",
   "cash_expense",
   "manual_offer",
   "early_close",
@@ -580,6 +586,17 @@ export function exceptions(w: ReportWorld | ProcWorld, period?: Period | null): 
     if (po.noOfficialQuote && !po.agreementId) out.push({ ...base, kind: "no_official_quote", params: {} })
     if (po.offerId && offerById.get(po.offerId)?.isManualOffer) out.push({ ...base, kind: "awarded_manual_offer", params: {} })
     if (po.status === "closed" && po.closedShort) out.push({ ...base, kind: "closed_short", params: { reason: po.closeReason || "" }, day: dayOf(po.closedAt) || base.day })
+  }
+
+  // A notice the scheduled job forwarded because Procurement did not, listed on
+  // the day it was forwarded — whether or not the goods have been received since.
+  for (const r of w.receipts) {
+    const fw = (r as ReceiptFact & { forwardedTo?: { auto?: boolean; at?: string | null; name?: string | null; byName?: string | null } | null }).forwardedTo
+    if (!fw?.auto) continue
+    const day = dayOf(fw.at)
+    if (!day || !inPeriod(day, period)) continue
+    const po = r.poId ? orderById.get(r.poId) : undefined
+    out.push({ kind: "auto_forwarded", docNumber: r.docNumber || r.poNumber || po?.docNumber || "", orderId: r.poId || null, receiptId: r.id, rfqId: null, supplierName: r.supplierName || po?.supplierName || "", byName: fw.byName || "", approvedByName: po?.approvedByName || "", day, params: { name: fw.name || "" }, href: receiptHref(r.id) })
   }
 
   for (const r of w.receipts) {

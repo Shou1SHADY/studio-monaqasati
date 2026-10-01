@@ -67,6 +67,22 @@ export function sectionsForKind(kind: ProjectKind): SectionId[] {
   return SECTION_IDS.filter((id) => out.has(id))
 }
 
+// Registry ghosts whose work a built section already does — listing them as
+// "not built yet" beside the built one reads as a duplicate (v21 lists none).
+const BUILT_ELSEWHERE: Partial<Record<SectionId, SectionId>> = { mats: "price", invoice: "match", pay: "match" }
+
+/** The Sections screen's «لم يُبنَ بعد» list: unbuilt sections that no built one covers. */
+export const notBuiltYet = (unbuilt: readonly SectionId[]): SectionId[] => unbuilt.filter((id) => !BUILT_ELSEWHERE[id])
+
+/** The ITP and NCR panels (the prototype's `qaPanel`, section `qa`). Ours folds
+ * wir/punch/qa into one section, so the project's type stands in for the
+ * prototype's separate toggle: a preset without `qa` (infra, road, mep…) shows
+ * inspections and punch only — unless the project already holds ITP/NCR
+ * records. A project with no recorded type keeps them. */
+export function qualityPanelsOn(kind: ProjectKind | null | undefined, records: number | undefined): boolean {
+  return !kind || !PRESET[kind] || PRESET[kind].includes("qa") || (records ?? 0) > 0
+}
+
 // Sections arrived in generations. A project whose sections were chosen before a
 // generation existed never names any of its ids (they were not offered), so a
 // tab of that generation stays on there; a project that names one of them — or

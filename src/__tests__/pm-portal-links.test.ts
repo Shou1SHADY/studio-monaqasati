@@ -84,9 +84,11 @@ describe("answer bodies", () => {
     const ok: unknown[] = [
       { kind: "subm", seq: 1, decision: "appB", note: "مع ملاحظة" },
       { kind: "wir", seq: 2, result: "pass", on: TODAY },
-      { kind: "punch", seq: 3 },
+      { kind: "punch", seq: 3, accept: true },
+      { kind: "punch", seq: 3, accept: false, note: "الشرخ ما زال ظاهراً" },
       { kind: "corr", seq: 4, text: "موافق" },
       { kind: "ncr", seq: 5, accept: true },
+      { kind: "ncr", seq: 5, accept: false, note: "الخطة لا تعالج السبب" },
     ]
     for (const body of ok) expect(answerBody.safeParse(body).success).toBe(true)
   })
@@ -100,6 +102,10 @@ describe("answer bodies", () => {
       { kind: "wir", seq: 2, result: "pass", on: "29/09/2026" },
       { kind: "corr", seq: 4, text: "   " },
       { kind: "ncr", seq: 5, accept: false },
+      { kind: "ncr", seq: 5, accept: false, note: "   " },
+      { kind: "ncr", seq: 5 },
+      { kind: "punch", seq: 3 },
+      { kind: "punch", seq: 3, accept: false },
       { kind: "boq", seq: 1, quantity: 99 },
       { kind: "punch" },
       null,
@@ -166,8 +172,8 @@ describe("answers", () => {
     expect(answer({ kind: "subm", seq: 2, decision: "appA" }, { seq: 2, status: "appA", day: "2026-09-01", itemId: "L1" })).toEqual({ ok: false, code: "NOT_WAITING" })
     expect(answer({ kind: "wir", seq: 2, result: "pass", on: TODAY }, { seq: 2, status: "open", party: "client", attempts: [{ n: 1, on: TODAY }] })).toEqual({ ok: false, code: "NOT_WAITING" })
     expect(answer({ kind: "wir", seq: 1, result: "pass", on: TODAY }, { seq: 1, status: "pass", party: "consultant", attempts: [{ n: 1, on: TODAY }] })).toEqual({ ok: false, code: "NOT_WAITING" })
-    expect(answer({ kind: "punch", seq: 2 }, { seq: 2, status: "fix", source: "own", day: "2026-09-05" })).toEqual({ ok: false, code: "NOT_WAITING" })
-    expect(answer({ kind: "punch", seq: 1 }, { seq: 1, status: "done", source: "cons", day: "2026-09-05" })).toEqual({ ok: false, code: "NOT_WAITING" })
+    expect(answer({ kind: "punch", seq: 2, accept: true }, { seq: 2, status: "fix", source: "own", day: "2026-09-05" })).toEqual({ ok: false, code: "NOT_WAITING" })
+    expect(answer({ kind: "punch", seq: 1, accept: true }, { seq: 1, status: "done", source: "cons", day: "2026-09-05" })).toEqual({ ok: false, code: "NOT_WAITING" })
     expect(answer({ kind: "corr", seq: 1, text: "نعم" }, { seq: 1, no: "014/001", dir: "out", party: "cons", status: "rep", day: "2026-09-12" })).toEqual({ ok: false, code: "NOT_WAITING" })
     expect(answer({ kind: "corr", seq: 1, text: "نعم" }, { seq: 1, no: "014/001", dir: "out", party: "own", status: "out", day: "2026-09-12" })).toEqual({ ok: false, code: "NOT_WAITING" })
     expect(answer({ kind: "ncr", seq: 1, accept: true }, { seq: 1, status: "open", day: "2026-09-08" })).toEqual({ ok: false, code: "NOT_WAITING" })
@@ -208,12 +214,34 @@ describe("answers", () => {
   })
 
   it("confirm a punch item as the consultant, reply to a letter, accept a plan", () => {
-    const p = answer({ kind: "punch", seq: 1 }, { seq: 1, status: "fix", source: "cons", day: "2026-09-05", fix: { on: "2026-09-15" }, what: "شرخ" })
+    const p = answer({ kind: "punch", seq: 1, accept: true }, { seq: 1, status: "fix", source: "cons", day: "2026-09-05", fix: { on: "2026-09-15" }, what: "شرخ" })
     expect(p.ok && p.plan.patch).toEqual({ status: "done", conf: { on: TODAY, by: "portal:L1", byName: "م. سامي", party: "cons", partyText: null, files: [], viaPortal: true } })
     const c = answer({ kind: "corr", seq: 1, text: " موافق " }, { seq: 1, no: "014/001", dir: "out", party: "cons", status: "out", day: "2026-09-12", subject: "طلب" })
     expect(c.ok && c.plan.patch).toEqual({ status: "rep", reply: { text: "موافق", on: TODAY, by: "portal:L1", byName: "م. سامي", file: null, viaPortal: true } })
     const n = answer({ kind: "ncr", seq: 1, accept: true }, { seq: 1, status: "plan", day: "2026-09-08", plan: { on: "2026-09-18", text: "x" }, root: "r" })
     expect(n.ok && n.plan.patch).toMatchObject({ status: "done", accepted: { on: TODAY, cost: null, viaPortal: true } })
+  })
+
+  it("refuse a punch fix with his reason: back to open, the refused fix kept in his name", () => {
+    const fix = { on: "2026-09-15", by: "se1", byName: "عمر", note: "أُعيدت اللياسة" }
+    const earlier = { on: "2026-09-10", by: "portal:L1", byName: "م. سامي", note: "أول رفض", refused: null, viaPortal: true }
+    const p = answer({ kind: "punch", seq: 1, accept: false, note: " الشرخ ما زال ظاهراً " }, { seq: 1, status: "fix", source: "cons", day: "2026-09-05", fix, what: "شرخ", rejects: [earlier] })
+    expect(p.ok).toBe(true)
+    if (!p.ok) return
+    expect(p.plan.patch).toEqual({ status: "open", fix: null, rejects: [earlier, { on: TODAY, by: "portal:L1", byName: "م. سامي", note: "الشرخ ما زال ظاهراً", refused: fix, viaPortal: true }] })
+    expect(p.plan.entry).toEqual({ kind: "punch", no: "01", title: "شرخ", what: "fix_rejected" })
+    expect(answer({ kind: "punch", seq: 1, accept: false }, { seq: 1, status: "fix", source: "cons", day: "2026-09-05", fix, what: "شرخ" })).toEqual({ ok: false, code: "BLOCKED", blocks: ["no_note"] })
+    expect(answer({ kind: "punch", seq: 1, accept: false, note: "لا" }, { seq: 1, status: "open", source: "cons", day: "2026-09-05", what: "شرخ" })).toEqual({ ok: false, code: "NOT_WAITING" })
+  })
+
+  it("refuse a corrective plan with his reason: the NCR is open again for a new plan", () => {
+    const plan = { on: "2026-09-18", by: "pm1", byName: "عبدالله", text: "إعادة الصب" }
+    const n = answer({ kind: "ncr", seq: 2, accept: false, note: "الخطة لا تعالج السبب" }, { seq: 2, status: "plan", day: "2026-09-08", plan, root: "r", what: "تعشيش" })
+    expect(n.ok).toBe(true)
+    if (!n.ok) return
+    expect(n.plan.patch).toEqual({ status: "open", plan: null, rejects: [{ on: TODAY, by: "portal:L1", byName: "م. سامي", note: "الخطة لا تعالج السبب", refused: plan, viaPortal: true }] })
+    expect(n.plan.entry).toEqual({ kind: "ncr", no: "02", title: "تعشيش", what: "plan_rejected" })
+    expect(answer({ kind: "ncr", seq: 2, accept: false }, { seq: 2, status: "plan", day: "2026-09-08", plan, root: "r" })).toEqual({ ok: false, code: "BLOCKED", blocks: ["no_note"] })
   })
 })
 

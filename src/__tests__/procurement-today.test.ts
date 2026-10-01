@@ -218,7 +218,9 @@ describe("T6/T8/T9/T11 · receipts and notices", () => {
 
 describe("T3/T4 · RFQ tasks", () => {
   it("draft · compare and award once closed with pending offers (red past the award cycle) · closed with nothing · closing soon and thin", () => {
+    // Sealed rounds: the award waits for the deadline (an unsealed one: procurement-v5-front).
     const w = world({
+      policies: { ...DEFAULT_POLICIES, sealOffersUntilDeadline: true },
       rfqs: [
         rfq({ id: "draft", status: "Draft", deadline: null }),
         rfq({ id: "ready", deadline: "2026-09-21" }),

@@ -1,8 +1,8 @@
 "use client"
 
 // The portfolio's table, archive table and multi-select filters (the PM 1.0
-// prototype's portTable, archTable and fdrop/fbar). Money columns appear only
-// for holders of money.
+// prototype's portTable, archTable and fdrop/fbar). Money columns stay for
+// everyone; without money their amounts read «•••» (the prototype's money()).
 
 import { useEffect } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -18,6 +18,8 @@ import { lifecycleOf } from "@/lib/pm/lifecycle"
 import { costOf, marginOf, type FilterSelection, type PortfolioFilter, type PortfolioRow } from "@/lib/pm/portfolio"
 import { displayDocNumber } from "@/lib/sales-numbering"
 import { cn } from "@/lib/utils"
+
+const mask = (money: boolean, v: number) => (money ? pmMoney(v) : "•••")
 
 const rowClick = (go: () => void) => ({
   role: "link" as const,
@@ -38,7 +40,7 @@ function PortfolioRowView({ project, money, onFeed }: { project: PortfolioProjec
   const router = useRouter()
   const feed = usePortfolioFeed(project)
   const lifecycle = lifecycleOf(project as { pm?: { lifecycle?: string }; status?: string })
-  const value = project.budget ?? 0
+  const value = feed.contract
   useEffect(() => onFeed(project.id, feed), [onFeed, project.id, feed])
   return (
     <TableRow {...rowClick(() => router.push(projectHref(project)))}>
@@ -56,19 +58,15 @@ function PortfolioRowView({ project, money, onFeed }: { project: PortfolioProjec
       <TableCell className="min-w-[160px]">
         <ProgressLine feed={feed} />
       </TableCell>
-      {money && (
-        <>
-          <TableCell className="text-end text-sm tabular-nums" dir="ltr">
-            {value > 0 ? pmMoney(value) : "—"}
-          </TableCell>
-          <TableCell className={cn("text-end text-sm tabular-nums", feed.unbilled > 50_000 && "font-bold text-destructive")} dir="ltr">
-            {pmMoney(feed.unbilled)}
-          </TableCell>
-          <TableCell className={cn("text-end text-sm tabular-nums", feed.cash < 0 ? "text-destructive" : "text-success")} dir="ltr">
-            {pmMoney(feed.cash)}
-          </TableCell>
-        </>
-      )}
+      <TableCell className="text-end text-sm tabular-nums" dir="ltr">
+        {value > 0 ? mask(money, value) : "—"}
+      </TableCell>
+      <TableCell className={cn("text-end text-sm tabular-nums", money && feed.unbilled > 50_000 && "font-bold text-destructive")} dir="ltr">
+        {mask(money, feed.unbilled)}
+      </TableCell>
+      <TableCell className={cn("text-end text-sm tabular-nums", money && (feed.cash < 0 ? "text-destructive" : "text-success"))} dir="ltr">
+        {mask(money, feed.cash)}
+      </TableCell>
       <TableCell className="text-center">{feed.red ? <StatusPill tone="bad">{feed.red}</StatusPill> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
     </TableRow>
   )
@@ -84,13 +82,9 @@ export function PmPortfolioTable({ projects, money, onFeed }: { projects: Portfo
             <TableHead className="sticky start-0 bg-card text-start">{t("list.col_project")}</TableHead>
             <TableHead className="text-start">{t("list.col_status")}</TableHead>
             <TableHead className="text-start">{t("list.col_progress")}</TableHead>
-            {money && (
-              <>
-                <TableHead className="text-end">{t("list.contract_value")}</TableHead>
-                <TableHead className="text-end">{t("list.unbilled")}</TableHead>
-                <TableHead className="text-end">{t("list.cash")}</TableHead>
-              </>
-            )}
+            <TableHead className="text-end">{t("list.contract_value")}</TableHead>
+            <TableHead className="text-end">{t("list.unbilled")}</TableHead>
+            <TableHead className="text-end">{t("list.cash")}</TableHead>
             <TableHead className="text-center">{t("list.col_alerts")}</TableHead>
           </TableRow>
         </TableHeader>
@@ -120,12 +114,12 @@ export function PmArchiveTable({ rows, money, kindLabel, managerLabel, shown, on
               <TableHead className="text-start">{t("list.arch.project")}</TableHead>
               <TableHead className="text-start">{t("list.arch.kind")}</TableHead>
               <TableHead className="text-start">{t("list.arch.region")}</TableHead>
-              {money && <TableHead className="text-end">{t("list.contract_value")}</TableHead>}
-              {money && <TableHead className="text-end">{t("list.arch.cost")}</TableHead>}
-              {money && <TableHead className="text-end">{t("list.arch.margin")}</TableHead>}
+              <TableHead className="text-end">{t("list.contract_value")}</TableHead>
+              <TableHead className="text-end">{t("list.arch.cost")}</TableHead>
+              <TableHead className="text-end">{t("list.arch.margin")}</TableHead>
               <TableHead className="text-center">{t("list.arch.duration")}</TableHead>
               <TableHead className="text-start">{t("list.arch.closed")}</TableHead>
-              {money && <TableHead className="text-end">{t("list.arch.retention")}</TableHead>}
+              <TableHead className="text-end">{t("list.arch.retention")}</TableHead>
               <TableHead className="text-start">{t("list.arch.manager")}</TableHead>
             </TableRow>
           </TableHeader>
@@ -148,19 +142,16 @@ export function PmArchiveTable({ rows, money, kindLabel, managerLabel, shown, on
                   <TableCell className="text-xs text-muted-foreground" dir="auto">
                     {r.region ?? "—"}
                   </TableCell>
-                  {money && (
-                    <TableCell className="text-end text-sm tabular-nums" dir="ltr">
-                      {pmMoney(r.fin?.contractValue ?? r.value)}
-                    </TableCell>
-                  )}
-                  {money && (
-                    <TableCell className="text-end text-sm tabular-nums" dir="ltr">
-                      {costOf(r.fin) != null ? pmMoney(costOf(r.fin) as number) : "—"}
-                    </TableCell>
-                  )}
-                  {money && (
-                    <TableCell className="text-end">
-                      {m ? (
+                  <TableCell className="text-end text-sm tabular-nums" dir="ltr">
+                    {mask(money, r.fin?.contractValue ?? r.value)}
+                  </TableCell>
+                  <TableCell className="text-end text-sm tabular-nums" dir="ltr">
+                    {costOf(r.fin) != null ? mask(money, costOf(r.fin) as number) : "—"}
+                  </TableCell>
+                  <TableCell className="text-end">
+                    {!money ? (
+                      <span className="text-sm tabular-nums text-muted-foreground">•••</span>
+                    ) : m ? (
                         <>
                           <StatusPill tone={m.pct > 12 ? "ok" : m.pct > 7 ? "warn" : "bad"}>
                             <span dir="ltr">{m.pct}%</span>
@@ -174,8 +165,7 @@ export function PmArchiveTable({ rows, money, kindLabel, managerLabel, shown, on
                           —
                         </span>
                       )}
-                    </TableCell>
-                  )}
+                  </TableCell>
                   <TableCell className="text-center">
                     <span className="text-sm font-semibold tabular-nums">{r.fin?.actualDays ?? "—"}</span>
                     <span className="text-xs tabular-nums text-muted-foreground"> / {r.fin?.contractDays ?? "—"}</span>
@@ -184,11 +174,9 @@ export function PmArchiveTable({ rows, money, kindLabel, managerLabel, shown, on
                     </div>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">{pmDate(r.fin?.closedOn, locale)}</TableCell>
-                  {money && (
-                    <TableCell className="text-end text-sm tabular-nums" dir="ltr">
-                      {pmMoney(r.fin?.retentionHeld ?? 0)}
-                    </TableCell>
-                  )}
+                  <TableCell className="text-end text-sm tabular-nums" dir="ltr">
+                    {mask(money, r.fin?.retentionHeld ?? 0)}
+                  </TableCell>
                   <TableCell className="text-xs text-muted-foreground" dir="auto">
                     {managerLabel(r)}
                   </TableCell>

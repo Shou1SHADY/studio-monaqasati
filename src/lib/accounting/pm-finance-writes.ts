@@ -12,7 +12,7 @@ import { ACC } from "./accounts"
 import { ClosedPeriodError, JOURNAL_ENTRIES, buildEntry, entryDocId, isPeriodClosed, periodOf, round2, type JournalEntry } from "./journal"
 import { loadPeriods, nextNumber, postToLedger } from "./post"
 import type { PostingContext, PostingResult } from "./posting-rules"
-import { collectedAfter, outstandingOf, pmCertificatePosting, pmCertificateSeq, pmCollectionPosting, pmRetentionReleasePosting, pmSubCertificatePosting, pmSubPayable, pmSubPaymentPosting, pmSubVat, subWorkByContract } from "./pm-postings"
+import { collectedAfter, pmCertificatePosting, pmCertificateSeq, pmCollectionPosting, pmRetentionReleasePosting, pmSubCertificatePosting, pmSubPayable, pmSubPaymentPosting, pmSubVat, subWorkByContract } from "./pm-postings"
 
 export class PmFinanceError extends Error {
   constructor(readonly code: "certificate_missing" | "not_certified" | "amount_invalid" | "over_outstanding" | "not_approved" | "already_paid" | "not_posted") {

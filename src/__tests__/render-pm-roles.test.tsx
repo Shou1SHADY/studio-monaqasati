@@ -39,7 +39,9 @@ import { fileDailyReport, openObstacle } from "@/lib/pm/site-writes"
 import { registerDocument } from "@/lib/pm/documents-writes"
 import { logLetter } from "@/lib/pm/correspondence-writes"
 import ProjectPage from "@/app/[locale]/(contractor)/contractor/projects/[id]/page"
+import ProjectsListPage from "@/app/[locale]/(contractor)/contractor/projects/page"
 import { PmPortfolioToday } from "@/components/pm/PmPortfolioToday"
+import { pmMoney } from "@/lib/pm/format"
 import { HandoverInbox } from "@/components/pm/HandoverInbox"
 
 installDomShims()
@@ -254,6 +256,7 @@ async function buildWorld() {
     advance: 0.1,
     retention: 0.05,
     note: null,
+    dealNo: "OP-2026/118",
     requestedBy: ORG,
     requestedByName: NAME.owner,
     createdAt: iso(-2),
@@ -340,14 +343,15 @@ interface ViewSpec {
 
 const VIEWS: Record<string, ViewSpec> = {
   pmToday: { titles: ["يحتاج قرارك", "أكثر الأقسام تأخراً", "معلّق عند غيرنا", "سجل المشروع"], money: ["مسار المال"], acts: { "افتح التحصيل": OPQ, "افتح المستخلص": ["qs"] } },
-  info: { titles: ["معلومات المشروع"], money: ["شروط العقد باختصار"], acts: { تعديل: OP, "افتح الشروط": OPQ, "مسموح ويُسجَّل": O } },
-  boq: { titles: ["البند", "متعاقد", "المنفَّذ", "حفر وردم للقواعد"], money: ["غير مفوتر", "التكلفة", "الهامش"], acts: { "بنود تنزف": OPQ } },
+  info: { titles: ["معلومات المشروع", "الاستلام الابتدائي", "الاستلام النهائي"], money: ["شروط العقد باختصار"], acts: { تعديل: OP, "افتح الشروط": OPQ, "مسموح ويُسجَّل": O, "تسجيل الاستلام الابتدائي": OP } },
+  // The view chips and the «ينزف» pill carry counts, never an amount — the site engineer sees them too (owner decision on V2-02).
+  boq: { titles: ["البند", "متعاقد", "المنفَّذ", "حفر وردم للقواعد"], money: ["التكلفة", "الهامش"], acts: { "بنود تنزف": ALL, "غير مفوتر": ALL } },
   pmTerms: { titles: ["العقد الساري", "ما يعنيه هذا العقد نقداً", "الأصلي كما وُقّع"], acts: { "تسجيل التوقيع": OP, سحب: OP, "تعديل العقد": OPQ }, only: OPQ },
   pmUnits: { titles: ["متوسط المشروع", "جاهزة للاستلام", "موعدها غير واقعي", "الفيلا 1", "الفيلا 2", "المتبقي من قيمتها", "لا تُسلَّم قبل:"], money: ["قيمة الوحدة"], acts: { "بنود الوحدة": ALL, "سلّم الوحدة": OP } },
   pmMeasure: { titles: ["قياس الفترة", "محاضر القياس"], acts: { "ابدأ قياساً": ALL, اعتماد: OP, إعادة: OP } },
   pmQa: {
     titles: ["طلبات الفحص", "قائمة الملاحظات", "خطة الفحص والاختبار", "تقارير عدم المطابقة"],
-    acts: { "طلب فحص": OPS, "إعادة الفحص": OPS, "رصد ملاحظة": OPS, "تسجيل عدم مطابقة": OPS, "بنود تتطلب فحصاً (2)": OP },
+    acts: { "طلب فحص": OPS, "إعادة الفحص": OPS, "سجّل ملاحظة": OPS, "تسجيل عدم مطابقة": OPS, "بنود تتطلب فحصاً (2)": OP },
   },
   pmSite: {
     titles: ["الخطة الأسبوعية", "المعدات في الموقع", "التقرير اليومي", "السلامة", "المعوّقات و RFI"],
@@ -361,7 +365,7 @@ const VIEWS: Record<string, ViewSpec> = {
   pmVo: { titles: ["أوامر التغيير", "أمر التغيير", "الحالة", "المنفَّذ منه", "تغيير نوع البلاط الخارجي"], money: ["الأثر على العقد", "قيمة العقد السارية"], acts: { "سجّل أمر تغيير": OPQ } },
   pmClaims: { titles: ["سجل المطالبات", "توقف العمل بسبب إغلاق الطريق من البلدية"], acts: { "مطالبة جديدة": OPQ, "سجّل إرسال الإشعار": OP } },
   pmProgramme: { titles: ["منحنى الإنجاز: المخطط مقابل الفعلي", "إصدارات البرنامج الزمني", "المخطط مقابل الفعلي بالقسم", "الأنشطة", "هيكل الفلل الخرساني"], acts: { "أضف نشاطاً": OP } },
-  pmClose: { titles: ["التسليم للمالك", "الاستلام الابتدائي", "الاستلام النهائي", "إغلاق المشروع", "ما تعلّمناه من هذا المشروع"], acts: { "تسجيل الاستلام الابتدائي": OP, "إغلاق وأرشفة": OP } },
+  pmClose: { titles: ["إغلاق المشروع", "ما تعلّمناه من هذا المشروع"], acts: { "إغلاق وأرشفة": OP } },
   pmDocs: { titles: ["المستندات وإصداراتها", "المخططات المعمارية"], acts: { "إصدار جديد": OP } },
   pmCorr: { titles: ["المراسلات الرسمية", "بوابة الاستشاري", "طلب توضيح"], acts: { "سجّل مراسلة": OPQ, "سجّل الرد": OPQ } },
   pmReq: { titles: ["طلبات المواد", "طلبات المعدات", "حديد الأسقف", "بانتظار الاعتماد الفني"], acts: { "طلب مواد": OPS, اعتمد: OP, ارفض: OP, "اطلب معدة": OPS } },
@@ -460,6 +464,27 @@ describe("PM portfolio screens", () => {
     view.unmount()
   })
 
+  it.each(ROLES)("Portfolio list for %s: contract value = BOQ + approved variations; without money the tiles and figures stay, masked (V1-01, V1-02)", async (role) => {
+    setSignedIn(UID[role])
+    setPathname("/contractor/projects")
+    missingKeys.clear()
+    const view = render(<ProjectsListPage />)
+    await flush()
+    dump(role, "portfolio")
+    expect(text()).toContain("مجمع الياسمين السكني")
+    expect(text()).toContain("إجمالي قيمة عقودها")
+    expect(text()).toContain("قيمة العقد")
+    if (role === "site") {
+      expect(text()).toContain("•••")
+      expect(text()).not.toContain(RIYAL)
+    } else {
+      expect(text()).toContain(pmMoney(BUDGET + 85_000))
+      expect(text()).not.toContain("•••")
+    }
+    expect([...missingKeys]).toEqual([])
+    view.unmount()
+  })
+
   it.each(ROLES)("New projects renders for %s; the file is the addressed manager's and the owner's", async (role) => {
     setSignedIn(UID[role])
     setPathname("/contractor/projects/inbox")
@@ -471,6 +496,8 @@ describe("PM portfolio screens", () => {
     expect(text()).not.toMatch(/MISSING/)
     expect({ role, shown: text().includes("مدرسة الرياض الأهلية — المبنى الجديد") }).toEqual({ role, shown: role === "owner" || role === "pm" })
     expect({ role, accept: buttons().includes("اقبل وأنشئ المشروع") }).toEqual({ role, accept: role === "owner" || role === "pm" })
+    // The file card names the CRM deal it came from (V1-03).
+    expect({ role, deal: text().includes("الصفقة OP-2026/118") }).toEqual({ role, deal: role === "owner" || role === "pm" })
     view.unmount()
   })
 })

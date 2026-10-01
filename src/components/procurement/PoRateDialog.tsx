@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo } from "react"
 import { useTranslations } from "next-intl"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Loader2, Star } from "lucide-react"
@@ -71,6 +71,7 @@ export function PoRateDialog({
   useEffect(() => {
     if (open) form.reset({ conformity: 0, cooperation: 0, note: "", publishAnonymously: true })
   }, [open, form])
+  const publish = useWatch({ control: form.control, name: "publishAnonymously" })
 
   if (!po || !facts) return null
   const rows: Array<[string, string, "good" | "bad" | "plain"]> = [
@@ -163,6 +164,10 @@ export function PoRateDialog({
                 </FormItem>
               )}
             />
+            <ul className="space-y-1 rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
+              <li>• {t("rate.effect_file")}</li>
+              <li>• {publish && po.supplierUserId ? t("rate.effect_public") : t("rate.effect_private")}</li>
+            </ul>
             <DialogFooter className="gap-2 sm:gap-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 {t("form.cancel")}

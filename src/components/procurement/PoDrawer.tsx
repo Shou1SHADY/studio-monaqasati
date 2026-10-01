@@ -42,6 +42,7 @@ import {
   awaitsPmBudget,
   budgetOverrun,
   chosenOfferValidity,
+  closedByPayment,
   lineInTransit,
   lineRejectReasons,
   manualOfferBy,
@@ -105,8 +106,8 @@ import {
   buildPoPrintModel,
   buildStatementModel,
   canCancelOrder,
-  canCloseComplete,
   canCloseShort,
+  canPrintOrder,
   canRateNow,
   figure,
   lineActions,
@@ -287,6 +288,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   if (!po) return null
   const px = asX(po)
   const status = poStatus(po)
+  const paidClosed = closedByPayment(asX(po))
   const acts = poActs(po, actor)
   const revision = poRevision(po)
   const overrun = po.status === "awaiting_approval" ? budgetOverrun(po, boqItems, world.orders) : []
@@ -344,7 +346,8 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
         {t("next.cancel_order")}
       </Button>
     )
-    switch (status) {
+    // Finance closes a received order by paying it; one that got there before the write did reads closed too.
+    switch (paidClosed ? "closed" : status) {
       case "awaiting_approval": {
         if (po.returnedReason) {
           return (
@@ -562,11 +565,6 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             <Callout tone="green">{t("next.received_body")}</Callout>
             {po.rating && ratedBlock(po.rating)}
             <div className="flex flex-wrap items-center gap-2">
-              {f && acts.acts && canCloseComplete(po, actor) && (
-                <Button disabled={busy != null} onClick={() => run("close", () => closePurchaseOrder(f, actor, po.id, {}, opts), "toast.closed")}>
-                  {t("next.close")}
-                </Button>
-              )}
               {f && acts.acts && canRateNow(po, world.deliveries, actor) && (
                 <Button variant="outline" className="gap-2" disabled={busy != null} onClick={() => setDialog({ kind: "rate" })}>
                   <Star size={15} aria-hidden="true" />
@@ -580,7 +578,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
         return (
           <>
             <Callout tone={po.closedShort ? "amber" : "green"}>
-              {po.closedShort ? t("next.closed_short_body", { reason: po.closeReason || "—" }) : t("next.closed_body")}
+              {paidClosed ? t("next.closed_paid_body") : po.closedShort ? t("next.closed_short_body", { reason: po.closeReason || "—" }) : t("next.closed_body")}
               {po.closedAt ? ` · ${fmt(po.closedAt)}` : ""}
             </Callout>
             {po.rating ? (
@@ -632,6 +630,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
     if (e.action === "sent" && p.outside) s += ` · ${tProc("rfqpo.po.trail.outside")}`
     if (e.action === "remainder_cancelled" && p.fee) s += ` · ${tProc("rfqpo.po.fee_logged", { fee: Number(p.fee).toLocaleString("en-US") })}`
     if (e.action === "closed" && p.short) s += ` · ${tProc("status.closed_short")}`
+    if (e.action === "closed" && p.byPayment) s = tProc("rfqpo.po.log_closed_paid", params)
     if (e.action === "date_updated" && e.note) s += ` — ${e.note}`
     return s
   }
@@ -680,7 +679,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
           <div className="space-y-4 px-4 py-4 sm:px-6">
             <FinanceBannerCallout po={px} seesPrices={actor.seesPrices} />
             <Section title={t("sec.next_step")}>
-              {acts.ownerReadOnly && status !== "awaiting_approval" && status !== "closed" && status !== "cancelled" && <Callout tone="blue">{tProc("rfqpo.po.owner_reads", { by: po.preparedByName })}</Callout>}
+              {acts.ownerReadOnly && status !== "awaiting_approval" && status !== "closed" && !paidClosed && status !== "cancelled" && <Callout tone="blue">{tProc("rfqpo.po.owner_reads", { by: po.preparedByName })}</Callout>}
               {acts.notMine && <Callout tone="blue">{tProc("rfqpo.po.not_mine", { by: po.preparedByName })}</Callout>}
               {nextStep()}
             </Section>
@@ -714,7 +713,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
 
             <Section title={t("sec.lines", { count: po.lines.length })}>
               {po.lines.map((l) => {
-                const la = acts.acts ? lineActions(po, l, actor) : { cancelRemainder: false, decideReject: false }
+                const la = acts.acts ? lineActions(po, l, actor, now) : { cancelRemainder: false, decideReject: false }
                 const parts = lineParts(l)
                 const lx = l as PoLineX
                 const transit = lineInTransit(po, l, world.deliveries)
@@ -861,11 +860,12 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
 
             <Section title={t("sec.documents")}>
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" className="gap-2" onClick={printOrder}>
-                  <Printer size={14} aria-hidden="true" />
-                  {t("docs.print_po")}
-                  {!actor.seesPrices && <span className="text-[10px] text-muted-foreground">({t("docs.no_values")})</span>}
-                </Button>
+                {canPrintOrder(po, actor) && (
+                  <Button variant="outline" size="sm" className="gap-2" onClick={printOrder}>
+                    <Printer size={14} aria-hidden="true" />
+                    {t("docs.print_po")}
+                  </Button>
+                )}
                 {(deliveries.length > 0 || ["in_delivery", "part_received", "received", "closed"].includes(poStatus(po))) && (
                   <Button variant="outline" size="sm" className="gap-2" onClick={printStatement}>
                     <Printer size={14} aria-hidden="true" />
@@ -1007,7 +1007,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             po={po}
             orgName={world.orgName}
             seesPrices={actor.seesPrices}
-            onSubmit={(channel: PoSendChannel) => run("send", () => sendPurchaseOrder(f, actor, po.id, channel, opts), channel === "portal" ? "toast.sent_portal" : "toast.sent_offline")}
+            onSubmit={({ channel, contact }) => run("send", () => sendPurchaseOrder(f, actor, po.id, channel, opts, contact), channel === "portal" ? "toast.sent_portal" : "toast.sent_offline")}
           />
           <PoRateDialog
             open={dialog?.kind === "rate"}

@@ -61,6 +61,8 @@ export interface PortfolioFeed {
   cash: number
   /** Σ quantity × estimated unit cost — the cost budget; 0 when nothing is estimated. */
   budget: number
+  /** The contract value: the BOQ's value plus approved variations (INV-01), as Today reads it. */
+  contract: number
   red: number
   obstacles: number
   overdue: number
@@ -81,7 +83,7 @@ export function usePortfolioFeed(project: PortfolioProject): PortfolioFeed {
   const isPm = Boolean(project.pm)
   const done = isPm && lifecycle === "done"
   const fig = useProjectFigures(project.id, project, access)
-  const { decisions, ready } = usePmDecisions(project.id, isPm ? project : null, access)
+  const { decisions, ready, facts } = usePmDecisions(project.id, isPm ? project : null, access)
 
   const sub = (name: string, on: boolean) => (firestore && on ? collection(firestore, "projects", project.id, name) : null)
   const itemsQ = useMemoFirebase(() => sub("boqItems", true), [firestore, project.id])
@@ -132,10 +134,11 @@ export function usePortfolioFeed(project: PortfolioProject): PortfolioFeed {
       unbilled: fig.unbilled,
       cash: fig.cash,
       budget: Math.round(budget * 100) / 100,
+      contract: Math.round(((project.budget ?? 0) + facts.approvedVariations) * 100) / 100,
       red: decisions.filter((d) => d.severity === "red").length,
       obstacles: ((obstacles ?? []) as unknown as PmObstacle[]).filter(isOpenObstacle).length,
       overdue,
       archivable,
     }
-  }, [items, decisions, done, project.pm, punch, ncrs, vos, certs, money, ready, access.isLoading, fig, obstacles])
+  }, [items, decisions, done, project.pm, project.budget, punch, ncrs, vos, certs, money, ready, access.isLoading, fig, obstacles, facts.approvedVariations])
 }

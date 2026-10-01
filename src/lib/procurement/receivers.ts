@@ -124,11 +124,12 @@ export type ForwardUrgency = "none" | "due" | "overdue"
 /**
  * Whether a notice still waiting to be forwarded needs chasing.
  *
- * The PRD auto-forwards once the window lapses. Nothing in this product runs on
- * a schedule — there is no job, no cron and no queue — so an "automatic" forward
- * would be a function nobody calls. What we can do honestly is stop the notice
- * being forgotten: inside the window it is due, past the delivery date it is
- * overdue, and either way it is a task with somebody's name on it.
+ * The PRD auto-forwards once the window lapses: the daily job
+ * (/api/cron/forward-notices, `./auto-forward`) forwards a notice still untold
+ * to the register's suggested receiver and tags it `auto`. Until that runs,
+ * and wherever no receiver can be resolved, the notice is a task with
+ * somebody's name on it: inside the window it is due, past the delivery date
+ * it is overdue.
  *
  * `daysToDelivery` is negative once the date has passed.
  */

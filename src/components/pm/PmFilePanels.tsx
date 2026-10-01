@@ -19,6 +19,7 @@ import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
+import { usePmPlan } from "@/hooks/usePmPlan"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { usePmTermText } from "@/hooks/usePmTermText"
@@ -228,7 +229,7 @@ export function PmTermsGlance({
 }: {
   projectId: string
   project: PmFileProject
-  items: Array<{ quantity: number; rate: number; executed: number }>
+  items: Array<{ id: string; quantity: number; rate: number; executed: number }>
   access: PmAccess
   actor: InfoActor
   onOpenTerms?: () => void
@@ -238,7 +239,6 @@ export function PmTermsGlance({
   const text = usePmTermText()
   const firestore = useFirestore()
   const { toast } = useToast()
-  const claims = useClaims(projectId)
   const orgId = project.organizationId ?? ""
   // The addenda are money's or approve's to read (the rules): without the
   // check a site engineer opening the file tab drew a refused read each time.
@@ -250,6 +250,7 @@ export function PmTermsGlance({
   const setQ = useMemoFirebase(() => (firestore && orgId && seesTerms ? doc(firestore, PM_SETTINGS, orgId) : null), [firestore, orgId, seesTerms])
   const { data: settings } = useDoc(setQ)
   const [busy, setBusy] = useState(false)
+  const plan = usePmPlan(projectId, project, items)
   if (!access.has("money")) return null
   const pm = project.pm ?? {}
   const terms = inForce(pm.original ?? pm.terms ?? defaultTerms(), (addenda ?? []) as unknown as PmAddendum[])
@@ -258,11 +259,12 @@ export function PmTermsGlance({
   const delay = delayAndDamages({
     lifecycle: lifecycleOf(project),
     startOn: (pm.startedAt ?? pm.startOn ?? "").slice(0, 10) || null,
-    effectiveDays: (pm.durationDays ?? 0) + grantedDays(claims),
+    effectiveDays: plan.effectiveDays,
     progress: progressOf(items),
     contractValue: value,
     damages: terms.damages,
     today,
+    curveK: plan.curveK,
   })
   const self = (settings as PmOrgSettings | null)?.selfApproval === true
   const s = settings as PmOrgSettings | null
