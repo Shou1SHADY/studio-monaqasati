@@ -13904,7 +13904,7 @@
         "steps_label": "Steps",
         "step_project": "Project & contract",
         "step_sections": "Sections",
-        "step_boq": "BOQ & review",
+        "step_boq": "BOQ",
         "read_only_note": "Contract data comes from CRM and is not editable here — editing it at source keeps one record of the truth.",
         "self_dev_note": "Internal self-development: nobody pays, so certificates and collection stay off.",
         "sections_note": "Sections preset for {kind}. Switch off any this contract does not need.",
@@ -13982,7 +13982,7 @@
         "effects_title": "What the system will do",
         "eff_project": "Project created as “Not started”, with its manager answering for its decisions",
         "eff_crm": "The CRM handover is closed and the contract number is linked",
-        "eff_boq": "The priced BOQ ({count, plural, one {# item} other {# items}}) transfers and becomes measurable immediately",
+        "eff_boq": "The BOQ ({count, plural, one {# item} other {# items}}) is created and becomes measurable immediately",
         "eff_sections": "Only {count, plural, one {# section is} other {# sections are}} enabled — the rest do not appear as tabs",
         "eff_store": "A site store linked to the project is created in Inventory",
         "eff_no_client_account": "No client account is opened in Finance — Finance owns that",
@@ -13990,8 +13990,9 @@
           "no_boq_source": "Choose where the BOQ comes from",
           "no_manager": "Name the project manager",
           "no_boq_file": "Upload the Excel file",
-          "boq_bad_rows": "The file has rows with errors — correct them and choose the file again",
-          "boq_nothing_read": "No item could be read from this file — use the BOQ template"
+          "boq_bad_rows": "Some items have errors — fix the rows marked in red",
+          "boq_nothing_read": "No item could be read from this file — use the BOQ template",
+          "boq_no_lines": "Add at least one item, or choose “Import later”"
         },
         "done_crm": "{number} accepted — project created and the priced BOQ transferred ({count, plural, one {# item} other {# items}})",
         "done_xl": "{number} accepted — {count, plural, one {# item} other {# items}} imported",
@@ -14003,7 +14004,22 @@
         "xl_unpriced": "No rate",
         "xl_bad": "{count, plural, one {One row was rejected} other {# rows were rejected}} — nothing is imported in part. Correct the file and choose it again.",
         "xl_bad_row": "Line {line}:",
-        "xl_bad_more": "… and {count} more"
+        "xl_bad_more": "… and {count} more",
+        "step_review": "Review",
+        "boq_edit_title": "Items",
+        "boq_add_row": "Add item",
+        "boq_remove_row": "Remove item",
+        "boq_col_code": "Code",
+        "boq_col_desc": "Description",
+        "boq_col_unit": "Unit",
+        "boq_empty_rows": "No items yet — add one or choose a source above",
+        "group_count": "{n}/{total}",
+        "group_all": "Enable all",
+        "group_none": "Disable all",
+        "group_on_done": "{count, plural, one {# section enabled} other {# sections enabled}}",
+        "group_off_done": "{count, plural, one {# section disabled} other {# sections disabled}}",
+        "boq_review_lines": "{count, plural, one {# item} other {# items}}",
+        "boq_review_none": "No BOQ yet — measurement waits for it"
       },
       "terms": {
         "title": "Contract terms",
@@ -18313,7 +18329,11 @@
           "not_pm_project": "Not a PM project"
         },
         "fill_sample": "Fill with a sample",
-        "sample": "02-01-01\tExcavation and grading of the road alignment\tm3\t18400\t24\t18.5\n02-02-01\tCompacted base course 30 cm\tm3\t9600\t58\t44\n22-04-01\tAsphalt binder course 7 cm\tm2\t32000\t46\t37\n22-04-02\tAsphalt wearing course 5 cm\tm2\t32000\t39\t31\n22-05-01\tPrecast concrete kerbs\tlm\t6400\t62\t\n22-06-01\tRoad markings and paint\tm2\t2100\t\t"
+        "sample": "02-01-01\tExcavation and grading of the road alignment\tm3\t18400\t24\t18.5\n02-02-01\tCompacted base course 30 cm\tm3\t9600\t58\t44\n22-04-01\tAsphalt binder course 7 cm\tm2\t32000\t46\t37\n22-04-02\tAsphalt wearing course 5 cm\tm2\t32000\t39\t31\n22-05-01\tPrecast concrete kerbs\tlm\t6400\t62\t\n22-06-01\tRoad markings and paint\tm2\t2100\t\t",
+        "expand_all": "Expand all",
+        "collapse_all": "Collapse all",
+        "expand_section": "Show the items of {name}",
+        "collapse_section": "Hide the items of {name}"
       },
       "info": {
         "title": "Project information",

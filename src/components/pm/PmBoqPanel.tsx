@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
-import { AlertTriangle, CircleDollarSign, Flame, ListTree, Loader2, Plus, Search, TableProperties } from "lucide-react"
+import { AlertTriangle, ChevronDown, CircleDollarSign, Flame, ListTree, Loader2, Plus, Search, TableProperties } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { BoqItemSupply } from "./BoqItemSupply"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -106,6 +106,7 @@ export function PmBoqPanel({
   useEffect(() => {
     if (openItemId) setOpenId(openItemId)
   }, [openItemId])
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [pricing, setPricing] = useState<PmBoqLine | null>(null)
   const [importing, setImporting] = useState(false)
 
@@ -129,6 +130,16 @@ export function PmBoqPanel({
   const canImport = !access.ctx.archived && access.allowed("boq.import")
   const open = lines.find((b) => b.id === openId) ?? null
   const cols = money ? 6 : 3
+  const filtering = search.trim() !== "" || view !== "all"
+  const divisionKeys = groups.flatMap((g) => (g.division === null ? [] : [g.division]))
+  const allCollapsed = divisionKeys.length > 0 && divisionKeys.every((d) => collapsed.has(d))
+  const toggleDivision = (d: string) =>
+    setCollapsed((cur) => {
+      const next = new Set(cur)
+      if (next.has(d)) next.delete(d)
+      else next.add(d)
+      return next
+    })
 
   if (!isLoading && lines.length === 0) {
     return (
@@ -193,14 +204,19 @@ export function PmBoqPanel({
           ]}
         />
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <Search size={14} className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("boq.search_ph")} aria-label={t("boq.search_ph")} className="h-9 w-56 ps-8" dir="auto" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("boq.search_ph")} aria-label={t("boq.search_ph")} className="h-9 w-full ps-8 sm:w-56" dir="auto" />
           </div>
           <Button size="sm" variant={bySection ? "default" : "outline"} aria-pressed={bySection} onClick={() => setBySection((v) => !v)}>
             <ListTree size={14} className="me-1.5" aria-hidden="true" />
             {t("boq.group")}
           </Button>
+          {bySection && divisionKeys.length > 1 && !filtering && (
+            <Button size="sm" variant="outline" onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(divisionKeys))}>
+              {t(allCollapsed ? "boq.expand_all" : "boq.collapse_all")}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -234,7 +250,17 @@ export function PmBoqPanel({
               </tr>
             )}
             {groups.map((g) => (
-              <BoqGroupRows key={g.division ?? "_all"} group={g} cols={cols} money={money} canPrice={canPrice} onOpen={setOpenId} onPrice={setPricing} />
+              <BoqGroupRows
+                key={g.division ?? "_all"}
+                group={g}
+                cols={cols}
+                money={money}
+                canPrice={canPrice}
+                folded={!filtering && g.division !== null && collapsed.has(g.division)}
+                onToggle={toggleDivision}
+                onOpen={setOpenId}
+                onPrice={setPricing}
+              />
             ))}
             {money && shown.length > 0 && (
               <tr className="bg-muted/40 font-bold">
@@ -272,6 +298,8 @@ function BoqGroupRows({
   cols,
   money,
   canPrice,
+  folded,
+  onToggle,
   onOpen,
   onPrice,
 }: {
@@ -279,6 +307,8 @@ function BoqGroupRows({
   cols: number
   money: boolean
   canPrice: boolean
+  folded: boolean
+  onToggle: (division: string) => void
   onOpen: (id: string) => void
   onPrice: (b: PmBoqLine) => void
 }) {
@@ -288,7 +318,16 @@ function BoqGroupRows({
       {group.division !== null && (
         <tr className="bg-muted/25">
           <td colSpan={cols} className="px-4 py-1.5 text-xs">
-            <b dir="auto">{group.division || "—"}</b>
+            <button
+              type="button"
+              aria-expanded={!folded}
+              aria-label={t(folded ? "boq.expand_section" : "boq.collapse_section", { name: group.division || "—" })}
+              onClick={() => onToggle(group.division ?? "")}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronDown size={14} className={cn("transition-transform", folded && "-rotate-90 rtl:rotate-90")} aria-hidden="true" />
+              <b dir="auto">{group.division || "—"}</b>
+            </button>
             <span className="ms-2 rounded-full bg-muted px-1.5 text-[11px] tabular-nums text-muted-foreground">{group.lines.length}</span>
             {money && (
               <span className="ms-3 tabular-nums text-muted-foreground" dir="auto">
@@ -303,20 +342,27 @@ function BoqGroupRows({
           </td>
         </tr>
       )}
-      {group.lines.map((b) => {
+      {(folded ? [] : group.lines).map((b) => {
         const pr = lineProgress(b)
         const mg = lineMarginPct(b)
         const ub = lineUnbilled(b)
         return (
-          <tr key={b.id} className="cursor-pointer hover:bg-muted/30" onClick={() => onOpen(b.id)}>
+          <tr key={b.id} className="cursor-pointer hover:bg-muted/30 focus-within:bg-muted/30" onClick={() => onOpen(b.id)}>
             <td className="px-4 py-2">
-              <button type="button" className="block text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpen(b.id)}>
+              <button
+                type="button"
+                className="block rounded text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onOpen(b.id)
+                }}
+              >
                 <b className="block" dir="auto">
                   {b.description || "—"}
                 </b>
               </button>
               <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="font-mono underline" dir="ltr">
+                <span className="font-mono" dir="ltr">
                   {b.code}
                 </span>
                 <span dir="ltr">
@@ -358,7 +404,7 @@ function BoqGroupRows({
                 </span>
                 <small>{pct(pr)}</small>
               </div>
-              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted" dir="ltr">
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted" dir="ltr" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(100, pr))} aria-label={t("boq.col.executed")}>
                 <div className={cn("h-full rounded-full", pr >= 99.5 ? "bg-success" : "bg-module")} style={{ width: `${Math.min(100, pr)}%` }} />
               </div>
             </td>
@@ -820,7 +866,17 @@ function ImportDialog({
                         {o.cost ? fmt(o.cost) : "—"}
                       </td>
                       <td className="px-2 py-1.5">
-                        {o.problems.length ? <StatusPill tone="bad">{t(`boq.problem.${o.problems[0]}`)}</StatusPill> : <StatusPill tone="ok">{t("boq.valid")}</StatusPill>}
+                        {o.problems.length ? (
+                          <span className="flex flex-wrap gap-1">
+                            {o.problems.map((p) => (
+                              <StatusPill key={p} tone="bad">
+                                {t(`boq.problem.${p}`)}
+                              </StatusPill>
+                            ))}
+                          </span>
+                        ) : (
+                          <StatusPill tone="ok">{t("boq.valid")}</StatusPill>
+                        )}
                       </td>
                     </tr>
                   ))}

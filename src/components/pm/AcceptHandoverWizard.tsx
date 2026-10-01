@@ -3,12 +3,13 @@
 // Accepting a handover (HO-02, WF-01; the prototype's formPrj with a file):
 // project & contract (read from CRM, not edited here) with the manager, an
 // optional site engineer and a note → sections by a template per project type →
-// where the BOQ comes from, and a review of what the system will do. The
+// the BOQ (from the bid, a file or typed — whichever it is, the lines are edited
+// here before they are written) → a review of what the system will do. The
 // project is born "not started" with its number and its manager; the advance
 // term goes to Finance once; the BOQ is written right after, as the
 // new-project wizard writes it; then the project opens on its Pulse.
 // Without a file it is the prototype's manual «مشروع جديد» (formPrj without h):
-// the exception path, the same three steps with the project and contract typed
+// the exception path, the same four steps with the project and contract typed
 // in step one (name and client required), and the project born the same way.
 
 import { useEffect, useMemo, useState } from "react"
@@ -27,13 +28,14 @@ import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { WizardSteps } from "@/components/module-ui/WizardSteps"
+import { WizardBoqEditor } from "./WizardBoqEditor"
 import { useFirestore } from "@/firebase"
 import { resolveCentralForRegion, useCentralWarehouse } from "@/hooks/useCentralWarehouse"
 import { useHandoverPeople } from "@/hooks/useHandoverPeople"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "@/i18n/routing"
 import { parseBoqFile, type BoqParseResult } from "@/lib/boq-parser"
-import { divisionOfCode, parseBoqCsv, type ImportRow } from "@/lib/pm/boq"
+import { blankDraftRow, divisionOfCode, draftRowProblems, draftTotal, isBlankDraftRow, parseBoqCsv, type BoqDraftRow, type ImportRow } from "@/lib/pm/boq"
 import type { PortalComponentId } from "@/lib/portal-components"
 import { cascadeDisable, cascadeEnable, SECTION_GROUPS, SECTION_IDS, SECTION_REGISTRY, sectionDescKey, sectionLabelKey, type SectionId } from "@/lib/project-sections"
 import { pmDate, pmMoney, pmPct } from "@/lib/pm/format"
@@ -75,19 +77,6 @@ const READS_FROM: Partial<Record<SectionId, PortalComponentId>> = {
   pay: "payments",
   collect: "payments",
   mfg: "manufacturing",
-}
-
-/** One line the wizard is about to import, whichever reader produced it. */
-interface XlItem {
-  id: string
-  itemNo: string
-  descriptionAr: string
-  descriptionEn: string
-  unit: string
-  quantity: number
-  rate: number
-  groupId: string | null
-  extra: Record<string, unknown>
 }
 
 const SOURCE_ICON: Record<BoqSource, typeof Link2> = { crm: Link2, xl: FileSpreadsheet, man: List, later: Clock }
@@ -157,6 +146,8 @@ export function AcceptHandoverWizard({
   const [boq, setBoq] = useState<BoqParseResult | null>(null)
   // The package's template is a CSV: read as the template is written, row by row.
   const [csv, setCsv] = useState<{ ok: ImportRow[]; bad: ImportRow[] } | null>(null)
+  // Each source keeps its own lines, so switching back and forth loses no edit.
+  const [rowsBy, setRowsBy] = useState<Partial<Record<BoqSource, BoqDraftRow[]>>>({})
   const [parsing, setParsing] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -177,14 +168,25 @@ export function AcceptHandoverWizard({
     setSource(null)
     setBoq(null)
     setCsv(null)
+    setRowsBy({})
   }, [open, handover])
 
   useEffect(() => {
     if (open && !managerUid && defaultManager) setManagerUid(defaultManager)
   }, [open, managerUid, defaultManager])
 
+  const chooseSource = (s: BoqSource) => {
+    setSource(s)
+    setRowsBy((cur) => {
+      if (cur[s]) return cur
+      if (s === "crm" && handover) return { ...cur, crm: (handover.boq ?? []).filter((l) => l.quantity > 0).map((l, i) => ({ ...blankDraftRow(`crm-${i}`), itemNo: l.code, descriptionAr: l.descriptionAr, descriptionEn: l.descriptionEn ?? l.descriptionAr, unit: l.unit, quantity: l.quantity, rate: l.rate || 0 })) }
+      if (s === "man") return { ...cur, man: [blankDraftRow("new-0")] }
+      return cur
+    })
+  }
+
   useEffect(() => {
-    if (step === 2 && !source && crmCount > 0) setSource("crm")
+    if (step === 2 && !source && crmCount > 0) chooseSource("crm")
   }, [step, source, crmCount])
 
   const built = SECTION_IDS.filter((id) => SECTION_REGISTRY[id].status === "built")
@@ -214,17 +216,61 @@ export function AcceptHandoverWizard({
     }
   }
 
+  const setGroup = (ids: SectionId[], on: boolean) => {
+    let next = new Set(sections)
+    for (const id of ids) next = on ? cascadeEnable(next, id) : cascadeDisable(next, id)
+    setSections(SECTION_IDS.filter((s) => next.has(s)))
+    toast({ title: t(on ? "wizard.group_on_done" : "wizard.group_off_done", { count: Math.abs(next.size - sections.length) }) })
+  }
+
   const onFile = async (file: File | undefined) => {
     if (!file) return
     setParsing(true)
     try {
+      let rows: BoqDraftRow[]
       if (/\.csv$/i.test(file.name)) {
+        const parsed = parseBoqCsv(await file.text())
         setBoq(null)
-        setCsv(parseBoqCsv(await file.text()))
+        setCsv(parsed)
+        rows = parsed.ok.map((r) => ({
+          ...blankDraftRow(`csv-${r.line}`),
+          itemNo: r.code,
+          descriptionAr: r.description,
+          descriptionEn: r.description,
+          unit: r.unit,
+          quantity: r.quantity,
+          rate: r.rate && r.rate > 0 ? r.rate : 0,
+          extra: { estCost: r.cost && r.cost > 0 ? r.cost : null, divisionNo: divisionOfCode(r.code) },
+        }))
       } else {
+        const parsed = await parseBoqFile(file)
         setCsv(null)
-        setBoq(await parseBoqFile(file))
+        setBoq(parsed)
+        rows = parsed.items
+          .filter((i) => i.selected)
+          .map((item) => ({
+            ...blankDraftRow(item.id),
+            itemNo: item.itemNo,
+            descriptionAr: item.descriptionAr,
+            descriptionEn: item.descriptionEn,
+            unit: item.unit,
+            quantity: item.quantity,
+            rate: item.rate || 0,
+            groupId: item.groupId as string | null,
+            extra: {
+              sheet: item.sheet,
+              divisionNo: item.divisionNo,
+              divisionNameEn: item.divisionNameEn,
+              divisionNameAr: item.divisionNameAr,
+              subCategoryCode: item.subCategoryCode,
+              subCategoryNameEn: item.subCategoryNameEn,
+              subCategoryNameAr: item.subCategoryNameAr,
+              suggestedCategory: item.suggestedCategory,
+              suggestedSubCategory: item.suggestedSubCategory,
+            },
+          }))
       }
+      setRowsBy((cur) => ({ ...cur, xl: rows }))
     } catch (err) {
       console.error(err)
       toast({ title: t("wizard.boq_parse_error"), variant: "destructive" })
@@ -233,49 +279,21 @@ export function AcceptHandoverWizard({
     }
   }
 
-  const xlItems: XlItem[] = csv
-    ? csv.ok.map((r) => ({
-        id: `csv-${r.line}`,
-        itemNo: r.code,
-        descriptionAr: r.description,
-        descriptionEn: r.description,
-        unit: r.unit,
-        quantity: r.quantity,
-        rate: r.rate && r.rate > 0 ? r.rate : 0,
-        groupId: null,
-        extra: { estCost: r.cost && r.cost > 0 ? r.cost : null, divisionNo: divisionOfCode(r.code) },
-      }))
-    : (boq?.items ?? [])
-        .filter((i) => i.selected)
-        .map((item) => ({
-          id: item.id,
-          itemNo: item.itemNo,
-          descriptionAr: item.descriptionAr,
-          descriptionEn: item.descriptionEn,
-          unit: item.unit,
-          quantity: item.quantity,
-          rate: item.rate || 0,
-          groupId: item.groupId as string | null,
-          extra: {
-            sheet: item.sheet,
-            divisionNo: item.divisionNo,
-            divisionNameEn: item.divisionNameEn,
-            divisionNameAr: item.divisionNameAr,
-            subCategoryCode: item.subCategoryCode,
-            subCategoryNameEn: item.subCategoryNameEn,
-            subCategoryNameAr: item.subCategoryNameAr,
-            suggestedCategory: item.suggestedCategory,
-            suggestedSubCategory: item.suggestedSubCategory,
-          },
-        }))
+  const rows = source ? (rowsBy[source] ?? []) : []
+  const setRows = (next: BoqDraftRow[]) => source && setRowsBy((cur) => ({ ...cur, [source]: next }))
+  const lineRows = source === "later" ? [] : rows.filter((r) => !isBlankDraftRow(r))
+  const rowsBad = draftRowProblems(rows).filter((p) => p.length > 0).length
   const xlBad = csv?.bad ?? []
   const xlLoaded = !!(csv || boq)
-  const xlUnpriced = xlItems.filter((i) => !(i.rate > 0)).length
+  const unpricedCount = lineRows.filter((i) => !(i.rate > 0)).length
   const selfDev = isSelfDevelopment(kind)
   const manualBlocks = manual ? manualProjectBlocks({ ...draft, kind, location }, managerUid || null) : []
+  const stepBlockCodes = acceptStepBlocks({ source, managerUid: managerUid || null, xlItems: lineRows.length, xlBad: rowsBad + (source === "xl" ? xlBad.length : 0), xlLoaded })
+  const boqStepBlocks = stepBlockCodes.map((b) => t(`wizard.block.${b}`))
+  const boqNextBlocked = stepBlockCodes.some((b) => b !== "no_manager")
   const blocks = [
     ...(handover ? acceptBlocks(handover).map((b) => t(`accept_block.${b}`)) : manualBlocks.filter((b) => b !== "no_manager").map((b) => t(`manual.block.${b}`))),
-    ...acceptStepBlocks({ source, managerUid: managerUid || null, xlItems: xlItems.length, xlBad: xlBad.length, xlLoaded }).map((b) => t(`wizard.block.${b}`)),
+    ...boqStepBlocks,
   ]
   const title = handover ? handover.title : draft.name.trim()
   const advance = handover ? handover.advance : draft.advance
@@ -317,14 +335,16 @@ export function AcceptHandoverWizard({
             })
           : { projectId: "", projectNo: "" }
       if (!projectId) return
-      const lines =
-        source === "crm" && handover
-          ? (handover.boq ?? [])
-              .filter((l) => l.quantity > 0)
-              .map((l) => ({ itemNo: l.code, descriptionAr: l.descriptionAr, descriptionEn: l.descriptionEn ?? l.descriptionAr, unit: l.unit, quantity: l.quantity, unitPrice: l.rate, groupId: null as string | null, extra: {} }))
-          : source === "xl"
-            ? xlItems.map((item) => ({ itemNo: item.itemNo, descriptionAr: item.descriptionAr, descriptionEn: item.descriptionEn, unit: item.unit, quantity: item.quantity, unitPrice: item.rate, groupId: item.groupId, extra: item.extra }))
-            : []
+      const lines = lineRows.map((r) => ({
+        itemNo: r.itemNo.trim(),
+        descriptionAr: r.descriptionAr.trim() || r.descriptionEn.trim(),
+        descriptionEn: r.descriptionEn.trim() || r.descriptionAr.trim(),
+        unit: r.unit.trim(),
+        quantity: r.quantity,
+        unitPrice: r.rate > 0 ? r.rate : 0,
+        groupId: r.groupId,
+        extra: r.extra,
+      }))
       if (lines.length) {
         const batch = writeBatch(firestore)
         const itemsRef = collection(firestore, "projects", projectId, "boqItems")
@@ -333,7 +353,7 @@ export function AcceptHandoverWizard({
           batch.set(doc(itemsRef), { ...line, ...extra, tenderId: null, isEditable: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
         )
         if (source === "xl") {
-          const used = new Set(xlItems.map((i) => i.groupId))
+          const used = new Set(lineRows.map((i) => i.groupId))
           ;(boq?.groups ?? []).filter((g) => used.has(g.id)).forEach((g) => batch.set(doc(groupsRef, g.id), { titleAr: g.titleAr, categoryAr: g.categoryAr, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
         }
         try {
@@ -345,10 +365,10 @@ export function AcceptHandoverWizard({
       }
       toast({
         title: manual
-          ? t(`manual.done_${source === "xl" ? "xl" : source === "man" ? "man" : "later"}`, { number: projectNo, count: lines.length })
+          ? t(`manual.done_${lines.length ? "xl" : "later"}`, { number: projectNo, count: lines.length })
           : source === "crm"
             ? t("wizard.done_crm", { number: projectNo, count: lines.length })
-            : source === "xl"
+            : lines.length
               ? t("wizard.done_xl", { number: projectNo, count: lines.length })
               : t("wizard.done_empty", { number: projectNo }),
       })
@@ -367,7 +387,7 @@ export function AcceptHandoverWizard({
     }
   }
 
-  const steps = [t("wizard.step_project"), t("wizard.step_sections"), t("wizard.step_boq")]
+  const steps = [t("wizard.step_project"), t("wizard.step_sections"), t("wizard.step_boq"), t("wizard.step_review")]
   const ct = clientTypeKey(handover?.clientType)
   const end = manual ? manualEnd(draft.startOn, manualDuration(draft)) : null
   const pct = (x: number) => `${Math.round(x * 100)}%`
@@ -645,7 +665,21 @@ export function AcceptHandoverWizard({
               if (!rows.length) return null
               return (
                 <fieldset key={g} className="space-y-2">
-                  <legend className="text-sm font-bold">{tShared(`sec_group_${g}`)}</legend>
+                  <legend className="sr-only">{tShared(`sec_group_${g}`)}</legend>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-bold" aria-hidden="true">
+                      {tShared(`sec_group_${g}`)}
+                      <span className="ms-2 text-xs font-semibold tabular-nums text-muted-foreground">{t("wizard.group_count", { n: rows.filter((id) => sections.includes(id)).length, total: rows.length })}</span>
+                    </p>
+                    <div className="flex gap-1">
+                      <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" disabled={busy || rows.every((id) => sections.includes(id))} onClick={() => setGroup(rows, true)}>
+                        {t("wizard.group_all")}
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" disabled={busy || rows.every((id) => SECTION_REGISTRY[id].required || !sections.includes(id))} onClick={() => setGroup(rows, false)}>
+                        {t("wizard.group_none")}
+                      </Button>
+                    </div>
+                  </div>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {rows.map((id) => {
                       const def = SECTION_REGISTRY[id]
@@ -722,7 +756,7 @@ export function AcceptHandoverWizard({
                       key={s}
                       type="button"
                       aria-pressed={source === s}
-                      onClick={() => setSource(s)}
+                      onClick={() => chooseSource(s)}
                       disabled={busy}
                       className={cn(
                         "flex min-h-11 flex-col items-start gap-1 rounded-xl border p-3 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -748,7 +782,7 @@ export function AcceptHandoverWizard({
                   {t("wizard.boq_upload")}
                   <input type="file" accept=".xlsx,.xls,.csv" className="sr-only" onChange={(e) => void onFile(e.target.files?.[0])} disabled={parsing || busy} />
                 </label>
-                {xlLoaded && xlBad.length === 0 && <p className="text-sm font-semibold text-success">{t("wizard.boq_loaded", { count: xlItems.length })}</p>}
+                {xlLoaded && xlBad.length === 0 && <p className="text-sm font-semibold text-success">{t("wizard.boq_loaded", { count: lineRows.length })}</p>}
                 {xlBad.length > 0 && (
                   <Callout tone="block">
                     <p className="font-bold">{t("wizard.xl_bad", { count: xlBad.length })}</p>
@@ -762,41 +796,15 @@ export function AcceptHandoverWizard({
                     {xlBad.length > 8 && <p className="mt-1 text-xs">{t("wizard.xl_bad_more", { count: xlBad.length - 8 })}</p>}
                   </Callout>
                 )}
-                {xlLoaded && xlItems.length > 0 && (
-                  <section className="rounded-xl border" aria-labelledby="xl-review-title">
-                    <div className="border-b px-3 py-2">
-                      <p id="xl-review-title" className="text-sm font-bold">
-                        {t("wizard.xl_review_title")}
-                      </p>
-                      <p className={cn("text-xs", xlUnpriced ? "font-semibold text-warning" : "text-muted-foreground")}>
-                        {xlUnpriced ? t("wizard.xl_review_unpriced", { count: xlItems.length, unpriced: xlUnpriced }) : t("wizard.xl_review_all_priced", { count: xlItems.length })}
-                      </p>
-                    </div>
-                    <ul className="max-h-64 divide-y overflow-y-auto">
-                      {xlItems.map((item) => {
-                        const unpriced = !(item.rate > 0)
-                        return (
-                          <li key={item.id} className={cn("flex items-start gap-3 px-3 py-2 text-xs", unpriced && "bg-warning/5")}>
-                            <span className="w-16 shrink-0 font-mono tabular-nums text-muted-foreground" dir="ltr">
-                              {item.itemNo || "—"}
-                            </span>
-                            <span className="min-w-0 flex-1" dir="auto">
-                              {(locale === "ar" ? item.descriptionAr || item.descriptionEn : item.descriptionEn || item.descriptionAr) || "—"}
-                            </span>
-                            <span className="shrink-0 tabular-nums" dir="ltr">
-                              {item.quantity} {item.unit}
-                            </span>
-                            <span className="w-24 shrink-0 text-end">
-                              {unpriced ? <StatusPill tone="warn">{t("wizard.xl_unpriced")}</StatusPill> : <span className="tabular-nums">{pmMoney(item.rate)}</span>}
-                            </span>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </section>
-                )}
               </>
             )}
+            {source && source !== "later" && (source !== "xl" || xlLoaded) && <WizardBoqEditor rows={rows} onChange={setRows} disabled={busy} />}
+            <BlockingReasons title={t("cannot_accept")} reasons={boqStepBlocks.filter((_, i) => stepBlockCodes[i] !== "no_manager")} />
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="space-y-4">
             <div className="rounded-xl border px-4">
               <KeyValueRow label={t("wizard.row_project")} value={<span dir="auto">{title || "—"}</span>} />
               <KeyValueRow label={t("field.client")} value={(handover ? handover.clientName : draft.client.trim()) || "—"} />
@@ -811,6 +819,10 @@ export function AcceptHandoverWizard({
               <KeyValueRow label={t("wizard.row_start")} value={pmDate(handover ? handover.startOn : draft.startOn, locale)} />
               <KeyValueRow label={t("wizard.row_manager")} value={manager ? manager.name : "—"} />
               <KeyValueRow label={t("wizard.row_sections")} value={`${sections.length} — ${sections.map(secName).join(" · ")}`} />
+              <KeyValueRow
+                label={t("wizard.row_boq")}
+                value={lineRows.length ? `${t("wizard.boq_review_lines", { count: lineRows.length })} · ${pmMoney(draftTotal(lineRows))}${unpricedCount ? ` · ${t("wizard.xl_review_unpriced", { count: lineRows.length, unpriced: unpricedCount })}` : ""}` : t("wizard.boq_review_none")}
+              />
             </div>
             <div className="rounded-xl border border-cta/20 bg-cta/5 p-3">
               <p className="mb-2 text-sm font-bold">{t("wizard.effects_title")}</p>
@@ -818,7 +830,7 @@ export function AcceptHandoverWizard({
                 {[
                   { k: "eff_project", ok: true },
                   ...(handover ? [{ k: "eff_crm", ok: true }] : []),
-                  ...(source === "crm" ? [{ k: "eff_boq", ok: true }] : []),
+                  ...(lineRows.length > 0 ? [{ k: "eff_boq", ok: true }] : []),
                   { k: "eff_sections", ok: true },
                   ...(advance && !selfDev && (handover || manualValue(draft) > 0) ? [{ k: "effect_advance", ok: true }] : []),
                   ...(storeOn ? [{ k: "eff_store", ok: true }] : []),
@@ -826,7 +838,7 @@ export function AcceptHandoverWizard({
                 ].map(({ k, ok }) => (
                   <li key={k} className="flex items-start gap-2">
                     {ok ? <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-cta" aria-hidden="true" /> : <X size={13} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
-                    <span className={cn(!ok && "text-muted-foreground")}>{t(`wizard.${k}`, { count: k === "eff_boq" ? crmCount : sections.length })}</span>
+                    <span className={cn(!ok && "text-muted-foreground")}>{t(`wizard.${k}`, { count: k === "eff_boq" ? lineRows.length : sections.length })}</span>
                   </li>
                 ))}
               </ul>
@@ -841,8 +853,8 @@ export function AcceptHandoverWizard({
               {t("back")}
             </Button>
           )}
-          {step < 2 ? (
-            <Button onClick={() => setStep((s) => s + 1)} disabled={step === 0 && (!managerUid || manualBlocks.length > 0)}>
+          {step < 3 ? (
+            <Button onClick={() => setStep((s) => s + 1)} disabled={(step === 0 && (!managerUid || manualBlocks.length > 0)) || (step === 2 && (boqNextBlocked || parsing))}>
               {t("next")}
             </Button>
           ) : (

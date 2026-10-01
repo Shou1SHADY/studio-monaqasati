@@ -156,11 +156,11 @@ export type BoqSource = (typeof BOQ_SOURCES)[number]
 
 export const boqSourcesFor = (h: Pick<PmHandover, "boq">): BoqSource[] => (handoverBoqCount(h) > 0 ? ["crm", "xl", "man", "later"] : ["xl", "man", "later"])
 
-export type AcceptStepBlock = "no_boq_source" | "no_manager" | "no_boq_file" | "boq_bad_rows" | "boq_nothing_read"
+export type AcceptStepBlock = "no_boq_source" | "no_manager" | "no_boq_file" | "boq_bad_rows" | "boq_nothing_read" | "boq_no_lines"
 
 /** Saving waits for a named manager and a chosen BOQ source; an Excel source needs its
- * file — read whole: a file with a rejected row is corrected and chosen again, never
- * imported in part (the contract value and every progress % would sit on what was left). */
+ * file. The lines are edited in the wizard, so a row with an error is corrected there —
+ * never saved in part (the contract value and every progress % would sit on what was left). */
 export function acceptStepBlocks(input: { source: BoqSource | null; managerUid: string | null; xlItems: number; xlBad?: number; xlLoaded?: boolean }): AcceptStepBlock[] {
   const out: AcceptStepBlock[] = []
   if (!input.managerUid) out.push("no_manager")
@@ -168,6 +168,9 @@ export function acceptStepBlocks(input: { source: BoqSource | null; managerUid: 
   if (input.source === "xl") {
     if ((input.xlBad ?? 0) > 0) out.push("boq_bad_rows")
     else if (input.xlItems === 0) out.push(input.xlLoaded ? "boq_nothing_read" : "no_boq_file")
+  } else if (input.source === "crm" || input.source === "man") {
+    if ((input.xlBad ?? 0) > 0) out.push("boq_bad_rows")
+    else if (input.xlItems === 0) out.push("boq_no_lines")
   }
   return out
 }

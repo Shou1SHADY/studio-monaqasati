@@ -317,3 +317,53 @@ export function crmMismatch(rows: Array<Pick<ImportRow, "quantity" | "rate">>, c
 }
 
 export const divisionOfCode = (code: string) => code.split(/[-.]/)[0] || ""
+
+/** A line the new-project wizard is about to write, while it is still being edited. */
+export interface BoqDraftRow {
+  id: string
+  itemNo: string
+  descriptionAr: string
+  descriptionEn: string
+  unit: string
+  quantity: number
+  rate: number
+  groupId: string | null
+  extra: Record<string, unknown>
+}
+
+export type DraftRowProblem = "no_description" | "bad_qty" | "bad_rate" | "duplicate"
+
+export const blankDraftRow = (id: string): BoqDraftRow => ({ id, itemNo: "", descriptionAr: "", descriptionEn: "", unit: "", quantity: 0, rate: 0, groupId: null, extra: {} })
+
+/** A row nobody has typed into is a spare line, never an error and never written. */
+export const isBlankDraftRow = (r: BoqDraftRow) => !r.itemNo.trim() && !r.descriptionAr.trim() && !r.descriptionEn.trim() && !r.unit.trim() && !(r.quantity > 0) && !(r.rate > 0)
+
+/** What is wrong with each row, aligned with the input; a blank row has nothing wrong. */
+export function draftRowProblems(rows: BoqDraftRow[]): DraftRowProblem[][] {
+  const seen = new Map<string, number>()
+  rows.forEach((r) => {
+    const code = r.itemNo.trim()
+    if (code && !isBlankDraftRow(r)) seen.set(code, (seen.get(code) ?? 0) + 1)
+  })
+  return rows.map((r) => {
+    if (isBlankDraftRow(r)) return []
+    const out: DraftRowProblem[] = []
+    if (!r.descriptionAr.trim() && !r.descriptionEn.trim()) out.push("no_description")
+    if (!(r.quantity > 0)) out.push("bad_qty")
+    if (!(r.rate >= 0)) out.push("bad_rate")
+    if ((seen.get(r.itemNo.trim()) ?? 0) > 1) out.push("duplicate")
+    return out
+  })
+}
+
+/** Sets the description in the reader's language; the other language follows only
+ * when it was empty or a copy, so an imported bilingual line keeps both. */
+export function withDescription(row: BoqDraftRow, locale: string, text: string): BoqDraftRow {
+  const ar = locale === "ar"
+  const own = ar ? row.descriptionAr : row.descriptionEn
+  const other = ar ? row.descriptionEn : row.descriptionAr
+  const follow = !other.trim() || other === own
+  return ar ? { ...row, descriptionAr: text, descriptionEn: follow ? text : row.descriptionEn } : { ...row, descriptionEn: text, descriptionAr: follow ? text : row.descriptionAr }
+}
+
+export const draftTotal = (rows: BoqDraftRow[]) => r2(rows.filter((r) => !isBlankDraftRow(r)).reduce((a, r) => a + (r.quantity > 0 ? r.quantity : 0) * (r.rate > 0 ? r.rate : 0), 0))
