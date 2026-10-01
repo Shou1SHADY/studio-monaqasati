@@ -34,6 +34,7 @@ import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useHrPeople } from "@/hooks/useHrPeople"
+import { useHrRequests } from "@/hooks/useHrRequests"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import {
@@ -45,6 +46,8 @@ import {
   employeeMonth,
   missingDays,
   monthOf,
+  onLeaveOn,
+  onSheet,
   sheetBlocks,
   type AttendanceException,
   type DayException,
@@ -52,7 +55,7 @@ import {
 } from "@/lib/hr/attendance"
 import { closeMonth, declareMissing, recordDay } from "@/lib/hr/attendance-writes"
 import { HR_ATTENDANCE } from "@/lib/hr/collections"
-import { displayName, type HrEmployee } from "@/lib/hr/employee"
+import { displayName } from "@/lib/hr/employee"
 import type { HrActor } from "@/lib/hr/employee-writes"
 import { empNo, hrDate, todayDay } from "@/lib/hr/format"
 import { overtimeOverCap } from "@/lib/hr/pay"
@@ -65,14 +68,6 @@ import { cn } from "@/lib/utils"
 type Seg = "sheet" | "month"
 const NO_VIOLATION = "__none__"
 
-/** Who is on a workplace's sheet on a day: active there, or joined by then. */
-function onSheet(e: HrEmployee, siteId: string, day: string) {
-  const here = siteId === UNASSIGNED_SITE ? !e.siteId : e.siteId === siteId
-  if (!here) return false
-  if (e.status === "active") return true
-  return e.status === "expected" && Boolean(e.join) && e.join <= day
-}
-
 export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; siteId: string; actor: HrActor }) {
   const t = useTranslations("Portal.HR")
   const locale = useLocale()
@@ -80,6 +75,7 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
   const { toast } = useToast()
   const today = todayDay()
   const { employees, sites, isLoading } = useHrPeople(access.orgId)
+  const { requests } = useHrRequests(access)
   const site = siteId === UNASSIGNED_SITE ? { id: UNASSIGNED_SITE, name: t("sites.unassigned"), type: null } : (sites.find((s) => s.id === siteId) ?? null)
   const assumed = assumesPresence(siteId, site?.type ?? null)
   const [seg, setSeg] = useState<Seg>("sheet")
@@ -106,37 +102,54 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
   const roster = useMemo(() => (saved ? saved.listed : employees.filter((e) => onSheet(e, siteId, day)).map((e) => e.id)), [saved, employees, siteId, day])
   const [ex, setEx] = useState<Record<string, AttendanceException>>({})
   const [unlisted, setUnlisted] = useState<Array<{ name: string; note: string }>>([])
+  // Reload the rows only when THIS day's record changes: the month's document
+  // gets a new identity whenever anyone saves any other day, and that must not
+  // wipe what is being typed here.
+  const savedAt = saved?.at ?? ""
   useEffect(() => {
     setEx(saved?.ex ?? {})
     setUnlisted((saved?.unlisted ?? []).map((u) => ({ name: u.name, note: u.note ?? "" })))
-  }, [saved, day])
+    // `saved` is read at the moment its stamp changes — it is deliberately not a dependency.
+  }, [savedAt, day])
+  // On approved leave that day (paid or not): shown, never recorded absent.
+  const onLeave = useMemo(() => onLeaveOn(requests, day), [requests, day])
   const mayViolation = access.allowed("violation.record", { site: siteId })
   const mayRecord = access.allowed("attendance.record", { site: siteId })
   const sheetClosed = Boolean(sheetWm?.closed)
   const sBlocks = sheetBlocks({ day, today, closed: sheetClosed, listed: roster, ex, mayRecordViolation: mayViolation })
   const setRow = (id: string, patch: Partial<AttendanceException>) => setEx((m) => ({ ...m, [id]: { ...m[id], ...patch } }))
 
-  const run = async (fn: () => Promise<unknown>, ok: string) => {
-    if (!firestore || !access.orgId || !site) return
+  const run = async (fn: () => Promise<unknown>, ok: string): Promise<boolean> => {
+    if (!firestore || !access.orgId || !site) return false
     setBusy(true)
     try {
       await fn()
       toast({ title: t(ok) })
+      return true
     } catch (err) {
       console.error(err)
       toast({ title: t(err instanceof HrWriteError ? (err.blocks[0] ? `att.block.${err.blocks[0]}` : `err.${err.code}`) : "err.save", { n: missing.length }), variant: "destructive" })
+      return false
     } finally {
       setBusy(false)
     }
   }
   const siteRef = { id: siteId, type: site?.type ?? null }
-  const saveSheet = () => run(() => recordDay(firestore!, access.ctx, access.orgId!, siteRef, day, actor, { listed: roster, ex, unlisted }), "att.saved")
+  const saveSheet = () => {
+    // Nothing is recorded against someone on approved leave that day.
+    const kept = Object.fromEntries(Object.entries(ex).filter(([id]) => !onLeave.has(id)))
+    return run(() => recordDay(firestore!, access.ctx, access.orgId!, siteRef, day, actor, { listed: roster, ex: kept, unlisted }), "att.saved")
+  }
 
   // ---- the month ------------------------------------------------------------
   const missing = useMemo(() => missingDays(wm, month, today, { assumed }), [wm, month, today, assumed])
   const [pick, setPick] = useState<string[]>([])
   const [note, setNote] = useState("")
-  useEffect(() => setPick(missing), [missing])
+  // The same days, the same ticks: only a change in WHICH days are missing resets the choice.
+  const missingKey = missing.join(",")
+  useEffect(() => {
+    setPick(missingKey ? missingKey.split(",") : [])
+  }, [missingKey])
   const dBlocks = declareBlocks({ days: pick, note, missing, closed: Boolean(wm?.closed) })
   const policy = access.settings.policies.closeMissing
   const close = closeBlocks({ month, today, closed: Boolean(wm?.closed), missing, policy })
@@ -190,6 +203,22 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
                 {roster.map((id) => {
                   const e = ex[id] ?? {}
                   const status: DayException | "present" = e.status ?? "present"
+                  if (onLeave.has(id)) {
+                    return (
+                      <li key={id} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
+                        <div className="min-w-0 flex-1 basis-40">
+                          <p className="truncate text-sm font-bold" dir="auto">
+                            {name(id)}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground" dir="ltr">
+                            {empNo(byId.get(id)?.no)}
+                          </p>
+                        </div>
+                        <StatusPill tone="info">{t("att.on_leave")}</StatusPill>
+                        <p className="basis-full text-xs text-muted-foreground">{t("att.on_leave_note")}</p>
+                      </li>
+                    )
+                  }
                   return (
                     <li key={id} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
                       <div className="min-w-0 flex-1 basis-40">
@@ -209,7 +238,7 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
                             variant={status === s ? (s === "present" ? "default" : "destructive") : "outline"}
                             aria-pressed={status === s}
                             disabled={!mayRecord || sheetClosed || busy}
-                            onClick={() => setRow(id, { status: s === "present" ? null : s })}
+                            onClick={() => setRow(id, s === "absent" || s === "sick" ? { status: s, ot: null } : { status: s === "present" ? null : s })}
                             className="h-8 rounded-full px-3 text-xs"
                           >
                             {t(`att.status.${s}`)}
@@ -335,7 +364,7 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
                           variant="outline"
                           disabled={busy || dBlocks.length > 0}
                           onClick={() =>
-                            void run(() => declareMissing(firestore!, access.ctx, access.orgId!, siteRef, month, actor, { days: pick, note, employees: rosterNow }), "att.declared").then(() => setNote(""))
+                            void run(() => declareMissing(firestore!, access.ctx, access.orgId!, siteRef, month, actor, { days: pick, note, employees: rosterNow }), "att.declared").then((ok) => ok && setNote(""))
                           }
                         >
                           {t("att.declare", { n: pick.length })}

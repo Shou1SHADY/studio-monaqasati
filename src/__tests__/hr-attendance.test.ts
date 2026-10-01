@@ -8,7 +8,7 @@ jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-u
 import { fakeFirestore, readDoc, resetFakeDb } from "@/test-utils/fake-firestore"
 import type { Firestore } from "firebase/firestore"
 import type { HrContext, HrRole } from "@/lib/hr/access"
-import { closeBlocks, compactExceptions, dueDays, employeeMonth, isRestDay, missingDays, sheetBlocks, type WorkplaceMonth } from "@/lib/hr/attendance"
+import { closeBlocks, compactExceptions, dueDays, employeeMonth, isRestDay, missingDays, onLeaveOn, onSheet, sheetBlocks, type WorkplaceMonth } from "@/lib/hr/attendance"
 import { closeMonth, declareMissing, recordDay } from "@/lib/hr/attendance-writes"
 import { HrWriteError } from "@/lib/hr/write-guard"
 
@@ -105,5 +105,56 @@ describe("the writes", () => {
   it("an office closes with no records at all — presence is assumed", async () => {
     await closeMonth(db, manager, ORG, HQ, "2026-08", actor, "block", { today: "2026-09-01" })
     expect(wm("hq").closed).toMatchObject({ asIs: false, missing: [] })
+  })
+})
+
+describe("an absent or sick day carries no overtime", () => {
+  it("the sheet drops hours typed before the status changed", () => {
+    expect(compactExceptions({ e1: { status: "absent", ot: 2 }, e2: { status: "sick", ot: 1 }, e3: { status: "permission", ot: 2 }, e4: { ot: 2 } })).toEqual({
+      e1: { status: "absent" },
+      e2: { status: "sick" },
+      e3: { status: "permission", ot: 2 },
+      e4: { ot: 2 },
+    })
+  })
+
+  it("and a month already saved with them does not pay them", () => {
+    const saved = { days: { "2026-08-03": { by: "s", byName: "S", at: "", listed: ["e1"], ex: { e1: { status: "absent" as const, ot: 2 } } } }, declarations: [] }
+    expect(employeeMonth(saved, "e1")).toMatchObject({ absent: 1, overtimeHours: 0 })
+  })
+})
+
+describe("who is on the day's sheet", () => {
+  const e = (over: object) => ({ siteId: "s1", status: "active", join: "2026-09-15", ...over })
+
+  it("nobody before the day he joined — a day back-filled later included", () => {
+    expect(onSheet(e({}), "s1", "2026-09-10")).toBe(false)
+    expect(onSheet(e({}), "s1", "2026-09-15")).toBe(true)
+    expect(onSheet(e({ status: "expected" }), "s1", "2026-09-14")).toBe(false)
+    expect(onSheet(e({ status: "expected" }), "s1", "2026-09-16")).toBe(true)
+  })
+
+  it("someone serving his notice stays on it to his last day; a settled leaver on the days he worked", () => {
+    expect(onSheet(e({ status: "leaving", lastDay: "2026-11-30" }), "s1", "2026-10-20")).toBe(true)
+    expect(onSheet(e({ status: "leaving", lastDay: "2026-11-30" }), "s1", "2026-12-01")).toBe(false)
+    expect(onSheet(e({ status: "left", lastDay: "2026-10-03" }), "s1", "2026-10-02")).toBe(true)
+    expect(onSheet(e({ status: "left", lastDay: "2026-10-03" }), "s1", "2026-10-04")).toBe(false)
+    expect(onSheet(e({ status: "left" }), "s1", "2026-10-02")).toBe(false)
+  })
+
+  it("his own workplace only; the unassigned bench takes whoever has none", () => {
+    expect(onSheet(e({}), "s2", "2026-09-20")).toBe(false)
+    expect(onSheet(e({ siteId: null }), "__bench__", "2026-09-20")).toBe(true)
+  })
+
+  it("an approved leave — paid or not — covers its days, both ends included; a pending one covers nothing", () => {
+    const reqs = [
+      { employeeId: "e1", kind: "leave", state: "approved", leave: { from: "2026-09-06", to: "2026-09-10" } },
+      { employeeId: "e2", kind: "leave", state: "pending", leave: { from: "2026-09-06", to: "2026-09-10" } },
+      { employeeId: "e3", kind: "advance", state: "approved", leave: null },
+    ]
+    expect([...onLeaveOn(reqs, "2026-09-06")]).toEqual(["e1"])
+    expect([...onLeaveOn(reqs, "2026-09-10")]).toEqual(["e1"])
+    expect([...onLeaveOn(reqs, "2026-09-11")]).toEqual([])
   })
 })

@@ -84,3 +84,37 @@ describe("injuries", () => {
     expect(injuryState(readDoc(`hrInjuries/${id}`) as HrInjury, "2026-09-20")).toBe("reported")
   })
 })
+
+describe("Today — what the audit found missing or false", () => {
+  it("government relations sees an expired iqama of someone on a site — red, to renew (DC-02); the HR manager sees it once, as the block", () => {
+    const gov = todayItems(base(ctx(["gov"], { uid: "g" })))
+    expect(gov.find((x) => x.key === "doc:e2:iqama")).toMatchObject({ group: "due", severity: "red", action: "renew", href: "people/e2" })
+    const hrm = todayItems(base(ctx(["manager"], { uid: "hrm" })))
+    expect(hrm.filter((x) => x.key === "doc:e2:iqama" || x.key === "iqama:e2").map((x) => x.kind)).toEqual(["iqama_on_site"])
+  })
+
+  it("a company whose people all joined this month is not asked to close or pay last month", () => {
+    const fresh = base(ctx(["manager", "payroll"], { uid: "hrm" }), { employees: [emp("n1", { join: "2026-09-02" }), emp("n2", { join: "2020-01-01", since: "2026-09" })], pays: new Map() })
+    const kinds = todayItems(fresh).map((x) => x.kind)
+    expect(kinds).not.toContain("close_month")
+    expect(kinds).not.toContain("payroll_prepare")
+  })
+
+  it("custody cleared: the settlement is the HR manager's turn — a row with its action, not a wait (WF-16)", () => {
+    const exits = [{ id: "org__e1", employeeId: "e1", employeeName: "e1", state: "leaving", custody: { state: "cleared" } }] as unknown as HrExit[]
+    const items = todayItems(base(ctx(["manager"], { uid: "hrm" }), { exits }))
+    expect(items.find((x) => x.kind === "settlement_ready")).toMatchObject({ group: "blocking", severity: "amber", href: "people/e1", action: "settle" })
+    expect(leakage(items)).toBe(0)
+    expect(todayItems(base(ctx(["gov"], { uid: "g" }), { exits })).map((x) => x.kind)).not.toContain("settlement_ready")
+  })
+
+  it("a prepared supplementary payroll asks for its approval too — never of whoever prepared it (PY-04)", () => {
+    const payrolls = [
+      { key: "2026-08", month: "2026-08", kind: "main", state: "paid", prepared: { by: "po" } },
+      { key: "2026-08-D", month: "2026-08", kind: "supplementary", state: "prepared", prepared: { by: "po" } },
+    ] as unknown as Payroll[]
+    const row = todayItems(base(ctx(["manager"], { uid: "hrm" }), { payrolls })).find((x) => x.kind === "payroll_approve")
+    expect(row).toMatchObject({ params: { month: "2026-08-D" }, action: "approve" })
+    expect(todayItems(base(ctx(["manager"], { uid: "po" }), { payrolls })).map((x) => x.kind)).not.toContain("payroll_approve")
+  })
+})
