@@ -118,7 +118,9 @@ describe("the supply boundary", () => {
     expect(award).toMatch(/resource\.data\.get\('poId', null\) == null/)
     expect(award).toMatch(/getAfter\(\S*purchaseOrders\/\$\(request\.resource\.data\.poId\)\)\.data\.get\('rfqId', ''\) == resource\.data\.rfqId/)
     // The key check comes before any lookup: an award writes many documents in one transaction.
-    expect((award as string).indexOf("hasOnly")).toBeLessThan((award as string).indexOf("inProjectOrg"))
+    const lookup = (award as string).search(/inProjectOrg|inOpenProject|inProject\(/)
+    expect(lookup).toBeGreaterThan(-1)
+    expect((award as string).indexOf("hasOnly")).toBeLessThan(lookup)
   })
 
   it("nothing of a PM request is decided or bought before the project manager's approval (REQ-02)", () => {
