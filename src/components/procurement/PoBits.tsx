@@ -8,6 +8,7 @@ import { useLocale, useTranslations } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { poLate, poStatus } from "@/lib/procurement/po"
+import { asX, closedByPayment } from "@/lib/procurement/po-extras"
 import type { PoLine, PoStatus, PurchaseOrder } from "@/lib/procurement/types"
 import { sarLtr } from "@/lib/riyal"
 import { figure, honestDate, lineParts, moneyFigure, percentOf, quantityText, type HonestDate } from "./PoModel"
@@ -27,12 +28,13 @@ const PILL: Record<PoStatus, string> = {
 export function PoStatusPill({ po, now, className }: { po: PurchaseOrder; now: Date; className?: string }) {
   const tProc = useTranslations("Portal.Procurement")
   const t = useTranslations("Portal.ProcOrders")
-  const status = poStatus(po)
-  const key = status === "closed" && po.closedShort ? "closed_short" : status
+  const paid = closedByPayment(asX(po))
+  const status = paid ? "closed" : poStatus(po)
+  const key = paid ? "closed_paid" : status === "closed" && po.closedShort ? "closed_short" : status
   const late = poLate(po, now)
   return (
     <span className={cn("inline-flex flex-wrap items-center gap-1", className)}>
-      <Badge className={cn("border-none text-[11px] font-bold", PILL[status])}>{tProc(`status.${key}`)}</Badge>
+      <Badge className={cn("border-none text-[11px] font-bold", PILL[status])}>{tProc(`status.${key}` as "status.closed")}</Badge>
       {late && <Badge className="border-none bg-destructive/10 text-[11px] font-bold text-destructive">{tProc("deliveryState.late", { days: daysLateOf(po, now) })}</Badge>}
       {po.status === "awaiting_approval" && po.returnedReason && <Badge className="border-none bg-destructive/10 text-[11px] font-bold text-destructive">{t("pill_returned")}</Badge>}
     </span>

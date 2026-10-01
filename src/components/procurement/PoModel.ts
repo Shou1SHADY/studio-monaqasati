@@ -213,10 +213,13 @@ export interface LineActions {
   decideReject: boolean
 }
 
-export function lineActions(po: PurchaseOrder, l: PoLine, actor: ProcActor): LineActions {
+/** «المورد عجز» is a verdict on the supplier: only once he is late or has
+ * already delivered part of the line — never on a remainder still in time. */
+export function lineActions(po: PurchaseOrder, l: PoLine, actor: ProcActor, now: Date): LineActions {
   const decides = actorCanDecideLines(actor)
+  const failing = poLate(po, now) || (Number(l.accepted) || 0) > 0
   return {
-    cancelRemainder: decides && canCancelRemainder(po) && lineToArrive(l) > 0,
+    cancelRemainder: decides && canCancelRemainder(po) && lineToArrive(l) > 0 && failing,
     decideReject: decides && po.status === "accepted" && (Number(l.rejected) || 0) > 0 && !l.rejectDecision,
   }
 }
@@ -228,13 +231,12 @@ export function canCancelOrder(po: PurchaseOrder, actor: ProcActor): boolean {
   return !po.lines.some((l) => (Number(l.accepted) || 0) > 0 || (Number(l.held) || 0) > 0)
 }
 
-export function canCloseComplete(po: PurchaseOrder, actor: ProcActor): boolean {
-  return actorCanDecideLines(actor) && po.status === "accepted" && isReceived(po)
-}
-
 export function canCloseShort(po: PurchaseOrder, actor: ProcActor): boolean {
   return actorCanDecideLines(actor) && po.status === "accepted" && !isReceived(po)
 }
+
+/** «أمر الشراء PDF» exists once the order is approved, and only for whoever sees its prices. */
+export const canPrintOrder = (po: Pick<PurchaseOrder, "approvedAt">, actor: Pick<ProcActor, "seesPrices">): boolean => Boolean(po.approvedAt) && actor.seesPrices
 
 export function canRateNow(po: PurchaseOrder, receipts: ReceiptFact[], actor: ProcActor): boolean {
   return actorCanRate(actor) && canRate(po, receipts)

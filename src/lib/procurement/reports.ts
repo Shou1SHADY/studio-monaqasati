@@ -26,7 +26,7 @@
 // against invoices comes off what is still owed for received goods.
 
 import { acceptedValue, addDays, dayOf, daysBetween, daysFromNow, daysLate, isShortCompetition, lowestOffer, offerPrice, poFacts, poLive, poOpenValue, poStatus, poValue, receiptDay, round2, supplierKey, supplierScore, todayOf } from "./po"
-import { advanceState, asX, paidTotal } from "./po-extras"
+import { advanceState, asX, paidTotal, pmCancelOpen } from "./po-extras"
 import { materialKey } from "./prices"
 import type { OfferFact, ProcWorld, RfqFact } from "./today"
 import type { PurchaseOrder } from "./types"
@@ -290,7 +290,7 @@ export function spendBySupplier(w: ProcWorld, period: Period | null | undefined,
 // 3 · Delivery performance — receipts are Inventory's; we measure the supplier by them
 // ---------------------------------------------------------------------------
 
-export type DeliveryOrderState = "on_time" | "late" | "on_time_so_far" | "pending"
+export type DeliveryOrderState = "on_time" | "late" | "on_time_so_far" | "pending" | "cancel_pending"
 
 export interface DeliveryOrderRow {
   orderId: string
@@ -332,6 +332,11 @@ export function deliveryPerformance(w: ProcWorld, period: Period | null | undefi
       const d = daysLate(po, now)
       gap = d > 0 ? d : null
       state = d > 0 ? "late" : "on_time_so_far"
+    }
+    // Projects asked to stop the rest and Procurement has not decided: not the supplier's lateness.
+    if (!(daysLate(po, now) > 0) && po.lines.some((l) => pmCancelOpen(asX(po), l))) {
+      gap = null
+      state = "cancel_pending"
     }
     return { orderId: po.id, docNumber: po.docNumber, supplierName: po.supplierName, promisedDate: po.promisedDate || null, lastReceiptDay: facts.lastReceiptDay, gap, state }
   })

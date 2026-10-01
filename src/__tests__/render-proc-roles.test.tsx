@@ -263,7 +263,6 @@ it("the fixture's writes all landed", () => {
 // holds the tab; anyone else typing its address is sent to his first tab.
 // ---------------------------------------------------------------------------
 
-const O: Role[] = ["owner"]
 const OM: Role[] = ["owner", "manager"]
 const MB: Role[] = ["manager", "buyer"]
 const OMB: Role[] = ["owner", "manager", "buyer"]
@@ -306,15 +305,19 @@ const SPECS: Record<string, ScreenSpec> = {
   orderA: {
     titles: ["بانتظار الاعتماد", "الخطوة التالية", "وقائع الترسية", "المستندات", "مسار المستند — ومن يملك كل خطوة", "السجل", "مصنع الحديد الوطني"],
     priced: ["مسار المال"],
-    acts: { "اعتمد الأمر": OM, "أعِده لمُعِدّه": OM, "ألغِ الأمر": MB },
+    // Not approved yet: no «أمر الشراء PDF» for anyone (prototype dPo `apprD!=null`).
+    acts: { "اعتمد الأمر": OM, "أعِده لمُعِدّه": OM, "ألغِ الأمر": MB, "اطبع أمر الشراء": [] },
   },
   // orderB was prepared by a buyer: the owner only reads it (poActs), Finance's acts included.
   orderB: {
     titles: ["عند المورد — التوريد جارٍ", "الخطوة التالية", "إشعارات التسليم", "السجل"],
     priced: ["مسار المال"],
-    acts: { "ذكّر المورد": MBE, "حدّث موعد المورد": MBE, "المورد عجز — ألغِ المتبقي": MB, "أقفله ناقصاً": MB, "سجّل دفعة": [] },
+    // In time and nothing received yet: «المورد عجز» is not offered (prototype cxl: late or part-received only).
+    // Approved: the PO prints for whoever sees prices — never the expediter.
+    acts: { "ذكّر المورد": MBE, "حدّث موعد المورد": MBE, "المورد عجز — اسحب المتبقي وأعد طرحه": [], "أقفله ناقصاً": MB, "سجّل دفعة": [], "اطبع أمر الشراء": OMB },
   },
-  receiptsIncoming: { titles: ["سندات الاستلام", "في الطريق", "السندات", "بلا أمر شراء", "في الطريق — ما أشعر به الموردون وما حلّ موعده", "مؤسسة الإسمنت"], acts: { "سجّل الاستلام": O, "سجّل سند استلام يدوياً": MB } },
+  // Receiving is Inventory's and Projects' act: the owner of a company with a procurement team only reads here.
+  receiptsIncoming: { titles: ["سندات الاستلام", "في الطريق", "السندات", "بلا أمر شراء", "في الطريق — ما أشعر به الموردون وما حلّ موعده", "مؤسسة الإسمنت"], acts: { "سجّل الاستلام": [], "سجّل سند استلام يدوياً": MB } },
   receiptsLog: { titles: ["سجل الاستلام", "سند الاستلام", "المورد وأمر الشراء", "ما قُبل", "أين استُلم وإلى أين ذهب", "محل مواد البناء"] },
   receiptsNoPo: { titles: ["بضاعة وصلت بلا أمر شراء", "لا سندات بلا أمر شراء"] },
   suppliers: { titles: ["الموردون والأسعار", "مورّدونا", "دليل موردي المنصة"], priced: ["تاريخ الأسعار", "اتفاقيات الأسعار"], acts: { "ادعُ مورداً إلى المنصة": MB } },
@@ -373,12 +376,12 @@ describe("owner of a company with a procurement team reads, the team acts", () =
     view.unmount()
   })
 
-  it("the expediter reads the order value as —, prints without values, and cannot pick a cell", async () => {
+  it("the expediter reads the order value as —, never prints the PO, and cannot pick a cell", async () => {
     let view = await openAs("expediter", "orders")
     expect(text()).toContain("—")
     view.unmount()
     view = await openAs("expediter", "orderB")
-    expect(buttons().some((b) => b.startsWith("اطبع أمر الشراء") && b.includes("بلا قيم"))).toBe(true)
+    expect(buttons().some((b) => b.startsWith("اطبع أمر الشراء"))).toBe(false)
     view.unmount()
     view = await openAs("expediter", "rfqCompare")
     const cells = Array.from(document.querySelectorAll("button")).filter((b) => (b.textContent ?? "").trim() === "——")

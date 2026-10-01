@@ -4,7 +4,9 @@
 // messages on the buyer's behalf. A registered supplier gets it in his
 // portal; otherwise WhatsApp or e-mail opens with a ready text — number,
 // value when the sender may see it, the lines, and the one ask — and THEN
-// the dispatch is recorded with the sender's name and the channel.
+// the dispatch is recorded with the sender's name and the channel. The
+// phone or e-mail typed here is kept on our supplier record for next time
+// (a guest's lives on his own offer).
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -23,7 +25,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { lineOutstanding, PO_SEND_CHANNELS } from "@/lib/procurement/po"
+import { SUPPLIER_RECORDS, supplierRecordId } from "@/lib/procurement/supplier-file"
 import type { PoSendChannel, PurchaseOrder } from "@/lib/procurement/types"
+import type { SendContact } from "@/lib/procurement/writes"
 import { buildSendMessage, isEmail, mailtoUrl, moneyTrail, whatsappUrl } from "./PoModel"
 import type { Submit } from "./PoActionDialogs"
 import { Money, useDateText } from "./PoBits"
@@ -44,7 +48,7 @@ export function PoSendDialog({
   po: PurchaseOrder | null
   orgName: string
   seesPrices: boolean
-  onSubmit: Submit<PoSendChannel>
+  onSubmit: Submit<{ channel: PoSendChannel; contact: SendContact }>
 }) {
   const t = useTranslations("Portal.ProcOrders")
   const tProc = useTranslations("Portal.Procurement")
@@ -53,6 +57,7 @@ export function PoSendDialog({
   const { toast } = useToast()
   const fmt = useDateText()
   const registered = Boolean(po && !po.isGuestSupplier && po.supplierUserId)
+  const keepsContact = Boolean(po && !po.isGuestSupplier && po.supplierOrgId && po.supplierOrgId !== "guest")
 
   const schema = z
     .object({
@@ -68,8 +73,8 @@ export function PoSendDialog({
   type Values = z.infer<typeof schema>
   const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { channel: registered ? "portal" : "whatsapp", phone: "", email: "", note: "" } })
 
-  // The supplier's contact, when we know him: his platform profile, or the
-  // guest contact he typed on his offer.
+  // The supplier's contact, when we know him: what we typed last time (our
+  // record), else his platform profile, or the guest contact he typed on his offer.
   useEffect(() => {
     if (!open || !po || !firestore) return
     form.reset({ channel: registered ? "portal" : "whatsapp", phone: "", email: "", note: "" })
@@ -78,12 +83,18 @@ export function PoSendDialog({
       try {
         let phone = ""
         let email = ""
-        if (po.supplierUserId) {
+        if (keepsContact) {
+          const rec = await getDoc(doc(firestore, SUPPLIER_RECORDS, supplierRecordId(po.organizationId, po.supplierOrgId)))
+          const r = (rec.exists() ? rec.data() : {}) as { contactPhone?: string; contactEmail?: string }
+          phone = r.contactPhone || ""
+          email = r.contactEmail || ""
+        }
+        if (po.supplierUserId && (!phone || !email)) {
           const snap = await getDoc(doc(firestore, "users", po.supplierUserId))
           const d = (snap.exists() ? snap.data() : {}) as { phone?: string; phoneNumber?: string; email?: string }
-          phone = d.phone || d.phoneNumber || ""
-          email = d.email || ""
-        } else if (po.offerId) {
+          phone = phone || d.phone || d.phoneNumber || ""
+          email = email || d.email || ""
+        } else if (!po.supplierUserId && po.offerId) {
           const snap = await getDoc(doc(firestore, "offers", po.offerId))
           const g = ((snap.exists() ? snap.data() : {}) as { guestContact?: { phone?: string; email?: string } }).guestContact
           phone = g?.phone || ""
@@ -100,7 +111,7 @@ export function PoSendDialog({
     return () => {
       cancelled = true
     }
-  }, [open, po, firestore, registered, form])
+  }, [open, po, firestore, registered, keepsContact, form])
 
   const channel = form.watch("channel")
   const note = form.watch("note")
@@ -169,7 +180,7 @@ export function PoSendDialog({
               const subject = t("send.subject", { number: po.docNumber })
               if (v.channel === "whatsapp") window.open(whatsappUrl(v.phone || "", message), "_blank", "noopener,noreferrer")
               if (v.channel === "email") window.open(mailtoUrl(v.email || "", subject, message), "_blank")
-              if (await onSubmit(v.channel)) onOpenChange(false)
+              if (await onSubmit({ channel: v.channel, contact: { phone: v.phone || null, email: v.email || null } })) onOpenChange(false)
             })}
           >
             <FormField
@@ -196,7 +207,7 @@ export function PoSendDialog({
                             )}
                           >
                             <Icon size={15} aria-hidden="true" />
-                            {tProc(`channel.${c}`)}
+                            {c === "portal" ? t("send.channel_portal") : tProc(`channel.${c}`)}
                           </button>
                         )
                       })}
@@ -216,6 +227,7 @@ export function PoSendDialog({
                     <FormControl>
                       <Input type="tel" dir="ltr" placeholder="05xxxxxxxx" {...field} />
                     </FormControl>
+                    {keepsContact && <p className="text-xs text-muted-foreground">{t("send.contact_saved")}</p>}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -229,8 +241,9 @@ export function PoSendDialog({
                   <FormItem>
                     <FormLabel>{t("send.email")}</FormLabel>
                     <FormControl>
-                      <Input type="email" dir="ltr" {...field} />
+                      <Input type="email" dir="ltr" placeholder="name@company.com" {...field} />
                     </FormControl>
+                    {keepsContact && <p className="text-xs text-muted-foreground">{t("send.contact_saved")}</p>}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -260,7 +273,11 @@ export function PoSendDialog({
                 <Textarea readOnly value={message} rows={7} dir="auto" className="text-xs" />
               </div>
             )}
-            <p className="text-xs text-muted-foreground">{t("send.effect")}</p>
+            <ul className="space-y-1 rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
+              <li>• {channel === "portal" ? t("send.effect_portal") : t("send.effect_opens", { channel, link: registered ? 1 : 0 })}</li>
+              <li>• {t("send.effect")}</li>
+              {seesPrices && <li>• {t("send.effect_print")}</li>}
+            </ul>
             <DialogFooter className="gap-2 sm:gap-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 {t("form.cancel")}

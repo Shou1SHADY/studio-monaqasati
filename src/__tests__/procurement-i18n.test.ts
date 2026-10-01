@@ -41,6 +41,7 @@ const missing = (messages: Tree, ns: string, keys: readonly string[]) => keys.fi
 const PROCUREMENT_KEYS = [
   ...PO_STATUSES.map((s) => `status.${s}`),
   "status.closed_short",
+  "status.closed_paid",
   ...PO_BASES.map((b) => `basis.${b}`),
   ...PO_SEND_CHANNELS.map((c) => `channel.${c}`),
   "approver.manager",
@@ -62,6 +63,7 @@ const PROCUREMENT_KEYS = [
   "deliveryState.late",
   "deliveryState.on_time_so_far",
   "deliveryState.pending",
+  "deliveryState.cancel_pending",
   "doc.PO",
   "doc.GR",
   "noRecord",

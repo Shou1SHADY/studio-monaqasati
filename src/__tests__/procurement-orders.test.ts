@@ -137,11 +137,19 @@ describe("line parts", () => {
 describe("what may happen", () => {
   it("line actions follow the state and the permission", () => {
     const a = actor()
-    expect(lineActions(po(), line({ rejected: 5 }), a)).toEqual({ cancelRemainder: true, decideReject: true })
-    expect(lineActions(po(), line({ rejected: 5, rejectDecision: "reduce" }), a).decideReject).toBe(false)
-    expect(lineActions(po(), line({ accepted: 100 }), a).cancelRemainder).toBe(false)
-    expect(lineActions(po(), line({ rejected: 5 }), actor({ canPrepare: false, canApprove: false })).decideReject).toBe(false)
-    expect(lineActions(po({ status: "sent" }), line({ rejected: 5 }), a).cancelRemainder).toBe(false)
+    const late = { promisedDate: "2026-09-10" }
+    expect(lineActions(po(late), line({ rejected: 5 }), a, NOW)).toEqual({ cancelRemainder: true, decideReject: true })
+    expect(lineActions(po(), line({ rejected: 5, rejectDecision: "reduce" }), a, NOW).decideReject).toBe(false)
+    expect(lineActions(po(late), line({ accepted: 100 }), a, NOW).cancelRemainder).toBe(false)
+    expect(lineActions(po(), line({ rejected: 5 }), actor({ canPrepare: false, canApprove: false }), NOW).decideReject).toBe(false)
+    expect(lineActions(po({ status: "sent", ...late }), line({ rejected: 5 }), a, NOW).cancelRemainder).toBe(false)
+  })
+  it("«the supplier failed» only once he is late or has delivered part of the line (prototype cxl)", () => {
+    const a = actor()
+    expect(lineActions(po(), line(), a, NOW).cancelRemainder).toBe(false)
+    expect(lineActions(po(), line({ rejected: 5 }), a, NOW).cancelRemainder).toBe(false)
+    expect(lineActions(po(), line({ accepted: 40 }), a, NOW).cancelRemainder).toBe(true)
+    expect(lineActions(po({ promisedDate: "2026-09-10" }), line(), a, NOW).cancelRemainder).toBe(true)
   })
   it("the whole order cancels only before anything arrived", () => {
     expect(canCancelOrder(po({ status: "sent" }), actor())).toBe(true)
@@ -230,6 +238,9 @@ describe("print models", () => {
     const t = (k: string) => `[${k}]`
     const html = buildReceiptStatementHtml(m, "ط.ش-2026/001", (n) => n, "ar", t)
     for (const s of ["[st_col_on_the_way]", "[st_col_not_shipped]", "[st_col_place]", "مستودع البرج", "7070", "3999", "الرياض", "Badr", "Maha"]) expect(html).toContain(s)
+    // The lines table counts what was accepted SO FAR (prototype printPOGRN); each receipt row, what it accepted.
+    expect(html.match(/\[st_col_accepted_so_far\]/g)).toHaveLength(1)
+    expect(html.match(/\[st_col_accepted\]/g)).toHaveLength(1)
     // Printable before anything arrived: every column zero, the receipts table says so.
     const none = buildStatementModel(po({ lines: [line({})] }), [], company, NOW)
     expect(none.lines[0]).toMatchObject({ accepted: 0, onTheWay: 0, notShipped: 100 })

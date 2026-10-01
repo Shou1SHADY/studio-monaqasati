@@ -5,8 +5,8 @@
 // the same material (offered first: raising another would commit the quantity
 // twice), a retroactive order (the owner alone approves it; a registered
 // supplier or the name as written, a price per line checked against the live
-// agreement or our last price), or a cash expense for Finance (a receipt
-// Procurement typed by hand — every no-PO receipt here is one).
+// agreement or our last price), or — only for a receipt Procurement typed by
+// hand — a cash expense for Finance.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -128,10 +128,11 @@ export function RegulariseReceiptDialog({ delivery: d, actor, orgId, orders, pla
     }
   }
 
+  // A cash expense is for what Procurement typed by hand; what a receiver recorded gets an order.
   const options: Array<{ key: string; label: string }> = [
     ...open.map((po) => ({ key: choiceKey({ kind: "link", poId: po.id }), label: t("regularise.optLink", { number: displayPoNumber(po.docNumber, locale), supplier: po.supplierName }) })),
     { key: "new", label: t("regularise.optNew") },
-    { key: "expense", label: t("regularise.optExpense") },
+    ...(d.source === "manual" ? [{ key: "expense", label: t("regularise.optExpense") }] : []),
   ]
   const effects =
     choice.kind === "expense" ? [t("regularise.effectExpense"), t("regularise.effectExpenseProof")] : choice.kind === "new" ? [t("regularise.effectNew"), t("regularise.effectFinance")] : [t("regularise.effectLink"), t("regularise.effectFinance")]

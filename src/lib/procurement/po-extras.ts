@@ -65,6 +65,20 @@ export const HOLD_DECISIONS: Record<HoldReason, string[]> = {
   cash: ["ack"],
 }
 
+/** The decisions that carry their own first consequence (prototype `FROPT`'s third column). */
+const HOLD_FIRST_EFFECT = new Set(["credit", "supply", "grn", "newinv", "letter", "fix"])
+
+/** The effect lines of the hold decision form, as keys under `rfqpo.po.hold`:
+ * a price hold names who settles a higher price, or tells Finance to pay at
+ * the PO price; any other hold leads with what the chosen decision does next. */
+export function holdEffectKeys(reason: HoldReason, decision: string, settlesNow: boolean): string[] {
+  if (reason === "price") {
+    const raises = decision === "new_price" || decision === "inv_price"
+    return [raises ? (settlesNow ? "effect_now" : "effect_approver") : "first.po_price", "effect_history"]
+  }
+  return [HOLD_FIRST_EFFECT.has(decision) ? `first.${decision}` : "first.default", "effect_1", "effect_2"]
+}
+
 export interface PoFinanceHold {
   id: string
   invoiceNo: string
@@ -136,6 +150,8 @@ export interface PoExtras {
   pmCancelKey?: string | null
   /** noticeRouting `both`: the receivers the supplier's notice also reaches (stamped at approval). */
   noticeCopyTo?: string[] | null
+  /** Closed by Finance's payment write (prototype `POST.closed`), not by Procurement. */
+  closedByPayment?: boolean | null
 }
 
 /** Referred by Procurement (`pending`, with the overrun), answered by the project's manager. */
@@ -194,6 +210,20 @@ export const openHolds = (po: PurchaseOrderX): PoFinanceHold[] => (po.financeHol
 
 /** Newest payment first. */
 export const paymentsNewestFirst = (po: PurchaseOrderX): PoFinancePayment[] => [...(po.financePayments || [])].sort((a, b) => (b.at || "").localeCompare(a.at || ""))
+
+/** Finance's recorded payments cover the order's value, VAT included (the money trail's «المسدَّد» against its commitment). */
+export function paidInFull(po: PurchaseOrderX): boolean {
+  const commitment = poCommitment(po)
+  return commitment > 0 && paidTotal(po) >= commitment - 0.005
+}
+
+/** A PO is closed by Finance's payment, never by Procurement (prototype
+ * «أقفلته المالية بالسداد»): once everything was received and the payments
+ * cover it, the payment write closes it. An order that got there before the
+ * write did reads the same. */
+export const closesOnPayment = (po: PurchaseOrderX): boolean => po.status === "accepted" && poStatus(po) === "received" && paidInFull(po)
+
+export const closedByPayment = (po: PurchaseOrderX): boolean => (po.status === "closed" ? Boolean(po.closedByPayment) : closesOnPayment(po))
 
 /** The one line the drawer opens with: back from Finance (a hold wins over a payment). */
 export type FinanceBanner = { kind: "hold"; hold: PoFinanceHold } | { kind: "paid"; payment: PoFinancePayment } | { kind: "sent" } | null
@@ -298,6 +328,14 @@ export function lineInTransit(po: PurchaseOrder, line: PoLine, deliveries: Array
     .filter((d) => d.poId === po.id && d.status === "pending_confirmation")
     .reduce((s, d) => s + (d.lines || []).filter((l) => l.poLineId === line.id).reduce((a, l) => a + (Number(l.noticeQuantity) || 0), 0), 0)
   return Math.min(round2(q), lineToArrive(line))
+}
+
+/** When and how the supplier sent a delivery notice (prototype poAsnSec): a
+ * guest writes it from the order's link, a registered supplier from its portal. */
+export function noticeSent(d: { createdAt?: unknown; isGuestDelivery?: boolean | null; notes?: string | null }): { at: string | null; via: "link" | "portal"; note: string | null } {
+  const v = d.createdAt as { toDate?: () => Date } | string | null | undefined
+  const at = typeof v === "string" ? v : v && typeof v.toDate === "function" ? v.toDate().toISOString() : null
+  return { at, via: d.isGuestDelivery ? "link" : "portal", note: (d.notes || "").trim() || null }
 }
 
 /** What Projects asked of this line, if anything. */
