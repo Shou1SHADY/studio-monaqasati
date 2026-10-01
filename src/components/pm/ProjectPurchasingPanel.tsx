@@ -3,8 +3,8 @@
 // Supply › Purchasing & prices on a PM 1.0 project (prototype supPO · pricePanel):
 // the project's purchase orders and the price history of its materials, both
 // READ from Procurement — created and managed there, shown here because they
-// commit the items' budget. Amounts only for money holders; paid is Finance's
-// and not yet on the order, so it is not shown.
+// commit the items' budget. Amounts only for money holders; paid is what Finance
+// recorded against the order.
 
 import { useMemo } from "react"
 import { useTranslations } from "next-intl"
@@ -18,11 +18,11 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { useSupplyWorld } from "@/hooks/useSupplyWorld"
 import { pmDate, pmMoney } from "@/lib/pm/format"
-import { ESTIMATE_GAP_PERCENT, poReceivedShare, poVsEstimate } from "@/lib/pm/supply"
+import { ESTIMATE_GAP_PERCENT, poReceivedShare, priceVsEstimate } from "@/lib/pm/supply"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { acceptedValue, poValue } from "@/lib/procurement/po"
+import { paidTotal, type PurchaseOrderX } from "@/lib/procurement/po-extras"
 import { PRICE_RISE_ALARM_PERCENT } from "@/lib/procurement/prices"
-import type { PurchaseOrder } from "@/lib/procurement/types"
 import { cn } from "@/lib/utils"
 import { Callout } from "@/components/module-ui/Callout"
 import { useLocaleDir, type SupplyItem } from "./SupplyDialogs"
@@ -35,7 +35,9 @@ export function ProjectPurchasingPanel({ projectId, orgId, items, startOn, acces
   const money = access.has("money")
   const q = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "purchaseOrders"), where("organizationId", "==", orgId), where("projectId", "==", projectId)) : null), [firestore, orgId, projectId])
   const { data } = useCollection(q)
-  const orders = useMemo(() => ((data ?? []) as unknown as PurchaseOrder[]).filter((o) => o.status !== "cancelled").sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")), [data])
+  const orders = useMemo(() => ((data ?? []) as unknown as PurchaseOrderX[]).filter((o) => o.status !== "cancelled").sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")), [data])
+
+  const poLines = useMemo(() => orders.flatMap((o) => o.lines), [orders])
 
   const used = useMemo(() => {
     const m = new Map<string, Set<string>>()
@@ -58,11 +60,12 @@ export function ProjectPurchasingPanel({ projectId, orgId, items, startOn, acces
         const base = (since.length ? since : s)[0]
         const last = s[s.length - 1]
         const change = base.price > 0 ? ((last.price - base.price) / base.price) * 100 : 0
-        return { key, name: last.name, unit: last.unit, last, change, codes: [...(used.get(key) ?? [])] }
+        const dif = priceVsEstimate(last.price, key, poLines, (id) => items.find((i) => i.id === id)?.estCost ?? 0)
+        return { key, name: last.name, unit: last.unit, last, change, dif, codes: [...(used.get(key) ?? [])] }
       })
       .sort((a, b) => b.codes.length - a.codes.length || b.change - a.change)
       .slice(0, 15)
-  }, [world, used, startOn])
+  }, [world, used, startOn, poLines, items])
   const rising = prices.filter((p) => p.change > 5 && p.codes.length)
   const codeOf = (id: string | null | undefined) => items.find((i) => i.id === id)
 
@@ -88,6 +91,11 @@ export function ProjectPurchasingPanel({ projectId, orgId, items, startOn, acces
                       {t("po.col.received")} <SourceBadge module="warehouses" label={t("own.inv")} />
                     </th>
                   )}
+                  {money && (
+                    <th className="px-2 py-2 text-end font-medium">
+                      {t("po.col.paid")} <SourceBadge module="payments" label={t("po.from_fin")} />
+                    </th>
+                  )}
                   <th className="px-4 py-2 text-center font-medium">{t("po.col.status")}</th>
                 </tr>
               </thead>
@@ -96,7 +104,6 @@ export function ProjectPurchasingPanel({ projectId, orgId, items, startOn, acces
                   const share = poReceivedShare(o.lines)
                   const firstItem = o.lines.map((l) => codeOf(l.boqItemId)).find(Boolean)
                   const acc = acceptedValue(o)
-                  const dif = money ? poVsEstimate(o.lines, (id) => codeOf(id)?.estCost ?? 0) : null
                   return (
                     <tr key={o.id}>
                       <td className="px-4 py-2">
@@ -118,16 +125,16 @@ export function ProjectPurchasingPanel({ projectId, orgId, items, startOn, acces
                       {money && (
                         <td className="px-2 py-2 text-end tabular-nums" dir="ltr">
                           {pmMoney(poValue(o))}
-                          {dif !== null && Math.abs(dif) > ESTIMATE_GAP_PERCENT && (
-                            <p className={cn("text-xs", dif > 0 ? "text-destructive" : "text-success")} dir="auto">
-                              {dif > 0 ? t("po.above_est", { pct: Math.round(dif) }) : t("po.below_est", { pct: Math.round(-dif) })}
-                            </p>
-                          )}
                         </td>
                       )}
                       {money && (
                         <td className="px-2 py-2 text-end tabular-nums" dir="ltr">
                           {acc == null ? "—" : pmMoney(acc)}
+                        </td>
+                      )}
+                      {money && (
+                        <td className="px-2 py-2 text-end tabular-nums" dir="ltr">
+                          {pmMoney(paidTotal(o))}
                         </td>
                       )}
                       <td className="px-4 py-2 text-center">
@@ -172,6 +179,11 @@ export function ProjectPurchasingPanel({ projectId, orgId, items, startOn, acces
                       <td className={cn("px-2 py-2 text-end tabular-nums", p.change > PRICE_RISE_ALARM_PERCENT ? "text-destructive" : p.change < -PRICE_RISE_ALARM_PERCENT ? "text-success" : "text-muted-foreground")} dir="ltr">
                         {p.change > 0 ? "+" : ""}
                         {Math.round(p.change * 10) / 10}%
+                        {money && p.dif !== null && Math.abs(p.dif) > ESTIMATE_GAP_PERCENT && (
+                          <p className={cn("text-xs", p.dif > 0 ? "text-destructive" : "text-success")} dir="auto">
+                            {p.dif > 0 ? t("po.above_est", { pct: Math.round(p.dif) }) : t("po.below_est", { pct: Math.round(-p.dif) })}
+                          </p>
+                        )}
                       </td>
                       <td className="px-2 py-2 text-xs" dir="auto">
                         {p.last.supplierName}

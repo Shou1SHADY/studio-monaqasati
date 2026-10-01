@@ -425,7 +425,8 @@ export function ReceiveDialog({
   const over = a > left + 0.005
   const bad = a < 0 || r < 0 || a + r <= 0 || over
   const phase = linePhase(request, line)
-  const source = request.poNumber ? t("sup.rcv.from_po", { no: request.poNumber }) : phase === "mfg" ? t("sup.rcv.from_mfg") : t("sup.rcv.from_proc")
+  const fromStore = !request.poId && lineInTransit(line) > 0
+  const source = fromStore ? t("sup.rcv.from_store", { store: line.inv?.warehouseName || t("store.rcv.main_store") }) : request.poNumber ? t("sup.rcv.from_po", { no: request.poNumber }) : phase === "mfg" ? t("sup.rcv.from_mfg") : t("sup.rcv.from_proc")
 
   const save = async () => {
     if (!firestore) return
@@ -485,11 +486,11 @@ export function ReceiveDialog({
             <Checkbox checked={short} onCheckedChange={(v) => setShort(v === true)} className="mt-0.5" />
             <span>
               <b className="block">{t("sup.rcv.short")}</b>
-              <span className="text-xs text-muted-foreground">{t("sup.rcv.short_hint")}</span>
+              <span className="text-xs text-muted-foreground">{t(fromStore ? "sup.rcv.short_hint_stk" : "sup.rcv.short_hint")}</span>
             </span>
           </label>
           <PmFilesField orgId={orgId} folder={`projects/${projectId}/receipts`} value={files} onChange={setFiles} label={t("sup.rcv.files")} hint={t("sup.rcv.files_hint")} />
-          <Callout tone="info">{line.itemId && withStore ? t("sup.rcv.enters_store") : t("sup.rcv.expensed")}</Callout>
+          <Callout tone="info">{line.itemId && withStore ? t(fromStore ? "sup.rcv.enters_store_stk" : "sup.rcv.enters_store") : t(fromStore ? "sup.rcv.expensed_stk" : "sup.rcv.expensed")}</Callout>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy !== null}>
