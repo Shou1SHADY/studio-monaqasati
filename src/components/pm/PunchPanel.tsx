@@ -258,7 +258,7 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
       </Panel>
 
       <Dialog open={raising} onOpenChange={setRaising}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("punch.new")}</DialogTitle>
             <DialogDescription>{t("punch.new_desc")}</DialogDescription>
@@ -335,7 +335,7 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
       </Dialog>
 
       <Dialog open={fixing !== null} onOpenChange={(o) => !o && setFixing(null)}>
-        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("punch.record_fix")}</DialogTitle>
             <DialogDescription>{fixing ? t("punch.fix_note2", { party: partyName(fixing) }) : ""}</DialogDescription>
@@ -369,7 +369,7 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
       </Dialog>
 
       <Dialog open={confirming !== null} onOpenChange={(o) => !o && setConfirming(null)}>
-        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("punch.conf_title")}</DialogTitle>
             <DialogDescription dir="auto">{confirming ? `${t("punch.no", { no: projectDocNo(projectNo, confirming.seq) })} — ${confirming.what}` : ""}</DialogDescription>

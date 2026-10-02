@@ -55,7 +55,7 @@ export function ReturnHandoverDialog({ open, onOpenChange, handover, actor }: { 
 
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("return.title")}</DialogTitle>
           <DialogDescription dir="auto">{t("return.sub", { project: handover.title })}</DialogDescription>

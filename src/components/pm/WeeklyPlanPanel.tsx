@@ -307,7 +307,7 @@ export function WeeklyPlanPanel({
       </Panel>
 
       <Dialog open={committing} onOpenChange={setCommitting}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("wwp.plan_title")}</DialogTitle>
             <DialogDescription>{t("wwp.plan_note")}</DialogDescription>
@@ -374,7 +374,7 @@ export function WeeklyPlanPanel({
       </Dialog>
 
       <Dialog open={closing} onOpenChange={setClosing}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("wwp.close_title")}</DialogTitle>
             <DialogDescription>{t("wwp.close_note")}</DialogDescription>

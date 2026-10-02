@@ -254,7 +254,7 @@ export function CorrespondencePanel({
       <ConsultantPortalPanel projectId={projectId} projectName={projectName} portal={pm.portal ?? null} letters={letters} items={items} access={access} />
 
       <Dialog open={adding} onOpenChange={(o) => busy === null && setAdding(o)}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("corr.form_title")}</DialogTitle>
             <DialogDescription>
@@ -320,7 +320,7 @@ export function CorrespondencePanel({
       </Dialog>
 
       <Dialog open={replying !== null} onOpenChange={(o) => !o && busy === null && setReplying(null)}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("corr.reply_title")}</DialogTitle>
             {replying && (

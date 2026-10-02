@@ -49,7 +49,7 @@ export function AdoptProjectDialog({ open, onOpenChange, projectId, orgId, actor
 
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{t("adopt.title")}</DialogTitle>
           <DialogDescription>{t("adopt.desc")}</DialogDescription>

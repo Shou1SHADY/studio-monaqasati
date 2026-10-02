@@ -92,7 +92,7 @@ export function PmBudgetDecisions({ projectId, orgId, access, actor }: { project
         </ul>
       </Panel>
       <Dialog open={Boolean(open)} onOpenChange={(o) => !busy && !o && setOpen(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{open ? t(`budget.${open.decision === "accepted" ? "accept" : "renegotiate"}_title`, { no: displayPoNumber(open.po.docNumber, locale) }) : ""}</DialogTitle>
             <DialogDescription>{open?.decision === "accepted" ? t("budget.accept_desc") : t("budget.renegotiate_desc")}</DialogDescription>

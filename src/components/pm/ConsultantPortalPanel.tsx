@@ -216,7 +216,7 @@ export function ConsultantPortalPanel({
       <p className="mt-3 text-xs text-muted-foreground">{t("portal.foot")}</p>
 
       <Dialog open={sending} onOpenChange={(o) => !busy && setSending(o)}>
-        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{sentOn ? t("portal.resend_title") : t("portal.send_title")}</DialogTitle>
             <DialogDescription>{t("portal.send_desc")}</DialogDescription>

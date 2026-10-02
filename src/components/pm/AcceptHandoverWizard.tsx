@@ -376,7 +376,7 @@ export function AcceptHandoverWizard({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{handover ? t("wizard.title") : t("manual.title")}</DialogTitle>
           <DialogDescription>

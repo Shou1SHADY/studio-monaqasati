@@ -321,7 +321,7 @@ function SwitchOffDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-h-[88vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[88vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("sec.off_dialog_title")}</DialogTitle>
           <DialogDescription>{name(id)}</DialogDescription>

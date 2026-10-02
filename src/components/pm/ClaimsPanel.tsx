@@ -325,7 +325,7 @@ export function ClaimsPanel({
       </Panel>
 
       <Dialog open={drafting} onOpenChange={(o) => !busy && setDrafting(o)}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("claim.new")}</DialogTitle>
             <DialogDescription>{t("claim.new_desc", { days: terms.claimNoticeDays })}</DialogDescription>
@@ -452,7 +452,7 @@ export function ClaimsPanel({
       </Dialog>
 
       <Dialog open={submitting !== null} onOpenChange={(o) => !o && !busy && setSubmitting(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("claim.submit")}</DialogTitle>
             <DialogDescription dir="auto">{submitting ? `${t("claim.no", { no: claimNo(submitting.c.seq) })} — ${submitting.c.cause}` : ""}</DialogDescription>
@@ -501,7 +501,7 @@ export function ClaimsPanel({
       </Dialog>
 
       <Dialog open={responding !== null} onOpenChange={(o) => !o && !busy && setResponding(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("claim.response_title")}</DialogTitle>
             <DialogDescription dir="auto">{responding ? `${t("claim.no", { no: claimNo(responding.c.seq) })} — ${responding.c.cause}` : ""}</DialogDescription>

@@ -206,7 +206,7 @@ export function NcrPanel({
       )}
 
       <Dialog open={raising} onOpenChange={setRaising}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("ncr.form_title")}</DialogTitle>
             <DialogDescription>{t("ncr.form_note")}</DialogDescription>
@@ -301,7 +301,7 @@ export function NcrPanel({
       </Dialog>
 
       <Dialog open={planning !== null} onOpenChange={(o) => !o && setPlanning(null)}>
-        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("ncr.plan_title")}</DialogTitle>
             <DialogDescription dir="auto">{planning ? `${t("ncr.no", { no: projectDocNo(projectNo, planning.seq) })} — ${planning.what || itemName(planning.itemId)}` : ""}</DialogDescription>
@@ -344,7 +344,7 @@ export function NcrPanel({
       </Dialog>
 
       <Dialog open={closing !== null} onOpenChange={(o) => !o && setClosing(null)}>
-        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("ncr.close_title")}</DialogTitle>
             <DialogDescription dir="auto">{closing ? `${t("ncr.no", { no: projectDocNo(projectNo, closing.seq) })} — ${closing.what || itemName(closing.itemId)}` : ""}</DialogDescription>

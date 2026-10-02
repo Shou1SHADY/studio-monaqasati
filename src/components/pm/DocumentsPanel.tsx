@@ -204,7 +204,7 @@ export function DocumentsPanel({
       )}
 
       <Dialog open={open} onOpenChange={(o) => !busy && setOpen(o)}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("docs.form_title")}</DialogTitle>
             <DialogDescription dir="auto">{projectName}</DialogDescription>

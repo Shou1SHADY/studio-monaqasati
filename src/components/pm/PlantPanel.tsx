@@ -388,7 +388,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
       )}
 
       <Dialog open={mode !== null} onOpenChange={(o) => !o && setMode(null)}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{mode ? t(`plant.dlg.${mode.kind}`) : ""}</DialogTitle>
             <DialogDescription dir="auto">{mode && mode.kind !== "receive" ? `${mode.p.tag} — ${mode.p.name}` : t("plant.receive_note")}</DialogDescription>

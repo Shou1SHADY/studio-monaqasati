@@ -99,7 +99,7 @@ export function ReassignHandoverDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("reassign.title")}</DialogTitle>
           <DialogDescription dir="auto">{t("reassign.sub", { project: handover.title })}</DialogDescription>

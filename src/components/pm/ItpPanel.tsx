@@ -147,7 +147,7 @@ export function ItpPanel({ projectId, items, access, actor }: { projectId: strin
       )}
 
       <Dialog open={adding} onOpenChange={setAdding}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("itp.add")}</DialogTitle>
             <DialogDescription>{t("itp.add_desc")}</DialogDescription>

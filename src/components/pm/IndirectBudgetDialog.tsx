@@ -51,7 +51,7 @@ export function IndirectBudgetDialog({ open, onOpenChange, projectId, access, bu
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("money.cost.indirect_edit_title")}</DialogTitle>
           <DialogDescription>{t("money.cost.indirect_edit_desc")}</DialogDescription>

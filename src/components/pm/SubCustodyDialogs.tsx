@@ -143,7 +143,7 @@ export function SubStoreMoveDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{kind === "iss" ? t("subs.recon.issue") : t(`subs.recon.move_title_${kind}`)}</DialogTitle>
           <DialogDescription dir="auto">
@@ -277,7 +277,7 @@ export function SubStoreRecoverDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("subs.recon.recover_title")}</DialogTitle>
           <DialogDescription dir="auto">
