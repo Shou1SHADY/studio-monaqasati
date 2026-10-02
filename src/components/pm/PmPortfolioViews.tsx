@@ -4,6 +4,7 @@
 // prototype's portTable, archTable and fdrop/fbar). Money columns stay for
 // everyone; without money their amounts read «•••» (the prototype's money()).
 
+import { ShowMoreRow } from "@/components/module-ui/ShowMoreRow"
 import { useEffect } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Check, ChevronDown, X } from "lucide-react"
@@ -187,9 +188,9 @@ export function PmArchiveTable({ rows, money, kindLabel, managerLabel, shown, on
         </Table>
       </div>
       {left > 0 && (
-        <button type="button" onClick={onMore} className="w-full border-t py-3 text-sm font-semibold text-module hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+        <ShowMoreRow onClick={onMore}>
           {t("list.arch.more", { n: Math.min(12, left), left })}
-        </button>
+        </ShowMoreRow>
       )}
     </div>
   )

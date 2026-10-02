@@ -1,21 +1,16 @@
 "use client";
 
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations, useLocale } from 'next-intl';
-import { CheckCircle2, Play, BarChart3, MessageCircle, Calendar } from 'lucide-react';
+import { CheckCircle2, Play, BarChart3, MessageCircle, Calendar, Factory, Shapes } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { addDays, demoRequestSchema, riyadhToday } from '@/lib/demo-request';
 
-const schema = z.object({
-  name: z.string().trim().min(2),
-  company: z.string().trim().min(2),
-  phone: z.string().trim().min(7).regex(/^[+\d\s().\-]+$/),
-  email: z.string().trim().email(),
-});
-type FormData = z.infer<typeof schema>;
+type FormData = z.infer<typeof demoRequestSchema>;
 
 const fieldCls =
   'w-full h-11 rounded-xl bg-white/[0.04] border border-white/[0.1] text-white placeholder:text-slate-600 px-4 text-sm font-medium focus:outline-none focus:border-[#20CBD5]/40 focus:bg-white/[0.06] transition-all';
@@ -23,18 +18,23 @@ const errorBorderCls = 'border-red-500/40 focus:border-red-500/50';
 
 function Field({
   label,
+  htmlFor,
+  hint,
   error,
   children,
 }: {
   label: string;
+  htmlFor: string;
+  hint?: string;
   error?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-[12px] font-bold text-slate-400">{label}</label>
+      <label htmlFor={htmlFor} className="block text-[12px] font-bold text-slate-400">{label}</label>
       {children}
-      {error && <p className="text-[11px] font-medium text-red-400 mt-1">{error}</p>}
+      {hint && !error && <p className="text-[11px] font-medium text-slate-500 mt-1">{hint}</p>}
+      {error && <p role="alert" className="text-[11px] font-medium text-red-400 mt-1">{error}</p>}
     </div>
   );
 }
@@ -48,8 +48,18 @@ export function DemoRequestSection() {
   const {
     register,
     handleSubmit,
+    control,
+    setValue,
     formState: { errors, isSubmitting },
-  } = useForm<FormData>({ resolver: zodResolver(schema) });
+  } = useForm<FormData>({ resolver: zodResolver(demoRequestSchema), defaultValues: { businessOther: '' } });
+  const businessType = useWatch({ control, name: 'businessType' });
+  const today = riyadhToday();
+  const maxDay = addDays(today, 120);
+
+  const typeOptions = [
+    { value: 'manufacturer', icon: Factory, label: t('type_manufacturer') },
+    { value: 'other', icon: Shapes, label: t('type_other') },
+  ] as const;
 
   const onSubmit = async (data: FormData) => {
     setServerError(false);
@@ -134,8 +144,10 @@ export function DemoRequestSection() {
               <>
                 <h3 className="text-lg font-black text-white mb-6">{t('form_title')}</h3>
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-                  <Field label={t('form_name_label')} error={errors.name ? t('err_name') : undefined}>
+                  <Field label={t('form_name_label')} htmlFor="demo-name" error={errors.name ? t('err_name') : undefined}>
                     <input
+                      id="demo-name"
+                      aria-invalid={!!errors.name}
                       {...register('name')}
                       placeholder={t('form_name_ph')}
                       className={cn(fieldCls, errors.name && errorBorderCls)}
@@ -143,8 +155,10 @@ export function DemoRequestSection() {
                     />
                   </Field>
 
-                  <Field label={t('form_company_label')} error={errors.company ? t('err_company') : undefined}>
+                  <Field label={t('form_company_label')} htmlFor="demo-company" error={errors.company ? t('err_company') : undefined}>
                     <input
+                      id="demo-company"
+                      aria-invalid={!!errors.company}
                       {...register('company')}
                       placeholder={t('form_company_ph')}
                       className={cn(fieldCls, errors.company && errorBorderCls)}
@@ -153,8 +167,10 @@ export function DemoRequestSection() {
                   </Field>
 
                   <div className="grid sm:grid-cols-2 gap-4">
-                    <Field label={t('form_phone_label')} error={errors.phone ? t('err_phone') : undefined}>
+                    <Field label={t('form_phone_label')} htmlFor="demo-phone" error={errors.phone ? t('err_phone') : undefined}>
                       <input
+                        id="demo-phone"
+                        aria-invalid={!!errors.phone}
                         {...register('phone')}
                         placeholder={t('form_phone_ph')}
                         type="tel"
@@ -163,8 +179,10 @@ export function DemoRequestSection() {
                         autoComplete="tel"
                       />
                     </Field>
-                    <Field label={t('form_email_label')} error={errors.email ? t('err_email') : undefined}>
+                    <Field label={t('form_email_label')} htmlFor="demo-email" error={errors.email ? t('err_email') : undefined}>
                       <input
+                        id="demo-email"
+                        aria-invalid={!!errors.email}
                         {...register('email')}
                         placeholder={t('form_email_ph')}
                         type="email"
@@ -174,6 +192,58 @@ export function DemoRequestSection() {
                       />
                     </Field>
                   </div>
+
+                  <fieldset className="space-y-1.5">
+                    <legend className="block text-[12px] font-bold text-slate-400 mb-1.5">{t('form_type_label')}</legend>
+                    <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label={t('form_type_label')}>
+                      {typeOptions.map(({ value, icon: Icon, label }) => (
+                        <button
+                          key={value}
+                          type="button"
+                          role="radio"
+                          aria-checked={businessType === value}
+                          onClick={() => setValue('businessType', value, { shouldValidate: true })}
+                          className={cn(
+                            'flex h-11 items-center justify-center gap-2 rounded-xl border text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20CBD5]/60',
+                            businessType === value
+                              ? 'border-[#20CBD5]/60 bg-[#20CBD5]/10 text-white'
+                              : 'border-white/[0.1] bg-white/[0.04] text-slate-400 hover:border-white/20 hover:text-slate-200',
+                            errors.businessType && 'border-red-500/40'
+                          )}
+                        >
+                          <Icon size={15} aria-hidden="true" />
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {errors.businessType && <p role="alert" className="text-[11px] font-medium text-red-400 mt-1">{t('err_type')}</p>}
+                  </fieldset>
+
+                  {businessType === 'other' && (
+                    <Field label={t('form_type_other_label')} htmlFor="demo-type-other" error={errors.businessOther ? t('err_type_other') : undefined}>
+                      <input
+                        id="demo-type-other"
+                        aria-invalid={!!errors.businessOther}
+                        {...register('businessOther')}
+                        placeholder={t('form_type_other_ph')}
+                        maxLength={120}
+                        className={cn(fieldCls, errors.businessOther && errorBorderCls)}
+                      />
+                    </Field>
+                  )}
+
+                  <Field label={t('form_date_label')} htmlFor="demo-date" hint={t('form_date_hint')} error={errors.preferredDate ? t('err_date') : undefined}>
+                    <input
+                      id="demo-date"
+                      aria-invalid={!!errors.preferredDate}
+                      {...register('preferredDate')}
+                      type="date"
+                      min={today}
+                      max={maxDay}
+                      dir="ltr"
+                      className={cn(fieldCls, '[color-scheme:dark] text-start', errors.preferredDate && errorBorderCls)}
+                    />
+                  </Field>
 
                   {serverError && (
                     <p className="text-[12px] text-red-400 font-medium text-center">{t('server_error')}</p>

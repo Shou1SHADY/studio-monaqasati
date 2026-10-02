@@ -28,6 +28,7 @@ import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebas
 import { collection, query, where, orderBy, limit } from "firebase/firestore"
 import { useTranslations, useLocale } from 'next-intl'
 import { displayCity } from "@/lib/constants"
+import { CLIENT_STAGES, buildClientRows, summarizeClients, type ClientRecord, type ClientUser } from "@/lib/admin-crm"
 
 function getTs(ts: unknown): number {
   if (!ts) return 0
@@ -110,6 +111,12 @@ export default function AdminDashboard() {
     )
   }, [firestore, user, isUserLoading])
 
+  const crmRecordsQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return collection(firestore, "adminCrmClients")
+  }, [firestore, user, isUserLoading])
+
+  const { data: crmRecords } = useCollection<ClientRecord>(crmRecordsQuery)
   const { data: rfqs } = useCollection(rfqsQuery)
   const { data: users } = useCollection(usersQuery)
   const { data: offers } = useCollection(offersQuery)
@@ -124,6 +131,12 @@ export default function AdminDashboard() {
   const pendingSuppliers = users?.filter((u: any) => u.role === "Supplier" && u.verificationRequested && !u.isVerified).length || 0
   const pendingContractors = users?.filter((u: any) => u.role === "Contractor" && u.verificationRequested && !u.isVerified).length || 0
   const totalPending = pendingSuppliers + pendingContractors
+
+  const crmSummary = React.useMemo(() => {
+    const byId: Record<string, ClientRecord> = {}
+    for (const r of crmRecords ?? []) byId[r.id] = r
+    return summarizeClients(buildClientRows((users ?? []) as ClientUser[], byId, new Date()))
+  }, [users, crmRecords])
 
   // ── RFQs — drafts excluded from all analytics ──
   const publishedRfqsList = rfqs?.filter((r: any) => r.status !== "Draft") || []
@@ -321,6 +334,45 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Client CRM */}
+        <Card className="shadow-sm border border-t-2 border-t-primary">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 border-b pb-3">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Handshake className="h-4 w-4 text-primary" />
+              {t("crm_title")}
+            </CardTitle>
+            <Link href="/admin/crm">
+              <Button variant="ghost" size="sm" className="text-xs gap-1 text-muted-foreground h-7">
+                {t("crm_open")}
+                <ChevronRight className="h-3 w-3 rtl-flip" />
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent className="p-5 space-y-4">
+            <div className="grid grid-cols-3 gap-4">
+              <Link href="/admin/crm" className="rounded-lg p-3 hover:bg-muted/50 transition-colors">
+                <p className={cn("text-2xl font-black tabular-nums", crmSummary.followUpsDue > 0 && "text-amber-600")}>{crmSummary.followUpsDue}</p>
+                <p className="text-xs text-muted-foreground">{t("crm_followups_due")}</p>
+              </Link>
+              <Link href="/admin/crm" className="rounded-lg p-3 hover:bg-muted/50 transition-colors">
+                <p className={cn("text-2xl font-black tabular-nums", crmSummary.stale > 0 && "text-amber-600")}>{crmSummary.stale}</p>
+                <p className="text-xs text-muted-foreground">{t("crm_stale")}</p>
+              </Link>
+              <Link href="/admin/crm" className="rounded-lg p-3 hover:bg-muted/50 transition-colors">
+                <p className="text-2xl font-black tabular-nums">{crmSummary.unowned}</p>
+                <p className="text-xs text-muted-foreground">{t("crm_unowned")}</p>
+              </Link>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {CLIENT_STAGES.map((s) => (
+                <span key={s} className="text-[11px] bg-muted px-2.5 py-1 rounded-full font-semibold">
+                  {t(`crm_stage_${s}`)} <span className="tabular-nums" dir="ltr">{crmSummary.byStage[s]}</span>
+                </span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">

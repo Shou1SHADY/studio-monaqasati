@@ -7,6 +7,7 @@
 // in the project store until closed. Completed and stopped requests fold away.
 // The requests are the `purchaseRequests` Procurement's needs desk reads.
 
+import { ShowMoreRow } from "@/components/module-ui/ShowMoreRow"
 import { useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
 import { AlertTriangle, ArrowLeftRight, Box, Check, ClipboardList, Clock, Factory, Link2, Plus, ShoppingCart } from "lucide-react"
@@ -115,6 +116,7 @@ export function SupplyRequestsPanel({
     <div className="space-y-3">
       <Panel title={t("sup.title")} icon={ShoppingCart} count={live.length} actions={newBtn} bodyClassName="p-0">
         <p className="px-4 pt-3 text-xs text-muted-foreground">{t("sup.sub")}</p>
+        {!canReq && !access.ctx.archived && <p className="px-4 pt-2 text-xs text-amber-700 dark:text-amber-400">{t("sup.no_seat")}</p>}
         {world.requests.length === 0 ? (
           <EmptyState icon={ClipboardList} title={t("sup.empty")} className="py-8" />
         ) : live.length === 0 ? (
@@ -127,9 +129,9 @@ export function SupplyRequestsPanel({
           </div>
         )}
         {live.length > CAP && !all && (
-          <button type="button" className="w-full border-t py-2 text-xs font-bold text-module hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setAll(true)}>
+          <ShowMoreRow onClick={() => setAll(true)}>
             {t("sup.show_more", { count: live.length - CAP })}
-          </button>
+          </ShowMoreRow>
         )}
         {live.length > 0 && (
           <div className="flex flex-wrap gap-2 border-t px-4 py-2 text-[11px] text-muted-foreground">

@@ -11,6 +11,7 @@
 // and takes each project's request / store rows and collectable certificates
 // from the caller, which already reads them per project.
 
+import { ShowMoreRow } from "@/components/module-ui/ShowMoreRow"
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
@@ -222,13 +223,9 @@ export function WaitingOnOthers({
         </p>
       )}
       {view.more && (
-        <button
-          type="button"
-          onClick={() => setShowAll(true)}
-          className="w-full border-t py-3 text-sm font-bold text-cta hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-        >
+        <ShowMoreRow onClick={() => setShowAll(true)}>
           {t("wait.show_all", { count: view.total, by: view.byModule.map((m) => `${t(`wait.src.${m.module}`)} ${m.count}`).join(" · ") })}
-        </button>
+        </ShowMoreRow>
       )}
     </section>
   )

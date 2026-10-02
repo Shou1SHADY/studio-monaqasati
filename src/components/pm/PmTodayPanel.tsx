@@ -4,6 +4,7 @@
 // reddest first, each with the tab where it is solved — and, where the
 // prototype opens the work itself (prepare the IPC), the page is told the kind.
 
+import { ShowMoreRow } from "@/components/module-ui/ShowMoreRow"
 import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import {
@@ -157,9 +158,9 @@ export function DecisionList({ decisions, money, onOpen, limit }: { decisions: P
         ))}
       </ul>
       {limit && decisions.length > limit && (
-        <button type="button" onClick={() => setAll((v) => !v)} className="w-full border-t py-3 text-sm font-bold text-cta hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+        <ShowMoreRow onClick={() => setAll((v) => !v)}>
           {all ? t("dec.show_less") : t("dec.show_more", { count: decisions.length - limit })}
-        </button>
+        </ShowMoreRow>
       )}
     </>
   )

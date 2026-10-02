@@ -6,6 +6,7 @@
 // written off. Beside it: what is on its way and waits for the site to confirm
 // its receipt, and — for money holders — where the materials went, at cost.
 
+import { ShowMoreRow } from "@/components/module-ui/ShowMoreRow"
 import { useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
 import { collection, doc, query, where } from "firebase/firestore"
@@ -147,9 +148,9 @@ export function ProjectStorePanel({
                 </div>
               )}
               {list.length > CAP && !all && (
-                <button type="button" className="w-full border-t py-2 text-xs font-bold text-module hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setAll(true)}>
+                <ShowMoreRow onClick={() => setAll(true)}>
                   {t("sup.show_more", { count: list.length - CAP })}
-                </button>
+                </ShowMoreRow>
               )}
             </>
           )}
@@ -198,9 +199,9 @@ export function ProjectStorePanel({
               </div>
             )}
             {rows.length > 5 && !allRcv && (
-              <button type="button" className="w-full border-t py-2 text-xs font-bold text-module hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setAllRcv(true)}>
+              <ShowMoreRow onClick={() => setAllRcv(true)}>
                 {t("store.rcv.all", { count: rows.length })}
-              </button>
+              </ShowMoreRow>
             )}
           </Panel>
 

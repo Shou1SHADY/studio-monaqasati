@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore"
-import { ClipboardList } from "lucide-react"
+import { CalendarClock, CheckSquare, ClipboardList, Mail, MapPin, Phone, type LucideIcon } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -21,6 +21,13 @@ import {
   type CrmOpportunity,
 } from "@/lib/crm"
 import { DATE_INPUT_CLASS } from "@/components/crm/CrmOpportunityDialog"
+const ACTIVITY_ICONS: Record<ActivityType, LucideIcon> = {
+  call: Phone,
+  meeting: CalendarClock,
+  site_visit: MapPin,
+  task: CheckSquare,
+  email: Mail,
+}
 /**
  * Log a call, meeting, site visit, task or email.
  *
@@ -131,7 +138,9 @@ export function CrmActivityDialog({
             <fieldset className="space-y-1.5">
               <legend className="text-sm font-medium mb-1.5">{t("crm_activity_type")}</legend>
               <div className="flex flex-wrap gap-1.5">
-                {ACTIVITY_TYPES.map((at) => (
+                {ACTIVITY_TYPES.map((at) => {
+                  const TypeIcon = ACTIVITY_ICONS[at]
+                  return (
                   <button
                     key={at}
                     type="button"
@@ -139,14 +148,16 @@ export function CrmActivityDialog({
                     aria-pressed={type === at}
                     disabled={isSaving}
                     className={cn(
-                      "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                      "inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                       type === at ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"
                     )}
                   >
+                    <TypeIcon size={14} aria-hidden="true" />
                     {t(`crm_activity_type_${at}`)}
                   </button>
-                ))}
+                  )
+                })}
               </div>
             </fieldset>
             <div className="space-y-1.5">
@@ -197,7 +208,7 @@ export function CrmActivityDialog({
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="act-due">{t("crm_activity_due")}</Label>
+                <Label htmlFor="act-due">{t(type === "meeting" || type === "site_visit" ? "crm_activity_when" : "crm_activity_due")}</Label>
                 <input
                   id="act-due"
                   type="date"
