@@ -553,6 +553,12 @@ deployed uncommitted rules and they must be compared before being overwritten.
 (A service-account token must NOT send `x-goog-user-project`; only a gcloud
 user token needs that header — the script handles it.)
 
+**The script refuses to overwrite rules it does not know.** If the live ruleset matches no commit in this
+checkout's history of `firestore.rules`, a deploy stops with `refusing: …` (exit 2): another session deployed rules
+you have not fetched. `git fetch origin`, merge, run again; `--force` only after comparing. (Never chain
+`--check && deploy` — the check exits 0 whatever it found. On 2 Oct 2026 that took another developer's rules off
+prod for a minute.)
+
 **The ruleset is at Google's size ceiling.** A ruleset's COMPILED form may not pass 250 KB. Over it, the
 ruleset is created (it compiles) and the RELEASE is refused with a bare `400 INVALID_ARGUMENT` — the script prints
 `release patch failed` and the live rules stay as they were. It happened on 1 Oct 2026; the fix was to fold three

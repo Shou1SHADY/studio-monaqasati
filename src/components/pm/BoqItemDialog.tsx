@@ -53,7 +53,7 @@ export function BoqItemDialog({ projectId, access, money, line, existingCodes, o
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t(line ? "boq.item_edit_title" : "boq.item_add_title")}</DialogTitle>
           <DialogDescription>{t("boq.item_desc")}</DialogDescription>
