@@ -58,7 +58,7 @@ The owner signs in; never type passwords. If the screen needs a role, ask them t
 4. Open each dialog and the empty, loading and error states, not only the filled one.
 5. Screenshot only when the layout is the point; prefer `read_page` / `get_page_text` for text.
 
-For the local app use `preview_start` with the `dev` entry in `.claude/launch.json` (port 9002). UAT: `https://studio-monaqasati--mdmaktech-uat.us-east4.hosted.app`. Never submit irreversible test actions without the owner's OK.
+For the local app use `preview_start` with name "Studio Monaqasati" from `.claude/launch.json` (port 9002). UAT: `https://studio-monaqasati--mdmaktech-uat.us-east4.hosted.app`. Never submit irreversible test actions without the owner's OK.
 
 ## 5. Report
 
