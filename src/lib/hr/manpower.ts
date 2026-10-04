@@ -51,7 +51,7 @@ export function coverage(input: { trade: string; count: number; from: string; to
   const start = input.from > input.today ? input.from : input.today
   const drives = tradeOf(input.trade)?.drives ?? null
   const fit = (e: HrEmployee) => {
-    if (!legalOnSite({ nationality: e.nationality, docs: e.docs ?? {} }, start)) return "iqama_expired"
+    if (!legalOnSite({ ...e, docs: e.docs ?? {} }, start)) return "iqama_expired"
     if (drives && !mayDrive({ docs: e.docs ?? {}, drives }, start)) return "licence_expired"
     return null
   }

@@ -22,15 +22,16 @@ import { useOrgMembers } from "@/hooks/useOrgMembers"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { DOC_TYPES, type DocType } from "@/lib/hr/documents"
-import { assignBlocks, payChangeBlocks, probationBlocks, probationMaxEnd, renewalBlocks, type EmployeePay, type HrEmployee } from "@/lib/hr/employee"
-import { assignEmployee, changePay, decideProbation, linkUser, recordRenewal, type HrActor } from "@/lib/hr/employee-writes"
+import { assignBlocks, openingBlocks, payChangeBlocks, probationBlocks, probationMaxEnd, renewalBlocks, type EmployeePay, type HrEmployee } from "@/lib/hr/employee"
+import { accruedDays } from "@/lib/hr/leave"
+import { assignEmployee, changePay, decideProbation, linkUser, recordOpeningBalance, recordRenewal, startWork, type HrActor } from "@/lib/hr/employee-writes"
 import { hrMoney, todayDay } from "@/lib/hr/format"
 import { payFromBasic, wageOf } from "@/lib/hr/pay"
 import { UNASSIGNED_SITE, type HrSite } from "@/lib/hr/sites"
 import { TRADES } from "@/lib/hr/trades"
 import { HrWriteError } from "@/lib/hr/write-guard"
 
-export type EmployeeAction = "move" | "pay" | "probation" | "renew" | "link"
+export type EmployeeAction = "move" | "pay" | "probation" | "renew" | "link" | "start" | "opening"
 
 function useRun(onDone: () => void) {
   const t = useTranslations("Portal.HR")
@@ -83,6 +84,10 @@ export function EmployeeActionDialog({
   const [decision, setDecision] = useState<"confirm" | "extend" | "end">("confirm")
   const [extTo, setExtTo] = useState(probationMaxEnd(emp.join))
   const [consentOn, setConsentOn] = useState("")
+  const [lastDay, setLastDay] = useState(today < emp.probation.end ? today : emp.probation.end)
+  const [openLeave, setOpenLeave] = useState("")
+  const [openAdvance, setOpenAdvance] = useState("")
+  const [startOn, setStartOn] = useState(emp.join && emp.join <= today ? emp.join : today)
   const [docType, setDocType] = useState<DocType>("iqama")
   const [expiry, setExpiry] = useState("")
   const [fee, setFee] = useState("")
@@ -126,7 +131,7 @@ export function EmployeeActionDialog({
     title = t("file.act.pay")
     const n = Number(basic)
     const current = pay?.basic ?? 0
-    const res = payChangeBlocks({ basic: n, currentBasic: current, effectiveOn: effectiveOn || null, reason, nationality: emp.nationality, lastClosedMonthStart: null })
+    const res = payChangeBlocks({ basic: n, currentBasic: current, effectiveOn: effectiveOn || null, reason, nationality: emp.nationality, lastClosedMonthStart: null, trade: kind === "promotion" ? trade : null })
     blocks = res.blocks
     blockPrefix = "paychange.block"
     const next = n > 0 ? payFromBasic(n, access.settings.policies) : null
@@ -193,9 +198,11 @@ export function EmployeeActionDialog({
     )
   } else if (action === "probation") {
     title = t("file.act.probation")
-    blocks = probationBlocks(emp, decision, { to: extTo, consentOn: consentOn || null })
+    blocks = probationBlocks(emp, decision, { to: extTo, consentOn: consentOn || null }, today)
+    if (decision === "end" && !lastDay) blocks.push("no_last_day")
+    else if (decision === "end" && (lastDay > emp.probation.end || lastDay < emp.join)) blocks.push("probation_over")
     blockPrefix = "probation.block"
-    submit = () => void run(() => decideProbation(firestore!, access.ctx, emp.id, actor, decision, { to: extTo, consentOn: consentOn || null }), "file.probation_done", blockPrefix)
+    submit = () => void run(() => decideProbation(firestore!, access.ctx, emp.id, actor, decision, { to: extTo, consentOn: consentOn || null, lastDay }), decision === "end" ? "file.probation_ended" : "file.probation_done", blockPrefix)
     body = (
       <div className="space-y-4">
         <div className="space-y-1.5">
@@ -223,6 +230,12 @@ export function EmployeeActionDialog({
               <Label htmlFor="pb-c">{t("probation.consent")}</Label>
               <Input id="pb-c" type="date" dir="ltr" value={consentOn} onChange={(e) => setConsentOn(e.target.value)} disabled={busy} />
             </div>
+          </div>
+        )}
+        {decision === "end" && (
+          <div className="space-y-1.5">
+            <Label htmlFor="pb-last">{t("probation.last_day")}</Label>
+            <Input id="pb-last" type="date" dir="ltr" min={emp.join} max={emp.probation.end} value={lastDay} onChange={(e) => setLastDay(e.target.value)} disabled={busy} />
           </div>
         )}
         {decision === "end" && <Callout tone="warn">{t("probation.end_note")}</Callout>}
@@ -261,6 +274,44 @@ export function EmployeeActionDialog({
           </div>
         </div>
         <p className="text-xs text-muted-foreground">{t("renew.note")}</p>
+      </div>
+    )
+  } else if (action === "opening") {
+    title = t("file.act.opening")
+    const lb = Number(openLeave)
+    const adv = Number(openAdvance || 0)
+    const max = Math.floor(accruedDays(emp.join, today))
+    blocks = openLeave === "" ? ["bad_leave"] : openingBlocks(emp, { leave: lb, advance: adv }, pay, today)
+    blockPrefix = "opening.block"
+    submit = () => void run(() => recordOpeningBalance(firestore!, access.ctx, emp.id, actor, { leave: lb, advance: adv }), "file.opening_done", blockPrefix)
+    body = (
+      <div className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="op-lv">{t("opening.leave")}</Label>
+            <Input id="op-lv" type="number" min="0" max={max} step="1" dir="ltr" value={openLeave} onChange={(e) => setOpenLeave(e.target.value)} disabled={busy} />
+            <p className="text-[11px] text-muted-foreground">{t("opening.max", { n: max })}</p>
+          </div>
+          {access.seesPay(emp.id) && (
+            <div className="space-y-1.5">
+              <Label htmlFor="op-adv">{t("opening.advance")}</Label>
+              <Input id="op-adv" type="number" min="0" step="any" dir="ltr" value={openAdvance} onChange={(e) => setOpenAdvance(e.target.value)} disabled={busy} />
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">{t("opening.note")}</p>
+      </div>
+    )
+  } else if (action === "start") {
+    title = t("file.act.start")
+    blocks = emp.status !== "expected" ? ["not_expected"] : !startOn ? ["no_date"] : startOn > today ? ["future"] : []
+    blockPrefix = "start.block"
+    submit = () => void run(() => startWork(firestore!, access.ctx, emp.id, actor, { on: startOn || null }), "file.started", blockPrefix)
+    body = (
+      <div className="space-y-2">
+        <Label htmlFor="st-on">{t("start.on")}</Label>
+        <Input id="st-on" type="date" dir="ltr" max={today} value={startOn} onChange={(e) => setStartOn(e.target.value)} disabled={busy} />
+        <p className="text-xs text-muted-foreground">{t("start.note")}</p>
       </div>
     )
   } else {

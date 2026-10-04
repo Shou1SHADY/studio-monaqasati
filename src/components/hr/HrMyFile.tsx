@@ -23,7 +23,7 @@ import { useOrgMembers } from "@/hooks/useOrgMembers"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { HR_EMPLOYEES, HR_PAYSLIPS } from "@/lib/hr/collections"
 import { docState, DOC_TYPES } from "@/lib/hr/documents"
-import { displayName, type HrEmployee } from "@/lib/hr/employee"
+import { displayName, probationState, statusOn, type HrEmployee } from "@/lib/hr/employee"
 import type { HrActor } from "@/lib/hr/employee-writes"
 import { gratuity } from "@/lib/hr/eos"
 import { empNo, hrDate, hrMoney, todayDay } from "@/lib/hr/format"
@@ -37,7 +37,7 @@ import { HrViolationList, useHrViolations } from "./HrViolationList"
 import { NewLetterDialog } from "./HrLetterDialogs"
 import { HrLettersPanel } from "./HrLetters"
 import { DOC_TONE, STATUS_TONE } from "./HrPeopleView"
-import { REQUEST_TONE } from "./HrRequestList"
+import { CancelOwnRequest, REQUEST_TONE } from "./HrRequestList"
 import { NewRequestDialog } from "./NewRequestDialog"
 
 type Seg = "home" | "requests" | "leave" | "pay" | "docs"
@@ -111,7 +111,7 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
           <h2 className="text-lg font-black" dir="auto">
             {displayName(emp, locale)}
           </h2>
-          <StatusPill tone={STATUS_TONE[emp.status ?? "active"]}>{t(`status.${emp.status ?? "active"}`)}</StatusPill>
+          <StatusPill tone={STATUS_TONE[statusOn(emp, today)]}>{t(`status.${statusOn(emp, today)}`)}</StatusPill>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           {t(`trade.${emp.trade}` as "trade.mason")} · {siteName(emp.siteId) ?? t("sites.unassigned")}
@@ -156,7 +156,13 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
           <KeyValueRow label={t("new.contract")} value={emp.contract?.type === "fixed" ? t("file.fixed_until", { date: hrDate(emp.contract.end, locale) }) : t("contract.open")} />
           <KeyValueRow
             label={t("file.probation")}
-            value={emp.probation?.decision ? t(`file.probation_${emp.probation.decision}`) : t("file.probation_until", { date: hrDate(emp.probation?.end, locale) })}
+            value={
+              emp.probation?.decision
+                ? t(`file.probation_${emp.probation.decision}`)
+                : probationState(emp, today) === "lapsed"
+                  ? t("file.probation_lapsed", { date: hrDate(emp.probation?.end, locale) })
+                  : t("file.probation_until", { date: hrDate(emp.probation?.end, locale) })
+            }
           />
           <KeyValueRow label={t("me.line_manager")} value={memberName(site?.supervisorUserId) ?? t("me.holder.hr")} />
           <KeyValueRow label={t("file.tile.leave")} value={t("file.days", { n: balance })} strong />
@@ -183,6 +189,9 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
                     </span>
                     <span>{t(`req.kind.${r.kind}`)}</span>
                     <StatusPill tone={REQUEST_TONE[r.state]}>{t(`req.state.${r.state}`)}</StatusPill>
+                    <span className="ms-auto">
+                      <CancelOwnRequest access={access} r={r} actor={actor} />
+                    </span>
                   </p>
                   {holder(r) && <p className="text-xs text-muted-foreground">{t("me.held_by", { name: holder(r)! })}</p>}
                   {(r.decision?.note || r.finance?.note || r.cancel?.note) && (

@@ -30,9 +30,18 @@ export interface DocDates {
   forklift?: string | null
 }
 
-/** DC-02 — may this person be placed on a site today? A Saudi has no iqama. */
-export function legalOnSite(emp: { nationality: string; docs: DocDates }, today: string): boolean {
+/** DC-05 — a visa arrival whose iqama was not issued within 90 days of arriving (the join day). */
+export function iqamaOverdue(emp: { nationality: string; docs: DocDates; source?: string | null; join?: string | null }, today: string): boolean {
+  return emp.nationality !== "sa" && !emp.docs.iqama && emp.source === "visa" && Boolean(emp.join) && today > iqamaDueBy(emp.join as string)
+}
+
+/** DC-02 — may this person be placed on a site today? A Saudi has no iqama. An
+ * expired iqama is not legal on a site — nor is an arrival's that was never
+ * issued once its 90 days have run (DC-05). A date simply not recorded for
+ * anyone else stays a blank, not a block. */
+export function legalOnSite(emp: { nationality: string; docs: DocDates; source?: string | null; join?: string | null }, today: string): boolean {
   if (emp.nationality === "sa") return true
+  if (iqamaOverdue(emp, today)) return false
   return docState(emp.docs.iqama, today) !== "expired"
 }
 

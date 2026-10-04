@@ -60,6 +60,8 @@ export const HR_GUARD = {
   "iban.fix": { roles: ["payroll"] },
   "iban.approve": { roles: ["manager"] },
   "leave.endorse": { roles: ["supervisor"], siteScoped: ["supervisor"] },
+  // AT-05 — "started today" after a leave: the workplace's supervisor or the HR manager.
+  "leave.return": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
   "request.decide": { roles: ["manager"] },
   // Letters (EM-08, WF-24): the HR manager asks for an employee (his own come
   // from My file); the HR manager, government relations (embassy letters) and
@@ -136,6 +138,21 @@ export function hrTabs(ctx: Pick<HrContext, "roles" | "employeeId">, features: R
 // ---------------------------------------------------------------------------
 // Rules that need the request's data (RL-02, LV-05)
 // ---------------------------------------------------------------------------
+
+/** RL-02, LV-05 — is the platform user behind an employee record an HR manager?
+ * Read from HIS default group, the way firestore.rules read it (hrUserManages):
+ * the org owner (an account with no organizationRole is a legacy owner) or a
+ * group holding `employees.manage` or '*'. A user of another company is not. */
+export function userIsHrManager(
+  user: { id: string; organizationId?: string | null; organizationRole?: string | null; defaultGroupId?: string | null } | null,
+  group: { organizationId?: string | null; permissions?: readonly string[] | null } | null,
+  orgId: string
+): boolean {
+  if (!user || (user.organizationId !== orgId && user.id !== orgId)) return false
+  if (!("organizationRole" in user) || user.organizationRole === "owner") return true
+  if (!group || group.organizationId !== orgId) return false
+  return (group.permissions ?? []).some((p) => p === "*" || p === HR_ROLE_PERMISSION.manager)
+}
 
 /** Who decides a request: the HR manager — except on his own, which goes to
  * management. The owner, who has nobody above, decides his own, flagged. */

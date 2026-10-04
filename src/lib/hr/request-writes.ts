@@ -5,7 +5,7 @@
 // an amount (RL-03).
 
 import { collection, doc, runTransaction, serverTimestamp, type DocumentData, type Firestore, type Transaction, type UpdateData } from "firebase/firestore"
-import { mayDecideRequest, type HrContext } from "./access"
+import { hrRefusal, mayDecideRequest, userIsHrManager, type HrContext } from "./access"
 import { HR_EMPLOYEES, HR_PAY, HR_REQUESTS } from "./collections"
 import type { EmployeePay, HrEmployee } from "./employee"
 import { HR_LOG, type HrActor } from "./employee-writes"
@@ -21,16 +21,14 @@ import {
   type DataFields,
   type HrRequest,
   type HrRequestKind,
+  type LeaveMode,
   type Stamp,
 } from "./requests"
-import { serviceYears, type HrPolicies } from "./statutory"
+import { daysBetween, serviceYears, type HrPolicies } from "./statutory"
 import { drawYearlyDocNumber } from "../sales-numbering"
+import { todayDay } from "./format"
 import { HrWriteError } from "./write-guard"
 
-const localToday = () => {
-  const now = new Date()
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
-}
 const stamp = (actor: HrActor, note?: string | null): Stamp => ({ by: actor.uid, byName: actor.name, at: new Date().toISOString(), note: note?.trim() || null })
 
 function log(tx: Transaction, firestore: Firestore, emp: Pick<HrEmployee, "id" | "organizationId">, actor: HrActor, kind: string, params: Record<string, string | number | null>) {
@@ -43,6 +41,17 @@ async function readEmp(tx: Transaction, firestore: Firestore, id: string): Promi
   return { id: snap.id, ...(snap.data() as Omit<HrEmployee, "id">) }
 }
 
+/** RL-02 — is the EMPLOYEE (not whoever files or decides) an HR manager? His own then goes to management. */
+async function employeeIsHrManager(tx: Transaction, firestore: Firestore, orgId: string, userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false
+  const u = await tx.get(doc(firestore, "users", userId))
+  if (!u.exists()) return false
+  const user = { id: u.id, ...(u.data() as { organizationId?: string | null; organizationRole?: string | null; defaultGroupId?: string | null }) }
+  const gid = typeof user.defaultGroupId === "string" && user.defaultGroupId ? user.defaultGroupId : null
+  const g = gid ? await tx.get(doc(firestore, "teamGroups", gid)) : null
+  return userIsHrManager(user, g?.exists() ? (g.data() as { organizationId?: string; permissions?: string[] }) : null, orgId)
+}
+
 async function readReq(tx: Transaction, firestore: Firestore, id: string): Promise<HrRequest> {
   const snap = await tx.get(doc(firestore, HR_REQUESTS, id))
   if (!snap.exists()) throw new HrWriteError("missing")
@@ -52,20 +61,20 @@ async function readReq(tx: Transaction, firestore: Firestore, id: string): Promi
 export interface FileRequestInput {
   employeeId: string
   kind: HrRequestKind
-  leave?: { type: LeaveType; from: string; to: string; excessUnpaid: boolean; travel: boolean; note?: string | null }
+  leave?: { type: LeaveType; from: string; to: string; note?: string | null }
   advance?: { amount: number; reason: string }
   data?: DataFields
   /** The site's supervisor — the line manager (RL-04) — as the site names him. */
   supervisor?: { employeeId: string | null; userId: string | null } | null
 }
 
-type Opts = { policies: HrPolicies; holidays?: Holiday[]; today?: string; others?: Array<{ from: string; to: string }>; pendingAdvance?: boolean }
+type Opts = { policies: HrPolicies; holidays?: readonly Holiday[]; today?: string; others?: Array<{ from: string; to: string }>; pendingAdvance?: boolean; leaveMode?: LeaveMode | null }
 
 /** The employee files his own (My file); the HR manager files on his behalf. */
 export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: string, actor: HrActor, input: FileRequestInput, opts: Opts): Promise<{ id: string; no: string }> {
   const own = Boolean(ctx.employeeId) && ctx.employeeId === input.employeeId
   if (!own && !ctx.roles.has("manager")) throw new HrWriteError("no_role")
-  const today = opts.today ?? localToday()
+  const today = opts.today ?? todayDay()
   const ref = doc(collection(firestore, HR_REQUESTS))
   let no = ""
   await runTransaction(firestore, async (tx) => {
@@ -73,6 +82,9 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
     if (emp.organizationId !== orgId) throw new HrWriteError("missing")
     if (emp.status === "left") throw new HrWriteError("blocked", ["left"])
     const pay = input.kind === "advance" ? await tx.get(doc(firestore, HR_PAY, emp.id)) : null
+    // LV-05, RL-02 — the level follows who the employee IS: an HR manager's own request goes to
+    // management whoever files it (another HR manager filing for him included).
+    const hrManagerEmployee = (own && ctx.roles.has("manager")) || (await employeeIsHrManager(tx, firestore, orgId, emp.userId))
     const base = {
       organizationId: orgId,
       kind: input.kind,
@@ -82,8 +94,7 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
       siteId: emp.siteId ?? null,
       lineManagerId: input.supervisor?.employeeId && input.supervisor.employeeId !== emp.id ? input.supervisor.employeeId : null,
       lineManagerUserId: input.supervisor?.userId && input.supervisor.userId !== emp.userId ? input.supervisor.userId : null,
-      // LV-05 — the HR manager's own goes to management.
-      deciderLevel: (emp.userId === ctx.uid && ctx.roles.has("manager") ? "management" : "manager") as HrRequest["deciderLevel"],
+      deciderLevel: (hrManagerEmployee ? "management" : "manager") as HrRequest["deciderLevel"],
       filedBy: stamp(actor),
       onBehalf: !own,
       state: "pending" as const,
@@ -92,9 +103,10 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
     let body: Partial<HrRequest>
     if (input.kind === "leave") {
       const l = input.leave!
-      const q = leaveQuote(emp, l, { holidays: opts.holidays, others: opts.others })
+      // Above the balance and a lapsing document are said before sending, not refused — HR decides (LV-03, LV-04).
+      const q = leaveQuote(emp, { type: l.type, from: l.from, to: l.to }, { holidays: opts.holidays, others: opts.others })
       if (q.blocks.length) throw new HrWriteError("blocked", q.blocks)
-      body = { leave: { type: l.type, from: l.from, to: l.to, days: q.days, balance: q.balance, fromBalance: q.fromBalance, unpaidDays: q.unpaidDays, travel: l.travel, sick: q.sick, note: l.note?.trim() || null } }
+      body = { leave: { type: l.type, from: l.from, to: l.to, days: q.days, balance: q.balance, fromBalance: q.fromBalance, unpaidDays: q.unpaidDays, travel: q.travel, sick: q.sick, note: l.note?.trim() || null } }
     } else if (input.kind === "data") {
       const d = input.data!
       const blocks = dataBlocks(d)
@@ -137,11 +149,14 @@ export async function decideRequest(
   note: string,
   opts: Opts
 ): Promise<{ state: HrRequest["state"] }> {
-  const today = opts.today ?? localToday()
+  const today = opts.today ?? todayDay()
   let state: HrRequest["state"] = "declined"
   await runTransaction(firestore, async (tx) => {
     const r = await readReq(tx, firestore, id)
-    const refusal = mayDecideRequest(ctx, { employeeId: r.employeeId, isHrManager: r.deciderLevel === "management" })
+    // The stored level, or the employee's own standing now — a request filed when the level
+    // followed the filer (or before he became HR manager) is never decided by a peer (RL-02).
+    const isHrManager = r.deciderLevel === "management" || (await employeeIsHrManager(tx, firestore, r.organizationId, r.employeeUserId))
+    const refusal = mayDecideRequest(ctx, { employeeId: r.employeeId, isHrManager })
     if (refusal) throw new HrWriteError(refusal)
     if (r.state !== "pending" && r.state !== "endorsed") throw new HrWriteError("blocked", ["stale"])
     const emp = await readEmp(tx, firestore, r.employeeId)
@@ -168,11 +183,12 @@ export async function decideRequest(
     }
     if (r.kind === "leave") {
       const l = r.leave!
-      const q = leaveQuote(emp, { type: l.type, from: l.from, to: l.to, excessUnpaid: l.unpaidDays > 0 && Boolean(LEAVE_RULES[l.type].fromBalance), travel: l.travel }, { holidays: opts.holidays })
-      const blocks: string[] = [...q.blocks]
-      // LV-04 — not approvable for travel while a document would lapse abroad.
-      if (q.warnings.includes("travel_docs")) blocks.push("travel_docs")
-      if (blocks.length) throw new HrWriteError("blocked", blocks)
+      // LV-03 — above the balance HR chooses: balance only, or the excess unpaid. A request filed
+      // before the choice moved to HR carried "excess unpaid" from the form; it keeps it.
+      const mode = opts.leaveMode ?? (l.unpaidDays > 0 && LEAVE_RULES[l.type].fromBalance ? "excess_unpaid" : null)
+      // LV-04 — and no leave is approved for travel while a document would lapse abroad (blocks here).
+      const q = leaveQuote(emp, { type: l.type, from: l.from, to: l.to, mode }, { holidays: opts.holidays, deciding: true })
+      if (q.blocks.length) throw new HrWriteError("blocked", q.blocks)
       const patch: UpdateData<DocumentData> = { updatedAt: serverTimestamp() }
       if (q.fromBalance) patch.leaveTaken = (emp.leaveTaken ?? 0) + q.fromBalance
       if (l.type === "sick") patch.sick = { year: Math.floor(serviceYears(emp.join, l.from)), days: sickUsedIn(emp, l.from) + q.days }
@@ -181,10 +197,21 @@ export async function decideRequest(
       tx.update(reqRef, {
         state: "approved",
         decision,
-        leave: { ...l, days: q.days, balance: q.balance, fromBalance: q.fromBalance, unpaidDays: q.unpaidDays, sick: q.sick },
+        leave: {
+          ...l,
+          to: q.to,
+          requestedTo: q.to !== l.to ? l.to : (l.requestedTo ?? null),
+          mode: q.to !== l.to || q.unpaidDays > 0 ? mode : null,
+          days: q.days,
+          balance: q.balance,
+          fromBalance: q.fromBalance,
+          unpaidDays: q.unpaidDays,
+          travel: q.travel,
+          sick: q.sick,
+        },
         updatedAt: serverTimestamp(),
       })
-      log(tx, firestore, emp, actor, "leave_approved", { no: r.no, from: l.from, to: l.to })
+      log(tx, firestore, emp, actor, "leave_approved", { no: r.no, from: l.from, to: q.to })
       state = "approved"
       return
     }
@@ -229,9 +256,37 @@ export async function financeDecideAdvance(firestore: Firestore, actor: HrActor 
   })
 }
 
+export type ReturnBlock = "stale" | "no_date" | "future" | "before_end"
+
+/** AT-05 — the return from a leave ("started today"), recorded once by the workplace's supervisor
+ * or the HR manager. Days between the leave's end and the return are counted late — absence
+ * without leave, which the sheet has been marking absent until now (art. 80 runs on them). */
+export async function recordReturn(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, input: { on: string | null }, opts: { today?: string } = {}): Promise<{ lateDays: number }> {
+  const today = opts.today ?? todayDay()
+  let lateDays = 0
+  await runTransaction(firestore, async (tx) => {
+    const r = await readReq(tx, firestore, id)
+    if (r.kind !== "leave" || r.state !== "approved" || !r.leave || r.returned) throw new HrWriteError("blocked", ["stale"])
+    // A supervisor answers for his own workplaces — never for someone unassigned.
+    const refusal = hrRefusal(ctx, "leave.return", { site: r.siteId }) ?? (!r.siteId && !ctx.roles.has("manager") ? "not_your_site" : null)
+    if (refusal) throw new HrWriteError(refusal)
+    const blocks: ReturnBlock[] = []
+    if (!input.on) blocks.push("no_date")
+    else if (input.on > today) blocks.push("future")
+    else if (input.on <= r.leave.to) blocks.push("before_end")
+    if (blocks.length) throw new HrWriteError("blocked", blocks)
+    const on = input.on as string
+    lateDays = Math.max(0, daysBetween(r.leave.to, on) - 1)
+    const emp = await readEmp(tx, firestore, r.employeeId)
+    tx.update(doc(firestore, HR_REQUESTS, id), { returned: { on, by: actor.uid, byName: actor.name, at: new Date().toISOString(), lateDays }, updatedAt: serverTimestamp() })
+    log(tx, firestore, emp, actor, "leave_returned", { no: r.no, on, late: lateDays })
+  })
+  return { lateDays }
+}
+
 /** Cancel a request that has not started (LV-07): an approved leave gives its days back. */
 export async function cancelRequest(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, note: string, opts: { today?: string } = {}): Promise<void> {
-  const today = opts.today ?? localToday()
+  const today = opts.today ?? todayDay()
   await runTransaction(firestore, async (tx) => {
     const r = await readReq(tx, firestore, id)
     if (!mayCancel(ctx, r, today)) throw new HrWriteError("no_role")

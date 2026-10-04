@@ -6,7 +6,7 @@
 // values (read-only — the law, not a choice), and the establishment file.
 
 import { useEffect, useState } from "react"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { BookLock, Building2, Loader2, Save, SlidersHorizontal, ToggleRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,7 +19,9 @@ import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { pmPct } from "@/lib/pm/format"
+import { publicHolidays } from "@/lib/hr/holidays"
 import { BUSINESS_TYPES, HR_FEATURES, withBusinessType, type BusinessType, type HrSettings } from "@/lib/hr/settings"
+import { hrDate, todayDay } from "@/lib/hr/format"
 import { saveHrSettings } from "@/lib/hr/settings-writes"
 import { STATUTORY, type HrPolicies } from "@/lib/hr/statutory"
 import { HrWriteError } from "@/lib/hr/write-guard"
@@ -29,8 +31,10 @@ const LATER: ReadonlySet<string> = new Set(["hire", "perf", "train", "punch", "g
 
 export function HrSettingsView({ access }: { access: HrAccess }) {
   const t = useTranslations("Portal.HR")
+  const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
+  const year = Number(todayDay().slice(0, 4))
   const canEdit = access.allowed("settings.manage")
   const [draft, setDraft] = useState<HrSettings>(access.settings)
   const [busy, setBusy] = useState(false)
@@ -198,6 +202,13 @@ export function HrSettingsView({ access }: { access: HrAccess }) {
           <KeyValueRow label={t("law.eos")} value={t("law.eos_v")} />
           <KeyValueRow label={t("law.advance")} value={t("law.advance_v", { share: pmPct(S.advance.instalmentShare) })} />
           <KeyValueRow label={t("law.penalty")} value={t("law.penalty_v", { cap: S.penalties.monthlyCapDays, days: S.penalties.objectionDays })} />
+          <KeyValueRow label={t("law.hours")} value={t("law.hours_v", { normal: S.normalHours, ramadan: S.ramadanHours })} />
+        </div>
+        <div className="mt-3 border-t pt-3">
+          <p className="mb-1 text-xs font-bold text-muted-foreground">{t("law.holidays", { year })}</p>
+          {publicHolidays(year).map((h) => (
+            <KeyValueRow key={h.key} label={t(`holiday.${h.key}`)} value={h.days > 1 ? t("law.holiday_days", { date: hrDate(h.from, locale), n: h.days }) : hrDate(h.from, locale)} />
+          ))}
         </div>
       </Panel>
     </div>

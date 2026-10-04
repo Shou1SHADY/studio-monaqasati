@@ -16,7 +16,7 @@ import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useHrPeople, useOrgPay } from "@/hooks/useHrPeople"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { Link } from "@/i18n/routing"
-import { displayName, EMPLOYEE_STATUSES, type EmployeeStatus } from "@/lib/hr/employee"
+import { displayName, EMPLOYEE_STATUSES, statusOn, type EmployeeStatus } from "@/lib/hr/employee"
 import { empNo, hrMoney, nearestDocument, todayDay } from "@/lib/hr/format"
 import type { DocState } from "@/lib/hr/documents"
 import { wageOf } from "@/lib/hr/pay"
@@ -62,7 +62,7 @@ export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; 
         if (search.trim()) return matchesSearch(search, [e.names?.ar, e.names?.en, String(e.no), e.idNo, t(`trade.${e.trade}` as "trade.mason")])
         // A KPI's list counts everyone not left — it looks across the status chips, as the KPI does.
         if (docFilter) return inPeopleFilter(docFilter, e, today, access.settings.policies.renewWindowDays) && (site === "__all__" || (site === UNASSIGNED_SITE ? !e.siteId : e.siteId === site))
-        if (status !== "all" && (e.status ?? "active") !== status) return false
+        if (status !== "all" && statusOn(e, today) !== status) return false
         if (site === UNASSIGNED_SITE) return !e.siteId
         return site === "__all__" || e.siteId === site
       }),
@@ -70,9 +70,9 @@ export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; 
   )
   const counts = useMemo(() => {
     const m = new Map<string, number>()
-    for (const e of employees) m.set(e.status ?? "active", (m.get(e.status ?? "active") ?? 0) + 1)
+    for (const e of employees) m.set(statusOn(e, today), (m.get(statusOn(e, today)) ?? 0) + 1)
     return m
-  }, [employees])
+  }, [employees, today])
 
   if (!isLoading && employees.length === 0) {
     return (
@@ -178,7 +178,7 @@ export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; 
                     {doc ? <StatusPill tone={DOC_TONE[doc.state]}>{t("people.doc_line", { doc: t(`doc.${doc.type}`), state: t(`doc_state.${doc.state}`) })}</StatusPill> : <span className="text-xs text-muted-foreground">{t("people.no_docs")}</span>}
                   </td>
                   <td className="px-3 py-2">
-                    <StatusPill tone={STATUS_TONE[e.status ?? "active"]}>{t(`status.${e.status ?? "active"}`)}</StatusPill>
+                    <StatusPill tone={STATUS_TONE[statusOn(e, today)]}>{t(`status.${statusOn(e, today)}`)}</StatusPill>
                   </td>
                   {money && (
                     <td className="px-3 py-2 text-end font-semibold tabular-nums" dir="ltr">

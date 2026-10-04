@@ -8,11 +8,11 @@
 
 import type { HrContext } from "./access"
 import { mayDecideRequest, mayEndorse } from "./access"
-import { docState, type DocDates } from "./documents"
+import type { DocDates } from "./documents"
 import type { EmployeePay, HrEmployee } from "./employee"
-import { balanceSplit, leaveBalance, leaveDays, leaveEligibility, LEAVE_RULES, sickSplit, type Holiday, type LeaveEligibility, type LeaveType, type SickSplit } from "./leave"
+import { balanceSplit, leaveBalance, leaveDays, leaveEligibility, leaveEndAfter, LEAVE_RULES, sickSplit, type Holiday, type LeaveEligibility, type LeaveType, type SickSplit } from "./leave"
 import { advanceInstalment, advanceMonths, wageOf } from "./pay"
-import { addDays, serviceYears, type HrPolicies } from "./statutory"
+import { addDays, daysBetween, serviceYears, STATUTORY, type HrPolicies } from "./statutory"
 
 export const HR_REQUEST_KINDS = ["leave", "advance", "data"] as const
 export type HrRequestKind = (typeof HR_REQUEST_KINDS)[number]
@@ -66,7 +66,10 @@ export interface LeaveFields {
   /** Taken from the balance, and the excess taken unpaid (LV-03). */
   fromBalance: number
   unpaidDays: number
-  /** The employee travels — his iqama and passport must outlast the return (LV-04). */
+  /** HR's choice on a leave above the balance (LV-03), and the end asked for when "balance only" shortened it. */
+  mode?: LeaveMode | null
+  requestedTo?: string | null
+  /** A non-Saudi's leave is travel — his iqama and passport must outlast it (LV-04). Computed, never ticked. */
   travel: boolean
   sick?: SickSplit | null
   note?: string | null
@@ -109,6 +112,8 @@ export interface HrRequest {
   financeHold?: boolean
   finance?: Stamp | null
   cancel?: Stamp | null
+  /** AT-05 — the day he started again after the leave, who recorded it, and the days late (absence without leave). */
+  returned?: { on: string; by: string; byName: string | null; at: string; lateDays: number } | null
   createdAt: string
 }
 
@@ -116,15 +121,25 @@ export interface HrRequest {
 // Leave (LV-01…06)
 // ---------------------------------------------------------------------------
 
-export type LeaveBlock = "bad_dates" | "too_long" | "above_balance" | "overlap" | LeaveEligibility
-export type LeaveWarning = "travel_docs" | "sick_beyond" | "excess_unpaid"
+export type LeaveBlock = "bad_dates" | "too_long" | "above_balance" | "no_balance" | "overlap" | "travel_docs" | LeaveEligibility
+export type LeaveWarning = "travel_docs" | "sick_beyond" | "above_balance" | "excess_unpaid"
+
+/** LV-03 — how HR approves a leave above the balance: shortened to the balance, or with the excess unpaid. */
+export const LEAVE_MODES = ["balance_only", "excess_unpaid"] as const
+export type LeaveMode = (typeof LEAVE_MODES)[number]
 
 export interface LeaveQuote {
   days: number
   balance: number
   fromBalance: number
   unpaidDays: number
+  /** Days above the balance still waiting for HR's choice (0 once chosen). */
+  excess: number
+  /** The last day — the one asked for, or the day the balance runs out ("balance only"). */
+  to: string
   sick: SickSplit | null
+  /** A non-Saudi's leave is travel (LV-04): his iqama and passport must outlast it. */
+  travel: boolean
   blocks: LeaveBlock[]
   warnings: LeaveWarning[]
 }
@@ -135,23 +150,36 @@ export function sickUsedIn(emp: Pick<HrEmployee, "join" | "sick">, day: string):
   return emp.sick.year === Math.floor(serviceYears(emp.join, day)) ? emp.sick.days : 0
 }
 
-/** Documents that would expire before the employee is back (LV-04). */
-export function travelDocsExpire(docs: DocDates | null | undefined, nationality: string, returnDay: string): boolean {
+/** LV-04 — an iqama or passport that expires on or before the leave's last day: he would come
+ * back on an expired document. A date not recorded is not a lapse — a blank stays blank. */
+export function travelDocsExpire(docs: DocDates | null | undefined, nationality: string, lastDay: string): boolean {
   if (nationality === "sa") return false
-  return (["iqama", "passport"] as const).some((k) => docState(docs?.[k], returnDay) === "expired" || !docs?.[k])
+  return (["iqama", "passport"] as const).some((k) => {
+    const d = docs?.[k]
+    return Boolean(d) && (d as string) <= lastDay
+  })
 }
 
+/**
+ * A leave as the system computes it (WF-07 steps 1–2, 4). Filing, what blocks
+ * stops the form and the rest is said before sending: above the balance and a
+ * document lapsing before the return are WARNINGS — HR decides. Deciding
+ * (`ctx.deciding`), both block until resolved: above the balance needs HR's
+ * choice (`mode`), and no leave is approved for travel past a lapsing
+ * document (LV-04) — "balance only" may cure that by ending sooner.
+ */
 export function leaveQuote(
   emp: Pick<HrEmployee, "join" | "gender" | "hajjTaken" | "leaveTaken" | "openingLeave" | "sick" | "docs" | "nationality">,
-  input: { type: LeaveType; from: string; to: string; excessUnpaid: boolean; travel: boolean },
-  ctx: { holidays?: Holiday[]; others?: Array<{ from: string; to: string }> } = {}
+  input: { type: LeaveType; from: string; to: string; mode?: LeaveMode | null },
+  ctx: { holidays?: readonly Holiday[]; others?: Array<{ from: string; to: string }>; deciding?: boolean } = {}
 ): LeaveQuote {
   const blocks: LeaveBlock[] = []
   const warnings: LeaveWarning[] = []
   const rule = LEAVE_RULES[input.type]
   const valid = Boolean(input.from && input.to && input.to >= input.from)
   if (!valid) blocks.push("bad_dates")
-  const days = valid ? leaveDays(input.from, input.to, ctx.holidays) : 0
+  let to = input.to
+  let days = valid ? leaveDays(input.from, input.to, ctx.holidays) : 0
   const balance = input.from ? leaveBalance(emp.join, input.from, emp.leaveTaken ?? 0, emp.openingLeave ?? 0) : 0
   const elig = input.from ? leaveEligibility(input.type, emp, input.from) : null
   if (elig) blocks.push(elig)
@@ -159,23 +187,66 @@ export function leaveQuote(
   if (valid && (ctx.others ?? []).some((o) => o.from <= input.to && input.from <= o.to)) blocks.push("overlap")
   let fromBalance = 0
   let unpaidDays = 0
+  let excess = 0
   let sick: SickSplit | null = null
   if (rule.fromBalance) {
     const split = balanceSplit(days, Math.max(0, balance))
     fromBalance = split.fromBalance
-    if (split.excess > 0) {
-      if (input.excessUnpaid) {
-        unpaidDays = split.excess
+    excess = split.excess
+    if (excess > 0) {
+      if (input.mode === "excess_unpaid") {
+        unpaidDays = excess
+        excess = 0
         warnings.push("excess_unpaid")
-      } else blocks.push("above_balance")
+      } else if (input.mode === "balance_only") {
+        if (balance <= 0) blocks.push("no_balance")
+        else {
+          to = leaveEndAfter(input.from, balance, ctx.holidays)
+          days = balance
+          fromBalance = balance
+          excess = 0
+        }
+      } else (ctx.deciding ? blocks : warnings).push("above_balance")
     }
   } else if (rule.pay === "none") unpaidDays = days
   else if (rule.pay === "sick" && input.from) {
     sick = sickSplit(sickUsedIn(emp, input.from), days)
     if (sick.beyond > 0) warnings.push("sick_beyond")
   }
-  if (input.travel && valid && travelDocsExpire(emp.docs, emp.nationality, addDays(input.to, 1))) warnings.push("travel_docs")
-  return { days, balance, fromBalance, unpaidDays, sick, blocks, warnings }
+  const travel = emp.nationality !== "sa"
+  if (travel && valid && travelDocsExpire(emp.docs, emp.nationality, to)) (ctx.deciding ? blocks : warnings).push("travel_docs")
+  return { days, balance, fromBalance, unpaidDays, excess, to, sick, travel, blocks, warnings }
+}
+
+/** LV-03 — the days of a filed leave above its balance, waiting for HR's choice (0 when none,
+ * or when an older request already carried "excess unpaid" from the form). */
+export function aboveBalance(r: Pick<HrRequest, "kind" | "leave">): number {
+  const l = r.leave
+  if (r.kind !== "leave" || !l || !LEAVE_RULES[l.type].fromBalance || l.unpaidDays > 0) return 0
+  return Math.max(0, l.days - Math.max(0, l.balance))
+}
+
+// ---------------------------------------------------------------------------
+// The return from leave (AT-05, WF-07 step 6)
+// ---------------------------------------------------------------------------
+
+export type ReturnStage = "due" | "warning" | "termination"
+
+/** An approved leave whose end has passed with no return recorded: the days since its last
+ * day are absence without leave — 10 in a row make the written warning due, 15 make
+ * termination possible (art. 80, and the Qiwa absence report). Null while away or once back. */
+export function leaveReturn(r: Pick<HrRequest, "kind" | "state" | "leave" | "returned">, today: string): { daysLate: number; stage: ReturnStage } | null {
+  if (r.kind !== "leave" || r.state !== "approved" || !r.leave || r.returned || today <= r.leave.to) return null
+  const daysLate = daysBetween(r.leave.to, today)
+  const A = STATUTORY.art80
+  return { daysLate, stage: daysLate >= A.terminationDays ? "termination" : daysLate >= A.warningDays ? "warning" : "due" }
+}
+
+/** Who is not back from a leave on a day: after its last day and before the day his return was recorded. */
+export function notBackOn(requests: Array<Pick<HrRequest, "employeeId" | "kind" | "state" | "leave" | "returned">>, day: string): Set<string> {
+  const out = new Set<string>()
+  for (const r of requests) if (r.kind === "leave" && r.state === "approved" && r.leave && day > r.leave.to && (!r.returned || day < r.returned.on)) out.add(r.employeeId)
+  return out
 }
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import { leaveBalance } from "./leave"
 import { wageOf } from "./pay"
 import { eventId } from "./payroll-writes"
 import { costKindOf, type HrSite } from "./sites"
+import { todayDay } from "./format"
 import { assertHr, HrWriteError } from "./write-guard"
 
 const stamp = (a: { uid: string; name: string | null }) => ({ by: a.uid, byName: a.name, at: new Date().toISOString() })
@@ -64,7 +65,8 @@ export async function startExit(
   orgId: string,
   actor: HrActor,
   employeeId: string,
-  input: { reason: ExitReason | null; lastDay: string | null; noticeOn?: string | null; art77?: boolean; note?: string | null }
+  input: { reason: ExitReason | null; lastDay: string | null; noticeOn?: string | null; art77?: boolean; note?: string | null },
+  opts: { today?: string } = {}
 ): Promise<string> {
   assertHr(ctx, "exit.manage")
   if (ctx.employeeId === employeeId && !ctx.owner) throw new HrWriteError("own_request")
@@ -95,7 +97,10 @@ export async function startExit(
       tasks: {},
       updatedAt: serverTimestamp(),
     })
-    tx.update(doc(firestore, HR_EMPLOYEES, employeeId), { status: "leaving", lastDay: input.lastDay, updatedAt: serverTimestamp() })
+    // An exit during probation IS the probation decision "end" (EM-05) — recorded with it, either way it is started.
+    const ended = input.reason === "probation" ? { probation: { ...emp.probation, decision: "ended", decidedOn: opts.today ?? todayDay() } } : {}
+    tx.update(doc(firestore, HR_EMPLOYEES, employeeId), { status: "leaving", lastDay: input.lastDay, ...ended, updatedAt: serverTimestamp() })
+    if (input.reason === "probation") log(tx, firestore, emp, actor, "probation_end", { lastDay: input.lastDay })
     log(tx, firestore, emp, actor, "exit_started", { reason: input.reason, lastDay: input.lastDay })
   })
   return id

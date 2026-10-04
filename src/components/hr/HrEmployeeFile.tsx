@@ -13,7 +13,7 @@
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, orderBy, query } from "firebase/firestore"
-import { ArrowRightLeft, BadgeCheck, CalendarClock, FileClock, Gavel, HandCoins, History, Inbox, Link2, Loader2, LogOut, Plane, Wallet } from "lucide-react"
+import { ArrowRightLeft, BadgeCheck, CalendarClock, FileClock, Gavel, HandCoins, History, Import, Inbox, Link2, Loader2, LogOut, Plane, UserCheck, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Callout } from "@/components/module-ui/Callout"
@@ -31,8 +31,8 @@ import { Link } from "@/i18n/routing"
 import { lineManagerOf } from "@/lib/hr/access"
 import { assumesPresence, attendanceId, employeeMonth, type WorkplaceMonth } from "@/lib/hr/attendance"
 import { HR_ATTENDANCE, HR_EMPLOYEES } from "@/lib/hr/collections"
-import { docState, DOC_TYPES, legalOnSite } from "@/lib/hr/documents"
-import { displayName, onProbation, type HrEmployee } from "@/lib/hr/employee"
+import { docState, DOC_TYPES, iqamaDueBy, iqamaOverdue, legalOnSite } from "@/lib/hr/documents"
+import { displayName, onProbation, probationState, serviceDays, statusOn, type HrEmployee } from "@/lib/hr/employee"
 import { approveIban, fixIban, HR_LOG, type HrActor, type LogEntry } from "@/lib/hr/employee-writes"
 import { gratuity, monthlyEosAccrual } from "@/lib/hr/eos"
 import { empNo, hrDate, hrMoney, nearestDocument, todayDay } from "@/lib/hr/format"
@@ -42,12 +42,13 @@ import { UNASSIGNED_SITE } from "@/lib/hr/sites"
 import { addDays, daysBetween, r2, serviceYears, STATUTORY } from "@/lib/hr/statutory"
 import { tradeOf } from "@/lib/hr/trades"
 import { HrWriteError } from "@/lib/hr/write-guard"
-import type { HrRequestKind } from "@/lib/hr/requests"
+import { leaveReturn, type HrRequestKind } from "@/lib/hr/requests"
 import { EmployeeActionDialog, type EmployeeAction } from "./EmployeeActionDialogs"
 import { HrExitPanel, StartExitDialog } from "./HrExitPanel"
+import { HrEmployeeFiles } from "./HrEmployeeFiles"
 import { HrInjuryPanel } from "./HrInjuryPanel"
 import { HrLettersPanel } from "./HrLetters"
-import { HrRequestList } from "./HrRequestList"
+import { HrRequestList, ReturnFromLeave } from "./HrRequestList"
 import { HrViolationList, RecordViolationDialog, useHrViolations } from "./HrViolationList"
 import { NewRequestDialog } from "./NewRequestDialog"
 import type { HrPortal } from "./HrShell"
@@ -77,6 +78,13 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
   const [newReq, setNewReq] = useState<HrRequestKind | null>(null)
   const { requests: allRequests } = useHrRequests(access)
   const requests = useMemo(() => allRequests.filter((r) => r.employeeId === employeeId), [allRequests, employeeId])
+  const overdueLeave = useMemo(() => {
+    for (const r of requests) {
+      const ret = leaveReturn(r, today)
+      if (ret) return { r, ret }
+    }
+    return null
+  }, [requests, today])
   const allViolations = useHrViolations(access)
   const violations = useMemo(() => allViolations.filter((v) => v.employeeId === employeeId), [allViolations, employeeId])
   const [recording, setRecording] = useState(false)
@@ -101,10 +109,14 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
       service,
       entitlement: service >= STATUTORY.leave.fiveYears ? STATUTORY.leave.afterFive : STATUTORY.leave.base,
       accrued: emp.join ? Math.floor(accruedDays(emp.join, today)) : 0,
+      days: emp.join ? serviceDays(emp.join, today) : 0,
       balance: emp.join ? leaveBalance(emp.join, today, emp.leaveTaken ?? 0, emp.openingLeave ?? 0) : null,
       nearest: nearestDocument(docs, today, access.settings.policies.renewWindowDays),
-      legal: legalOnSite({ nationality: emp.nationality, docs }, today),
+      legal: legalOnSite({ ...emp, docs }, today),
+      overdue: iqamaOverdue({ ...emp, docs }, today),
       probation: emp.probation ? onProbation(emp, today) : false,
+      probationState: emp.probation ? probationState(emp, today) : null,
+      status: statusOn(emp, today),
     }
   }, [emp, today, access.settings.policies.renewWindowDays])
 
@@ -147,7 +159,11 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
   const acts: { id: EmployeeAction; icon: typeof Wallet; show: boolean }[] = [
     { id: "move", icon: ArrowRightLeft, show: access.allowed("employee.assign") && emp.status !== "left" },
     { id: "pay", icon: Wallet, show: money && access.allowed("pay.change") && emp.status !== "left" && !own },
-    { id: "probation", icon: BadgeCheck, show: access.allowed("request.decide") && !emp.probation?.decision && emp.status !== "left" && !own },
+    // Only while it runs (art. 53): past its end with no decision it is over, never "open forever".
+    { id: "probation", icon: BadgeCheck, show: access.allowed("request.decide") && facts.probationState === "on" && emp.status !== "left" && emp.status !== "leaving" && !own },
+    { id: "start", icon: UserCheck, show: access.allowed("employee.assign") && emp.status === "expected" },
+    // IM-04 — once, for someone who joined before the system and has taken no leave here.
+    { id: "opening", icon: Import, show: access.allowed("employee.edit") && emp.status !== "left" && !emp.opening && (emp.leaveTaken ?? 0) === 0 && facts.days > 30 },
     { id: "renew", icon: CalendarClock, show: access.allowed("documents.manage") && emp.status !== "left" },
     { id: "link", icon: Link2, show: access.allowed("employee.edit") && !own },
   ]
@@ -182,7 +198,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
                 {emp.names.en}
               </span>
             )}
-            <StatusPill tone={STATUS_TONE[emp.status ?? "active"]}>{t(`status.${emp.status ?? "active"}`)}</StatusPill>
+            <StatusPill tone={STATUS_TONE[facts.status]}>{t(`status.${facts.status}`)}</StatusPill>
             {facts.probation && <StatusPill tone="info">{t("file.on_probation", { end: hrDate(emp.probation.end, locale) })}</StatusPill>}
           </div>
           <p className="text-sm text-muted-foreground">
@@ -240,11 +256,21 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
         )}
       </div>
 
+      {overdueLeave && (
+        // AT-05 — not back after his leave: absence without leave, and art. 80 counting.
+        <Callout tone={overdueLeave.ret.stage === "due" ? "warn" : "block"} title={t("ret.not_back", { n: overdueLeave.ret.daysLate })}>
+          <span className="block">{t(`ret.stage.${overdueLeave.ret.stage}`)}</span>
+          <span className="mt-2 block">
+            <ReturnFromLeave access={access} r={overdueLeave.r} actor={actor} on={today} />
+          </span>
+        </Callout>
+      )}
+
       <SegmentedNav segments={segments} active={seg} onSelect={(s) => setSeg(s as Seg)} ariaLabel={t("file.segments")} />
 
       {seg === "ov" && (
         <div className="space-y-4">
-          {!facts.legal && <Callout tone="block">{t("file.iqama_expired")}</Callout>}
+          {!facts.legal && <Callout tone="block">{facts.overdue ? t("file.iqama_overdue", { date: hrDate(iqamaDueBy(emp.join), locale) }) : t("file.iqama_expired")}</Callout>}
           <HrExitPanel access={access} actor={actor} emp={emp as HrEmployee} pay={pay} sites={sites} />
           <div className="grid gap-4 lg:grid-cols-2">
             <Panel title={t("file.personal")}>
@@ -262,7 +288,16 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
               <KeyValueRow label={t("new.source")} value={t(`source.${emp.source}`)} />
               <KeyValueRow label={t("new.join")} value={hrDate(emp.join, locale)} />
               <KeyValueRow label={t("new.contract")} value={emp.contract?.type === "fixed" ? t("file.fixed_until", { date: hrDate(emp.contract.end, locale) }) : t("contract.open")} />
-              <KeyValueRow label={t("file.probation")} value={emp.probation?.decision ? t(`file.probation_${emp.probation.decision}`) : t("file.probation_until", { date: hrDate(emp.probation?.end, locale) })} />
+              <KeyValueRow
+                label={t("file.probation")}
+                value={
+                  emp.probation?.decision
+                    ? t(`file.probation_${emp.probation.decision}`)
+                    : facts.probationState === "lapsed"
+                      ? t("file.probation_lapsed", { date: hrDate(emp.probation?.end, locale) })
+                      : t("file.probation_until", { date: hrDate(emp.probation?.end, locale) })
+                }
+              />
             </Panel>
             <Panel title={t("file.contact")}>
               {(["mobile", "address", "emergency"] as const).map((f) => (
@@ -308,6 +343,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
               </table>
             </div>
           </Panel>
+          {(access.allowed("documents.manage") || access.seesPay(emp.id)) && <HrEmployeeFiles access={access} actor={actor} emp={emp as HrEmployee} />}
           <HrInjuryPanel access={access} actor={actor} emp={emp as HrEmployee} />
         </div>
       )}
@@ -323,6 +359,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
             <KeyValueRow label={t("file.entitlement")} value={t("file.days", { n: facts.entitlement })} />
             <KeyValueRow label={t("file.accrued")} value={t("file.days", { n: facts.accrued })} />
             {(emp.openingLeave ?? 0) !== 0 && <KeyValueRow label={t("file.opening")} value={t("file.days", { n: emp.openingLeave ?? 0 })} />}
+            {emp.opening && <KeyValueRow label={t("file.opening_card")} value={t("file.opening_card_v", { n: emp.opening.leave, name: emp.opening.byName || "—", date: hrDate(emp.opening.at?.slice(0, 10), locale) })} />}
             <KeyValueRow label={t("file.leave_taken_row")} value={t("file.days", { n: emp.leaveTaken ?? 0 })} />
             <KeyValueRow label={t("file.balance")} value={facts.balance == null ? "—" : t("file.days", { n: facts.balance })} strong />
             <p className="pt-2 text-[11px] text-muted-foreground">{t("file.balance_formula")}</p>

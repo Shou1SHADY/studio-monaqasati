@@ -19038,7 +19038,11 @@
         "advance": "Advance instalment (art. 92)",
         "advance_v": "{share} of the wage a month",
         "penalty": "Penalties",
-        "penalty_v": "at most {cap} days' wage a month · objection within {days} days"
+        "penalty_v": "at most {cap} days' wage a month · objection within {days} days",
+        "hours": "Working hours",
+        "hours_v": "{normal} a day · Ramadan {ramadan} for everyone",
+        "holidays": "Public holidays {year} (art. 112, Umm al-Qura)",
+        "holiday_days": "from {date} — {n} days"
       },
       "today": {
         "soon": "Your decisions appear here as HR is set up.",
@@ -19459,7 +19463,7 @@
         "probation": "Probation",
         "probation_until": "Until {date}",
         "probation_confirmed": "Confirmed",
-        "probation_ended": "Ended during probation",
+        "probation_ended": "Ended during probation — the exit has started",
         "my_file": "My file",
         "linked_yes": "Linked to a platform user",
         "linked_no": "Not linked",
@@ -19484,7 +19488,9 @@
           "pay": "Pay change",
           "probation": "Probation",
           "renew": "Record renewal",
-          "link": "Link user"
+          "link": "Link user",
+          "start": "Started work",
+          "opening": "Opening balance"
         },
         "log_title": "Log",
         "service_years": "{n} years of service",
@@ -19522,7 +19528,13 @@
         "cost_eos": "End-of-service accrual",
         "cost_total": "Monthly cost",
         "eos_termination": "Gratuity if terminated today",
-        "eos_resignation": "Gratuity if he resigned today"
+        "eos_resignation": "Gratuity if he resigned today",
+        "probation_lapsed": "Ended on {date} with no decision — the contract continues (art. 53)",
+        "iqama_overdue": "The iqama was not issued within 90 days of arrival (due {date}) — not on a site until it is.",
+        "started": "Start recorded",
+        "opening_done": "Opening balance recorded",
+        "opening_card": "Opening balance from the card",
+        "opening_card_v": "{n} days — entered by {name} on {date}"
       },
       "move": {
         "to": "Move to",
@@ -19553,7 +19565,8 @@
           "no_reason": "Give the reason",
           "no_date": "Choose the effective date",
           "too_old": "At most one closed month back",
-          "no_change": "The basic is unchanged"
+          "no_change": "The basic is unchanged",
+          "saudi_only": "This trade is reserved for Saudis — a non-Saudi cannot be promoted into it"
         },
         "warn": {
           "pay_cut": "This lowers the pay — it needs the worker's written consent",
@@ -19567,13 +19580,18 @@
         "end": "End during probation",
         "to": "Extend to",
         "consent": "Worker's written consent on",
-        "end_note": "Ending during probation owes no end-of-service award; the exit itself is handled by end of service.",
+        "end_note": "Ending during probation owes no end-of-service award and no notice — and it starts the exit: custody clearance from Inventory, then the settlement.",
         "block": {
           "decided": "Probation is already decided",
           "extend_needs_consent": "An extension needs the worker's written consent",
           "extend_too_long": "Probation cannot exceed 180 days",
-          "extend_not_later": "The new end must be after the current one"
-        }
+          "extend_not_later": "The new end must be after the current one",
+          "over": "Probation ended with no decision — the contract continues (art. 53); there is nothing left to decide",
+          "no_last_day": "Choose the last working day",
+          "probation_over": "The last day must fall within the probation, not after it",
+          "left": "His end of service has already started"
+        },
+        "last_day": "Last working day"
       },
       "renew": {
         "document": "Document",
@@ -19598,7 +19616,7 @@
         "promoted": "Promoted to {trade} from {on} — {reason}",
         "probation_confirm": "Probation confirmed",
         "probation_extend": "Probation extended to {to} (consent {consent})",
-        "probation_end": "Ended during probation",
+        "probation_end": "Ended during probation — last day {lastDay}",
         "renewed": "{doc} renewed to {to}",
         "user_linked": "Platform user link changed",
         "leave_filed": "Leave request {no} filed",
@@ -19628,7 +19646,11 @@
         "data_cancelled": "Details update request {no} cancelled",
         "letter_filed": "Letter requested — {letter, select, sal {salary certificate} emb {embassy letter} noc {no-objection letter} exp {experience certificate} other {letter}} to {addressee}",
         "letter_issued": "Letter issued — {letter, select, sal {salary certificate} emb {embassy letter} noc {no-objection letter} exp {experience certificate} other {letter}} to {addressee}, {serial}",
-        "letter_declined": "Letter declined — {letter, select, sal {salary certificate} emb {embassy letter} noc {no-objection letter} exp {experience certificate} other {letter}}: {reason}"
+        "letter_declined": "Letter declined — {letter, select, sal {salary certificate} emb {embassy letter} noc {no-objection letter} exp {experience certificate} other {letter}}: {reason}",
+        "started": "Started work on {on}",
+        "leave_returned": "Back from leave {no} on {on} — {late} days late",
+        "opening_recorded": "Opening balance from the card: leave {leave} days{advance, select, 1 { · and an outstanding advance} other {}}",
+        "file_attached": "File attached — {name}"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -19722,7 +19744,9 @@
           "missing": "{n, plural, one {# day has} other {# days have}} no record — record or declare them first"
         },
         "on_leave": "On approved leave",
-        "on_leave_note": "On approved leave this day — not recorded absent and nothing is deducted."
+        "on_leave_note": "On approved leave this day — not recorded absent and nothing is deducted.",
+        "holiday": "{name} — a paid public holiday; no sheet is needed. Hours worked on it are recorded as overtime.",
+        "ramadan": "Ramadan: the working day is six hours for everyone — anything beyond is overtime."
       },
       "leave_type": {
         "annual": "Annual",
@@ -19793,7 +19817,7 @@
         "block": {
           "bad_dates": "Choose the dates — the end on or after the start",
           "too_long": "Longer than the law gives for this leave",
-          "above_balance": "Above the balance — shorten it or take the excess unpaid",
+          "above_balance": "Above the balance — choose: the balance only, or the excess unpaid",
           "overlap": "Overlaps another leave of this employee",
           "female_only": "This leave is for women",
           "min_years": "Needs two years of service",
@@ -19807,14 +19831,16 @@
           "travel_docs": "Not approvable for travel: the iqama or passport lapses before the return — renew first",
           "no_value": "Enter the new value",
           "bad_iban": "The IBAN is not valid — SA followed by 22 digits",
-          "no_document": "Give the bank letter's reference"
+          "no_document": "Give the bank letter's reference",
+          "no_balance": "No balance as of the start — \"balance only\" leaves no day"
         },
         "warn": {
-          "travel_docs": "The iqama or passport lapses before the return — no travel before renewal; HR cannot approve it for travel.",
+          "travel_docs": "The iqama or passport expires before the return — it cannot be approved for travel before renewal. The request is still filed.",
           "sick_beyond": "Beyond 120 sick days in the service year — the HR manager decides.",
           "excess_unpaid": "Part of this leave is unpaid — deducted in payroll.",
           "over_limit": "Above the HR limit — decided in Finance after HR's view.",
-          "past_contract": "Repayment runs past the contract's end — the rest comes from the final settlement."
+          "past_contract": "Repayment runs past the contract's end — the rest comes from the final settlement.",
+          "above_balance": "{n} days above the balance — the HR manager decides: the balance only, or the excess unpaid."
         },
         "new_data": "Update my details",
         "data_field": "What to change",
@@ -19822,7 +19848,14 @@
         "bank_document": "Bank letter reference",
         "bank_document_note": "A new IBAN needs the bank's letter; HR checks it before approving.",
         "data_note": "You never edit your record yourself — the HR manager checks and approves the change.",
-        "document_ref": "document {ref}"
+        "document_ref": "document {ref}",
+        "mode": {
+          "title": "{n} days above the balance — not approvable in full",
+          "balance_only": "Approve the balance only",
+          "balance_only_line": "{n} days — ends on {date}",
+          "excess_unpaid": "Approve with the excess unpaid",
+          "excess_unpaid_line": "{n} days deducted in payroll automatically"
+        }
       },
       "payroll": {
         "state": {
@@ -20579,6 +20612,112 @@
           "set": "Set on the card",
           "derived": "From the workplace",
           "management": "Management"
+        }
+      },
+      "holiday": {
+        "founding": "Founding Day",
+        "fitr": "Eid al-Fitr",
+        "adha": "Eid al-Adha",
+        "national": "National Day"
+      },
+      "start": {
+        "on": "Actual start day",
+        "note": "It becomes the join day — the probation, the iqama clock and pro-rata pay run from it.",
+        "block": {
+          "not_expected": "The employee is not \"expected\"",
+          "no_date": "Choose the start day",
+          "future": "The start cannot be in the future"
+        }
+      },
+      "ret": {
+        "act": "Back on {date}",
+        "done": "Return from leave recorded",
+        "done_late": "Return recorded — {n} days of absence without leave after the leave",
+        "not_back": "Not back from leave — {n} days",
+        "stage": {
+          "due": "Days after the leave are absence without leave — record his return if he is back. Art. 80: written warning after 10 days in a row, termination after 15.",
+          "warning": "10 days in a row: the written warning is due now (art. 80).",
+          "termination": "15 days in a row: termination is possible without award (art. 80) — and the absence report on Qiwa."
+        },
+        "block": {
+          "stale": "His return is already recorded, or the request has moved on",
+          "no_date": "Choose the day he returned",
+          "future": "The return cannot be in the future",
+          "before_end": "The leave had not ended on that day"
+        }
+      },
+      "opening": {
+        "leave": "Leave balance today (days)",
+        "max": "At most {n} days could have accrued",
+        "advance": "Outstanding advance",
+        "note": "Entered once, under your name. The end-of-service award is never typed — it is computed from the join date.",
+        "block": {
+          "recorded": "His opening balance is already recorded",
+          "too_recent": "Joined less than 30 days ago — his balance is computed from the record",
+          "leave_taken": "He has taken leave in the system — his balance is computed, not typed",
+          "bad_leave": "Enter the leave balance — zero or more",
+          "above_accrued": "More than his service could have accrued",
+          "bad_advance": "The advance is not valid, or there is no wage on his record",
+          "advance_exists": "He already has an outstanding advance in the system"
+        }
+      },
+      "files": {
+        "title": "Attachments",
+        "none": "No attachments yet",
+        "kind_label": "Kind",
+        "kind": {
+          "iqama": "Iqama image",
+          "passport": "Passport image",
+          "contract": "Contract",
+          "medical": "Medical report",
+          "penalty": "Penalty decision",
+          "bank": "Bank document",
+          "other": "Other"
+        },
+        "attach": "Attach a file",
+        "uploading": "Uploading…",
+        "attached": "File attached",
+        "err_upload": "The file could not be uploaded or opened",
+        "note": "An image or PDF up to 15 MB. An attachment is never deleted — it stays on the record.",
+        "block": {
+          "no_file": "Choose a file",
+          "too_big": "The file is larger than 15 MB",
+          "bad_type": "Images or PDF only",
+          "bad_kind": "Choose the kind",
+          "bad_path": "The file's place is not this employee's"
+        }
+      },
+      "fix": {
+        "title": "Assignment corrections",
+        "none": "None",
+        "raise": "A worker here but not on my list",
+        "raise_desc": "Sent to the HR manager to correct his assignment to {site}",
+        "who": "Who",
+        "pick": "Pick by name",
+        "since": "Working here since",
+        "not_manpower": "An assignment correction, not a manpower request — a new manpower request comes from Projects.",
+        "send": "Send",
+        "raised": "Sent to the HR manager",
+        "line": "On record at {from} · here since {since} · raised by {name}",
+        "correct": "Correct",
+        "corrected": "Assignment corrected",
+        "decline": "Decline",
+        "declined": "Correction declined",
+        "state": {
+          "pending": "Awaiting HR",
+          "done": "Corrected",
+          "declined": "Declined"
+        },
+        "block": {
+          "same_place": "Already on record here",
+          "no_date": "Choose since when he works here",
+          "future": "The date is in the future",
+          "left": "The employee has left",
+          "pending": "A correction for him is already waiting",
+          "stale": "This correction has moved on",
+          "no_reason": "Give the reason",
+          "iqama_expired": "His iqama has expired — he cannot be assigned to a site",
+          "no_date_move": "Choose the date"
         }
       }
     },

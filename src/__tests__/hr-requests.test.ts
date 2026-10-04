@@ -54,28 +54,46 @@ beforeEach(() => {
 })
 
 describe("leave", () => {
-  it("the balance as of the start; above it, only the excess unpaid (LV-02, LV-03)", () => {
-    const q = leaveQuote(empBase, { type: "annual", from: "2026-01-01", to: "2026-01-15", excessUnpaid: false, travel: false })
-    expect(q.balance).toBe(12)
-    expect(q.blocks).toEqual(["above_balance"])
-    const u = leaveQuote(empBase, { type: "annual", from: "2026-01-01", to: "2026-01-15", excessUnpaid: true, travel: false })
-    expect(u).toMatchObject({ days: 15, fromBalance: 12, unpaidDays: 3, blocks: [], warnings: ["excess_unpaid"] })
-    expect(leaveQuote(empBase, { type: "annual", from: "2026-01-01", to: "2026-01-10", excessUnpaid: false, travel: false }, { holidays: [{ from: "2026-01-05", days: 3 }] }).days).toBe(7)
+  it("the balance as of the start; above it, HR decides — balance only or the excess unpaid (LV-02, LV-03)", () => {
+    const q = leaveQuote(empBase, { type: "annual", from: "2026-01-01", to: "2026-01-15" })
+    expect(q).toMatchObject({ balance: 12, days: 15, excess: 3, blocks: [], warnings: ["above_balance"] })
+    // Deciding, a choice is required.
+    expect(leaveQuote(empBase, { type: "annual", from: "2026-01-01", to: "2026-01-15" }, { deciding: true }).blocks).toEqual(["above_balance"])
+    const u = leaveQuote(empBase, { type: "annual", from: "2026-01-01", to: "2026-01-15", mode: "excess_unpaid" }, { deciding: true })
+    expect(u).toMatchObject({ days: 15, fromBalance: 12, unpaidDays: 3, to: "2026-01-15", blocks: [], warnings: ["excess_unpaid"] })
+    const b = leaveQuote(empBase, { type: "annual", from: "2026-01-01", to: "2026-01-15", mode: "balance_only" }, { deciding: true })
+    expect(b).toMatchObject({ days: 12, fromBalance: 12, unpaidDays: 0, to: "2026-01-12", blocks: [] })
+    // The shortened end skips the holidays inside it: 15 leave days from 10 Mar 2026 run past Eid al-Fitr (19–22) to the 28th.
+    expect(leaveQuote(empBase, { type: "annual", from: "2026-03-10", to: "2026-04-30", mode: "balance_only" }, { deciding: true })).toMatchObject({ balance: 15, days: 15, to: "2026-03-28" })
+    expect(leaveQuote({ ...empBase, leaveTaken: 60 }, { type: "annual", from: "2026-01-01", to: "2026-01-05", mode: "balance_only" }, { deciding: true }).blocks).toEqual(["no_balance"])
+    expect(leaveQuote(empBase, { type: "annual", from: "2026-01-01", to: "2026-01-10" }, { holidays: [{ from: "2026-01-05", days: 3 }] }).days).toBe(7)
   })
 
   it("statutory types: maternity for women, fixed lengths, Hajj once after two years (LV-01)", () => {
-    const x = { from: "2026-01-01", excessUnpaid: false, travel: false }
+    const x = { from: "2026-01-01" }
     expect(leaveQuote(empBase, { ...x, type: "maternity", to: "2026-01-10" }).blocks).toEqual(["female_only"])
     expect(leaveQuote(empBase, { ...x, type: "paternity", to: "2026-01-04" }).blocks).toEqual(["too_long"])
     expect(leaveQuote({ ...empBase, hajjTaken: true }, { ...x, type: "hajj", to: "2026-01-10" }).blocks).toEqual(["once_taken"])
     expect(leaveQuote(empBase, { ...x, type: "unpaid", to: "2026-01-04" })).toMatchObject({ unpaidDays: 4, blocks: [] })
   })
 
-  it("sick leave by the service year's bands (LV-06); travel past a lapsing iqama is told (LV-04)", () => {
+  it("sick leave by the service year's bands (LV-06)", () => {
     const e = { ...empBase, sick: { year: 2, days: 25 } }
-    expect(leaveQuote(e, { type: "sick", from: "2026-02-01", to: "2026-02-10", excessUnpaid: false, travel: false }).sick).toEqual({ full: 5, threeQuarters: 5, unpaid: 0, beyond: 0 })
-    const t = leaveQuote({ ...empBase, docs: { iqama: "2026-01-10", passport: "2029-01-01" } }, { type: "annual", from: "2026-01-01", to: "2026-01-10", excessUnpaid: false, travel: true })
-    expect(t.warnings).toEqual(["travel_docs"])
+    expect(leaveQuote(e, { type: "sick", from: "2026-02-01", to: "2026-02-10" }).sick).toEqual({ full: 5, threeQuarters: 5, unpaid: 0, beyond: 0 })
+  })
+
+  it("no travel before renewal: a non-Saudi's leave is travel — no box to tick; a missing date is not a lapse (LV-04)", () => {
+    const lapsing = { ...empBase, docs: { iqama: "2026-01-10", passport: "2029-01-01" } }
+    const t = leaveQuote(lapsing, { type: "annual", from: "2026-01-01", to: "2026-01-10" })
+    expect(t).toMatchObject({ travel: true, warnings: ["travel_docs"], blocks: [] })
+    // At the decision it blocks.
+    expect(leaveQuote(lapsing, { type: "annual", from: "2026-01-01", to: "2026-01-10" }, { deciding: true }).blocks).toEqual(["travel_docs"])
+    // Back on the 10th, the iqama of the 10th is still valid the day before: expires ON the last leave day = lapses.
+    expect(leaveQuote(lapsing, { type: "annual", from: "2026-01-01", to: "2026-01-09" }).warnings).toEqual([])
+    // A blank date is not recorded — not "lapsing".
+    expect(leaveQuote({ ...empBase, docs: { iqama: "2027-12-31" } }, { type: "annual", from: "2026-01-01", to: "2026-01-05" }).warnings).toEqual([])
+    // A Saudi has no iqama and is not asked.
+    expect(leaveQuote({ ...empBase, nationality: "sa", docs: { passport: "2026-01-02" } }, { type: "annual", from: "2026-01-01", to: "2026-01-05" })).toMatchObject({ travel: false, warnings: [] })
   })
 })
 
@@ -106,7 +124,7 @@ describe("who acts", () => {
 })
 
 describe("the writes", () => {
-  const leave = { type: "annual" as const, from: "2026-03-10", to: "2026-03-14", excessUnpaid: false, travel: true }
+  const leave = { type: "annual" as const, from: "2026-03-10", to: "2026-03-14" }
 
   it("filed by the employee, endorsed by his supervisor, approved by HR; cancelled before it starts, the days come back", async () => {
     const { id, no } = await fileRequest(db, worker, ORG, who(worker), { employeeId: "e1", kind: "leave", leave, supervisor: { employeeId: "e-sup", userId: "sup" } }, opts)
@@ -167,6 +185,57 @@ describe("the writes", () => {
     const b = await fileRequest(db, worker, ORG, who(worker), { employeeId: "e1", kind: "data", data: { field: "mobile", value: "0550000000" } }, opts)
     await decideRequest(db, hrm, b.id, who(hrm), "approve", "", opts)
     expect(emp("e1")).toMatchObject({ contact: { mobile: "0550000000" } })
+  })
+
+  it("above the balance: sent with a warning; HR approves the balance only — the leave ends at it (LV-03)", async () => {
+    const { id } = await fileRequest(db, worker, ORG, who(worker), { employeeId: "e1", kind: "leave", leave: { type: "annual", from: "2026-03-01", to: "2026-03-31" } }, opts)
+    expect(req(id).leave).toMatchObject({ days: 27, balance: 15, unpaidDays: 0, travel: true })
+    await expect(decideRequest(db, hrm, id, who(hrm), "approve", "", opts)).rejects.toMatchObject({ blocks: ["above_balance"] })
+    await decideRequest(db, hrm, id, who(hrm), "approve", "", { ...opts, leaveMode: "balance_only" })
+    expect(req(id).leave).toMatchObject({ from: "2026-03-01", to: "2026-03-15", requestedTo: "2026-03-31", days: 15, fromBalance: 15, unpaidDays: 0, mode: "balance_only" })
+    expect(emp("e1").leaveTaken).toBe(45)
+  })
+
+  it("…or approves it with the excess unpaid (LV-03)", async () => {
+    const { id } = await fileRequest(db, worker, ORG, who(worker), { employeeId: "e1", kind: "leave", leave: { type: "annual", from: "2026-03-01", to: "2026-03-31" } }, opts)
+    await decideRequest(db, hrm, id, who(hrm), "approve", "", { ...opts, leaveMode: "excess_unpaid" })
+    expect(req(id).leave).toMatchObject({ to: "2026-03-31", days: 27, fromBalance: 15, unpaidDays: 12, mode: "excess_unpaid" })
+  })
+
+  it("the employee cancels his own request while it waits — and only then (LV-07)", async () => {
+    const { id } = await fileRequest(db, worker, ORG, who(worker), { employeeId: "e1", kind: "leave", leave }, opts)
+    expect(requestActions(worker, req(id), { today: "2026-03-01", financeAllowed: false })).toEqual(["cancel"])
+    await cancelRequest(db, worker, id, who(worker), "plans changed", opts)
+    expect(req(id)).toMatchObject({ state: "cancelled", cancel: { by: "wu", note: "plans changed" } })
+    const b = await fileRequest(db, worker, ORG, who(worker), { employeeId: "e1", kind: "leave", leave }, opts)
+    await decideRequest(db, hrm, b.id, who(hrm), "approve", "", opts)
+    await expect(cancelRequest(db, worker, b.id, who(worker), "x", opts)).rejects.toMatchObject({ code: "no_role" })
+  })
+
+  it("who decides follows the EMPLOYEE: HR manager A files for HR manager B — management decides, not A (RL-02)", async () => {
+    seed("users/hrm2", { organizationId: ORG, organizationRole: "member", defaultGroupId: "g-hr" })
+    seed("teamGroups/g-hr", { organizationId: ORG, permissions: ["employees.manage"] })
+    seed("employees/e-hrm2", { ...empBase, no: 3, userId: "hrm2", siteId: null })
+    const { id } = await fileRequest(db, hrm, ORG, who(hrm), { employeeId: "e-hrm2", kind: "leave", leave }, opts)
+    expect(req(id)).toMatchObject({ deciderLevel: "management", onBehalf: true })
+    await expect(decideRequest(db, hrm, id, who(hrm), "approve", "", opts)).rejects.toMatchObject({ code: "no_role" })
+    await decideRequest(db, mgmt, id, who(mgmt), "approve", "", opts)
+    expect(req(id).state).toBe("approved")
+  })
+
+  it("a request stored with the filer's level is decided by the employee's: an HR manager's own never by another HR manager (RL-02)", async () => {
+    seed("users/hrm2", { organizationId: ORG, organizationRole: "member", defaultGroupId: "g-all" })
+    seed("teamGroups/g-all", { organizationId: ORG, permissions: ["*"] })
+    seed("employees/e-hrm2", { ...empBase, no: 3, userId: "hrm2", siteId: null })
+    seed("hrRequests/old", {
+      organizationId: ORG, no: "LV-2026/009", kind: "leave", employeeId: "e-hrm2", employeeUserId: "hrm2", employeeName: "x", siteId: null,
+      lineManagerId: null, lineManagerUserId: null, deciderLevel: "manager", filedBy: { by: "hrm", byName: null, at: "" }, onBehalf: true, state: "pending",
+      leave: { type: "annual", from: "2026-03-10", to: "2026-03-14", days: 5, balance: 15, fromBalance: 5, unpaidDays: 0, travel: true }, createdAt: "",
+    })
+    await expect(decideRequest(db, hrm, "old", who(hrm), "approve", "", opts)).rejects.toMatchObject({ code: "no_role" })
+    // A worker's request stays with the HR manager.
+    const { id } = await fileRequest(db, hrm, ORG, who(hrm), { employeeId: "e1", kind: "leave", leave }, opts)
+    expect(req(id).deciderLevel).toBe("manager")
   })
 
   it("only the employee himself or the HR manager files", async () => {
