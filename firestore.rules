@@ -81,6 +81,15 @@ service cloud.firestore {
     function hasOrgPermission(perm) {
       return isOrgOwner() || groupGrants(memberDefaultGroupId(), perm);
     }
+
+    // The owner of company `orgId`: its primary company is the owner's own uid; a
+    // secondary company names its owner on the organizations doc.
+    function isCompanyOwner(orgId) {
+      return isSignedIn()
+        && (request.auth.uid == orgId
+            || (exists(/databases/$(database)/documents/organizations/$(orgId))
+                && get(/databases/$(database)/documents/organizations/$(orgId)).data.get('ownerUserId', '') == request.auth.uid));
+    }
     // The prototype's CAN('sup'): the procurement manager (po.approve) and the buyer
     // (offers.accept) — not suppliers.manage alone (the seeded expediter holds it).
     function procSupplierManager() {
@@ -421,6 +430,16 @@ service cloud.firestore {
                  && changedKeys()
                       .hasAny(['specializations', 'coverageCities'])));
       allow delete: if isAdmin();
+    }
+
+    // A company's sensitive identity (CR and tax numbers, certificate files, bank details),
+    // DEV-60. Its own team members cannot read it; the owner, the platform admin and outside
+    // parties (who see the same facts on its orders and receipts) can. No enumeration, no delete.
+    match /companyIdentity/{orgId} {
+      allow get: if isSignedIn() && (isAdmin() || isCompanyOwner(orgId) || !isOrgMember(orgId));
+      allow list: if isAdmin();
+      allow create, update: if isAdmin() || isCompanyOwner(orgId);
+      allow delete: if false;
     }
 
     match /categories/{categoryId} {
