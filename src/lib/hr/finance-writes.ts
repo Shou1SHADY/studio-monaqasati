@@ -52,12 +52,25 @@ async function book(firestore: Firestore, a: FinanceActor, orgId: string, result
   return postToLedger(firestore, { organizationId: orgId, userId: a.uid, userName: a.name ?? "" }, result, { batch })
 }
 
-/** Post hr:PAY / hr:EOS to the books, dated the month's last day (the cost belongs to the month worked). */
-export async function postHrEvent(firestore: Firestore, a: FinanceActor, orgId: string, ev: HrEvent, books: Pick<Books, "accountingOn">): Promise<void> {
+/** The day an event is posted on: the month's last day for the month's payroll and accruals (the cost belongs
+ * to the month worked); a supplementary on the day Finance posts it — it arrives after the month was closed,
+ * and the closed month's entry is never reopened (HR-Pipeline §2.1), so it never lands in a locked period. */
+export function eventPostingDate(ev: Pick<HrEvent, "kind" | "month" | "payrollKey">, postedOn: string): string {
+  const supplementary = ev.kind === "PAY" && ev.payrollKey !== ev.month
+  return supplementary ? postedOn : monthRange(ev.month).end
+}
+
+const localDay = () => {
+  const now = new Date()
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+}
+
+/** Post hr:PAY / hr:EOS to the books (dated by `eventPostingDate`). */
+export async function postHrEvent(firestore: Firestore, a: FinanceActor, orgId: string, ev: HrEvent, books: Pick<Books, "accountingOn"> & { date?: string }): Promise<void> {
   need(a)
   const cur = await getDoc(doc(firestore, HR_EVENTS, ev.id))
   if (!cur.exists() || (cur.data() as HrEvent).state !== "sent") throw new HrWriteError("blocked", ["stale"])
-  const date = monthRange(ev.month).end
+  const date = eventPostingDate(ev, books.date ?? localDay())
   const result =
     ev.kind === "PAY"
       ? postHrPay({ key: ev.key, month: ev.month, date, debit: ev.debit, credit: ev.credit as { salariesPayable: number; gosi: number; advances: number; fines: number } })

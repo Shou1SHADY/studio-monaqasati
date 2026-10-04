@@ -17,15 +17,19 @@ import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Callout } from "@/components/module-ui/Callout"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
-import { useFirestore } from "@/firebase"
+import { collection, query, where } from "firebase/firestore"
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { DOC_TYPES, type DocType } from "@/lib/hr/documents"
 import { assignBlocks, payChangeBlocks, probationBlocks, probationMaxEnd, renewalBlocks, type EmployeePay, type HrEmployee } from "@/lib/hr/employee"
-import { assignEmployee, changePay, decideProbation, linkUser, recordRenewal, type HrActor } from "@/lib/hr/employee-writes"
+import { assignEmployee, changePay, decideProbation, linkUser, payWithStep, recordRenewal, type HrActor } from "@/lib/hr/employee-writes"
+import { HR_PAYROLLS } from "@/lib/hr/collections"
+import type { Payroll } from "@/lib/hr/payroll"
+import { monthRange, r2 } from "@/lib/hr/statutory"
 import { hrMoney, todayDay } from "@/lib/hr/format"
-import { payFromBasic, wageOf } from "@/lib/hr/pay"
+import { payFromBasic, paySegments, wageOf } from "@/lib/hr/pay"
 import { UNASSIGNED_SITE, type HrSite } from "@/lib/hr/sites"
 import { TRADES } from "@/lib/hr/trades"
 import { HrWriteError } from "@/lib/hr/write-guard"
@@ -87,6 +91,13 @@ export function EmployeeActionDialog({
   const [expiry, setExpiry] = useState("")
   const [fee, setFee] = useState("")
   const [userId, setUserId] = useState(emp.userId ?? "")
+  // EM-04 — the last closed month (its main payroll approved): a change reaches back to it at most.
+  const prQ = useMemoFirebase(
+    () => (firestore && access.orgId && action === "pay" && access.allowed("pay.view") ? query(collection(firestore, HR_PAYROLLS), where("organizationId", "==", access.orgId), where("kind", "==", "main")) : null),
+    [firestore, access, action]
+  )
+  const { data: prData } = useCollection(prQ)
+  const lastClosed = ((prData ?? []) as unknown as Payroll[]).filter((p) => p.state !== "prepared").reduce<string | null>((m, p) => (!m || p.month > m ? p.month : m), null)
 
   let title = ""
   let body: React.ReactNode = null
@@ -126,10 +137,21 @@ export function EmployeeActionDialog({
     title = t("file.act.pay")
     const n = Number(basic)
     const current = pay?.basic ?? 0
-    const res = payChangeBlocks({ basic: n, currentBasic: current, effectiveOn: effectiveOn || null, reason, nationality: emp.nationality, lastClosedMonthStart: null })
+    const res = payChangeBlocks({ basic: n, currentBasic: current, effectiveOn: effectiveOn || null, reason, nationality: emp.nationality, lastClosedMonthStart: lastClosed ? monthRange(lastClosed).start : null })
     blocks = res.blocks
     blockPrefix = "paychange.block"
     const next = n > 0 ? payFromBasic(n, access.settings.policies) : null
+    // What the save will do (the write reads the closed months again): from a future day it waits; inside
+    // the last closed month the difference goes to that month's supplementary; otherwise it is in force.
+    const future = Boolean(effectiveOn) && effectiveOn > today
+    const retroPreview =
+      pay && next && lastClosed && effectiveOn && effectiveOn.slice(0, 7) === lastClosed && !res.blocks.length
+        ? (() => {
+            const { steps } = payWithStep(pay, next, effectiveOn, today)
+            const monthWage = (p: EmployeePay) => paySegments(p, emp.join, lastClosed, emp.lastDay).reduce((s, x) => s + (wageOf(x.pay) * x.days) / 30, 0)
+            return r2(monthWage({ ...pay, steps }) - monthWage(pay))
+          })()
+        : 0
     submit = () => void run(() => changePay(firestore!, access.ctx, emp.id, actor, { basic: n, effectiveOn, reason, kind, trade: kind === "promotion" ? trade : null }, { policies: access.settings.policies }), "file.pay_changed", blockPrefix)
     body = (
       <div className="space-y-4">
@@ -188,6 +210,8 @@ export function EmployeeActionDialog({
             {t(`paychange.warn.${w}`)}
           </Callout>
         ))}
+        {future && <Callout tone="info">{t("paychange.scheduled", { on: effectiveOn })}</Callout>}
+        {retroPreview !== 0 && <Callout tone="info">{t("paychange.retro_preview", { amount: hrMoney(retroPreview), month: lastClosed ?? "" })}</Callout>}
         <p className="text-xs text-muted-foreground">{t("paychange.retro_note")}</p>
       </div>
     )

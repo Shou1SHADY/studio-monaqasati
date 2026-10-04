@@ -19359,7 +19359,7 @@
         "reason": "Reason",
         "from": "Wage now",
         "to": "Wage after",
-        "retro_note": "An effective date inside a closed month adds the difference to the supplementary payroll; the closed month is not reopened.",
+        "retro_note": "A change applies from its date. Inside the last closed month, the difference for that month goes to the supplementary payroll and the month is not reopened. Further back is not possible.",
         "block": {
           "bad_basic": "The basic must be above zero",
           "no_reason": "Give the reason",
@@ -19370,7 +19370,9 @@
         "warn": {
           "pay_cut": "This lowers the pay — it needs the worker's written consent",
           "saudi_below_nitaqat": "A Saudi below 4,000 basic does not count fully in Nitaqat"
-        }
+        },
+        "scheduled": "Takes effect on {on}: payrolls before that day keep the current wage.",
+        "retro_preview": "{month} is closed: {amount} goes to its supplementary payroll."
       },
       "probation": {
         "decision": "Decision",
@@ -19653,7 +19655,10 @@
           "approved": "Already approved — a closed month never reopens; late items go to the supplementary",
           "sent": "Its events were already sent to Finance",
           "main_not_approved": "Approve the month's payroll first",
-          "no_lines": "Nothing for the supplementary"
+          "no_lines": "Nothing for the supplementary",
+          "too_many": "This month already has the maximum number of supplementary payrolls",
+          "stale": "An item was already paid in an approved supplementary. Recompute.",
+          "advance_stale": "An advance balance changed since this was prepared (another month took its instalment). Recompute before approving."
         },
         "stale": "The record changed since it was prepared — recompute before approving.",
         "prepare": "Compute and prepare",
@@ -19701,10 +19706,16 @@
           "declared": "Declared days"
         },
         "no_lines": "No lines",
-        "sup_title": "Supplementary {key}",
-        "sup_desc": "Late items only — retro pay differences for this closed month. The month's payroll is not reopened.",
+        "sup_desc": "Late items only, for this closed month: retro pay differences, late commission, and penalties cancelled after they were deducted. The month's payroll is not reopened, and an approved supplementary is final: anything later goes in the next one.",
         "confirm_title": "Approve payroll {key}?",
-        "confirm_desc": "The events go to Finance with fixed keys and cannot be sent twice. Advance instalments come off the balances. Anything late goes to the supplementary."
+        "confirm_desc": "The events go to Finance with fixed keys and cannot be sent twice. Advance instalments come off the balances. Anything late goes to the supplementary.",
+        "sup_list_title": "Supplementary payrolls",
+        "sup_next": "Next supplementary",
+        "sup_item": {
+          "retro": "Retro {amount}",
+          "commission": "Commission {amount}",
+          "refund": "Penalty refunded {amount}"
+        }
       },
       "iban": {
         "returned": "The bank returned this salary transfer — payroll corrects the IBAN, the HR manager approves it, then Finance pays.",
@@ -19984,7 +19995,8 @@
           "penalties": "Penalties",
           "advance": "Advance instalment",
           "net": "Net paid",
-          "retro": "Retro pay difference"
+          "retro": "Retro pay difference",
+          "refund": "Penalty paid back (cancelled on your objection)"
         }
       },
       "inj": {

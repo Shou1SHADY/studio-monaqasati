@@ -713,16 +713,21 @@ export interface HrPayPosting {
   credit: { salariesPayable: number; gosi: number; advances: number; fines: number }
 }
 
-/** hr:PAY — Dr wages by centre · Cr salaries payable (net, held lines included), GOSI (both shares), advance instalments, fines. */
+/** hr:PAY — Dr wages by centre · Cr salaries payable (net, held lines included), GOSI (both shares), advance instalments, fines.
+ * A supplementary that pays back a penalty cancelled on objection carries a negative fines credit: the fund is debited. */
 export function postHrPay(e: HrPayPosting): PostingResult {
+  const fines: Line =
+    e.credit.fines >= 0
+      ? { account: ACC.finesFund, credit: e.credit.fines, note: "غرامات العمال (م 73)" }
+      : { account: ACC.finesFund, debit: round2(-e.credit.fines), note: "جزاء ملغى بعد الاعتراض — يُرد للموظف" }
   const lines: Line[] = [
     ...hrCostLines(e.debit, `رواتب ${e.month}`),
     { account: ACC.employeeAccruals, credit: e.credit.salariesPayable, note: "صافي الرواتب المستحقة" },
     { account: ACC.gosiPayable, credit: e.credit.gosi, note: "التأمينات الاجتماعية" },
     { account: ACC.employeeAdvances, credit: e.credit.advances, note: "أقساط السلف" },
-    { account: ACC.finesFund, credit: e.credit.fines, note: "غرامات العمال (م 73)" },
+    fines,
   ].filter((l) => round2((l.debit ?? 0) + (l.credit ?? 0)) !== 0)
-  const total = round2(e.debit.reduce((x, r) => x + r.amount, 0))
+  const total = round2(e.debit.reduce((x, r) => x + r.amount, 0) + Math.max(0, -e.credit.fines))
   return { sourceType: "hr_pay", sourceId: e.key, date: e.date, description: `مسير رواتب ${e.key.replace(/^hr:PAY:/, "")}`, costCenter: COST_CENTERS.admin, lines, empty: total === 0 }
 }
 
