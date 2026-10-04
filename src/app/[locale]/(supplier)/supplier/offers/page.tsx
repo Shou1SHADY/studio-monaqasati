@@ -865,7 +865,7 @@ export default function SupplierOffersPage() {
           <DialogFooter className={cn("flex flex-row gap-2 mt-4", locale === 'ar' ? "flex-row-reverse justify-start" : "justify-end")}>
             <Button variant="outline" onClick={() => setUpdatePriceOffer(null)} disabled={isUpdatingPrice}>{t("cancel")}</Button>
             <Button onClick={handleUpdatePrice} disabled={isUpdatingPrice || revisedTotal == null || String(revisedTotal) === String(updatePriceOffer?.price)}>
-              {isUpdatingPrice ? <Loader2 className="animate-spin mr-2" size={16} /> : null}
+              {isUpdatingPrice ? <Loader2 className="animate-spin me-2" size={16} /> : null}
               {t("confirm_new_price")}
             </Button>
           </DialogFooter>
@@ -892,7 +892,7 @@ export default function SupplierOffersPage() {
                 }
               }}
             >
-              {deletingId === confirmSampleOffer?.id ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+              {deletingId === confirmSampleOffer?.id ? <Loader2 size={16} className="animate-spin me-2" /> : null}
               {t("yes_sent")}
             </AlertDialogAction>
           </AlertDialogFooter>

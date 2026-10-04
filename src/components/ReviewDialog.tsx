@@ -198,7 +198,7 @@ export function ReviewDialog({
             disabled={isSubmitting || rating === 0}
             onClick={handleSubmit}
           >
-            {isSubmitting ? <Loader2 className="animate-spin ml-2 h-4 w-4" /> : null}
+            {isSubmitting ? <Loader2 className="animate-spin me-2 h-4 w-4" /> : null}
             {t("review_submit")}
           </Button>
           <Button

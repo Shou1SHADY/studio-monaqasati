@@ -3199,10 +3199,10 @@ export default function ProjectDetailPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-8"></TableHead>
-                        <TableHead className="text-right">{t("proj_rfqs")}</TableHead>
-                        {isRfqColVisible("category") && <TableHead className="text-right">{t("proj_category")}</TableHead>}
-                        {isRfqColVisible("status") && <TableHead className="text-right">{t("proj_status")}</TableHead>}
-                        {isRfqColVisible("offers_count") && <TableHead className="text-right">{t("proj_offers_count_label")}</TableHead>}
+                        <TableHead className="text-start">{t("proj_rfqs")}</TableHead>
+                        {isRfqColVisible("category") && <TableHead className="text-start">{t("proj_category")}</TableHead>}
+                        {isRfqColVisible("status") && <TableHead className="text-start">{t("proj_status")}</TableHead>}
+                        {isRfqColVisible("offers_count") && <TableHead className="text-start">{t("proj_offers_count_label")}</TableHead>}
                         <TableHead className="text-left"></TableHead>
                       </TableRow>
                     </TableHeader>

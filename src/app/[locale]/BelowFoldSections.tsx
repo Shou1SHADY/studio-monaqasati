@@ -412,7 +412,7 @@ export default function BelowFoldSections() {
           <div className="grid grid-cols-1 lg:grid-cols-[0.84fr_1.16fr] items-center gap-10 sm:gap-14 lg:gap-14" dir="ltr">
 
             <div
-              className="text-right"
+              className="text-start"
               dir="rtl"
             >
               <div className="inline-flex items-center gap-3 mb-5 sm:mb-7">

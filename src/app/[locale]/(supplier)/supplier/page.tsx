@@ -410,7 +410,7 @@ export default function SupplierDashboard() {
                   {userData?.coverageCities?.length > 0 ? (
                     userData.coverageCities.slice(0, 6).map((city: string) => (
                       <span key={city} className="text-xs text-muted-foreground bg-slate-100 px-2 py-1 rounded hover:bg-slate-200 transition-colors cursor-default">
-                        <MapPin size={10} className="inline ml-1" />
+                        <MapPin size={10} className="inline me-1" />
                         {displayCity(city, locale)}
                       </span>
                     ))
@@ -446,7 +446,7 @@ export default function SupplierDashboard() {
       {/* RFQ Details Dialog */}
       <Dialog open={showRfqDetails} onOpenChange={(open) => { if (!open) { setShowRfqDetails(false); setShowInquiries(false) } }}>
         <DialogContent
-          className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0"
+          className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl text-start rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0"
           dir={locale === 'ar' ? 'rtl' : 'ltr'}
           aria-describedby={undefined}
         >

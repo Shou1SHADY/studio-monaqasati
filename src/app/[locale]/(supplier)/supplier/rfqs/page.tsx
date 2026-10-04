@@ -607,7 +607,7 @@ export default function AvailableRfqsPage() {
       {/* RFQ Details Dialog */}
       <Dialog open={showRfqDetails} onOpenChange={(open) => { if (!open) { setShowRfqDetails(false); setShowInquiries(false); } }}>
         <DialogContent
-          className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-3xl text-right rounded-2xl p-0 overflow-hidden max-h-[94dvh] flex flex-col gap-0 border-none shadow-2xl"
+          className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-3xl text-start rounded-2xl p-0 overflow-hidden max-h-[94dvh] flex flex-col gap-0 border-none shadow-2xl"
           dir={locale === 'ar' ? 'rtl' : 'ltr'}
           aria-describedby={undefined}
         >
