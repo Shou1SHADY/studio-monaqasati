@@ -111,3 +111,39 @@ describe("the roles are the ones access.ts names", () => {
     for (const perm of Object.values(HR_ROLE_PERMISSION)) expect(rules).toContain(`hrRole('${perm}')`)
   })
 })
+
+describe("letters (EM-08, WF-24)", () => {
+  const letters = block("hrLetters")
+  const figures = block("hrLetterPay")
+
+  it("a letter carries no pay: its create shape has no figure; the figures sit apart, closed to roles without pay", () => {
+    const [create] = allow(letters, "create")
+    expect(create).toMatch(/keys\(\)\.hasOnly\(/)
+    expect(create).not.toMatch(/basic|housing|transport|wage/)
+    for (const g of allow(figures, "get")) expect(g).not.toMatch(/hrStaff\(\)|hr\.gov|hr\.supervisor/)
+    expect(allow(figures, "get")[0]).toMatch(/hrSeesPay\(\) \|\| resource\.data\.employeeUserId == request\.auth\.uid/)
+  })
+
+  it("government relations reads only the letters it signs", () => {
+    const [read] = allow(letters, "get")
+    expect(read).toMatch(/resource\.data\.signerLevel == 'gov' && hrRole\('hr\.gov'\)/)
+  })
+
+  it("the figures equal the employee's pay, copied while the letter is open by a hand that may read it", () => {
+    const [write] = allow(figures, "create")
+    expect(write).toMatch(/hrSamePay\(request\.resource\.data, get\(\/databases\/\$\(database\)\/documents\/employeePay\//)
+    expect(write).toMatch(/hrSeesPay\(\) \|\| hrOwnRecord\(request\.resource\.data\.employeeId\)/)
+    expect(write).toMatch(/resource == null \|\| get\(\/databases\/\$\(database\)\/documents\/hrLetters\/\$\(letterId\)\)\.data\.state == 'pending'/)
+    // Written in the same transaction as the letter: judged on the letter as that transaction leaves it.
+    expect(write).toMatch(/getAfter\(\/databases\/\$\(database\)\/documents\/hrLetters\//)
+  })
+
+  it("signed once, by its level, never by the employee himself (the owner excepted); a decline has its reason", () => {
+    const [update] = allow(letters, "update")
+    expect(update).toMatch(/resource\.data\.state == 'pending'/)
+    expect(update).toMatch(/resource\.data\.employeeUserId != request\.auth\.uid \|\| isOrgOwner\(\)/)
+    expect(update).toMatch(/decision\.note\.size\(\) > 0/)
+    expect(update).toMatch(/serial\.matches\('LT-\[0-9\]\{4\}\/\[0-9\]\+'\)/)
+    expect(allow(letters, "delete")).toEqual(["false"])
+  })
+})

@@ -38,6 +38,7 @@ import type { HrRequestKind } from "@/lib/hr/requests"
 import { EmployeeActionDialog, type EmployeeAction } from "./EmployeeActionDialogs"
 import { HrExitPanel, StartExitDialog } from "./HrExitPanel"
 import { HrInjuryPanel } from "./HrInjuryPanel"
+import { HrLettersPanel } from "./HrLetters"
 import { HrRequestList } from "./HrRequestList"
 import { HrViolationList, RecordViolationDialog, useHrViolations } from "./HrViolationList"
 import { NewRequestDialog } from "./NewRequestDialog"
@@ -273,6 +274,8 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
           <HrRequestList access={access} requests={requests} showEmployee={false} empty={t("req.none")} />
         </Panel>
       )}
+
+      {seg === "log" && <HrLettersPanel access={access} actor={actor} emp={emp} pay={pay} portal={portal} />}
 
       {seg === "log" && (
         <Panel
