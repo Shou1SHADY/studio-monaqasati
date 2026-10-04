@@ -1,7 +1,9 @@
 // Copies each company's sensitive identity (CR number, tax number, certificate
 // files, bank details) from its profile document into companyIdentity/{orgId}
-// (DEV-60). The old fields are NOT removed here: older mobile app versions still
-// read them, so stripping is a separate, later step.
+// (DEV-60), and the few facts its counterparties read in bulk (tax number,
+// registration expiry, "has a registration number") into companyPublicFacts/{orgId}.
+// The old fields are NOT removed here: older mobile app versions still read them,
+// so stripping is a separate, later step.
 //
 //   node scripts/migrate-company-identity.js uat            — DRY RUN: counts and field names, never values
 //   node scripts/migrate-company-identity.js uat  --apply   — writes
@@ -62,6 +64,17 @@ const pick = (src) => {
   return out
 }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+const text = (v) => (typeof v === "string" || typeof v === "number" ? String(v).trim() : "")
+
+// Keep in step with publicFactsPatch in src/lib/company-public-facts.ts.
+const publicFacts = (src) => {
+  const out = {}
+  if (text(src.taxNumber)) out.vat = text(src.taxNumber).replace(/\s/g, "")
+  if (text(src.crNumber)) out.hasCr = true
+  const expiry = text(src.legalDocuments && src.legalDocuments.cr && src.legalDocuments.cr.expiryDate).slice(0, 10)
+  if (expiry) out.crExpiry = expiry
+  return out
+}
 
 ;(async () => {
   console.log(`${target.toUpperCase()} · project ${projectId} · ${apply ? "APPLYING" : "dry run — nothing will be written"}\n`)
@@ -79,9 +92,12 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
   for (const d of orgs.docs) companies.push({ orgId: d.id, kind: "secondary", source: "organizations", data: d.data() })
 
   const existing = new Map()
+  const existingFacts = new Map()
   for (const c of companies) {
     const snap = await db.collection("companyIdentity").doc(c.orgId).get()
     if (snap.exists) existing.set(c.orgId, snap.data())
+    const facts = await db.collection("companyPublicFacts").doc(c.orgId).get()
+    if (facts.exists) existingFacts.set(c.orgId, facts.data())
   }
 
   let toCreate = 0
@@ -90,7 +106,12 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
   let empty = 0
   let conflicts = 0
   const writes = []
+  const factWrites = []
   for (const c of companies) {
+    const haveFacts = existingFacts.get(c.orgId) || {}
+    const factPatch = {}
+    for (const [k, v] of Object.entries(publicFacts(c.data))) if (!present(haveFacts[k])) factPatch[k] = v
+    if (Object.keys(factPatch).length) factWrites.push({ orgId: c.orgId, patch: factPatch })
     const wanted = pick(c.data)
     if (!Object.keys(wanted).length) {
       empty++
@@ -122,6 +143,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
   console.log(`companies read: ${companies.length} (${companies.filter((c) => c.kind === "primary").length} primary, ${companies.filter((c) => c.kind === "secondary").length} secondary)`)
   console.log(`  to create: ${toCreate} · to fill: ${toFill} · already up to date: ${upToDate} · nothing sensitive on file: ${empty} · conflicts: ${conflicts}`)
+  console.log(`  public facts to write: ${factWrites.length}`)
   for (const w of writes.slice(0, 15)) console.log(`  ${w.orgId}: ${w.note}`)
   if (writes.length > 15) console.log(`  … and ${writes.length - 15} more`)
 
@@ -136,7 +158,14 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
     }
     await batch.commit()
   }
-  console.log(`\nWrote ${writes.length} identity documents.`)
+  for (let i = 0; i < factWrites.length; i += 400) {
+    const batch = db.batch()
+    for (const w of factWrites.slice(i, i + 400)) {
+      batch.set(db.collection("companyPublicFacts").doc(w.orgId), { ...w.patch, migratedAt: FieldValue.serverTimestamp() }, { merge: true })
+    }
+    await batch.commit()
+  }
+  console.log(`\nWrote ${writes.length} identity documents and ${factWrites.length} public-facts documents.`)
 })().catch((e) => {
   console.error(e)
   process.exit(1)

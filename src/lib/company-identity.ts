@@ -31,9 +31,14 @@ export function pickIdentity(source: Record<string, unknown> | null | undefined)
   return out as CompanyIdentity
 }
 
-/** During the move, a field missing from the identity document is still read from the old profile fields. */
+/**
+ * While the old profile fields exist they win: the mobile app still writes only
+ * them, so a newer value there must not hide behind a stale identity document.
+ * The identity document fills what they lack, and is the only source once they
+ * are removed.
+ */
 export function resolveIdentity(stored: CompanyIdentity | null | undefined, legacy: Record<string, unknown> | null | undefined): CompanyIdentity {
-  return { ...pickIdentity(legacy), ...pickIdentity(stored as Record<string, unknown> | null | undefined) }
+  return { ...pickIdentity(stored as Record<string, unknown> | null | undefined), ...pickIdentity(legacy) }
 }
 
 /** What the old profile document holds that the identity document does not (or holds differently). */

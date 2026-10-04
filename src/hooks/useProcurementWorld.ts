@@ -12,8 +12,10 @@
 // field, and a price-free twin of every document would cost more than it
 // protects. Stated honestly here so nobody mistakes the mask for a wall.
 
+import { COMPANY_PUBLIC_FACTS, type CompanyPublicFacts } from "@/lib/company-public-facts"
 import { useEffect, useMemo, useState } from "react"
 import { SUPPLIER_RECORDS, supplierFactsWithRecord, type SupplierRecord } from "@/lib/procurement/supplier-file"
+import { supplierFactsFromProfile } from "@/lib/procurement/award"
 import { collection, doc, getDoc, query, where } from "firebase/firestore"
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useProcActor } from "@/hooks/useProcActor"
@@ -149,14 +151,8 @@ export function useProcurementWorld(): ProcurementWorld {
         try {
           let snap = await getDoc(doc(firestore, "users", id))
           if (!snap.exists()) snap = await getDoc(doc(firestore, "organizations", id))
-          const data = (snap.exists() ? snap.data() : {}) as { taxNumber?: string | null; isVerified?: boolean | null; legalDocuments?: { cr?: { expiryDate?: string | null } } | null }
-          const known = snap.exists()
-          found.set(id, {
-            orgId: id,
-            hasVatNumber: known ? Boolean((data.taxNumber || "").toString().trim()) : null,
-            verified: known ? Boolean(data.isVerified) : null,
-            crExpiry: known ? (data.legalDocuments?.cr?.expiryDate as string | undefined)?.slice(0, 10) || null : null,
-          })
+          const publicFacts = snap.exists() ? ((await getDoc(doc(firestore, COMPANY_PUBLIC_FACTS, id)).catch(() => null))?.data() as CompanyPublicFacts | undefined) : undefined
+          found.set(id, supplierFactsFromProfile(id, snap.exists() ? (snap.data() as Parameters<typeof supplierFactsFromProfile>[1]) : null, publicFacts))
         } catch (err) {
           console.warn("supplier facts not read:", (err as { code?: string })?.code || err)
           found.set(id, { orgId: id, hasVatNumber: null, verified: null, crExpiry: null })

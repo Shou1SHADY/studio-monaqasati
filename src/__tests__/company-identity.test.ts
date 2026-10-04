@@ -37,12 +37,16 @@ describe("company identity helpers", () => {
     expect(pickIdentity({ legalDocuments: {} })).toEqual({})
   })
 
-  it("reads the identity document first and the old profile for what it lacks", () => {
-    const stored = { crNumber: "NEW" }
-    const legacy = { crNumber: "OLD", taxNumber: "300000000000003" }
-    expect(resolveIdentity(stored, legacy)).toEqual({ crNumber: "NEW", taxNumber: "300000000000003" })
-    expect(resolveIdentity(null, legacy)).toEqual({ crNumber: "OLD", taxNumber: "300000000000003" })
+  it("keeps the old profile fields on top while they exist, and fills what they lack from the identity document", () => {
+    const stored = { crNumber: "STALE", iban: "SA03" }
+    const legacy = { crNumber: "NEWER", taxNumber: "300000000000003" }
+    expect(resolveIdentity(stored, legacy)).toEqual({ crNumber: "NEWER", taxNumber: "300000000000003", iban: "SA03" })
+    expect(resolveIdentity(null, legacy)).toEqual({ crNumber: "NEWER", taxNumber: "300000000000003" })
     expect(resolveIdentity(null, null)).toEqual({})
+  })
+
+  it("is the identity document alone once the old fields are removed", () => {
+    expect(resolveIdentity({ crNumber: "1010123456", legalDocuments: { cr: { url: "u" } } }, { name: "Acme", city: "Riyadh" })).toEqual({ crNumber: "1010123456", legalDocuments: { cr: { url: "u" } } })
   })
 
   it("lists what the old profile holds that the identity document does not match", () => {
@@ -119,5 +123,21 @@ describe("companyPrintProfile rules", () => {
 
   it("answers a missing document instead of erroring", () => {
     expect(body).not.toContain("resource.data")
+  })
+})
+
+describe("companyPublicFacts rules", () => {
+  const body = block("companyPublicFacts")
+
+  it("is readable by any signed-in user, with a list for the directory", () => {
+    expect(allow(body, "get")).toEqual(["isSignedIn()"])
+    expect(allow(body, "list")).toEqual(["isSignedIn()"])
+  })
+
+  it("is written only by the owner or the admin, and never deleted", () => {
+    const write = allow(body, "update").join(" ")
+    expect(write).toContain("isCompanyOwner(orgId)")
+    expect(write).not.toContain("isOrgMember")
+    expect(allow(body, "delete")).toEqual(["false"])
   })
 })

@@ -16,13 +16,20 @@ describe("mirrorCompanyIdentity", () => {
     setDoc.mockResolvedValue(undefined)
   })
 
-  it("writes only the sensitive fields, merged, to the company's identity document", async () => {
-    await mirrorCompanyIdentity(db, "orgA", { name: "Acme", crNumber: "1010", legalDocuments: { cr: { url: "u" } } })
-    expect(setDoc).toHaveBeenCalledTimes(1)
-    const [ref, data, options] = setDoc.mock.calls[0]
-    expect(ref).toEqual({ path: "companyIdentity/orgA" })
-    expect(data).toEqual({ crNumber: "1010", legalDocuments: { cr: { url: "u" } }, updatedAt: "TS" })
-    expect(options).toEqual({ merge: true })
+  it("writes the sensitive fields to the identity document and only the public ones to the public facts, merged", async () => {
+    await mirrorCompanyIdentity(db, "orgA", { name: "Acme", crNumber: "1010", taxNumber: "300000000000003", legalDocuments: { cr: { url: "u", expiryDate: "2027-05-01" } } })
+    const byPath = Object.fromEntries(setDoc.mock.calls.map(([ref, data, options]) => [ref.path, { data, options }]))
+    expect(Object.keys(byPath).sort()).toEqual(["companyIdentity/orgA", "companyPublicFacts/orgA"])
+    expect(byPath["companyIdentity/orgA"].data).toEqual({ crNumber: "1010", taxNumber: "300000000000003", legalDocuments: { cr: { url: "u", expiryDate: "2027-05-01" } }, updatedAt: "TS" })
+    expect(byPath["companyPublicFacts/orgA"].data).toEqual({ vat: "300000000000003", hasCr: true, crExpiry: "2027-05-01", updatedAt: "TS" })
+    expect(byPath["companyPublicFacts/orgA"].data).not.toHaveProperty("crNumber")
+    expect(byPath["companyPublicFacts/orgA"].data).not.toHaveProperty("legalDocuments")
+    expect(byPath["companyIdentity/orgA"].options).toEqual({ merge: true })
+  })
+
+  it("leaves the public facts alone when a write names no public fact (a bank detail)", async () => {
+    await mirrorCompanyIdentity(db, "orgA", { iban: "SA03 8000 0000 6080 1016 7519" })
+    expect(setDoc.mock.calls.map(([ref]) => ref.path)).toEqual(["companyIdentity/orgA"])
   })
 
   it("does nothing for a write that carries no sensitive field, or no company", async () => {
@@ -35,7 +42,7 @@ describe("mirrorCompanyIdentity", () => {
     const spy = jest.spyOn(console, "error").mockImplementation(() => {})
     setDoc.mockRejectedValue(new Error("permission-denied"))
     await expect(mirrorCompanyIdentity(db, "orgA", { crNumber: "1" })).resolves.toBeUndefined()
-    expect(spy).toHaveBeenCalled()
+    expect(spy).toHaveBeenCalledTimes(2)
     spy.mockRestore()
   })
 })

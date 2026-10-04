@@ -442,6 +442,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // The few facts a company's counterparties read in bulk — a tax number, when the registration
+    // ends — never the registration number, certificate files or bank details (those are in
+    // companyIdentity). Any signed-in user reads; the owner writes.
+    match /companyPublicFacts/{orgId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isAdmin() || isCompanyOwner(orgId);
+      allow delete: if false;
+    }
+
     // What the owner chooses to print on documents the team issues (purchase orders, quotations,
     // receipts) — the registration and tax numbers, only if the owner fills them in. The owner
     // writes; the whole team reads, because it is printed on their documents.

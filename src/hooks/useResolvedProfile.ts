@@ -4,6 +4,8 @@ import { doc } from "firebase/firestore"
 import { useFirestore, useDoc, useMemoFirebase } from "@/firebase"
 import { identityDocRef, isSecondaryOrg } from "@/lib/org-identity"
 import { stripIdentityFields, withCompanyStanding } from "@/lib/identity-fields"
+import { useCompanyIdentity } from "@/hooks/useCompanyIdentity"
+import { resolveIdentity } from "@/lib/company-identity"
 
 /**
  * Resolves the signed-in user's profile with identity fields (name,
@@ -45,7 +47,14 @@ export function useResolvedProfile(uid: string | undefined | null) {
   const { data: companyOrg, isLoading: companyOrgLoading } = useDoc(companyOrgRef)
   const { data: companyUser, isLoading: companyUserLoading } = useDoc(companyUserRef)
 
-  const isLoading = baseLoading || (secondary && identityLoading) || (member && (companyOrgLoading || companyUserLoading))
+  // The sensitive identity (CR, tax number, certificate files, bank details) lives in
+  // companyIdentity/{orgId} and only the owner may read it — a team member never
+  // subscribes (the rules would refuse). The old profile fields still win while they
+  // exist; this fills what they lack and is the only source once they are removed.
+  const owner = !member && !!organizationId
+  const { identity: companyIdentity, isLoading: companyIdentityLoading } = useCompanyIdentity(organizationId, owner)
+
+  const isLoading = baseLoading || (secondary && identityLoading) || (member && (companyOrgLoading || companyUserLoading)) || (owner && companyIdentityLoading)
   // Withhold `profile` entirely until BOTH docs have settled for a secondary
   // org — returning the base doc alone the instant it loads (before the
   // overlay listener has fired) would hand callers the WRONG company's data
@@ -53,13 +62,14 @@ export function useResolvedProfile(uid: string | undefined | null) {
   // Consumers with a "sync once into local state" effect (`if (userData &&
   // !localState.name) ...`) would otherwise latch onto that transient,
   // unmerged snapshot and never re-sync once the real data arrives.
-  const profile = !base || isLoading
+  const resolved = !base || isLoading
     ? null
     : secondary
       ? { ...stripIdentityFields(base), ...(identity || {}) }
       : member
         ? withCompanyStanding(base, (companyOrg as Record<string, unknown> | null) ?? (companyUser as Record<string, unknown> | null))
         : base
+  const profile = resolved && owner ? { ...resolved, ...resolveIdentity(companyIdentity, resolved as Record<string, unknown>) } : resolved
 
   return {
     profile,

@@ -8,6 +8,7 @@
 // with that write (a reason, an exclusion) and what the order laid over it
 // will run into at approval.
 
+import { factsFromProfile, type CompanyPublicFacts } from "@/lib/company-public-facts"
 import { z } from "zod"
 import { AWARD_REASON_CODES, awardNeedsReason, dayOf, isShortCompetition, lowestOffer, offerPrice, poBlocks, todayOf, type OfferLike, type PoBlock } from "./po"
 import type { AwardReasonCode, ProcurementPolicies, PurchaseOrder, SupplierFacts } from "./types"
@@ -182,13 +183,18 @@ export function reviewAward(offer: AwardOfferFacts, offers: OfferLike[], policie
 
 /** The supplier's platform profile, read the way the approval reads it
  * (`useProcurementWorld`): a missing document is "unknown", which never blocks. */
-export function supplierFactsFromProfile(orgId: string, data: { taxNumber?: string | null; isVerified?: boolean | null; legalDocuments?: { cr?: { expiryDate?: string | null } | null } | null } | null | undefined): SupplierFacts {
+export function supplierFactsFromProfile(
+  orgId: string,
+  data: { taxNumber?: string | null; isVerified?: boolean | null; legalDocuments?: { cr?: { expiryDate?: string | null } | null } | null } | null | undefined,
+  publicFacts?: CompanyPublicFacts | null
+): SupplierFacts {
   if (!data) return { orgId, hasVatNumber: null, verified: null, crExpiry: null }
+  const facts = factsFromProfile(data, publicFacts)
   return {
     orgId,
-    hasVatNumber: Boolean((data.taxNumber || "").toString().trim()),
+    hasVatNumber: facts.vat !== "",
     verified: Boolean(data.isVerified),
-    crExpiry: (data.legalDocuments?.cr?.expiryDate || "").toString().slice(0, 10) || null,
+    crExpiry: facts.crExpiry || null,
   }
 }
 
