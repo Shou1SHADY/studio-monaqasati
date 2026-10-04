@@ -14,7 +14,7 @@ import type { HrExit } from "@/lib/hr/exit-writes"
 import { injuryState, recordInjury, recordInjuryReport, type HrInjury } from "@/lib/hr/injuries"
 import type { Payroll } from "@/lib/hr/payroll"
 import type { HrSite } from "@/lib/hr/sites"
-import { leakage, todayItems, type TodayInput } from "@/lib/hr/today"
+import { dutyToday, inPeopleFilter, kpiRole, leakage, renewalQueue, todayItems, todayKpis, type KpiInput, type TodayInput } from "@/lib/hr/today"
 
 const ctx = (roles: HrRole[], over: Partial<HrContext> = {}): HrContext => ({ uid: "u1", owner: false, roles: new Set(roles), employeeId: null, sites: [], ...over })
 const TODAY = "2026-09-08"
@@ -88,9 +88,9 @@ describe("injuries", () => {
 describe("Today — what the audit found missing or false", () => {
   it("government relations sees an expired iqama of someone on a site — red, to renew (DC-02); the HR manager sees it once, as the block", () => {
     const gov = todayItems(base(ctx(["gov"], { uid: "g" })))
-    expect(gov.find((x) => x.key === "doc:e2:iqama")).toMatchObject({ group: "due", severity: "red", action: "renew", href: "people/e2" })
+    expect(gov.find((x) => x.key === "doc:e2")).toMatchObject({ group: "due", severity: "red", action: "renew", href: "people/e2" })
     const hrm = todayItems(base(ctx(["manager"], { uid: "hrm" })))
-    expect(hrm.filter((x) => x.key === "doc:e2:iqama" || x.key === "iqama:e2").map((x) => x.kind)).toEqual(["iqama_on_site"])
+    expect(hrm.filter((x) => x.key === "doc:e2" || x.key === "iqama:e2").map((x) => x.kind)).toEqual(["iqama_on_site"])
   })
 
   it("a company whose people all joined this month is not asked to close or pay last month", () => {
@@ -116,5 +116,95 @@ describe("Today — what the audit found missing or false", () => {
     const row = todayItems(base(ctx(["manager"], { uid: "hrm" }), { payrolls })).find((x) => x.kind === "payroll_approve")
     expect(row).toMatchObject({ params: { month: "2026-08-D" }, action: "approve" })
     expect(todayItems(base(ctx(["manager"], { uid: "po" }), { payrolls })).map((x) => x.kind)).not.toContain("payroll_approve")
+  })
+})
+
+describe("DC-04 — the officer's list is by person, in the order the renewals are done", () => {
+  it("one row per person: passport → insurance → iqama, the worst one in the title; the contract is not a renewal", () => {
+    const e = emp("p1", { docs: { iqama: "2026-10-20", passport: "2026-09-01", insurance: "2026-09-30", contract: "2026-09-20" } })
+    const gov = todayItems(base(ctx(["gov"], { uid: "g" }), { employees: [e] })).filter((x) => x.kind === "doc_due")
+    expect(gov).toHaveLength(1)
+    expect(gov[0]).toMatchObject({ key: "doc:p1", severity: "red", params: { doc: "passport", order: "passport,insurance,iqama", count: 3 } })
+  })
+
+  it("the renewal queue: one line per person within 120 days, the most urgent first", () => {
+    const q = renewalQueue([emp("a", { docs: { iqama: "2026-12-30" } }), emp("b", { docs: { passport: "2026-09-01", iqama: "2026-11-01" } }), emp("c", { docs: { iqama: "2027-06-01" } }), emp("d", { status: "left", docs: { iqama: "2026-09-01" } })], TODAY, 120)
+    expect(q.map((x) => [x.employee.id, x.docs.map((d) => d.type).join(">")])).toEqual([
+      ["b", "passport>iqama"],
+      ["a", "iqama"],
+    ])
+  })
+})
+
+describe("TD-04 — three KPIs per role, each the number of the screen it opens", () => {
+  const office: HrSite = { id: "hq", organizationId: "org", name: "HQ", type: "hq", active: true }
+  const people = [
+    emp("w1"),
+    emp("w2"),
+    emp("w3"),
+    emp("o1", { siteId: "hq", nationality: "sa", docs: {} }),
+    emp("o2", { siteId: "hq", nationality: "sa", docs: {} }),
+    emp("b1", { siteId: null, docs: { iqama: "2026-09-01" } }),
+    emp("x1", { status: "left" }),
+  ]
+  const sheet = { id: "a", organizationId: "org", siteId: "s1", month: "2026-09", days: { [TODAY]: { by: "sup", byName: null, at: "", listed: ["w1", "w2"], ex: { w2: { status: "sick" } } } }, declarations: [], closed: null } as unknown as TodayInput["thisMonth"][number]
+  const officeEx = { id: "b", organizationId: "org", siteId: "hq", month: "2026-09", days: { [TODAY]: { by: "hrm", byName: null, at: "", listed: [], ex: { o2: { status: "absent" } } } }, declarations: [], closed: null } as unknown as TodayInput["thisMonth"][number]
+  const input = (c: HrContext, over: Partial<KpiInput> = {}): KpiInput => ({
+    ctx: c,
+    today: TODAY,
+    renewWindowDays: 60,
+    employees: people,
+    sites: [...sites, office],
+    thisMonth: [sheet, officeEx],
+    requests: [],
+    payrolls: [{ key: "2026-08", month: "2026-08", kind: "main", state: "approved", lines: [{ employeeId: "w1", net: 3000, gross: 3500, gosiEmployer: 70 }, { employeeId: "o1", net: 7000, gross: 8000, gosiEmployer: 940 }] }] as unknown as Payroll[],
+    pays: new Map<string, EmployeePay>([
+      ["w1", { employeeId: "w1", organizationId: "org", basic: 2500, housing: 625, transport: 250, ibanState: "returned", advance: { amount: 1000, balance: 600, instalment: 300 } }],
+      ["b1", { employeeId: "b1", organizationId: "org", basic: 2000, housing: 500, transport: 200 }],
+    ]),
+    ...over,
+  })
+
+  it("today's attendance by place: listed = present, a sheet's exception, an office assumes presence, no sheet = unrecorded", () => {
+    const d = dutyToday({ today: TODAY, employees: people, sites: [...sites, office], thisMonth: [sheet, officeEx], requests: [] })
+    const by = Object.fromEntries(d.map((x) => [x.siteId, x]))
+    expect(by.s1).toMatchObject({ assigned: 3, present: 1, sick: 1, unrecorded: 1 })
+    expect(by.hq).toMatchObject({ assigned: 2, present: 1, absent: 1, unrecorded: 0 })
+    expect(by.__bench__).toMatchObject({ assigned: 1, present: 1 })
+  })
+
+  it("each role has its own three, and pay never reaches a role that does not see it", () => {
+    const ids = (roles: HrRole[], over: Partial<HrContext> = {}) => todayKpis(input(ctx(roles, over))).map((k) => k.id)
+    expect(ids(["manager"])).toEqual(["on_duty", "documents", "payroll"])
+    expect(ids(["gov"])).toEqual(["iqama_expired", "expiring", "arrivals"])
+    expect(ids(["payroll"])).toEqual(["estimate", "returned", "advances"])
+    expect(ids(["supervisor"], { sites: ["s1"] })).toEqual(["my_workers", "unrecorded", "my_docs"])
+    expect(ids(["management"])).toEqual(["bench", "labour_cost", "iqama_on_site"])
+    expect(ids([])).toEqual([])
+    for (const roles of [["gov"], ["supervisor"]] as HrRole[][]) expect(todayKpis(input(ctx(roles, { sites: ["s1"] }))).some((k) => k.money)).toBe(false)
+  })
+
+  it("the numbers: the KPI equals its list — on duty = the places' sum; documents = People's filter", () => {
+    const hr = todayKpis(input(ctx(["manager"], { uid: "hrm" })))
+    expect(hr[0]).toMatchObject({ value: 3, params: { of: 6, out: 2, unrecorded: 1, bench: 1 } })
+    const filtered = people.filter((e) => inPeopleFilter("docs", e, TODAY, 60))
+    expect(hr[1].value).toBe(filtered.length)
+    expect(hr[1]).toMatchObject({ href: "people?filter=docs", params: { expired: 1, onSite: 0 } })
+    expect(hr[2]).toMatchObject({ value: 10000, money: true, params: { returned: 1 } })
+    const gov = todayKpis(input(ctx(["gov"])))
+    expect(gov[0].value).toBe(people.filter((e) => inPeopleFilter("iqama", e, TODAY, 60)).length)
+    const sup = todayKpis(input(ctx(["supervisor"], { sites: ["s1"] })))
+    expect(sup.map((k) => k.value)).toEqual([1, 1, 0])
+    const pay = todayKpis(input(ctx(["payroll"])))
+    expect(pay.map((k) => k.value)).toEqual([3375 + 2700, 1, 600])
+    const mg = todayKpis(input(ctx(["management"])))
+    expect(mg.map((k) => k.value)).toEqual([2700, 12510, 0])
+    expect(mg[1].href).toBe("reports?report=cost")
+  })
+
+  it("the role whose Today one sees: the HR manager first, management last", () => {
+    expect(kpiRole(ctx(["manager", "management"]))).toBe("manager")
+    expect(kpiRole(ctx(["management", "payroll"]))).toBe("payroll")
+    expect(kpiRole(ctx([]))).toBeNull()
   })
 })
