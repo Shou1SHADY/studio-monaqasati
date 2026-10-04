@@ -1,4 +1,4 @@
-import { buildClientRows, summarizeClients, contactsClient, toDateKey, STALE_DAYS, buildLeadRows, summarizeLeads, leadCrmId, manualLeadSchema } from "@/lib/admin-crm"
+import { buildClientRows, summarizeClients, contactsClient, toDateKey, STALE_DAYS, buildLeadRows, summarizeLeads, leadCrmId, manualLeadSchema, leadMatches, leadIntake, phoneKey } from "@/lib/admin-crm"
 
 const now = new Date(2026, 9, 1, 12, 0, 0)
 const daysAgo = (n: number) => new Date(now.getTime() - n * 86_400_000).toISOString()
@@ -186,5 +186,57 @@ describe("admin CRM leads", () => {
     expect(manualLeadSchema.safeParse({ ...ok, phone: "", email: "S@X.sa" }).success).toBe(true)
     expect(manualLeadSchema.safeParse({ ...ok, email: "nope" }).success).toBe(false)
     expect(manualLeadSchema.safeParse({ ...ok, phone: "abc12345" }).success).toBe(false)
+  })
+})
+
+describe("lead duplicates, clients, removal and intake", () => {
+  const at = (y: number, m: number, d: number) => ({ seconds: new Date(y, m, d, 10).getTime() / 1000 })
+
+  it("one phone in three spellings is one person", () => {
+    expect(phoneKey("0501234567")).toBe(phoneKey("+966 50 123 4567"))
+    expect(phoneKey("00966501234567")).toBe(phoneKey("0501234567"))
+    expect(phoneKey("12")).toBe("")
+  })
+
+  it("flags the same person under a second e-mail, and a lead who already holds an account", () => {
+    const rows = buildLeadRows(
+      [
+        { id: "d1", source: "demo", name: "أحمد حمدان", email: "ahmed@a.sa", phone: "0501234567" },
+        { id: "o1", source: "onboarding", name: "Ahmed H", email: "ahmed@b.sa", phone: "+966501234567" },
+        { id: "o2", source: "onboarding", name: "احمد حمدان", email: "other@c.sa" },
+        { id: "m1", source: "manual", name: "Sara", email: "sara@x.sa" },
+        { id: "gone", source: "demo", name: "Junk", email: "ahmed@a.sa", archived: true },
+      ],
+      {},
+      now,
+    )
+    const m = leadMatches(rows, [{ name: "Sara Co", email: "SARA@x.sa", phone: "" }])
+    expect(m.get(leadCrmId("demo", "d1"))?.duplicates.sort()).toEqual([leadCrmId("onboarding", "o1"), leadCrmId("onboarding", "o2")].sort())
+    expect(m.get(leadCrmId("onboarding", "o2"))?.duplicates).toEqual([leadCrmId("demo", "d1")]) // أحمد / احمد fold to one name
+    expect(m.get(leadCrmId("manual", "m1"))).toEqual({ duplicates: [], client: "Sara Co" })
+    expect(m.has(leadCrmId("demo", "gone"))).toBe(false)
+  })
+
+  it("a removed lead leaves the counts but is kept", () => {
+    const rows = buildLeadRows([{ id: "a", source: "demo" }, { id: "b", source: "demo", archived: true }], {}, now)
+    expect(rows.find((r) => r.id === "b")?.archived).toBe(true)
+    expect(summarizeLeads(rows)).toMatchObject({ total: 1, open: 1 })
+  })
+
+  it("counts intake by Sunday-to-Saturday week and by calendar month, with this month's sources", () => {
+    // now = Thu 1 Oct 2026: the week began Sun 27 Sep; last week Sun 20 Sep.
+    const rows = buildLeadRows(
+      [
+        { id: "1", source: "demo", createdAt: at(2026, 9, 1) },
+        { id: "2", source: "onboarding", createdAt: at(2026, 8, 27) },
+        { id: "3", source: "onboarding", createdAt: at(2026, 8, 22) },
+        { id: "4", source: "manual", createdAt: at(2026, 8, 2) },
+        { id: "5", source: "demo", createdAt: at(2026, 7, 30) },
+        { id: "6", source: "demo" },
+      ],
+      {},
+      now,
+    )
+    expect(leadIntake(rows, now)).toEqual({ thisWeek: 2, lastWeek: 1, thisMonth: 1, lastMonth: 3, bySource: { demo: 1, onboarding: 0, manual: 0 } })
   })
 })

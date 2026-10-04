@@ -18,6 +18,8 @@ export type CrmBoardItem = {
   daysSinceContact: number | null
   followUpDue: boolean
   stale: boolean
+  /** Short warnings under the name (possible duplicate, already a client). */
+  flags?: string[]
 }
 
 export type CrmBoardColumn = {
@@ -111,6 +113,15 @@ export function CrmBoard({ items, columns, onMove, onOpen }: Props) {
                       <p className="truncate text-xs text-muted-foreground">{card.subtitle}</p>
                     </button>
                   </div>
+                  {card.flags && card.flags.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {card.flags.map((f) => (
+                        <Badge key={f} variant="outline" className="border-warning/30 bg-warning/10 text-[11px] font-medium text-warning">
+                          {f}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span>{card.ownerName || t("unassigned")}</span>
                     {card.daysSinceContact === null ? (

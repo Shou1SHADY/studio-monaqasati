@@ -30,6 +30,8 @@ interface SupplierUserDoc {
   id: string
   organizationId?: string
   organizationRole?: string
+  /** The platform admin's classification: "international" | "local"; absent = read the phone. */
+  supplierOrigin?: string | null
   companyName?: string
   name?: string
   city?: string
@@ -173,7 +175,7 @@ export function useSupplierDirectory(orgId: string, favoriteIds: string[], offer
         bio: str(pick("description")),
         phone: str(pick("phone")),
         email: str(pick("email")),
-        international: isInternationalSupplier({ phone: str(pick("phone")), record }),
+        international: isInternationalSupplier({ phone: str(pick("phone")), record, platformOrigin: raw.supplierOrigin ?? null }),
         since: asDay(raw.createdAt),
         platformVerified: Boolean(owner.isVerified),
         profileVat: str(pick("taxNumber")),

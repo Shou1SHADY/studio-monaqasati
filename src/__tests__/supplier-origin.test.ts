@@ -58,3 +58,13 @@ describe("directory origin filter", () => {
     expect(filterDirectory(entries, { ...f, origin: "local" }).map((e) => e.orgId)).toEqual(["a", "c"])
   })
 })
+
+describe("the platform admin's classification", () => {
+  it("sits between our own call and the phone: ours wins, then the admin's, then the number", () => {
+    expect(isInternationalSupplier({ phone: "+8613800000000", platformOrigin: "local" })).toBe(false)
+    expect(isInternationalSupplier({ phone: "0501234567", platformOrigin: "international" })).toBe(true)
+    expect(isInternationalSupplier({ phone: "0501234567", platformOrigin: "international", record: { origin: "local" } })).toBe(false)
+    expect(isInternationalSupplier({ phone: "+8613800000000", platformOrigin: null })).toBe(true)
+    expect(isInternationalSupplier({ phone: "0501234567", platformOrigin: "somewhere" })).toBe(false)
+  })
+})

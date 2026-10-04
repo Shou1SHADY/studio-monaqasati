@@ -92,6 +92,10 @@ export default function AdminLeadsPage() {
   }
 
   useEffect(() => {
+    const removed = new Set([
+      ...(demoRequests || []).filter((d: { archived?: boolean }) => d.archived === true).map((d: { id: string }) => `d:${d.id}`),
+      ...(onboardingRequests || []).filter((d: { archived?: boolean }) => d.archived === true).map((d: { id: string }) => `o:${d.id}`),
+    ])
     const demo: Lead[] = (demoRequests || []).map((d: any) => ({
       id: d.id,
       source: d.origin === "manual" ? "manual" : "demo",
@@ -123,7 +127,9 @@ export default function AdminLeadsPage() {
       typeOther: leadCompanyTypes(d).other,
     }))
     const received = (l: Lead) => getTs(l.createdAt) || (l.source === "manual" ? Date.now() : 0)
-    setLocalLeads([...demo, ...onboarding].sort((a, b) => received(b) - received(a)))
+    // A lead removed in the CRM (junk, a duplicate) stays out of this list too.
+    const live = (l: Lead) => !removed.has(`${l.source === "onboarding" ? "o" : "d"}:${l.id}`)
+    setLocalLeads([...demo, ...onboarding].filter(live).sort((a, b) => received(b) - received(a)))
   }, [demoRequests, onboardingRequests])
 
   const [dialogOpen, setDialogOpen] = useState(false)

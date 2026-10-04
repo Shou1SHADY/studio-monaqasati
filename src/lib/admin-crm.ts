@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { leadCompanyTypes, type CompanyType, type LeadTypeFields } from "@/lib/company-types"
+import { foldSearchText } from "@/lib/search-text"
 
 export const CLIENT_STAGES = ["onboarding", "active", "at_risk", "churned"] as const
 export type ClientStage = (typeof CLIENT_STAGES)[number]
@@ -139,6 +140,8 @@ export type LeadDoc = LeadTypeFields & {
   city?: string
   size?: string
   preferredDate?: string
+  /** Removed from the list by platform staff (junk, a duplicate) — kept, and restorable. */
+  archived?: boolean
   createdAt?: { seconds?: number } | null
 }
 
@@ -156,6 +159,7 @@ export type LeadRow = {
   size: string
   preferredDate: string
   converted: boolean
+  archived: boolean
   stage: LeadViewStage
   ownerUid: string
   ownerName: string
@@ -213,6 +217,7 @@ export function buildLeadRows(leads: LeadDoc[], records: Record<string, ClientRe
       size: l.size ?? "",
       preferredDate: l.preferredDate ?? "",
       converted,
+      archived: l.archived === true,
       stage,
       ownerUid: rec.ownerUid ?? "",
       ownerName: rec.ownerName ?? "",
@@ -233,6 +238,7 @@ export function summarizeLeads(rows: LeadRow[]): LeadSummary {
   let unowned = 0
   let open = 0
   for (const r of rows) {
+    if (r.archived) continue
     byStage[r.stage] += 1
     const closed = r.stage === "lost" || r.stage === "converted"
     if (!closed) open += 1
@@ -240,7 +246,80 @@ export function summarizeLeads(rows: LeadRow[]): LeadSummary {
     if (r.stale) stale += 1
     if (!closed && !r.ownerUid) unowned += 1
   }
-  return { total: rows.length, open, byStage, followUpsDue, stale, unowned }
+  return { total: rows.filter((r) => !r.archived).length, open, byStage, followUpsDue, stale, unowned }
+}
+
+// ── Duplicates and leads who are already clients ────────────────────────────
+// The same person arrives twice (a demo request, then "start free", or under a
+// second e-mail), and some leads already hold an account. A match on the phone
+// (last nine digits: 05x, 9665x and +9665x are one number), the e-mail, or the
+// full name (Arabic-folded, two words or more) is shown, never merged.
+
+export function phoneKey(phone: string | null | undefined): string {
+  const digits = (phone ?? "").replace(/\D/g, "")
+  return digits.length >= 7 ? digits.slice(-9) : ""
+}
+
+const emailKey = (email: string | null | undefined) => (email ?? "").trim().toLowerCase()
+const nameKey = (name: string | null | undefined) => {
+  const folded = foldSearchText(name ?? "")
+  return folded.split(/\s+/).filter(Boolean).length >= 2 ? folded : ""
+}
+const keysOf = (p: { name?: string; email?: string; phone?: string }) =>
+  [phoneKey(p.phone) && `p:${phoneKey(p.phone)}`, emailKey(p.email) && `e:${emailKey(p.email)}`, nameKey(p.name) && `n:${nameKey(p.name)}`].filter(Boolean) as string[]
+
+export type LeadMatch = { duplicates: string[]; client: string | null }
+
+/** For each live lead: the other live leads that look like the same person, and
+ * the registered client it already is (by name), if any. Removed leads are left out. */
+export function leadMatches(rows: LeadRow[], clients: Array<{ name: string; email: string; phone: string }>): Map<string, LeadMatch> {
+  const live = rows.filter((r) => !r.archived)
+  const byKey = new Map<string, string[]>()
+  for (const r of live) for (const k of keysOf(r)) byKey.set(k, [...(byKey.get(k) ?? []), r.crmId])
+  const clientByKey = new Map<string, string>()
+  for (const c of clients) for (const k of keysOf(c)) if (!clientByKey.has(k)) clientByKey.set(k, c.name)
+  const out = new Map<string, LeadMatch>()
+  for (const r of live) {
+    const keys = keysOf(r)
+    const duplicates = Array.from(new Set(keys.flatMap((k) => byKey.get(k) ?? []))).filter((id) => id !== r.crmId)
+    const client = keys.map((k) => clientByKey.get(k)).find(Boolean) ?? null
+    if (duplicates.length || client) out.set(r.crmId, { duplicates, client })
+  }
+  return out
+}
+
+// ── Intake: how many leads came in, by week and by month ─────────────────────
+// What the ad campaigns are measured on. The week runs Sunday to Saturday (the
+// Saudi working week starts on Sunday); months are calendar months, local time.
+// Removed leads still count — they arrived.
+
+export type LeadIntake = {
+  thisWeek: number
+  lastWeek: number
+  thisMonth: number
+  lastMonth: number
+  /** This month, by where the lead came from. */
+  bySource: Record<LeadSource, number>
+}
+
+export function leadIntake(rows: Array<Pick<LeadRow, "createdMs" | "source">>, now: Date): LeadIntake {
+  const day = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const weekStart = new Date(day.getFullYear(), day.getMonth(), day.getDate() - day.getDay()).getTime()
+  const lastWeekStart = new Date(day.getFullYear(), day.getMonth(), day.getDate() - day.getDay() - 7).getTime()
+  const monthStart = new Date(day.getFullYear(), day.getMonth(), 1).getTime()
+  const lastMonthStart = new Date(day.getFullYear(), day.getMonth() - 1, 1).getTime()
+  const out: LeadIntake = { thisWeek: 0, lastWeek: 0, thisMonth: 0, lastMonth: 0, bySource: { demo: 0, onboarding: 0, manual: 0 } }
+  for (const r of rows) {
+    const t = r.createdMs
+    if (!t) continue
+    if (t >= weekStart) out.thisWeek += 1
+    else if (t >= lastWeekStart) out.lastWeek += 1
+    if (t >= monthStart) {
+      out.thisMonth += 1
+      out.bySource[r.source] += 1
+    } else if (t >= lastMonthStart) out.lastMonth += 1
+  }
+  return out
 }
 
 export const manualLeadSchema = z

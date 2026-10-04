@@ -6,8 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
-import { addDoc, collection, doc, query, serverTimestamp, setDoc, where } from "firebase/firestore"
-import { CalendarClock, Handshake, LayoutGrid, List, Loader2, Plus, Search, UserX, UsersRound } from "lucide-react"
+import { addDoc, collection, doc, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore"
+import { Archive, ArchiveRestore, CalendarClock, CalendarDays, Handshake, LayoutGrid, List, Loader2, Plus, Search, TrendingUp, UserX, UsersRound } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { AddLeadDialog } from "@/components/admin/AddLeadDialog"
 import { CrmBoard, type CrmBoardColumn } from "@/components/admin/CrmBoard"
@@ -27,10 +27,13 @@ import { useToast } from "@/hooks/use-toast"
 import {
   ACTIVITY_TYPES,
   CLIENT_STAGES,
+  LEAD_SOURCES,
   LEAD_STAGES,
   buildClientRows,
   buildLeadRows,
   contactsClient,
+  leadIntake,
+  leadMatches,
   summarizeClients,
   summarizeLeads,
   type ActivityType,
@@ -38,13 +41,17 @@ import {
   type ClientStage,
   type ClientUser,
   type LeadDoc,
+  type LeadMatch,
+  type LeadSource,
   type LeadViewStage,
 } from "@/lib/admin-crm"
+import { matchesSearch } from "@/lib/search-text"
 import { cn } from "@/lib/utils"
 
 type StaffUser = { id: string; name?: string; email?: string }
 type ActivityDoc = { id: string; clientId: string; type: ActivityType; note: string; authorName: string; createdAt?: { seconds?: number } }
-type Filter = "all" | "mine" | "due" | "stale" | "unowned"
+type Filter = "all" | "mine" | "due" | "stale" | "unowned" | "dupes" | "removed"
+type LeadRef = { col: "demoRequests" | "onboardingRequests"; id: string }
 type Tab = "clients" | "leads"
 type View = "board" | "list"
 type ListRow = {
@@ -64,6 +71,12 @@ type ListRow = {
   followUpDue: boolean
   stale: boolean
   createdMs: number
+  flags: string[]
+  archived: boolean
+  source: LeadSource | null
+  leadRef: LeadRef | null
+  match: LeadMatch | null
+  search: string[]
 }
 
 const UNASSIGNED = "__none__"
@@ -108,6 +121,8 @@ export default function AdminCrmPage() {
   const [tab, setTab] = useState<Tab>(searchParams.get("tab") === "leads" ? "leads" : "clients")
   const [addLeadOpen, setAddLeadOpen] = useState(false)
   const [view, setView] = useState<View>("board")
+  const [stageFilter, setStageFilter] = useState<LeadViewStage | "">("")
+  const [sourceFilter, setSourceFilter] = useState<LeadSource | "">("")
 
   const usersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -154,13 +169,18 @@ export default function AdminCrmPage() {
     return buildLeadRows(docs, byId, new Date())
   }, [demoDocs, onboardingDocs, records])
   const leadSummary = useMemo(() => summarizeLeads(leadRows), [leadRows])
+  const matches = useMemo(() => leadMatches(leadRows, rows.map((r) => ({ name: r.name, email: r.email, phone: r.phone }))), [leadRows, rows])
+  const intake = useMemo(() => leadIntake(leadRows, new Date()), [leadRows])
+  const leadNameOf = useMemo(() => new Map(leadRows.map((r) => [r.crmId, r.name])), [leadRows])
 
   const onLeads = tab === "leads"
 
   const list = useMemo<ListRow[]>(() => {
     if (tab === "leads") {
       const sep = locale === "ar" ? "، " : ", "
-      return leadRows.map((r) => ({
+      return leadRows.map((r) => {
+        const match = matches.get(r.crmId) ?? null
+        return {
         id: r.crmId,
         name: r.name,
         subtitle: [t(`source_${r.source}`), r.company].filter(Boolean).join(" · "),
@@ -187,7 +207,18 @@ export default function AdminCrmPage() {
         followUpDue: r.followUpDue,
         stale: r.stale,
         createdMs: r.createdMs,
-      }))
+        flags: [
+          ...(r.archived ? [t("flag_removed")] : []),
+          ...(match?.client ? [t("flag_client", { name: match.client })] : []),
+          ...(match?.duplicates.length ? [t("flag_duplicate", { count: match.duplicates.length })] : []),
+        ],
+        archived: r.archived,
+        source: r.source,
+        leadRef: { col: r.source === "onboarding" ? ("onboardingRequests" as const) : ("demoRequests" as const), id: r.id },
+        match,
+        search: [r.name, r.company, r.email, r.phone, r.city],
+        }
+      })
     }
     return rows.map((r) => ({
       id: r.id,
@@ -206,33 +237,35 @@ export default function AdminCrmPage() {
       followUpDue: r.followUpDue,
       stale: r.stale,
       createdMs: 0,
+      flags: [],
+      archived: false,
+      source: null,
+      leadRef: null,
+      match: null,
+      search: [r.name, r.email, r.phone, r.city],
     }))
-  }, [tab, rows, leadRows, t, locale])
-
-  const searchable = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const r of rows) map.set(r.id, `${r.name} ${r.email} ${r.phone}`)
-    for (const r of leadRows) map.set(r.crmId, `${r.name} ${r.company} ${r.email} ${r.phone}`)
-    return map
-  }, [rows, leadRows])
+  }, [tab, rows, leadRows, matches, t, locale])
 
   const visible = useMemo(() => {
-    const needle = search.trim().toLowerCase()
     return list
+      // A removed lead shows only under «Removed»; a search looks across stages and sources.
+      .filter((r) => (filter === "removed" ? r.archived : !r.archived))
       .filter((r) => {
         if (filter === "mine") return r.ownerUid === user?.uid
         if (filter === "due") return r.followUpDue
         if (filter === "stale") return r.stale
         if (filter === "unowned") return !r.closed && !r.ownerUid
+        if (filter === "dupes") return Boolean(r.match?.duplicates.length)
         return true
       })
-      .filter((r) => !needle || (searchable.get(r.id) ?? r.name).toLowerCase().includes(needle))
+      .filter((r) => !onLeads || search.trim() !== "" || ((!stageFilter || r.stage === stageFilter) && (!sourceFilter || r.source === sourceFilter)))
+      .filter((r) => !search.trim() || matchesSearch(search, r.search))
       .sort((a, b) =>
         onLeads
           ? b.createdMs - a.createdMs || a.name.localeCompare(b.name)
           : Number(b.followUpDue) - Number(a.followUpDue) || Number(b.stale) - Number(a.stale) || a.name.localeCompare(b.name),
       )
-  }, [list, filter, search, user?.uid, searchable, onLeads])
+  }, [list, filter, search, user?.uid, onLeads, stageFilter, sourceFilter])
 
   const open = list.find((r) => r.id === openId) ?? null
   const shown = onLeads
@@ -243,8 +276,26 @@ export default function AdminCrmPage() {
   const switchTab = (next: Tab) => {
     setTab(next)
     setFilter("all")
+    setStageFilter("")
+    setSourceFilter("")
     setSearch("")
     setOpenId(null)
+  }
+
+  // Removing a lead hides it (junk, a duplicate) — the request is kept and can be restored.
+  const setArchived = async (row: ListRow, archived: boolean) => {
+    if (!firestore || !row.leadRef) return
+    try {
+      await updateDoc(doc(firestore, row.leadRef.col, row.leadRef.id), {
+        archived,
+        archivedAt: archived ? serverTimestamp() : null,
+        archivedByUid: archived ? user?.uid ?? null : null,
+      })
+      toast({ title: t(archived ? "lead_removed" : "lead_restored") })
+      setOpenId(null)
+    } catch {
+      toast({ variant: "destructive", title: t("save_failed") })
+    }
   }
 
   const saveRecord = async (clientId: string, patch: Partial<ClientRecord>) => {
@@ -277,7 +328,15 @@ export default function AdminCrmPage() {
     { key: "due", label: t("filter_due"), count: shown.followUpsDue },
     { key: "stale", label: t(onLeads ? "filter_stale_leads" : "filter_stale"), count: shown.stale },
     { key: "unowned", label: t("filter_unowned"), count: shown.unowned },
+    ...(onLeads
+      ? [
+          { key: "dupes" as const, label: t("filter_dupes"), count: list.filter((r) => !r.archived && r.match?.duplicates.length).length },
+          { key: "removed" as const, label: t("filter_removed"), count: list.filter((r) => r.archived).length },
+        ]
+      : []),
   ]
+  const liveLeads = leadRows.filter((r) => !r.archived)
+  const sourceCount = (s: LeadSource) => liveLeads.filter((r) => r.source === s).length
 
   return (
     <PortalLayout>
@@ -325,6 +384,24 @@ export default function AdminCrmPage() {
           <Kpi icon={Handshake} label={t("kpi_unowned")} value={shown.unowned} />
         </div>
 
+        {onLeads && (
+          <section aria-label={t("intake_title")} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Kpi icon={TrendingUp} label={t("intake_week")} value={intake.thisWeek} hint={t("intake_week_hint", { n: intake.lastWeek })} />
+            <Kpi icon={CalendarDays} label={t("intake_month")} value={intake.thisMonth} hint={t("intake_month_hint", { n: intake.lastMonth })} />
+            <div className="rounded-xl border bg-card p-4">
+              <p className="text-xs font-semibold text-muted-foreground">{t("intake_sources")}</p>
+              <ul className="mt-2 space-y-1 text-sm">
+                {LEAD_SOURCES.map((s) => (
+                  <li key={s} className="flex items-center justify-between gap-2">
+                    <span>{t(`source_${s}`)}</span>
+                    <span className="font-bold tabular-nums" dir="ltr">{intake.bySource[s]}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        )}
+
         <Card className="border-none shadow-sm overflow-hidden">
           <div className="p-4 border-b flex flex-col md:flex-row md:items-center gap-3">
             <div className="relative md:w-72">
@@ -366,6 +443,32 @@ export default function AdminCrmPage() {
               ))}
             </div>
           </div>
+          {onLeads && (
+            <div className="px-4 py-3 border-b flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-6">
+              <div role="group" aria-label={t("stage_filter_label")} className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground">{t("stage_filter_label")}</span>
+                <Chip selected={stageFilter === ""} count={leadSummary.total} onClick={() => setStageFilter("")}>
+                  {t("filter_all")}
+                </Chip>
+                {[...LEAD_STAGES, "converted" as const].map((s) => (
+                  <Chip key={s} selected={stageFilter === s} count={leadSummary.byStage[s]} onClick={() => setStageFilter(stageFilter === s ? "" : s)}>
+                    {t(`stage_${s}`)}
+                  </Chip>
+                ))}
+              </div>
+              <div role="group" aria-label={t("source_filter_label")} className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground">{t("source_filter_label")}</span>
+                <Chip selected={sourceFilter === ""} onClick={() => setSourceFilter("")}>
+                  {t("filter_all")}
+                </Chip>
+                {LEAD_SOURCES.map((s) => (
+                  <Chip key={s} selected={sourceFilter === s} count={sourceCount(s)} onClick={() => setSourceFilter(sourceFilter === s ? "" : s)}>
+                    {t(`source_${s}`)}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+          )}
           <CardContent className="p-0 overflow-x-auto">
             {loading ? (
               <div className="p-16 flex justify-center">
@@ -410,6 +513,13 @@ export default function AdminCrmPage() {
                       <TableCell>
                         <p className="font-bold">{r.name}</p>
                         <p className="text-xs text-muted-foreground">{r.subtitle}</p>
+                        {r.flags.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {r.flags.map((f) => (
+                              <Badge key={f} variant="outline" className="border-warning/30 bg-warning/10 text-[11px] font-medium text-warning">{f}</Badge>
+                            ))}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className={r.stageStyle}>{t(`stage_${r.stage}`)}</Badge>
@@ -449,6 +559,8 @@ export default function AdminCrmPage() {
               currentUid={user?.uid ?? ""}
               currentName={ownerNameOf(user?.uid ?? "") || user?.email || ""}
               onSave={(patch) => saveRecord(open.id, patch)}
+              duplicateNames={(open.match?.duplicates ?? []).map((id) => leadNameOf.get(id) ?? id)}
+              onArchive={open.leadRef ? (archived) => setArchived(open, archived) : undefined}
             />
           )}
         </DialogContent>
@@ -458,7 +570,7 @@ export default function AdminCrmPage() {
   )
 }
 
-function Kpi({ icon: Icon, label, value, tone }: { icon: typeof Handshake; label: string; value: number; tone?: "warning" }) {
+function Kpi({ icon: Icon, label, value, tone, hint }: { icon: typeof Handshake; label: string; value: number; tone?: "warning"; hint?: string }) {
   return (
     <div className="rounded-xl border bg-card p-4 flex items-center gap-3">
       <span className={cn("grid place-items-center h-10 w-10 rounded-lg shrink-0", tone === "warning" ? "bg-warning/10 text-warning" : "bg-primary/10 text-primary")} aria-hidden="true">
@@ -467,6 +579,7 @@ function Kpi({ icon: Icon, label, value, tone }: { icon: typeof Handshake; label
       <div className="min-w-0">
         <p className="text-xs font-semibold text-muted-foreground truncate">{label}</p>
         <p className="text-lg font-black text-foreground" dir="ltr">{value}</p>
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
     </div>
   )
@@ -478,12 +591,16 @@ function ClientPanel({
   currentUid,
   currentName,
   onSave,
+  duplicateNames,
+  onArchive,
 }: {
   row: ListRow
   staff: StaffUser[]
   currentUid: string
   currentName: string
   onSave: (patch: Partial<ClientRecord>) => Promise<void>
+  duplicateNames: string[]
+  onArchive?: (archived: boolean) => Promise<void>
 }) {
   const t = useTranslations("Portal.Admin.Crm")
   const firestore = useFirestore()
@@ -534,6 +651,14 @@ function ClientPanel({
           {row.detail}
         </DialogDescription>
       </DialogHeader>
+
+      {(row.match?.client || duplicateNames.length > 0) && (
+        <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm space-y-1">
+          {row.match?.client && <p>{t("match_client", { name: row.match.client })}</p>}
+          {duplicateNames.length > 0 && <p>{t("match_duplicates", { names: duplicateNames.join("، ") })}</p>}
+          <p className="text-xs text-muted-foreground">{t("match_hint")}</p>
+        </div>
+      )}
 
       <div className="grid sm:grid-cols-3 gap-4">
         <div className="space-y-1.5">
@@ -609,6 +734,16 @@ function ClientPanel({
           </ul>
         )}
       </div>
+
+      {onArchive && (
+        <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted-foreground">{t(row.archived ? "restore_hint" : "remove_hint")}</p>
+          <Button variant="outline" size="sm" className={cn("gap-1.5 shrink-0", !row.archived && "text-destructive")} onClick={() => void onArchive(!row.archived)}>
+            {row.archived ? <ArchiveRestore size={14} aria-hidden="true" /> : <Archive size={14} aria-hidden="true" />}
+            {t(row.archived ? "restore_lead" : "remove_lead")}
+          </Button>
+        </div>
+      )}
     </>
   )
 }

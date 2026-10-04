@@ -165,9 +165,12 @@ export function phoneIsInternational(phone: string | null | undefined): boolean 
   return /^\+\d{6,}$/.test(e164) && !e164.startsWith("+966")
 }
 
-/** Where he is based: our own call when we made one, else what his phone number says. */
-export function isInternationalSupplier(s: { phone?: string | null; record?: Pick<SupplierRecord, "origin"> | null }): boolean {
-  return s.record?.origin ? s.record.origin === "international" : phoneIsInternational(s.phone)
+/** Where he is based: our own call when we made one, else the platform admin's
+ * classification (`supplierOrigin` on his account), else what his phone number says. */
+export function isInternationalSupplier(s: { phone?: string | null; record?: Pick<SupplierRecord, "origin"> | null; platformOrigin?: string | null }): boolean {
+  const platform = s.platformOrigin === "international" || s.platformOrigin === "local" ? s.platformOrigin : null
+  const origin = s.record?.origin || platform
+  return origin ? origin === "international" : phoneIsInternational(s.phone)
 }
 
 /** A Saudi VAT number: fifteen digits, starting and ending with 3. */

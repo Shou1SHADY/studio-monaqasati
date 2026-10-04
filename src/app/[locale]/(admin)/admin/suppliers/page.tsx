@@ -45,6 +45,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, updateDoc, doc, limit, deleteField, addDoc } from "firebase/firestore"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
+import { isInternationalSupplier } from "@/lib/procurement/supplier-file"
 import { useToast } from "@/hooks/use-toast"
 import { useIdentityOverlays } from "@/hooks/useIdentityOverlays"
 import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
@@ -87,6 +89,7 @@ export default function AdminSuppliersPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [statusFilter, setStatusFilter] = useState<SupplierStatusFilter>("all")
   const [cityFilter, setCityFilter] = useState("all")
+  const [originFilter, setOriginFilter] = useState<"all" | "local" | "international">("all")
   const [specializationFilter, setSpecializationFilter] = useState("all")
   const [sortBy, setSortBy] = useState<"verification" | "latest">("verification")
 
@@ -122,6 +125,9 @@ export default function AdminSuppliersPage() {
           organizationRole: row.organizationRole,
           name: s.name || t("unspecified"),
           contact: s.phone || t("unspecified"),
+          // Where he is based: the admin's call ("auto" = read his phone's country code).
+          origin: row.supplierOrigin === "international" || row.supplierOrigin === "local" ? row.supplierOrigin : "auto",
+          international: isInternationalSupplier({ phone: s.phone, platformOrigin: row.supplierOrigin ?? null }),
           email: s.email || "",
           city: s.city || "",
           crNumber: s.crNumber || "",
@@ -256,6 +262,23 @@ export default function AdminSuppliersPage() {
     }
   }
 
+  // Where he is based — a Chinese supplier registered by the admin reads as international.
+  const handleOrigin = async (id: string, origin: "auto" | "local" | "international") => {
+    if (!firestore) return
+    try {
+      await updateDoc(doc(firestore, "users", id), { supplierOrigin: origin === "auto" ? deleteField() : origin })
+      const apply = (x: any) => {
+        const international = isInternationalSupplier({ phone: x.contact === t("unspecified") ? "" : x.contact, platformOrigin: origin === "auto" ? null : origin })
+        return { ...x, origin, international }
+      }
+      setLocalSuppliers(prev => prev.map(x => (x.id === id ? apply(x) : x)))
+      if (selectedSupplier?.id === id) setSelectedSupplier((prev: any) => (prev ? apply(prev) : prev))
+      toast({ title: t("origin_saved") })
+    } catch (e: any) {
+      toast({ title: t("error"), description: e.message, variant: "destructive" })
+    }
+  }
+
   const filteredSuppliers = filterSuppliersBySpecialization(
     filterSuppliersByCity(
       filterSuppliersByStatus(
@@ -265,14 +288,15 @@ export default function AdminSuppliersPage() {
       cityFilter
     ),
     specializationFilter
-  )
+  ).filter((x: any) => originFilter === "all" || (originFilter === "international") === Boolean(x.international))
 
-  const activeFilterCount = [statusFilter !== "all", cityFilter !== "all", specializationFilter !== "all"].filter(Boolean).length
+  const activeFilterCount = [statusFilter !== "all", cityFilter !== "all", specializationFilter !== "all", originFilter !== "all"].filter(Boolean).length
 
   const clearFilters = () => {
     setStatusFilter("all")
     setCityFilter("all")
     setSpecializationFilter("all")
+    setOriginFilter("all")
   }
 
   const specializationOptions = Array.from(
@@ -354,6 +378,21 @@ export default function AdminSuppliersPage() {
                   placeholder={t("filter_city_label")}
                   searchPlaceholder={t("filter_city_label")}
                   noResultsText={t("filter_city_label")}
+                  size="md"
+                />
+              </div>
+              <div className="w-full sm:w-48">
+                <SearchableSelect
+                  value={originFilter}
+                  onChange={v => setOriginFilter(v as "all" | "local" | "international")}
+                  options={[
+                    { value: "all", label: t("filter_origin_all") },
+                    { value: "local", label: t("origin_local") },
+                    { value: "international", label: t("origin_international") },
+                  ]}
+                  placeholder={t("origin_label")}
+                  searchPlaceholder={t("origin_label")}
+                  noResultsText={t("origin_label")}
                   size="md"
                 />
               </div>
@@ -471,7 +510,10 @@ export default function AdminSuppliersPage() {
                       {isVisible("id") && <TableCell className="font-mono text-xs hidden md:table-cell">{s.id.substring(0, 8)}</TableCell>}
                       <TableCell>
                         <div className="flex flex-col">
-                          <span className="font-bold">{s.name}</span>
+                          <span className="font-bold flex flex-wrap items-center gap-1.5">
+                            {s.name}
+                            {s.international && <Badge variant="outline" className="border-cta/30 bg-cta/10 text-cta text-[11px] font-medium">{t("badge_international")}</Badge>}
+                          </span>
                           <span className="text-xs text-muted-foreground">{s.email}</span>
                         </div>
                       </TableCell>
@@ -585,6 +627,19 @@ export default function AdminSuppliersPage() {
                     <div><span className="text-muted-foreground">{t("cr_label")}</span><span className="mr-2 font-medium">{selectedSupplier.crNumber || "—"}</span></div>
                     <div><span className="text-muted-foreground">{t("tax_label")}</span><span className="mr-2 font-medium">{selectedSupplier.taxNumber || "—"}</span></div>
                     <div><span className="text-muted-foreground">{t("spec_label")}</span><span className="mr-2 font-medium">{selectedSupplier.category || "—"}</span></div>
+                  </div>
+                  <div className="flex flex-col gap-1.5 border-t pt-3 sm:flex-row sm:items-center sm:gap-3">
+                    <label htmlFor="supplier-origin" className="text-sm text-muted-foreground shrink-0">{t("origin_label")}</label>
+                    <NativeSelect
+                      id="supplier-origin"
+                      value={selectedSupplier.origin}
+                      onChange={(e) => void handleOrigin(selectedSupplier.id, e.target.value as "auto" | "local" | "international")}
+                      className="sm:w-64"
+                    >
+                      <option value="auto">{t(selectedSupplier.international ? "origin_auto_intl" : "origin_auto_local")}</option>
+                      <option value="local">{t("origin_local")}</option>
+                      <option value="international">{t("origin_international")}</option>
+                    </NativeSelect>
                   </div>
                   {selectedSupplier.specializations?.length > 1 && (
                     <div className="flex flex-wrap gap-1 pt-1">
