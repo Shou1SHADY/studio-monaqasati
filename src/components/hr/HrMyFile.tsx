@@ -34,6 +34,8 @@ import { requestNoDisplay, type HrRequest, type HrRequestKind } from "@/lib/hr/r
 import { serviceYears } from "@/lib/hr/statutory"
 import { cn } from "@/lib/utils"
 import { HrViolationList, useHrViolations } from "./HrViolationList"
+import { NewLetterDialog } from "./HrLetterDialogs"
+import { HrLettersPanel } from "./HrLetters"
 import { DOC_TONE, STATUS_TONE } from "./HrPeopleView"
 import { REQUEST_TONE } from "./HrRequestList"
 import { NewRequestDialog } from "./NewRequestDialog"
@@ -72,6 +74,7 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
   const [seg, setSeg] = useState<Seg>("home")
   const [newReq, setNewReq] = useState<HrRequestKind | null>(null)
   const [openSlip, setOpenSlip] = useState<string | null>(null)
+  const [asking, setAsking] = useState(false)
 
   if (isLoading) {
     return (
@@ -125,6 +128,10 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
           <Button size="sm" variant="outline" onClick={() => setNewReq("data")}>
             <PencilLine size={14} className="me-1.5" aria-hidden="true" />
             {t("req.new_data")}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setAsking(true)}>
+            <FileText size={14} className="me-1.5" aria-hidden="true" />
+            {t("letter.request")}
           </Button>
         </div>
       </div>
@@ -189,6 +196,9 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
           )}
         </Panel>
       )}
+
+      {/* EM-08 — his letters: status, the reason when declined, the issued letter to view and print. */}
+      {seg === "requests" && <HrLettersPanel access={access} actor={actor} emp={emp} pay={pay} />}
 
       {seg === "leave" && (
         <div className="space-y-4">
@@ -291,6 +301,7 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
         </div>
       )}
 
+      {asking && <NewLetterDialog access={access} actor={actor} emp={emp} pay={pay} onClose={() => setAsking(false)} />}
       {newReq && <NewRequestDialog kind={newReq} onClose={() => setNewReq(null)} access={access} actor={actor} emp={emp} pay={pay} sites={sites} existing={requests} />}
     </div>
   )

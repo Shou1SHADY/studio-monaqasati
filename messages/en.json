@@ -8447,7 +8447,18 @@
       "owner_only_title": "Available to the account owner only",
       "owner_only_desc": "Company details such as the commercial registration and tax number are seen and edited by the account owner only.",
       "password_show": "Show password",
-      "password_hide": "Hide password"
+      "password_hide": "Hide password",
+      "pn_hr_letter_issued_title": "Your letter is issued",
+      "pn_hr_letter_issued": "{letter} — {serial}",
+      "pn_hr_letter_declined_title": "Your letter request was declined",
+      "pn_hr_letter_declined": "{letter} — {reason}",
+      "hr_letter_kind": {
+        "sal": "Salary certificate",
+        "emb": "Embassy letter",
+        "noc": "No-objection letter",
+        "oth": "Other letter",
+        "exp": "Experience certificate"
+      }
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -19437,7 +19448,10 @@
         "imported": "Record imported — no. {no}, {trade}, {site}",
         "data_filed": "Details update request {no} filed",
         "data_declined": "Details update request {no} declined",
-        "data_cancelled": "Details update request {no} cancelled"
+        "data_cancelled": "Details update request {no} cancelled",
+        "letter_filed": "Letter requested — {letter, select, sal {salary certificate} emb {embassy letter} noc {no-objection letter} exp {experience certificate} other {letter}} to {addressee}",
+        "letter_issued": "Letter issued — {letter, select, sal {salary certificate} emb {embassy letter} noc {no-objection letter} exp {experience certificate} other {letter}} to {addressee}, {serial}",
+        "letter_declined": "Letter declined — {letter, select, sal {salary certificate} emb {embassy letter} noc {no-objection letter} exp {experience certificate} other {letter}}: {reason}"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -20119,6 +20133,130 @@
           "no_trade": "Choose the trade",
           "bad_count": "A whole number above zero",
           "no_date": "Choose the start date"
+        }
+      },
+      "letter": {
+        "kind": {
+          "sal": "Salary certificate",
+          "emb": "Embassy letter",
+          "noc": "No-objection letter",
+          "oth": "Other letter",
+          "exp": "Experience certificate"
+        },
+        "hint": {
+          "sal": "For a bank or an authority: the pay in detail",
+          "emb": "For an embassy: the job, the pay and no objection to travel",
+          "noc": "No objection for a purpose you state (study, a licence, extra work…)",
+          "oth": "Anything else — you describe it, the HR manager writes it",
+          "exp": "On leaving: the period and the position"
+        },
+        "signer": {
+          "gov": "government relations",
+          "manager": "the HR manager",
+          "management": "management"
+        },
+        "signed_by": "signed by {who}",
+        "request": "Request a letter",
+        "request_for": "Letter request — {name}",
+        "sub_std": "Issued from the record at a signature — none of the details are typed",
+        "sub_free": "Describe the letter — the HR manager writes and signs it",
+        "type": "Letter type",
+        "title_field": "Which letter do you need?",
+        "title_ph": "e.g. a letter for a university",
+        "purpose_req": "State the purpose and details",
+        "purpose_opt": "Note for the letter (optional)",
+        "purpose_ph": {
+          "oth": "What should the letter say, and which details must it state?",
+          "noc": "No objection to what, and for how long?",
+          "std": "Optional — e.g. state the total salary only"
+        },
+        "addressee": "Addressed to",
+        "addressee_ph": "e.g. Al Rajhi Bank · Embassy of Italy · To whom it may concern",
+        "lang": "Letter language",
+        "lang_name": {
+          "ar": "العربية",
+          "en": "English"
+        },
+        "send": "Send request",
+        "sent": "Sent — {who} signs it",
+        "on_behalf": "Requested by HR",
+        "title": "Letters",
+        "none": "No letters yet",
+        "queue": "Letters waiting for your signature",
+        "state": {
+          "pending": "Waiting for signature",
+          "issued": "Issued",
+          "declined": "Declined"
+        },
+        "with": "With: {who}",
+        "view": "View",
+        "print": "Print",
+        "sign": "Sign or decline",
+        "asks": "The employee asks:",
+        "to_line": "To: {to} · {lang}",
+        "issued_line": "Issued {date} · {serial}",
+        "declined_reason": "Declined — {reason}",
+        "decide_issue": "Issue & sign",
+        "decide_issue_std": "From the record as it is",
+        "decide_issue_free": "After writing the text",
+        "decide_decline": "Decline",
+        "decide_decline_sub": "With a reason the employee sees",
+        "text": "Letter text",
+        "text_note": "Starts from the employee's words — edit it into the letter; the letterhead and the details come from the card.",
+        "reason": "Reason (required)",
+        "travel": "Travel during an approved leave",
+        "travel_none": "Name no leave",
+        "leaving_warn": "The employee is leaving — an experience certificate is the usual letter.",
+        "pay_hidden_note": "The figures are hidden from your role — the employee's copy shows them.",
+        "preview": "Preview — every detail comes from the record",
+        "done_issued": "Issued {serial} — it shows in the employee's file",
+        "done_declined": "Declined — the employee sees the reason",
+        "pn_issued": "Your letter is issued",
+        "pn_declined": "Your letter request was declined",
+        "block": {
+          "no_addressee": "Say who the letter is addressed to",
+          "no_title": "Name the letter you need",
+          "no_purpose": "State the purpose and details",
+          "exp_on_exit": "The experience certificate is issued on leaving",
+          "left": "The employee has left — only an experience certificate",
+          "no_wage": "No wage on the record yet — the HR manager enters it first",
+          "bad_input": "Check the form",
+          "no_text": "Write the letter's text",
+          "no_reason": "Give the reason",
+          "stale": "This letter has already been decided",
+          "bad_travel": "That leave is not an approved leave of this employee",
+          "own_request": "Nobody signs his own letter",
+          "no_role": "Your role does not sign this letter",
+          "missing": "The letter or the employee was not found"
+        }
+      },
+      "letter_doc": {
+        "no": "No.",
+        "no_pending": "given on signing",
+        "date": "Date",
+        "to": "To",
+        "cr": "CR {cr}",
+        "mol": "Est. no. {mol}",
+        "hr": "Human Resources",
+        "the_company": "The company",
+        "who": "{gender, select, f {Ms.} other {Mr.}} {name} ({nat}), {saudi, select, yes {National ID} other {Iqama no.}} {id}",
+        "sal_body": "This is to certify that {who} is employed by {co} as {trade} since {join}, that {gender, select, f {she} other {he}} is still in service, and that {gender, select, f {her} other {his}} monthly pay is as follows:",
+        "basic": "Basic salary",
+        "housing": "Housing allowance",
+        "transport": "Transport allowance",
+        "total": "Total",
+        "amount": "SAR {n}",
+        "emb_body": "This is to certify that {who} is employed by {co} as {trade} since {join}, with a total monthly salary of {total}. The company has no objection to {gender, select, f {her} other {his}} travel{leave}, after which {gender, select, f {she} other {he}} will resume {gender, select, f {her} other {his}} duties.",
+        "emb_leave": " during {gender, select, f {her} other {his}} leave from {from} to {to}",
+        "exp_body": "This is to certify that {who} worked for {co} as {trade} from {join} to {last}, and that throughout {gender, select, f {her} other {his}} service {gender, select, f {her} other {his}} conduct was good.",
+        "noc_body": "{co} certifies that {who} is employed as {trade} since {join}, and that it has no objection to {gender, select, f {her} other {his}} request as follows:",
+        "oth_body": "{co} certifies that {who} has held {gender, select, f {her} other {his}} position as {trade} since {join}.",
+        "closing": "Issued at {gender, select, f {her} other {his}} request without liability on the company towards third parties.",
+        "source": "Data source: the employee record — nothing typed by hand",
+        "role": {
+          "manager": "HR manager",
+          "gov": "Government relations",
+          "management": "Management"
         }
       }
     },
