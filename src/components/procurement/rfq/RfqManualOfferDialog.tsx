@@ -24,6 +24,7 @@ import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import { cn } from "@/lib/utils"
 import type { RfqView } from "./rfqOfferView"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
 const OTHER = "__other__"
 
@@ -139,7 +140,7 @@ export function RfqManualOfferDialog({
             <Label htmlFor="manual-supplier" className="text-xs font-bold">
               {t("manual.supplier")} <span className="text-destructive">*</span>
             </Label>
-            <select
+            <NativeSelect
               id="manual-supplier"
               value={pick}
               onChange={(e) => setPick(e.target.value)}
@@ -152,7 +153,7 @@ export function RfqManualOfferDialog({
                 </option>
               ))}
               <option value={OTHER}>{t("manual.other_supplier")}</option>
-            </select>
+            </NativeSelect>
             {pick === OTHER && <Input aria-label={t("manual.company_name")} placeholder={t("manual.company_name")} value={otherName} onChange={(e) => setOtherName(e.target.value)} dir="auto" />}
             {pick === OTHER && <p className="text-[11px] text-muted-foreground">{t("manual.other_hint")}</p>}
           </div>

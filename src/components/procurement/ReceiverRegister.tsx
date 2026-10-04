@@ -24,6 +24,7 @@ import { addReceiver, setReceiverActive, updateReceiver } from "@/lib/procuremen
 import { RECEIVER_MODULES, phoneUsable, receiverProblems, receiverRows, type ProcReceiver, type ReceiverInput, type ReceiverModule } from "@/lib/procurement/receivers"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import type { ProcActor } from "@/lib/procurement/types"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
 const blank = (): ReceiverInput => ({ name: "", title: "", module: "inventory", phone: "", userId: null, warehouseIds: [] })
 
@@ -162,7 +163,7 @@ export function ReceiverRegister({
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="rcv-module">{t("dialog.module")}</Label>
-                <select
+                <NativeSelect
                   id="rcv-module"
                   value={form.module}
                   onChange={(e) => setForm({ ...form, module: e.target.value as ReceiverModule })}
@@ -173,7 +174,7 @@ export function ReceiverRegister({
                       {t(`module.${m}`)}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </div>
             </div>
 

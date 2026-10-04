@@ -165,7 +165,7 @@ export function MfgRemnantReceiveDialog({
           <Button variant="outline" onClick={onClose} disabled={busy}>
             {t("crm_cancel")}
           </Button>
-          <Button onClick={submit} disabled={busy || !warehouseId} className="gap-2 bg-success text-white hover:bg-success/90">
+          <Button variant="success" onClick={submit} disabled={busy || !warehouseId} className="gap-2">
             {busy ? <Loader2 size={15} className="animate-spin" /> : <PackagePlus size={15} />}
             {t("mfx_rem_btn")}
           </Button>

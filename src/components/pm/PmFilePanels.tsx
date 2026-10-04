@@ -363,7 +363,7 @@ export function PmStartPanel({ projectId, project, boqItems, access }: { project
       <CheckLine ok={Boolean(project.projectManagerId)} title={t("startp.pm")} note={project.projectManagerName || t("startp.not_assigned")} />
       <CheckLine ok={!blocks.includes("terms_invalid")} title={t("startp.terms")} note={blocks.includes("terms_invalid") ? t("start_block.terms_invalid") : t("startp.terms_ok")} />
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <Button className="bg-success text-success-foreground hover:bg-success/90" onClick={() => void start()} disabled={busy || blocks.length > 0}>
+        <Button variant="success"  onClick={() => void start()} disabled={busy || blocks.length > 0}>
           {busy ? <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" /> : <Play size={16} className="me-1.5" aria-hidden="true" />}
           {t("startp.start")}
         </Button>

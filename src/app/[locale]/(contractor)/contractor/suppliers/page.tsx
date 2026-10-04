@@ -70,6 +70,7 @@ import { PriceAgreementsView } from "@/components/procurement/PriceAgreementsVie
 import { PriceHistoryView } from "@/components/procurement/PriceHistoryView"
 import { displayAgreementNumber } from "@/lib/procurement/format"
 import { useInventoryCatalog } from "@/hooks/useInventoryCatalog"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -272,7 +273,7 @@ export default function SuppliersPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           <ProcChipGroup items={segments.map((s) => ({ id: s, label: t(`seg.${s}`), count: counts[s] }))} active={segment} onPick={pickSegment} label={tC("suppliers_scope_label")} />
-          <select
+          <NativeSelect
             aria-label={t("origin.label")}
             value={originFilter}
             onChange={(e) => setOriginFilter(e.target.value as OriginFilter)}
@@ -281,7 +282,7 @@ export default function SuppliersPage() {
             <option value="">{t("origin.all")}</option>
             <option value="local">{t("origin.local")}</option>
             <option value="international">{t("origin.international")}</option>
-          </select>
+          </NativeSelect>
           <div className="relative w-full sm:w-72">
             <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input placeholder={t("p2c.search_all")} aria-label={t("p2c.search_all")} className="pe-8 ps-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} dir="auto" />

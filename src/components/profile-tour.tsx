@@ -174,9 +174,9 @@ export function ProfileTour({ steps, onComplete, onDismiss, onStepChange }: Prof
                   {isRTL ? "السابق" : "Previous"}
                 </Button>
               )}
-              <Button
+              <Button variant="primary"
                 onClick={handleNext}
-                className="gap-1 h-9 px-4 rounded-xl text-xs font-bold bg-primary hover:bg-primary/90 text-white ml-auto"
+                className="gap-1 h-9 px-4 rounded-xl text-xs font-bold ml-auto"
               >
                 {currentStep === totalSteps - 1 ? (
                   <>

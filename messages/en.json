@@ -8441,7 +8441,9 @@
       "pn_receipt_auto_forwarded": "The system forwarded you a delivery from {supplier} that Procurement had not forwarded in time — open the link, count what arrived and sign.",
       "team_invite_outdated": "This is an old invitation that is no longer valid — ask the company owner to send it again.",
       "owner_only_title": "Available to the account owner only",
-      "owner_only_desc": "Company details such as the commercial registration and tax number are seen and edited by the account owner only."
+      "owner_only_desc": "Company details such as the commercial registration and tax number are seen and edited by the account owner only.",
+      "password_show": "Show password",
+      "password_hide": "Hide password"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",

@@ -267,10 +267,10 @@ export function MdmakProcurementQueue() {
                         <div className="flex items-center gap-2 shrink-0">
                           <StatusBadge status={procStatus} t={t} />
                           {procStatus === "pending" ? (
-                            <Button
+                            <Button variant="accent"
                               size="sm"
                               onClick={() => setDialogRfq({ id: rfq.id as string, title: rfq.title as string, contractorId: rfq.contractorId as string, organizationId: rfq.organizationId as string })}
-                              className="h-8 rounded-xl gap-1.5 bg-accent hover:bg-accent/90 text-primary font-bold text-xs shadow-sm shadow-accent/20"
+                              className="h-8 rounded-xl gap-1.5 font-bold text-xs shadow-sm shadow-accent/20"
                             >
                               <TrendingUp size={13} />
                               {t("create_offer_btn")}

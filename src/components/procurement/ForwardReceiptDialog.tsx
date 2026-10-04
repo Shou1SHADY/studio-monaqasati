@@ -26,6 +26,7 @@ import type { DeskDelivery } from "@/lib/procurement/receipt-desk"
 import { receiversForPlace } from "@/lib/procurement/receivers"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import { cn } from "@/lib/utils"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
 // The register first: a delivery goes to a PERSON AT A PLACE, and the register
 // knows both. The other two modes stay for whoever is not in it yet.
@@ -258,7 +259,7 @@ export function ForwardReceiptDialog({
               <div className="space-y-3">
                 <div className="space-y-1">
                   <Label htmlFor="fw-member" className="text-xs">{t("forward.member")}</Label>
-                  <select
+                  <NativeSelect
                     id="fw-member"
                     value={userId}
                     onChange={(e) => setUserId(e.target.value)}
@@ -270,7 +271,7 @@ export function ForwardReceiptDialog({
                         {m.name || m.email || m.id}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 {userId && !memberPhone && (
                   <div className="space-y-1">

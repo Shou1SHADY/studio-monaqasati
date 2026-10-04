@@ -297,9 +297,9 @@ export default function SupplierConnectionsPage() {
                           </div>
                         </div>
                         <div className={cn("flex gap-2", isRtl ? "flex-row-reverse" : "")}>
-                          <Button
+                          <Button variant="success"
                             size="sm"
-                            className="flex-1 gap-1.5 bg-success hover:bg-success/90"
+                            className="flex-1 gap-1.5"
                             onClick={() => handleAcceptInvitation(inv)}
                             disabled={processingId === inv.id}
                           >

@@ -349,7 +349,7 @@ export default function SupplierDashboard() {
                             <Eye size={14} />
                             {t("details")}
                           </Button>
-                          <Button 
+                          <Button variant="primary" 
                             onClick={() => {
                               setSelectedRfq({
                                 id: rfq.id, 
@@ -372,7 +372,7 @@ export default function SupplierDashboard() {
                               })
                               setShowSubmitOffer(true)
                             }}
-                            className="flex-[2] md:flex-none bg-primary hover:bg-primary/90 rounded-full h-9 px-6 text-xs gap-2 group"
+                            className="flex-[2] md:flex-none rounded-full h-9 px-6 text-xs gap-2 group"
                           >
                             {t("submit_offer")}
                             <ChevronLeft size={14} className="group-hover:-translate-x-1 transition-transform" />
@@ -587,7 +587,7 @@ export default function SupplierDashboard() {
             <Button variant="outline" className="flex-1" onClick={() => { setShowRfqDetails(false); setShowInquiries(false) }}>
               {t("close")}
             </Button>
-            <Button className="flex-1 bg-success hover:bg-success/90 gap-2" onClick={() => { setShowRfqDetails(false); setShowSubmitOffer(true) }}>
+            <Button variant="success" className="flex-1 gap-2" onClick={() => { setShowRfqDetails(false); setShowSubmitOffer(true) }}>
               {t("submit_price_offer")}
               <ChevronLeft size={16} />
             </Button>

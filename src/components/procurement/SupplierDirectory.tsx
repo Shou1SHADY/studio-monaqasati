@@ -18,6 +18,7 @@ import { displayCategory, displayCity } from "@/lib/constants"
 import { directoryCounts, directoryFiltered, filterDirectory, type DirectoryFilter } from "@/lib/procurement/supplier-file"
 import type { PlatformSupplier } from "@/hooks/useSupplierDirectory"
 import { Stars } from "./SupplierFileDrawer"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
 const SELECT = "h-10 rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
@@ -37,22 +38,22 @@ export function SupplierDirectory({ suppliers, onOpen }: { suppliers: PlatformSu
           <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} placeholder={t("dir.search")} aria-label={t("dir.search")} className="ps-9" />
         </div>
-        <select aria-label={t("dir.all_categories")} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} className={cn(SELECT, f.category && "border-module text-module")}>
+        <NativeSelect aria-label={t("dir.all_categories")} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} className={cn(SELECT, f.category && "border-module text-module")}>
           <option value="">{t("dir.all_categories")}</option>
           {counts.categories.map(([c, n]) => (
             <option key={c} value={c}>
               {`${displayCategory(c, locale)} · ${n}`}
             </option>
           ))}
-        </select>
-        <select aria-label={t("dir.all_cities")} value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} className={cn(SELECT, f.city && "border-module text-module")}>
+        </NativeSelect>
+        <NativeSelect aria-label={t("dir.all_cities")} value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })} className={cn(SELECT, f.city && "border-module text-module")}>
           <option value="">{t("dir.all_cities")}</option>
           {counts.cities.map(([c, n]) => (
             <option key={c} value={c}>
               {`${displayCity(c, locale)} · ${n}`}
             </option>
           ))}
-        </select>
+        </NativeSelect>
         {directoryFiltered(f) && (
           <Button variant="ghost" size="sm" onClick={() => setF({ q: "", category: "", city: "" })}>
             {t("dir.clear")}

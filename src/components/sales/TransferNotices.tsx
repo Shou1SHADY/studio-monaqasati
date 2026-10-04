@@ -331,7 +331,7 @@ export function AnswerTransferDialog({
             {saving === "not_found" ? <Loader2 size={15} className="animate-spin" /> : <SearchX size={15} />}
             {t("sales_tn_answer_not_found")}
           </Button>
-          <Button className="gap-2 bg-success hover:bg-success/90 text-white" onClick={() => void answer("confirmed")} disabled={!!saving}>
+          <Button variant="success" className="gap-2" onClick={() => void answer("confirmed")} disabled={!!saving}>
             {saving === "confirmed" ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
             {t("sales_tn_answer_confirm")}
           </Button>

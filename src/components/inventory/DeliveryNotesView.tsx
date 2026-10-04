@@ -352,7 +352,7 @@ export function DeliveryNotesView({ portal }: { portal: CrmPortal }) {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmTarget(null)} disabled={isWorking}>{t("crm_cancel")}</Button>
-            <Button onClick={confirm} disabled={isWorking} className="gap-2 bg-success hover:bg-success/90 text-white">
+            <Button variant="success" onClick={confirm} disabled={isWorking} className="gap-2">
               {isWorking ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
               {t("dn_confirm_btn")}
             </Button>

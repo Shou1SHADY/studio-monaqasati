@@ -345,7 +345,7 @@ export default function LoginPage() {
                     onChange={e => setTwoFactorCode(e.target.value.replace(/\D/g, ""))}
                   />
                 </div>
-                <Button type="submit" className="w-full h-12 text-base font-bold rounded-lg mt-4 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all" disabled={twoFactorLoading}>
+                <Button variant="primary" type="submit" className="w-full h-12 text-base font-bold rounded-lg mt-4 shadow-lg shadow-primary/20 transition-all" disabled={twoFactorLoading}>
                   {twoFactorLoading ? <Loader2 className="animate-spin" /> : t("confirm_code")}
                 </Button>
               </form>
@@ -420,9 +420,9 @@ export default function LoginPage() {
                   </div>
                 )}
 
-                <Button
+                <Button variant="primary"
                   type="submit"
-                  className="w-full h-12 text-base font-bold rounded-lg mt-4 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all"
+                  className="w-full h-12 text-base font-bold rounded-lg mt-4 shadow-lg shadow-primary/20 transition-all"
                   disabled={isLoading}
                 >
                   {isLoading ? <Loader2 className="animate-spin" /> : t("submit_login")}

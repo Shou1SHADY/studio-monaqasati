@@ -264,10 +264,10 @@ export function CreateMdmakOfferDialog({ open, onClose, rfq, onSuccess }: Props)
           <Button variant="outline" onClick={onClose} disabled={loading} className="rounded-xl">
             {t("cancel")}
           </Button>
-          <Button
+          <Button variant="accent"
             onClick={handleSend}
             disabled={loading || cost <= 0}
-            className="rounded-xl gap-2 bg-accent hover:bg-accent/90 text-primary font-bold shadow-lg shadow-accent/25 px-6"
+            className="rounded-xl gap-2 font-bold shadow-lg shadow-accent/25 px-6"
           >
             {loading ? <Loader2 size={15} className="animate-spin" /> : <TrendingUp size={15} />}
             {loading ? t("sending") : t("send_offer")}

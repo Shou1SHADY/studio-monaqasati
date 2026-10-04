@@ -106,7 +106,7 @@ export default function AdminRfqsPage() {
               <Filter size={18} />
               {t("filter")}
             </Button>
-            <Button onClick={() => setMdmakDialogOpen(true)} className="gap-2 bg-accent hover:bg-accent/90 text-primary font-bold shadow-lg shadow-accent/25 shrink-0">
+            <Button variant="accent" onClick={() => setMdmakDialogOpen(true)} className="gap-2 font-bold shadow-lg shadow-accent/25 shrink-0">
               <Handshake size={16} />
               {t("post_as_mdmak_btn")}
             </Button>

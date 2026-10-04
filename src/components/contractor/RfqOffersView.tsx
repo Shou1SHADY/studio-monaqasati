@@ -1506,10 +1506,10 @@ ${t("offers_notif_reduction_note", { note })}`
                             {!sealed && rfqOpen && (
                             <>
                             {canDecide && (
-                            <Button
+                            <Button variant="success"
                               onClick={() => acceptOffer(offer)}
                               disabled={processingId === offer.id}
-                              className="w-full bg-success hover:bg-success/90 gap-2 rounded-full transition-all hover:shadow-lg hover:shadow-success/20"
+                              className="w-full gap-2 rounded-full transition-all hover:shadow-lg hover:shadow-success/20"
                               size="sm"
                             >
                               {processingId === offer.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
@@ -1552,10 +1552,10 @@ ${t("offers_notif_reduction_note", { note })}`
                                   <CheckCircle2 size={14} />
                                   {t("offers_confirm_receipt")}
                                 </Button>
-                                <Button
+                                <Button variant="primary"
                                   onClick={() => openChat(offer)}
                                   disabled={openingChat === offer.id}
-                                  className="w-full bg-primary hover:bg-primary/90 gap-2 rounded-full transition-all"
+                                  className="w-full gap-2 rounded-full transition-all"
                                   size="sm"
                                 >
                                   <MessageSquare size={14} />
@@ -1600,16 +1600,16 @@ ${t("offers_notif_reduction_note", { note })}`
                             {deliveryByOfferId[offer.id] && deliveryByOfferId[offer.id].status === "pending_confirmation" && canConfirmDelivery && (
                               deliveryByOfferId[offer.id].poId || offer.poId ? (
                                 // A delivery against an order is counted at the gate, line by line.
-                                <Button asChild className="w-full bg-success hover:bg-success/90 gap-2 rounded-full transition-all text-xs" size="sm">
+                                <Button variant="success" asChild className="w-full gap-2 rounded-full transition-all text-xs" size="sm">
                                   <Link href={procLinks.receipt(deliveryByOfferId[offer.id].id)}>
                                     <CheckCircle2 size={14} />
                                     {t("delivery_confirm_btn")}
                                   </Link>
                                 </Button>
                               ) : (
-                                <Button
+                                <Button variant="success"
                                   onClick={() => setConfirmDeliveryDoc(deliveryByOfferId[offer.id])}
-                                  className="w-full bg-success hover:bg-success/90 gap-2 rounded-full transition-all text-xs"
+                                  className="w-full gap-2 rounded-full transition-all text-xs"
                                   size="sm"
                                 >
                                   <CheckCircle2 size={14} />
@@ -1638,10 +1638,10 @@ ${t("offers_notif_reduction_note", { note })}`
                               {(disclosed, withdrawn) =>
                                 disclosed ? (
                                   <>
-                                    <Button
+                                    <Button variant="primary"
                                       onClick={() => openChat(offer)}
                                       disabled={openingChat === offer.id}
-                                      className="w-full bg-primary hover:bg-primary/90 gap-2 rounded-full transition-all hover:shadow-lg text-xs"
+                                      className="w-full gap-2 rounded-full transition-all hover:shadow-lg text-xs"
                                       size="sm"
                                     >
                                       {openingChat === offer.id ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
@@ -1673,10 +1673,10 @@ ${t("offers_notif_reduction_note", { note })}`
                         {/* Action Buttons - Completed */}
                         {offer.status === "تم التسليم" && (
                           <div className="bg-blue-50/30 p-5 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-2.5 md:border-s border-t md:border-t-0 min-w-[190px] border-blue-100">
-                            <Button
+                            <Button variant="primary"
                               onClick={() => openChat(offer)}
                               disabled={openingChat === offer.id}
-                              className="w-full bg-primary hover:bg-primary/90 gap-2 rounded-full transition-all hover:shadow-lg text-xs"
+                              className="w-full gap-2 rounded-full transition-all hover:shadow-lg text-xs"
                               size="sm"
                             >
                               {openingChat === offer.id ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
@@ -1889,8 +1889,8 @@ ${t("offers_notif_reduction_note", { note })}`
             >
               {t("offers_send_notification")}
             </Button>
-            <Button
-              className="bg-primary hover:bg-primary/90 text-white"
+            <Button variant="primary"
+              
               onClick={async () => {
                 if (sampleRequestOffer) {
                   await handleSampleAction(sampleRequestOffer.id, "مطلوبة");
@@ -1898,8 +1898,7 @@ ${t("offers_notif_reduction_note", { note })}`
                   setSampleRequestOffer(null);
                 }
               }}
-              disabled={!!processingId || !!openingChat}
-            >
+              disabled={!!processingId || !!openingChat}>
               {t("offers_send_and_chat")}
             </Button>
           </DialogFooter>
@@ -1935,10 +1934,10 @@ ${t("offers_notif_reduction_note", { note })}`
           </div>
           <DialogFooter className={cn("flex flex-row gap-2 mt-2", locale === 'ar' ? "flex-row-reverse justify-start" : "justify-end")}>
             <Button variant="outline" onClick={() => setConfirmDeliveryDoc(null)} disabled={isConfirmingDelivery}>{t("cancel")}</Button>
-            <Button
+            <Button variant="success"
               onClick={handleConfirmDelivery}
               disabled={isConfirmingDelivery || !receiverName.trim()}
-              className="bg-success hover:bg-success/90 gap-2"
+              className="gap-2"
             >
               {isConfirmingDelivery ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
               {t("delivery_confirm_submit")}

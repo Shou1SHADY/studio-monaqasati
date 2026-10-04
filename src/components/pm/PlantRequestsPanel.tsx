@@ -140,7 +140,7 @@ export function PlantRequestsPanel({ projectId, orgId, access, actor }: { projec
                     <StatusPill tone={TONE[st]}>{t(`plantreq.st.${st}`)}</StatusPill>
                     {r.status === "wait" && canOk && (
                       <div className="flex gap-1">
-                        <Button size="sm" className="h-7 bg-success text-success-foreground hover:bg-success/90" disabled={busy !== null} onClick={() => firestore && void run(`ok${r.seq}`, () => decidePlant(firestore, access.ctx, projectId, actor, r.seq, true), t("plantreq.approved", { no: plantNo(r.seq) }))}>
+                        <Button variant="success" size="sm" className="h-7" disabled={busy !== null} onClick={() => firestore && void run(`ok${r.seq}`, () => decidePlant(firestore, access.ctx, projectId, actor, r.seq, true), t("plantreq.approved", { no: plantNo(r.seq) }))}>
                           <Check size={13} className="me-1" aria-hidden="true" />
                           {t("sup.approve")}
                         </Button>

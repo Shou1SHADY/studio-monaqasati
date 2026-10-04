@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl"
 import { Label } from "@/components/ui/label"
 import type { PmUnit } from "@/lib/pm/units"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
 /** «وحدة التسليم» on a punch item or an inspection request — optional; tied to a unit, it blocks that unit's handover only. */
 export function UnitField({ id, units, value, onChange, disabled }: { id: string; units: PmUnit[]; value: string; onChange: (v: string) => void; disabled?: boolean }) {
@@ -12,7 +13,7 @@ export function UnitField({ id, units, value, onChange, disabled }: { id: string
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{t("units.field")}</Label>
-      <select
+      <NativeSelect
         id={id}
         value={value}
         disabled={disabled}
@@ -25,7 +26,7 @@ export function UnitField({ id, units, value, onChange, disabled }: { id: string
             {u.name}
           </option>
         ))}
-      </select>
+      </NativeSelect>
       <p className="text-[11px] text-muted-foreground">{t("units.field_hint")}</p>
     </div>
   )

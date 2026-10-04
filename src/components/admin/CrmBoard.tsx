@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl"
 import { CalendarClock, GripVertical } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
 export type CrmBoardItem = {
   id: string
@@ -125,7 +126,7 @@ export function CrmBoard({ items, columns, onMove, onOpen }: Props) {
                     )}
                   </div>
                   {!card.stageLocked && (
-                    <select
+                    <NativeSelect
                       aria-label={t("board_move_to")}
                       value={card.stage}
                       onChange={(e) => onMove(card.id, e.target.value)}
@@ -138,7 +139,7 @@ export function CrmBoard({ items, columns, onMove, onOpen }: Props) {
                             {c.label}
                           </option>
                         ))}
-                    </select>
+                    </NativeSelect>
                   )}
                 </article>
               ))

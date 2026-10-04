@@ -360,11 +360,11 @@ export function RagChatWidget({ userRole }: { userRole: 'Contractor' | 'Supplier
                     'disabled:opacity-50 min-h-[38px] max-h-[100px] overflow-y-auto'
                   )}
                 />
-                <Button
+                <Button variant="accent"
                   size="sm"
                   disabled={!input.trim() || isLoading}
                   onClick={handleSend}
-                  className="h-9 w-9 p-0 flex-shrink-0 bg-accent hover:bg-accent/90 text-accent-foreground rounded-xl"
+                  className="h-9 w-9 p-0 flex-shrink-0 rounded-xl"
                 >
                   <Send size={14} className={isRTL ? 'rotate-180' : ''} />
                 </Button>

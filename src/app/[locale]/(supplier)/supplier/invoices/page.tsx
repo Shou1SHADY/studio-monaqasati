@@ -428,7 +428,7 @@ export default function SupplierInvoicesPage() {
                         </Button>
                       )}
                       {(inv.status === "sent" || inv.status === "overdue") && (
-                        <Button size="sm" className="gap-1 h-7 text-xs bg-success hover:bg-success/90 text-white"
+                        <Button variant="success" size="sm" className="gap-1 h-7 text-xs"
                           onClick={() => handleStatusChange(inv, "paid")}>
                           <CheckCircle2 size={12} />{t("inv_mark_paid")}
                         </Button>

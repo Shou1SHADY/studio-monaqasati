@@ -3150,11 +3150,11 @@ export default function ProjectDetailPage() {
                   </div>
                   {selectedTenderIds.length > 0 && (
                     <>
-                      <Button
+                      <Button variant="success"
                         size="sm"
                         onClick={handleBulkPublishTenders}
                         disabled={isBulkPublishingTenders}
-                        className="gap-1.5 bg-success hover:bg-success/90 h-8 text-xs"
+                        className="gap-1.5 h-8 text-xs"
                       >
                         {isBulkPublishingTenders ? <Loader2 className="animate-spin" size={13} /> : <Send size={13} />}
                         {t("rfq_batch_publish", { count: selectedTenderIds.length })}
@@ -3375,9 +3375,9 @@ export default function ProjectDetailPage() {
                               </Link>
                             </div>
                             {editable && r.status === "Draft" && (
-                              <Button
+                              <Button variant="success"
                                 size="sm"
-                                className="w-full gap-1.5 text-xs h-8 bg-success hover:bg-success/90"
+                                className="w-full gap-1.5 text-xs h-8"
                                 disabled={publishingTenderId === r.id}
                                 onClick={() => handlePublishTender(r.id)}
                               >

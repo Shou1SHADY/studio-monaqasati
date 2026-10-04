@@ -319,7 +319,7 @@ export function MfgInventoryDesk({ portal }: { portal: CrmPortal }) {
                       <p className="text-xs text-muted-foreground">{t("mfx_desk_rem_by", { name: x.remnant.by, date: formatCrmDate(x.remnant.at, locale) })}</p>
                     </div>
                     {canReceive && (
-                      <Button size="sm" className="h-10 shrink-0 gap-1.5 bg-success text-white hover:bg-success/90" onClick={() => setRemnantTarget(x)}>
+                      <Button variant="success" size="sm" className="h-10 shrink-0 gap-1.5" onClick={() => setRemnantTarget(x)}>
                         <PackagePlus size={14} aria-hidden="true" />
                         {t("mfx_rem_btn")}
                       </Button>

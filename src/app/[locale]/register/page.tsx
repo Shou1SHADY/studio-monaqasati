@@ -285,9 +285,9 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <Button
+            <Button variant="primary"
               type="submit"
-              className="w-full h-12 text-base font-bold rounded-lg mt-4 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 text-white transition-all"
+              className="w-full h-12 text-base font-bold rounded-lg mt-4 shadow-lg shadow-primary/20 transition-all"
               disabled={isLoading}
             >
               {isLoading ? <Loader2 className="animate-spin" /> : t("confirm_register")}

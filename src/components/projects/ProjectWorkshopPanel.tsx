@@ -250,7 +250,7 @@ export function ProjectWorkshopPanel({ projectId, projectName }: { projectId: st
                     <NoteShipmentFacts note={n} />
                   </div>
                   {canEdit && (
-                    <Button size="sm" className="h-10 shrink-0 gap-1.5 bg-success text-white hover:bg-success/90" onClick={() => setReceiveTarget(n)}>
+                    <Button variant="success" size="sm" className="h-10 shrink-0 gap-1.5" onClick={() => setReceiveTarget(n)}>
                       <ClipboardCheck size={14} aria-hidden="true" />
                       {t("mfx_dn_receive_custody_btn")}
                     </Button>

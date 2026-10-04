@@ -265,10 +265,10 @@ export default function SeedPage() {
               {debugLog.length === 0 && <div className="text-slate-500 italic">{t("waiting_for_seed")}</div>}
             </div>
             
-            <Button 
+            <Button variant="primary" 
               onClick={handleSeed} 
               disabled={isSeeding} 
-              className="w-full h-14 text-xl font-bold bg-primary hover:bg-primary/90 shadow-lg"
+              className="w-full h-14 text-xl font-bold shadow-lg"
             >
               {isSeeding ? (
                 <>
@@ -308,10 +308,10 @@ export default function SeedPage() {
               {whLog.map((log, i) => <div key={i} className="mb-1">➜ {log}</div>)}
               {whLog.length === 0 && <div className="text-slate-500 italic">في انتظار التنفيذ...</div>}
             </div>
-            <Button
+            <Button variant="accent"
               onClick={handleSeedWarehouse}
               disabled={isSeedingWh || !whOrgId.trim()}
-              className="w-full h-12 text-lg font-bold bg-accent hover:bg-accent/90 text-primary shadow-lg"
+              className="w-full h-12 text-lg font-bold shadow-lg"
             >
               {isSeedingWh ? (
                 <><Loader2 className="animate-spin me-2" size={20} />جاري الإنشاء...</>

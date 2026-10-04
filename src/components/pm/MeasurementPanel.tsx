@@ -35,6 +35,7 @@ import type { PricingBasis } from "@/lib/pm/terms"
 import { cn } from "@/lib/utils"
 import { AttachmentTag } from "./PmAttachments"
 import { WriteSheetDialog, type SheetItem } from "./WriteSheetDialog"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
 const TONE: Record<SheetStatus, PillTone> = { wait: "warn", ok: "ok", no: "bad" }
 const SHOWN = 6
@@ -241,7 +242,7 @@ export function MeasurementPanel({
                     {measuring ? (
                       <div className="flex items-center gap-2">
                         {openUnits.length > 0 && allocated(i.id) && (
-                          <select
+                          <NativeSelect
                             aria-label={t("units.field")}
                             value={unitOf[i.id] ?? ""}
                             onChange={(e) => setUnitOf((u) => ({ ...u, [i.id]: e.target.value }))}
@@ -256,7 +257,7 @@ export function MeasurementPanel({
                                 {u.name}
                               </option>
                             ))}
-                          </select>
+                          </NativeSelect>
                         )}
                         <Input
                           aria-label={t("meas.qty_for", { code: i.code })}
