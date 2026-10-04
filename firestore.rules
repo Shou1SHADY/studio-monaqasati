@@ -2848,11 +2848,13 @@ service cloud.firestore {
       // A month is read before it exists (the first sheet, a declaration, the
       // closing, payroll's check): a missing document must read as missing —
       // `resource.data` on it is an error, and an error refuses.
+      // Government relations reads too (no pay here): the monthly attendance
+      // report and the employee file's month tile are his as well (RP-02, EM-01).
       allow get: if isSignedIn() && (isAdmin() || ((resource == null || isOrgMember(resource.data.organizationId))
-        && (hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management')
+        && (hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management') || hrRole('hr.gov')
             || (resource == null ? hrRole('hr.supervisor') : hrSupervises(resource.data.siteId)))));
       allow list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
-        && (hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management'))));
+        && (hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management') || hrRole('hr.gov'))));
       allow create: if isOrgMember(request.resource.data.organizationId)
         && id == request.resource.data.organizationId + '__' + request.resource.data.siteId + '__' + request.resource.data.month
         && (hrManager() || hrRole('hr.payroll') || hrSupervises(request.resource.data.siteId))

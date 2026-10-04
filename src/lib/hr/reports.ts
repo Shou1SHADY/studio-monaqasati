@@ -61,7 +61,7 @@ export const REPORTS: Record<ReportId, ReportDef> = {
   leave: { id: "leave", money: true, columns: [NO, NAME, c("years", "num"), c("accrued", "num"), c("taken", "num"), c("balance", "num"), c("liability", "money")] },
   eos: { id: "eos", money: true, columns: [NO, NAME, c("years", "num"), c("wage", "money"), c("termination", "money"), c("resignation", "money"), c("monthly", "money")] },
   advances: { id: "advances", money: true, columns: [NO, NAME, c("principal", "money"), c("balance_left", "money"), c("instalment", "money"), c("months_left", "num")] },
-  penalties: { id: "penalties", money: true, columns: [NO, NAME, c("violation", "enum", "violation"), c("on", "date"), c("hearing", "date"), c("step", "num"), c("amount", "money"), c("vstate", "enum", "rep.vstate")] },
+  penalties: { id: "penalties", money: true, columns: [NO, NAME, c("violation", "enum", "violation"), c("on", "date"), c("hearing", "date"), c("step", "num"), c("amount", "money"), c("vstate", "enum", "vio.state")] },
   saudization: { id: "saudization", money: false, columns: [TRADE, c("headcount", "num"), c("saudis", "num"), c("others", "num"), c("ratio", "pct"), c("localized", "enum", "rep.yes")] },
   movement: { id: "movement", money: false, columns: [NO, NAME, c("event", "enum", "rep.event"), c("date", "date"), c("reason", "enum", "exit.reasons"), TRADE, SITE] },
   turnover: { id: "turnover", money: false, roles: ["manager", "management"], columns: [SITE, c("headcount", "num"), c("joined90", "num"), c("leaving", "num"), c("turnover", "pct")] },

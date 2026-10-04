@@ -19034,12 +19034,16 @@
         "build_title": "Moving in — the build path",
         "build_note": "{done} of {total} done, computed from the record.",
         "step": {
-          "establishment": "The establishment file — name and commercial registration",
-          "type": "The business type — it sets the default features",
-          "policies": "Company policies saved",
-          "sites": "At least one workplace",
-          "supervisors": "Every site, workshop and warehouse has a supervisor",
-          "employees": "Employees on the record — imported or added"
+          "establishment": "Establishment file",
+          "policies": "Policies",
+          "sites": "Workplaces",
+          "employees": "First employee",
+          "team": "Team & roles",
+          "attendance": "Daily attendance",
+          "documents": "Documents",
+          "close": "Close last month's attendance",
+          "payroll": "First payroll",
+          "files": "Finance & files"
         },
         "waiting": "Waiting for you",
         "nothing_waiting": "Nothing waits for your decision",
@@ -19095,7 +19099,135 @@
           "decide": "Decide",
           "open": "Open",
           "answer": "Answer",
-          "settle": "Settle"
+          "settle": "Settle",
+          "plan": "Plan"
+        },
+        "order": "One trip, in order: {order}",
+        "sites_today": "Workplaces today",
+        "sites_today_note": "Present ÷ assigned — the absent by name on each sheet",
+        "sites_today_none": "Nobody is assigned yet",
+        "duty": {
+          "out": "{n} absent or sick",
+          "unrecorded": "{n} unrecorded",
+          "leave": "{n} on leave",
+          "none": "Unrecorded"
+        },
+        "ending": "Sites ending soon",
+        "ending_none": "Nothing ends within {n} days",
+        "ending_line": "{n} people become unassigned without a plan",
+        "queue": "Renewal queue",
+        "queue_note": "One trip per person, in order — the next 120 days",
+        "queue_none": "Nothing to renew in the next 120 days",
+        "queue_doc": "{doc} {date}",
+        "kpi": {
+          "on_duty": {
+            "label": "On duty today",
+            "note": "of {of} · {out} absent or sick · {unrecorded} unrecorded · {bench} unassigned",
+            "rest": "Friday — the weekly rest day"
+          },
+          "documents": {
+            "label": "Documents expired or due within {days} days",
+            "note": "{expired} iqamas expired — {onSite} on a site"
+          },
+          "payroll": {
+            "label": "Payroll — the last month",
+            "state": "{month} — {state} · {returned} returned transfers",
+            "supplementary": "A supplementary payroll waits for approval",
+            "none": "No payroll yet — the first after the month closes"
+          },
+          "iqama_expired": {
+            "label": "Iqamas expired now",
+            "note": "{onSite} on a site · {insurance} medical insurance expired"
+          },
+          "expiring": {
+            "label": "Documents expiring within 30 days",
+            "note": "and {more} more within 60"
+          },
+          "arrivals": {
+            "label": "Arrivals without an iqama",
+            "nearest": "90 days from arrival — the nearest ends {date}",
+            "none": "None"
+          },
+          "estimate": {
+            "label": "{month} — gross estimate from contracts",
+            "note": "Contract wages, before overtime and absence"
+          },
+          "returned": {
+            "label": "Returned transfers",
+            "note": "{net} unpaid until the IBAN is fixed"
+          },
+          "advances": {
+            "label": "Outstanding advances",
+            "note": "{count} employees · 10% of the wage from each payroll"
+          },
+          "my_workers": {
+            "label": "My workers today",
+            "note": "of {of} · {absent} absent · {sick} sick · {unrecorded} unrecorded · {leave} on leave",
+            "rest": "Friday — the weekly rest day"
+          },
+          "unrecorded": {
+            "label": "Not recorded yet",
+            "note": "Record before the day ends",
+            "done": "Complete"
+          },
+          "my_docs": {
+            "label": "My workers' documents due",
+            "note": "Renewal is government relations' — you are told"
+          },
+          "bench": {
+            "label": "Unassigned — still paid",
+            "note": "{count} people, a month's wages"
+          },
+          "decisions": {
+            "label": "People decisions within 60 days",
+            "note": "Contracts ending and probations"
+          },
+          "labour_cost": {
+            "label": "Labour cost — the last payroll",
+            "note": "{month} · {perHead} a head · Saudis {saudi}%",
+            "none": "No payroll yet · Saudis {saudi}%"
+          },
+          "iqama_on_site": {
+            "label": "Expired iqamas on sites",
+            "note": "{returned} returned transfers unpaid"
+          }
+        },
+        "step_why": {
+          "establishment": "Name, commercial registration and business type — no letters or wage file without them",
+          "sites": "Every employee is assigned somewhere; the place carries the cost account",
+          "policies": "Statutory items are fixed; company policies are yours",
+          "team": "Who records attendance, renews documents and prepares payroll — or you do it all",
+          "employees": "The record is the source — contract, documents, assignment and pay",
+          "attendance": "No payroll without closed attendance — recorded day by day",
+          "documents": "Iqama for every non-Saudi — a blank shows as missing until it is issued",
+          "close": "The month ends, each workplace closes, then the payroll — in that order",
+          "payroll": "Computed from attendance and the contract — approved here, paid by Finance",
+          "files": "After payment: the Mudad file and the GOSI statement from the same payroll"
+        },
+        "step_go": {
+          "establishment": "Enter the file",
+          "sites": "Add a workplace",
+          "policies": "Review the policies",
+          "team": "Add a member",
+          "employees": "New employee or import",
+          "attendance": "Record today",
+          "documents": "Show what is missing",
+          "close": "Close attendance",
+          "payroll": "Open payroll",
+          "files": "Open"
+        },
+        "step_done": "Done",
+        "step_locked": "After the previous step",
+        "gaps": "What turned out missing",
+        "gaps_note": "Updated with every step, from your own data",
+        "gaps_none": "No gaps in your data yet",
+        "gap": {
+          "site_no_supervisor": "{site} has no supervisor to record attendance — the HR manager records it meanwhile",
+          "no_iqama": "{name} is not Saudi and has no iqama or arrival on the card",
+          "no_iban": "{name} has no IBAN — the transfer will come back",
+          "no_payroll_officer": "No payroll officer — who prepares the payroll and fixes returns?",
+          "no_gov_officer": "No government relations officer — documents will expire with nobody to renew them",
+          "manager_not_on_record": "You are not on the record yourself — link your user to your employee card, or you will not be on the payroll"
         }
       },
       "back": "Back",
@@ -19229,6 +19361,12 @@
           "document": "Nearest document",
           "status": "Status",
           "wage": "Monthly wage"
+        },
+        "filter_docs": "Document filters",
+        "filter": {
+          "docs": "Documents due",
+          "iqama": "Expired iqama",
+          "iqama_site": "Expired iqama on a site"
         }
       },
       "new": {
@@ -19285,8 +19423,9 @@
         "tile": {
           "service": "Service",
           "leave": "Leave balance",
-          "wage": "Monthly wage",
-          "document": "Nearest document"
+          "wage": "Pay and cost",
+          "document": "Nearest document",
+          "attendance": "Attendance — {month}"
         },
         "years": "{n} years",
         "days": "{n, plural, one {# day} other {# days}}",
@@ -19297,10 +19436,12 @@
         "doc_sub": "{doc} · {date}",
         "seg": {
           "job": "Job",
-          "docs": "Documents",
-          "pay": "Pay",
+          "docs": "Documents & certificates",
+          "pay": "Pay & payroll",
           "leave": "Leave",
-          "log": "Requests & log"
+          "log": "Requests & log",
+          "ov": "Overview",
+          "att": "Attendance & leave"
         },
         "category": "Category",
         "fixed_until": "Fixed term until {date}",
@@ -19334,7 +19475,43 @@
           "renew": "Record renewal",
           "link": "Link user"
         },
-        "log_title": "Log"
+        "log_title": "Log",
+        "service_years": "{n} years of service",
+        "per_year": "{n} a year",
+        "company_cost": "Company cost {cost}",
+        "pay_hidden": "Hidden for your role",
+        "days_left": "{n} days left",
+        "att_sub": "{absent} absent · {ot} h overtime",
+        "att_assumed_short": "Assumed",
+        "att_assumed": "Present by default · {absent} absent · {sick} sick",
+        "att_month": "{present} present · {absent} absent · {sick} sick · {ot} h overtime",
+        "att_assumed_note": "An office assumes presence and records exceptions only",
+        "att_title": "Attendance",
+        "this_month": "This month ({month})",
+        "last_month": "Last month ({month})",
+        "leave_title": "Leave balance",
+        "accrued": "Accrued by service",
+        "balance_formula": "Balance = accrued + opening − taken",
+        "personal": "Personal",
+        "name_ar": "Name (Arabic)",
+        "name_en": "Name (English)",
+        "nationality": "Nationality",
+        "job": "Job and contract",
+        "line_manager": "Line manager",
+        "line_manager_mgmt": "Management",
+        "contact": "Contact",
+        "doc_col": {
+          "doc": "Document",
+          "expiry": "Expires",
+          "left": "Days left",
+          "state": "State"
+        },
+        "cost_title": "Cost to the company",
+        "cost_gosi": "Employer GOSI",
+        "cost_eos": "End-of-service accrual",
+        "cost_total": "Monthly cost",
+        "eos_termination": "Gratuity if terminated today",
+        "eos_resignation": "Gratuity if he resigned today"
       },
       "move": {
         "to": "Move to",
@@ -20119,6 +20296,151 @@
           "no_trade": "Choose the trade",
           "bad_count": "A whole number above zero",
           "no_date": "Choose the start date"
+        }
+      },
+      "siteppl": {
+        "title": "People here",
+        "note": "A work injury or a violation on another day is recorded here",
+        "none": "Nobody is assigned here",
+        "injury": "Work injury",
+        "violation": "Violation",
+        "injuries": "Injuries at this place"
+      },
+      "rep": {
+        "none": "No reports for your role",
+        "none_desc": "Reports are read by the HR manager, government relations, payroll and management.",
+        "back": "All reports",
+        "csv": "Download CSV",
+        "empty": "No rows in this report",
+        "rows": "{n, plural, one {# row} other {# rows}}",
+        "sar": "SAR",
+        "mudad": "Mudad wage file — {month}",
+        "mudad_desc": "As sent to Finance — held lines stay out",
+        "gosi": "GOSI statement — {month}",
+        "gosi_desc": "The month's contributions — equal to the GOSI credit",
+        "note": "Reports read the live record the moment they open — no stored copy that differs from the screens.",
+        "note_no_pay": "Reports read the live record the moment they open. Reports in riyals are not shown to roles that do not see pay.",
+        "r": {
+          "register": {
+            "title": "Employee register",
+            "desc": "Number · name · trade · nationality · workplace · joined · status"
+          },
+          "attendance": {
+            "title": "Monthly attendance",
+            "desc": "Days present, absent, sick, on leave and overtime hours — {month}"
+          },
+          "cost": {
+            "title": "Labour cost by cost centre",
+            "desc": "Gross + employer GOSI, from the last payroll — as posted by Finance"
+          },
+          "documents": {
+            "title": "Expired and expiring documents",
+            "desc": "Every document expired or expiring within 90 days, the most urgent first"
+          },
+          "leave": {
+            "title": "Leave balances",
+            "desc": "Accrued − taken, and the liability if paid out today"
+          },
+          "eos": {
+            "title": "End-of-service provision",
+            "desc": "The gratuity each employee would be due today — to reconcile the provision"
+          },
+          "advances": {
+            "title": "Outstanding advances",
+            "desc": "Principal, balance, instalment and months left"
+          },
+          "penalties": {
+            "title": "Penalties register",
+            "desc": "Every decided penalty with incident and hearing dates (art. 73)"
+          },
+          "saudization": {
+            "title": "Saudization by trade",
+            "desc": "Saudis and others per trade — Saudi-only trades flagged"
+          },
+          "movement": {
+            "title": "Joiners and leavers",
+            "desc": "Who joined and who is leaving within 90 days, with the reason"
+          },
+          "turnover": {
+            "title": "Labour turnover",
+            "desc": "Per workplace: headcount · joined in 90 days · leaving · estimated annual turnover"
+          },
+          "structure": {
+            "title": "Structure — employee and line manager",
+            "desc": "The line manager set on the card or derived from the workplace"
+          }
+        },
+        "col": {
+          "no": "No.",
+          "name": "Name",
+          "trade": "Trade",
+          "nationality": "Nationality",
+          "site": "Workplace",
+          "join": "Joined",
+          "status": "Status",
+          "present": "Present",
+          "absent": "Absent",
+          "sick": "Sick",
+          "leave": "Leave",
+          "overtime": "Overtime (h)",
+          "account": "Account",
+          "headcount": "Headcount",
+          "gross": "Gross",
+          "gosi": "Employer GOSI",
+          "cost": "Cost",
+          "per_head": "Per head",
+          "doc": "Document",
+          "expiry": "Expires",
+          "days_left": "Days left",
+          "state": "State",
+          "years": "Service (y)",
+          "accrued": "Accrued",
+          "taken": "Taken",
+          "balance": "Balance",
+          "liability": "Liability",
+          "wage": "Wage",
+          "termination": "On termination",
+          "resignation": "On resignation",
+          "monthly": "Monthly accrual",
+          "principal": "Principal",
+          "balance_left": "Balance",
+          "instalment": "Instalment",
+          "months_left": "Months left",
+          "violation": "Violation",
+          "on": "Incident",
+          "hearing": "Hearing",
+          "step": "Step",
+          "amount": "Amount",
+          "vstate": "State",
+          "saudis": "Saudis",
+          "others": "Non-Saudis",
+          "ratio": "Ratio",
+          "localized": "Saudi-only",
+          "event": "Event",
+          "date": "Date",
+          "reason": "Reason",
+          "joined90": "Joined in 90 days",
+          "leaving": "Leaving",
+          "turnover": "Est. annual turnover",
+          "manager": "Line manager",
+          "source": "Source"
+        },
+        "doc_state": {
+          "expired": "Expired",
+          "d30": "Within 30 days",
+          "d90": "Within 90 days"
+        },
+        "yes": {
+          "yes": "Yes"
+        },
+        "event": {
+          "joined": "Joined",
+          "left": "Leaving"
+        },
+        "mgr": {
+          "set": "Set on the card",
+          "derived": "From the workplace",
+          "management": "Management"
         }
       }
     },

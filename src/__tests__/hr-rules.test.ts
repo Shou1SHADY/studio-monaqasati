@@ -111,3 +111,13 @@ describe("the roles are the ones access.ts names", () => {
     for (const perm of Object.values(HR_ROLE_PERMISSION)) expect(rules).toContain(`hrRole('${perm}')`)
   })
 })
+
+describe("reports read what each reader may (RP-02)", () => {
+  it("government relations lists the attendance months — the monthly attendance report carries no pay", () => {
+    for (const op of ["list", "get"]) for (const r of allow(block("hrAttendance"), op)) expect(r).toContain("hrRole('hr.gov')")
+  })
+
+  it("…and never the payrolls or the pay (RL-03)", () => {
+    for (const c of ["hrPayrolls", "employeePay"]) for (const r of allow(block(c), "list")) expect(r).not.toContain("hrRole('hr.gov')")
+  })
+})
