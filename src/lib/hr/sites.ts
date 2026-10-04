@@ -59,7 +59,10 @@ export const HR_ASSIGN_FIXES = "hrAssignFixes"
 export interface AssignFix {
   id: string
   organizationId: string
-  employeeId: string
+  /** Null while a correction raised by ID number waits: a supervisor cannot read a record outside his
+   * workplaces (RL-01), so the HR manager's decision resolves `idNo` to the record and fills these in. */
+  employeeId: string | null
+  idNo?: string | null
   employeeName: string
   /** Where the record places him, and the site he actually works on (the raiser's). */
   fromSiteId: string | null
@@ -74,7 +77,7 @@ export interface AssignFix {
   decision?: { by: string; byName: string | null; at: string; note: string | null } | null
 }
 
-export type AssignFixBlock = "same_place" | "no_date" | "future" | "left" | "pending"
+export type AssignFixBlock = "same_place" | "no_date" | "future" | "left" | "pending" | "no_id" | "no_name" | "no_match" | "many_match" | "by_id"
 
 /** A correction is an assignment correction, not a manpower request (that one is Projects'):
  * someone the record places elsewhere, working here since a day not in the future, one at a time. */

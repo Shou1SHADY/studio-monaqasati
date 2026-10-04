@@ -20729,6 +20729,10 @@
         "send": "Send",
         "raised": "Sent to the HR manager",
         "line": "On record at {from} · here since {since} · raised by {name}",
+        "line_by_id": "ID {idNo} · here since {since} · raised by {name}",
+        "id_no": "His ID or iqama number",
+        "name": "His name",
+        "by_id_hint": "You see only your workplace's records: enter the number on his ID or iqama card — HR finds his record when deciding.",
         "correct": "Correct",
         "corrected": "Assignment corrected",
         "decline": "Decline",
@@ -20747,7 +20751,12 @@
           "stale": "This correction has moved on",
           "no_reason": "Give the reason",
           "iqama_expired": "His iqama has expired — he cannot be assigned to a site",
-          "no_date_move": "Choose the date"
+          "no_date_move": "Choose the date",
+          "no_id": "Enter his ID or iqama number",
+          "no_name": "Enter his name",
+          "no_match": "No current record has this ID number — check the number or decline",
+          "many_match": "More than one record has this ID number — correct the records first",
+          "by_id": "Name him by his ID number"
         }
       },
       "commission": {

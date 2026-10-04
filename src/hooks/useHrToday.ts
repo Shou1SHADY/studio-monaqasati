@@ -10,6 +10,8 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { useHrPeople, useOrgPay } from "@/hooks/useHrPeople"
 import { useHrRequests } from "@/hooks/useHrRequests"
+import { useScopedCollection } from "@/hooks/useScopedCollection"
+import { hrPeopleScope } from "@/lib/hr/access"
 import { attendanceId, type WorkplaceMonth } from "@/lib/hr/attendance"
 import { HR_ATTENDANCE, HR_EXITS, HR_INJURIES, HR_PAYROLLS } from "@/lib/hr/collections"
 import type { HrExit } from "@/lib/hr/exit-writes"
@@ -44,17 +46,17 @@ export function useHrToday(access: HrAccess, today: string) {
   const orgId = access.orgId
   const staff = access.ctx.roles.size > 0
   const payRoles = access.allowed("pay.view")
-  const { employees, sites } = useHrPeople(orgId, staff)
+  const { employees, sites } = useHrPeople(access, staff)
   const pays = useOrgPay(orgId, payRoles)
   const { requests } = useHrRequests(access)
   const lastMonth = addDays(`${today.slice(0, 7)}-01`, -1).slice(0, 7)
   const lastWm = useWorkplaceMonths(access, lastMonth)
   const thisWm = useWorkplaceMonths(access, today.slice(0, 7))
   const orgQ = (name: string, on: boolean) => (firestore && orgId && on ? query(collection(firestore, name), where("organizationId", "==", orgId)) : null)
-  const injQ = useMemoFirebase(() => orgQ(HR_INJURIES, staff), [firestore, orgId, staff])
   const exQ = useMemoFirebase(() => orgQ(HR_EXITS, staff), [firestore, orgId, staff])
   const prQ = useMemoFirebase(() => orgQ(HR_PAYROLLS, payRoles), [firestore, orgId, payRoles])
-  const { data: inj } = useCollection(injQ)
+  // Injuries: a supervisor's own workplaces only (RL-01).
+  const { data: inj } = useScopedCollection(HR_INJURIES, orgId, hrPeopleScope(access.ctx), staff)
   const { data: ex } = useCollection(exQ)
   const { data: pr } = useCollection(prQ)
   const answers = access.allowed("manpower.answer")

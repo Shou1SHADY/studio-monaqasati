@@ -12,13 +12,13 @@ import { HR_LOG, type HrActor } from "./employee-writes"
 import { payOn, wageOf } from "./pay"
 import { deductedOn, payrollId, type Payroll } from "./payroll"
 import type { PastViolation, ViolationCode } from "./penalties"
+import { todayDay } from "./format"
 import { applyQuote, mayObject, violationId, type HrViolation } from "./violations"
 import { assertHr, HrWriteError } from "./write-guard"
 
-const localToday = () => {
-  const now = new Date()
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
-}
+// The Riyadh day, as firestore.rules count it: the notice is dated today there (the objection's 15 days
+// start from it, on the server too) — never the browser's own zone.
+const localToday = () => todayDay()
 const stamp = (a: HrActor) => ({ by: a.uid, byName: a.name, at: new Date().toISOString() })
 
 function log(tx: Transaction, firestore: Firestore, v: Pick<HrViolation, "employeeId" | "organizationId">, actor: HrActor, kind: string, params: Record<string, string | number | null>) {

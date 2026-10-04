@@ -69,7 +69,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
   const locale = useLocale()
   const firestore = useFirestore()
   const today = todayDay()
-  const { employees, sites, siteName, isLoading } = useHrPeople(access.orgId)
+  const { employees, sites, siteName, isLoading } = useHrPeople(access)
   const emp = employees.find((e) => e.id === employeeId) ?? null
   const money = access.seesPay(employeeId)
   const { pay } = useEmployeePay(employeeId, money)

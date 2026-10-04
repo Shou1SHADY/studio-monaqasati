@@ -237,10 +237,24 @@ service cloud.firestore {
     function hrSeesPay() {
       return hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management');
     }
-    function hrStaff() {
-      return hrRole('employees.manage') || hrRole('hr.gov') || hrRole('hr.payroll')
-        || hrRole('hr.supervisor') || hrRole('hr.management');
+    // RL-01: every HR role but the supervisor reads the whole company's people;
+    // the supervisor reads his own workplaces' only (hrSupervises).
+    function hrOffice() {
+      return hrRole('employees.manage') || hrRole('hr.gov') || hrRole('hr.payroll') || hrRole('hr.management');
     }
+    function hrStaff() { return hrOffice() || hrRole('hr.supervisor'); }
+    // The day in Riyadh (UTC+3, no daylight saving) as the number yyyymmdd — the
+    // client's `todayDay()` — and an ISO day or month ("2026-10-05", "2026-10")
+    // made a number to compare with it. hrDayStart: Riyadh's midnight opening an
+    // ISO day, for a window counted in days.
+    function hrToday() { let t = request.time + duration.value(3, 'h'); return t.year() * 10000 + t.month() * 100 + t.day(); }
+    function hrNum(s) { return int(s.replace('-', '')); }
+    function hrDayStart(s) { let p = s.split('-'); return timestamp.date(int(p[0]), int(p[1]), int(p[2])) - duration.value(3, 'h'); }
+    // A record a supervisor writes about a person (a violation, an injury) is on
+    // HIS workplace — the person's own, read from the record, never one he names.
+    function hrOnSite(d) { return d.get('siteId', null) is string && d.siteId == hrEmp(d.employeeId).get('siteId', null) && hrSupervises(d.siteId); }
+    // Nobody acts on a record of his own (RL-02) — the org owner excepted, flagged.
+    function hrNotOwn() { return resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner(); }
     // Finance's hand in HR (AD-03): an advance above the HR limit.
     function hrFinance() {
       return isOrgOwner() || hasOrgPermission('invoices.manage') || hasOrgPermission('accounting.post');
@@ -2835,6 +2849,19 @@ service cloud.firestore {
     // the HR manager, payroll or the site's supervisor; the missing-days
     // declaration by the HR manager or the supervisor only; closed after the
     // month by any of the three — and after that nothing changes, ever.
+    // §3 #18 — what the client's attendance blocks also hold on the server:
+    // declarations are APPEND-ONLY (AT-04) — the list is unchanged, or the old
+    // entries stay as they were and exactly one is added, in the writer's own
+    // name, by the HR manager or the site's supervisor; and a month is closed
+    // only after it has ended in Riyadh (AT-03) — today's yyyymmdd above the
+    // month's last possible day (yyyymm31).
+    function hrSheetOk(before) {
+      let d = request.resource.data.get('declarations', []);
+      return (d == before
+          || ((hrManager() || hrSupervises(request.resource.data.siteId))
+              && d.size() == before.size() + 1 && d[0:before.size()] == before && d[before.size()].by == request.auth.uid))
+        && (request.resource.data.get('closed', null) == null || hrToday() > hrNum(request.resource.data.month) * 100 + 31);
+    }
     match /hrAttendance/{id} {
       // A month is read before it exists (the first sheet, a declaration, the
       // closing, payroll's check): a missing document must read as missing —
@@ -2842,22 +2869,19 @@ service cloud.firestore {
       // Government relations reads too (no pay here): the monthly attendance
       // report and the employee file's month tile are his as well (RP-02, EM-01).
       allow get: if isSignedIn() && (isAdmin() || ((resource == null || isOrgMember(resource.data.organizationId))
-        && (hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management') || hrRole('hr.gov')
-            || (resource == null ? hrRole('hr.supervisor') : hrSupervises(resource.data.siteId)))));
-      allow list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
-        && (hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management') || hrRole('hr.gov'))));
+        && (hrOffice() || (resource == null ? hrRole('hr.supervisor') : hrSupervises(resource.data.siteId)))));
+      allow list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId) && hrOffice()));
       allow create: if createsInOrg()
         && id == request.resource.data.organizationId + '__' + request.resource.data.siteId + '__' + request.resource.data.month
         && (hrManager() || hrRole('hr.payroll') || hrSupervises(request.resource.data.siteId))
-        && (request.resource.data.get('declarations', []).size() == 0 || hrManager() || hrSupervises(request.resource.data.siteId));
+        && hrSheetOk([]);
       allow update: if isOrgMember(resource.data.organizationId)
         && resource.data.get('closed', null) == null
         && request.resource.data.organizationId == resource.data.organizationId
         && request.resource.data.siteId == resource.data.siteId
         && request.resource.data.month == resource.data.month
         && (hrManager() || hrRole('hr.payroll') || hrSupervises(resource.data.siteId))
-        && (request.resource.data.get('declarations', []) == resource.data.get('declarations', [])
-          || hrManager() || hrSupervises(resource.data.siteId));
+        && hrSheetOk(resource.data.get('declarations', []));
       allow delete: if false;
     }
 
@@ -2874,14 +2898,16 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // HR 1.0 — the employee record (EM-01…06). HR staff read the org's people; an
-    // employee reads his own (ES-05). Pay is NEVER on this document (RL-03) — it
-    // lives in employeePay. The permanent number never changes (EM-02); a record
-    // is never deleted (an exit closes it).
+    // HR 1.0 — the employee record (EM-01…06). HR staff read the org's people —
+    // a workplace supervisor only the people of HIS workplaces (RL-01; his
+    // screens query site by site, `where('siteId', '==', …)`, which this rule
+    // can prove); an employee reads his own (ES-05). Pay is NEVER on this
+    // document (RL-03) — it lives in employeePay. The permanent number never
+    // changes (EM-02); a record is never deleted (an exit closes it).
     match /employees/{employeeId} {
       allow get, list: if isSignedIn() && (isAdmin()
         || (isOrgMember(resource.data.organizationId)
-            && (hrStaff() || resource.data.get('userId', '') == request.auth.uid)));
+            && (hrOffice() || resource.data.get('userId', '') == request.auth.uid || hrSupervises(resource.data.siteId))));
       allow create: if createsInOrg()
         && (hrManager() || hrRole('hr.gov'))
         && !('salary' in request.resource.data);
@@ -2904,9 +2930,10 @@ service cloud.firestore {
       allow delete: if isAdmin();
 
       // The undeletable log (EM-06): written by HR staff or the employee himself,
-      // in his own name; read by HR staff and the employee.
+      // in his own name; read by HR staff (a supervisor: his workplaces' people)
+      // and the employee.
       match /log/{entryId} {
-        allow read: if inEmployeeOrg(employeeId) && (hrStaff() || hrOwnRecord(employeeId));
+        allow read: if inEmployeeOrg(employeeId) && (hrOffice() || hrOwnRecord(employeeId) || hrSupervises(hrEmp(employeeId).get('siteId', '-')));
         // The first entry is written in the transaction that creates the employee:
         // get() sees the state BEFORE it (no parent yet — an error, a refusal);
         // getAfter() sees the record as the transaction leaves it.
@@ -2949,7 +2976,10 @@ service cloud.firestore {
         // That check comes FIRST: approving a payroll writes many of these at
         // once, and the record lookup behind hrOwnRecord() must not run for
         // each (a transaction may look up twenty documents, no more).
-        && ((hrManager() && (changedKeys().hasOnly(['advance', 'retro', 'updatedAt']) || isOrgOwner() || !hrOwnRecord(employeeId)))
+        && ((hrManager() && (changedKeys().hasOnly(['advance', 'retro', 'updatedAt']) || isOrgOwner() || !hrOwnRecord(employeeId))
+              // the IBAN payroll fixed is approved by a DIFFERENT hand (RL-02, AC-04)
+              && (request.resource.data.get('ibanState', '') != 'ok' || resource.data.get('ibanState', '') != 'fixed'
+                  || resource.data.get('ibanFixedBy', '') != request.auth.uid || isOrgOwner()))
             || (hrRole('hr.payroll')
                 && changedKeys().hasOnly(['iban', 'ibanState', 'ibanFixedBy', 'updatedAt'])
                 && request.resource.data.ibanState == 'fixed'
@@ -2965,7 +2995,8 @@ service cloud.firestore {
             // The HR manager's own data update, decided by management (ES-03, LV-05).
             || (hrRole('hr.management')
                 && changedKeys().hasOnly(['iban', 'ibanState', 'updatedAt'])
-                && request.resource.data.ibanState == 'ok'));
+                && request.resource.data.ibanState == 'ok'
+                && hrUserManages(hrEmp(employeeId).get('userId', '-'))));
       allow delete: if isAdmin();
     }
 
@@ -3049,22 +3080,29 @@ service cloud.firestore {
         && request.resource.data.recorded.by == request.auth.uid
         && exists(/databases/$(database)/documents/employees/$(request.resource.data.employeeId))
         && request.resource.data.employeeUserId == hrEmp(request.resource.data.employeeId).get('userId', null)
-        && (hrManager() || (request.resource.data.get('siteId', null) is string && hrSupervises(request.resource.data.siteId)));
+        && (hrManager() || hrOnSite(request.resource.data));
       allow update: if isOrgMember(resource.data.organizationId)
         && request.resource.data.employeeId == resource.data.employeeId
         && request.resource.data.code == resource.data.code
         && request.resource.data.on == resource.data.on
         && (
+          // Applied after a hearing held between the violation and today, notified
+          // TODAY (Riyadh) — the day the objection's clock starts (PN-02, PN-04).
           (resource.data.state == 'recorded' && request.resource.data.state in ['applied', 'dismissed']
             && changedKeys().hasOnly(['state', 'hearing', 'step', 'stepKind', 'amount', 'deductMonth', 'notifiedOn', 'decision', 'updatedAt'])
-            && (request.resource.data.state != 'applied' || request.resource.data.get('hearing', null) != null)
-            && hrManager() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+            && (request.resource.data.state != 'applied'
+                || (request.resource.data.hearing.on >= resource.data.on && hrNum(request.resource.data.hearing.on) <= hrToday()
+                    && hrNum(request.resource.data.notifiedOn) == hrToday()))
+            && hrManager() && hrNotOwn())
+          // The employee objects within 15 days of the notice (PN-04): before
+          // Riyadh's midnight ending the 15th day after it.
           || (resource.data.state == 'applied' && request.resource.data.state == 'objected'
             && changedKeys().hasOnly(['state', 'objection', 'updatedAt'])
-            && resource.data.get('employeeUserId', '') == request.auth.uid)
+            && resource.data.get('employeeUserId', '') == request.auth.uid
+            && request.time < hrDayStart(resource.data.notifiedOn) + duration.value(16, 'd'))
           || (resource.data.state == 'objected' && request.resource.data.state in ['upheld', 'cancelled']
             && changedKeys().hasOnly(['state', 'deductMonth', 'objectionDecision', 'updatedAt'])
-            && hrManager() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+            && hrManager() && hrNotOwn())
         );
       allow delete: if false;
     }
@@ -3096,7 +3134,7 @@ service cloud.firestore {
           || (resource.data.state == 'leaving' && request.resource.data.state == 'settled'
             && resource.data.custody.state == 'cleared'
             && changedKeys().hasOnly(['state', 'settled', 'updatedAt'])
-            && hrManager() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+            && hrManager() && hrNotOwn())
           || (resource.data.state == 'settled' && request.resource.data.state == 'paid'
             && changedKeys().hasOnly(['state', 'paid', 'updatedAt'])
             && hrFinance())
@@ -3124,13 +3162,15 @@ service cloud.firestore {
 
     // Work injuries (DC-07, WF-15): recorded by the site's supervisor or the HR
     // manager; the GOSI report number by government relations or the HR manager.
+    // Read by HR staff — a supervisor his workplaces' (RL-01) — and the injured.
     match /hrInjuries/{injuryId} {
       allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
-        && (hrStaff() || resource.data.get('employeeUserId', '') == request.auth.uid)));
+        && (hrOffice() || resource.data.get('employeeUserId', '') == request.auth.uid || hrSupervises(resource.data.siteId))));
       allow create: if createsInOrg()
         && request.resource.data.recorded.by == request.auth.uid
         && request.resource.data.get('report', null) == null
-        && (hrManager() || (request.resource.data.get('siteId', null) is string && hrSupervises(request.resource.data.siteId)));
+        && request.resource.data.employeeUserId == hrEmp(request.resource.data.employeeId).get('userId', null)
+        && (hrManager() || hrOnSite(request.resource.data));
       allow update: if isOrgMember(resource.data.organizationId)
         && resource.data.get('report', null) == null
         && changedKeys().hasOnly(['report', 'updatedAt'])
@@ -3165,8 +3205,11 @@ service cloud.firestore {
 
     // Assignment corrections (AS-03): "a worker here but not on my list" — raised by
     // the site's supervisor (or the HR manager), decided by the HR manager, kept.
+    // The supervisor cannot read a record outside his workplaces (RL-01): he names
+    // the worker by his ID number, and the HR manager's decision fills in the
+    // record it resolves to (employeeId, name, where the record placed him).
     match /hrAssignFixes/{fixId} {
-      allow get, list: if isSignedIn() && isOrgMember(resource.data.organizationId) && hrStaff();
+      allow get, list: if isOrgMember(resource.data.organizationId) && (hrOffice() || hrSupervises(resource.data.siteId));
       allow create: if createsInOrg()
         && request.resource.data.state == 'pending'
         && request.resource.data.by == request.auth.uid
@@ -3175,7 +3218,7 @@ service cloud.firestore {
         && hrManager()
         && resource.data.state == 'pending'
         && request.resource.data.state in ['done', 'declined']
-        && changedKeys().hasOnly(['state', 'decision', 'updatedAt']);
+        && changedKeys().hasOnly(['state', 'decision', 'employeeId', 'employeeName', 'fromSiteId', 'updatedAt']);
       allow delete: if false;
     }
 
@@ -3187,7 +3230,8 @@ service cloud.firestore {
     match /hrRequests/{requestId} {
       allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
         && (hrSeesPay()
-            || (resource.data.kind == 'leave' && hrStaff())
+            // a leave (no money): government relations, and a supervisor his workplaces' (RL-01)
+            || (resource.data.kind == 'leave' && (hrRole('hr.gov') || hrSupervises(resource.data.siteId)))
             || resource.data.get('employeeUserId', '') == request.auth.uid
             || (resource.data.kind == 'advance' && hrFinance()))));
       allow create: if createsInOrg()
@@ -3197,6 +3241,7 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/employees/$(request.resource.data.employeeId))
         && hrEmp(request.resource.data.employeeId).organizationId == request.resource.data.organizationId
         && request.resource.data.employeeUserId == hrEmp(request.resource.data.employeeId).get('userId', null)
+        && request.resource.data.get('siteId', null) == hrEmp(request.resource.data.employeeId).get('siteId', null)
         && (hrManager() || request.resource.data.employeeUserId == request.auth.uid)
         && (request.resource.data.deciderLevel == 'management'
             || !(request.resource.data.employeeUserId is string) || !hrUserManages(request.resource.data.employeeUserId))
@@ -3213,28 +3258,28 @@ service cloud.firestore {
           || (resource.data.state in ['pending', 'endorsed'] && request.resource.data.state in ['approved', 'declined', 'finance']
             && changedKeys().hasOnly(['state', 'decision', 'financeHold', 'leave', 'advance', 'updatedAt'])
             && (request.resource.data.state != 'finance' || resource.data.kind == 'advance')
-            && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner())
+            && hrNotOwn()
             && ((resource.data.deciderLevel == 'manager' && hrManager())
                 || (resource.data.deciderLevel == 'management' && hrRole('hr.management'))
                 || isOrgOwner()))
           // Finance decides what HR sent up
           || (resource.data.state == 'finance' && request.resource.data.state in ['approved', 'declined']
             && changedKeys().hasOnly(['state', 'finance', 'updatedAt'])
-            && hrFinance() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+            && hrFinance() && hrNotOwn())
           // Finance pays out an approved advance (fin:PRPAID)
           || (resource.data.kind == 'advance' && resource.data.state == 'approved' && request.resource.data.state == 'approved'
             && changedKeys().hasOnly(['payout', 'updatedAt'])
-            && hrFinance() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+            && hrFinance() && hrNotOwn())
           // the return from leave (AT-05) — once, by the site's supervisor or the HR manager
           || (resource.data.kind == 'leave' && resource.data.state == 'approved' && request.resource.data.state == 'approved'
             && changedKeys().hasOnly(['returned', 'updatedAt'])
             && !('returned' in resource.data)
             && (hrManager() || (resource.data.get('siteId', null) is string && hrSupervises(resource.data.siteId))))
-          // cancel before it starts
+          // cancel before it starts — an approved leave only before its first day, in Riyadh (LV-07)
           || (request.resource.data.state == 'cancelled'
             && changedKeys().hasOnly(['state', 'cancel', 'updatedAt'])
             && ((resource.data.state in ['pending', 'endorsed'] && (resource.data.get('employeeUserId', '') == request.auth.uid || hrManager()))
-                || (resource.data.state == 'approved' && resource.data.kind == 'leave' && hrManager())))
+                || (resource.data.state == 'approved' && resource.data.kind == 'leave' && hrManager() && hrToday() < hrNum(resource.data.leave.from))))
         );
       allow delete: if false;
     }

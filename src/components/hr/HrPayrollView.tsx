@@ -89,7 +89,7 @@ export function HrPayrollView({ access, portal }: { access: HrAccess; portal: Hr
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState<string | null>(null)
 
-  const { employees, sites, siteName } = useHrPeople(orgId)
+  const { employees, sites, siteName } = useHrPeople(access)
   const pays = useOrgPay(orgId, true)
   const { requests } = useHrRequests(access)
   const attQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, HR_ATTENDANCE), where("organizationId", "==", orgId), where("month", "==", month)) : null), [firestore, orgId, month])

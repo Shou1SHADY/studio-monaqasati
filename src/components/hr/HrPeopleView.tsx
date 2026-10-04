@@ -35,7 +35,7 @@ export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; 
   const t = useTranslations("Portal.HR")
   const locale = useLocale()
   const today = todayDay()
-  const { employees, sites, siteName, isLoading } = useHrPeople(access.orgId)
+  const { employees, sites, siteName, isLoading } = useHrPeople(access)
   const money = access.allowed("pay.view")
   const payMap = useOrgPay(access.orgId, money)
   const [search, setSearch] = useState("")

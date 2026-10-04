@@ -53,7 +53,7 @@ export function HrReportsView({ access }: { access: HrAccess }) {
   const [open, setOpen] = useState<ReportId | null>(asked && reports.some((r) => r.id === asked) ? asked : null)
 
   const month = addDays(`${today.slice(0, 7)}-01`, -1).slice(0, 7)
-  const { employees, sites } = useHrPeople(orgId)
+  const { employees, sites } = useHrPeople(access)
   const pays = useOrgPay(orgId, money)
   const { requests } = useHrRequests(access)
   const violations = useHrViolations(access)
