@@ -59,6 +59,18 @@ export function leaveDays(from: string, to: string, holidays: readonly Holiday[]
   return n
 }
 
+/** LV-03 "balance only" — the last day of a leave that starts on `from` and spends
+ * exactly `days` leave days (holidays inside it are not leave days). */
+export function leaveEndAfter(from: string, days: number, holidays: readonly Holiday[] = OFFICIAL_HOLIDAYS): string {
+  let d = from
+  let n = isHoliday(d, holidays) ? 0 : 1
+  while (n < days) {
+    d = new Date(dayMs(d) + DAY_MS).toISOString().slice(0, 10)
+    if (!isHoliday(d, holidays)) n += 1
+  }
+  return d
+}
+
 /** LV-03 — what a leave above the balance means: the part within the balance, and the excess. */
 export function balanceSplit(days: number, balance: number): { fromBalance: number; excess: number } {
   const fromBalance = Math.max(0, Math.min(days, balance))

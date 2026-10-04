@@ -20,8 +20,10 @@ import type { HrAccess } from "@/hooks/useHrAccess"
 import { Link } from "@/i18n/routing"
 import { hrDate, hrMoney, todayDay } from "@/lib/hr/format"
 import { cancelRequest, decideRequest, endorseRequest } from "@/lib/hr/request-writes"
-import { requestActions, requestNoDisplay, type HrRequest, type HrRequestState, type RequestAction } from "@/lib/hr/requests"
+import { leaveEndAfter } from "@/lib/hr/leave"
+import { aboveBalance, LEAVE_MODES, mayCancel, requestActions, requestNoDisplay, type HrRequest, type HrRequestState, type LeaveMode, type RequestAction } from "@/lib/hr/requests"
 import { HrWriteError } from "@/lib/hr/write-guard"
+import { cn } from "@/lib/utils"
 import type { HrPortal } from "./HrShell"
 
 export const REQUEST_TONE: Record<HrRequestState, PillTone> = { pending: "warn", endorsed: "info", approved: "ok", declined: "bad", finance: "violet", cancelled: "mute" }
@@ -48,6 +50,9 @@ export function HrRequestList({ access, requests, portal, showEmployee = true, e
     return t(`req.kind.${r.kind}`)
   }
 
+  const [mode, setMode] = useState<LeaveMode | null>(null)
+  const over = acting?.action === "approve" ? aboveBalance(acting.r) : 0
+
   const run = async () => {
     if (!firestore || !acting) return
     const { r, action } = acting
@@ -56,7 +61,7 @@ export function HrRequestList({ access, requests, portal, showEmployee = true, e
       if (action === "endorse") await endorseRequest(firestore, access.ctx, r.id, actor, note)
       else if (action === "cancel") await cancelRequest(firestore, access.ctx, r.id, actor, note)
       else {
-        const res = await decideRequest(firestore, access.ctx, r.id, actor, action, note, { policies: access.settings.policies })
+        const res = await decideRequest(firestore, access.ctx, r.id, actor, action, note, { policies: access.settings.policies, leaveMode: action === "approve" && over > 0 ? mode : null })
         if (res.state === "finance") {
           toast({ title: t("req.to_finance") })
           setActing(null)
@@ -118,6 +123,7 @@ export function HrRequestList({ access, requests, portal, showEmployee = true, e
                       variant={a === "approve" || a === "endorse" ? "default" : "outline"}
                       onClick={() => {
                         setNote("")
+                        setMode(null)
                         setActing({ r, action: a })
                       }}
                     >
@@ -138,6 +144,27 @@ export function HrRequestList({ access, requests, portal, showEmployee = true, e
             <DialogDescription>{acting ? `${requestNoDisplay(acting.r.no, locale)} · ${acting.r.employeeName} · ${what(acting.r)}` : ""}</DialogDescription>
           </DialogHeader>
           {acting?.r.kind === "advance" && acting.action === "approve" && acting.r.advance?.overLimit && <p className="text-sm text-muted-foreground">{t("req.over_limit_note")}</p>}
+          {acting?.r.leave && over > 0 && (
+            // LV-03 — a full annual leave above the balance is never approved: HR chooses.
+            <fieldset className="space-y-2">
+              <legend className="mb-1 text-sm font-semibold">{t("req.mode.title", { n: over })}</legend>
+              {LEAVE_MODES.map((m) => (
+                <label key={m} className={cn("flex min-h-11 cursor-pointer items-start gap-2 rounded-xl border p-3 text-sm", mode === m && "border-module bg-module/5")}>
+                  <input type="radio" name="leave-mode" className="mt-1" checked={mode === m} onChange={() => setMode(m)} disabled={busy} />
+                  <span>
+                    <span className="block font-semibold">{t(`req.mode.${m}`)}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {m === "balance_only"
+                        ? acting.r.leave!.balance > 0
+                          ? t("req.mode.balance_only_line", { n: acting.r.leave!.balance, date: hrDate(leaveEndAfter(acting.r.leave!.from, acting.r.leave!.balance), locale) })
+                          : t("req.block.no_balance")
+                        : t("req.mode.excess_unpaid_line", { n: over })}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="req-note">{t(needsNote ? "req.reason_required" : "req.note")}</Label>
             <Textarea id="req-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} disabled={busy} />
@@ -146,9 +173,70 @@ export function HrRequestList({ access, requests, portal, showEmployee = true, e
             <Button variant="outline" onClick={() => setActing(null)} disabled={busy}>
               {t("cancel")}
             </Button>
-            <Button onClick={() => void run()} disabled={busy || (needsNote && !note.trim())} variant={acting?.action === "decline" || acting?.action === "cancel" ? "destructive" : "default"}>
+            <Button onClick={() => void run()} disabled={busy || (needsNote && !note.trim()) || (over > 0 && !mode)} variant={acting?.action === "decline" || acting?.action === "cancel" ? "destructive" : "default"}>
               {busy && <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" />}
               {acting ? t(`req.act.${acting.action}`) : ""}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+/** LV-07 — the employee withdraws his own request while it waits (My file); the reason is kept on it. */
+export function CancelOwnRequest({ access, r, actor }: { access: HrAccess; r: HrRequest; actor: { uid: string; name: string | null } }) {
+  const t = useTranslations("Portal.HR")
+  const locale = useLocale()
+  const firestore = useFirestore()
+  const { toast } = useToast()
+  const [open, setOpen] = useState(false)
+  const [note, setNote] = useState("")
+  const [busy, setBusy] = useState(false)
+  if (!mayCancel(access.ctx, r, todayDay())) return null
+  const run = async () => {
+    if (!firestore) return
+    setBusy(true)
+    try {
+      await cancelRequest(firestore, access.ctx, r.id, actor, note)
+      toast({ title: t("req.done.cancel") })
+      setOpen(false)
+    } catch (err) {
+      console.error(err)
+      toast({ title: t(err instanceof HrWriteError ? (err.blocks[0] ? `req.block.${err.blocks[0]}` : `err.${err.code}`) : "err.save"), variant: "destructive" })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => {
+          setNote("")
+          setOpen(true)
+        }}
+      >
+        {t("req.act.cancel")}
+      </Button>
+      <Dialog open={open} onOpenChange={(o) => !o && setOpen(false)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("req.act.cancel")}</DialogTitle>
+            <DialogDescription>{requestNoDisplay(r.no, locale)}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor={`cancel-${r.id}`}>{t("req.reason_required")}</Label>
+            <Textarea id={`cancel-${r.id}`} rows={3} value={note} onChange={(e) => setNote(e.target.value)} disabled={busy} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={busy}>
+              {t("cancel")}
+            </Button>
+            <Button variant="destructive" onClick={() => void run()} disabled={busy || !note.trim()}>
+              {busy && <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" />}
+              {t("req.act.cancel")}
             </Button>
           </DialogFooter>
         </DialogContent>

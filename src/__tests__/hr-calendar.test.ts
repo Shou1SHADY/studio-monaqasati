@@ -45,7 +45,7 @@ describe("the official holidays (art. 112 implementing regulations, Umm al-Qura)
       docs: {},
       nationality: "sa",
     }
-    expect(leaveQuote(emp, { type: "annual", from: "2026-09-20", to: "2026-09-26", excessUnpaid: false, travel: false }).days).toBe(6)
+    expect(leaveQuote(emp, { type: "annual", from: "2026-09-20", to: "2026-09-26" }).days).toBe(6)
   })
 
   it("payroll counts an unpaid leave's days the way the request did — Eid is not docked", () => {

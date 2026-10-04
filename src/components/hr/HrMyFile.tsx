@@ -35,7 +35,7 @@ import { serviceYears } from "@/lib/hr/statutory"
 import { cn } from "@/lib/utils"
 import { HrViolationList, useHrViolations } from "./HrViolationList"
 import { DOC_TONE, STATUS_TONE } from "./HrPeopleView"
-import { REQUEST_TONE } from "./HrRequestList"
+import { CancelOwnRequest, REQUEST_TONE } from "./HrRequestList"
 import { NewRequestDialog } from "./NewRequestDialog"
 
 type Seg = "home" | "requests" | "leave" | "pay" | "docs"
@@ -176,6 +176,9 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
                     </span>
                     <span>{t(`req.kind.${r.kind}`)}</span>
                     <StatusPill tone={REQUEST_TONE[r.state]}>{t(`req.state.${r.state}`)}</StatusPill>
+                    <span className="ms-auto">
+                      <CancelOwnRequest access={access} r={r} actor={actor} />
+                    </span>
                   </p>
                   {holder(r) && <p className="text-xs text-muted-foreground">{t("me.held_by", { name: holder(r)! })}</p>}
                   {(r.decision?.note || r.finance?.note || r.cancel?.note) && (

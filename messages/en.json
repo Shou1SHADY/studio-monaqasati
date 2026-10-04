@@ -19608,7 +19608,7 @@
         "block": {
           "bad_dates": "Choose the dates — the end on or after the start",
           "too_long": "Longer than the law gives for this leave",
-          "above_balance": "Above the balance — shorten it or take the excess unpaid",
+          "above_balance": "Above the balance — choose: the balance only, or the excess unpaid",
           "overlap": "Overlaps another leave of this employee",
           "female_only": "This leave is for women",
           "min_years": "Needs two years of service",
@@ -19622,14 +19622,16 @@
           "travel_docs": "Not approvable for travel: the iqama or passport lapses before the return — renew first",
           "no_value": "Enter the new value",
           "bad_iban": "The IBAN is not valid — SA followed by 22 digits",
-          "no_document": "Give the bank letter's reference"
+          "no_document": "Give the bank letter's reference",
+          "no_balance": "No balance as of the start — \"balance only\" leaves no day"
         },
         "warn": {
-          "travel_docs": "The iqama or passport lapses before the return — no travel before renewal; HR cannot approve it for travel.",
+          "travel_docs": "The iqama or passport expires before the return — it cannot be approved for travel before renewal. The request is still filed.",
           "sick_beyond": "Beyond 120 sick days in the service year — the HR manager decides.",
           "excess_unpaid": "Part of this leave is unpaid — deducted in payroll.",
           "over_limit": "Above the HR limit — decided in Finance after HR's view.",
-          "past_contract": "Repayment runs past the contract's end — the rest comes from the final settlement."
+          "past_contract": "Repayment runs past the contract's end — the rest comes from the final settlement.",
+          "above_balance": "{n} days above the balance — the HR manager decides: the balance only, or the excess unpaid."
         },
         "new_data": "Update my details",
         "data_field": "What to change",
@@ -19637,7 +19639,14 @@
         "bank_document": "Bank letter reference",
         "bank_document_note": "A new IBAN needs the bank's letter; HR checks it before approving.",
         "data_note": "You never edit your record yourself — the HR manager checks and approves the change.",
-        "document_ref": "document {ref}"
+        "document_ref": "document {ref}",
+        "mode": {
+          "title": "{n} days above the balance — not approvable in full",
+          "balance_only": "Approve the balance only",
+          "balance_only_line": "{n} days — ends on {date}",
+          "excess_unpaid": "Approve with the excess unpaid",
+          "excess_unpaid_line": "{n} days deducted in payroll automatically"
+        }
       },
       "payroll": {
         "state": {

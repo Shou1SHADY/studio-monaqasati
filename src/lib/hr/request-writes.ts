@@ -21,6 +21,7 @@ import {
   type DataFields,
   type HrRequest,
   type HrRequestKind,
+  type LeaveMode,
   type Stamp,
 } from "./requests"
 import { serviceYears, type HrPolicies } from "./statutory"
@@ -49,14 +50,14 @@ async function readReq(tx: Transaction, firestore: Firestore, id: string): Promi
 export interface FileRequestInput {
   employeeId: string
   kind: HrRequestKind
-  leave?: { type: LeaveType; from: string; to: string; excessUnpaid: boolean; travel: boolean; note?: string | null }
+  leave?: { type: LeaveType; from: string; to: string; note?: string | null }
   advance?: { amount: number; reason: string }
   data?: DataFields
   /** The site's supervisor — the line manager (RL-04) — as the site names him. */
   supervisor?: { employeeId: string | null; userId: string | null } | null
 }
 
-type Opts = { policies: HrPolicies; holidays?: readonly Holiday[]; today?: string; others?: Array<{ from: string; to: string }>; pendingAdvance?: boolean }
+type Opts = { policies: HrPolicies; holidays?: readonly Holiday[]; today?: string; others?: Array<{ from: string; to: string }>; pendingAdvance?: boolean; leaveMode?: LeaveMode | null }
 
 /** The employee files his own (My file); the HR manager files on his behalf. */
 export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: string, actor: HrActor, input: FileRequestInput, opts: Opts): Promise<{ id: string; no: string }> {
@@ -89,9 +90,10 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
     let body: Partial<HrRequest>
     if (input.kind === "leave") {
       const l = input.leave!
-      const q = leaveQuote(emp, l, { holidays: opts.holidays, others: opts.others })
+      // Above the balance and a lapsing document are said before sending, not refused — HR decides (LV-03, LV-04).
+      const q = leaveQuote(emp, { type: l.type, from: l.from, to: l.to }, { holidays: opts.holidays, others: opts.others })
       if (q.blocks.length) throw new HrWriteError("blocked", q.blocks)
-      body = { leave: { type: l.type, from: l.from, to: l.to, days: q.days, balance: q.balance, fromBalance: q.fromBalance, unpaidDays: q.unpaidDays, travel: l.travel, sick: q.sick, note: l.note?.trim() || null } }
+      body = { leave: { type: l.type, from: l.from, to: l.to, days: q.days, balance: q.balance, fromBalance: q.fromBalance, unpaidDays: q.unpaidDays, travel: q.travel, sick: q.sick, note: l.note?.trim() || null } }
     } else if (input.kind === "data") {
       const d = input.data!
       const blocks = dataBlocks(d)
@@ -165,11 +167,12 @@ export async function decideRequest(
     }
     if (r.kind === "leave") {
       const l = r.leave!
-      const q = leaveQuote(emp, { type: l.type, from: l.from, to: l.to, excessUnpaid: l.unpaidDays > 0 && Boolean(LEAVE_RULES[l.type].fromBalance), travel: l.travel }, { holidays: opts.holidays })
-      const blocks: string[] = [...q.blocks]
-      // LV-04 — not approvable for travel while a document would lapse abroad.
-      if (q.warnings.includes("travel_docs")) blocks.push("travel_docs")
-      if (blocks.length) throw new HrWriteError("blocked", blocks)
+      // LV-03 — above the balance HR chooses: balance only, or the excess unpaid. A request filed
+      // before the choice moved to HR carried "excess unpaid" from the form; it keeps it.
+      const mode = opts.leaveMode ?? (l.unpaidDays > 0 && LEAVE_RULES[l.type].fromBalance ? "excess_unpaid" : null)
+      // LV-04 — and no leave is approved for travel while a document would lapse abroad (blocks here).
+      const q = leaveQuote(emp, { type: l.type, from: l.from, to: l.to, mode }, { holidays: opts.holidays, deciding: true })
+      if (q.blocks.length) throw new HrWriteError("blocked", q.blocks)
       const patch: UpdateData<DocumentData> = { updatedAt: serverTimestamp() }
       if (q.fromBalance) patch.leaveTaken = (emp.leaveTaken ?? 0) + q.fromBalance
       if (l.type === "sick") patch.sick = { year: Math.floor(serviceYears(emp.join, l.from)), days: sickUsedIn(emp, l.from) + q.days }
@@ -178,10 +181,21 @@ export async function decideRequest(
       tx.update(reqRef, {
         state: "approved",
         decision,
-        leave: { ...l, days: q.days, balance: q.balance, fromBalance: q.fromBalance, unpaidDays: q.unpaidDays, sick: q.sick },
+        leave: {
+          ...l,
+          to: q.to,
+          requestedTo: q.to !== l.to ? l.to : (l.requestedTo ?? null),
+          mode: q.to !== l.to || q.unpaidDays > 0 ? mode : null,
+          days: q.days,
+          balance: q.balance,
+          fromBalance: q.fromBalance,
+          unpaidDays: q.unpaidDays,
+          travel: q.travel,
+          sick: q.sick,
+        },
         updatedAt: serverTimestamp(),
       })
-      log(tx, firestore, emp, actor, "leave_approved", { no: r.no, from: l.from, to: l.to })
+      log(tx, firestore, emp, actor, "leave_approved", { no: r.no, from: l.from, to: q.to })
       state = "approved"
       return
     }
