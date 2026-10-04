@@ -2,7 +2,8 @@
  * HR 1.0 — the write layer's leftovers: nobody decides his own probation or
  * approves his own bank account (the owner excepted, flagged); "today" is
  * Riyadh's day in every write; a request reads the wage in force on its day;
- * one platform user is linked to one employee record;
+ * one platform user is linked to one employee record; Today shows overdue
+ * returns from leave and pending assignment corrections to the hand that acts;
  * the final settlement issues the experience certificate (art. 64).
  */
 jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-utils/fake-firestore")>("@/test-utils/fake-firestore").firestoreModule)
@@ -20,8 +21,9 @@ import type { HrLetter } from "@/lib/hr/letters"
 import { preparePayroll } from "@/lib/hr/payroll-writes"
 import { decideRequest, fileRequest } from "@/lib/hr/request-writes"
 import type { HrRequest } from "@/lib/hr/requests"
-import type { HrSite } from "@/lib/hr/sites"
+import type { AssignFix, HrSite } from "@/lib/hr/sites"
 import { DEFAULT_HR_POLICIES } from "@/lib/hr/statutory"
+import { leakage, todayItems, type TodayInput } from "@/lib/hr/today"
 import { recordViolation } from "@/lib/hr/violation-writes"
 
 const db = fakeFirestore as unknown as Firestore
@@ -141,6 +143,56 @@ describe("one user, one record (EM-01)", () => {
     await linkUser(db, hrm, "e1", who(hrm), null)
     await linkUser(db, hrm, "e2", who(hrm), "wu")
     expect(readDoc<HrEmployee>("employees/e2")?.userId).toBe("wu")
+  })
+})
+
+describe("Today — overdue returns and assignment corrections (AT-05, AS-03)", () => {
+  const TODAY = "2026-03-20"
+  const leave = (id: string, over: Partial<HrRequest> = {}): HrRequest =>
+    ({ id, organizationId: ORG, no: "LV-2026/001", kind: "leave", employeeId: "e1", employeeUserId: "wu", employeeName: "أحمد", siteId: "s1", state: "approved", leave: { type: "annual", from: "2026-03-01", to: "2026-03-08" }, ...over }) as HrRequest
+  const fix: AssignFix = { id: "f1", organizationId: ORG, employeeId: "e2", employeeName: "فهد", fromSiteId: null, siteId: "s1", since: "2026-03-10", note: null, by: "sup", byName: "S", at: "", state: "pending" }
+  const input = (c: HrContext, over: Partial<TodayInput> = {}): TodayInput => ({
+    ctx: c,
+    today: TODAY,
+    renewWindowDays: 60,
+    employees: [],
+    sites,
+    lastMonth: [],
+    thisMonth: [],
+    injuries: [],
+    exits: [],
+    requests: [leave("r1"), leave("r2", { employeeId: "e9", employeeName: "سعيد", siteId: null, leave: { type: "annual", from: "2026-03-15", to: "2026-03-18" } as HrRequest["leave"] }), leave("r3", { returned: { on: "2026-03-09", by: "sup", byName: null, at: "", lateDays: 0 } })],
+    payrolls: [],
+    pays: new Map(),
+    assignFixes: [fix, { ...fix, id: "f2", state: "done" }],
+    ...over,
+  })
+
+  it("the HR manager sees every overdue return (on the file) and the pending correction; nothing waits with a button", () => {
+    const items = todayItems(input(hrm, { payrolls: [{ kind: "main", month: "2026-02", key: "2026-02", state: "paid", lines: [] } as never] }))
+    const back = items.filter((x) => x.kind.startsWith("leave_return"))
+    // 12 days after 8 March: the written warning is due (art. 80) — it blocks; 2 days after the 18th is due.
+    expect(back.map((x) => [x.key, x.kind, x.group, x.href, x.params.days])).toEqual([
+      ["return:r1", "leave_return_warning", "blocking", "people/e1", 12],
+      ["return:r2", "leave_return_due", "due", "people/e9", 2],
+    ])
+    expect(items.find((x) => x.kind === "assign_fix")).toMatchObject({ key: "assignfix:f1", group: "blocking", href: "sites/s1", action: "decide", params: { name: "فهد", site: "Tower", date: "2026-03-10" } })
+    expect(items.filter((x) => x.kind === "assign_fix")).toHaveLength(1)
+    expect(leakage(items)).toBe(0)
+  })
+
+  it("the site's supervisor sees his site's overdue return (on the sheet) — never the unassigned one, never a correction to decide", () => {
+    const items = todayItems(input(sup))
+    expect(items.filter((x) => x.kind.startsWith("leave_return")).map((x) => [x.key, x.href])).toEqual([["return:r1", "sites/s1"]])
+    expect(items.some((x) => x.kind === "assign_fix")).toBe(false)
+    expect(todayItems(input(ctx(["supervisor"], { uid: "x", sites: ["s9"] }))).filter((x) => x.kind.startsWith("leave_return"))).toEqual([])
+    // Nobody records his own return.
+    expect(todayItems(input(ctx(["supervisor"], { uid: "wu", employeeId: "e1", sites: ["s1"] }))).filter((x) => x.kind.startsWith("leave_return"))).toEqual([])
+  })
+
+  it("fifteen days late makes termination possible: red", () => {
+    const items = todayItems(input(hrm, { today: "2026-03-23" }))
+    expect(items.find((x) => x.key === "return:r1")).toMatchObject({ kind: "leave_return_termination", severity: "red", group: "blocking" })
   })
 })
 

@@ -15,8 +15,8 @@ import { injuryState, type HrInjury } from "./injuries"
 import { wageOf } from "./pay"
 import { onPayroll, sitesToClose, type Payroll } from "./payroll"
 import type { ManpowerRequest } from "./manpower"
-import type { HrRequest } from "./requests"
-import { UNASSIGNED_SITE, type HrSite } from "./sites"
+import { leaveReturn, type HrRequest } from "./requests"
+import { UNASSIGNED_SITE, type AssignFix, type HrSite } from "./sites"
 import { addDays, daysBetween, monthRange, r2 } from "./statutory"
 
 export type TodayGroup = "blocking" | "other" | "requests" | "due"
@@ -55,6 +55,8 @@ export interface TodayInput {
   payrolls: Payroll[]
   pays: Map<string, EmployeePay>
   manpower?: ManpowerRequest[]
+  /** AS-03 — supervisors' assignment corrections (the HR manager decides the pending ones). */
+  assignFixes?: AssignFix[]
 }
 
 const DUE_SOON_DAYS = 14
@@ -108,6 +110,41 @@ export function todayItems(i: TodayInput): TodayItem[] {
     for (const x of i.exits)
       if (x.state === "leaving" && x.custody?.state === "cleared" && x.employeeId !== ctx.employeeId)
         out.push({ key: `settle:${x.id}`, group: "blocking", severity: "amber", kind: "settlement_ready", params: { name: x.employeeName }, href: `people/${x.employeeId}`, action: "settle" })
+
+  // AT-05 — an approved leave whose end has passed with no return recorded: absence without leave, the art. 80
+  // clock running. The workplace's supervisor (on his sheet) or the HR manager (on the file) records the return —
+  // never anyone for himself; someone unassigned is the HR manager's alone. Ten days late makes the written
+  // warning due, fifteen make termination possible: from then it blocks.
+  for (const r of i.requests) {
+    const late = leaveReturn(r, today)
+    if (!late || r.employeeId === ctx.employeeId) continue
+    const mine = r.siteId && r.siteId !== UNASSIGNED_SITE ? may("leave.return", r.siteId) : ctx.roles.has("manager")
+    if (!mine) continue
+    const onFile = ctx.roles.has("manager") || !r.siteId || r.siteId === UNASSIGNED_SITE
+    out.push({
+      key: `return:${r.id}`,
+      group: late.stage === "due" ? "due" : "blocking",
+      severity: late.stage === "termination" ? "red" : "amber",
+      kind: `leave_return_${late.stage}`,
+      params: { name: r.employeeName, date: r.leave!.to, days: late.daysLate },
+      href: onFile ? `people/${r.employeeId}` : `sites/${r.siteId}`,
+      action: "record",
+    })
+  }
+
+  // AS-03 — "a worker here but not on my list": the HR manager corrects the assignment or declines it.
+  if (may("employee.assign"))
+    for (const f of i.assignFixes ?? [])
+      if (f.state === "pending" && f.employeeId !== ctx.employeeId)
+        out.push({
+          key: `assignfix:${f.id}`,
+          group: "blocking",
+          severity: "amber",
+          kind: "assign_fix",
+          params: { name: f.employeeName, site: siteName(f.siteId), date: f.since },
+          href: f.siteId && f.siteId !== UNASSIGNED_SITE ? `sites/${f.siteId}` : `people/${f.employeeId}`,
+          action: "decide",
+        })
 
   // Today's sheet (the supervisor's own sites, or the HR manager's) — due, not yet blocking.
   const recordedToday = new Set(i.thisMonth.filter((w) => w.days?.[today]).map((w) => w.siteId))

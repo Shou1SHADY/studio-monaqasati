@@ -16,6 +16,7 @@ import type { HrExit } from "@/lib/hr/exit-writes"
 import type { HrInjury } from "@/lib/hr/injuries"
 import { MANPOWER_REQUESTS, type ManpowerRequest } from "@/lib/hr/manpower"
 import type { Payroll } from "@/lib/hr/payroll"
+import { HR_ASSIGN_FIXES, type AssignFix } from "@/lib/hr/sites"
 import { addDays } from "@/lib/hr/statutory"
 
 function useWorkplaceMonths(access: HrAccess, month: string): WorkplaceMonth[] {
@@ -60,6 +61,10 @@ export function useHrToday(access: HrAccess, today: string) {
   const answers = access.allowed("manpower.answer")
   const mpQ = useMemoFirebase(() => (firestore && orgId && answers ? query(collection(firestore, MANPOWER_REQUESTS), where("organizationId", "==", orgId), where("state", "==", "open")) : null), [firestore, orgId, answers])
   const { data: mp } = useCollection(mpQ)
+  // AS-03 — pending assignment corrections, for the hand that decides them.
+  const decidesFixes = access.allowed("employee.assign")
+  const afQ = useMemoFirebase(() => (firestore && orgId && decidesFixes ? query(collection(firestore, HR_ASSIGN_FIXES), where("organizationId", "==", orgId), where("state", "==", "pending")) : null), [firestore, orgId, decidesFixes])
+  const { data: af } = useCollection(afQ)
   return useMemo(
     () => ({
       employees,
@@ -72,7 +77,8 @@ export function useHrToday(access: HrAccess, today: string) {
       exits: (ex ?? []) as unknown as HrExit[],
       payrolls: (pr ?? []) as unknown as Payroll[],
       manpower: (mp ?? []) as unknown as ManpowerRequest[],
+      assignFixes: (af ?? []) as unknown as AssignFix[],
     }),
-    [employees, sites, pays, requests, lastWm, thisWm, inj, ex, pr, mp]
+    [employees, sites, pays, requests, lastWm, thisWm, inj, ex, pr, mp, af]
   )
 }

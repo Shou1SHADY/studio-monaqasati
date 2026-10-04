@@ -394,6 +394,10 @@ const KIND_ICON: Record<string, LucideIcon> = {
   iqama_clock: FileWarning,
   probation_end: UserCheck,
   contract_end: CalendarClock,
+  leave_return_due: CalendarClock,
+  leave_return_warning: CalendarClock,
+  leave_return_termination: CalendarClock,
+  assign_fix: UsersRound,
 }
 
 /** Dates in the reader's language; a document type by its name. */

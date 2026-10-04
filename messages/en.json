@@ -19173,7 +19173,11 @@
           "probation_end": "Probation of {name} ends {date}",
           "contract_end": "Contract of {name} ends {date}",
           "manpower": "{project} asks for {count} × {trade} from {date}",
-          "settlement_ready": "Settlement for {name} — custody cleared"
+          "settlement_ready": "Settlement for {name} — custody cleared",
+          "leave_return_due": "{name} is not back from leave — it ended {date}, {days} days late",
+          "leave_return_warning": "{name} absent without leave for {days} days after {date} — the written warning is due (art. 80)",
+          "leave_return_termination": "{name} absent without leave for {days} days after {date} — termination is possible (art. 80)",
+          "assign_fix": "Assignment correction — {name} has worked at {site} since {date}"
         },
         "a": {
           "move": "Move",

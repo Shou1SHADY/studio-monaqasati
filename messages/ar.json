@@ -19173,7 +19173,11 @@
           "probation_end": "تنتهي تجربة {name} في {date}",
           "contract_end": "ينتهي عقد {name} في {date}",
           "manpower": "{project} يطلب {count} × {trade} من {date}",
-          "settlement_ready": "مخالصة {name} — أُخليت العهدة"
+          "settlement_ready": "مخالصة {name} — أُخليت العهدة",
+          "leave_return_due": "لم يعد {name} من إجازته — انتهت {date}، متأخر {days} يوماً",
+          "leave_return_warning": "{name} غائب بلا إجازة {days} يوماً بعد {date} — الإنذار الكتابي مستحق (م.80)",
+          "leave_return_termination": "{name} غائب بلا إجازة {days} يوماً بعد {date} — الفصل ممكن (م.80)",
+          "assign_fix": "تصحيح إسناد — {name} يعمل في {site} منذ {date}"
         },
         "a": {
           "move": "نقل",
