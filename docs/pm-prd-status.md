@@ -8,10 +8,9 @@ in the code before anything was changed; every fix has a test that failed before
 A second session pushed PM and Procurement parity work the same day (`17dbd58` … `c5442df`); it is merged in
 (`b6a1b61`) and what it built is not repeated here.
 
-**State (1 Oct 2026):** the rules are **live on UAT** (12:29 UTC, ruleset `46392b47…`) **and on prod** (12:31 UTC,
-ruleset `4a0a660b…`); both match `firestore.rules` as committed in `86508ce`. The code is committed on `main` and
-`uat` and reaches each site when its branch is pushed. **Not yet exercised by a signed-in user** — the click-through
-in §6 is still owed, on UAT first.
+**State (2 Oct 2026):** the rules are **live on UAT** (2 Oct 05:54 UTC, ruleset `1bf50f0e…`) **and on prod**
+(2 Oct 05:54 UTC, ruleset `29b0ae24…`); both match `firestore.rules` as committed in `64b020b`. The audit's code
+was pushed and deployed on 1 Oct. **Not yet exercised by a signed-in user** — the click-through in §6 is still owed.
 
 ## 1. What the package asks for and the product has
 
@@ -100,20 +99,23 @@ retention release; reports as CSV; the "invoiced" state between certified and co
 
 ## 6. Follow-ups this audit leaves
 
-1. **Push `main` and `uat`** (the owner's). Until then the deployed builds run the old code against the new rules;
-   every tightened rule was checked against what the deployed build writes, with these visible effects: a
-   token-less legacy invitation can no longer be accepted, and Procurement's "proceed" on a pending PM request is refused.
-2. **After both branches are deployed, remove the transitional line** in `match /pmEvents` (it still accepts an
-   event under its key alone, for the old build) — marked `TRANSITIONAL` in the file.
-3. **The mobile app was not checked** (its repository is not on this machine). Three rules could affect it: client-side
-   creation of an invitation, and any query on `projects` / `pmHandovers` / `pmEvents` that does not filter on
-   `organizationId`. UAT carries the same rules — try the mobile UAT build there.
-4. Events written before today keep their old ids; they are found by query (organisation + key), never by id.
-   A project whose addenda were signed before today has no `pm.inForce` until its next signature — it reads the
+1. ~~Push `main` and `uat`~~ — done 1 Oct.
+2. ~~Remove the transitional line in `match /pmEvents`~~ — done 2 Oct (`f87a168`): an event under its key alone is
+   no longer accepted. A browser tab still running a build from before 1 Oct must be reloaded.
+3. **The mobile app is still not checked.** Its repository (`Shou1SHADY/mdmak-mob`) is not on this machine. Three
+   rules could affect it: client-side creation of an invitation, any query on `projects` / `pmHandovers` /
+   `pmEvents` that does not filter on `organizationId`, and a PM event written under its key alone
+   (it must use `{organisation}__{key}`). Both environments carry these rules now.
+4. Events written before 1 Oct keep their old ids; they are found by query (organisation + key), never by id.
+   A project whose addenda were signed before 1 Oct has no `pm.inForce` until its next signature — it reads the
    original, as before.
 5. **Click-through owed on UAT** with signed-in users: accept a handover with an advance · import the BOQ template in
    the wizard · Start · measure and approve · prepare, approve and certify a certificate · Finance collects ·
    request material → RFQ → award → receive on site · stop a line · the owner replaces the manager · sign an addendum.
+
+6. **Rules deploys:** `scripts/deploy-rules.js` now refuses to deploy when the live rules match no commit in the
+   local history (`--force` after comparing). On 2 Oct a deploy went past that warning and took another developer's
+   admin-CRM rules off prod for 77 seconds (05:53:05 → 05:54:22 UTC) before the merged file restored them.
 
 ## 7. Checks at the end of the audit
 

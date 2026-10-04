@@ -76,9 +76,8 @@ describe("an event's id carries its organisation", () => {
   it("the rule builds the id exactly as the writers do", () => {
     const [create] = allow(block("pmEvents"), "create")
     expect(create).toMatch(/eventId == request\.resource\.data\.organizationId \+ '__' \+ request\.resource\.data\.key\.replace\('\/', '_'\)/)
-    // Until both branches run the new build the rule also takes the old id (the key alone);
-    // nothing else is accepted.
-    expect(create.match(/eventId ==/g)).toHaveLength(2)
+    // The id under the key alone (what builds before 1 Oct 2026 sent) is no longer accepted.
+    expect(create.match(/eventId ==/g)).toHaveLength(1)
     expect(pmEventDocId("orgA", "prj:IPC:PJ-2026/001:01")).toBe("orgA__prj:IPC:PJ-2026_001:01")
     expect(pmEventDocId("orgA", "prj:ADV:PJ-2026/001")).not.toBe(pmEventDocId("orgB", "prj:ADV:PJ-2026/001"))
   })

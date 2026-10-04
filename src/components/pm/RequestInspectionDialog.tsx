@@ -102,7 +102,7 @@ export function RequestInspectionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("wir.new")}</DialogTitle>
           <DialogDescription>{t("wir.new_desc")}</DialogDescription>

@@ -251,7 +251,7 @@ export function SamplesPanel({
       </Panel>
 
       <Dialog open={draft !== null} onOpenChange={(o) => !o && setDraft(null)}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("sample.form_title")}</DialogTitle>
             <DialogDescription>{t("sample.form_note")}</DialogDescription>
@@ -314,7 +314,7 @@ export function SamplesPanel({
       </Dialog>
 
       <Dialog open={replying !== null} onOpenChange={(o) => !o && setReplying(null)}>
-        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("sample.record_reply")}</DialogTitle>
             <DialogDescription dir="auto">{replying ? `${t("sample.no", { no: sampleNo(replying.s.seq) })} — ${replying.s.what || label(replying.s.itemId)}` : ""}</DialogDescription>
@@ -370,7 +370,7 @@ export function SamplesPanel({
       </Dialog>
 
       <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[85vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("sample.mark")}</DialogTitle>
             <DialogDescription>{t("sample.mark_desc")}</DialogDescription>

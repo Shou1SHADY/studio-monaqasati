@@ -149,7 +149,7 @@ export function PrepareCertificateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("money.form.title")}</DialogTitle>
           <DialogDescription>{t("money.form.period", { project: projectName || "—", from: pmDate(periodFrom, locale), to: pmDate(todayDay(), locale) })}</DialogDescription>

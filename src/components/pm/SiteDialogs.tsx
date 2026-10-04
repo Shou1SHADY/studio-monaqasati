@@ -221,7 +221,7 @@ export function DailyReportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("site.daily.title")}</DialogTitle>
           <DialogDescription>{pmDate(todayDay(), locale)}</DialogDescription>
@@ -303,7 +303,7 @@ export function ObstacleDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("site.obs.new")}</DialogTitle>
           <DialogDescription>{t("site.obs.new_desc")}</DialogDescription>
@@ -410,7 +410,7 @@ export function CloseObstacleDialog({
 
   return (
     <Dialog open={target !== null} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("site.obs.close")}</DialogTitle>
           <DialogDescription dir="auto">{target ? `${target.no}: ${target.title}` : ""}</DialogDescription>
@@ -476,7 +476,7 @@ export function IncidentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("site.hse.inc_title")}</DialogTitle>
           <DialogDescription className="sr-only">{t("site.hse.inc_title")}</DialogDescription>
@@ -556,7 +556,7 @@ export function PermitDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("site.hse.pmt_title")}</DialogTitle>
           <DialogDescription>{t("site.hse.pmt_desc")}</DialogDescription>

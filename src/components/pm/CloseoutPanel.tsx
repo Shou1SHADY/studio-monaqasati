@@ -333,7 +333,7 @@ export function CloseoutPanel({
         )}
 
         <Dialog open={confirming} onOpenChange={setConfirming}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>{t("close.confirm_title")}</DialogTitle>
               <DialogDescription>{t("close.confirm_desc")}</DialogDescription>

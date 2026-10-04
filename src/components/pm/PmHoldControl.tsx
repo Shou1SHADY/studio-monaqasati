@@ -70,7 +70,7 @@ export function PmHoldControl({ projectId, project, access, actor }: { projectId
         {t("hold.hold")}
       </Button>
       <Dialog open={open} onOpenChange={(o) => !o && !busy && setOpen(false)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("hold.title")}</DialogTitle>
             <DialogDescription>{t("hold.desc")}</DialogDescription>

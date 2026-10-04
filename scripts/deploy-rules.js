@@ -4,6 +4,9 @@
 //   node scripts/deploy-rules.js prod            — studio prod project, service-account creds from .env.local
 //   node scripts/deploy-rules.js uat             — mdmaktech-uat: `gcloud auth print-access-token` when gcloud
 //                                                  is installed, else the service account in .env.uat
+//   node scripts/deploy-rules.js <prod|uat> --force
+//                                                — deploy although the live rules match no commit here
+//                                                  (refused otherwise: fetch and merge first)
 //   node scripts/deploy-rules.js <prod|uat> --check
 //                                                — READ-ONLY: which ruleset is live, when it was released,
 //                                                  and whether it matches the file byte for byte
@@ -20,6 +23,7 @@ const { execSync } = require("child_process")
 
 const target = process.argv[2]
 const checkOnly = process.argv.includes("--check")
+const force = process.argv.includes("--force")
 if (target !== "prod" && target !== "uat") {
   console.error("usage: node scripts/deploy-rules.js <prod|uat> [--check]")
   process.exit(1)
@@ -104,38 +108,55 @@ async function token() {
   const lf = (text) => text.split("\r\n").join("\n")
   const same = (a, b) => lf(a) === lf(b)
 
+  // Which commit, if any, the live rules came from: the file's history,
+  // newest first. A match means overwriting loses nothing that git does
+  // not have; no match means someone deployed rules this checkout has never
+  // seen — uncommitted, or committed on a branch not fetched yet.
+  const commitOf = (content) => {
+    try {
+      // Double quotes and no pipe: cmd.exe leaves single quotes in place and
+      // splits the command at a "|", which turned this whole lookup into a
+      // silent failure on Windows — and its catch reports the alarming
+      // "someone deployed uncommitted rules".
+      const commits = execSync('git log --format="%h %ad %s" --date=short -- firestore.rules', { maxBuffer: 1 << 24 }).toString().trim().split("\n")
+      for (const line of commits) {
+        const h = line.split(" ")[0]
+        if (same(execSync(`git show ${h}:firestore.rules`, { maxBuffer: 1 << 26 }).toString(), content)) return line
+      }
+    } catch {
+      /* not a git checkout */
+    }
+    return null
+  }
+
   if (checkOnly) {
     const l = await live()
-    // Which commit, if any, the live rules came from: the file's history,
-    // newest first. A match means overwriting loses nothing that git does
-    // not have; no match means someone deployed rules that were never
-    // committed — compare before overwriting.
-    let from = null
-    if (!same(l.content, source)) {
-      try {
-        // Double quotes and no pipe: cmd.exe leaves single quotes in place and
-        // splits the command at a "|", which turned this whole lookup into a
-        // silent failure on Windows — and its catch reports the alarming
-        // "someone deployed uncommitted rules".
-        const commits = execSync('git log --format="%h %ad %s" --date=short -- firestore.rules', { maxBuffer: 1 << 24 }).toString().trim().split("\n")
-        for (const line of commits) {
-          const h = line.split(" ")[0]
-          if (same(execSync(`git show ${h}:firestore.rules`, { maxBuffer: 1 << 26 }).toString(), l.content)) {
-            from = line
-            break
-          }
-        }
-      } catch {
-        /* not a git checkout */
-      }
-    }
+    const from = same(l.content, source) ? null : commitOf(l.content)
     const verdict = same(l.content, source)
       ? "matches the file (nothing to deploy)"
       : from
         ? `is the file as committed in ${from} — deploying loses nothing`
-        : "matches NO commit in the file's history — someone deployed uncommitted rules; compare before overwriting"
+        : "matches NO commit in the file's history — someone deployed rules this checkout has never seen (uncommitted, or not fetched yet); `git fetch`, merge and compare before overwriting"
     console.log(`${target.toUpperCase()} project=${project} live ruleset ${l.id} released ${l.updated} (${l.content.length} chars; file ${source.length}) — ${verdict}`)
     return
+  }
+
+  // The same question before every deploy, answered by the script and not by
+  // whoever reads its output: on 2 Oct 2026 a chained `--check && deploy` went
+  // on past the warning and took another developer's rules off production for
+  // a minute. Live rules that match no commit here are never overwritten
+  // unless `--force` says they were compared.
+  const before = await live()
+  if (same(before.content, source)) {
+    console.log(`${target.toUpperCase()} live ruleset ${before.id} already matches the file — nothing to deploy`)
+    return
+  }
+  if (!force && !commitOf(before.content)) {
+    console.error(
+      `refusing: the live ruleset ${before.id} (released ${before.updated}, ${before.content.length} chars) matches NO commit in this checkout's history of firestore.rules.\n` +
+        "Someone deployed rules you do not have. `git fetch origin`, merge, and run again — or pass --force once you have compared them."
+    )
+    process.exit(2)
   }
 
   let res = await fetch(`${base}/projects/${project}/rulesets`, {
@@ -160,6 +181,8 @@ async function token() {
   })
   if (!res.ok) {
     console.error("release patch failed", res.status, JSON.stringify(await res.json()).slice(0, 400))
+    // The ruleset compiled (it was created) — a bare INVALID_ARGUMENT here is the compiled-size ceiling (250 KB).
+    if (res.status === 400) console.error("the ruleset compiled but was not released: it is most likely over the 250 KB compiled-size limit — see CLAUDE.md")
     process.exit(1)
   }
 

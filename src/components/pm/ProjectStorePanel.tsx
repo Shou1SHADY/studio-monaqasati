@@ -681,7 +681,7 @@ function MoveDialog({ projectId, orgId, x, items, access, actor, initial, onClos
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t(`store.mv.${m}`)}</DialogTitle>
           <DialogDescription dir="auto">
@@ -799,7 +799,7 @@ function RateDialog({ projectId, x, item, access, onClose }: { projectId: string
   }
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{had ? t("store.rate.correct_the") : t("store.rate.set_the")}</DialogTitle>
           <DialogDescription dir="auto">

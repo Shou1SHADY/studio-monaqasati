@@ -410,7 +410,7 @@ export function VariationsPanel({
       </Sheet>
 
       <Dialog open={logging} onOpenChange={(o) => !busy && setLogging(o)}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("vo.form_title")}</DialogTitle>
             <DialogDescription>{t("vo.new_desc")}</DialogDescription>
@@ -521,7 +521,7 @@ export function VariationsPanel({
       </Dialog>
 
       <Dialog open={price !== null} onOpenChange={(o) => !o && !busy && setPrice(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("vo.price_title")}</DialogTitle>
             <DialogDescription dir="auto">{price ? `${t("vo.no", { no: voNo(price.vo.seq) })} — ${price.vo.title}` : ""}</DialogDescription>
@@ -577,7 +577,7 @@ export function VariationsPanel({
       </Dialog>
 
       <Dialog open={progress !== null} onOpenChange={(o) => !o && !busy && setProgress(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("vo.update")}</DialogTitle>
             <DialogDescription>{t("vo.update_desc")}</DialogDescription>
@@ -614,7 +614,7 @@ export function VariationsPanel({
       </Dialog>
 
       <Dialog open={decide !== null} onOpenChange={(o) => !o && !busy && setDecide(null)}>
-        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{decide?.approve ? t("vo.approve_title") : t("vo.reject_title")}</DialogTitle>
             <DialogDescription dir="auto">{decide ? `${t("vo.no", { no: voNo(decide.vo.seq) })} — ${decide.vo.title}` : ""}</DialogDescription>

@@ -690,7 +690,7 @@ function ActivityDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-lg" dir={locale === "ar" ? "rtl" : "ltr"}>
+      <DialogContent className="max-w-xl" dir={locale === "ar" ? "rtl" : "ltr"}>
         <DialogHeader>
           <DialogTitle>{editing ? t("prg.act_edit") : t("prg.act_add")}</DialogTitle>
           <DialogDescription>{t("prg.act_dialog_desc")}</DialogDescription>

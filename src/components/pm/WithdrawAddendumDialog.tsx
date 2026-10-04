@@ -70,7 +70,7 @@ export function WithdrawAddendumDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("amend.withdraw_title", { no: addendumNo(addendum.seq) })}</DialogTitle>
           <DialogDescription>{t("amend.withdraw_desc")}</DialogDescription>

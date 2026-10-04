@@ -183,7 +183,7 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
       {prov && <KeyValueRow label={t("info.prov")} value={t("info.prov_value", { date: pmDate(prov, locale), end: pmDate(addDays(prov, terms.defectsDays), locale) })} />}
 
       <Dialog open={editing} onOpenChange={(o) => !busy && setEditing(o)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>{t("info.edit_title")}</DialogTitle>
             <DialogDescription dir="auto">{project.name ?? ""}</DialogDescription>

@@ -157,7 +157,7 @@ export function NewRequestDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("sup.form.title")}</DialogTitle>
           <DialogDescription>{t("sup.form.desc")}</DialogDescription>
@@ -471,7 +471,7 @@ export function ReceiveDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{t("sup.rcv.title")}</DialogTitle>
           <DialogDescription dir="auto">
@@ -566,7 +566,7 @@ export function StopLineDialog({ projectId, access, actor, request, index, onClo
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{mode === "close" ? t("sup.stop.title") : t("sup.stop.cancel_title")}</DialogTitle>
           <DialogDescription dir="auto">
@@ -630,7 +630,7 @@ export function ChangeOnClientDialog({ projectId, access, actor, request, index,
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{t("sup.chg.own_title")}</DialogTitle>
           <DialogDescription dir="auto">
@@ -682,7 +682,7 @@ export function RejectRequestDialog({ projectId, access, actor, request, onClose
   }
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("sup.reject_title")}</DialogTitle>
           <DialogDescription dir="auto">{request.title}</DialogDescription>

@@ -773,7 +773,7 @@ function RegisterDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("subs.form.title")}</DialogTitle>
           <DialogDescription>{t("subs.form.desc")}</DialogDescription>
@@ -992,7 +992,7 @@ function CertDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("subs.certs.form_title")}</DialogTitle>
           <DialogDescription>{t("subs.certs.form_desc")}</DialogDescription>
@@ -1118,7 +1118,7 @@ function MoveDialog({
   const gap = kind === "cnt" && day && Number.isFinite(qn) ? custodyFigures({ ...custody, moves: [...custody.moves, { t: "cnt", q: qn, day, by: custody.by }] }, executed).gap : null
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{t(`subs.recon.move_title_${kind}`)}</DialogTitle>
           <DialogDescription dir="auto">
@@ -1206,7 +1206,7 @@ function RecoverDialog({
   const amount = recoveryAmount(num(q) || 0, num(rate) || 0, double)
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("subs.recon.recover_title")}</DialogTitle>
           <DialogDescription dir="auto">

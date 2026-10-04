@@ -134,7 +134,7 @@ function PettyDialog({ projectId, orgId, access, actor, month, onClose }: { proj
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{t("petty.form.title")}</DialogTitle>
           <DialogDescription>{t("petty.form.desc", { one: n0(PETTY_CAP.one), month: n0(PETTY_CAP.month) })}</DialogDescription>

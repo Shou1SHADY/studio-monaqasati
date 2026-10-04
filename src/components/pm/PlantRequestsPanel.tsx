@@ -207,7 +207,7 @@ function ReplyDialog({ projectId, r, access, actor, onClose }: { projectId: stri
   }
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("plantreq.rep.title")}</DialogTitle>
           <DialogDescription dir="auto">
@@ -324,7 +324,7 @@ function ReceiveOnSiteDialog({ projectId, orgId, r, access, actor, onClose }: { 
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("plantreq.receive")}</DialogTitle>
           <DialogDescription dir="auto">
@@ -462,7 +462,7 @@ function PlantDialog({ projectId, access, actor, acts, onClose }: { projectId: s
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("plantreq.form.title")}</DialogTitle>
           <DialogDescription>{t("plantreq.form.desc")}</DialogDescription>

@@ -101,7 +101,7 @@ export function SignAddendumDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{t("amend.sign_title", { no: addendumNo(addendum.seq) })}</DialogTitle>
           <DialogDescription>{t("amend.sign_desc")}</DialogDescription>

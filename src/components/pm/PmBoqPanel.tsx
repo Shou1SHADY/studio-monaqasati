@@ -770,7 +770,7 @@ function PriceDialog({ projectId, line, access, actor, onClose }: { projectId: s
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("boq.price_title")}</DialogTitle>
           <DialogDescription dir="auto">
