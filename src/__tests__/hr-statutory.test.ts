@@ -117,7 +117,8 @@ describe("end of service (EX-02; arts. 75, 77, 84, 85)", () => {
     expect(noticePay(5_400)).toBe(10_800)
     expect(art77Compensation(5_400, 10)).toBe(27_000)
     expect(art77Compensation(5_400, 1)).toBe(10_800)
-    expect(art77Compensation(5_400, 3, 5)).toBe(27_000)
+    // a fixed term: the days left on it (150 days = five months), at wage/30 a day
+    expect(art77Compensation(5_400, 3, 150)).toBe(27_000)
     expect(leaveEncashment(5_400, 10)).toBe(1_800)
   })
 })

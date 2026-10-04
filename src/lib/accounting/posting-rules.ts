@@ -810,8 +810,12 @@ export interface HrSettlementPosting {
   projectId: string | null
   gratuity: number
   leaveCash: number
-  /** Last partial month + notice pay + art. 77 compensation + ticket — this month's cost. */
+  /** Last partial month + notice pay + art. 77 compensation + ticket — this month's cost (the last month's
+   * employer GOSI included). */
   wages: number
+  /** The last month's GOSI, both shares, and its penalties (to the workers' fines fund) — HR EX-04. */
+  gosi?: number
+  fines?: number
   advance: number
   custody: number
   net: number
@@ -828,6 +832,8 @@ export function postHrSettlement(e: HrSettlementPosting): PostingResult {
     { account: ACC.leaveProvision, debit: e.leaveCash, note: "رصيد الإجازات نقداً" },
     ...hrCostLines([{ costKind: e.costKind, siteId: e.siteId, projectId: e.projectId, amount: e.wages }], "أجر الشهر الأخير والإشعار"),
     { account: ACC.employeeAdvances, credit: e.advance, note: "سلفة مستردة" },
+    { account: ACC.gosiPayable, credit: e.gosi ?? 0, note: "التأمينات — الشهر الأخير" },
+    { account: ACC.finesFund, credit: e.fines ?? 0, note: "غرامات العمال (م 73)" },
     { account: ACC.sundryIncome, credit: e.custody, note: "عهدة ناقصة مستردة" },
     { account: e.bankAccount || ACC.bankMain, credit: e.net },
   ].filter((l) => round2((l.debit ?? 0) + (l.credit ?? 0)) !== 0)

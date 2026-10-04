@@ -203,7 +203,11 @@ export async function paySettlement(firestore: Firestore, a: FinanceActor, orgId
       projectId: st.projectId,
       gratuity: st.gratuity,
       leaveCash: st.leaveCash,
-      wages: r2(st.lastPay + st.noticePay + st.art77 + st.ticket),
+      // The last month at its cost (gross less sick and unpaid days + employer GOSI) with its GOSI and fines
+      // credited; a settlement approved before that was kept reads its last pay as the cost.
+      wages: r2((st.lastCost ?? st.lastPay) + st.noticePay + st.art77 + st.ticket),
+      gosi: r2((st.lastGosiEmployee ?? 0) + (st.lastGosiEmployer ?? 0)),
+      fines: st.lastPenalties ?? 0,
       advance: st.advance,
       custody: st.custody,
       net: st.net,

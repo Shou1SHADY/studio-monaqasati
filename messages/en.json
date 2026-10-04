@@ -19915,10 +19915,13 @@
           "ticket": "Ticket",
           "advance": "Outstanding advance",
           "custody": "Custody missing",
-          "net": "Net due"
+          "net": "Net due",
+          "gratuity_span": "End-of-service award ({y} y {m} m {d} d)",
+          "last_paid": "Last month: already paid by its payroll",
+          "art77_fixed": "Compensation (art. 77): the {days} days left on the contract",
+          "last_note": "The last month is computed like a payroll line up to the last day: absences and sick days recorded so far, penalties, and GOSI."
         },
         "ticket": "Ticket owed by the contract",
-        "fixed_months": "Months left on the contract",
         "approve": "Approve the settlement",
         "approved": "Settlement approved — sent to Finance",
         "started": "End of service started — Inventory is asked",
@@ -19945,7 +19948,8 @@
           "no_wage": "No wage on record",
           "sent": "Already sent to Finance",
           "bad_amount": "Enter a valid amount"
-        }
+        },
+        "paid_after": "The payroll of {months} already paid him after his last day. Recover the overpayment by a documented decision."
       },
       "data_field": {
         "iban": "IBAN",
