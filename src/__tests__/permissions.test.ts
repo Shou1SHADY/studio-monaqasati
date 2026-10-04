@@ -280,8 +280,8 @@ describe("PERMISSION_IDS", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("SEEDED_GROUPS", () => {
-  it("defines exactly 4 seeded groups", () => {
-    expect(SEEDED_GROUPS).toHaveLength(4)
+  it("defines exactly 9 seeded groups (four company groups, five HR roles — RL-01)", () => {
+    expect(SEEDED_GROUPS).toHaveLength(9)
   })
 
   it("includes super_admin, finance, supply_chain, viewer groups", () => {
@@ -311,7 +311,8 @@ describe("SEEDED_GROUPS", () => {
     it("exists", () => expect(g).toBeDefined())
     it("is not a system group", () => expect(g.isSystem).toBe(false))
     it("grants invoices.manage", () => expect(g.permissions).toContain("invoices.manage"))
-    it("grants employees.manage", () => expect(g.permissions).toContain("employees.manage"))
+    // HR 1.0 RL-01: the HR manager is his own group — Finance is not HR manager too.
+    it("does NOT grant employees.manage", () => expect(g.permissions).not.toContain("employees.manage"))
     it("grants offers.accept", () => expect(g.permissions).toContain("offers.accept"))
     it("approves purchase orders (it awards, so it approves)", () => expect(g.permissions).toContain("po.approve"))
     it("does NOT expedite purchase orders", () => expect(g.permissions).not.toContain("po.expedite"))
@@ -565,7 +566,7 @@ describe("seededGroupDocId", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("UI gating scenarios", () => {
-  const makeGroupCtx = (key: "super_admin" | "finance" | "supply_chain" | "viewer") => {
+  const makeGroupCtx = (key: "super_admin" | "finance" | "supply_chain" | "viewer" | "hr_manager") => {
     const seeded = SEEDED_GROUPS.find((g) => g.key === key)!
     const group: TeamGroup = { id: `${key}_id`, organizationId: "org1", key, name: seeded.name, permissions: seeded.permissions, isSystem: seeded.isSystem }
     return makeCtx({ defaultGroupId: group.id, groups: [group] })
@@ -587,8 +588,11 @@ describe("UI gating scenarios", () => {
   })
 
   describe("Employees page — canManageEmployees = can('employees.manage')", () => {
-    it("finance can manage employees", () => {
-      expect(can("employees.manage", makeGroupCtx("finance"))).toBe(true)
+    it("finance cannot manage employees (HR 1.0 RL-01 — the HR manager is his own seeded group)", () => {
+      expect(can("employees.manage", makeGroupCtx("finance"))).toBe(false)
+    })
+    it("the seeded HR manager can", () => {
+      expect(can("employees.manage", makeGroupCtx("hr_manager"))).toBe(true)
     })
     it("supply_chain cannot manage employees", () => {
       expect(can("employees.manage", makeGroupCtx("supply_chain"))).toBe(false)
