@@ -159,6 +159,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
   const acts: { id: EmployeeAction; icon: typeof Wallet; show: boolean }[] = [
     { id: "move", icon: ArrowRightLeft, show: access.allowed("employee.assign") && emp.status !== "left" },
     { id: "pay", icon: Wallet, show: money && access.allowed("pay.change") && emp.status !== "left" && !own },
+    { id: "commission", icon: HandCoins, show: money && access.allowed("pay.change") && emp.status !== "left" && !own },
     // Only while it runs (art. 53): past its end with no decision it is over, never "open forever".
     { id: "probation", icon: BadgeCheck, show: access.allowed("request.decide") && facts.probationState === "on" && emp.status !== "left" && emp.status !== "leaving" && !own },
     { id: "start", icon: UserCheck, show: access.allowed("employee.assign") && emp.status === "expected" },

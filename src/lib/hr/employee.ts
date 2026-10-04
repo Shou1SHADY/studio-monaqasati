@@ -7,6 +7,7 @@
 
 import { legalOnSite, passportFirst, type DocDates, type DocType } from "./documents"
 import { accruedDays } from "./leave"
+import type { PayStep } from "./pay"
 import { addDays, daysBetween, STATUTORY } from "./statutory"
 import { NITAQAT_MIN_BASIC, tradeOf } from "./trades"
 import { UNASSIGNED_SITE } from "./sites"
@@ -74,8 +75,13 @@ export interface EmployeePay {
   /** ok · returned (a transfer bounced) · fixed (payroll fixed it, HR approves) · approved. */
   ibanState?: "ok" | "returned" | "fixed" | null
   advance?: { amount: number; balance: number; instalment: number } | null
-  /** Retro differences waiting for the supplementary payroll (EM-04). */
-  retro?: Array<{ month: string; amount: number; reason: string }>
+  /** Retro differences waiting for the supplementary payroll (EM-04); `id` names the item the supplementary paid. */
+  retro?: Array<{ id?: string; month: string; amount: number; reason: string }>
+  /** The pay's history (EM-04): each decision from its effective day. The top-level figures are the pay in
+   * force when last written — read the pay of a day or a month through `payOn` / `paySegments`. */
+  steps?: PayStep[] | null
+  /** Commission Sales approved, by the month it is paid with (PY-01) — the record stays; a payroll names what it paid. */
+  commissions?: Array<{ id: string; month: string; amount: number; reason: string; at: string; by: string }>
 }
 
 export const displayName = (e: Pick<HrEmployee, "names">, locale: string) => (locale === "ar" ? e.names.ar : e.names.en || e.names.ar) || "—"

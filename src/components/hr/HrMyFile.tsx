@@ -321,9 +321,13 @@ function PayslipBody({ slip }: { slip: Payslip }) {
   const t = useTranslations("Portal.HR")
   const l = slip.line
   if (slip.kind === "supplementary") {
+    const s = l as SupplementaryLine
     return (
       <div className="border-t bg-muted/20 px-3 py-2">
-        <KeyValueRow label={t("me.slip.retro")} value={hrMoney((l as SupplementaryLine).retro)} ltr strong />
+        {s.retro !== 0 && <KeyValueRow label={t("me.slip.retro")} value={hrMoney(s.retro)} ltr />}
+        {(s.commission ?? 0) !== 0 && <KeyValueRow label={t("me.slip.commission")} value={hrMoney(s.commission)} ltr />}
+        {(s.refunds ?? 0) !== 0 && <KeyValueRow label={t("me.slip.refund")} value={hrMoney(s.refunds)} ltr />}
+        <KeyValueRow label={t("me.slip.net")} value={hrMoney(s.net)} ltr strong />
       </div>
     )
   }

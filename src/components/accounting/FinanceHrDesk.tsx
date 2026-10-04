@@ -9,7 +9,7 @@
 import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, query, where } from "firebase/firestore"
-import { Banknote, BookCheck, HandCoins, Loader2, Lock, LogOut, RotateCcw, Users } from "lucide-react"
+import { Banknote, BookCheck, HandCoins, Loader2, Lock, LogOut, Receipt, RotateCcw, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -29,15 +29,14 @@ import { HR_EVENTS, HR_PAY, HR_PAYROLLS, HR_REQUESTS, HR_SETTLEMENTS } from "@/l
 import type { EmployeePay } from "@/lib/hr/employee"
 import { empNo, hrDate, hrMoney, todayDay } from "@/lib/hr/format"
 import type { HrSettlement } from "@/lib/hr/exit-writes"
-import { markReturned, payAdvance, payHeldLine, paySettlement, postHrEvent, recordPayrollPaid, transferAmount, type FinanceActor, type HrEvent } from "@/lib/hr/finance-writes"
-import type { Payroll } from "@/lib/hr/payroll"
+import { markReturned, owedLines, payAdvance, payFeeRequest, payHeldLine, paySettlement, postHrEvent, recordPayrollPaid, returnableLines, transferAmount, type FinanceActor, type FinancePayroll, type HrEvent, type HrFeeEvent } from "@/lib/hr/finance-writes"
 import { financeDecideAdvance } from "@/lib/hr/request-writes"
 import { requestNoDisplay, type HrRequest } from "@/lib/hr/requests"
 import { r2 } from "@/lib/hr/statutory"
 import { HrWriteError } from "@/lib/hr/write-guard"
 import { AccountingShell } from "./AccountingShell"
 
-type PayrollDoc = Payroll & { returned?: Record<string, { reason: string }>; paidHeld?: Record<string, unknown> }
+type PayrollDoc = FinancePayroll
 type Pending =
   | { kind: "pay"; p: PayrollDoc }
   | { kind: "return"; p: PayrollDoc }
@@ -45,6 +44,7 @@ type Pending =
   | { kind: "advance"; r: HrRequest }
   | { kind: "decide"; r: HrRequest }
   | { kind: "settlement"; st: HrSettlement }
+  | { kind: "fee"; ev: HrFeeEvent }
 
 const BANKS = POSTABLE_ACCOUNTS.filter((a) => a.code.startsWith("1101")).map((a) => a.code)
 
@@ -81,14 +81,14 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
 
   // A settlement (hr:FS) is paid from its own section below, not posted here.
   const events = ((evData ?? []) as unknown as HrEvent[]).filter((e) => e.state === "sent" && (e.kind === "PAY" || e.kind === "EOS")).sort((a, b) => a.key.localeCompare(b.key))
+  // DC-03 — payment requests (hr:PR): a renewal's government fee, paid here.
+  const fees = ((evData ?? []) as unknown as Array<HrEvent | HrFeeEvent>).filter((e): e is HrFeeEvent => e.kind === "PR" && e.state === "sent").sort((a, b) => a.key.localeCompare(b.key))
   const payrolls = ((prData ?? []) as unknown as PayrollDoc[]).sort((a, b) => b.key.localeCompare(a.key))
   const toPay = payrolls.filter((p) => p.state === "posted" || (p.state === "approved" && !accountingOn))
-  const paid = payrolls.filter((p) => p.state === "paid").slice(0, 3)
-  const held = paid.flatMap((p) =>
-    (p.kind === "supplementary" ? (p.supplementary ?? []) : p.lines)
-      .filter((l) => (l.held || p.returned?.[l.employeeId]) && !p.paidHeld?.[l.employeeId])
-      .map((l) => ({ p, employeeId: l.employeeId, no: l.no, name: l.name, net: l.net, reason: p.returned?.[l.employeeId]?.reason ?? null }))
-  )
+  // PY-03 — every paid payroll, however old: a held line never drops out of view, and a returned transfer is
+  // recorded on the payroll it came from (newest first in the picker).
+  const paid = payrolls.filter((p) => p.state === "paid")
+  const held = owedLines(payrolls)
   const advances = (avData ?? []) as unknown as (HrRequest & { payout?: unknown })[]
   const toDecide = advances.filter((r) => r.state === "finance")
   const toPayOut = advances.filter((r) => r.state === "approved" && !r.payout)
@@ -121,6 +121,7 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
     else if (pending.kind === "held") void run(() => payHeldLine(firestore, actor, orgId, pending.p, pending.employeeId, books), "fhd.paid_ok")
     else if (pending.kind === "advance") void run(() => payAdvance(firestore, actor, orgId, pending.r, books), "fhd.advance_paid_ok")
     else if (pending.kind === "settlement") void run(() => paySettlement(firestore, actor, orgId, pending.st, books), "fhd.settlement_paid_ok")
+    else if (pending.kind === "fee") void run(() => payFeeRequest(firestore, actor, orgId, pending.ev, books), "fhd.fee_paid_ok")
   }
   const decide = (verdict: "approve" | "decline") => {
     if (!firestore || pending?.kind !== "decide") return
@@ -214,6 +215,25 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
             )}
           </Panel>
 
+          <Panel title={t("fhd.fees")} icon={Receipt} count={fees.length || undefined}>
+            {fees.length === 0 ? (
+              empty(t("fhd.fees_empty"))
+            ) : (
+              <ul className="divide-y rounded-xl border">
+                {fees.map((ev) =>
+                  row(
+                    ev.id,
+                    <span dir="ltr">{ev.key}</span>,
+                    t("fhd.fee_line", { no: empNo(ev.employeeNo), doc: t(`doc.${ev.doc}` as "doc.iqama"), expiry: hrDate(ev.expiry, locale), amount: hrMoney(ev.amount) }),
+                    <Button size="sm" disabled={busy} onClick={() => open({ kind: "fee", ev })}>
+                      {t("fhd.pay_out")}
+                    </Button>
+                  )
+                )}
+              </ul>
+            )}
+          </Panel>
+
           <Panel title={t("fhd.settlements")} icon={LogOut} count={settlements.length || undefined}>
             {settlements.length === 0 ? (
               empty(t("fhd.settlements_empty"))
@@ -274,22 +294,41 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
               {(pending?.kind === "advance" || pending?.kind === "decide") && `${requestNoDisplay(pending.r.no, locale)} · ${pending.r.employeeName} · ${hrMoney(pending.r.advance?.amount)}`}
               {pending?.kind === "return" && t("fhd.return_desc", { key: pending.p.key })}
               {pending?.kind === "settlement" && `${empNo(pending.st.no)} · ${hrMoney(pending.st.net)}`}
+              {pending?.kind === "fee" && `${empNo(pending.ev.employeeNo)} · ${t(`doc.${pending.ev.doc}` as "doc.iqama")} · ${hrMoney(pending.ev.amount)}`}
             </DialogDescription>
           </DialogHeader>
           {pending?.kind === "return" && (
-            <div className="space-y-1.5">
-              <Label htmlFor="fhd-who">{t("fhd.who")}</Label>
-              <SearchableSelect
-                id="fhd-who"
-                value={who}
-                onChange={setWho}
-                options={(pending.p.kind === "supplementary" ? (pending.p.supplementary ?? []) : pending.p.lines)
-                  .filter((l) => !l.held && !pending.p.returned?.[l.employeeId])
-                  .map((l) => ({ value: l.employeeId, label: `${empNo(l.no)} · ${l.name} · ${hrMoney(l.net)}` }))}
-                placeholder={t("fhd.who")}
-                searchPlaceholder={t("search")}
-                noResultsText={t("no_results")}
-              />
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="fhd-payroll">{t("fhd.which_payroll")}</Label>
+                <SearchableSelect
+                  id="fhd-payroll"
+                  value={pending.p.id}
+                  onChange={(v) => {
+                    const p = paid.find((x) => x.id === v)
+                    if (p) {
+                      setWho("")
+                      setPending({ kind: "return", p })
+                    }
+                  }}
+                  options={paid.map((p) => ({ value: p.id, label: `${p.key} · ${hrDate(p.paid?.date, locale)}` }))}
+                  placeholder={t("fhd.which_payroll")}
+                  searchPlaceholder={t("search")}
+                  noResultsText={t("no_results")}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="fhd-who">{t("fhd.who")}</Label>
+                <SearchableSelect
+                  id="fhd-who"
+                  value={who}
+                  onChange={setWho}
+                  options={returnableLines(pending.p).map((l) => ({ value: l.employeeId, label: `${empNo(l.no)} · ${l.name} · ${hrMoney(l.net)}` }))}
+                  placeholder={t("fhd.who")}
+                  searchPlaceholder={t("search")}
+                  noResultsText={t("no_results")}
+                />
+              </div>
             </div>
           )}
           {pending && pending.kind !== "decide" && (

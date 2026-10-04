@@ -9,6 +9,8 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase
 import { HR_EMPLOYEES, HR_PAY, HR_SITES } from "@/lib/hr/collections"
 import type { EmployeePay, HrEmployee } from "@/lib/hr/employee"
 import type { HrSite } from "@/lib/hr/sites"
+import { todayDay } from "@/lib/hr/format"
+import { payOn } from "@/lib/hr/pay"
 
 export function useHrPeople(orgId: string | null, enabled = true) {
   const firestore = useFirestore()
@@ -30,13 +32,19 @@ export function useOrgPay(orgId: string | null, enabled: boolean) {
   const firestore = useFirestore()
   const q = useMemoFirebase(() => (firestore && orgId && enabled ? query(collection(firestore, HR_PAY), where("organizationId", "==", orgId)) : null), [firestore, orgId, enabled])
   const { data } = useCollection(q)
-  return useMemo(() => new Map(((data ?? []) as unknown as EmployeePay[]).map((p) => [p.employeeId, p])), [data])
+  // The figures in force today (EM-04: a future-dated change waits for its day); the history stays on
+  // the document for the screens that compute a month.
+  return useMemo(() => {
+    const today = todayDay()
+    return new Map(((data ?? []) as unknown as EmployeePay[]).map((p) => [p.employeeId, payOn(p, today)]))
+  }, [data])
 }
 
-/** One employee's pay — for money roles and the employee himself. */
+/** One employee's pay — for money roles and the employee himself — as in force today. */
 export function useEmployeePay(employeeId: string | null, enabled: boolean) {
   const firestore = useFirestore()
   const ref = useMemoFirebase(() => (firestore && employeeId && enabled ? doc(firestore, HR_PAY, employeeId) : null), [firestore, employeeId, enabled])
   const { data, isLoading } = useDoc(ref)
-  return { pay: (data as unknown as EmployeePay | null) ?? null, isLoading }
+  const pay = useMemo(() => (data ? payOn(data as unknown as EmployeePay, todayDay()) : null), [data])
+  return { pay, isLoading }
 }

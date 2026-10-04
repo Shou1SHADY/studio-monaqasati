@@ -18,12 +18,52 @@ export function payFromBasic(basic: number, policies: Pick<HrPolicies, "housingS
 /** Monthly wage = basic + housing + transport. */
 export const wageOf = (p: PayFacts) => r2(p.basic + p.housing + p.transport)
 
-/** Paid days in the month: 30, or from the join date (§8). */
-export function paidDays(join: string, month: string): number {
+/** Paid days in the month: 30, or from the join date (§8) — and, in the month of the last day, up to it (EX-04). */
+export function paidDays(join: string, month: string, lastDay?: string | null): number {
   const { start, end } = monthRange(month)
-  if (join <= start) return STATUTORY.monthDays
-  if (join > end) return 0
-  return Math.max(0, Math.min(STATUTORY.monthDays, daysBetween(join, end) + 1))
+  const to = lastDay && lastDay < end ? lastDay : end
+  if (join > to || (lastDay && lastDay < start)) return 0
+  if (join <= start && to === end) return STATUTORY.monthDays
+  return Math.max(0, Math.min(STATUTORY.monthDays, daysBetween(join > start ? join : start, to) + 1))
+}
+
+// ---------------------------------------------------------------------------
+// The pay in force on a day (EM-04, WF-10): a change applies from its date
+// ---------------------------------------------------------------------------
+
+/** One pay decision and the day it takes effect. The first step of a pay's history starts on "" (always). */
+export interface PayStep extends PayFacts {
+  from: string
+}
+
+/** The pay in force on `day`: the last step on or before it; a pay without steps is its own. */
+export function payOn<T extends PayFacts & { steps?: PayStep[] | null }>(pay: T, day: string): T {
+  const steps = pay.steps ?? []
+  let at: PayStep | null = null
+  for (const s of steps) if (s.from <= day && (!at || s.from >= at.from)) at = s
+  return at ? { ...pay, basic: at.basic, housing: at.housing, transport: at.transport } : pay
+}
+
+/** The month's paid days split by the pay in force on them — a change mid-month pays the old wage
+ * up to the day before it and the new from it. A later piece counts its calendar days to the end of
+ * the period (at most the paid days), as the retro difference does; the first takes the rest. */
+export function paySegments(pay: PayFacts & { steps?: PayStep[] | null }, join: string, month: string, lastDay?: string | null): Array<{ pay: PayFacts; days: number }> {
+  const days = paidDays(join, month, lastDay)
+  const { start, end } = monthRange(month)
+  const from = join > start ? join : start
+  const to = lastDay && lastDay < end ? lastDay : end
+  const inside = (pay.steps ?? []).filter((s) => s.from > from && s.from <= to).sort((a, b) => a.from.localeCompare(b.from))
+  const out: Array<{ pay: PayFacts; days: number }> = []
+  let current: PayFacts = payOn(pay, from)
+  let left = days
+  for (const s of inside) {
+    const later = Math.min(left, daysBetween(s.from, to) + 1)
+    if (left - later > 0) out.push({ pay: current, days: left - later })
+    left = later
+    current = s
+  }
+  if (left > 0 || !out.length) out.push({ pay: current, days: left })
+  return out
 }
 
 /** Art. 107 — one overtime hour. */
@@ -77,6 +117,10 @@ export interface PayLineInput {
   penalties?: number
   /** Approved commission from Sales. */
   commission?: number
+  /** The month of the last day pays up to it (EX-04). */
+  lastDay?: string | null
+  /** The pay in force on each piece of the month (EM-04) — default: `pay` all month. */
+  segments?: Array<{ pay: PayFacts; days: number }>
 }
 
 export interface PayLine {
@@ -104,10 +148,11 @@ export interface PayLine {
  * prototype and the Finance contract have it.
  */
 export function payLine(input: PayLineInput): PayLine {
-  const days = paidDays(input.join, input.month)
+  const days = paidDays(input.join, input.month, input.lastDay)
   const wage = wageOf(input.pay)
   const daily = wage / STATUTORY.monthDays
-  const monthWage = r2((wage * days) / STATUTORY.monthDays)
+  const segments = input.segments ?? [{ pay: input.pay, days }]
+  const monthWage = r2(segments.reduce((s, x) => s + wageOf(x.pay) * x.days, 0) / STATUTORY.monthDays)
   // Days without pay never exceed the days paid: the month is 30 days on the
   // payroll, so 31 calendar days of unpaid leave take the month's wage, no more.
   let left = days
@@ -128,7 +173,7 @@ export function payLine(input: PayLineInput): PayLine {
   const unpaidDeduction = r2(daily * unpaid)
   const penalties = r2(input.penalties ?? 0)
   const rates = gosiRates(input.nationality, input.join)
-  const base = gosiBase(input.pay, days)
+  const base = r2(segments.reduce((s, x) => s + gosiBase(x.pay, x.days), 0))
   const gosiEmployee = r2(base * rates.employee)
   const gosiEmployer = r2(base * rates.employer)
   const advance = input.advance && input.advance.balance > 0 ? r2(Math.min(input.advance.instalment, input.advance.balance)) : 0

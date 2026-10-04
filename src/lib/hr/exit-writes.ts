@@ -7,15 +7,20 @@
 
 import { collection, doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import type { HrContext } from "./access"
-import { HR_EMPLOYEES, HR_EVENTS, HR_EXITS, HR_PAY, HR_SETTLEMENTS } from "./collections"
+import type { WorkplaceMonth } from "./attendance"
+import { HR_EMPLOYEES, HR_EVENTS, HR_EXITS, HR_PAY, HR_PAYROLLS, HR_SETTLEMENTS } from "./collections"
 import type { EmployeePay, HrEmployee } from "./employee"
 import { HR_LOG, type HrActor } from "./employee-writes"
-import { exitBlocks, exitId, settlementQuote, type ExitReason, type ExitTask, type Settlement } from "./eos"
-import { leaveBalance } from "./leave"
-import { wageOf } from "./pay"
+import { exitBlocks, exitId, settlementQuote, type ExitReason, type ExitTask, type LastMonth, type Settlement } from "./eos"
+import { leaveBalance, type Holiday } from "./leave"
+import { payOn, wageOf } from "./pay"
+import { employeeLine, payrollId, type Payroll, type PayrollLine } from "./payroll"
 import { eventId } from "./payroll-writes"
+import type { HrRequest } from "./requests"
 import { costKindOf, type HrSite } from "./sites"
 import { todayDay } from "./format"
+import { addDays, monthRange } from "./statutory"
+import type { HrViolation } from "./violations"
 import { assertHr, HrWriteError } from "./write-guard"
 
 const stamp = (a: { uid: string; name: string | null }) => ({ by: a.uid, byName: a.name, at: new Date().toISOString() })
@@ -50,6 +55,8 @@ export interface HrSettlement extends Settlement {
   siteId: string | null
   costKind: ReturnType<typeof costKindOf>
   projectId: string | null
+  /** Later months whose payroll had already paid him when the settlement was approved (a back-dated last day). */
+  paidAfter?: string[]
   state: "approved" | "paid"
   approved: { by: string; byName: string | null; at: string }
 }
@@ -122,6 +129,36 @@ export async function clearCustody(firestore: Firestore, actor: { uid: string; n
   })
 }
 
+/** The facts the last month is computed from — the screen reads them, the write is handed the same. */
+export interface LastMonthFacts {
+  sites: HrSite[]
+  /** The month's workplace records, closed or not — what is recorded up to the last day counts. */
+  attendance: WorkplaceMonth[]
+  requests: HrRequest[]
+  violations: HrViolation[]
+  holidays?: Holiday[]
+}
+
+/** EX-04 — the month of the last day as a payroll line up to it (join date, the month's attendance, sick and
+ * unpaid days, penalties, GOSI), with no advance instalment — the settlement takes the whole balance. Null when
+ * that month's payroll already carried his line: a month is never paid twice. */
+export function settlementLastMonth(
+  emp: HrEmployee,
+  pay: EmployeePay,
+  lastDay: string,
+  f: LastMonthFacts & { previous?: PayrollLine[] | null; paidMain?: Pick<Payroll, "state" | "lines"> | null }
+): LastMonth | null {
+  if (f.paidMain && f.paidMain.state !== "prepared" && f.paidMain.lines.some((l) => l.employeeId === emp.id)) return null
+  const month = lastDay.slice(0, 7)
+  const l = employeeLine(emp, pay, { month, sites: f.sites, counted: f.attendance.filter((a) => a.month === month), requests: f.requests, previous: f.previous, holidays: f.holidays, violations: f.violations, lastDay, noAdvance: true })
+  return { days: l.days, net: l.net, gosiEmployee: l.gosiEmployee, gosiEmployer: l.gosiEmployer, penalties: l.penalties, cost: l.cost }
+}
+
+const localDay = () => {
+  const now = new Date()
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+}
+
 /** Approve the settlement (EX-02, EX-04): computed here; the employee leaves; hr:FS goes to Finance. */
 export async function approveSettlement(
   firestore: Firestore,
@@ -129,9 +166,11 @@ export async function approveSettlement(
   orgId: string,
   actor: HrActor,
   id: string,
-  input: { ticket?: number; fixedRemainingMonths?: number | null; sites: HrSite[] }
+  input: { ticket?: number } & LastMonthFacts,
+  opts: { today?: string } = {}
 ): Promise<Settlement> {
   assertHr(ctx, "exit.manage")
+  const today = opts.today ?? localDay()
   let out: Settlement | null = null
   await runTransaction(firestore, async (tx) => {
     const xs = await tx.get(doc(firestore, HR_EXITS, id))
@@ -143,10 +182,27 @@ export async function approveSettlement(
     const es = await tx.get(doc(firestore, HR_EMPLOYEES, x.employeeId))
     const emp = { id: es.id, ...(es.data() as Omit<HrEmployee, "id">) }
     const ps = await tx.get(doc(firestore, HR_PAY, x.employeeId))
-    const pay = ps.exists() ? (ps.data() as EmployeePay) : null
-    if (!pay || !(wageOf(pay) > 0)) throw new HrWriteError("blocked", ["no_wage"])
+    const raw = ps.exists() ? (ps.data() as EmployeePay) : null
+    const pay = raw ? payOn(raw, x.lastDay) : null
+    if (!raw || !pay || !(wageOf(pay) > 0)) throw new HrWriteError("blocked", ["no_wage"])
     const evRef = doc(firestore, HR_EVENTS, eventId(orgId, `hr:FS:${x.no}`))
     if ((await tx.get(evRef)).exists()) throw new HrWriteError("blocked", ["sent"])
+    // EX-04 — the last day's month, unless its payroll already paid him; last month's line carries the sick days.
+    const month = x.lastDay.slice(0, 7)
+    const mainSnap = await tx.get(doc(firestore, HR_PAYROLLS, payrollId(orgId, month)))
+    const prevSnap = await tx.get(doc(firestore, HR_PAYROLLS, payrollId(orgId, addDays(`${month}-01`, -1).slice(0, 7))))
+    const lastMonth = settlementLastMonth(emp, raw, x.lastDay, {
+      ...input,
+      paidMain: mainSnap.exists() ? (mainSnap.data() as Payroll) : null,
+      previous: prevSnap.exists() ? ((prevSnap.data() as Payroll).lines ?? null) : null,
+    })
+    // A back-dated last day: payrolls of later months that already paid him are named on the settlement (they are
+    // recovered by a documented decision, never silently).
+    const paidAfter: string[] = []
+    for (let m = addDays(monthRange(month).end, 1).slice(0, 7), n = 0; m < today.slice(0, 7) && n < 12; m = addDays(monthRange(m).end, 1).slice(0, 7), n++) {
+      const s = await tx.get(doc(firestore, HR_PAYROLLS, payrollId(orgId, m)))
+      if (s.exists() && (s.data() as Payroll).state !== "prepared" && ((s.data() as Payroll).lines ?? []).some((l) => l.employeeId === x.employeeId)) paidAfter.push(m)
+    }
     const q = settlementQuote(
       {
         wage: wageOf(pay),
@@ -156,10 +212,11 @@ export async function approveSettlement(
         leaveTaken: emp.leaveTaken ?? 0,
         openingLeave: emp.openingLeave ?? 0,
         art77: x.art77,
-        fixedRemainingMonths: input.fixedRemainingMonths ?? null,
+        contract: emp.contract ?? null,
         ticket: input.ticket ?? 0,
-        advanceBalance: pay.advance?.balance ?? 0,
+        advanceBalance: raw.advance?.balance ?? 0,
         custodyShortfall: x.custody.shortfall ?? 0,
+        lastMonth,
       },
       leaveBalance
     )
@@ -176,6 +233,7 @@ export async function approveSettlement(
       siteId: x.siteId,
       costKind: x.siteId && site ? costKindOf(site.type) : "admin",
       projectId: site?.type === "project" ? (site.projectId ?? null) : null,
+      paidAfter,
       state: "approved",
       approved: by,
     }

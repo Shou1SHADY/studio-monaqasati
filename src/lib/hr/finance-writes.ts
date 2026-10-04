@@ -7,7 +7,7 @@
 
 import { doc, getDoc, serverTimestamp, writeBatch, type Firestore } from "firebase/firestore"
 import { postToLedger } from "../accounting/post"
-import { postHrAdvance, postHrEos, postHrPay, postHrPayPayment, postHrPayReturn, postHrSettlement, type HrCostRow, type PostingResult } from "../accounting/posting-rules"
+import { postHrAdvance, postHrEos, postHrFee, postHrPay, postHrPayPayment, postHrPayReturn, postHrSettlement, type HrCostRow, type PostingResult } from "../accounting/posting-rules"
 import { HR_EVENTS, HR_EXITS, HR_PAY, HR_PAYROLLS, HR_PAYSLIPS, HR_REQUESTS, HR_SETTLEMENTS } from "./collections"
 import type { EmployeePay } from "./employee"
 import type { HrSettlement } from "./exit-writes"
@@ -52,12 +52,25 @@ async function book(firestore: Firestore, a: FinanceActor, orgId: string, result
   return postToLedger(firestore, { organizationId: orgId, userId: a.uid, userName: a.name ?? "" }, result, { batch })
 }
 
-/** Post hr:PAY / hr:EOS to the books, dated the month's last day (the cost belongs to the month worked). */
-export async function postHrEvent(firestore: Firestore, a: FinanceActor, orgId: string, ev: HrEvent, books: Pick<Books, "accountingOn">): Promise<void> {
+/** The day an event is posted on: the month's last day for the month's payroll and accruals (the cost belongs
+ * to the month worked); a supplementary on the day Finance posts it — it arrives after the month was closed,
+ * and the closed month's entry is never reopened (HR-Pipeline §2.1), so it never lands in a locked period. */
+export function eventPostingDate(ev: Pick<HrEvent, "kind" | "month" | "payrollKey">, postedOn: string): string {
+  const supplementary = ev.kind === "PAY" && ev.payrollKey !== ev.month
+  return supplementary ? postedOn : monthRange(ev.month).end
+}
+
+const localDay = () => {
+  const now = new Date()
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+}
+
+/** Post hr:PAY / hr:EOS to the books (dated by `eventPostingDate`). */
+export async function postHrEvent(firestore: Firestore, a: FinanceActor, orgId: string, ev: HrEvent, books: Pick<Books, "accountingOn"> & { date?: string }): Promise<void> {
   need(a)
   const cur = await getDoc(doc(firestore, HR_EVENTS, ev.id))
   if (!cur.exists() || (cur.data() as HrEvent).state !== "sent") throw new HrWriteError("blocked", ["stale"])
-  const date = monthRange(ev.month).end
+  const date = eventPostingDate(ev, books.date ?? localDay())
   const result =
     ev.kind === "PAY"
       ? postHrPay({ key: ev.key, month: ev.month, date, debit: ev.debit, credit: ev.credit as { salariesPayable: number; gosi: number; advances: number; fines: number } })
@@ -124,6 +137,33 @@ export async function recordPayrollPaid(firestore: Firestore, a: FinanceActor, o
   await writePayslips(firestore, orgId, p, lines.filter((l) => !l.held), books.date)
 }
 
+/** A payroll as Finance's desk reads it: with the transfers the bank returned and the held lines paid since. */
+export type FinancePayroll = Payroll & { returned?: Record<string, { reason?: string } | unknown>; paidHeld?: Record<string, unknown> }
+
+const linesOf = (p: Payroll): AnyLine[] => (p.kind === "supplementary" ? (p.supplementary ?? []) : p.lines)
+
+/** PY-03 — every line still owed after its payroll was paid — held at approval or returned by the bank, and not
+ * paid since — on EVERY paid payroll, however old (a held line never drops out of view), oldest first. */
+export function owedLines(payrolls: FinancePayroll[]): Array<{ p: FinancePayroll; employeeId: string; no: number; name: string; net: number; reason: string | null }> {
+  return payrolls
+    .filter((p) => p.state === "paid")
+    .sort((a, b) => a.key.localeCompare(b.key, "en", { numeric: true }))
+    .flatMap((p) =>
+      linesOf(p)
+        .filter((l) => (l.held || p.returned?.[l.employeeId]) && !p.paidHeld?.[l.employeeId])
+        .map((l) => {
+          const r = p.returned?.[l.employeeId] as { reason?: string } | undefined
+          return { p, employeeId: l.employeeId, no: l.no, name: l.name, net: l.net, reason: r?.reason ?? null }
+        })
+    )
+}
+
+/** fin:RETURNED can come for any paid payroll — a main one or a supplementary, this month's or older: the lines
+ * that were transferred and not already returned. */
+export function returnableLines(p: FinancePayroll): AnyLine[] {
+  return p.state === "paid" ? linesOf(p).filter((l) => !l.held && !p.returned?.[l.employeeId]) : []
+}
+
 type LineRef = { employeeId: string; no: number; net: number; held: boolean }
 
 function lineOf(p: Payroll, employeeId: string): LineRef | null {
@@ -171,6 +211,42 @@ export async function payAdvance(firestore: Firestore, a: FinanceActor, orgId: s
   await batch.commit()
 }
 
+/** A payment request HR sent (hr:PR — a renewal's government fee, DC-03). */
+export interface HrFeeEvent {
+  id: string
+  organizationId: string
+  key: string
+  kind: "PR"
+  prType: "doc"
+  month: string
+  amount: number
+  employeeId: string
+  employeeNo: number
+  doc: string
+  expiry: string
+  siteId: string | null
+  state: "sent" | "paid"
+}
+
+/** Pay a payment request (hr:PR → fin:PRPAID): Dr government & recruitment fees · Cr bank, once — the entry id is
+ * the request's key and the event moves to paid in the same batch. With Accounting off it is recorded paid. */
+export async function payFeeRequest(firestore: Firestore, a: FinanceActor, orgId: string, ev: HrFeeEvent, books: Books & { projectId?: string | null }): Promise<void> {
+  need(a)
+  const cur = await getDoc(doc(firestore, HR_EVENTS, ev.id))
+  if (!cur.exists() || (cur.data() as HrFeeEvent).state !== "sent" || (cur.data() as HrFeeEvent).kind !== "PR") throw new HrWriteError("blocked", ["stale"])
+  const batch = writeBatch(firestore)
+  const entryId = await book(
+    firestore,
+    a,
+    orgId,
+    postHrFee({ key: ev.key, date: books.date, amount: ev.amount, projectId: books.projectId ?? null, bankAccount: books.bankAccount, description: `رسوم تجديد ${ev.doc} — موظف ${String(ev.employeeNo).padStart(4, "0")}` }),
+    books,
+    batch
+  )
+  batch.update(doc(firestore, HR_EVENTS, ev.id), { state: "paid", paid: { ...stamp(a), date: books.date }, entryId: entryId ?? null, updatedAt: serverTimestamp() })
+  await batch.commit()
+}
+
 /** Pay the final settlement (hr:FS → fin:PRPAID): the exit closes. */
 export async function paySettlement(firestore: Firestore, a: FinanceActor, orgId: string, st: HrSettlement, books: Books): Promise<void> {
   need(a)
@@ -190,7 +266,11 @@ export async function paySettlement(firestore: Firestore, a: FinanceActor, orgId
       projectId: st.projectId,
       gratuity: st.gratuity,
       leaveCash: st.leaveCash,
-      wages: r2(st.lastPay + st.noticePay + st.art77 + st.ticket),
+      // The last month at its cost (gross less sick and unpaid days + employer GOSI) with its GOSI and fines
+      // credited; a settlement approved before that was kept reads its last pay as the cost.
+      wages: r2((st.lastCost ?? st.lastPay) + st.noticePay + st.art77 + st.ticket),
+      gosi: r2((st.lastGosiEmployee ?? 0) + (st.lastGosiEmployer ?? 0)),
+      fines: st.lastPenalties ?? 0,
       advance: st.advance,
       custody: st.custody,
       net: st.net,

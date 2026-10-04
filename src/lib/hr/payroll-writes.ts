@@ -11,7 +11,7 @@ import { attendanceId, type WorkplaceMonth } from "./attendance"
 import { HR_ATTENDANCE, HR_EVENTS, HR_PAY, HR_PAYROLLS } from "./collections"
 import type { EmployeePay } from "./employee"
 import type { HrActor } from "./employee-writes"
-import { eosEvent, payEvent, payrollId, payrollTotals, supplementaryKey, type Payroll, type PayrollLine, type Stamp, type SupplementaryLine } from "./payroll"
+import { eosEvent, MAX_SUPPLEMENTARIES, payEvent, payrollId, payrollTotals, supplementaryKey, type Payroll, type PayrollLine, type Stamp, type SupplementaryLine } from "./payroll"
 import { monthRange, r2 } from "./statutory"
 import { assertHr, HrWriteError } from "./write-guard"
 
@@ -62,17 +62,25 @@ export async function preparePayroll(
   })
 }
 
-/** The supplementary "-D" (PY-04): only after the main payroll is approved; retro items only. */
-export async function prepareSupplementary(firestore: Firestore, ctx: HrContext, orgId: string, month: string, actor: HrActor, lines: SupplementaryLine[]): Promise<void> {
+/** A supplementary (PY-04): only after the main payroll is approved; its late items only. It takes the month's
+ * first key still open — `-D`, then `-D2`… once the one before was approved — and recomputing replaces the
+ * prepared one. An item an approved supplementary of the month already carries is refused (paid once). */
+export async function prepareSupplementary(firestore: Firestore, ctx: HrContext, orgId: string, month: string, actor: HrActor, lines: SupplementaryLine[]): Promise<string> {
   assertHr(ctx, "payroll.prepare")
   if (!lines.length) throw new HrWriteError("blocked", ["no_lines"])
-  const key = supplementaryKey(month)
-  const ref = doc(firestore, HR_PAYROLLS, payrollId(orgId, key))
+  let key = ""
   await runTransaction(firestore, async (tx) => {
     const main = await tx.get(doc(firestore, HR_PAYROLLS, payrollId(orgId, month)))
     if (!main.exists() || (main.data() as Payroll).state === "prepared") throw new HrWriteError("blocked", ["main_not_approved"])
-    const cur = await tx.get(ref)
-    if (cur.exists() && (cur.data() as Payroll).state !== "prepared") throw new HrWriteError("blocked", ["approved"])
+    const paid = new Set<string>()
+    for (let n = 1; n <= MAX_SUPPLEMENTARIES && !key; n++) {
+      const s = await tx.get(doc(firestore, HR_PAYROLLS, payrollId(orgId, supplementaryKey(month, n))))
+      if (!s.exists() || (s.data() as Payroll).state === "prepared") key = supplementaryKey(month, n)
+      else for (const l of (s.data() as Payroll).supplementary ?? []) for (const i of l.items ?? []) paid.add(`${i.kind}:${i.id}`)
+    }
+    if (!key) throw new HrWriteError("blocked", ["too_many"])
+    if (lines.some((l) => (l.items ?? []).some((i) => paid.has(`${i.kind}:${i.id}`)))) throw new HrWriteError("blocked", ["stale"])
+    const ref = doc(firestore, HR_PAYROLLS, payrollId(orgId, key))
     tx.set(ref, {
       organizationId: orgId,
       month,
@@ -87,6 +95,7 @@ export async function prepareSupplementary(firestore: Firestore, ctx: HrContext,
       updatedAt: serverTimestamp(),
     })
   })
+  return key
 }
 
 /** Approve (PY-05, RL-02): the HR manager who did not prepare it. Sends hr:PAY (and hr:EOS for the main). */
@@ -106,12 +115,18 @@ export async function approvePayroll(firestore: Firestore, ctx: HrContext, orgId
     // Never sent twice.
     if ((await tx.get(payRef)).exists() || (eosRef && (await tx.get(eosRef)).exists())) throw new HrWriteError("blocked", ["sent"])
     // Reads before writes: the pay documents this approval changes.
-    const touched = p.kind === "main" ? p.lines.filter((l) => l.advance > 0).map((l) => l.employeeId) : (p.supplementary ?? []).map((l) => l.employeeId)
+    const touched =
+      p.kind === "main"
+        ? p.lines.filter((l) => l.advance > 0).map((l) => l.employeeId)
+        : (p.supplementary ?? []).filter((l) => !l.items || l.items.some((i) => i.kind === "retro")).map((l) => l.employeeId)
     const pays = new Map<string, EmployeePay>()
     for (const id of touched) {
       const s = await tx.get(doc(firestore, HR_PAY, id))
       if (s.exists()) pays.set(id, s.data() as EmployeePay)
     }
+    // AD-01 — an instalment is taken once: a month computed on a balance another month's approval has
+    // since taken down is recomputed before it is approved.
+    if (p.kind === "main" && p.lines.some((l) => l.advance > 0 && !(r2(l.advance) <= r2(pays.get(l.employeeId)?.advance?.balance ?? 0)))) throw new HrWriteError("blocked", ["advance_stale"])
     const by = stamp(actor)
     tx.update(ref, { state: "approved", approved: by, ownFlagged: ctx.uid === p.prepared.by, updatedAt: serverTimestamp() })
     const base = { organizationId: orgId, month: p.month, payrollId: p.id, payrollKey: p.key, state: "sent", sent: by, createdAt: serverTimestamp() }
@@ -125,7 +140,14 @@ export async function approvePayroll(firestore: Firestore, ctx: HrContext, orgId
         tx.update(doc(firestore, HR_PAY, l.employeeId), { advance: balance > 0 ? { ...cur, balance } : null, updatedAt: serverTimestamp() })
       }
     } else {
-      for (const [id, pr] of pays) tx.update(doc(firestore, HR_PAY, id), { retro: (pr.retro ?? []).filter((x) => x.month !== p.month), updatedAt: serverTimestamp() })
+      // Exactly the retro items this supplementary paid — one recorded since stays for the next.
+      for (const l of p.supplementary ?? []) {
+        const pr = pays.get(l.employeeId)
+        if (!pr) continue
+        const ids = new Set((l.items ?? []).filter((i) => i.kind === "retro").map((i) => i.id))
+        const left = (pr.retro ?? []).filter((x, i) => (l.items ? !ids.has(x.id ?? `${p.month}#${i}`) : x.month !== p.month))
+        if (left.length !== (pr.retro ?? []).length) tx.update(doc(firestore, HR_PAY, l.employeeId), { retro: left, updatedAt: serverTimestamp() })
+      }
     }
   })
 }

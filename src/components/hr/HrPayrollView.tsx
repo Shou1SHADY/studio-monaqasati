@@ -48,15 +48,15 @@ import {
   payrollId,
   payrollTotals,
   sitesToClose,
-  supplementaryKey,
   type Payroll,
   type PayrollLine,
   type PayrollState,
+  type SupplementaryLine,
 } from "@/lib/hr/payroll"
 import { approvePayroll, preparePayroll, prepareSupplementary } from "@/lib/hr/payroll-writes"
 import { UNASSIGNED_SITE } from "@/lib/hr/sites"
 import type { HrViolation } from "@/lib/hr/violations"
-import { addDays } from "@/lib/hr/statutory"
+import { addDays, r2 } from "@/lib/hr/statutory"
 import { HrWriteError } from "@/lib/hr/write-guard"
 import { cn } from "@/lib/utils"
 import type { HrPortal } from "./HrShell"
@@ -100,9 +100,14 @@ export function HrPayrollView({ access, portal }: { access: HrAccess; portal: Hr
   const mainRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, HR_PAYROLLS, payrollId(orgId, month)) : null), [firestore, orgId, month])
   const { data: mainData } = useDoc(mainRef)
   const saved = (mainData as unknown as Payroll | null) ?? null
-  const supRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, HR_PAYROLLS, payrollId(orgId, supplementaryKey(month))) : null), [firestore, orgId, month])
-  const { data: supData } = useDoc(supRef)
-  const savedSup = (supData as unknown as Payroll | null) ?? null
+  // PY-04 — the month's supplementaries (-D, -D2…): each approved one is sent; what arrives after goes to the next.
+  const supQ = useMemoFirebase(
+    () => (firestore && orgId ? query(collection(firestore, HR_PAYROLLS), where("organizationId", "==", orgId), where("month", "==", month), where("kind", "==", "supplementary")) : null),
+    [firestore, orgId, month]
+  )
+  const { data: supData } = useCollection(supQ)
+  const sups = useMemo(() => ((supData ?? []) as unknown as Payroll[]).slice().sort((a, b) => a.key.localeCompare(b.key, "en", { numeric: true })), [supData])
+  const openSup = sups.find((s) => s.state === "prepared") ?? null
   const prevMonth = addDays(`${month}-01`, -1).slice(0, 7)
   const prevRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, HR_PAYROLLS, payrollId(orgId, prevMonth)) : null), [firestore, orgId, prevMonth])
   const { data: prevData } = useDoc(prevRef)
@@ -118,7 +123,12 @@ export function HrPayrollView({ access, portal }: { access: HrAccess; portal: Hr
   const totals = payrollTotals(lines)
   const stale = saved?.state === "prepared" && payrollTotals(saved.lines).net !== payrollTotals(live.lines).net
   const shown = lines.filter((l) => (filter === "held" ? l.held : filter === "exceptions" ? lineWarnings(l).length > 0 : true))
-  const supLines = useMemo(() => computeSupplementary(month, employees, pays, sites), [month, employees, pays, sites])
+  const supLines = useMemo(
+    () => computeSupplementary({ month, employees, pays, sites, main: saved, done: sups, violations: (vioData ?? []) as unknown as HrViolation[] }),
+    [month, employees, pays, sites, saved, sups, vioData]
+  )
+  const supNet = (ls: SupplementaryLine[]) => r2(ls.reduce((s, l) => s + l.net, 0))
+  const supStale = openSup !== null && supNet(openSup.supplementary ?? []) !== supNet(supLines)
 
   const run = async (fn: () => Promise<unknown>, ok: string) => {
     if (!firestore || !orgId) return
@@ -301,33 +311,56 @@ export function HrPayrollView({ access, portal }: { access: HrAccess; portal: Hr
         </div>
       </Panel>
 
-      {frozen && (savedSup || supLines.length > 0) && (
-        <Panel title={t("payroll.sup_title", { key: supplementaryKey(month) })} icon={Receipt} count={(savedSup?.supplementary ?? supLines).length}>
+      {frozen && (sups.length > 0 || supLines.length > 0) && (
+        <Panel title={t("payroll.sup_list_title")} icon={Receipt} count={sups.length + (openSup || !supLines.length ? 0 : 1)}>
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground">{t("payroll.sup_desc")}</p>
-            {savedSup && <StatusPill tone={STATE_TONE[savedSup.state]}>{t(`payroll.state.${savedSup.state}`)}</StatusPill>}
-            <ul className="divide-y rounded-xl border">
-              {(savedSup?.supplementary ?? supLines).map((l) => (
-                <li key={l.employeeId} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-                  <span dir="auto">{l.name}</span>
-                  <span className="font-bold tabular-nums" dir="ltr">
-                    {hrMoney(l.retro)}
+            {sups.map((s) => (
+              <div key={s.key} className="space-y-2 rounded-xl border p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-bold" dir="ltr">
+                    {s.key}
                   </span>
-                </li>
-              ))}
-            </ul>
-            <div className="flex flex-wrap gap-2">
-              {(!savedSup || savedSup.state === "prepared") && access.allowed("payroll.prepare") && supLines.length > 0 && (
-                <Button variant="outline" disabled={busy} onClick={() => void run(() => prepareSupplementary(firestore!, access.ctx, orgId!, month, actor, supLines), "payroll.prepared_ok")}>
-                  {t(savedSup ? "payroll.recompute" : "payroll.prepare")}
-                </Button>
-              )}
-              {mayApprove(savedSup) && (
-                <Button disabled={busy} onClick={() => setConfirm(supplementaryKey(month))}>
-                  {t("payroll.approve")}
-                </Button>
-              )}
-            </div>
+                  <StatusPill tone={STATE_TONE[s.state]}>{t(`payroll.state.${s.state}`)}</StatusPill>
+                  <span className="ms-auto text-sm font-bold tabular-nums" dir="ltr">
+                    {hrMoney(supNet(s.supplementary ?? []))}
+                  </span>
+                </div>
+                <SupLines lines={s.supplementary ?? []} />
+                {s === openSup && supStale && <Callout tone="warn">{t("payroll.stale")}</Callout>}
+                {s === openSup && (
+                  <div className="flex flex-wrap gap-2">
+                    {access.allowed("payroll.prepare") && supLines.length > 0 && (
+                      <Button variant="outline" disabled={busy} onClick={() => void run(() => prepareSupplementary(firestore!, access.ctx, orgId!, month, actor, supLines), "payroll.prepared_ok")}>
+                        {t("payroll.recompute")}
+                      </Button>
+                    )}
+                    {mayApprove(s) && !supStale && (
+                      <Button disabled={busy} onClick={() => setConfirm(s.key)}>
+                        {t("payroll.approve")}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+            {!openSup && supLines.length > 0 && (
+              <div className="space-y-2 rounded-xl border border-dashed p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-bold">{t("payroll.sup_next")}</span>
+                  <StatusPill tone="mute">{t("payroll.state.none")}</StatusPill>
+                  <span className="ms-auto text-sm font-bold tabular-nums" dir="ltr">
+                    {hrMoney(supNet(supLines))}
+                  </span>
+                </div>
+                <SupLines lines={supLines} />
+                {access.allowed("payroll.prepare") && (
+                  <Button variant="outline" disabled={busy} onClick={() => void run(() => prepareSupplementary(firestore!, access.ctx, orgId!, month, actor, supLines), "payroll.prepared_ok")}>
+                    {t("payroll.prepare")}
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         </Panel>
       )}
@@ -345,5 +378,30 @@ export function HrPayrollView({ access, portal }: { access: HrAccess; portal: Hr
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  )
+}
+
+/** A supplementary's lines: each person, what the line is made of, and its net. */
+function SupLines({ lines }: { lines: SupplementaryLine[] }) {
+  const t = useTranslations("Portal.HR")
+  return (
+    <ul className="divide-y rounded-xl border">
+      {lines.map((l) => (
+        <li key={l.employeeId} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2 text-sm">
+          <span dir="auto" className={cn(l.held && "text-warning")}>
+            {l.name}
+            {l.held && ` · ${t("payroll.w.held")}`}
+          </span>
+          <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {l.retro !== 0 && <span>{t("payroll.sup_item.retro", { amount: hrMoney(l.retro) })}</span>}
+            {(l.commission ?? 0) !== 0 && <span>{t("payroll.sup_item.commission", { amount: hrMoney(l.commission) })}</span>}
+            {(l.refunds ?? 0) !== 0 && <span>{t("payroll.sup_item.refund", { amount: hrMoney(l.refunds) })}</span>}
+            <span className="font-bold tabular-nums text-foreground" dir="ltr">
+              {hrMoney(l.net)}
+            </span>
+          </span>
+        </li>
+      ))}
+    </ul>
   )
 }

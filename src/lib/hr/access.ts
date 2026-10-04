@@ -40,7 +40,9 @@ export interface HrContext {
 // site to be one the supervisor holds — `hrAllowed(ctx, action, { site })`.
 // ---------------------------------------------------------------------------
 
-type Rule = { roles: readonly HrRole[]; siteScoped?: readonly HrRole[] }
+/** `owner`: the org owner may take it although his roles (HR manager and management) do not carry it — a
+ * company with no one in that role must not be stuck (AC-04: a returned IBAN with no payroll officer). */
+type Rule = { roles: readonly HrRole[]; siteScoped?: readonly HrRole[]; owner?: true }
 
 export const HR_GUARD = {
   "pay.view": { roles: ["manager", "payroll", "management"] },
@@ -57,7 +59,9 @@ export const HR_GUARD = {
   "attendance.declare": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
   "payroll.prepare": { roles: ["manager", "payroll"] },
   "payroll.approve": { roles: ["manager"] },
-  "iban.fix": { roles: ["payroll"] },
+  // Payroll fixes, the HR manager approves — never the same hand (RL-02); the owner, who answers to nobody,
+  // may do both (flagged on approval), so a company without a payroll officer can pay the line again.
+  "iban.fix": { roles: ["payroll"], owner: true },
   "iban.approve": { roles: ["manager"] },
   "leave.endorse": { roles: ["supervisor"], siteScoped: ["supervisor"] },
   // AT-05 — "started today" after a leave: the workplace's supervisor or the HR manager.
@@ -87,6 +91,7 @@ export type HrRefusal = "no_role" | "not_your_site" | "own_request"
 /** The check every HR write runs first. Null means allowed. */
 export function hrRefusal(ctx: HrContext, action: HrAction, scope: { site?: string | null } = {}): HrRefusal | null {
   const rule: Rule = HR_GUARD[action]
+  if (rule.owner && ctx.owner) return null
   const held = rule.roles.filter((r) => ctx.roles.has(r))
   if (!held.length) return "no_role"
   // A role that is not site-scoped for this action passes anywhere.

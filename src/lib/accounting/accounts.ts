@@ -136,6 +136,8 @@ const ROWS: Row[] = [
   ["520103", "مصروفات مكتبية واتصالات", "Office & communications", "D", null, true],
   ["520104", "أتعاب مهنية واستشارات", "Professional fees", "D", null, true],
   ["520105", "مخصص ديون مشكوك في تحصيلها", "Allowance for doubtful debts", "D", null, true],
+  // HR 1.0 (HR-Pipeline §2.3: the prototype's 6110): government document and recruitment fees — hr:PR payment requests.
+  ["520106", "رسوم حكومية واستقدام", "Government & recruitment fees", "D", null, true],
   ["5202", "بيع وتسويق", "Selling & marketing", "D", null, false],
   ["520201", "دعاية وتسويق", "Advertising & marketing", "D", null, true],
   // HR 1.0: warehouse, fleet and showroom salaries (6108 — never 6103, bank charges).
@@ -271,6 +273,7 @@ export const ACC = {
   officeAndComms: "520103",
   professionalFees: "520104",
   doubtfulDebtExpense: "520105",
+  govFees: "520106",
   marketing: "520201",
   distributionSalaries: "520202",
   adminDepreciation: "520301",

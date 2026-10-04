@@ -19490,7 +19490,8 @@
           "renew": "Record renewal",
           "link": "Link user",
           "start": "Started work",
-          "opening": "Opening balance"
+          "opening": "Opening balance",
+          "commission": "Commission"
         },
         "log_title": "Log",
         "service_years": "{n} years of service",
@@ -19534,7 +19535,8 @@
         "started": "Start recorded",
         "opening_done": "Opening balance recorded",
         "opening_card": "Opening balance from the card",
-        "opening_card_v": "{n} days — entered by {name} on {date}"
+        "opening_card_v": "{n} days — entered by {name} on {date}",
+        "commission_recorded": "Commission recorded: it goes with that month's payroll"
       },
       "move": {
         "to": "Move to",
@@ -19559,7 +19561,7 @@
         "reason": "Reason",
         "from": "Wage now",
         "to": "Wage after",
-        "retro_note": "An effective date inside a closed month adds the difference to the supplementary payroll; the closed month is not reopened.",
+        "retro_note": "A change applies from its date. Inside the last closed month, the difference for that month goes to the supplementary payroll and the month is not reopened. Further back is not possible.",
         "block": {
           "bad_basic": "The basic must be above zero",
           "no_reason": "Give the reason",
@@ -19571,7 +19573,9 @@
         "warn": {
           "pay_cut": "This lowers the pay — it needs the worker's written consent",
           "saudi_below_nitaqat": "A Saudi below 4,000 basic does not count fully in Nitaqat"
-        }
+        },
+        "scheduled": "Takes effect on {on}: payrolls before that day keep the current wage.",
+        "retro_preview": "{month} is closed: {amount} goes to its supplementary payroll."
       },
       "probation": {
         "decision": "Decision",
@@ -19596,12 +19600,13 @@
       "renew": {
         "document": "Document",
         "expiry": "New expiry",
-        "fee": "Fee paid",
-        "note": "The old expiry stays in the log.",
+        "fee": "Fee (Finance pays it)",
+        "note": "The old expiry stays in the log. A fee goes to Finance as a payment request.",
         "block": {
           "bad_date": "Choose a future expiry",
           "passport_first": "Renew the passport first — the iqama cannot outlast it",
-          "not_later": "The new expiry must be after the current one"
+          "not_later": "The new expiry must be after the current one",
+          "bad_fee": "The fee cannot be negative"
         }
       },
       "link": {
@@ -19650,7 +19655,8 @@
         "started": "Started work on {on}",
         "leave_returned": "Back from leave {no} on {on} — {late} days late",
         "opening_recorded": "Opening balance from the card: leave {leave} days{advance, select, 1 { · and an outstanding advance} other {}}",
-        "file_attached": "File attached — {name}"
+        "file_attached": "File attached — {name}",
+        "commission_recorded": "Commission recorded for {month} ({reason})"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -19877,7 +19883,10 @@
           "approved": "Already approved — a closed month never reopens; late items go to the supplementary",
           "sent": "Its events were already sent to Finance",
           "main_not_approved": "Approve the month's payroll first",
-          "no_lines": "Nothing for the supplementary"
+          "no_lines": "Nothing for the supplementary",
+          "too_many": "This month already has the maximum number of supplementary payrolls",
+          "stale": "An item was already paid in an approved supplementary. Recompute.",
+          "advance_stale": "An advance balance changed since this was prepared (another month took its instalment). Recompute before approving."
         },
         "stale": "The record changed since it was prepared — recompute before approving.",
         "prepare": "Compute and prepare",
@@ -19925,10 +19934,16 @@
           "declared": "Declared days"
         },
         "no_lines": "No lines",
-        "sup_title": "Supplementary {key}",
-        "sup_desc": "Late items only — retro pay differences for this closed month. The month's payroll is not reopened.",
+        "sup_desc": "Late items only, for this closed month: retro pay differences, late commission, and penalties cancelled after they were deducted. The month's payroll is not reopened, and an approved supplementary is final: anything later goes in the next one.",
         "confirm_title": "Approve payroll {key}?",
-        "confirm_desc": "The events go to Finance with fixed keys and cannot be sent twice. Advance instalments come off the balances. Anything late goes to the supplementary."
+        "confirm_desc": "The events go to Finance with fixed keys and cannot be sent twice. Advance instalments come off the balances. Anything late goes to the supplementary.",
+        "sup_list_title": "Supplementary payrolls",
+        "sup_next": "Next supplementary",
+        "sup_item": {
+          "retro": "Retro {amount}",
+          "commission": "Commission {amount}",
+          "refund": "Penalty refunded {amount}"
+        }
       },
       "iban": {
         "returned": "The bank returned this salary transfer — payroll corrects the IBAN, the HR manager approves it, then Finance pays.",
@@ -19989,13 +20004,17 @@
           "return": "A transfer came back",
           "held": "Pay a held line",
           "advance": "Pay out the advance",
-          "decide": "Advance above the HR limit"
+          "decide": "Advance above the HR limit",
+          "fee": "Pay a government fee",
+          "settlement": "Pay the final settlement"
         },
         "confirm": {
           "pay": "Record payment",
           "return": "Record the return",
           "held": "Pay",
-          "advance": "Pay out"
+          "advance": "Pay out",
+          "fee": "Pay",
+          "settlement": "Pay out"
         },
         "failed": "Could not complete — check the period is open and try again",
         "block": {
@@ -20008,7 +20027,12 @@
         "settlements": "Final settlements",
         "settlements_empty": "No settlement waiting",
         "settlement_line": "Net {net} · last day {last}",
-        "settlement_paid_ok": "Settlement paid — the exit is closed"
+        "settlement_paid_ok": "Settlement paid — the exit is closed",
+        "which_payroll": "Payroll the transfer belonged to",
+        "fees": "Payment requests (government fees)",
+        "fees_empty": "No fee waiting to be paid",
+        "fee_line": "Employee {no} · {doc} renewed to {expiry} · {amount}",
+        "fee_paid_ok": "Fee paid"
       },
       "vio": {
         "title": "Violations and penalties",
@@ -20075,7 +20099,8 @@
           "objection_late": "The 15 days to object have passed",
           "future": "A day that has not come",
           "exists": "This violation is already recorded for that day"
-        }
+        },
+        "objection_effect": "If the month's payroll already deducted it: upheld, that deduction stands and nothing is taken again; cancelled, it is paid back in that month's supplementary payroll. If it was not deducted yet: upheld, it is deducted in this month's payroll."
       },
       "custody": {
         "title": "Custody clearance",
@@ -20128,10 +20153,13 @@
           "ticket": "Ticket",
           "advance": "Outstanding advance",
           "custody": "Custody missing",
-          "net": "Net due"
+          "net": "Net due",
+          "gratuity_span": "End-of-service award ({y} y {m} m {d} d)",
+          "last_paid": "Last month: already paid by its payroll",
+          "art77_fixed": "Compensation (art. 77): the {days} days left on the contract",
+          "last_note": "The last month is computed like a payroll line up to the last day: absences and sick days recorded so far, penalties, and GOSI."
         },
         "ticket": "Ticket owed by the contract",
-        "fixed_months": "Months left on the contract",
         "approve": "Approve the settlement",
         "approved": "Settlement approved — sent to Finance",
         "started": "End of service started — Inventory is asked",
@@ -20158,7 +20186,8 @@
           "no_wage": "No wage on record",
           "sent": "Already sent to Finance",
           "bad_amount": "Enter a valid amount"
-        }
+        },
+        "paid_after": "The payroll of {months} already paid him after his last day. Recover the overpayment by a documented decision."
       },
       "data_field": {
         "iban": "IBAN",
@@ -20208,7 +20237,8 @@
           "penalties": "Penalties",
           "advance": "Advance instalment",
           "net": "Net paid",
-          "retro": "Retro pay difference"
+          "retro": "Retro pay difference",
+          "refund": "Penalty paid back (cancelled on your objection)"
         }
       },
       "inj": {
@@ -20718,6 +20748,20 @@
           "no_reason": "Give the reason",
           "iqama_expired": "His iqama has expired — he cannot be assigned to a site",
           "no_date_move": "Choose the date"
+        }
+      },
+      "commission": {
+        "month": "Paid with the payroll of",
+        "amount": "Approved commission",
+        "reference": "Sales approval (reference)",
+        "late": "{month}'s payroll is already approved: this commission goes to its supplementary payroll.",
+        "note": "Commission is approved by Sales. It is added to the line's gross, not to the GOSI base. The log records the month, never the amount.",
+        "block": {
+          "bad_amount": "Enter the amount, above zero",
+          "no_reason": "Give the Sales approval reference",
+          "bad_month": "Choose the month",
+          "future_month": "Not a future month",
+          "no_wage": "Enter the wage first"
         }
       }
     },
