@@ -3214,6 +3214,64 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // HR letters (EM-08, WF-24): asked for by the employee — or the HR manager
+    // for him — and signed by the level fixed at filing: `manager` the HR
+    // manager · `gov` government relations (an embassy letter; the HR manager may
+    // stand in) · `management` the HR manager's own. Nobody signs his own (the
+    // owner excepted, flagged). Issued with a yearly LT serial or declined with a
+    // reason; never changed after. No pay on it — see hrLetterPay.
+    function hrFiledFor(d) {
+      return d.filedBy.by == request.auth.uid
+        && get(/databases/$(database)/documents/employees/$(d.employeeId)).data.organizationId == d.organizationId
+        && d.employeeUserId == get(/databases/$(database)/documents/employees/$(d.employeeId)).data.get('userId', null)
+        && (hrManager() || d.employeeUserId == request.auth.uid);
+    }
+    match /hrLetters/{letterId} {
+      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrSeesPay() || resource.data.employeeUserId == request.auth.uid
+            || (resource.data.signerLevel == 'gov' && hrRole('hr.gov')))));
+      allow create: if isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.keys().hasOnly(['organizationId', 'kind', 'title', 'purpose', 'addressee', 'lang', 'employeeId',
+             'employeeUserId', 'employeeName', 'signerLevel', 'filedBy', 'onBehalf', 'state', 'createdAt', 'updatedAt'])
+        && request.resource.data.kind in ['sal', 'emb', 'noc', 'oth', 'exp']
+        && request.resource.data.signerLevel in ['gov', 'manager', 'management']
+        && request.resource.data.state == 'pending'
+        && hrFiledFor(request.resource.data);
+      allow update: if isOrgMember(resource.data.organizationId)
+        && resource.data.state == 'pending'
+        && (resource.data.employeeUserId != request.auth.uid || isOrgOwner())
+        && (hrRole(resource.data.signerLevel == 'gov' ? 'hr.gov' : (resource.data.signerLevel == 'manager' ? 'employees.manage' : 'hr.management'))
+            || (resource.data.signerLevel == 'gov' && hrManager()))
+        && request.resource.data.decision.by == request.auth.uid
+        && ((request.resource.data.state == 'declined' && changedKeys().hasOnly(['state', 'decision', 'updatedAt'])
+              && request.resource.data.decision.note.size() > 0)
+            || (request.resource.data.state == 'issued'
+              && changedKeys().hasOnly(['state', 'decision', 'serial', 'issuedOn', 'text', 'card', 'head', 'travel', 'updatedAt'])
+              && request.resource.data.serial.matches('LT-[0-9]{4}/[0-9]+')));
+      allow delete: if false;
+    }
+
+    // A salary or embassy letter's figures (RL-03): equal to employeePay — the
+    // rule holds them so — copied by a hand that may read that pay (the employee
+    // asking, the HR manager asking or signing) while the letter is open; read by
+    // pay roles and the employee. Government relations signs without them.
+    function hrSamePay(d, p) {
+      return d.organizationId == p.organizationId && d.basic == p.basic
+        && d.housing == p.get('housing', 0) && d.transport == p.get('transport', 0);
+    }
+    match /hrLetterPay/{letterId} {
+      allow get: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrSeesPay() || resource.data.employeeUserId == request.auth.uid)));
+      allow create, update: if isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.keys().hasOnly(['organizationId', 'employeeId', 'employeeUserId', 'basic', 'housing', 'transport', 'updatedAt'])
+        && (resource == null || get(/databases/$(database)/documents/hrLetters/$(letterId)).data.state == 'pending')
+        && getAfter(/databases/$(database)/documents/hrLetters/$(letterId)).data.employeeId == request.resource.data.employeeId
+        && getAfter(/databases/$(database)/documents/hrLetters/$(letterId)).data.employeeUserId == request.resource.data.employeeUserId
+        && (hrSeesPay() || hrOwnRecord(request.resource.data.employeeId))
+        && hrSamePay(request.resource.data, get(/databases/$(database)/documents/employeePay/$(request.resource.data.employeeId)).data);
+      allow delete: if false;
+    }
+
     // The last permanent employee number (EM-02) — only ever moves forward.
     match /hrCounters/{orgId} {
       allow get: if isOrgMember(orgId);
