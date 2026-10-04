@@ -42,3 +42,16 @@ export function identityGaps(stored: CompanyIdentity | null | undefined, legacy:
   const old = pickIdentity(legacy)
   return SENSITIVE_IDENTITY_KEYS.filter((k) => k in old && JSON.stringify(old[k]) !== JSON.stringify(have[k]))
 }
+
+/** The sensitive fields a write names, kept even when blank (clearing a value is a write), for mirroring into the identity document. */
+export function identityPatch(payload: Record<string, unknown> | null | undefined): CompanyIdentity {
+  const out: Record<string, unknown> = {}
+  if (!payload) return out
+  for (const key of SENSITIVE_IDENTITY_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(payload, key)) continue
+    const v = payload[key]
+    if (v === undefined) continue
+    out[key] = typeof v === "number" ? String(v) : v
+  }
+  return out as CompanyIdentity
+}

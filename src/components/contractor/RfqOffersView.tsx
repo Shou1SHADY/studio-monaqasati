@@ -1,5 +1,7 @@
 "use client"
 
+import { usePrintProfile } from "@/hooks/usePrintProfile"
+import { printedNumber } from "@/lib/company-print-profile"
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useRouter } from "@/i18n/routing"
 import { useTranslations, useLocale } from 'next-intl'
@@ -881,11 +883,12 @@ ${t("offers_notif_reduction_note", { note })}`
   const deadlinePassed = daysLeft !== null && daysLeft < 0
   const stage = rfqView ? rfqStage(rfqView, new Date(), sealed) : null
   const extendable = acts && rfqOpen && !rfqView?.directAward && (!deadlinePassed || offerViews.length === 0 || !policies.sealOffersUntilDeadline)
+  const print = usePrintProfile()
   const printDoc = async () => {
     if (!rfqView) return
     const p = (profile || {}) as { companyName?: string; name?: string; taxNumber?: string; crNumber?: string }
     const number = rfqView.rfqNumber ? displayDocNumber(rfqView.rfqNumber, locale) : `#${rfqId.slice(0, 6)}`
-    const model = rfqPrintModel(rfqView as unknown as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procOrgName || p.name || "", vat: p.taxNumber || null, cr: p.crNumber || null }, number, displayCity(rfqView.city || "", locale), policies)
+    const model = rfqPrintModel(rfqView as unknown as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procOrgName || p.name || "", vat: printedNumber(p.taxNumber, print.taxNumber), cr: printedNumber(p.crNumber, print.crNumber) }, number, displayCity(rfqView.city || "", locale), policies)
     // The document a supplier off the platform receives carries the link he quotes through.
     const link = acts ? guestLinkUrl(user, { id: rfqId, status: rfqView.status, directAward: rfqView.directAward }) : Promise.resolve(null)
     if (!(await printRfqWithLink(model, locale, (k, params) => tProc(`rfqpo.print.${k}`, params), link))) {

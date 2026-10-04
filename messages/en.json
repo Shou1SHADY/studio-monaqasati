@@ -8447,7 +8447,17 @@
       "owner_only_title": "Available to the account owner only",
       "owner_only_desc": "Company details such as the commercial registration and tax number are seen and edited by the account owner only.",
       "password_show": "Show password",
-      "password_hide": "Hide password"
+      "password_hide": "Hide password",
+      "print_profile_title": "Details printed on team documents",
+      "print_profile_desc": "What you enter here appears on the purchase orders, quotations and receipts your team members issue. Leave it empty to show nothing; your team cannot see the details saved on your company file.",
+      "print_profile_cr": "Commercial registration number (10 digits)",
+      "print_profile_vat": "Tax number (15 digits)",
+      "print_profile_fill": "Fill from company details",
+      "print_profile_save": "Save print details",
+      "print_profile_saved": "Print details saved",
+      "print_profile_failed": "Could not save. Try again.",
+      "print_profile_err_cr": "The commercial registration number has 10 digits.",
+      "print_profile_err_vat": "The tax number has 15 digits, starting and ending with 3."
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",

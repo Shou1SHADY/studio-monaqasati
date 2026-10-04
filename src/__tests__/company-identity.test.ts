@@ -85,3 +85,39 @@ describe("companyIdentity rules", () => {
     expect(fn).toContain("ownerUserId")
   })
 })
+
+describe("mirroring a profile write", () => {
+  const { identityPatch } = jest.requireActual<typeof import("@/lib/company-identity")>("@/lib/company-identity")
+
+  it("keeps the sensitive keys a write names, even when blank, and nothing else", () => {
+    expect(identityPatch({ name: "Acme", crNumber: "", taxNumber: "300000000000003", city: "Riyadh" })).toEqual({ crNumber: "", taxNumber: "300000000000003" })
+    expect(identityPatch({ legalDocuments: { cr: { url: "u", expiryDate: "2027-01-01" } } })).toEqual({ legalDocuments: { cr: { url: "u", expiryDate: "2027-01-01" } } })
+    expect(identityPatch({ taxNumber: 300000000000003 }).taxNumber).toBe("300000000000003")
+    expect(identityPatch({ name: "Acme", certificates: [] })).toEqual({})
+    expect(identityPatch({ crNumber: undefined })).toEqual({})
+    expect(identityPatch(null)).toEqual({})
+  })
+})
+
+describe("companyPrintProfile rules", () => {
+  const body = block("companyPrintProfile")
+
+  it("lets the whole team read what the owner chose to print, and nobody outside", () => {
+    const read = allow(body, "get").join(" ")
+    expect(read).toContain("isOrgMember(orgId)")
+    expect(read).toContain("isCompanyOwner(orgId)")
+    expect(read).toContain("isAdmin()")
+    expect(read).not.toContain("!isOrgMember")
+  })
+
+  it("lets only the owner or the admin write it, and nobody delete it", () => {
+    const write = allow(body, "update").join(" ")
+    expect(write).toContain("isCompanyOwner(orgId)")
+    expect(write).not.toContain("isOrgMember")
+    expect(allow(body, "delete")).toEqual(["false"])
+  })
+
+  it("answers a missing document instead of erroring", () => {
+    expect(body).not.toContain("resource.data")
+  })
+})

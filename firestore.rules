@@ -442,6 +442,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // What the owner chooses to print on documents the team issues (purchase orders, quotations,
+    // receipts) — the registration and tax numbers, only if the owner fills them in. The owner
+    // writes; the whole team reads, because it is printed on their documents.
+    match /companyPrintProfile/{orgId} {
+      allow get: if isSignedIn() && (isAdmin() || isCompanyOwner(orgId) || isOrgMember(orgId));
+      allow create, update: if isAdmin() || isCompanyOwner(orgId);
+      allow delete: if false;
+    }
+
     match /categories/{categoryId} {
       // 'read' = get + list, safe for signed-in users (static reference data)
       allow read: if isSignedIn();

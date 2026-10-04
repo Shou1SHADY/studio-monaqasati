@@ -18,6 +18,7 @@ import {
 import { useFirestore, useUser, useDoc, useMemoFirebase } from "@/firebase"
 import { doc, addDoc, collection, updateDoc, arrayUnion, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { mirrorCompanyIdentity } from "@/lib/company-identity-writes"
 import { useTranslations, useLocale } from "next-intl"
 import { cn } from "@/lib/utils"
 import type { OrgMembership } from "@/hooks/useActiveCompanyName"
@@ -142,6 +143,7 @@ export function CompanySwitcherPage() {
         role: newRole,
         createdAt: serverTimestamp(),
       })
+      void mirrorCompanyIdentity(firestore, orgRef.id, { crNumber: newCr.trim() })
       await updateDoc(doc(firestore, "users", user.uid), {
         // Anchor the account's original role once, so switching back to the
         // primary company can always restore it (enforced by Firestore rules).

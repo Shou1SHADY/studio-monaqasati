@@ -1,5 +1,7 @@
 "use client"
 
+import { usePrintProfile } from "@/hooks/usePrintProfile"
+import { printedNumber } from "@/lib/company-print-profile"
 import { useMemo } from "react"
 import { useLocale } from "next-intl"
 import { useUser } from "@/firebase"
@@ -19,17 +21,18 @@ export function useQuotationBrandingDefaults() {
   const { user, isUserLoading } = useUser()
   const { profile, isLoading: isProfileLoading } = useResolvedProfile(isUserLoading ? null : user?.uid)
   const { orgId, profile: crmProfile, isLoading: isCrmProfileLoading } = useCrmOrgProfile()
+  const print = usePrintProfile()
 
   const logoUrl = crmProfile?.quotationLogoUrl ?? null
   const email = user?.email ?? null
   const branding = useMemo(
     () =>
-      brandingFromProfile(profile as Record<string, unknown> | null, {
+      brandingFromProfile({ ...(profile as Record<string, unknown> | null), crNumber: printedNumber((profile as Record<string, unknown> | null)?.crNumber, print.crNumber) ?? "", taxNumber: printedNumber((profile as Record<string, unknown> | null)?.taxNumber, print.taxNumber) ?? "" }, {
         logoUrl,
         email,
         cityLabel: (city) => displayCity(city, locale),
       }),
-    [profile, logoUrl, email, locale]
+    [profile, print.crNumber, print.taxNumber, logoUrl, email, locale]
   )
 
   return {

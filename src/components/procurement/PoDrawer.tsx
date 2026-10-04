@@ -12,6 +12,8 @@
 // and the write re-runs it again inside its transaction; a refusal comes back
 // as a `ProcWriteError` code and is shown as the sentence for that code.
 
+import { usePrintProfile } from "@/hooks/usePrintProfile"
+import { printedNumber } from "@/lib/company-print-profile"
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
@@ -268,10 +270,11 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
     }
   }
 
+  const print = usePrintProfile()
   const company: PrintCompany = useMemo(() => {
     const p = (profile || {}) as { companyName?: string; name?: string; crNumber?: string; taxNumber?: string; city?: string; location?: string; phone?: string; phoneNumber?: string; email?: string }
-    return { name: p.companyName || world.orgName || p.name || "", cr: p.crNumber || null, vat: p.taxNumber || null, address: p.location || p.city || null, phone: p.phone || p.phoneNumber || null, email: p.email || null }
-  }, [profile, world.orgName])
+    return { name: p.companyName || world.orgName || p.name || "", cr: printedNumber(p.crNumber, print.crNumber), vat: printedNumber(p.taxNumber, print.taxNumber), address: p.location || p.city || null, phone: p.phone || p.phoneNumber || null, email: p.email || null }
+  }, [profile, world.orgName, print.crNumber, print.taxNumber])
 
   const tPrint = (key: string, params?: Record<string, string | number>) => t(`print.${key}`, params)
 

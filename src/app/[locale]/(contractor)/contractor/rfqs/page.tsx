@@ -1,5 +1,7 @@
 "use client"
 
+import { usePrintProfile } from "@/hooks/usePrintProfile"
+import { printedNumber } from "@/lib/company-print-profile"
 import { useState, useEffect } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
@@ -307,10 +309,11 @@ const handleBatchPublish = async () => {
   const supplierOptions = useSupplierRecipientOptions(supplierLinks as any[], ((profile as { favoriteSuppliers?: string[] } | null)?.favoriteSuppliers) || [], t("suppliers_registered_supplier"))
 
   // The document carries the guest link when the round has one, and the RFQ's log says it went out (R-39).
+  const print = usePrintProfile()
   const printOne = async (rfq: RfqRow) => {
     const p = (profile || {}) as { companyName?: string; name?: string; taxNumber?: string; crNumber?: string }
     const number = rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : `#${rfq.id.slice(0, 6)}`
-    const model = rfqPrintModel(rfq as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procWorld.orgName || p.name || "", vat: p.taxNumber || null, cr: p.crNumber || null }, number, displayCity(rfq.city || "", locale), procWorld.policies)
+    const model = rfqPrintModel(rfq as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procWorld.orgName || p.name || "", vat: printedNumber(p.taxNumber, print.taxNumber), cr: printedNumber(p.crNumber, print.crNumber) }, number, displayCity(rfq.city || "", locale), procWorld.policies)
     const link = actsOn(rfq) ? guestLinkUrl(user, rfq) : Promise.resolve(null)
     if (!(await printRfqWithLink(model, locale, (k, params) => tp(`rfqpo.print.${k}`, params), link))) {
       toast({ title: tp("rfqpo.popup_blocked"), variant: "destructive" })
