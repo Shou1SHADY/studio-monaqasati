@@ -140,12 +140,12 @@ describe("the record form", () => {
   const ok = { vatNumber: "300 000 000 000 003", crExpiry: "2027-01-01", paymentTermsDays: "30", leadTimeDays: "7", kind: "mat" as const }
   it("accepts a clean record and cleans it", () => {
     expect(recordErrors(ok)).toEqual([])
-    expect(recordFields(ok)).toEqual({ vatNumber: "300000000000003", crExpiry: "2027-01-01", paymentTermsDays: 30, leadTimeDays: 7, kind: "mat" })
+    expect(recordFields(ok)).toEqual({ vatNumber: "300000000000003", crExpiry: "2027-01-01", paymentTermsDays: 30, leadTimeDays: 7, kind: "mat", origin: null })
   })
   it("empty VAT, CR and lead are allowed; cash in advance is 0", () => {
     const blank = { vatNumber: "", crExpiry: "", paymentTermsDays: "", leadTimeDays: "", kind: "sub" as const }
     expect(recordErrors(blank)).toEqual([])
-    expect(recordFields(blank)).toEqual({ vatNumber: null, crExpiry: null, paymentTermsDays: 0, leadTimeDays: null, kind: "sub" })
+    expect(recordFields(blank)).toEqual({ vatNumber: null, crExpiry: null, paymentTermsDays: 0, leadTimeDays: null, kind: "sub", origin: null })
   })
   it("refuses a VAT number that is not Saudi-shaped, a bad lead time and an unknown kind", () => {
     expect(recordErrors({ ...ok, vatNumber: "123" })).toContain("vat_format")

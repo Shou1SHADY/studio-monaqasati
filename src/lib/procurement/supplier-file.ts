@@ -29,6 +29,10 @@ export const supplierRecordId = (orgId: string, supplierOrgId: string): string =
 export const SUPPLIER_KINDS = ["mat", "svc", "sub"] as const
 export type SupplierKind = (typeof SUPPLIER_KINDS)[number]
 
+export const SUPPLIER_ORIGINS = ["local", "international"] as const
+export type SupplierOrigin = (typeof SUPPLIER_ORIGINS)[number]
+export type OriginFilter = "" | SupplierOrigin
+
 export const SUPPLIER_SOURCES = ["directory", "invite", "guest_link", "link"] as const
 export type SupplierSource = (typeof SUPPLIER_SOURCES)[number]
 
@@ -61,6 +65,8 @@ export interface SupplierRecord {
   supplierOrgId: string
   supplierName: string
   kind?: SupplierKind | null
+  /** Our own call on where he is based; absent means "read it from his phone number". */
+  origin?: SupplierOrigin | null
   source?: SupplierSource | null
   vatNumber?: string | null
   /** `YYYY-MM-DD`. */
@@ -146,9 +152,23 @@ export interface RecordInput {
   paymentTermsDays: number | string | null
   leadTimeDays: number | string | null
   kind: SupplierKind
+  /** "auto" clears our call and lets the phone number decide. */
+  origin?: SupplierOrigin | "auto"
 }
 
-export type RecordError = "vat_format" | "cr_format" | "terms_invalid" | "lead_invalid" | "kind_invalid"
+export type RecordError = "vat_format" | "cr_format" | "terms_invalid" | "lead_invalid" | "kind_invalid" | "origin_invalid"
+
+/** A number written with a country code other than Saudi Arabia's, in either the + or the 00 spelling. */
+export function phoneIsInternational(phone: string | null | undefined): boolean {
+  const raw = text(phone).replace(/[\s().-]/g, "")
+  const e164 = raw.startsWith("00") ? `+${raw.slice(2)}` : raw
+  return /^\+\d{6,}$/.test(e164) && !e164.startsWith("+966")
+}
+
+/** Where he is based: our own call when we made one, else what his phone number says. */
+export function isInternationalSupplier(s: { phone?: string | null; record?: Pick<SupplierRecord, "origin"> | null }): boolean {
+  return s.record?.origin ? s.record.origin === "international" : phoneIsInternational(s.phone)
+}
 
 /** A Saudi VAT number: fifteen digits, starting and ending with 3. */
 export const VAT_PATTERN = /^3\d{13}3$/
@@ -164,11 +184,12 @@ export function recordErrors(input: RecordInput): RecordError[] {
   const lead = input.leadTimeDays === "" || input.leadTimeDays == null ? null : Number(input.leadTimeDays)
   if (lead != null && (!Number.isInteger(lead) || lead < 0 || lead > 365)) out.push("lead_invalid")
   if (!SUPPLIER_KINDS.includes(input.kind)) out.push("kind_invalid")
+  if (input.origin !== undefined && input.origin !== "auto" && !SUPPLIER_ORIGINS.includes(input.origin)) out.push("origin_invalid")
   return out
 }
 
 /** The fields a save writes, cleaned. */
-export function recordFields(input: RecordInput): Pick<SupplierRecord, "vatNumber" | "crExpiry" | "paymentTermsDays" | "leadTimeDays" | "kind"> {
+export function recordFields(input: RecordInput): Pick<SupplierRecord, "vatNumber" | "crExpiry" | "paymentTermsDays" | "leadTimeDays" | "kind" | "origin"> {
   const lead = input.leadTimeDays === "" || input.leadTimeDays == null ? null : Number(input.leadTimeDays)
   return {
     vatNumber: text(input.vatNumber).replace(/\s/g, "") || null,
@@ -176,6 +197,7 @@ export function recordFields(input: RecordInput): Pick<SupplierRecord, "vatNumbe
     paymentTermsDays: input.paymentTermsDays === "" || input.paymentTermsDays == null ? 0 : Number(input.paymentTermsDays),
     leadTimeDays: lead,
     kind: input.kind,
+    origin: input.origin && input.origin !== "auto" ? input.origin : null,
   }
 }
 
@@ -321,12 +343,14 @@ export interface DirectoryEntry {
   name: string
   city: string | null
   categories: string[]
+  international?: boolean
 }
 
 export interface DirectoryFilter {
   q: string
   category: string
   city: string
+  origin?: OriginFilter
 }
 
 export function filterDirectory<T extends DirectoryEntry>(entries: T[], f: DirectoryFilter, label: (category: string) => string = (c) => c): T[] {
@@ -334,6 +358,7 @@ export function filterDirectory<T extends DirectoryEntry>(entries: T[], f: Direc
     (e) =>
       (!f.category || e.categories.includes(f.category)) &&
       (!f.city || e.city === f.city) &&
+      (!f.origin || (f.origin === "international") === Boolean(e.international)) &&
       matchesSearch(f.q, [e.name, e.city, ...e.categories, ...e.categories.map(label)])
   )
 }
@@ -350,7 +375,7 @@ export function directoryCounts(entries: DirectoryEntry[]): { categories: Array<
   return { categories: sorted(cats), cities: sorted(cities) }
 }
 
-export const directoryFiltered = (f: DirectoryFilter): boolean => Boolean(f.q.trim() || f.category || f.city)
+export const directoryFiltered = (f: DirectoryFilter): boolean => Boolean(f.q.trim() || f.category || f.city || f.origin)
 
 // ---------------------------------------------------------------------------
 // Invitations — the system does not message; it opens the sender's own tool

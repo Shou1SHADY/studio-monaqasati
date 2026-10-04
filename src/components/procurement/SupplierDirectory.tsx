@@ -86,6 +86,7 @@ export function SupplierDirectory({ suppliers, onOpen }: { suppliers: PlatformSu
                     </p>
                     <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                       {s.platformVerified && <StatusPill tone="module" className="px-2 py-0 text-[10.5px]">{t("badge.mdmak_verified")}</StatusPill>}
+                      {s.international && <StatusPill tone="info" className="px-2 py-0 text-[10.5px]">{t("badge.international")}</StatusPill>}
                       <span>{t("dir.since", { year: yearOf(s.since) })}</span>
                     </p>
                   </td>

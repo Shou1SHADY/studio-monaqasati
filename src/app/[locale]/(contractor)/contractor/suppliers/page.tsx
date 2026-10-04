@@ -48,6 +48,7 @@ import {
   canManageSuppliers,
   favouriteLogEntry,
   filterDirectory,
+  type OriginFilter,
   canRenewAgreements,
   canSignAgreements,
   makeOrBuyKeys,
@@ -155,6 +156,7 @@ export default function SuppliersPage() {
   }
 
   const [searchQuery, setSearchQuery] = useState("")
+  const [originFilter, setOriginFilter] = useState<OriginFilter>("")
   const [showInvite, setShowInvite] = useState(false)
   const [removeTarget, setRemoveTarget] = useState<PlatformSupplier | null>(null)
   const [removing, setRemoving] = useState(false)
@@ -172,9 +174,13 @@ export default function SuppliersPage() {
       })
     return [...rows.filter((r) => r.isFavorite), ...rows.filter((r) => !r.isFavorite)]
   }, [suppliers, orders, deliveries, rfqs, offers, now, team.viewerCategories])
-  const shownMine = mineRows.filter((s) => matchesSearch(searchQuery, [s.name, s.city, ...s.categories, ...s.categories.map((c) => displayCategory(c, locale))]))
+  const shownMine = mineRows.filter(
+    (s) =>
+      (!originFilter || (originFilter === "international") === s.international) &&
+      matchesSearch(searchQuery, [s.name, s.city, ...s.categories, ...s.categories.map((c) => displayCategory(c, locale))])
+  )
   // One search box across the four segments (S-45): the query stays when the segment changes.
-  const shownPlatform = useMemo(() => filterDirectory(suppliers, { q: searchQuery, category: "", city: "" }, (c) => displayCategory(c, locale)), [suppliers, searchQuery, locale])
+  const shownPlatform = useMemo(() => filterDirectory(suppliers, { q: searchQuery, category: "", city: "", origin: originFilter }, (c) => displayCategory(c, locale)), [suppliers, searchQuery, originFilter, locale])
   const shownAgreements = useMemo(
     () => agreements.filter((a) => matchesSearch(searchQuery, [a.docNumber, displayAgreementNumber(a.docNumber, locale), a.supplierName, ...(a.lines || []).map((l) => l.name)])),
     [agreements, searchQuery, locale]
@@ -266,7 +272,17 @@ export default function SuppliersPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           <ProcChipGroup items={segments.map((s) => ({ id: s, label: t(`seg.${s}`), count: counts[s] }))} active={segment} onPick={pickSegment} label={tC("suppliers_scope_label")} />
-          <div className="relative ms-auto w-full sm:w-72">
+          <select
+            aria-label={t("origin.label")}
+            value={originFilter}
+            onChange={(e) => setOriginFilter(e.target.value as OriginFilter)}
+            className="ms-auto h-10 rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value="">{t("origin.all")}</option>
+            <option value="local">{t("origin.local")}</option>
+            <option value="international">{t("origin.international")}</option>
+          </select>
+          <div className="relative w-full sm:w-72">
             <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input placeholder={t("p2c.search_all")} aria-label={t("p2c.search_all")} className="pe-8 ps-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} dir="auto" />
             {searchQuery && (
