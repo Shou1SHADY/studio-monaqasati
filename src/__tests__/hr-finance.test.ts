@@ -96,6 +96,26 @@ describe("posting and paying", () => {
     await expect(payHeldLine(db, fin, ORG, payroll(), "e1", books)).rejects.toMatchObject({ blocks: ["stale"] })
   })
 
+  it("the entries of ONE line — a returned transfer, a held line paid — name no person: the payroll and the line's place only (RL-03, §3 #18)", async () => {
+    await postHrEvent(db, fin, ORG, event(`hr:PAY:${M}`), books)
+    await recordPayrollPaid(db, fin, ORG, payroll(), books)
+    // Number the people far from their places in the payroll, so a number cannot pass for a place.
+    const p = { ...payroll(), lines: payroll().lines.map((l) => ({ ...l, no: 40 + l.no })) }
+    const pos = p.lines.findIndex((l) => l.employeeId === "e1") + 1
+    await markReturned(db, fin, ORG, p, "e1", "account closed", books)
+    await fixIban(db, po, "e1", { uid: "po", name: "P" }, "SA44 2000 0001 2345 6789 1234")
+    await approveIban(db, hrm, "e1", { uid: "hrm", name: "H" })
+    await payHeldLine(db, fin, ORG, { ...p, returned: payroll().returned }, "e1", books)
+    const one = listCollection<{ id: string; sourceType: string; sourceId: string; description: string; lines: Array<{ note?: string }> }>("accounting_journal").filter(
+      (j) => j.sourceType === "hr_pay_return" || (j.sourceType === "hr_pay_payment" && j.sourceId.includes(":held:"))
+    )
+    expect(one.map((j) => j.sourceId).sort()).toEqual([`${M}:L${pos}`, `${M}:held:L${pos}`].sort())
+    for (const j of one) {
+      const said = JSON.stringify({ id: j.id, sourceId: j.sourceId, description: j.description, notes: j.lines.map((l) => l.note ?? "") })
+      for (const who of ["e1", "41", "0041"]) expect({ said, who, named: said.includes(who) }).toEqual({ said, who, named: false })
+    }
+  })
+
   it("an approved advance is paid out once — Dr employee advances, no name on the entry", async () => {
     seed("hrRequests/r1", { organizationId: ORG, no: "AV-2026/001", kind: "advance", state: "approved", employeeId: "e1", advance: { amount: 900 } })
     const r = { id: "r1", ...(readDoc("hrRequests/r1") as object) } as HrRequest

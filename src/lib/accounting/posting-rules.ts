@@ -820,7 +820,8 @@ export function postHrFee(e: { key: string; date: string; amount: number; projec
 
 export interface HrSettlementPosting {
   settlementId: string
-  /** The employee's number — never the name: every member reads the journal. */
+  /** The employee's number. NOT written to the entry: every member reads the journal, and a settlement is one
+   * person's money — the number names him as surely as his name (RL-03). The Finance desk holds the link. */
   no: number
   date: string
   costKind: HrCostKind
@@ -859,7 +860,7 @@ export function postHrSettlement(e: HrSettlementPosting): PostingResult {
     sourceType: "hr_settlement",
     sourceId: e.settlementId,
     date: e.date,
-    description: `مخالصة نهاية خدمة — موظف ${String(e.no).padStart(4, "0")}`,
+    description: "مخالصة نهاية خدمة",
     costCenter: COST_CENTERS.admin,
     lines,
     empty: round2(e.gratuity + e.leaveCash + e.wages) === 0,
