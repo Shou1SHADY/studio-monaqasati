@@ -19027,7 +19027,11 @@
         "advance": "Advance instalment (art. 92)",
         "advance_v": "{share} of the wage a month",
         "penalty": "Penalties",
-        "penalty_v": "at most {cap} days' wage a month · objection within {days} days"
+        "penalty_v": "at most {cap} days' wage a month · objection within {days} days",
+        "hours": "Working hours",
+        "hours_v": "{normal} a day · Ramadan {ramadan} for everyone",
+        "holidays": "Public holidays {year} (art. 112, Umm al-Qura)",
+        "holiday_days": "from {date} — {n} days"
       },
       "today": {
         "soon": "Your decisions appear here as HR is set up.",
@@ -19531,7 +19535,9 @@
           "missing": "{n, plural, one {# day has} other {# days have}} no record — record or declare them first"
         },
         "on_leave": "On approved leave",
-        "on_leave_note": "On approved leave this day — not recorded absent and nothing is deducted."
+        "on_leave_note": "On approved leave this day — not recorded absent and nothing is deducted.",
+        "holiday": "{name} — a paid public holiday; no sheet is needed. Hours worked on it are recorded as overtime.",
+        "ramadan": "Ramadan: the working day is six hours for everyone — anything beyond is overtime."
       },
       "leave_type": {
         "annual": "Annual",
@@ -20120,6 +20126,12 @@
           "bad_count": "A whole number above zero",
           "no_date": "Choose the start date"
         }
+      },
+      "holiday": {
+        "founding": "Founding Day",
+        "fitr": "Eid al-Fitr",
+        "adha": "Eid al-Adha",
+        "national": "National Day"
       }
     },
     "ProcSuppliers": {

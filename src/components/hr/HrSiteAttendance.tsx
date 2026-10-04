@@ -55,6 +55,7 @@ import {
 } from "@/lib/hr/attendance"
 import { closeMonth, declareMissing, recordDay } from "@/lib/hr/attendance-writes"
 import { HR_ATTENDANCE } from "@/lib/hr/collections"
+import { holidayOn, isRamadan } from "@/lib/hr/holidays"
 import { displayName } from "@/lib/hr/employee"
 import type { HrActor } from "@/lib/hr/employee-writes"
 import { empNo, hrDate, todayDay } from "@/lib/hr/format"
@@ -116,6 +117,8 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
   const mayViolation = access.allowed("violation.record", { site: siteId })
   const mayRecord = access.allowed("attendance.record", { site: siteId })
   const sheetClosed = Boolean(sheetWm?.closed)
+  // AT-06 — a public holiday is paid and needs no sheet; hours worked on it are overtime.
+  const holiday = holidayOn(day)
   const sBlocks = sheetBlocks({ day, today, closed: sheetClosed, listed: roster, ex, mayRecordViolation: mayViolation })
   const setRow = (id: string, patch: Partial<AttendanceException>) => setEx((m) => ({ ...m, [id]: { ...m[id], ...patch } }))
 
@@ -194,6 +197,8 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
         >
           <div className="space-y-3">
             {assumed && <Callout tone="info">{t("att.assumed")}</Callout>}
+            {holiday && <Callout tone="info">{t("att.holiday", { name: t(`holiday.${holiday.key}`) })}</Callout>}
+            {!holiday && isRamadan(day) && <Callout tone="info">{t("att.ramadan")}</Callout>}
             {sheetClosed && <Callout tone="block">{t("att.month_closed")}</Callout>}
             {saved && <p className="text-xs text-muted-foreground">{t("att.recorded_by", { name: saved.byName || "—", at: hrDate(saved.at, locale) })}</p>}
             {roster.length === 0 ? (

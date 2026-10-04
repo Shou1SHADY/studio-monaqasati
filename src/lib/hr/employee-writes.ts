@@ -23,6 +23,7 @@ import { advanceInstalment, payFromBasic, retroDifference, wageOf } from "./pay"
 import { DEFAULT_HR_POLICIES, monthRange, type HrPolicies } from "./statutory"
 import { tradeOf } from "./trades"
 import { UNASSIGNED_SITE } from "./sites"
+import { todayDay } from "./format"
 import { assertHr, HrWriteError } from "./write-guard"
 
 /** `hrCounters/{orgId}` — the last permanent employee number (never reused). */
@@ -45,7 +46,8 @@ export interface LogEntry {
   source: "hr" | "finance" | "inventory" | "projects"
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+/** The day in Riyadh — 00:00–03:00 is today there, not yesterday (the UTC day). */
+const today = () => todayDay()
 
 function log(tx: Transaction, firestore: Firestore, employeeId: string, orgId: string, actor: HrActor, kind: string, params?: LogEntry["params"]) {
   const entry: LogEntry & { organizationId: string } = { organizationId: orgId, at: new Date().toISOString(), by: actor.uid, byName: actor.name, kind, params: params ?? {}, source: "hr" }

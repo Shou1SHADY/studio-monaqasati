@@ -25,12 +25,9 @@ import {
 } from "./requests"
 import { serviceYears, type HrPolicies } from "./statutory"
 import { drawYearlyDocNumber } from "../sales-numbering"
+import { todayDay } from "./format"
 import { HrWriteError } from "./write-guard"
 
-const localToday = () => {
-  const now = new Date()
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
-}
 const stamp = (actor: HrActor, note?: string | null): Stamp => ({ by: actor.uid, byName: actor.name, at: new Date().toISOString(), note: note?.trim() || null })
 
 function log(tx: Transaction, firestore: Firestore, emp: Pick<HrEmployee, "id" | "organizationId">, actor: HrActor, kind: string, params: Record<string, string | number | null>) {
@@ -59,13 +56,13 @@ export interface FileRequestInput {
   supervisor?: { employeeId: string | null; userId: string | null } | null
 }
 
-type Opts = { policies: HrPolicies; holidays?: Holiday[]; today?: string; others?: Array<{ from: string; to: string }>; pendingAdvance?: boolean }
+type Opts = { policies: HrPolicies; holidays?: readonly Holiday[]; today?: string; others?: Array<{ from: string; to: string }>; pendingAdvance?: boolean }
 
 /** The employee files his own (My file); the HR manager files on his behalf. */
 export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: string, actor: HrActor, input: FileRequestInput, opts: Opts): Promise<{ id: string; no: string }> {
   const own = Boolean(ctx.employeeId) && ctx.employeeId === input.employeeId
   if (!own && !ctx.roles.has("manager")) throw new HrWriteError("no_role")
-  const today = opts.today ?? localToday()
+  const today = opts.today ?? todayDay()
   const ref = doc(collection(firestore, HR_REQUESTS))
   let no = ""
   await runTransaction(firestore, async (tx) => {
@@ -137,7 +134,7 @@ export async function decideRequest(
   note: string,
   opts: Opts
 ): Promise<{ state: HrRequest["state"] }> {
-  const today = opts.today ?? localToday()
+  const today = opts.today ?? todayDay()
   let state: HrRequest["state"] = "declined"
   await runTransaction(firestore, async (tx) => {
     const r = await readReq(tx, firestore, id)
@@ -231,7 +228,7 @@ export async function financeDecideAdvance(firestore: Firestore, actor: HrActor 
 
 /** Cancel a request that has not started (LV-07): an approved leave gives its days back. */
 export async function cancelRequest(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, note: string, opts: { today?: string } = {}): Promise<void> {
-  const today = opts.today ?? localToday()
+  const today = opts.today ?? todayDay()
   await runTransaction(firestore, async (tx) => {
     const r = await readReq(tx, firestore, id)
     if (!mayCancel(ctx, r, today)) throw new HrWriteError("no_role")

@@ -7,8 +7,8 @@
 // their unrecorded days do not block closing. Pure: no I/O.
 
 import { isOffice, UNASSIGNED_SITE, type SiteType } from "./sites"
+import { isHoliday, OFFICIAL_HOLIDAYS, type Holiday } from "./holidays"
 import { addDays, monthRange } from "./statutory"
-import type { Holiday } from "./leave"
 import type { ViolationCode } from "./penalties"
 
 /** `hrAttendance/{orgId}__{siteId}__{yyyy-mm}`. */
@@ -65,15 +65,14 @@ export const assumesPresence = (siteId: string, type: SiteType | null | undefine
 /** Friday is the weekly rest day (art. 104). */
 export const isRestDay = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay() === 5
 
-export function isHoliday(day: string, holidays: Holiday[] = []): boolean {
-  return holidays.some((h) => day >= h.from && day <= addDays(h.from, h.days - 1))
-}
+export { isHoliday } from "./holidays"
 
 export const monthOf = (day: string) => day.slice(0, 7)
 export const monthOver = (month: string, today: string) => today > monthRange(month).end
 
-/** Working days of the month that should have a record by now — through yesterday. */
-export function dueDays(month: string, today: string, holidays: Holiday[] = []): string[] {
+/** Working days of the month that should have a record by now — through yesterday.
+ * Fridays and the official holidays are not working days (WF-05 step 1). */
+export function dueDays(month: string, today: string, holidays: readonly Holiday[] = OFFICIAL_HOLIDAYS): string[] {
   const { start, end } = monthRange(month)
   const last = today > end ? end : addDays(today, -1)
   const out: string[] = []
@@ -82,7 +81,7 @@ export function dueDays(month: string, today: string, holidays: Holiday[] = []):
 }
 
 /** Days nobody recorded and nobody declared (WF-05 step 1). None where presence is assumed. */
-export function missingDays(wm: Pick<WorkplaceMonth, "days" | "declarations"> | null, month: string, today: string, opts: { assumed: boolean; holidays?: Holiday[] }): string[] {
+export function missingDays(wm: Pick<WorkplaceMonth, "days" | "declarations"> | null, month: string, today: string, opts: { assumed: boolean; holidays?: readonly Holiday[] }): string[] {
   if (opts.assumed) return []
   const declared = new Set((wm?.declarations ?? []).flatMap((d) => d.days))
   return dueDays(month, today, opts.holidays).filter((d) => !wm?.days?.[d] && !declared.has(d))

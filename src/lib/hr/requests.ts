@@ -144,7 +144,7 @@ export function travelDocsExpire(docs: DocDates | null | undefined, nationality:
 export function leaveQuote(
   emp: Pick<HrEmployee, "join" | "gender" | "hajjTaken" | "leaveTaken" | "openingLeave" | "sick" | "docs" | "nationality">,
   input: { type: LeaveType; from: string; to: string; excessUnpaid: boolean; travel: boolean },
-  ctx: { holidays?: Holiday[]; others?: Array<{ from: string; to: string }> } = {}
+  ctx: { holidays?: readonly Holiday[]; others?: Array<{ from: string; to: string }> } = {}
 ): LeaveQuote {
   const blocks: LeaveBlock[] = []
   const warnings: LeaveWarning[] = []

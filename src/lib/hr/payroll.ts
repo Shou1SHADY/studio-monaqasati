@@ -9,6 +9,7 @@
 import { addMonths, assumesPresence, EMPTY_MONTH, employeeMonth, type EmployeeMonth, type WorkplaceMonth } from "./attendance"
 import type { EmployeePay, HrEmployee } from "./employee"
 import { monthlyEosAccrual } from "./eos"
+import { isHoliday } from "./holidays"
 import { leaveDays, sickSplit, type Holiday } from "./leave"
 import { gosiBase, overtimeOverCap, payLine, wageOf, type PayLine } from "./pay"
 import type { HrRequest } from "./requests"
@@ -143,7 +144,7 @@ function datesOf(from: string, to: string): string[] {
 /** The month's unpaid and sick-leave days from approved leaves (the excess of an annual leave is its LAST days);
  * `all` is every day of the month inside ANY approved leave — paid ones too: a day on leave is never an absence;
  * `sickFromMonth` counts the approved sick-leave days from this month's first day on. */
-export function leaveDaysInMonth(requests: HrRequest[], employeeId: string, month: string, holidays: Holiday[] = []): { unpaid: string[]; sick: string[]; all: string[]; sickFromMonth: number } {
+export function leaveDaysInMonth(requests: HrRequest[], employeeId: string, month: string, holidays?: readonly Holiday[]): { unpaid: string[]; sick: string[]; all: string[]; sickFromMonth: number } {
   const { start, end } = monthRange(month)
   const unpaid: string[] = []
   const sick: string[] = []
@@ -159,7 +160,7 @@ export function leaveDaysInMonth(requests: HrRequest[], employeeId: string, mont
     if (l.type === "sick") {
       sick.push(...counted.filter(inMonth))
       sickFromMonth += counted.filter((d) => d >= start).length
-    } else if (l.unpaidDays > 0) unpaid.push(...counted.slice(counted.length - l.unpaidDays).filter(inMonth))
+    } else if (l.unpaidDays > 0) unpaid.push(...counted.slice(Math.max(0, counted.length - l.unpaidDays)).filter(inMonth))
   }
   return { unpaid, sick, all, sickFromMonth }
 }
@@ -227,9 +228,10 @@ export function computePayroll(input: ComputeInput): { lines: PayrollLine[]; mis
         else seenOn.add(d)
       }
     const absent = [...absentOn].filter((d) => !onLeave.has(d) && !seenOn.has(d)).length
-    // A whole calendar month without pay is the whole 30-day wage (February's 28 days too).
+    // A whole calendar month without pay is the whole 30-day wage (February's 28 days too) —
+    // a public holiday inside it is not a leave day (LV-02), so it does not break "whole".
     const from = e.join > start ? e.join : start
-    const unpaidDays = leave.unpaid.length > 0 && datesOf(from, end).every((d) => leave.unpaid.includes(d)) ? STATUTORY.monthDays : leave.unpaid.length
+    const unpaidDays = leave.unpaid.length > 0 && datesOf(from, end).every((d) => leave.unpaid.includes(d) || isHoliday(d, input.holidays)) ? STATUTORY.monthDays : leave.unpaid.length
     const pen = monthPenalties(input.violations ?? [], e.id, month, wageOf(pay))
     const line = payLine({
       pay,

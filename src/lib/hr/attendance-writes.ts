@@ -26,19 +26,16 @@ import type { Holiday } from "./leave"
 import type { SiteType } from "./sites"
 import { violationId } from "./violations"
 import { violationRecord } from "./violation-writes"
+import { todayDay } from "./format"
 import { assertHr, HrWriteError } from "./write-guard"
 
-const localToday = () => {
-  const now = new Date()
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
-}
 
 export interface SiteRef {
   id: string
   type: SiteType | null
 }
 
-type Opts = { today?: string; holidays?: Holiday[] }
+type Opts = { today?: string; holidays?: readonly Holiday[] }
 
 function base(orgId: string, site: SiteRef, month: string) {
   return { organizationId: orgId, siteId: site.id, month, days: {}, declarations: [], closed: null }
@@ -56,7 +53,7 @@ export async function recordDay(
   opts: Opts = {}
 ): Promise<void> {
   assertHr(ctx, "attendance.record", { site: site.id })
-  const today = opts.today ?? localToday()
+  const today = opts.today ?? todayDay()
   const month = monthOf(day)
   const ex = compactExceptions(input.ex)
   const ref = doc(firestore, HR_ATTENDANCE, attendanceId(orgId, site.id, month))
@@ -100,7 +97,7 @@ export async function declareMissing(
   opts: Opts = {}
 ): Promise<void> {
   assertHr(ctx, "attendance.declare", { site: site.id })
-  const today = opts.today ?? localToday()
+  const today = opts.today ?? todayDay()
   const ref = doc(firestore, HR_ATTENDANCE, attendanceId(orgId, site.id, month))
   await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(ref)
@@ -128,7 +125,7 @@ export async function closeMonth(
   opts: Opts = {}
 ): Promise<{ asIs: boolean }> {
   assertHr(ctx, "attendance.close", { site: site.id })
-  const today = opts.today ?? localToday()
+  const today = opts.today ?? todayDay()
   const ref = doc(firestore, HR_ATTENDANCE, attendanceId(orgId, site.id, month))
   let asIs = false
   await runTransaction(firestore, async (tx) => {
