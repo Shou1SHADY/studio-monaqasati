@@ -13,15 +13,13 @@ import { FileSignature, FileText, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
-import { useUser } from "@/firebase"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { useHrLetters } from "@/hooks/useHrLetters"
-import { usePermissions } from "@/hooks/usePermissions"
 import { Link } from "@/i18n/routing"
 import type { EmployeePay, HrEmployee } from "@/lib/hr/employee"
 import type { HrActor } from "@/lib/hr/employee-writes"
 import { hrDate } from "@/lib/hr/format"
-import { lettersToSign, letterNoDisplay, maySignLetter, requestableKinds, type HrLetter, type LetterState } from "@/lib/hr/letters"
+import { letterNoDisplay, maySignLetter, requestableKinds, type HrLetter, type LetterState } from "@/lib/hr/letters"
 import { LetterDialog, letterLabel, NewLetterDialog } from "./HrLetterDialogs"
 import type { HrPortal } from "./HrShell"
 
@@ -121,18 +119,3 @@ export function HrLettersPanel({ access, actor, emp, pay, portal }: { access: Hr
   )
 }
 
-/** The signer's queue (WF-24 step 2) — nothing when nothing waits for this viewer. */
-export function HrLetterQueue({ access, portal }: { access: HrAccess; portal: HrPortal }) {
-  const t = useTranslations("Portal.HR")
-  const { user } = useUser()
-  const { profile } = usePermissions()
-  const { letters } = useHrLetters(access)
-  const waiting = useMemo(() => lettersToSign(access.ctx, letters), [access.ctx, letters])
-  if (!access.allowed("letter.sign") || waiting.length === 0) return null
-  const actor = { uid: user?.uid ?? "", name: (profile?.name as string) || null }
-  return (
-    <Panel title={t("letter.queue")} icon={FileSignature} count={waiting.length}>
-      <HrLetterList access={access} actor={actor} letters={waiting} portal={portal} empty={t("letter.none")} />
-    </Panel>
-  )
-}

@@ -35,6 +35,9 @@ import { dutyToday, renewalQueue, todayItems, type TodayGroup, type TodayItem } 
 import { cn } from "@/lib/utils"
 import { DOC_TONE } from "./HrPeopleView"
 import { HrRequestList } from "./HrRequestList"
+import { HrLetterList } from "./HrLetters"
+import { useHrLetters } from "@/hooks/useHrLetters"
+import { lettersToSign } from "@/lib/hr/letters"
 import { HrViolationList, useHrViolations, violationWaits } from "./HrViolationList"
 import { hrHref, type HrPortal } from "./HrShell"
 
@@ -55,6 +58,9 @@ export function HrTodayView({ access, portal }: { access: HrAccess; portal: HrPo
   const actor = { uid: user?.uid ?? "", name: (profile?.name as string) || null }
   const violations = useHrViolations(access)
   const vWaiting = useMemo(() => violations.filter((v) => violationWaits(access, v)), [violations, access])
+  // EM-08 — letters waiting for this viewer's signature are people's requests too.
+  const { letters } = useHrLetters(access)
+  const lWaiting = useMemo(() => (access.allowed("letter.sign") ? lettersToSign(access.ctx, letters) : []), [access, letters])
 
   const world = useHrToday(access, today)
   const items = useMemo(
@@ -112,12 +118,14 @@ export function HrTodayView({ access, portal }: { access: HrAccess; portal: HrPo
     <div className="space-y-6">
       {panel("blocking", OctagonAlert)}
       {panel("other", Hourglass)}
-      <Panel title={t("today.g.requests")} icon={Inbox} count={waiting.length + vWaiting.length || undefined}>
+      <Panel title={t("today.g.requests")} icon={Inbox} count={waiting.length + vWaiting.length + lWaiting.length || undefined}>
         <div className="space-y-3">
           <HrRequestList access={access} requests={shown("req", waiting)} portal={portal} empty={t("today.nothing_waiting")} />
           {moreButton("req", waiting.length)}
           {vWaiting.length > 0 && <HrViolationList access={access} actor={actor} violations={shown("vio", vWaiting)} all={violations} empty="" />}
           {moreButton("vio", vWaiting.length)}
+          {lWaiting.length > 0 && <HrLetterList access={access} actor={actor} letters={shown("let", lWaiting)} portal={portal} empty="" />}
+          {moreButton("let", lWaiting.length)}
         </div>
       </Panel>
       {panel("due", CalendarClock)}
