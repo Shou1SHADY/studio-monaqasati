@@ -3008,14 +3008,15 @@ service cloud.firestore {
     }
 
     // The outbox to Finance (§7.2): one document per event key, written once by
-    // the approving HR manager; Finance only marks it posted / paid.
+    // the approving HR manager — or, for a renewal's fee (hr:PR, DC-03), by
+    // government relations who records it; Finance only marks it posted / paid.
     match /hrEvents/{eventId} {
       // "Never sent twice" is a read of an event that does not exist yet.
       allow get, list: if isSignedIn() && (isAdmin() || ((resource == null || isOrgMember(resource.data.organizationId)) && (hrSeesPay() || hrFinance())));
       allow create: if isOrgMember(request.resource.data.organizationId)
         && eventId == request.resource.data.organizationId + '__' + request.resource.data.key
         && request.resource.data.state == 'sent'
-        && hrManager();
+        && (hrManager() || (hrRole('hr.gov') && request.resource.data.kind == 'PR' && request.resource.data.key.matches('hr:PR:.*')));
       allow update: if isOrgMember(resource.data.organizationId)
         && hrFinance()
         && changedKeys().hasOnly(['state', 'posted', 'paid', 'entryId', 'updatedAt'])

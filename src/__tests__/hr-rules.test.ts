@@ -106,6 +106,17 @@ describe("pay stays with those who may see it (RL-02, RL-03)", () => {
   })
 })
 
+describe("what HR sends Finance (§7.2)", () => {
+  it("government relations who records a renewal sends its fee as a payment request — and nothing else (DC-03)", () => {
+    const [create] = allow(block("hrEvents"), "create")
+    expect(create).toMatch(/hrManager\(\) \|\| \(hrRole\('hr\.gov'\) && request\.resource\.data\.kind == 'PR' && request\.resource\.data\.key\.matches\('hr:PR:\.\*'\)\)/)
+    // Never rewritten: Finance alone updates an event, and only its state.
+    const [update] = allow(block("hrEvents"), "update")
+    expect(update).toMatch(/hrFinance\(\)/)
+    expect(update).not.toMatch(/hr\.gov/)
+  })
+})
+
 describe("the roles are the ones access.ts names", () => {
   it("every role's permission id is a role the rules know", () => {
     for (const perm of Object.values(HR_ROLE_PERMISSION)) expect(rules).toContain(`hrRole('${perm}')`)

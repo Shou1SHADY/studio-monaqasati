@@ -83,6 +83,7 @@ export function sourceDocumentPath(entry: Pick<JournalEntry, "sourceType" | "sou
     case "hr_pay_return":
     case "hr_advance":
     case "hr_settlement":
+    case "hr_fee":
       return "accounting/hr-desk"
     default:
       return null

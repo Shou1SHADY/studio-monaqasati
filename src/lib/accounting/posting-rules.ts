@@ -800,6 +800,24 @@ export function postHrAdvance(e: { requestId: string; requestNo: string; date: s
   }
 }
 
+/** A payment request HR sent (hr:PR) paid — a government document fee (a renewal, DC-03): Dr government &
+ * recruitment fees (the prototype's 6110), on the workplace's project when it has one · Cr bank. The entry names
+ * the request's key — the employee's number, never his name. */
+export function postHrFee(e: { key: string; date: string; amount: number; projectId?: string | null; bankAccount?: string; description: string }): PostingResult {
+  return {
+    sourceType: "hr_fee",
+    sourceId: e.key,
+    date: e.date,
+    description: e.description,
+    costCenter: COST_CENTERS.admin,
+    lines: [
+      { account: ACC.govFees, debit: e.amount, project: e.projectId ?? undefined, note: "رسوم حكومية" },
+      { account: e.bankAccount || ACC.bankMain, credit: e.amount },
+    ],
+    empty: round2(e.amount) === 0,
+  }
+}
+
 export interface HrSettlementPosting {
   settlementId: string
   /** The employee's number — never the name: every member reads the journal. */

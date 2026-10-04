@@ -24,17 +24,17 @@ import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { DOC_TYPES, type DocType } from "@/lib/hr/documents"
 import { assignBlocks, payChangeBlocks, probationBlocks, probationMaxEnd, renewalBlocks, type EmployeePay, type HrEmployee } from "@/lib/hr/employee"
-import { assignEmployee, changePay, decideProbation, linkUser, payWithStep, recordRenewal, type HrActor } from "@/lib/hr/employee-writes"
+import { assignEmployee, changePay, commissionBlocks, decideProbation, linkUser, payWithStep, recordCommission, recordRenewal, type HrActor } from "@/lib/hr/employee-writes"
 import { HR_PAYROLLS } from "@/lib/hr/collections"
 import type { Payroll } from "@/lib/hr/payroll"
-import { monthRange, r2 } from "@/lib/hr/statutory"
+import { addDays, monthRange, r2 } from "@/lib/hr/statutory"
 import { hrMoney, todayDay } from "@/lib/hr/format"
 import { payFromBasic, paySegments, wageOf } from "@/lib/hr/pay"
 import { UNASSIGNED_SITE, type HrSite } from "@/lib/hr/sites"
 import { TRADES } from "@/lib/hr/trades"
 import { HrWriteError } from "@/lib/hr/write-guard"
 
-export type EmployeeAction = "move" | "pay" | "probation" | "renew" | "link"
+export type EmployeeAction = "move" | "pay" | "commission" | "probation" | "renew" | "link"
 
 function useRun(onDone: () => void) {
   const t = useTranslations("Portal.HR")
@@ -91,9 +91,11 @@ export function EmployeeActionDialog({
   const [expiry, setExpiry] = useState("")
   const [fee, setFee] = useState("")
   const [userId, setUserId] = useState(emp.userId ?? "")
+  const [commMonth, setCommMonth] = useState(addDays(`${today.slice(0, 7)}-01`, -1).slice(0, 7))
+  const [commAmount, setCommAmount] = useState("")
   // EM-04 — the last closed month (its main payroll approved): a change reaches back to it at most.
   const prQ = useMemoFirebase(
-    () => (firestore && access.orgId && action === "pay" && access.allowed("pay.view") ? query(collection(firestore, HR_PAYROLLS), where("organizationId", "==", access.orgId), where("kind", "==", "main")) : null),
+    () => (firestore && access.orgId && (action === "pay" || action === "commission") && access.allowed("pay.view") ? query(collection(firestore, HR_PAYROLLS), where("organizationId", "==", access.orgId), where("kind", "==", "main")) : null),
     [firestore, access, action]
   )
   const { data: prData } = useCollection(prQ)
@@ -213,6 +215,33 @@ export function EmployeeActionDialog({
         {future && <Callout tone="info">{t("paychange.scheduled", { on: effectiveOn })}</Callout>}
         {retroPreview !== 0 && <Callout tone="info">{t("paychange.retro_preview", { amount: hrMoney(retroPreview), month: lastClosed ?? "" })}</Callout>}
         <p className="text-xs text-muted-foreground">{t("paychange.retro_note")}</p>
+      </div>
+    )
+  } else if (action === "commission") {
+    title = t("file.act.commission")
+    const amount = Number(commAmount)
+    blocks = commissionBlocks({ month: commMonth, amount, reason }, today)
+    blockPrefix = "commission.block"
+    const late = Boolean(lastClosed) && commMonth <= (lastClosed ?? "")
+    submit = () => void run(() => recordCommission(firestore!, access.ctx, emp.id, actor, { month: commMonth, amount, reason }), "file.commission_recorded", blockPrefix)
+    body = (
+      <div className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="cm-month">{t("commission.month")}</Label>
+            <Input id="cm-month" type="month" dir="ltr" max={today.slice(0, 7)} value={commMonth} onChange={(e) => setCommMonth(e.target.value)} disabled={busy} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cm-amount">{t("commission.amount")}</Label>
+            <Input id="cm-amount" type="number" min="0" step="any" dir="ltr" value={commAmount} onChange={(e) => setCommAmount(e.target.value)} disabled={busy} />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="cm-ref">{t("commission.reference")}</Label>
+          <Input id="cm-ref" value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} />
+        </div>
+        {late && <Callout tone="info">{t("commission.late", { month: commMonth })}</Callout>}
+        <p className="text-xs text-muted-foreground">{t("commission.note")}</p>
       </div>
     )
   } else if (action === "probation") {

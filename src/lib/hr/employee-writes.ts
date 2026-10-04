@@ -5,7 +5,7 @@
 
 import { collection, doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { hrAllowed, type HrContext } from "./access"
-import { HR_EMPLOYEES, HR_PAY, HR_PAYROLLS } from "./collections"
+import { HR_EMPLOYEES, HR_EVENTS, HR_PAY, HR_PAYROLLS } from "./collections"
 import { HR_SETTINGS } from "./settings"
 import type { DocType } from "./documents"
 import {
@@ -260,6 +260,51 @@ export async function changePay(
 }
 
 // ---------------------------------------------------------------------------
+// Commission (PY-01) — what Sales approved, paid with a month's payroll
+// ---------------------------------------------------------------------------
+
+export type CommissionBlock = "bad_amount" | "no_reason" | "bad_month" | "future_month"
+
+/** Sales approves the commission (its reference is the reason); the HR manager records it against the month it is
+ * paid with — never his own (RL-02). That month's payroll puts it on the line; once that payroll is approved, a
+ * commission for it goes to its supplementary. The log names the month, never the amount (RL-03). */
+export function commissionBlocks(input: { month: string; amount: number; reason: string }, today: string): CommissionBlock[] {
+  const out: CommissionBlock[] = []
+  if (!(input.amount > 0)) out.push("bad_amount")
+  if (!input.reason.trim()) out.push("no_reason")
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(input.month)) out.push("bad_month")
+  else if (input.month > today.slice(0, 7)) out.push("future_month")
+  return out
+}
+
+export async function recordCommission(
+  firestore: Firestore,
+  ctx: HrContext,
+  id: string,
+  actor: HrActor,
+  input: { month: string; amount: number; reason: string },
+  opts: { today?: string } = {}
+): Promise<string> {
+  assertHr(ctx, "pay.change")
+  if (ctx.employeeId === id && !ctx.owner) throw new HrWriteError("own_request")
+  const day = opts.today ?? localDay()
+  const blocks = commissionBlocks(input, day)
+  if (blocks.length) throw new HrWriteError("blocked", blocks)
+  const itemId = `${input.month}:${new Date().toISOString()}`
+  await runTransaction(firestore, async (tx) => {
+    const { emp } = await readEmployee(tx, firestore, id)
+    const pRef = doc(firestore, HR_PAY, id)
+    const pSnap = await tx.get(pRef)
+    if (!pSnap.exists()) throw new HrWriteError("blocked", ["no_wage"])
+    const pay = pSnap.data() as EmployeePay
+    const item = { id: itemId, month: input.month, amount: r2(input.amount), reason: input.reason.trim(), at: new Date().toISOString(), by: actor.uid }
+    tx.update(pRef, { commissions: [...(pay.commissions ?? []), item], updatedAt: serverTimestamp() })
+    log(tx, firestore, id, emp.organizationId, actor, "commission_recorded", { month: input.month, reason: input.reason.trim() })
+  })
+  return itemId
+}
+
+// ---------------------------------------------------------------------------
 // Probation (EM-05) — the line manager's view attaches, never blocks
 // ---------------------------------------------------------------------------
 
@@ -289,14 +334,41 @@ export async function decideProbation(
 // Documents — a renewal (DC-03)
 // ---------------------------------------------------------------------------
 
+/** `hr:PR:DOC:<no>:<document>:<new expiry>` — a renewal's fee as a payment request to Finance (DC-03, HR-Pipeline
+ * §2.1 `hr:PR:<type>:<number>`): one per renewal, never sent twice (a renewal to the same expiry is refused). */
+export const feeEventKey = (no: number, type: DocType, expiry: string) => `hr:PR:DOC:${no}:${type}:${expiry}`
+
 export async function recordRenewal(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, input: { type: DocType; expiry: string; fee?: number | null }): Promise<void> {
   assertHr(ctx, "documents.manage")
+  const fee = r2(input.fee ?? 0)
+  if (!(fee >= 0)) throw new HrWriteError("blocked", ["bad_fee"])
   await runTransaction(firestore, async (tx) => {
     const { ref, emp } = await readEmployee(tx, firestore, id)
     const blocks = renewalBlocks(emp.docs ?? {}, input.type, input.expiry, today())
     if (blocks.length) throw new HrWriteError("blocked", blocks)
     tx.update(ref, { [`docs.${input.type}`]: input.expiry, updatedAt: serverTimestamp() })
     log(tx, firestore, id, emp.organizationId, actor, "renewed", { doc: input.type, from: emp.docs?.[input.type] ?? null, to: input.expiry, fee: input.fee ?? null })
+    // The fee goes to Finance as a payment request (Dr government & recruitment fees, the prototype's 6110) —
+    // HR records, Finance pays. Written blind at its fixed id: the rules let it be created once, never rewritten.
+    if (fee > 0) {
+      const key = feeEventKey(emp.no, input.type, input.expiry)
+      tx.set(doc(firestore, HR_EVENTS, `${emp.organizationId}__${key}`), {
+        organizationId: emp.organizationId,
+        key,
+        kind: "PR",
+        prType: "doc",
+        month: localDay().slice(0, 7),
+        amount: fee,
+        employeeId: id,
+        employeeNo: emp.no,
+        doc: input.type,
+        expiry: input.expiry,
+        siteId: emp.siteId ?? null,
+        state: "sent",
+        sent: { by: actor.uid, byName: actor.name, at: new Date().toISOString() },
+        createdAt: serverTimestamp(),
+      })
+    }
   })
 }
 

@@ -7,7 +7,7 @@
 
 import { doc, getDoc, serverTimestamp, writeBatch, type Firestore } from "firebase/firestore"
 import { postToLedger } from "../accounting/post"
-import { postHrAdvance, postHrEos, postHrPay, postHrPayPayment, postHrPayReturn, postHrSettlement, type HrCostRow, type PostingResult } from "../accounting/posting-rules"
+import { postHrAdvance, postHrEos, postHrFee, postHrPay, postHrPayPayment, postHrPayReturn, postHrSettlement, type HrCostRow, type PostingResult } from "../accounting/posting-rules"
 import { HR_EVENTS, HR_EXITS, HR_PAY, HR_PAYROLLS, HR_PAYSLIPS, HR_REQUESTS, HR_SETTLEMENTS } from "./collections"
 import type { EmployeePay } from "./employee"
 import type { HrSettlement } from "./exit-writes"
@@ -208,6 +208,42 @@ export async function payAdvance(firestore: Firestore, a: FinanceActor, orgId: s
   const batch = writeBatch(firestore)
   await book(firestore, a, orgId, postHrAdvance({ requestId: r.id, requestNo: r.no, date: books.date, amount: r.advance.amount, bankAccount: books.bankAccount }), books, batch)
   batch.update(doc(firestore, HR_REQUESTS, r.id), { payout: { ...stamp(a), date: books.date }, updatedAt: serverTimestamp() })
+  await batch.commit()
+}
+
+/** A payment request HR sent (hr:PR — a renewal's government fee, DC-03). */
+export interface HrFeeEvent {
+  id: string
+  organizationId: string
+  key: string
+  kind: "PR"
+  prType: "doc"
+  month: string
+  amount: number
+  employeeId: string
+  employeeNo: number
+  doc: string
+  expiry: string
+  siteId: string | null
+  state: "sent" | "paid"
+}
+
+/** Pay a payment request (hr:PR → fin:PRPAID): Dr government & recruitment fees · Cr bank, once — the entry id is
+ * the request's key and the event moves to paid in the same batch. With Accounting off it is recorded paid. */
+export async function payFeeRequest(firestore: Firestore, a: FinanceActor, orgId: string, ev: HrFeeEvent, books: Books & { projectId?: string | null }): Promise<void> {
+  need(a)
+  const cur = await getDoc(doc(firestore, HR_EVENTS, ev.id))
+  if (!cur.exists() || (cur.data() as HrFeeEvent).state !== "sent" || (cur.data() as HrFeeEvent).kind !== "PR") throw new HrWriteError("blocked", ["stale"])
+  const batch = writeBatch(firestore)
+  const entryId = await book(
+    firestore,
+    a,
+    orgId,
+    postHrFee({ key: ev.key, date: books.date, amount: ev.amount, projectId: books.projectId ?? null, bankAccount: books.bankAccount, description: `رسوم تجديد ${ev.doc} — موظف ${String(ev.employeeNo).padStart(4, "0")}` }),
+    books,
+    batch
+  )
+  batch.update(doc(firestore, HR_EVENTS, ev.id), { state: "paid", paid: { ...stamp(a), date: books.date }, entryId: entryId ?? null, updatedAt: serverTimestamp() })
   await batch.commit()
 }
 

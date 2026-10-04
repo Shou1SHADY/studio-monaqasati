@@ -108,6 +108,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
   const acts: { id: EmployeeAction; icon: typeof Wallet; show: boolean }[] = [
     { id: "move", icon: ArrowRightLeft, show: access.allowed("employee.assign") && emp.status !== "left" },
     { id: "pay", icon: Wallet, show: money && access.allowed("pay.change") && emp.status !== "left" && (access.ctx.owner || access.ctx.employeeId !== emp.id) },
+    { id: "commission", icon: HandCoins, show: money && access.allowed("pay.change") && emp.status !== "left" && (access.ctx.owner || access.ctx.employeeId !== emp.id) },
     { id: "probation", icon: BadgeCheck, show: access.allowed("request.decide") && !emp.probation?.decision && emp.status !== "left" },
     { id: "renew", icon: CalendarClock, show: access.allowed("documents.manage") && emp.status !== "left" },
     { id: "link", icon: Link2, show: access.allowed("employee.edit") },

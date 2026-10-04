@@ -19332,9 +19332,11 @@
           "pay": "Pay change",
           "probation": "Probation",
           "renew": "Record renewal",
-          "link": "Link user"
+          "link": "Link user",
+          "commission": "Commission"
         },
-        "log_title": "Log"
+        "log_title": "Log",
+        "commission_recorded": "Commission recorded: it goes with that month's payroll"
       },
       "move": {
         "to": "Move to",
@@ -19392,12 +19394,13 @@
       "renew": {
         "document": "Document",
         "expiry": "New expiry",
-        "fee": "Fee paid",
-        "note": "The old expiry stays in the log.",
+        "fee": "Fee (Finance pays it)",
+        "note": "The old expiry stays in the log. A fee goes to Finance as a payment request.",
         "block": {
           "bad_date": "Choose a future expiry",
           "passport_first": "Renew the passport first — the iqama cannot outlast it",
-          "not_later": "The new expiry must be after the current one"
+          "not_later": "The new expiry must be after the current one",
+          "bad_fee": "The fee cannot be negative"
         }
       },
       "link": {
@@ -19439,7 +19442,8 @@
         "imported": "Record imported — no. {no}, {trade}, {site}",
         "data_filed": "Details update request {no} filed",
         "data_declined": "Details update request {no} declined",
-        "data_cancelled": "Details update request {no} cancelled"
+        "data_cancelled": "Details update request {no} cancelled",
+        "commission_recorded": "Commission recorded for {month} ({reason})"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -19776,13 +19780,17 @@
           "return": "A transfer came back",
           "held": "Pay a held line",
           "advance": "Pay out the advance",
-          "decide": "Advance above the HR limit"
+          "decide": "Advance above the HR limit",
+          "fee": "Pay a government fee",
+          "settlement": "Pay the final settlement"
         },
         "confirm": {
           "pay": "Record payment",
           "return": "Record the return",
           "held": "Pay",
-          "advance": "Pay out"
+          "advance": "Pay out",
+          "fee": "Pay",
+          "settlement": "Pay out"
         },
         "failed": "Could not complete — check the period is open and try again",
         "block": {
@@ -19796,7 +19804,11 @@
         "settlements_empty": "No settlement waiting",
         "settlement_line": "Net {net} · last day {last}",
         "settlement_paid_ok": "Settlement paid — the exit is closed",
-        "which_payroll": "Payroll the transfer belonged to"
+        "which_payroll": "Payroll the transfer belonged to",
+        "fees": "Payment requests (government fees)",
+        "fees_empty": "No fee waiting to be paid",
+        "fee_line": "Employee {no} · {doc} renewed to {expiry} · {amount}",
+        "fee_paid_ok": "Fee paid"
       },
       "vio": {
         "title": "Violations and penalties",
@@ -20137,6 +20149,20 @@
           "no_trade": "Choose the trade",
           "bad_count": "A whole number above zero",
           "no_date": "Choose the start date"
+        }
+      },
+      "commission": {
+        "month": "Paid with the payroll of",
+        "amount": "Approved commission",
+        "reference": "Sales approval (reference)",
+        "late": "{month}'s payroll is already approved: this commission goes to its supplementary payroll.",
+        "note": "Commission is approved by Sales. It is added to the line's gross, not to the GOSI base. The log records the month, never the amount.",
+        "block": {
+          "bad_amount": "Enter the amount, above zero",
+          "no_reason": "Give the Sales approval reference",
+          "bad_month": "Choose the month",
+          "future_month": "Not a future month",
+          "no_wage": "Enter the wage first"
         }
       }
     },
