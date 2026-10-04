@@ -143,7 +143,7 @@ describe("the writes", () => {
 
   it("probation extended with consent; a renewal is logged; payroll cannot renew documents", async () => {
     const { id } = await createEmployee(db, manager, ORG, actor, { ...base, join: "2026-01-01" }, { visas: 3 })
-    await decideProbation(db, manager, id, actor, "extend", { to: "2026-06-29", consentOn: "2026-03-20" })
+    await decideProbation(db, manager, id, actor, "extend", { to: "2026-06-29", consentOn: "2026-03-20" }, { today: "2026-03-25" })
     expect(emp(id).probation).toMatchObject({ end: "2026-06-29", consentOn: "2026-03-20" })
     await recordRenewal(db, gov, id, { uid: "gro", name: "Majed" }, { type: "passport", expiry: plusDays(1_800), fee: 300 })
     expect(emp(id).docs.passport).toBe(plusDays(1_800))

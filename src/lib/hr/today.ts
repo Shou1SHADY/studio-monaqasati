@@ -70,7 +70,7 @@ export function todayItems(i: TodayInput): TodayItem[] {
   // --- Blocking now -----------------------------------------------------------
   if (may("employee.assign"))
     for (const e of live)
-      if (e.siteId && !legalOnSite({ nationality: e.nationality, docs: e.docs ?? {} }, today))
+      if (e.siteId && !legalOnSite({ ...e, docs: e.docs ?? {} }, today))
         out.push({ key: `iqama:${e.id}`, group: "blocking", severity: "red", kind: "iqama_on_site", params: { name: name(e), site: siteName(e.siteId) }, href: `people/${e.id}`, action: "move" })
 
   const mainLast = i.payrolls.find((p) => p.kind === "main" && p.month === lastMonth)
