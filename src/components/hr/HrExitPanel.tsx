@@ -8,7 +8,7 @@
 
 import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { doc } from "firebase/firestore"
+import { collection, doc, query, where } from "firebase/firestore"
 import { Loader2, LogOut, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -22,19 +22,25 @@ import { Callout } from "@/components/module-ui/Callout"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill } from "@/components/module-ui/StatusPill"
-import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
+import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
+import { useHrRequests } from "@/hooks/useHrRequests"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
-import { HR_EXITS, HR_SETTLEMENTS } from "@/lib/hr/collections"
+import type { WorkplaceMonth } from "@/lib/hr/attendance"
+import { HR_ATTENDANCE, HR_EXITS, HR_PAYROLLS, HR_SETTLEMENTS, HR_VIOLATIONS } from "@/lib/hr/collections"
 import type { EmployeePay, HrEmployee } from "@/lib/hr/employee"
 import type { HrActor } from "@/lib/hr/employee-writes"
 import { EXIT_REASONS, EXIT_TASKS, exitBlocks, exitId, settlementQuote, type ExitReason } from "@/lib/hr/eos"
-import { approveSettlement, setExitTask, startExit, type HrExit, type HrSettlement } from "@/lib/hr/exit-writes"
+import { approveSettlement, setExitTask, settlementLastMonth, startExit, type HrExit, type HrSettlement } from "@/lib/hr/exit-writes"
 import { empNo, hrDate, hrMoney, todayDay } from "@/lib/hr/format"
 import { leaveBalance } from "@/lib/hr/leave"
-import { wageOf } from "@/lib/hr/pay"
+import { payOn, wageOf } from "@/lib/hr/pay"
+import { payrollId, type Payroll } from "@/lib/hr/payroll"
+import { addDays } from "@/lib/hr/statutory"
+import type { HrViolation } from "@/lib/hr/violations"
 import type { HrSite } from "@/lib/hr/sites"
 import { HrWriteError } from "@/lib/hr/write-guard"
+import { useLetterHead } from "./HrLetterDialogs"
 
 function useRun() {
   const t = useTranslations("Portal.HR")
@@ -145,25 +151,51 @@ export function HrExitPanel({ access, actor, emp, pay, sites }: { access: HrAcce
   const { data: stData } = useDoc(stRef)
   const st = (stData as unknown as HrSettlement | null) ?? null
   const [ticket, setTicket] = useState("")
-  const [months, setMonths] = useState("")
+  // EX-04 — what the last month is computed from: that month's sheets, leave, penalties and payrolls.
+  const quoting = Boolean(access.allowed("pay.view") && x && x.state === "leaving")
+  const lastMonthKey = x?.lastDay?.slice(0, 7) ?? ""
+  const attQ = useMemoFirebase(
+    () => (firestore && access.orgId && quoting && lastMonthKey ? query(collection(firestore, HR_ATTENDANCE), where("organizationId", "==", access.orgId), where("month", "==", lastMonthKey)) : null),
+    [firestore, access.orgId, quoting, lastMonthKey]
+  )
+  const { data: attData } = useCollection(attQ)
+  const vioQ = useMemoFirebase(
+    () => (firestore && access.orgId && quoting ? query(collection(firestore, HR_VIOLATIONS), where("organizationId", "==", access.orgId), where("employeeId", "==", emp.id)) : null),
+    [firestore, access.orgId, quoting, emp.id]
+  )
+  const { data: vioData } = useCollection(vioQ)
+  const { requests } = useHrRequests(access)
+  const mainRef = useMemoFirebase(() => (firestore && access.orgId && quoting && lastMonthKey ? doc(firestore, HR_PAYROLLS, payrollId(access.orgId, lastMonthKey)) : null), [firestore, access.orgId, quoting, lastMonthKey])
+  const { data: mainData } = useDoc(mainRef)
+  const prevKey = lastMonthKey ? addDays(`${lastMonthKey}-01`, -1).slice(0, 7) : ""
+  const prevRef = useMemoFirebase(() => (firestore && access.orgId && quoting && prevKey ? doc(firestore, HR_PAYROLLS, payrollId(access.orgId, prevKey)) : null), [firestore, access.orgId, quoting, prevKey])
+  const { data: prevData } = useDoc(prevRef)
+  // EX-05 — the service certificate is issued with the settlement, on the letterhead the letters use.
+  const head = useLetterHead(access)
   if (!x) return null
 
   const cleared = x.custody?.state === "cleared"
+  const facts = { sites, attendance: (attData ?? []) as unknown as WorkplaceMonth[], requests, violations: (vioData ?? []) as unknown as HrViolation[] }
   const preview =
-    money && pay && x.state === "leaving"
+    quoting && pay
       ? settlementQuote(
           {
-            wage: wageOf(pay),
+            wage: wageOf(payOn(pay, x.lastDay)),
             join: emp.join,
             lastDay: x.lastDay,
             reason: x.reason,
             leaveTaken: emp.leaveTaken ?? 0,
             openingLeave: emp.openingLeave ?? 0,
             art77: x.art77,
-            fixedRemainingMonths: months ? Number(months) : null,
+            contract: emp.contract ?? null,
             ticket: Number(ticket) || 0,
             advanceBalance: pay.advance?.balance ?? 0,
             custodyShortfall: x.custody?.shortfall ?? 0,
+            lastMonth: settlementLastMonth(emp, pay, x.lastDay, {
+              ...facts,
+              paidMain: (mainData as unknown as Payroll | null) ?? null,
+              previous: (prevData as unknown as Payroll | null)?.lines ?? null,
+            }),
           },
           leaveBalance
         )
@@ -222,17 +254,29 @@ export function HrExitPanel({ access, actor, emp, pay, sites }: { access: HrAcce
         {shown && (
           <div className="rounded-xl border p-3">
             <p className="mb-1 text-xs font-bold text-muted-foreground">{t(st ? "exit.settlement" : "exit.settlement_preview")}</p>
-            <KeyValueRow label={t("exit.s.gratuity", { years: shown.years })} value={hrMoney(shown.gratuity)} ltr />
+            <KeyValueRow
+              label={shown.service ? t("exit.s.gratuity_span", { y: shown.service.years, m: shown.service.months, d: shown.service.days }) : t("exit.s.gratuity", { years: shown.years })}
+              value={hrMoney(shown.gratuity)}
+              ltr
+            />
             <KeyValueRow label={t("exit.s.leave", { days: shown.leaveDays })} value={hrMoney(shown.leaveCash)} ltr />
-            <KeyValueRow label={t("exit.s.last", { days: shown.lastMonthDays })} value={hrMoney(shown.lastPay)} ltr />
+            {shown.lastMonthPaid ? (
+              <KeyValueRow label={t("exit.s.last_paid")} value={hrMoney(0)} ltr />
+            ) : (
+              <KeyValueRow label={t("exit.s.last", { days: shown.lastMonthDays })} value={hrMoney(shown.lastPay)} ltr />
+            )}
             {shown.noticePay > 0 && <KeyValueRow label={t("exit.s.notice")} value={hrMoney(shown.noticePay)} ltr />}
-            {shown.art77 > 0 && <KeyValueRow label={t("exit.s.art77")} value={hrMoney(shown.art77)} ltr />}
+            {shown.art77 > 0 && (
+              <KeyValueRow label={shown.art77Days != null ? t("exit.s.art77_fixed", { days: shown.art77Days }) : t("exit.s.art77")} value={hrMoney(shown.art77)} ltr />
+            )}
             {shown.ticket > 0 && <KeyValueRow label={t("exit.s.ticket")} value={hrMoney(shown.ticket)} ltr />}
             {shown.advance > 0 && <KeyValueRow label={t("exit.s.advance")} value={`− ${hrMoney(shown.advance)}`} ltr />}
             {shown.custody > 0 && <KeyValueRow label={t("exit.s.custody")} value={`− ${hrMoney(shown.custody)}`} ltr />}
             <KeyValueRow label={t("exit.s.net")} value={hrMoney(shown.net)} ltr strong />
+            {!shown.lastMonthPaid && shown.lastMonthDays > 0 && <p className="pt-1 text-[11px] text-muted-foreground">{t("exit.s.last_note")}</p>}
           </div>
         )}
+        {st?.paidAfter && st.paidAfter.length > 0 && <Callout tone="warn">{t("exit.paid_after", { months: st.paidAfter.join("، ") })}</Callout>}
 
         {mayApprove && (
           <div className="space-y-2">
@@ -242,19 +286,13 @@ export function HrExitPanel({ access, actor, emp, pay, sites }: { access: HrAcce
                   <Label htmlFor="ex-ticket">{t("exit.ticket")}</Label>
                   <Input id="ex-ticket" type="number" min="0" step="any" dir="ltr" value={ticket} onChange={(e) => setTicket(e.target.value)} disabled={busy} />
                 </div>
-                {x.art77 && emp.contract?.type === "fixed" && (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="ex-months">{t("exit.fixed_months")}</Label>
-                    <Input id="ex-months" type="number" min="0" step="1" dir="ltr" value={months} onChange={(e) => setMonths(e.target.value)} disabled={busy} />
-                  </div>
-                )}
               </div>
             )}
             {!cleared && <Callout tone="block">{t("exit.block.custody")}</Callout>}
             <div className="flex justify-end">
               <Button
                 disabled={busy || !cleared || !firestore}
-                onClick={() => void run(() => approveSettlement(firestore!, access.ctx, access.orgId!, actor, x.id ?? id!, { ticket: Number(ticket) || 0, fixedRemainingMonths: months ? Number(months) : null, sites }), "exit.approved")}
+                onClick={() => void run(() => approveSettlement(firestore!, access.ctx, access.orgId!, actor, x.id ?? id!, { ticket: Number(ticket) || 0, head, ...facts }), "exit.approved")}
               >
                 {t("exit.approve")}
               </Button>

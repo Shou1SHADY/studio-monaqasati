@@ -2,7 +2,10 @@
 // START (accrued − taken), never typed; holidays inside a leave are not counted;
 // sick leave follows art. 117 bands per service year. Pure: no I/O.
 
-import { addDays, dayMs, DAY_MS, serviceYears, STATUTORY } from "./statutory"
+import { isHoliday, OFFICIAL_HOLIDAYS, type Holiday } from "./holidays"
+import { dayMs, DAY_MS, serviceYears, STATUTORY } from "./statutory"
+
+export type { Holiday } from "./holidays"
 
 export const LEAVE_TYPES = ["annual", "emergency", "sick", "maternity", "paternity", "marriage", "bereavement", "hajj", "exam", "unpaid"] as const
 export type LeaveType = (typeof LEAVE_TYPES)[number]
@@ -48,21 +51,34 @@ export function leaveBalance(join: string, asOf: string, taken: number, opening 
   return Math.floor(accruedDays(join, asOf) + opening - taken)
 }
 
-export interface Holiday {
-  from: string
-  days: number
+/** IM-02, IM-04 — the opening adjustment that makes the balance read exactly `balance` days on
+ * `asOf` (with `taken` days already taken here). Rounded UP to the hundredth of a day: the
+ * balance is floored when read, and an opening rounded down lands 9 days on 8 — then checked
+ * against the very function that reads it back, so a hair of floating point costs nobody a day. */
+export function openingFor(join: string, asOf: string, balance: number, taken = 0): number {
+  let opening = Math.ceil((balance + taken - accruedDays(join, asOf)) * 100 - 1e-9) / 100
+  for (let n = 0; n < 3 && leaveBalance(join, asOf, taken, opening) < Math.floor(balance); n++) opening = Math.round((opening + 0.01) * 100) / 100
+  return opening
 }
 
-/** Leave days = calendar days from `from` to `to` inclusive, minus holidays. */
-export function leaveDays(from: string, to: string, holidays: Holiday[] = []): number {
+/** Leave days = calendar days from `from` to `to` inclusive, minus the official holidays. */
+export function leaveDays(from: string, to: string, holidays: readonly Holiday[] = OFFICIAL_HOLIDAYS): number {
   if (to < from) return 0
   let n = 0
-  for (let t = dayMs(from); t <= dayMs(to); t += DAY_MS) {
-    const d = new Date(t).toISOString().slice(0, 10)
-    const off = holidays.some((h) => d >= h.from && d < addDays(h.from, h.days))
-    if (!off) n += 1
-  }
+  for (let t = dayMs(from); t <= dayMs(to); t += DAY_MS) if (!isHoliday(new Date(t).toISOString().slice(0, 10), holidays)) n += 1
   return n
+}
+
+/** LV-03 "balance only" — the last day of a leave that starts on `from` and spends
+ * exactly `days` leave days (holidays inside it are not leave days). */
+export function leaveEndAfter(from: string, days: number, holidays: readonly Holiday[] = OFFICIAL_HOLIDAYS): string {
+  let d = from
+  let n = isHoliday(d, holidays) ? 0 : 1
+  while (n < days) {
+    d = new Date(dayMs(d) + DAY_MS).toISOString().slice(0, 10)
+    if (!isHoliday(d, holidays)) n += 1
+  }
+  return d
 }
 
 /** LV-03 — what a leave above the balance means: the part within the balance, and the excess. */

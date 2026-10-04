@@ -3,14 +3,16 @@
 // appends an entry to the employee's log, which nobody can edit or delete
 // (EM-06). Pay is written to `employeePay` only by those who may see it.
 
-import { collection, doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
+import { collection, doc, getDocs, query, runTransaction, serverTimestamp, where, type DocumentData, type Firestore, type Transaction, type UpdateData } from "firebase/firestore"
 import { hrAllowed, type HrContext } from "./access"
-import { HR_EMPLOYEES, HR_PAY } from "./collections"
+import { HR_EMPLOYEES, HR_EVENTS, HR_PAY, HR_PAYROLLS } from "./collections"
+import { attachmentBlocks, HR_FILES, type AttachmentKind, type EmployeeFile } from "./attachments"
 import { HR_SETTINGS } from "./settings"
-import type { DocType } from "./documents"
+import { iqamaDueBy, type DocType } from "./documents"
 import {
   assignBlocks,
   newEmployeeBlocks,
+  openingBlocks,
   payChangeBlocks,
   probationBlocks,
   probationEnd,
@@ -19,10 +21,15 @@ import {
   type HrEmployee,
   type NewEmployeeInput,
 } from "./employee"
-import { advanceInstalment, payFromBasic, retroDifference, wageOf } from "./pay"
-import { DEFAULT_HR_POLICIES, monthRange, type HrPolicies } from "./statutory"
+import { openingFor } from "./leave"
+import { advanceInstalment, payFromBasic, payOn, paySegments, wageOf, type PayFacts, type PayStep } from "./pay"
+import { payrollId, type Payroll, type PayrollLine } from "./payroll"
+import { addDays, DEFAULT_HR_POLICIES, monthRange, r2, type HrPolicies } from "./statutory"
 import { tradeOf } from "./trades"
 import { UNASSIGNED_SITE } from "./sites"
+import { startExit } from "./exit-writes"
+import { todayDay } from "./format"
+import { emitHrNotice, hrLinks } from "./notify"
 import { assertHr, HrWriteError } from "./write-guard"
 
 /** `hrCounters/{orgId}` — the last permanent employee number (never reused). */
@@ -45,7 +52,8 @@ export interface LogEntry {
   source: "hr" | "finance" | "inventory" | "projects"
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+/** The day in Riyadh — 00:00–03:00 is today there, not yesterday (the UTC day). */
+const today = () => todayDay()
 
 function log(tx: Transaction, firestore: Firestore, employeeId: string, orgId: string, actor: HrActor, kind: string, params?: LogEntry["params"]) {
   const entry: LogEntry & { organizationId: string } = { organizationId: orgId, at: new Date().toISOString(), by: actor.uid, byName: actor.name, kind, params: params ?? {}, source: "hr" }
@@ -88,6 +96,7 @@ export async function createEmployee(
   // Government relations records a joiner without pay; the HR manager completes it.
   const withPay = hrAllowed(ctx, "pay.view") && input.basic != null && input.basic > 0
   const ref = doc(collection(firestore, HR_EMPLOYEES))
+  if (input.userId && (await otherRecordsOf(firestore, orgId, input.userId, ref.id)).length) throw new HrWriteError("blocked", ["user_linked"])
   let no = 0
   await runTransaction(firestore, async (tx) => {
     const cRef = doc(firestore, HR_COUNTERS, orgId)
@@ -147,7 +156,25 @@ export async function createEmployee(
     }
     log(tx, firestore, ref.id, orgId, actor, input.since ? "imported" : "created", { no, site: emp.siteId, trade: emp.trade })
   })
+  // DC-05 — a visa arrival's iqama is due 90 days after he joins: government relations hears it now.
+  if (input.source === "visa" && input.nationality !== "sa" && !input.docs?.iqama && input.join)
+    await emitHrNotice(firestore, actor, {
+      kind: "hr_iqama_clock",
+      organizationId: orgId,
+      to: [{ hr: "gov" }],
+      params: { name: input.nameAr.trim(), join: input.join, date: iqamaDueBy(input.join) },
+      link: hrLinks.person(ref.id),
+      once: ref.id,
+      employeeId: ref.id,
+    })
   return { id: ref.id, no }
+}
+
+/** The other employee records of the company that name this platform user. A transaction cannot query, so it is
+ * read beside it — as the open assignment corrections are; two HR managers racing would both see none. */
+async function otherRecordsOf(firestore: Firestore, orgId: string, userId: string, exceptId: string): Promise<string[]> {
+  const snap = await getDocs(query(collection(firestore, HR_EMPLOYEES), where("organizationId", "==", orgId), where("userId", "==", userId)))
+  return snap.docs.map((d) => d.id).filter((id) => id !== exceptId)
 }
 
 // ---------------------------------------------------------------------------
@@ -170,36 +197,78 @@ export async function assignEmployee(firestore: Firestore, ctx: HrContext, id: s
 // Pay change and promotion (EM-04) — never one's own (RL-02)
 // ---------------------------------------------------------------------------
 
+/** The months a pay change may reach back over, looking for the last closed one (a closed month is one whose
+ * main payroll was approved). Further back than this is "too old" without a look. */
+export const PAY_CHANGE_LOOKBACK_MONTHS = 12
+
+/** The months from `from` to `to` inclusive, `YYYY-MM`. */
+function monthsBetween(from: string, to: string): string[] {
+  const out: string[] = []
+  for (let m = from; m <= to && out.length <= PAY_CHANGE_LOOKBACK_MONTHS + 1; m = addDays(monthRange(m).end, 1).slice(0, 7)) out.push(m)
+  return out
+}
+
+/** The pay document after a change from `effectiveOn` (EM-04): its history gains the step, and the top-level
+ * figures are the pay in force on `today` — a future-dated raise waits for its day, a back-dated one is in force. */
+export function payWithStep(pay: EmployeePay | null, next: PayFacts, effectiveOn: string, today: string): { steps: PayStep[]; current: PayFacts } {
+  const base: PayStep[] = pay?.steps?.length ? pay.steps : pay ? [{ from: "", basic: pay.basic, housing: pay.housing, transport: pay.transport }] : []
+  const steps = [...base.filter((s) => s.from !== effectiveOn), { from: effectiveOn, ...next }].sort((a, b) => a.from.localeCompare(b.from))
+  const now = payOn({ ...next, steps }, today)
+  return { steps, current: { basic: now.basic, housing: now.housing, transport: now.transport } }
+}
+
 export async function changePay(
   firestore: Firestore,
   ctx: HrContext,
   id: string,
   actor: HrActor,
   input: { basic: number; effectiveOn: string; reason: string; kind: "raise" | "promotion" | "correction"; trade?: string | null },
-  opts: { policies?: HrPolicies; lastClosedMonth?: string | null } = {}
-): Promise<{ retro: number }> {
+  opts: { policies?: HrPolicies; today?: string } = {}
+): Promise<{ retro: number; retroMonth: string | null }> {
   assertHr(ctx, "pay.change")
   if (ctx.employeeId === id && !ctx.owner) throw new HrWriteError("own_request")
+  const day = opts.today ?? today()
   let retro = 0
+  let retroMonth: string | null = null
   await runTransaction(firestore, async (tx) => {
     const { ref, emp } = await readEmployee(tx, firestore, id)
     const pRef = doc(firestore, HR_PAY, id)
     const pSnap = await tx.get(pRef)
     const pay = pSnap.exists() ? (pSnap.data() as EmployeePay) : null
-    const currentBasic = pay?.basic ?? 0
-    const lastClosed = opts.lastClosedMonth ?? null
-    const { blocks } = payChangeBlocks({ basic: input.basic, currentBasic, effectiveOn: input.effectiveOn, reason: input.reason, nationality: emp.nationality, lastClosedMonthStart: lastClosed ? monthRange(lastClosed).start : null })
+    const currentBasic = pay ? payOn(pay, day).basic : 0
+    // The last closed month is read here, never taken from the screen: every main payroll from the effective
+    // month to last month. A change may reach one closed month back (PY-04) — older is a documented manual decision.
+    const effMonth = (input.effectiveOn || day).slice(0, 7)
+    const lastMonth = addDays(`${day.slice(0, 7)}-01`, -1).slice(0, 7)
+    const span = monthsBetween(effMonth, lastMonth)
+    let lastClosed: string | null = null
+    let lastClosedLines: PayrollLine[] = []
+    if (span.length > PAY_CHANGE_LOOKBACK_MONTHS) lastClosed = lastMonth
+    else
+      for (const m of span) {
+        const s = await tx.get(doc(firestore, HR_PAYROLLS, payrollId(emp.organizationId, m)))
+        if (s.exists() && (s.data() as Payroll).state !== "prepared") {
+          lastClosed = m
+          lastClosedLines = (s.data() as Payroll).lines ?? []
+        }
+      }
+    const { blocks } = payChangeBlocks({ basic: input.basic, currentBasic, effectiveOn: input.effectiveOn, reason: input.reason, nationality: emp.nationality, lastClosedMonthStart: lastClosed ? monthRange(lastClosed).start : null, trade: input.kind === "promotion" ? (input.trade ?? null) : null })
     if (blocks.length) throw new HrWriteError("blocked", blocks)
     const next = payFromBasic(input.basic, opts.policies ?? DEFAULT_HR_POLICIES)
-    // An effective date inside the last closed month: the difference goes to the
-    // supplementary payroll; the closed month is never reopened.
+    const { steps, current } = payWithStep(pay, next, input.effectiveOn, day)
+    // An effective date inside the last closed month: that month's difference — what it would have paid
+    // with the change, less what it paid — goes to a supplementary payroll; the closed month never reopens.
+    // The months after it are open and compute with the new pay from its history.
     const retroItems = [...(pay?.retro ?? [])]
-    if (lastClosed && input.effectiveOn <= monthRange(lastClosed).end && pay) {
-      const days = Math.round((Date.parse(monthRange(lastClosed).end) - Date.parse(input.effectiveOn)) / 86_400_000) + 1
-      retro = retroDifference(wageOf(pay), wageOf(next), days)
-      if (retro !== 0) retroItems.push({ month: lastClosed, amount: retro, reason: input.reason.trim() })
+    if (pay && lastClosed && effMonth === lastClosed && lastClosedLines.some((l) => l.employeeId === id)) {
+      const monthWage = (p: EmployeePay) => paySegments(p, emp.join, lastClosed as string, emp.lastDay).reduce((s, x) => s + (wageOf(x.pay) * x.days) / 30, 0)
+      retro = r2(monthWage({ ...pay, steps }) - monthWage(pay))
+      if (retro !== 0) {
+        retroMonth = lastClosed
+        retroItems.push({ id: `${input.effectiveOn}:${new Date().toISOString()}`, month: lastClosed, amount: retro, reason: input.reason.trim() })
+      }
     }
-    tx.set(pRef, { employeeId: id, organizationId: emp.organizationId, ...next, retro: retroItems, updatedAt: serverTimestamp() }, { merge: true })
+    tx.set(pRef, { employeeId: id, organizationId: emp.organizationId, ...current, steps, retro: retroItems, updatedAt: serverTimestamp() }, { merge: true })
     if (input.trade && input.trade !== emp.trade && tradeOf(input.trade)) {
       tx.update(ref, { trade: input.trade, category: tradeOf(input.trade)!.category, updatedAt: serverTimestamp() })
     }
@@ -208,7 +277,52 @@ export async function changePay(
     // on the pay document.
     log(tx, firestore, id, emp.organizationId, actor, input.kind === "promotion" ? "promoted" : "pay_changed", { on: input.effectiveOn, reason: input.reason.trim(), trade: input.kind === "promotion" ? input.trade ?? null : null })
   })
-  return { retro }
+  return { retro, retroMonth }
+}
+
+// ---------------------------------------------------------------------------
+// Commission (PY-01) — what Sales approved, paid with a month's payroll
+// ---------------------------------------------------------------------------
+
+export type CommissionBlock = "bad_amount" | "no_reason" | "bad_month" | "future_month"
+
+/** Sales approves the commission (its reference is the reason); the HR manager records it against the month it is
+ * paid with — never his own (RL-02). That month's payroll puts it on the line; once that payroll is approved, a
+ * commission for it goes to its supplementary. The log names the month, never the amount (RL-03). */
+export function commissionBlocks(input: { month: string; amount: number; reason: string }, today: string): CommissionBlock[] {
+  const out: CommissionBlock[] = []
+  if (!(input.amount > 0)) out.push("bad_amount")
+  if (!input.reason.trim()) out.push("no_reason")
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(input.month)) out.push("bad_month")
+  else if (input.month > today.slice(0, 7)) out.push("future_month")
+  return out
+}
+
+export async function recordCommission(
+  firestore: Firestore,
+  ctx: HrContext,
+  id: string,
+  actor: HrActor,
+  input: { month: string; amount: number; reason: string },
+  opts: { today?: string } = {}
+): Promise<string> {
+  assertHr(ctx, "pay.change")
+  if (ctx.employeeId === id && !ctx.owner) throw new HrWriteError("own_request")
+  const day = opts.today ?? today()
+  const blocks = commissionBlocks(input, day)
+  if (blocks.length) throw new HrWriteError("blocked", blocks)
+  const itemId = `${input.month}:${new Date().toISOString()}`
+  await runTransaction(firestore, async (tx) => {
+    const { emp } = await readEmployee(tx, firestore, id)
+    const pRef = doc(firestore, HR_PAY, id)
+    const pSnap = await tx.get(pRef)
+    if (!pSnap.exists()) throw new HrWriteError("blocked", ["no_wage"])
+    const pay = pSnap.data() as EmployeePay
+    const item = { id: itemId, month: input.month, amount: r2(input.amount), reason: input.reason.trim(), at: new Date().toISOString(), by: actor.uid }
+    tx.update(pRef, { commissions: [...(pay.commissions ?? []), item], updatedAt: serverTimestamp() })
+    log(tx, firestore, id, emp.organizationId, actor, "commission_recorded", { month: input.month, reason: input.reason.trim() })
+  })
+  return itemId
 }
 
 // ---------------------------------------------------------------------------
@@ -221,19 +335,126 @@ export async function decideProbation(
   id: string,
   actor: HrActor,
   decision: "confirm" | "extend" | "end",
-  ext: { to?: string | null; consentOn?: string | null } = {}
+  ext: { to?: string | null; consentOn?: string | null; lastDay?: string | null } = {},
+  opts: { today?: string } = {}
 ): Promise<void> {
   assertHr(ctx, "request.decide")
+  // RL-02 — nobody decides his own probation; the owner, who answers to nobody, may (flagged on the record).
+  if (ctx.employeeId === id && !ctx.owner) throw new HrWriteError("own_request")
+  const ownFlagged = ctx.employeeId === id
+  const day = opts.today ?? today()
+  if (decision === "end") {
+    // "End" IS an exit (WF-11 → WF-16): reason "probation" — no gratuity, no notice — and
+    // Inventory asked to clear the custody. startExit records the probation decision with it.
+    let orgId = ""
+    await runTransaction(firestore, async (tx) => {
+      const { emp } = await readEmployee(tx, firestore, id)
+      const blocks = probationBlocks(emp, decision, ext, day)
+      if (blocks.length) throw new HrWriteError("blocked", blocks)
+      orgId = emp.organizationId
+    })
+    await startExit(firestore, ctx, orgId, actor, id, { reason: "probation", lastDay: ext.lastDay ?? null }, { today: day })
+    return
+  }
   await runTransaction(firestore, async (tx) => {
     const { ref, emp } = await readEmployee(tx, firestore, id)
-    const blocks = probationBlocks(emp, decision, ext)
+    const blocks = probationBlocks(emp, decision, ext, day)
     if (blocks.length) throw new HrWriteError("blocked", blocks)
     const probation =
       decision === "extend"
         ? { ...emp.probation, end: ext.to as string, consentOn: ext.consentOn ?? null }
-        : { ...emp.probation, decision: decision === "confirm" ? ("confirmed" as const) : ("ended" as const), decidedOn: today() }
-    tx.update(ref, { probation, updatedAt: serverTimestamp() })
-    log(tx, firestore, id, emp.organizationId, actor, `probation_${decision}`, { to: ext.to ?? null, consent: ext.consentOn ?? null })
+        : { ...emp.probation, decision: "confirmed" as const, decidedOn: day }
+    tx.update(ref, { probation: ownFlagged ? { ...probation, ownFlagged: true } : probation, updatedAt: serverTimestamp() })
+    log(tx, firestore, id, emp.organizationId, actor, `probation_${decision}`, { to: ext.to ?? null, consent: ext.consentOn ?? null, ...(ownFlagged ? { ownFlagged: 1 } : {}) })
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Attachments (EM-07) — the file is uploaded first; this names it on the record
+// ---------------------------------------------------------------------------
+
+export async function attachEmployeeFile(
+  firestore: Firestore,
+  ctx: HrContext,
+  id: string,
+  actor: HrActor,
+  input: { kind: AttachmentKind; name: string; size: number; contentType: string; path: string; note?: string | null }
+): Promise<string> {
+  assertHr(ctx, "documents.manage")
+  const ref = doc(collection(firestore, HR_EMPLOYEES, id, HR_FILES))
+  await runTransaction(firestore, async (tx) => {
+    const { emp } = await readEmployee(tx, firestore, id)
+    const blocks = attachmentBlocks(input, { orgId: emp.organizationId, employeeId: id })
+    if (blocks.length) throw new HrWriteError("blocked", blocks)
+    const entry: Omit<EmployeeFile, "id"> = {
+      organizationId: emp.organizationId,
+      employeeId: id,
+      kind: input.kind,
+      name: input.name,
+      path: input.path,
+      size: input.size,
+      contentType: input.contentType,
+      by: actor.uid,
+      byName: actor.name,
+      at: new Date().toISOString(),
+      note: input.note?.trim() || null,
+    }
+    tx.set(ref, entry)
+    log(tx, firestore, id, emp.organizationId, actor, "file_attached", { type: input.kind, name: input.name })
+  })
+  return ref.id
+}
+
+// ---------------------------------------------------------------------------
+// Opening balance from the card (IM-04, WF-02 step 6)
+// ---------------------------------------------------------------------------
+
+/** The HR manager enters, once, one employee's leave balance as of today and his outstanding
+ * advance — the import's opening balances for someone who came in by hand. The balance then
+ * reads back exactly that; the gratuity is never typed (it is computed from the join day). */
+export async function recordOpeningBalance(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, input: { leave: number; advance: number }, opts: { today?: string } = {}): Promise<void> {
+  assertHr(ctx, "employee.edit")
+  const day = opts.today ?? today()
+  await runTransaction(firestore, async (tx) => {
+    const { ref, emp } = await readEmployee(tx, firestore, id)
+    const pRef = doc(firestore, HR_PAY, id)
+    const pSnap = await tx.get(pRef)
+    const pay = pSnap.exists() ? (pSnap.data() as EmployeePay) : null
+    const blocks = openingBlocks(emp, input, pay, day)
+    if (input.advance > 0 && !(pay && pay.basic > 0)) blocks.push("bad_advance")
+    if (blocks.length) throw new HrWriteError("blocked", blocks)
+    tx.update(ref, { openingLeave: openingFor(emp.join, day, input.leave, emp.leaveTaken ?? 0), opening: { leave: input.leave, at: new Date().toISOString(), by: actor.uid, byName: actor.name }, updatedAt: serverTimestamp() })
+    if (input.advance > 0 && pay) tx.update(pRef, { advance: { amount: input.advance, balance: input.advance, instalment: advanceInstalment(wageOf(pay)) }, updatedAt: serverTimestamp() })
+    // The log is read by roles without pay: it says an advance was entered, never how much.
+    log(tx, firestore, id, emp.organizationId, actor, "opening_recorded", { leave: input.leave, advance: input.advance > 0 ? 1 : 0 })
+  })
+}
+
+// ---------------------------------------------------------------------------
+// The start (employee states: expected → active)
+// ---------------------------------------------------------------------------
+
+export type StartBlock = "not_expected" | "no_date" | "future"
+
+/** An expected joiner (a visa arrival, a future start) starts work: the record turns active
+ * on the day he actually started — which is his join day from then on (the probation, the
+ * iqama clock and pro-rata pay run from it). The list already reads him at work from his
+ * planned day (`statusOn`); this writes the fact and its day to the record and the log. */
+export async function startWork(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, input: { on: string | null }, opts: { today?: string } = {}): Promise<void> {
+  assertHr(ctx, "employee.assign")
+  const day = opts.today ?? today()
+  await runTransaction(firestore, async (tx) => {
+    const { ref, emp } = await readEmployee(tx, firestore, id)
+    const blocks: StartBlock[] = []
+    if (emp.status !== "expected") blocks.push("not_expected")
+    if (!input.on) blocks.push("no_date")
+    else if (input.on > day) blocks.push("future")
+    if (blocks.length) throw new HrWriteError("blocked", blocks)
+    const on = input.on as string
+    const patch: UpdateData<DocumentData> = { status: "active", join: on, updatedAt: serverTimestamp() }
+    if (!emp.probation?.decision) patch.probation = { ...emp.probation, end: probationEnd(on), consentOn: null }
+    tx.update(ref, patch)
+    log(tx, firestore, id, emp.organizationId, actor, "started", { on })
   })
 }
 
@@ -241,14 +462,41 @@ export async function decideProbation(
 // Documents — a renewal (DC-03)
 // ---------------------------------------------------------------------------
 
+/** `hr:PR:DOC:<no>:<document>:<new expiry>` — a renewal's fee as a payment request to Finance (DC-03, HR-Pipeline
+ * §2.1 `hr:PR:<type>:<number>`): one per renewal, never sent twice (a renewal to the same expiry is refused). */
+export const feeEventKey = (no: number, type: DocType, expiry: string) => `hr:PR:DOC:${no}:${type}:${expiry}`
+
 export async function recordRenewal(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, input: { type: DocType; expiry: string; fee?: number | null }): Promise<void> {
   assertHr(ctx, "documents.manage")
+  const fee = r2(input.fee ?? 0)
+  if (!(fee >= 0)) throw new HrWriteError("blocked", ["bad_fee"])
   await runTransaction(firestore, async (tx) => {
     const { ref, emp } = await readEmployee(tx, firestore, id)
     const blocks = renewalBlocks(emp.docs ?? {}, input.type, input.expiry, today())
     if (blocks.length) throw new HrWriteError("blocked", blocks)
     tx.update(ref, { [`docs.${input.type}`]: input.expiry, updatedAt: serverTimestamp() })
     log(tx, firestore, id, emp.organizationId, actor, "renewed", { doc: input.type, from: emp.docs?.[input.type] ?? null, to: input.expiry, fee: input.fee ?? null })
+    // The fee goes to Finance as a payment request (Dr government & recruitment fees, the prototype's 6110) —
+    // HR records, Finance pays. Written blind at its fixed id: the rules let it be created once, never rewritten.
+    if (fee > 0) {
+      const key = feeEventKey(emp.no, input.type, input.expiry)
+      tx.set(doc(firestore, HR_EVENTS, `${emp.organizationId}__${key}`), {
+        organizationId: emp.organizationId,
+        key,
+        kind: "PR",
+        prType: "doc",
+        month: today().slice(0, 7),
+        amount: fee,
+        employeeId: id,
+        employeeNo: emp.no,
+        doc: input.type,
+        expiry: input.expiry,
+        siteId: emp.siteId ?? null,
+        state: "sent",
+        sent: { by: actor.uid, byName: actor.name, at: new Date().toISOString() },
+        createdAt: serverTimestamp(),
+      })
+    }
   })
 }
 
@@ -262,6 +510,9 @@ export async function linkUser(firestore: Firestore, ctx: HrContext, id: string,
     // nobody links himself onto a record or off one (RL-02; the owner, who has
     // nobody above him, excepted). The rules refuse it too.
     if (!ctx.owner && (userId === ctx.uid || emp.userId === ctx.uid)) throw new HrWriteError("own_request")
+    // One user, one record (EM-01): "My file" and the pay the rules open to him follow the ONE record naming
+    // him — a second link would make which one he reads a matter of chance.
+    if (userId && (await otherRecordsOf(firestore, emp.organizationId, userId, id)).length) throw new HrWriteError("blocked", ["user_linked"])
     tx.update(ref, { userId, updatedAt: serverTimestamp() })
     log(tx, firestore, id, emp.organizationId, actor, "user_linked", { user: userId })
   })
@@ -278,22 +529,35 @@ export async function fixIban(firestore: Firestore, ctx: HrContext, id: string, 
   assertHr(ctx, "iban.fix")
   const clean = iban.replace(/\s+/g, "").toUpperCase()
   if (!IBAN.test(clean)) throw new HrWriteError("blocked", ["bad_iban"])
+  let fixed: HrEmployee | null = null
   await runTransaction(firestore, async (tx) => {
     const { emp } = await readEmployee(tx, firestore, id)
     tx.update(doc(firestore, HR_PAY, id), { iban: clean, ibanState: "fixed", ibanFixedBy: actor.uid, updatedAt: serverTimestamp() })
     log(tx, firestore, id, emp.organizationId, actor, "iban_fixed", {})
+    fixed = emp
   })
+  const e = fixed as HrEmployee | null
+  if (e) await emitHrNotice(firestore, actor, { kind: "hr_iban_to_approve", organizationId: e.organizationId, to: [{ hr: "manager" }], except: [e.userId], params: { name: e.names?.ar ?? "" }, link: hrLinks.person(id), employeeId: id })
 }
 
 export async function approveIban(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor): Promise<void> {
   assertHr(ctx, "iban.approve")
+  // RL-02 — never the bank account of his own record; the owner excepted, flagged in the log.
+  if (ctx.employeeId === id && !ctx.owner) throw new HrWriteError("own_request")
+  let approved: HrEmployee | null = null
   await runTransaction(firestore, async (tx) => {
     const { emp } = await readEmployee(tx, firestore, id)
+    if (emp.userId && emp.userId === ctx.uid && !ctx.owner) throw new HrWriteError("own_request")
     const p = await tx.get(doc(firestore, HR_PAY, id))
     const pay = p.exists() ? (p.data() as EmployeePay & { ibanFixedBy?: string }) : null
     if (pay?.ibanState !== "fixed") throw new HrWriteError("blocked", ["stale"])
     if (pay.ibanFixedBy === actor.uid && !ctx.owner) throw new HrWriteError("own_request")
     tx.update(doc(firestore, HR_PAY, id), { ibanState: "ok", updatedAt: serverTimestamp() })
-    log(tx, firestore, id, emp.organizationId, actor, "iban_approved", {})
+    const own = ctx.employeeId === id || emp.userId === ctx.uid
+    log(tx, firestore, id, emp.organizationId, actor, "iban_approved", own ? { ownFlagged: 1 } : {})
+    approved = emp
   })
+  // Finance pays the held line now (PY-03).
+  const e = approved as HrEmployee | null
+  if (e) await emitHrNotice(firestore, actor, { kind: "hr_iban_approved", organizationId: e.organizationId, to: [{ finance: true }], except: [e.userId], params: { name: e.names?.ar ?? "" }, link: hrLinks.financeDesk(), employeeId: id })
 }

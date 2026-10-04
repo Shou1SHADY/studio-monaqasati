@@ -25,20 +25,18 @@ import type { HrActor } from "./employee-writes"
 import type { Holiday } from "./leave"
 import type { SiteType } from "./sites"
 import { violationId } from "./violations"
-import { violationRecord } from "./violation-writes"
+import { violationRecord, violationRecordedNotice } from "./violation-writes"
+import { emitHrNotices } from "./notify"
+import { todayDay } from "./format"
 import { assertHr, HrWriteError } from "./write-guard"
 
-const localToday = () => {
-  const now = new Date()
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
-}
 
 export interface SiteRef {
   id: string
   type: SiteType | null
 }
 
-type Opts = { today?: string; holidays?: Holiday[] }
+type Opts = { today?: string; holidays?: readonly Holiday[] }
 
 function base(orgId: string, site: SiteRef, month: string) {
   return { organizationId: orgId, siteId: site.id, month, days: {}, declarations: [], closed: null }
@@ -56,11 +54,13 @@ export async function recordDay(
   opts: Opts = {}
 ): Promise<void> {
   assertHr(ctx, "attendance.record", { site: site.id })
-  const today = opts.today ?? localToday()
+  const today = opts.today ?? todayDay()
   const month = monthOf(day)
   const ex = compactExceptions(input.ex)
   const ref = doc(firestore, HR_ATTENDANCE, attendanceId(orgId, site.id, month))
+  const recorded: Array<Parameters<typeof violationRecordedNotice>[0]> = []
   await runTransaction(firestore, async (tx) => {
+    recorded.length = 0
     const snap = await tx.get(ref)
     const wm = snap.exists() ? (snap.data() as WorkplaceMonth) : null
     const blocks = sheetBlocks({ day, today, closed: Boolean(wm?.closed), listed: input.listed, ex, mayRecordViolation: hrAllowed(ctx, "violation.record", { site: site.id }) })
@@ -84,8 +84,13 @@ export async function recordDay(
     }
     if (!wm) tx.set(ref, { ...base(orgId, site, month), days: { [day]: sheet }, updatedAt: serverTimestamp() })
     else tx.update(ref, { [`days.${day}`]: sheet, updatedAt: serverTimestamp() })
-    for (const v of newViolations) tx.set(v.ref, { ...violationRecord(orgId, v.emp, v.code, day, actor, "sheet"), updatedAt: serverTimestamp() })
+    for (const v of newViolations) {
+      tx.set(v.ref, { ...violationRecord(orgId, v.emp, v.code, day, actor, "sheet"), updatedAt: serverTimestamp() })
+      recorded.push({ id: v.ref.id, organizationId: orgId, employeeId: v.emp.id, employeeUserId: v.emp.userId ?? null, employeeName: v.emp.names?.ar ?? "", on: day })
+    }
   })
+  // The sheet's violations reach the HR manager and the employee as a hand-recorded one does (WF-09).
+  await emitHrNotices(firestore, actor, recorded.map(violationRecordedNotice))
 }
 
 /** Days nobody recorded, filled by a named declaration kept on record (AT-04) — supervisor or HR manager only. */
@@ -100,7 +105,7 @@ export async function declareMissing(
   opts: Opts = {}
 ): Promise<void> {
   assertHr(ctx, "attendance.declare", { site: site.id })
-  const today = opts.today ?? localToday()
+  const today = opts.today ?? todayDay()
   const ref = doc(firestore, HR_ATTENDANCE, attendanceId(orgId, site.id, month))
   await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(ref)
@@ -128,7 +133,7 @@ export async function closeMonth(
   opts: Opts = {}
 ): Promise<{ asIs: boolean }> {
   assertHr(ctx, "attendance.close", { site: site.id })
-  const today = opts.today ?? localToday()
+  const today = opts.today ?? todayDay()
   const ref = doc(firestore, HR_ATTENDANCE, attendanceId(orgId, site.id, month))
   let asIs = false
   await runTransaction(firestore, async (tx) => {

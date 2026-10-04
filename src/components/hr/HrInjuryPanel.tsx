@@ -6,7 +6,6 @@
 
 import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { collection, query, where } from "firebase/firestore"
 import { Ambulance, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -15,9 +14,11 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill } from "@/components/module-ui/StatusPill"
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
+import { useScopedCollection } from "@/hooks/useScopedCollection"
+import { hrPeopleScope, hrScopeAt } from "@/lib/hr/access"
 import { HR_INJURIES } from "@/lib/hr/collections"
 import type { HrEmployee } from "@/lib/hr/employee"
 import type { HrActor } from "@/lib/hr/employee-writes"
@@ -33,11 +34,8 @@ export function HrInjuryPanel({ access, actor, emp }: { access: HrAccess; actor:
   const firestore = useFirestore()
   const { toast } = useToast()
   const today = todayDay()
-  const q = useMemoFirebase(
-    () => (firestore && access.orgId && access.ctx.roles.size > 0 ? query(collection(firestore, HR_INJURIES), where("organizationId", "==", access.orgId), where("employeeId", "==", emp.id)) : null),
-    [firestore, access.orgId, access.ctx.roles.size, emp.id]
-  )
-  const { data } = useCollection(q)
+  // A supervisor reads his own workplaces' injuries only (RL-01): the person's, recorded on this site.
+  const { data } = useScopedCollection<HrInjury>(HR_INJURIES, access.orgId, hrScopeAt(hrPeopleScope(access.ctx), emp.siteId), access.ctx.roles.size > 0, [["employeeId", emp.id]])
   const injuries = ((data ?? []) as unknown as HrInjury[]).sort((a, b) => b.on.localeCompare(a.on))
   const [mode, setMode] = useState<{ kind: "record" } | { kind: "report"; inj: HrInjury } | null>(null)
   const [on, setOn] = useState(today)

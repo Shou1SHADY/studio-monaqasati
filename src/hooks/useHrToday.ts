@@ -10,12 +10,15 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { useHrPeople, useOrgPay } from "@/hooks/useHrPeople"
 import { useHrRequests } from "@/hooks/useHrRequests"
+import { useScopedCollection } from "@/hooks/useScopedCollection"
+import { hrPeopleScope } from "@/lib/hr/access"
 import { attendanceId, type WorkplaceMonth } from "@/lib/hr/attendance"
 import { HR_ATTENDANCE, HR_EXITS, HR_INJURIES, HR_PAYROLLS } from "@/lib/hr/collections"
 import type { HrExit } from "@/lib/hr/exit-writes"
 import type { HrInjury } from "@/lib/hr/injuries"
 import { MANPOWER_REQUESTS, type ManpowerRequest } from "@/lib/hr/manpower"
 import type { Payroll } from "@/lib/hr/payroll"
+import { HR_ASSIGN_FIXES, type AssignFix } from "@/lib/hr/sites"
 import { addDays } from "@/lib/hr/statutory"
 
 function useWorkplaceMonths(access: HrAccess, month: string): WorkplaceMonth[] {
@@ -44,22 +47,26 @@ export function useHrToday(access: HrAccess, today: string) {
   const orgId = access.orgId
   const staff = access.ctx.roles.size > 0
   const payRoles = access.allowed("pay.view")
-  const { employees, sites } = useHrPeople(orgId, staff)
+  const { employees, sites } = useHrPeople(access, staff)
   const pays = useOrgPay(orgId, payRoles)
   const { requests } = useHrRequests(access)
   const lastMonth = addDays(`${today.slice(0, 7)}-01`, -1).slice(0, 7)
   const lastWm = useWorkplaceMonths(access, lastMonth)
   const thisWm = useWorkplaceMonths(access, today.slice(0, 7))
   const orgQ = (name: string, on: boolean) => (firestore && orgId && on ? query(collection(firestore, name), where("organizationId", "==", orgId)) : null)
-  const injQ = useMemoFirebase(() => orgQ(HR_INJURIES, staff), [firestore, orgId, staff])
   const exQ = useMemoFirebase(() => orgQ(HR_EXITS, staff), [firestore, orgId, staff])
   const prQ = useMemoFirebase(() => orgQ(HR_PAYROLLS, payRoles), [firestore, orgId, payRoles])
-  const { data: inj } = useCollection(injQ)
+  // Injuries: a supervisor's own workplaces only (RL-01).
+  const { data: inj } = useScopedCollection(HR_INJURIES, orgId, hrPeopleScope(access.ctx), staff)
   const { data: ex } = useCollection(exQ)
   const { data: pr } = useCollection(prQ)
   const answers = access.allowed("manpower.answer")
   const mpQ = useMemoFirebase(() => (firestore && orgId && answers ? query(collection(firestore, MANPOWER_REQUESTS), where("organizationId", "==", orgId), where("state", "==", "open")) : null), [firestore, orgId, answers])
   const { data: mp } = useCollection(mpQ)
+  // AS-03 — pending assignment corrections, for the hand that decides them.
+  const decidesFixes = access.allowed("employee.assign")
+  const afQ = useMemoFirebase(() => (firestore && orgId && decidesFixes ? query(collection(firestore, HR_ASSIGN_FIXES), where("organizationId", "==", orgId), where("state", "==", "pending")) : null), [firestore, orgId, decidesFixes])
+  const { data: af } = useCollection(afQ)
   return useMemo(
     () => ({
       employees,
@@ -72,7 +79,8 @@ export function useHrToday(access: HrAccess, today: string) {
       exits: (ex ?? []) as unknown as HrExit[],
       payrolls: (pr ?? []) as unknown as Payroll[],
       manpower: (mp ?? []) as unknown as ManpowerRequest[],
+      assignFixes: (af ?? []) as unknown as AssignFix[],
     }),
-    [employees, sites, pays, requests, lastWm, thisWm, inj, ex, pr, mp]
+    [employees, sites, pays, requests, lastWm, thisWm, inj, ex, pr, mp, af]
   )
 }

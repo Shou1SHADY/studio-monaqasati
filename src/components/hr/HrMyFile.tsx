@@ -23,7 +23,7 @@ import { useOrgMembers } from "@/hooks/useOrgMembers"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { HR_EMPLOYEES, HR_PAYSLIPS } from "@/lib/hr/collections"
 import { docState, DOC_TYPES } from "@/lib/hr/documents"
-import { displayName, type HrEmployee } from "@/lib/hr/employee"
+import { displayName, probationState, statusOn, type HrEmployee } from "@/lib/hr/employee"
 import type { HrActor } from "@/lib/hr/employee-writes"
 import { gratuity } from "@/lib/hr/eos"
 import { empNo, hrDate, hrMoney, todayDay } from "@/lib/hr/format"
@@ -34,8 +34,10 @@ import { requestNoDisplay, type HrRequest, type HrRequestKind } from "@/lib/hr/r
 import { serviceYears } from "@/lib/hr/statutory"
 import { cn } from "@/lib/utils"
 import { HrViolationList, useHrViolations } from "./HrViolationList"
+import { NewLetterDialog } from "./HrLetterDialogs"
+import { HrLettersPanel } from "./HrLetters"
 import { DOC_TONE, STATUS_TONE } from "./HrPeopleView"
-import { REQUEST_TONE } from "./HrRequestList"
+import { CancelOwnRequest, REQUEST_TONE } from "./HrRequestList"
 import { NewRequestDialog } from "./NewRequestDialog"
 
 type Seg = "home" | "requests" | "leave" | "pay" | "docs"
@@ -58,7 +60,7 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
   const { data: empData, isLoading } = useDoc(empRef)
   const emp = (empData as unknown as HrEmployee | null) ?? null
   const { pay } = useEmployeePay(id, Boolean(id))
-  const { sites, siteName } = useHrPeople(access.orgId, access.ctx.roles.size > 0)
+  const { sites, siteName } = useHrPeople(access, false)
   const { requests: all } = useHrRequests(access)
   const requests = useMemo(() => all.filter((r) => r.employeeId === id), [all, id])
   const violations = useHrViolations(access).filter((v) => v.employeeId === id)
@@ -72,6 +74,7 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
   const [seg, setSeg] = useState<Seg>("home")
   const [newReq, setNewReq] = useState<HrRequestKind | null>(null)
   const [openSlip, setOpenSlip] = useState<string | null>(null)
+  const [asking, setAsking] = useState(false)
 
   if (isLoading) {
     return (
@@ -108,7 +111,7 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
           <h2 className="text-lg font-black" dir="auto">
             {displayName(emp, locale)}
           </h2>
-          <StatusPill tone={STATUS_TONE[emp.status ?? "active"]}>{t(`status.${emp.status ?? "active"}`)}</StatusPill>
+          <StatusPill tone={STATUS_TONE[statusOn(emp, today)]}>{t(`status.${statusOn(emp, today)}`)}</StatusPill>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           {t(`trade.${emp.trade}` as "trade.mason")} · {siteName(emp.siteId) ?? t("sites.unassigned")}
@@ -125,6 +128,10 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
           <Button size="sm" variant="outline" onClick={() => setNewReq("data")}>
             <PencilLine size={14} className="me-1.5" aria-hidden="true" />
             {t("req.new_data")}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setAsking(true)}>
+            <FileText size={14} className="me-1.5" aria-hidden="true" />
+            {t("letter.request")}
           </Button>
         </div>
       </div>
@@ -149,7 +156,13 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
           <KeyValueRow label={t("new.contract")} value={emp.contract?.type === "fixed" ? t("file.fixed_until", { date: hrDate(emp.contract.end, locale) }) : t("contract.open")} />
           <KeyValueRow
             label={t("file.probation")}
-            value={emp.probation?.decision ? t(`file.probation_${emp.probation.decision}`) : t("file.probation_until", { date: hrDate(emp.probation?.end, locale) })}
+            value={
+              emp.probation?.decision
+                ? t(`file.probation_${emp.probation.decision}`)
+                : probationState(emp, today) === "lapsed"
+                  ? t("file.probation_lapsed", { date: hrDate(emp.probation?.end, locale) })
+                  : t("file.probation_until", { date: hrDate(emp.probation?.end, locale) })
+            }
           />
           <KeyValueRow label={t("me.line_manager")} value={memberName(site?.supervisorUserId) ?? t("me.holder.hr")} />
           <KeyValueRow label={t("file.tile.leave")} value={t("file.days", { n: balance })} strong />
@@ -176,6 +189,9 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
                     </span>
                     <span>{t(`req.kind.${r.kind}`)}</span>
                     <StatusPill tone={REQUEST_TONE[r.state]}>{t(`req.state.${r.state}`)}</StatusPill>
+                    <span className="ms-auto">
+                      <CancelOwnRequest access={access} r={r} actor={actor} />
+                    </span>
                   </p>
                   {holder(r) && <p className="text-xs text-muted-foreground">{t("me.held_by", { name: holder(r)! })}</p>}
                   {(r.decision?.note || r.finance?.note || r.cancel?.note) && (
@@ -189,6 +205,9 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
           )}
         </Panel>
       )}
+
+      {/* EM-08 — his letters: status, the reason when declined, the issued letter to view and print. */}
+      {seg === "requests" && <HrLettersPanel access={access} actor={actor} emp={emp} pay={pay} />}
 
       {seg === "leave" && (
         <div className="space-y-4">
@@ -291,6 +310,7 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
         </div>
       )}
 
+      {asking && <NewLetterDialog access={access} actor={actor} emp={emp} pay={pay} onClose={() => setAsking(false)} />}
       {newReq && <NewRequestDialog kind={newReq} onClose={() => setNewReq(null)} access={access} actor={actor} emp={emp} pay={pay} sites={sites} existing={requests} />}
     </div>
   )
@@ -301,9 +321,13 @@ function PayslipBody({ slip }: { slip: Payslip }) {
   const t = useTranslations("Portal.HR")
   const l = slip.line
   if (slip.kind === "supplementary") {
+    const s = l as SupplementaryLine
     return (
       <div className="border-t bg-muted/20 px-3 py-2">
-        <KeyValueRow label={t("me.slip.retro")} value={hrMoney((l as SupplementaryLine).retro)} ltr strong />
+        {s.retro !== 0 && <KeyValueRow label={t("me.slip.retro")} value={hrMoney(s.retro)} ltr />}
+        {(s.commission ?? 0) !== 0 && <KeyValueRow label={t("me.slip.commission")} value={hrMoney(s.commission)} ltr />}
+        {(s.refunds ?? 0) !== 0 && <KeyValueRow label={t("me.slip.refund")} value={hrMoney(s.refunds)} ltr />}
+        <KeyValueRow label={t("me.slip.net")} value={hrMoney(s.net)} ltr strong />
       </div>
     )
   }

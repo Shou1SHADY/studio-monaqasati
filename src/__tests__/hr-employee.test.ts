@@ -133,7 +133,9 @@ describe("the writes", () => {
 
   it("a pay change inside the last closed month adds a retro item; one's own is refused", async () => {
     const { id } = await createEmployee(db, manager, ORG, actor, base, { visas: 3 })
-    const r = await changePay(db, manager, id, actor, { basic: 2_600, effectiveOn: "2026-08-17", reason: "Promotion to foreman", kind: "raise" }, { lastClosedMonth: "2026-08" })
+    // August's payroll is approved — the write finds it closed by itself.
+    seed(`hrPayrolls/${ORG}__2026-08`, { organizationId: ORG, month: "2026-08", key: "2026-08", kind: "main", state: "approved", lines: [{ employeeId: id }] })
+    const r = await changePay(db, manager, id, actor, { basic: 2_600, effectiveOn: "2026-08-17", reason: "Promotion to foreman", kind: "raise" }, { today: "2026-09-10" })
     // wage 2,970 → 3,510 (+540); 15 days of August → 540/30 × 15 = 270
     expect(r.retro).toBe(270)
     expect(pay(id)).toMatchObject({ basic: 2_600, housing: 650, transport: 260, retro: [{ month: "2026-08", amount: 270 }] })
@@ -143,7 +145,7 @@ describe("the writes", () => {
 
   it("probation extended with consent; a renewal is logged; payroll cannot renew documents", async () => {
     const { id } = await createEmployee(db, manager, ORG, actor, { ...base, join: "2026-01-01" }, { visas: 3 })
-    await decideProbation(db, manager, id, actor, "extend", { to: "2026-06-29", consentOn: "2026-03-20" })
+    await decideProbation(db, manager, id, actor, "extend", { to: "2026-06-29", consentOn: "2026-03-20" }, { today: "2026-03-25" })
     expect(emp(id).probation).toMatchObject({ end: "2026-06-29", consentOn: "2026-03-20" })
     await recordRenewal(db, gov, id, { uid: "gro", name: "Majed" }, { type: "passport", expiry: plusDays(1_800), fee: 300 })
     expect(emp(id).docs.passport).toBe(plusDays(1_800))

@@ -18,7 +18,7 @@ import type { HrTab } from "@/lib/hr/access"
 export type HrPortal = "contractor" | "supplier"
 
 /** Tabs built so far — an optional feature's tab appears once it is built. */
-export const HR_BUILT_TABS: readonly HrTab[] = ["today", "people", "sites", "payroll", "settings", "me"]
+export const HR_BUILT_TABS: readonly HrTab[] = ["today", "people", "sites", "payroll", "reports", "settings", "me"]
 
 const ICON: Partial<Record<HrTab, typeof Users>> = {
   today: LayoutDashboard,
@@ -31,6 +31,8 @@ const ICON: Partial<Record<HrTab, typeof Users>> = {
   me: FileUser,
 }
 
+const noKpis = (): ModuleKpi[] | undefined => undefined
+
 export const hrHref = (portal: HrPortal, tab: HrTab) => (tab === "today" ? `/${portal}/hr` : `/${portal}/hr/${tab}`)
 
 export function HrShell({
@@ -39,6 +41,7 @@ export function HrShell({
   title,
   description,
   kpis,
+  useKpis = noKpis,
   actions,
   children,
 }: {
@@ -47,11 +50,14 @@ export function HrShell({
   title?: ReactNode
   description?: ReactNode
   kpis?: ModuleKpi[]
+  /** A hook computing the header's three numbers from the viewer's access (TD-04) — a stable function per page. */
+  useKpis?: (access: HrAccess, portal: HrPortal) => ModuleKpi[] | undefined
   actions?: ReactNode
   children: (access: HrAccess) => ReactNode
 }) {
   const t = useTranslations("Portal.HR")
   const access = useHrAccess()
+  const computed = useKpis(access, portal)
   const tabs = access.tabs.filter((x) => HR_BUILT_TABS.includes(x))
   const rail: ModuleTab[] = tabs.map((x) => ({ id: x, label: t(`tab.${x}`), href: hrHref(portal, x), icon: ICON[x] }))
   const mayOpen = tabs.includes(tab)
@@ -71,7 +77,7 @@ export function HrShell({
         description={description ?? t(`tab_desc.${tab}`)}
         crumbs={[{ label: t("module"), href: hrHref(portal, "today") }, { label: t(`tab.${tab}`) }]}
         actions={mayOpen ? actions : undefined}
-        kpis={mayOpen ? kpis : undefined}
+        kpis={mayOpen ? (kpis ?? computed) : undefined}
         kpisLabel={t("kpis_label")}
         tabs={rail}
         activeTab={tab}

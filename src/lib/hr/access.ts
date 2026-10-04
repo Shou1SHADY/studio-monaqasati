@@ -40,7 +40,9 @@ export interface HrContext {
 // site to be one the supervisor holds — `hrAllowed(ctx, action, { site })`.
 // ---------------------------------------------------------------------------
 
-type Rule = { roles: readonly HrRole[]; siteScoped?: readonly HrRole[] }
+/** `owner`: the org owner may take it although his roles (HR manager and management) do not carry it — a
+ * company with no one in that role must not be stuck (AC-04: a returned IBAN with no payroll officer). */
+type Rule = { roles: readonly HrRole[]; siteScoped?: readonly HrRole[]; owner?: true }
 
 export const HR_GUARD = {
   "pay.view": { roles: ["manager", "payroll", "management"] },
@@ -57,10 +59,19 @@ export const HR_GUARD = {
   "attendance.declare": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
   "payroll.prepare": { roles: ["manager", "payroll"] },
   "payroll.approve": { roles: ["manager"] },
-  "iban.fix": { roles: ["payroll"] },
+  // Payroll fixes, the HR manager approves — never the same hand (RL-02); the owner, who answers to nobody,
+  // may do both (flagged on approval), so a company without a payroll officer can pay the line again.
+  "iban.fix": { roles: ["payroll"], owner: true },
   "iban.approve": { roles: ["manager"] },
   "leave.endorse": { roles: ["supervisor"], siteScoped: ["supervisor"] },
+  // AT-05 — "started today" after a leave: the workplace's supervisor or the HR manager.
+  "leave.return": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
   "request.decide": { roles: ["manager"] },
+  // Letters (EM-08, WF-24): the HR manager asks for an employee (his own come
+  // from My file); the HR manager, government relations (embassy letters) and
+  // management (the HR manager's own) sign — which letter is `maySignLetter`'s.
+  "letter.file": { roles: ["manager"] },
+  "letter.sign": { roles: ["manager", "gov", "management"] },
   "pay.change": { roles: ["manager"] },
   "violation.record": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
   "injury.record": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
@@ -80,6 +91,7 @@ export type HrRefusal = "no_role" | "not_your_site" | "own_request"
 /** The check every HR write runs first. Null means allowed. */
 export function hrRefusal(ctx: HrContext, action: HrAction, scope: { site?: string | null } = {}): HrRefusal | null {
   const rule: Rule = HR_GUARD[action]
+  if (rule.owner && ctx.owner) return null
   const held = rule.roles.filter((r) => ctx.roles.has(r))
   if (!held.length) return "no_role"
   // A role that is not site-scoped for this action passes anywhere.
@@ -96,6 +108,20 @@ export function seesPay(ctx: HrContext, employeeId?: string | null): boolean {
   if (hrAllowed(ctx, "pay.view")) return true
   return Boolean(employeeId && ctx.employeeId && employeeId === ctx.employeeId)
 }
+
+/** RL-01 — whose records a viewer reads (employees, leaves, injuries, corrections): null = the whole company
+ * (every HR role but the supervisor, and the owner); a supervisor and nothing else reads HIS workplaces only —
+ * firestore.rules refuse a company-wide query from him, so his screens ask workplace by workplace; with no HR
+ * role, nobody's (his own file is read through its link). */
+export function hrPeopleScope(ctx: Pick<HrContext, "owner" | "roles" | "sites">): readonly string[] | null {
+  if (ctx.owner || HR_ROLES.some((r) => r !== "supervisor" && ctx.roles.has(r))) return null
+  return ctx.roles.has("supervisor") ? ctx.sites : []
+}
+
+/** A scope narrowed to one workplace (a record on a site): the whole company stays whole; a supervisor's scope
+ * keeps the site only if it is his. */
+export const hrScopeAt = (scope: readonly string[] | null, siteId: string | null | undefined): readonly string[] | null =>
+  scope === null ? null : siteId && scope.includes(siteId) ? [siteId] : []
 
 // ---------------------------------------------------------------------------
 // Tabs (RL-01, TD-01): Today first; each role sees its own; every staff user
@@ -131,6 +157,21 @@ export function hrTabs(ctx: Pick<HrContext, "roles" | "employeeId">, features: R
 // ---------------------------------------------------------------------------
 // Rules that need the request's data (RL-02, LV-05)
 // ---------------------------------------------------------------------------
+
+/** RL-02, LV-05 — is the platform user behind an employee record an HR manager?
+ * Read from HIS default group, the way firestore.rules read it (hrUserManages):
+ * the org owner (an account with no organizationRole is a legacy owner) or a
+ * group holding `employees.manage` or '*'. A user of another company is not. */
+export function userIsHrManager(
+  user: { id: string; organizationId?: string | null; organizationRole?: string | null; defaultGroupId?: string | null } | null,
+  group: { organizationId?: string | null; permissions?: readonly string[] | null } | null,
+  orgId: string
+): boolean {
+  if (!user || (user.organizationId !== orgId && user.id !== orgId)) return false
+  if (!("organizationRole" in user) || user.organizationRole === "owner") return true
+  if (!group || group.organizationId !== orgId) return false
+  return (group.permissions ?? []).some((p) => p === "*" || p === HR_ROLE_PERMISSION.manager)
+}
 
 /** Who decides a request: the HR manager — except on his own, which goes to
  * management. The owner, who has nobody above, decides his own, flagged. */

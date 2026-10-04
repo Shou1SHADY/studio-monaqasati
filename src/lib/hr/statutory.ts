@@ -38,6 +38,8 @@ export const STATUTORY = {
   penalties: { windowDays: 180, monthlyCapDays: 5, objectionDays: 15 },
   /** Art. 84/85 — end of service. */
   eos: { halfMonthYears: 5, resignation: [{ below: 2, share: 0 }, { below: 5, share: 1 / 3 }, { below: 10, share: 2 / 3 }] as const },
+  /** Art. 80 (AT-05) — not back from leave: a written warning is due after 10 days in a row, termination possible after 15. */
+  art80: { warningDays: 10, terminationDays: 15 },
   /** Art. 75 — two months' notice; art. 77 — 15 days a year (open contract). */
   noticeMonths: 2,
   art77DaysPerYear: 15,
@@ -106,6 +108,32 @@ export const daysBetween = (from: string, to: string) => Math.round((dayMs(to) -
 export const addDays = (day: string, n: number) => new Date(dayMs(day) + n * DAY_MS).toISOString().slice(0, 10)
 /** Service in years (fractional) from the join date to `asOf`. */
 export const serviceYears = (join: string, asOf: string) => Math.max(0, daysBetween(join, asOf) / 365)
+
+/** Service by the calendar (EX-01/02, arts. 84/85): whole years and months from the join date to the
+ * day AFTER the last day worked — the last day is served — then the days left. Two years end on the
+ * second anniversary, whatever the leap days in between; days ÷ 365 moved that threshold by a day. */
+export function serviceSpan(join: string, lastDay: string): { years: number; months: number; days: number } {
+  const end = addDays(lastDay, 1)
+  if (end <= join) return { years: 0, months: 0, days: 0 }
+  const [jy, jm, jd] = join.split("-").map(Number)
+  const [ey, em] = end.split("-").map(Number)
+  let months = (ey - jy) * 12 + (em - jm)
+  // The month's anniversary day, clamped to a short month (31 Jan + 1 month = 28/29 Feb).
+  const anniversary = (n: number) => {
+    const y = jy + Math.floor((jm - 1 + n) / 12)
+    const m = ((jm - 1 + n) % 12) + 1
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
+    return `${y}-${String(m).padStart(2, "0")}-${String(Math.min(jd, last)).padStart(2, "0")}`
+  }
+  while (months > 0 && anniversary(months) > end) months--
+  return { years: Math.floor(months / 12), months: months % 12, days: daysBetween(anniversary(months), end) }
+}
+
+/** The span as fractional years for the gratuity — years + months/12 + days/365. */
+export function calendarServiceYears(join: string, lastDay: string): number {
+  const s = serviceSpan(join, lastDay)
+  return s.years + s.months / 12 + s.days / 365
+}
 
 /** `YYYY-MM` → its first and last day. */
 export function monthRange(month: string): { start: string; end: string } {

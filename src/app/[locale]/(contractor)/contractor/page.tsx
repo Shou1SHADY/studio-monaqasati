@@ -196,8 +196,9 @@ export default function ContractorDashboard() {
 
   const roleChip = isOrgOwner ? t("role_owner_chip") : myGroup?.name || null
 
-  // HR records are read by HR roles only (HR 1.0, RL-03) — others see no headcount.
-  const seesHr = can("employees.manage") || can("hr.gov") || can("hr.payroll") || can("hr.supervisor") || can("hr.management")
+  // HR records are read by HR roles only (HR 1.0, RL-03) — others see no headcount. A workplace supervisor
+  // reads his own workplaces' people only (RL-01): the rules refuse him this company-wide query.
+  const seesHr = can("employees.manage") || can("hr.gov") || can("hr.payroll") || can("hr.management")
   const employeesQuery = useMemoFirebase(() => {
     if (!firestore || !myOrgId || !seesHr) return null
     return query(collection(firestore, "employees"), where("organizationId", "==", myOrgId))

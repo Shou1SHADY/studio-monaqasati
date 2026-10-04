@@ -5,8 +5,9 @@
 // those who may see pay (for everyone else the column does not exist).
 
 import { useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
-import { FileUp, Search, UserPlus, Users } from "lucide-react"
+import { FileUp, Search, UserPlus, Users, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
@@ -15,11 +16,12 @@ import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useHrPeople, useOrgPay } from "@/hooks/useHrPeople"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { Link } from "@/i18n/routing"
-import { displayName, EMPLOYEE_STATUSES, type EmployeeStatus } from "@/lib/hr/employee"
+import { displayName, EMPLOYEE_STATUSES, statusOn, type EmployeeStatus } from "@/lib/hr/employee"
 import { empNo, hrMoney, nearestDocument, todayDay } from "@/lib/hr/format"
 import type { DocState } from "@/lib/hr/documents"
 import { wageOf } from "@/lib/hr/pay"
 import { UNASSIGNED_SITE } from "@/lib/hr/sites"
+import { inPeopleFilter, PEOPLE_FILTERS, type PeopleFilter } from "@/lib/hr/today"
 import { matchesSearch } from "@/lib/search-text"
 import { cn } from "@/lib/utils"
 import type { HrPortal } from "./HrShell"
@@ -33,12 +35,16 @@ export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; 
   const t = useTranslations("Portal.HR")
   const locale = useLocale()
   const today = todayDay()
-  const { employees, sites, siteName, isLoading } = useHrPeople(access.orgId)
+  const { employees, sites, siteName, isLoading } = useHrPeople(access)
   const money = access.allowed("pay.view")
   const payMap = useOrgPay(access.orgId, money)
   const [search, setSearch] = useState("")
   const [site, setSite] = useState("__all__")
   const [status, setStatus] = useState<EmployeeStatus | "all">("active")
+  // Today's KPIs open People on the list they count (TD-04): ?filter=docs|iqama|iqama_site.
+  const params = useSearchParams()
+  const asked = params.get("filter") as PeopleFilter | null
+  const [docFilter, setDocFilter] = useState<PeopleFilter | null>(asked && PEOPLE_FILTERS.includes(asked) ? asked : null)
   const [adding, setAdding] = useState(false)
   const [importing, setImporting] = useState(false)
   const importButton = access.allowed("employee.import") ? (
@@ -54,17 +60,19 @@ export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; 
       employees.filter((e) => {
         // A search looks across the state filter (search-text rule).
         if (search.trim()) return matchesSearch(search, [e.names?.ar, e.names?.en, String(e.no), e.idNo, t(`trade.${e.trade}` as "trade.mason")])
-        if (status !== "all" && (e.status ?? "active") !== status) return false
+        // A KPI's list counts everyone not left — it looks across the status chips, as the KPI does.
+        if (docFilter) return inPeopleFilter(docFilter, e, today, access.settings.policies.renewWindowDays) && (site === "__all__" || (site === UNASSIGNED_SITE ? !e.siteId : e.siteId === site))
+        if (status !== "all" && statusOn(e, today) !== status) return false
         if (site === UNASSIGNED_SITE) return !e.siteId
         return site === "__all__" || e.siteId === site
       }),
-    [employees, search, status, site, t]
+    [employees, search, status, site, t, docFilter, today, access.settings.policies.renewWindowDays]
   )
   const counts = useMemo(() => {
     const m = new Map<string, number>()
-    for (const e of employees) m.set(e.status ?? "active", (m.get(e.status ?? "active") ?? 0) + 1)
+    for (const e of employees) m.set(statusOn(e, today), (m.get(statusOn(e, today)) ?? 0) + 1)
     return m
-  }, [employees])
+  }, [employees, today])
 
   if (!isLoading && employees.length === 0) {
     return (
@@ -119,7 +127,15 @@ export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; 
           </Button>
         )}
       </div>
-      <div className={cn("flex flex-wrap gap-1.5", search.trim() && "opacity-50")} role="group" aria-label={t("people.filter_status")}>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("people.filter_docs")}>
+        {PEOPLE_FILTERS.map((f) => (
+          <Button key={f} size="sm" variant={docFilter === f ? "default" : "outline"} aria-pressed={docFilter === f} onClick={() => setDocFilter(docFilter === f ? null : f)} className="rounded-full">
+            {t(`people.filter.${f}`)}
+            {docFilter === f && <X size={13} className="ms-1.5" aria-hidden="true" />}
+          </Button>
+        ))}
+      </div>
+      <div className={cn("flex flex-wrap gap-1.5", (search.trim() || docFilter) && "opacity-50")} role="group" aria-label={t("people.filter_status")}>
         {(["all", ...EMPLOYEE_STATUSES] as const).map((s) => (
           <Button key={s} size="sm" variant={status === s ? "default" : "outline"} aria-pressed={status === s} onClick={() => setStatus(s)} className="rounded-full">
             {t(s === "all" ? "people.all" : `status.${s}`)}
@@ -162,7 +178,7 @@ export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; 
                     {doc ? <StatusPill tone={DOC_TONE[doc.state]}>{t("people.doc_line", { doc: t(`doc.${doc.type}`), state: t(`doc_state.${doc.state}`) })}</StatusPill> : <span className="text-xs text-muted-foreground">{t("people.no_docs")}</span>}
                   </td>
                   <td className="px-3 py-2">
-                    <StatusPill tone={STATUS_TONE[e.status ?? "active"]}>{t(`status.${e.status ?? "active"}`)}</StatusPill>
+                    <StatusPill tone={STATUS_TONE[statusOn(e, today)]}>{t(`status.${statusOn(e, today)}`)}</StatusPill>
                   </td>
                   {money && (
                     <td className="px-3 py-2 text-end font-semibold tabular-nums" dir="ltr">

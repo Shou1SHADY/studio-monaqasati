@@ -12,10 +12,15 @@ export function hrDate(day: string | null | undefined, locale: string): string {
   return d.toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { day: "numeric", month: "short", year: "numeric" })
 }
 
-export const todayDay = () => {
-  const now = new Date()
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
-}
+/** Riyadh is UTC+3 all year (no daylight saving). */
+const RIYADH_OFFSET_MS = 3 * 3_600_000
+
+/** The day in Riyadh (§17: "Riyadh time") — never the UTC day, which reads
+ * 00:00–03:00 as yesterday, nor the reader's own clock abroad. */
+export const riyadhDay = (now: Date = new Date()) => new Date(now.getTime() + RIYADH_OFFSET_MS).toISOString().slice(0, 10)
+
+/** Today, as every HR screen and write reads it. */
+export const todayDay = () => riyadhDay()
 
 /** The document nearest to expiry (DC-01), for the file's tile and the register. */
 export function nearestDocument(docs: DocDates | null | undefined, today: string, renewWindowDays: number): { type: DocType; expiry: string; state: DocState } | null {

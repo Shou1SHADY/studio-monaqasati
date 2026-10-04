@@ -9,7 +9,6 @@ import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -59,8 +58,6 @@ export function NewRequestDialog({
   const [type, setType] = useState<LeaveType>("annual")
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
-  const [excessUnpaid, setExcessUnpaid] = useState(false)
-  const [travel, setTravel] = useState(false)
   const [note, setNote] = useState("")
   const [amount, setAmount] = useState("")
   const [reason, setReason] = useState("")
@@ -71,7 +68,7 @@ export function NewRequestDialog({
   const mine = existing.filter((r) => r.employeeId === emp.id)
   const others = mine.filter((r) => r.kind === "leave" && r.leave && ["pending", "endorsed", "approved"].includes(r.state)).map((r) => ({ from: r.leave!.from, to: r.leave!.to }))
   const pendingAdvance = mine.some((r) => r.kind === "advance" && ["pending", "endorsed", "finance"].includes(r.state))
-  const lq = kind === "leave" ? leaveQuote(emp, { type, from, to, excessUnpaid, travel }, { others }) : null
+  const lq = kind === "leave" ? leaveQuote(emp, { type, from, to }, { others }) : null
   const aq =
     kind === "advance"
       ? advanceQuote(pay, { amount: Number(amount), reason }, { policies: access.settings.policies, today, contractEnd: emp.contract?.type === "fixed" ? emp.contract.end : null, pendingAdvance })
@@ -92,7 +89,7 @@ export function NewRequestDialog({
         {
           employeeId: emp.id,
           kind,
-          leave: kind === "leave" ? { type, from, to, excessUnpaid, travel, note } : undefined,
+          leave: kind === "leave" ? { type, from, to, note } : undefined,
           advance: kind === "advance" ? { amount: Number(amount), reason } : undefined,
           data: kind === "data" ? { field, value, document } : undefined,
           supervisor: site ? { employeeId: site.supervisorEmployeeId ?? null, userId: site.supervisorUserId ?? null } : null,
@@ -145,10 +142,6 @@ export function NewRequestDialog({
                 <Input id="lv-to" type="date" dir="ltr" min={from || undefined} value={to} onChange={(e) => setTo(e.target.value)} disabled={busy} />
               </div>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={travel} onCheckedChange={(c) => setTravel(c === true)} disabled={busy} />
-              {t("req.travel")}
-            </label>
             {from && to && (
               <div className="rounded-xl border p-3">
                 <KeyValueRow label={t("req.days")} value={t("file.days", { n: lq.days })} />
@@ -157,12 +150,6 @@ export function NewRequestDialog({
                 {lq.unpaidDays > 0 && <KeyValueRow label={t("req.unpaid_days")} value={t("file.days", { n: lq.unpaidDays })} strong />}
                 {lq.sick && <KeyValueRow label={t("req.sick_split")} value={t("req.sick_line", { full: lq.sick.full, q: lq.sick.threeQuarters, zero: lq.sick.unpaid })} />}
               </div>
-            )}
-            {LEAVE_RULES[type].fromBalance && lq.days > lq.balance && lq.days > 0 && (
-              <label className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm">
-                <Checkbox className="mt-0.5" checked={excessUnpaid} onCheckedChange={(c) => setExcessUnpaid(c === true)} disabled={busy} />
-                {t("req.excess_unpaid", { n: Math.max(0, lq.days - Math.max(0, lq.balance)) })}
-              </label>
             )}
             <div className="space-y-1.5">
               <Label htmlFor="lv-note">{t("req.note")}</Label>
@@ -226,8 +213,9 @@ export function NewRequestDialog({
         )}
 
         {warnings.map((w) => (
-          <Callout key={w} tone="warn">
-            {t(`req.warn.${w}`)}
+          // LV-04 — said in red before sending: it will not be approved for travel; it is still filed.
+          <Callout key={w} tone={w === "travel_docs" ? "block" : "warn"}>
+            {t(`req.warn.${w}`, { n: lq?.excess ?? 0 })}
           </Callout>
         ))}
         <BlockingReasons title={t("req.cannot_send")} reasons={blocks.map((b) => t(`req.block.${b}`))} />

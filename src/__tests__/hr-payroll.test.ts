@@ -155,7 +155,7 @@ describe("the writes", () => {
   })
 
   it("the supplementary -D after the main: retro only, then the retro items are cleared (PY-04)", async () => {
-    const sup = computeSupplementary(M, employees, pays, sites)
+    const sup = computeSupplementary({ month: M, employees, pays, sites })
     expect(sup).toEqual([expect.objectContaining({ employeeId: "e3", retro: 270, net: 270 })])
     await expect(prepareSupplementary(db, pay, ORG, M, { uid: "po", name: "P" }, sup)).rejects.toMatchObject({ blocks: ["main_not_approved"] })
     await preparePayroll(db, pay, ORG, M, { uid: "po", name: "P" }, { lines, sitesToClose: ["s1"], missingPay: [] }, { today: "2026-09-02" })

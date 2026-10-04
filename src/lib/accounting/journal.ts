@@ -62,6 +62,8 @@ export type SourceType =
   | "hr_pay_return"
   | "hr_advance"
   | "hr_settlement"
+  /** HR 1.0 — a payment request (hr:PR) paid: a government document fee. */
+  | "hr_fee"
   | "expense"
   | "depreciation"
   | "guarantee_margin"

@@ -8457,7 +8457,96 @@
       "print_profile_saved": "Print details saved",
       "print_profile_failed": "Could not save. Try again.",
       "print_profile_err_cr": "The commercial registration number has 10 digits.",
-      "print_profile_err_vat": "The tax number has 15 digits, starting and ending with 3."
+      "print_profile_err_vat": "The tax number has 15 digits, starting and ending with 3.",
+      "team_group_hr_manager": "HR manager",
+      "team_group_hr_gov": "Government relations",
+      "team_group_hr_payroll": "Payroll officer",
+      "team_group_hr_supervisor": "Workplace supervisor",
+      "team_group_management": "Management",
+      "pn_hr_letter_issued_title": "Your letter is issued",
+      "pn_hr_letter_issued": "{letter} — {serial}",
+      "pn_hr_letter_declined_title": "Your letter request was declined",
+      "pn_hr_letter_declined": "{letter} — {reason}",
+      "hr_letter_kind": {
+        "sal": "Salary certificate",
+        "emb": "Embassy letter",
+        "noc": "No-objection letter",
+        "oth": "Other letter",
+        "exp": "Experience certificate"
+      },
+      "pn_hr_request_filed_title": "A request awaits your decision — {no}",
+      "pn_hr_request_filed": "{req} from {name} ({no}). Review and decide it from Today in HR.",
+      "pn_hr_leave_to_endorse_title": "A leave request awaits your endorsement — {no}",
+      "pn_hr_leave_to_endorse": "{name} asked for leave from {from} to {to}. Endorse it before the HR manager decides.",
+      "pn_hr_request_decided_title": "Decision on request {no}",
+      "pn_hr_request_decided": "{req} {no}: {verdict}. {note}",
+      "pn_hr_advance_to_finance_title": "An advance above the limit awaits Finance — {no}",
+      "pn_hr_advance_to_finance": "{actor} referred {name}’s advance request ({no}) because it is above HR’s limit. Decide it from the HR desk in Accounting.",
+      "pn_hr_exit_reentry_title": "Exit re-entry — {name}",
+      "pn_hr_exit_reentry": "{name}’s leave is approved and the travel starts on {from}. Issue the exit re-entry visa before the trip.",
+      "pn_hr_violation_recorded_title": "Violation recorded — {name}",
+      "pn_hr_violation_recorded": "{actor} recorded a violation for {name} on {on}. The HR manager decides it after a hearing.",
+      "pn_hr_penalty_applied_title": "A penalty on you — violation of {on}",
+      "pn_hr_penalty_applied": "{actor} applied a penalty for the violation of {on}. You may object within 15 days, until {until}, from My file.",
+      "pn_hr_penalty_dismissed_title": "Violation dismissed — {on}",
+      "pn_hr_penalty_dismissed": "{actor} dismissed the violation of {on} with no penalty.",
+      "pn_hr_objection_filed_title": "Objection to a penalty — {name}",
+      "pn_hr_objection_filed": "{name} objected to the penalty for the violation of {on}. It is suspended until you decide: uphold or cancel.",
+      "pn_hr_objection_decided_title": "Decision on your objection — violation of {on}",
+      "pn_hr_objection_decided": "{verdict}. {note}",
+      "pn_hr_letter_filed_title": "A letter request awaits your signature — {name}",
+      "pn_hr_letter_filed": "{letter} for {name}. Review and sign it, or decline it with a reason.",
+      "pn_hr_payroll_prepared_title": "Payroll {month} awaits your approval",
+      "pn_hr_payroll_prepared": "{actor} prepared payroll {month}. Review the lines and approve it — never by whoever prepared it.",
+      "pn_hr_payroll_approved_title": "Payroll {month} approved — to post and pay",
+      "pn_hr_payroll_approved": "{actor} approved payroll {month}. Post and pay it from the HR desk in Accounting.",
+      "pn_hr_payslip_ready_title": "Your payslip is ready — {month}",
+      "pn_hr_payslip_ready": "Your pay for {month} was transferred. Open the payslip and the reason for each deduction in My file.",
+      "pn_hr_transfer_returned_title": "The bank returned your salary transfer — {month}",
+      "pn_hr_transfer_returned": "The bank returned the transfer for {month}. The payroll officer corrects the IBAN and it is paid again — if your account changed, update it from My file.",
+      "pn_hr_iban_to_fix_title": "Returned transfer — {name}",
+      "pn_hr_iban_to_fix": "The bank returned {name}’s transfer from payroll {month}: {reason}. Correct the IBAN for the HR manager to approve.",
+      "pn_hr_iban_to_approve_title": "A corrected IBAN awaits your approval — {name}",
+      "pn_hr_iban_to_approve": "{actor} corrected {name}’s IBAN. Approve it so Finance can pay the held line — never by whoever corrected it.",
+      "pn_hr_iban_approved_title": "IBAN approved — {name}",
+      "pn_hr_iban_approved": "{actor} approved {name}’s IBAN. Pay the held line from the HR desk in Accounting.",
+      "pn_hr_custody_requested_title": "Custody clearance requested — {name}",
+      "pn_hr_custody_requested": "{actor} started {name}’s exit; the last day is {lastDay}. Clear the custody and record the value of anything missing — no settlement before it.",
+      "pn_hr_exit_started_title": "Exit started — {name}",
+      "pn_hr_exit_started": "{actor} started {name}’s exit; the last day is {lastDay}. After the settlement: GOSI exclusion, medical insurance, final exit.",
+      "pn_hr_custody_cleared_title": "{name}’s custody is cleared — prepare the settlement",
+      "pn_hr_custody_cleared": "{actor} cleared {name}’s custody. The settlement can now be prepared.",
+      "pn_hr_settlement_approved_title": "Settlement approved — {name}",
+      "pn_hr_settlement_approved": "{actor} approved the final settlement of {name} (last day {lastDay}). Pay it from the HR desk in Accounting.",
+      "pn_hr_settlement_paid_title": "{name}’s settlement is paid — final exit",
+      "pn_hr_settlement_paid": "Finance paid {name}’s settlement. Record the final exit and the GOSI exclusion.",
+      "pn_hr_manpower_requested_title": "Manpower request — {project}",
+      "pn_hr_manpower_requested": "{actor} asked for {count} workers for {project} from {from}. Answer with the coverage plan from Workplaces.",
+      "pn_hr_manpower_answered_title": "Manpower request answered — {project}",
+      "pn_hr_manpower_answered": "{actor} answered the manpower request for {project} with the coverage plan. Review it on the project’s team.",
+      "pn_hr_assign_fix_raised_title": "Assignment correction — {name}",
+      "pn_hr_assign_fix_raised": "{actor}: {name} has worked at {site} since {since} but is not on its list. Correct the assignment or decline it with a reason.",
+      "pn_hr_assign_fix_decided_title": "Decision on the assignment correction — {name}",
+      "pn_hr_assign_fix_decided": "{name} — {site}: {verdict}. {note}",
+      "pn_hr_injury_recorded_title": "Work injury — {name}",
+      "pn_hr_injury_recorded": "{actor} recorded a work injury for {name} on {on}. GOSI report within 3 working days — due {due}.",
+      "pn_hr_iqama_clock_title": "Iqama due within 90 days — {name}",
+      "pn_hr_iqama_clock": "{name} arrived on a visa and joined on {join}. Issue the iqama before {date}.",
+      "pn_hr_iqama_on_site_title": "Expired iqama on site — {name}",
+      "pn_hr_iqama_on_site": "{name}’s iqama expired on {expiry} and the worker is on {site}. Renew it — no work on a site with an expired iqama.",
+      "hr_req_kind": {
+        "leave": "Leave request",
+        "advance": "Advance request",
+        "data": "Data update request"
+      },
+      "hr_verdict": {
+        "approved": "approved",
+        "declined": "declined",
+        "upheld": "The penalty is upheld and deducted in its payroll",
+        "cancelled": "The penalty is cancelled and never counts",
+        "done": "the assignment was corrected",
+        "refused": "the correction was declined"
+      }
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -18918,7 +19007,8 @@
         "not_your_site": "This workplace is not one you supervise",
         "own_request": "Nobody approves his own request",
         "blocked": "Some values are missing or wrong",
-        "missing": "This employee no longer exists"
+        "missing": "This employee no longer exists",
+        "user_linked": "This user is linked to another employee record — unlink it there first"
       },
       "site_type": {
         "project": "Project site",
@@ -19037,19 +19127,27 @@
         "advance": "Advance instalment (art. 92)",
         "advance_v": "{share} of the wage a month",
         "penalty": "Penalties",
-        "penalty_v": "at most {cap} days' wage a month · objection within {days} days"
+        "penalty_v": "at most {cap} days' wage a month · objection within {days} days",
+        "hours": "Working hours",
+        "hours_v": "{normal} a day · Ramadan {ramadan} for everyone",
+        "holidays": "Public holidays {year} (art. 112, Umm al-Qura)",
+        "holiday_days": "from {date} — {n} days"
       },
       "today": {
         "soon": "Your decisions appear here as HR is set up.",
         "build_title": "Moving in — the build path",
         "build_note": "{done} of {total} done, computed from the record.",
         "step": {
-          "establishment": "The establishment file — name and commercial registration",
-          "type": "The business type — it sets the default features",
-          "policies": "Company policies saved",
-          "sites": "At least one workplace",
-          "supervisors": "Every site, workshop and warehouse has a supervisor",
-          "employees": "Employees on the record — imported or added"
+          "establishment": "Establishment file",
+          "policies": "Policies",
+          "sites": "Workplaces",
+          "employees": "First employee",
+          "team": "Team & roles",
+          "attendance": "Daily attendance",
+          "documents": "Documents",
+          "close": "Close last month's attendance",
+          "payroll": "First payroll",
+          "files": "Finance & files"
         },
         "waiting": "Waiting for you",
         "nothing_waiting": "Nothing waits for your decision",
@@ -19090,7 +19188,11 @@
           "probation_end": "Probation of {name} ends {date}",
           "contract_end": "Contract of {name} ends {date}",
           "manpower": "{project} asks for {count} × {trade} from {date}",
-          "settlement_ready": "Settlement for {name} — custody cleared"
+          "settlement_ready": "Settlement for {name} — custody cleared",
+          "leave_return_due": "{name} is not back from leave — it ended {date}, {days} days late",
+          "leave_return_warning": "{name} absent without leave for {days} days after {date} — the written warning is due (art. 80)",
+          "leave_return_termination": "{name} absent without leave for {days} days after {date} — termination is possible (art. 80)",
+          "assign_fix": "Assignment correction — {name} has worked at {site} since {date}"
         },
         "a": {
           "move": "Move",
@@ -19105,7 +19207,135 @@
           "decide": "Decide",
           "open": "Open",
           "answer": "Answer",
-          "settle": "Settle"
+          "settle": "Settle",
+          "plan": "Plan"
+        },
+        "order": "One trip, in order: {order}",
+        "sites_today": "Workplaces today",
+        "sites_today_note": "Present ÷ assigned — the absent by name on each sheet",
+        "sites_today_none": "Nobody is assigned yet",
+        "duty": {
+          "out": "{n} absent or sick",
+          "unrecorded": "{n} unrecorded",
+          "leave": "{n} on leave",
+          "none": "Unrecorded"
+        },
+        "ending": "Sites ending soon",
+        "ending_none": "Nothing ends within {n} days",
+        "ending_line": "{n} people become unassigned without a plan",
+        "queue": "Renewal queue",
+        "queue_note": "One trip per person, in order — the next 120 days",
+        "queue_none": "Nothing to renew in the next 120 days",
+        "queue_doc": "{doc} {date}",
+        "kpi": {
+          "on_duty": {
+            "label": "On duty today",
+            "note": "of {of} · {out} absent or sick · {unrecorded} unrecorded · {bench} unassigned",
+            "rest": "Friday — the weekly rest day"
+          },
+          "documents": {
+            "label": "Documents expired or due within {days} days",
+            "note": "{expired} iqamas expired — {onSite} on a site"
+          },
+          "payroll": {
+            "label": "Payroll — the last month",
+            "state": "{month} — {state} · {returned} returned transfers",
+            "supplementary": "A supplementary payroll waits for approval",
+            "none": "No payroll yet — the first after the month closes"
+          },
+          "iqama_expired": {
+            "label": "Iqamas expired now",
+            "note": "{onSite} on a site · {insurance} medical insurance expired"
+          },
+          "expiring": {
+            "label": "Documents expiring within 30 days",
+            "note": "and {more} more within 60"
+          },
+          "arrivals": {
+            "label": "Arrivals without an iqama",
+            "nearest": "90 days from arrival — the nearest ends {date}",
+            "none": "None"
+          },
+          "estimate": {
+            "label": "{month} — gross estimate from contracts",
+            "note": "Contract wages, before overtime and absence"
+          },
+          "returned": {
+            "label": "Returned transfers",
+            "note": "{net} unpaid until the IBAN is fixed"
+          },
+          "advances": {
+            "label": "Outstanding advances",
+            "note": "{count} employees · 10% of the wage from each payroll"
+          },
+          "my_workers": {
+            "label": "My workers today",
+            "note": "of {of} · {absent} absent · {sick} sick · {unrecorded} unrecorded · {leave} on leave",
+            "rest": "Friday — the weekly rest day"
+          },
+          "unrecorded": {
+            "label": "Not recorded yet",
+            "note": "Record before the day ends",
+            "done": "Complete"
+          },
+          "my_docs": {
+            "label": "My workers' documents due",
+            "note": "Renewal is government relations' — you are told"
+          },
+          "bench": {
+            "label": "Unassigned — still paid",
+            "note": "{count} people, a month's wages"
+          },
+          "decisions": {
+            "label": "People decisions within 60 days",
+            "note": "Contracts ending and probations"
+          },
+          "labour_cost": {
+            "label": "Labour cost — the last payroll",
+            "note": "{month} · {perHead} a head · Saudis {saudi}%",
+            "none": "No payroll yet · Saudis {saudi}%"
+          },
+          "iqama_on_site": {
+            "label": "Expired iqamas on sites",
+            "note": "{returned} returned transfers unpaid"
+          }
+        },
+        "step_why": {
+          "establishment": "Name, commercial registration and business type — no letters or wage file without them",
+          "sites": "Every employee is assigned somewhere; the place carries the cost account",
+          "policies": "Statutory items are fixed; company policies are yours",
+          "team": "Who records attendance, renews documents and prepares payroll — or you do it all",
+          "employees": "The record is the source — contract, documents, assignment and pay",
+          "attendance": "No payroll without closed attendance — recorded day by day",
+          "documents": "Iqama for every non-Saudi — a blank shows as missing until it is issued",
+          "close": "The month ends, each workplace closes, then the payroll — in that order",
+          "payroll": "Computed from attendance and the contract — approved here, paid by Finance",
+          "files": "After payment: the Mudad file and the GOSI statement from the same payroll"
+        },
+        "step_go": {
+          "establishment": "Enter the file",
+          "sites": "Add a workplace",
+          "policies": "Review the policies",
+          "team": "Add a member",
+          "employees": "New employee or import",
+          "attendance": "Record today",
+          "documents": "Show what is missing",
+          "close": "Close attendance",
+          "payroll": "Open payroll",
+          "files": "Open"
+        },
+        "step_done": "Done",
+        "step_locked": "After the previous step",
+        "gaps": "What turned out missing",
+        "gaps_note": "Updated with every step, from your own data",
+        "gaps_none": "No gaps in your data yet",
+        "gap": {
+          "site_no_supervisor": "{site} has no supervisor to record attendance — the HR manager records it meanwhile",
+          "no_iqama": "{name} is not Saudi and has no iqama or arrival on the card",
+          "no_iban": "{name} has no IBAN — the transfer will come back",
+          "no_payroll_officer": "No payroll officer — who prepares the payroll and fixes returns?",
+          "no_gov_officer": "No government relations officer — documents will expire with nobody to renew them",
+          "manager_not_on_record": "You are not on the record yourself — link your user to your employee card, or you will not be on the payroll"
         }
       },
       "back": "Back",
@@ -19239,6 +19469,12 @@
           "document": "Nearest document",
           "status": "Status",
           "wage": "Monthly wage"
+        },
+        "filter_docs": "Document filters",
+        "filter": {
+          "docs": "Documents due",
+          "iqama": "Expired iqama",
+          "iqama_site": "Expired iqama on a site"
         }
       },
       "new": {
@@ -19295,8 +19531,9 @@
         "tile": {
           "service": "Service",
           "leave": "Leave balance",
-          "wage": "Monthly wage",
-          "document": "Nearest document"
+          "wage": "Pay and cost",
+          "document": "Nearest document",
+          "attendance": "Attendance — {month}"
         },
         "years": "{n} years",
         "days": "{n, plural, one {# day} other {# days}}",
@@ -19307,17 +19544,19 @@
         "doc_sub": "{doc} · {date}",
         "seg": {
           "job": "Job",
-          "docs": "Documents",
-          "pay": "Pay",
+          "docs": "Documents & certificates",
+          "pay": "Pay & payroll",
           "leave": "Leave",
-          "log": "Requests & log"
+          "log": "Requests & log",
+          "ov": "Overview",
+          "att": "Attendance & leave"
         },
         "category": "Category",
         "fixed_until": "Fixed term until {date}",
         "probation": "Probation",
         "probation_until": "Until {date}",
         "probation_confirmed": "Confirmed",
-        "probation_ended": "Ended during probation",
+        "probation_ended": "Ended during probation — the exit has started",
         "my_file": "My file",
         "linked_yes": "Linked to a platform user",
         "linked_no": "Not linked",
@@ -19342,9 +19581,55 @@
           "pay": "Pay change",
           "probation": "Probation",
           "renew": "Record renewal",
-          "link": "Link user"
+          "link": "Link user",
+          "start": "Started work",
+          "opening": "Opening balance",
+          "commission": "Commission"
         },
-        "log_title": "Log"
+        "log_title": "Log",
+        "service_years": "{n} years of service",
+        "per_year": "{n} a year",
+        "company_cost": "Company cost {cost}",
+        "pay_hidden": "Hidden for your role",
+        "days_left": "{n} days left",
+        "att_sub": "{absent} absent · {ot} h overtime",
+        "att_assumed_short": "Assumed",
+        "att_assumed": "Present by default · {absent} absent · {sick} sick",
+        "att_month": "{present} present · {absent} absent · {sick} sick · {ot} h overtime",
+        "att_assumed_note": "An office assumes presence and records exceptions only",
+        "att_title": "Attendance",
+        "this_month": "This month ({month})",
+        "last_month": "Last month ({month})",
+        "leave_title": "Leave balance",
+        "accrued": "Accrued by service",
+        "balance_formula": "Balance = accrued + opening − taken",
+        "personal": "Personal",
+        "name_ar": "Name (Arabic)",
+        "name_en": "Name (English)",
+        "nationality": "Nationality",
+        "job": "Job and contract",
+        "line_manager": "Line manager",
+        "line_manager_mgmt": "Management",
+        "contact": "Contact",
+        "doc_col": {
+          "doc": "Document",
+          "expiry": "Expires",
+          "left": "Days left",
+          "state": "State"
+        },
+        "cost_title": "Cost to the company",
+        "cost_gosi": "Employer GOSI",
+        "cost_eos": "End-of-service accrual",
+        "cost_total": "Monthly cost",
+        "eos_termination": "Gratuity if terminated today",
+        "eos_resignation": "Gratuity if he resigned today",
+        "probation_lapsed": "Ended on {date} with no decision — the contract continues (art. 53)",
+        "iqama_overdue": "The iqama was not issued within 90 days of arrival (due {date}) — not on a site until it is.",
+        "started": "Start recorded",
+        "opening_done": "Opening balance recorded",
+        "opening_card": "Opening balance from the card",
+        "opening_card_v": "{n} days — entered by {name} on {date}",
+        "commission_recorded": "Commission recorded: it goes with that month's payroll"
       },
       "move": {
         "to": "Move to",
@@ -19369,18 +19654,21 @@
         "reason": "Reason",
         "from": "Wage now",
         "to": "Wage after",
-        "retro_note": "An effective date inside a closed month adds the difference to the supplementary payroll; the closed month is not reopened.",
+        "retro_note": "A change applies from its date. Inside the last closed month, the difference for that month goes to the supplementary payroll and the month is not reopened. Further back is not possible.",
         "block": {
           "bad_basic": "The basic must be above zero",
           "no_reason": "Give the reason",
           "no_date": "Choose the effective date",
           "too_old": "At most one closed month back",
-          "no_change": "The basic is unchanged"
+          "no_change": "The basic is unchanged",
+          "saudi_only": "This trade is reserved for Saudis — a non-Saudi cannot be promoted into it"
         },
         "warn": {
           "pay_cut": "This lowers the pay — it needs the worker's written consent",
           "saudi_below_nitaqat": "A Saudi below 4,000 basic does not count fully in Nitaqat"
-        }
+        },
+        "scheduled": "Takes effect on {on}: payrolls before that day keep the current wage.",
+        "retro_preview": "{month} is closed: {amount} goes to its supplementary payroll."
       },
       "probation": {
         "decision": "Decision",
@@ -19389,23 +19677,29 @@
         "end": "End during probation",
         "to": "Extend to",
         "consent": "Worker's written consent on",
-        "end_note": "Ending during probation owes no end-of-service award; the exit itself is handled by end of service.",
+        "end_note": "Ending during probation owes no end-of-service award and no notice — and it starts the exit: custody clearance from Inventory, then the settlement.",
         "block": {
           "decided": "Probation is already decided",
           "extend_needs_consent": "An extension needs the worker's written consent",
           "extend_too_long": "Probation cannot exceed 180 days",
-          "extend_not_later": "The new end must be after the current one"
-        }
+          "extend_not_later": "The new end must be after the current one",
+          "over": "Probation ended with no decision — the contract continues (art. 53); there is nothing left to decide",
+          "no_last_day": "Choose the last working day",
+          "probation_over": "The last day must fall within the probation, not after it",
+          "left": "His end of service has already started"
+        },
+        "last_day": "Last working day"
       },
       "renew": {
         "document": "Document",
         "expiry": "New expiry",
-        "fee": "Fee paid",
-        "note": "The old expiry stays in the log.",
+        "fee": "Fee (Finance pays it)",
+        "note": "The old expiry stays in the log. A fee goes to Finance as a payment request.",
         "block": {
           "bad_date": "Choose a future expiry",
           "passport_first": "Renew the passport first — the iqama cannot outlast it",
-          "not_later": "The new expiry must be after the current one"
+          "not_later": "The new expiry must be after the current one",
+          "bad_fee": "The fee cannot be negative"
         }
       },
       "link": {
@@ -19420,7 +19714,7 @@
         "promoted": "Promoted to {trade} from {on} — {reason}",
         "probation_confirm": "Probation confirmed",
         "probation_extend": "Probation extended to {to} (consent {consent})",
-        "probation_end": "Ended during probation",
+        "probation_end": "Ended during probation — last day {lastDay}",
         "renewed": "{doc} renewed to {to}",
         "user_linked": "Platform user link changed",
         "leave_filed": "Leave request {no} filed",
@@ -19447,7 +19741,15 @@
         "imported": "Record imported — no. {no}, {trade}, {site}",
         "data_filed": "Details update request {no} filed",
         "data_declined": "Details update request {no} declined",
-        "data_cancelled": "Details update request {no} cancelled"
+        "data_cancelled": "Details update request {no} cancelled",
+        "letter_filed": "Letter requested — {letter, select, sal {salary certificate} emb {embassy letter} noc {no-objection letter} exp {experience certificate} other {letter}} to {addressee}",
+        "letter_issued": "Letter issued — {letter, select, sal {salary certificate} emb {embassy letter} noc {no-objection letter} exp {experience certificate} other {letter}} to {addressee}, {serial}",
+        "letter_declined": "Letter declined — {letter, select, sal {salary certificate} emb {embassy letter} noc {no-objection letter} exp {experience certificate} other {letter}}: {reason}",
+        "started": "Started work on {on}",
+        "leave_returned": "Back from leave {no} on {on} — {late} days late",
+        "opening_recorded": "Opening balance from the card: leave {leave} days{advance, select, 1 { · and an outstanding advance} other {}}",
+        "file_attached": "File attached — {name}",
+        "commission_recorded": "Commission recorded for {month} ({reason})"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -19541,7 +19843,9 @@
           "missing": "{n, plural, one {# day has} other {# days have}} no record — record or declare them first"
         },
         "on_leave": "On approved leave",
-        "on_leave_note": "On approved leave this day — not recorded absent and nothing is deducted."
+        "on_leave_note": "On approved leave this day — not recorded absent and nothing is deducted.",
+        "holiday": "{name} — a paid public holiday; no sheet is needed. Hours worked on it are recorded as overtime.",
+        "ramadan": "Ramadan: the working day is six hours for everyone — anything beyond is overtime."
       },
       "leave_type": {
         "annual": "Annual",
@@ -19612,7 +19916,7 @@
         "block": {
           "bad_dates": "Choose the dates — the end on or after the start",
           "too_long": "Longer than the law gives for this leave",
-          "above_balance": "Above the balance — shorten it or take the excess unpaid",
+          "above_balance": "Above the balance — choose: the balance only, or the excess unpaid",
           "overlap": "Overlaps another leave of this employee",
           "female_only": "This leave is for women",
           "min_years": "Needs two years of service",
@@ -19626,14 +19930,16 @@
           "travel_docs": "Not approvable for travel: the iqama or passport lapses before the return — renew first",
           "no_value": "Enter the new value",
           "bad_iban": "The IBAN is not valid — SA followed by 22 digits",
-          "no_document": "Give the bank letter's reference"
+          "no_document": "Give the bank letter's reference",
+          "no_balance": "No balance as of the start — \"balance only\" leaves no day"
         },
         "warn": {
-          "travel_docs": "The iqama or passport lapses before the return — no travel before renewal; HR cannot approve it for travel.",
+          "travel_docs": "The iqama or passport expires before the return — it cannot be approved for travel before renewal. The request is still filed.",
           "sick_beyond": "Beyond 120 sick days in the service year — the HR manager decides.",
           "excess_unpaid": "Part of this leave is unpaid — deducted in payroll.",
           "over_limit": "Above the HR limit — decided in Finance after HR's view.",
-          "past_contract": "Repayment runs past the contract's end — the rest comes from the final settlement."
+          "past_contract": "Repayment runs past the contract's end — the rest comes from the final settlement.",
+          "above_balance": "{n} days above the balance — the HR manager decides: the balance only, or the excess unpaid."
         },
         "new_data": "Update my details",
         "data_field": "What to change",
@@ -19641,7 +19947,14 @@
         "bank_document": "Bank letter reference",
         "bank_document_note": "A new IBAN needs the bank's letter; HR checks it before approving.",
         "data_note": "You never edit your record yourself — the HR manager checks and approves the change.",
-        "document_ref": "document {ref}"
+        "document_ref": "document {ref}",
+        "mode": {
+          "title": "{n} days above the balance — not approvable in full",
+          "balance_only": "Approve the balance only",
+          "balance_only_line": "{n} days — ends on {date}",
+          "excess_unpaid": "Approve with the excess unpaid",
+          "excess_unpaid_line": "{n} days deducted in payroll automatically"
+        }
       },
       "payroll": {
         "state": {
@@ -19663,7 +19976,10 @@
           "approved": "Already approved — a closed month never reopens; late items go to the supplementary",
           "sent": "Its events were already sent to Finance",
           "main_not_approved": "Approve the month's payroll first",
-          "no_lines": "Nothing for the supplementary"
+          "no_lines": "Nothing for the supplementary",
+          "too_many": "This month already has the maximum number of supplementary payrolls",
+          "stale": "An item was already paid in an approved supplementary. Recompute.",
+          "advance_stale": "An advance balance changed since this was prepared (another month took its instalment). Recompute before approving."
         },
         "stale": "The record changed since it was prepared — recompute before approving.",
         "prepare": "Compute and prepare",
@@ -19711,10 +20027,16 @@
           "declared": "Declared days"
         },
         "no_lines": "No lines",
-        "sup_title": "Supplementary {key}",
-        "sup_desc": "Late items only — retro pay differences for this closed month. The month's payroll is not reopened.",
+        "sup_desc": "Late items only, for this closed month: retro pay differences, late commission, and penalties cancelled after they were deducted. The month's payroll is not reopened, and an approved supplementary is final: anything later goes in the next one.",
         "confirm_title": "Approve payroll {key}?",
-        "confirm_desc": "The events go to Finance with fixed keys and cannot be sent twice. Advance instalments come off the balances. Anything late goes to the supplementary."
+        "confirm_desc": "The events go to Finance with fixed keys and cannot be sent twice. Advance instalments come off the balances. Anything late goes to the supplementary.",
+        "sup_list_title": "Supplementary payrolls",
+        "sup_next": "Next supplementary",
+        "sup_item": {
+          "retro": "Retro {amount}",
+          "commission": "Commission {amount}",
+          "refund": "Penalty refunded {amount}"
+        }
       },
       "iban": {
         "returned": "The bank returned this salary transfer — payroll corrects the IBAN, the HR manager approves it, then Finance pays.",
@@ -19775,13 +20097,17 @@
           "return": "A transfer came back",
           "held": "Pay a held line",
           "advance": "Pay out the advance",
-          "decide": "Advance above the HR limit"
+          "decide": "Advance above the HR limit",
+          "fee": "Pay a government fee",
+          "settlement": "Pay the final settlement"
         },
         "confirm": {
           "pay": "Record payment",
           "return": "Record the return",
           "held": "Pay",
-          "advance": "Pay out"
+          "advance": "Pay out",
+          "fee": "Pay",
+          "settlement": "Pay out"
         },
         "failed": "Could not complete — check the period is open and try again",
         "block": {
@@ -19794,7 +20120,12 @@
         "settlements": "Final settlements",
         "settlements_empty": "No settlement waiting",
         "settlement_line": "Net {net} · last day {last}",
-        "settlement_paid_ok": "Settlement paid — the exit is closed"
+        "settlement_paid_ok": "Settlement paid — the exit is closed",
+        "which_payroll": "Payroll the transfer belonged to",
+        "fees": "Payment requests (government fees)",
+        "fees_empty": "No fee waiting to be paid",
+        "fee_line": "Employee {no} · {doc} renewed to {expiry} · {amount}",
+        "fee_paid_ok": "Fee paid"
       },
       "vio": {
         "title": "Violations and penalties",
@@ -19861,7 +20192,8 @@
           "objection_late": "The 15 days to object have passed",
           "future": "A day that has not come",
           "exists": "This violation is already recorded for that day"
-        }
+        },
+        "objection_effect": "If the month's payroll already deducted it: upheld, that deduction stands and nothing is taken again; cancelled, it is paid back in that month's supplementary payroll. If it was not deducted yet: upheld, it is deducted in this month's payroll."
       },
       "custody": {
         "title": "Custody clearance",
@@ -19914,10 +20246,13 @@
           "ticket": "Ticket",
           "advance": "Outstanding advance",
           "custody": "Custody missing",
-          "net": "Net due"
+          "net": "Net due",
+          "gratuity_span": "End-of-service award ({y} y {m} m {d} d)",
+          "last_paid": "Last month: already paid by its payroll",
+          "art77_fixed": "Compensation (art. 77): the {days} days left on the contract",
+          "last_note": "The last month is computed like a payroll line up to the last day: absences and sick days recorded so far, penalties, and GOSI."
         },
         "ticket": "Ticket owed by the contract",
-        "fixed_months": "Months left on the contract",
         "approve": "Approve the settlement",
         "approved": "Settlement approved — sent to Finance",
         "started": "End of service started — Inventory is asked",
@@ -19944,7 +20279,8 @@
           "no_wage": "No wage on record",
           "sent": "Already sent to Finance",
           "bad_amount": "Enter a valid amount"
-        }
+        },
+        "paid_after": "The payroll of {months} already paid him after his last day. Recover the overpayment by a documented decision."
       },
       "data_field": {
         "iban": "IBAN",
@@ -19994,7 +20330,8 @@
           "penalties": "Penalties",
           "advance": "Advance instalment",
           "net": "Net paid",
-          "retro": "Retro pay difference"
+          "retro": "Retro pay difference",
+          "refund": "Penalty paid back (cancelled on your objection)"
         }
       },
       "inj": {
@@ -20129,6 +20466,402 @@
           "no_trade": "Choose the trade",
           "bad_count": "A whole number above zero",
           "no_date": "Choose the start date"
+        }
+      },
+      "letter": {
+        "kind": {
+          "sal": "Salary certificate",
+          "emb": "Embassy letter",
+          "noc": "No-objection letter",
+          "oth": "Other letter",
+          "exp": "Experience certificate"
+        },
+        "hint": {
+          "sal": "For a bank or an authority: the pay in detail",
+          "emb": "For an embassy: the job, the pay and no objection to travel",
+          "noc": "No objection for a purpose you state (study, a licence, extra work…)",
+          "oth": "Anything else — you describe it, the HR manager writes it",
+          "exp": "On leaving: the period and the position"
+        },
+        "signer": {
+          "gov": "government relations",
+          "manager": "the HR manager",
+          "management": "management"
+        },
+        "signed_by": "signed by {who}",
+        "request": "Request a letter",
+        "request_for": "Letter request — {name}",
+        "sub_std": "Issued from the record at a signature — none of the details are typed",
+        "sub_free": "Describe the letter — the HR manager writes and signs it",
+        "type": "Letter type",
+        "title_field": "Which letter do you need?",
+        "title_ph": "e.g. a letter for a university",
+        "purpose_req": "State the purpose and details",
+        "purpose_opt": "Note for the letter (optional)",
+        "purpose_ph": {
+          "oth": "What should the letter say, and which details must it state?",
+          "noc": "No objection to what, and for how long?",
+          "std": "Optional — e.g. state the total salary only"
+        },
+        "addressee": "Addressed to",
+        "addressee_ph": "e.g. Al Rajhi Bank · Embassy of Italy · To whom it may concern",
+        "lang": "Letter language",
+        "lang_name": {
+          "ar": "العربية",
+          "en": "English"
+        },
+        "send": "Send request",
+        "sent": "Sent — {who} signs it",
+        "on_behalf": "Requested by HR",
+        "title": "Letters",
+        "none": "No letters yet",
+        "queue": "Letters waiting for your signature",
+        "state": {
+          "pending": "Waiting for signature",
+          "issued": "Issued",
+          "declined": "Declined"
+        },
+        "with": "With: {who}",
+        "view": "View",
+        "print": "Print",
+        "sign": "Sign or decline",
+        "asks": "The employee asks:",
+        "to_line": "To: {to} · {lang}",
+        "issued_line": "Issued {date} · {serial}",
+        "declined_reason": "Declined — {reason}",
+        "decide_issue": "Issue & sign",
+        "decide_issue_std": "From the record as it is",
+        "decide_issue_free": "After writing the text",
+        "decide_decline": "Decline",
+        "decide_decline_sub": "With a reason the employee sees",
+        "text": "Letter text",
+        "text_note": "Starts from the employee's words — edit it into the letter; the letterhead and the details come from the card.",
+        "reason": "Reason (required)",
+        "travel": "Travel during an approved leave",
+        "travel_none": "Name no leave",
+        "leaving_warn": "The employee is leaving — an experience certificate is the usual letter.",
+        "pay_hidden_note": "The figures are hidden from your role — the employee's copy shows them.",
+        "preview": "Preview — every detail comes from the record",
+        "done_issued": "Issued {serial} — it shows in the employee's file",
+        "done_declined": "Declined — the employee sees the reason",
+        "block": {
+          "no_addressee": "Say who the letter is addressed to",
+          "no_title": "Name the letter you need",
+          "no_purpose": "State the purpose and details",
+          "exp_on_exit": "The experience certificate is issued on leaving",
+          "left": "The employee has left — only an experience certificate",
+          "no_wage": "No wage on the record yet — the HR manager enters it first",
+          "bad_input": "Check the form",
+          "no_text": "Write the letter's text",
+          "no_reason": "Give the reason",
+          "stale": "This letter has already been decided",
+          "bad_travel": "That leave is not an approved leave of this employee",
+          "own_request": "Nobody signs his own letter",
+          "no_role": "Your role does not sign this letter",
+          "missing": "The letter or the employee was not found"
+        }
+      },
+      "letter_doc": {
+        "no": "No.",
+        "no_pending": "given on signing",
+        "date": "Date",
+        "to": "To",
+        "cr": "CR {cr}",
+        "mol": "Est. no. {mol}",
+        "hr": "Human Resources",
+        "the_company": "The company",
+        "who": "{gender, select, f {Ms.} other {Mr.}} {name} ({nat}), {saudi, select, yes {National ID} other {Iqama no.}} {id}",
+        "sal_body": "This is to certify that {who} is employed by {co} as {trade} since {join}, that {gender, select, f {she} other {he}} is still in service, and that {gender, select, f {her} other {his}} monthly pay is as follows:",
+        "basic": "Basic salary",
+        "housing": "Housing allowance",
+        "transport": "Transport allowance",
+        "total": "Total",
+        "amount": "SAR {n}",
+        "emb_body": "This is to certify that {who} is employed by {co} as {trade} since {join}, with a total monthly salary of {total}. The company has no objection to {gender, select, f {her} other {his}} travel{leave}, after which {gender, select, f {she} other {he}} will resume {gender, select, f {her} other {his}} duties.",
+        "emb_leave": " during {gender, select, f {her} other {his}} leave from {from} to {to}",
+        "exp_body": "This is to certify that {who} worked for {co} as {trade} from {join} to {last}, and that throughout {gender, select, f {her} other {his}} service {gender, select, f {her} other {his}} conduct was good.",
+        "noc_body": "{co} certifies that {who} is employed as {trade} since {join}, and that it has no objection to {gender, select, f {her} other {his}} request as follows:",
+        "oth_body": "{co} certifies that {who} has held {gender, select, f {her} other {his}} position as {trade} since {join}.",
+        "closing": "Issued at {gender, select, f {her} other {his}} request without liability on the company towards third parties.",
+        "source": "Data source: the employee record — nothing typed by hand",
+        "role": {
+          "manager": "HR manager",
+          "gov": "Government relations",
+          "management": "Management"
+        }
+      },
+      "siteppl": {
+        "title": "People here",
+        "note": "A work injury or a violation on another day is recorded here",
+        "none": "Nobody is assigned here",
+        "injury": "Work injury",
+        "violation": "Violation",
+        "injuries": "Injuries at this place"
+      },
+      "rep": {
+        "none": "No reports for your role",
+        "none_desc": "Reports are read by the HR manager, government relations, payroll and management.",
+        "back": "All reports",
+        "csv": "Download CSV",
+        "empty": "No rows in this report",
+        "rows": "{n, plural, one {# row} other {# rows}}",
+        "sar": "SAR",
+        "mudad": "Mudad wage file — {month}",
+        "mudad_desc": "As sent to Finance — held lines stay out",
+        "gosi": "GOSI statement — {month}",
+        "gosi_desc": "The month's contributions — equal to the GOSI credit",
+        "note": "Reports read the live record the moment they open — no stored copy that differs from the screens.",
+        "note_no_pay": "Reports read the live record the moment they open. Reports in riyals are not shown to roles that do not see pay.",
+        "r": {
+          "register": {
+            "title": "Employee register",
+            "desc": "Number · name · trade · nationality · workplace · joined · status"
+          },
+          "attendance": {
+            "title": "Monthly attendance",
+            "desc": "Days present, absent, sick, on leave and overtime hours — {month}"
+          },
+          "cost": {
+            "title": "Labour cost by cost centre",
+            "desc": "Gross + employer GOSI, from the last payroll — as posted by Finance"
+          },
+          "documents": {
+            "title": "Expired and expiring documents",
+            "desc": "Every document expired or expiring within 90 days, the most urgent first"
+          },
+          "leave": {
+            "title": "Leave balances",
+            "desc": "Accrued − taken, and the liability if paid out today"
+          },
+          "eos": {
+            "title": "End-of-service provision",
+            "desc": "The gratuity each employee would be due today — to reconcile the provision"
+          },
+          "advances": {
+            "title": "Outstanding advances",
+            "desc": "Principal, balance, instalment and months left"
+          },
+          "penalties": {
+            "title": "Penalties register",
+            "desc": "Every decided penalty with incident and hearing dates (art. 73)"
+          },
+          "saudization": {
+            "title": "Saudization by trade",
+            "desc": "Saudis and others per trade — Saudi-only trades flagged"
+          },
+          "movement": {
+            "title": "Joiners and leavers",
+            "desc": "Who joined and who is leaving within 90 days, with the reason"
+          },
+          "turnover": {
+            "title": "Labour turnover",
+            "desc": "Per workplace: headcount · joined in 90 days · leaving · estimated annual turnover"
+          },
+          "structure": {
+            "title": "Structure — employee and line manager",
+            "desc": "The line manager set on the card or derived from the workplace"
+          }
+        },
+        "col": {
+          "no": "No.",
+          "name": "Name",
+          "trade": "Trade",
+          "nationality": "Nationality",
+          "site": "Workplace",
+          "join": "Joined",
+          "status": "Status",
+          "present": "Present",
+          "absent": "Absent",
+          "sick": "Sick",
+          "leave": "Leave",
+          "overtime": "Overtime (h)",
+          "account": "Account",
+          "headcount": "Headcount",
+          "gross": "Gross",
+          "gosi": "Employer GOSI",
+          "cost": "Cost",
+          "per_head": "Per head",
+          "doc": "Document",
+          "expiry": "Expires",
+          "days_left": "Days left",
+          "state": "State",
+          "years": "Service (y)",
+          "accrued": "Accrued",
+          "taken": "Taken",
+          "balance": "Balance",
+          "liability": "Liability",
+          "wage": "Wage",
+          "termination": "On termination",
+          "resignation": "On resignation",
+          "monthly": "Monthly accrual",
+          "principal": "Principal",
+          "balance_left": "Balance",
+          "instalment": "Instalment",
+          "months_left": "Months left",
+          "violation": "Violation",
+          "on": "Incident",
+          "hearing": "Hearing",
+          "step": "Step",
+          "amount": "Amount",
+          "vstate": "State",
+          "saudis": "Saudis",
+          "others": "Non-Saudis",
+          "ratio": "Ratio",
+          "localized": "Saudi-only",
+          "event": "Event",
+          "date": "Date",
+          "reason": "Reason",
+          "joined90": "Joined in 90 days",
+          "leaving": "Leaving",
+          "turnover": "Est. annual turnover",
+          "manager": "Line manager",
+          "source": "Source"
+        },
+        "doc_state": {
+          "expired": "Expired",
+          "d30": "Within 30 days",
+          "d90": "Within 90 days"
+        },
+        "yes": {
+          "yes": "Yes"
+        },
+        "event": {
+          "joined": "Joined",
+          "left": "Leaving"
+        },
+        "mgr": {
+          "set": "Set on the card",
+          "derived": "From the workplace",
+          "management": "Management"
+        }
+      },
+      "holiday": {
+        "founding": "Founding Day",
+        "fitr": "Eid al-Fitr",
+        "adha": "Eid al-Adha",
+        "national": "National Day"
+      },
+      "start": {
+        "on": "Actual start day",
+        "note": "It becomes the join day — the probation, the iqama clock and pro-rata pay run from it.",
+        "block": {
+          "not_expected": "The employee is not \"expected\"",
+          "no_date": "Choose the start day",
+          "future": "The start cannot be in the future"
+        }
+      },
+      "ret": {
+        "act": "Back on {date}",
+        "done": "Return from leave recorded",
+        "done_late": "Return recorded — {n} days of absence without leave after the leave",
+        "not_back": "Not back from leave — {n} days",
+        "stage": {
+          "due": "Days after the leave are absence without leave — record his return if he is back. Art. 80: written warning after 10 days in a row, termination after 15.",
+          "warning": "10 days in a row: the written warning is due now (art. 80).",
+          "termination": "15 days in a row: termination is possible without award (art. 80) — and the absence report on Qiwa."
+        },
+        "block": {
+          "stale": "His return is already recorded, or the request has moved on",
+          "no_date": "Choose the day he returned",
+          "future": "The return cannot be in the future",
+          "before_end": "The leave had not ended on that day"
+        }
+      },
+      "opening": {
+        "leave": "Leave balance today (days)",
+        "max": "At most {n} days could have accrued",
+        "advance": "Outstanding advance",
+        "note": "Entered once, under your name. The end-of-service award is never typed — it is computed from the join date.",
+        "block": {
+          "recorded": "His opening balance is already recorded",
+          "too_recent": "Joined less than 30 days ago — his balance is computed from the record",
+          "leave_taken": "He has taken leave in the system — his balance is computed, not typed",
+          "bad_leave": "Enter the leave balance — zero or more",
+          "above_accrued": "More than his service could have accrued",
+          "bad_advance": "The advance is not valid, or there is no wage on his record",
+          "advance_exists": "He already has an outstanding advance in the system"
+        }
+      },
+      "files": {
+        "title": "Attachments",
+        "none": "No attachments yet",
+        "kind_label": "Kind",
+        "kind": {
+          "iqama": "Iqama image",
+          "passport": "Passport image",
+          "contract": "Contract",
+          "medical": "Medical report",
+          "penalty": "Penalty decision",
+          "bank": "Bank document",
+          "other": "Other"
+        },
+        "attach": "Attach a file",
+        "uploading": "Uploading…",
+        "attached": "File attached",
+        "err_upload": "The file could not be uploaded or opened",
+        "note": "An image or PDF up to 15 MB. An attachment is never deleted — it stays on the record.",
+        "block": {
+          "no_file": "Choose a file",
+          "too_big": "The file is larger than 15 MB",
+          "bad_type": "Images or PDF only",
+          "bad_kind": "Choose the kind",
+          "bad_path": "The file's place is not this employee's"
+        }
+      },
+      "fix": {
+        "title": "Assignment corrections",
+        "none": "None",
+        "raise": "A worker here but not on my list",
+        "raise_desc": "Sent to the HR manager to correct his assignment to {site}",
+        "who": "Who",
+        "pick": "Pick by name",
+        "since": "Working here since",
+        "not_manpower": "An assignment correction, not a manpower request — a new manpower request comes from Projects.",
+        "send": "Send",
+        "raised": "Sent to the HR manager",
+        "line": "On record at {from} · here since {since} · raised by {name}",
+        "line_by_id": "ID {idNo} · here since {since} · raised by {name}",
+        "id_no": "His ID or iqama number",
+        "name": "His name",
+        "by_id_hint": "You see only your workplace's records: enter the number on his ID or iqama card — HR finds his record when deciding.",
+        "correct": "Correct",
+        "corrected": "Assignment corrected",
+        "decline": "Decline",
+        "declined": "Correction declined",
+        "state": {
+          "pending": "Awaiting HR",
+          "done": "Corrected",
+          "declined": "Declined"
+        },
+        "block": {
+          "same_place": "Already on record here",
+          "no_date": "Choose since when he works here",
+          "future": "The date is in the future",
+          "left": "The employee has left",
+          "pending": "A correction for him is already waiting",
+          "stale": "This correction has moved on",
+          "no_reason": "Give the reason",
+          "iqama_expired": "His iqama has expired — he cannot be assigned to a site",
+          "no_date_move": "Choose the date",
+          "no_id": "Enter his ID or iqama number",
+          "no_name": "Enter his name",
+          "no_match": "No current record has this ID number — check the number or decline",
+          "many_match": "More than one record has this ID number — correct the records first",
+          "by_id": "Name him by his ID number"
+        }
+      },
+      "commission": {
+        "month": "Paid with the payroll of",
+        "amount": "Approved commission",
+        "reference": "Sales approval (reference)",
+        "late": "{month}'s payroll is already approved: this commission goes to its supplementary payroll.",
+        "note": "Commission is approved by Sales. It is added to the line's gross, not to the GOSI base. The log records the month, never the amount.",
+        "block": {
+          "bad_amount": "Enter the amount, above zero",
+          "no_reason": "Give the Sales approval reference",
+          "bad_month": "Choose the month",
+          "future_month": "Not a future month",
+          "no_wage": "Enter the wage first"
         }
       }
     },

@@ -25,7 +25,9 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
+import { useScopedCollection } from "@/hooks/useScopedCollection"
 import { Link } from "@/i18n/routing"
+import { hrPeopleScope } from "@/lib/hr/access"
 import { HR_EMPLOYEES, HR_SITES } from "@/lib/hr/collections"
 import { costKindOf, SITE_TYPES, siteBlocks, UNASSIGNED_SITE, type HrSite, type SiteType } from "@/lib/hr/sites"
 import { saveSite, setSiteActive } from "@/lib/hr/site-writes"
@@ -47,8 +49,8 @@ export function HrSitesView({ access, portal, actorName }: { access: HrAccess; p
 
   const sitesQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, HR_SITES), where("organizationId", "==", orgId)) : null), [firestore, orgId])
   const { data: sitesData, isLoading } = useCollection(sitesQ)
-  const empQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, HR_EMPLOYEES), where("organizationId", "==", orgId)) : null), [firestore, orgId])
-  const { data: empData } = useCollection(empQ)
+  // Headcounts: a supervisor counts his own workplaces' people only (RL-01 — the rules refuse him the company).
+  const { data: empData } = useScopedCollection(HR_EMPLOYEES, orgId, hrPeopleScope(access.ctx))
   const projQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
   const { data: projData } = useCollection(projQ)
   const { orgMembers } = useOrgMembers(orgId)
