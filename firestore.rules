@@ -241,6 +241,9 @@ service cloud.firestore {
     function hrOwnRecord(employeeId) {
       return get(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid;
     }
+    function inEmployeeOrg(employeeId) {
+      return isOrgMember(get(/databases/$(database)/documents/employees/$(employeeId)).data.organizationId);
+    }
     // A workplace supervisor acts on his own workplaces only (the site names him).
     function hrSupervises(siteId) {
       return hrRole('hr.supervisor')
@@ -2928,6 +2931,20 @@ service cloud.firestore {
         allow create: if isOrgMember(getAfter(/databases/$(database)/documents/employees/$(employeeId)).data.organizationId)
           && request.resource.data.by == request.auth.uid
           && (hrStaff() || getAfter(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid);
+        allow update, delete: if false;
+      }
+
+      // Attachments (EM-07): append-only entries naming a Storage file. A medical
+      // report or a bank letter is not a supervisor's to read.
+      match /files/{fileId} {
+        allow read: if inEmployeeOrg(employeeId)
+          && (hrManager() || hrRole('hr.gov') || hrSeesPay() || hrOwnRecord(employeeId));
+        allow create: if inEmployeeOrg(employeeId)
+          && (hrManager() || hrRole('hr.gov'))
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.employeeId == employeeId
+          && request.resource.data.organizationId == get(/databases/$(database)/documents/employees/$(employeeId)).data.organizationId
+          && request.resource.data.path.matches('organizations/' + request.resource.data.organizationId + '/hr/employees/' + employeeId + '/.+');
         allow update, delete: if false;
       }
     }

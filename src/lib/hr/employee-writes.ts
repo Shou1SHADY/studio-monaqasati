@@ -6,6 +6,7 @@
 import { collection, doc, runTransaction, serverTimestamp, type DocumentData, type Firestore, type Transaction, type UpdateData } from "firebase/firestore"
 import { hrAllowed, type HrContext } from "./access"
 import { HR_EMPLOYEES, HR_PAY } from "./collections"
+import { attachmentBlocks, HR_FILES, type AttachmentKind, type EmployeeFile } from "./attachments"
 import { HR_SETTINGS } from "./settings"
 import type { DocType } from "./documents"
 import {
@@ -255,6 +256,42 @@ export async function decideProbation(
     tx.update(ref, { probation, updatedAt: serverTimestamp() })
     log(tx, firestore, id, emp.organizationId, actor, `probation_${decision}`, { to: ext.to ?? null, consent: ext.consentOn ?? null })
   })
+}
+
+// ---------------------------------------------------------------------------
+// Attachments (EM-07) — the file is uploaded first; this names it on the record
+// ---------------------------------------------------------------------------
+
+export async function attachEmployeeFile(
+  firestore: Firestore,
+  ctx: HrContext,
+  id: string,
+  actor: HrActor,
+  input: { kind: AttachmentKind; name: string; size: number; contentType: string; path: string; note?: string | null }
+): Promise<string> {
+  assertHr(ctx, "documents.manage")
+  const ref = doc(collection(firestore, HR_EMPLOYEES, id, HR_FILES))
+  await runTransaction(firestore, async (tx) => {
+    const { emp } = await readEmployee(tx, firestore, id)
+    const blocks = attachmentBlocks(input, { orgId: emp.organizationId, employeeId: id })
+    if (blocks.length) throw new HrWriteError("blocked", blocks)
+    const entry: Omit<EmployeeFile, "id"> = {
+      organizationId: emp.organizationId,
+      employeeId: id,
+      kind: input.kind,
+      name: input.name,
+      path: input.path,
+      size: input.size,
+      contentType: input.contentType,
+      by: actor.uid,
+      byName: actor.name,
+      at: new Date().toISOString(),
+      note: input.note?.trim() || null,
+    }
+    tx.set(ref, entry)
+    log(tx, firestore, id, emp.organizationId, actor, "file_attached", { type: input.kind, name: input.name })
+  })
+  return ref.id
 }
 
 // ---------------------------------------------------------------------------

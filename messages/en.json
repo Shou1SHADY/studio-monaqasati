@@ -19458,7 +19458,8 @@
         "data_cancelled": "Details update request {no} cancelled",
         "started": "Started work on {on}",
         "leave_returned": "Back from leave {no} on {on} — {late} days late",
-        "opening_recorded": "Opening balance from the card: leave {leave} days{advance, select, 1 { · and an outstanding advance} other {}}"
+        "opening_recorded": "Opening balance from the card: leave {leave} days{advance, select, 1 { · and an outstanding advance} other {}}",
+        "file_attached": "File attached — {name}"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -20198,6 +20199,32 @@
           "above_accrued": "More than his service could have accrued",
           "bad_advance": "The advance is not valid, or there is no wage on his record",
           "advance_exists": "He already has an outstanding advance in the system"
+        }
+      },
+      "files": {
+        "title": "Attachments",
+        "none": "No attachments yet",
+        "kind_label": "Kind",
+        "kind": {
+          "iqama": "Iqama image",
+          "passport": "Passport image",
+          "contract": "Contract",
+          "medical": "Medical report",
+          "penalty": "Penalty decision",
+          "bank": "Bank document",
+          "other": "Other"
+        },
+        "attach": "Attach a file",
+        "uploading": "Uploading…",
+        "attached": "File attached",
+        "err_upload": "The file could not be uploaded or opened",
+        "note": "An image or PDF up to 15 MB. An attachment is never deleted — it stays on the record.",
+        "block": {
+          "no_file": "Choose a file",
+          "too_big": "The file is larger than 15 MB",
+          "bad_type": "Images or PDF only",
+          "bad_kind": "Choose the kind",
+          "bad_path": "The file's place is not this employee's"
         }
       }
     },

@@ -2,6 +2,28 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    // HR 1.0 — attachments on an employee's record (EM-07): the iqama image, the
+    // contract, a medical report, a penalty decision, the bank document. Read and
+    // written by members of the organisation with an HR hand that handles
+    // documents or pay (Firestore's `employees/{id}/files` entry decides who sees
+    // that a file exists); images and PDFs up to 15 MB; never overwritten or
+    // deleted from the client.
+    //
+    // NOTE: the catch-all below still lets ANY signed-in user read and write
+    // every path, this one included — rules are OR-ed, so this block takes
+    // effect only once the catch-all is narrowed. It is kept as the contract.
+    match /organizations/{orgId}/hr/employees/{employeeId}/{fileName} {
+      function member() {
+        let u = firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+        return request.auth != null && (request.auth.uid == orgId || u.organizationId == orgId);
+      }
+      allow read: if member();
+      allow create: if member()
+        && request.resource.size < 15 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+      allow update, delete: if false;
+    }
+
     match /{allPaths=**} {
       // Allow any authenticated user to read and write to storage
       allow read, write: if request.auth != null;
