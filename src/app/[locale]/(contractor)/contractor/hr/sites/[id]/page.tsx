@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { HrShell } from "@/components/hr/HrShell"
 import { HrSiteAttendance } from "@/components/hr/HrSiteAttendance"
+import { HrSiteWorkers } from "@/components/hr/HrSiteWorkers"
 import { useUser } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
 
@@ -16,7 +17,15 @@ export default function HrSiteAttendancePage() {
   return (
     <PortalLayout>
       <HrShell portal="contractor" tab="sites" title={t("att.title")} description={t("att.description")}>
-        {(access) => <HrSiteAttendance access={access} siteId={id} actor={{ uid: user?.uid ?? "", name: (profile?.name as string) || null }} />}
+        {(access) => {
+          const actor = { uid: user?.uid ?? "", name: (profile?.name as string) || null }
+          return (
+            <div className="space-y-6">
+              <HrSiteAttendance access={access} siteId={id} actor={actor} />
+              <HrSiteWorkers access={access} siteId={id} actor={actor} />
+            </div>
+          )
+        }}
       </HrShell>
     </PortalLayout>
   )
