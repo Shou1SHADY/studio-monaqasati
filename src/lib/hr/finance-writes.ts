@@ -15,6 +15,7 @@ import { payrollId, payrollTotals, type Payroll, type PayrollLine, type Suppleme
 import { eventId } from "./payroll-writes"
 import type { HrRequest } from "./requests"
 import { monthRange, r2 } from "./statutory"
+import { emitHrNotice, emitHrNotices, hrLinks } from "./notify"
 import { HrWriteError } from "./write-guard"
 
 export interface FinanceActor {
@@ -134,7 +135,16 @@ export async function recordPayrollPaid(firestore: Firestore, a: FinanceActor, o
   batch.update(doc(firestore, HR_EVENTS, eventId(orgId, `hr:PAY:${p.key}`)), { state: "paid", paid: { ...by, date: books.date }, updatedAt: serverTimestamp() })
   await batch.commit()
   const lines: AnyLine[] = p.kind === "supplementary" ? (p.supplementary ?? []) : p.lines
-  await writePayslips(firestore, orgId, p, lines.filter((l) => !l.held), books.date)
+  const paid = lines.filter((l) => !l.held)
+  await writePayslips(firestore, orgId, p, paid, books.date)
+  await tellPayslips(firestore, a, orgId, p, paid, p.id)
+}
+
+/** "Your payslip is ready" — to each paid employee, once per payroll; never an amount, even to him. */
+async function tellPayslips(firestore: Firestore, a: FinanceActor, orgId: string, p: Payroll, lines: AnyLine[], once: string) {
+  const users = lines.map((l) => l.userId).filter((u): u is string => Boolean(u))
+  if (!users.length) return
+  await emitHrNotice(firestore, a, { kind: "hr_payslip_ready", organizationId: orgId, to: [{ users }], params: { month: p.key }, link: hrLinks.me(), once })
 }
 
 /** A payroll as Finance's desk reads it: with the transfers the bank returned and the held lines paid since. */
@@ -182,6 +192,13 @@ export async function markReturned(firestore: Firestore, a: FinanceActor, orgId:
   batch.update(doc(firestore, HR_PAYROLLS, p.id), { [`returned.${employeeId}`]: { ...stamp(a), reason: reason.trim(), date: books.date }, updatedAt: serverTimestamp() })
   batch.update(doc(firestore, HR_PAY, employeeId), { ibanState: "returned", updatedAt: serverTimestamp() })
   await batch.commit()
+  // PY-03 — the employee hears his pay came back; payroll has an IBAN to fix (Finance's reason, never the amount).
+  const line = linesOf(p).find((x) => x.employeeId === employeeId)
+  const once = `${p.id}__${employeeId}`
+  await emitHrNotices(firestore, a, [
+    line?.userId ? { kind: "hr_transfer_returned", organizationId: orgId, to: [{ users: [line.userId] }], params: { month: p.key }, link: hrLinks.me(), once, employeeId } : null,
+    { kind: "hr_iban_to_fix", organizationId: orgId, to: [{ hr: "payroll" }], except: [line?.userId], params: { name: line?.name ?? "", month: p.key, reason: reason.trim() }, link: hrLinks.person(employeeId), once, employeeId },
+  ])
 }
 
 /** A held or returned line, paid once the HR manager approved the IBAN. */
@@ -197,7 +214,10 @@ export async function payHeldLine(firestore: Firestore, a: FinanceActor, orgId: 
   batch.update(doc(firestore, HR_PAYROLLS, p.id), { [`paidHeld.${employeeId}`]: { ...stamp(a), date: books.date }, updatedAt: serverTimestamp() })
   await batch.commit()
   const line = (p.kind === "supplementary" ? (p.supplementary ?? []) : p.lines).find((x) => x.employeeId === employeeId)
-  if (line) await writePayslips(firestore, orgId, p, [line], books.date)
+  if (line) {
+    await writePayslips(firestore, orgId, p, [line], books.date)
+    await tellPayslips(firestore, a, orgId, p, [line], `${p.id}__${employeeId}__held`)
+  }
 }
 
 /** Pay out an approved advance (hr:PR → fin:PRPAID): payroll takes it back in instalments. */
@@ -284,4 +304,8 @@ export async function paySettlement(firestore: Firestore, a: FinanceActor, orgId
   batch.update(doc(firestore, HR_EXITS, st.id), { state: "paid", paid: by, updatedAt: serverTimestamp() })
   batch.update(doc(firestore, HR_EVENTS, eventId(orgId, `hr:FS:${st.no}`)), { state: "paid", paid: by, entryId: entryId ?? null, updatedAt: serverTimestamp() })
   await batch.commit()
+  // The final exit is government relations' next step (WF-16 step 6) — the exit names the person.
+  const x = await getDoc(doc(firestore, HR_EXITS, st.id)).catch(() => null)
+  const name = (x?.exists() ? (x.data() as { employeeName?: string }).employeeName : null) ?? ""
+  await emitHrNotice(firestore, a, { kind: "hr_settlement_paid", organizationId: orgId, to: [{ hr: "gov" }], params: { name }, link: hrLinks.person(st.employeeId), once: st.id, employeeId: st.employeeId })
 }

@@ -13,6 +13,7 @@ import type { HrActor } from "./employee-writes"
 import type { HrSite } from "./sites"
 import { addDays } from "./statutory"
 import { tradeOf } from "./trades"
+import { emitHrNotice, hrLinks } from "./notify"
 import { assertHr, HrWriteError } from "./write-guard"
 
 export const MANPOWER_REQUESTS = "manpowerRequests"
@@ -131,20 +132,42 @@ export async function raiseManpowerRequest(
       updatedAt: serverTimestamp(),
     })
   })
+  // WF-12 — it is HR's to answer.
+  await emitHrNotice(firestore, actor, {
+    kind: "hr_manpower_requested",
+    organizationId: orgId,
+    to: [{ hr: "manager" }],
+    params: { project: input.projectName, count: input.count, from: input.from },
+    link: hrLinks.sites(),
+    once: ref.id,
+  })
   return ref.id
 }
 
 /** The HR manager answers with the plan (WF-12 step 2) — it goes back to Projects as it is. */
 export async function answerManpowerRequest(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, answer: { plan: CoverageLine[]; excluded: Array<{ name: string; reason: string }>; note?: string | null }): Promise<void> {
   assertHr(ctx, "manpower.answer")
+  let asked: ManpowerRequest | null = null
   await runTransaction(firestore, async (tx) => {
     const s = await tx.get(doc(firestore, MANPOWER_REQUESTS, id))
     if (!s.exists()) throw new HrWriteError("missing")
     if ((s.data() as ManpowerRequest).state !== "open") throw new HrWriteError("blocked", ["stale"])
+    asked = { ...(s.data() as ManpowerRequest), id }
     tx.update(doc(firestore, MANPOWER_REQUESTS, id), {
       state: "answered",
       answer: { ...answer, note: answer.note?.trim() || null, by: actor.uid, byName: actor.name, at: new Date().toISOString() },
       updatedAt: serverTimestamp(),
     })
   })
+  // The plan goes back to whoever asked, on the project's team.
+  const m = asked as ManpowerRequest | null
+  if (m)
+    await emitHrNotice(firestore, actor, {
+      kind: "hr_manpower_answered",
+      organizationId: m.organizationId,
+      to: [{ users: [m.requested?.by] }],
+      params: { project: m.projectName },
+      link: hrLinks.projectTeam(m.projectId),
+      once: id,
+    })
 }

@@ -225,10 +225,10 @@ export function LetterDialog({ access, actor, letter, onClose }: { access: HrAcc
     setBusy(true)
     try {
       if (dec === "decline") {
-        await declineLetter(firestore, access.ctx, letter.id, actor, reason, { notice: { title: t("letter.pn_declined"), message: `${label} — ${reason.trim()}` } })
+        await declineLetter(firestore, access.ctx, letter.id, actor, reason)
         toast({ title: t("letter.done_declined") })
       } else {
-        const { serial } = await issueLetter(firestore, access.ctx, letter.id, actor, { text, head, travelRequestId: travelId !== "none" ? travelId : null }, { notice: (s) => ({ title: t("letter.pn_issued"), message: `${label} — ${letterNoDisplay(s, locale)}` }) })
+        const { serial } = await issueLetter(firestore, access.ctx, letter.id, actor, { text, head, travelRequestId: travelId !== "none" ? travelId : null })
         toast({ title: t("letter.done_issued", { serial: letterNoDisplay(serial, locale) }) })
       }
       onClose()

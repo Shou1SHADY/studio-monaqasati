@@ -269,9 +269,11 @@ describe("signing (issueLetter / declineLetter)", () => {
 
   it("the employee is told, in keys each reader renders in his language", async () => {
     const { id } = await fileLetter(db, worker, ORG, who(worker), { employeeId: "e1", kind: "sal", addressee: "x", lang: "ar" })
-    await issueLetter(db, hrm, id, who(hrm), { head }, { today: "2026-10-04", notice: (s) => ({ title: "صدر خطابك", message: s }) })
-    const [n] = listCollection<{ type: string; link: string; i18n: { title: string; params: Record<string, string> } }>("users/wu/notifications")
+    await issueLetter(db, hrm, id, who(hrm), { head }, { today: "2026-10-04" })
+    const [n] = listCollection<{ type: string; link: string; title: string; message: string; i18n: { title: string; params: Record<string, string> } }>("users/wu/notifications")
     expect(n).toMatchObject({ type: "hr_letter_issued", link: "hr/me", i18n: { title: "pn_hr_letter_issued_title", params: { serial: "LT-2026/001", letter: "@hr_letter_kind.sal" } } })
+    // The stored text (push, the mobile app) in the Arabic copy, the serial as it reads in Arabic.
+    expect(n).toMatchObject({ title: "صدر خطابك", message: "تعريف بالراتب — خ-2026/001" })
   })
 })
 

@@ -13,11 +13,16 @@ import type { EmployeePay } from "./employee"
 import type { HrActor } from "./employee-writes"
 import { eosEvent, MAX_SUPPLEMENTARIES, payEvent, payrollId, payrollTotals, supplementaryKey, type Payroll, type PayrollLine, type Stamp, type SupplementaryLine } from "./payroll"
 import { monthRange, r2 } from "./statutory"
+import { todayDay } from "./format"
+import { emitHrNotice, hrLinks } from "./notify"
 import { assertHr, HrWriteError } from "./write-guard"
 
-const localToday = () => {
-  const now = new Date()
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+/** "today" is Riyadh's day (§17): a payroll prepared at 01:00 on the 1st is after the month's end there. */
+const localToday = () => todayDay()
+
+/** Prepared → the HR managers who may approve it; the preparer, being the actor, is never told (RL-02). */
+async function tellPrepared(firestore: Firestore, actor: HrActor, orgId: string, key: string) {
+  await emitHrNotice(firestore, actor, { kind: "hr_payroll_prepared", organizationId: orgId, to: [{ hr: "manager" }], params: { month: key }, link: hrLinks.payroll(), once: payrollId(orgId, key) })
 }
 const stamp = (a: HrActor): Stamp => ({ by: a.uid, byName: a.name, at: new Date().toISOString() })
 
@@ -60,6 +65,7 @@ export async function preparePayroll(
       updatedAt: serverTimestamp(),
     })
   })
+  await tellPrepared(firestore, actor, orgId, month)
 }
 
 /** A supplementary (PY-04): only after the main payroll is approved; its late items only. It takes the month's
@@ -95,6 +101,7 @@ export async function prepareSupplementary(firestore: Firestore, ctx: HrContext,
       updatedAt: serverTimestamp(),
     })
   })
+  await tellPrepared(firestore, actor, orgId, key)
   return key
 }
 
@@ -150,4 +157,6 @@ export async function approvePayroll(firestore: Firestore, ctx: HrContext, orgId
       }
     }
   })
+  // Approved → Finance posts and pays it (hr:PAY is in the outbox).
+  await emitHrNotice(firestore, actor, { kind: "hr_payroll_approved", organizationId: orgId, to: [{ finance: true }], params: { month: key }, link: hrLinks.financeDesk(), once: payrollId(orgId, key) })
 }
