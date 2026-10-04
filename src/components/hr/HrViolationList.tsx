@@ -166,6 +166,7 @@ export function HrViolationList({ access, actor, violations, all, pay, showEmplo
               <BlockingReasons title={t("vio.cannot_apply")} reasons={quote.blocks.filter((b) => b !== "no_wage" || Boolean(pay)).map((b) => t(`vio.block.${b}`))} />
             </div>
           )}
+          {acting?.mode === "objection" && <p className="text-xs text-muted-foreground">{t("vio.objection_effect")}</p>}
           <div className="space-y-1.5">
             <Label htmlFor="vio-note">{t(acting?.mode === "object" ? "vio.object_text" : "vio.note")}</Label>
             <Textarea id="vio-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} disabled={busy} />

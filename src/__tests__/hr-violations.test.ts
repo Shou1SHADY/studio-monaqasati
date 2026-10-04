@@ -12,6 +12,11 @@ import type { HrContext, HrRole } from "@/lib/hr/access"
 import { recordDay } from "@/lib/hr/attendance-writes"
 import { decideObjection, decidePenalty, objectPenalty, recordViolation } from "@/lib/hr/violation-writes"
 import { applyQuote, historyOf, monthPenalties, violationId, type HrViolation } from "@/lib/hr/violations"
+import { ACC } from "@/lib/accounting/accounts"
+import { postHrPay } from "@/lib/accounting/posting-rules"
+import type { HrEmployee } from "@/lib/hr/employee"
+import { computePayroll, computeSupplementary, eventBalances, payEvent, type Payroll } from "@/lib/hr/payroll"
+import { approvePayroll, preparePayroll, prepareSupplementary } from "@/lib/hr/payroll-writes"
 
 const db = fakeFirestore as unknown as Firestore
 const ORG = "org"
@@ -80,8 +85,68 @@ describe("the writes", () => {
     await expect(objectPenalty(db, worker, id, who(worker), "I was on leave", { today: "2026-09-25" })).rejects.toMatchObject({ blocks: ["objection_late"] })
     await objectPenalty(db, worker, id, who(worker), "I was on leave", { today: "2026-09-10" })
     expect(V(id).state).toBe("objected")
+    // September's payroll is still to come: upheld, it is deducted there, in its own month.
     await decideObjection(db, hrm, id, who(hrm), "uphold", "the sheet is signed", { today: "2026-10-02" })
-    expect(V(id)).toMatchObject({ state: "upheld", deductMonth: "2026-10" })
+    expect(V(id)).toMatchObject({ state: "upheld", deductMonth: "2026-09" })
+  })
+
+  describe("an objection after the month's payroll (PN-03/04)", () => {
+    const sites = [{ id: "s1", organizationId: ORG, name: "Tower", type: "project" as const, projectId: "p1", active: true }]
+    const e1 = { id: "e1", organizationId: ORG, no: 1, names: { ar: "أحمد" }, siteId: "s1", userId: "wu", nationality: "eg", join: "2025-01-01", status: "active", contract: { type: "open" }, probation: { end: "2025-03-31" }, docs: {}, leaveTaken: 0 } as unknown as HrEmployee
+    const pay = { employeeId: "e1", organizationId: ORG, basic: 2_400, housing: 600, transport: 0, iban: "SA0000000000000000000001", ibanState: "ok" as const }
+    const wm = { id: `${ORG}__s1__2026-09`, organizationId: ORG, siteId: "s1", month: "2026-09", days: {}, declarations: [], closed: { by: "s", byName: null, at: "", asIs: false, missing: [] } }
+    const payroll = ctx(["payroll"], { uid: "po" })
+    // Applied on 25 Sept (deducted in September), September's payroll approved on 2 Oct, objected on 5 Oct.
+    async function deductedThenObjected() {
+      const id = await recordViolation(db, hrm, ORG, who(hrm), { employeeId: "e1", code: "absentDay", on: "2026-09-20" }, { today: "2026-09-20" })
+      await decidePenalty(db, hrm, id, who(hrm), { verdict: "apply", hearingOn: "2026-09-24" }, { history: [], today: "2026-09-25" })
+      seed(`hrAttendance/${ORG}__s1__2026-09`, wm as unknown as Record<string, unknown>)
+      const { lines } = computePayroll({ month: "2026-09", employees: [e1], pays: new Map([["e1", pay]]), sites, attendance: [wm], requests: [], violations: all() })
+      expect(lines[0].penalties).toBe(100)
+      await preparePayroll(db, payroll, ORG, "2026-09", who(payroll), { lines, sitesToClose: ["s1"], missingPay: [] }, { today: "2026-10-01" })
+      await approvePayroll(db, ctx(["manager"], { uid: "hrm2" }), ORG, "2026-09", who(hrm))
+      await objectPenalty(db, worker, id, who(worker), "I was sick", { today: "2026-10-05" })
+      return id
+    }
+
+    it("upheld: September's deduction stands — October takes nothing again", async () => {
+      const id = await deductedThenObjected()
+      await decideObjection(db, hrm, id, who(hrm), "uphold", "no sick note", { today: "2026-10-08" })
+      expect(V(id)).toMatchObject({ state: "upheld", deductMonth: "2026-09" })
+      expect(monthPenalties(all(), "e1", "2026-10", 3_000).total).toBe(0)
+    })
+
+    it("cancelled: what September deducted is paid back by September's supplementary, out of the fines fund", async () => {
+      const id = await deductedThenObjected()
+      await decideObjection(db, hrm, id, who(hrm), "cancel", "sick note produced", { today: "2026-10-08" })
+      const main = readDoc<Payroll>(`hrPayrolls/${ORG}__2026-09`)
+      const sup = computeSupplementary({ month: "2026-09", employees: [e1], pays: new Map([["e1", pay]]), sites, main, violations: all() })
+      expect(sup).toEqual([expect.objectContaining({ employeeId: "e1", refunds: 100, net: 100, items: [{ kind: "refund", id, amount: 100 }] })])
+      const ev = payEvent({ key: "2026-09-D", month: "2026-09", kind: "supplementary", lines: [], supplementary: sup })
+      expect(ev.credit).toMatchObject({ salariesPayable: 100, fines: -100 })
+      expect(eventBalances(ev)).toBe(true)
+      const entry = postHrPay({ key: ev.key, month: "2026-09", date: "2026-10-10", debit: ev.debit, credit: ev.credit })
+      expect(entry.lines).toEqual(expect.arrayContaining([expect.objectContaining({ account: ACC.finesFund, debit: 100 }), expect.objectContaining({ account: ACC.employeeAccruals, credit: 100 })]))
+      expect(entry.empty).toBe(false)
+      // Approved once, it is not paid back a second time.
+      await prepareSupplementary(db, payroll, ORG, "2026-09", who(payroll), sup)
+      await approvePayroll(db, ctx(["manager"], { uid: "hrm2" }), ORG, "2026-09-D", who(hrm))
+      const done = listCollection<Payroll>("hrPayrolls").filter((p) => p.kind === "supplementary")
+      expect(computeSupplementary({ month: "2026-09", employees: [e1], pays: new Map([["e1", pay]]), sites, main, done, violations: all() })).toEqual([])
+    })
+
+    it("upheld after it waited — September's payroll went without it — it is deducted in the month decided", async () => {
+      const id = await recordViolation(db, hrm, ORG, who(hrm), { employeeId: "e1", code: "absentDay", on: "2026-09-20" }, { today: "2026-09-20" })
+      await decidePenalty(db, hrm, id, who(hrm), { verdict: "apply", hearingOn: "2026-09-24" }, { history: [], today: "2026-09-25" })
+      await objectPenalty(db, worker, id, who(worker), "I was sick", { today: "2026-09-28" })
+      const { lines } = computePayroll({ month: "2026-09", employees: [e1], pays: new Map([["e1", pay]]), sites, attendance: [wm], requests: [], violations: all() })
+      expect(lines[0].penalties).toBe(0)
+      seed(`hrAttendance/${ORG}__s1__2026-09`, wm as unknown as Record<string, unknown>)
+      await preparePayroll(db, payroll, ORG, "2026-09", who(payroll), { lines, sitesToClose: ["s1"], missingPay: [] }, { today: "2026-10-01" })
+      await approvePayroll(db, ctx(["manager"], { uid: "hrm2" }), ORG, "2026-09", who(hrm))
+      await decideObjection(db, hrm, id, who(hrm), "uphold", "no sick note", { today: "2026-10-08" })
+      expect(V(id)).toMatchObject({ state: "upheld", deductMonth: "2026-10" })
+    })
   })
 
   it("the HR manager's own violation is not his to decide", async () => {

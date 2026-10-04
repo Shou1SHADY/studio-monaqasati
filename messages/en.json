@@ -19862,7 +19862,8 @@
           "objection_late": "The 15 days to object have passed",
           "future": "A day that has not come",
           "exists": "This violation is already recorded for that day"
-        }
+        },
+        "objection_effect": "If the month's payroll already deducted it: upheld, that deduction stands and nothing is taken again; cancelled, it is paid back in that month's supplementary payroll. If it was not deducted yet: upheld, it is deducted in this month's payroll."
       },
       "custody": {
         "title": "Custody clearance",

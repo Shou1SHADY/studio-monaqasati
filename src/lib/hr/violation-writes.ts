@@ -6,10 +6,11 @@
 
 import { collection, doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { hrAllowed, type HrContext } from "./access"
-import { HR_EMPLOYEES, HR_PAY, HR_VIOLATIONS } from "./collections"
+import { HR_EMPLOYEES, HR_PAY, HR_PAYROLLS, HR_VIOLATIONS } from "./collections"
 import type { EmployeePay, HrEmployee } from "./employee"
 import { HR_LOG, type HrActor } from "./employee-writes"
-import { wageOf } from "./pay"
+import { payOn, wageOf } from "./pay"
+import { deductedOn, payrollId, type Payroll } from "./payroll"
 import type { PastViolation, ViolationCode } from "./penalties"
 import { applyQuote, mayObject, violationId, type HrViolation } from "./violations"
 import { assertHr, HrWriteError } from "./write-guard"
@@ -95,7 +96,7 @@ export async function decidePenalty(
       return
     }
     const ps = await tx.get(doc(firestore, HR_PAY, v.employeeId))
-    const wage = ps.exists() ? wageOf(ps.data() as EmployeePay) : 0
+    const wage = ps.exists() ? wageOf(payOn(ps.data() as EmployeePay, today)) : 0
     const q = applyQuote(v, { hearingOn: input.hearingOn ?? null, today, wage, history: opts.history })
     if (q.blocks.length) throw new HrWriteError("blocked", q.blocks)
     tx.update(ref, {
@@ -126,7 +127,10 @@ export async function objectPenalty(firestore: Firestore, ctx: HrContext, id: st
   })
 }
 
-/** The HR manager upholds (deducted in the month decided) or cancels (never counts again). */
+/** The HR manager upholds or cancels (never counts again). An objection can come after the month's payroll
+ * already deducted the penalty (PN-03/04): upheld, that deduction stands and nothing is taken again; cancelled,
+ * it is paid back by that month's supplementary payroll (computeSupplementary). Upheld while it waited — the
+ * payroll of its month went without it — it is deducted in the month decided. */
 export async function decideObjection(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, verdict: "uphold" | "cancel", note: string, opts: { today?: string } = {}): Promise<void> {
   assertHr(ctx, "penalty.apply")
   const today = opts.today ?? localToday()
@@ -135,9 +139,15 @@ export async function decideObjection(firestore: Firestore, ctx: HrContext, id: 
     const v = await readV(tx, firestore, id)
     if (ctx.employeeId === v.employeeId && !ctx.owner) throw new HrWriteError("own_request")
     if (v.state !== "objected") throw new HrWriteError("blocked", ["decided"])
+    let deductMonth = v.deductMonth ?? null
+    if (verdict === "uphold") {
+      const main = deductMonth ? await tx.get(doc(firestore, HR_PAYROLLS, payrollId(v.organizationId, deductMonth))) : null
+      const closed = main?.exists() && (main.data() as Payroll).state !== "prepared"
+      if (!deductMonth || (closed && !(deductedOn(((main!.data() as Payroll).lines ?? []).find((l) => l.employeeId === v.employeeId), v) > 0))) deductMonth = today.slice(0, 7)
+    }
     tx.update(doc(firestore, HR_VIOLATIONS, id), {
       state: verdict === "uphold" ? "upheld" : "cancelled",
-      ...(verdict === "uphold" ? { deductMonth: today.slice(0, 7) } : {}),
+      ...(verdict === "uphold" && deductMonth !== v.deductMonth ? { deductMonth } : {}),
       objectionDecision: { ...stamp(actor), note: note.trim() },
       updatedAt: serverTimestamp(),
     })
