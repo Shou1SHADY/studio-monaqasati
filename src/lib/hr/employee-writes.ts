@@ -11,6 +11,7 @@ import type { DocType } from "./documents"
 import {
   assignBlocks,
   newEmployeeBlocks,
+  openingBlocks,
   payChangeBlocks,
   probationBlocks,
   probationEnd,
@@ -19,6 +20,7 @@ import {
   type HrEmployee,
   type NewEmployeeInput,
 } from "./employee"
+import { openingFor } from "./leave"
 import { advanceInstalment, payFromBasic, retroDifference, wageOf } from "./pay"
 import { DEFAULT_HR_POLICIES, monthRange, type HrPolicies } from "./statutory"
 import { tradeOf } from "./trades"
@@ -252,6 +254,31 @@ export async function decideProbation(
         : { ...emp.probation, decision: "confirmed" as const, decidedOn: day }
     tx.update(ref, { probation, updatedAt: serverTimestamp() })
     log(tx, firestore, id, emp.organizationId, actor, `probation_${decision}`, { to: ext.to ?? null, consent: ext.consentOn ?? null })
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Opening balance from the card (IM-04, WF-02 step 6)
+// ---------------------------------------------------------------------------
+
+/** The HR manager enters, once, one employee's leave balance as of today and his outstanding
+ * advance — the import's opening balances for someone who came in by hand. The balance then
+ * reads back exactly that; the gratuity is never typed (it is computed from the join day). */
+export async function recordOpeningBalance(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, input: { leave: number; advance: number }, opts: { today?: string } = {}): Promise<void> {
+  assertHr(ctx, "employee.edit")
+  const day = opts.today ?? today()
+  await runTransaction(firestore, async (tx) => {
+    const { ref, emp } = await readEmployee(tx, firestore, id)
+    const pRef = doc(firestore, HR_PAY, id)
+    const pSnap = await tx.get(pRef)
+    const pay = pSnap.exists() ? (pSnap.data() as EmployeePay) : null
+    const blocks = openingBlocks(emp, input, pay, day)
+    if (input.advance > 0 && !(pay && pay.basic > 0)) blocks.push("bad_advance")
+    if (blocks.length) throw new HrWriteError("blocked", blocks)
+    tx.update(ref, { openingLeave: openingFor(emp.join, day, input.leave, emp.leaveTaken ?? 0), opening: { leave: input.leave, at: new Date().toISOString(), by: actor.uid, byName: actor.name }, updatedAt: serverTimestamp() })
+    if (input.advance > 0 && pay) tx.update(pRef, { advance: { amount: input.advance, balance: input.advance, instalment: advanceInstalment(wageOf(pay)) }, updatedAt: serverTimestamp() })
+    // The log is read by roles without pay: it says an advance was entered, never how much.
+    log(tx, firestore, id, emp.organizationId, actor, "opening_recorded", { leave: input.leave, advance: input.advance > 0 ? 1 : 0 })
   })
 }
 

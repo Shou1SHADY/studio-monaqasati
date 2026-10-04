@@ -19337,12 +19337,16 @@
           "probation": "Probation",
           "renew": "Record renewal",
           "link": "Link user",
-          "start": "Started work"
+          "start": "Started work",
+          "opening": "Opening balance"
         },
         "log_title": "Log",
         "probation_lapsed": "Ended on {date} with no decision — the contract continues (art. 53)",
         "iqama_overdue": "The iqama was not issued within 90 days of arrival (due {date}) — not on a site until it is.",
-        "started": "Start recorded"
+        "started": "Start recorded",
+        "opening_done": "Opening balance recorded",
+        "opening_card": "Opening balance from the card",
+        "opening_card_v": "{n} days — entered by {name} on {date}"
       },
       "move": {
         "to": "Move to",
@@ -19453,7 +19457,8 @@
         "data_declined": "Details update request {no} declined",
         "data_cancelled": "Details update request {no} cancelled",
         "started": "Started work on {on}",
-        "leave_returned": "Back from leave {no} on {on} — {late} days late"
+        "leave_returned": "Back from leave {no} on {on} — {late} days late",
+        "opening_recorded": "Opening balance from the card: leave {leave} days{advance, select, 1 { · and an outstanding advance} other {}}"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -20178,6 +20183,21 @@
           "no_date": "Choose the day he returned",
           "future": "The return cannot be in the future",
           "before_end": "The leave had not ended on that day"
+        }
+      },
+      "opening": {
+        "leave": "Leave balance today (days)",
+        "max": "At most {n} days could have accrued",
+        "advance": "Outstanding advance",
+        "note": "Entered once, under your name. The end-of-service award is never typed — it is computed from the join date.",
+        "block": {
+          "recorded": "His opening balance is already recorded",
+          "too_recent": "Joined less than 30 days ago — his balance is computed from the record",
+          "leave_taken": "He has taken leave in the system — his balance is computed, not typed",
+          "bad_leave": "Enter the leave balance — zero or more",
+          "above_accrued": "More than his service could have accrued",
+          "bad_advance": "The advance is not valid, or there is no wage on his record",
+          "advance_exists": "He already has an outstanding advance in the system"
         }
       }
     },

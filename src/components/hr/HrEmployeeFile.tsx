@@ -9,7 +9,7 @@
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, orderBy, query } from "firebase/firestore"
-import { ArrowRightLeft, BadgeCheck, CalendarClock, FileClock, Gavel, HandCoins, History, Inbox, Link2, Loader2, LogOut, Plane, UserCheck, Wallet } from "lucide-react"
+import { ArrowRightLeft, BadgeCheck, CalendarClock, FileClock, Gavel, HandCoins, History, Import, Inbox, Link2, Loader2, LogOut, Plane, UserCheck, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Callout } from "@/components/module-ui/Callout"
@@ -121,6 +121,8 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
     // Only while it runs (art. 53): past its end with no decision it is over, never "open forever".
     { id: "probation", icon: BadgeCheck, show: access.allowed("request.decide") && facts.probationState === "on" && emp.status !== "left" && emp.status !== "leaving" && (access.ctx.owner || access.ctx.employeeId !== emp.id) },
     { id: "start", icon: UserCheck, show: access.allowed("employee.assign") && emp.status === "expected" },
+    // IM-04 — once, for someone who joined before the system and has taken no leave here.
+    { id: "opening", icon: Import, show: access.allowed("employee.edit") && emp.status !== "left" && !emp.opening && (emp.leaveTaken ?? 0) === 0 && facts.days > 30 },
     { id: "renew", icon: CalendarClock, show: access.allowed("documents.manage") && emp.status !== "left" },
     { id: "link", icon: Link2, show: access.allowed("employee.edit") },
   ]
@@ -287,6 +289,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
           <KeyValueRow label={t("file.entitlement")} value={t("file.days", { n: facts.service >= 5 ? 30 : 21 })} />
           <KeyValueRow label={t("file.leave_taken_row")} value={t("file.days", { n: emp.leaveTaken ?? 0 })} />
           {(emp.openingLeave ?? 0) !== 0 && <KeyValueRow label={t("file.opening")} value={t("file.days", { n: emp.openingLeave ?? 0 })} />}
+          {emp.opening && <KeyValueRow label={t("file.opening_card")} value={t("file.opening_card_v", { n: emp.opening.leave, name: emp.opening.byName || "—", date: hrDate(emp.opening.at?.slice(0, 10), locale) })} />}
           <KeyValueRow label={t("file.balance")} value={facts.balance == null ? "—" : t("file.days", { n: facts.balance })} strong />
           <KeyValueRow label={t("file.sick_used")} value={t("file.days", { n: emp.sick?.days ?? 0 })} />
         </Panel>

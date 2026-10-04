@@ -22,15 +22,16 @@ import { useOrgMembers } from "@/hooks/useOrgMembers"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { DOC_TYPES, type DocType } from "@/lib/hr/documents"
-import { assignBlocks, payChangeBlocks, probationBlocks, probationMaxEnd, renewalBlocks, type EmployeePay, type HrEmployee } from "@/lib/hr/employee"
-import { assignEmployee, changePay, decideProbation, linkUser, recordRenewal, startWork, type HrActor } from "@/lib/hr/employee-writes"
+import { assignBlocks, openingBlocks, payChangeBlocks, probationBlocks, probationMaxEnd, renewalBlocks, type EmployeePay, type HrEmployee } from "@/lib/hr/employee"
+import { accruedDays } from "@/lib/hr/leave"
+import { assignEmployee, changePay, decideProbation, linkUser, recordOpeningBalance, recordRenewal, startWork, type HrActor } from "@/lib/hr/employee-writes"
 import { hrMoney, todayDay } from "@/lib/hr/format"
 import { payFromBasic, wageOf } from "@/lib/hr/pay"
 import { UNASSIGNED_SITE, type HrSite } from "@/lib/hr/sites"
 import { TRADES } from "@/lib/hr/trades"
 import { HrWriteError } from "@/lib/hr/write-guard"
 
-export type EmployeeAction = "move" | "pay" | "probation" | "renew" | "link" | "start"
+export type EmployeeAction = "move" | "pay" | "probation" | "renew" | "link" | "start" | "opening"
 
 function useRun(onDone: () => void) {
   const t = useTranslations("Portal.HR")
@@ -84,6 +85,8 @@ export function EmployeeActionDialog({
   const [extTo, setExtTo] = useState(probationMaxEnd(emp.join))
   const [consentOn, setConsentOn] = useState("")
   const [lastDay, setLastDay] = useState(today < emp.probation.end ? today : emp.probation.end)
+  const [openLeave, setOpenLeave] = useState("")
+  const [openAdvance, setOpenAdvance] = useState("")
   const [startOn, setStartOn] = useState(emp.join && emp.join <= today ? emp.join : today)
   const [docType, setDocType] = useState<DocType>("iqama")
   const [expiry, setExpiry] = useState("")
@@ -271,6 +274,32 @@ export function EmployeeActionDialog({
           </div>
         </div>
         <p className="text-xs text-muted-foreground">{t("renew.note")}</p>
+      </div>
+    )
+  } else if (action === "opening") {
+    title = t("file.act.opening")
+    const lb = Number(openLeave)
+    const adv = Number(openAdvance || 0)
+    const max = Math.floor(accruedDays(emp.join, today))
+    blocks = openLeave === "" ? ["bad_leave"] : openingBlocks(emp, { leave: lb, advance: adv }, pay, today)
+    blockPrefix = "opening.block"
+    submit = () => void run(() => recordOpeningBalance(firestore!, access.ctx, emp.id, actor, { leave: lb, advance: adv }), "file.opening_done", blockPrefix)
+    body = (
+      <div className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="op-lv">{t("opening.leave")}</Label>
+            <Input id="op-lv" type="number" min="0" max={max} step="1" dir="ltr" value={openLeave} onChange={(e) => setOpenLeave(e.target.value)} disabled={busy} />
+            <p className="text-[11px] text-muted-foreground">{t("opening.max", { n: max })}</p>
+          </div>
+          {access.seesPay(emp.id) && (
+            <div className="space-y-1.5">
+              <Label htmlFor="op-adv">{t("opening.advance")}</Label>
+              <Input id="op-adv" type="number" min="0" step="any" dir="ltr" value={openAdvance} onChange={(e) => setOpenAdvance(e.target.value)} disabled={busy} />
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">{t("opening.note")}</p>
       </div>
     )
   } else if (action === "start") {

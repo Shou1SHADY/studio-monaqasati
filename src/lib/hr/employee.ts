@@ -6,6 +6,7 @@
 // payroll key; the ID/iqama number keys the Mudad and GOSI rows. Pure: no I/O.
 
 import { legalOnSite, passportFirst, type DocDates, type DocType } from "./documents"
+import { accruedDays } from "./leave"
 import { addDays, daysBetween, STATUTORY } from "./statutory"
 import { NITAQAT_MIN_BASIC, tradeOf } from "./trades"
 import { UNASSIGNED_SITE } from "./sites"
@@ -54,6 +55,8 @@ export interface HrEmployee {
   /** Annual leave days taken since joining (opening balance adjusts accrual). */
   leaveTaken: number
   openingLeave?: number
+  /** IM-04 — the opening balance entered once from the card: the leave days as of that day, who and when (no amount here). */
+  opening?: { leave: number; at: string; by: string; byName: string | null } | null
   /** Sick days used in the current service year, and which year. */
   sick?: { year: number; days: number } | null
   hajjTaken?: boolean
@@ -212,6 +215,32 @@ export function renewalBlocks(docs: DocDates, type: DocType, newExpiry: string |
   else if (docs[type] && newExpiry <= (docs[type] as string)) out.push("not_later")
   // A passport expiring before the iqama is renewed first (blocking).
   if (type === "iqama" && passportFirst(docs, today)) out.push("passport_first")
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Opening balance from the card (IM-04)
+// ---------------------------------------------------------------------------
+
+export type OpeningBlock = "recorded" | "too_recent" | "leave_taken" | "bad_leave" | "above_accrued" | "bad_advance" | "advance_exists"
+
+/** Once, by the HR manager, for someone who joined before the system (over 30 days ago) and has
+ * taken no leave here yet: the leave balance today — at most what his service could have accrued —
+ * and the advance still outstanding (none already on his pay). */
+export function openingBlocks(
+  emp: Pick<HrEmployee, "join" | "leaveTaken" | "opening">,
+  input: { leave: number; advance: number },
+  pay: Pick<EmployeePay, "advance"> | null,
+  today: string
+): OpeningBlock[] {
+  const out: OpeningBlock[] = []
+  if (emp.opening) out.push("recorded")
+  else if (daysBetween(emp.join, today) <= 30) out.push("too_recent")
+  else if ((emp.leaveTaken ?? 0) > 0) out.push("leave_taken")
+  if (!(Number.isFinite(input.leave) && input.leave >= 0)) out.push("bad_leave")
+  else if (input.leave > Math.floor(accruedDays(emp.join, today))) out.push("above_accrued")
+  if (!(Number.isFinite(input.advance) && input.advance >= 0)) out.push("bad_advance")
+  else if (input.advance > 0 && (pay?.advance?.balance ?? 0) > 0) out.push("advance_exists")
   return out
 }
 

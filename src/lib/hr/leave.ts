@@ -51,6 +51,16 @@ export function leaveBalance(join: string, asOf: string, taken: number, opening 
   return Math.floor(accruedDays(join, asOf) + opening - taken)
 }
 
+/** IM-02, IM-04 — the opening adjustment that makes the balance read exactly `balance` days on
+ * `asOf` (with `taken` days already taken here). Rounded UP to the hundredth of a day: the
+ * balance is floored when read, and an opening rounded down lands 9 days on 8 — then checked
+ * against the very function that reads it back, so a hair of floating point costs nobody a day. */
+export function openingFor(join: string, asOf: string, balance: number, taken = 0): number {
+  let opening = Math.ceil((balance + taken - accruedDays(join, asOf)) * 100 - 1e-9) / 100
+  for (let n = 0; n < 3 && leaveBalance(join, asOf, taken, opening) < Math.floor(balance); n++) opening = Math.round((opening + 0.01) * 100) / 100
+  return opening
+}
+
 /** Leave days = calendar days from `from` to `to` inclusive, minus the official holidays. */
 export function leaveDays(from: string, to: string, holidays: readonly Holiday[] = OFFICIAL_HOLIDAYS): number {
   if (to < from) return 0

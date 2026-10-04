@@ -8,7 +8,7 @@
 
 import type { CreateEmployeeInput } from "./employee-writes"
 import { docState } from "./documents"
-import { accruedDays, leaveBalance } from "./leave"
+import { openingFor } from "./leave"
 import { foldSearchText } from "@/lib/search-text"
 import { UNASSIGNED_SITE, type HrSite } from "./sites"
 import { daysBetween } from "./statutory"
@@ -256,12 +256,7 @@ export function interpretRows(rows: string[][], ctx: ImportContext): ImportRow[]
             notes.push({ key: "leave_capped", params: { value: lb, cap } })
             lb = cap
           }
-          // Rounded UP to the halala of a day: the balance is floored when read, and
-          // an opening rounded down lands the file's 9 days on 8.
-          openingLeave = Math.ceil((lb - accruedDays(join, ctx.today)) * 100 - 1e-9) / 100
-          // …and checked against the very function that reads it back: a hair of
-          // floating point must not cost the employee a day either.
-          for (let n = 0; n < 3 && leaveBalance(join, ctx.today, 0, openingLeave) < Math.floor(lb); n++) openingLeave = Math.round((openingLeave + 0.01) * 100) / 100
+          openingLeave = openingFor(join, ctx.today, lb)
         }
       }
       const abRaw = col(r, "advance_balance")
