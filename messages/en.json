@@ -19795,7 +19795,8 @@
         "settlements": "Final settlements",
         "settlements_empty": "No settlement waiting",
         "settlement_line": "Net {net} · last day {last}",
-        "settlement_paid_ok": "Settlement paid — the exit is closed"
+        "settlement_paid_ok": "Settlement paid — the exit is closed",
+        "which_payroll": "Payroll the transfer belonged to"
       },
       "vio": {
         "title": "Violations and penalties",

@@ -19795,7 +19795,8 @@
         "settlements": "المخالصات النهائية",
         "settlements_empty": "لا مخالصة بانتظار",
         "settlement_line": "الصافي {net} · آخر يوم {last}",
-        "settlement_paid_ok": "صُرفت المخالصة — أُغلق الخروج"
+        "settlement_paid_ok": "صُرفت المخالصة — أُغلق الخروج",
+        "which_payroll": "المسير الذي تتبعه الحوالة"
       },
       "vio": {
         "title": "المخالفات والجزاءات",

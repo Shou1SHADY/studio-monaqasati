@@ -9,11 +9,11 @@ jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-u
 import { fakeFirestore, listCollection, readDoc, resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import type { Firestore } from "firebase/firestore"
 import { ACC } from "@/lib/accounting/accounts"
-import type { HrContext, HrRole } from "@/lib/hr/access"
+import { hrAllowed, type HrContext, type HrRole } from "@/lib/hr/access"
 import type { WorkplaceMonth } from "@/lib/hr/attendance"
 import type { EmployeePay, HrEmployee } from "@/lib/hr/employee"
 import { approveIban, fixIban } from "@/lib/hr/employee-writes"
-import { markReturned, payAdvance, payHeldLine, postHrEvent, recordPayrollPaid, transferAmount, type HrEvent } from "@/lib/hr/finance-writes"
+import { markReturned, owedLines, payAdvance, payHeldLine, postHrEvent, recordPayrollPaid, returnableLines, transferAmount, type FinancePayroll, type HrEvent } from "@/lib/hr/finance-writes"
 import { computePayroll, payrollTotals, type Payroll } from "@/lib/hr/payroll"
 import { approvePayroll, preparePayroll } from "@/lib/hr/payroll-writes"
 import type { HrRequest } from "@/lib/hr/requests"
@@ -104,6 +104,38 @@ describe("posting and paying", () => {
     expect(e.lines[0]).toMatchObject({ account: ACC.employeeAdvances, debit: 900 })
     expect(e.description).not.toContain("e1")
     await expect(payAdvance(db, fin, ORG, { ...r, payout: { at: "x" } } as HrRequest, books)).rejects.toMatchObject({ blocks: ["stale"] })
+  })
+
+  it("held and returned lines stay in view on every paid payroll, however old; a return is recorded on any of them (PY-03)", async () => {
+    await postHrEvent(db, fin, ORG, event(`hr:PAY:${M}`), books)
+    await recordPayrollPaid(db, fin, ORG, payroll(), books)
+    // Four newer payrolls paid since — the desk used to look at the newest three only.
+    const later = ["2026-09", "2026-10", "2026-11", "2026-12"].map((m) => ({ ...payroll(), id: `${ORG}__${m}`, key: m, month: m, lines: payroll().lines.map((l) => ({ ...l, held: false })), returned: {}, paidHeld: {} }))
+    const all = [payroll(), ...later] as FinancePayroll[]
+    expect(owedLines(all).map((h) => [h.p.key, h.employeeId])).toEqual([[M, "e2"]])
+    // A transfer of August comes back in December: recorded on August, not on the newest payroll.
+    expect(returnableLines(payroll()).map((l) => l.employeeId)).toEqual(["e1"])
+    await markReturned(db, fin, ORG, payroll(), "e1", "account closed", books)
+    expect(owedLines([payroll(), ...later] as FinancePayroll[]).map((h) => [h.p.key, h.employeeId, h.reason])).toEqual([
+      [M, "e1", "account closed"],
+      [M, "e2", null],
+    ])
+    expect(returnableLines(payroll())).toEqual([])
+  })
+
+  it("the owner of a company with no payroll officer fixes a returned IBAN and approves it (AC-04)", async () => {
+    const owner = ctx(["manager", "management"], { uid: "own", owner: true })
+    expect(hrAllowed(owner, "iban.fix")).toBe(true)
+    // An HR manager who is not the owner still may not (the fix is payroll's, the approval his).
+    expect(hrAllowed(hrm, "iban.fix")).toBe(false)
+    await postHrEvent(db, fin, ORG, event(`hr:PAY:${M}`), books)
+    await recordPayrollPaid(db, fin, ORG, payroll(), books)
+    await markReturned(db, fin, ORG, payroll(), "e1", "account closed", books)
+    await fixIban(db, owner, "e1", { uid: "own", name: "O" }, "SA44 2000 0001 2345 6789 1234")
+    await approveIban(db, owner, "e1", { uid: "own", name: "O" })
+    expect(readDoc<EmployeePay>("employeePay/e1")?.ibanState).toBe("ok")
+    await payHeldLine(db, fin, ORG, payroll(), "e1", books)
+    expect(payroll().paidHeld?.e1).toBeTruthy()
   })
 
   it("with Accounting off the payment is still recorded, straight from approved", async () => {

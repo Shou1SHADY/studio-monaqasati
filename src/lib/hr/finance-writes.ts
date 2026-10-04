@@ -137,6 +137,33 @@ export async function recordPayrollPaid(firestore: Firestore, a: FinanceActor, o
   await writePayslips(firestore, orgId, p, lines.filter((l) => !l.held), books.date)
 }
 
+/** A payroll as Finance's desk reads it: with the transfers the bank returned and the held lines paid since. */
+export type FinancePayroll = Payroll & { returned?: Record<string, { reason?: string } | unknown>; paidHeld?: Record<string, unknown> }
+
+const linesOf = (p: Payroll): AnyLine[] => (p.kind === "supplementary" ? (p.supplementary ?? []) : p.lines)
+
+/** PY-03 — every line still owed after its payroll was paid — held at approval or returned by the bank, and not
+ * paid since — on EVERY paid payroll, however old (a held line never drops out of view), oldest first. */
+export function owedLines(payrolls: FinancePayroll[]): Array<{ p: FinancePayroll; employeeId: string; no: number; name: string; net: number; reason: string | null }> {
+  return payrolls
+    .filter((p) => p.state === "paid")
+    .sort((a, b) => a.key.localeCompare(b.key, "en", { numeric: true }))
+    .flatMap((p) =>
+      linesOf(p)
+        .filter((l) => (l.held || p.returned?.[l.employeeId]) && !p.paidHeld?.[l.employeeId])
+        .map((l) => {
+          const r = p.returned?.[l.employeeId] as { reason?: string } | undefined
+          return { p, employeeId: l.employeeId, no: l.no, name: l.name, net: l.net, reason: r?.reason ?? null }
+        })
+    )
+}
+
+/** fin:RETURNED can come for any paid payroll — a main one or a supplementary, this month's or older: the lines
+ * that were transferred and not already returned. */
+export function returnableLines(p: FinancePayroll): AnyLine[] {
+  return p.state === "paid" ? linesOf(p).filter((l) => !l.held && !p.returned?.[l.employeeId]) : []
+}
+
 type LineRef = { employeeId: string; no: number; net: number; held: boolean }
 
 function lineOf(p: Payroll, employeeId: string): LineRef | null {
