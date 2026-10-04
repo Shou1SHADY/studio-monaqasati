@@ -793,7 +793,7 @@ const PoOrderCard = forwardRef<HTMLDivElement, PoOrderCardProps>(function PoOrde
 
       <div className="flex flex-wrap items-center gap-2 border-t px-4 py-3">
         {canAccept && (
-          <Button size="sm" className="gap-1.5 bg-cta text-white hover:bg-cta/90" onClick={onAccept}>
+          <Button size="sm" className="gap-1.5" onClick={onAccept}>
             <CheckCircle2 size={14} />
             {t("po_accept_btn")}
           </Button>
@@ -948,7 +948,7 @@ function AcceptOrderDialog({ po, now, onClose, onSubmit }: { po: PurchaseOrder; 
             <Button type="button" variant="outline" onClick={onClose} disabled={formState.isSubmitting}>
               {t("cancel")}
             </Button>
-            <Button type="submit" className="gap-2 bg-cta text-white hover:bg-cta/90" disabled={formState.isSubmitting}>
+            <Button type="submit" className="gap-2" disabled={formState.isSubmitting}>
               {formState.isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
               {t("po_accept_submit")}
             </Button>

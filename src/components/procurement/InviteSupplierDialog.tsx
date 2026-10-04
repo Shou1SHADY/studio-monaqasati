@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { CATEGORIES_DATA, displayCategory } from "@/lib/constants"
 import { INVITE_CHANNELS, inviteErrors, inviteMessage, mailtoLink, waLink, type InviteChannel } from "@/lib/procurement/supplier-file"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
 const EFFECTS = ["opens", "joins", "guest", "profile"] as const
 
@@ -170,14 +171,14 @@ export function InviteSupplierDialog({ open, onOpenChange, orgName }: { open: bo
                 <FormItem>
                   <FormLabel>{t("inv.supplies")}</FormLabel>
                   <FormControl>
-                    <select {...field} className="h-10 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <NativeSelect {...field} className="h-10 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                       <option value="">{t("inv.not_specified")}</option>
                       {Object.keys(CATEGORIES_DATA).map((c) => (
                         <option key={c} value={c}>
                           {displayCategory(c, locale)}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </FormControl>
                 </FormItem>
               )}

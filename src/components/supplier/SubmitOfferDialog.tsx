@@ -433,7 +433,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
     <>
       <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
         <DialogContent
-          className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-lg text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0 [&>button:last-child]:left-4 [&>button:last-child]:right-auto"
+          className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-lg text-start rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0 [&>button:last-child]:left-4 [&>button:last-child]:right-auto"
           dir={locale === 'ar' ? 'rtl' : 'ltr'}
           aria-describedby={undefined}
         >
@@ -833,7 +833,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                           <div className="h-10 w-10 rounded-lg bg-slate-100 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
                             <Upload size={18} className="text-slate-400 group-hover:text-primary transition-colors" />
                           </div>
-                          <div className="text-right">
+                          <div className="text-start">
                             <span className="text-sm font-semibold text-slate-700 block">{t("offer_click_to_upload_pdf")}</span>
                           </div>
                         </>
@@ -885,7 +885,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
               disabled={!offerPrice || isSubmitting || isUploadingPdf}
               className="flex-[2] order-1 sm:order-2"
             >
-              {isSubmitting ? <Loader2 size={18} className="ml-2 animate-spin" /> : null}
+              {isSubmitting ? <Loader2 size={18} className="me-2 animate-spin" /> : null}
               {t("offer_confirm_submit")}
             </Button>
           </div>

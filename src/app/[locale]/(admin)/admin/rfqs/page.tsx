@@ -86,7 +86,7 @@ export default function AdminRfqsPage() {
 
   return (
     <PortalLayout>
-      <div className="space-y-6 text-right">
+      <div className="space-y-6 text-start">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-black text-foreground font-headline">{t("page_title")}</h1>
@@ -106,7 +106,7 @@ export default function AdminRfqsPage() {
               <Filter size={18} />
               {t("filter")}
             </Button>
-            <Button onClick={() => setMdmakDialogOpen(true)} className="gap-2 bg-accent hover:bg-accent/90 text-primary font-bold shadow-lg shadow-accent/25 shrink-0">
+            <Button variant="accent" onClick={() => setMdmakDialogOpen(true)} className="gap-2 font-bold shadow-lg shadow-accent/25 shrink-0">
               <Handshake size={16} />
               {t("post_as_mdmak_btn")}
             </Button>
@@ -132,12 +132,12 @@ export default function AdminRfqsPage() {
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead className="text-right hidden md:table-cell">{t("id_col")}</TableHead>
-                    <TableHead className="text-right">{t("tender")}</TableHead>
-                    <TableHead className="text-right hidden md:table-cell">{t("contractor")}</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">{t("category")}</TableHead>
-                    <TableHead className="text-right">{t("status")}</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">{t("date")}</TableHead>
+                    <TableHead className="text-start hidden md:table-cell">{t("id_col")}</TableHead>
+                    <TableHead className="text-start">{t("tender")}</TableHead>
+                    <TableHead className="text-start hidden md:table-cell">{t("contractor")}</TableHead>
+                    <TableHead className="text-start hidden sm:table-cell">{t("category")}</TableHead>
+                    <TableHead className="text-start">{t("status")}</TableHead>
+                    <TableHead className="text-start hidden sm:table-cell">{t("date")}</TableHead>
                     <TableHead className="text-left">{t("actions")}</TableHead>
                   </TableRow>
                 </TableHeader>

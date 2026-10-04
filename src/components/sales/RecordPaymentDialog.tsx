@@ -172,7 +172,7 @@ export function RecordPaymentDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>{t("crm_cancel")}</Button>
-          <Button onClick={confirm} disabled={isSaving || !picked} className="gap-2 bg-success hover:bg-success/90 text-white">
+          <Button variant="success" onClick={confirm} disabled={isSaving || !picked} className="gap-2">
             {isSaving ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
             {t("sales_confirm_paid")}
           </Button>

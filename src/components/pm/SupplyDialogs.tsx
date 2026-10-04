@@ -35,6 +35,7 @@ import { createMaterialRequest, decideChange, PmSupplyError, receiveOnProject, r
 import { PURCHASE_ORDERS } from "@/lib/procurement/types"
 import { ChoiceChips, FormHint } from "./ContractBits"
 import { PmFilesField } from "./PmAttachments"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
 export type SupplyItem = StoreItem & { division?: string; pmSample?: boolean | null; pmSub?: string | null; estCost?: number }
 
@@ -288,7 +289,7 @@ function LineEditor({
   return (
     <div className="space-y-2 rounded-lg border p-3">
       <div className="flex items-center gap-2">
-        <select aria-label={t("sup.form.which_item")} className={SELECT} value={line.itemId} onChange={(e) => onChange({ itemId: e.target.value, mat: "", name: "", unit: "", unitOther: false })}>
+        <NativeSelect aria-label={t("sup.form.which_item")} className={SELECT} value={line.itemId} onChange={(e) => onChange({ itemId: e.target.value, mat: "", name: "", unit: "", unitOther: false })}>
           <option value="">{t("sup.form.which_item")}</option>
           {divisions.map((d) => (
             <optgroup key={d || "_"} label={d || t("sup.general_items")}>
@@ -302,7 +303,7 @@ function LineEditor({
             </optgroup>
           ))}
           <option value={GEN}>{t("sup.general")}</option>
-        </select>
+        </NativeSelect>
         {removable && (
           <Button type="button" size="icon" variant="ghost" className="shrink-0" aria-label={t("sup.form.remove_line")} onClick={onRemove}>
             <X size={15} aria-hidden="true" />
@@ -312,7 +313,7 @@ function LineEditor({
       {line.itemId && (
         <div className="flex flex-wrap items-center gap-2">
           {!gen ? (
-            <select aria-label={t("sup.form.choose_mat")} className={`${SELECT} min-w-0 flex-1`} value={line.mat} onChange={(e) => onChange({ mat: e.target.value })}>
+            <NativeSelect aria-label={t("sup.form.choose_mat")} className={`${SELECT} min-w-0 flex-1`} value={line.mat} onChange={(e) => onChange({ mat: e.target.value })}>
               <option value="">{t("sup.form.choose_mat")}</option>
               {own.length > 0 && (
                 <optgroup label={t("sup.form.own_mats")}>
@@ -333,9 +334,9 @@ function LineEditor({
                 </optgroup>
               )}
               <option value={NEW}>{first ? t("sup.form.new_mat") : t("sup.form.new_mat_chg")}</option>
-            </select>
+            </NativeSelect>
           ) : catalogue.length > 0 ? (
-            <select aria-label={t("sup.form.choose_mat")} className={`${SELECT} min-w-0 flex-1`} value={line.mat} onChange={(e) => onChange({ mat: e.target.value })}>
+            <NativeSelect aria-label={t("sup.form.choose_mat")} className={`${SELECT} min-w-0 flex-1`} value={line.mat} onChange={(e) => onChange({ mat: e.target.value })}>
               <option value="">{t("sup.form.choose_mat")}</option>
               <optgroup label={t("sup.form.consumables_cat")}>
                 {catalogue.map((c) => (
@@ -345,7 +346,7 @@ function LineEditor({
                 ))}
               </optgroup>
               <option value={NEW}>{t("sup.form.new_mat")}</option>
-            </select>
+            </NativeSelect>
           ) : null}
           <Input aria-label={t("sup.form.qty")} type="number" min={0} dir="ltr" className="h-9 w-28" placeholder={t("sup.form.qty")} value={line.q} onChange={(e) => onChange({ q: e.target.value })} />
           {picked && <span className="text-xs text-muted-foreground">{picked.unit}</span>}
@@ -354,7 +355,7 @@ function LineEditor({
       {line.itemId && mat === NEW && (
         <div className="flex flex-wrap gap-2">
           <Input aria-label={t("sup.form.mat_name")} dir="auto" className="h-9 min-w-0 flex-1" placeholder={t("sup.form.mat_name")} value={line.name} onChange={(e) => onChange({ name: e.target.value })} />
-          <select
+          <NativeSelect
             aria-label={t("sup.form.unit")}
             className={`${SELECT} w-32`}
             value={unitValue}
@@ -367,7 +368,7 @@ function LineEditor({
               </option>
             ))}
             <option value={OTHER_UNIT}>{t("sup.form.unit_other")}</option>
-          </select>
+          </NativeSelect>
           {line.unitOther && <Input aria-label={t("sup.form.unit")} dir="auto" className="h-9 w-28" placeholder={t("sup.form.unit")} value={line.unit} onChange={(e) => onChange({ unit: e.target.value })} />}
         </div>
       )}

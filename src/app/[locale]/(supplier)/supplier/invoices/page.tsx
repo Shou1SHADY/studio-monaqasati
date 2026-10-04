@@ -188,7 +188,7 @@ function InvoiceDialog({
               <div className="col-span-5">{t("inv_item_desc")}</div>
               <div className="col-span-2 text-center">{t("inv_item_qty")}</div>
               <div className="col-span-3">{t("inv_item_price")}</div>
-              <div className="col-span-1 text-right">{t("inv_item_total")}</div>
+              <div className="col-span-1 text-start">{t("inv_item_total")}</div>
               <div className="col-span-1" />
             </div>
             <div className="space-y-2">
@@ -414,7 +414,7 @@ export default function SupplierInvoicesPage() {
                           </span>
                         </div>
                       </div>
-                      <div className="text-right shrink-0">
+                      <div className="text-start shrink-0">
                         <p className="text-xs text-muted-foreground">{t("inv_total")}</p>
                         <p className="text-lg font-black text-primary" dir="ltr">{formatCurrency(subtotal + vat, locale)}</p>
                       </div>
@@ -428,7 +428,7 @@ export default function SupplierInvoicesPage() {
                         </Button>
                       )}
                       {(inv.status === "sent" || inv.status === "overdue") && (
-                        <Button size="sm" className="gap-1 h-7 text-xs bg-success hover:bg-success/90 text-white"
+                        <Button variant="success" size="sm" className="gap-1 h-7 text-xs"
                           onClick={() => handleStatusChange(inv, "paid")}>
                           <CheckCircle2 size={12} />{t("inv_mark_paid")}
                         </Button>

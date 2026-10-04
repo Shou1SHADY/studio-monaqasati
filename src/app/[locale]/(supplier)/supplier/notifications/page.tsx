@@ -480,7 +480,7 @@ export default function SupplierNotificationsPage() {
                       {unread && notif.type === "invitation" && (
                         <div className="pt-2">
                           <Link href={`/${profile?.role?.toLowerCase()}/team`} className="inline-flex">
-                            <Button size="sm" className="h-8 text-xs bg-primary text-white hover:bg-primary/90">
+                            <Button variant="primary" size="sm" className="h-8 text-xs">
                               {t("go_to_team")}
                             </Button>
                           </Link>
@@ -490,7 +490,7 @@ export default function SupplierNotificationsPage() {
                       {unread && notif.type === "supplier_invite_received" && (
                         <div className="pt-2">
                           <Link href="/supplier/connections" className="inline-flex">
-                            <Button size="sm" className="h-8 text-xs bg-primary text-white hover:bg-primary/90">
+                            <Button variant="primary" size="sm" className="h-8 text-xs">
                               {t("go_to_connections")}
                             </Button>
                           </Link>
@@ -500,7 +500,7 @@ export default function SupplierNotificationsPage() {
                       {unread && notif.type === "supplier_connected" && (
                         <div className="pt-2">
                           <Link href="/supplier/connections" className="inline-flex">
-                            <Button size="sm" className="h-8 text-xs bg-success text-white hover:bg-success/90">
+                            <Button variant="success" size="sm" className="h-8 text-xs">
                               {t("go_to_connections")}
                             </Button>
                           </Link>

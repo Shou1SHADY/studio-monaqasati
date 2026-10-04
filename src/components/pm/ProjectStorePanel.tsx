@@ -66,6 +66,7 @@ import { ChoiceChips, FormHint } from "./ContractBits"
 import { AttachmentTag, PmFilesField } from "./PmAttachments"
 import { SubStoreMoveDialog } from "./SubCustodyDialogs"
 import { qty, ReceiveDialog, StopLineDialog, useLocaleDir, useProjectOrderFacts, useSupplyRun, type SupplyItem } from "./SupplyDialogs"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
 const ST_TONE: Record<StoreState, PillTone> = { open: "info", close: "warn", done: "ok", zero: "mute", neg: "bad", pend: "warn" }
 const CAP = 7
@@ -597,7 +598,7 @@ function MoveRow({ m, locale, canApprove, canMove, mine, busy, onDecide, onConfi
         <span className="text-xs text-muted-foreground">{t("store.mine")}</span>
       ) : (
         <div className="flex flex-wrap gap-1">
-          <Button size="sm" className="h-7 bg-success text-success-foreground hover:bg-success/90" disabled={busy !== null} onClick={() => onDecide("ok")}>
+          <Button variant="success" size="sm" className="h-7" disabled={busy !== null} onClick={() => onDecide("ok")}>
             {t("sup.approve")}
           </Button>
           {m.t === "loss" && m.why !== "theft" && (
@@ -701,14 +702,14 @@ function MoveDialog({ projectId, orgId, x, items, access, actor, initial, onClos
           {m === "use" && (
             <div className="space-y-1.5">
               <Label htmlFor="mv-item">{t("store.mv.which_item")} *</Label>
-              <select id="mv-item" className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={itemId} onChange={(e) => setItemId(e.target.value)}>
+              <NativeSelect id="mv-item" className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={itemId} onChange={(e) => setItemId(e.target.value)}>
                 <option value="">{t("store.mv.choose_item")}</option>
                 {unrated.map((i) => (
                   <option key={i.id} value={i.id}>
                     {i.code} — {i.description}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
               <FormHint>{t("store.mv.use_hint")}</FormHint>
             </div>
           )}

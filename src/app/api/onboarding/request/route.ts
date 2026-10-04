@@ -4,7 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore'
 import { getAdminFirestore } from '@/lib/firebaseAdmin'
 import { sendEmail } from '@/lib/email'
 import { companyTypesSchema, hasCompanyType, normalizeCompanyTypes } from '@/lib/company-types'
-import { escapeHtml } from '@/lib/demo-request'
+import { onboardingEmailHtml } from '@/lib/onboarding-email'
 
 const schema = z.object({
   name: z.string().trim().min(2).max(200),
@@ -32,22 +32,7 @@ export async function POST(req: NextRequest) {
     const companyTypes = normalizeCompanyTypes(parsed.data.companyTypes)
     const typeLabel = [...companyTypes.map((t) => TYPE_LABELS_AR[t]), ...(companyTypeOther ? [`أخرى — ${companyTypeOther}`] : [])].join('، ')
 
-    const emailHtml = `
-      <div dir="rtl" style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#0F172A">
-        <h2 style="border-bottom:2px solid #20CBD5;padding-bottom:12px;margin-bottom:20px">
-          طلب انضمام جديد من المقاول
-        </h2>
-        <table style="width:100%;border-collapse:collapse">
-          <tr><td style="padding:10px 12px;font-weight:600;color:#475569;width:160px;border-bottom:1px solid #e2e8f0">الاسم</td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0">${name}</td></tr>
-          <tr style="background:#f8fafc"><td style="padding:10px 12px;font-weight:600;color:#475569;border-bottom:1px solid #e2e8f0">الشركة</td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0">${company}</td></tr>
-          <tr><td style="padding:10px 12px;font-weight:600;color:#475569;border-bottom:1px solid #e2e8f0">الجوال</td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0" dir="ltr">${phone}</td></tr>
-          <tr style="background:#f8fafc"><td style="padding:10px 12px;font-weight:600;color:#475569;border-bottom:1px solid #e2e8f0">البريد الإلكتروني</td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0" dir="ltr">${email}</td></tr>
-          <tr><td style="padding:10px 12px;font-weight:600;color:#475569;border-bottom:1px solid #e2e8f0">نوع النشاط</td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0">${escapeHtml(typeLabel)}</td></tr>
-          <tr><td style="padding:10px 12px;font-weight:600;color:#475569;border-bottom:1px solid #e2e8f0">المدينة</td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0">${city}</td></tr>
-          <tr><td style="padding:10px 12px;font-weight:600;color:#475569">حجم الشركة</td><td style="padding:10px 12px">${size}</td></tr>
-        </table>
-      </div>
-    `
+    const emailHtml = onboardingEmailHtml({ name, company, phone, email, typeLabel, city, size })
 
     // Firestore is non-fatal — if Admin SDK credentials are missing or wrong, log and continue.
     let savedToDb = false
@@ -65,7 +50,7 @@ export async function POST(req: NextRequest) {
 
     const emailResult = await sendEmail({
       to: 'marco.khouzam@mdmaktech.sa',
-      subject: `طلب انضمام جديد — ${name} (${company})`,
+      subject: `طلب انضمام جديد — ${name.replace(/[\r\n]+/g, ' ')} (${company.replace(/[\r\n]+/g, ' ')})`,
       html: emailHtml,
     })
 

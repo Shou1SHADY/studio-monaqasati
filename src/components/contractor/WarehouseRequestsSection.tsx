@@ -270,7 +270,7 @@ function ConfirmReceiptDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isConfirming}>{t("wh_cancel")}</Button>
-          <Button onClick={handleConfirm} disabled={isConfirming} className="gap-2 bg-success hover:bg-success/90">
+          <Button variant="success" onClick={handleConfirm} disabled={isConfirming} className="gap-2">
             {isConfirming ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
             {t("confirm_receipt_submit")}
           </Button>
@@ -383,7 +383,7 @@ export function WarehouseRequestsSection({
               </Button>
             )}
             {canConfirm && (
-              <Button size="sm" onClick={() => setConfirmingRequest(r)} className="gap-1.5 h-8 bg-success hover:bg-success/90">
+              <Button variant="success" size="sm" onClick={() => setConfirmingRequest(r)} className="gap-1.5 h-8">
                 <Check size={13} />
                 {t("request_confirm_btn")}
               </Button>

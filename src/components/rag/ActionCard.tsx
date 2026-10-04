@@ -43,9 +43,9 @@ export function ActionCard({ action, executed, onConfirm, onDismiss, locale }: A
       )}
 
       <div className="flex gap-2">
-        <Button
+        <Button variant="accent"
           size="sm"
-          className="flex-1 h-7 text-xs bg-accent hover:bg-accent/90 text-accent-foreground"
+          className="flex-1 h-7 text-xs"
           onClick={onConfirm}
         >
           <CheckCircle2 size={11} className="me-1.5" />

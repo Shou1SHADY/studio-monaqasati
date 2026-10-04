@@ -519,9 +519,9 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
               assign a group or remove a member. `team.manage` governs project
               seating (projects/{id}/members), not who joins the company. */}
           {isOwner && (
-            <Button
+            <Button variant="primary"
               onClick={() => setIsInviteOpen(true)}
-              className="gap-2 bg-primary hover:bg-primary/90 text-white rounded-xl"
+              className="gap-2 rounded-xl"
             >
               <UserPlus size={18} />
               {t("team_add_member")}
@@ -555,10 +555,10 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button
+                    <Button variant="primary"
                       onClick={() => handleAcceptInvitation(invite)}
                       disabled={isInviting}
-                      className="bg-primary text-white hover:bg-primary/90 rounded-xl px-6"
+                      className="rounded-xl px-6"
                     >
                       {t("team_accept")}
                     </Button>
@@ -1014,7 +1014,7 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
             <Button variant="outline" onClick={() => setIsInviteOpen(false)} disabled={isInviting}>
               {t("team_cancel")}
             </Button>
-            <Button onClick={handleInvite} disabled={!inviteEmail || isInviting} className="bg-primary text-white gap-2">
+            <Button variant="primary" onClick={handleInvite} disabled={!inviteEmail || isInviting} className="gap-2">
               {isInviting ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
               {t("team_send_invite")}
             </Button>
@@ -1071,11 +1071,9 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
             <Button variant="outline" onClick={() => setGroupDialog("closed")} disabled={isSavingGroup}>
               {t("team_cancel")}
             </Button>
-            <Button
+            <Button variant="primary"
               onClick={handleSaveGroup}
-              disabled={!groupName.trim() || isSavingGroup || editingSystemGroup}
-              className="bg-primary text-white"
-            >
+              disabled={!groupName.trim() || isSavingGroup || editingSystemGroup}>
               {isSavingGroup ? <Loader2 size={16} className="animate-spin" /> : t("team_group_save")}
             </Button>
           </DialogFooter>

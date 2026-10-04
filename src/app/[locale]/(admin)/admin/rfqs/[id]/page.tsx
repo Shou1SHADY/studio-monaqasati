@@ -398,7 +398,7 @@ export default function AdminRfqDetailsPage() {
                               </div>
                               <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white transition-all">
                                 <a href={offer.offerPdfUrl} target="_blank" rel="noopener noreferrer">
-                                  <Download size={12} className="ml-1" />
+                                  <Download size={12} className="me-1" />
                                   {t("offers_view_file")}
                                 </a>
                               </Button>
@@ -455,7 +455,7 @@ export default function AdminRfqDetailsPage() {
                   <Table>
                     <TableHeader className="bg-gradient-to-r from-slate-50 to-white border-b-2 border-slate-100">
                       <TableRow>
-                        <TableHead className="text-right font-bold text-slate-700 whitespace-nowrap w-40">{t("offers_criteria")}</TableHead>
+                        <TableHead className="text-start font-bold text-slate-700 whitespace-nowrap w-40">{t("offers_criteria")}</TableHead>
                         {sortedOffers.map((o: any, i: number) => (
                           <TableHead key={o.id} className={`text-center min-w-[160px] ${o.price === lowestPrice ? 'bg-amber-50/50' : ''}`}>
                             <div className="flex flex-col items-center gap-1">
@@ -517,7 +517,7 @@ export default function AdminRfqDetailsPage() {
                             {o.offerPdfUrl ? (
                               <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white transition-all text-[10px]">
                                 <a href={o.offerPdfUrl} target="_blank" rel="noopener noreferrer">
-                                  <Download size={10} className="ml-1" />
+                                  <Download size={10} className="me-1" />
                                   {t("offers_view_file")}
                                 </a>
                               </Button>

@@ -93,7 +93,7 @@ export default function AdminProfilePage() {
 
   return (
     <PortalLayout>
-      <div className="max-w-6xl mx-auto py-8 text-right space-y-8">
+      <div className="max-w-6xl mx-auto py-8 text-start space-y-8">
         {/* Header Section */}
         <div className="bg-white rounded-[2rem] border border-slate-100 shadow-xl shadow-slate-200/40 p-8 relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-primary/5 to-transparent opacity-50 pointer-events-none" />
@@ -109,7 +109,7 @@ export default function AdminProfilePage() {
                 </div>
               </div>
 
-              <div className="text-center md:text-right space-y-4">
+              <div className="text-center md:text-start space-y-4">
                 <div className="space-y-1">
                   <Badge className="px-4 py-1 rounded-full text-[10px] font-black border-none shadow-sm mb-2 bg-primary/10 text-primary">
                     {t("sys_admin")}
@@ -130,7 +130,7 @@ export default function AdminProfilePage() {
         {/* Action Bar */}
         <div className="sticky top-6 z-40 flex justify-end gap-3 bg-white/40 backdrop-blur-2xl p-4 rounded-[2rem] border border-white/20 shadow-xl shadow-slate-200/20 max-w-fit mr-auto">
           <Button variant="ghost" onClick={() => window.location.reload()} className="h-12 px-6 rounded-2xl hover:bg-white/50 text-slate-600 transition-all font-bold">
-            <X size={18} className="ml-2" />
+            <X size={18} className="me-2" />
             {t("cancel")}
           </Button>
           <Button className="gap-2 h-12 px-10 rounded-2xl shadow-xl shadow-primary/30 bg-primary hover:bg-secondary hover:text-white hover:scale-105 active:scale-95 transition-all duration-300 font-bold text-white ring-offset-2 ring-primary/20 hover:ring-4" onClick={handleSave} disabled={isLoading}>
@@ -209,7 +209,7 @@ export default function AdminProfilePage() {
                 
                 {/* 1. Account Provider Details */}
                 <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <div className="space-y-1 text-right">
+                  <div className="space-y-1 text-start">
                     <h4 className="font-bold text-slate-800 text-sm">{t("login_method")}</h4>
                     <p className="text-xs text-muted-foreground">{t("login_method_desc")}</p>
                   </div>
@@ -232,7 +232,7 @@ export default function AdminProfilePage() {
 
                 {/* 2. Email Verification Control */}
                 <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <div className="space-y-1 text-right">
+                  <div className="space-y-1 text-start">
                     <h4 className="font-bold text-slate-800 text-sm">{t("email_verification_status")}</h4>
                     <p className="text-xs text-muted-foreground font-semibold">{profile.email}</p>
                   </div>
@@ -280,7 +280,7 @@ export default function AdminProfilePage() {
 
                 {/* 3. 2-Step Verification Toggle */}
                 <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-                  <div className="space-y-1 flex-1 text-right">
+                  <div className="space-y-1 flex-1 text-start">
                     <div className="flex items-center gap-2 justify-start">
                       <h4 className="font-bold text-slate-800 text-sm">{t("two_step_verification")}</h4>
                       <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black">{t("sms_badge")}</Badge>

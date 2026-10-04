@@ -183,7 +183,7 @@ export function DraftAddendumDialog({
             {t("amend.save_draft")}
           </Button>
           {canSign && (
-            <Button className="bg-success text-success-foreground hover:bg-success/90" onClick={() => void save(true)} disabled={busy !== null || blocks.length > 0 || sBlocks.length > 0}>
+            <Button variant="success"  onClick={() => void save(true)} disabled={busy !== null || blocks.length > 0 || sBlocks.length > 0}>
               {busy === "sign" ? <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" /> : <Check size={16} className="me-1.5" aria-hidden="true" />}
               {t("amend.save_signed")}
             </Button>

@@ -62,6 +62,7 @@ import { Money, useDateText } from "./PoBits"
 import { moneyTrail } from "./PoModel"
 import type { Submit } from "./PoActionDialogs"
 import { RecordedByPill } from "./ReceiptDrawer"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
 type Tone = "red" | "amber" | "blue" | "green"
 
@@ -1053,13 +1054,13 @@ export function HoldInvoiceDialog({ open, lines, onOpenChange, onSubmit }: { ope
                     <FormItem>
                       <FormLabel>{t("rfqpo.po.hold.line")}</FormLabel>
                       <FormControl>
-                        <select {...field} className="h-10 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <NativeSelect {...field} className="h-10 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                           {lines.map((l) => (
                             <option key={l.id} value={l.id}>
                               {l.name}
                             </option>
                           ))}
-                        </select>
+                        </NativeSelect>
                       </FormControl>
                     </FormItem>
                   )}

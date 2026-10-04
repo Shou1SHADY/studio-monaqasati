@@ -316,7 +316,7 @@ export function PublicRfqContent() {
               </Button>
             </Link>
             <Link href="/register">
-              <Button size="sm" className="rounded-lg bg-cta hover:bg-cta/90 text-white font-bold shadow-sm">
+              <Button size="sm" className="rounded-lg font-bold shadow-sm">
                 {t("register_cta")}
               </Button>
             </Link>
@@ -414,7 +414,7 @@ export function PublicRfqContent() {
               <p className="font-bold text-slate-800 text-sm">{t("success_register_title")}</p>
               <p className="text-sm text-slate-600 leading-relaxed">{t("success_register_desc")}</p>
               <Link href="/register" className="inline-block pt-1">
-                <Button size="sm" className="rounded-lg bg-cta hover:bg-cta/90 font-bold">
+                <Button size="sm" className="rounded-lg font-bold">
                   {t("register_cta_long")}
                 </Button>
               </Link>

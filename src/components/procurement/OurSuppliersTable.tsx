@@ -60,6 +60,7 @@ export function OurSuppliersTable({ rows, today, onOpen }: { rows: SupplierRow[]
                     {s.city && <span>· {displayCity(s.city, locale)}</span>}
                     <span>·</span>
                     <StatusPill tone="module" className="px-2 py-0 text-[10.5px]">{t("badge.platform")}</StatusPill>
+                    {s.international && <StatusPill tone="info" className="px-2 py-0 text-[10.5px]">{t("badge.international")}</StatusPill>}
                     {s.record?.source === "guest_link" && <StatusPill tone="mute" className="px-2 py-0 text-[10.5px]">{t("badge.guest_link")}</StatusPill>}
                     {s.record?.verified === false && <StatusPill tone="warn" className="px-2 py-0 text-[10.5px]">{t("badge.unverified")}</StatusPill>}
                   </p>

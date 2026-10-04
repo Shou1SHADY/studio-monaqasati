@@ -92,8 +92,8 @@ function MessageBubble({
             className="mt-2"
           >
             <Link href={msg.ctaPath as any}>
-              <Button size="sm"
-                className="h-8 text-xs bg-accent hover:bg-accent/90 text-white gap-1.5 rounded-full px-4 shadow-md">
+              <Button variant="accent" size="sm"
+                className="h-8 text-xs gap-1.5 rounded-full px-4 shadow-md">
                 {msg.ctaLabel}
                 <ArrowRight size={12} className={isRTL ? 'rotate-180' : ''} />
               </Button>

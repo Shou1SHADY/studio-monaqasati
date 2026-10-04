@@ -29,7 +29,7 @@ export default function AdminStatsPage() {
   ]
   return (
     <PortalLayout>
-      <div className="space-y-8 text-right">
+      <div className="space-y-8 text-start">
         <div>
           <h1 className="text-3xl font-black text-foreground font-headline">{t("page_title")}</h1>
           <p className="text-muted-foreground mt-1">{t("page_subtitle")}</p>

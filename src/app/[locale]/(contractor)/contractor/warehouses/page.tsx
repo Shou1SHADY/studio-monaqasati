@@ -469,7 +469,7 @@ export default function ContractorWarehousesPage() {
                                 <Pencil size={14} />
                               </Button>
                             )}
-                            <Button asChild className="gap-2 bg-accent hover:bg-accent/90 text-white">
+                            <Button variant="accent" asChild className="gap-2">
                               <Link href={`/contractor/warehouses/${central.id}`}>
                                 <Package size={15} />
                                 {t("wh_view_inventory")}

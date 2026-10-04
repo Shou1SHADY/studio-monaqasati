@@ -231,7 +231,7 @@ export default function AdminContractorsPage() {
 
   return (
     <PortalLayout>
-      <div className="space-y-6 text-right">
+      <div className="space-y-6 text-start">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -381,13 +381,13 @@ export default function AdminContractorsPage() {
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead className="text-right hidden md:table-cell">{t("id")}</TableHead>
-                    <TableHead className="text-right">{t("company_name")}</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">{t("cr_number")}</TableHead>
-                    <TableHead className="text-right hidden md:table-cell">{t("tenders_count")}</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">{t("documents")}</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">{t("verification")}</TableHead>
-                    <TableHead className="text-right">{t("status")}</TableHead>
+                    <TableHead className="text-start hidden md:table-cell">{t("id")}</TableHead>
+                    <TableHead className="text-start">{t("company_name")}</TableHead>
+                    <TableHead className="text-start hidden sm:table-cell">{t("cr_number")}</TableHead>
+                    <TableHead className="text-start hidden md:table-cell">{t("tenders_count")}</TableHead>
+                    <TableHead className="text-start hidden sm:table-cell">{t("documents")}</TableHead>
+                    <TableHead className="text-start hidden sm:table-cell">{t("verification")}</TableHead>
+                    <TableHead className="text-start">{t("status")}</TableHead>
                     <TableHead className="text-left">{t("actions")}</TableHead>
                   </TableRow>
                 </TableHeader>

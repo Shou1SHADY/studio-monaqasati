@@ -352,9 +352,9 @@ export function ContractorCatalog() {
               <span className="text-sm font-semibold whitespace-nowrap">
                 {selectedIds.size} {t('catalog_items_selected')}
               </span>
-              <Button
+              <Button variant="accent"
                 onClick={handleCreateRfq}
-                className="bg-accent hover:bg-accent/90 text-primary font-bold rounded-xl h-9 px-5 text-sm shadow-lg shadow-accent/30 gap-2"
+                className="font-bold rounded-xl h-9 px-5 text-sm shadow-lg shadow-accent/30 gap-2"
               >
                 <ShoppingCart size={14} />
                 {t('catalog_create_rfq_n', { count: selectedIds.size })}

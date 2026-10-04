@@ -19,6 +19,7 @@ import {
 } from "firebase/auth";
 import { useUser } from "@/firebase";
 import { useTranslations, useLocale } from 'next-intl';
+import { IconButton } from '@/components/module-ui/IconButton';
 import { KeyRound, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
 interface ChangePasswordDialogProps {
@@ -151,17 +152,16 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   placeholder={t("password_current_placeholder")}
-                  className="h-11 pr-4 pl-10 text-right"
+                  className="h-11 ps-4 pe-10 text-start"
                   required
                   autoComplete="current-password"
                 />
-                <button
-                  type="button"
+                <IconButton
+                  label={showCurrent ? t("password_hide") : t("password_show")}
+                  icon={showCurrent ? EyeOff : Eye}
                   onClick={() => setShowCurrent(!showCurrent)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-slate-700 transition-colors"
-                >
-                  {showCurrent ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
+                  className="absolute end-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:text-slate-700 md:h-9 md:w-9"
+                />
               </div>
             </div>
 
@@ -177,17 +177,16 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder={t("password_new_placeholder")}
-                  className="h-11 pr-4 pl-10 text-right"
+                  className="h-11 ps-4 pe-10 text-start"
                   required
                   autoComplete="new-password"
                 />
-                <button
-                  type="button"
+                <IconButton
+                  label={showNew ? t("password_hide") : t("password_show")}
+                  icon={showNew ? EyeOff : Eye}
                   onClick={() => setShowNew(!showNew)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-slate-700 transition-colors"
-                >
-                  {showNew ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
+                  className="absolute end-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:text-slate-700 md:h-9 md:w-9"
+                />
               </div>
               {/* Strength Meter */}
               {strength && (
@@ -214,19 +213,18 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder={t("password_confirm_placeholder")}
-                  className="h-11 pr-4 pl-10 text-right"
+                  className="h-11 ps-4 pe-16 text-start"
                   required
                   autoComplete="new-password"
                 />
-                <button
-                  type="button"
+                <IconButton
+                  label={showConfirm ? t("password_hide") : t("password_show")}
+                  icon={showConfirm ? EyeOff : Eye}
                   onClick={() => setShowConfirm(!showConfirm)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-slate-700 transition-colors"
-                >
-                  {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
+                  className="absolute end-1 top-1/2 h-9 w-9 -translate-y-1/2 text-muted-foreground hover:text-slate-700 md:h-9 md:w-9"
+                />
                 {confirmPassword && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <div className="absolute end-10 top-1/2 -translate-y-1/2">
                     {newPassword === confirmPassword ? (
                       <CheckCircle2 size={16} className="text-emerald-500" />
                     ) : (
@@ -252,9 +250,9 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
                 className="w-full h-11 rounded-xl font-bold"
               >
                 {loading ? (
-                  <><Loader2 size={16} className="animate-spin ml-2" /> {t("password_save")}</>
+                  <><Loader2 size={16} className="animate-spin me-2" /> {t("password_save")}</>
                 ) : (
-                  <><KeyRound size={16} className="ml-2" /> {t("password_update")}</>
+                  <><KeyRound size={16} className="me-2" /> {t("password_update")}</>
                 )}
               </Button>
               <Button

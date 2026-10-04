@@ -451,7 +451,7 @@ export default function ContractorProfilePage() {
               </div>
 
               {/* Text Info - Enhanced Pro Max Typography */}
-              <div className="text-center md:text-right space-y-4">
+              <div className="text-center md:text-start space-y-4">
                 <div className="space-y-1">
                   {profile.isVerified && (
                     <Badge className="px-4 py-1 rounded-full text-[10px] font-black border-none shadow-sm mb-2 bg-success/10 text-success">
@@ -490,7 +490,7 @@ export default function ContractorProfilePage() {
         {/* Action Bar - Sticky */}
         <div className={cn("sticky top-6 z-40 flex justify-end gap-3 bg-white/40 backdrop-blur-2xl p-4 rounded-[2rem] border border-white/20 shadow-xl shadow-slate-200/20 max-w-fit", locale === 'ar' ? 'mr-auto' : 'ml-auto')}>
           <Button variant="ghost" onClick={() => window.location.reload()} className="h-12 px-6 rounded-2xl hover:bg-white/50 text-slate-600 transition-all font-bold">
-            <X size={18} className="ml-2" />
+            <X size={18} className="me-2" />
             {t("profile_cancel")}
           </Button>
           <Button className="gap-2 h-12 px-10 rounded-2xl shadow-xl shadow-primary/30 bg-primary hover:bg-secondary hover:text-white hover:scale-105 active:scale-95 transition-all duration-300 font-bold text-white ring-offset-2 ring-primary/20 hover:ring-4" onClick={handleSave} disabled={isLoading}>
@@ -779,7 +779,7 @@ export default function ContractorProfilePage() {
                 
                 {/* 1. Account Provider Details */}
                 <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <div className="space-y-1 text-right">
+                  <div className="space-y-1 text-start">
                     <h4 className="font-bold text-slate-800 text-sm">{t("profile_login_method")}</h4>
                     <p className="text-xs text-muted-foreground">{t("profile_login_method_desc")}</p>
                   </div>
@@ -802,7 +802,7 @@ export default function ContractorProfilePage() {
 
                 {/* 2. Email Verification Control */}
                 <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <div className="space-y-1 text-right">
+                  <div className="space-y-1 text-start">
                     <h4 className="font-bold text-slate-800 text-sm">{t("profile_email_status")}</h4>
                     <p className="text-xs text-muted-foreground font-semibold">{profile.email}</p>
                   </div>
@@ -850,7 +850,7 @@ export default function ContractorProfilePage() {
 
                 {/* 3. 2-Step Verification Toggle */}
                 <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-                  <div className="space-y-1 flex-1 text-right">
+                  <div className="space-y-1 flex-1 text-start">
                     <div className="flex items-center gap-2 justify-start">
                       <h4 className="font-bold text-slate-800 text-sm">{t("profile_two_factor")}</h4>
                       <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black">{t("profile_two_factor_sms")}</Badge>
@@ -881,7 +881,7 @@ export default function ContractorProfilePage() {
 
                 {/* 4. Change Password */}
                 <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-                  <div className="space-y-1 flex-1 text-right">
+                  <div className="space-y-1 flex-1 text-start">
                     <h4 className="font-bold text-slate-800 text-sm">{t("profile_change_password")}</h4>
                     <p className="text-xs text-muted-foreground mt-1">
                       {t("profile_change_password_desc")}

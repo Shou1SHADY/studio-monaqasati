@@ -194,7 +194,7 @@ export function MfgNoteReceiptDialog({
           <Button variant="outline" onClick={onClose} disabled={busy}>
             {t("crm_cancel")}
           </Button>
-          <Button onClick={submit} disabled={busy || over} className="gap-2 bg-success text-white hover:bg-success/90">
+          <Button variant="success" onClick={submit} disabled={busy || over} className="gap-2">
             {busy ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
             {toProject ? t("mfx_dn_receive_custody_btn") : t("mfx_dn_receive_btn")}
           </Button>

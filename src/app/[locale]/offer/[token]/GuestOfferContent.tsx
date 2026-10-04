@@ -301,7 +301,7 @@ export function GuestOfferContent() {
               </Button>
             </Link>
             <Link href="/register">
-              <Button size="sm" className="rounded-lg bg-cta hover:bg-cta/90 text-white font-bold shadow-sm">
+              <Button size="sm" className="rounded-lg font-bold shadow-sm">
                 {t("register_cta")}
               </Button>
             </Link>
@@ -712,10 +712,10 @@ export function GuestOfferContent() {
                       {...deliveryForm.register("notes")}
                     />
                   </div>
-                  <Button
+                  <Button variant="success"
                     type="submit"
                     disabled={deliveryForm.formState.isSubmitting}
-                    className="w-full h-11 rounded-xl bg-success hover:bg-success/90 font-bold gap-2"
+                    className="w-full h-11 rounded-xl font-bold gap-2"
                   >
                     {deliveryForm.formState.isSubmitting ? (
                       <Loader2 size={16} className="animate-spin" />
@@ -763,7 +763,7 @@ export function GuestOfferContent() {
                 <div>
                   <p className="text-sm text-slate-700 leading-relaxed">{t("rejected_desc")}</p>
                   <Link href="/register" className="inline-block pt-2">
-                    <Button size="sm" className="rounded-lg bg-cta hover:bg-cta/90 font-bold">
+                    <Button size="sm" className="rounded-lg font-bold">
                       {t("register_cta_long")}
                     </Button>
                   </Link>

@@ -15,7 +15,7 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useCompanyNamesForMembers } from "@/hooks/useActiveCompanyName"
 import { useIdentityOverlays } from "@/hooks/useIdentityOverlays"
 import { stripIdentityFields } from "@/lib/identity-fields"
-import { SUPPLIER_RECORDS, starAverage, type SupplierRecord } from "@/lib/procurement/supplier-file"
+import { SUPPLIER_RECORDS, isInternationalSupplier, starAverage, type SupplierRecord } from "@/lib/procurement/supplier-file"
 import type { ProcOffer } from "@/hooks/useProcurementWorld"
 
 export interface SupplierCertificate {
@@ -82,6 +82,7 @@ export interface PlatformSupplier {
   bio: string | null
   phone: string | null
   email: string | null
+  international: boolean
   since: string | null
   platformVerified: boolean
   profileVat: string | null
@@ -172,6 +173,7 @@ export function useSupplierDirectory(orgId: string, favoriteIds: string[], offer
         bio: str(pick("description")),
         phone: str(pick("phone")),
         email: str(pick("email")),
+        international: isInternationalSupplier({ phone: str(pick("phone")), record }),
         since: asDay(raw.createdAt),
         platformVerified: Boolean(owner.isVerified),
         profileVat: str(pick("taxNumber")),

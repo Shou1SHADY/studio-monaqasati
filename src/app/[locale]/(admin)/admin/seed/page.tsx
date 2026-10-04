@@ -252,7 +252,7 @@ export default function SeedPage() {
 
   return (
     <PortalLayout>
-      <div className="max-w-2xl mx-auto py-10 text-right space-y-8">
+      <div className="max-w-2xl mx-auto py-10 text-start space-y-8">
         <Card className="border-none shadow-xl bg-white">
           <CardHeader className="text-center border-b pb-6">
             <Database size={60} className="mx-auto text-primary mb-4" />
@@ -265,19 +265,19 @@ export default function SeedPage() {
               {debugLog.length === 0 && <div className="text-slate-500 italic">{t("waiting_for_seed")}</div>}
             </div>
             
-            <Button 
+            <Button variant="primary" 
               onClick={handleSeed} 
               disabled={isSeeding} 
-              className="w-full h-14 text-xl font-bold bg-primary hover:bg-primary/90 shadow-lg"
+              className="w-full h-14 text-xl font-bold shadow-lg"
             >
               {isSeeding ? (
                 <>
-                  <Loader2 className="animate-spin ml-3" size={24} />
+                  <Loader2 className="animate-spin me-3" size={24} />
                   {t("seeding")}
                 </>
               ) : (
                 <>
-                  <RefreshCw className="ml-3" size={24} />
+                  <RefreshCw className="me-3" size={24} />
                   {t("seed_now")}
                 </>
               )}
@@ -308,15 +308,15 @@ export default function SeedPage() {
               {whLog.map((log, i) => <div key={i} className="mb-1">➜ {log}</div>)}
               {whLog.length === 0 && <div className="text-slate-500 italic">في انتظار التنفيذ...</div>}
             </div>
-            <Button
+            <Button variant="accent"
               onClick={handleSeedWarehouse}
               disabled={isSeedingWh || !whOrgId.trim()}
-              className="w-full h-12 text-lg font-bold bg-accent hover:bg-accent/90 text-primary shadow-lg"
+              className="w-full h-12 text-lg font-bold shadow-lg"
             >
               {isSeedingWh ? (
-                <><Loader2 className="animate-spin ml-2" size={20} />جاري الإنشاء...</>
+                <><Loader2 className="animate-spin me-2" size={20} />جاري الإنشاء...</>
               ) : (
-                <><Warehouse className="ml-2" size={20} />إنشاء مستودعات تجريبية</>
+                <><Warehouse className="me-2" size={20} />إنشاء مستودعات تجريبية</>
               )}
             </Button>
           </CardContent>

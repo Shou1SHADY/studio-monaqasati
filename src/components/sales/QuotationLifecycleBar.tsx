@@ -252,7 +252,7 @@ export function QuotationLifecycleBar({
             </Button>
           )}
           {actions.includes("convert") && (
-            <Button size="sm" className="gap-1.5 bg-success text-white hover:bg-success/90" disabled={!!busy || !canApprove} onClick={() => { setPromiseDate(""); setError(null); setDialog("convert") }}>
+            <Button variant="success" size="sm" className="gap-1.5" disabled={!!busy || !canApprove} onClick={() => { setPromiseDate(""); setError(null); setDialog("convert") }}>
               <CheckCircle2 size={14} aria-hidden="true" />
               {t("sales_q_convert_btn")}
             </Button>
@@ -344,7 +344,7 @@ export function QuotationLifecycleBar({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialog(null)} disabled={!!busy}>{t("crm_cancel")}</Button>
-            <Button onClick={doConvert} disabled={!!busy || converts.length > 0 || !promiseDate} className="gap-1.5 bg-success text-white hover:bg-success/90">
+            <Button variant="success" onClick={doConvert} disabled={!!busy || converts.length > 0 || !promiseDate} className="gap-1.5">
               {busy === "convert" ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <CheckCircle2 size={14} aria-hidden="true" />}
               {t("sales_q_convert_btn")}
             </Button>

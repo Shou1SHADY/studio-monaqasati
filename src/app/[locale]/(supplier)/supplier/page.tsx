@@ -349,7 +349,7 @@ export default function SupplierDashboard() {
                             <Eye size={14} />
                             {t("details")}
                           </Button>
-                          <Button 
+                          <Button variant="primary" 
                             onClick={() => {
                               setSelectedRfq({
                                 id: rfq.id, 
@@ -372,7 +372,7 @@ export default function SupplierDashboard() {
                               })
                               setShowSubmitOffer(true)
                             }}
-                            className="flex-[2] md:flex-none bg-primary hover:bg-primary/90 rounded-full h-9 px-6 text-xs gap-2 group"
+                            className="flex-[2] md:flex-none rounded-full h-9 px-6 text-xs gap-2 group"
                           >
                             {t("submit_offer")}
                             <ChevronLeft size={14} className="group-hover:-translate-x-1 transition-transform" />
@@ -410,7 +410,7 @@ export default function SupplierDashboard() {
                   {userData?.coverageCities?.length > 0 ? (
                     userData.coverageCities.slice(0, 6).map((city: string) => (
                       <span key={city} className="text-xs text-muted-foreground bg-slate-100 px-2 py-1 rounded hover:bg-slate-200 transition-colors cursor-default">
-                        <MapPin size={10} className="inline ml-1" />
+                        <MapPin size={10} className="inline me-1" />
                         {displayCity(city, locale)}
                       </span>
                     ))
@@ -446,7 +446,7 @@ export default function SupplierDashboard() {
       {/* RFQ Details Dialog */}
       <Dialog open={showRfqDetails} onOpenChange={(open) => { if (!open) { setShowRfqDetails(false); setShowInquiries(false) } }}>
         <DialogContent
-          className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0"
+          className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl text-start rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0"
           dir={locale === 'ar' ? 'rtl' : 'ltr'}
           aria-describedby={undefined}
         >
@@ -587,7 +587,7 @@ export default function SupplierDashboard() {
             <Button variant="outline" className="flex-1" onClick={() => { setShowRfqDetails(false); setShowInquiries(false) }}>
               {t("close")}
             </Button>
-            <Button className="flex-1 bg-success hover:bg-success/90 gap-2" onClick={() => { setShowRfqDetails(false); setShowSubmitOffer(true) }}>
+            <Button variant="success" className="flex-1 gap-2" onClick={() => { setShowRfqDetails(false); setShowSubmitOffer(true) }}>
               {t("submit_price_offer")}
               <ChevronLeft size={16} />
             </Button>

@@ -395,7 +395,7 @@ function RequestRow({ r, world, items, access, actor, projectId, onOpen, onRejec
         {canDecide &&
           (r.lines.some((l) => l.chg?.st !== "wait") ? (
             <div className="flex gap-1">
-              <Button size="sm" className="h-7 bg-success text-success-foreground hover:bg-success/90" disabled={busy !== null} onClick={() => (blocked ? onOpen() : firestore && void run("ok", () => approveMaterialRequest(firestore, access.ctx, projectId, actor, r.id), t("sup.approved", { no: reqNo(r.seq ?? 0) })))}>
+              <Button variant="success" size="sm" className="h-7" disabled={busy !== null} onClick={() => (blocked ? onOpen() : firestore && void run("ok", () => approveMaterialRequest(firestore, access.ctx, projectId, actor, r.id), t("sup.approved", { no: reqNo(r.seq ?? 0) })))}>
                 <Check size={13} className="me-1" aria-hidden="true" />
                 {ch ? t("sup.approve_rest") : t("sup.approve")}
               </Button>
@@ -525,7 +525,7 @@ function RequestDrawer({
               <div className="flex flex-wrap gap-2 pt-2">
                 {approver && (
                   <>
-                    <Button size="sm" className="bg-success text-success-foreground hover:bg-success/90" disabled={blocks.length > 0 || busy !== null} onClick={() => firestore && void run("ok", () => approveMaterialRequest(firestore, access.ctx, projectId, actor, r.id), t("sup.approved", { no: reqNo(r.seq ?? 0) })).then((ok) => ok && onClose())}>
+                    <Button variant="success" size="sm"  disabled={blocks.length > 0 || busy !== null} onClick={() => firestore && void run("ok", () => approveMaterialRequest(firestore, access.ctx, projectId, actor, r.id), t("sup.approved", { no: reqNo(r.seq ?? 0) })).then((ok) => ok && onClose())}>
                       <Check size={14} className="me-1.5" aria-hidden="true" />
                       {checks.held ? t("sup.approve_hold") : t("sup.approve_send")}
                     </Button>

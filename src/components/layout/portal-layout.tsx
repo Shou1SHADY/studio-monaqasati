@@ -895,8 +895,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
             ) : (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="flex items-center gap-2 pr-2 pl-4 h-10 rounded-full hover:bg-muted focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none">
-                    <div className="flex flex-col items-end mr-2 hidden sm:flex">
+                  <Button variant="ghost" className="flex items-center gap-2 pe-2 ps-4 h-10 rounded-full hover:bg-muted focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none">
+                    <div className="flex flex-col items-end me-2 hidden sm:flex">
                       <span className="text-sm font-bold text-foreground">{activeCompanyName || (user ? t("new_user") : "")}</span>
                       <span className="text-xs text-muted-foreground">
                         {profile?.role === "Contractor" ? t("role_contractor") : profile?.role === "Supplier" ? t("role_supplier") : profile?.role || t("waiting_setup")}

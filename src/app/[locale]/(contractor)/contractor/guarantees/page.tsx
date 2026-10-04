@@ -160,9 +160,9 @@ function GuaranteeCard({ guarantee, locale, t }: { guarantee: Guarantee; locale:
             )}
             {guarantee.status === "pending_review" && can(GUARANTEE_REVIEW_PERMISSION) && (
               <div className="flex gap-2">
-                <Button
+                <Button variant="success"
                   size="sm"
-                  className="h-8 bg-success hover:bg-success/90 gap-1.5"
+                  className="h-8 gap-1.5"
                   onClick={() => handleReview("accepted")}
                   disabled={isUpdating}
                 >

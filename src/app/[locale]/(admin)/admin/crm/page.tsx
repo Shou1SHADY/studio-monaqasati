@@ -11,6 +11,7 @@ import { CalendarClock, Handshake, LayoutGrid, List, Loader2, Plus, Search, User
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { AddLeadDialog } from "@/components/admin/AddLeadDialog"
 import { CrmBoard, type CrmBoardColumn } from "@/components/admin/CrmBoard"
+import { Chip } from "@/components/module-ui/Chip"
 import { isAllCompanyTypes } from "@/lib/company-types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -359,20 +360,9 @@ export default function AdminCrmPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               {filters.map((f) => (
-                <button
-                  key={f.key}
-                  type="button"
-                  onClick={() => setFilter(f.key)}
-                  aria-pressed={filter === f.key}
-                  className={cn(
-                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                    filter === f.key ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground hover:text-foreground hover:border-foreground/30",
-                  )}
-                >
+                <Chip key={f.key} selected={filter === f.key} count={f.count} onClick={() => setFilter(f.key)}>
                   {f.label}
-                  {f.count !== undefined && <span className="ms-1.5 opacity-80" dir="ltr">{f.count}</span>}
-                </button>
+                </Chip>
               ))}
             </div>
           </div>

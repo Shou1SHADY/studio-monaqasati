@@ -398,7 +398,7 @@ export default function ContractorNotificationsPage() {
                       {isInvitation && isUnread && (
                         <div className="pt-2">
                           <Link href="/contractor/team">
-                            <Button size="sm" className="h-8 text-xs bg-primary text-white hover:bg-primary/90" onClick={(e) => { e.stopPropagation(); markNotifAsRead(notif.id) }}>
+                            <Button variant="primary" size="sm" className="h-8 text-xs" onClick={(e) => { e.stopPropagation(); markNotifAsRead(notif.id) }}>
                               {t("notif_go_to_team")}
                             </Button>
                           </Link>
@@ -407,7 +407,7 @@ export default function ContractorNotificationsPage() {
                       {isNewChatMessage && notif.chatId && (
                         <div className="pt-2">
                           <Link href={`/contractor/chat/${notif.chatId}`}>
-                            <Button size="sm" className="h-8 text-xs bg-primary text-white hover:bg-primary/90" onClick={(e) => { e.stopPropagation(); markNotifAsRead(notif.id) }}>
+                            <Button variant="primary" size="sm" className="h-8 text-xs" onClick={(e) => { e.stopPropagation(); markNotifAsRead(notif.id) }}>
                               {t("notif_review")}
                             </Button>
                           </Link>

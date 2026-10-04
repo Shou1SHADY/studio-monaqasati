@@ -3150,11 +3150,11 @@ export default function ProjectDetailPage() {
                   </div>
                   {selectedTenderIds.length > 0 && (
                     <>
-                      <Button
+                      <Button variant="success"
                         size="sm"
                         onClick={handleBulkPublishTenders}
                         disabled={isBulkPublishingTenders}
-                        className="gap-1.5 bg-success hover:bg-success/90 h-8 text-xs"
+                        className="gap-1.5 h-8 text-xs"
                       >
                         {isBulkPublishingTenders ? <Loader2 className="animate-spin" size={13} /> : <Send size={13} />}
                         {t("rfq_batch_publish", { count: selectedTenderIds.length })}
@@ -3199,10 +3199,10 @@ export default function ProjectDetailPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-8"></TableHead>
-                        <TableHead className="text-right">{t("proj_rfqs")}</TableHead>
-                        {isRfqColVisible("category") && <TableHead className="text-right">{t("proj_category")}</TableHead>}
-                        {isRfqColVisible("status") && <TableHead className="text-right">{t("proj_status")}</TableHead>}
-                        {isRfqColVisible("offers_count") && <TableHead className="text-right">{t("proj_offers_count_label")}</TableHead>}
+                        <TableHead className="text-start">{t("proj_rfqs")}</TableHead>
+                        {isRfqColVisible("category") && <TableHead className="text-start">{t("proj_category")}</TableHead>}
+                        {isRfqColVisible("status") && <TableHead className="text-start">{t("proj_status")}</TableHead>}
+                        {isRfqColVisible("offers_count") && <TableHead className="text-start">{t("proj_offers_count_label")}</TableHead>}
                         <TableHead className="text-left"></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -3375,9 +3375,9 @@ export default function ProjectDetailPage() {
                               </Link>
                             </div>
                             {editable && r.status === "Draft" && (
-                              <Button
+                              <Button variant="success"
                                 size="sm"
-                                className="w-full gap-1.5 text-xs h-8 bg-success hover:bg-success/90"
+                                className="w-full gap-1.5 text-xs h-8"
                                 disabled={publishingTenderId === r.id}
                                 onClick={() => handlePublishTender(r.id)}
                               >

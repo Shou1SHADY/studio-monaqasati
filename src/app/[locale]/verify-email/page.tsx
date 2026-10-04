@@ -217,12 +217,12 @@ export default function VerifyEmailPage() {
           >
             {isChecking ? (
               <>
-                <Loader2 className="animate-spin ml-2" size={16} />
+                <Loader2 className="animate-spin me-2" size={16} />
                 {t("checking_status")}
               </>
             ) : (
               <>
-                <CheckCircle2 className="ml-2" size={16} />
+                <CheckCircle2 className="me-2" size={16} />
                 {t("check_status_btn")}
               </>
             )}
@@ -236,7 +236,7 @@ export default function VerifyEmailPage() {
           >
             {isLoading ? (
               <>
-                <Loader2 className="animate-spin ml-2" size={16} />
+                <Loader2 className="animate-spin me-2" size={16} />
                 {t("resending")}
               </>
             ) : (

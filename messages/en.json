@@ -8443,7 +8443,9 @@
       "pn_receipt_auto_forwarded": "The system forwarded you a delivery from {supplier} that Procurement had not forwarded in time — open the link, count what arrived and sign.",
       "team_invite_outdated": "This is an old invitation that is no longer valid — ask the company owner to send it again.",
       "owner_only_title": "Available to the account owner only",
-      "owner_only_desc": "Company details such as the commercial registration and tax number are seen and edited by the account owner only."
+      "owner_only_desc": "Company details such as the commercial registration and tax number are seen and edited by the account owner only.",
+      "password_show": "Show password",
+      "password_hide": "Hide password"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -20116,7 +20118,8 @@
         "guest_link": "Registered from a guest link",
         "unverified": "Not verified yet",
         "contract_in_pm": "Contract lives in Projects",
-        "mdmak_verified": "Mdmak verified"
+        "mdmak_verified": "Mdmak verified",
+        "international": "International"
       },
       "no_record": "No record",
       "of_orders": "{count, plural, one {of # order} other {of # orders}}",
@@ -20142,7 +20145,8 @@
         "lead_invalid": "Lead time is a number of days (0–365)",
         "kind_invalid": "Choose the supplier type",
         "already_ours": "Already in our suppliers",
-        "generic": "Not saved. Try again"
+        "generic": "Not saved. Try again",
+        "origin_invalid": "Choose where the supplier is based."
       },
       "file": {
         "platform_verified": "Verified on Mdmak platform",
@@ -20221,7 +20225,11 @@
         "terms_hint": "Finance reads them for due dates",
         "lead": "Usual lead time (days)",
         "kind": "Supplier type",
-        "save": "Save"
+        "save": "Save",
+        "origin": "Where is the supplier based?",
+        "origin_auto": "Detect from the phone number",
+        "origin_detected": "Detected from his phone number: {origin}",
+        "origin_hint": "Your choice overrides the phone number."
       },
       "dir": {
         "info": "These are Mdmak platform suppliers, verified by the platform and not yet ours. Add whoever fits to our list — our private RFQs then reach them; completing VAT and payment terms stays a condition before the first PO.",
@@ -20311,6 +20319,12 @@
       "p2c": {
         "off_platform": "Off-platform supplier: gets requests and orders by link; its file lives here only — no Mdmak profile and no ratings from other contractors.",
         "search_all": "Search a supplier, material or agreement"
+      },
+      "origin": {
+        "label": "Supplier location",
+        "all": "All locations",
+        "local": "Saudi Arabia",
+        "international": "International"
       }
     },
     "InvPm": {

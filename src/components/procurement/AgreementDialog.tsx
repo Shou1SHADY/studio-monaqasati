@@ -27,6 +27,7 @@ import { materialKey, renewalUntil, type PriceAgreement } from "@/lib/procuremen
 import { displayAgreementNumber } from "@/lib/procurement/format"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import type { ProcActor } from "@/lib/procurement/types"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
 const emptyRow = () => ({ name: "", unit: "", price: "" })
 const today = () => new Date().toISOString().slice(0, 10)
@@ -144,7 +145,7 @@ export function AgreementDialog({
           ) : (
             <div className="space-y-1.5">
               <Label htmlFor="agr-supplier">{t("dialog.supplier")}</Label>
-              <select
+              <NativeSelect
                 id="agr-supplier"
                 aria-invalid={Boolean(errors.supplierOrgId)}
                 {...form.register("supplierOrgId")}
@@ -156,7 +157,7 @@ export function AgreementDialog({
                     {s.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
               {errors.supplierOrgId && <p className="text-xs text-destructive">{errors.supplierOrgId.message}</p>}
             </div>
           )}

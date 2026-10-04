@@ -292,7 +292,7 @@ export default function AdminSuppliersPage() {
 
   return (
     <PortalLayout>
-      <div className="space-y-6 text-right">
+      <div className="space-y-6 text-start">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-black text-foreground font-headline">{t("page_title")}</h1>
@@ -456,12 +456,12 @@ export default function AdminSuppliersPage() {
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    {isVisible("id") && <TableHead className="text-right hidden md:table-cell">{t("id")}</TableHead>}
-                    <TableHead className="text-right">{t("supplier_name")}</TableHead>
-                    {isVisible("specialization") && <TableHead className="text-right hidden sm:table-cell">{t("specialization")}</TableHead>}
-                    {isVisible("documents") && <TableHead className="text-right hidden sm:table-cell">{t("documents")}</TableHead>}
-                    {isVisible("verification_req") && <TableHead className="text-right hidden sm:table-cell">{t("verification_req")}</TableHead>}
-                    <TableHead className="text-right">{t("status")}</TableHead>
+                    {isVisible("id") && <TableHead className="text-start hidden md:table-cell">{t("id")}</TableHead>}
+                    <TableHead className="text-start">{t("supplier_name")}</TableHead>
+                    {isVisible("specialization") && <TableHead className="text-start hidden sm:table-cell">{t("specialization")}</TableHead>}
+                    {isVisible("documents") && <TableHead className="text-start hidden sm:table-cell">{t("documents")}</TableHead>}
+                    {isVisible("verification_req") && <TableHead className="text-start hidden sm:table-cell">{t("verification_req")}</TableHead>}
+                    <TableHead className="text-start">{t("status")}</TableHead>
                     <TableHead className="text-left">{t("actions")}</TableHead>
                   </TableRow>
                 </TableHeader>

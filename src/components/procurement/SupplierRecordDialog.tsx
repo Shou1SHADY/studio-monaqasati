@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { PAYMENT_TERM_DAYS, SUPPLIER_KINDS, VAT_PATTERN, effectiveCrExpiry, effectiveVat } from "@/lib/procurement/supplier-file"
+import { PAYMENT_TERM_DAYS, SUPPLIER_KINDS, SUPPLIER_ORIGINS, VAT_PATTERN, effectiveCrExpiry, effectiveVat, phoneIsInternational } from "@/lib/procurement/supplier-file"
 import { SupplierWriteError, saveSupplierRecord } from "@/lib/procurement/supplier-writes"
 import type { ProcActor } from "@/lib/procurement/types"
 import type { PlatformSupplier } from "@/hooks/useSupplierDirectory"
@@ -55,6 +55,7 @@ export function SupplierRecordDialog({
       .trim()
       .refine((v) => !v || (/^\d+$/.test(v) && Number(v) <= 365), { message: t("err.lead_invalid") }),
     kind: z.enum(SUPPLIER_KINDS),
+    origin: z.enum(["auto", ...SUPPLIER_ORIGINS]),
   })
   type Values = z.infer<typeof schema>
 
@@ -64,6 +65,7 @@ export function SupplierRecordDialog({
     paymentTermsDays: String(supplier.record?.paymentTermsDays ?? 30),
     leadTimeDays: supplier.record?.leadTimeDays ? String(supplier.record.leadTimeDays) : "",
     kind: supplier.record?.kind || "mat",
+    origin: supplier.record?.origin || "auto",
   })
   const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: initial() })
 
@@ -187,6 +189,35 @@ export function SupplierRecordDialog({
                 )}
               />
             </div>
+            <FormField
+              control={form.control}
+              name="origin"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t("record.origin")}</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="auto">{t("record.origin_auto")}</SelectItem>
+                      {SUPPLIER_ORIGINS.map((o) => (
+                        <SelectItem key={o} value={o}>
+                          {t(`origin.${o}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {field.value === "auto"
+                      ? t("record.origin_detected", { origin: t(`origin.${phoneIsInternational(supplier.phone) ? "international" : "local"}`) })
+                      : t("record.origin_hint")}
+                  </p>
+                </FormItem>
+              )}
+            />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
                 {t("cancel")}
