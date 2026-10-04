@@ -183,7 +183,7 @@ export default function AdminLeadsPage() {
 
   return (
     <PortalLayout>
-      <div className="space-y-6 text-right">
+      <div className="space-y-6 text-start">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-3xl font-black text-foreground font-headline">{t("page_title")}</h1>
@@ -221,15 +221,15 @@ export default function AdminLeadsPage() {
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead className="text-right">{t("name")}</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">{t("company")}</TableHead>
-                    <TableHead className="text-right hidden md:table-cell">{t("email")}</TableHead>
-                    <TableHead className="text-right hidden md:table-cell">{t("phone")}</TableHead>
-                    <TableHead className="text-right hidden lg:table-cell">{t("business_type")}</TableHead>
-                    <TableHead className="text-right hidden lg:table-cell">{t("preferred_date")}</TableHead>
-                    <TableHead className="text-right">{t("source")}</TableHead>
-                    <TableHead className="text-right">{t("status")}</TableHead>
-                    <TableHead className="text-left">{t("actions")}</TableHead>
+                    <TableHead className="text-start">{t("name")}</TableHead>
+                    <TableHead className="text-start hidden sm:table-cell">{t("company")}</TableHead>
+                    <TableHead className="text-start hidden md:table-cell">{t("email")}</TableHead>
+                    <TableHead className="text-start hidden md:table-cell">{t("phone")}</TableHead>
+                    <TableHead className="text-start hidden lg:table-cell">{t("business_type")}</TableHead>
+                    <TableHead className="text-start hidden lg:table-cell">{t("preferred_date")}</TableHead>
+                    <TableHead className="text-start">{t("source")}</TableHead>
+                    <TableHead className="text-start">{t("status")}</TableHead>
+                    <TableHead className="text-end">{t("actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -261,7 +261,7 @@ export default function AdminLeadsPage() {
                           <Badge variant="secondary">{t("status_new")}</Badge>
                         )}
                       </TableCell>
-                      <TableCell className="text-left">
+                      <TableCell className="text-end">
                         <Button
                           size="sm"
                           disabled={lead.status === "converted"}
@@ -371,13 +371,13 @@ export default function AdminLeadsPage() {
                       <div className="absolute z-50 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
                         <div className="px-3 pt-3 pb-2">
                           <div className="relative">
-                            <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <Search size={14} className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-400" />
                             <Input
                               autoFocus
                               value={specSearch}
                               onChange={e => setSpecSearch(e.target.value)}
                               placeholder={t("search_specializations")}
-                              className="h-9 pl-3 pr-9 text-sm rounded-lg bg-slate-100 border-slate-200"
+                              className="h-9 ps-3 pe-9 text-sm rounded-lg bg-slate-100 border-slate-200"
                             />
                           </div>
                         </div>
@@ -392,7 +392,7 @@ export default function AdminLeadsPage() {
                                 key={cat}
                                 type="button"
                                 onClick={() => toggleSpec(cat)}
-                                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-right hover:bg-primary/5 transition-colors ${isSelected ? "bg-primary/5" : ""}`}
+                                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-start hover:bg-primary/5 transition-colors ${isSelected ? "bg-primary/5" : ""}`}
                               >
                                 <div className={`h-4 w-4 shrink-0 rounded border-2 flex items-center justify-center transition-colors ${isSelected ? "bg-primary border-primary" : "border-slate-300 bg-white"}`}>
                                   {isSelected && <Check size={10} className="text-white" strokeWidth={3} />}
