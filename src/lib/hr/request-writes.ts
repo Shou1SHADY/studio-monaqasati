@@ -5,7 +5,7 @@
 // an amount (RL-03).
 
 import { collection, doc, runTransaction, serverTimestamp, type DocumentData, type Firestore, type Transaction, type UpdateData } from "firebase/firestore"
-import { mayDecideRequest, type HrContext } from "./access"
+import { mayDecideRequest, userIsHrManager, type HrContext } from "./access"
 import { HR_EMPLOYEES, HR_PAY, HR_REQUESTS } from "./collections"
 import type { EmployeePay, HrEmployee } from "./employee"
 import { HR_LOG, type HrActor } from "./employee-writes"
@@ -41,6 +41,17 @@ async function readEmp(tx: Transaction, firestore: Firestore, id: string): Promi
   return { id: snap.id, ...(snap.data() as Omit<HrEmployee, "id">) }
 }
 
+/** RL-02 — is the EMPLOYEE (not whoever files or decides) an HR manager? His own then goes to management. */
+async function employeeIsHrManager(tx: Transaction, firestore: Firestore, orgId: string, userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false
+  const u = await tx.get(doc(firestore, "users", userId))
+  if (!u.exists()) return false
+  const user = { id: u.id, ...(u.data() as { organizationId?: string | null; organizationRole?: string | null; defaultGroupId?: string | null }) }
+  const gid = typeof user.defaultGroupId === "string" && user.defaultGroupId ? user.defaultGroupId : null
+  const g = gid ? await tx.get(doc(firestore, "teamGroups", gid)) : null
+  return userIsHrManager(user, g?.exists() ? (g.data() as { organizationId?: string; permissions?: string[] }) : null, orgId)
+}
+
 async function readReq(tx: Transaction, firestore: Firestore, id: string): Promise<HrRequest> {
   const snap = await tx.get(doc(firestore, HR_REQUESTS, id))
   if (!snap.exists()) throw new HrWriteError("missing")
@@ -71,6 +82,9 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
     if (emp.organizationId !== orgId) throw new HrWriteError("missing")
     if (emp.status === "left") throw new HrWriteError("blocked", ["left"])
     const pay = input.kind === "advance" ? await tx.get(doc(firestore, HR_PAY, emp.id)) : null
+    // LV-05, RL-02 — the level follows who the employee IS: an HR manager's own request goes to
+    // management whoever files it (another HR manager filing for him included).
+    const hrManagerEmployee = (own && ctx.roles.has("manager")) || (await employeeIsHrManager(tx, firestore, orgId, emp.userId))
     const base = {
       organizationId: orgId,
       kind: input.kind,
@@ -80,8 +94,7 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
       siteId: emp.siteId ?? null,
       lineManagerId: input.supervisor?.employeeId && input.supervisor.employeeId !== emp.id ? input.supervisor.employeeId : null,
       lineManagerUserId: input.supervisor?.userId && input.supervisor.userId !== emp.userId ? input.supervisor.userId : null,
-      // LV-05 — the HR manager's own goes to management.
-      deciderLevel: (emp.userId === ctx.uid && ctx.roles.has("manager") ? "management" : "manager") as HrRequest["deciderLevel"],
+      deciderLevel: (hrManagerEmployee ? "management" : "manager") as HrRequest["deciderLevel"],
       filedBy: stamp(actor),
       onBehalf: !own,
       state: "pending" as const,
@@ -140,7 +153,10 @@ export async function decideRequest(
   let state: HrRequest["state"] = "declined"
   await runTransaction(firestore, async (tx) => {
     const r = await readReq(tx, firestore, id)
-    const refusal = mayDecideRequest(ctx, { employeeId: r.employeeId, isHrManager: r.deciderLevel === "management" })
+    // The stored level, or the employee's own standing now — a request filed when the level
+    // followed the filer (or before he became HR manager) is never decided by a peer (RL-02).
+    const isHrManager = r.deciderLevel === "management" || (await employeeIsHrManager(tx, firestore, r.organizationId, r.employeeUserId))
+    const refusal = mayDecideRequest(ctx, { employeeId: r.employeeId, isHrManager })
     if (refusal) throw new HrWriteError(refusal)
     if (r.state !== "pending" && r.state !== "endorsed") throw new HrWriteError("blocked", ["stale"])
     const emp = await readEmp(tx, firestore, r.employeeId)

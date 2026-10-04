@@ -212,6 +212,32 @@ describe("the writes", () => {
     await expect(cancelRequest(db, worker, b.id, who(worker), "x", opts)).rejects.toMatchObject({ code: "no_role" })
   })
 
+  it("who decides follows the EMPLOYEE: HR manager A files for HR manager B — management decides, not A (RL-02)", async () => {
+    seed("users/hrm2", { organizationId: ORG, organizationRole: "member", defaultGroupId: "g-hr" })
+    seed("teamGroups/g-hr", { organizationId: ORG, permissions: ["employees.manage"] })
+    seed("employees/e-hrm2", { ...empBase, no: 3, userId: "hrm2", siteId: null })
+    const { id } = await fileRequest(db, hrm, ORG, who(hrm), { employeeId: "e-hrm2", kind: "leave", leave }, opts)
+    expect(req(id)).toMatchObject({ deciderLevel: "management", onBehalf: true })
+    await expect(decideRequest(db, hrm, id, who(hrm), "approve", "", opts)).rejects.toMatchObject({ code: "no_role" })
+    await decideRequest(db, mgmt, id, who(mgmt), "approve", "", opts)
+    expect(req(id).state).toBe("approved")
+  })
+
+  it("a request stored with the filer's level is decided by the employee's: an HR manager's own never by another HR manager (RL-02)", async () => {
+    seed("users/hrm2", { organizationId: ORG, organizationRole: "member", defaultGroupId: "g-all" })
+    seed("teamGroups/g-all", { organizationId: ORG, permissions: ["*"] })
+    seed("employees/e-hrm2", { ...empBase, no: 3, userId: "hrm2", siteId: null })
+    seed("hrRequests/old", {
+      organizationId: ORG, no: "LV-2026/009", kind: "leave", employeeId: "e-hrm2", employeeUserId: "hrm2", employeeName: "x", siteId: null,
+      lineManagerId: null, lineManagerUserId: null, deciderLevel: "manager", filedBy: { by: "hrm", byName: null, at: "" }, onBehalf: true, state: "pending",
+      leave: { type: "annual", from: "2026-03-10", to: "2026-03-14", days: 5, balance: 15, fromBalance: 5, unpaidDays: 0, travel: true }, createdAt: "",
+    })
+    await expect(decideRequest(db, hrm, "old", who(hrm), "approve", "", opts)).rejects.toMatchObject({ code: "no_role" })
+    // A worker's request stays with the HR manager.
+    const { id } = await fileRequest(db, hrm, ORG, who(hrm), { employeeId: "e1", kind: "leave", leave }, opts)
+    expect(req(id).deciderLevel).toBe("manager")
+  })
+
   it("only the employee himself or the HR manager files", async () => {
     await expect(fileRequest(db, sup, ORG, who(sup), { employeeId: "e1", kind: "leave", leave }, opts)).rejects.toMatchObject({ code: "no_role" })
   })

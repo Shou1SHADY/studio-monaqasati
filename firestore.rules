@@ -216,6 +216,13 @@ service cloud.firestore {
       return isOrgOwner() || groupGrants(memberDefaultGroupId(), perm);
     }
     function hrManager() { return hrRole('employees.manage'); }
+    // RL-02, LV-05 — the user behind a record is an HR manager (HIS default group):
+    // his own requests go to management whoever files them.
+    function hrUserManages(uid) {
+      let path = /databases/$(database)/documents/users/$(uid);
+      return exists(path) && (!('organizationRole' in get(path).data) || get(path).data.organizationRole == 'owner'
+        || groupGrants(get(path).data.get('defaultGroupId', null), 'employees.manage'));
+    }
     // RL-03: pay is seen by the HR manager, payroll and management — never by
     // government relations or a supervisor (the employee reads his own, see employeePay).
     function hrSeesPay() {
@@ -3177,8 +3184,8 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/employees/$(request.resource.data.employeeId)).data.organizationId == request.resource.data.organizationId
         && request.resource.data.employeeUserId == get(/databases/$(database)/documents/employees/$(request.resource.data.employeeId)).data.get('userId', null)
         && (hrManager() || request.resource.data.employeeUserId == request.auth.uid)
-        && (request.resource.data.employeeUserId != request.auth.uid || !hrManager() || isOrgOwner()
-            || request.resource.data.deciderLevel == 'management')
+        && (request.resource.data.deciderLevel == 'management'
+            || !(request.resource.data.employeeUserId is string) || !hrUserManages(request.resource.data.employeeUserId))
         && request.resource.data.get('financeHold', false) == false;
       allow update: if isOrgMember(resource.data.organizationId)
         && request.resource.data.organizationId == resource.data.organizationId

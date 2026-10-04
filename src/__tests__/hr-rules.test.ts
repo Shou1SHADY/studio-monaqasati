@@ -106,6 +106,21 @@ describe("pay stays with those who may see it (RL-02, RL-03)", () => {
   })
 })
 
+describe("who decides follows the employee (RL-02, LV-05)", () => {
+  it("a request for an HR manager — whoever files it — must name management", () => {
+    const [create] = allow(block("hrRequests"), "create")
+    expect(create).toMatch(/request\.resource\.data\.deciderLevel == 'management'\s*\|\| !\(request\.resource\.data\.employeeUserId is string\) \|\| !hrUserManages\(request\.resource\.data\.employeeUserId\)/)
+    // Not "only when he files his own": the filer is not the test.
+    expect(create).not.toMatch(/employeeUserId != request\.auth\.uid \|\| !hrManager\(\)/)
+  })
+
+  it("the employee's standing is read from his own default group, a missing user being nobody", () => {
+    const fn = rules.slice(rules.indexOf("function hrUserManages("), rules.indexOf("function hrSeesPay("))
+    expect(fn).toMatch(/exists\(path\) &&/)
+    expect(fn).toMatch(/groupGrants\(get\(path\)\.data\.get\('defaultGroupId', null\), 'employees\.manage'\)/)
+  })
+})
+
 describe("the roles are the ones access.ts names", () => {
   it("every role's permission id is a role the rules know", () => {
     for (const perm of Object.values(HR_ROLE_PERMISSION)) expect(rules).toContain(`hrRole('${perm}')`)
