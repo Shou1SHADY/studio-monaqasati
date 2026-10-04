@@ -12,7 +12,7 @@ import type { DocDates } from "./documents"
 import type { EmployeePay, HrEmployee } from "./employee"
 import { balanceSplit, leaveBalance, leaveDays, leaveEligibility, leaveEndAfter, LEAVE_RULES, sickSplit, type Holiday, type LeaveEligibility, type LeaveType, type SickSplit } from "./leave"
 import { advanceInstalment, advanceMonths, wageOf } from "./pay"
-import { addDays, serviceYears, type HrPolicies } from "./statutory"
+import { addDays, daysBetween, serviceYears, STATUTORY, type HrPolicies } from "./statutory"
 
 export const HR_REQUEST_KINDS = ["leave", "advance", "data"] as const
 export type HrRequestKind = (typeof HR_REQUEST_KINDS)[number]
@@ -112,6 +112,8 @@ export interface HrRequest {
   financeHold?: boolean
   finance?: Stamp | null
   cancel?: Stamp | null
+  /** AT-05 — the day he started again after the leave, who recorded it, and the days late (absence without leave). */
+  returned?: { on: string; by: string; byName: string | null; at: string; lateDays: number } | null
   createdAt: string
 }
 
@@ -222,6 +224,29 @@ export function aboveBalance(r: Pick<HrRequest, "kind" | "leave">): number {
   const l = r.leave
   if (r.kind !== "leave" || !l || !LEAVE_RULES[l.type].fromBalance || l.unpaidDays > 0) return 0
   return Math.max(0, l.days - Math.max(0, l.balance))
+}
+
+// ---------------------------------------------------------------------------
+// The return from leave (AT-05, WF-07 step 6)
+// ---------------------------------------------------------------------------
+
+export type ReturnStage = "due" | "warning" | "termination"
+
+/** An approved leave whose end has passed with no return recorded: the days since its last
+ * day are absence without leave — 10 in a row make the written warning due, 15 make
+ * termination possible (art. 80, and the Qiwa absence report). Null while away or once back. */
+export function leaveReturn(r: Pick<HrRequest, "kind" | "state" | "leave" | "returned">, today: string): { daysLate: number; stage: ReturnStage } | null {
+  if (r.kind !== "leave" || r.state !== "approved" || !r.leave || r.returned || today <= r.leave.to) return null
+  const daysLate = daysBetween(r.leave.to, today)
+  const A = STATUTORY.art80
+  return { daysLate, stage: daysLate >= A.terminationDays ? "termination" : daysLate >= A.warningDays ? "warning" : "due" }
+}
+
+/** Who is not back from a leave on a day: after its last day and before the day his return was recorded. */
+export function notBackOn(requests: Array<Pick<HrRequest, "employeeId" | "kind" | "state" | "leave" | "returned">>, day: string): Set<string> {
+  const out = new Set<string>()
+  for (const r of requests) if (r.kind === "leave" && r.state === "approved" && r.leave && day > r.leave.to && (!r.returned || day < r.returned.on)) out.add(r.employeeId)
+  return out
 }
 
 // ---------------------------------------------------------------------------

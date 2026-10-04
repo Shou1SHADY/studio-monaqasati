@@ -34,11 +34,11 @@ import { gosiRates, wageOf } from "@/lib/hr/pay"
 import { serviceYears } from "@/lib/hr/statutory"
 import { tradeOf } from "@/lib/hr/trades"
 import { HrWriteError } from "@/lib/hr/write-guard"
-import type { HrRequestKind } from "@/lib/hr/requests"
+import { leaveReturn, type HrRequestKind } from "@/lib/hr/requests"
 import { EmployeeActionDialog, type EmployeeAction } from "./EmployeeActionDialogs"
 import { HrExitPanel, StartExitDialog } from "./HrExitPanel"
 import { HrInjuryPanel } from "./HrInjuryPanel"
-import { HrRequestList } from "./HrRequestList"
+import { HrRequestList, ReturnFromLeave } from "./HrRequestList"
 import { HrViolationList, RecordViolationDialog, useHrViolations } from "./HrViolationList"
 import { NewRequestDialog } from "./NewRequestDialog"
 import type { HrPortal } from "./HrShell"
@@ -60,6 +60,13 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
   const [newReq, setNewReq] = useState<HrRequestKind | null>(null)
   const { requests: allRequests } = useHrRequests(access)
   const requests = useMemo(() => allRequests.filter((r) => r.employeeId === employeeId), [allRequests, employeeId])
+  const overdueLeave = useMemo(() => {
+    for (const r of requests) {
+      const ret = leaveReturn(r, today)
+      if (ret) return { r, ret }
+    }
+    return null
+  }, [requests, today])
   const allViolations = useHrViolations(access)
   const violations = useMemo(() => allViolations.filter((v) => v.employeeId === employeeId), [allViolations, employeeId])
   const [recording, setRecording] = useState(false)
@@ -180,6 +187,16 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
       </div>
 
       {!facts.legal && <Callout tone="block">{facts.overdue ? t("file.iqama_overdue", { date: hrDate(iqamaDueBy(emp.join), locale) }) : t("file.iqama_expired")}</Callout>}
+
+      {overdueLeave && (
+        // AT-05 — not back after his leave: absence without leave, and art. 80 counting.
+        <Callout tone={overdueLeave.ret.stage === "due" ? "warn" : "block"} title={t("ret.not_back", { n: overdueLeave.ret.daysLate })}>
+          <span className="block">{t(`ret.stage.${overdueLeave.ret.stage}`)}</span>
+          <span className="mt-2 block">
+            <ReturnFromLeave access={access} r={overdueLeave.r} actor={actor} on={today} />
+          </span>
+        </Callout>
+      )}
 
       <HrExitPanel access={access} actor={actor} emp={emp as HrEmployee} pay={pay} sites={sites} />
 

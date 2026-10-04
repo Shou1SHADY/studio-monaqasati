@@ -3212,6 +3212,11 @@ service cloud.firestore {
           || (resource.data.kind == 'advance' && resource.data.state == 'approved' && request.resource.data.state == 'approved'
             && changedKeys().hasOnly(['payout', 'updatedAt'])
             && hrFinance() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+          // the return from leave (AT-05) — once, by the site's supervisor or the HR manager
+          || (resource.data.kind == 'leave' && resource.data.state == 'approved' && request.resource.data.state == 'approved'
+            && changedKeys().hasOnly(['returned', 'updatedAt'])
+            && !('returned' in resource.data)
+            && (hrManager() || (resource.data.get('siteId', null) is string && hrSupervises(resource.data.siteId))))
           // cancel before it starts
           || (request.resource.data.state == 'cancelled'
             && changedKeys().hasOnly(['state', 'cancel', 'updatedAt'])

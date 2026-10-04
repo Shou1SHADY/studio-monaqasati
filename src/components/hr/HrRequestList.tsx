@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { Link } from "@/i18n/routing"
 import { hrDate, hrMoney, todayDay } from "@/lib/hr/format"
-import { cancelRequest, decideRequest, endorseRequest } from "@/lib/hr/request-writes"
+import { cancelRequest, decideRequest, endorseRequest, recordReturn } from "@/lib/hr/request-writes"
 import { leaveEndAfter } from "@/lib/hr/leave"
 import { aboveBalance, LEAVE_MODES, mayCancel, requestActions, requestNoDisplay, type HrRequest, type HrRequestState, type LeaveMode, type RequestAction } from "@/lib/hr/requests"
 import { HrWriteError } from "@/lib/hr/write-guard"
@@ -181,6 +181,36 @@ export function HrRequestList({ access, requests, portal, showEmployee = true, e
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+/** AT-05 — "started today": the return from a leave whose end has passed, recorded on `on`
+ * (the sheet's day, or today) by the workplace's supervisor or the HR manager. */
+export function ReturnFromLeave({ access, r, actor, on }: { access: HrAccess; r: HrRequest; actor: { uid: string; name: string | null }; on: string }) {
+  const t = useTranslations("Portal.HR")
+  const locale = useLocale()
+  const firestore = useFirestore()
+  const { toast } = useToast()
+  const [busy, setBusy] = useState(false)
+  if (!access.allowed("leave.return", { site: r.siteId }) || (!r.siteId && !access.ctx.roles.has("manager"))) return null
+  const run = async () => {
+    if (!firestore) return
+    setBusy(true)
+    try {
+      const { lateDays } = await recordReturn(firestore, access.ctx, r.id, actor, { on })
+      toast({ title: lateDays > 0 ? t("ret.done_late", { n: lateDays }) : t("ret.done") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t(err instanceof HrWriteError ? (err.blocks[0] ? `ret.block.${err.blocks[0]}` : `err.${err.code}`) : "err.save"), variant: "destructive" })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Button size="sm" variant="outline" onClick={() => void run()} disabled={busy}>
+      {busy && <Loader2 size={14} className="me-1.5 animate-spin" aria-hidden="true" />}
+      {t("ret.act", { date: hrDate(on, locale) })}
+    </Button>
   )
 }
 

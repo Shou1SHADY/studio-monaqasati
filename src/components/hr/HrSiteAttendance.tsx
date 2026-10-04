@@ -62,9 +62,11 @@ import { empNo, hrDate, todayDay } from "@/lib/hr/format"
 import { overtimeOverCap } from "@/lib/hr/pay"
 import { VIOLATIONS, type ViolationCode } from "@/lib/hr/penalties"
 import { UNASSIGNED_SITE } from "@/lib/hr/sites"
+import { leaveReturn, notBackOn } from "@/lib/hr/requests"
 import { addDays, monthRange } from "@/lib/hr/statutory"
 import { HrWriteError } from "@/lib/hr/write-guard"
 import { cn } from "@/lib/utils"
+import { ReturnFromLeave } from "./HrRequestList"
 
 type Seg = "sheet" | "month"
 const NO_VIOLATION = "__none__"
@@ -114,6 +116,11 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
   }, [savedAt, day])
   // On approved leave that day (paid or not): shown, never recorded absent.
   const onLeave = useMemo(() => onLeaveOn(requests, day), [requests, day])
+  // AT-05 — after a leave's end and before his return is recorded, he is absent without leave:
+  // the row starts as absent (the supervisor may still correct it) and offers "started today".
+  const notBack = useMemo(() => notBackOn(requests, day), [requests, day])
+  const lateLeave = (id: string) => requests.find((r) => r.employeeId === id && r.kind === "leave" && r.state === "approved" && r.leave && day > r.leave.to && (!r.returned || day < r.returned.on)) ?? null
+  const exOf = (id: string): AttendanceException => ex[id] ?? (!saved && notBack.has(id) ? { status: "absent" } : {})
   const mayViolation = access.allowed("violation.record", { site: siteId })
   const mayRecord = access.allowed("attendance.record", { site: siteId })
   const sheetClosed = Boolean(sheetWm?.closed)
@@ -139,8 +146,9 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
   }
   const siteRef = { id: siteId, type: site?.type ?? null }
   const saveSheet = () => {
-    // Nothing is recorded against someone on approved leave that day.
-    const kept = Object.fromEntries(Object.entries(ex).filter(([id]) => !onLeave.has(id)))
+    // Nothing is recorded against someone on approved leave that day; someone not back from one is absent unless corrected.
+    const rows = Object.fromEntries(roster.map((id) => [id, exOf(id)]))
+    const kept = Object.fromEntries(Object.entries({ ...rows, ...ex }).filter(([id]) => !onLeave.has(id)))
     return run(() => recordDay(firestore!, access.ctx, access.orgId!, siteRef, day, actor, { listed: roster, ex: kept, unlisted }), "att.saved")
   }
 
@@ -206,8 +214,10 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
             ) : (
               <ul className="divide-y rounded-xl border">
                 {roster.map((id) => {
-                  const e = ex[id] ?? {}
+                  const e = exOf(id)
                   const status: DayException | "present" = e.status ?? "present"
+                  const late = notBack.has(id) ? lateLeave(id) : null
+                  const stage = late ? leaveReturn({ ...late, returned: null }, day) : null
                   if (onLeave.has(id)) {
                     return (
                       <li key={id} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
@@ -234,6 +244,13 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
                           {empNo(byId.get(id)?.no)}
                         </p>
                       </div>
+                      {late && stage && (
+                        <div className="flex basis-full flex-wrap items-center gap-2">
+                          <StatusPill tone={stage.stage === "due" ? "warn" : "bad"}>{t("ret.not_back", { n: stage.daysLate })}</StatusPill>
+                          <span className="text-xs text-muted-foreground">{t(`ret.stage.${stage.stage}`)}</span>
+                          {!late.returned && <ReturnFromLeave access={access} r={late} actor={actor} on={day} />}
+                        </div>
+                      )}
                       <div className="flex flex-wrap gap-1" role="group" aria-label={t("att.status_of", { name: name(id) })}>
                         {(["present", ...DAY_EXCEPTIONS] as const).map((s) => (
                           <Button

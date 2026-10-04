@@ -5,7 +5,7 @@
 // an amount (RL-03).
 
 import { collection, doc, runTransaction, serverTimestamp, type DocumentData, type Firestore, type Transaction, type UpdateData } from "firebase/firestore"
-import { mayDecideRequest, userIsHrManager, type HrContext } from "./access"
+import { hrRefusal, mayDecideRequest, userIsHrManager, type HrContext } from "./access"
 import { HR_EMPLOYEES, HR_PAY, HR_REQUESTS } from "./collections"
 import type { EmployeePay, HrEmployee } from "./employee"
 import { HR_LOG, type HrActor } from "./employee-writes"
@@ -24,7 +24,7 @@ import {
   type LeaveMode,
   type Stamp,
 } from "./requests"
-import { serviceYears, type HrPolicies } from "./statutory"
+import { daysBetween, serviceYears, type HrPolicies } from "./statutory"
 import { drawYearlyDocNumber } from "../sales-numbering"
 import { todayDay } from "./format"
 import { HrWriteError } from "./write-guard"
@@ -254,6 +254,34 @@ export async function financeDecideAdvance(firestore: Firestore, actor: HrActor 
     tx.set(payRef, { advance: { amount: a.amount, balance: a.amount, instalment: a.instalment }, updatedAt: serverTimestamp() }, { merge: true })
     tx.update(reqRef, { state: "approved", finance: stamp(actor, note), updatedAt: serverTimestamp() })
   })
+}
+
+export type ReturnBlock = "stale" | "no_date" | "future" | "before_end"
+
+/** AT-05 — the return from a leave ("started today"), recorded once by the workplace's supervisor
+ * or the HR manager. Days between the leave's end and the return are counted late — absence
+ * without leave, which the sheet has been marking absent until now (art. 80 runs on them). */
+export async function recordReturn(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, input: { on: string | null }, opts: { today?: string } = {}): Promise<{ lateDays: number }> {
+  const today = opts.today ?? todayDay()
+  let lateDays = 0
+  await runTransaction(firestore, async (tx) => {
+    const r = await readReq(tx, firestore, id)
+    if (r.kind !== "leave" || r.state !== "approved" || !r.leave || r.returned) throw new HrWriteError("blocked", ["stale"])
+    // A supervisor answers for his own workplaces — never for someone unassigned.
+    const refusal = hrRefusal(ctx, "leave.return", { site: r.siteId }) ?? (!r.siteId && !ctx.roles.has("manager") ? "not_your_site" : null)
+    if (refusal) throw new HrWriteError(refusal)
+    const blocks: ReturnBlock[] = []
+    if (!input.on) blocks.push("no_date")
+    else if (input.on > today) blocks.push("future")
+    else if (input.on <= r.leave.to) blocks.push("before_end")
+    if (blocks.length) throw new HrWriteError("blocked", blocks)
+    const on = input.on as string
+    lateDays = Math.max(0, daysBetween(r.leave.to, on) - 1)
+    const emp = await readEmp(tx, firestore, r.employeeId)
+    tx.update(doc(firestore, HR_REQUESTS, id), { returned: { on, by: actor.uid, byName: actor.name, at: new Date().toISOString(), lateDays }, updatedAt: serverTimestamp() })
+    log(tx, firestore, emp, actor, "leave_returned", { no: r.no, on, late: lateDays })
+  })
+  return { lateDays }
 }
 
 /** Cancel a request that has not started (LV-07): an approved leave gives its days back. */

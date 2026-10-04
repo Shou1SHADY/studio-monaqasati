@@ -19452,7 +19452,8 @@
         "data_filed": "Details update request {no} filed",
         "data_declined": "Details update request {no} declined",
         "data_cancelled": "Details update request {no} cancelled",
-        "started": "Started work on {on}"
+        "started": "Started work on {on}",
+        "leave_returned": "Back from leave {no} on {on} — {late} days late"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -20160,6 +20161,23 @@
           "not_expected": "The employee is not \"expected\"",
           "no_date": "Choose the start day",
           "future": "The start cannot be in the future"
+        }
+      },
+      "ret": {
+        "act": "Back on {date}",
+        "done": "Return from leave recorded",
+        "done_late": "Return recorded — {n} days of absence without leave after the leave",
+        "not_back": "Not back from leave — {n} days",
+        "stage": {
+          "due": "Days after the leave are absence without leave — record his return if he is back. Art. 80: written warning after 10 days in a row, termination after 15.",
+          "warning": "10 days in a row: the written warning is due now (art. 80).",
+          "termination": "15 days in a row: termination is possible without award (art. 80) — and the absence report on Qiwa."
+        },
+        "block": {
+          "stale": "His return is already recorded, or the request has moved on",
+          "no_date": "Choose the day he returned",
+          "future": "The return cannot be in the future",
+          "before_end": "The leave had not ended on that day"
         }
       }
     },

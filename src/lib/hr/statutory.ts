@@ -38,6 +38,8 @@ export const STATUTORY = {
   penalties: { windowDays: 180, monthlyCapDays: 5, objectionDays: 15 },
   /** Art. 84/85 — end of service. */
   eos: { halfMonthYears: 5, resignation: [{ below: 2, share: 0 }, { below: 5, share: 1 / 3 }, { below: 10, share: 2 / 3 }] as const },
+  /** Art. 80 (AT-05) — not back from leave: a written warning is due after 10 days in a row, termination possible after 15. */
+  art80: { warningDays: 10, terminationDays: 15 },
   /** Art. 75 — two months' notice; art. 77 — 15 days a year (open contract). */
   noticeMonths: 2,
   art77DaysPerYear: 15,

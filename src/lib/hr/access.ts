@@ -60,6 +60,8 @@ export const HR_GUARD = {
   "iban.fix": { roles: ["payroll"] },
   "iban.approve": { roles: ["manager"] },
   "leave.endorse": { roles: ["supervisor"], siteScoped: ["supervisor"] },
+  // AT-05 — "started today" after a leave: the workplace's supervisor or the HR manager.
+  "leave.return": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
   "request.decide": { roles: ["manager"] },
   "pay.change": { roles: ["manager"] },
   "violation.record": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
