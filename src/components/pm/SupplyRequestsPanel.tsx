@@ -32,6 +32,7 @@ import {
   changeOptions,
   approvalChecks,
   approveBlocks,
+  requestSample,
   daysBetween,
   invWhyText,
   lineDays,
@@ -335,6 +336,9 @@ function RequestRow({ r, world, items, access, actor, projectId, onOpen, onRejec
   const st = reqState(r)
   const ch = openChanges(r).length
   const canDecide = !access.ctx.archived && access.allowed("request.decide") && r.status === "pending"
+  // The same blocks the drawer shows: a blocked request opens the drawer, where
+  // the reason is listed, instead of failing at the write with a bare toast.
+  const blocked = canDecide && approveBlocks({ archived: access.ctx.archived, request: r, sample: requestSample(r, items) }).length > 0
   const over = r.status === "pending" ? r.lines.filter((l) => l.itemId && !l.chg && (() => {
     const n = lineNeed({ key: l.key, stores: world.stores, items, requests: world.requests, except: r.id })
     return n !== null && l.qty > n * 1.05
@@ -391,7 +395,7 @@ function RequestRow({ r, world, items, access, actor, projectId, onOpen, onRejec
         {canDecide &&
           (r.lines.some((l) => l.chg?.st !== "wait") ? (
             <div className="flex gap-1">
-              <Button variant="success" size="sm" className="h-7" disabled={busy !== null} onClick={() => firestore && void run("ok", () => approveMaterialRequest(firestore, access.ctx, projectId, actor, r.id), t("sup.approved", { no: reqNo(r.seq ?? 0) }))}>
+              <Button variant="success" size="sm" className="h-7" disabled={busy !== null} onClick={() => (blocked ? onOpen() : firestore && void run("ok", () => approveMaterialRequest(firestore, access.ctx, projectId, actor, r.id), t("sup.approved", { no: reqNo(r.seq ?? 0) })))}>
                 <Check size={13} className="me-1" aria-hidden="true" />
                 {ch ? t("sup.approve_rest") : t("sup.approve")}
               </Button>

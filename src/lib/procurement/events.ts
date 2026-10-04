@@ -38,6 +38,7 @@ export type ProcEventKind =
   | "po_budget_decided" // → preparer + approvers: Projects accepted the overrun or asked to renegotiate
   | "receipt_manual" // → Finance: goods recorded by hand (with or without an order)
   | "receipt_expensed" // → Finance: a no-PO receipt Procurement ruled a cash expense
+  | "need_approved" // → buyers (rfq.manage / rfq.create) + owner: a project's material request was approved and is now Procurement's
 
 export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "po_awaiting_approval",
@@ -60,6 +61,7 @@ export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "po_budget_decided",
   "receipt_manual",
   "receipt_expensed",
+  "need_approved",
 ]
 
 /** Who is told: a role, named users, or the org owner. */
@@ -73,7 +75,8 @@ export interface ProcEvent {
   /** Facts the message names. A string starting with "@" is itself a
    * `Portal.Shared` key, translated for the reader (`@pn_po_decision_replace`). */
   params?: EventParams
-  poId: string
+  /** The order the event is about — absent for a need that has no order yet. */
+  poId?: string | null
   rfqId?: string | null
   offerId?: string | null
   /** The supplier's user, when registered: he reads the supplier portal, so his
@@ -99,6 +102,8 @@ export const procLinks = {
   supplierOrder: (poId: string) => `/supplier/orders?po=${poId}`,
   /** The goods-received desk with this receipt open. */
   receipt: (deliveryId: string) => `/contractor/goods-received?delivery=${deliveryId}`,
+  /** The needs desk (incoming requests). */
+  needs: () => `/contractor/rfqs/requests`,
 }
 
 // ---------------------------------------------------------------------------
@@ -188,6 +193,10 @@ export const PROC_EVENT_COPY_AR: Record<ProcEventKind, { title: string; message:
     title: "استلام بلا أمر شراء صار مصروفاً نقدياً — {receipt}",
     message: "قرّر {actor} أن الاستلام {receipt} من {supplier} مصروف نقدي بلا أمر شراء. سجّل الفاتورة مصروفاً.",
   },
+  need_approved: {
+    title: "طلب مواد معتمد بانتظار المشتريات — ط.م {no}",
+    message: "اعتمد {actor} طلب المواد ط.م {no} لمشروع {project} (عدد البنود: {count}). صار في الطلبات الواردة — راجع المخزون ثم ابدأ طلب تسعير أو أمر شراء.",
+  },
 }
 
 /** `@key` params the messages name, with their Arabic text. */
@@ -258,7 +267,7 @@ export interface ProcNotificationDoc {
   message: string
   i18n: { title: string; message: string; params: EventParams }
   link: string
-  poId: string
+  poId: string | null
   rfqId: string | null
   offerId: string | null
   actorId: string
@@ -278,8 +287,8 @@ export function buildProcNotification(e: ProcEvent, actor: { uid: string; name: 
     title: text.title,
     message: text.message,
     i18n: { title: procEventTitleKey(e.kind), message: procEventMessageKey(e.kind), params },
-    link: forSupplier ? procLinks.supplierOrder(e.poId) : e.link || procLinks.order(e.poId),
-    poId: e.poId,
+    link: forSupplier && e.poId ? procLinks.supplierOrder(e.poId) : e.link || (e.poId ? procLinks.order(e.poId) : procLinks.needs()),
+    poId: e.poId ?? null,
     rfqId: e.rfqId ?? null,
     offerId: e.offerId ?? null,
     actorId: actor.uid,

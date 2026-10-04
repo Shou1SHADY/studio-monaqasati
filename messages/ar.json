@@ -8319,6 +8319,8 @@
       "pn_receipt_manual": "سجّل {actor} استلاماً يدوياً {receipt} من {supplier}{order}. راجعه عند المطابقة والفوترة.",
       "pn_receipt_expensed_title": "استلام بلا أمر شراء صار مصروفاً نقدياً — {receipt}",
       "pn_receipt_expensed": "قرّر {actor} أن الاستلام {receipt} من {supplier} مصروف نقدي بلا أمر شراء. سجّل الفاتورة مصروفاً.",
+      "pn_need_approved_title": "طلب مواد معتمد بانتظار المشتريات — ط.م {no}",
+      "pn_need_approved": "اعتمد {actor} طلب المواد ط.م {no} لمشروع {project} (عدد البنود: {count}). صار في الطلبات الواردة — راجع المخزون ثم ابدأ طلب تسعير أو أمر شراء.",
       "pn_po_budget_accepted": "قبل تجاوز الموازنة — يمضي الأمر إلى اعتماده",
       "pn_po_budget_renegotiate": "طلب إعادة التفاوض على السعر",
       "pn_po_hold_po_price": "نرفض الفرق — يلتزم المورد بسعر الأمر",
