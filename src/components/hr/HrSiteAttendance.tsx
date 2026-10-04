@@ -66,6 +66,7 @@ import { leaveReturn, notBackOn } from "@/lib/hr/requests"
 import { addDays, monthRange } from "@/lib/hr/statutory"
 import { HrWriteError } from "@/lib/hr/write-guard"
 import { cn } from "@/lib/utils"
+import { HrAssignFixPanel } from "./HrAssignFixPanel"
 import { ReturnFromLeave } from "./HrRequestList"
 
 type Seg = "sheet" | "month"
@@ -335,6 +336,8 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
           </div>
         </Panel>
       )}
+
+      {seg === "sheet" && siteId !== UNASSIGNED_SITE && <HrAssignFixPanel access={access} actor={actor} siteId={siteId} employees={employees} sites={sites} />}
 
       {seg === "month" && (
         <div className="space-y-4">

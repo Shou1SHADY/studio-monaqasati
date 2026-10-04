@@ -238,11 +238,14 @@ service cloud.firestore {
     }
     // The employee record the caller is linked to: the link decides whose pay he
     // reads (RL-03) and which record is "his own" (RL-02).
+    function hrEmp(employeeId) {
+      return get(/databases/$(database)/documents/employees/$(employeeId)).data;
+    }
     function hrOwnRecord(employeeId) {
-      return get(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid;
+      return hrEmp(employeeId).get('userId', '') == request.auth.uid;
     }
     function inEmployeeOrg(employeeId) {
-      return isOrgMember(get(/databases/$(database)/documents/employees/$(employeeId)).data.organizationId);
+      return isOrgMember(hrEmp(employeeId).organizationId);
     }
     // A workplace supervisor acts on his own workplaces only (the site names him).
     function hrSupervises(siteId) {
@@ -2923,8 +2926,7 @@ service cloud.firestore {
       // The undeletable log (EM-06): written by HR staff or the employee himself,
       // in his own name; read by HR staff and the employee.
       match /log/{entryId} {
-        allow read: if isOrgMember(get(/databases/$(database)/documents/employees/$(employeeId)).data.organizationId)
-          && (hrStaff() || get(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid);
+        allow read: if inEmployeeOrg(employeeId) && (hrStaff() || hrOwnRecord(employeeId));
         // The first entry is written in the transaction that creates the employee:
         // get() sees the state BEFORE it (no parent yet — an error, a refusal);
         // getAfter() sees the record as the transaction leaves it.
@@ -2943,7 +2945,7 @@ service cloud.firestore {
           && (hrManager() || hrRole('hr.gov'))
           && request.resource.data.by == request.auth.uid
           && request.resource.data.employeeId == employeeId
-          && request.resource.data.organizationId == get(/databases/$(database)/documents/employees/$(employeeId)).data.organizationId
+          && request.resource.data.organizationId == hrEmp(employeeId).organizationId
           && request.resource.data.path.matches('organizations/' + request.resource.data.organizationId + '/hr/employees/' + employeeId + '/.+');
         allow update, delete: if false;
       }
@@ -3067,7 +3069,7 @@ service cloud.firestore {
         && request.resource.data.state == 'recorded'
         && request.resource.data.recorded.by == request.auth.uid
         && exists(/databases/$(database)/documents/employees/$(request.resource.data.employeeId))
-        && request.resource.data.employeeUserId == get(/databases/$(database)/documents/employees/$(request.resource.data.employeeId)).data.get('userId', null)
+        && request.resource.data.employeeUserId == hrEmp(request.resource.data.employeeId).get('userId', null)
         && (hrManager() || (request.resource.data.get('siteId', null) is string && hrSupervises(request.resource.data.siteId)));
       allow update: if isOrgMember(resource.data.organizationId)
         && request.resource.data.employeeId == resource.data.employeeId
@@ -3182,6 +3184,22 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Assignment corrections (AS-03): "a worker here but not on my list" — raised by
+    // the site's supervisor (or the HR manager), decided by the HR manager, kept.
+    match /hrAssignFixes/{fixId} {
+      allow get, list: if isSignedIn() && isOrgMember(resource.data.organizationId) && hrStaff();
+      allow create: if isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.state == 'pending'
+        && request.resource.data.by == request.auth.uid
+        && (hrManager() || hrSupervises(request.resource.data.siteId));
+      allow update: if isOrgMember(resource.data.organizationId)
+        && hrManager()
+        && resource.data.state == 'pending'
+        && request.resource.data.state in ['done', 'declined']
+        && changedKeys().hasOnly(['state', 'decision', 'updatedAt']);
+      allow delete: if false;
+    }
+
     // HR requests (LV, AD): filed by the employee — or the HR manager for him —
     // endorsed by the site's supervisor or the line manager, decided by the HR
     // manager, the HR manager's own by management; an advance above the limit
@@ -3198,8 +3216,8 @@ service cloud.firestore {
         && request.resource.data.state == 'pending'
         && request.resource.data.filedBy.by == request.auth.uid
         && exists(/databases/$(database)/documents/employees/$(request.resource.data.employeeId))
-        && get(/databases/$(database)/documents/employees/$(request.resource.data.employeeId)).data.organizationId == request.resource.data.organizationId
-        && request.resource.data.employeeUserId == get(/databases/$(database)/documents/employees/$(request.resource.data.employeeId)).data.get('userId', null)
+        && hrEmp(request.resource.data.employeeId).organizationId == request.resource.data.organizationId
+        && request.resource.data.employeeUserId == hrEmp(request.resource.data.employeeId).get('userId', null)
         && (hrManager() || request.resource.data.employeeUserId == request.auth.uid)
         && (request.resource.data.deciderLevel == 'management'
             || !(request.resource.data.employeeUserId is string) || !hrUserManages(request.resource.data.employeeUserId))

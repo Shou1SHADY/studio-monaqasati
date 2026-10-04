@@ -20226,6 +20226,39 @@
           "bad_kind": "Choose the kind",
           "bad_path": "The file's place is not this employee's"
         }
+      },
+      "fix": {
+        "title": "Assignment corrections",
+        "none": "None",
+        "raise": "A worker here but not on my list",
+        "raise_desc": "Sent to the HR manager to correct his assignment to {site}",
+        "who": "Who",
+        "pick": "Pick by name",
+        "since": "Working here since",
+        "not_manpower": "An assignment correction, not a manpower request — a new manpower request comes from Projects.",
+        "send": "Send",
+        "raised": "Sent to the HR manager",
+        "line": "On record at {from} · here since {since} · raised by {name}",
+        "correct": "Correct",
+        "corrected": "Assignment corrected",
+        "decline": "Decline",
+        "declined": "Correction declined",
+        "state": {
+          "pending": "Awaiting HR",
+          "done": "Corrected",
+          "declined": "Declined"
+        },
+        "block": {
+          "same_place": "Already on record here",
+          "no_date": "Choose since when he works here",
+          "future": "The date is in the future",
+          "left": "The employee has left",
+          "pending": "A correction for him is already waiting",
+          "stale": "This correction has moved on",
+          "no_reason": "Give the reason",
+          "iqama_expired": "His iqama has expired — he cannot be assigned to a site",
+          "no_date_move": "Choose the date"
+        }
       }
     },
     "ProcSuppliers": {
