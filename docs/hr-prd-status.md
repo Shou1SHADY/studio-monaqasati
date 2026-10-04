@@ -1,122 +1,106 @@
 # HR 1.0 — status against the delivery package
 
-Audit of 1 Oct 2026 against `Delivery-HR-1.0` (PRD-HR-1.0: 128 requirements — 59 P0 · 63 P1 · 6 P2;
-`Prototype-HR-v11.html`; `HR-Pipeline-1.0.html`; the four QA packs). The built module is the R1 core
-(15 commits of 27 Sep 2026). Method: six area reviews of the code against the PRD and the prototype's own
-functions, each finding then re-read in the code before anything was changed; every fix has a test that
-failed before it.
+Against `Delivery-HR-1.0` (PRD-HR-1.0: 128 requirements — 59 P0 · 63 P1 · 6 P2; `Prototype-HR-v11.html`;
+`HR-Pipeline-1.0.html`; the four QA packs). Two passes:
 
-**State (1 Oct 2026):** the rules fix is **live on UAT** (09:38 UTC, ruleset `6d45e52b…`) **and on prod**
-(10:07 UTC, ruleset `0997e2be…`); both match `firestore.rules` as committed in `47763b3`. The code fixes are
-committed on `main` and `uat` (`47763b3` … `76e4141`) and reach each site when its branch is pushed.
+- **1 Oct 2026 — audit.** The R1 core (15 commits of 27 Sep) checked area by area; the rules blocker found and
+  fixed (live on UAT and prod since 1 Oct, ruleset `0997e2be…` on prod); 18 defects verified and left open;
+  the core gaps listed.
+- **4–5 Oct 2026 — completion of the R1 core** (the owner's scope: every open defect and every core gap; the
+  optional R2/R3 features stay off). Six work packages, each test-first, merged on `main` (`7fa79ae` … `92b5bcd`).
 
-## 1. The blocker: the rules refused the module's first-time operations
+**State (5 Oct 2026):** committed on `main`, **not pushed, rules not deployed.** Full suite 3,810 tests (242
+suites; HR 30 suites, 337 tests), `tsc` only the known errors, `check-i18n-links` 0 / 0 / 0, production build
+green. The ruleset with comments and whitespace stripped is 142,952 characters (production releases at 145,514;
+150,113 was refused on 1 Oct) — see §5.
 
-The Jest suites run the write layers over an in-memory Firestore with no rules, so none of this showed.
-Traced from the rule text to the client's exact reads (not executed against an emulator — none on this machine):
+## 1. The 18 defects of 1 Oct — all closed
 
-| What failed on UAT and prod until 1 Oct | Why |
-|---|---|
-| New employee, and every imported row | The first log entry is written in the transaction that creates the employee; the log rule `get()`s the parent, which does not exist before that transaction. |
-| The first attendance sheet of every site-month; a declaration or a closing on a month with no document | `hrAttendance` `get` reads `resource.data` of a missing document — an evaluation error, which refuses. |
-| Preparing a month's payroll | Same, on `hrPayrolls`. |
-| **Approving any payroll** | "Never sent twice" reads `hrEvents/…hr:PAY…`, which by design does not exist yet. |
-| **Starting any exit; approving any settlement** | Same, on `hrExits` and on the `hr:FS` event. |
-| Entering the wage of a joiner recorded without one (government relations' joiners; imports without a basic) | Same, on `employeePay`. |
+| # | Requirement | Fixed by | What it does now |
+|---|---|---|---|
+| 1 | EM-04, PY-04 | P1 `2d6e310` | A pay change keeps a history (`employeePay.steps`); `payOn`/`paySegments` split a month between old and new pay; `changePay` reads the closed payrolls itself — the last closed month makes a retro item, older is refused, a future date waits for its day. |
+| 2 | EX-04 | P1 `3ec55f3` | The settlement's last month is the payroll's own line (`employeeLine`) up to the last day; a month already paid pays 0, later paid months are named. |
+| 3 | PN-03/04 | P1 `0336e1b` | Upheld after its payroll: not deducted again. Cancelled after deduction: refunded through the month's supplementary (fines fund 210205). |
+| 4 | LV-04 | P2 `2f587e1` | Every non-Saudi's leave is travel; a document lapsing by the last leave day blocks approval; a blank date is not "lapsing". |
+| 5 | LV-02, AT-06 | P2 `d2e6333` | `holidays.ts` — the statutory table 2024–2030 (art. 112, Umm al-Qura); not counted in leave nor as unrecorded days; Ramadan's six hours shown as a note. |
+| 6 | PY-04 | P1 `2d6e310` | Supplementaries `-D`, `-D2`, … per month, each item paid once, posted on the day Finance posts it. |
+| 7 | PY-03, AC-04 | P1 `13ec7a9` | Finance sees held and returned lines of every paid payroll and records a return on any of them; the owner may fix a returned IBAN. |
+| 8 | AD-01 | P1 `34c1409` | The instalment starts the month after the payout, once a month. |
+| 9 | EX-01/02 | P1 `3ec55f3` | Service by the calendar; art. 77 on a fixed term from `contract.end`. |
+| 10 | DC-05, EM-03 | P2 `f52fd57` | An arrival without an iqama after 90 days is illegal on a site; no promotion into a Saudi-only trade. |
+| 11 | EM-05 | P2 `f52fd57` | Ending probation starts the exit; a probation past its end with no decision is "lapsed". |
+| 12 | DC-07, PN-01 | P4 `ecbd08c` | The supervisor records injuries and violations on his site page (`HrSiteWorkers`). |
+| 13 | PY-01, DC-03 | P1 `aeced07`, `41190ef` | Commission (recorded by the HR manager) reaches the line, or the settlement; a renewal's fee goes to Finance as `hr:PR` (Dr 520106). |
+| 14 | — | P2, R2-A | Riyadh's day everywhere (`riyadhDay`/`todayDay`); an expected joiner is active from his join day, "Started work" records the real day. |
+| 15 | RL-02 | P2 `d95ae8e` | Who decides follows the EMPLOYEE (his linked user's default group), checked again at the decision and in the rules (`hrUserManages`). |
+| 16 | LV-03, LV-07 | P2 `2f587e1` | Above the balance: HR chooses "balance only" or "excess unpaid"; the employee cancels his own pending request. |
+| 17 | RL-01 | R2-B `40d8e62` | The seeded `finance` group no longer holds `employees.manage`; five seeded HR groups (`hr_manager`, `hr_gov`, `hr_payroll`, `hr_supervisor`, `management`). **Existing companies need the migration — §4.** |
+| 18 | Rules hardening | R2-B `425c44b`, `89ccda7` | A month cannot be closed before it ends; declarations are append-only; the objection's 16-day window and "cancel before it starts" are the server's; a supervisor reads only his workplaces' people (one query per site, `useScopedCollection`); one person's journal entries name no person. Also closed: a supervisor's site on someone else's worker, an injury naming any user, a request carrying any site, self-approval of a fixed IBAN, management setting any IBAN. |
 
-Fixed in `firestore.rules` (a missing document reads as missing for the roles that may read it; the log's first
-entry is judged with `getAfter()`), pinned by `src/__tests__/hr-rules.test.ts` — 10 of its 15 cases fail on the
-previous rules. Google compiled the ruleset at deploy. **Not yet exercised by a signed-in user: the click-through
-(new employee · a first sheet · prepare and approve a payroll · start an exit) is still owed, on UAT first.**
-The own-record check on `employeePay` is ordered so a payroll approval, which writes many pay documents in
-one transaction, never triggers a record lookup per document (a transaction may look up twenty).
+## 2. The core gaps of 1 Oct — built
 
-Also in that rules change, because each has a path in the UI:
-
-- Government relations could link any employee record to his own user and then read that person's pay
-  (RL-03). The link is now the HR manager's, never onto or off himself (owner excepted).
-- Government relations could change any field of an employee record; now documents only (the matrix gives
-  assigning, status and probation to the HR manager).
-- An HR manager could change the wage or bank of his own record; Finance or management could rewrite their
-  own outstanding advance (RL-02). Both closed.
-- The named manager of an adopted or hand-made PM project could not raise a manpower request (the rule asked
-  for a handover file).
-
-The client follows: `employee.edit` (the "Link user" action) is the HR manager's alone, and `linkUser` refuses
-linking oneself onto or off a record (`hr-link-user.test.ts`). Until the branches are pushed, the deployed builds
-still show "Link" to government relations and the rules refuse it on save. Still open: one user linked to two records.
-
-## 2. Fixed, each with a failing test first
-
-| Area | What was wrong | Test |
+| Requirement | Package | What exists |
 |---|---|---|
-| Payroll | A settled leaver vanished from every month before the month of his last day (EX-05) | `hr-payroll-audit` |
-| Payroll | New GOSI scheme started the day after 3 Jul 2024, not on it | `hr-payroll-audit` |
-| Payroll | A month of unpaid leave deducted 31 (or 28) days against a 30-day month — net went negative, or February paid two days not worked | `hr-payroll-audit` |
-| Payroll | A day of approved **paid** leave marked absent on the sheet was docked (WF-07) | `hr-payroll-audit` |
-| Payroll | Absences and overtime recorded at an office were dropped unless someone closed it — and nothing asked for that (AT-02) | `hr-payroll-audit` |
-| Payroll | One date marked absent on two workplaces' sheets was deducted twice | `hr-payroll-audit` |
-| Payroll | Sick days counted twice on a person's first payroll (LV-06) | `hr-payroll-audit` |
-| Files | The GOSI statement left held lines out while the entry credited them — "statement = GOSI credit" did not hold (PY-07) | `hr-payroll-audit`, `hr-payroll` |
-| Files | The Mudad row showed negative "other earnings" on an absence, and read today's pay rather than the pay the month was computed with | `hr-payroll-audit` |
-| Payroll | A workplace whose people all joined this month still had to be "closed" for last month before last month's payroll | `hr-today` |
-| Attendance | Overtime typed before switching to absent/sick was saved and paid | `hr-attendance` |
-| Attendance | Someone serving notice disappeared from the sheet; people were listed on days before they joined | `hr-attendance` |
-| Attendance | The sheet did not know about approved leave — now shown "on approved leave", nothing recorded against them | `hr-attendance` |
-| Attendance | Another user's save wiped unsaved rows; a failed declaration cleared its note | — (screen) |
-| Manpower | Coverage skipped every unassigned worker when the project had no HR workplace; a joiner still marked "expected" was never offered (AS-02) | `hr-manpower` |
-| Today | Government relations never saw an expired iqama of someone on a site (DC-02) | `hr-today` |
-| Today | A company that started this month was told to close and pay last month | `hr-today` |
-| Today | No row when custody is cleared and the settlement is the HR manager's turn; none for a prepared "-D" payroll | `hr-today` |
-| Import | The package's own template was rejected row for row (countries by name); a row whose join date was text vanished; line numbers drifted; a future join date was accepted; an English-only name was rejected; the opening leave balance landed one day short on about half the join dates (IM-01…03) | `hr-import` |
-| i18n | `req.block.no_value / bad_iban / no_document` and `log.data_filed / data_declined / data_cancelled` did not exist in either language — the data-update form showed raw key paths | checker cannot see dynamic keys |
+| RP-01/02 Reports | P4 `a6b2087` | Twelve live reports (`reports.ts`, `HrReportsView`, `/x/hr/reports`), CSV, Mudad and GOSI files for pay roles; riyal reports only to pay roles. |
+| Notifications (TD-05) | R2-A `b5ae6a9` | `notify.ts` `emitHrNotice` — every act the PRD names tells its audience (requests, penalties and objections, letters, payroll, transfers and IBANs, exits and custody, settlements, manpower, corrections, injuries, arrivals, an expired iqama on a site). No amount in any HR notification. |
+| EM-08, WF-24 Letters | P3, R2-A | `letters.ts`/`letter-writes.ts`, `hrLetters` + `hrLetterPay` (figures apart, RL-03); five types, signer by level, nobody signs his own, serial `LT-yyyy/NNN` (shown خ-); print in the letter's language; queue in Today; the experience certificate is issued with the settlement. |
+| TD-04 Today | P4 `df4cbf9` | Three KPIs per role, role panels; overdue returns and pending corrections (R2-A). `leakage()` stays 0. |
+| ST-05 Build path | P4 | Ten steps (`build-path.ts`) and the gaps panel. |
+| AT-05 Return from leave | P2 `2f15aa4` | `recordReturn`; days late; the art. 80 stages on the sheet and the file. |
+| AS-03 Assignment correction | P2, R2-B | `hrAssignFixes`; a supervisor names the worker by ID number, the HR manager resolves it to the record or refuses. |
+| DC-04 Officer's list | P4 | One row per person, renewal order passport → insurance → iqama; 120-day queue. |
+| EM-07 Attachments | P2 `4636589` | Storage under `organizations/{org}/hr/employees/{id}/`, append-only `employees/{id}/files`. |
+| IM-04 Opening balance | P2 `db5877e` | From the card, once, capped by what service accrues. |
+| The new employee file | P4 `ecbd08c` | Header, four tiles (pay tile masked for roles without pay), five segments. |
+| My file for staff users | P4 | Works for all six roles; nobody approves his own (own-record guards in the write layer too, R2-A). |
+| AC-12 Per-role render | P4 `c3112d4` | `render-hr-roles.test.tsx`: 7 roles × 10 screens, and every query a supervisor runs is one the rules can prove. |
+| One user, one record | R2-A | `linkUser`/`createEmployee` refuse a user already linked. |
 
-## 3. Verified and still open
+Found to be R2, not built: PY-08/09 (pre-Mudad check, reconciliation — the PRD's build order puts them with
+the platforms); ST-03's two missing policies (hiring); six reports tied to optional features.
 
-Money and law first.
+## 3. Still open
 
-| # | Requirement | Defect |
-|---|---|---|
-| 1 | EM-04, PY-04 (P0) | A pay change ignores its effective date: the dialog never passes the last closed month, so no retro is computed, a future-dated raise applies at once, and the supplementary "-D" payroll can never have a line. |
-| 2 | EX-04 | The settlement's last-month pay is the day of the month × wage/30: it ignores the join date, the month's attendance and GOSI; a back-dated last day in a month already paid is paid twice. |
-| 3 | PN-03/04 | A penalty objected after its payroll: deducted again if upheld (`deductMonth` is rewritten), never refunded if cancelled. |
-| 4 | LV-04 (P0) | "No travel before renewal" depends on a travel checkbox that defaults to off; a missing passport date counts as lapsing. |
-| 5 | LV-02 (P0), AT-06 | No holiday calendar exists: holidays are counted inside leave and as unrecorded days. |
-| 6 | PY-04 | The supplementary is dated into the closed month (refused once that period is locked); only one "-D" per month. |
-| 7 | PY-03, AC-04 | Finance's desk records a returned transfer only on the newest paid payroll; held lines older than three payrolls are lost from view; the owner of a company with no payroll officer cannot fix a returned IBAN. |
-| 8 | AD-01 | The advance instalment starts on approval, not on payout; two months prepared back to back both take it. |
-| 9 | EX-01/02 | Art. 77 on a fixed term is typed and optional (`contract.end` is never read); service years are days ÷ 365, which moves the art. 85 thresholds by a day. |
-| 10 | DC-05, EM-03 | An arrival with no iqama after 90 days is still legal on a site; a promotion can put a non-Saudi in a Saudi-only trade. |
-| 11 | EM-05 | "End during probation" does not start the exit; imported long-service staff show an open probation forever. |
-| 12 | DC-07, PN-01 | A supervisor has no screen to record an injury or a manual violation (the panels sit under People, which he does not have). |
-| 13 | PY-01 | Commission never reaches the line; a renewal's fee is not sent to Finance (DC-03, `hr:PR`). |
-| 14 | — | Employee writes use the UTC day (00:00–03:00 Riyadh is "yesterday"); nothing ever moves a record from `expected` to `active`. |
-| 15 | RL-02 | Who decides is taken from who files, not from who the employee is (HR manager A files for HR manager B and approves it). |
-| 16 | LV-03, LV-07 | The decision has no "balance only / excess unpaid" choice; the employee has no way to cancel his own pending request. |
-| 17 | RL-01 | The seeded `finance` group holds `employees.manage`: every Finance member is HR manager and Finance at once. No seeded group carries the other four HR roles. |
-| 18 | Rules hardening | A month can be closed before it ends by a direct call; declarations are not append-only; the objection's 15 days and "cancel before it starts" are client-only; a supervisor reads every employee in the org; journal entries for returned and held lines carry one person's net and are org-readable. |
+- **Not exercised by a signed-in user.** The click-through on UAT is owed: new employee · first sheet · prepare
+  and approve a payroll (and a `-D`) · a letter · start an exit and approve the settlement · a supervisor's site
+  page (his per-site queries rely on the rule reading `hrSites/{siteId}` from the query's equality filter — no
+  emulator here).
+- Eid 2026: the table follows the regulation (from the day after 29 Ramadan: 19–22 Mar); the prototype starts on
+  1 Shawwal (20–23 Mar). Confirm with the owner.
+- GOSI new-scheme rate for September 2026 (10.25 / 12.25 per the PRD, or stepped up in July) — to confirm with
+  the authority.
+- The employee cannot cancel his own APPROVED leave before it starts (the rules would need him to write his own
+  balance); an early return is refused; late days at an office are deducted only if recorded on its sheet.
+- Paying back the excess after a back-dated last day is a manual decision (the settlement names the months).
+- Rules still lax: a leave request's `lineManagerUserId` is chosen by the client; management or Finance can write
+  `advance` on any record; the renewal-fee entry names the employee number; a cost centre or payroll with one
+  held line reveals that amount through its totals; supervisors read `hrExits` org-wide (no money in them).
+- `storage.rules`: the HR folder has its own rule, but the catch-all still lets any signed-in user read and write
+  every path — narrowing it needs an emulator test first.
+- A supervisor cannot open an employee file (the route sits under People).
+- HR numbers (LV/AV/HQ/LT) show Latin in the bell (the Arabic prefix table lives in the mirrored
+  `sales-numbering.ts`); the push text renders them in Arabic.
 
-To confirm with the authority rather than from code: whether the new-scheme GOSI rate for September 2026 is
-10.25 / 12.25 (as the PRD says) or has stepped up in July.
+## 4. Before it goes live
 
-## 4. Not built
+1. **Deploy the rules to UAT** (`node scripts/deploy-rules.js uat --check`, then deploy) — then prod, each with
+   the owner's OK. The release is refused above the compiled ceiling; at 142,952 stripped there is room.
+2. **Seeded groups for existing companies:** `node scripts/migrate-hr-seed-groups.js <uat|prod>` (dry run;
+   `--apply`). Removes `employees.manage` only from an untouched seeded finance group; lists edited ones as kept
+   and companies that would lose their only HR manager as "review" (`--include-review` to change them);
+   `--seed-hr-groups` adds the five HR groups where missing.
+3. **Mobile mirrors:** `src/lib/permissions.ts` and `src/lib/accounting/{accounts,journal,posting-rules,source-links}.ts`
+   changed — re-copy into the mobile app and run `node scripts/check-mirrors.mjs <webDir>` there (the mobile repo
+   is not on the machine that did this work).
+4. Data written before 4 Oct: pay without `steps` computes as before; leave approved before the holiday table
+   keeps its stored counts.
 
-Core, in the PRD's R1 or its core tab set: **Reports** (RP-01/02 — the prototype's core tabs are today · people ·
-sites · pay · reports · settings); **notifications** (the module writes none — "a penalty on you" starts a 15-day
-clock nobody is told about); **letters** (EM-08, WF-24 — new in this release of the package; nothing exists);
-Today's three KPIs and role panels (TD-04); the 10-step build path (6 exist) and the gaps panel (ST-05);
-return from leave and art. 80 (AT-05); assignment correction by the supervisor (AS-03); the officer's list by
-person (DC-04); attachments (EM-07); opening balance from the card (IM-04); pre-Mudad check and reconciliation
-(PY-08/09); two of the three block/warn policies (ST-03).
+## 5. The ruleset's size
 
-Optional features (R2/R3), none built — their switches in Settings change nothing visible: punches and
-geofence (PT), shifts (SH), hiring (HI), performance (PF), training (TR), platforms (GV), the mobile app and a
-third language (ES-07).
+`30e35c1` folded six repeated shapes into `orgReadable()`, `createsInOrg()`, `keepsOrg()`, `pmOnly(keys)`,
+`bySeq()`, `warehouseOrg()` (150,283 → 141,925 stripped); R2-B added `hrNotOwn()`, `hrOffice()`,
+`hrSupervises()`, `hrOnSite()` and others. Measure before any rules change:
 
-Tests the package asks for and the product lacks: a per-role render test (AC-12 — PM and Procurement have
-one in `render-*-roles.test.tsx`; HR has none) and the end-to-end flows of `qa_flows.js` run over the rules.
-
-## 5. Checks at the end of the audit
-
-`npx jest` 3,145 passed (178 suites; HR 181) · `npx tsc --noEmit` only the known errors · `check-i18n-links`
-0 / 0 / 0 · eslint clean on the changed files.
+```bash
+python3 -c "import re;s=open('firestore.rules').read();s=re.sub(r'//[^\n]*','',s);s=re.sub(r'/\*.*?\*/','',s,flags=re.S);s=re.sub(r'\s+',' ',s);print(len(s))"
+```
