@@ -14,6 +14,7 @@ import type { HrContext, HrRole } from "@/lib/hr/access"
 import type { EmployeePay, HrEmployee } from "@/lib/hr/employee"
 import { feeEventKey, recordCommission, recordRenewal } from "@/lib/hr/employee-writes"
 import { payFeeRequest, type HrFeeEvent } from "@/lib/hr/finance-writes"
+import { settlementLastMonth } from "@/lib/hr/exit-writes"
 import { computePayroll, computeSupplementary, payEvent, eventBalances, type Payroll } from "@/lib/hr/payroll"
 import type { HrSite } from "@/lib/hr/sites"
 
@@ -60,6 +61,18 @@ describe("commission (PY-01)", () => {
     expect(eventBalances(ev)).toBe(true)
     await expect(recordCommission(db, ctx(["manager"], { uid: "x", employeeId: "e1" }), "e1", who(hrm), { month: "2026-09", amount: 1, reason: "r" })).rejects.toMatchObject({ code: "own_request" })
     await expect(recordCommission(db, hrm, "e1", who(hrm), { month: "2026-11", amount: 1, reason: "r" }, { today: "2026-10-06" })).rejects.toMatchObject({ blocks: ["future_month"] })
+  })
+})
+
+describe("a leaver's last-month commission (PY-01, EX-04)", () => {
+  it("is paid by his settlement — and not again by a supplementary of a payroll he was not on", async () => {
+    await recordCommission(db, hrm, "e1", who(hrm), { month: "2026-09", amount: 500, reason: "SA-90" }, { today: "2026-09-20" })
+    const leaver = { ...e1, status: "leaving", lastDay: "2026-09-15" } as HrEmployee
+    const last = settlementLastMonth(leaver, payDoc(), "2026-09-15", { sites, attendance: [], requests: [], violations: [] })
+    // 15 days: 4,050 × 15/30 = 2,025 + 500 commission − 2% employer only (non-Saudi: no employee share)
+    expect(last?.net).toBe(2_525)
+    const main = { state: "approved", lines: [] } as Pick<Payroll, "state" | "lines">
+    expect(computeSupplementary({ month: "2026-09", employees: [leaver], pays: new Map([["e1", payDoc()]]), sites, main })).toEqual([])
   })
 })
 

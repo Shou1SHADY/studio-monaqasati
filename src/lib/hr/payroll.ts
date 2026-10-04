@@ -232,7 +232,7 @@ export interface LineFacts {
   holidays?: Holiday[]
   violations?: HrViolation[]
   /** EX-04 — the settlement pays the month of the last day up to it, with no advance instalment (the
-   * settlement takes the whole balance) and no commission (the payroll's). */
+   * settlement takes the whole balance); a commission for that month is paid there, the payroll has no line for him. */
   lastDay?: string | null
   noAdvance?: boolean
 }
@@ -282,7 +282,7 @@ export function employeeLine(e: HrEmployee, raw: EmployeePay, f: LineFacts): Pay
     : att.overtimeHours
   const pen = monthPenalties(f.violations ?? [], e.id, month, wageOf(pay))
   // PY-01 — Sales' approved commission for the month.
-  const commissions = f.lastDay ? [] : (raw.commissions ?? []).filter((c) => c.month === month && c.amount > 0)
+  const commissions = (raw.commissions ?? []).filter((c) => c.month === month && c.amount > 0)
   // AD-01 — the instalment from the month after the payout.
   const startsIn = advanceStartMonth(f.requests, e.id)
   const advanceDue = !f.noAdvance && startsIn !== null && (startsIn === undefined || startsIn <= month)
@@ -403,7 +403,8 @@ export function computeSupplementary(input: SupplementaryInput): SupplementaryLi
     const items: SupplementaryItem[] = []
     for (const [i, x] of (pay.retro ?? []).entries()) if (x.month === month && x.amount !== 0) items.push({ kind: "retro", id: x.id ?? `${month}#${i}`, amount: x.amount })
     // A commission the main line did not pay — approved after it, or for a month already closed.
-    if (input.main && sent(input.main))
+    // Only for someone the main payroll paid: a leaver's last month — and its commission — is the settlement's.
+    if (input.main && sent(input.main) && mainLine)
       for (const c of pay.commissions ?? []) if (c.month === month && c.amount > 0 && !(mainLine?.commissionIds ?? []).includes(c.id)) items.push({ kind: "commission", id: c.id, amount: c.amount })
     for (const v of input.violations ?? []) {
       if (v.employeeId !== e.id || v.state !== "cancelled" || v.deductMonth !== month) continue
