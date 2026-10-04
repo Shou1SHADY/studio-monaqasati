@@ -21,6 +21,7 @@ import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
+import { hrPeopleScope } from "@/lib/hr/access"
 import { displayName, type HrEmployee } from "@/lib/hr/employee"
 import type { HrActor } from "@/lib/hr/employee-writes"
 import { empNo, hrDate, todayDay } from "@/lib/hr/format"
@@ -46,6 +47,10 @@ export function HrAssignFixPanel({ access, actor, siteId, employees, sites }: { 
   const fixes = ((data ?? []) as unknown as AssignFix[]).slice().sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""))
   const [raising, setRaising] = useState(false)
   const [who, setWho] = useState("")
+  // A supervisor reads only his own workplaces' records (RL-01): he names the worker by his ID number.
+  const byId = hrPeopleScope(access.ctx) !== null
+  const [idNo, setIdNo] = useState("")
+  const [name, setName] = useState("")
   const [since, setSince] = useState(today)
   const [note, setNote] = useState("")
   const [declining, setDeclining] = useState<AssignFix | null>(null)
@@ -56,7 +61,13 @@ export function HrAssignFixPanel({ access, actor, siteId, employees, sites }: { 
   // Someone the record places elsewhere, still on the books.
   const candidates = useMemo(() => employees.filter((e) => e.status !== "left" && e.siteId !== siteId && e.names), [employees, siteId])
   const picked = candidates.find((e) => e.id === who) ?? null
-  const blocks = picked ? assignFixBlocks(picked, siteId, since || null, today, fixes.some((f) => f.employeeId === picked.id && f.state === "pending")) : []
+  const typedId = idNo.replace(/\s+/g, "")
+  const blocks = byId
+    ? assignFixBlocks({ siteId: null, status: "active" }, siteId, since || null, today, fixes.some((f) => f.idNo === typedId && f.state === "pending"))
+    : picked
+      ? assignFixBlocks(picked, siteId, since || null, today, fixes.some((f) => f.employeeId === picked.id && f.state === "pending"))
+      : []
+  const ready = byId ? Boolean(typedId && name.trim()) : Boolean(picked)
 
   const run = async (fn: () => Promise<unknown>, ok: string): Promise<boolean> => {
     if (!firestore || !access.orgId) return false
@@ -88,6 +99,8 @@ export function HrAssignFixPanel({ access, actor, siteId, employees, sites }: { 
             variant="outline"
             onClick={() => {
               setWho("")
+              setIdNo("")
+              setName("")
               setSince(today)
               setNote("")
               setRaising(true)
@@ -109,7 +122,9 @@ export function HrAssignFixPanel({ access, actor, siteId, employees, sites }: { 
                   {f.employeeName}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {t("fix.line", { from: siteName(f.fromSiteId), since: hrDate(f.since, locale), name: f.byName || "—" })}
+                  {f.employeeId
+                    ? t("fix.line", { from: siteName(f.fromSiteId), since: hrDate(f.since, locale), name: f.byName || "—" })
+                    : t("fix.line_by_id", { idNo: f.idNo ?? "—", since: hrDate(f.since, locale), name: f.byName || "—" })}
                   {f.note ? ` · ${f.note}` : ""}
                   {f.decision?.note ? ` · “${f.decision.note}”` : ""}
                 </p>
@@ -145,19 +160,33 @@ export function HrAssignFixPanel({ access, actor, siteId, employees, sites }: { 
             <DialogDescription>{t("fix.raise_desc", { site: siteName(siteId) })}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="fx-who">{t("fix.who")}</Label>
-              <SearchableSelect
-                id="fx-who"
-                value={who}
-                onChange={setWho}
-                options={candidates.map((e) => ({ value: e.id, label: `${empNo(e.no)} · ${displayName(e, locale)} — ${siteName(e.siteId)}` }))}
-                placeholder={t("fix.pick")}
-                searchPlaceholder={t("search")}
-                noResultsText={t("no_results")}
-                disabled={busy}
-              />
-            </div>
+            {byId ? (
+              <>
+                <p className="text-xs text-muted-foreground">{t("fix.by_id_hint")}</p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="fx-id">{t("fix.id_no")}</Label>
+                  <Input id="fx-id" inputMode="numeric" dir="ltr" value={idNo} onChange={(e) => setIdNo(e.target.value)} disabled={busy} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="fx-name">{t("fix.name")}</Label>
+                  <Input id="fx-name" dir="auto" value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
+                </div>
+              </>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="fx-who">{t("fix.who")}</Label>
+                <SearchableSelect
+                  id="fx-who"
+                  value={who}
+                  onChange={setWho}
+                  options={candidates.map((e) => ({ value: e.id, label: `${empNo(e.no)} · ${displayName(e, locale)} — ${siteName(e.siteId)}` }))}
+                  placeholder={t("fix.pick")}
+                  searchPlaceholder={t("search")}
+                  noResultsText={t("no_results")}
+                  disabled={busy}
+                />
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="fx-since">{t("fix.since")}</Label>
               <Input id="fx-since" type="date" dir="ltr" max={today} value={since} onChange={(e) => setSince(e.target.value)} disabled={busy} />
@@ -174,8 +203,13 @@ export function HrAssignFixPanel({ access, actor, siteId, employees, sites }: { 
               {t("cancel")}
             </Button>
             <Button
-              disabled={busy || !picked || blocks.length > 0}
-              onClick={() => void run(() => raiseAssignFix(firestore!, access.ctx, access.orgId!, actor, { employeeId: who, siteId, since, note }), "fix.raised").then((ok) => ok && setRaising(false))}
+              disabled={busy || !ready || blocks.length > 0}
+              onClick={() =>
+                void run(
+                  () => raiseAssignFix(firestore!, access.ctx, access.orgId!, actor, { ...(byId ? { idNo: typedId, name } : { employeeId: who }), siteId, since, note }),
+                  "fix.raised"
+                ).then((ok) => ok && setRaising(false))
+              }
             >
               {busy && <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" />}
               {t("fix.send")}

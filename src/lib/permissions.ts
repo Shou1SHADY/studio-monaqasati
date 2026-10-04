@@ -146,7 +146,21 @@ export interface TeamGroup {
   updatedAt?: unknown
 }
 
-export type SeededGroupKey = "super_admin" | "finance" | "supply_chain" | "viewer"
+export type SeededGroupKey = "super_admin" | "finance" | "supply_chain" | "viewer" | "hr_manager" | "hr_gov" | "hr_payroll" | "hr_supervisor" | "management"
+
+/** The finance seed's permission sets as they were written over time — each one held `employees.manage`, so
+ * every Finance member was an HR manager too (HR 1.0 RL-01, §3 #17). An organisation's seeded finance group
+ * whose permissions still equal one of these, untouched, got `employees.manage` from the seed and not from a
+ * decision of its owner; `scripts/migrate-hr-seed-groups.js` removes it from those only. */
+export const FINANCE_SEEDS_WITH_HR: readonly (readonly PermissionId[])[] = [
+  // 12 Aug 2026
+  ["projects.view", "projects.publish", "offers.view", "offers.accept", "invoices.manage", "employees.manage"],
+  // 9 Sep 2026 — the books
+  ["projects.view", "projects.publish", "offers.view", "offers.accept", "invoices.manage", "employees.manage", "accounting.view", "accounting.post"],
+  // 22 Sep 2026 — po.approve (also what scripts/migrate-po-permissions.js added to the two above)
+  ["projects.view", "projects.publish", "offers.view", "offers.accept", "po.approve", "invoices.manage", "employees.manage"],
+  ["projects.view", "projects.publish", "offers.view", "offers.accept", "po.approve", "invoices.manage", "employees.manage", "accounting.view", "accounting.post"],
+]
 
 // Default groups created for an organization the first time the owner opens
 // the team page. Doc id is deterministic (`${orgId}_${key}`) so concurrent
@@ -174,7 +188,8 @@ export const SEEDED_GROUPS: Array<{
       // Finance awards today, so it approves the purchase order too.
       "po.approve",
       "invoices.manage",
-      "employees.manage",
+      // NOT employees.manage: that is the HR manager (HR 1.0 RL-01) — Finance's hand in HR (advances above
+      // the limit, posting and paying the payroll) comes from invoices.manage / accounting.post.
       // Finance reads and writes the books, but closing a period stays with the
       // owner or whoever they name — it is the step that makes a statement final.
       "accounting.view",
@@ -203,6 +218,39 @@ export const SEEDED_GROUPS: Array<{
     key: "viewer",
     name: "مشاهد",
     permissions: ["projects.view"],
+    isSystem: false,
+  },
+  // HR 1.0 (PRD RL-01) — the module's roles, one group each, as the prototype's users are. The employee is not a
+  // group: he is a user linked to his record. The owner names people into them; a group may be widened later.
+  {
+    key: "hr_manager",
+    name: "مدير الموارد البشرية",
+    permissions: ["projects.view", "employees.manage"],
+    isSystem: false,
+  },
+  {
+    key: "hr_gov",
+    name: "العلاقات الحكومية وشؤون الموظفين",
+    permissions: ["projects.view", "hr.gov"],
+    isSystem: false,
+  },
+  {
+    key: "hr_payroll",
+    name: "محاسب الرواتب",
+    permissions: ["projects.view", "hr.payroll"],
+    isSystem: false,
+  },
+  {
+    key: "hr_supervisor",
+    name: "مشرف مكان العمل",
+    permissions: ["projects.view", "hr.supervisor"],
+    isSystem: false,
+  },
+  {
+    // Management in HR: a company-wide read in riyals and the decisions on the HR manager's own requests.
+    key: "management",
+    name: "الإدارة",
+    permissions: ["projects.view", "hr.management"],
     isSystem: false,
   },
 ]

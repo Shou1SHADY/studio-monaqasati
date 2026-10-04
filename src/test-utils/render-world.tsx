@@ -42,6 +42,11 @@ export const setPathname = (pathname: string, search = "") => {
 
 type Ref = { type: "collection" | "document" | "query" | "group"; path: string; id?: string; constraints?: Array<{ type: string; field?: string; op?: string; value?: unknown; direction?: string; n?: number }> }
 
+/** Every collection query a screen ran (useCollection, onSnapshot, getDocs) — for tests that check a role only
+ * asks what the rules let it ask (a list the rules cannot prove is refused WHOLE). Cleared by the test. */
+export const queriesRun: Ref[] = []
+const noteQuery = (ref: Ref | null | undefined) => void (ref && ref.type !== "document" && queriesRun.push(ref))
+
 const getPath = (data: Plain, field: string): unknown => field.split(".").reduce<unknown>((n, p) => (n && typeof n === "object" ? (n as Plain)[p] : undefined), data)
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const cmp = (a: unknown, b: unknown) => (typeof a === "number" && typeof b === "number" ? a - b : typeof a === "string" && typeof b === "string" ? (a < b ? -1 : a > b ? 1 : 0) : NaN)
@@ -99,6 +104,7 @@ export const firestoreMock = {
   collectionGroup: (_db: unknown, id: string): Ref => ({ type: "group", path: `**/${id}`, id, constraints: [] }),
   query: (base: Ref, ...constraints: NonNullable<Ref["constraints"]>): Ref => ({ ...base, type: base.type === "group" ? "group" : "query", constraints: [...(base.constraints ?? []), ...constraints] }),
   getDocs: async (q: Ref) => {
+    noteQuery(q)
     if (q.type !== "group") return baseFirestore.getDocs(q as Parameters<typeof baseFirestore.getDocs>[0])
     const docs = evalQuery(q).map((r) => ({ id: r.id, exists: () => true, data: () => r, get: (f: string) => getPath(r, f), ref: { id: r.id } }))
     return { docs, empty: docs.length === 0, size: docs.length, forEach: (fn: (d: unknown) => void) => docs.forEach(fn) }
@@ -106,6 +112,7 @@ export const firestoreMock = {
   getCountFromServer: async (q: Ref) => ({ data: () => ({ count: evalQuery(q).length }) }),
   startAfter: () => ({ type: "startAfter" }),
   onSnapshot: (ref: Ref, next: (snap: unknown) => void) => {
+    noteQuery(ref)
     if (ref.type === "document") next(snapDoc(ref.path))
     else {
       const docs = evalQuery(ref).map((r) => snapDoc(`${ref.type === "group" ? "" : `${ref.path}/`}${r.id}`))
@@ -128,6 +135,7 @@ function useStable<T>(value: T): T {
 }
 
 function useCollection(ref: Ref | null | undefined) {
+  noteQuery(ref)
   const data = ref ? evalQuery(ref) : null
   return { data: useStable(data), isLoading: false, error: null }
 }

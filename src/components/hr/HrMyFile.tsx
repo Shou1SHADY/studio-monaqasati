@@ -60,7 +60,7 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
   const { data: empData, isLoading } = useDoc(empRef)
   const emp = (empData as unknown as HrEmployee | null) ?? null
   const { pay } = useEmployeePay(id, Boolean(id))
-  const { sites, siteName } = useHrPeople(access.orgId, access.ctx.roles.size > 0)
+  const { sites, siteName } = useHrPeople(access, false)
   const { requests: all } = useHrRequests(access)
   const requests = useMemo(() => all.filter((r) => r.employeeId === id), [all, id])
   const violations = useHrViolations(access).filter((v) => v.employeeId === id)

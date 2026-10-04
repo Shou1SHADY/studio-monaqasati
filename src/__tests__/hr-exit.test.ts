@@ -112,6 +112,8 @@ describe("the flow", () => {
     expect(Math.round(dr * 100)).toBe(Math.round(cr * 100))
     expect(entry.lines.map((l) => l.account)).toEqual(expect.arrayContaining([ACC.endOfServiceProvision, ACC.leaveProvision, ACC.costLabour, ACC.employeeAdvances, ACC.sundryIncome]))
     expect(entry.description).not.toContain("أحمد")
+    // Nor his number: every member reads the journal, and the number names him as surely (RL-03, §3 #18).
+    expect(entry.description).not.toMatch(/0007|موظف/)
     expect(readDoc<{ state: string }>(`hrExits/${ID}`)?.state).toBe("paid")
     expect(readDoc<{ state: string }>(`hrSettlements/${ID}`)?.state).toBe("paid")
   })

@@ -305,9 +305,10 @@ describe("workplaces, injuries, arrivals", () => {
 
   it("an assignment correction → the HR manager; the decision → the supervisor who raised it", async () => {
     seed("hrSites/s1", { ...sites[0] })
-    seed("employees/e2", { ...empBase, no: 3, userId: null, siteId: null })
-    const id = await raiseAssignFix(db, sup, ORG, who(sup), { employeeId: "e2", siteId: "s1", since: "2026-02-20" }, { today: "2026-03-01" })
-    expect(one("hrm", "hr_assign_fix_raised")).toMatchObject({ link: "hr/sites/s1", i18n: { params: { site: "Tower", since: "2026-02-20" } } })
+    seed("employees/e2", { ...empBase, no: 3, userId: null, siteId: null, idNo: "2400000003" })
+    // A supervisor reads no record outside his workplaces: he names the worker by ID number (RL-01).
+    const id = await raiseAssignFix(db, sup, ORG, who(sup), { idNo: "2400000003", name: "أحمد", siteId: "s1", since: "2026-02-20" }, { today: "2026-03-01" })
+    expect(one("hrm", "hr_assign_fix_raised")).toMatchObject({ link: "hr/sites/s1", i18n: { params: { name: "أحمد", site: "Tower", since: "2026-02-20" } } })
     await decideAssignFix(db, hrm, id, who(hrm), "decline", "he is on the bench", { today: "2026-03-01" })
     expect(one("sup", "hr_assign_fix_decided")?.i18n.params).toMatchObject({ verdict: "@hr_verdict.refused", note: "he is on the bench" })
   })

@@ -30,7 +30,7 @@ jest.mock("@/components/layout/portal-layout", () => jest.requireActual("@/test-
 import React from "react"
 import { act, render } from "@testing-library/react"
 import { resetFakeDb, seed } from "@/test-utils/fake-firestore"
-import { installDomShims, missingKeys, pushed, setPathname, setSignedIn } from "@/test-utils/render-world"
+import { installDomShims, missingKeys, pushed, queriesRun, setPathname, setSignedIn } from "@/test-utils/render-world"
 import { todayDay } from "@/lib/hr/format"
 import { addDays } from "@/lib/hr/statutory"
 import TodayPage from "@/app/[locale]/(contractor)/contractor/hr/page"
@@ -315,5 +315,38 @@ describe("what each role sees and may do (the PRD's matrix, qa_guards)", () => {
       expect({ role, approve: buttons().includes("اعتماد") }).toEqual({ role, approve: false })
       view.unmount()
     }
+  })
+})
+
+describe("a supervisor asks only what the rules let him ask (RL-01, §3 #18)", () => {
+  // A list query the rules cannot prove is refused WHOLE — the screen breaks. For the supervisor of s1, each
+  // collection the rules scope by workplace must be asked by his workplace (or about himself).
+  type Q = (typeof queriesRun)[number]
+  const eq = (q: Q, field: string) => (q.constraints ?? []).filter((c) => c.type === "where" && c.op === "==" && c.field === field).map((c) => c.value)
+  const mine = (q: Q, field: string) => eq(q, field).includes("sup")
+  const hisSite = (q: Q) => eq(q, "siteId").length > 0 && eq(q, "siteId").every((s) => s === "s1")
+  const PROVABLE: Record<string, (q: Q) => boolean> = {
+    employees: (q) => mine(q, "userId") || hisSite(q),
+    hrInjuries: (q) => mine(q, "employeeUserId") || hisSite(q),
+    hrAssignFixes: hisSite,
+    hrRequests: (q) => mine(q, "employeeUserId") || (eq(q, "kind").includes("leave") && hisSite(q)),
+    hrViolations: (q) => mine(q, "employeeUserId"),
+    hrAttendance: () => false,
+  }
+
+  it.each(Object.keys(SCREENS))("%s", async (name) => {
+    queriesRun.length = 0
+    const view = await openAs("supervisor", name)
+    const asked = queriesRun.filter((q) => q.path in PROVABLE)
+    for (const q of asked) expect({ name, path: q.path, where: q.constraints, provable: PROVABLE[q.path](q) }).toEqual({ name, path: q.path, where: q.constraints, provable: true })
+    view.unmount()
+  })
+
+  it("…and his own site's page does ask: its people, injuries and corrections, by his workplace", async () => {
+    queriesRun.length = 0
+    const view = await openAs("supervisor", "site")
+    for (const c of ["employees", "hrInjuries", "hrAssignFixes"]) expect({ c, asked: queriesRun.some((q) => q.path === c && hisSite(q)) }).toEqual({ c, asked: true })
+    expect(text()).toContain("موظف e_emp")
+    view.unmount()
   })
 })

@@ -78,7 +78,7 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
   const firestore = useFirestore()
   const { toast } = useToast()
   const today = todayDay()
-  const { employees, sites, isLoading } = useHrPeople(access.orgId)
+  const { employees, sites, isLoading } = useHrPeople(access)
   const { requests } = useHrRequests(access)
   const site = siteId === UNASSIGNED_SITE ? { id: UNASSIGNED_SITE, name: t("sites.unassigned"), type: null } : (sites.find((s) => s.id === siteId) ?? null)
   const assumed = assumesPresence(siteId, site?.type ?? null)

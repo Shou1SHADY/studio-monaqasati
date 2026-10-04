@@ -174,12 +174,20 @@ export function returnableLines(p: FinancePayroll): AnyLine[] {
   return p.state === "paid" ? linesOf(p).filter((l) => !l.held && !p.returned?.[l.employeeId]) : []
 }
 
-type LineRef = { employeeId: string; no: number; net: number; held: boolean }
+type LineRef = { employeeId: string; no: number; net: number; held: boolean; pos: number }
 
 function lineOf(p: Payroll, employeeId: string): LineRef | null {
-  const l = p.kind === "supplementary" ? p.supplementary?.find((x) => x.employeeId === employeeId) : p.lines.find((x) => x.employeeId === employeeId)
-  return l ? { employeeId: l.employeeId, no: l.no, net: l.net, held: l.held } : null
+  const lines = linesOf(p)
+  const i = lines.findIndex((x) => x.employeeId === employeeId)
+  const l = i >= 0 ? lines[i] : null
+  return l ? { employeeId: l.employeeId, no: l.no, net: l.net, held: l.held, pos: i + 1 } : null
 }
+
+/** The journal's reference for ONE line — a returned transfer, a held line paid later. The journal is read by
+ * every member of the company (accounting_journal), and such an entry carries one person's net: it names no
+ * person — not his name, number or record id (RL-03) — only the payroll and the line's place in it, which
+ * pay roles and Finance alone can read back. An approved payroll's lines never move, so the place is fixed. */
+export const lineJournalRef = (p: Pick<Payroll, "key">, l: Pick<LineRef, "pos">, held = false) => `${p.key}:${held ? "held:" : ""}L${l.pos}`
 
 /** fin:RETURNED — the bank sent a transfer back: the money is owed again and the IBAN goes to payroll to fix. */
 export async function markReturned(firestore: Firestore, a: FinanceActor, orgId: string, p: Payroll & { returned?: Record<string, unknown> }, employeeId: string, reason: string, books: Books): Promise<void> {
@@ -188,7 +196,7 @@ export async function markReturned(firestore: Firestore, a: FinanceActor, orgId:
   if (!l || p.state !== "paid" || l.held || p.returned?.[employeeId]) throw new HrWriteError("blocked", ["stale"])
   if (!reason.trim()) throw new HrWriteError("blocked", ["no_reason"])
   const batch = writeBatch(firestore)
-  await book(firestore, a, orgId, postHrPayReturn({ sourceId: `${p.key}:${l.no}`, date: books.date, amount: l.net, bankAccount: books.bankAccount, description: `حوالة رواتب مرتجعة ${p.key}` }), books, batch)
+  await book(firestore, a, orgId, postHrPayReturn({ sourceId: lineJournalRef(p, l), date: books.date, amount: l.net, bankAccount: books.bankAccount, description: `حوالة رواتب مرتجعة ${p.key}` }), books, batch)
   batch.update(doc(firestore, HR_PAYROLLS, p.id), { [`returned.${employeeId}`]: { ...stamp(a), reason: reason.trim(), date: books.date }, updatedAt: serverTimestamp() })
   batch.update(doc(firestore, HR_PAY, employeeId), { ibanState: "returned", updatedAt: serverTimestamp() })
   await batch.commit()
@@ -210,7 +218,7 @@ export async function payHeldLine(firestore: Firestore, a: FinanceActor, orgId: 
   const pr = pay.exists() ? (pay.data() as EmployeePay) : null
   if (!pr?.iban || pr.ibanState === "returned" || pr.ibanState === "fixed") throw new HrWriteError("blocked", ["iban_not_ready"])
   const batch = writeBatch(firestore)
-  await book(firestore, a, orgId, postHrPayPayment({ sourceId: `${p.key}:held:${l.no}`, date: books.date, amount: l.net, bankAccount: books.bankAccount, description: `سداد راتب موقوف ${p.key}` }), books, batch)
+  await book(firestore, a, orgId, postHrPayPayment({ sourceId: lineJournalRef(p, l, true), date: books.date, amount: l.net, bankAccount: books.bankAccount, description: `سداد راتب موقوف ${p.key}` }), books, batch)
   batch.update(doc(firestore, HR_PAYROLLS, p.id), { [`paidHeld.${employeeId}`]: { ...stamp(a), date: books.date }, updatedAt: serverTimestamp() })
   await batch.commit()
   const line = (p.kind === "supplementary" ? (p.supplementary ?? []) : p.lines).find((x) => x.employeeId === employeeId)

@@ -12,13 +12,14 @@ import { HR_LOG, type HrActor } from "./employee-writes"
 import { payOn, wageOf } from "./pay"
 import { deductedOn, payrollId, type Payroll } from "./payroll"
 import type { PastViolation, ViolationCode } from "./penalties"
-import { applyQuote, mayObject, violationId, type HrViolation } from "./violations"
 import { todayDay } from "./format"
+import { applyQuote, mayObject, violationId, type HrViolation } from "./violations"
 import { emitHrNotice, hrLinks, type HrNotice } from "./notify"
 import { addDays, STATUTORY } from "./statutory"
 import { assertHr, HrWriteError } from "./write-guard"
 
-/** "today" is Riyadh's day (§17) — never the UTC day, nor the reader's own clock abroad. */
+// The Riyadh day, as firestore.rules count it: the notice is dated today there (the objection's 15 days
+// start from it, on the server too) — never the browser's own zone.
 const localToday = () => todayDay()
 const stamp = (a: HrActor) => ({ by: a.uid, byName: a.name, at: new Date().toISOString() })
 

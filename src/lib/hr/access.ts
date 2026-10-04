@@ -109,6 +109,20 @@ export function seesPay(ctx: HrContext, employeeId?: string | null): boolean {
   return Boolean(employeeId && ctx.employeeId && employeeId === ctx.employeeId)
 }
 
+/** RL-01 — whose records a viewer reads (employees, leaves, injuries, corrections): null = the whole company
+ * (every HR role but the supervisor, and the owner); a supervisor and nothing else reads HIS workplaces only —
+ * firestore.rules refuse a company-wide query from him, so his screens ask workplace by workplace; with no HR
+ * role, nobody's (his own file is read through its link). */
+export function hrPeopleScope(ctx: Pick<HrContext, "owner" | "roles" | "sites">): readonly string[] | null {
+  if (ctx.owner || HR_ROLES.some((r) => r !== "supervisor" && ctx.roles.has(r))) return null
+  return ctx.roles.has("supervisor") ? ctx.sites : []
+}
+
+/** A scope narrowed to one workplace (a record on a site): the whole company stays whole; a supervisor's scope
+ * keeps the site only if it is his. */
+export const hrScopeAt = (scope: readonly string[] | null, siteId: string | null | undefined): readonly string[] | null =>
+  scope === null ? null : siteId && scope.includes(siteId) ? [siteId] : []
+
 // ---------------------------------------------------------------------------
 // Tabs (RL-01, TD-01): Today first; each role sees its own; every staff user
 // with an employee record also has "My file" (ES-00).

@@ -40,7 +40,7 @@ export function HrSiteWorkers({ access, siteId, actor }: { access: HrAccess; sit
   const firestore = useFirestore()
   const { toast } = useToast()
   const today = todayDay()
-  const { employees } = useHrPeople(access.orgId)
+  const { employees } = useHrPeople(access)
   const people = useMemo(() => employees.filter((e) => (e.siteId || UNASSIGNED_SITE) === siteId && e.status !== "left" && e.status !== "expected"), [employees, siteId])
   const site = siteId === UNASSIGNED_SITE ? null : siteId
   const mayInjury = Boolean(site) && access.allowed("injury.record", { site })

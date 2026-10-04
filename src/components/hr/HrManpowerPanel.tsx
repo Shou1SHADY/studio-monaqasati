@@ -61,7 +61,7 @@ export function HrManpowerPanel({ access }: { access: HrAccess }) {
   const { profile } = usePermissions()
   const { toast } = useToast()
   const today = todayDay()
-  const { employees, sites } = useHrPeople(access.orgId)
+  const { employees, sites } = useHrPeople(access)
   const q = useMemoFirebase(() => (firestore && access.orgId ? query(collection(firestore, MANPOWER_REQUESTS), where("organizationId", "==", access.orgId)) : null), [firestore, access.orgId])
   const { data } = useCollection(q)
   const requests = ((data ?? []) as unknown as ManpowerRequest[]).filter((r) => r.state !== "withdrawn").sort((a, b) => (b.requested?.at ?? "").localeCompare(a.requested?.at ?? ""))
