@@ -37,6 +37,7 @@ import { asSupplierSees } from "@/lib/procurement/supplier"
 import { useActiveCompanyName, type OrgMembership } from "@/hooks/useActiveCompanyName"
 import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
 import { REQUIRE_COMPLETE_PROFILE } from "@/lib/app-env"
+import { legacyAwareRole } from "@/hooks/usePermissions"
 import { CompanySwitchOverlay } from "@/components/layout/company-switch-overlay"
 import {
   beginCompanySwitch,
@@ -962,7 +963,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
           <div className="mx-auto max-w-7xl">
             {/* Every portal page except the two dashboard roots gets a way back up. */}
             <PortalBreadcrumbs />
-            {REQUIRE_COMPLETE_PROFILE && profile && profile.role !== "Admin" && (resolvedProfileCompleted !== true || !resolvedLegalDocuments?.cr?.url || !resolvedLegalDocuments?.vat?.url) && pathname !== `/${profile.role.toLowerCase()}/profile` && (
+            {/* Only the owner can complete the company profile — a member is never asked to (DEV-60). */}
+            {REQUIRE_COMPLETE_PROFILE && profile && profile.role !== "Admin" && legacyAwareRole(profile as Record<string, unknown>) === "owner" && (resolvedProfileCompleted !== true || !resolvedLegalDocuments?.cr?.url || !resolvedLegalDocuments?.vat?.url) && pathname !== `/${profile.role.toLowerCase()}/profile` && (
               <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
                 <div className="flex items-center gap-3 text-amber-800">
                   <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />

@@ -3,7 +3,7 @@
 import { doc } from "firebase/firestore"
 import { useFirestore, useDoc, useMemoFirebase } from "@/firebase"
 import { identityDocRef, isSecondaryOrg } from "@/lib/org-identity"
-import { stripIdentityFields } from "@/lib/identity-fields"
+import { stripIdentityFields, withCompanyStanding } from "@/lib/identity-fields"
 
 /**
  * Resolves the signed-in user's profile with identity fields (name,
@@ -36,7 +36,16 @@ export function useResolvedProfile(uid: string | undefined | null) {
   }, [firestore, secondary, organizationId])
   const { data: identity, isLoading: identityLoading } = useDoc(identityRef)
 
-  const isLoading = baseLoading || (secondary && identityLoading)
+  // A team member: the company's standing (verified, completed) is the
+  // company's — a secondary company keeps it on its organizations/{id} doc, a
+  // primary one on the owner's users/{id}. Its legal documents stay the owner's.
+  const member = !!organizationId && !!uid && organizationId !== uid && organizationRole === "member"
+  const companyOrgRef = useMemoFirebase(() => (firestore && member && organizationId ? identityDocRef(firestore, organizationId) : null), [firestore, member, organizationId])
+  const companyUserRef = useMemoFirebase(() => (firestore && member && organizationId ? doc(firestore, "users", organizationId) : null), [firestore, member, organizationId])
+  const { data: companyOrg, isLoading: companyOrgLoading } = useDoc(companyOrgRef)
+  const { data: companyUser, isLoading: companyUserLoading } = useDoc(companyUserRef)
+
+  const isLoading = baseLoading || (secondary && identityLoading) || (member && (companyOrgLoading || companyUserLoading))
   // Withhold `profile` entirely until BOTH docs have settled for a secondary
   // org — returning the base doc alone the instant it loads (before the
   // overlay listener has fired) would hand callers the WRONG company's data
@@ -44,7 +53,13 @@ export function useResolvedProfile(uid: string | undefined | null) {
   // Consumers with a "sync once into local state" effect (`if (userData &&
   // !localState.name) ...`) would otherwise latch onto that transient,
   // unmerged snapshot and never re-sync once the real data arrives.
-  const profile = !base || isLoading ? null : secondary ? { ...stripIdentityFields(base), ...(identity || {}) } : base
+  const profile = !base || isLoading
+    ? null
+    : secondary
+      ? { ...stripIdentityFields(base), ...(identity || {}) }
+      : member
+        ? withCompanyStanding(base, (companyOrg as Record<string, unknown> | null) ?? (companyUser as Record<string, unknown> | null))
+        : base
 
   return {
     profile,

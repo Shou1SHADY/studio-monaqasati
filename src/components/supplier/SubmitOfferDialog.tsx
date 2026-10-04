@@ -36,6 +36,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName, useCompanyNameFor } from "@/hooks/useActiveCompanyName"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
+import { legacyAwareRole } from "@/hooks/usePermissions"
 import { useTranslations, useLocale } from 'next-intl'
 import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage, useCollection } from "@/firebase"
 import { collection, addDoc, doc, setDoc, updateDoc, increment, serverTimestamp } from "firebase/firestore"
@@ -90,6 +91,8 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
 
   const { profile } = useResolvedProfile(isUserLoading ? null : user?.uid)
   const activeCompanyName = useActiveCompanyName(profile, user?.uid)
+  // A member cannot complete or verify the company — only the owner can (DEV-60).
+  const isMember = legacyAwareRole(profile as Record<string, unknown> | null) !== "owner"
 
   const [offerPrice, setOfferPrice] = useState("")
   // When the RFQ asked to be quoted per material (PRD SS4), these rates ARE the
@@ -446,18 +449,20 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
               </div>
               <h2 className="text-xl font-bold text-slate-800">{t("offer_profile_incomplete_title")}</h2>
               <p className="text-slate-600 text-sm leading-relaxed">
-                {t("offer_profile_incomplete_desc")}
+                {isMember ? t("company_incomplete_member") : t("offer_profile_incomplete_desc")}
               </p>
               <div className="pt-4 flex flex-col gap-2">
-                <Button
-                  onClick={() => {
-                    onClose();
-                    router.push("/supplier/profile");
-                  }}
-                  className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg"
-                >
-                  {t("offer_complete_profile")}
-                </Button>
+                {!isMember && (
+                  <Button
+                    onClick={() => {
+                      onClose();
+                      router.push("/supplier/profile");
+                    }}
+                    className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg"
+                  >
+                    {t("offer_complete_profile")}
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={onClose}
@@ -474,18 +479,20 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
               </div>
               <h2 className="text-xl font-bold text-slate-800">{t("offer_verification_required_title")}</h2>
               <p className="text-slate-600 text-sm leading-relaxed">
-                {t("offer_verification_required_desc")}
+                {isMember ? t("company_unverified_member") : t("offer_verification_required_desc")}
               </p>
               <div className="pt-4 flex flex-col gap-2">
-                <Button
-                  onClick={() => {
-                    onClose();
-                    router.push("/supplier/profile");
-                  }}
-                  className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg"
-                >
-                  {t("offer_go_to_profile")}
-                </Button>
+                {!isMember && (
+                  <Button
+                    onClick={() => {
+                      onClose();
+                      router.push("/supplier/profile");
+                    }}
+                    className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg"
+                  >
+                    {t("offer_go_to_profile")}
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={onClose}

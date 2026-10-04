@@ -38,6 +38,7 @@ import { linkNeed } from "@/lib/procurement/needs-writes"
 import { parseNeedSource } from "@/lib/procurement/needs"
 import { useFirestore, useUser, useStorage, useMemoFirebase, useCollection, useDoc } from "@/firebase"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
+import { legacyAwareRole } from "@/hooks/usePermissions"
 import { useProcActor } from "@/hooks/useProcActor"
 import { resolvePolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_SETTINGS, type ProcurementPolicies } from "@/lib/procurement/types"
@@ -443,6 +444,9 @@ export function RfqForm({ projectId }: { projectId?: string }) {
     )
   }
 
+  // A member cannot complete or verify the company — only the owner can (DEV-60).
+  const isMember = legacyAwareRole(profile as Record<string, unknown> | null) !== "owner"
+
   if (REQUIRE_COMPLETE_PROFILE && profile && !profile.profileCompleted) {
     return (
       <PortalLayout>
@@ -452,16 +456,18 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           </div>
           <h2 className="text-2xl font-black text-slate-800 font-headline">{t("newrfq_profile_incomplete")}</h2>
           <p className="text-slate-600 text-sm leading-relaxed">
-            {t("newrfq_profile_incomplete_desc")}
+            {isMember ? tShared("company_incomplete_member") : t("newrfq_profile_incomplete_desc")}
           </p>
-          <div className="pt-4">
-            <Button
-              onClick={() => router.push("/contractor/profile")}
-              className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl"
-            >
-              {t("newrfq_go_to_profile")}
-            </Button>
-          </div>
+          {!isMember && (
+            <div className="pt-4">
+              <Button
+                onClick={() => router.push("/contractor/profile")}
+                className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl"
+              >
+                {t("newrfq_go_to_profile")}
+              </Button>
+            </div>
+          )}
         </div>
       </PortalLayout>
     )
@@ -476,16 +482,18 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           </div>
           <h2 className="text-2xl font-black text-slate-800 font-headline">{t("newrfq_verification_required")}</h2>
           <p className="text-slate-600 text-sm leading-relaxed">
-            {t("newrfq_verification_required_desc")}
+            {isMember ? tShared("company_unverified_member") : t("newrfq_verification_required_desc")}
           </p>
-          <div className="pt-4">
-            <Button
-              onClick={() => router.push("/contractor/profile")}
-              className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl"
-            >
-              {t("newrfq_go_to_profile_verify")}
-            </Button>
-          </div>
+          {!isMember && (
+            <div className="pt-4">
+              <Button
+                onClick={() => router.push("/contractor/profile")}
+                className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl"
+              >
+                {t("newrfq_go_to_profile_verify")}
+              </Button>
+            </div>
+          )}
         </div>
       </PortalLayout>
     )

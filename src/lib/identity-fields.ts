@@ -26,3 +26,22 @@ export function stripIdentityFields<T extends Record<string, unknown>>(obj: T): 
   for (const key of IDENTITY_FIELD_KEYS) delete clone[key]
   return clone as Partial<T>
 }
+
+// A team member's own users/{uid} doc is born with isVerified/profileCompleted
+// false and never changes — the company is what gets verified and completed.
+// These two are the company's STANDING (they gate creating an RFQ and sending an
+// offer); a member reads them from his company's doc, while his own name and
+// phone stay his. Never the legal documents themselves — they are the owner's
+// alone (DEV-60, companyIdentity), and a member's copy is dropped.
+export const COMPANY_STANDING_KEYS = ["isVerified", "profileCompleted"] as const
+const OWNER_ONLY_KEYS = ["legalDocuments"] as const
+
+export function withCompanyStanding<T extends Record<string, unknown>>(member: T, company: Record<string, unknown> | null | undefined): T {
+  const clone: Record<string, unknown> = { ...member }
+  for (const key of COMPANY_STANDING_KEYS) {
+    if (company && key in company) clone[key] = company[key]
+    else delete clone[key]
+  }
+  for (const key of OWNER_ONLY_KEYS) delete clone[key]
+  return clone as T
+}
