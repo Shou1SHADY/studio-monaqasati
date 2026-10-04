@@ -198,6 +198,22 @@ describe("writes", () => {
     expect(reqState(after)).toBe("shut")
   })
 
+  it("approval tells Procurement's buyers and the owner the request is theirs — not the approver, not the site", async () => {
+    seed("teamGroups/buyers", { organizationId: "org", permissions: ["rfq.manage"] })
+    seed("teamGroups/site", { organizationId: "org", permissions: ["pm.site"] })
+    seed("users/buyer1", { organizationId: "org", organizationRole: "member", defaultGroupId: "buyers" })
+    seed("users/se1", { organizationId: "org", organizationRole: "member", defaultGroupId: "site" })
+    seed("users/pm1", { organizationId: "org", organizationRole: "member", defaultGroupId: "buyers" })
+    await createMaterialRequest(db, site, "p1", siteActor, { title: "", needBy: null, notes: null, lines: [{ itemId: "i1", name: "Cement", unit: "bag", qty: 100 }] })
+    expect(listCollection("users/buyer1/notifications")).toHaveLength(0)
+    await approveMaterialRequest(db, pm, "p1", pmActor, "01")
+    const [n] = listCollection<{ type: string; link: string; poId: string | null; i18n: { params: Record<string, unknown> } }>("users/buyer1/notifications")
+    expect(n).toMatchObject({ type: "need_approved", link: "/contractor/rfqs/requests", poId: null, i18n: { params: { no: "01", project: "Villas", count: 1, actor: "PM" } } })
+    expect(listCollection("users/org/notifications")).toHaveLength(1)
+    expect(listCollection("users/pm1/notifications")).toHaveLength(0)
+    expect(listCollection("users/se1/notifications")).toHaveLength(0)
+  })
+
   it("a line whose sample is with the consultant reaches Procurement as «عيّنة قيد الاعتماد» until the consultant approves", async () => {
     seed(`${P}/boqItems/i1`, { itemNo: "04-02-01", descriptionAr: "لياسة", unit: "m2", quantity: 10000, executedQuantity: 2000, pmSample: true, pmSub: "sub" })
     seed(`${P}/pmSubmittals/01`, { seq: 1, itemId: "i1", status: "sub", day: "2026-09-01", supplier: "Al Jazira", what: "Cement 42.5", by: "se1" })

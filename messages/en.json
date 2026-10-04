@@ -8319,6 +8319,8 @@
       "pn_receipt_manual": "{actor} recorded manual receipt {receipt} from {supplier}{order}. Review it at matching and invoicing.",
       "pn_receipt_expensed_title": "A no-PO receipt became a cash expense — {receipt}",
       "pn_receipt_expensed": "{actor} ruled receipt {receipt} from {supplier} a cash expense with no PO. Book the invoice as an expense.",
+      "pn_need_approved_title": "Approved material request waiting for Procurement — MR {no}",
+      "pn_need_approved": "{actor} approved material request MR {no} for {project} (lines: {count}). It is now in incoming requests — check the store, then start an RFQ or an order.",
       "pn_po_budget_accepted": "accepted the budget overrun — the order goes on to its approver",
       "pn_po_budget_renegotiate": "asked to renegotiate the price",
       "pn_po_hold_po_price": "Rejected — the supplier honours the PO price",

@@ -8,6 +8,7 @@
 // `purchaseRequests` so Procurement's needs desk keeps reading them; their
 // `items` are rewritten from the lines on every decision.
 
+import { emitProcEvent, procLinks } from "../procurement/events"
 import { requestPmStopInTx } from "../procurement/po-extra-writes"
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, PmAccessError, pmCan, type PmContext } from "./access"
@@ -245,12 +246,16 @@ export async function createMaterialRequest(firestore: Firestore, ctx: PmContext
   return seq
 }
 
+/** What approval hands Procurement, for its notice. */
+type NeedHandoff = { organizationId: string; project: string; no: string; count: number }
+
 /** Technical approval by the project manager: the full quantity goes to
  * Procurement (who asks the store first); a change line waits for its decision
  * and a rejected change is cancelled. A consultant-rejected or missing sample
  * blocks it — Procurement will not buy what the consultant has not approved. */
 export async function approveMaterialRequest(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, requestId: string): Promise<"approved" | "rejected"> {
   let outcome: "approved" | "rejected" = "approved"
+  let handoff: NeedHandoff | null = null
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
@@ -261,10 +266,12 @@ export async function approveMaterialRequest(firestore: Firestore, ctx: PmContex
     const day = todayDay()
     const lines = request.lines.map((l): ReqLine => (l.chg?.st === "no" ? { ...l, cl: { t: "cancel", on: day, by: actor.uid, byName: actor.name, why: "chg" } } : l))
     outcome = lines.every((l) => l.cl) ? "rejected" : "approved"
+    const toBuy = procurementItems({ lines }, pendingSamples(items))
+    handoff = { organizationId: project.organizationId ?? "", project: project.name ?? "", no: reqNo(request.seq ?? 0), count: toBuy.length }
     tx.update(ref, {
       pm: true,
       lines,
-      items: procurementItems({ lines }, pendingSamples(items)),
+      items: toBuy,
       status: outcome,
       approvedOn: outcome === "approved" ? day : null,
       approvedBy: outcome === "approved" ? actor.uid : null,
@@ -275,6 +282,19 @@ export async function approveMaterialRequest(firestore: Firestore, ctx: PmContex
       updatedAt: serverTimestamp(),
     })
   })
+  // The request is Procurement's now — tell its buyers (best-effort, after the
+  // commit: a lost notice never undoes the approval). Without it the request
+  // only sat on the needs desk until someone happened to open it.
+  const h = handoff as NeedHandoff | null
+  if (outcome === "approved" && h?.organizationId && h.count > 0) {
+    await emitProcEvent(firestore, { uid: actor.uid, name: actor.name ?? "" }, {
+      kind: "need_approved",
+      organizationId: h.organizationId,
+      to: [{ permission: "rfq.manage" }, { permission: "rfq.create" }],
+      params: { no: h.no, project: h.project, count: h.count },
+      link: procLinks.needs(),
+    })
+  }
   return outcome
 }
 
