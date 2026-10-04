@@ -61,6 +61,11 @@ export const HR_GUARD = {
   "iban.approve": { roles: ["manager"] },
   "leave.endorse": { roles: ["supervisor"], siteScoped: ["supervisor"] },
   "request.decide": { roles: ["manager"] },
+  // Letters (EM-08, WF-24): the HR manager asks for an employee (his own come
+  // from My file); the HR manager, government relations (embassy letters) and
+  // management (the HR manager's own) sign — which letter is `maySignLetter`'s.
+  "letter.file": { roles: ["manager"] },
+  "letter.sign": { roles: ["manager", "gov", "management"] },
   "pay.change": { roles: ["manager"] },
   "violation.record": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
   "injury.record": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
