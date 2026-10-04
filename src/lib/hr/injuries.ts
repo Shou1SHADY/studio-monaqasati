@@ -9,6 +9,8 @@ import { HR_EMPLOYEES, HR_INJURIES } from "./collections"
 import { injuryReportDue } from "./documents"
 import type { HrEmployee } from "./employee"
 import { HR_LOG, type HrActor } from "./employee-writes"
+import { todayDay } from "./format"
+import { emitHrNotice, hrLinks } from "./notify"
 import { assertHr, HrWriteError } from "./write-guard"
 
 export interface HrInjury {
@@ -33,10 +35,11 @@ export const injuryState = (i: Pick<HrInjury, "due" | "report">, today: string):
 const stamp = (a: HrActor) => ({ by: a.uid, byName: a.name, at: new Date().toISOString() })
 
 export async function recordInjury(firestore: Firestore, ctx: HrContext, orgId: string, actor: HrActor, input: { employeeId: string; on: string; description: string }, opts: { today?: string } = {}): Promise<string> {
-  const today = opts.today ?? new Date().toISOString().slice(0, 10)
+  const today = opts.today ?? todayDay()
   if (!input.on || input.on > today) throw new HrWriteError("blocked", ["future"])
   if (!input.description.trim()) throw new HrWriteError("blocked", ["no_description"])
   const ref = doc(collection(firestore, HR_INJURIES))
+  let name: string | null = null
   await runTransaction(firestore, async (tx) => {
     const es = await tx.get(doc(firestore, HR_EMPLOYEES, input.employeeId))
     if (!es.exists()) throw new HrWriteError("missing")
@@ -56,7 +59,19 @@ export async function recordInjury(firestore: Firestore, ctx: HrContext, orgId: 
       updatedAt: serverTimestamp(),
     })
     tx.set(doc(collection(firestore, HR_EMPLOYEES, emp.id, HR_LOG)), { organizationId: orgId, at: new Date().toISOString(), by: actor.uid, byName: actor.name, kind: "injury_recorded", params: { on: input.on }, source: "hr" })
+    name = emp.names?.ar ?? ""
   })
+  // WF-15 — government relations reports it to GOSI within three working days.
+  if (name != null)
+    await emitHrNotice(firestore, actor, {
+      kind: "hr_injury_recorded",
+      organizationId: orgId,
+      to: [{ hr: "gov" }],
+      params: { name, on: input.on, due: injuryReportDue(input.on) },
+      link: hrLinks.person(input.employeeId),
+      once: ref.id,
+      employeeId: input.employeeId,
+    })
   return ref.id
 }
 

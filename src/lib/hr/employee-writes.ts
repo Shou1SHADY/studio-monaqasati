@@ -3,12 +3,12 @@
 // appends an entry to the employee's log, which nobody can edit or delete
 // (EM-06). Pay is written to `employeePay` only by those who may see it.
 
-import { collection, doc, runTransaction, serverTimestamp, type DocumentData, type Firestore, type Transaction, type UpdateData } from "firebase/firestore"
+import { collection, doc, getDocs, query, runTransaction, serverTimestamp, where, type DocumentData, type Firestore, type Transaction, type UpdateData } from "firebase/firestore"
 import { hrAllowed, type HrContext } from "./access"
 import { HR_EMPLOYEES, HR_EVENTS, HR_PAY, HR_PAYROLLS } from "./collections"
 import { attachmentBlocks, HR_FILES, type AttachmentKind, type EmployeeFile } from "./attachments"
 import { HR_SETTINGS } from "./settings"
-import type { DocType } from "./documents"
+import { iqamaDueBy, type DocType } from "./documents"
 import {
   assignBlocks,
   newEmployeeBlocks,
@@ -29,6 +29,7 @@ import { tradeOf } from "./trades"
 import { UNASSIGNED_SITE } from "./sites"
 import { startExit } from "./exit-writes"
 import { todayDay } from "./format"
+import { emitHrNotice, hrLinks } from "./notify"
 import { assertHr, HrWriteError } from "./write-guard"
 
 /** `hrCounters/{orgId}` — the last permanent employee number (never reused). */
@@ -95,6 +96,7 @@ export async function createEmployee(
   // Government relations records a joiner without pay; the HR manager completes it.
   const withPay = hrAllowed(ctx, "pay.view") && input.basic != null && input.basic > 0
   const ref = doc(collection(firestore, HR_EMPLOYEES))
+  if (input.userId && (await otherRecordsOf(firestore, orgId, input.userId, ref.id)).length) throw new HrWriteError("blocked", ["user_linked"])
   let no = 0
   await runTransaction(firestore, async (tx) => {
     const cRef = doc(firestore, HR_COUNTERS, orgId)
@@ -154,7 +156,25 @@ export async function createEmployee(
     }
     log(tx, firestore, ref.id, orgId, actor, input.since ? "imported" : "created", { no, site: emp.siteId, trade: emp.trade })
   })
+  // DC-05 — a visa arrival's iqama is due 90 days after he joins: government relations hears it now.
+  if (input.source === "visa" && input.nationality !== "sa" && !input.docs?.iqama && input.join)
+    await emitHrNotice(firestore, actor, {
+      kind: "hr_iqama_clock",
+      organizationId: orgId,
+      to: [{ hr: "gov" }],
+      params: { name: input.nameAr.trim(), join: input.join, date: iqamaDueBy(input.join) },
+      link: hrLinks.person(ref.id),
+      once: ref.id,
+      employeeId: ref.id,
+    })
   return { id: ref.id, no }
+}
+
+/** The other employee records of the company that name this platform user. A transaction cannot query, so it is
+ * read beside it — as the open assignment corrections are; two HR managers racing would both see none. */
+async function otherRecordsOf(firestore: Firestore, orgId: string, userId: string, exceptId: string): Promise<string[]> {
+  const snap = await getDocs(query(collection(firestore, HR_EMPLOYEES), where("organizationId", "==", orgId), where("userId", "==", userId)))
+  return snap.docs.map((d) => d.id).filter((id) => id !== exceptId)
 }
 
 // ---------------------------------------------------------------------------
@@ -319,6 +339,9 @@ export async function decideProbation(
   opts: { today?: string } = {}
 ): Promise<void> {
   assertHr(ctx, "request.decide")
+  // RL-02 — nobody decides his own probation; the owner, who answers to nobody, may (flagged on the record).
+  if (ctx.employeeId === id && !ctx.owner) throw new HrWriteError("own_request")
+  const ownFlagged = ctx.employeeId === id
   const day = opts.today ?? today()
   if (decision === "end") {
     // "End" IS an exit (WF-11 → WF-16): reason "probation" — no gratuity, no notice — and
@@ -341,8 +364,8 @@ export async function decideProbation(
       decision === "extend"
         ? { ...emp.probation, end: ext.to as string, consentOn: ext.consentOn ?? null }
         : { ...emp.probation, decision: "confirmed" as const, decidedOn: day }
-    tx.update(ref, { probation, updatedAt: serverTimestamp() })
-    log(tx, firestore, id, emp.organizationId, actor, `probation_${decision}`, { to: ext.to ?? null, consent: ext.consentOn ?? null })
+    tx.update(ref, { probation: ownFlagged ? { ...probation, ownFlagged: true } : probation, updatedAt: serverTimestamp() })
+    log(tx, firestore, id, emp.organizationId, actor, `probation_${decision}`, { to: ext.to ?? null, consent: ext.consentOn ?? null, ...(ownFlagged ? { ownFlagged: 1 } : {}) })
   })
 }
 
@@ -487,6 +510,9 @@ export async function linkUser(firestore: Firestore, ctx: HrContext, id: string,
     // nobody links himself onto a record or off one (RL-02; the owner, who has
     // nobody above him, excepted). The rules refuse it too.
     if (!ctx.owner && (userId === ctx.uid || emp.userId === ctx.uid)) throw new HrWriteError("own_request")
+    // One user, one record (EM-01): "My file" and the pay the rules open to him follow the ONE record naming
+    // him — a second link would make which one he reads a matter of chance.
+    if (userId && (await otherRecordsOf(firestore, emp.organizationId, userId, id)).length) throw new HrWriteError("blocked", ["user_linked"])
     tx.update(ref, { userId, updatedAt: serverTimestamp() })
     log(tx, firestore, id, emp.organizationId, actor, "user_linked", { user: userId })
   })
@@ -503,22 +529,35 @@ export async function fixIban(firestore: Firestore, ctx: HrContext, id: string, 
   assertHr(ctx, "iban.fix")
   const clean = iban.replace(/\s+/g, "").toUpperCase()
   if (!IBAN.test(clean)) throw new HrWriteError("blocked", ["bad_iban"])
+  let fixed: HrEmployee | null = null
   await runTransaction(firestore, async (tx) => {
     const { emp } = await readEmployee(tx, firestore, id)
     tx.update(doc(firestore, HR_PAY, id), { iban: clean, ibanState: "fixed", ibanFixedBy: actor.uid, updatedAt: serverTimestamp() })
     log(tx, firestore, id, emp.organizationId, actor, "iban_fixed", {})
+    fixed = emp
   })
+  const e = fixed as HrEmployee | null
+  if (e) await emitHrNotice(firestore, actor, { kind: "hr_iban_to_approve", organizationId: e.organizationId, to: [{ hr: "manager" }], except: [e.userId], params: { name: e.names?.ar ?? "" }, link: hrLinks.person(id), employeeId: id })
 }
 
 export async function approveIban(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor): Promise<void> {
   assertHr(ctx, "iban.approve")
+  // RL-02 — never the bank account of his own record; the owner excepted, flagged in the log.
+  if (ctx.employeeId === id && !ctx.owner) throw new HrWriteError("own_request")
+  let approved: HrEmployee | null = null
   await runTransaction(firestore, async (tx) => {
     const { emp } = await readEmployee(tx, firestore, id)
+    if (emp.userId && emp.userId === ctx.uid && !ctx.owner) throw new HrWriteError("own_request")
     const p = await tx.get(doc(firestore, HR_PAY, id))
     const pay = p.exists() ? (p.data() as EmployeePay & { ibanFixedBy?: string }) : null
     if (pay?.ibanState !== "fixed") throw new HrWriteError("blocked", ["stale"])
     if (pay.ibanFixedBy === actor.uid && !ctx.owner) throw new HrWriteError("own_request")
     tx.update(doc(firestore, HR_PAY, id), { ibanState: "ok", updatedAt: serverTimestamp() })
-    log(tx, firestore, id, emp.organizationId, actor, "iban_approved", {})
+    const own = ctx.employeeId === id || emp.userId === ctx.uid
+    log(tx, firestore, id, emp.organizationId, actor, "iban_approved", own ? { ownFlagged: 1 } : {})
+    approved = emp
   })
+  // Finance pays the held line now (PY-03).
+  const e = approved as HrEmployee | null
+  if (e) await emitHrNotice(firestore, actor, { kind: "hr_iban_approved", organizationId: e.organizationId, to: [{ finance: true }], except: [e.userId], params: { name: e.names?.ar ?? "" }, link: hrLinks.financeDesk(), employeeId: id })
 }

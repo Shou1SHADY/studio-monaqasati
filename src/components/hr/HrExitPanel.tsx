@@ -40,6 +40,7 @@ import { addDays } from "@/lib/hr/statutory"
 import type { HrViolation } from "@/lib/hr/violations"
 import type { HrSite } from "@/lib/hr/sites"
 import { HrWriteError } from "@/lib/hr/write-guard"
+import { useLetterHead } from "./HrLetterDialogs"
 
 function useRun() {
   const t = useTranslations("Portal.HR")
@@ -169,6 +170,8 @@ export function HrExitPanel({ access, actor, emp, pay, sites }: { access: HrAcce
   const prevKey = lastMonthKey ? addDays(`${lastMonthKey}-01`, -1).slice(0, 7) : ""
   const prevRef = useMemoFirebase(() => (firestore && access.orgId && quoting && prevKey ? doc(firestore, HR_PAYROLLS, payrollId(access.orgId, prevKey)) : null), [firestore, access.orgId, quoting, prevKey])
   const { data: prevData } = useDoc(prevRef)
+  // EX-05 — the service certificate is issued with the settlement, on the letterhead the letters use.
+  const head = useLetterHead(access)
   if (!x) return null
 
   const cleared = x.custody?.state === "cleared"
@@ -289,7 +292,7 @@ export function HrExitPanel({ access, actor, emp, pay, sites }: { access: HrAcce
             <div className="flex justify-end">
               <Button
                 disabled={busy || !cleared || !firestore}
-                onClick={() => void run(() => approveSettlement(firestore!, access.ctx, access.orgId!, actor, x.id ?? id!, { ticket: Number(ticket) || 0, ...facts }), "exit.approved")}
+                onClick={() => void run(() => approveSettlement(firestore!, access.ctx, access.orgId!, actor, x.id ?? id!, { ticket: Number(ticket) || 0, head, ...facts }), "exit.approved")}
               >
                 {t("exit.approve")}
               </Button>

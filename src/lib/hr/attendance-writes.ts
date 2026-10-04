@@ -25,7 +25,8 @@ import type { HrActor } from "./employee-writes"
 import type { Holiday } from "./leave"
 import type { SiteType } from "./sites"
 import { violationId } from "./violations"
-import { violationRecord } from "./violation-writes"
+import { violationRecord, violationRecordedNotice } from "./violation-writes"
+import { emitHrNotices } from "./notify"
 import { todayDay } from "./format"
 import { assertHr, HrWriteError } from "./write-guard"
 
@@ -57,7 +58,9 @@ export async function recordDay(
   const month = monthOf(day)
   const ex = compactExceptions(input.ex)
   const ref = doc(firestore, HR_ATTENDANCE, attendanceId(orgId, site.id, month))
+  const recorded: Array<Parameters<typeof violationRecordedNotice>[0]> = []
   await runTransaction(firestore, async (tx) => {
+    recorded.length = 0
     const snap = await tx.get(ref)
     const wm = snap.exists() ? (snap.data() as WorkplaceMonth) : null
     const blocks = sheetBlocks({ day, today, closed: Boolean(wm?.closed), listed: input.listed, ex, mayRecordViolation: hrAllowed(ctx, "violation.record", { site: site.id }) })
@@ -81,8 +84,13 @@ export async function recordDay(
     }
     if (!wm) tx.set(ref, { ...base(orgId, site, month), days: { [day]: sheet }, updatedAt: serverTimestamp() })
     else tx.update(ref, { [`days.${day}`]: sheet, updatedAt: serverTimestamp() })
-    for (const v of newViolations) tx.set(v.ref, { ...violationRecord(orgId, v.emp, v.code, day, actor, "sheet"), updatedAt: serverTimestamp() })
+    for (const v of newViolations) {
+      tx.set(v.ref, { ...violationRecord(orgId, v.emp, v.code, day, actor, "sheet"), updatedAt: serverTimestamp() })
+      recorded.push({ id: v.ref.id, organizationId: orgId, employeeId: v.emp.id, employeeUserId: v.emp.userId ?? null, employeeName: v.emp.names?.ar ?? "", on: day })
+    }
   })
+  // The sheet's violations reach the HR manager and the employee as a hand-recorded one does (WF-09).
+  await emitHrNotices(firestore, actor, recorded.map(violationRecordedNotice))
 }
 
 /** Days nobody recorded, filled by a named declaration kept on record (AT-04) — supervisor or HR manager only. */

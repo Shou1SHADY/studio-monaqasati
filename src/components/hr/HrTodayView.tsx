@@ -9,7 +9,7 @@
 // the renewal queue by person. For a company moving in, the ten-step build
 // path and "what turned out missing" — computed from the record, never ticked.
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Ambulance, CalendarClock, CheckCircle2, Circle, CircleAlert, ClipboardCheck, FileWarning, Hourglass, Inbox, Landmark, Lock, MapPin, OctagonAlert, Route, SearchCheck, UserCheck, UsersRound, Wallet, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -17,7 +17,7 @@ import { DecisionRow } from "@/components/module-ui/DecisionRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
-import { useUser } from "@/firebase"
+import { useFirestore, useUser } from "@/firebase"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { useHrRequests } from "@/hooks/useHrRequests"
 import { useHrToday } from "@/hooks/useHrToday"
@@ -38,6 +38,7 @@ import { HrRequestList } from "./HrRequestList"
 import { HrLetterList } from "./HrLetters"
 import { useHrLetters } from "@/hooks/useHrLetters"
 import { lettersToSign } from "@/lib/hr/letters"
+import { emitHrNotices, iqamaOnSiteNotices } from "@/lib/hr/notify"
 import { HrViolationList, useHrViolations, violationWaits } from "./HrViolationList"
 import { hrHref, type HrPortal } from "./HrShell"
 
@@ -63,6 +64,24 @@ export function HrTodayView({ access, portal }: { access: HrAccess; portal: HrPo
   const lWaiting = useMemo(() => (access.allowed("letter.sign") ? lettersToSign(access.ctx, letters) : []), [access, letters])
 
   const world = useHrToday(access, today)
+  // PRD "Notifications" — an expired iqama on a site reaches government relations. Nothing runs on a clock here,
+  // so the HR manager's Today sends it, once a day per browser; each lapse is one notification (a fixed id).
+  const firestore = useFirestore()
+  const sweeps = access.allowed("employee.assign")
+  const orgId = access.orgId
+  useEffect(() => {
+    if (!firestore || !orgId || !sweeps || !actor.uid || world.employees.length === 0) return
+    const notices = iqamaOnSiteNotices(orgId, world.employees, world.sites, today)
+    if (!notices.length) return
+    const key = `hr-iqama-sweep:${orgId}:${today}`
+    try {
+      if (window.localStorage.getItem(key)) return
+      window.localStorage.setItem(key, "1")
+    } catch {
+      // Storage blocked: the fixed ids still keep each lapse to one notification.
+    }
+    void emitHrNotices(firestore, { uid: actor.uid, name: actor.name }, notices)
+  }, [firestore, orgId, sweeps, actor.uid, actor.name, world.employees, world.sites, today])
   const items = useMemo(
     () => todayItems({ ctx: access.ctx, today, renewWindowDays: access.settings.policies.renewWindowDays, ...world }),
     [access.ctx, today, access.settings.policies.renewWindowDays, world]

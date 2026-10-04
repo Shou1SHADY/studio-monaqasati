@@ -5,9 +5,9 @@
 // the employee himself or the HR manager when asking, the HR manager again
 // when signing (government relations signs an embassy letter without them).
 // The employee's log names what happened, never an amount (RL-03). Telling the
-// employee is best-effort after the commit.
+// employee (and the signer of a new request) is best-effort after the commit.
 
-import { collection, doc, runTransaction, serverTimestamp, setDoc, type Firestore, type Transaction } from "firebase/firestore"
+import { collection, doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { hrAllowed, type HrContext } from "./access"
 import { HR_EMPLOYEES, HR_LETTER_PAY, HR_LETTERS, HR_PAY, HR_REQUESTS } from "./collections"
 import type { EmployeePay, HrEmployee } from "./employee"
@@ -31,12 +31,10 @@ import {
 } from "./letters"
 import type { HrRequest, Stamp } from "./requests"
 import { drawYearlyDocNumber } from "../sales-numbering"
+import type { Translator } from "../mfg-events"
+import { todayDay } from "./format"
+import { emitHrNotice, hrLinks, type HrRecipient } from "./notify"
 import { assertHr, HrWriteError } from "./write-guard"
-
-const localToday = () => {
-  const now = new Date()
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
-}
 const stamp = (actor: HrActor, note?: string | null): Stamp => ({ by: actor.uid, byName: actor.name, at: new Date().toISOString(), note: note?.trim() || null })
 
 function log(tx: Transaction, firestore: Firestore, emp: Pick<HrEmployee, "id" | "organizationId">, actor: HrActor, kind: string, params: Record<string, string | number | null>) {
@@ -76,6 +74,7 @@ export async function fileLetter(firestore: Firestore, ctx: HrContext, orgId: st
   if (!parsed.success) throw new HrWriteError("blocked", ["bad_input"])
   const d = parsed.data
   const ref = doc(collection(firestore, HR_LETTERS))
+  let filed: Omit<HrLetter, "id"> | null = null
   await runTransaction(firestore, async (tx) => {
     const emp = await readEmp(tx, firestore, input.employeeId)
     if (emp.organizationId !== orgId) throw new HrWriteError("missing")
@@ -105,37 +104,41 @@ export async function fileLetter(firestore: Firestore, ctx: HrContext, orgId: st
     tx.set(ref, { ...letter, updatedAt: serverTimestamp() })
     if (pay) tx.set(doc(firestore, HR_LETTER_PAY, ref.id), { ...payCopy(orgId, emp, pay), updatedAt: serverTimestamp() })
     log(tx, firestore, emp, actor, "letter_filed", { letter: d.kind, addressee: d.addressee })
+    filed = letter
   })
+  if (filed) await tellSigner(firestore, actor, { id: ref.id, ...(filed as Omit<HrLetter, "id">) })
   return { id: ref.id }
 }
 
-/** What the employee is told — the sender's words for push; the keys render in each reader's language. */
-export interface LetterNotice {
-  title: string
-  message: string
+const SIGNER: Record<HrLetter["signerLevel"], HrRecipient> = { gov: { hr: "gov" }, manager: { hr: "manager" }, management: { hr: "management" } }
+
+/** WF-24 step 2 — the signer hears of a new request; never the employee it is about. */
+async function tellSigner(firestore: Firestore, actor: HrActor, letter: HrLetter) {
+  await emitHrNotice(firestore, actor, {
+    kind: "hr_letter_filed",
+    organizationId: letter.organizationId,
+    to: [SIGNER[letter.signerLevel]],
+    except: [letter.employeeUserId],
+    params: { name: letter.employeeName, letter: `@hr_letter_kind.${letter.kind}` },
+    link: hrLinks.today(),
+    once: letter.id,
+    employeeId: letter.employeeId,
+  })
 }
 
-async function tellEmployee(firestore: Firestore, letter: HrLetter, type: "hr_letter_issued" | "hr_letter_declined", params: Record<string, string>, notice?: LetterNotice) {
-  if (!letter.employeeUserId || !notice) return
-  try {
-    const key = type === "hr_letter_issued" ? "issued" : "declined"
-    await setDoc(doc(collection(firestore, "users", letter.employeeUserId, "notifications")), {
-      type,
-      organizationId: letter.organizationId,
-      userId: letter.employeeUserId,
-      read: false,
-      link: "hr/me",
-      letterId: letter.id,
-      title: notice.title,
-      message: notice.message,
-      // Keys of Portal.Shared, where the bell renders them.
-      i18n: { title: `pn_hr_letter_${key}_title`, message: `pn_hr_letter_${key}`, params: { ...params, letter: `@hr_letter_kind.${letter.kind}` } },
-      createdAt: new Date().toISOString(),
-    })
-  } catch (err) {
-    // The letter is signed; the notice is a courtesy.
-    console.error(err)
-  }
+/** The employee hears of the decision (WF-24 step 4), in keys each reader renders in his language. */
+async function tellEmployee(firestore: Firestore, actor: HrActor, letter: HrLetter, kind: "hr_letter_issued" | "hr_letter_declined", params: Record<string, string>, copy?: Translator | null) {
+  if (!letter.employeeUserId) return
+  await emitHrNotice(firestore, actor, {
+    kind,
+    organizationId: letter.organizationId,
+    to: [{ users: [letter.employeeUserId] }],
+    params: { ...params, letter: `@hr_letter_kind.${letter.kind}` },
+    link: hrLinks.me(),
+    once: letter.id,
+    employeeId: letter.employeeId,
+    copy,
+  })
 }
 
 export interface IssueLetterInput {
@@ -154,10 +157,10 @@ export async function issueLetter(
   id: string,
   actor: HrActor,
   input: IssueLetterInput,
-  opts: { today?: string; notice?: (serial: string) => LetterNotice } = {}
+  opts: { today?: string; copy?: Translator | null } = {}
 ): Promise<{ serial: string }> {
   assertHr(ctx, "letter.sign")
-  const today = opts.today ?? localToday()
+  const today = opts.today ?? todayDay()
   let serial = ""
   let issued: HrLetter | null = null
   await runTransaction(firestore, async (tx) => {
@@ -192,12 +195,12 @@ export async function issueLetter(
     log(tx, firestore, emp, actor, "letter_issued", { letter: letter.kind, addressee: letter.addressee, serial })
     issued = { ...letter, ...patch }
   })
-  if (issued) await tellEmployee(firestore, issued, "hr_letter_issued", { serial }, opts.notice?.(serial))
+  if (issued) await tellEmployee(firestore, actor, issued, "hr_letter_issued", { serial }, opts.copy)
   return { serial }
 }
 
 /** Decline with a reason the employee sees on the same line (WF-24 step 3). */
-export async function declineLetter(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, reason: string, opts: { notice?: LetterNotice } = {}): Promise<void> {
+export async function declineLetter(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, reason: string, opts: { copy?: Translator | null } = {}): Promise<void> {
   assertHr(ctx, "letter.sign")
   let declined: HrLetter | null = null
   await runTransaction(firestore, async (tx) => {
@@ -212,5 +215,5 @@ export async function declineLetter(firestore: Firestore, ctx: HrContext, id: st
     log(tx, firestore, emp, actor, "letter_declined", { letter: letter.kind, reason: reason.trim() })
     declined = { ...letter, state: "declined", decision }
   })
-  if (declined) await tellEmployee(firestore, declined, "hr_letter_declined", { reason: reason.trim() }, opts.notice)
+  if (declined) await tellEmployee(firestore, actor, declined, "hr_letter_declined", { reason: reason.trim() }, opts.copy)
 }

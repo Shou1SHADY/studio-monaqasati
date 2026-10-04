@@ -1,14 +1,22 @@
 // HR 1.0 — workplace writes (WF-01 step 3). The HR manager keeps the list of
 // places; a place is deactivated, never deleted (people and months point at it).
 
-import { addDoc, collection, doc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, type Firestore } from "firebase/firestore"
+import { addDoc, collection, doc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, type Firestore, type Transaction } from "firebase/firestore"
 import type { HrContext } from "./access"
 import { HR_EMPLOYEES, HR_SITES } from "./collections"
 import { assignBlocks, type HrEmployee } from "./employee"
 import { HR_LOG, type HrActor } from "./employee-writes"
 import { todayDay } from "./format"
-import { assignFixBlocks, HR_ASSIGN_FIXES, siteBlocks, UNASSIGNED_SITE, type AssignFix, type SiteType } from "./sites"
+import { assignFixBlocks, HR_ASSIGN_FIXES, siteBlocks, UNASSIGNED_SITE, type AssignFix, type HrSite, type SiteType } from "./sites"
+import { emitHrNotice, hrLinks } from "./notify"
 import { assertHr, HrWriteError } from "./write-guard"
+
+/** A workplace's name as the record holds it — read for a notice; the unassigned has none. */
+async function siteNameIn(tx: Transaction, firestore: Firestore, siteId: string): Promise<string> {
+  if (siteId === UNASSIGNED_SITE) return ""
+  const s = await tx.get(doc(firestore, HR_SITES, siteId))
+  return s.exists() ? ((s.data() as Partial<HrSite>).name ?? "") : ""
+}
 
 export interface SiteInput {
   name: string
@@ -59,6 +67,7 @@ export async function raiseAssignFix(
   // One open correction per person — read before (a transaction cannot query; the HR manager sees both if two race).
   const open = await getDocs(query(collection(firestore, HR_ASSIGN_FIXES), where("organizationId", "==", orgId), where("employeeId", "==", input.employeeId), where("state", "==", "pending")))
   const ref = doc(collection(firestore, HR_ASSIGN_FIXES))
+  let raised: (Omit<AssignFix, "id"> & { siteName: string }) | null = null
   await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(doc(firestore, HR_EMPLOYEES, input.employeeId))
     if (!snap.exists()) throw new HrWriteError("missing")
@@ -66,6 +75,7 @@ export async function raiseAssignFix(
     if (emp.organizationId !== orgId) throw new HrWriteError("missing")
     const blocks = assignFixBlocks(emp, input.siteId, input.since, today, !open.empty)
     if (blocks.length) throw new HrWriteError("blocked", blocks)
+    const siteName = await siteNameIn(tx, firestore, input.siteId)
     const fix: Omit<AssignFix, "id"> = {
       organizationId: orgId,
       employeeId: input.employeeId,
@@ -81,7 +91,20 @@ export async function raiseAssignFix(
       decision: null,
     }
     tx.set(ref, { ...fix, updatedAt: serverTimestamp() })
+    raised = { ...fix, siteName }
   })
+  // AS-03 — the HR manager decides it.
+  const f = raised as (Omit<AssignFix, "id"> & { siteName: string }) | null
+  if (f)
+    await emitHrNotice(firestore, actor, {
+      kind: "hr_assign_fix_raised",
+      organizationId: orgId,
+      to: [{ hr: "manager" }],
+      params: { name: f.employeeName, site: f.siteName, since: f.since },
+      link: hrLinks.site(f.siteId),
+      once: ref.id,
+      employeeId: f.employeeId,
+    })
   return ref.id
 }
 
@@ -90,16 +113,19 @@ export async function raiseAssignFix(
 export async function decideAssignFix(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, verdict: "approve" | "decline", note: string, opts: { today?: string } = {}): Promise<void> {
   assertHr(ctx, "employee.assign")
   const today = opts.today ?? todayDay()
+  let decided: (AssignFix & { siteName: string; done: boolean }) | null = null
   await runTransaction(firestore, async (tx) => {
     const fRef = doc(firestore, HR_ASSIGN_FIXES, id)
     const fs = await tx.get(fRef)
     if (!fs.exists()) throw new HrWriteError("missing")
     const fix = fs.data() as AssignFix
     if (fix.state !== "pending") throw new HrWriteError("blocked", ["stale"])
+    const siteName = await siteNameIn(tx, firestore, fix.siteId)
     const decision = { by: actor.uid, byName: actor.name, at: new Date().toISOString(), note: note.trim() || null }
     if (verdict === "decline") {
       if (!note.trim()) throw new HrWriteError("blocked", ["no_reason"])
       tx.update(fRef, { state: "declined", decision, updatedAt: serverTimestamp() })
+      decided = { ...fix, id, siteName, done: false }
       return
     }
     const eRef = doc(firestore, HR_EMPLOYEES, fix.employeeId)
@@ -120,7 +146,20 @@ export async function decideAssignFix(firestore: Firestore, ctx: HrContext, id: 
       params: { from: emp.siteId ?? UNASSIGNED_SITE, to: to ?? UNASSIGNED_SITE, on: fix.since },
       source: "hr",
     })
+    decided = { ...fix, id, siteName, done: true }
   })
+  // The supervisor who raised it hears the answer on his workplace.
+  const f = decided as (AssignFix & { siteName: string; done: boolean }) | null
+  if (f)
+    await emitHrNotice(firestore, actor, {
+      kind: "hr_assign_fix_decided",
+      organizationId: f.organizationId,
+      to: [{ users: [f.by] }],
+      params: { name: f.employeeName, site: f.siteName, verdict: f.done ? "@hr_verdict.done" : "@hr_verdict.refused", note: note.trim() },
+      link: hrLinks.site(f.siteId),
+      once: id,
+      employeeId: f.employeeId,
+    })
 }
 
 export async function setSiteActive(firestore: Firestore, ctx: HrContext, id: string, active: boolean): Promise<void> {

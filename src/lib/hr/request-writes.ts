@@ -27,6 +27,8 @@ import {
 import { daysBetween, serviceYears, type HrPolicies } from "./statutory"
 import { drawYearlyDocNumber } from "../sales-numbering"
 import { todayDay } from "./format"
+import { emitHrNotice, emitHrNotices, hrLinks, type HrNotice } from "./notify"
+import { payOn } from "./pay"
 import { HrWriteError } from "./write-guard"
 
 const stamp = (actor: HrActor, note?: string | null): Stamp => ({ by: actor.uid, byName: actor.name, at: new Date().toISOString(), note: note?.trim() || null })
@@ -77,6 +79,7 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
   const today = opts.today ?? todayDay()
   const ref = doc(collection(firestore, HR_REQUESTS))
   let no = ""
+  let filed: HrRequest | null = null
   await runTransaction(firestore, async (tx) => {
     const emp = await readEmp(tx, firestore, input.employeeId)
     if (emp.organizationId !== orgId) throw new HrWriteError("missing")
@@ -114,7 +117,9 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
       body = { data: { field: d.field, value: d.field === "iban" ? d.value.replace(/\s+/g, "").toUpperCase() : d.value.trim(), document: d.document?.trim() || null } }
     } else {
       const a = input.advance!
-      const p = pay?.exists() ? (pay.data() as EmployeePay) : null
+      // The wage in force today — a raise dated in the past applies though the stored figures lag (EM-04).
+      const stored = pay?.exists() ? (pay.data() as EmployeePay) : null
+      const p = stored ? payOn(stored, today) : null
       const q = advanceQuote(p, a, { policies: opts.policies, today, contractEnd: emp.contract?.type === "fixed" ? emp.contract.end : null, pendingAdvance: opts.pendingAdvance })
       if (q.blocks.length) throw new HrWriteError("blocked", q.blocks)
       body = { advance: { amount: a.amount, reason: a.reason.trim(), instalment: q.instalment, months: q.months, overLimit: q.overLimit } }
@@ -122,8 +127,56 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
     no = await drawYearlyDocNumber(firestore, tx, orgId, REQUEST_NUMBER_TYPE[input.kind], Number(today.slice(0, 4)))
     tx.set(ref, { ...base, ...body, no, updatedAt: serverTimestamp() })
     log(tx, firestore, emp, actor, `${input.kind}_filed`, { no })
+    filed = { id: ref.id, ...base, ...body, no } as HrRequest
   })
+  if (filed) await tellFiled(firestore, actor, filed)
   return { id: ref.id, no }
+}
+
+const reqKind = (r: Pick<HrRequest, "kind">) => `@hr_req_kind.${r.kind}`
+
+/** A request filed → whoever decides it (management on the HR manager's own) and, for a leave, the line
+ * manager who endorses it first. Never the employee himself, whoever filed it. */
+async function tellFiled(firestore: Firestore, actor: HrActor, r: HrRequest) {
+  await emitHrNotices(firestore, actor, [
+    {
+      kind: "hr_request_filed",
+      organizationId: r.organizationId,
+      to: [{ hr: r.deciderLevel === "management" ? "management" : "manager" }],
+      except: [r.employeeUserId],
+      params: { name: r.employeeName, no: r.no, req: reqKind(r) },
+      link: hrLinks.today(),
+      once: r.id,
+      employeeId: r.employeeId,
+    },
+    r.kind === "leave" && r.leave && r.lineManagerUserId
+      ? {
+          kind: "hr_leave_to_endorse",
+          organizationId: r.organizationId,
+          to: [{ users: [r.lineManagerUserId] }],
+          except: [r.employeeUserId],
+          params: { name: r.employeeName, no: r.no, from: r.leave.from, to: r.leave.to },
+          link: hrLinks.today(),
+          once: r.id,
+          employeeId: r.employeeId,
+        }
+      : null,
+  ])
+}
+
+/** A decision → the employee (My file) and whoever filed it for him (the record). */
+function decidedNotice(r: HrRequest, verdict: "approved" | "declined", note: string | null | undefined): HrNotice {
+  const filer = r.filedBy?.by && r.filedBy.by !== r.employeeUserId ? r.filedBy.by : null
+  return {
+    kind: "hr_request_decided",
+    organizationId: r.organizationId,
+    to: [{ users: [r.employeeUserId, filer] }],
+    params: { no: r.no, req: reqKind(r), verdict: `@hr_verdict.${verdict}`, note: note?.trim() || "" },
+    link: hrLinks.me(),
+    links: filer ? { [filer]: hrLinks.person(r.employeeId) } : undefined,
+    once: r.id,
+    employeeId: r.employeeId,
+  }
 }
 
 /** The supervisor or line manager endorses a leave (LV-05) — never his own. */
@@ -151,8 +204,11 @@ export async function decideRequest(
 ): Promise<{ state: HrRequest["state"] }> {
   const today = opts.today ?? todayDay()
   let state: HrRequest["state"] = "declined"
+  let decided: HrRequest | null = null
+  let abroad = false
   await runTransaction(firestore, async (tx) => {
     const r = await readReq(tx, firestore, id)
+    decided = r
     // The stored level, or the employee's own standing now — a request filed when the level
     // followed the filer (or before he became HR manager) is never decided by a peer (RL-02).
     const isHrManager = r.deciderLevel === "management" || (await employeeIsHrManager(tx, firestore, r.organizationId, r.employeeUserId))
@@ -212,11 +268,14 @@ export async function decideRequest(
         updatedAt: serverTimestamp(),
       })
       log(tx, firestore, emp, actor, "leave_approved", { no: r.no, from: l.from, to: q.to })
+      // A non-Saudi's leave is travel (LV-04) — but not a sick leave, nor Hajj, which is made inside the Kingdom.
+      abroad = Boolean(q.travel) && emp.nationality !== "sa" && l.type !== "sick" && l.type !== "hajj"
       state = "approved"
       return
     }
     const a = r.advance!
-    const pay = paySnap?.exists() ? (paySnap.data() as EmployeePay) : null
+    const stored = paySnap?.exists() ? (paySnap.data() as EmployeePay) : null
+    const pay = stored ? payOn(stored, today) : null
     const q = advanceQuote(pay, { amount: a.amount, reason: a.reason }, { policies: opts.policies, today })
     if (q.blocks.length) throw new HrWriteError("blocked", q.blocks)
     if (q.overLimit) {
@@ -231,15 +290,47 @@ export async function decideRequest(
     log(tx, firestore, emp, actor, "advance_approved", { no: r.no })
     state = "approved"
   })
+  const r = decided as HrRequest | null
+  if (r) {
+    const s = state as HrRequest["state"]
+    await emitHrNotices(firestore, actor, [
+      s === "finance"
+        ? {
+            kind: "hr_advance_to_finance",
+            organizationId: r.organizationId,
+            to: [{ finance: true }],
+            except: [r.employeeUserId],
+            params: { name: r.employeeName, no: r.no },
+            link: hrLinks.financeDesk(),
+            once: r.id,
+            employeeId: r.employeeId,
+          }
+        : decidedNotice(r, s === "approved" ? "approved" : "declined", note),
+      // A leave abroad for a non-Saudi: government relations issues the exit re-entry visa before he travels.
+      s === "approved" &&
+        abroad &&
+        r.leave && {
+          kind: "hr_exit_reentry",
+          organizationId: r.organizationId,
+          to: [{ hr: "gov" }],
+          params: { name: r.employeeName, from: r.leave.from },
+          link: hrLinks.person(r.employeeId),
+          once: r.id,
+          employeeId: r.employeeId,
+        },
+    ])
+  }
   return { state }
 }
 
 /** Finance decides an advance HR sent up (AD-03). `financeAllowed` = the owner, invoices.manage or accounting.post. */
 export async function financeDecideAdvance(firestore: Firestore, actor: HrActor & { employeeId?: string | null }, financeAllowed: boolean, id: string, verdict: "approve" | "decline", note: string): Promise<void> {
   if (!financeAllowed) throw new HrWriteError("no_role")
+  let decided: HrRequest | null = null
   await runTransaction(firestore, async (tx) => {
     const r = await readReq(tx, firestore, id)
     if (r.kind !== "advance" || r.state !== "finance") throw new HrWriteError("blocked", ["stale"])
+    decided = r
     if (actor.employeeId && actor.employeeId === r.employeeId) throw new HrWriteError("own_request")
     const payRef = doc(firestore, HR_PAY, r.employeeId)
     const pay = await tx.get(payRef)
@@ -254,6 +345,7 @@ export async function financeDecideAdvance(firestore: Firestore, actor: HrActor 
     tx.set(payRef, { advance: { amount: a.amount, balance: a.amount, instalment: a.instalment }, updatedAt: serverTimestamp() }, { merge: true })
     tx.update(reqRef, { state: "approved", finance: stamp(actor, note), updatedAt: serverTimestamp() })
   })
+  if (decided) await emitHrNotice(firestore, actor, decidedNotice(decided, verdict === "approve" ? "approved" : "declined", note))
 }
 
 export type ReturnBlock = "stale" | "no_date" | "future" | "before_end"
