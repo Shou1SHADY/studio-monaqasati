@@ -17,6 +17,8 @@ import { Separator } from "@/components/ui/separator"
 import { useUser, useFirestore, useMemoFirebase, useStorage } from "@/firebase"
 import { doc, updateDoc } from "firebase/firestore"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
+import { usePermissions } from "@/hooks/usePermissions"
+import { OwnerOnlyNotice } from "@/components/OwnerOnlyNotice"
 import { identityDocRef } from "@/lib/org-identity"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { useToast } from "@/hooks/use-toast"
@@ -112,6 +114,7 @@ export default function ContractorProfilePage() {
   })
 
   const { profile: userData, isLoading: isUserDataLoading, organizationId, isSecondary } = useResolvedProfile(isUserLoading ? null : user?.uid)
+  const { isOrgOwner, isLoading: permsLoading } = usePermissions()
   // Identity fields (name, phone, CR/tax numbers, legal docs, certificates...)
   // live on organizations/{organizationId} for a secondary company added via
   // the company-switcher, and on users/{uid} itself for the primary/solo one —
@@ -404,12 +407,20 @@ export default function ContractorProfilePage() {
     },
   ]
 
-  if (isUserLoading || isUserDataLoading) {
+  if (isUserLoading || isUserDataLoading || permsLoading) {
     return (
       <PortalLayout>
         <div className="flex justify-center items-center h-[60vh]">
           <Loader2 className="animate-spin text-primary" size={32} />
         </div>
+      </PortalLayout>
+    )
+  }
+
+  if (!isOrgOwner) {
+    return (
+      <PortalLayout>
+        <OwnerOnlyNotice />
       </PortalLayout>
     )
   }

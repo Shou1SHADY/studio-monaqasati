@@ -142,15 +142,8 @@
       "err_phone": "A valid phone number is required",
       "err_email": "A valid email address is required",
       "server_error": "Something went wrong. Please try again.",
-      "form_type_label": "Your business type",
-      "type_manufacturer": "Manufacturer",
-      "type_other": "Other",
-      "form_type_other_label": "What is your business?",
-      "form_type_other_ph": "Contractor, supplier, engineering office…",
       "form_date_hint": "We hold demos Sunday to Thursday, within the next four months.",
       "form_date_label": "Convenient date",
-      "err_type": "Choose your business type",
-      "err_type_other": "Tell us your business type",
       "err_date": "Pick a date from today onwards"
     },
     "Stats": {
@@ -337,6 +330,19 @@
       "a5": "Absolutely. Mdmak Tech is built for projects of all sizes — from small renovations to large-scale commercial and infrastructure developments. The Enterprise plan includes ERP integration, dedicated account management, and advanced reporting for complex procurement needs.",
       "q6": "How does Mdmak Tech ensure supplier quality?",
       "a6": "All suppliers undergo a verification process including commercial registration (CR) and tax certificate validation. The platform also features a rating and review system where contractors rate suppliers after each completed order, building a transparent reputation system."
+    },
+    "CompanyType": {
+      "label": "Company type",
+      "contractor": "Contractor",
+      "developer": "Developer",
+      "supplier": "Supplier",
+      "manufacturer": "Manufacturer",
+      "all": "All of them",
+      "other": "Other",
+      "hint": "You can pick more than one",
+      "other_label": "What does your company do?",
+      "other_ph": "e.g. Engineering consultancy",
+      "err": "Choose a company type or describe the business"
     }
   },
   "About": {
@@ -8433,7 +8439,9 @@
       "pn_portal_reject": "{name} rejected through the consultant portal on {project}: {record} — {note}",
       "pn_receipt_auto_forwarded_title": "📦 A receipt auto-forwarded to you",
       "pn_receipt_auto_forwarded": "The system forwarded you a delivery from {supplier} that Procurement had not forwarded in time — open the link, count what arrived and sign.",
-      "team_invite_outdated": "This is an old invitation that is no longer valid — ask the company owner to send it again."
+      "team_invite_outdated": "This is an old invitation that is no longer valid — ask the company owner to send it again.",
+      "owner_only_title": "Available to the account owner only",
+      "owner_only_desc": "Company details such as the commercial registration and tax number are seen and edited by the account owner only."
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -10566,11 +10574,10 @@
         "company": "Company",
         "email": "Email",
         "phone": "Phone",
-        "source": "Source",
         "status": "Status",
         "actions": "Actions",
-        "source_demo": "Demo request",
-        "source_onboarding": "Start Free",
+        "source_demo": "Wants a demo",
+        "source_onboarding": "Wants to join",
         "status_new": "New",
         "status_converted": "Account created",
         "create_account": "Create Account",
@@ -10590,8 +10597,6 @@
         "email_in_use_desc": "An account with this email already exists. Please check manually before proceeding.",
         "error": "Error",
         "error_generic": "Failed to create the account",
-        "business_type": "Business type",
-        "preferred_date": "Preferred date",
         "type_manufacturer": "Manufacturer",
         "type_other": "Other",
         "add_lead": "Add lead",
@@ -10606,7 +10611,15 @@
         "add_lead_failed": "Could not add the lead. Try again.",
         "err_name": "Enter a name of at least 2 characters.",
         "err_contact": "Enter a phone number or an email.",
-        "err_email": "Enter a valid email address."
+        "err_email": "Enter a valid email address.",
+        "type_contractor": "Contractor",
+        "type_developer": "Developer",
+        "type_supplier": "Supplier",
+        "type_all": "All types",
+        "col_request": "Request",
+        "col_details": "Details",
+        "col_received": "Received",
+        "demo_on": "Demo on {date}"
       },
       "Rfqs": {
         "page_title": "Manage RFQs",
@@ -10909,15 +10922,28 @@
         "empty_leads": "No leads yet. Add one or wait for a demo request.",
         "col_lead": "Lead",
         "add_lead": "Add lead",
-        "source_demo": "Demo request",
-        "source_onboarding": "Onboarding request",
+        "source_demo": "Wants a demo",
+        "source_onboarding": "Wants to join",
         "source_manual": "Added manually",
         "stage_new": "New",
         "stage_contacted": "Contacted",
         "stage_demo": "Demo",
         "stage_negotiation": "Negotiation",
         "stage_lost": "Lost",
-        "stage_converted": "Converted"
+        "stage_converted": "Converted",
+        "type_contractor": "Contractor",
+        "type_developer": "Developer",
+        "type_supplier": "Supplier",
+        "type_all": "All types",
+        "type_manufacturer": "Manufacturer",
+        "demo_on": "Demo on {date}",
+        "col_received": "Received",
+        "view_label": "View",
+        "view_board": "Board",
+        "view_list": "List",
+        "board_move_to": "Move to stage",
+        "board_empty": "Nothing here",
+        "board_empty_drop": "Drag a card here"
       }
     },
     "Procurement": {

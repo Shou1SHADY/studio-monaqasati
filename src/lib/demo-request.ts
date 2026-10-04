@@ -1,7 +1,5 @@
 import { z } from "zod"
-
-export const DEMO_BUSINESS_TYPES = ["manufacturer", "other"] as const
-export type DemoBusinessType = (typeof DEMO_BUSINESS_TYPES)[number]
+import { companyTypesSchema, hasCompanyType } from "@/lib/company-types"
 
 const RIYADH_OFFSET_MS = 3 * 60 * 60 * 1000
 const MAX_DAYS_AHEAD = 120
@@ -32,12 +30,12 @@ export const demoRequestBase = z.object({
   phone: z.string().trim().min(7).max(30).regex(/^[+\d\s().\-]+$/),
   email: z.string().trim().toLowerCase().email(),
   preferredDate: z.string().refine((v) => isValidDemoDate(v)),
-  businessType: z.enum(DEMO_BUSINESS_TYPES),
+  businessTypes: companyTypesSchema,
   businessOther: z.string().trim().max(120),
 })
 
-export const demoRequestSchema = demoRequestBase.refine((v) => v.businessType !== "other" || v.businessOther.length >= 2, {
-  path: ["businessOther"],
+export const demoRequestSchema = demoRequestBase.refine((v) => hasCompanyType(v.businessTypes, v.businessOther), {
+  path: ["businessTypes"],
 })
 
 export function escapeHtml(s: string): string {

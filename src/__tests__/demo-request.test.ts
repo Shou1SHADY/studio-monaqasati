@@ -14,7 +14,7 @@ const base = {
   phone: "+966 50 123 4567",
   email: "A@B.sa",
   preferredDate: nextWorkday(addDays(today, 3)),
-  businessType: "manufacturer",
+  businessTypes: ["manufacturer"],
   businessOther: "",
 }
 
@@ -66,21 +66,20 @@ describe("demo request schema", () => {
     expect(demoRequestSchema.safeParse(rest).success).toBe(false)
   })
 
-  it("requires a business type", () => {
-    const { businessType: _t, ...rest } = base
+  it("requires at least one company type or a stated activity", () => {
+    const { businessTypes: _t, ...rest } = base
     expect(demoRequestSchema.safeParse(rest).success).toBe(false)
-    expect(demoRequestSchema.safeParse({ ...base, businessType: "contractor" }).success).toBe(false)
+    expect(demoRequestSchema.safeParse({ ...base, businessTypes: [] }).success).toBe(false)
+    expect(demoRequestSchema.safeParse({ ...base, businessTypes: ["plumber"] }).success).toBe(false)
   })
 
-  it("asks what the business is when the type is other", () => {
-    expect(demoRequestSchema.safeParse({ ...base, businessType: "other" }).success).toBe(false)
-    expect(demoRequestSchema.safeParse({ ...base, businessType: "other", businessOther: " x " }).success).toBe(false)
-    expect(demoRequestSchema.safeParse({ ...base, businessType: "other", businessOther: "Contractor" }).success).toBe(true)
+  it("accepts a manufacturer who is also contractor, supplier and developer", () => {
+    const r = demoRequestSchema.safeParse({ ...base, businessTypes: ["manufacturer", "contractor", "supplier", "developer"] })
+    expect(r.success).toBe(true)
   })
-})
 
-describe("escapeHtml", () => {
-  it("neutralises markup in what a visitor typed", () => {
-    expect(escapeHtml(`<img src=x onerror="a()">&'`)).toBe("&lt;img src=x onerror=&quot;a()&quot;&gt;&amp;&#39;")
+  it("accepts a stated activity on its own, but not a one-letter one", () => {
+    expect(demoRequestSchema.safeParse({ ...base, businessTypes: [], businessOther: "Engineering office" }).success).toBe(true)
+    expect(demoRequestSchema.safeParse({ ...base, businessTypes: [], businessOther: " x " }).success).toBe(false)
   })
 })

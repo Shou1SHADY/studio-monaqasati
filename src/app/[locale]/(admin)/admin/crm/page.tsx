@@ -7,9 +7,11 @@ import { z } from "zod"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
 import { addDoc, collection, doc, query, serverTimestamp, setDoc, where } from "firebase/firestore"
-import { CalendarClock, Handshake, Loader2, Plus, Search, UserX, UsersRound } from "lucide-react"
+import { CalendarClock, Handshake, LayoutGrid, List, Loader2, Plus, Search, UserX, UsersRound } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { AddLeadDialog } from "@/components/admin/AddLeadDialog"
+import { CrmBoard, type CrmBoardColumn } from "@/components/admin/CrmBoard"
+import { isAllCompanyTypes } from "@/lib/company-types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -43,6 +45,7 @@ type StaffUser = { id: string; name?: string; email?: string }
 type ActivityDoc = { id: string; clientId: string; type: ActivityType; note: string; authorName: string; createdAt?: { seconds?: number } }
 type Filter = "all" | "mine" | "due" | "stale" | "unowned"
 type Tab = "clients" | "leads"
+type View = "board" | "list"
 type ListRow = {
   id: string
   name: string
@@ -59,6 +62,7 @@ type ListRow = {
   daysSinceContact: number | null
   followUpDue: boolean
   stale: boolean
+  createdMs: number
 }
 
 const UNASSIGNED = "__none__"
@@ -102,6 +106,7 @@ export default function AdminCrmPage() {
   const searchParams = useSearchParams()
   const [tab, setTab] = useState<Tab>(searchParams.get("tab") === "leads" ? "leads" : "clients")
   const [addLeadOpen, setAddLeadOpen] = useState(false)
+  const [view, setView] = useState<View>("board")
 
   const usersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -149,13 +154,26 @@ export default function AdminCrmPage() {
   }, [demoDocs, onboardingDocs, records])
   const leadSummary = useMemo(() => summarizeLeads(leadRows), [leadRows])
 
+  const onLeads = tab === "leads"
+
   const list = useMemo<ListRow[]>(() => {
     if (tab === "leads") {
+      const sep = locale === "ar" ? "، " : ", "
       return leadRows.map((r) => ({
         id: r.crmId,
         name: r.name,
-        subtitle: [r.company, t(`source_${r.source}`)].filter(Boolean).join(" · "),
-        detail: [t(`source_${r.source}`), r.company, r.phone, r.email].filter(Boolean).join(" · "),
+        subtitle: [t(`source_${r.source}`), r.company].filter(Boolean).join(" · "),
+        detail: [
+          t(`source_${r.source}`),
+          r.company,
+          r.phone,
+          r.email,
+          [...(isAllCompanyTypes(r.types) ? [t("type_all")] : r.types.map((x) => t(`type_${x}`))), ...(r.typeOther ? [r.typeOther] : [])].join(sep),
+          r.preferredDate ? t("demo_on", { date: r.preferredDate }) : "",
+          [r.city, r.size].filter(Boolean).join(sep),
+        ]
+          .filter(Boolean)
+          .join(" · "),
         stage: r.stage,
         stageStyle: LEAD_STAGE_STYLE[r.stage],
         stages: LEAD_STAGES,
@@ -167,6 +185,7 @@ export default function AdminCrmPage() {
         daysSinceContact: r.daysSinceContact,
         followUpDue: r.followUpDue,
         stale: r.stale,
+        createdMs: r.createdMs,
       }))
     }
     return rows.map((r) => ({
@@ -185,8 +204,9 @@ export default function AdminCrmPage() {
       daysSinceContact: r.daysSinceContact,
       followUpDue: r.followUpDue,
       stale: r.stale,
+      createdMs: 0,
     }))
-  }, [tab, rows, leadRows, t])
+  }, [tab, rows, leadRows, t, locale])
 
   const searchable = useMemo(() => {
     const map = new Map<string, string>()
@@ -206,11 +226,14 @@ export default function AdminCrmPage() {
         return true
       })
       .filter((r) => !needle || (searchable.get(r.id) ?? r.name).toLowerCase().includes(needle))
-      .sort((a, b) => Number(b.followUpDue) - Number(a.followUpDue) || Number(b.stale) - Number(a.stale) || a.name.localeCompare(b.name))
-  }, [list, filter, search, user?.uid, searchable])
+      .sort((a, b) =>
+        onLeads
+          ? b.createdMs - a.createdMs || a.name.localeCompare(b.name)
+          : Number(b.followUpDue) - Number(a.followUpDue) || Number(b.stale) - Number(a.stale) || a.name.localeCompare(b.name),
+      )
+  }, [list, filter, search, user?.uid, searchable, onLeads])
 
   const open = list.find((r) => r.id === openId) ?? null
-  const onLeads = tab === "leads"
   const shown = onLeads
     ? { total: leadSummary.total, followUpsDue: leadSummary.followUpsDue, stale: leadSummary.stale, unowned: leadSummary.unowned }
     : summary
@@ -231,6 +254,15 @@ export default function AdminCrmPage() {
       toast({ variant: "destructive", title: t("save_failed") })
     }
   }
+
+  const boardColumns: CrmBoardColumn[] = onLeads
+    ? [...LEAD_STAGES, "converted" as const].map((id) => ({
+        id,
+        label: t(`stage_${id}`),
+        badgeClass: LEAD_STAGE_STYLE[id],
+        accepts: id !== "converted",
+      }))
+    : CLIENT_STAGES.map((id) => ({ id, label: t(`stage_${id}`), badgeClass: STAGE_STYLE[id], accepts: true }))
 
   const staffList = staff ?? []
   const ownerNameOf = (uid: string) => {
@@ -304,6 +336,27 @@ export default function AdminCrmPage() {
                 className="ps-9"
               />
             </div>
+            <div role="group" aria-label={t("view_label")} className="inline-flex rounded-lg border bg-muted/40 p-1 md:order-last md:ms-auto">
+              {(["board", "list"] as const).map((v) => {
+                const Icon = v === "board" ? LayoutGrid : List
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={view === v}
+                    onClick={() => setView(v)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      view === v ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <Icon size={14} aria-hidden="true" />
+                    {t(`view_${v}`)}
+                  </button>
+                )
+              })}
+            </div>
             <div className="flex flex-wrap gap-2">
               {filters.map((f) => (
                 <button
@@ -330,6 +383,13 @@ export default function AdminCrmPage() {
               </div>
             ) : visible.length === 0 ? (
               <p className="p-12 text-center text-sm text-muted-foreground">{list.length === 0 ? t(onLeads ? "empty_leads" : "empty") : t("empty_filtered")}</p>
+            ) : view === "board" ? (
+              <CrmBoard
+                items={visible}
+                columns={boardColumns}
+                onOpen={setOpenId}
+                onMove={(id, stage) => void saveRecord(id, { stage })}
+              />
             ) : (
               <Table>
                 <TableHeader className="bg-muted/40">
@@ -337,6 +397,7 @@ export default function AdminCrmPage() {
                     <TableHead>{t(onLeads ? "col_lead" : "col_client")}</TableHead>
                     <TableHead>{t("col_stage")}</TableHead>
                     <TableHead className="hidden md:table-cell">{t("col_owner")}</TableHead>
+                    {onLeads && <TableHead className="hidden sm:table-cell">{t("col_received")}</TableHead>}
                     <TableHead className="hidden sm:table-cell">{t("col_last_contact")}</TableHead>
                     <TableHead className="hidden lg:table-cell">{t("col_follow_up")}</TableHead>
                   </TableRow>
@@ -364,6 +425,11 @@ export default function AdminCrmPage() {
                         <Badge variant="outline" className={r.stageStyle}>{t(`stage_${r.stage}`)}</Badge>
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-sm">{r.ownerName || <span className="text-muted-foreground">{t("unassigned")}</span>}</TableCell>
+                      {onLeads && (
+                        <TableCell className="hidden sm:table-cell text-sm tabular-nums" dir="ltr">
+                          {r.createdMs ? new Date(r.createdMs).toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-GB") : "—"}
+                        </TableCell>
+                      )}
                       <TableCell className="hidden sm:table-cell text-sm">
                         {r.daysSinceContact === null ? (
                           <span className="text-warning font-medium">{t("never_contacted")}</span>

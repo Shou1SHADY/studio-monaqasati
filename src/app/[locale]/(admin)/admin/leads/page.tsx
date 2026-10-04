@@ -26,6 +26,8 @@ import { PREDEFINED_CATEGORIES, displayCategory } from "@/lib/constants"
 import { Link } from "@/i18n/routing"
 import { AddLeadDialog } from "@/components/admin/AddLeadDialog"
 import type { LeadSource } from "@/lib/admin-crm"
+import { isAllCompanyTypes, leadCompanyTypes, type CompanyType } from "@/lib/company-types"
+import { cn } from "@/lib/utils"
 
 type Lead = {
   id: string
@@ -37,8 +39,16 @@ type Lead = {
   status: string
   createdAt: any
   preferredDate: string
-  businessType: string
-  businessOther: string
+  city: string
+  size: string
+  types: CompanyType[]
+  typeOther: string
+}
+
+const KIND_STYLE: Record<LeadSource, string> = {
+  demo: "bg-cta/10 text-cta border-cta/20",
+  onboarding: "bg-success/10 text-success border-success/20",
+  manual: "bg-muted text-muted-foreground border-border",
 }
 
 function getTs(ts: any): number {
@@ -70,6 +80,17 @@ export default function AdminLeadsPage() {
 
   const [localLeads, setLocalLeads] = useState<Lead[]>([])
 
+  const detailLines = (lead: Lead): string[] => {
+    const sep = locale === "ar" ? "، " : ", "
+    const typeParts = [...(isAllCompanyTypes(lead.types) ? [t("type_all")] : lead.types.map((x) => t(`type_${x}`))), ...(lead.typeOther ? [lead.typeOther] : [])]
+    const lines: string[] = []
+    if (lead.source === "demo" && lead.preferredDate) lines.push(t("demo_on", { date: lead.preferredDate }))
+    const place = [lead.city, lead.size].filter(Boolean).join(sep)
+    if (lead.source === "onboarding" && place) lines.push(place)
+    if (typeParts.length) lines.push(typeParts.join(sep))
+    return lines.length ? lines : ["—"]
+  }
+
   useEffect(() => {
     const demo: Lead[] = (demoRequests || []).map((d: any) => ({
       id: d.id,
@@ -81,8 +102,10 @@ export default function AdminLeadsPage() {
       status: d.status || "new",
       createdAt: d.createdAt,
       preferredDate: d.preferredDate || "",
-      businessType: d.businessType || "",
-      businessOther: d.businessOther || "",
+      city: "",
+      size: "",
+      types: leadCompanyTypes(d).types,
+      typeOther: leadCompanyTypes(d).other,
     }))
     const onboarding: Lead[] = (onboardingRequests || []).map((d: any) => ({
       id: d.id,
@@ -94,10 +117,13 @@ export default function AdminLeadsPage() {
       status: d.status || "new",
       createdAt: d.createdAt,
       preferredDate: "",
-      businessType: "",
-      businessOther: "",
+      city: d.city || "",
+      size: d.size || "",
+      types: leadCompanyTypes(d).types,
+      typeOther: leadCompanyTypes(d).other,
     }))
-    setLocalLeads([...demo, ...onboarding].sort((a, b) => getTs(b.createdAt) - getTs(a.createdAt)))
+    const received = (l: Lead) => getTs(l.createdAt) || (l.source === "manual" ? Date.now() : 0)
+    setLocalLeads([...demo, ...onboarding].sort((a, b) => received(b) - received(a)))
   }, [demoRequests, onboardingRequests])
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -225,9 +251,9 @@ export default function AdminLeadsPage() {
                     <TableHead className="text-start hidden sm:table-cell">{t("company")}</TableHead>
                     <TableHead className="text-start hidden md:table-cell">{t("email")}</TableHead>
                     <TableHead className="text-start hidden md:table-cell">{t("phone")}</TableHead>
-                    <TableHead className="text-start hidden lg:table-cell">{t("business_type")}</TableHead>
-                    <TableHead className="text-start hidden lg:table-cell">{t("preferred_date")}</TableHead>
-                    <TableHead className="text-start">{t("source")}</TableHead>
+                    <TableHead className="text-start">{t("col_request")}</TableHead>
+                    <TableHead className="text-start hidden lg:table-cell">{t("col_details")}</TableHead>
+                    <TableHead className="text-start hidden sm:table-cell">{t("col_received")}</TableHead>
                     <TableHead className="text-start">{t("status")}</TableHead>
                     <TableHead className="text-end">{t("actions")}</TableHead>
                   </TableRow>
@@ -239,18 +265,18 @@ export default function AdminLeadsPage() {
                       <TableCell className="hidden sm:table-cell text-muted-foreground">{lead.company || "—"}</TableCell>
                       <TableCell className="hidden md:table-cell text-xs text-muted-foreground" dir="ltr">{lead.email}</TableCell>
                       <TableCell className="hidden md:table-cell text-xs text-muted-foreground" dir="ltr">{lead.phone || "—"}</TableCell>
-                      <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
-                        {lead.businessType === "manufacturer"
-                          ? t("type_manufacturer")
-                          : lead.businessType === "other"
-                            ? lead.businessOther || t("type_other")
-                            : "—"}
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell text-xs text-muted-foreground tabular-nums" dir="ltr">{lead.preferredDate || "—"}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="text-xs">
+                        <Badge variant="outline" className={cn("text-xs", KIND_STYLE[lead.source])}>
                           {t(`source_${lead.source}`)}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
+                        {detailLines(lead).map((line) => (
+                          <p key={line}>{line}</p>
+                        ))}
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell text-xs text-muted-foreground tabular-nums" dir="ltr">
+                        {getTs(lead.createdAt) ? new Date(getTs(lead.createdAt)).toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-GB") : "—"}
                       </TableCell>
                       <TableCell>
                         {lead.status === "converted" ? (

@@ -163,6 +163,21 @@ describe("admin CRM leads", () => {
     expect(s.unowned).toBe(1)
   })
 
+  it("carries what tells a demo request from a join request", () => {
+    const rows = buildLeadRows(
+      [
+        { id: "d", source: "demo", preferredDate: "2026-10-08", businessTypes: ["manufacturer", "supplier"], createdAt: secs(0) },
+        { id: "o", source: "onboarding", city: "Riyadh", size: "10-50", companyTypes: ["contractor"], companyTypeOther: "Crane hire", createdAt: secs(0) },
+        { id: "old", source: "demo", businessType: "manufacturer", createdAt: secs(40) },
+      ],
+      {},
+      now,
+    )
+    expect(rows[0]).toMatchObject({ source: "demo", preferredDate: "2026-10-08", types: ["supplier", "manufacturer"] })
+    expect(rows[1]).toMatchObject({ source: "onboarding", city: "Riyadh", size: "10-50", types: ["contractor"], typeOther: "Crane hire", preferredDate: "" })
+    expect(rows[2].types).toEqual(["manufacturer"])
+  })
+
   it("needs a name and one way to reach the lead", () => {
     const ok = { name: "Sara", company: "", phone: "0501234567", email: "", note: "" }
     expect(manualLeadSchema.safeParse(ok).success).toBe(true)

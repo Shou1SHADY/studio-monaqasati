@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import { cn } from "@/lib/utils"
 import { X, CheckCircle2, Loader2 } from "lucide-react"
+import { CompanyTypePicker } from "@/components/CompanyTypePicker"
+import { hasCompanyType, type CompanyType } from "@/lib/company-types"
 
 const SAUDI_CITIES = [
   "الرياض", "جدة", "مكة المكرمة", "المدينة المنورة", "الدمام",
@@ -19,6 +21,7 @@ const errorBorderCls = "border-red-500/40 focus:border-red-500/50"
 
 export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useTranslations("Landing.Onboarding")
+  const tType = useTranslations("Landing.CompanyType")
   const locale = useLocale()
 
   const [name, setName] = useState("")
@@ -27,6 +30,9 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
   const [email, setEmail] = useState("")
   const [city, setCity] = useState("")
   const [size, setSize] = useState("")
+  const [companyTypes, setCompanyTypes] = useState<CompanyType[]>([])
+  const [typeOther, setTypeOther] = useState("")
+  const [otherOpen, setOtherOpen] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
@@ -34,6 +40,7 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
   const reset = useCallback(() => {
     setName(""); setCompany(""); setPhone(""); setEmail("")
     setCity(""); setSize("")
+    setCompanyTypes([]); setTypeOther(""); setOtherOpen(false)
     setErrors({}); setSubmitting(false); setDone(false)
   }, [])
 
@@ -59,6 +66,7 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) e.email = t("err_email")
     if (!city) e.city = t("err_city")
     if (!size) e.size = t("err_size")
+    if (!hasCompanyType(companyTypes, otherOpen ? typeOther : "")) e.companyTypes = tType("err")
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -70,7 +78,7 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
       const res = await fetch("/api/onboarding/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, company, phone, email, city, size, locale }),
+        body: JSON.stringify({ name, company, phone, email, city, size, companyTypes, companyTypeOther: otherOpen ? typeOther.trim() : "", locale }),
       })
       if (!res.ok) throw new Error()
       setDone(true)
@@ -157,6 +165,17 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
                     className={cn(inputCls, errors.email && errorBorderCls)} />
                 </Field>
               </div>
+
+              <CompanyTypePicker
+                idPrefix="join"
+                value={companyTypes}
+                other={typeOther}
+                otherOpen={otherOpen}
+                error={errors.companyTypes}
+                onChange={setCompanyTypes}
+                onOtherChange={setTypeOther}
+                onOtherOpenChange={(open) => { setOtherOpen(open); if (!open) setTypeOther("") }}
+              />
 
               {/* Row 3: city + size */}
               <div className="grid grid-cols-2 gap-3">

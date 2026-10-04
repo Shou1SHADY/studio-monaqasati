@@ -5,10 +5,11 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslations, useLocale } from 'next-intl';
-import { CheckCircle2, Play, BarChart3, MessageCircle, Calendar, Factory, Shapes } from 'lucide-react';
+import { CheckCircle2, Play, BarChart3, MessageCircle, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { addDays, demoRequestSchema, riyadhToday } from '@/lib/demo-request';
+import { CompanyTypePicker } from '@/components/CompanyTypePicker';
 
 type FormData = z.infer<typeof demoRequestSchema>;
 
@@ -44,6 +45,8 @@ export function DemoRequestSection() {
   const locale = useLocale();
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState(false);
+  const [otherOpen, setOtherOpen] = useState(false);
+  const tType = useTranslations('Landing.CompanyType');
 
   const {
     register,
@@ -51,15 +54,11 @@ export function DemoRequestSection() {
     control,
     setValue,
     formState: { errors, isSubmitting },
-  } = useForm<FormData>({ resolver: zodResolver(demoRequestSchema), defaultValues: { businessOther: '' } });
-  const businessType = useWatch({ control, name: 'businessType' });
+  } = useForm<FormData>({ resolver: zodResolver(demoRequestSchema), defaultValues: { businessTypes: [], businessOther: '' } });
+  const businessTypes = useWatch({ control, name: 'businessTypes' });
+  const businessOther = useWatch({ control, name: 'businessOther' });
   const today = riyadhToday();
   const maxDay = addDays(today, 120);
-
-  const typeOptions = [
-    { value: 'manufacturer', icon: Factory, label: t('type_manufacturer') },
-    { value: 'other', icon: Shapes, label: t('type_other') },
-  ] as const;
 
   const onSubmit = async (data: FormData) => {
     setServerError(false);
@@ -67,7 +66,7 @@ export function DemoRequestSection() {
       const res = await fetch('/api/demo/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, locale }),
+        body: JSON.stringify({ ...data, businessOther: otherOpen ? data.businessOther : '', locale }),
       });
       if (!res.ok) throw new Error('server');
       setSubmitted(true);
@@ -193,44 +192,19 @@ export function DemoRequestSection() {
                     </Field>
                   </div>
 
-                  <fieldset className="space-y-1.5">
-                    <legend className="block text-[12px] font-bold text-slate-400 mb-1.5">{t('form_type_label')}</legend>
-                    <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label={t('form_type_label')}>
-                      {typeOptions.map(({ value, icon: Icon, label }) => (
-                        <button
-                          key={value}
-                          type="button"
-                          role="radio"
-                          aria-checked={businessType === value}
-                          onClick={() => setValue('businessType', value, { shouldValidate: true })}
-                          className={cn(
-                            'flex h-11 items-center justify-center gap-2 rounded-xl border text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20CBD5]/60',
-                            businessType === value
-                              ? 'border-[#20CBD5]/60 bg-[#20CBD5]/10 text-white'
-                              : 'border-white/[0.1] bg-white/[0.04] text-slate-400 hover:border-white/20 hover:text-slate-200',
-                            errors.businessType && 'border-red-500/40'
-                          )}
-                        >
-                          <Icon size={15} aria-hidden="true" />
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    {errors.businessType && <p role="alert" className="text-[11px] font-medium text-red-400 mt-1">{t('err_type')}</p>}
-                  </fieldset>
-
-                  {businessType === 'other' && (
-                    <Field label={t('form_type_other_label')} htmlFor="demo-type-other" error={errors.businessOther ? t('err_type_other') : undefined}>
-                      <input
-                        id="demo-type-other"
-                        aria-invalid={!!errors.businessOther}
-                        {...register('businessOther')}
-                        placeholder={t('form_type_other_ph')}
-                        maxLength={120}
-                        className={cn(fieldCls, errors.businessOther && errorBorderCls)}
-                      />
-                    </Field>
-                  )}
+                  <CompanyTypePicker
+                    idPrefix="demo"
+                    value={businessTypes ?? []}
+                    other={businessOther ?? ''}
+                    otherOpen={otherOpen}
+                    error={errors.businessTypes ? tType('err') : undefined}
+                    onChange={(types) => setValue('businessTypes', types, { shouldValidate: true })}
+                    onOtherChange={(text) => setValue('businessOther', text, { shouldValidate: true })}
+                    onOtherOpenChange={(open) => {
+                      setOtherOpen(open);
+                      if (!open) setValue('businessOther', '', { shouldValidate: true });
+                    }}
+                  />
 
                   <Field label={t('form_date_label')} htmlFor="demo-date" hint={t('form_date_hint')} error={errors.preferredDate ? t('err_date') : undefined}>
                     <input

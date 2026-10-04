@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { FieldValue } from 'firebase-admin/firestore'
 import { getAdminFirestore } from '@/lib/firebaseAdmin'
 import { sendEmail } from '@/lib/email'
+import { companyTypesSchema, hasCompanyType, normalizeCompanyTypes } from '@/lib/company-types'
+import { escapeHtml } from '@/lib/demo-request'
 
 const schema = z.object({
   name: z.string().trim().min(2).max(200),
@@ -11,8 +13,12 @@ const schema = z.object({
   email: z.string().trim().toLowerCase().email(),
   city: z.string().trim().min(1).max(100),
   size: z.string().trim().min(1).max(100),
+  companyTypes: companyTypesSchema,
+  companyTypeOther: z.string().trim().max(120).optional().default(''),
   locale: z.enum(['ar', 'en']).optional().default('ar'),
-})
+}).refine((v) => hasCompanyType(v.companyTypes, v.companyTypeOther), { path: ['companyTypes'] })
+
+const TYPE_LABELS_AR = { contractor: 'مقاول', developer: 'مطوّر', supplier: 'مورّد', manufacturer: 'مصنع' } as const
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,7 +28,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: true, message: 'Invalid input', code: 'INVALID_INPUT' }, { status: 400 })
     }
 
-    const { name, company, phone, email, city, size, locale } = parsed.data
+    const { name, company, phone, email, city, size, locale, companyTypeOther } = parsed.data
+    const companyTypes = normalizeCompanyTypes(parsed.data.companyTypes)
+    const typeLabel = [...companyTypes.map((t) => TYPE_LABELS_AR[t]), ...(companyTypeOther ? [`أخرى — ${companyTypeOther}`] : [])].join('، ')
 
     const emailHtml = `
       <div dir="rtl" style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#0F172A">
@@ -34,6 +42,7 @@ export async function POST(req: NextRequest) {
           <tr style="background:#f8fafc"><td style="padding:10px 12px;font-weight:600;color:#475569;border-bottom:1px solid #e2e8f0">الشركة</td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0">${company}</td></tr>
           <tr><td style="padding:10px 12px;font-weight:600;color:#475569;border-bottom:1px solid #e2e8f0">الجوال</td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0" dir="ltr">${phone}</td></tr>
           <tr style="background:#f8fafc"><td style="padding:10px 12px;font-weight:600;color:#475569;border-bottom:1px solid #e2e8f0">البريد الإلكتروني</td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0" dir="ltr">${email}</td></tr>
+          <tr><td style="padding:10px 12px;font-weight:600;color:#475569;border-bottom:1px solid #e2e8f0">نوع النشاط</td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0">${escapeHtml(typeLabel)}</td></tr>
           <tr><td style="padding:10px 12px;font-weight:600;color:#475569;border-bottom:1px solid #e2e8f0">المدينة</td><td style="padding:10px 12px;border-bottom:1px solid #e2e8f0">${city}</td></tr>
           <tr><td style="padding:10px 12px;font-weight:600;color:#475569">حجم الشركة</td><td style="padding:10px 12px">${size}</td></tr>
         </table>
@@ -45,7 +54,7 @@ export async function POST(req: NextRequest) {
     try {
       const db = getAdminFirestore()
       await db.collection('onboardingRequests').add({
-        name, company, phone, email, city, size, locale,
+        name, company, phone, email, city, size, locale, companyTypes, companyTypeOther,
         status: 'new',
         createdAt: FieldValue.serverTimestamp(),
       })

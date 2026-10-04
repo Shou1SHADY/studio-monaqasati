@@ -4,13 +4,16 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getAdminFirestore } from '@/lib/firebaseAdmin';
 import { sendEmail } from '@/lib/email';
 import { demoRequestBase, escapeHtml } from '@/lib/demo-request';
+import { hasCompanyType, normalizeCompanyTypes } from '@/lib/company-types';
 
 const schema = demoRequestBase
   .extend({
     locale: z.enum(['ar', 'en']).optional().default('ar'),
     businessOther: z.string().trim().max(120).optional().default(''),
   })
-  .refine((v) => v.businessType !== 'other' || v.businessOther.length >= 2, { path: ['businessOther'] });
+  .refine((v) => hasCompanyType(v.businessTypes, v.businessOther), { path: ['businessTypes'] });
+
+const TYPE_LABELS_AR = { contractor: 'مقاول', developer: 'مطوّر', supplier: 'مورّد', manufacturer: 'مصنع' } as const;
 
 function errorResponse(message: string, code: string, status: number) {
   return NextResponse.json({ error: true, message, code }, { status });
@@ -23,8 +26,9 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return errorResponse('Invalid input', 'INVALID_INPUT', 400);
     }
-    const { name, company, phone, email, locale, preferredDate, businessType, businessOther } = parsed.data;
-    const typeLabel = businessType === 'manufacturer' ? 'مصنع' : `أخرى — ${businessOther}`;
+    const { name, company, phone, email, locale, preferredDate, businessOther } = parsed.data;
+    const businessTypes = normalizeCompanyTypes(parsed.data.businessTypes);
+    const typeLabel = [...businessTypes.map((t) => TYPE_LABELS_AR[t]), ...(businessOther ? [`أخرى — ${businessOther}`] : [])].join('، ');
 
     const db = getAdminFirestore();
     await db.collection('demoRequests').add({
@@ -33,8 +37,8 @@ export async function POST(req: NextRequest) {
       phone,
       email,
       preferredDate,
-      businessType,
-      businessOther: businessType === 'other' ? businessOther : '',
+      businessTypes,
+      businessOther,
       locale,
       status: 'new',
       createdAt: FieldValue.serverTimestamp(),

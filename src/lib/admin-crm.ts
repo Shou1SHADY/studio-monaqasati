@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { leadCompanyTypes, type CompanyType, type LeadTypeFields } from "@/lib/company-types"
 
 export const CLIENT_STAGES = ["onboarding", "active", "at_risk", "churned"] as const
 export type ClientStage = (typeof CLIENT_STAGES)[number]
@@ -127,7 +128,7 @@ export type LeadSource = (typeof LEAD_SOURCES)[number]
 
 export const LEAD_STALE_DAYS = 7
 
-export type LeadDoc = {
+export type LeadDoc = LeadTypeFields & {
   id: string
   source: LeadSource
   name?: string
@@ -135,6 +136,9 @@ export type LeadDoc = {
   phone?: string
   email?: string
   status?: string
+  city?: string
+  size?: string
+  preferredDate?: string
   createdAt?: { seconds?: number } | null
 }
 
@@ -146,6 +150,11 @@ export type LeadRow = {
   company: string
   phone: string
   email: string
+  types: CompanyType[]
+  typeOther: string
+  city: string
+  size: string
+  preferredDate: string
   converted: boolean
   stage: LeadViewStage
   ownerUid: string
@@ -189,6 +198,7 @@ export function buildLeadRows(leads: LeadDoc[], records: Record<string, ClientRe
     const nextFollowUp = rec.nextFollowUp ?? ""
     const closed = converted || stage === "lost"
     const silentDays = daysSinceContact ?? (createdMs ? Math.max(0, Math.floor((now.getTime() - createdMs) / DAY_MS)) : 0)
+    const { types, other } = leadCompanyTypes(l)
     return {
       id: l.id,
       crmId,
@@ -197,6 +207,11 @@ export function buildLeadRows(leads: LeadDoc[], records: Record<string, ClientRe
       company: l.company?.trim() ?? "",
       phone: l.phone ?? "",
       email: l.email ?? "",
+      types,
+      typeOther: other,
+      city: l.city ?? "",
+      size: l.size ?? "",
+      preferredDate: l.preferredDate ?? "",
       converted,
       stage,
       ownerUid: rec.ownerUid ?? "",

@@ -66,6 +66,8 @@ import { useUser, useFirestore, useMemoFirebase, useCollection, useStorage } fro
 import { doc, updateDoc, deleteField, collection, query as firestoreQuery, orderBy, where } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
+import { usePermissions } from "@/hooks/usePermissions"
+import { OwnerOnlyNotice } from "@/components/OwnerOnlyNotice"
 import { identityDocRef } from "@/lib/org-identity"
 
 interface Certificate {
@@ -164,6 +166,7 @@ export default function SupplierProfilePage() {
   })
 
   const { profile: userData, isLoading: isUserDataLoading, organizationId, isSecondary } = useResolvedProfile(isUserLoading ? null : user?.uid)
+  const { isOrgOwner, isLoading: permsLoading } = usePermissions()
   // Identity fields (name, phone, CR/tax numbers, specializations, legal
   // docs, portfolio...) live on organizations/{organizationId} for a
   // secondary company added via the company-switcher, and on users/{uid}
@@ -785,12 +788,20 @@ export default function SupplierProfilePage() {
     profile.projects.length > 0
   ].filter(Boolean).length / 10 * 100)
 
-  if (isUserLoading || isUserDataLoading) {
+  if (isUserLoading || isUserDataLoading || permsLoading) {
     return (
       <PortalLayout>
         <div className="flex justify-center items-center h-[60vh]">
           <Loader2 className="animate-spin text-primary" size={32} />
         </div>
+      </PortalLayout>
+    )
+  }
+
+  if (!isOrgOwner) {
+    return (
+      <PortalLayout>
+        <OwnerOnlyNotice />
       </PortalLayout>
     )
   }
