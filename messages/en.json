@@ -20250,7 +20250,8 @@
         "no_orders": "No orders yet",
         "log": "Log",
         "no_log": "Nothing recorded yet",
-        "remove": "Remove from our suppliers"
+        "remove": "Remove from our suppliers",
+        "vat_on_file": "On file with the supplier (not shown to you)"
       },
       "log": {
         "added": "Added from the platform directory — awaiting its record",

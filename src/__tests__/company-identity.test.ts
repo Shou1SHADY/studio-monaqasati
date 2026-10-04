@@ -140,4 +140,11 @@ describe("companyPublicFacts rules", () => {
     expect(write).not.toContain("isOrgMember")
     expect(allow(body, "delete")).toEqual(["false"])
   })
+
+  it("refuses any field but the yes/no flags and the date, so a number can never be written where the company's own team reads", () => {
+    const write = allow(body, "update").join(" ")
+    expect(write).toContain("hasOnly(['hasVat', 'hasCr', 'crExpiry', 'updatedAt', 'migratedAt'])")
+    for (const forbidden of ["vat'", "taxNumber", "crNumber", "iban", "legalDocuments"]) expect(write).not.toContain(forbidden)
+    expect(allow(body, "create")).toEqual(allow(body, "update"))
+  })
 })

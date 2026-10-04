@@ -4,6 +4,7 @@
 // the payment terms Finance reads for due dates, the lead time we see, and what
 // kind of supplier he is (a subcontractor's contract lives in Projects).
 
+import { useSupplierVat } from "@/hooks/useSupplierVat"
 import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
 import { useForm } from "react-hook-form"
@@ -17,7 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { PAYMENT_TERM_DAYS, SUPPLIER_KINDS, SUPPLIER_ORIGINS, VAT_PATTERN, effectiveCrExpiry, effectiveVat, phoneIsInternational } from "@/lib/procurement/supplier-file"
+import { PAYMENT_TERM_DAYS, SUPPLIER_KINDS, SUPPLIER_ORIGINS, VAT_PATTERN, displayVat, effectiveCrExpiry, phoneIsInternational } from "@/lib/procurement/supplier-file"
 import { SupplierWriteError, saveSupplierRecord } from "@/lib/procurement/supplier-writes"
 import type { ProcActor } from "@/lib/procurement/types"
 import type { PlatformSupplier } from "@/hooks/useSupplierDirectory"
@@ -41,6 +42,7 @@ export function SupplierRecordDialog({
   const firestore = useFirestore()
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
+  const supplierVat = useSupplierVat(supplier.orgId, supplier.profileVat, open)
 
   const schema = z.object({
     vatNumber: z
@@ -60,7 +62,7 @@ export function SupplierRecordDialog({
   type Values = z.infer<typeof schema>
 
   const initial = (): Values => ({
-    vatNumber: effectiveVat(supplier.record, supplier.profileVat),
+    vatNumber: displayVat(supplier.record, supplierVat),
     crExpiry: effectiveCrExpiry(supplier.record, supplier.profileCrExpiry) || "",
     paymentTermsDays: String(supplier.record?.paymentTermsDays ?? 30),
     leadTimeDays: supplier.record?.leadTimeDays ? String(supplier.record.leadTimeDays) : "",
@@ -68,6 +70,11 @@ export function SupplierRecordDialog({
     origin: supplier.record?.origin || "auto",
   })
   const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: initial() })
+
+  // The supplier's own number arrives from its identity document a moment after the dialog opens.
+  useEffect(() => {
+    if (open && supplierVat && !form.getValues("vatNumber")) form.setValue("vatNumber", supplierVat)
+  }, [open, supplierVat, form])
 
   useEffect(() => {
     if (open) form.reset(initial())

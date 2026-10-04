@@ -442,12 +442,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // The few facts a company's counterparties read in bulk — a tax number, when the registration
-    // ends — never the registration number, certificate files or bank details (those are in
-    // companyIdentity). Any signed-in user reads; the owner writes.
+    // The few facts a company's counterparties read in bulk — whether it has a tax number, when the
+    // registration ends — never a number, certificate files or bank details (those are in
+    // companyIdentity, closed to the company's own team). Any signed-in user reads; the owner writes.
     match /companyPublicFacts/{orgId} {
       allow get, list: if isSignedIn();
-      allow create, update: if isAdmin() || isCompanyOwner(orgId);
+      // Yes/no flags and a date only — a number written here would be readable by the company's own team.
+      allow create, update: if (isAdmin() || isCompanyOwner(orgId))
+        && request.resource.data.keys().hasOnly(['hasVat', 'hasCr', 'crExpiry', 'updatedAt', 'migratedAt']);
       allow delete: if false;
     }
 

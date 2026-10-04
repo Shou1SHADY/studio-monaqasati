@@ -5,6 +5,7 @@
 // and payment terms stay a condition before the first order — or, when he is
 // already ours, open our file on him.
 
+import { useSupplierVat } from "@/hooks/useSupplierVat"
 import { useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Loader2, Plus } from "lucide-react"
@@ -56,6 +57,8 @@ export function DirectoryDrawer({
   const firestore = useFirestore()
   const { toast } = useToast()
   const [adding, setAdding] = useState(false)
+  const supplierVat = useSupplierVat(supplier?.orgId, supplier?.profileVat, open)
+
   if (!supplier) return null
 
   const add = async () => {
@@ -126,7 +129,7 @@ export function DirectoryDrawer({
               )}
             </Stat>
             <Stat label={t("file.vat")}>
-              <span dir="ltr">{supplier.profileVat || "—"}</span>
+              <span dir="ltr">{supplierVat || (supplier.profileHasVat ? t("file.vat_on_file") : "—")}</span>
             </Stat>
           </div>
 

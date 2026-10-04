@@ -69,7 +69,7 @@ const text = (v) => (typeof v === "string" || typeof v === "number" ? String(v).
 // Keep in step with publicFactsPatch in src/lib/company-public-facts.ts.
 const publicFacts = (src) => {
   const out = {}
-  if (text(src.taxNumber)) out.vat = text(src.taxNumber).replace(/\s/g, "")
+  if (text(src.taxNumber)) out.hasVat = true
   if (text(src.crNumber)) out.hasCr = true
   const expiry = text(src.legalDocuments && src.legalDocuments.cr && src.legalDocuments.cr.expiryDate).slice(0, 10)
   if (expiry) out.crExpiry = expiry
@@ -111,6 +111,8 @@ const publicFacts = (src) => {
     const haveFacts = existingFacts.get(c.orgId) || {}
     const factPatch = {}
     for (const [k, v] of Object.entries(publicFacts(c.data))) if (!present(haveFacts[k])) factPatch[k] = v
+    // An earlier shape carried the number itself; the public document must hold none.
+    if ("vat" in haveFacts) factPatch.vat = FieldValue.delete()
     if (Object.keys(factPatch).length) factWrites.push({ orgId: c.orgId, patch: factPatch })
     const wanted = pick(c.data)
     if (!Object.keys(wanted).length) {

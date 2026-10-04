@@ -88,7 +88,9 @@ export interface PlatformSupplier {
   international: boolean
   since: string | null
   platformVerified: boolean
+  /** The number itself, only while the old profile field exists; screens that show it read the identity document (useSupplierVat). */
   profileVat: string | null
+  profileHasVat: boolean
   profileCrExpiry: string | null
   reviews: PlatformReview[]
   rating: { avg: number; n: number } | null
@@ -185,6 +187,7 @@ export function useSupplierDirectory(orgId: string, favoriteIds: string[], offer
         since: asDay(raw.createdAt),
         platformVerified: Boolean(owner.isVerified),
         profileVat: str(facts.vat),
+        profileHasVat: facts.hasVat,
         profileCrExpiry: asDay(facts.crExpiry),
         reviews,
         rating: starAverage(reviews.map((r) => r.rating)),

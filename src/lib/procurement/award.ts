@@ -192,7 +192,7 @@ export function supplierFactsFromProfile(
   const facts = factsFromProfile(data, publicFacts)
   return {
     orgId,
-    hasVatNumber: facts.vat !== "",
+    hasVatNumber: facts.hasVat,
     verified: Boolean(data.isVerified),
     crExpiry: facts.crExpiry || null,
   }

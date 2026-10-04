@@ -11,7 +11,7 @@ import { displayCategory, displayCity } from "@/lib/constants"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import type { PlatformSupplier } from "@/hooks/useSupplierDirectory"
 import type { SupplierScore } from "@/lib/procurement/po"
-import { effectiveCrExpiry, effectiveVat, supplierDocs, type DocsState } from "@/lib/procurement/supplier-file"
+import { effectiveCrExpiry, effectiveVat, profileVatMark, supplierDocs, type DocsState } from "@/lib/procurement/supplier-file"
 import { useDateText } from "./PoBits"
 
 export type SupplierRow = PlatformSupplier & { score: SupplierScore; open: number }
@@ -38,7 +38,7 @@ export function OurSuppliersTable({ rows, today, onOpen }: { rows: SupplierRow[]
         <tbody className="divide-y">
           {rows.map((s) => {
             const kind = s.record?.kind || "mat"
-            const docs = supplierDocs(effectiveVat(s.record, s.profileVat), effectiveCrExpiry(s.record, s.profileCrExpiry), today)
+            const docs = supplierDocs(effectiveVat(s.record, profileVatMark(s)), effectiveCrExpiry(s.record, s.profileCrExpiry), today)
             const onTime = s.score.onTimePercent
             return (
               <tr key={s.orgId} className="cursor-pointer hover:bg-muted/40" onClick={() => onOpen(s.orgId)}>
