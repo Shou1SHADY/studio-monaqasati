@@ -32,6 +32,8 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
+import { RecordActivities } from "@/components/activities/RecordActivities"
+import { procLinks } from "@/lib/procurement/events"
 import { displayDocNumber, displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { approvalRefusal, canCancelRemainder, canRecordAcceptance, canSend, canUpdateDate, daysLate, isSelfApproval, lineToArrive, poBlocks, poStatus, receiptDay, receiptsOf, reminderCooldownUntil, todayOf, dayOf } from "@/lib/procurement/po"
 import { PRICE_AGREEMENTS, agreementState, type PriceAgreement } from "@/lib/procurement/prices"
@@ -931,6 +933,8 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 </ol>
               </Section>
             )}
+
+            <RecordActivities portal="contractor" target={{ kind: "po", id: po.id, label: number, href: procLinks.order(po.id) }} />
           </div>
         </SheetContent>
       </Sheet>

@@ -16,7 +16,7 @@ jest.mock("next-intl", () => ({
 jest.mock("@/firebase", () => ({ useFirestore: () => ({}), useUser: () => ({ user: { uid: "st1", displayName: "Store keeper", email: "s@x.sa" } }) }))
 jest.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: jest.fn() }) }))
 
-let perms = { can: (p: string) => p === "warehouses.manage", isLoading: false }
+let perms: { can: (p: string) => boolean; isLoading: boolean } = { can: (p: string) => p === "warehouses.manage", isLoading: false }
 let desk: { loading: boolean; projects: unknown[]; rows: DeskRequest[] } = { loading: false, projects: [], rows: [] }
 jest.mock("@/hooks/usePermissions", () => ({ usePermissions: () => perms }))
 jest.mock("@/hooks/useResolvedProfile", () => ({ useResolvedProfile: () => ({ profile: { name: "Store keeper" }, organizationId: "org" }) }))

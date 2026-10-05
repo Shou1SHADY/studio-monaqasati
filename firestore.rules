@@ -4151,6 +4151,28 @@ service cloud.firestore {
       allow create: if isSignedIn() && (isAdmin() || createsInOrg());
       allow update, delete: if orgReadable();
     }
+    // Activities (DEV-69) — scheduled follow-ups: a to-do, call, meeting, e-mail or document to
+    // upload, planned for a day and given to a person of the same company, optionally attached to
+    // a document. The company reads them; the assignee, the one who planned it or the owner
+    // finishes, moves or cancels an OPEN one. Nothing is ever deleted.
+    match /activities/{activityId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if createsInOrg()
+        && request.resource.data.createdById == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.summary is string && request.resource.data.summary.size() > 0 && request.resource.data.summary.size() <= 120
+        && request.resource.data.dueOn is string
+        && request.resource.data.assigneeId is string
+        && (request.resource.data.assigneeId == request.auth.uid
+            || get(/databases/$(database)/documents/users/$(request.resource.data.assigneeId)).data.get('organizationId', '') == request.resource.data.organizationId);
+      allow update: if keepsOrg()
+        && resource.data.status == 'open'
+        && (resource.data.assigneeId == request.auth.uid || resource.data.createdById == request.auth.uid || isOrgOwner())
+        && request.resource.data.status in ['open', 'done', 'cancelled']
+        && changedKeys().hasOnly(['status', 'dueOn', 'doneOn', 'doneById', 'doneByName', 'feedback', 'updatedAt'])
+        && request.resource.data.get('doneById', request.auth.uid) == request.auth.uid;
+      allow delete: if false;
+    }
     // Invoices — scoped to an organization
     match /invoices/{invoiceId} {
       allow get: if orgReadable();

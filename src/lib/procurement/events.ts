@@ -41,6 +41,8 @@ export type ProcEventKind =
   | "need_approved" // → buyers (rfq.manage / rfq.create) + owner: a project's material request was approved and is now Procurement's
   | "plant_requested" // → the equipment desk (warehouses.manage): a project's equipment request was approved and waits for an answer
   | "plant_answered" // → the requester: the equipment desk answered (allocated, busy until, an alternative, or none)
+  | "activity_assigned" // → the assignee: someone planned a to-do for him
+  | "activity_done" // → the one who planned it: the assignee marked it done
 
 export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "po_awaiting_approval",
@@ -66,6 +68,8 @@ export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "need_approved",
   "plant_requested",
   "plant_answered",
+  "activity_assigned",
+  "activity_done",
 ]
 
 /** Who is told: a role, named users, or the org owner. */
@@ -211,10 +215,24 @@ export const PROC_EVENT_COPY_AR: Record<ProcEventKind, { title: string; message:
     title: "ردّ مكتب المعدات على طلبك — م.ع {no}",
     message: "ردّ {actor} على طلبك للمعدات «{what}» في مشروع {project}: {reply}",
   },
+  activity_assigned: {
+    title: "مهمة جديدة لك — {summary}",
+    message: "كلّفك {actor} بمهمة «{summary}» ({type}) مستحقة في {due}. المستند المرتبط: {about}.",
+  },
+  activity_done: {
+    title: "أُنجزت المهمة — {summary}",
+    message: "أنجز {actor} المهمة «{summary}» التي خططت لها. المستند المرتبط: {about}.",
+  },
 }
 
 /** `@key` params the messages name, with their Arabic text. */
 export const PROC_EVENT_PARAM_COPY_AR: Record<string, string> = {
+  pn_activity_type_todo: "مهمة",
+  pn_activity_type_call: "اتصال",
+  pn_activity_type_meeting: "اجتماع",
+  pn_activity_type_email: "بريد إلكتروني",
+  pn_activity_type_document: "رفع مستند",
+  pn_activity_about_none: "لا يوجد",
   pn_plant_reply_alloc: "خُصصت لك وحدة من أسطولنا",
   pn_plant_reply_late: "مشغولة حتى موعد التوفر",
   pn_plant_reply_alt: "عُرض عليك بديل",
