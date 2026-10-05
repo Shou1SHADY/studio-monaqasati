@@ -29,6 +29,8 @@ import type { HrExit } from "@/lib/hr/exit-writes"
 import { empNo, hrDate, hrMoney, todayDay } from "@/lib/hr/format"
 import { gosiCsv, mudadCsv, type Payroll } from "@/lib/hr/payroll"
 import { csvPreview, penaltyCellParts, REPORTS, reportCsv, reportRows, visibleReports, type Cell, type ReportColumn, type ReportId } from "@/lib/hr/reports"
+import { riyadhMinutes, type PunchWm } from "@/lib/hr/punches"
+import { featureSet } from "@/lib/hr/settings"
 import { addDays } from "@/lib/hr/statutory"
 import { cn } from "@/lib/utils"
 import { useHrViolations } from "./HrViolationList"
@@ -53,7 +55,8 @@ export function HrReportsView({ access }: { access: HrAccess }) {
   const today = todayDay()
   const orgId = access.orgId
   const money = access.allowed("pay.view")
-  const reports = visibleReports(access.ctx)
+  const punchOn = access.settings.features.includes("punch")
+  const reports = visibleReports(access.ctx, featureSet(access.settings))
   const asked = params.get("report") as ReportId | null
   const [open, setOpen] = useState<ReportId | null>(asked && reports.some((r) => r.id === asked) ? asked : null)
 
@@ -66,14 +69,30 @@ export function HrReportsView({ access }: { access: HrAccess }) {
   const attQ = useMemoFirebase(() => orgQ(HR_ATTENDANCE, reports.some((r) => r.id === "attendance"), where("month", "==", month)), [firestore, orgId, month, reports.length])
   const prQ = useMemoFirebase(() => orgQ(HR_PAYROLLS, money), [firestore, orgId, money])
   const exQ = useMemoFirebase(() => orgQ(HR_EXITS, reports.length > 0), [firestore, orgId, reports.length])
+  // Optional: punch — the lateness and roster reports read this month's workplace months.
+  const curQ = useMemoFirebase(() => orgQ(HR_ATTENDANCE, punchOn && reports.some((r) => r.feature === "punch"), where("month", "==", today.slice(0, 7))), [firestore, orgId, today, punchOn, reports.length])
+  const { data: cur } = useCollection(curQ)
   const { data: att } = useCollection(attQ)
   const { data: pr } = useCollection(prQ)
   const { data: ex } = useCollection(exQ)
   const payrolls = useMemo(() => (pr ?? []) as unknown as Payroll[], [pr])
 
   const world = useMemo(
-    () => ({ today, locale, employees, sites, pays, payrolls, month, attendance: (att ?? []) as unknown as WorkplaceMonth[], requests, violations, exits: (ex ?? []) as unknown as HrExit[] }),
-    [today, locale, employees, sites, pays, payrolls, month, att, requests, violations, ex]
+    () => ({
+      today,
+      locale,
+      employees,
+      sites,
+      pays,
+      payrolls,
+      month,
+      attendance: (att ?? []) as unknown as WorkplaceMonth[],
+      requests,
+      violations,
+      exits: (ex ?? []) as unknown as HrExit[],
+      punch: punchOn ? { months: (cur ?? []) as unknown as PunchWm[], nowMin: riyadhMinutes() } : null,
+    }),
+    [today, locale, employees, sites, pays, payrolls, month, att, requests, violations, ex, punchOn, cur]
   )
   const rowsOf = useMemo(() => {
     const cache = new Map<ReportId, Cell[][]>()

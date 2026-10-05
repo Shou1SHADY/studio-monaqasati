@@ -17,6 +17,7 @@ import { requestNoDisplay } from "@/lib/hr/requests"
 import { daysBetween } from "@/lib/hr/statutory"
 import { describeRequest, REQUEST_TONE } from "./HrRequestList"
 import type { MyFileCtx } from "./HrMyFile"
+import { HrMyPunch } from "./HrMyPunch"
 
 const ATTN_ICON: Record<AttnKind, LucideIcon> = {
   penalty: Flag,
@@ -92,7 +93,8 @@ export function HrMyHome({ ctx, attention }: { ctx: MyFileCtx; attention: AttnIt
           />
           <KeyValueRow label={t("me.day.place")} value={ctx.siteName(emp.siteId) ?? t("sites.unassigned")} />
           <KeyValueRow label={t("me.line_manager")} value={ctx.lineManager?.name ?? t("me.holder.management")} />
-          <p className="pt-2 text-[11px] text-muted-foreground">{t(ctx.access.settings.features.includes("punch") ? "me.day.punch_later" : rec.kind === "assumed" ? "me.day.assumed_note" : "me.day.sheet_note")}</p>
+          {/* Optional: punch — «الدوام», the source, and the punch button where the workplace punches by the app. */}
+          {ctx.access.settings.features.includes("punch") ? <HrMyPunch ctx={ctx} /> : <p className="pt-2 text-[11px] text-muted-foreground">{t(rec.kind === "assumed" ? "me.day.assumed_note" : "me.day.sheet_note")}</p>}
         </Panel>
 
         {/* «طلباتي الجارية» */}

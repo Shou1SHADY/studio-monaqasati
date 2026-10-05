@@ -71,6 +71,9 @@ import { cn } from "@/lib/utils"
 import { HrAssignFixPanel } from "./HrAssignFixPanel"
 import { HrDeclareMissingDialog } from "./HrDeclareMissingDialog"
 import { ReturnFromLeave } from "./HrRequestList"
+import { SecondShiftButton, SheetShiftHeader, SheetSourceNote } from "./HrSheetShifts"
+import type { PunchSite } from "@/lib/hr/punches"
+import { shiftRank, type EmployeeShift } from "@/lib/hr/shifts"
 
 type Seg = "sheet" | "month"
 const NO_VIOLATION = "__none__"
@@ -107,7 +110,15 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
 
   // ---- the day sheet --------------------------------------------------------
   const saved = sheetWm?.days?.[day] ?? null
-  const roster = useMemo(() => (saved ? saved.listed : employees.filter((e) => onSheet(e, siteId, day)).map((e) => e.id)), [saved, employees, siteId, day])
+  // Optional: punch — a shift workplace's sheet is read shift by shift (SH-06), morning first.
+  const punchOn = access.settings.features.includes("punch")
+  const roster = useMemo(() => {
+    const ids = saved ? saved.listed : employees.filter((e) => onSheet(e, siteId, day)).map((e) => e.id)
+    if (!punchOn) return ids
+    const rank = (id: string) => shiftRank((employees.find((e) => e.id === id) ?? {}) as { shift?: EmployeeShift | null }, site as PunchSite | null, day)
+    return [...ids].sort((a, b) => rank(a) - rank(b))
+    // `site` follows `sites` and `siteId`.
+  }, [saved, employees, siteId, day, punchOn, sites])
   const [ex, setEx] = useState<Record<string, AttendanceException>>({})
   const [unlisted, setUnlisted] = useState<Array<{ name: string; note: string }>>([])
   // Reload the rows only when THIS day's record changes: the month's document
@@ -219,6 +230,8 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
             {assumed && <Callout tone="info">{t("att.assumed")}</Callout>}
             {holiday && <Callout tone="info">{t("att.holiday", { name: t(`holiday.${holiday.key}`) })}</Callout>}
             {!holiday && isRamadan(day) && <Callout tone="info">{t("att.ramadan")}</Callout>}
+            <SheetSourceNote on={punchOn} site={site as PunchSite | null} canOpen={access.tabs.includes("attendance")} />
+            <SheetShiftHeader on={punchOn} site={site as PunchSite | null} people={roster.map((id) => (byId.get(id) ?? { id }) as { id: string; shift?: EmployeeShift | null })} day={day} ex={exOf} />
             {sheetClosed && <Callout tone="block">{t("att.month_closed")}</Callout>}
             {saved && <p className="text-xs text-muted-foreground">{t("att.recorded_by", { name: saved.byName || "—", at: hrDate(saved.at, locale) })}</p>}
             {saved && !sheetClosed && <Callout tone="info">{t("att.day_locked")}</Callout>}
@@ -294,6 +307,17 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
                         onChange={(ev) => setRow(id, { ot: ev.target.value === "" ? null : Number(ev.target.value) })}
                         disabled={!editable || busy || status === "absent" || status === "sick"}
                         className="h-8 w-20"
+                      />
+                      <SecondShiftButton
+                        on={punchOn}
+                        site={site as PunchSite | null}
+                        emp={(byId.get(id) ?? { id }) as { id: string; shift?: EmployeeShift | null }}
+                        day={day}
+                        value={e}
+                        monthOt={employeeMonth(sheetWm, id).overtimeHours}
+                        disabled={!editable || busy}
+                        onChange={(patch) => setRow(id, patch)}
+                        onWarn={(text) => toast({ title: text })}
                       />
                       {mayViolation && (
                         <Select value={e.violation ?? NO_VIOLATION} onValueChange={(v) => setRow(id, { violation: v === NO_VIOLATION ? null : (v as ViolationCode) })} disabled={!editable || busy}>

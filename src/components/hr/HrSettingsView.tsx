@@ -35,7 +35,7 @@ import { STATUTORY, type HrPolicies } from "@/lib/hr/statutory"
 import { HrWriteError } from "@/lib/hr/write-guard"
 
 /** Features whose screens arrive in a later release — their switch is kept, and says so. */
-const LATER: ReadonlySet<string> = new Set(["hire", "perf", "train", "punch", "gov"])
+const LATER: ReadonlySet<string> = new Set(["hire", "perf", "train", "gov"])
 
 /** ST-04 — «ملف المنشأة»: the band (by hand, from Qiwa), the Saudi ratio from the record, the green threshold, and
  * the safety margin; the registrations and the visas with their as-of day. Settings and government relations' Today. */

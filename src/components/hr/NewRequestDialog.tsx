@@ -52,6 +52,7 @@ import {
 import type { HrSite } from "@/lib/hr/sites"
 import { addDays, STATUTORY } from "@/lib/hr/statutory"
 import { HrWriteError } from "@/lib/hr/write-guard"
+import { sourceOf, type PunchSite } from "@/lib/hr/punches"
 import { cn } from "@/lib/utils"
 
 export function NewRequestDialog({
@@ -86,7 +87,9 @@ export function NewRequestDialog({
   const storage = useStorage()
   const { toast } = useToast()
   const today = todayDay()
-  const punch = access.settings.features.includes("punch")
+  // PT-07 — "forgot to punch" / "outside the fence" exist where people punch: the punch feature on AND his
+  // workplace's source a device or the app (a supervisor's sheet has only "marked absent").
+  const punch = sourceOf((sites.find((s) => s.id === emp.siteId) as PunchSite | undefined) ?? null, access.settings.features.includes("punch")) !== "sheet"
   const [busy, setBusy] = useState(false)
   const [type, setType] = useState<LeaveType>("annual")
   const [from, setFrom] = useState("")
