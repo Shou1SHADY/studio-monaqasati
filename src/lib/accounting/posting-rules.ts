@@ -782,6 +782,22 @@ export function postHrPayReturn(e: { sourceId: string; date: string; amount: num
   }
 }
 
+/** A month's GOSI contributions paid (fin:GOSIPAID): Dr GOSI payable · Cr bank — both shares, as hr:PAY credited them. */
+export function postHrGosiPayment(e: { key: string; date: string; amount: number; bankAccount?: string }): PostingResult {
+  return {
+    sourceType: "hr_gosi_payment",
+    sourceId: e.key,
+    date: e.date,
+    description: `سداد التأمينات الاجتماعية ${e.key}`,
+    costCenter: COST_CENTERS.admin,
+    lines: [
+      { account: ACC.gosiPayable, debit: e.amount, note: "سداد التأمينات" },
+      { account: e.bankAccount || ACC.bankMain, credit: e.amount },
+    ],
+    empty: round2(e.amount) === 0,
+  }
+}
+
 /** An advance paid out (hr:PR advance): Dr employee advances · Cr bank. Payroll takes it back in instalments.
  * The journal is readable by every member: the entry names the request, never the person (HR RL-03). */
 export function postHrAdvance(e: { requestId: string; requestNo: string; date: string; amount: number; bankAccount?: string }): PostingResult {

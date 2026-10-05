@@ -134,7 +134,7 @@ describe("the files for the authorities (PY-07)", () => {
 
   it("the Mudad row never shows negative earnings: an absence is a deduction, and the row still adds up to the net", () => {
     const [row] = rowsOf(mudadCsv(lines, pays))
-    const [id, , , basic, housing, other, deductions, net] = row
+    const [id, , , , basic, housing, other, deductions, net] = row
     expect(id).toBe("IDe1")
     expect(Number(basic)).toBe(3_000)
     expect(Number(housing)).toBe(750)
@@ -145,7 +145,7 @@ describe("the files for the authorities (PY-07)", () => {
 
   it("the files read the pay the payroll was computed with, not a later raise", () => {
     const raised = new Map(pays).set("e1", { ...wage4050, basic: 5_000, housing: 1_250, transport: 500 })
-    expect(rowsOf(mudadCsv(lines, raised))[0][3]).toBe("3000.00")
+    expect(rowsOf(mudadCsv(lines, raised))[0][4]).toBe("3000.00")
     expect(rowsOf(gosiCsv(lines, raised))[0][4]).toBe("3750.00")
   })
 })

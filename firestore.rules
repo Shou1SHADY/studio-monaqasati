@@ -3002,7 +3002,8 @@ service cloud.firestore {
 
     // Payroll (PY-02…05): prepared by payroll or the HR manager and recomputed
     // until approved; approved by the HR manager who did not prepare it (the
-    // org owner excepted, flagged); then Finance marks it posted and paid.
+    // org owner excepted, flagged); then Finance marks it posted and paid,
+    // and records the month's GOSI payment (`gosiPaid`, PY-09).
     // Carries every wage: pay roles and Finance only.
     match /hrPayrolls/{payrollId} {
       // Read before it exists (preparing a month): missing must read as missing.
@@ -3023,7 +3024,7 @@ service cloud.firestore {
             && hrManager() && (resource.data.prepared.by != request.auth.uid || isOrgOwner()))
           || (resource.data.state in ['approved', 'posted', 'paid'] && request.resource.data.state in ['posted', 'paid']
             && (resource.data.state != 'paid' || request.resource.data.state == 'paid')
-            && changedKeys().hasOnly(['state', 'posted', 'paid', 'returned', 'paidHeld', 'updatedAt'])
+            && changedKeys().hasOnly(['state', 'posted', 'paid', 'returned', 'paidHeld', 'gosiPaid', 'updatedAt'])
             && hrFinance())
         );
       allow delete: if false;

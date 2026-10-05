@@ -7,7 +7,7 @@
 
 import { doc, getDoc, serverTimestamp, writeBatch, type Firestore } from "firebase/firestore"
 import { postToLedger } from "../accounting/post"
-import { postHrAdvance, postHrEos, postHrFee, postHrPay, postHrPayPayment, postHrPayReturn, postHrSettlement, type HrCostRow, type PostingResult } from "../accounting/posting-rules"
+import { postHrAdvance, postHrEos, postHrFee, postHrGosiPayment, postHrPay, postHrPayPayment, postHrPayReturn, postHrSettlement, type HrCostRow, type PostingResult } from "../accounting/posting-rules"
 import { HR_EVENTS, HR_EXITS, HR_PAY, HR_PAYROLLS, HR_PAYSLIPS, HR_REQUESTS, HR_SETTLEMENTS } from "./collections"
 import type { EmployeePay } from "./employee"
 import type { HrSettlement } from "./exit-writes"
@@ -148,7 +148,7 @@ async function tellPayslips(firestore: Firestore, a: FinanceActor, orgId: string
 }
 
 /** A payroll as Finance's desk reads it: with the transfers the bank returned and the held lines paid since. */
-export type FinancePayroll = Payroll & { returned?: Record<string, { reason?: string } | unknown>; paidHeld?: Record<string, unknown> }
+export type FinancePayroll = Payroll
 
 const linesOf = (p: Payroll): AnyLine[] => (p.kind === "supplementary" ? (p.supplementary ?? []) : p.lines)
 
@@ -162,8 +162,7 @@ export function owedLines(payrolls: FinancePayroll[]): Array<{ p: FinancePayroll
       linesOf(p)
         .filter((l) => (l.held || p.returned?.[l.employeeId]) && !p.paidHeld?.[l.employeeId])
         .map((l) => {
-          const r = p.returned?.[l.employeeId] as { reason?: string } | undefined
-          return { p, employeeId: l.employeeId, no: l.no, name: l.name, net: l.net, reason: r?.reason ?? null }
+          return { p, employeeId: l.employeeId, no: l.no, name: l.name, net: l.net, reason: p.returned?.[l.employeeId]?.reason ?? null }
         })
     )
 }
@@ -190,7 +189,7 @@ function lineOf(p: Payroll, employeeId: string): LineRef | null {
 export const lineJournalRef = (p: Pick<Payroll, "key">, l: Pick<LineRef, "pos">, held = false) => `${p.key}:${held ? "held:" : ""}L${l.pos}`
 
 /** fin:RETURNED — the bank sent a transfer back: the money is owed again and the IBAN goes to payroll to fix. */
-export async function markReturned(firestore: Firestore, a: FinanceActor, orgId: string, p: Payroll & { returned?: Record<string, unknown> }, employeeId: string, reason: string, books: Books): Promise<void> {
+export async function markReturned(firestore: Firestore, a: FinanceActor, orgId: string, p: Payroll, employeeId: string, reason: string, books: Books): Promise<void> {
   need(a)
   const l = lineOf(p, employeeId)
   if (!l || p.state !== "paid" || l.held || p.returned?.[employeeId]) throw new HrWriteError("blocked", ["stale"])
@@ -210,7 +209,7 @@ export async function markReturned(firestore: Firestore, a: FinanceActor, orgId:
 }
 
 /** A held or returned line, paid once the HR manager approved the IBAN. */
-export async function payHeldLine(firestore: Firestore, a: FinanceActor, orgId: string, p: Payroll & { returned?: Record<string, unknown>; paidHeld?: Record<string, unknown> }, employeeId: string, books: Books): Promise<void> {
+export async function payHeldLine(firestore: Firestore, a: FinanceActor, orgId: string, p: Payroll, employeeId: string, books: Books): Promise<void> {
   need(a)
   const l = lineOf(p, employeeId)
   if (!l || p.state !== "paid" || !(l.held || p.returned?.[employeeId]) || p.paidHeld?.[employeeId]) throw new HrWriteError("blocked", ["stale"])
@@ -226,6 +225,27 @@ export async function payHeldLine(firestore: Firestore, a: FinanceActor, orgId: 
     await writePayslips(firestore, orgId, p, [line], books.date)
     await tellPayslips(firestore, a, orgId, p, [line], `${p.id}__${employeeId}__held`)
   }
+}
+
+/** The month's GOSI contributions — both shares of every line, held ones included (they are owed whatever the
+ * transfer did): the GOSI credit of hr:PAY and the GOSI statement's total. */
+export const gosiAmount = (p: Pick<Payroll, "lines">) => {
+  const t = payrollTotals(p.lines)
+  return r2(t.gosiEmployee + t.gosiEmployer)
+}
+
+/** fin:GOSIPAID (PY-09) — Finance paid a month's contributions: once, on a main payroll Finance has posted or paid;
+ * Dr GOSI payable · Cr bank (with Accounting off, recorded without an entry). HR's reconciliation reads `gosiPaid`. */
+export async function recordGosiPaid(firestore: Firestore, a: FinanceActor, orgId: string, p: Payroll, books: Books): Promise<void> {
+  need(a)
+  if (p.kind !== "main" || !(p.state === "posted" || p.state === "paid")) throw new HrWriteError("blocked", ["not_posted"])
+  const cur = await getDoc(doc(firestore, HR_PAYROLLS, p.id))
+  if (!cur.exists() || (cur.data() as Payroll).gosiPaid) throw new HrWriteError("blocked", ["stale"])
+  const amount = gosiAmount(p)
+  const batch = writeBatch(firestore)
+  const entry = await book(firestore, a, orgId, postHrGosiPayment({ key: `hr:GOSI:${p.month}`, date: books.date, amount, bankAccount: books.bankAccount }), books, batch)
+  batch.update(doc(firestore, HR_PAYROLLS, p.id), { gosiPaid: { ...stamp(a), date: books.date, amount, entry: entry ?? null }, updatedAt: serverTimestamp() })
+  await batch.commit()
 }
 
 /** Pay out an approved advance (hr:PR → fin:PRPAID): payroll takes it back in instalments. */
