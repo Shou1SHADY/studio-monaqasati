@@ -5,7 +5,7 @@
 // endorse, approve, decline (a reason is required), cancel before it starts.
 // An advance's amount shows only to those who may see pay.
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -30,7 +30,22 @@ export const REQUEST_TONE: Record<HrRequestState, PillTone> = { pending: "warn",
 
 type Acting = { r: HrRequest; action: Exclude<RequestAction, "finance"> }
 
-export function HrRequestList({ access, requests, portal, showEmployee = true, empty }: { access: HrAccess; requests: HrRequest[]; portal?: HrPortal; showEmployee?: boolean; empty: string }) {
+export function HrRequestList({
+  access,
+  requests,
+  portal,
+  showEmployee = true,
+  empty,
+  facts,
+}: {
+  access: HrAccess
+  requests: HrRequest[]
+  portal?: HrPortal
+  showEmployee?: boolean
+  empty: string
+  /** Today's facts line under a request (balance and endorsement, wage and instalment — TD-02). */
+  facts?: (r: HrRequest) => ReactNode
+}) {
   const t = useTranslations("Portal.HR")
   const locale = useLocale()
   const firestore = useFirestore()
@@ -108,6 +123,7 @@ export function HrRequestList({ access, requests, portal, showEmployee = true, e
                   {r.deciderLevel === "management" && <StatusPill tone="violet">{t("req.to_management")}</StatusPill>}
                 </p>
                 <p className="text-xs text-muted-foreground">{what(r)}</p>
+                {facts?.(r)}
                 {(r.decision?.note || r.finance?.note || r.cancel?.note) && (
                   <p className="text-xs text-muted-foreground" dir="auto">
                     “{r.finance?.note || r.cancel?.note || r.decision?.note}”
