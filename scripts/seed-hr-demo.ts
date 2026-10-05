@@ -36,7 +36,9 @@
  *   npx tsx scripts/seed-hr-demo.ts --env .env.uat --apply         # write
  *   … --force-update        the demo exists already: create only what is missing
  *   … --owner <email>       another owner (default shady+demo-owner@mdmaktech.sa)
- *   … --finance/--supervisor/--employee <email>   other members
+ *   … --finance/--supervisor/--employee <email>   other members (`--employee none`: no linked demo employee)
+ *   … --staff <email>:<trade>:<site>,…   staff logins who are employees too — each gets a linked record
+ *        (site: office | project | workshop; trade: a key of src/lib/hr/trades.ts, e.g. manager, accountant)
  *   … --leave-workshop-open the workshop's last month recorded but not closed
  */
 
@@ -146,7 +148,20 @@ async function main() {
   }
   const financeDoc = await member("finance")
   const supervisorDoc = await member("supervisor")
-  const employeeDoc = await member("employee")
+  const employeeDoc = EMAIL.employee === "none" ? null : await member("employee")
+  // Staff logins who are employees too (My file for every employee, staff included).
+  const staff: NonNullable<Parameters<typeof buildHrDemo>[0]["staff"]> = []
+  for (const item of (arg("--staff") ?? "").split(",").map((x) => x.trim()).filter(Boolean)) {
+    const [email, trade, site] = item.split(":")
+    if (!email || !trade || !["office", "project", "workshop"].includes(site)) throw new Error(`--staff: "${item}" is not email:trade:office|project|workshop`)
+    const u = await userByEmail(db, email)
+    if (!u || (u.organizationId || u.uid) !== orgId) {
+      console.warn(`  ! staff: ${email} is not a member of ${orgId} — skipped`)
+      continue
+    }
+    staff.push({ uid: u.uid, name: u.name, trade, site: site as "office" | "project" | "workshop" })
+    console.log(`staff      ${email} → ${u.uid} · ${trade} at ${site}`)
+  }
   const asMember = (u: UserDoc | null): DemoMember | null => (u ? { uid: u.uid, name: u.name } : null)
 
   // ---- the org's project, sequences, accounting ------------------------------------------
@@ -176,6 +191,7 @@ async function main() {
     finance: asMember(financeDoc),
     supervisor: asMember(supervisorDoc),
     employee: asMember(employeeDoc),
+    staff,
     company: { name: ownerDoc.companyName },
     project,
     counters: { lastEmployeeNo, yearly },
@@ -292,8 +308,7 @@ async function main() {
   const other = demo.employees.find((e) => e.id === demo.ids.leaving)
   console.log(`\nDone. Try:
   · as ${EMAIL.finance}: HR → Payroll → prepare ${m1}; as the owner approve it; as Finance pay it (Accounting → HR desk)
-  · as ${EMAIL.employee}: HR → My file (${linked ? `#${linked.no}` : "not linked"}) — payslip ${m2}, the salary letter, a pending leave
-  · as the owner: Warehouses → Custody → clear #${other?.no}, then his file → approve the settlement
+${linked ? `  · as ${EMAIL.employee}: HR → My file (#${linked.no}) — payslip ${m2}, the salary letter, a pending leave\n` : ""}${staff.length ? `  · as any staff login (${staff.length}): HR → My file — his own record, payslip ${m2}, leave balance\n` : ""}  · as the owner: Warehouses → Custody → clear #${other?.no}, then his file → approve the settlement
   · as ${EMAIL.supervisor}: HR → Workplaces → the project site — declare ${m0}'s first day, record an injury, raise a correction by ID number (e.g. ${demo.employees[6]?.idNo ?? ""}, a workshop mason)`)
 }
 

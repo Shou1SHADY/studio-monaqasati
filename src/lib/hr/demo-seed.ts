@@ -55,6 +55,9 @@ export interface HrDemoInput {
   supervisor: DemoMember | null
   /** The plain employee whose record is linked to his account (My file). */
   employee: DemoMember | null
+  /** Staff users who are employees too (the prototype: My file for every employee, staff included) — each gets a
+   * Saudi staff record on his trade and workplace, linked to his login. */
+  staff?: Array<DemoMember & { trade: string; site: SiteKey; basic?: number | null }> | null
   company?: { name?: string | null } | null
   /** The org's project, when it has one — the project site names it and Projects' manpower request is for it. */
   project?: { id: string; name: string } | null
@@ -239,6 +242,28 @@ export function buildHrDemo(input: HrDemoInput): HrDemo {
     // Left at his contract's end in the month before last — settled and paid.
     { key: "13", ar: "سالم باوزير", en: "Salem Bawazir", nationality: "ye", gender: "m", trade: "carpenter", site: "project", join: leaverJoin, source: "transfer", contract: { type: "fixed", end: leaverLastDay }, basic: 2300, docs: { iqama: addDays(leaverLastDay, 200), passport: addDays(leaverLastDay, 700), insurance: leaverLastDay }, iban: true, balance: 8 },
   ]
+  // Staff logins are employees too: one linked record each, joined a few years back, Saudi, on the office or a site.
+  for (const [i, m] of (input.staff ?? []).entries()) {
+    const trade = tradeOf(m.trade)
+    if (!trade) throw new Error(`unknown trade "${m.trade}" for ${m.name ?? m.uid}`)
+    specs.push({
+      key: `S${i + 1}`,
+      ar: m.name?.trim() || "—",
+      en: "",
+      nationality: "sa",
+      gender: "m",
+      trade: m.trade,
+      site: m.site,
+      join: d(-(900 + i * 180)),
+      source: "local",
+      contract: { type: "open", end: null },
+      basic: m.basic ?? trade.ref,
+      docs: { insurance: d(200 + i * 15) },
+      iban: true,
+      balance: 12 + i,
+      userId: m.uid,
+    })
+  }
   const empId = (key: string) => id(`emp-${key}`)
   const movingIn = addDays(`${m2}-01`, -5)
   const employees: HrEmployee[] = []

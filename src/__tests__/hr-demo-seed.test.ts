@@ -218,4 +218,25 @@ describe("HR demo seed", () => {
     expect(solo.ids.linkedEmployee).toBeNull()
     expect(solo.employees.some((e) => e.userId)).toBe(false)
   })
+
+  it("staff logins are employees too: one linked Saudi record each, on the payroll and with a payslip of their own", () => {
+    const staff = [
+      { uid: "u-gm", name: "سائد", trade: "manager", site: "office" as const },
+      { uid: "u-acc", name: "محمود", trade: "accountant", site: "office" as const },
+      { uid: "u-sup", name: "عبدالرحمن", trade: "foreman", site: "project" as const },
+    ]
+    const d = buildHrDemo({ ...input, employee: null, staff })
+    for (const m of staff) {
+      const recs = d.employees.filter((e) => e.userId === m.uid)
+      expect(recs).toHaveLength(1)
+      expect(recs[0]).toMatchObject({ nationality: "sa", trade: m.trade, names: { ar: m.name } })
+      expect(d.pays.get(recs[0].id)).toBeTruthy()
+      expect(d.payroll.lines.some((l) => l.employeeId === recs[0].id)).toBe(true)
+      expect(d.payslips.find((p) => p.employeeId === recs[0].id)?.employeeUserId).toBe(m.uid)
+    }
+    // Numbers stay unique and consecutive after the demo's own people.
+    const nos = d.employees.map((e) => e.no).sort((a, b) => a - b)
+    expect(new Set(nos).size).toBe(nos.length)
+    expect(() => buildHrDemo({ ...input, staff: [{ uid: "x", name: "x", trade: "astronaut", site: "office" }] })).toThrow(/unknown trade/)
+  })
 })
