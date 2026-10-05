@@ -4183,20 +4183,26 @@ service cloud.firestore {
         && request.resource.data.authorId == request.auth.uid
         && request.resource.data.kind in ['comment', 'file']
         && request.resource.data.visibility in ['shared', 'internal']
-        && request.resource.data.targetKind == 'po'
-        && request.resource.data.targetKey == 'po:' + request.resource.data.targetId
+        && request.resource.data.targetKind in ['po', 'offer']
+        && request.resource.data.targetKey == request.resource.data.targetKind + ':' + request.resource.data.targetId
         && request.resource.data.body is string && request.resource.data.body.size() <= 2000
         && (request.resource.data.kind == 'file' || request.resource.data.body.size() > 0)
         && (request.resource.data.visibility == 'shared' || request.resource.data.buyerOrgId == null || request.resource.data.supplierOrgId == null)
         && (isOrgMember(request.resource.data.buyerOrgId) || isOrgMember(request.resource.data.supplierOrgId))
-        && noteMatchesPo(request.resource.data.targetId);
+        && (request.resource.data.targetKind == 'po' ? noteMatchesPo(request.resource.data.targetId) : noteMatchesOffer(request.resource.data.targetId));
       allow update, delete: if false;
     }
-    // The orders a thread entry may name: its companies must be the order's.
+    // The orders (and offers) a thread entry may name: its companies must be the document's.
     function noteMatchesPo(poId) {
       let p = get(/databases/$(database)/documents/purchaseOrders/$(poId)).data;
       return (request.resource.data.buyerOrgId == null || request.resource.data.buyerOrgId == p.organizationId)
         && (request.resource.data.supplierOrgId == null || request.resource.data.supplierOrgId == p.supplierOrgId);
+    }
+    // An offer's buyer is its contractorOrgId and its supplier is its organizationId.
+    function noteMatchesOffer(offerId) {
+      let o = get(/databases/$(database)/documents/offers/$(offerId)).data;
+      return (request.resource.data.buyerOrgId == null || request.resource.data.buyerOrgId == o.get('contractorOrgId', ''))
+        && (request.resource.data.supplierOrgId == null || request.resource.data.supplierOrgId == o.get('organizationId', ''));
     }
     // Invoices — scoped to an organization
     match /invoices/{invoiceId} {

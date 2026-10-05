@@ -23771,7 +23771,10 @@
       "block_file_empty": "The file is empty.",
       "block_not_a_party": "Your company is not a party to this document.",
       "block_not_shareable": "Sharing is not available: the supplier is not on the platform.",
-      "block_bad_path": "The file path is not valid."
+      "block_bad_path": "The file path is not valid.",
+      "discuss": "Discussion",
+      "offer_title": "Discussion on the offer",
+      "offer_unavailable": "The discussion cannot be opened: the offer is missing its company details."
     }
   },
   "Auth": {

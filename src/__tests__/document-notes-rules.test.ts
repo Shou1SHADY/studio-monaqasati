@@ -49,13 +49,21 @@ describe("documentNotes rules", () => {
 
   it("names only the order's own companies, on the order it points at", () => {
     const create = rule(body, "create")
-    expect(create).toContain("targetKind == 'po'")
-    expect(create).toContain("targetKey == 'po:' + request.resource.data.targetId")
+    expect(create).toContain("targetKind in ['po', 'offer']")
+    expect(create).toContain("targetKey == request.resource.data.targetKind + ':' + request.resource.data.targetId")
     expect(create).toContain("noteMatchesPo(request.resource.data.targetId)")
+    expect(create).toContain("noteMatchesOffer(request.resource.data.targetId)")
     const fn = strip(rules.slice(rules.indexOf("function noteMatchesPo(poId) {")))
     expect(fn).toContain("purchaseOrders/$(poId)")
     expect(fn).toContain("request.resource.data.buyerOrgId == p.organizationId")
     expect(fn).toContain("request.resource.data.supplierOrgId == p.supplierOrgId")
+  })
+
+  it("names only an offer's own companies: its contractor company and its supplier company", () => {
+    const fn = strip(rules.slice(rules.indexOf("function noteMatchesOffer(offerId) {")))
+    expect(fn).toContain("offers/$(offerId)")
+    expect(fn).toContain("request.resource.data.buyerOrgId == o.get('contractorOrgId', '')")
+    expect(fn).toContain("request.resource.data.supplierOrgId == o.get('organizationId', '')")
   })
 
   it("is never edited or deleted", () => {

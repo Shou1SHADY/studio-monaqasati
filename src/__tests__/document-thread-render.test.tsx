@@ -123,3 +123,30 @@ describe("the documents component", () => {
     expect(screen.getByText(/h_file/)).toBeInTheDocument()
   })
 })
+
+import { OfferThreadDialog } from "@/components/documents/OfferThreadDialog"
+
+describe("the discussion on an offer", () => {
+  const offer = { id: "o1", rfqId: "r1", rfqTitle: "Steel bars", contractorOrgId: "buy", organizationId: "sup", supplierId: "su1", contractorId: "bu1" }
+
+  it("opens the thread of the offer in a window titled by the request", () => {
+    render(<OfferThreadDialog offer={offer} portal="contractor" onClose={() => undefined} />)
+    expect(screen.getByText("offer_title")).toBeInTheDocument()
+    expect(screen.getAllByText("Steel bars").length).toBeGreaterThan(0)
+    expect(screen.getByRole("button", { name: "send" })).toBeDisabled()
+  })
+
+  it("posts on the offer, shared with its supplier", async () => {
+    render(<OfferThreadDialog offer={offer} portal="contractor" onClose={() => undefined} />)
+    fireEvent.change(screen.getByLabelText("comment_label"), { target: { value: "Can you reduce the price?" } })
+    fireEvent.click(screen.getByRole("button", { name: "send" }))
+    await waitFor(() => expect(comment).toHaveBeenCalledTimes(1))
+    const input = comment.mock.calls[0][2]
+    expect(input).toMatchObject({ visibility: "shared", body: "Can you reduce the price?", target: { kind: "offer", id: "o1" }, parties: { buyerOrgId: "buy", supplierOrgId: "sup" }, notify: { supplier: ["su1"] } })
+  })
+
+  it("says so when the offer has no company details", () => {
+    render(<OfferThreadDialog offer={{ id: "o2" }} portal="contractor" onClose={() => undefined} />)
+    expect(screen.getByText("offer_unavailable")).toBeInTheDocument()
+  })
+})

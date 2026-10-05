@@ -70,7 +70,7 @@ export function DocumentThread({ target, portal, parties, notify, log = [], clas
   const { activities } = useActivities(organizationId || null)
   const [tab, setTab] = useState<Tab>("comments")
 
-  const mine = useMemo(() => forRecord(activities, targetKeyOf({ kind: "po", id: target.id }) ?? ""), [activities, target.id])
+  const mine = useMemo(() => forRecord(activities, targetKeyOf({ kind: target.kind, id: target.id }) ?? ""), [activities, target.kind, target.id])
   const comments = entries.filter((e) => e.kind === "comment")
   const files = entries.filter((e) => e.kind === "file")
   const history = useMemo(() => historyOf(entries, mine, log), [entries, mine, log])
@@ -92,7 +92,7 @@ export function DocumentThread({ target, portal, parties, notify, log = [], clas
       {tab === "comments" && <Stream entries={comments} locale={locale} parties={parties} empty={t("comments_empty")} orgId={organizationId || ""} />}
       {tab === "files" && <FileList entries={files} locale={locale} parties={parties} orgId={organizationId || ""} />}
       {tab === "history" && <History items={history} locale={locale} />}
-      {tab === "followups" && <RecordActivities target={{ kind: "po", id: target.id, label: target.label, href: target.href }} portal={portal} className="border-0" />}
+      {tab === "followups" && <RecordActivities target={{ kind: target.kind, id: target.id, label: target.label, href: target.href }} portal={portal} className="border-0" />}
       {(tab === "comments" || tab === "files") && (side ? <Composer tab={tab} target={target} parties={parties} notify={notify} orgId={organizationId || ""} /> : <p className="text-xs text-muted-foreground">{t("read_only")}</p>)}
     </Panel>
   )

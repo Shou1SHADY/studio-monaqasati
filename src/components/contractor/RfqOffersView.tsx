@@ -15,6 +15,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ReviewDialog } from "@/components/ReviewDialog"
 import { Star } from "lucide-react"
+import { OfferThreadDialog } from "@/components/documents/OfferThreadDialog"
+import type { OfferLike } from "@/lib/document-thread"
 import { displayCategory, displaySubcategory, displayCity } from "@/lib/constants"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -82,6 +84,7 @@ import {
   TrendingUp,
   Calendar,
   MessageSquare,
+  MessagesSquare,
   MapPin,
   Tag,
   Truck,
@@ -157,6 +160,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [openingChat, setOpeningChat] = useState<string | null>(null)
   const [sampleRequestOffer, setSampleRequestOffer] = useState<any | null>(null)
+  const [threadOffer, setThreadOffer] = useState<OfferLike | null>(null)
   const [raisingOrderId, setRaisingOrderId] = useState<string | null>(null)
   const [reviewOffer, setReviewOffer] = useState<any | null>(null)
   // The comparison's picks (rfqProductIndex → offer) — the award is made from them.
@@ -266,6 +270,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   // The purchase order laid over the award (PRD 3.0): who prepares it, the
   // org's policies, and the facts about the supplier an approval will check.
   const tRfqd = useTranslations("Portal.Procurement.rfqd")
+  const tThread = useTranslations("Portal.Thread")
   const { actor: procActor, orgId: procOrgId, orgName: procOrgName } = useProcActor((rfq as { projectId?: string } | null)?.projectId || undefined)
   // One gate for running this RFQ (rfq-access.ts): the manager runs every RFQ,
   // a buyer his own, the owner only while the org has no procurement staff.
@@ -1531,6 +1536,15 @@ ${t("offers_notif_reduction_note", { note })}`
                             </Button>
                             </>
                             )}
+                            <Button
+                              onClick={() => setThreadOffer(offer)}
+                              variant="outline"
+                              className="w-full gap-2 rounded-full font-medium mt-1"
+                              size="sm"
+                            >
+                              <MessagesSquare size={14} />
+                              {tThread("discuss")}
+                            </Button>
                             {(!offer.sampleStatus || offer.sampleStatus === "تم الاستلام") && (
                               <Button
                                 onClick={() => offer.sampleStatus ? handleSampleAction(offer.id, "مطلوبة") : setSampleRequestOffer(offer)}
@@ -1871,6 +1885,7 @@ ${t("offers_notif_reduction_note", { note })}`
         }}
       />
 
+      {threadOffer && <OfferThreadDialog offer={threadOffer} portal="contractor" onClose={() => setThreadOffer(null)} />}
       <Dialog open={!!sampleRequestOffer} onOpenChange={(open) => !open && setSampleRequestOffer(null)}>
         <DialogContent className="sm:max-w-md" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader>

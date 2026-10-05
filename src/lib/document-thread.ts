@@ -17,7 +17,7 @@ export const VISIBILITIES = ["shared", "internal"] as const
 export type Visibility = (typeof VISIBILITIES)[number]
 
 /** The documents that carry a thread. Each needs its own check in firestore.rules. */
-export const THREAD_TARGET_KINDS = ["po"] as const
+export const THREAD_TARGET_KINDS = ["po", "offer"] as const
 export type ThreadTargetKind = (typeof THREAD_TARGET_KINDS)[number]
 
 export interface ThreadTarget {
@@ -136,7 +136,7 @@ export function entryFromDoc(id: string, data: Record<string, unknown>): ThreadE
   return {
     id,
     targetKey: text(data.targetKey),
-    targetKind: "po",
+    targetKind: data.targetKind === "offer" ? "offer" : "po",
     targetId: text(data.targetId),
     kind: data.kind === "file" ? "file" : "comment",
     visibility: data.visibility === "internal" ? "internal" : "shared",
@@ -184,3 +184,32 @@ export function historyOf(entries: ThreadEntry[], activities: Activity[], host: 
 }
 
 export const fileSizeLabel = (bytes: number): string => (bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`)
+
+/** The fields of an offer the thread needs. The offer's `organizationId` is the supplier's company. */
+export interface OfferLike {
+  id: string
+  rfqId?: string | null
+  rfqTitle?: string | null
+  contractorOrgId?: string | null
+  organizationId?: string | null
+  supplierId?: string | null
+  contractorId?: string | null
+}
+
+/** The thread of an offer: the buyer's and the supplier's companies, the page that opens it on each side and who to tell. */
+export function offerThread(offer: OfferLike): { target: ThreadTarget; parties: DocParties; notify: { buyer: string[]; supplier: string[] } } | null {
+  const buyer = offer.contractorOrgId
+  if (!buyer) return null
+  const supplier = offer.organizationId && offer.organizationId !== buyer ? offer.organizationId : null
+  return {
+    target: {
+      kind: "offer",
+      id: offer.id,
+      label: offer.rfqTitle || offer.id,
+      href: offer.rfqId ? `/contractor/rfqs/${offer.rfqId}/offers` : "/contractor/rfqs",
+      supplierHref: "/supplier/offers",
+    },
+    parties: { buyerOrgId: buyer, supplierOrgId: supplier },
+    notify: { buyer: offer.contractorId ? [offer.contractorId] : [], supplier: offer.supplierId ? [offer.supplierId] : [] },
+  }
+}

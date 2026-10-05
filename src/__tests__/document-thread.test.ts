@@ -9,6 +9,7 @@ import {
   fileTypeAllowed,
   historyOf,
   mergeEntries,
+  offerThread,
   readableBy,
   sideOf,
   storedParties,
@@ -172,5 +173,38 @@ describe("the history", () => {
 
   it("is empty for a document nothing happened to", () => {
     expect(historyOf([], [])).toEqual([])
+  })
+})
+
+describe("the thread of an offer", () => {
+  const offer = { id: "o1", rfqId: "r1", rfqTitle: "Steel bars", contractorOrgId: "buy", organizationId: "sup", supplierId: "su1", contractorId: "bu1" }
+
+  it("is between the offer's contractor company and its supplier company, with a page on each side", () => {
+    expect(offerThread(offer)).toEqual({
+      target: { kind: "offer", id: "o1", label: "Steel bars", href: "/contractor/rfqs/r1/offers", supplierHref: "/supplier/offers" },
+      parties: { buyerOrgId: "buy", supplierOrgId: "sup" },
+      notify: { buyer: ["bu1"], supplier: ["su1"] },
+    })
+  })
+
+  it("keeps everything internal when the offer was written by the contractor himself (direct award)", () => {
+    const t = offerThread({ ...offer, organizationId: "buy" })
+    expect(t?.parties).toEqual({ buyerOrgId: "buy", supplierOrgId: null })
+    expect(canShare(t!.parties)).toBe(false)
+  })
+
+  it("does not exist for an offer with no contractor company", () => {
+    expect(offerThread({ ...offer, contractorOrgId: null })).toBeNull()
+  })
+
+  it("is labelled by the id when the request has no title, and notifies nobody it cannot name", () => {
+    const t = offerThread({ id: "o9", contractorOrgId: "buy", organizationId: "sup" })
+    expect(t?.target).toMatchObject({ label: "o9", href: "/contractor/rfqs" })
+    expect(t?.notify).toEqual({ buyer: [], supplier: [] })
+  })
+
+  it("is stored and read back as an offer entry", () => {
+    expect(entryFromDoc("x", { targetKind: "offer", buyerOrgId: "buy" }).targetKind).toBe("offer")
+    expect(threadKey("offer", "o1")).toBe("offer:o1")
   })
 })
