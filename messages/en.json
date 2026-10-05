@@ -19955,7 +19955,8 @@
           "prepared": "Prepared",
           "approved": "Approved — with Finance",
           "posted": "Posted",
-          "paid": "Paid"
+          "paid": "Paid",
+          "collecting": "Attendance running — month not over"
         },
         "prepared_by": "Prepared by {name} · {at}",
         "approved_by": "approved by {name} · {at}",
@@ -20009,10 +20010,12 @@
           "gross": "Gross",
           "deductions": "Deductions",
           "net": "Net",
-          "notes": "Check"
+          "notes": "Check",
+          "employee": "Employee",
+          "dao": "Days · absent · OT h"
         },
         "w": {
-          "net_negative": "Net below zero",
+          "net_negative": "Net zero or below",
           "over_half": "Over half deducted",
           "net_below_90": "Net under 90%",
           "ot_over_cap": "Over 60 OT h",
@@ -20029,6 +20032,155 @@
           "retro": "Retro {amount}",
           "commission": "Commission {amount}",
           "refund": "Penalty refunded {amount}"
+        },
+        "total_row": "Total ({n})",
+        "approve_send": "Approve and send to Finance",
+        "after_approve": "After approval Finance gets the Mudad wage file and the GOSI statement.",
+        "approval_is_manager": "Approval is the HR manager's — your lines are ready.",
+        "held_note": "{n} held lines (IBAN) — the rest is approved now; they follow once the IBAN is fixed.",
+        "files_note": "Outputs computed from the payroll — Finance uploads them; we connect to neither Mudad nor GOSI.",
+        "release": "Release file -R ({n})",
+        "name": "Payroll {month}",
+        "name_sup": "Payroll {month} — supplementary {key}",
+        "lines_count": "{n} lines",
+        "held_count": "{n} held",
+        "cc_title": "Cost by cost centre (earned pay + employer GOSI, as Finance books it)",
+        "held_reason": {
+          "iban_returned": "Held — IBAN returned",
+          "iban_unapproved": "Held — IBAN awaiting approval",
+          "no_iban": "Held — no IBAN"
+        },
+        "seg": {
+          "aria": "Payroll months",
+          "running": "{month} — attendance running",
+          "advances": "Advances",
+          "other": "Another month"
+        },
+        "collecting": {
+          "estimate": "Contract estimate",
+          "recorded": "Attendance recorded through",
+          "opens": "Payroll opens",
+          "note": "No lines before the month ends and every workplace's attendance is closed — the payroll is computed, not typed. The estimate above comes from the contracts and enters no entry.",
+          "sites": "Each workplace's closing",
+          "no_sites": "No workplace needs a closing this month.",
+          "closed": "Closed",
+          "open": "Open",
+          "open_payroll": "Open the {month} payroll",
+          "blocked": "Blocked: {reasons}"
+        },
+        "flow": {
+          "sent": "Sent to Finance — awaiting posting and payment. HR does not pay.",
+          "posted": "Posted by Finance {date}",
+          "paid": "Paid {date}",
+          "late": "{n} days after pay day",
+          "returned_title": "{n} transfers returned by the bank",
+          "iban": {
+            "returned": "awaiting the IBAN fix",
+            "fixed": "IBAN fixed — awaiting approval",
+            "ok": "IBAN approved — awaiting payment",
+            "repaid": "paid again {date}"
+          }
+        },
+        "ex": {
+          "title": "Exceptions by cost centre",
+          "title_all": "Lines by cost centre",
+          "title_held": "Held lines by cost centre",
+          "note": "Showing exceptions: absence, overtime, sick or unpaid days, penalties, advances, commission, held or negative net, and the pre-Mudad checks.",
+          "none": "No exceptions — every line is the contract wage paid as agreed.",
+          "show_all": "All lines ({n})",
+          "show_exc": "Exceptions only ({n})",
+          "group": "{n} lines · net",
+          "footer": "{n} lines",
+          "footer_held": "{n} held until the IBAN is fixed — sent in a -R release file",
+          "commission": "Commission {amount}",
+          "ot_flag_title": "Over 60 hours a month — needs the worker's written consent"
+        },
+        "file": {
+          "mudad_title": "Mudad wage file — {name}",
+          "gosi_title": "GOSI statement — {name}",
+          "release_title": "Release file -R — {name}",
+          "mudad_sub": "{n} rows · uploaded on Mudad by Finance after payment — we only produce it",
+          "mudad_note": "Establishment no. on Mudad {no} · period {period} · the row key is the ID/iqama number · deductions include absence, sick and unpaid days, penalties, GOSI and advances",
+          "sup_note": "supplementary file: variable items only, no basic",
+          "release_note": "lines held or returned and paid after the month",
+          "no_mudad": "No Mudad establishment number in HR settings — the establishment column stays empty until it is entered.",
+          "col": {
+            "employee": "Employee · ID",
+            "bank": "Bank · IBAN",
+            "basic": "Basic",
+            "housing": "Housing",
+            "other": "Other (transport · OT · commission)",
+            "deductions": "Deductions",
+            "net": "Net",
+            "nat": "Scheme",
+            "base": "Contribution base",
+            "employee_share": "Employee",
+            "employer_share": "Employer"
+          },
+          "scheme": {
+            "saudiOld": "Saudi",
+            "saudiNew": "Saudi (new scheme)",
+            "nonSaudi": "Non-Saudi"
+          },
+          "returned": "Returned",
+          "shown": "{n} rows — {shown} shown, the rest in the file",
+          "rows": "{n} rows",
+          "held_out": "{n} held outside the file ({amount})",
+          "total": "Total net",
+          "no_saudi": "No Saudi on this payroll",
+          "gosi_sub": "The month's contributions — Saudi 9.75% + 11.75% (joined from 3 Jul 2024: 10.25% + 12.25%) of basic and housing · non-Saudi 2% occupational hazards",
+          "non_saudi": "Non-Saudis — occupational hazards 2% ({n})",
+          "gosi_total": "Total (employee + employer) = GOSI payable for the month:",
+          "gosi_note": "Subscription no. {no} · the bill is issued from GOSI's registered wages, not from this statement",
+          "download": "Download CSV"
+        },
+        "je": {
+          "title": "What reaches Finance — two keyed events",
+          "sub": "we show the entry, we don't write it",
+          "pay": "Payroll approved",
+          "eos": "Monthly accrual — end of service and leave",
+          "account": "Account",
+          "dr": "Debit",
+          "cr": "Credit",
+          "centre": "cost centre {name}",
+          "held_in": "incl. held {amount}",
+          "footer": "One payroll per month; a change arrives as a supplementary (-D) with its own key, never a resend."
+        },
+        "rec": {
+          "title": "Reconciliation with Finance",
+          "finance": "Finance",
+          "payable": "Net sent (salaries payable)",
+          "paid": "Actually paid",
+          "owed": "Held or returned, unpaid",
+          "owed_n": "{n} lines",
+          "gosi": "GOSI: our statement",
+          "gosi_paid": "paid {date}",
+          "gosi_due": "not paid yet — due by {date}",
+          "gosi_overdue": "unpaid — was due {date} — late fine",
+          "eos": "End-of-service accrual for the month",
+          "leave": "Leave accrual for the month",
+          "note": "Payment and settlement are Finance's — we read their state and reconcile.",
+          "eos_title": "End-of-service provision against the ledger",
+          "eos_accrued": "Gratuity if service ended today ({n} people)",
+          "eos_ledger": "Provision balance in the ledger",
+          "eos_diff": "Difference — Finance's adjustment",
+          "eos_off": "Accounting is off — there is no ledger to compare."
+        },
+        "adv": {
+          "outstanding": "Outstanding advances",
+          "outstanding_sub": "Instalments are deducted from payroll — no second advance before the first is repaid.",
+          "col": {
+            "employee": "Employee",
+            "amount": "Advance",
+            "balance": "Balance",
+            "instalment": "Instalment",
+            "ends": "Ends"
+          },
+          "ends_in": "after {n} months",
+          "none": "No outstanding advance",
+          "requests": "Advance requests",
+          "requests_sub": "Up to {n} months' wage the HR manager approves — above goes to Finance.",
+          "requests_none": "No advance request waiting"
         }
       },
       "iban": {
@@ -20092,7 +20244,8 @@
           "advance": "Pay out the advance",
           "decide": "Advance above the HR limit",
           "fee": "Pay a government fee",
-          "settlement": "Pay the final settlement"
+          "settlement": "Pay the final settlement",
+          "gosi": "Record the GOSI payment"
         },
         "confirm": {
           "pay": "Record payment",
@@ -20100,7 +20253,8 @@
           "held": "Pay",
           "advance": "Pay out",
           "fee": "Pay",
-          "settlement": "Pay out"
+          "settlement": "Pay out",
+          "gosi": "Record payment"
         },
         "failed": "Could not complete — check the period is open and try again",
         "block": {
@@ -20118,7 +20272,14 @@
         "fees": "Payment requests (government fees)",
         "fees_empty": "No fee waiting to be paid",
         "fee_line": "Employee {no} · {doc} renewed to {expiry} · {amount}",
-        "fee_paid_ok": "Fee paid"
+        "fee_paid_ok": "Fee paid",
+        "gosi": "GOSI contributions to pay",
+        "gosi_empty": "No month waiting",
+        "gosi_line": "{amount} · due by {date}",
+        "gosi_overdue": "Overdue",
+        "record_gosi": "Record payment",
+        "gosi_paid_ok": "GOSI payment recorded",
+        "show_entry": "The entry"
       },
       "vio": {
         "title": "Violations and penalties",
