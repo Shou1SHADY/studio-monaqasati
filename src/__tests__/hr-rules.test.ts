@@ -478,3 +478,55 @@ describe("My file and self-service (package A)", () => {
     expect(update).toMatch(/changedKeys\(\)\.hasOnly\(\['att', 'updatedAt'\]\) && \(hrRole\('hr\.payroll'\) \|\| hrSupervises\(resource\.data\.siteId\)\)/)
   })
 })
+
+describe("training and performance (package G2 — optional `train` / `perf`)", () => {
+  it("sessions: read by the company, written by the HR manager only (the cost goes on the hrEvents outbox)", () => {
+    const b = block("hrTraining")
+    expect(allow(b, "get")[0]).toBe("orgReadable()")
+    expect(allow(b, "create")[0]).toBe("createsInOrg() && hrManager()")
+    expect(allow(b, "update")[0]).toBe("keepsOrg() && hrManager()")
+    expect(allow(b, "delete")).toEqual([])
+  })
+
+  it("a review is read by the office and the rater it names; the employee his own only once approved (or his self-assessment)", () => {
+    const [read] = allow(block("hrReviews"), "get")
+    expect(read).toMatch(/resource\.data\.kind == 'cycle' \|\| hrManager\(\) \|\| hrRole\('hr\.management'\) \|\| hrRater\(resource\.data\)/)
+    expect(read).toMatch(/hrMine\(\) && resource\.data\.st in \['ok', 'ack', 'self'\]/)
+    expect(read).not.toMatch(/hrStaff\(\)|hrOffice\(\)|hrSupervises/)
+    expect(fn("hrRater")).toMatch(/d\.get\('raterUserId', ''\) == request\.auth\.uid/)
+    expect(fn("hrNotOwn")).toMatch(/!hrMine\(\) \|\| isOrgOwner\(\)/)
+  })
+
+  it("the rater grades a draft and sends it — those keys only; the HR manager never on his own; management the cycle's raise and the reviews naming no rater", () => {
+    const [update] = allow(block("hrReviews"), "update")
+    expect(update).toMatch(/hrRater\(resource\.data\) && resource\.data\.st == 'draft' && request\.resource\.data\.st in \['draft', 'done'\]\s+&& changedKeys\(\)\.hasOnly\(\['sc', 'st', 'need', 'note', 'rated', 'updatedAt'\]\)/)
+    expect(update).toMatch(/\(hrManager\(\) && hrNotOwn\(\)\)/)
+    expect(update).toMatch(/hrRole\('hr\.management'\) && \(resource\.data\.kind == 'cycle' \? changedKeys\(\)\.hasOnly\(\['raise', 'updatedAt'\]\) : resource\.data\.raterUserId == null && hrNotOwn\(\)\)/)
+    expect(update).toMatch(/hrMine\(\) && resource\.data\.st == 'ok'\s+&& request\.resource\.data\.st == 'ack' && changedKeys\(\)\.hasOnly\(\['st', 'ackAt', 'updatedAt'\]\)/)
+    // A self-assessment never changes.
+    expect(update).toMatch(/resource\.data\.get\('st', ''\) != 'self'/)
+  })
+
+  it("the HR manager creates reviews without a grade; the employee his self-assessment, on his own record, at the review's id + __self", () => {
+    const [create] = allow(block("hrReviews"), "create")
+    expect(create).toMatch(/hrManager\(\) && !\('sc' in request\.resource\.data\)/)
+    expect(create).toMatch(/request\.resource\.data\.st == 'self' && request\.resource\.data\.employeeUserId == request\.auth\.uid\s+&& hrOwnRecord\(request\.resource\.data\.employeeId\) && id == request\.resource\.data\.review \+ '__self'/)
+  })
+
+  it("the writes send exactly the keys the rules allow each hand", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/lib/hr/performance-writes.ts"), "utf8")
+    // The rater's three writes: grade, send, staff review — who and when under `rated`.
+    expect(src).toMatch(/\{ sc: grade \? \{ o: grade \} : null, rated: stamp\(actor\), updatedAt: serverTimestamp\(\) \}/)
+    expect(src).toMatch(/\{ st: "done", rated: stamp\(actor\), updatedAt: serverTimestamp\(\) \}/)
+    expect(src).toMatch(/need, note: input\.note\?\.trim\(\) \|\| null, st: "done", rated: stamp\(actor\), updatedAt/)
+    expect(src).toMatch(/\{ st: "ack", ackAt: new Date\(\)\.toISOString\(\), updatedAt: serverTimestamp\(\) \}/)
+    // Management's decision touches the cycle's raise only; a self-assessment is created with st "self".
+    expect(src).toMatch(/updateDoc\(doc\(firestore, HR_REVIEWS, cycle\.id\), \{ raise, updatedAt: serverTimestamp\(\) \}\)/)
+    expect(src).toMatch(/kind: "self", st: "self", review/)
+  })
+
+  it("an HR manager's raise is management's: its pay rule takes basic, allowances and steps only, never on management's own record", () => {
+    const [update] = allow(block("employeePay"), "update")
+    expect(update).toMatch(/hrRole\('hr\.management'\) && !hrOwnRecord\(employeeId\)[\s\S]*changedKeys\(\)\.hasOnly\(\['basic', 'housing', 'transport', 'steps', 'retro', 'updatedAt'\]\)[\s\S]*hrUserManages\(hrEmp\(employeeId\)\.get\('userId', '-'\)\)/)
+  })
+})

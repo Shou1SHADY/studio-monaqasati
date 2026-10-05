@@ -83,6 +83,14 @@ export const HR_GUARD = {
   "platform.tasks": { roles: ["gov", "manager"] },
   "settings.manage": { roles: ["manager"] },
   "reports.view": { roles: ["manager", "gov", "payroll", "management"] },
+  // Training (TR-01…05) and performance (PF-01…07) — optional features `train` / `perf`. Rating is the line
+  // manager's (a relation, named on each review), never a role; calibration and raises are the office's.
+  "train.manage": { roles: ["manager"] },
+  "perf.cycle": { roles: ["manager"] },
+  "perf.calibrate": { roles: ["manager", "management"] },
+  "perf.approve": { roles: ["manager"] },
+  "perf.raise": { roles: ["manager"] },
+  "perf.raise.decide": { roles: ["management"] },
 } as const satisfies Record<string, Rule>
 
 export type HrAction = keyof typeof HR_GUARD
