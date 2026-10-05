@@ -13,12 +13,18 @@
  *   npx tsx scripts/seed-pm-demo.ts --owner uat.owner@mdmaktech.sa --apply
  *
  * UAT only (project mdmaktech-uat, fixed): it writes through Firestore's REST API
- * with your `gcloud auth print-access-token`, as scripts/deploy-rules.js does for
- * UAT. Each set of records is ONE atomic commit, created only if absent — re-running
+ * with your `gcloud auth print-access-token` — or, with `--env .env.uat`, the service
+ * account in that file (no gcloud needed), as scripts/deploy-rules.js does for UAT.
+ * `--pm <email>` makes another member of the company the project's manager (default:
+ * the owner); `--suffix <s>` gives the project and handover ids a suffix, for a second
+ * company (the default ids are global and may already belong to another one). Each set of records is ONE atomic commit, created only if absent — re-running
  * is safe: the project and handover have fixed ids and are skipped if they exist.
  */
 
 import { execSync } from "child_process"
+import { config } from "dotenv"
+import { resolve } from "path"
+import { cert, initializeApp } from "firebase-admin/app"
 
 const arg = (name: string) => {
   const i = process.argv.indexOf(name)
@@ -27,9 +33,26 @@ const arg = (name: string) => {
 const OWNER_EMAIL = arg("--owner") || "uat.owner@mdmaktech.sa"
 const APPLY = process.argv.includes("--apply")
 const GCP_PROJECT = "mdmaktech-uat"
-const token = execSync("gcloud auth print-access-token", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim()
-const BASE = `https://firestore.googleapis.com/v1/projects/${GCP_PROJECT}/databases/(default)/documents`
-const HEADERS = { Authorization: `Bearer ${token}`, "x-goog-user-project": GCP_PROJECT, "Content-Type": "application/json" }
+const ENV_FILE = arg("--env")
+const PM_EMAIL = arg("--pm")
+const SUFFIX = arg("--suffix")
+let BASE = `https://firestore.googleapis.com/v1/projects/${GCP_PROJECT}/databases/(default)/documents`
+let HEADERS: Record<string, string> = {}
+/** gcloud's user token needs the billing-project header; a service account's must NOT send it (CLAUDE.md). */
+async function authenticate() {
+  if (ENV_FILE) {
+    config({ path: resolve(process.cwd(), ENV_FILE) })
+    if (process.env.FIREBASE_PROJECT_ID !== GCP_PROJECT) throw new Error(`refusing: ${ENV_FILE} points at "${process.env.FIREBASE_PROJECT_ID}", not ${GCP_PROJECT}`)
+    const credential = cert({ projectId: GCP_PROJECT, clientEmail: process.env.FIREBASE_CLIENT_EMAIL, privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n") })
+    initializeApp({ credential })
+    const { access_token } = await credential.getAccessToken()
+    HEADERS = { Authorization: `Bearer ${access_token}`, "Content-Type": "application/json" }
+  } else {
+    const token = execSync("gcloud auth print-access-token", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim()
+    HEADERS = { Authorization: `Bearer ${token}`, "x-goog-user-project": GCP_PROJECT, "Content-Type": "application/json" }
+  }
+  BASE = `https://firestore.googleapis.com/v1/projects/${GCP_PROJECT}/databases/(default)/documents`
+}
 
 // ── Firestore REST: values, reads, and one atomic commit ─────────────────────
 class Ts {
@@ -72,8 +95,9 @@ async function ownerOf(email: string): Promise<{ uid: string; orgId: string; nam
   return { uid, orgId: docu.fields.organizationId?.stringValue || uid, name: docu.fields.name?.stringValue || email }
 }
 
-const PROJECT_ID = "pm-demo-yasmin"
-const HANDOVER_ID = "pm-demo-handover-riyadh-school"
+let CONTRACTOR_UID = ""
+const PROJECT_ID = SUFFIX ? `pm-demo-yasmin-${SUFFIX}` : "pm-demo-yasmin"
+const HANDOVER_ID = SUFFIX ? `pm-demo-handover-riyadh-school-${SUFFIX}` : "pm-demo-handover-riyadh-school"
 const DAY = 86_400_000
 const today = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00Z")
 const d = (offset: number) => new Date(today.getTime() + offset * DAY).toISOString().slice(0, 10)
@@ -139,8 +163,15 @@ const a2 = amounts(gross2, a1.retention, a1.recovery)
 const billed = new Map<string, number>([...cert1Lines, ...cert2Lines].map((l) => [l.itemId, l.qty]))
 
 async function main() {
-  const { uid, orgId, name } = await ownerOf(OWNER_EMAIL)
-  console.log(`Target: ${GCP_PROJECT} · owner ${OWNER_EMAIL} (${uid}) · company ${orgId} · ${APPLY ? "APPLY" : "DRY RUN"}`)
+  await authenticate()
+  const owner = await ownerOf(OWNER_EMAIL)
+  const { orgId } = owner
+  // The project's manager: the owner, or a member of the same company named by --pm.
+  const pm = PM_EMAIL ? await ownerOf(PM_EMAIL) : owner
+  if (pm.orgId !== orgId) throw new Error(`${PM_EMAIL} is not a member of ${orgId}`)
+  const { uid, name } = pm
+  CONTRACTOR_UID = owner.uid
+  console.log(`Target: ${GCP_PROJECT} · owner ${OWNER_EMAIL} (${owner.uid}) · project manager ${PM_EMAIL ?? OWNER_EMAIL} (${uid}) · company ${orgId} · ${APPLY ? "APPLY" : "DRY RUN"}`)
   console.log(`Project ${PROJECT_ID}: budget ${BUDGET.toLocaleString("en-US")} · certificate 01 net ${a1.net} · certificate 02 net ${a2.net}`)
 
   if (await getDoc(`projects/${PROJECT_ID}`)) console.log(`projects/${PROJECT_ID} exists — skipping the project`)
@@ -149,7 +180,7 @@ async function main() {
 
   if (await getDoc(`pmHandovers/${HANDOVER_ID}`)) console.log(`pmHandovers/${HANDOVER_ID} exists — skipping the handover`)
   else if (APPLY) await seedHandover(orgId, uid, name)
-  else console.log(`would write pmHandovers/${HANDOVER_ID} (waiting for ${OWNER_EMAIL})`)
+  else console.log(`would write pmHandovers/${HANDOVER_ID} (waiting for ${PM_EMAIL ?? OWNER_EMAIL})`)
   console.log(APPLY ? "Done." : "Dry run only — add --apply to write.")
 }
 
@@ -166,7 +197,8 @@ async function seedProject(orgId: string, uid: string, name: string) {
 
   put(`projects/${PROJECT_ID}`, {
     organizationId: orgId,
-    contractorId: uid,
+    // The company's owner: screens list a contractor's projects by it; the manager is `projectManagerId`.
+    contractorId: CONTRACTOR_UID || uid,
     name: "مجمع الياسمين السكني — 5 فلل",
     description: "مشروع عرض لإدارة المشاريع 1.0",
     location: "الرياض — حي الياسمين",
@@ -356,7 +388,8 @@ async function seedProject(orgId: string, uid: string, name: string) {
   act(5, "الكهرباء والسباكة", -60, 150, ["i07", "i08"], 2)
 
   const ev = (key: string, kind: string, amount: number, params: Record<string, string | number>, at: string) =>
-    put((`pmEvents/${key.replace(/\//g, "_")}`), { key, kind, organizationId: orgId, projectId: PROJECT_ID, projectNo: no, amount, params, by: uid, at })
+    // `{orgId}__` + the key (CLAUDE.md: two companies both own PJ-2026/001 — never the key alone).
+    put((`pmEvents/${orgId}__${key.replace(/\//g, "_")}`), { key, kind, organizationId: orgId, projectId: PROJECT_ID, projectNo: no, amount, params, by: uid, at })
   ev(`prj:ADV:${no}`, "ADV", r2(BUDGET * TERMS.advance), { rate: TERMS.advance, recovery: TERMS.advanceRecovery, contractValue: BUDGET }, iso(-150))
   ev(`prj:IPC:${no}:01`, "IPC", a1.gross, { certificate: "01", gross: a1.gross, recovery: a1.recovery, retention: a1.retention, vat: a1.vat, net: a1.net, due: d(-15) }, iso(-45))
 
