@@ -125,6 +125,19 @@ describe("the Payroll page (slice 4)", () => {
     view.unmount()
   })
 
+  it("what reaches Finance: each event's entry is the shared table — sortable, debits and credits totalled", async () => {
+    const view = await open("po", <PayrollPage />, "/contractor/hr/payroll")
+    await click(monthName(OLDER))
+    await click(/ما يصل المالية/)
+    expect(screen.getAllByRole("button", { name: "رتّب حسب الحساب" }).length).toBeGreaterThan(0)
+    const totals = Array.from(document.querySelectorAll("tfoot tr")).map((tr) => Array.from(tr.querySelectorAll("td")).map((td) => td.textContent ?? ""))
+    expect(totals.length).toBeGreaterThan(0)
+    // A balanced entry: its debit total equals its credit total.
+    for (const [label, dr, cr] of totals) expect({ label, dr }).toEqual({ label: "الإجمالي", dr: cr })
+    expect({ missing: [...missingKeys] }).toEqual({ missing: [] })
+    view.unmount()
+  })
+
   it("the Advances segment lists the running advance with its months left", async () => {
     const view = await open("po", <PayrollPage />, "/contractor/hr/payroll")
     await click(/^السلف/)

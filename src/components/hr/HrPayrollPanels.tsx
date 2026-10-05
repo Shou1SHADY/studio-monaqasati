@@ -11,11 +11,13 @@ import { useMemo } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, query, where } from "firebase/firestore"
 import { BookOpen, Landmark, PieChart } from "lucide-react"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { DrawerSection } from "@/components/module-ui/DrawerSection"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { ACC, accountName } from "@/lib/accounting/accounts"
 import { JOURNAL_ENTRIES } from "@/lib/accounting/journal"
 import { postHrEos, postHrPay, type PostingResult } from "@/lib/accounting/posting-rules"
@@ -63,47 +65,30 @@ export function CostCentreBar({ lines, siteName }: { lines: PayrollLine[]; siteN
 export function EntryPreview({ result, labels = [], heldNote }: { result: PostingResult; labels?: string[]; heldNote?: string | null }) {
   const t = useTranslations("Portal.HR")
   const locale = useLocale()
-  return (
-    <table className="w-full text-sm">
-      <thead className="text-xs text-muted-foreground">
-        <tr>
-          <th scope="col" className="py-1.5 text-start font-semibold">
-            {t("payroll.je.account")}
-          </th>
-          <th scope="col" className="py-1.5 text-end font-semibold">
-            {t("payroll.je.dr")}
-          </th>
-          <th scope="col" className="py-1.5 text-end font-semibold">
-            {t("payroll.je.cr")}
-          </th>
-        </tr>
-      </thead>
-      <tbody className="divide-y">
-        {result.lines.map((l, i) => (
-          <tr key={`${l.account}-${i}`}>
-            <td className="py-1.5 pe-3">
-              <bdi dir="ltr" className="tabular-nums text-muted-foreground">
-                {l.account}
-              </bdi>{" "}
-              <span className="font-semibold">{accountName(l.account, locale)}</span>
-              {labels[i] && <span className="text-xs text-muted-foreground"> · {t("payroll.je.centre", { name: labels[i] })}</span>}
-              {heldNote && l.account === ACC.employeeAccruals && <span className="text-xs text-muted-foreground"> · {heldNote}</span>}
-            </td>
-            <td className="py-1.5 text-end">
-              <bdi dir="ltr" className="tabular-nums">
-                {l.debit ? hrMoney(l.debit) : ""}
-              </bdi>
-            </td>
-            <td className="py-1.5 text-end">
-              <bdi dir="ltr" className="tabular-nums">
-                {l.credit ? hrMoney(l.credit) : ""}
-              </bdi>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
+  const labelsOf = useTableLabels()
+  type Row = PostingResult["lines"][number] & { i: number }
+  const rows: Row[] = result.lines.map((l, i) => ({ ...l, i }))
+  const columns: DataColumn<Row>[] = [
+    {
+      key: "account",
+      header: t("payroll.je.account"),
+      sortValue: (l) => l.account,
+      cell: (l) => (
+        <>
+          <bdi dir="ltr" className="tabular-nums text-muted-foreground">
+            {l.account}
+          </bdi>{" "}
+          <span className="font-semibold">{accountName(l.account, locale)}</span>
+          {labels[l.i] && <span className="text-xs text-muted-foreground"> · {t("payroll.je.centre", { name: labels[l.i] })}</span>}
+          {heldNote && l.account === ACC.employeeAccruals && <span className="text-xs text-muted-foreground"> · {heldNote}</span>}
+        </>
+      ),
+      footer: t("rep.total"),
+    },
+    { key: "dr", header: t("payroll.je.dr"), numeric: true, sortValue: (l) => l.debit || null, cell: (l) => (l.debit ? hrMoney(l.debit) : ""), footer: hrMoney(r2(rows.reduce((s, l) => s + (l.debit || 0), 0))) },
+    { key: "cr", header: t("payroll.je.cr"), numeric: true, sortValue: (l) => l.credit || null, cell: (l) => (l.credit ? hrMoney(l.credit) : ""), footer: hrMoney(r2(rows.reduce((s, l) => s + (l.credit || 0), 0))) },
+  ]
+  return <DataTable caption={t("payroll.je.caption")} labels={labelsOf} dense bordered={false} columns={columns} rows={rows} rowKey={(l) => `${l.account}-${l.i}`} empty={null} />
 }
 
 /** §7.2, AC-03 — what reaches Finance: hr:PAY (and hr:EOS for the main payroll), exactly as Finance's desk will post them. */

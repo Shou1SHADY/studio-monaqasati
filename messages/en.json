@@ -19680,7 +19680,8 @@
           "leave": "until {date}",
           "unassigned": "since {date}"
         },
-        "next": "next: {what} {date}"
+        "next": "next: {what} {date}",
+        "caption": "Employee register"
       },
       "new": {
         "title": "New employee",
@@ -20016,7 +20017,8 @@
           "gosi": "GOSI no."
         },
         "signed_as": "Recorded under your name: {name} · {date}",
-        "iban_source_hint": "From the employee's bank statement — never from memory."
+        "iban_source_hint": "From the employee's bank statement — never from memory.",
+        "pen_caption": "Penalties"
       },
       "move": {
         "to": "Move to",
@@ -20659,7 +20661,8 @@
           "cr": "Credit",
           "centre": "cost centre {name}",
           "held_in": "incl. held {amount}",
-          "footer": "One payroll per month; a change arrives as a supplementary (-D) with its own key, never a resend."
+          "footer": "One payroll per month; a change arrives as a supplementary (-D) with its own key, never a resend.",
+          "caption": "The entry as Finance will post it"
         },
         "rec": {
           "title": "Reconciliation with Finance",
