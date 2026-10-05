@@ -26,7 +26,7 @@ import { HR_ATTENDANCE, HR_EXITS, HR_PAYROLLS } from "@/lib/hr/collections"
 import type { HrExit } from "@/lib/hr/exit-writes"
 import { empNo, hrDate, hrMoney, todayDay } from "@/lib/hr/format"
 import { gosiCsv, mudadCsv, type Payroll } from "@/lib/hr/payroll"
-import { REPORTS, reportCsv, reportRows, visibleReports, type Cell, type ReportColumn, type ReportId } from "@/lib/hr/reports"
+import { csvPreview, penaltyCellParts, REPORTS, reportCsv, reportRows, visibleReports, type Cell, type ReportColumn, type ReportId } from "@/lib/hr/reports"
 import { addDays } from "@/lib/hr/statutory"
 import { cn } from "@/lib/utils"
 import { useHrViolations } from "./HrViolationList"
@@ -91,6 +91,10 @@ export function HrReportsView({ access }: { access: HrAccess }) {
         return `${v}%`
       case "enum":
         return t(`${col.enumOf}.${v}` as "status.active")
+      case "penalty": {
+        const p = penaltyCellParts(String(v))
+        return t(`rep.penalty.${p.kind}`, { pct: p.pct ?? 0, days: p.days ?? 0 })
+      }
       default:
         return String(v)
     }
@@ -100,8 +104,74 @@ export function HrReportsView({ access }: { access: HrAccess }) {
 
   // The payroll last sent to Finance — its files as they were sent.
   const sent = payrolls.filter((p) => p.kind === "main" && p.state !== "prepared").sort((a, b) => b.month.localeCompare(a.month))[0] ?? null
+  // PY-07 — the wage file and the GOSI statement are previewed before they are downloaded (the prototype's forms).
+  const [file, setFile] = useState<"mudad" | "gosi" | null>(null)
+  const fileText = useMemo(() => (sent && file ? (file === "mudad" ? mudadCsv(sent.lines, pays) : gosiCsv(sent.lines, pays)) : ""), [sent, file, pays])
 
   if (!reports.length) return <EmptyState icon={FileText} title={t("rep.none")} description={t("rep.none_desc")} />
+
+  if (file && sent && money) {
+    const pv = csvPreview(fileText)
+    const held = sent.lines.filter((l) => l.held).length
+    const colName = (k: string) => (t.has(`rep.file_col.${k}`) ? t(`rep.file_col.${k}` as "rep.file_col.net") : k)
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setFile(null)}>
+            <ArrowRight size={15} className="me-1.5 rtl-flip ltr:rotate-180" aria-hidden="true" />
+            {t("rep.back")}
+          </Button>
+          <Button size="sm" onClick={() => download(`${file}-${sent.month}.csv`, fileText)} disabled={pv.count === 0}>
+            <Download size={15} className="me-1.5" aria-hidden="true" />
+            {t("rep.csv")}
+          </Button>
+        </div>
+        <Panel title={t(file === "mudad" ? "rep.mudad" : "rep.gosi", { month: sent.month })} icon={file === "mudad" ? Landmark : ShieldCheck} count={pv.count} bodyClassName="p-0">
+          <p className="border-b px-4 py-2 text-xs text-muted-foreground">
+            {t(file === "mudad" ? "rep.mudad_preview" : "rep.gosi_preview", { mudad: access.settings.establishment.mudad || "—", held })}
+          </p>
+          {pv.count === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t("rep.empty")}</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-max text-sm">
+                <thead className="bg-muted/50 text-xs text-muted-foreground">
+                  <tr>
+                    {pv.header.map((h, i) => (
+                      <th key={h} scope="col" className={cn("px-3 py-2.5 font-bold", pv.totals[i] != null ? "text-end" : "text-start")}>
+                        {colName(h)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {pv.rows.map((r, ri) => (
+                    <tr key={ri} className="border-t">
+                      {r.map((v, i) => (
+                        <td key={i} className={cn("px-3 py-2", pv.totals[i] != null && "text-end tabular-nums")} dir={pv.totals[i] != null || /^[A-Z0-9 ]+$/.test(v) ? "ltr" : "auto"}>
+                          {pv.totals[i] != null && v !== "" ? hrMoney(Number(v)) : v || "—"}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="border-t-2 bg-muted/30 text-xs font-bold">
+                  <tr>
+                    {pv.header.map((h, i) => (
+                      <td key={h} className={cn("px-3 py-2", pv.totals[i] != null && "text-end tabular-nums")} dir={pv.totals[i] != null ? "ltr" : undefined}>
+                        {i === 0 ? t("rep.total") : pv.totals[i] != null ? hrMoney(pv.totals[i] as number) : ""}
+                      </td>
+                    ))}
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+          {pv.count > pv.rows.length && <p className="border-t px-4 py-2 text-xs text-muted-foreground">{t("rep.preview_more", { shown: pv.rows.length, n: pv.count })}</p>}
+        </Panel>
+      </div>
+    )
+  }
 
   if (open) {
     const def = REPORTS[open]
@@ -188,7 +258,7 @@ export function HrReportsView({ access }: { access: HrAccess }) {
             <li>
               <button
                 type="button"
-                onClick={() => download(`mudad-${sent.month}.csv`, mudadCsv(sent.lines, pays))}
+                onClick={() => setFile("mudad")}
                 className="flex h-full min-h-11 w-full items-start gap-3 rounded-xl border bg-card p-4 text-start transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-module/10 text-module">
@@ -203,7 +273,7 @@ export function HrReportsView({ access }: { access: HrAccess }) {
             <li>
               <button
                 type="button"
-                onClick={() => download(`gosi-${sent.month}.csv`, gosiCsv(sent.lines, pays))}
+                onClick={() => setFile("gosi")}
                 className="flex h-full min-h-11 w-full items-start gap-3 rounded-xl border bg-card p-4 text-start transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-module/10 text-module">
