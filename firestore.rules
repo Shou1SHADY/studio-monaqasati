@@ -2930,7 +2930,7 @@ service cloud.firestore {
         && ((hrRole('hr.management') && changedKeys().hasOnly(['leaveTaken', 'sick', 'hajjTaken', 'contact', 'updatedAt']))
           || (changedKeys().hasOnly(['probationView', 'updatedAt'])
             && request.resource.data.probationView.by == request.auth.uid
-            && (hrSupervises(resource.data.get('siteId', '-')) || hrEmp(resource.data.get('managerId', '-')).get('userId', '') == request.auth.uid)));
+            && (hrSupervises(resource.data.siteId) || hrEmp(resource.data.managerId).get('userId', '') == request.auth.uid)));
       allow delete: if isAdmin();
 
       // The undeletable log (EM-06): written by HR staff or the employee himself,
@@ -3174,7 +3174,7 @@ service cloud.firestore {
         && request.resource.data.recorded.by == request.auth.uid
         && request.resource.data.get('report', null) == null
         && request.resource.data.employeeUserId == hrEmp(request.resource.data.employeeId).get('userId', null)
-        && (hrManager() || hrOnSite(request.resource.data));
+        && (hrManager() || hrOnSite(request.resource.data) || hrRole('hr.gov'));
       allow update: if isOrgMember(resource.data.organizationId)
         && resource.data.get('report', null) == null
         && changedKeys().hasOnly(['report', 'updatedAt'])

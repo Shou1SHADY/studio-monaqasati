@@ -44,6 +44,7 @@ import {
   setLineManager,
 } from "@/lib/hr/employee-writes"
 import { todayDay } from "@/lib/hr/format"
+import { recordInjury } from "@/lib/hr/injuries"
 import { decideRequest, fileRequest } from "@/lib/hr/request-writes"
 import { requestActions, type HrRequest } from "@/lib/hr/requests"
 import { addDays } from "@/lib/hr/statutory"
@@ -357,6 +358,15 @@ describe("a raise asked for, decided as the pay change (EM-04); the HR manager's
   it("a raise request refuses no change and a missing reason", async () => {
     expect(await blocked(fileRequest(db, hrm, ORG, actor, { employeeId: "w", kind: "raise", raise: { basic: 2_000, kind: "raise", effectiveOn: TODAY, reason: "x" } }, { policies: DEFAULT_HR_POLICIES }))).toBe("no_change")
     expect(await blocked(fileRequest(db, hrm, ORG, actor, { employeeId: "w", kind: "raise", raise: { basic: 2_400, kind: "raise", effectiveOn: TODAY, reason: " " } }, { policies: DEFAULT_HR_POLICIES }))).toBe("no_reason")
+  })
+})
+
+describe("a work injury (DC-07)", () => {
+  it("government relations records it, as the prototype lets hr and gov (owner default 4)", async () => {
+    put(person("w"))
+    const id = await recordInjury(db, ctx(["gov"], { uid: "gro" }), ORG, { uid: "gro", name: "G" }, { employeeId: "w", on: TODAY, description: "fell from a ladder" })
+    expect(readDoc<{ recorded: { by: string } }>(`hrInjuries/${id}`)?.recorded.by).toBe("gro")
+    expect(await blocked(recordInjury(db, ctx(["payroll"], { uid: "po" }), ORG, actor, { employeeId: "w", on: TODAY, description: "x" }))).toBe("no_role")
   })
 })
 

@@ -362,7 +362,15 @@ describe("the matrix, where the server was laxer than the client (RL-01, RL-02)"
     expect(view).toMatch(/changedKeys\(\)\.hasOnly\(\['probationView', 'updatedAt'\]\)/)
     expect(view).toMatch(/request\.resource\.data\.probationView\.by == request\.auth\.uid/)
     // The manager the card names, or the workplace's supervisor — no one else.
-    expect(view).toMatch(/hrSupervises\(resource\.data\.get\('siteId', '-'\)\) \|\| hrEmp\(resource\.data\.get\('managerId', '-'\)\)\.get\('userId', ''\) == request\.auth\.uid/)
+    expect(view).toMatch(/hrSupervises\(resource\.data\.siteId\) \|\| hrEmp\(resource\.data\.managerId\)\.get\('userId', ''\) == request\.auth\.uid/)
+  })
+
+  it("government relations records a work injury (DC-07, owner default 4) — the guard and the rule agree", () => {
+    expect(HR_GUARD["injury.record"].roles).toContain("gov")
+    const [create] = allow(block("hrInjuries"), "create")
+    expect(create).toMatch(/hrManager\(\) \|\| hrOnSite\(request\.resource\.data\) \|\| hrRole\('hr\.gov'\)/)
+    // …a violation stays the HR manager's and the site's supervisor's.
+    expect(allow(block("hrViolations"), "create")[0]).not.toMatch(/hr\.gov/)
   })
 
   it("a raise is a request kind (EM-04): carrying pay, it is read by pay roles and the employee only", () => {
