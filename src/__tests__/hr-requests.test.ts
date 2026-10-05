@@ -11,7 +11,7 @@ import type { Firestore } from "firebase/firestore"
 import type { HrContext, HrRole } from "@/lib/hr/access"
 import type { EmployeePay, HrEmployee } from "@/lib/hr/employee"
 import { cancelRequest, decideRequest, endorseRequest, fileRequest, financeDecideAdvance } from "@/lib/hr/request-writes"
-import { advanceQuote, leaveQuote, requestActions, requestNoDisplay, type HrRequest } from "@/lib/hr/requests"
+import { advanceQuote, leaveQuote, mayCancel, requestActions, requestNoDisplay, type HrRequest } from "@/lib/hr/requests"
 import { DEFAULT_HR_POLICIES } from "@/lib/hr/statutory"
 
 const db = fakeFirestore as unknown as Firestore
@@ -202,14 +202,34 @@ describe("the writes", () => {
     expect(req(id).leave).toMatchObject({ to: "2026-03-31", days: 27, fromBalance: 15, unpaidDays: 12, mode: "excess_unpaid" })
   })
 
-  it("the employee cancels his own request while it waits — and only then (LV-07)", async () => {
+  it("the employee cancels his own request while it waits — and his APPROVED leave before it starts, the days back (LV-07)", async () => {
     const { id } = await fileRequest(db, worker, ORG, who(worker), { employeeId: "e1", kind: "leave", leave }, opts)
     expect(requestActions(worker, req(id), { today: "2026-03-01", financeAllowed: false })).toEqual(["cancel"])
     await cancelRequest(db, worker, id, who(worker), "plans changed", opts)
     expect(req(id)).toMatchObject({ state: "cancelled", cancel: { by: "wu", note: "plans changed" } })
     const b = await fileRequest(db, worker, ORG, who(worker), { employeeId: "e1", kind: "leave", leave }, opts)
     await decideRequest(db, hrm, b.id, who(hrm), "approve", "", opts)
-    await expect(cancelRequest(db, worker, b.id, who(worker), "x", opts)).rejects.toMatchObject({ code: "no_role" })
+    expect(emp("e1").leaveTaken).toBe(35)
+    // Owner default 5: before its first day he withdraws it himself — exactly its days come back, and the record
+    // names the request (`undo`), which is what the rules hold the new balance against.
+    expect(requestActions(worker, req(b.id), { today: "2026-03-01", financeAllowed: false })).toEqual(["cancel"])
+    await cancelRequest(db, worker, b.id, who(worker), "no longer needed", opts)
+    expect(req(b.id)).toMatchObject({ state: "cancelled", cancel: { by: "wu" } })
+    expect(emp("e1")).toMatchObject({ leaveTaken: 30, undo: b.id })
+    // …never once it has started.
+    const c = await fileRequest(db, worker, ORG, who(worker), { employeeId: "e1", kind: "leave", leave }, opts)
+    await decideRequest(db, hrm, c.id, who(hrm), "approve", "", opts)
+    await expect(cancelRequest(db, worker, c.id, who(worker), "x", { today: "2026-03-10" })).rejects.toMatchObject({ code: "no_role" })
+  })
+
+  it("a sick or Hajj leave, once approved, is withdrawn by the HR manager — its marks on the record are not the employee's to undo", async () => {
+    seed("employees/e1", { ...empBase, join: "2020-01-01" })
+    const h = await fileRequest(db, worker, ORG, who(worker), { employeeId: "e1", kind: "leave", leave: { type: "hajj", from: "2026-05-20", to: "2026-05-30" } }, opts)
+    await decideRequest(db, hrm, h.id, who(hrm), "approve", "", opts)
+    expect(mayCancel(worker, req(h.id), "2026-03-01")).toBe(false)
+    await expect(cancelRequest(db, worker, h.id, who(worker), "x", opts)).rejects.toMatchObject({ code: "no_role" })
+    await cancelRequest(db, hrm, h.id, who(hrm), "postponed", opts)
+    expect(emp("e1").hajjTaken).toBe(false)
   })
 
   it("who decides follows the EMPLOYEE: HR manager A files for HR manager B — management decides, not A (RL-02)", async () => {

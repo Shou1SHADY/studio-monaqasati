@@ -142,6 +142,7 @@ export const HR_NOTICE_PARAM_COPY_AR: Record<string, string> = {
   "hr_req_kind.leave": "طلب إجازة",
   "hr_req_kind.advance": "طلب سلفة",
   "hr_req_kind.data": "طلب تحديث بيانات",
+  "hr_req_kind.attfix": "طلب تصحيح حضور",
   "hr_verdict.approved": "اعتُمد",
   "hr_verdict.declined": "رُفض",
   "hr_verdict.upheld": "أُيّد الجزاء ويُخصم في مسيره",
@@ -156,7 +157,7 @@ export const HR_NOTICE_PARAM_COPY_AR: Record<string, string> = {
 }
 
 /** HR's own document numbers in Arabic (ط.إ / ط.سل / ط.ص / خ) — the shared prefix table is Sales'. */
-const hrNumberAr = (v: string) => v.replace(/^LV-(?=\d{4}\/)/, "ط.إ-").replace(/^AV-(?=\d{4}\/)/, "ط.سل-").replace(/^HQ-(?=\d{4}\/)/, "ط.ص-").replace(/^LT-(?=\d{4}\/)/, "خ-")
+const hrNumberAr = (v: string) => v.replace(/^LV-(?=\d{4}\/)/, "ط.إ-").replace(/^AV-(?=\d{4}\/)/, "ط.سل-").replace(/^HQ-(?=\d{4}\/)/, "ط.ص-").replace(/^AQ-(?=\d{4}\/)/, "ط.ح-").replace(/^LT-(?=\d{4}\/)/, "خ-")
 
 const substitute = (template: string, params: EventParams) =>
   template.replace(/\{(\w+)\}/g, (_, k: string) => {
