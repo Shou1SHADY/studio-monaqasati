@@ -344,7 +344,34 @@ describe("the matrix, where the server was laxer than the client (RL-01, RL-02)"
   it("an IBAN payroll fixed is approved by a different hand; management sets one only on the HR manager's own record", () => {
     const [update] = allow(block("employeePay"), "update")
     expect(update).toMatch(/request\.resource\.data\.get\('ibanState', ''\) != 'ok' \|\| resource\.data\.get\('ibanState', ''\) != 'fixed'\s*\|\| resource\.data\.get\('ibanFixedBy', ''\) != request\.auth\.uid \|\| isOrgOwner\(\)/)
-    expect(update).toMatch(/request\.resource\.data\.ibanState == 'ok'\s*&& hrUserManages\(hrEmp\(employeeId\)\.get\('userId', '-'\)\)/)
+    expect(update).toMatch(/request\.resource\.data\.ibanState == 'ok'\)\)\s*&& hrUserManages\(hrEmp\(employeeId\)\.get\('userId', '-'\)\)/)
+  })
+
+  it("management changes the HR manager's pay (EM-04, RL-02) — his figures and history only, never its own record's", () => {
+    const [update] = allow(block("employeePay"), "update")
+    const clause = update.slice(update.indexOf("(hrRole('hr.management') && !hrOwnRecord(employeeId)"))
+    expect(clause).toMatch(/^\(hrRole\('hr\.management'\) && !hrOwnRecord\(employeeId\)\s*&& \(changedKeys\(\)\.hasOnly\(\['basic', 'housing', 'transport', 'steps', 'retro', 'updatedAt'\]\)/)
+    // …and only where the record's user is an HR manager (his DEFAULT group, as access.ts reads it).
+    expect(clause).toMatch(/&& hrUserManages\(hrEmp\(employeeId\)\.get\('userId', '-'\)\)\)+$/)
+  })
+
+  it("the line manager writes his probation view and nothing else of the record (EM-05)", () => {
+    const updates = allow(block("employees"), "update")
+    const view = updates.find((u) => u.includes("probationView"))
+    expect(view).toBeDefined()
+    expect(view).toMatch(/changedKeys\(\)\.hasOnly\(\['probationView', 'updatedAt'\]\)/)
+    expect(view).toMatch(/request\.resource\.data\.probationView\.by == request\.auth\.uid/)
+    // The manager the card names, or the workplace's supervisor — no one else.
+    expect(view).toMatch(/hrSupervises\(resource\.data\.get\('siteId', '-'\)\) \|\| hrEmp\(resource\.data\.get\('managerId', '-'\)\)\.get\('userId', ''\) == request\.auth\.uid/)
+  })
+
+  it("a raise is a request kind (EM-04): carrying pay, it is read by pay roles and the employee only", () => {
+    const [create] = allow(block("hrRequests"), "create")
+    expect(create).toMatch(/kind in \['leave', 'advance', 'data', 'raise'\]/)
+    const [read] = allow(block("hrRequests"), "get")
+    // Only a leave is opened to government relations and supervisors.
+    expect(read).not.toMatch(/'raise'/)
+    expect(read).toMatch(/resource\.data\.kind == 'leave' && \(hrRole\('hr\.gov'\)/)
   })
 })
 

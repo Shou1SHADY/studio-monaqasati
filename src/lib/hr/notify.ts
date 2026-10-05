@@ -67,6 +67,9 @@ export const HR_NOTICE_KINDS = [
   "hr_injury_recorded", // → government relations: GOSI report in 3 working days
   "hr_iqama_clock", // → government relations: a visa arrival's iqama within 90 days
   "hr_iqama_on_site", // → government relations: an expired iqama on a site
+  // People (AS-01, EM-05)
+  "hr_assigned_to_project", // → the project's manager: someone comes onto his site, and from when
+  "hr_probation_view", // → the HR manager: the line manager's view before the probation decision
 ] as const
 export type HrNoticeKind = (typeof HR_NOTICE_KINDS)[number]
 
@@ -135,6 +138,8 @@ export const HR_NOTICE_COPY_AR: Record<HrNoticeKind, { title: string; message: s
   hr_injury_recorded: { title: "إصابة عمل — {name}", message: "سجّل {actor} إصابة عمل لـ{name} بتاريخ {on}. بلاغ التأمينات خلال 3 أيام عمل — المهلة تنتهي {due}." },
   hr_iqama_clock: { title: "إصدار الإقامة خلال 90 يوماً — {name}", message: "وصل {name} بتأشيرة وباشر في {join}. أصدر إقامته قبل {date}." },
   hr_iqama_on_site: { title: "إقامة منتهية على الموقع — {name}", message: "إقامة {name} منتهية منذ {expiry} وهو على {site}. جدّدها — لا عمل على موقع بإقامة منتهية." },
+  hr_assigned_to_project: { title: "إسناد إلى موقعك — {name}", message: "أسند {actor} {name} إلى {site} من {on}. مركز التكلفة يتبع الإسناد من تاريخه." },
+  hr_probation_view: { title: "رأي المدير المباشر في التجربة — {name}", message: "أوصى {actor}: {recommend}. تنتهي تجربة {name} في {end} — القرار لك." },
 }
 
 /** `@key` params the messages name, with their Arabic text (nested keys of Portal.Shared). */
@@ -142,6 +147,10 @@ export const HR_NOTICE_PARAM_COPY_AR: Record<string, string> = {
   "hr_req_kind.leave": "طلب إجازة",
   "hr_req_kind.advance": "طلب سلفة",
   "hr_req_kind.data": "طلب تحديث بيانات",
+  "hr_req_kind.raise": "طلب تعديل أجر",
+  "hr_probation_rec.confirm": "التثبيت",
+  "hr_probation_rec.extend": "التمديد",
+  "hr_probation_rec.end": "الإنهاء",
   "hr_verdict.approved": "اعتُمد",
   "hr_verdict.declined": "رُفض",
   "hr_verdict.upheld": "أُيّد الجزاء ويُخصم في مسيره",
@@ -156,7 +165,7 @@ export const HR_NOTICE_PARAM_COPY_AR: Record<string, string> = {
 }
 
 /** HR's own document numbers in Arabic (ط.إ / ط.سل / ط.ص / خ) — the shared prefix table is Sales'. */
-const hrNumberAr = (v: string) => v.replace(/^LV-(?=\d{4}\/)/, "ط.إ-").replace(/^AV-(?=\d{4}\/)/, "ط.سل-").replace(/^HQ-(?=\d{4}\/)/, "ط.ص-").replace(/^LT-(?=\d{4}\/)/, "خ-")
+const hrNumberAr = (v: string) => v.replace(/^LV-(?=\d{4}\/)/, "ط.إ-").replace(/^AV-(?=\d{4}\/)/, "ط.سل-").replace(/^HQ-(?=\d{4}\/)/, "ط.ص-").replace(/^RS-(?=\d{4}\/)/, "ط.ز-").replace(/^LT-(?=\d{4}\/)/, "خ-")
 
 const substitute = (template: string, params: EventParams) =>
   template.replace(/\{(\w+)\}/g, (_, k: string) => {

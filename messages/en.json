@@ -8527,7 +8527,8 @@
       "hr_req_kind": {
         "leave": "Leave request",
         "advance": "Advance request",
-        "data": "Data update request"
+        "data": "Data update request",
+        "raise": "Pay change request"
       },
       "hr_verdict": {
         "approved": "approved",
@@ -8536,6 +8537,15 @@
         "cancelled": "The penalty is cancelled and never counts",
         "done": "the assignment was corrected",
         "refused": "the correction was declined"
+      },
+      "pn_hr_assigned_to_project_title": "Assigned to your site — {name}",
+      "pn_hr_assigned_to_project": "{actor} assigned {name} to {site} from {on}. The cost follows the assignment from that day.",
+      "pn_hr_probation_view_title": "Line manager's probation view — {name}",
+      "pn_hr_probation_view": "{actor} recommends: {recommend}. {name}'s probation ends on {end} — the decision is yours.",
+      "hr_probation_rec": {
+        "confirm": "confirm",
+        "extend": "extend",
+        "end": "end"
       }
     },
     "Contractor": {
@@ -19458,14 +19468,37 @@
           "site": "Workplace",
           "document": "Nearest document",
           "status": "Status",
-          "wage": "Monthly wage"
+          "wage": "Monthly wage",
+          "status_next": "Status · next"
         },
         "filter_docs": "Document filters",
         "filter": {
           "docs": "Documents due",
           "iqama": "Expired iqama",
           "iqama_site": "Expired iqama on a site"
-        }
+        },
+        "filter_trade": "Trade",
+        "all_trades": "All trades",
+        "segments": "Segments",
+        "seg": {
+          "all": "All",
+          "sites": "Sites",
+          "office": "Office",
+          "unassigned": "Unassigned",
+          "leave": "On leave",
+          "docs": "Documents due",
+          "leaving": "Leaving",
+          "left": "Left"
+        },
+        "site_ends": "ends {date}",
+        "docs_valid": "Valid",
+        "passport_first": "Passport first",
+        "fact": {
+          "leaving": "last day {date}",
+          "leave": "until {date}",
+          "unassigned": "since {date}"
+        },
+        "next": "next: {what} {date}"
       },
       "new": {
         "title": "New employee",
@@ -19501,12 +19534,22 @@
           "saudi_only": "This trade is reserved for Saudis",
           "iqama_expired_site": "The iqama has expired — the employee can only be left unassigned",
           "fixed_needs_end": "A fixed-term contract needs its end date",
-          "bad_basic": "The basic salary must be above zero"
+          "bad_basic": "The basic salary must be above zero",
+          "no_name_en": "Enter the name as in the passport — the WPS file carries it",
+          "bad_id": "The ID number has 10 digits: a national ID starts with 1, an iqama with 2",
+          "bad_iban": "An IBAN is SA followed by 22 digits"
         },
         "warn": {
           "saudi_below_nitaqat": "A Saudi below 4,000 basic does not count fully in Nitaqat",
           "no_basic": "No basic salary yet — the employee will not be paid until it is entered"
-        }
+        },
+        "name_en_passport": "Name as in the passport",
+        "saudi_only_mark": "Saudis only",
+        "education": "Qualification",
+        "probation_until": "Probation 90 days — until {date}",
+        "bank_none": "— From the IBAN —",
+        "national_id": "National ID no.",
+        "iqama_no": "Iqama no."
       },
       "file": {
         "title": "Employee file",
@@ -19574,7 +19617,13 @@
           "link": "Link user",
           "start": "Started work",
           "opening": "Opening balance",
-          "commission": "Commission"
+          "commission": "Commission",
+          "assign": "Assign to a site",
+          "raise": "Request a raise",
+          "probation_view": "Probation view",
+          "contract": "Contract decision",
+          "manager": "Line manager",
+          "numbers": "Document numbers"
         },
         "log_title": "Log",
         "service_years": "{n} years of service",
@@ -19605,7 +19654,9 @@
           "doc": "Document",
           "expiry": "Expires",
           "left": "Days left",
-          "state": "State"
+          "state": "State",
+          "number": "Number",
+          "action": "Action"
         },
         "cost_title": "Cost to the company",
         "cost_gosi": "Employer GOSI",
@@ -19619,7 +19670,171 @@
         "opening_done": "Opening balance recorded",
         "opening_card": "Opening balance from the card",
         "opening_card_v": "{n} days — entered by {name} on {date}",
-        "commission_recorded": "Commission recorded: it goes with that month's payroll"
+        "commission_recorded": "Commission recorded: it goes with that month's payroll",
+        "fact": {
+          "leaving": "Leaving · last day {date}",
+          "leave": "On leave until {date}",
+          "unassigned": "Unassigned since {date}",
+          "absent": "Absent today",
+          "sick": "Sick today"
+        },
+        "move_scheduled": "Moves to {to} on {date}",
+        "move_scheduled_ok": "Move scheduled — it takes effect on its day",
+        "expired_ago": "{n, plural, one {Expired # day ago} other {Expired # days ago}}",
+        "alert": {
+          "iqama_title": "Expired iqama",
+          "on_site_now": "He is on {site} now.",
+          "passport_first_title": "The passport expires before the iqama",
+          "passport_first": "Renew the passport first — it expires on {date}.",
+          "no_iqama_title": "No iqama yet",
+          "no_iqama": "Arrived on {join} — the iqama is due by {due} ({n} days left).",
+          "injury_title": "Work injury — {date}",
+          "injury": "The GOSI report is due by {due}.",
+          "returned_title": "Bounced transfer",
+          "returned": "The payroll line is held until the IBAN is corrected.",
+          "licence_title": "Expired driving licence",
+          "licence": "No driving work until it is renewed."
+        },
+        "not_recorded": "Not recorded",
+        "passport_no": "Passport no.",
+        "education": "Qualification",
+        "imported": "Imported — payroll from {month}",
+        "no": "Employee no.",
+        "site_ends": "ends {date}",
+        "cost_centre": "Cost centre",
+        "derived": "· derived",
+        "service_ym": "{y} y {m} m",
+        "renews_unless": "renews unless notified",
+        "contact_bank": "Contact & bank",
+        "bank": "Bank",
+        "iban_returned": "Bounced",
+        "iban_awaiting": "Awaiting approval",
+        "contact_note": "Changed by the employee's «Update my details» request and approved by HR — a blank stays blank.",
+        "probation_view": "Line manager's probation view",
+        "doc_due_by": "Due by {date}",
+        "contract_qiwa": "On Qiwa",
+        "open_ended": "Open-ended",
+        "not_issued": "Not issued",
+        "doc_missing": "Missing",
+        "renew_row": "Renew",
+        "issue_row": "Record issue",
+        "gosi_no": "GOSI no.",
+        "gosi_cover_sa": "pension + hazards",
+        "gosi_cover_x": "occupational hazards",
+        "gosi_scheme": "GOSI scheme",
+        "scheme": {
+          "saudiOld": "Saudi — old scheme",
+          "saudiNew": "Saudi — new scheme (after 3 Jul 2024)",
+          "nonSaudi": "Non-Saudi — 2% hazards"
+        },
+        "medical_class": "Medical class",
+        "cell": {
+          "present": "present",
+          "absent": "absent",
+          "sick": "sick",
+          "leave": "leave",
+          "ot": "h OT"
+        },
+        "month_closed": "closed",
+        "to_date": "to date",
+        "today": "Today",
+        "today_state": {
+          "present": "Present",
+          "absent": "Absent",
+          "sick": "Sick",
+          "permission": "Permission",
+          "leave": "On leave",
+          "unrecorded": "Not recorded yet"
+        },
+        "att_source": "Attendance source",
+        "att_source_office": "Office — presence assumed",
+        "att_source_sheet": "The supervisor's daily sheet",
+        "accrued_to_date": "Accrued to date",
+        "thirty_from": "30 from {date}",
+        "sick_band": {
+          "full": "full pay",
+          "threeQuarters": "at three quarters",
+          "unpaid": "unpaid",
+          "beyond": "beyond art. 117"
+        },
+        "sick_bands_note": "Art. 117: 30 days at full pay · 60 at three quarters · 30 unpaid, per service year.",
+        "leave_value": "Balance in cash",
+        "leaves": "Leaves",
+        "no_leaves": "No leave recorded",
+        "leave_col": {
+          "type": "Type",
+          "from": "From",
+          "to": "To",
+          "days": "Days",
+          "state": "State"
+        },
+        "assignment_history": "Assignment history",
+        "moved_line": "{from} → {to}",
+        "current_place": "Current assignment",
+        "monthly_pay": "Monthly pay",
+        "housing_share": "Housing ({pct}%)",
+        "transport_share": "Transport ({pct}%)",
+        "commission_line": "Approved commission — {month}",
+        "src": {
+          "sales": "Sales",
+          "finance": "Finance",
+          "inventory": "Inventory",
+          "projects": "Projects"
+        },
+        "ot_rate": "Overtime hour",
+        "art107": "art. 107",
+        "art84": "art. 84",
+        "art85": "art. 85",
+        "raise_requests": "Pay change requests",
+        "from_date": "from {date}",
+        "decide_raise": "Decide",
+        "decide_raise_title": "Pay change request {no}",
+        "raise_filed": "Request filed — it waits for a decision",
+        "raise_why_hint": "Why — e.g. recommended by the line manager",
+        "raise_to_management": "This is the HR manager's own pay: management decides it.",
+        "raise_note": "Decided as a pay change from this file.",
+        "payslips": "Payslips",
+        "no_payslips": "No payslips yet",
+        "slip_supplementary": "supplementary",
+        "slip_paid": "paid {date}",
+        "slip_with_finance": "with Finance",
+        "advance_penalties": "Advance & penalties",
+        "advance_amount": "Advance",
+        "advance_instalment": "Monthly instalment",
+        "months_left": "{n, plural, one {# month left} other {# months left}}",
+        "no_advance": "No outstanding advance",
+        "pen_col": {
+          "violation": "Violation",
+          "date": "Date",
+          "state": "State",
+          "month": "Deducted in",
+          "amount": "Amount"
+        },
+        "heard": "heard {date}",
+        "pay_history": "Pay history",
+        "hist_col": {
+          "kind": "Kind",
+          "from": "Effective",
+          "basic": "Basic",
+          "reason": "Reason"
+        },
+        "hist_change": "Change",
+        "req_filed": "Filed {date} by {by}",
+        "req_with": "With: {who}",
+        "req_by": "Decided by {who}",
+        "holder_management": "Management",
+        "holder_manager": "the HR manager",
+        "holder_finance": "Finance",
+        "vio_heard": "{code} on {on} — heard on {date}",
+        "vio_180_note": "Recurrence counts within 180 days, and only penalties applied — one dismissed or cancelled never counts.",
+        "no_key": {
+          "passport": "Passport no.",
+          "insurance": "Insurance policy no.",
+          "licence": "Licence no.",
+          "gosi": "GOSI no."
+        },
+        "signed_as": "Recorded under your name: {name} · {date}",
+        "iban_source_hint": "From the employee's bank statement — never from memory."
       },
       "move": {
         "to": "Move to",
@@ -19629,8 +19844,17 @@
           "iqama_expired": "The iqama has expired — only unassigned is allowed",
           "same_place": "The employee is already there",
           "left": "The employee has left",
-          "no_date": "Choose the date"
-        }
+          "no_date": "Choose the date",
+          "licence_expired": "His driving licence has expired — no driving work until it is renewed"
+        },
+        "ends": "ends {date}",
+        "same_trade": "{n} × {trade}",
+        "bench_note": "Unassigned stays on the payroll with no output.",
+        "answers": "This move answers",
+        "hr_decision": "An HR decision",
+        "mr_option": "{project} — {count} × {trade} from {date}",
+        "future_note": "Dated ahead: he stays where he is until {date}, then moves.",
+        "projects_note": "Projects is told of the assignment; the cost follows it from its date."
       },
       "paychange": {
         "kind": "Change",
@@ -19651,14 +19875,18 @@
           "no_date": "Choose the effective date",
           "too_old": "At most one closed month back",
           "no_change": "The basic is unchanged",
-          "saudi_only": "This trade is reserved for Saudis — a non-Saudi cannot be promoted into it"
+          "saudi_only": "This trade is reserved for Saudis — a non-Saudi cannot be promoted into it",
+          "trade_by_manager": "A new trade is the HR manager's to record — change the pay only",
+          "left": "The employee has left"
         },
         "warn": {
           "pay_cut": "This lowers the pay — it needs the worker's written consent",
           "saudi_below_nitaqat": "A Saudi below 4,000 basic does not count fully in Nitaqat"
         },
         "scheduled": "Takes effect on {on}: payrolls before that day keep the current wage.",
-        "retro_preview": "{month} is closed: {amount} goes to its supplementary payroll."
+        "retro_preview": "{month} is closed: {amount} goes to its supplementary payroll.",
+        "company_delta": "Company cost a month (with GOSI)",
+        "mgmt_note": "The HR manager's own pay — management changes it."
       },
       "probation": {
         "decision": "Decision",
@@ -19689,8 +19917,15 @@
           "bad_date": "Choose a future expiry",
           "passport_first": "Renew the passport first — the iqama cannot outlast it",
           "not_later": "The new expiry must be after the current one",
-          "bad_fee": "The fee cannot be negative"
-        }
+          "bad_fee": "The fee cannot be negative",
+          "contract": "A contract's end is the contract decision, not a renewal"
+        },
+        "title_issue": "Record the issue",
+        "expired_on": "expired {date}",
+        "expires_on": "expires {date}",
+        "number": "Number",
+        "insurance_too": "The medical insurance was renewed for the same term (a condition of the renewal)",
+        "passport_first_note": "The iqama cannot be renewed on a passport expiring {date} — renew the passport first."
       },
       "link": {
         "user": "Platform user",
@@ -19739,7 +19974,16 @@
         "leave_returned": "Back from leave {no} on {on} — {late} days late",
         "opening_recorded": "Opening balance from the card: leave {leave} days{advance, select, 1 { · and an outstanding advance} other {}}",
         "file_attached": "File attached — {name}",
-        "commission_recorded": "Commission recorded for {month} ({reason})"
+        "commission_recorded": "Commission recorded for {month} ({reason})",
+        "move_scheduled": "Move to {to} scheduled for {on}",
+        "manager_set": "Line manager: {manager}",
+        "probation_view": "Line manager's probation view — {recommend}",
+        "contract_renewed": "Contract renewed until {to}",
+        "numbers_recorded": "Document numbers recorded — {docs}",
+        "raise_approved": "Pay change request {no} approved",
+        "raise_filed": "Pay change request {no} filed",
+        "raise_declined": "Pay change request {no} declined",
+        "raise_cancelled": "Pay change request {no} cancelled"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -19857,7 +20101,8 @@
         "kind": {
           "leave": "Leave",
           "advance": "Advance",
-          "data": "Data update"
+          "data": "Data update",
+          "raise": "Pay change"
         },
         "leave_type": "Type",
         "from": "From",
@@ -19921,7 +20166,8 @@
           "no_value": "Enter the new value",
           "bad_iban": "The IBAN is not valid — SA followed by 22 digits",
           "no_document": "Give the bank letter's reference",
-          "no_balance": "No balance as of the start — \"balance only\" leaves no day"
+          "no_balance": "No balance as of the start — \"balance only\" leaves no day",
+          "raise_via_pay": "A pay change request is approved from the employee's file, as the pay change"
         },
         "warn": {
           "travel_docs": "The iqama or passport expires before the return — it cannot be approved for travel before renewal. The request is still filed.",
@@ -20853,6 +21099,85 @@
           "future_month": "Not a future month",
           "no_wage": "Enter the wage first"
         }
+      },
+      "pview": {
+        "rating": "Performance in probation",
+        "ratings": {
+          "1": "Does not meet",
+          "2": "Partly meets",
+          "3": "Meets"
+        },
+        "recommend": "Recommendation",
+        "recs": {
+          "confirm": "Confirm",
+          "extend": "Extend",
+          "end": "End"
+        },
+        "note": "Note",
+        "by": "Given by",
+        "none": "No view from the line manager yet — it never blocks the decision.",
+        "never_blocks": "Shown to the HR manager at the decision; never blocks it.",
+        "box_title": "Line manager's view — {name}",
+        "none_box": "No view from the line manager — not blocking.",
+        "ends": "The probation ends on {date}.",
+        "saved": "View recorded — the HR manager is told",
+        "block": {
+          "not_on": "The probation is not running",
+          "no_rating": "Choose the rating",
+          "no_recommend": "Choose the recommendation"
+        }
+      },
+      "ct": {
+        "title": "The contract ends on {date}",
+        "renew": "Renew",
+        "end": "Do not renew — the exit starts",
+        "until": "Renewed until",
+        "qiwa_note": "Documented on Qiwa by hand.",
+        "end_note": "The end of service starts now, reason «contract end», with the last day {date}.",
+        "default_note": "With no decision the contract renews for a like period.",
+        "renewed": "Contract renewed",
+        "ended": "Not renewed — the end of service started",
+        "confirm_end": "Start the exit",
+        "block": {
+          "not_fixed": "The contract is open-ended",
+          "left": "An exit is already under way",
+          "no_date": "Choose the new end",
+          "not_later": "The new end must be after the current one"
+        }
+      },
+      "numbers": {
+        "note": "Recorded with the documents; a blank stays blank.",
+        "saved": "Numbers recorded",
+        "block": {
+          "no_change": "Nothing changed"
+        }
+      },
+      "mgr": {
+        "who": "Line manager",
+        "derived_option": "Derived from the workplace",
+        "same_place": "Same workplace",
+        "elsewhere": "Elsewhere",
+        "note": "Now: {name}. Derived from the workplace unless set — he endorses leave and gives the probation view.",
+        "saved": "Line manager updated",
+        "block": {
+          "left": "The employee has left",
+          "self": "Nobody is his own line manager",
+          "not_active": "Choose someone at work",
+          "same": "Nothing changed",
+          "circular": "That person answers to him"
+        }
+      },
+      "bank": {
+        "80": "Al Rajhi Bank",
+        "10": "Saudi National Bank",
+        "20": "Riyad Bank",
+        "45": "Saudi Awwal Bank (SAB)",
+        "05": "Alinma Bank",
+        "15": "Bank Albilad",
+        "30": "Arab National Bank",
+        "55": "Banque Saudi Fransi",
+        "60": "Bank AlJazira",
+        "65": "Saudi Investment Bank"
       }
     },
     "ProcSuppliers": {

@@ -9,12 +9,12 @@
 import type { HrContext } from "./access"
 import { mayDecideRequest, mayEndorse } from "./access"
 import type { DocDates } from "./documents"
-import type { EmployeePay, HrEmployee } from "./employee"
+import type { EmployeePay, HrEmployee, RaiseFields } from "./employee"
 import { balanceSplit, leaveBalance, leaveDays, leaveEligibility, leaveEndAfter, LEAVE_RULES, sickSplit, type Holiday, type LeaveEligibility, type LeaveType, type SickSplit } from "./leave"
 import { advanceInstalment, advanceMonths, wageOf } from "./pay"
 import { addDays, daysBetween, serviceYears, STATUTORY, type HrPolicies } from "./statutory"
 
-export const HR_REQUEST_KINDS = ["leave", "advance", "data"] as const
+export const HR_REQUEST_KINDS = ["leave", "advance", "data", "raise"] as const
 export type HrRequestKind = (typeof HR_REQUEST_KINDS)[number]
 
 /** pending → (endorsed) → approved | declined | finance → approved | declined; not started → cancelled. */
@@ -22,7 +22,7 @@ export const HR_REQUEST_STATES = ["pending", "endorsed", "approved", "declined",
 export type HrRequestState = (typeof HR_REQUEST_STATES)[number]
 
 /** The yearly sequence codes — shown ط.إ / ط.سل / ط.ص in Arabic. */
-export const REQUEST_NUMBER_TYPE: Record<HrRequestKind, string> = { leave: "LV", advance: "AV", data: "HQ" }
+export const REQUEST_NUMBER_TYPE: Record<HrRequestKind, string> = { leave: "LV", advance: "AV", data: "HQ", raise: "RS" }
 
 /** ES-03 — what an employee may ask to change; he never edits his own record. */
 export const DATA_FIELDS = ["iban", "mobile", "address", "emergency"] as const
@@ -106,6 +106,9 @@ export interface HrRequest {
   leave?: LeaveFields | null
   advance?: AdvanceFields | null
   data?: DataFields | null
+  /** EM-04 — a raise asked for; approving it IS the pay change (`changePay` with the request), so it carries pay
+   * and is read only by pay roles and the employee. */
+  raise?: RaiseFields | null
   endorsement?: Stamp | null
   decision?: (Stamp & { ownFlagged?: boolean }) | null
   /** Set when an advance goes to Finance — Finance reads by it, before and after deciding. */
@@ -300,7 +303,8 @@ export function requestActions(ctx: HrContext, r: HrRequest, opts: { today: stri
   const out: RequestAction[] = []
   const open = r.state === "pending" || r.state === "endorsed"
   if (r.kind === "leave" && r.state === "pending" && mayEndorse(ctx, { employeeId: r.employeeId, site: r.siteId, lineManagerId: r.lineManagerId })) out.push("endorse")
-  if (open && mayDecideRequest(ctx, { employeeId: r.employeeId, isHrManager: r.deciderLevel === "management" }) === null) out.push("approve", "decline")
+  // A raise is approved as the pay change it asks for — from the employee's file (EM-04); here it is declined.
+  if (open && mayDecideRequest(ctx, { employeeId: r.employeeId, isHrManager: r.deciderLevel === "management" }) === null) out.push(...(r.kind === "raise" ? (["decline"] as const) : (["approve", "decline"] as const)))
   if (r.state === "finance" && opts.financeAllowed && ctx.employeeId !== r.employeeId) out.push("finance")
   if (mayCancel(ctx, r, opts.today)) out.push("cancel")
   return out
@@ -309,5 +313,5 @@ export function requestActions(ctx: HrContext, r: HrRequest, opts: { today: stri
 /** The request's number as a person reads it (ط.إ / ط.سل in Arabic). */
 export function requestNoDisplay(no: string, locale: string): string {
   if (locale !== "ar") return no
-  return no.replace(/^LV-/, "ط.إ-").replace(/^AV-/, "ط.سل-").replace(/^HQ-/, "ط.ص-")
+  return no.replace(/^LV-/, "ط.إ-").replace(/^AV-/, "ط.سل-").replace(/^HQ-/, "ط.ص-").replace(/^RS-/, "ط.ز-")
 }

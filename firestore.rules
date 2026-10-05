@@ -2924,9 +2924,13 @@ service cloud.firestore {
             || isOrgOwner()
             || (request.resource.data.get('userId', null) != request.auth.uid && resource.data.get('userId', null) != request.auth.uid));
       // Management decides the HR manager's own leave (LV-05): only its effects.
+      // EM-05 — the line manager's probation view, in his own name: the manager the
+      // card names or the workplace's supervisor (`probationView` — the probation itself is HR's).
       allow update: if isOrgMember(resource.data.organizationId)
-        && hrRole('hr.management')
-        && changedKeys().hasOnly(['leaveTaken', 'sick', 'hajjTaken', 'contact', 'updatedAt']);
+        && ((hrRole('hr.management') && changedKeys().hasOnly(['leaveTaken', 'sick', 'hajjTaken', 'contact', 'updatedAt']))
+          || (changedKeys().hasOnly(['probationView', 'updatedAt'])
+            && request.resource.data.probationView.by == request.auth.uid
+            && (hrSupervises(resource.data.get('siteId', '-')) || hrEmp(resource.data.get('managerId', '-')).get('userId', '') == request.auth.uid)));
       allow delete: if isAdmin();
 
       // The undeletable log (EM-06): written by HR staff or the employee himself,
@@ -2992,10 +2996,10 @@ service cloud.firestore {
             || ((hrRole('hr.management') || hrFinance())
                 && changedKeys().hasOnly(['advance', 'updatedAt'])
                 && (isOrgOwner() || !hrOwnRecord(employeeId)))
-            // The HR manager's own data update, decided by management (ES-03, LV-05).
-            || (hrRole('hr.management')
-                && changedKeys().hasOnly(['iban', 'ibanState', 'updatedAt'])
-                && request.resource.data.ibanState == 'ok'
+            // The HR manager's own data update (ES-03, LV-05) and his pay (EM-04, RL-02): management's.
+            || (hrRole('hr.management') && !hrOwnRecord(employeeId)
+                && (changedKeys().hasOnly(['basic', 'housing', 'transport', 'steps', 'retro', 'updatedAt'])
+                    || (changedKeys().hasOnly(['iban', 'ibanState', 'updatedAt']) && request.resource.data.ibanState == 'ok'))
                 && hrUserManages(hrEmp(employeeId).get('userId', '-'))));
       allow delete: if isAdmin();
     }
@@ -3235,7 +3239,7 @@ service cloud.firestore {
             || resource.data.get('employeeUserId', '') == request.auth.uid
             || (resource.data.kind == 'advance' && hrFinance()))));
       allow create: if createsInOrg()
-        && request.resource.data.kind in ['leave', 'advance', 'data']
+        && request.resource.data.kind in ['leave', 'advance', 'data', 'raise']
         && request.resource.data.state == 'pending'
         && request.resource.data.filedBy.by == request.auth.uid
         && exists(/databases/$(database)/documents/employees/$(request.resource.data.employeeId))
