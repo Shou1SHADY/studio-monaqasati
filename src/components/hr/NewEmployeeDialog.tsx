@@ -88,13 +88,35 @@ const EMPTY: Draft = {
   licenceNo: "",
 }
 
-export function NewEmployeeDialog({ open, onOpenChange, access, actorName, sites, portal }: { open: boolean; onOpenChange: (o: boolean) => void; access: HrAccess; actorName: string; sites: HrSite[]; portal: HrPortal }) {
+/** HI-06 — the form prefilled from an accepted offer (the prototype's x5PrefillCand). */
+export type NewEmployeePrefill = Partial<Pick<Draft, "source" | "nameAr" | "nameEn" | "nationality" | "gender" | "trade" | "siteId" | "join" | "contractType" | "contractEnd" | "basic">>
+
+export function NewEmployeeDialog({
+  open,
+  onOpenChange,
+  access,
+  actorName,
+  sites,
+  portal,
+  prefill,
+  hiring,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  access: HrAccess
+  actorName: string
+  sites: HrSite[]
+  portal: HrPortal
+  prefill?: NewEmployeePrefill | null
+  /** Converting a candidate: the record is linked to the opening and the candidate in the same write. */
+  hiring?: { openingId: string; candidateId: string | null } | null
+}) {
   const t = useTranslations("Portal.HR")
   const locale = useLocale()
   const firestore = useFirestore()
   const router = useRouter()
   const { toast } = useToast()
-  const [d, setD] = useState<Draft>({ ...EMPTY, join: todayDay() })
+  const [d, setD] = useState<Draft>({ ...EMPTY, join: todayDay(), ...(prefill ?? {}) })
   const [step, setStep] = useState(0)
   const [busy, setBusy] = useState(false)
   const money = access.allowed("pay.view")
@@ -141,7 +163,7 @@ export function NewEmployeeDialog({ open, onOpenChange, access, actorName, sites
     if (!firestore || !access.orgId || blocks.length) return
     setBusy(true)
     try {
-      const r = await createEmployee(firestore, access.ctx, access.orgId, { uid: access.ctx.uid, name: actorName }, { ...input, iban: money ? d.iban || null : null, bank: money ? bank || null : null }, { visas: access.settings.establishment.visas ?? null, policies: access.settings.policies })
+      const r = await createEmployee(firestore, access.ctx, access.orgId, { uid: access.ctx.uid, name: actorName }, { ...input, iban: money ? d.iban || null : null, bank: money ? bank || null : null, hiring: hiring ?? null }, { visas: access.settings.establishment.visas ?? null, policies: access.settings.policies })
       toast({ title: t("people.created", { no: String(r.no).padStart(4, "0") }) })
       onOpenChange(false)
       router.push(`/${portal}/hr/people/${r.id}`)
@@ -164,8 +186,8 @@ export function NewEmployeeDialog({ open, onOpenChange, access, actorName, sites
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t("new.title")}</DialogTitle>
-          <DialogDescription>{t("new.desc")}</DialogDescription>
+          <DialogTitle>{hiring ? t("hire.convert_title") : t("new.title")}</DialogTitle>
+          <DialogDescription>{hiring ? t("hire.convert_desc") : t("new.desc")}</DialogDescription>
         </DialogHeader>
         <WizardSteps steps={[t("new.step_contract"), t("new.step_docs")]} current={step} ariaLabel={t("new.steps")} />
 

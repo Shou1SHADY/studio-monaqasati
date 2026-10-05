@@ -35,7 +35,7 @@ import { STATUTORY, type HrPolicies } from "@/lib/hr/statutory"
 import { HrWriteError } from "@/lib/hr/write-guard"
 
 /** Features whose screens arrive in a later release — their switch is kept, and says so. */
-const LATER: ReadonlySet<string> = new Set(["hire", "perf", "train", "punch", "gov"])
+const LATER: ReadonlySet<string> = new Set(["perf", "train", "punch", "gov"])
 
 /** ST-04 — «ملف المنشأة»: the band (by hand, from Qiwa), the Saudi ratio from the record, the green threshold, and
  * the safety margin; the registrations and the visas with their as-of day. Settings and government relations' Today. */
@@ -113,10 +113,10 @@ export function HrSettingsView({ access }: { access: HrAccess }) {
   const logValue = (field: string, v: string | number | boolean | null) => {
     if (v == null || v === "") return "—"
     if (typeof v === "boolean") return t(v ? "settings.log_on" : "settings.log_off")
-    if (field === "policies.housingShare" || field === "policies.transportShare") return `${pct(Number(v))}%`
+    if (field === "policies.housingShare" || field === "policies.transportShare" || field === "policies.offerBandLow" || field === "policies.offerBandHigh") return `${pct(Number(v))}%`
     if (field === "businessType") return t(`business_type.${v}` as "business_type.contractor")
     if (field === "establishment.band") return t(`settings.band.${v}` as "settings.band.red")
-    if (field === "policies.closeMissing") return t(`policy.${v}` as "policy.block")
+    if (field === "policies.closeMissing" || field === "policies.jobApprove" || field === "policies.offerBand") return t(`policy.${v}` as "policy.block")
     return String(v)
   }
   const logField = (field: string) => {
@@ -292,6 +292,31 @@ export function HrSettingsView({ access }: { access: HrAccess }) {
             <Label htmlFor="hr-p-ajeerFactor">{t("policy.ajeerFactor")}</Label>
             <Input id="hr-p-ajeerFactor" type="number" min="1" max="5" step="0.1" dir="ltr" value={String(draft.policies.ajeerFactor)} onChange={(e) => setPolicy("ajeerFactor", Number(e.target.value))} disabled={off || !draft.policies.ajeerAllowed} />
           </div>
+          {/* Hiring (optional: hire) — the offer band and the two block-or-warning switches (ST-03, HI-01/05). */}
+          {draft.features.includes("hire") && (
+            <>
+              {(["offerBandLow", "offerBandHigh"] as const).map((k) => (
+                <div key={k} className="space-y-1.5">
+                  <Label htmlFor={`hr-p-${k}`}>{t(`policy.${k}`)}</Label>
+                  <Input id={`hr-p-${k}`} type="number" min={k === "offerBandLow" ? 50 : 100} max={k === "offerBandLow" ? 100 : 200} step="5" dir="ltr" value={pct(draft.policies[k])} onChange={(e) => setPolicy(k, Number(e.target.value) / 100)} disabled={off} />
+                </div>
+              ))}
+              {(["jobApprove", "offerBand"] as const).map((k) => (
+                <div key={k} className="space-y-1.5">
+                  <Label htmlFor={`hr-p-${k}`}>{t(`policy.${k}`)}</Label>
+                  <Select value={draft.policies[k]} onValueChange={(v) => setPolicy(k, v as HrPolicies["jobApprove"])} disabled={off}>
+                    <SelectTrigger id={`hr-p-${k}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="block">{t(`policy.${k}_block`)}</SelectItem>
+                      <SelectItem value="warn">{t(`policy.${k}_warn`)}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </Panel>
 

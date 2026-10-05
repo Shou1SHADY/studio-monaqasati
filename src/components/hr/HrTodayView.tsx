@@ -71,7 +71,7 @@ import { NitaqatPanel } from "./HrSettingsView"
 import { HrViolationList } from "./HrViolationList"
 import { hrHref, tabLabelKey, type HrPortal } from "./HrShell"
 
-const MONEY_KEYS = new Set(["eos", "wage", "instalment", "cost"])
+const MONEY_KEYS = new Set(["eos", "wage", "instalment", "cost", "basic", "ceiling"])
 const DAY_KEYS = new Set(["date", "due", "since", "from", "to"])
 
 export function HrTodayView({ access, portal }: { access: HrAccess; portal: HrPortal }) {
