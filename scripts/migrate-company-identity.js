@@ -81,7 +81,8 @@ const pick = (src) => {
   for (const k of KEYS) if (present(src[k])) out[k] = typeof src[k] === "number" ? String(src[k]) : src[k]
   return out
 }
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+const stable = (v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, stable(v[k])])) : Array.isArray(v) ? v.map(stable) : v)
+const same = (a, b) => JSON.stringify(stable(a)) === JSON.stringify(stable(b))
 const text = (v) => (typeof v === "string" || typeof v === "number" ? String(v).trim() : "")
 
 // Keep in step with publicFactsPatch in src/lib/company-public-facts.ts.
