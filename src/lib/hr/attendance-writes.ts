@@ -33,6 +33,7 @@ import { violationRecord, violationRecordedNotice } from "./violation-writes"
 import { emitHrNotices } from "./notify"
 import { todayDay } from "./format"
 import { assertHr, HrWriteError } from "./write-guard"
+import { peopleOf, projectAttendance } from "./me-writes"
 
 
 export interface SiteRef {
@@ -41,6 +42,8 @@ export interface SiteRef {
 }
 
 type Opts = { today?: string; holidays?: readonly Holiday[] }
+/** The month as a write leaves it — what My file's projection is computed from (me-writes.ts). */
+type Projected = { month: string; days: Record<string, DaySheet>; declarations: Declaration[]; closed?: unknown }
 
 function base(orgId: string, site: SiteRef, month: string) {
   return { organizationId: orgId, siteId: site.id, month, days: {}, declarations: [], closed: null }
@@ -72,6 +75,9 @@ export async function recordDay(
   const ex = compactExceptions(input.ex)
   const ref = doc(firestore, HR_ATTENDANCE, attendanceId(orgId, site.id, month))
   const recorded: Array<Parameters<typeof violationRecordedNotice>[0]> = []
+  // My file's projection (me.ts): the month as this write leaves it, for everyone on the day's sheet.
+  let after: Projected | null = null
+  let named: string[] = []
   await runTransaction(firestore, async (tx) => {
     recorded.length = 0
     const snap = await tx.get(ref)
@@ -97,11 +103,15 @@ export async function recordDay(
     }
     if (!wm) tx.set(ref, { ...base(orgId, site, month), days: { [day]: sheet }, updatedAt: serverTimestamp() })
     else tx.update(ref, { [`days.${day}`]: sheet, updatedAt: serverTimestamp() })
+    after = { month, days: { ...(wm?.days ?? {}), [day]: sheet }, declarations: wm?.declarations ?? [] }
+    named = [...sheet.listed, ...(wm?.days?.[day]?.listed ?? [])]
     for (const v of newViolations) {
       tx.set(v.ref, { ...violationRecord(orgId, v.emp, v.code, day, actor, "sheet"), updatedAt: serverTimestamp() })
       recorded.push({ id: v.ref.id, organizationId: orgId, employeeId: v.emp.id, employeeUserId: v.emp.userId ?? null, employeeName: v.emp.names?.ar ?? "", on: day })
     }
   })
+  const wmAfter = after as Projected | null
+  if (wmAfter) await projectAttendance(firestore, wmAfter, named, { day, today })
   // The sheet's violations reach the HR manager and the employee as a hand-recorded one does (WF-09).
   await emitHrNotices(firestore, actor, recorded.map(violationRecordedNotice))
 }
@@ -132,6 +142,7 @@ export async function declareMissing(
   const ref = doc(firestore, HR_ATTENDANCE, attendanceId(orgId, site.id, month))
   const people = await placedOn(firestore, orgId, site.id)
   let out = { employees: 0, manDays: 0 }
+  let after: (Projected & { ids: string[] }) | null = null
   await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(ref)
     const wm = snap.exists() ? (snap.data() as WorkplaceMonth) : null
@@ -155,7 +166,11 @@ export async function declareMissing(
     if (!wm) tx.set(ref, { ...base(orgId, site, month), declarations, updatedAt: serverTimestamp() })
     else tx.update(ref, { declarations, updatedAt: serverTimestamp() })
     out = { employees: roster.employees.length, manDays: Object.values(roster.manDays).reduce((a, b) => a + b, 0) }
+    after = { month, days: wm?.days ?? {}, declarations, ids: roster.employees }
   })
+  // Each declared person's own month on his record (My file reads it — he cannot read the sheet).
+  const wmAfter = after as (Projected & { ids: string[] }) | null
+  if (wmAfter) await projectAttendance(firestore, wmAfter, wmAfter.ids, { today })
   return out
 }
 
@@ -176,6 +191,7 @@ export async function closeMonth(
   const ref = doc(firestore, HR_ATTENDANCE, attendanceId(orgId, site.id, month))
   const people = assumesPresence(site.id, site.type) ? [] : await placedOn(firestore, orgId, site.id)
   let asIs = false
+  let after: Projected | null = null
   await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(ref)
     const wm = snap.exists() ? (snap.data() as WorkplaceMonth) : null
@@ -186,6 +202,9 @@ export async function closeMonth(
     const closed = { by: actor.uid, byName: actor.name, at: new Date().toISOString(), asIs, missing }
     if (!wm) tx.set(ref, { ...base(orgId, site, month), closed, updatedAt: serverTimestamp() })
     else tx.update(ref, { closed, updatedAt: serverTimestamp() })
+    after = wm ? { ...wm, closed } : null
   })
+  const wmAfter = after as Projected | null
+  if (wmAfter) await projectAttendance(firestore, wmAfter, peopleOf(wmAfter), { today })
   return { asIs }
 }

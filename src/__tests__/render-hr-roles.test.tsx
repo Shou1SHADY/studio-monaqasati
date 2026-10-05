@@ -317,10 +317,69 @@ describe("what each role sees and may do (the PRD's matrix, qa_guards)", () => {
   it("My file for every staff user on the record: his own card, his own pay — never the request actions on himself", async () => {
     for (const role of ["manager", "gov", "payroll", "supervisor", "management", "employee"] as Role[]) {
       const view = await openAs(role, "me")
-      expect({ role, card: text().includes(`موظف e_`) }).toEqual({ role, card: true })
+      // The head greets him by his first name, with his own number (e_hrm is 0001 … e_emp 0006).
+      expect({ role, hello: text().includes("مرحباً موظف") }).toEqual({ role, hello: true })
+      expect({ role, no: text().includes(`#000${{ manager: 1, gov: 2, payroll: 3, supervisor: 4, management: 5, employee: 6 }[role as "manager"]}`) }).toEqual({ role, no: true })
       expect({ role, approve: buttons().includes("اعتماد") }).toEqual({ role, approve: false })
       view.unmount()
     }
+  })
+})
+
+describe("My file — the prototype's VIEWS.me, every segment (package A)", () => {
+  const segment = async (label: string) => {
+    const tab = Array.from(document.querySelectorAll("[role=tablist] button")).find((b) => (b.textContent ?? "").startsWith(label))
+    expect({ label, found: Boolean(tab) }).toEqual({ label, found: true })
+    fireEvent.click(tab as Element)
+    await flush()
+  }
+
+  it("the head: greeting, number, manager, the four tiles and the quick actions; Home: needs attention, my day, requests in progress, last salary", async () => {
+    const view = await openAs("employee", "me")
+    for (const x of ["مرحباً موظف", "#0006", "مديرك:", "رصيد إجازتي", "مستحق −", "آخر راتب", "أقرب وثيقة تنتهي", "حضوري —", "اطلب إجازة", "اطلب سلفة", "اطلب خطاباً", "تصحيح حضور", "حدّث بياناتي", "يحتاج انتباهك", "جوالك غير مسجّل", "يومي", "طلباتي الجارية", "آخر راتب"])
+      expect({ x, shown: text().includes(x) }).toEqual({ x, shown: true })
+    // His line manager is his site's supervisor, by name; his pending leave is with him, by name.
+    expect(text()).toContain("مديرك: مستخدم supervisor")
+    expect(text()).toContain("لدى: مستخدم supervisor")
+    // A plain employee carries no staff chip; a staff user does, naming his role.
+    expect(text()).not.toContain("ملفك كموظف")
+    view.unmount()
+    const staff = await openAs("payroll", "me")
+    expect(text()).toContain("ملفك كموظف — ودورك (مسؤول الرواتب)")
+    staff.unmount()
+  })
+
+  it("every segment renders with its keys resolved; pay shows the IBAN masked; documents only his", async () => {
+    const view = await openAs("employee", "me")
+    await segment("طلباتي")
+    expect(text()).toContain("كل طلباتي")
+    expect(text()).toContain("عند من / من قرّر")
+    expect(text()).toContain("جزاءات عليّ")
+    await segment("حضوري وإجازاتي")
+    for (const x of ["مستحق حتى اليوم", "مأخوذ", "الرصيد", "من 120", "الإسناد الحالي", "كشف المشرف"]) expect({ x, shown: text().includes(x) }).toEqual({ x, shown: true })
+    await segment("راتبي")
+    for (const x of ["راتبي الشهري", "ساعة الإضافي", "التأمينات من راتبك", "يوم الصرف", "سلفتي", "مستحقاتي — للعلم"]) expect({ x, shown: text().includes(x) }).toEqual({ x, shown: true })
+    // ES-01 — e_emp's IBAN (SA44200000012345678912 + 6) is never shown whole.
+    expect(text()).toContain("SA4420…9126")
+    expect(text()).not.toContain("SA442000000123456789126")
+    await segment("وثائقي وبياناتي")
+    for (const x of ["بطاقتي", "رقم الإقامة", "المهنة (كما في العقد)", "شؤون الموظفين", "المؤهل", "وثائقي", "المتبقي"]) expect({ x, shown: text().includes(x) }).toEqual({ x, shown: true })
+    // A mason has no licence; an open contract is not a document.
+    expect(text()).not.toContain("رخصة القيادة")
+    expect({ missing: [...missingKeys] }).toEqual({ missing: [] })
+    expect(text()).not.toMatch(/MISSING|undefined|NaN|Invalid Date/)
+    view.unmount()
+  })
+
+  it("the attendance correction and the update dialogs open with their facts", async () => {
+    const view = await openAs("employee", "me")
+    const open = (label: string) => fireEvent.click(Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").startsWith(label)) as Element)
+    open("تصحيح حضور")
+    await flush()
+    expect(text()).toContain("سُجّلت غائباً وكنت حاضراً")
+    expect(text()).toContain("يعتمده: مستخدم supervisor")
+    expect({ missing: [...missingKeys] }).toEqual({ missing: [] })
+    view.unmount()
   })
 })
 
@@ -335,7 +394,7 @@ describe("a supervisor asks only what the rules let him ask (RL-01, §3 #18)", (
     employees: (q) => mine(q, "userId") || hisSite(q),
     hrInjuries: (q) => mine(q, "employeeUserId") || hisSite(q),
     hrAssignFixes: hisSite,
-    hrRequests: (q) => mine(q, "employeeUserId") || (eq(q, "kind").includes("leave") && hisSite(q)),
+    hrRequests: (q) => mine(q, "employeeUserId") || (eq(q, "kind").some((k) => k === "leave" || k === "attfix") && hisSite(q)),
     hrViolations: (q) => mine(q, "employeeUserId"),
     hrAttendance: () => false,
   }

@@ -267,6 +267,15 @@ service cloud.firestore {
     function hrOwnRecord(employeeId) {
       return hrEmp(employeeId).get('userId', '') == request.auth.uid;
     }
+    // LV-07 — the employee withdraws his own approved leave before it starts:
+    // in the SAME write the request `r` goes approved → cancelled and his
+    // record gets back exactly the days that leave took (`undo` names it).
+    function hrUndo(e, r) {
+      let p = /databases/$(database)/documents/hrRequests/$(r);
+      let b = get(p).data;
+      return b.employeeId == e && b.state == 'approved' && getAfter(p).data.state == 'cancelled'
+        && request.resource.data.leaveTaken == resource.data.leaveTaken - b.leave.fromBalance;
+    }
     function inEmployeeOrg(employeeId) {
       return isOrgMember(hrEmp(employeeId).organizationId);
     }
@@ -2917,8 +2926,11 @@ service cloud.firestore {
       // (assigning, status, probation and balances are the HR manager's). The
       // link to a user opens that person's pay to him (RL-03): only the HR
       // manager sets it, and never onto or off himself (the owner excepted).
+      // My file's attendance (`att`, me-writes.ts) is written beside the sheet by
+      // whoever keeps it: the person's workplace supervisor or payroll (closing).
       allow update: if isOrgMember(resource.data.organizationId)
-        && (hrManager() || (hrRole('hr.gov') && changedKeys().hasOnly(['docs', 'updatedAt'])))
+        && (hrManager() || (hrRole('hr.gov') && changedKeys().hasOnly(['docs', 'updatedAt']))
+            || (changedKeys().hasOnly(['att', 'updatedAt']) && (hrRole('hr.payroll') || hrSupervises(resource.data.siteId))))
         && request.resource.data.organizationId == resource.data.organizationId
         && request.resource.data.get('no', null) == resource.data.get('no', null)
         && !('salary' in request.resource.data && request.resource.data.salary != resource.data.get('salary', null))
@@ -2929,6 +2941,9 @@ service cloud.firestore {
       allow update: if isOrgMember(resource.data.organizationId)
         && hrRole('hr.management')
         && changedKeys().hasOnly(['leaveTaken', 'sick', 'hajjTaken', 'contact', 'updatedAt']);
+      allow update: if resource.data.get('userId', '') == request.auth.uid
+        && changedKeys().hasOnly(['leaveTaken', 'undo', 'updatedAt'])
+        && hrUndo(employeeId, request.resource.data.undo);
       allow delete: if isAdmin();
 
       // The undeletable log (EM-06): written by HR staff or the employee himself,
@@ -2978,7 +2993,7 @@ service cloud.firestore {
         // That check comes FIRST: approving a payroll writes many of these at
         // once, and the record lookup behind hrOwnRecord() must not run for
         // each (a transaction may look up twenty documents, no more).
-        && ((hrManager() && (changedKeys().hasOnly(['advance', 'retro', 'updatedAt']) || isOrgOwner() || !hrOwnRecord(employeeId))
+        && ((hrManager() && (changedKeys().hasOnly(['advance', 'retro', 'slip', 'updatedAt']) || isOrgOwner() || !hrOwnRecord(employeeId))
               // the IBAN payroll fixed is approved by a DIFFERENT hand (RL-02, AC-04)
               && (request.resource.data.get('ibanState', '') != 'ok' || resource.data.get('ibanState', '') != 'fixed'
                   || resource.data.get('ibanFixedBy', '') != request.auth.uid || isOrgOwner()))
@@ -3235,18 +3250,14 @@ service cloud.firestore {
       allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
         && (hrSeesPay()
             // a leave (no money): government relations, and a supervisor his workplaces' (RL-01)
-            || (resource.data.kind == 'leave' && (hrRole('hr.gov') || hrSupervises(resource.data.siteId)))
+            || (resource.data.kind in ['leave', 'attfix'] && (hrRole('hr.gov') || hrSupervises(resource.data.siteId)))
             || resource.data.get('employeeUserId', '') == request.auth.uid
             || (resource.data.kind == 'advance' && hrFinance()))));
       allow create: if createsInOrg()
-        && request.resource.data.kind in ['leave', 'advance', 'data']
+        && request.resource.data.kind in ['leave', 'advance', 'data', 'attfix']
         && request.resource.data.state == 'pending'
-        && request.resource.data.filedBy.by == request.auth.uid
-        && exists(/databases/$(database)/documents/employees/$(request.resource.data.employeeId))
-        && hrEmp(request.resource.data.employeeId).organizationId == request.resource.data.organizationId
-        && request.resource.data.employeeUserId == hrEmp(request.resource.data.employeeId).get('userId', null)
+        && hrFiledFor(request.resource.data)
         && request.resource.data.get('siteId', null) == hrEmp(request.resource.data.employeeId).get('siteId', null)
-        && (hrManager() || request.resource.data.employeeUserId == request.auth.uid)
         && (request.resource.data.deciderLevel == 'management'
             || !(request.resource.data.employeeUserId is string) || !hrUserManages(request.resource.data.employeeUserId))
         && request.resource.data.get('financeHold', false) == false;
@@ -3265,6 +3276,8 @@ service cloud.firestore {
             && hrNotOwn()
             && ((resource.data.deciderLevel == 'manager' && hrManager())
                 || (resource.data.deciderLevel == 'management' && hrRole('hr.management'))
+                // an attendance correction: the workplace's supervisor, who keeps the sheet
+                || (resource.data.kind == 'attfix' && hrSupervises(resource.data.siteId))
                 || isOrgOwner()))
           // Finance decides what HR sent up
           || (resource.data.state == 'finance' && request.resource.data.state in ['approved', 'declined']
@@ -3286,7 +3299,7 @@ service cloud.firestore {
           || (request.resource.data.state == 'cancelled'
             && changedKeys().hasOnly(['state', 'cancel', 'updatedAt'])
             && ((resource.data.state in ['pending', 'endorsed'] && (resource.data.get('employeeUserId', '') == request.auth.uid || hrManager()))
-                || (resource.data.state == 'approved' && resource.data.kind == 'leave' && hrManager() && hrToday() < hrNum(resource.data.leave.from))))
+                || (resource.data.state == 'approved' && resource.data.kind == 'leave' && (hrManager() || resource.data.employeeUserId == request.auth.uid) && hrToday() < hrNum(resource.data.leave.from))))
         );
       allow delete: if false;
     }

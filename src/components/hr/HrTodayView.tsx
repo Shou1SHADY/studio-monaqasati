@@ -240,7 +240,7 @@ export function HrTodayView({ access, portal }: { access: HrAccess; portal: HrPo
               {moreButton("reqrows", reqRows.length)}
             </>
           )}
-          {(waiting.length > 0 || reqRows.length === 0) && <HrRequestList access={access} requests={shown("req", waiting)} portal={portal} empty={t("today.nothing_waiting")} facts={reqFacts} />}
+          {(waiting.length > 0 || reqRows.length === 0) && <HrRequestList access={access} requests={shown("req", waiting)} portal={portal} empty={t("today.nothing_waiting")} rowFacts={reqFacts} />}
           {moreButton("req", waiting.length)}
           {vWaiting.length > 0 && <HrViolationList access={access} actor={actor} violations={shown("vio", vWaiting)} all={violations} empty="" />}
           {moreButton("vio", vWaiting.length)}

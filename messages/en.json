@@ -8527,7 +8527,8 @@
       "hr_req_kind": {
         "leave": "Leave request",
         "advance": "Advance request",
-        "data": "Data update request"
+        "data": "Data update request",
+        "attfix": "Attendance correction request"
       },
       "hr_verdict": {
         "approved": "approved",
@@ -20063,7 +20064,8 @@
         "kind": {
           "leave": "Leave",
           "advance": "Advance",
-          "data": "Data update"
+          "data": "Data update",
+          "attfix": "Attendance correction"
         },
         "leave_type": "Type",
         "from": "From",
@@ -20101,13 +20103,15 @@
           "endorse": "Endorse",
           "approve": "Approve",
           "decline": "Decline",
-          "cancel": "Cancel request"
+          "cancel": "Cancel request",
+          "recommend": "Recommend and send to Finance"
         },
         "done": {
           "endorse": "Endorsed — the HR manager decides",
           "approve": "Approved",
           "decline": "Declined",
-          "cancel": "Cancelled"
+          "cancel": "Cancelled",
+          "cancel_approved": "Leave cancelled — its days are back in the balance"
         },
         "block": {
           "bad_dates": "Choose the dates — the end on or after the start",
@@ -20126,8 +20130,22 @@
           "travel_docs": "Not approvable for travel: the iqama or passport lapses before the return — renew first",
           "no_value": "Enter the new value",
           "bad_iban": "The IBAN is not valid — SA followed by 22 digits",
-          "no_document": "Give the bank letter's reference",
-          "no_balance": "No balance as of the start — \"balance only\" leaves no day"
+          "no_document": "Attach the bank letter or statement",
+          "no_balance": "No balance as of the start — \"balance only\" leaves no day",
+          "no_day": "Choose the day",
+          "future": "No correction for a day still to come",
+          "too_old": "That day is more than {n} days ago",
+          "bad_fix_type": "This type needs the punch feature",
+          "over_cap": "You reached {max} requests this month — company policy; see your manager",
+          "duplicate": "There is already a correction request for that day",
+          "month_closed": "That day's month is closed — it never reopens; a supplementary payroll handles it",
+          "no_sheet": "No sheet was recorded that day — no absence to correct",
+          "not_absent": "The sheet does not show him absent that day",
+          "no_file": "Choose the file",
+          "too_big": "The file is larger than 15 MB",
+          "bad_type": "Images or PDF only",
+          "bad_kind": "Unknown attachment kind",
+          "bad_path": "The file's path is not this employee's"
         },
         "warn": {
           "travel_docs": "The iqama or passport expires before the return — it cannot be approved for travel before renewal. The request is still filed.",
@@ -20140,8 +20158,8 @@
         "new_data": "Update my details",
         "data_field": "What to change",
         "new_value": "New value",
-        "bank_document": "Bank letter reference",
-        "bank_document_note": "A new IBAN needs the bank's letter; HR checks it before approving.",
+        "bank_document": "Bank letter or statement (image or PDF)",
+        "bank_document_note": "An IBAN change needs a bank document; the HR manager approves it, not payroll (separation of duties).",
         "data_note": "You never edit your record yourself — the HR manager checks and approves the change.",
         "document_ref": "document {ref}",
         "mode": {
@@ -20149,8 +20167,56 @@
           "balance_only": "Approve the balance only",
           "balance_only_line": "{n} days — ends on {date}",
           "excess_unpaid": "Approve with the excess unpaid",
-          "excess_unpaid_line": "{n} days deducted in payroll automatically"
-        }
+          "excess_unpaid_line": "{n} days deducted in payroll automatically",
+          "excess_unpaid_money": "{n} days deducted ≈ {amount}"
+        },
+        "new_attfix": "Attendance correction request",
+        "desc": {
+          "leave": "{type} leave · {days, plural, one {1 day} other {# days}} from {date}",
+          "advance": "Advance {amount}",
+          "data": "Update {field}",
+          "attfix": "Attendance correction — {type} · {date}"
+        },
+        "attfix_type": {
+          "abs": "I was marked absent but was present",
+          "miss": "I forgot to punch",
+          "out": "I was outside the fence on duty"
+        },
+        "attfix": {
+          "type": "What happened?",
+          "day": "Day",
+          "sub": "Approved by: {name}",
+          "cap_line": "The cap counts forgotten punches only: {used} of {max} used this month",
+          "note": "Within {n} days of the day. Whoever records your attendance decides; on approval the sheet is corrected unless the month is closed.",
+          "approve_note": "Approving takes the absence off that day on the attendance sheet."
+        },
+        "fact": {
+          "balance_at": "Balance accrued to the start of the leave ({date})",
+          "holidays": "Official holidays inside it, not counted",
+          "sick_used": "Sick days this year before the request",
+          "of_120": "{n} of 120",
+          "endorsement": "Supervisor's endorsement",
+          "endorsed_by": "{name} — endorses",
+          "no_endorsement": "No endorsement yet",
+          "unpaid_cost": "{n, plural, one {1 day} other {# days}} unpaid — deducted ≈",
+          "ticket": "Air ticket",
+          "ticket_due": "Due — no-objection checklist",
+          "hr_limit": "HR limit ({n} × wage)",
+          "outstanding": "Outstanding advance",
+          "none": "None",
+          "schedule": "Instalment — 10% of the wage (art. 92)",
+          "schedule_line": "{i} × {n} + {last} = {amount}"
+        },
+        "cannot_approve": "Cannot be approved",
+        "cancel_restores": "This leave is approved and has not started: cancelling it returns {n} days to your balance.",
+        "effect": "Effect",
+        "effect_line": "≈ {amount} deducted from pay",
+        "ticket_due": "Air ticket due — booked after approval.",
+        "iban_hint": "As on your bank statement — a transfer bounces if one digit is wrong.",
+        "outstanding_line": "You have an outstanding advance — {balance} left at {instalment} a month. No second advance before it is repaid.",
+        "who_decides": "Who decides",
+        "decider_finance": "{name} — above HR's limit",
+        "open_document": "Open the document: {name}"
       },
       "payroll": {
         "state": {
@@ -20643,7 +20709,8 @@
         "iban": "IBAN",
         "mobile": "Mobile",
         "address": "Address",
-        "emergency": "Emergency contact"
+        "emergency": "Emergency contact",
+        "qualification": "Qualification"
       },
       "me": {
         "no_record": "You are not on the employee record yet — ask the HR manager to link your account.",
@@ -20662,9 +20729,11 @@
         "held_by": "With: {name}",
         "holder": {
           "line_manager": "Your line manager",
-          "hr": "The HR manager",
+          "hr": "HR manager",
           "management": "Management",
-          "finance": "Finance"
+          "finance": "Finance",
+          "supervisor": "Workplace supervisor",
+          "after_document": "{name} — after checking the document"
         },
         "reason": "Reason: {text}",
         "month_by_month": "Month by month",
@@ -20673,7 +20742,7 @@
         "payslips": "Payslips",
         "paid_on": "paid {date}",
         "details": "My details",
-        "details_note": "To change a detail, use “Update my details”.",
+        "details_note": "The HR manager approves changes — an IBAN with a bank document.",
         "slip": {
           "month_wage": "Wage for {days} days",
           "absence": "Absence ({days} days)",
@@ -20688,8 +20757,190 @@
           "advance": "Advance instalment",
           "net": "Net paid",
           "retro": "Retro pay difference",
-          "refund": "Penalty paid back (cancelled on your objection)"
-        }
+          "refund": "Penalty paid back (cancelled on your objection)",
+          "overtime_rate": "Overtime {hours} h × {rate} (art. 107)",
+          "ot_consent": "More than {n} overtime hours in the month — needs your written consent",
+          "gosi_rate": "GOSI — {rate} of {base}"
+        },
+        "hello": "Hello {name}",
+        "manager_line": "Manager: {name}",
+        "staff_chip": "Your file as an employee — your {roles} work is in the other tabs",
+        "role": {
+          "manager": "HR manager",
+          "gov": "government relations",
+          "payroll": "payroll officer",
+          "supervisor": "workplace supervisor",
+          "management": "management"
+        },
+        "actions": "My quick requests",
+        "act": {
+          "leave": "Request leave",
+          "advance": "Request an advance",
+          "letter": "Request a letter",
+          "attfix": "Attendance correction",
+          "data": "Update my data"
+        },
+        "act_block": {
+          "outstanding": "You have an outstanding advance",
+          "pending_advance": "An advance request is awaiting a decision",
+          "no_wage": "Your wage is not recorded yet"
+        },
+        "tile": {
+          "leave": "My leave balance",
+          "leave_sub": "{accrued} accrued − {taken} taken",
+          "salary": "Last salary",
+          "salary_paid": "{month} · paid {date}",
+          "document": "Next document to expire",
+          "attendance": "My attendance — {month}",
+          "attendance_sub": "{absent} absent · {ot} h OT"
+        },
+        "expired_ago": "expired {n} days ago",
+        "slip_state": {
+          "paid": "Paid",
+          "finance": "With Finance",
+          "held": "Held",
+          "finance_long": "With Finance — not paid yet",
+          "held_long": "Held — not paid until the IBAN is corrected"
+        },
+        "held_reason": {
+          "iban_returned": "Transfer returned",
+          "iban_unapproved": "IBAN awaiting approval",
+          "no_iban": "No IBAN on record"
+        },
+        "returned": "Transfer returned",
+        "attn": {
+          "title": "Needs your attention",
+          "penalty": "Penalty: {code}",
+          "penalty_sub": "You may object until {until} (art. 72)",
+          "penalty_objected": "Penalty: {code}",
+          "penalty_objected_sub": "Your objection is pending — suspended until decided",
+          "doc": "{doc} expires {date}",
+          "doc_sub": "Renewal is with government relations — they may ask for your passport or a copy",
+          "doc_expired": "{doc} expired {date}",
+          "doc_expired_sub": "Renewal is with government relations — they may ask for your passport or a copy",
+          "contract": "Your fixed-term contract runs to {date}",
+          "contract_sub": "It renews for the same term unless you are notified in writing",
+          "iban_returned": "Your transfer bounced",
+          "iban_returned_sub": "The IBAN on record is wrong — send the correct one with a bank document",
+          "no_iban": "No IBAN on record",
+          "no_iban_sub": "Your salary cannot be paid without it",
+          "no_mobile": "Your mobile is not recorded",
+          "no_mobile_sub": "To receive pay messages and the decisions on your requests",
+          "approved": "{kind} {no} — approved",
+          "approved_sub": "{reason}",
+          "declined": "{kind} {no} — declined",
+          "declined_sub": "{reason}",
+          "by": "Decided by {name}",
+          "object": "Object",
+          "update_iban": "Update IBAN",
+          "add": "Add it"
+        },
+        "day": {
+          "title": "My day",
+          "today": "Today",
+          "recorder": "Who records my attendance",
+          "recorder_assumed": "Presence assumed — exceptions only are recorded",
+          "recorder_none": "No supervisor on your workplace yet — HR",
+          "place": "My workplace",
+          "source": "Source",
+          "source_sheet": "Supervisor's sheet — {name}",
+          "punch_later": "Punching from the app comes with the punch feature — today your supervisor records you.",
+          "assumed_note": "At the office your presence is assumed; only absence and permission are recorded.",
+          "sheet_note": "Your workplace supervisor records you every day. Marked absent but you were there? Use “Attendance correction”."
+        },
+        "today": {
+          "present": "Present",
+          "absent": "Absent",
+          "sick": "Sick",
+          "permission": "Permission",
+          "leave": "On leave",
+          "assumed": "Present — assumed",
+          "none": "Not recorded yet"
+        },
+        "in_progress": "My requests in progress",
+        "in_progress_none": "Nothing in progress — file a request with the buttons above",
+        "ago": "{n, plural, =0 {today} one {1 day ago} other {# days ago}}",
+        "last_salary": "Last salary",
+        "gross_deductions": "Gross · deductions",
+        "slip_details": "Payslip and details",
+        "no_salary": "No salary approved yet",
+        "all_requests": "All my requests",
+        "col": {
+          "request": "Request",
+          "no": "No.",
+          "date": "Date",
+          "state": "Status",
+          "holder": "Holder / decided by",
+          "action": "Action",
+          "document": "Document",
+          "expires": "Expires",
+          "left": "Left"
+        },
+        "decided_by": "{name} · {date}",
+        "penalties": "Penalties on me",
+        "month": {
+          "present": "present",
+          "absent": "absent",
+          "sick": "sick",
+          "leave": "leave",
+          "ot": "h OT",
+          "closed": "closed",
+          "to_date": "to date"
+        },
+        "formula": {
+          "accrued": "accrued to date",
+          "taken": "taken",
+          "balance": "balance"
+        },
+        "entitlement_line": "{n} days — 30 from {date}",
+        "sick_bands": "{full} full · {q} at three quarters · {zero} unpaid (art. 117)",
+        "balance_cash": "Your leave balance in cash",
+        "opening_line": "{n} days — entered by {name} on {date}",
+        "leaves": "Leaves",
+        "no_leaves": "No leave recorded",
+        "assignments": "Assignment history",
+        "current_assignment": "Current assignment",
+        "pay": {
+          "monthly": "My monthly pay",
+          "total": "Total",
+          "ot_hour": "Overtime hour",
+          "ot_formula": "(wage + half the basic) ÷ 240 — art. 107",
+          "gosi": "GOSI from your pay",
+          "gosi_line": "{rate} of basic + housing",
+          "gosi_none": "None — the employer's share only",
+          "pay_day": "Pay day",
+          "pay_day_line": "Day {n} of the next month",
+          "bank": "Bank and IBAN",
+          "no_iban": "No IBAN on record",
+          "iban_fixed": "Corrected — awaiting HR approval",
+          "iban_note": "The IBAN is shown masked. To change it, use “Update my data” with the bank's letter.",
+          "supplementary": "(supplementary)",
+          "advance": "My advance",
+          "advance_amount": "Amount",
+          "advance_left": "Remaining",
+          "advance_monthly": "Monthly instalment",
+          "advance_monthly_line": "{amount} · {n, plural, =0 {no months} one {1 month left} other {# months left}}",
+          "no_advance": "No advance — the instalment would be 10% of your wage ({amount}) (art. 92)",
+          "entitlements": "My entitlements — for information",
+          "eos": "End-of-service accrued (art. 84)",
+          "if_resigned": "If you resigned today (art. 85)",
+          "nothing_before_two": "Before two years of service, a resignation earns no gratuity (art. 85).",
+          "info_note": "Information computed from your record — not a decision or an offer.",
+          "changes": "My pay changes",
+          "change_from": "From {date}"
+        },
+        "ticket": "Air ticket",
+        "ticket_due": "Due with the annual leave",
+        "ticket_na": "Not applicable",
+        "ticket_booked": "Due with the annual leave — booked after approval",
+        "no_note": "Your key in every request and on the punch device",
+        "national_id": "National ID",
+        "iqama_no": "Iqama no.",
+        "trade_contract": "Trade (per contract)",
+        "contract_fixed": "Fixed to {date} — renews unless you are notified",
+        "affairs": "Employee affairs",
+        "documents": "My documents",
+        "documents_note": "Renewals are handled by government relations; your passport stays with you and is asked for only at renewal."
       },
       "inj": {
         "title": "Work injuries",
