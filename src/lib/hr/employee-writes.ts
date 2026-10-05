@@ -470,10 +470,14 @@ export async function recordRenewal(firestore: Firestore, ctx: HrContext, id: st
   assertHr(ctx, "documents.manage")
   const fee = r2(input.fee ?? 0)
   if (!(fee >= 0)) throw new HrWriteError("blocked", ["bad_fee"])
+  let lapsed: { orgId: string; name: string; siteId: string | null } | null = null
   await runTransaction(firestore, async (tx) => {
     const { ref, emp } = await readEmployee(tx, firestore, id)
     const blocks = renewalBlocks(emp.docs ?? {}, input.type, input.expiry, today())
     if (blocks.length) throw new HrWriteError("blocked", blocks)
+    // DC-03 — an expired iqama renewed: the HR manager may assign him again (the prototype's notice).
+    const was = emp.docs?.iqama
+    if (input.type === "iqama" && was && was < today() && emp.status !== "left") lapsed = { orgId: emp.organizationId, name: emp.names?.ar ?? "", siteId: emp.siteId ?? null }
     tx.update(ref, { [`docs.${input.type}`]: input.expiry, updatedAt: serverTimestamp() })
     log(tx, firestore, id, emp.organizationId, actor, "renewed", { doc: input.type, from: emp.docs?.[input.type] ?? null, to: input.expiry, fee: input.fee ?? null })
     // The fee goes to Finance as a payment request (Dr government & recruitment fees, the prototype's 6110) —
@@ -498,6 +502,9 @@ export async function recordRenewal(firestore: Firestore, ctx: HrContext, id: st
       })
     }
   })
+  const l = lapsed as { orgId: string; name: string; siteId: string | null } | null
+  if (l)
+    await emitHrNotice(firestore, actor, { kind: "hr_iqama_renewed", organizationId: l.orgId, to: [{ hr: "manager" }], params: { name: l.name, expiry: input.expiry }, link: hrLinks.person(id), once: `${id}_${input.expiry}`, employeeId: id })
 }
 
 /** Link the platform user who IS this employee — his "My file" (ES-00). */

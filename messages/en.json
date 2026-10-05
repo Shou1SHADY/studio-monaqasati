@@ -8539,7 +8539,11 @@
       },
       "table_sort_by": "Sort by {column}",
       "table_show_more": "Show {count} more",
-      "table_actions": "Actions"
+      "table_actions": "Actions",
+      "pn_hr_iqama_renewed_title": "Iqama renewed — {name}",
+      "pn_hr_iqama_renewed": "{actor} renewed {name}'s iqama until {expiry}. He may be moved and assigned to a site again.",
+      "pn_hr_sheet_reminder_title": "Attendance at {site} not recorded since {since}",
+      "pn_hr_sheet_reminder": "{actor} reminds you: record {site}'s attendance from {since} day by day, or declare the missed days in your name. No payroll before the month closes."
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -18979,7 +18983,12 @@
         "perf": "Performance & training",
         "reports": "Reports",
         "settings": "Settings",
-        "me": "My file"
+        "me": "My file",
+        "sites_contractor": "Sites",
+        "sites_supplier": "Branches & warehouses",
+        "sites_developer": "Departments & projects",
+        "perf_only": "Performance",
+        "train_only": "Training"
       },
       "tab_desc": {
         "today": "What needs you today, and where the company stands",
@@ -19084,14 +19093,75 @@
           "gosi": "GOSI establishment number",
           "visas": "Unused work visas",
           "visas_note": "From the establishment file — a visa arrival uses one.",
-          "visasAsOf": "Visas as of"
+          "visasAsOf": "Visas as of",
+          "nameEn": "Company name in English",
+          "mudad": "Mudad establishment number",
+          "band": "Saudization band (Nitaqat)",
+          "bandAsOf": "Band as of",
+          "minPct": "Green band threshold (%)",
+          "minPct_note": "From Qiwa for your activity and size — the safety margin is computed from it."
         },
         "features": "Optional features",
         "features_note": "The core is always on. Switching a feature off hides its tab, decisions and sections — its data is kept.",
         "later_release": "screens arrive in a later release",
         "policies": "Company policies",
         "statutory": "Statutory — read-only",
-        "statutory_note": "These come from the Labour Law and GOSI, not from a company choice; every calculation reads them from one table."
+        "statutory_note": "These come from the Labour Law and GOSI, not from a company choice; every calculation reads them from one table.",
+        "pick_band": "Pick the band",
+        "band": {
+          "platinum": "Platinum",
+          "high_green": "High green",
+          "mid_green": "Medium green",
+          "low_green": "Low green",
+          "yellow": "Yellow",
+          "red": "Red"
+        },
+        "nitaqat": "Establishment file",
+        "nitaqat_note": "The band is updated by hand from the government portals — we do not connect to them. The ratio is computed from the record.",
+        "saudi_ratio": "Saudi ratio — computed from the record",
+        "saudi_ratio_v": "{pct}% ({sa} of {total})",
+        "margin": "Safety margin",
+        "margin_unknown": "Enter the green threshold to compute it",
+        "margin_short": "{n, plural, one {# Saudi short of the band} other {# Saudis short of the band}}",
+        "margin_spare": "Can lose {n} Saudis before leaving green",
+        "registrations": "CR · establishment · GOSI · Mudad",
+        "visas_v": "{n} · as of {date}",
+        "reset_defaults": "Reset to the defaults",
+        "why": {
+          "contractor": "Default for a contractor: large site labour — safety training, punches and the platforms first; performance once operations settle.",
+          "supplier": "Default for a supplier: shift warehouses and a fleet — punches, shifts and forklift training.",
+          "developer": "Default for a developer: mostly Saudi office staff — performance and hiring; no site certificates except for supervision."
+        },
+        "default_on": "default: on",
+        "default_off": "default: off",
+        "log": "Policy change log",
+        "log_note": "Every saved change — who, when, from what to what. Written by the save, never typed.",
+        "log_none": "No change recorded yet",
+        "log_on": "on",
+        "log_off": "off",
+        "log_change": "{from} → {to}",
+        "log_by": "{name} · {date}",
+        "roles": "Roles",
+        "roles_note": "Given on the team page by each member's default group — the HR roles and who sees wages.",
+        "role": {
+          "manager": "HR manager",
+          "gov": "Government relations",
+          "payroll": "Payroll officer",
+          "supervisor": "Workplace supervisor",
+          "management": "Management",
+          "employee": "Employee"
+        },
+        "role_desc": {
+          "manager": "Decides requests, penalties, payroll approval and settings",
+          "gov": "Documents, renewals, platforms and the establishment file",
+          "payroll": "Prepares the payroll and fixes returned transfers",
+          "supervisor": "Records his workplaces' attendance and endorses leave",
+          "management": "Reads everything; decides the HR manager's own requests",
+          "employee": "My file: his record, requests and payslips"
+        },
+        "sees_pay": "sees wages",
+        "no_pay": "no wages",
+        "own_pay": "his own only"
       },
       "policy": {
         "housingShare": "Housing allowance (% of basic)",
@@ -19101,7 +19171,11 @@
         "advanceMaxMonths": "HR advance limit (months' wage) — above goes to Finance",
         "closeMissing": "Closing a month with an unrecorded day",
         "block": "Block",
-        "warn": "Warn and allow"
+        "warn": "Warn and allow",
+        "advanceMaxMonths_note": "Half a month is allowed; above the limit goes to Finance.",
+        "ajeerAllowed": "Temporary labour (Ajeer) allowed",
+        "ajeerAllowed_note": "Offered in a manpower answer when people are short — its cost against a hire below.",
+        "ajeerFactor": "Ajeer cost (× a hire's wage)"
       },
       "law": {
         "overtime": "Overtime hour (art. 107)",
@@ -19124,7 +19198,11 @@
         "hours": "Working hours",
         "hours_v": "{normal} a day · Ramadan {ramadan} for everyone",
         "holidays": "Public holidays {year} (art. 112, Umm al-Qura)",
-        "holiday_days": "from {date} — {n} days"
+        "holiday_days": "from {date} — {n} days",
+        "week": "Working week",
+        "week_v": "{hours} hours · Friday is the weekly rest day",
+        "iqama": "Iqama after arrival",
+        "iqama_v": "issued within {days} days"
       },
       "today": {
         "soon": "Your decisions appear here as HR is set up.",
@@ -19170,7 +19248,7 @@
           "iban_approve": "Approve the corrected IBAN — {name}",
           "payroll_prepare": "Prepare the payroll for {month}",
           "payroll_approve": "Approve the payroll for {month}",
-          "sheet_today": "Today's sheet at {site}",
+          "sheet_today": "Today's attendance at {site} — {n} not recorded",
           "wait_custody": "Custody clearance for {name}",
           "wait_settlement": "Settlement payment for {name}",
           "wait_post": "Payroll {key} to post",
@@ -19181,11 +19259,17 @@
           "probation_end": "Probation of {name} ends {date}",
           "contract_end": "Contract of {name} ends {date}",
           "manpower": "{project} asks for {count} × {trade} from {date}",
-          "settlement_ready": "Settlement for {name} — custody cleared",
+          "settlement_ready": "Final settlement — {name} · last day {date}",
           "leave_return_due": "{name} is not back from leave — it ended {date}, {days} days late",
           "leave_return_warning": "{name} absent without leave for {days} days after {date} — the written warning is due (art. 80)",
           "leave_return_termination": "{name} absent without leave for {days} days after {date} — termination is possible (art. 80)",
-          "assign_fix": "Assignment correction — {name} has worked at {site} since {date}"
+          "assign_fix": "Assignment correction — {name} has worked at {site} since {date}",
+          "licence_expired": "{count, plural, one {# driver with an expired licence} other {# drivers with expired licences}} — they do not drive until renewed",
+          "sheet_stopped": "Attendance at {site} not recorded since {date}",
+          "wait_reissue": "Re-issuing {n, plural, one {# returned transfer} other {# returned transfers}} after the fix",
+          "wait_plan": "Our answer to {project} ({count} × {trade}) — plan acceptance",
+          "exit_reentry": "Exit re-entry — {name} · travels {date}",
+          "final_exit": "Final exit — {name} · {date}"
         },
         "a": {
           "move": "Move",
@@ -19201,7 +19285,12 @@
           "open": "Open",
           "answer": "Answer",
           "settle": "Settle",
-          "plan": "Plan"
+          "plan": "Plan",
+          "keep_or_stop": "Keep or stop",
+          "remind": "Remind the supervisor",
+          "recorded": "Recorded",
+          "issue": "Record the issue",
+          "card": "The card"
         },
         "order": "One trip, in order: {order}",
         "sites_today": "Workplaces today",
@@ -19211,7 +19300,9 @@
           "out": "{n} absent or sick",
           "unrecorded": "{n} unrecorded",
           "leave": "{n} on leave",
-          "none": "Unrecorded"
+          "none": "Unrecorded",
+          "bench_cost": "{n} · ≈{cost} a month",
+          "none_since": "unrecorded since {date}"
         },
         "ending": "Sites ending soon",
         "ending_none": "Nothing ends within {n} days",
@@ -19224,7 +19315,8 @@
           "on_duty": {
             "label": "On duty today",
             "note": "of {of} · {out} absent or sick · {unrecorded} unrecorded · {bench} unassigned",
-            "rest": "Friday — the weekly rest day"
+            "rest": "Friday — the weekly rest day",
+            "note_cost": "of {of} · {out} absent or sick · {unrecorded} unrecorded · {bench} unassigned ≈{cost} a month"
           },
           "documents": {
             "label": "Documents expired or due within {days} days",
@@ -19251,7 +19343,7 @@
           },
           "estimate": {
             "label": "{month} — gross estimate from contracts",
-            "note": "Contract wages, before overtime and absence"
+            "note": "Contract wages, before overtime and absence · recorded through yesterday at {current} of {of} workplaces"
           },
           "returned": {
             "label": "Returned transfers",
@@ -19277,20 +19369,33 @@
           },
           "bench": {
             "label": "Unassigned — still paid",
-            "note": "{count} people, a month's wages"
+            "note": "{count} people, a month's wages",
+            "note_ending": "{count} people · and {n} from {site} (≈{endCost} a month) join on {date} without a plan"
           },
           "decisions": {
             "label": "People decisions within 60 days",
-            "note": "Contracts ending and probations"
+            "note": "{contracts} contracts ending · {probations} probations",
+            "note_ending": "{contracts} contracts ending · {probations} probations · {site} ends on {date} with {n} people"
           },
           "labour_cost": {
             "label": "Labour cost — the last payroll",
-            "note": "{month} · {perHead} a head · Saudis {saudi}%",
+            "note": "{month} · {perHead} a head · administrative {admin}% of the cost · Saudis {saudi}%",
             "none": "No payroll yet · Saudis {saudi}%"
           },
           "iqama_on_site": {
             "label": "Expired iqamas on sites",
-            "note": "{returned} returned transfers unpaid"
+            "note": "{returned} returned transfers unpaid",
+            "note_payday": "{returned} returned transfers unpaid · payroll paid on day {paid}, policy day {policy}"
+          },
+          "new_people": {
+            "label": "Employees",
+            "note": "on record · {present} present today · {bench} unassigned",
+            "none": "Start with the first employee after the workplace"
+          },
+          "new_sites": {
+            "label": "Workplaces",
+            "note": "{names}",
+            "none": "No workplace yet"
           }
         },
         "step_why": {
@@ -19329,7 +19434,78 @@
           "no_payroll_officer": "No payroll officer — who prepares the payroll and fixes returns?",
           "no_gov_officer": "No government relations officer — documents will expire with nobody to renew them",
           "manager_not_on_record": "You are not on the record yourself — link your user to your employee card, or you will not be on the payroll"
-        }
+        },
+        "show_less": "Show less",
+        "age": "{n, plural, =0 {today} one {# day ago} other {# days ago}}",
+        "reminded": "Reminder sent to the supervisor of {site}",
+        "exit_visa_done": "Exit re-entry visa recorded",
+        "f": {
+          "trade": "{trade}",
+          "site": "{site}",
+          "renewal_gov": "renewal is government relations'",
+          "names": "{names}{more, plural, =0 {} other { +#}}",
+          "reassign_or_stop": "reassign to work without driving or stop them — renewal is government relations'",
+          "recorded_thru": "recorded through {date}",
+          "nothing_recorded": "nothing recorded this month",
+          "no_payroll_before": "no payroll before it closes",
+          "quote": "“{text}”",
+          "gosi_wages": "wages during treatment are GOSI's, not the payroll's",
+          "unpaid_until_fixed": "unpaid until the IBAN is fixed",
+          "separation": "changed by payroll — separation of duties: who changes does not approve",
+          "review_then_send": "review the lines, then send for approval",
+          "lines": "{n, plural, one {# line} other {# lines}}{held, plural, =0 {} other { · # held}}",
+          "not_preparer": "never approved by whoever prepared it",
+          "eos": "end of service {eos}",
+          "leave_days": "leave balance {n} days",
+          "art80": "art. 80: a written warning after 10 days in a row, termination possible after 15",
+          "raised_by": "raised by {name}",
+          "all_present_then": "“All present”, then edit the exceptions",
+          "days_missing": "{n, plural, one {# day missing} other {# days missing}}",
+          "day_by_day": "recorded day by day, never “present” in bulk",
+          "coverage": "Coverage: {onTime} on time · {late} late · {short} uncovered",
+          "excluded": "{n} excluded — expired iqama or licence",
+          "order": "one trip, in order: {order}",
+          "passport_first": "passport first",
+          "on_site": "on site",
+          "days_left": "{n, plural, =0 {due today} one {# day left} other {# days left}}",
+          "no_decision_confirmed": "no decision = confirmed",
+          "no_decision_renewed": "no decision = renewed for the same term",
+          "approved_leave_visa": "approved leave — the exit re-entry visa before travel",
+          "final_exit_ready": "settlement approved — record the final exit, then the iqama is cancelled",
+          "after_settlement": "after the settlement — waiting on the HR manager",
+          "balance": "balance {n} days",
+          "exceeds": "exceeds it by {n}",
+          "endorsed_by": "endorsed by {name}",
+          "no_endorsement": "no supervisor endorsement",
+          "wage": "wage {wage}",
+          "instalment": "instalment {instalment} × {n}",
+          "has_advance": "has an outstanding advance",
+          "no_advance": "no outstanding advance"
+        },
+        "sites_today_word": "{sites} today",
+        "ending_cost": "≈{cost} a month",
+        "progress": "Attendance — this month",
+        "progress_note": "Payroll reads closed months only — each workplace closes after the month ends",
+        "progress_close": "Last month to close · recorded through {date}",
+        "progress_close_none": "Last month to close · nothing recorded",
+        "progress_closed": "Closed",
+        "progress_current": "Through yesterday",
+        "progress_stopped": "Stopped since {date}",
+        "trades": "My workers by trade",
+        "trades_expired": "{n} expired iqama",
+        "cost_title": "Labour cost by cost centre — {month}",
+        "cost_note": "Gross + employer GOSI, as Finance posted it",
+        "cost_col": {
+          "centre": "Cost centre",
+          "account": "Account",
+          "people": "Employees",
+          "cost": "Cost · per head",
+          "share": "Share"
+        },
+        "cost_no_output": "no output",
+        "cost_total": "Total",
+        "cost_foot": "The cost centre follows the assignment — {accounts} — wages are never spread by percentages in Finance",
+        "step_add": "Add"
       },
       "back": "Back",
       "next": "Next",
@@ -20779,7 +20955,7 @@
           },
           "cost": {
             "title": "Labour cost by cost centre",
-            "desc": "Gross + employer GOSI, from the last payroll — as posted by Finance"
+            "desc": "Gross + employer GOSI, from the last payroll — as posted by Finance; the month's EOS accrual beside it"
           },
           "documents": {
             "title": "Expired and expiring documents",
@@ -20871,7 +21047,9 @@
           "leaving": "Leaving",
           "turnover": "Est. annual turnover",
           "manager": "Line manager",
-          "source": "Source"
+          "source": "Source",
+          "penalty": "Penalty",
+          "eos_accrual": "EOS accrual"
         },
         "doc_state": {
           "expired": "Expired",
@@ -20890,7 +21068,35 @@
           "derived": "From the workplace",
           "management": "Management"
         },
-        "total": "Total"
+        "total": "Total",
+        "penalty": {
+          "warning": "Written warning",
+          "fraction": "{pct}% of a day's wage",
+          "days": "{days, plural, one {a day's wage} other {# days' wage}}",
+          "termination": "Dismissal (art. 80)"
+        },
+        "mudad_preview": "Mudad establishment no. {mudad} · {held, plural, =0 {no held line} other {# held lines outside the file}} · check before downloading",
+        "gosi_preview": "The month's contributions — the total equals the GOSI payable · check before downloading",
+        "preview_more": "Showing {shown} of {n} — the rest are in the file",
+        "file_col": {
+          "id_no": "ID number",
+          "name": "Name",
+          "iban": "IBAN",
+          "bank": "Bank",
+          "basic": "Basic",
+          "housing": "Housing",
+          "other_earnings": "Other earnings",
+          "deductions": "Deductions",
+          "net": "Net",
+          "establishment": "Establishment",
+          "period": "Period",
+          "nationality": "Nationality",
+          "scheme": "Scheme",
+          "base": "Contribution base",
+          "employee": "Employee",
+          "employer": "Employer",
+          "total": "Total"
+        }
       },
       "holiday": {
         "founding": "Founding Day",

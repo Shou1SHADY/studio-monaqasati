@@ -61,7 +61,8 @@ export function useHrToday(access: HrAccess, today: string) {
   const { data: ex } = useCollection(exQ)
   const { data: pr } = useCollection(prQ)
   const answers = access.allowed("manpower.answer")
-  const mpQ = useMemoFirebase(() => (firestore && orgId && answers ? query(collection(firestore, MANPOWER_REQUESTS), where("organizationId", "==", orgId), where("state", "==", "open")) : null), [firestore, orgId, answers])
+  // Open ones to answer; answered ones wait for Projects to accept the plan (TD-03).
+  const mpQ = useMemoFirebase(() => (firestore && orgId && answers ? query(collection(firestore, MANPOWER_REQUESTS), where("organizationId", "==", orgId), where("state", "in", ["open", "answered"])) : null), [firestore, orgId, answers])
   const { data: mp } = useCollection(mpQ)
   // AS-03 — pending assignment corrections, for the hand that decides them.
   const decidesFixes = access.allowed("employee.assign")

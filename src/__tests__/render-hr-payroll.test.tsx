@@ -59,7 +59,7 @@ function world() {
   seed("users/po", { organizationId: ORG, organizationRole: "member", defaultGroupId: "g_po", name: "محاسب الرواتب", email: "po@test.sa" })
   seed("teamGroups/g_gro", { organizationId: ORG, name: "gov", key: null, permissions: ["hr.gov"] })
   seed("users/gro", { organizationId: ORG, organizationRole: "member", defaultGroupId: "g_gro", name: "العلاقات", email: "gro@test.sa" })
-  seed(`hrSettings/${ORG}`, { organizationId: ORG, features: [], businessType: "contractor", defaultsAppliedFor: "contractor", establishment: { name: "شركة البناء", gosi: "520000431", mudadNo: "MD-7-1234567" }, policies: {} })
+  seed(`hrSettings/${ORG}`, { organizationId: ORG, features: [], businessType: "contractor", defaultsAppliedFor: "contractor", establishment: { name: "شركة البناء", gosi: "520000431", mudad: "MD-7-1234567" }, policies: {} })
   seed(`accounting_settings/${ORG}`, { organizationId: ORG, enabled: true })
   for (const s of sites) seed(`hrSites/${s.id}`, s as unknown as Record<string, unknown>)
   for (const e of employees) seed(`employees/${e.id}`, e as unknown as Record<string, unknown>)

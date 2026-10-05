@@ -14,7 +14,7 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { collection, doc, query, where } from "firebase/firestore"
+import { collection, query, where } from "firebase/firestore"
 import { CheckCircle2, FileText, Loader2, Lock, Receipt, RefreshCw, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -33,7 +33,7 @@ import { Callout } from "@/components/module-ui/Callout"
 import { Panel } from "@/components/module-ui/Panel"
 import { SegmentedNav, type Segment } from "@/components/module-ui/SegmentedNav"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
-import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useHrPeople, useOrgPay } from "@/hooks/useHrPeople"
 import { useHrRequests } from "@/hooks/useHrRequests"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -66,7 +66,6 @@ import {
 } from "@/lib/hr/payroll"
 import { approvePayroll, preparePayroll, prepareSupplementary } from "@/lib/hr/payroll-writes"
 import type { HrRequest } from "@/lib/hr/requests"
-import { HR_SETTINGS } from "@/lib/hr/settings"
 import { UNASSIGNED_SITE, type HrSite } from "@/lib/hr/sites"
 import type { HrViolation } from "@/lib/hr/violations"
 import { addDays, monthRange, r2 } from "@/lib/hr/statutory"
@@ -90,15 +89,9 @@ function monthLabel(month: string, locale: string) {
   return Number.isNaN(d.getTime()) ? month : d.toLocaleDateString(locale === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-US", { month: "long", year: "numeric" })
 }
 
-/** The establishment's Mudad number (Settings → establishment file, `establishment.mudadNo`) — read from the settings
- * document as stored, defensively: older settings have none, and the normalised settings may not carry the field. */
+/** The establishment's Mudad number (Settings → establishment file, `establishment.mudad`) — printed in the wage file. */
 function useMudadNo(access: HrAccess): string | null {
-  const firestore = useFirestore()
-  const ref = useMemoFirebase(() => (firestore && access.orgId ? doc(firestore, HR_SETTINGS, access.orgId) : null), [firestore, access.orgId])
-  const { data } = useDoc(ref)
-  const fromDoc = (data as { establishment?: { mudadNo?: unknown } } | null)?.establishment?.mudadNo
-  const fromSettings = (access.settings.establishment as { mudadNo?: unknown } | undefined)?.mudadNo
-  const v = typeof fromSettings === "string" && fromSettings.trim() ? fromSettings : fromDoc
+  const v = access.settings.establishment.mudad
   return typeof v === "string" && v.trim() ? v.trim() : null
 }
 

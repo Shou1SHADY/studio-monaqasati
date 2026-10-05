@@ -103,11 +103,11 @@ describe("RP-02 — the reports, from the live record", () => {
     expect(rows.find((r) => r[0] === 2)![3]).toBe(15)
   })
 
-  it("labour cost by cost centre reads the latest main payroll: gross + employer GOSI (the PRD's columns), per head", () => {
+  it("labour cost by cost centre reads the latest main payroll: gross + employer GOSI (the PRD's columns), the EOS accrual beside it, per head", () => {
     const rows = reportRows("cost", world())
     expect(rows).toEqual([
-      ["HQ", "520101", 1, 10800, 1269, 12069, 12069],
-      ["Tower", "510201", 2, 9450, 189, 9639, 4819.5],
+      ["HQ", "520101", 1, 10800, 1269, 450, 12069, 12069],
+      ["Tower", "510201", 2, 9450, 189, 393.75, 9639, 4819.5],
     ])
   })
 
@@ -133,7 +133,7 @@ describe("RP-02 — the reports, from the live record", () => {
 
   it("outstanding advances; the penalties register leaves out what is not decided", () => {
     expect(reportRows("advances", world())).toEqual([[1, "Ee1", 2000, 1200, 440, 3]])
-    expect(reportRows("penalties", world())).toEqual([[1, "Ee1", "late30", "2026-08-20", "2026-08-22", 1, 13.5, "applied"]])
+    expect(reportRows("penalties", world())).toEqual([[1, "Ee1", "late30", "2026-08-20", "2026-08-22", "fraction:0.1", 13.5, "applied"]])
   })
 
   it("saudization by trade flags a Saudi-only trade; joiners and leavers within 90 days with the reason", () => {

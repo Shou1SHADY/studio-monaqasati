@@ -70,6 +70,9 @@ export interface HrPolicies {
   advanceMaxMonths: number
   /** Closing a month with an unrecorded day (AT-04). */
   closeMissing: BlockOrWarn
+  /** AS-02 — temporary labour (Ajeer) offered in a manpower answer, and its cost against a hire. */
+  ajeerAllowed: boolean
+  ajeerFactor: number
 }
 
 export const DEFAULT_HR_POLICIES: HrPolicies = {
@@ -79,6 +82,8 @@ export const DEFAULT_HR_POLICIES: HrPolicies = {
   renewWindowDays: 60,
   advanceMaxMonths: 1,
   closeMissing: "block",
+  ajeerAllowed: true,
+  ajeerFactor: 1.4,
 }
 
 const frac = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1 ? v : fallback)
@@ -94,6 +99,8 @@ export function resolveHrPolicies(raw: Partial<HrPolicies> | null | undefined): 
     renewWindowDays: int(raw?.renewWindowDays, 1, 365, d.renewWindowDays),
     advanceMaxMonths: typeof raw?.advanceMaxMonths === "number" && raw.advanceMaxMonths > 0 && raw.advanceMaxMonths <= 12 ? raw.advanceMaxMonths : d.advanceMaxMonths,
     closeMissing: raw?.closeMissing === "warn" ? "warn" : "block",
+    ajeerAllowed: typeof raw?.ajeerAllowed === "boolean" ? raw.ajeerAllowed : d.ajeerAllowed,
+    ajeerFactor: typeof raw?.ajeerFactor === "number" && Number.isFinite(raw.ajeerFactor) && raw.ajeerFactor >= 1 && raw.ajeerFactor <= 5 ? raw.ajeerFactor : d.ajeerFactor,
   }
 }
 

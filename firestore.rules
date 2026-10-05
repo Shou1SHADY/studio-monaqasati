@@ -3271,11 +3271,14 @@ service cloud.firestore {
           || (resource.data.kind == 'advance' && resource.data.state == 'approved' && request.resource.data.state == 'approved'
             && changedKeys().hasOnly(['payout', 'updatedAt'])
             && hrFinance() && hrNotOwn())
-          // the return from leave (AT-05) — once, by the site's supervisor or the HR manager
+          // the return from leave (AT-05) — once, by the site's supervisor or the HR manager;
+          // the exit re-entry visa (LV-08) — once, by government relations (or the HR manager), never his own
           || (resource.data.kind == 'leave' && resource.data.state == 'approved' && request.resource.data.state == 'approved'
-            && changedKeys().hasOnly(['returned', 'updatedAt'])
-            && !('returned' in resource.data)
-            && (hrManager() || (resource.data.get('siteId', null) is string && hrSupervises(resource.data.siteId))))
+            && ((changedKeys().hasOnly(['returned', 'updatedAt'])
+                && !('returned' in resource.data)
+                && (hrManager() || (resource.data.get('siteId', null) is string && hrSupervises(resource.data.siteId))))
+              || (changedKeys().hasOnly(['exitVisa', 'updatedAt']) && !('exitVisa' in resource.data)
+                && (hrRole('hr.gov') || hrManager()) && hrNotOwn())))
           // cancel before it starts — an approved leave only before its first day, in Riyadh (LV-07)
           || (request.resource.data.state == 'cancelled'
             && changedKeys().hasOnly(['state', 'cancel', 'updatedAt'])

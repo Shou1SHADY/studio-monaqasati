@@ -67,6 +67,9 @@ export const HR_NOTICE_KINDS = [
   "hr_injury_recorded", // → government relations: GOSI report in 3 working days
   "hr_iqama_clock", // → government relations: a visa arrival's iqama within 90 days
   "hr_iqama_on_site", // → government relations: an expired iqama on a site
+  "hr_iqama_renewed", // → the HR manager: an expired iqama is renewed — he may be assigned again (DC-03)
+  // Attendance (AT-03/04)
+  "hr_sheet_reminder", // → the workplace's supervisor: the sheet stopped — record the missing days
 ] as const
 export type HrNoticeKind = (typeof HR_NOTICE_KINDS)[number]
 
@@ -135,6 +138,8 @@ export const HR_NOTICE_COPY_AR: Record<HrNoticeKind, { title: string; message: s
   hr_injury_recorded: { title: "إصابة عمل — {name}", message: "سجّل {actor} إصابة عمل لـ{name} بتاريخ {on}. بلاغ التأمينات خلال 3 أيام عمل — المهلة تنتهي {due}." },
   hr_iqama_clock: { title: "إصدار الإقامة خلال 90 يوماً — {name}", message: "وصل {name} بتأشيرة وباشر في {join}. أصدر إقامته قبل {date}." },
   hr_iqama_on_site: { title: "إقامة منتهية على الموقع — {name}", message: "إقامة {name} منتهية منذ {expiry} وهو على {site}. جدّدها — لا عمل على موقع بإقامة منتهية." },
+  hr_iqama_renewed: { title: "جُدّدت إقامة {name}", message: "جدّد {actor} إقامة {name} حتى {expiry}. يمكن نقله وإسناده إلى موقع من جديد." },
+  hr_sheet_reminder: { title: "حضور {site} لم يُسجَّل منذ {since}", message: "يذكّرك {actor}: سجّل حضور {site} من {since} يوماً بيوم، أو صرّح بالأيام الفائتة باسمك. لا مسير قبل إقفال الشهر." },
 }
 
 /** `@key` params the messages name, with their Arabic text (nested keys of Portal.Shared). */

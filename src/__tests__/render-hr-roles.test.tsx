@@ -191,7 +191,7 @@ const railLabels = () => Array.from(document.querySelectorAll("nav a")).map((a) 
 
 // The prototype's TABS(): only the BUILT tabs (attendance, hiring, platforms and
 // performance are optional features, off in this company).
-const TAB_AR: Record<string, string> = { today: "اليوم", people: "الموظفون", sites: "مواقع العمل", payroll: "الرواتب", reports: "التقارير", settings: "الإعدادات", me: "ملفي" }
+const TAB_AR: Record<string, string> = { today: "اليوم", people: "الموظفون", sites: "المواقع", payroll: "الرواتب", reports: "التقارير", settings: "الإعدادات", me: "ملفي" }
 const RAIL: Record<Role, string[]> = {
   owner: ["today", "people", "sites", "payroll", "reports", "settings"],
   manager: ["today", "people", "sites", "payroll", "reports", "settings", "me"],
@@ -231,7 +231,7 @@ describe("what each role sees and may do (the PRD's matrix, qa_guards)", () => {
     expect(text()).toContain("على رأس العمل اليوم")
     expect(text()).toContain("الرواتب — آخر شهر")
     expect(text()).toContain(RIYAL)
-    expect(text()).toContain("أماكن العمل اليوم")
+    expect(text()).toContain("المواقع اليوم")
     expect(text()).toContain("مواقع تنتهي قريباً")
     view.unmount()
     view = await openAs("gov", "today")
