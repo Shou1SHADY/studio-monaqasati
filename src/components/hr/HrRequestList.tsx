@@ -30,7 +30,7 @@ export const REQUEST_TONE: Record<HrRequestState, PillTone> = { pending: "warn",
 
 type Acting = { r: HrRequest; action: Exclude<RequestAction, "finance"> }
 
-export function HrRequestList({ access, requests, portal, showEmployee = true, empty }: { access: HrAccess; requests: HrRequest[]; portal?: HrPortal; showEmployee?: boolean; empty: string }) {
+export function HrRequestList({ access, requests, portal, showEmployee = true, empty, facts }: { access: HrAccess; requests: HrRequest[]; portal?: HrPortal; showEmployee?: boolean; empty: string; /** A line of facts under each row (the employee file: filed, with whom, decided by). */ facts?: (r: HrRequest) => string }) {
   const t = useTranslations("Portal.HR")
   const locale = useLocale()
   const firestore = useFirestore()
@@ -108,6 +108,7 @@ export function HrRequestList({ access, requests, portal, showEmployee = true, e
                   {r.deciderLevel === "management" && <StatusPill tone="violet">{t("req.to_management")}</StatusPill>}
                 </p>
                 <p className="text-xs text-muted-foreground">{what(r)}</p>
+                {facts && <p className="text-[11px] text-muted-foreground">{facts(r)}</p>}
                 {(r.decision?.note || r.finance?.note || r.cancel?.note) && (
                   <p className="text-xs text-muted-foreground" dir="auto">
                     “{r.finance?.note || r.cancel?.note || r.decision?.note}”

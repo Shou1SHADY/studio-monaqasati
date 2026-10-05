@@ -4,10 +4,13 @@
 // nationality and trade, place, start, basic with its automatic allowances —
 // then documents and bank. Blanks stay blank and show as not recorded; the
 // blocking facts are said before saving. Government relations records a
-// joiner without pay; the HR manager completes it.
+// joiner without pay; the HR manager completes it. The prototype's form: the
+// passport-English name is required (the WPS row carries it), the ID's shape is
+// checked, the bank comes with the IBAN (SA + 22 digits), the qualification and
+// the document numbers are recorded, and the probation's end is shown.
 
 import { useMemo, useState } from "react"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -23,9 +26,10 @@ import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { useRouter } from "@/i18n/routing"
-import { HIRE_SOURCES, newEmployeeBlocks, type HireSource } from "@/lib/hr/employee"
+import { bankOfIban, SA_BANKS } from "@/lib/hr/documents"
+import { HIRE_SOURCES, newEmployeeBlocks, probationEnd, type HireSource } from "@/lib/hr/employee"
 import { createEmployee } from "@/lib/hr/employee-writes"
-import { hrMoney, todayDay } from "@/lib/hr/format"
+import { hrDate, hrMoney, todayDay } from "@/lib/hr/format"
 import { payFromBasic, wageOf } from "@/lib/hr/pay"
 import { UNASSIGNED_SITE, type HrSite } from "@/lib/hr/sites"
 import { NATIONALITIES, TRADES, tradeOf } from "@/lib/hr/trades"
@@ -51,6 +55,11 @@ interface Draft {
   licence: string
   forklift: string
   iban: string
+  bank: string
+  education: string
+  passportNo: string
+  insuranceNo: string
+  licenceNo: string
 }
 
 const EMPTY: Draft = {
@@ -72,10 +81,16 @@ const EMPTY: Draft = {
   licence: "",
   forklift: "",
   iban: "",
+  bank: "",
+  education: "",
+  passportNo: "",
+  insuranceNo: "",
+  licenceNo: "",
 }
 
 export function NewEmployeeDialog({ open, onOpenChange, access, actorName, sites, portal }: { open: boolean; onOpenChange: (o: boolean) => void; access: HrAccess; actorName: string; sites: HrSite[]; portal: HrPortal }) {
   const t = useTranslations("Portal.HR")
+  const locale = useLocale()
   const firestore = useFirestore()
   const router = useRouter()
   const { toast } = useToast()
@@ -103,7 +118,10 @@ export function NewEmployeeDialog({ open, onOpenChange, access, actorName, sites
       contractType: d.contractType,
       contractEnd: d.contractEnd || null,
       basic: money ? basic : null,
+      iban: money ? d.iban || null : null,
+      education: d.education || null,
       docs: {
+        no: { passport: d.passportNo || null, insurance: d.insuranceNo || null, licence: trade?.drives === "licence" ? d.licenceNo || null : null },
         iqama: saudi ? null : d.iqama || null,
         passport: d.passport || null,
         insurance: d.insurance || null,
@@ -113,15 +131,17 @@ export function NewEmployeeDialog({ open, onOpenChange, access, actorName, sites
     }),
     [d, money, basic, saudi, trade]
   )
-  const { blocks, warnings } = newEmployeeBlocks(input, { visas: access.settings.establishment.visas ?? null, today: todayDay() })
+  const { blocks, warnings } = newEmployeeBlocks(input, { visas: access.settings.establishment.visas ?? null, today: todayDay(), form: true })
   // Step 1 is done when its own facts hold; document facts are checked on step 2.
-  const stepOneBlocks = blocks.filter((b) => b !== "iqama_expired_site")
+  const stepOneBlocks = blocks.filter((b) => b !== "iqama_expired_site" && b !== "bad_iban")
+  // The bank follows the IBAN's code unless chosen.
+  const bank = d.bank || bankOfIban(d.iban) || ""
 
   const save = async () => {
     if (!firestore || !access.orgId || blocks.length) return
     setBusy(true)
     try {
-      const r = await createEmployee(firestore, access.ctx, access.orgId, { uid: access.ctx.uid, name: actorName }, { ...input, iban: money ? d.iban || null : null }, { visas: access.settings.establishment.visas ?? null, policies: access.settings.policies })
+      const r = await createEmployee(firestore, access.ctx, access.orgId, { uid: access.ctx.uid, name: actorName }, { ...input, iban: money ? d.iban || null : null, bank: money ? bank || null : null }, { visas: access.settings.establishment.visas ?? null, policies: access.settings.policies })
       toast({ title: t("people.created", { no: String(r.no).padStart(4, "0") }) })
       onOpenChange(false)
       router.push(`/${portal}/hr/people/${r.id}`)
@@ -168,7 +188,7 @@ export function NewEmployeeDialog({ open, onOpenChange, access, actorName, sites
                 <Input id="ne-ar" dir="rtl" value={d.nameAr} onChange={(e) => set("nameAr", e.target.value)} disabled={busy} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="ne-en">{t("new.name_en")}</Label>
+                <Label htmlFor="ne-en">{t("new.name_en_passport")}</Label>
                 <Input id="ne-en" dir="ltr" value={d.nameEn} onChange={(e) => set("nameEn", e.target.value)} disabled={busy} />
               </div>
               <div className="space-y-1.5">
@@ -208,7 +228,7 @@ export function NewEmployeeDialog({ open, onOpenChange, access, actorName, sites
                   id="ne-trade"
                   value={d.trade}
                   onChange={(v) => set("trade", v)}
-                  options={TRADES.map((x) => ({ value: x.key, label: t(`trade.${x.key}` as "trade.mason"), group: t(`category.${x.category}`) }))}
+                  options={TRADES.map((x) => ({ value: x.key, label: x.saudiOnly ? `${t(`trade.${x.key}` as "trade.mason")} · ${t("new.saudi_only_mark")}` : t(`trade.${x.key}` as "trade.mason"), group: t(`category.${x.category}`) }))}
                   placeholder={t("new.pick_trade")}
                   searchPlaceholder={t("search")}
                   noResultsText={t("no_results")}
@@ -258,7 +278,11 @@ export function NewEmployeeDialog({ open, onOpenChange, access, actorName, sites
               </div>
             )}
             {!money && <Callout tone="info">{t("new.no_pay_note")}</Callout>}
-            <p className="text-xs text-muted-foreground">{t("new.probation_note")}</p>
+            <div className="space-y-1.5">
+              <Label htmlFor="ne-edu">{t("new.education")}</Label>
+              <Input id="ne-edu" dir="auto" value={d.education} onChange={(e) => set("education", e.target.value)} disabled={busy} />
+            </div>
+            <p className="text-xs text-muted-foreground">{d.join ? t("new.probation_until", { date: hrDate(probationEnd(d.join), locale) }) : t("new.probation_note")}</p>
             {warnings.filter((w) => w !== "no_basic" || money).map((w) => (
               <Callout key={w} tone="warn">
                 {t(`new.warn.${w}`)}
@@ -272,13 +296,45 @@ export function NewEmployeeDialog({ open, onOpenChange, access, actorName, sites
             <div className="grid gap-3 sm:grid-cols-2">
               {!saudi && date("iqama", d.source === "visa" ? t("new.iqama_visa") : t("doc.iqama"))}
               {date("passport", t("doc.passport"))}
+              <div className="space-y-1.5">
+                <Label htmlFor="ne-ppno">{t("file.no_key.passport")}</Label>
+                <Input id="ne-ppno" dir="ltr" value={d.passportNo} onChange={(e) => set("passportNo", e.target.value)} disabled={busy} />
+              </div>
               {date("insurance", t("doc.insurance"))}
+              <div className="space-y-1.5">
+                <Label htmlFor="ne-insno">{t("file.no_key.insurance")}</Label>
+                <Input id="ne-insno" dir="ltr" value={d.insuranceNo} onChange={(e) => set("insuranceNo", e.target.value)} disabled={busy} />
+              </div>
               {trade?.drives === "licence" && date("licence", t("doc.licence"))}
+              {trade?.drives === "licence" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="ne-dlno">{t("file.no_key.licence")}</Label>
+                  <Input id="ne-dlno" dir="ltr" value={d.licenceNo} onChange={(e) => set("licenceNo", e.target.value)} disabled={busy} />
+                </div>
+              )}
               {trade?.drives === "forklift" && date("forklift", t("doc.forklift"))}
               {money && (
-                <div className="space-y-1.5 sm:col-span-2">
+                <div className="space-y-1.5">
                   <Label htmlFor="ne-iban">{t("new.iban")}</Label>
-                  <Input id="ne-iban" dir="ltr" value={d.iban} onChange={(e) => set("iban", e.target.value.toUpperCase())} disabled={busy} />
+                  <Input id="ne-iban" dir="ltr" placeholder="SA00 0000 0000 0000 0000 0000" value={d.iban} onChange={(e) => set("iban", e.target.value.toUpperCase())} disabled={busy} />
+                </div>
+              )}
+              {money && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="ne-bank">{t("file.bank")}</Label>
+                  <Select value={bank || "__none__"} onValueChange={(v) => set("bank", v === "__none__" ? "" : v)} disabled={busy}>
+                    <SelectTrigger id="ne-bank">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">{t("new.bank_none")}</SelectItem>
+                      {SA_BANKS.map((b) => (
+                        <SelectItem key={b} value={b}>
+                          {t(`bank.${b}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </div>

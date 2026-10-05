@@ -9,6 +9,7 @@
 // relations' (DC-07), so here it is information.
 
 import { useMemo, useState } from "react"
+import { usePathname } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
 import { Ambulance, Flag, Loader2, UsersRound } from "lucide-react"
@@ -23,6 +24,7 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { useHrPeople } from "@/hooks/useHrPeople"
+import { Link } from "@/i18n/routing"
 import { HR_INJURIES } from "@/lib/hr/collections"
 import { displayName, type HrEmployee } from "@/lib/hr/employee"
 import type { HrActor } from "@/lib/hr/employee-writes"
@@ -41,6 +43,8 @@ export function HrSiteWorkers({ access, siteId, actor }: { access: HrAccess; sit
   const { toast } = useToast()
   const today = todayDay()
   const { employees } = useHrPeople(access)
+  // RL-01 — the supervisor opens his workers' files from here (no People tab for him).
+  const portal = usePathname()?.includes("/supplier/") ? "supplier" : "contractor"
   const people = useMemo(() => employees.filter((e) => (e.siteId || UNASSIGNED_SITE) === siteId && e.status !== "left" && e.status !== "expected"), [employees, siteId])
   const site = siteId === UNASSIGNED_SITE ? null : siteId
   const mayInjury = Boolean(site) && access.allowed("injury.record", { site })
@@ -89,9 +93,9 @@ export function HrSiteWorkers({ access, siteId, actor }: { access: HrAccess; sit
               {people.map((e) => (
                 <li key={e.id} className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-sm">
                   <span className="min-w-0 flex-1 basis-40">
-                    <span className="block font-semibold" dir="auto">
+                    <Link href={`/${portal}/hr/people/${e.id}`} className="block rounded font-semibold hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
                       {e.names ? displayName(e, locale) : "—"}
-                    </span>
+                    </Link>
                     <span className="block text-xs text-muted-foreground">
                       <span dir="ltr">{empNo(e.no)}</span> · {t(`trade.${e.trade}` as "trade.mason")}
                     </span>
