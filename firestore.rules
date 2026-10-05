@@ -2652,7 +2652,7 @@ service cloud.firestore {
       // count goes down by exactly one and nothing else changes.
       allow update: if isOrgMember(orgId) && hrRole('hr.gov')
         && changedKeys().hasOnly(['establishment'])
-        && request.resource.data.establishment.diff(resource.data.establishment).affectedKeys().hasOnly(['visas'])
+        && request.resource.data.establishment.diff(resource.data.establishment).affectedKeys().hasOnly(['visas', 'visasReserved'])
         && resource.data.establishment.get('visas', 0) is int
         && resource.data.establishment.get('visas', 0) > 0
         && request.resource.data.establishment.visas == resource.data.establishment.visas - 1;
@@ -2881,6 +2881,8 @@ service cloud.firestore {
         && request.resource.data.siteId == resource.data.siteId
         && request.resource.data.month == resource.data.month
         && (hrManager() || hrRole('hr.payroll') || hrSupervises(resource.data.siteId))
+        // WF-04 — a recorded day is locked: days are only ever added.
+        && !request.resource.data.days.diff(resource.data.days).affectedKeys().hasAny(resource.data.days.keys())
         && hrSheetOk(resource.data.get('declarations', []));
       allow delete: if false;
     }
@@ -3192,14 +3194,15 @@ service cloud.firestore {
             // an adopted or hand-made PM project has a manager and no handover file
             || (projectData(request.resource.data.projectId).get('pm', null) != null
                 && projectData(request.resource.data.projectId).get('projectManagerId', '') == request.auth.uid));
+      // …and Projects accepts the answered plan (WF-12 step 3): whoever asked, or the project's editor.
       allow update: if isOrgMember(resource.data.organizationId)
-        && resource.data.state == 'open'
-        && (
+        && ((resource.data.state == 'open' && (
           (request.resource.data.state == 'answered' && hrManager()
             && changedKeys().hasOnly(['state', 'answer', 'updatedAt']))
           || (request.resource.data.state == 'withdrawn' && resource.data.requested.by == request.auth.uid
-            && changedKeys().hasOnly(['state', 'updatedAt']))
-        );
+            && changedKeys().hasOnly(['state', 'updatedAt']))))
+          || (resource.data.state == 'answered' && changedKeys().hasOnly(['accepted', 'updatedAt']) && resource.data.get('accepted', null) == null
+            && (resource.data.requested.by == request.auth.uid || hasProjectPermission(resource.data.projectId, 'projects.edit'))));
       allow delete: if false;
     }
 

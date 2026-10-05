@@ -40,6 +40,10 @@ export interface HrEmployee {
   trade: string
   category: "labour" | "staff"
   siteId: string | null
+  /** The day he moved onto `siteId` (AS-01) — absent: since he joined. Attendance credits him from it (AT-04). */
+  siteSince?: string | null
+  /** A transfer scheduled by a manpower answer (WF-12): to `siteId` on `on`, applied by the HR manager that day. */
+  planned?: { siteId: string; on: string; requestId: string; no?: string | null } | null
   managerId?: string | null
   /** The platform user who is this employee — gives him "My file". */
   userId?: string | null

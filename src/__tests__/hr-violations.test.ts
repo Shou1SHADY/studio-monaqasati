@@ -66,10 +66,10 @@ describe("the ladder and the cap", () => {
 })
 
 describe("the writes", () => {
-  it("the supervisor's sheet records a violation once; saving the sheet again does not duplicate it", async () => {
+  it("the supervisor's sheet records a violation once; the day is then locked, so it is never recorded twice", async () => {
     const sheet = { listed: ["e1"], ex: { e1: { violation: "ppe" as const } } }
     await recordDay(db, sup, ORG, { id: "s1", type: "project" }, "2026-09-01", who(sup), sheet, { today: "2026-09-01" })
-    await recordDay(db, sup, ORG, { id: "s1", type: "project" }, "2026-09-01", who(sup), sheet, { today: "2026-09-01" })
+    await expect(recordDay(db, sup, ORG, { id: "s1", type: "project" }, "2026-09-01", who(sup), sheet, { today: "2026-09-01" })).rejects.toMatchObject({ blocks: ["recorded"] })
     expect(all()).toHaveLength(1)
     expect(V(violationId(ORG, "e1", "2026-09-01", "ppe"))).toMatchObject({ source: "sheet", state: "recorded", employeeUserId: "wu" })
   })

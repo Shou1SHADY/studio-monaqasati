@@ -20,6 +20,7 @@ async function siteNameIn(tx: Transaction, firestore: Firestore, siteId: string)
 
 export interface SiteInput {
   name: string
+  nameEn?: string | null
   type: SiteType
   projectId?: string | null
   endDate?: string | null
@@ -33,6 +34,7 @@ export async function saveSite(firestore: Firestore, ctx: HrContext, orgId: stri
   if (blocks.length) throw new HrWriteError("blocked", blocks)
   const data = {
     name: input.name.trim(),
+    nameEn: input.nameEn?.trim() || null,
     type: input.type,
     projectId: input.type === "project" ? input.projectId ?? null : null,
     endDate: input.endDate || null,

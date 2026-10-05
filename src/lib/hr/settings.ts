@@ -32,6 +32,8 @@ export interface Establishment {
   /** Unused work visas in the establishment file, entered by hand with its as-of day (ST-04). */
   visas?: number | null
   visasAsOf?: string | null
+  /** Of those, the visas manpower plans reserved (WF-12) — not offered again; an arrival takes one back. */
+  visasReserved?: number | null
 }
 
 export interface HrSettings {
@@ -59,6 +61,7 @@ export function normalizeHrSettings(raw: Partial<HrSettings> | null | undefined)
       gosi: est.gosi ?? null,
       visas: typeof est.visas === "number" && Number.isInteger(est.visas) && est.visas >= 0 ? est.visas : null,
       visasAsOf: typeof est.visasAsOf === "string" ? est.visasAsOf : null,
+      visasReserved: typeof est.visasReserved === "number" && Number.isInteger(est.visasReserved) && est.visasReserved > 0 ? est.visasReserved : null,
     },
   }
 }
