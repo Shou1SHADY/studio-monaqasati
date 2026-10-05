@@ -478,3 +478,36 @@ describe("My file and self-service (package A)", () => {
     expect(update).toMatch(/changedKeys\(\)\.hasOnly\(\['att', 'updatedAt'\]\) && \(hrRole\('hr\.payroll'\) \|\| hrSupervises\(resource\.data\.siteId\)\)/)
   })
 })
+
+describe("government platforms and the pre-Mudad check (package F2, GV-02…05, PY-08)", () => {
+  const body = () => block("hrGovTasks")
+
+  it("the platform records are read by the HR office roles only — before they exist too (a task recorded once is read first)", () => {
+    const [get] = allow(body(), "get")
+    expect(get).toMatch(/\(resource == null \|\| inOrg\(\)\) && hrOffice\(\)/)
+    expect(get).not.toMatch(/hrStaff\(\)|hr\.supervisor/)
+  })
+
+  it("created in the writer's own name under `{orgId}__{key}`, of the three kinds; only a reconciliation is replaced; nothing is deleted", () => {
+    const [create] = allow(body(), "create")
+    expect(create).toMatch(/createsInOrg\(\) && hrOffice\(\)/)
+    expect(create).toMatch(/id == request\.resource\.data\.organizationId \+ '__' \+ request\.resource\.data\.key/)
+    expect(create).toMatch(/request\.resource\.data\.by == request\.auth\.uid/)
+    expect(create).toMatch(/request\.resource\.data\.kind in \['done', 'task', 'recon'\]/)
+    const [update] = allow(body(), "update")
+    expect(update).toMatch(/resource\.data\.kind == 'recon'/)
+    expect(update).toMatch(/request\.resource\.data\.key == resource\.data\.key/)
+    expect(allow(body(), "delete")).toEqual(["false"])
+  })
+
+  it("the justifications and the Mudad status ride the payroll — payroll or the HR manager, those two keys only, never Finance's clause", () => {
+    const [update] = allow(block("hrPayrolls"), "update")
+    expect(update).toMatch(/\|\| \(changedKeys\(\)\.hasOnly\(\['just', 'mudad', 'updatedAt'\]\) && \(hrManager\(\) \|\| hrRole\('hr\.payroll'\)\)\)/)
+    for (const c of update.split("||").filter((x) => x.includes("hrFinance()"))) expect(c).not.toMatch(/'just'|'mudad'/)
+  })
+
+  it("Qiwa's documented basic is a pay figure: it rides employeePay, whose writers are pay roles — never government relations", () => {
+    const [update] = allow(block("employeePay"), "update")
+    expect(update).not.toContain("hr.gov")
+  })
+})

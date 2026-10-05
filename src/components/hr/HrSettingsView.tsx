@@ -28,14 +28,14 @@ import { pmPct } from "@/lib/pm/format"
 import { publicHolidays } from "@/lib/hr/holidays"
 import { HR_GUARD, HR_ROLES } from "@/lib/hr/access"
 import type { HrEmployee } from "@/lib/hr/employee"
-import { BUSINESS_TYPES, defaultFeatures, differsFromDefaults, HR_FEATURES, isGreenBand, NITAQAT_BANDS, nitaqatOf, withBusinessType, withDefaultFeatures, type BusinessType, type Establishment, type HrSettings, type NitaqatBand } from "@/lib/hr/settings"
+import { BUSINESS_TYPES, defaultFeatures, differsFromDefaults, HR_FEATURES, HR_PLATFORMS, isGreenBand, NITAQAT_BANDS, nitaqatOf, withBusinessType, withDefaultFeatures, type BusinessType, type Establishment, type HrSettings, type NitaqatBand } from "@/lib/hr/settings"
 import { hrDate, todayDay } from "@/lib/hr/format"
 import { saveHrSettings } from "@/lib/hr/settings-writes"
 import { STATUTORY, type HrPolicies } from "@/lib/hr/statutory"
 import { HrWriteError } from "@/lib/hr/write-guard"
 
 /** Features whose screens arrive in a later release — their switch is kept, and says so. */
-const LATER: ReadonlySet<string> = new Set(["hire", "perf", "train", "punch", "gov"])
+const LATER: ReadonlySet<string> = new Set(["hire", "perf", "train", "punch"])
 
 /** ST-04 — «ملف المنشأة»: the band (by hand, from Qiwa), the Saudi ratio from the record, the green threshold, and
  * the safety margin; the registrations and the visas with their as-of day. Settings and government relations' Today. */
@@ -122,6 +122,7 @@ export function HrSettingsView({ access }: { access: HrAccess }) {
   const logField = (field: string) => {
     const [head, key] = field.split(".")
     if (head === "features") return t(`feature.${key}` as "feature.hire")
+    if (head === "platforms") return t(`pf.name.${key}` as "pf.name.qiwa")
     if (head === "policies") return t(`policy.${key}` as "policy.payDay")
     if (head === "establishment") return t(`settings.est.${key}` as "settings.est.name")
     return t("settings.business_type")
@@ -245,6 +246,31 @@ export function HrSettingsView({ access }: { access: HrAccess }) {
             </li>
           ))}
         </ul>
+        {/* GV-03 — the platforms the company follows, with the `gov` feature (HRDF off by default). */}
+        {draft.features.includes("gov") && (
+          <div className="mt-4 space-y-2">
+            <p className="text-sm font-bold">{t("settings.platforms")}</p>
+            <p className="text-[11px] text-muted-foreground">{t("settings.platforms_note")}</p>
+            <ul className="divide-y rounded-xl border">
+              {HR_PLATFORMS.map((pf) => (
+                <li key={pf} className="flex items-start justify-between gap-4 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <Label htmlFor={`hr-pf-${pf}`} className="text-sm font-bold">
+                      {t(`pf.name.${pf}`)}
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">{t(`pf.out.${pf}`)}</p>
+                  </div>
+                  <Switch
+                    id={`hr-pf-${pf}`}
+                    checked={draft.platforms?.[pf] ?? pf !== "hrdf"}
+                    onCheckedChange={(on) => setDraft((d) => ({ ...d, platforms: { ...(d.platforms ?? {}), [pf]: on } }))}
+                    disabled={off}
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </Panel>
 
       <Panel title={t("settings.policies")} icon={SlidersHorizontal}>

@@ -121,6 +121,9 @@ export interface EmployeePay {
   steps?: Array<PayStep & PayStepMeta> | null
   /** Commission Sales approved, by the month it is paid with (PY-01) — the record stays; a payroll names what it paid. */
   commissions?: Array<{ id: string; month: string; amount: number; reason: string; at: string; by: string }>
+  /** GV-04 — the basic the Qiwa contract carries, taken from Qiwa's report by the HR manager, and when. */
+  qiwaBasic?: number | null
+  qiwaAt?: string | null
 }
 
 /** What a pay step records beside its figures (the prototype's `changes[]`): the kind, why, by whom — the pay

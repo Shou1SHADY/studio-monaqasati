@@ -95,7 +95,12 @@ export interface HrSettings {
   establishment: Establishment
   /** Appended by every save, newest last — never typed (always present once normalised). */
   log?: SettingsLogEntry[]
+  /** GV-03 — the platforms the company follows (feature `gov`): absent = the default (all but HRDF). */
+  platforms?: Partial<Record<(typeof HR_PLATFORMS)[number], boolean>>
 }
+
+/** The government platforms the `gov` feature follows (GV-03; their tasks in `platforms.ts`). */
+export const HR_PLATFORMS = ["qiwa", "mudad", "gosi", "muqeem", "chi", "traffic", "hrdf"] as const
 
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null)
 const day = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null)
@@ -125,6 +130,7 @@ export function normalizeHrSettings(raw: Partial<HrSettings> | null | undefined)
       visasReserved: typeof est.visasReserved === "number" && Number.isInteger(est.visasReserved) && est.visasReserved > 0 ? est.visasReserved : null,
     },
     log,
+    platforms: Object.fromEntries(HR_PLATFORMS.filter((k) => typeof raw?.platforms?.[k] === "boolean").map((k) => [k, raw!.platforms![k] as boolean])),
   }
 }
 
@@ -153,6 +159,7 @@ export function settingsChanges(before: HrSettings, after: HrSettings): Array<{ 
   cmp("businessType", before.businessType, after.businessType)
   for (const f of HR_FEATURES) cmp(`features.${f}`, before.features.includes(f), after.features.includes(f))
   for (const k of Object.keys(after.policies) as Array<keyof HrPolicies>) cmp(`policies.${k}`, before.policies[k], after.policies[k])
+  for (const k of HR_PLATFORMS) if (before.platforms?.[k] !== after.platforms?.[k]) cmp(`platforms.${k}`, before.platforms?.[k] ?? null, after.platforms?.[k] ?? null)
   for (const k of ["name", "nameEn", "cr", "mol", "gosi", "mudad", "visas", "visasAsOf", "band", "bandAsOf", "minPct"] as const) cmp(`establishment.${k}`, before.establishment[k], after.establishment[k])
   return out
 }
