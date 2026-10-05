@@ -1829,7 +1829,15 @@ service cloud.firestore {
           && resource.data.status == 'wait'
           && request.resource.data.status in ['go', 'rej']
           && changedKeys().hasOnly(['status', 'decidedBy', 'decidedByName', 'decidedOn', 'updatedAt']);
-        // The site records the plant desk's reply (there is no desk module yet): once,
+        // The equipment desk (Warehouses → equipment desk): the store keeper answers an
+        // approved request, once, and changes nothing else.
+        allow update: if inOpenProject(projectId) && hasOrgPermission('warehouses.manage')
+          && resource.data.status == 'go'
+          && resource.data.get('rep', null) == null
+          && request.resource.data.rep.k in ['alloc', 'late', 'alt', 'none']
+          && request.resource.data.rep.by == request.auth.uid
+          && changedKeys().hasOnly(['rep', 'updatedAt']);
+        // The site's own record of a reply (a company with no equipment desk): once,
         // on an approved request.
         allow update: if pmOpen(projectId, 'req')
           && resource.data.status == 'go'

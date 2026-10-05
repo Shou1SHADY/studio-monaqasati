@@ -769,6 +769,8 @@ export interface PlantReply {
   on: string
   by: string
   byName?: string | null
+  /** `desk`: answered on the equipment desk in Warehouses; absent: the site recorded it. */
+  via?: "desk" | null
 }
 
 export type PlantReplyBlock = "archived" | "not_with_desk" | "replied" | "no_kind" | "no_unit" | "no_free" | "no_text" | "future"
