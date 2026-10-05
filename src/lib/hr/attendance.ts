@@ -42,6 +42,12 @@ export interface Declaration {
   days: string[]
   /** The people on the workplace when declared — recorded present on those days. */
   employees: string[]
+  /** AT-04 — each person is credited only the declared days he was on this workplace: from the day he
+   * joined or moved in (`since`) to his last day (`until`). Older declarations carry neither. */
+  since?: Record<string, string> | null
+  until?: Record<string, string> | null
+  /** "I state that these people were at work on these days" — ticked by whoever declared. */
+  ack?: boolean
   by: string
   byName: string | null
   at: string
@@ -80,11 +86,52 @@ export function dueDays(month: string, today: string, holidays: readonly Holiday
   return out
 }
 
-/** Days nobody recorded and nobody declared (WF-05 step 1). None where presence is assumed. */
-export function missingDays(wm: Pick<WorkplaceMonth, "days" | "declarations"> | null, month: string, today: string, opts: { assumed: boolean; holidays?: readonly Holiday[] }): string[] {
-  if (opts.assumed) return []
+/** Days nobody recorded and nobody declared (WF-05 step 1). None where presence is assumed. A day before
+ * anyone was on the workplace is not missing (AT-04): `from` is the first day someone was there
+ * (`firstOnSite`) — null when nobody was there this month, so nothing is missing; left out, the month's 1st. */
+export function missingDays(
+  wm: Pick<WorkplaceMonth, "days" | "declarations"> | null,
+  month: string,
+  today: string,
+  opts: { assumed: boolean; holidays?: readonly Holiday[]; from?: string | null }
+): string[] {
+  if (opts.assumed || opts.from === null) return []
   const declared = new Set((wm?.declarations ?? []).flatMap((d) => d.days))
-  return dueDays(month, today, opts.holidays).filter((d) => !wm?.days?.[d] && !declared.has(d))
+  return dueDays(month, today, opts.holidays).filter((d) => (!opts.from || d >= opts.from) && !wm?.days?.[d] && !declared.has(d))
+}
+
+/** The first day a person was on his present workplace: the day he joined, or the day he moved in. */
+export const arrivedOn = (e: { join?: string | null; siteSince?: string | null }): string | null => {
+  const j = e.join ?? null
+  const s = e.siteSince ?? null
+  return j && s ? (s > j ? s : j) : (s ?? j)
+}
+
+/** The first day anyone was on a workplace in a month — the people placed there (from the day each arrived)
+ * and anyone a sheet of the month lists. Null: nobody this month, so no day is missing (AT-04). */
+export function firstOnSite(people: Array<{ join?: string | null; siteSince?: string | null; lastDay?: string | null }>, wm: Pick<WorkplaceMonth, "days"> | null, month: string): string | null {
+  const { start, end } = monthRange(month)
+  let first: string | null = null
+  const take = (d: string | null) => {
+    if (!d || d > end) return
+    const x = d < start ? start : d
+    if (!first || x < first) first = x
+  }
+  for (const p of people) if (!p.lastDay || p.lastDay >= start) take(arrivedOn(p))
+  for (const [d, s] of Object.entries(wm?.days ?? {})) if (s.listed?.length) take(d)
+  return first
+}
+
+/** Where a workplace's month stands (§5 Sites, AT-03): closed · up to date (every due day recorded) ·
+ * behind since the first missing day. `through` is the last day with a record or a declaration. */
+export type MonthStatus = { state: "closed" } | { state: "current"; through: string | null } | { state: "behind"; since: string; through: string | null; missing: number }
+
+export function monthStatus(wm: Pick<WorkplaceMonth, "days" | "declarations" | "closed"> | null, missing: readonly string[]): MonthStatus {
+  if (wm?.closed) return { state: "closed" }
+  const recorded = [...Object.keys(wm?.days ?? {}), ...(wm?.declarations ?? []).flatMap((d) => d.days)].sort()
+  const through = recorded.length ? recorded[recorded.length - 1] : null
+  if (!missing.length) return { state: "current", through }
+  return { state: "behind", since: missing[0], through, missing: missing.length }
 }
 
 // ---------------------------------------------------------------------------
@@ -113,14 +160,39 @@ export function onLeaveOn(requests: Array<{ employeeId: string; kind: string; st
   return out
 }
 
-export type SheetBlock = "future" | "closed" | "not_listed" | "bad_ot" | "no_violation_role"
+/** One person's day as the site page shows it (§5 Sites "Today"): on leave · an exception · present on the
+ * sheet (or assumed in an office) · not recorded yet — or the rest day. Same reading as `dutyToday`. */
+export type DayState = "present" | "absent" | "sick" | "permission" | "leave" | "unrecorded" | "rest"
+
+export function dayState(employeeId: string, sheet: Pick<DaySheet, "listed" | "ex"> | null | undefined, ctx: { onLeave: ReadonlySet<string>; assumed: boolean; day: string }): DayState {
+  if (ctx.onLeave.has(employeeId)) return "leave"
+  const ex = sheet?.ex?.[employeeId]?.status
+  if (ex) return ex
+  if (ctx.assumed || sheet?.listed?.includes(employeeId)) return "present"
+  return isRestDay(ctx.day) ? "rest" : "unrecorded"
+}
+
+export type SheetBlock ="future" | "past" | "recorded" | "closed" | "not_listed" | "bad_ot" | "no_violation_role"
 
 /** Hours of overtime one day may carry — a day has 24, a sheet row never more than 12. */
 export const MAX_DAILY_OT = 12
 
-export function sheetBlocks(input: { day: string; today: string; closed: boolean; listed: string[]; ex: Record<string, AttendanceException>; mayRecordViolation: boolean }): SheetBlock[] {
+/** WF-04 — "the day closes when it is recorded": the sheet is today's, saved once. A day already recorded
+ * is locked; a past day with no sheet is filled only by the named declaration (AT-04). */
+export function sheetBlocks(input: {
+  day: string
+  today: string
+  closed: boolean
+  /** A sheet is already on record for this day. */
+  recorded?: boolean
+  listed: string[]
+  ex: Record<string, AttendanceException>
+  mayRecordViolation: boolean
+}): SheetBlock[] {
   const out: SheetBlock[] = []
   if (input.day > input.today) out.push("future")
+  else if (input.day < input.today) out.push("past")
+  if (input.recorded) out.push("recorded")
   if (input.closed) out.push("closed")
   const listed = new Set(input.listed)
   const ex = Object.entries(input.ex)
@@ -151,13 +223,16 @@ export function compactExceptions(ex: Record<string, AttendanceException>): Reco
 // Declaration and closing (AT-03, AT-04)
 // ---------------------------------------------------------------------------
 
-export type DeclareBlock = "no_days" | "no_note" | "not_missing" | "closed"
+export type DeclareBlock = "no_days" | "no_note" | "no_ack" | "not_missing" | "closed"
 
-export function declareBlocks(input: { days: string[]; note: string; missing: string[]; closed: boolean }): DeclareBlock[] {
+/** AT-04 — a named declaration: the days, why they have no sheet, and the declarer's own statement that
+ * these people were at work on them (`ack`). Left out, `ack` is not asked (an older caller). */
+export function declareBlocks(input: { days: string[]; note: string; missing: string[]; closed: boolean; ack?: boolean }): DeclareBlock[] {
   const out: DeclareBlock[] = []
   if (input.closed) out.push("closed")
   if (!input.days.length) out.push("no_days")
   if (!input.note.trim()) out.push("no_note")
+  if (input.ack === false) out.push("no_ack")
   const miss = new Set(input.missing)
   if (input.days.some((d) => !miss.has(d))) out.push("not_missing")
   return out
@@ -173,6 +248,38 @@ export function closeBlocks(input: { month: string; today: string; closed: boole
   if (!monthOver(input.month, input.today)) blocks.push("not_over")
   if (input.missing.length) (input.policy === "block" ? blocks : warnings).push("missing")
   return { blocks, warnings }
+}
+
+/** The days of a declaration one person is credited: from the day he was on the workplace to his last day. */
+export function creditedDays(d: Pick<Declaration, "days" | "since" | "until">, employeeId: string): string[] {
+  const from = d.since?.[employeeId]
+  const to = d.until?.[employeeId]
+  return d.days.filter((day) => (!from || day >= from) && (!to || day <= to))
+}
+
+/** Who a declaration credits, and from/to which day — the people on the workplace, each from the day he
+ * joined or moved in, to his last day (AT-04). Someone who arrived after every declared day is left out. */
+export function declarationRoster(
+  people: Array<{ id: string; join?: string | null; siteSince?: string | null; lastDay?: string | null; status?: string | null }>,
+  days: readonly string[]
+): { employees: string[]; since: Record<string, string>; until: Record<string, string>; manDays: Record<string, number> } {
+  const employees: string[] = []
+  const since: Record<string, string> = {}
+  const until: Record<string, string> = {}
+  const manDays: Record<string, number> = {}
+  const sorted = [...days].sort()
+  for (const p of people) {
+    const from = arrivedOn(p)
+    const to = p.status === "leaving" || p.status === "left" ? (p.lastDay ?? null) : null
+    const n = days.filter((d) => (!from || d >= from) && (!to || d <= to)).length
+    if (!n) continue
+    employees.push(p.id)
+    // Only a bound that cuts the declared days is kept — everyone else is credited them all.
+    if (from && from > sorted[0]) since[p.id] = from
+    if (to && to < sorted[sorted.length - 1]) until[p.id] = to
+    manDays[p.id] = n
+  }
+  return { employees, since, until, manDays }
 }
 
 // ---------------------------------------------------------------------------
@@ -205,7 +312,7 @@ export function employeeMonth(wm: Pick<WorkplaceMonth, "days" | "declarations"> 
     if (e?.ot && worked(e.status)) out.overtimeHours += e.ot
     if (e?.violation) out.violations.push({ day, code: e.violation })
   }
-  for (const d of wm.declarations ?? []) if (d.employees.includes(employeeId)) out.declared += d.days.length
+  for (const d of wm.declarations ?? []) if (d.employees.includes(employeeId)) out.declared += creditedDays(d, employeeId).length
   return out
 }
 

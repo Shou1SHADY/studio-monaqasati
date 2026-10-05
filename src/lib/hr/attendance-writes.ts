@@ -1,16 +1,20 @@
 // HR 1.0 — attendance writes (WF-04, WF-05; AT-01, AT-03, AT-04). Each is one
 // transaction: the guard first, then the blocks again against the stored
 // month — a month closed a second ago refuses the sheet that was open on
-// screen. The rules repeat the role and the "never reopens".
+// screen. The rules repeat the role, the "never reopens" and the day lock: a
+// day once recorded never changes (WF-04 "the day closes when it is
+// recorded"); a past day with no sheet is filled only by the declaration.
 
-import { doc, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
+import { collection, doc, getDocs, query, runTransaction, serverTimestamp, where, type Firestore } from "firebase/firestore"
 import { hrAllowed, type HrContext } from "./access"
 import {
   assumesPresence,
   attendanceId,
   closeBlocks,
   compactExceptions,
+  declarationRoster,
   declareBlocks,
+  firstOnSite,
   missingDays,
   monthOf,
   sheetBlocks,
@@ -23,7 +27,7 @@ import { HR_ATTENDANCE, HR_EMPLOYEES, HR_VIOLATIONS } from "./collections"
 import type { HrEmployee } from "./employee"
 import type { HrActor } from "./employee-writes"
 import type { Holiday } from "./leave"
-import type { SiteType } from "./sites"
+import { UNASSIGNED_SITE, type SiteType } from "./sites"
 import { violationId } from "./violations"
 import { violationRecord, violationRecordedNotice } from "./violation-writes"
 import { emitHrNotices } from "./notify"
@@ -42,7 +46,16 @@ function base(orgId: string, site: SiteRef, month: string) {
   return { organizationId: orgId, siteId: site.id, month, days: {}, declarations: [], closed: null }
 }
 
-/** The supervisor sheet for one day (AT-01): everyone listed is present unless an exception says otherwise. */
+/** The people the record places on a workplace — asked by the workplace, the query the rules let its supervisor
+ * ask (RL-01). A transaction cannot query: it is read beside it, as the assignment corrections are. */
+async function placedOn(firestore: Firestore, orgId: string, siteId: string): Promise<HrEmployee[]> {
+  if (siteId === UNASSIGNED_SITE) return []
+  const snap = await getDocs(query(collection(firestore, HR_EMPLOYEES), where("organizationId", "==", orgId), where("siteId", "==", siteId)))
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<HrEmployee, "id">) }))
+}
+
+/** The sheet for one day (AT-01): everyone listed is present unless an exception says otherwise. Today's,
+ * saved once — a recorded day is locked and a past day goes through the declaration (WF-04). */
 export async function recordDay(
   firestore: Firestore,
   ctx: HrContext,
@@ -63,7 +76,7 @@ export async function recordDay(
     recorded.length = 0
     const snap = await tx.get(ref)
     const wm = snap.exists() ? (snap.data() as WorkplaceMonth) : null
-    const blocks = sheetBlocks({ day, today, closed: Boolean(wm?.closed), listed: input.listed, ex, mayRecordViolation: hrAllowed(ctx, "violation.record", { site: site.id }) })
+    const blocks = sheetBlocks({ day, today, closed: Boolean(wm?.closed), recorded: Boolean(wm?.days?.[day]), listed: input.listed, ex, mayRecordViolation: hrAllowed(ctx, "violation.record", { site: site.id }) })
     if (blocks.length) throw new HrWriteError("blocked", blocks)
     // A violation on the sheet becomes its record for the HR manager (WF-09) — once, at a fixed id.
     const newViolations: Array<{ ref: ReturnType<typeof doc>; emp: HrEmployee; code: NonNullable<AttendanceException["violation"]> }> = []
@@ -93,7 +106,17 @@ export async function recordDay(
   await emitHrNotices(firestore, actor, recorded.map(violationRecordedNotice))
 }
 
-/** Days nobody recorded, filled by a named declaration kept on record (AT-04) — supervisor or HR manager only. */
+/** Days nobody recorded — from the first day anyone was on the workplace this month (AT-04). */
+function missingFor(wm: WorkplaceMonth | null, site: SiteRef, month: string, today: string, people: HrEmployee[], holidays?: readonly Holiday[]) {
+  const assumed = assumesPresence(site.id, site.type)
+  return missingDays(wm, month, today, { assumed, holidays, from: assumed ? undefined : firstOnSite(people, wm, month) })
+}
+
+/**
+ * Days nobody recorded, filled by a named declaration kept on record (AT-04) — supervisor or HR manager only,
+ * who states that these people were at work on these days (`ack`). Each person is credited only the days he
+ * was on this workplace: from the day he joined or moved in, to his last day.
+ */
 export async function declareMissing(
   firestore: Firestore,
   ctx: HrContext,
@@ -101,23 +124,39 @@ export async function declareMissing(
   site: SiteRef,
   month: string,
   actor: HrActor,
-  input: { days: string[]; note: string; employees: string[] },
+  input: { days: string[]; note: string; ack: boolean },
   opts: Opts = {}
-): Promise<void> {
+): Promise<{ employees: number; manDays: number }> {
   assertHr(ctx, "attendance.declare", { site: site.id })
   const today = opts.today ?? todayDay()
   const ref = doc(firestore, HR_ATTENDANCE, attendanceId(orgId, site.id, month))
+  const people = await placedOn(firestore, orgId, site.id)
+  let out = { employees: 0, manDays: 0 }
   await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(ref)
     const wm = snap.exists() ? (snap.data() as WorkplaceMonth) : null
-    const missing = missingDays(wm, month, today, { assumed: assumesPresence(site.id, site.type), holidays: opts.holidays })
-    const blocks = declareBlocks({ days: input.days, note: input.note, missing, closed: Boolean(wm?.closed) })
+    const missing = missingFor(wm, site, month, today, people, opts.holidays)
+    const blocks = declareBlocks({ days: input.days, note: input.note, missing, closed: Boolean(wm?.closed), ack: input.ack })
     if (blocks.length) throw new HrWriteError("blocked", blocks)
-    const entry: Declaration = { days: [...input.days].sort(), employees: [...new Set(input.employees)], by: actor.uid, byName: actor.name, at: new Date().toISOString(), note: input.note.trim() }
+    const days = [...input.days].sort()
+    const roster = declarationRoster(people, days)
+    const entry: Declaration = {
+      days,
+      employees: roster.employees,
+      ...(Object.keys(roster.since).length ? { since: roster.since } : {}),
+      ...(Object.keys(roster.until).length ? { until: roster.until } : {}),
+      ack: true,
+      by: actor.uid,
+      byName: actor.name,
+      at: new Date().toISOString(),
+      note: input.note.trim(),
+    }
     const declarations = [...(wm?.declarations ?? []), entry]
     if (!wm) tx.set(ref, { ...base(orgId, site, month), declarations, updatedAt: serverTimestamp() })
     else tx.update(ref, { declarations, updatedAt: serverTimestamp() })
+    out = { employees: roster.employees.length, manDays: Object.values(roster.manDays).reduce((a, b) => a + b, 0) }
   })
+  return out
 }
 
 /** Close a workplace's month (AT-03) — after it ends, never reopened. Under the warn
@@ -135,11 +174,12 @@ export async function closeMonth(
   assertHr(ctx, "attendance.close", { site: site.id })
   const today = opts.today ?? todayDay()
   const ref = doc(firestore, HR_ATTENDANCE, attendanceId(orgId, site.id, month))
+  const people = assumesPresence(site.id, site.type) ? [] : await placedOn(firestore, orgId, site.id)
   let asIs = false
   await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(ref)
     const wm = snap.exists() ? (snap.data() as WorkplaceMonth) : null
-    const missing = missingDays(wm, month, today, { assumed: assumesPresence(site.id, site.type), holidays: opts.holidays })
+    const missing = missingFor(wm, site, month, today, people, opts.holidays)
     const { blocks } = closeBlocks({ month, today, closed: Boolean(wm?.closed), missing, policy })
     if (blocks.length) throw new HrWriteError("blocked", blocks)
     asIs = missing.length > 0

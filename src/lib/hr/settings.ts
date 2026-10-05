@@ -69,6 +69,8 @@ export interface Establishment {
   band?: NitaqatBand | null
   bandAsOf?: string | null
   minPct?: number | null
+  /** Of those, the visas manpower plans reserved (WF-12) — not offered again; an arrival takes one back. */
+  visasReserved?: number | null
 }
 
 /** One logged change (ST-01: "a policy is editable and logged"). No money is ever a policy. */
@@ -120,6 +122,7 @@ export function normalizeHrSettings(raw: Partial<HrSettings> | null | undefined)
       band: NITAQAT_BANDS.includes(est.band as NitaqatBand) ? (est.band as NitaqatBand) : null,
       bandAsOf: day(est.bandAsOf),
       minPct: typeof est.minPct === "number" && Number.isFinite(est.minPct) && est.minPct >= 0 && est.minPct <= 100 ? est.minPct : null,
+      visasReserved: typeof est.visasReserved === "number" && Number.isInteger(est.visasReserved) && est.visasReserved > 0 ? est.visasReserved : null,
     },
     log,
   }

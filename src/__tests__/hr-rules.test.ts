@@ -252,6 +252,29 @@ describe("attendance (AT-03, AT-04)", () => {
       expect({ month, today, server: serverAllows(month, today) }).toEqual({ month, today, server: client })
     }
   })
+
+  it("WF-04 — a recorded day is locked: an update may add a day, never change or remove one already there", () => {
+    expect(allow(att, "update")[0]).toMatch(/!request\.resource\.data\.days\.diff\(resource\.data\.days\)\.affectedKeys\(\)\.hasAny\(resource\.data\.days\.keys\(\)\)/)
+  })
+})
+
+describe("manpower requests (AS-02, WF-12)", () => {
+  const [update] = allow(block("manpowerRequests"), "update")
+
+  it("the HR manager answers an open request — the answer and its state only", () => {
+    expect(update).toMatch(/resource\.data\.state == 'open' && \(\s*\(request\.resource\.data\.state == 'answered' && hrManager\(\)\s*&& changedKeys\(\)\.hasOnly\(\['state', 'answer', 'updatedAt'\]\)\)/)
+  })
+
+  it("Projects accepts an answered plan once — whoever asked, or the project's editor — touching nothing else", () => {
+    expect(update).toMatch(/resource\.data\.state == 'answered' && changedKeys\(\)\.hasOnly\(\['accepted', 'updatedAt'\]\) && resource\.data\.get\('accepted', null\) == null/)
+    expect(update).toMatch(/resource\.data\.requested\.by == request\.auth\.uid \|\| hasProjectPermission\(resource\.data\.projectId, 'projects\.edit'\)/)
+  })
+
+  it("an arrival by government relations moves the visa count and its reservation, nothing else of the file", () => {
+    const gov = allow(block("hrSettings"), "update").find((r) => r.includes("hr.gov")) ?? ""
+    expect(gov).toMatch(/affectedKeys\(\)\.hasOnly\(\['visas', 'visasReserved'\]\)/)
+    expect(gov).toMatch(/request\.resource\.data\.establishment\.visas == resource\.data\.establishment\.visas - 1/)
+  })
 })
 
 describe("penalties (PN-02, PN-04)", () => {

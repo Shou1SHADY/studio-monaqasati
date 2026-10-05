@@ -106,10 +106,12 @@ export async function createEmployee(
     // so two arrivals never spend the last visa twice.
     const sRef = doc(firestore, HR_SETTINGS, orgId)
     let visasLeft: number | null = null
+    let reserved = 0
     if (input.source === "visa") {
       const s = await tx.get(sRef)
-      const v = s.exists() ? (s.data() as { establishment?: { visas?: unknown } }).establishment?.visas : null
-      visasLeft = typeof v === "number" ? v : 0
+      const est = s.exists() ? (s.data() as { establishment?: { visas?: unknown; visasReserved?: unknown } }).establishment : null
+      visasLeft = typeof est?.visas === "number" ? est.visas : 0
+      reserved = typeof est?.visasReserved === "number" ? est.visasReserved : 0
       if (visasLeft <= 0) throw new HrWriteError("blocked", ["no_visas"])
     }
     const trade = tradeOf(input.trade)!
@@ -138,7 +140,8 @@ export async function createEmployee(
       hajjTaken: false,
     }
     tx.set(cRef, { organizationId: orgId, lastEmployeeNo: no, updatedAt: serverTimestamp() })
-    if (visasLeft != null) tx.update(sRef, { "establishment.visas": visasLeft - 1 })
+    // An arrival spends one visa; one a manpower plan reserved (WF-12) is that reservation arriving — never spent twice.
+    if (visasLeft != null) tx.update(sRef, { "establishment.visas": visasLeft - 1, ...(reserved > 0 ? { "establishment.visasReserved": reserved - 1 } : {}) })
     // The old readers (delivery notes, lists) read `name`; pay never sits here.
     tx.set(ref, { ...emp, name: emp.names.ar, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
     if (withPay) {
@@ -188,7 +191,7 @@ export async function assignEmployee(firestore: Firestore, ctx: HrContext, id: s
     const blocks = assignBlocks(emp, input.siteId, input.effectiveOn, today())
     if (blocks.length) throw new HrWriteError("blocked", blocks)
     const to = input.siteId && input.siteId !== UNASSIGNED_SITE ? input.siteId : null
-    tx.update(ref, { siteId: to, updatedAt: serverTimestamp() })
+    tx.update(ref, { siteId: to, siteSince: input.effectiveOn, updatedAt: serverTimestamp() })
     log(tx, firestore, id, emp.organizationId, actor, "moved", { from: emp.siteId ?? UNASSIGNED_SITE, to: to ?? UNASSIGNED_SITE, on: input.effectiveOn })
   })
 }

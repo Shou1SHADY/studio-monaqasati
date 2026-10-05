@@ -28,7 +28,7 @@ export function tabLabelKey(tab: HrTab, settings: Pick<HrSettings, "businessType
 }
 
 /** Tabs built so far — an optional feature's tab appears once it is built. */
-export const HR_BUILT_TABS: readonly HrTab[] = ["today", "people", "sites", "payroll", "reports", "settings", "me"]
+export const HR_BUILT_TABS: readonly HrTab[] = ["today", "people", "sites", "attendance", "payroll", "reports", "settings", "me"]
 
 const ICON: Partial<Record<HrTab, typeof Users>> = {
   today: LayoutDashboard,

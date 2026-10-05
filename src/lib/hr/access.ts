@@ -140,9 +140,9 @@ const ROLE_TABS: Record<HrRole, readonly HrTab[]> = {
   management: ["today", "people", "sites", "attendance", "payroll", "hiring", "perf", "reports"],
 }
 
-/** The tab a feature switch hides (ST-02: off = tab, decisions and sections disappear). */
+/** The tab a feature switch hides (ST-02: off = tab, decisions and sections disappear). Attendance is core
+ * (AT-03/04: the closing across workplaces needs no punch) — `punch` adds its sources and exceptions to it. */
 const TAB_FEATURE: Partial<Record<HrTab, (f: ReadonlySet<HrFeature>) => boolean>> = {
-  attendance: (f) => f.has("punch"),
   hiring: (f) => f.has("hire"),
   platforms: (f) => f.has("gov"),
   perf: (f) => f.has("perf") || f.has("train"),
