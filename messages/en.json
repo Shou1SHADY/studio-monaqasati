@@ -8536,7 +8536,10 @@
         "cancelled": "The penalty is cancelled and never counts",
         "done": "the assignment was corrected",
         "refused": "the correction was declined"
-      }
+      },
+      "table_sort_by": "Sort by {column}",
+      "table_show_more": "Show {count} more",
+      "table_actions": "Actions"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",

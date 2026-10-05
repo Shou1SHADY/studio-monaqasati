@@ -8536,7 +8536,10 @@
         "cancelled": "أُلغي الجزاء ولا يُحتسب",
         "done": "صُحّح الإسناد",
         "refused": "رُفض التصحيح"
-      }
+      },
+      "table_sort_by": "رتّب حسب {column}",
+      "table_show_more": "اعرض {count} أخرى",
+      "table_actions": "إجراءات"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",
