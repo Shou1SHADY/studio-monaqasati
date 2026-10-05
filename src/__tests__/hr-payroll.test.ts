@@ -94,7 +94,7 @@ describe("compute", () => {
   it("the Mudad file adds up to the net, keyed by ID; held lines stay out; GOSI totals the credit (PY-07)", () => {
     const rows = mudadCsv(lines, pays).trim().split("\r\n").slice(1)
     expect(rows).toHaveLength(2)
-    const [id, , , basic, housing, other, deductions, net] = rows[0].split(",")
+    const [id, , , , basic, housing, other, deductions, net] = rows[0].split(",")
     expect(id).toBe("IDe1")
     expect(r(Number(basic) + Number(housing) + Number(other) - Number(deductions))).toBe(Number(net))
     // Every line owes its contributions — the held one too: the statement IS the GOSI credit.

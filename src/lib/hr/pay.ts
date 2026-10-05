@@ -92,6 +92,82 @@ export const gosiBase = (p: PayFacts, days: number) => r2(((p.basic + p.housing)
 export const advanceInstalment = (wage: number) => r2(Math.max(STATUTORY.advance.minInstalment, wage * STATUTORY.advance.instalmentShare))
 export const advanceMonths = (amount: number, wage: number) => Math.ceil(amount / advanceInstalment(wage))
 
+export type AdvanceFactBlock = "no_wage" | "bad_amount" | "outstanding"
+
+export interface AdvanceFacts {
+  /** The monthly wage in force (basic + housing + transport). */
+  wage: number
+  /** The HR manager's limit: wage × the policy's months (`advanceMaxMonths`); above it the request goes to Finance. */
+  limit: number
+  overLimit: boolean
+  /** The balance of the advance already running (0: none). */
+  outstanding: number
+  /** Art. 92 — the schedule: `instalment × (count − 1) + last = amount`. */
+  instalment: number
+  count: number
+  last: number
+  /** The first and the last month an instalment is taken: from the month after the payout (taken as next month). */
+  firstMonth: string | null
+  lastMonth: string | null
+  /** AD-04 — the repayment runs past the contract's end: the rest comes from the settlement. */
+  pastContract: boolean
+  /** No wage on record · no amount · an advance still running or another request pending (AD-02: never a second). */
+  blocks: AdvanceFactBlock[]
+}
+
+const nextMonths = (month: string, n: number) => {
+  const [y, m] = month.split("-").map(Number)
+  const i = y * 12 + (m - 1) + n
+  return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`
+}
+
+/**
+ * AD-01…04 — the facts an advance is decided on (the prototype's form `adv`): the wage, the decider's limit, the
+ * outstanding balance, the instalment schedule and whether repayment runs past the contract. Pure; the decision
+ * dialog shows them and the write checks the same rules again.
+ */
+export function advanceFacts(input: {
+  pay: PayFacts | null
+  amount: number
+  /** `HrPolicies.advanceMaxMonths`. */
+  maxMonths: number
+  /** The running advance's balance (`employeePay.advance.balance`). */
+  outstanding?: number | null
+  /** Another advance request of his is still open. */
+  pending?: boolean
+  today: string
+  /** A fixed contract's end; none for an open one. */
+  contractEnd?: string | null
+}): AdvanceFacts {
+  const wage = input.pay ? wageOf(input.pay) : 0
+  const amount = r2(Math.max(0, input.amount || 0))
+  const outstanding = r2(Math.max(0, input.outstanding ?? 0))
+  const blocks: AdvanceFactBlock[] = []
+  if (!(wage > 0)) blocks.push("no_wage")
+  if (!(amount > 0)) blocks.push("bad_amount")
+  if (outstanding > 0 || input.pending) blocks.push("outstanding")
+  const limit = r2(wage * input.maxMonths)
+  const instalment = wage > 0 ? Math.min(advanceInstalment(wage), amount || advanceInstalment(wage)) : 0
+  const count = instalment > 0 && amount > 0 ? Math.ceil(amount / instalment) : 0
+  const last = count > 0 ? r2(amount - instalment * (count - 1)) : 0
+  const start = nextMonths(input.today.slice(0, 7), 1)
+  const firstMonth = count > 0 ? start : null
+  const lastMonth = count > 0 ? nextMonths(start, count - 1) : null
+  return {
+    wage,
+    limit,
+    overLimit: wage > 0 && amount > limit,
+    outstanding,
+    instalment,
+    count,
+    last,
+    firstMonth,
+    lastMonth,
+    pastContract: Boolean(input.contractEnd && lastMonth && lastMonth > input.contractEnd.slice(0, 7)),
+    blocks,
+  }
+}
+
 /** What the closed month says about one employee (AT-03). */
 export interface MonthAttendance {
   absent: number

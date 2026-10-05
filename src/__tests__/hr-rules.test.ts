@@ -375,3 +375,12 @@ describe("access.ts and the rules name the same roles", () => {
     expect(fn("hrRole")).toMatch(/return isOrgOwner\(\) \|\| groupGrants\(memberDefaultGroupId\(\), perm\);/)
   })
 })
+
+describe("Finance records the month's GOSI payment on the payroll (PY-09)", () => {
+  it("Finance's clause lets `gosiPaid` change — and only Finance's", () => {
+    const [update] = allow(block("hrPayrolls"), "update")
+    const clauses = update.split("||")
+    expect(clauses.find((c) => c.includes("hrFinance()"))).toContain("'gosiPaid'")
+    for (const c of clauses.filter((x) => !x.includes("hrFinance()"))) expect(c).not.toContain("gosiPaid")
+  })
+})

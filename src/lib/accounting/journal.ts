@@ -64,6 +64,8 @@ export type SourceType =
   | "hr_settlement"
   /** HR 1.0 — a payment request (hr:PR) paid: a government document fee. */
   | "hr_fee"
+  /** HR 1.0 — a month's GOSI contributions paid (fin:GOSIPAID): clears GOSI payable. */
+  | "hr_gosi_payment"
   | "expense"
   | "depreciation"
   | "guarantee_margin"
