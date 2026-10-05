@@ -36,6 +36,7 @@ import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useHrPeople, useOrgPay } from "@/hooks/useHrPeople"
 import { useHrRequests } from "@/hooks/useHrRequests"
+import { useHrGovDocs } from "@/hooks/useHrGovDocs"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
@@ -72,6 +73,7 @@ import { addDays, monthRange, r2 } from "@/lib/hr/statutory"
 import { HrWriteError } from "@/lib/hr/write-guard"
 import { cn } from "@/lib/utils"
 import { HrAdvancesView } from "./HrAdvancesView"
+import { HrMudadPanel } from "./HrMudadPanel"
 import { HrPayrollFileDialog, type FilePreview } from "./HrPayrollFiles"
 import { HrPayrollLines } from "./HrPayrollLines"
 import { CostCentreBar, PayrollEventsPanel, ReconciliationPanel } from "./HrPayrollPanels"
@@ -181,6 +183,9 @@ function PayrollMonth({
   const [confirm, setConfirm] = useState<string | null>(null)
   const [preview, setPreview] = useState<FilePreview | null>(null)
   const mudadNo = useMudadNo(access)
+  // PY-08 (optional: mudad) — the pre-Mudad check reads the Qiwa updates recorded on the platforms.
+  const mudadOn = access.settings.features.includes("mudad")
+  const govDocs = useHrGovDocs(access, mudadOn)
   const siteName = (id: string | null) => (id && id !== UNASSIGNED_SITE ? (nameOf(id) ?? id) : t("sites.unassigned"))
   const tradeOf = (id: string) => {
     const e = employees.find((x) => x.id === id)
@@ -409,6 +414,7 @@ function PayrollMonth({
 
       <HrPayrollLines lines={lines} portal={portal} siteName={siteName} tradeOf={tradeOf} returned={saved?.returned} />
 
+      {mudadOn && saved && saved.kind === "main" && <HrMudadPanel access={access} payroll={saved} pays={pays} govDocs={govDocs} />}
       {frozen && saved && orgId && <ReconciliationPanel payroll={saved} today={today} orgId={orgId} employees={employees} pays={pays} />}
       {lines.length > 0 && <PayrollEventsPanel payroll={frozen && saved ? saved : { key: month, month, kind: "main", lines }} siteName={siteName} />}
 

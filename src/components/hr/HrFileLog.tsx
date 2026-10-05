@@ -116,6 +116,8 @@ function logParams(l: LogEntry, t: ReturnType<typeof useTranslations>, siteName:
     else if (k === "code") out[k] = t(`violation.${v}` as "violation.late15")
     else if (k === "site") out[k] = siteName(String(v)) ?? t("sites.unassigned")
     else if (k === "fee") out[k] = hrMoney(Number(v))
+    else if (k === "pf") out[k] = t(`pf.name.${v}` as "pf.name.qiwa")
+    else if (k === "task") out[k] = t(`pf.short.${v}` as "pf.short.ct")
     else out[k] = String(v)
   }
   return out
