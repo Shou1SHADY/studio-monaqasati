@@ -20,6 +20,35 @@ training · R3 performance/raises/P2) · "optional: <switch>" when behind a feat
 
 (Counts are emoji occurrences per slice, a guide not a census.)
 
+## State after the build (5 Oct 2026)
+
+Every package below is built and merged on `main` (`55da279` … `f67c59f`): the five core packages A–E, the
+optional modules F1 (punch), F2 (gov, mudad), G1 (hire), G2 (train, perf), and a sweep that put every HR table
+on the shared `DataTable`. Full suite 4,230 tests (257 suites), `tsc` only the known errors, i18n 0/0/0, eslint
+clean on all HR code, production build green. Ruleset 143,401 characters stripped (two folds, `30e35c1` and
+`b0de254`, paid for the additions). **Not pushed; rules not deployed.** The tables below are the inventory as it
+stood BEFORE the build — kept as the spec; what each package left open is listed here:
+
+- A (My file): the shift line and punch button come from F1 (now built); bank name from the IBAN needs a bank table.
+- B (employee file): a plain staff line manager (no HR role) has no screen for his probation view — a "My team"
+  view is owed; requests name the holder by role except a pending leave's line manager.
+- C (sites): a hire remainder opening a vacancy is G1's (built); the Ajeer hand-off to Procurement needs a design.
+- D (Today/settings): the bell has no source-module tag; build path lacks "confirm policies"; simulator
+  counterparts still missing — Inventory as a manpower origin (supplier companies), Projects extending a site's
+  end, workshop attendance from Manufacturing, a Sales commission event.
+- E (payroll): late overtime/allowance supplementary item kind (owner decision); free-text reason on a supplementary.
+- F1 (punch): no device push API (owner default); one phone per employee is not bound; location is not verifiable
+  by the server.
+- F2 (gov/mudad): pay changes made before this release have no Qiwa task; Nitaqat bands are typed, not pulled.
+- G1 (hire): the public apply link (HI-09, R3) needs a server route; the `hire` report and turnover columns.
+- G2 (train/perf): the three feature reports (perf/cert/train); training cost posts to 520104 for want of a
+  training account (PRD names 6109 — Finance to agree); a line manager with no HR role has no Performance tab.
+- Found and fixed while merging: the Mudad number field named twice (Settings vs payroll file); the Ajeer policy
+  named twice; supervisors lost the links to their workers' files; approving a "marked absent but present"
+  correction was refused by the day lock (rule exception `hrAttfixOk`, `c4ca311`) — **the Jest suites run without
+  rules, so rules-vs-writes mismatches show only on UAT or under the Firestore emulator (not on this machine:
+  no Java).**
+
 ## Build plan
 
 Defaults where the slices asked for an owner decision — the prototype is the reference, so its behaviour is the
