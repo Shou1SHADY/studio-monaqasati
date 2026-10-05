@@ -6,7 +6,8 @@
 // record; nothing is ticked by hand. Each row carries the facts the decision
 // is made on (the prototype's second line). Pure: no I/O.
 
-import { hrAllowed, type HrContext } from "./access"
+import { hrAllowed, hrPeopleScope, type HrContext } from "./access"
+import { punchTodayItems, type PunchSite, type PunchWm } from "./punches"
 import { assumesPresence, dueDays, isRestDay, missingDays, onLeaveOn, type WorkplaceMonth } from "./attendance"
 import { docState, DOC_TYPES, iqamaDueBy, legalOnSite, mayDrive, passportFirst, RENEWAL_ORDER, type DocState, type DocType } from "./documents"
 import type { EmployeePay, HrEmployee } from "./employee"
@@ -92,6 +93,8 @@ export interface TodayInput {
   /** Does any member hold government relations? Without one, the HR manager carries its rows (the prototype's
    * platform rule). Unknown = held. */
   govHeld?: boolean
+  /** The punch feature is on (and the time in Riyadh, minutes after midnight) — its rows join. */
+  punch?: { nowMin: number } | null
 }
 
 /** EM-05 — a probation ending within 15 days asks for a decision (no decision = confirmed). */
@@ -397,6 +400,12 @@ export function todayItems(i: TodayInput): TodayItem[] {
         const ready = x.state !== "leaving"
         out.push({ key: `finalexit:${x.id}`, group: "due", severity: ready && x.lastDay <= today ? "amber" : "blue", kind: "final_exit", params: { name: x.employeeName, date: x.lastDay }, facts: [{ k: ready ? "final_exit_ready" : "after_settlement" }], ...(ready ? { href: `people/${x.employeeId}`, action: "record" } : {}) })
       }
+
+  // Optional: punch — exceptions to decide, a silent device, punch overtime before closing, days ready to record.
+  if (i.punch)
+    out.push(
+      ...punchTodayItems(ctx, { today, nowMin: i.punch.nowMin, punch: true, employees: i.employees, sites: i.sites as PunchSite[], months: [...i.lastMonth, ...i.thisMonth] as PunchWm[], requests: i.requests, scope: hrPeopleScope(ctx) })
+    )
 
   const rank = { red: 0, amber: 1, blue: 2 }
   return out.sort((a, b) => rank[a.severity] - rank[b.severity])

@@ -8,7 +8,10 @@ import { collection, deleteField, doc, runTransaction, serverTimestamp, type Doc
 import { hrRefusal, mayDecideRequest, userIsHrManager, type HrContext } from "./access"
 import { attachmentBlocks, HR_FILES, type EmployeeFile } from "./attachments"
 import { attendanceId, monthOf, type WorkplaceMonth } from "./attendance"
-import { HR_ATTENDANCE, HR_EMPLOYEES, HR_PAY, HR_REQUESTS } from "./collections"
+import { HR_ATTENDANCE, HR_EMPLOYEES, HR_PAY, HR_REQUESTS, HR_SITES } from "./collections"
+import type { PunchMonth, PunchSite } from "./punches"
+import { fixPunch, writeFixPunch } from "./punch-writes"
+import type { EmployeeShift } from "./shifts"
 import { raiseRequestBlocks, type EmployeePay, type HrEmployee, type RaiseFields } from "./employee"
 import { HR_LOG, type HrActor } from "./employee-writes"
 import type { Holiday } from "./leave"
@@ -482,6 +485,8 @@ async function decideAttfix(firestore: Firestore, ctx: HrContext, id: string, ac
     const wmRef = doc(firestore, HR_ATTENDANCE, attendanceId(r.organizationId, r.siteId ?? "-", monthOf(f.day)))
     const snap = verdict === "approve" && r.siteId ? await tx.get(wmRef) : null
     const emp = await readEmp(tx, firestore, r.employeeId)
+    // PT-07 (optional: punch) — a forgotten punch, or one outside the fence on duty, puts a corrected punch on the day.
+    const siteSnap = verdict === "approve" && r.siteId && f.type !== "abs" ? await tx.get(doc(firestore, HR_SITES, r.siteId)) : null
     const reqRef = doc(firestore, HR_REQUESTS, id)
     const decision = { ...stamp(actor, note), ownFlagged: ctx.owner && ctx.employeeId === r.employeeId }
     decided = r
@@ -503,6 +508,10 @@ async function decideAttfix(firestore: Firestore, ctx: HrContext, id: string, ac
       if (kept) ex[r.employeeId] = kept
       else delete ex[r.employeeId]
       after = { ...wm, days: { ...wm.days, [f.day]: { ...wm.days[f.day], ex } } }
+    }
+    if (r.siteId && (f.type === "miss" || f.type === "out")) {
+      const rec = fixPunch(wm as (WorkplaceMonth & PunchMonth) | null, siteSnap?.exists() ? ({ id: siteSnap.id, ...siteSnap.data() } as PunchSite) : null, emp as HrEmployee & { shift?: EmployeeShift | null }, f.day, f.type)
+      if (rec) writeFixPunch(tx, firestore, wm as PunchMonth | null, r.organizationId, r.siteId, f.day, r.employeeId, rec)
     }
     tx.update(reqRef, { state: "approved", decision, updatedAt: serverTimestamp() })
     log(tx, firestore, emp, actor, "attfix_approved", { no: r.no, day: f.day })

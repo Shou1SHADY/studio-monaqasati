@@ -67,9 +67,11 @@ const world = (over: Partial<ReportWorld> = {}): ReportWorld => ({
 describe("RP-01 — who is offered which report", () => {
   it("money reports only to the roles that see pay; turnover to the HR manager and management; supervisors and employees none", () => {
     const ids = (roles: HrRole[]) => visibleReports(ctx(roles)).map((r) => r.id)
-    expect(ids(["manager"])).toEqual([...REPORT_IDS])
-    expect(ids(["management"])).toEqual([...REPORT_IDS])
-    expect(ids(["payroll"])).toEqual(REPORT_IDS.filter((x) => x !== "turnover"))
+    // A feature's reports (lateness, roster — punch) are offered only while it is on.
+    const core = REPORT_IDS.filter((x) => !REPORTS[x].feature)
+    expect(ids(["manager"])).toEqual(core)
+    expect(ids(["management"])).toEqual(core)
+    expect(ids(["payroll"])).toEqual(core.filter((x) => x !== "turnover"))
     const gov = ids(["gov"])
     expect(gov).toEqual(["register", "attendance", "documents", "saudization", "movement", "structure"])
     expect(gov.some((id) => REPORTS[id].money)).toBe(false)

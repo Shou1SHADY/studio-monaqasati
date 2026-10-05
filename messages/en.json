@@ -8554,6 +8554,13 @@
         "confirm": "confirm",
         "extend": "extend",
         "end": "end"
+      },
+      "pn_hr_ot_refused_title": "Overtime of {on} not counted",
+      "pn_hr_ot_refused": "{h} h of overtime on {on} were not counted — {why}. You may object by an attendance correction request from My file.",
+      "hr_ot_why": {
+        "nowork": "stayed without assigned work",
+        "wait": "waiting for transport",
+        "err": "punch error"
       }
     },
     "Contractor": {
@@ -19281,7 +19288,11 @@
           "wait_reissue": "Re-issuing {n, plural, one {# returned transfer} other {# returned transfers}} after the fix",
           "wait_plan": "Our answer to {project} ({count} × {trade}) — plan acceptance",
           "exit_reentry": "Exit re-entry — {name} · travels {date}",
-          "final_exit": "Final exit — {name} · {date}"
+          "final_exit": "Final exit — {name} · {date}",
+          "punch_exceptions": "Punch exceptions — {n} to decide",
+          "device_silent": "No device file from {site} for {n} days",
+          "punch_ot": "{n} punch overtime / missing outs — before the month closes",
+          "punch_ready": "{n, plural, one {# day ready to record from punches} other {# days ready to record from punches}}"
         },
         "a": {
           "move": "Move",
@@ -19302,7 +19313,8 @@
           "remind": "Remind the supervisor",
           "recorded": "Recorded",
           "issue": "Record the issue",
-          "card": "The card"
+          "card": "The card",
+          "import": "Import"
         },
         "order": "One trip, in order: {order}",
         "sites_today": "Workplaces today",
@@ -19492,7 +19504,11 @@
           "wage": "wage {wage}",
           "instalment": "instalment {instalment} × {n}",
           "has_advance": "has an outstanding advance",
-          "no_advance": "no outstanding advance"
+          "no_advance": "no outstanding advance",
+          "punch_counts": "{late} late · {nop} no punch · {ot} overtime · {noout} missing out",
+          "no_file_no_att": "no file means no attendance, overtime or month closing",
+          "ot_unapproved": "unapproved overtime never reaches payroll",
+          "punch_ready": "every exception decided — the sheet is recorded from the punches"
         },
         "sites_today_word": "{sites} today",
         "ending_cost": "≈{cost} a month",
@@ -20168,7 +20184,12 @@
         "raise_approved": "Pay change request {no} approved",
         "raise_filed": "Pay change request {no} filed",
         "raise_declined": "Pay change request {no} declined",
-        "raise_cancelled": "Pay change request {no} cancelled"
+        "raise_cancelled": "Pay change request {no} cancelled",
+        "shift_changed": "Shift changed from {was} to {now} from {on}",
+        "punch_late_excused": "Late on {on} ({min} min) — excused, no violation",
+        "punch_out_fixed": "Missing out-punch of {on} set to {at} — no overtime",
+        "punch_ot_approved": "Punch overtime approved — {h} h on {on}",
+        "punch_ot_refused": "Overtime not counted — {h} h on {on}: {why}"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -21090,7 +21111,6 @@
           "place": "My workplace",
           "source": "Source",
           "source_sheet": "Supervisor's sheet — {name}",
-          "punch_later": "Punching from the app comes with the punch feature — today your supervisor records you.",
           "assumed_note": "At the office your presence is assumed; only absence and permission are recorded.",
           "sheet_note": "Your workplace supervisor records you every day. Marked absent but you were there? Use “Attendance correction”."
         },
@@ -21576,6 +21596,14 @@
           "structure": {
             "title": "Structure — employee and line manager",
             "desc": "The line manager set on the card or derived from the workplace"
+          },
+          "late": {
+            "title": "Lateness and punch exceptions",
+            "desc": "Per person on a punch workplace: today's in-punch, minutes late today, late days this month"
+          },
+          "roster": {
+            "title": "Shift roster",
+            "desc": "Per shift workplace: worker, today's shift, its times, second shifts"
           }
         },
         "col": {
@@ -21633,7 +21661,15 @@
           "manager": "Line manager",
           "source": "Source",
           "penalty": "Penalty",
-          "eos_accrual": "EOS accrual"
+          "eos_accrual": "EOS accrual",
+          "att_source": "Source",
+          "in_today": "In today",
+          "late_today": "Late today (min)",
+          "late_month": "Late days this month",
+          "shift": "Shift",
+          "shift_from": "From",
+          "shift_to": "To",
+          "second_today": "2nd shift today"
         },
         "doc_state": {
           "expired": "Expired",
@@ -21985,6 +22021,227 @@
         "55": "Banque Saudi Fransi",
         "60": "Bank AlJazira",
         "65": "Saudi Investment Bank"
+      },
+      "punch": {
+        "today": "today",
+        "by": "Recorded in the name of {name}",
+        "decided": "Decided — in your name",
+        "k_present_note": "sheet {sheet} · device {device} · app {app}",
+        "k_ex": "Exceptions awaiting a decision",
+        "k_ex_note": "{late} late · {nop} no punch · {ot} overtime · {fixes} corrections",
+        "src": {
+          "sheet": "Supervisor's sheet",
+          "device": "Biometric device — file import",
+          "app": "Employee app with geofence",
+          "title": "Attendance source per workplace",
+          "none": "No workplace yet",
+          "radius": "radius {r} m",
+          "no_centre": "no fence centre set",
+          "last_import": "last file {date}",
+          "no_import": "no file read yet",
+          "silent": "no file for {n} days",
+          "unknown": "{n} unknown numbers",
+          "ready": "{n, plural, one {# day ready to record from punches} other {# days ready to record from punches}}",
+          "record": "Record from punches",
+          "recorded": "Recorded from the punches",
+          "import": "Import device file",
+          "shifts": "Shifts",
+          "change": "Change"
+        },
+        "shift": {
+          "m": "Morning",
+          "e": "Evening",
+          "n": "Night"
+        },
+        "am": {
+          "title": "Attendance source — {site}",
+          "sub": "Whatever the source, payroll reads the same daily status",
+          "source": "Where attendance comes from",
+          "line_sheet": "“All present, then exceptions” — for site labour without phones",
+          "line_device": "A reviewed file import — fingerprint templates stay on the device",
+          "line_app": "One phone per employee · no punch outside the fence without an approved request",
+          "device_file": "Export the device's file (employee no · date · time) and import it here. A device that sends punches by itself is not in this version — its file is.",
+          "has_shifts": "This workplace runs shifts ({shifts}) — each shift has its own times.",
+          "tin": "Shift start",
+          "tout": "Shift end",
+          "grace": "Lateness grace (minutes)",
+          "radius": "Geofence radius (metres)",
+          "radius_hint": "Plus a {m} m accuracy margin, so nobody at the gate is refused",
+          "centre": "The fence's centre",
+          "centre_note": "Stand at the workplace and use your location, or type the coordinates. Without a centre, punches are recorded with no inside/outside check.",
+          "lat": "Latitude",
+          "lng": "Longitude",
+          "here": "Use my current location",
+          "info": "Default grace {grace} minutes · Ramadan six hours for everyone (art. 98) · overtime from punches never reaches payroll before a person approves it. The location is read at the moment of the punch only — no tracking, no route kept — and the employee agrees to it explicitly. No face capture.",
+          "saved": "Saved — applies from today"
+        },
+        "block": {
+          "bad_time": "Enter a start and an end that differ",
+          "bad_grace": "Grace is 0–60 minutes",
+          "bad_radius": "The radius is at least 30 m",
+          "bad_point": "Enter both coordinates, or neither",
+          "none_chosen": "Tick at least one shift",
+          "same_time": "A shift's start and end must differ",
+          "no_shifts": "This workplace runs no shifts",
+          "no_shift": "Choose a shift",
+          "not_run": "This workplace does not run that shift",
+          "bad_date": "Enter the date it applies from",
+          "past": "A shift changes from today or later — past days were already read",
+          "same": "He is already on that shift from that day",
+          "nothing": "Nothing in the file to save",
+          "closed": "The month is closed — it never reopens",
+          "recorded": "That day is already recorded",
+          "no_reason": "Choose the reason",
+          "today": "A day is recorded from punches after it ends",
+          "sheet": "This workplace records on the supervisor's sheet",
+          "open": "Exceptions on that day still wait for a decision",
+          "no_file": "No device file covers that day",
+          "no_punches": "Nobody punched that day",
+          "nobody": "Nobody on the workplace that day",
+          "not_app": "Your workplace does not punch by the app",
+          "inactive": "Only someone at work punches",
+          "done": "Already recorded today",
+          "no_in": "Punch in first",
+          "future": "Not a future day",
+          "not_listed": "Someone not on the sheet",
+          "bad_ot": "Overtime is 0–12 hours a day",
+          "no_violation_role": "Recording a violation is not your role"
+        },
+        "dev": {
+          "title": "Device file — {site}",
+          "review_title": "Review the file — {site}",
+          "rows": "{n} rows in {file}",
+          "columns": "Columns: employee no · date · time",
+          "info": "Export the file from the device software (ZKTeco and the like) and upload it here. It is reviewed before saving: unknown numbers, duplicates, punches during an approved leave and punches at another workplace. One file may cover several days — it fills what was missed, no daily upload needed. The workplace's supervisor or the payroll officer uploads it, at the latest before the month closes. Each shift keeps its first in and last out.",
+          "choose": "Choose a CSV file",
+          "k_saved": "Matched — will be saved",
+          "k_dup": "Duplicates dropped",
+          "k_dawn": "Dawn punches — last night's out",
+          "k_unknown": "Unknown numbers",
+          "k_late": "Late beyond grace",
+          "k_bad": "Unreadable or future rows",
+          "leave_title": "Punched while on approved leave",
+          "leave_note": "not saved; record his return from leave first",
+          "other_title": "Punched here but assigned elsewhere",
+          "other_note": "raised as an exception to correct the assignment — cost follows the assignment",
+          "unknown_note": "Unknown numbers never create employees — add the employee first or correct his number on the device. Temporary labour (Ajeer, daily) belongs to the supply contract in Procurement, not here.",
+          "save": "Save {n} punches",
+          "saved": "Punches saved — the exceptions are on the Attendance tab"
+        },
+        "otno": {
+          "title": "Not overtime — {name}",
+          "sub": "The punch shows {h} h after the shift on {date}",
+          "info": "A punch is evidence; refusing overtime is a decision recorded with its reason and your name. The employee is told and may object by a correction request.",
+          "why": "Why it is not overtime",
+          "nowork": "Stayed without being assigned work",
+          "wait": "Waiting for transport or a colleague",
+          "err": "Punch error — left on time",
+          "save": "Record the decision",
+          "saved": "Recorded with its reason — the employee is told"
+        },
+        "shifts": {
+          "title": "Shifts — {site}",
+          "sub": "A shift belongs to the day it starts; the night shift ends the next morning and stays that day's",
+          "on": "This workplace runs shifts",
+          "off_note": "Otherwise one daily schedule",
+          "night_note": "Spans midnight — a dawn punch counts as last night's out",
+          "in_of": "{shift} start",
+          "out_of": "{shift} end",
+          "law": "8 hours a day (art. 98). A second shift for the same worker is overtime at the hourly wage + 50% (art. 107), within {cap} hours a month; 8 hours' rest between shifts is a check. Shift swaps between workers are not in this version.",
+          "saved": "Shifts saved",
+          "ends_next": "ends the next morning",
+          "create_note": "Morning and evening (a workshop also night) — times can be changed from the Attendance tab"
+        },
+        "shiftset": {
+          "act": "Shift",
+          "title": "{name}'s shift",
+          "sub": "{trade} · {site} · now: {now}",
+          "shift": "Shift",
+          "on_it": "{n, plural, =0 {nobody on it} one {# worker on it} other {# workers on it}}",
+          "from": "From",
+          "from_note": "The first day the new shift is read in attendance and punches",
+          "save": "Change",
+          "saved": "Shift changed"
+        },
+        "fix": {
+          "title": "Correction requests from employees",
+          "accept": "Accept",
+          "accepted": "Accepted — the record is corrected",
+          "decline": "Decline",
+          "declined": "Declined — the employee is told",
+          "decline_title": "Decline the correction — {name}",
+          "decline_sub": "The reason goes to the employee.",
+          "why": "Reason"
+        },
+        "exk": {
+          "nop": "No punch",
+          "late": "Late",
+          "noout": "Missing out-punch",
+          "ot": "Overtime to approve",
+          "fence": "Punched outside the fence",
+          "xsite": "Punched at another workplace"
+        },
+        "ex": {
+          "title": "Punch exceptions",
+          "note": "The system proposes, a person decides — nothing is deducted or marked absent automatically.",
+          "none": "No exceptions",
+          "late_line": "{day} · in {in} · shift {sin} · {min} min → {code}",
+          "nop_line": "No punch by {now} and no leave — not absent until a person decides",
+          "nop_past": "{day} · no punch and no leave — not absent until a person decides",
+          "noout_line": "{day} · in {in}, no out — no overtime on an incomplete day",
+          "ot_line": "{day} · out {out} · {h} h after the shift",
+          "fence_line": "{day} · in {in} outside the workplace's fence",
+          "xsite_line": "{day} · assigned to {assigned}, punched at {here} — cost follows the assignment",
+          "fix_assign": "Fix the assignment",
+          "excused": "Excused",
+          "violation": "Record violation",
+          "absent": "Absent",
+          "set_out": "Set out {out}",
+          "not_ot": "Not overtime",
+          "approve": "Approve",
+          "fence_absent": "Not accepted — absent",
+          "fence_ok": "Accept — on duty"
+        },
+        "me": {
+          "shift": "Working hours",
+          "source": "Attendance by",
+          "today": "Today's punches",
+          "not_yet": "not punched yet",
+          "outside_title": "Recorded outside the fence",
+          "outside": "Your manager decides it. If you were on duty elsewhere, send a correction request.",
+          "done": "Day complete",
+          "in": "Punch in",
+          "out": "Punch out",
+          "correction": "Correction request",
+          "location_note": "Your location is read only at the moment you punch — no tracking, no route kept.",
+          "device_note": "The device at your workplace records you; a missed punch is corrected by a request.",
+          "no_location": "Your location could not be read — allow it in the browser and try again",
+          "saved_in": "Punched in",
+          "saved_out": "Punched out",
+          "saved_outside": "Recorded outside the fence ({d} m away, radius {r} m) — your manager decides",
+          "consent_title": "Your location, at the punch only",
+          "consent": "To punch, the browser reads your location once, at this moment, to check you are within your workplace's fence. Only “inside” or “outside” and the distance are kept — never a route, and nothing between punches. No face capture.",
+          "consent_ok": "I agree — read my location now"
+        },
+        "file": {
+          "title": "Punches",
+          "missing": "missing",
+          "no_punch": "no punch",
+          "next_shift": "Shift change",
+          "next_line": "to {shift} from {date}",
+          "yesterday": "Yesterday",
+          "late_n": "Late arrivals this month"
+        },
+        "sheet": {
+          "shifts": "By shift",
+          "second_n": "{n, plural, one {# on a second shift today} other {# on a second shift today}}",
+          "over_cap": "Above {cap} hours of overtime this month — needs the worker's written consent",
+          "second_title": "Worked a second shift today — {h} h counted as overtime",
+          "second": "2nd shift",
+          "from_title": "Attendance here comes from: {source}",
+          "from_note": "The days are recorded from the punches once their exceptions are decided.",
+          "open_tab": "Open Attendance"
+        }
       }
     },
     "ProcSuppliers": {

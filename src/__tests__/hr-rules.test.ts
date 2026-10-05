@@ -472,9 +472,38 @@ describe("My file and self-service (package A)", () => {
     expect(decide === "" ? update : decide).toMatch(/hrNotOwn\(\)/)
   })
 
-  it("his attendance is projected onto his record by whoever keeps the sheet — that key and nothing else", () => {
+  it("his attendance is projected onto his record by whoever keeps the sheet — that key (and, for his supervisor, his shift) and nothing else", () => {
     const employees = block("employees")
     const [update] = allow(employees.slice(0, employees.indexOf("match /log/")), "update")
-    expect(update).toMatch(/changedKeys\(\)\.hasOnly\(\['att', 'updatedAt'\]\) && \(hrRole\('hr\.payroll'\) \|\| hrSupervises\(resource\.data\.siteId\)\)/)
+    // SH-03 (optional: punch) — the workplace's supervisor sets a worker's shift; payroll, who closes the month, never does.
+    expect(update).toMatch(/changedKeys\(\)\.hasOnly\(\['att', 'shift', 'updatedAt'\]\) && \(\(hrRole\('hr\.payroll'\) && !\('shift' in changedKeys\(\)\)\) \|\| hrSupervises\(resource\.data\.siteId\)\)/)
+  })
+})
+
+describe("punches (PT-06, optional: punch)", () => {
+  it("the employee writes his own punch only: today's, stamped with the server's now — an in with no out, or an out after an in that stays", () => {
+    const employees = block("employees")
+    const updates = allow(employees.slice(0, employees.indexOf("match /log/")), "update")
+    const own = updates.find((u) => u.includes("hrPunch("))
+    expect(own).toMatch(/resource\.data\.get\('userId', ''\) == request\.auth\.uid\s*&& changedKeys\(\)\.hasOnly\(\['pn', 'py', 'updatedAt'\]\)/)
+    // The day before is kept exactly as it was: `py` unchanged, or his last `pn` moved there.
+    expect(own).toMatch(/request\.resource\.data\.get\('py', null\) in \[resource\.data\.get\('py', null\), resource\.data\.get\('pn', null\)\]/)
+    const f = fn("hrPunch")
+    expect(f).toMatch(/p\.at == request\.time && hrNum\(p\.day\) == hrToday\(\)/)
+    expect(f).toMatch(/\(p\['in'\] == request\.time && p\.out == null\) \|\| \(p\['in'\] == o\.get\('in', 0\) && p\.day == o\.get\('day', ''\) && p\.out == request\.time\)/)
+  })
+
+  it("device files and decisions ride the workplace month: written by those who keep its sheet, locked with it", () => {
+    const [update] = allow(block("hrAttendance"), "update")
+    expect(update).toMatch(/resource\.data\.get\('closed', null\) == null/)
+    expect(update).toMatch(/hrManager\(\) \|\| hrRole\('hr\.payroll'\) \|\| hrSupervises\(resource\.data\.siteId\)/)
+    // A recorded day stays as recorded — the punches sit beside `days`, never inside it.
+    expect(update).toMatch(/!request\.resource\.data\.days\.diff\(resource\.data\.days\)\.affectedKeys\(\)\.hasAny\(resource\.data\.days\.keys\(\)\)/)
+  })
+
+  it("a workplace's source and shifts are the HR manager's (form `am`, `shifts`)", () => {
+    const [update] = allow(block("hrSites"), "update")
+    expect(update).toMatch(/hrManager\(\)/)
+    expect(update).not.toMatch(/hr\.supervisor|hr\.payroll/)
   })
 })

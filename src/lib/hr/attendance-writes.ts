@@ -41,7 +41,7 @@ export interface SiteRef {
   type: SiteType | null
 }
 
-type Opts = { today?: string; holidays?: readonly Holiday[] }
+type Opts = { today?: string; holidays?: readonly Holiday[]; fromPunches?: boolean }
 /** The month as a write leaves it — what My file's projection is computed from (me-writes.ts). */
 type Projected = { month: string; days: Record<string, DaySheet>; declarations: Declaration[]; closed?: unknown }
 
@@ -82,7 +82,8 @@ export async function recordDay(
     recorded.length = 0
     const snap = await tx.get(ref)
     const wm = snap.exists() ? (snap.data() as WorkplaceMonth) : null
-    const blocks = sheetBlocks({ day, today, closed: Boolean(wm?.closed), recorded: Boolean(wm?.days?.[day]), listed: input.listed, ex, mayRecordViolation: hrAllowed(ctx, "violation.record", { site: site.id }) })
+    // A day recorded from its punches is recorded after it (its out-punches and overtime are known then).
+    const blocks = sheetBlocks({ day, today, closed: Boolean(wm?.closed), recorded: Boolean(wm?.days?.[day]), listed: input.listed, ex, mayRecordViolation: hrAllowed(ctx, "violation.record", { site: site.id }) }).filter((b) => !(opts.fromPunches && b === "past"))
     if (blocks.length) throw new HrWriteError("blocked", blocks)
     // A violation on the sheet becomes its record for the HR manager (WF-09) — once, at a fixed id.
     const newViolations: Array<{ ref: ReturnType<typeof doc>; emp: HrEmployee; code: NonNullable<AttendanceException["violation"]> }> = []
@@ -100,6 +101,7 @@ export async function recordDay(
       listed: [...new Set(input.listed)],
       ex,
       unlisted: (input.unlisted ?? []).filter((u) => u.name.trim()).map((u) => ({ name: u.name.trim(), note: u.note?.trim() || null })),
+      ...(opts.fromPunches ? { src: "punch" as const } : {}),
     }
     if (!wm) tx.set(ref, { ...base(orgId, site, month), days: { [day]: sheet }, updatedAt: serverTimestamp() })
     else tx.update(ref, { [`days.${day}`]: sheet, updatedAt: serverTimestamp() })

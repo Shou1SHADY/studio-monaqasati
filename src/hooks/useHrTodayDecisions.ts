@@ -13,6 +13,7 @@ import { useHrLetters } from "@/hooks/useHrLetters"
 import { useHrToday } from "@/hooks/useHrToday"
 import { useHrTodayRoles } from "@/hooks/useHrTodayRoles"
 import { lettersToSign } from "@/lib/hr/letters"
+import { riyadhMinutes } from "@/lib/hr/punches"
 import { requestActions } from "@/lib/hr/requests"
 import { decisionCount, todayItems } from "@/lib/hr/today"
 
@@ -35,6 +36,7 @@ export function useHrTodayDecisions(access: HrAccess, today: string) {
       ...world,
       visas: access.settings.establishment.visas ?? null,
       govHeld: heldRoles.isLoading ? undefined : heldRoles.held.has("gov"),
+      punch: access.settings.features.includes("punch") ? { nowMin: riyadhMinutes() } : null,
     })
     const count = decisionCount(items, waiting.length + vWaiting.length + lWaiting.length)
     const urgent = items.some((x) => x.severity === "red" && !x.waiting)

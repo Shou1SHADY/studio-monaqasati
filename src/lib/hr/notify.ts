@@ -73,6 +73,8 @@ export const HR_NOTICE_KINDS = [
   // People (AS-01, EM-05)
   "hr_assigned_to_project", // → the project's manager: someone comes onto his site, and from when
   "hr_probation_view", // → the HR manager: the line manager's view before the probation decision
+  // Punches (PT-05, optional: punch)
+  "hr_ot_refused", // → the employee: punch overtime not counted, with its reason — he may object by a correction
 ] as const
 export type HrNoticeKind = (typeof HR_NOTICE_KINDS)[number]
 
@@ -145,6 +147,7 @@ export const HR_NOTICE_COPY_AR: Record<HrNoticeKind, { title: string; message: s
   hr_sheet_reminder: { title: "حضور {site} لم يُسجَّل منذ {since}", message: "يذكّرك {actor}: سجّل حضور {site} من {since} يوماً بيوم، أو صرّح بالأيام الفائتة باسمك. لا مسير قبل إقفال الشهر." },
   hr_assigned_to_project: { title: "إسناد إلى موقعك — {name}", message: "أسند {actor} {name} إلى {site} من {on}. مركز التكلفة يتبع الإسناد من تاريخه." },
   hr_probation_view: { title: "رأي المدير المباشر في التجربة — {name}", message: "أوصى {actor}: {recommend}. تنتهي تجربة {name} في {end} — القرار لك." },
+  hr_ot_refused: { title: "لم يُحتسب إضافي {on}", message: "لم يُحتسب إضافي {h} ساعة ليوم {on} — {why}. لك الاعتراض بطلب تصحيح حضور من «ملفي»." },
 }
 
 /** `@key` params the messages name, with their Arabic text (nested keys of Portal.Shared). */
@@ -168,6 +171,9 @@ export const HR_NOTICE_PARAM_COPY_AR: Record<string, string> = {
   "hr_letter_kind.noc": "عدم ممانعة",
   "hr_letter_kind.oth": "خطاب آخر",
   "hr_letter_kind.exp": "شهادة خبرة",
+  "hr_ot_why.nowork": "بقي بلا تكليف بعمل",
+  "hr_ot_why.wait": "ينتظر النقل",
+  "hr_ot_why.err": "خطأ بصمة",
 }
 
 /** HR's own document numbers in Arabic (ط.إ / ط.سل / ط.ص / خ) — the shared prefix table is Sales'. */
