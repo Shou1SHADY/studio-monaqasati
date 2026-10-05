@@ -35,6 +35,7 @@ export function useHrTodayDecisions(access: HrAccess, today: string) {
       ...world,
       visas: access.settings.establishment.visas ?? null,
       govHeld: heldRoles.isLoading ? undefined : heldRoles.held.has("gov"),
+      hiring: world.hiring,
     })
     const count = decisionCount(items, waiting.length + vWaiting.length + lWaiting.length)
     const urgent = items.some((x) => x.severity === "red" && !x.waiting)

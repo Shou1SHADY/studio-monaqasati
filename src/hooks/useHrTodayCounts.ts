@@ -20,7 +20,7 @@ export function useHrTodayCounts(access: HrAccess): { counts: TabCounts; govHeld
   const d = useHrTodayDecisions(access, today)
   return useMemo(
     () => ({
-      counts: hrTabCounts({ ctx: access.ctx, items: d.items, decisions: d.count, urgent: d.urgent, employees: d.world.employees, manpower: d.world.manpower, payrolls: d.world.payrolls, requests: d.world.requests }),
+      counts: hrTabCounts({ ctx: access.ctx, items: d.items, decisions: d.count, urgent: d.urgent, employees: d.world.employees, manpower: d.world.manpower, payrolls: d.world.payrolls, requests: d.world.requests, openings: d.world.hiring?.openings }),
       govHeld: d.heldRoles.isLoading || !access.ctx.roles.has("manager") ? undefined : d.heldRoles.held.has("gov"),
     }),
     [access.ctx, d]

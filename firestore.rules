@@ -2622,14 +2622,14 @@ service cloud.firestore {
       allow create, update: if isOrgMember(orgId)
         && request.resource.data.get('organizationId', orgId) == orgId
         && hrManager();
-      // A visa arrival recorded by government relations uses one visa — the
-      // count goes down by exactly one and nothing else changes.
+      // Government relations spends visas — one for an arrival, a batch's at once
+      // when they are issued (HI-07): the count only goes down, nothing else changes.
       allow update: if isOrgMember(orgId) && hrRole('hr.gov')
         && changedKeys().hasOnly(['establishment'])
         && request.resource.data.establishment.diff(resource.data.establishment).affectedKeys().hasOnly(['visas', 'visasReserved'])
         && resource.data.establishment.get('visas', 0) is int
-        && resource.data.establishment.get('visas', 0) > 0
-        && request.resource.data.establishment.visas == resource.data.establishment.visas - 1;
+        && request.resource.data.establishment.visas >= 0
+        && request.resource.data.establishment.visas < resource.data.establishment.visas;
       allow delete: if isAdmin();
     }
 
@@ -2894,7 +2894,7 @@ service cloud.firestore {
       // My file's attendance (`att`, me-writes.ts) is written beside the sheet by
       // whoever keeps it: the person's workplace supervisor or payroll (closing).
       allow update: if inOrg()
-        && (hrManager() || (hrRole('hr.gov') && changedKeys().hasOnly(['docs', 'updatedAt']))
+        && (hrManager() || (hrRole('hr.gov') && changedKeys().hasOnly(['docs', 'onb', 'updatedAt']))
             || (changedKeys().hasOnly(['att', 'updatedAt']) && (hrRole('hr.payroll') || hrSupervises(resource.data.siteId))))
         && request.resource.data.organizationId == resource.data.organizationId
         && request.resource.data.get('no', null) == resource.data.get('no', null)
@@ -3188,6 +3188,24 @@ service cloud.firestore {
             && changedKeys().hasOnly(['state', 'updatedAt']))))
           || (resource.data.state == 'answered' && changedKeys().hasOnly(['accepted', 'updatedAt']) && resource.data.get('accepted', null) == null
             && (resource.data.requested.by == request.auth.uid || hasProjectPermission(resource.data.projectId, 'projects.edit'))));
+      allow delete: if false;
+    }
+
+    // Hiring (HI-01…08, optional: hire) — ONE collection by `kind`: openings (with
+    // their recruitment batch), candidates, and a candidate's money (`pay: true` —
+    // expected pay and the offered basic), read by pay roles only (RL-03). A pay
+    // document is read before it exists (the first offer). The HR manager writes;
+    // government relations moves a batch and converts (the opening's fill, the
+    // candidate's stage); management decides a new position and an offer above the band.
+    function hrHiringRead() { return inOrg() && (hrSeesPay() || (hrOffice() && resource.data.pay == false)); }
+    match /hrHiring/{id} {
+      allow get: if (resource == null && hrRole('employees.manage')) || hrHiringRead();
+      allow list: if hrHiringRead();
+      allow create: if createsInOrg() && hrManager();
+      allow update: if keepsOrg() && request.resource.data.kind == resource.data.kind
+        && (hrManager() || (resource.data.pay == false
+          && ((hrRole('hr.gov') && changedKeys().hasOnly(['batch', 'filled', 'state', 'stage', 'employeeId', 'updatedAt']))
+            || (hrRole('hr.management') && changedKeys().hasOnly(['state', 'okBy', 'closedBy', 'stage', 'offer', 'updatedAt'])))));
       allow delete: if false;
     }
 

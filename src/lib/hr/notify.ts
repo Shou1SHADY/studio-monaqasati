@@ -73,6 +73,11 @@ export const HR_NOTICE_KINDS = [
   // People (AS-01, EM-05)
   "hr_assigned_to_project", // → the project's manager: someone comes onto his site, and from when
   "hr_probation_view", // → the HR manager: the line manager's view before the probation decision
+  // Hiring (HI-01, HI-05; optional: hire)
+  "hr_position_to_approve", // → management: a new position is a new cost
+  "hr_position_approved", // → whoever opened it: start the search
+  "hr_offer_above_band", // → management: an offer above the trade's band waits
+  "hr_offer_approved", // → whoever made the offer: send it
 ] as const
 export type HrNoticeKind = (typeof HR_NOTICE_KINDS)[number]
 
@@ -145,6 +150,10 @@ export const HR_NOTICE_COPY_AR: Record<HrNoticeKind, { title: string; message: s
   hr_sheet_reminder: { title: "حضور {site} لم يُسجَّل منذ {since}", message: "يذكّرك {actor}: سجّل حضور {site} من {since} يوماً بيوم، أو صرّح بالأيام الفائتة باسمك. لا مسير قبل إقفال الشهر." },
   hr_assigned_to_project: { title: "إسناد إلى موقعك — {name}", message: "أسند {actor} {name} إلى {site} من {on}. مركز التكلفة يتبع الإسناد من تاريخه." },
   hr_probation_view: { title: "رأي المدير المباشر في التجربة — {name}", message: "أوصى {actor}: {recommend}. تنتهي تجربة {name} في {end} — القرار لك." },
+  hr_position_to_approve: { title: "وظيفة جديدة للاعتماد — {no}", message: "فتح {actor} الشاغر {no} في {site}، مطلوب قبل {need}. وظيفة جديدة = تكلفة جديدة — اعتمدها أو ارفضها قبل البحث." },
+  hr_position_approved: { title: "اعتُمدت الوظيفة {no} — ابدأ البحث", message: "اعتمد {actor} الشاغر {no} في {site}. ابدأ البحث عن المرشحين." },
+  hr_offer_above_band: { title: "عرض فوق النطاق — {name}", message: "عرض {actor} على {name} للشاغر {no} فوق نطاق المهنة. لا يُرسل للمرشح قبل اعتمادك." },
+  hr_offer_approved: { title: "اعتُمد عرض {name} — أرسله", message: "اعتمد {actor} العرض على {name} للشاغر {no}. أرسله وسجّل ردّ المرشح حين يصل." },
 }
 
 /** `@key` params the messages name, with their Arabic text (nested keys of Portal.Shared). */
@@ -171,7 +180,7 @@ export const HR_NOTICE_PARAM_COPY_AR: Record<string, string> = {
 }
 
 /** HR's own document numbers in Arabic (ط.إ / ط.سل / ط.ص / خ) — the shared prefix table is Sales'. */
-const hrNumberAr = (v: string) => v.replace(/^LV-(?=\d{4}\/)/, "ط.إ-").replace(/^AV-(?=\d{4}\/)/, "ط.سل-").replace(/^HQ-(?=\d{4}\/)/, "ط.ص-").replace(/^AQ-(?=\d{4}\/)/, "ط.ح-").replace(/^RS-(?=\d{4}\/)/, "ط.ز-").replace(/^LT-(?=\d{4}\/)/, "خ-")
+const hrNumberAr = (v: string) => v.replace(/^LV-(?=\d{4}\/)/, "ط.إ-").replace(/^AV-(?=\d{4}\/)/, "ط.سل-").replace(/^HQ-(?=\d{4}\/)/, "ط.ص-").replace(/^AQ-(?=\d{4}\/)/, "ط.ح-").replace(/^RS-(?=\d{4}\/)/, "ط.ز-").replace(/^LT-(?=\d{4}\/)/, "خ-").replace(/^JOB-(?=\d{4}\/)/, "ش-")
 
 const substitute = (template: string, params: EventParams) =>
   template.replace(/\{(\w+)\}/g, (_, k: string) => {
@@ -295,6 +304,8 @@ export const hrLinks = {
   site: (siteId: string) => `hr/sites/${siteId}`,
   sites: () => "hr/sites",
   payroll: () => "hr/payroll",
+  /** An opening on the Hiring tab (optional: hire). */
+  hiring: (openingId?: string | null) => (openingId ? `hr/hiring?job=${openingId}` : "hr/hiring"),
   financeDesk: () => "accounting/hr-desk",
   custody: () => "warehouses/custody",
   /** Projects live in the contractor portal only. */

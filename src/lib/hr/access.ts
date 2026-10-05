@@ -83,6 +83,14 @@ export const HR_GUARD = {
   "platform.tasks": { roles: ["gov", "manager"] },
   "settings.manage": { roles: ["manager"] },
   "reports.view": { roles: ["manager", "gov", "payroll", "management"] },
+  // Hiring (optional: hire — WF-17/18): the HR manager runs openings and the individuals track; a recruitment
+  // batch, the conversion to employee and the onboarding ticks are government relations' too; management
+  // approves a new position and an offer above the band (ST-03).
+  "hire.manage": { roles: ["manager"] },
+  "hire.batch": { roles: ["manager", "gov"] },
+  "hire.convert": { roles: ["manager", "gov"] },
+  "hire.onboard": { roles: ["manager", "gov"] },
+  "hire.approve": { roles: ["management"] },
 } as const satisfies Record<string, Rule>
 
 export type HrAction = keyof typeof HR_GUARD

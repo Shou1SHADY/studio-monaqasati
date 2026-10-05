@@ -8,6 +8,7 @@ import { hrAllowed, mayDecideRequest, userIsHrManager, type HrContext } from "./
 import { HR_EMPLOYEES, HR_EVENTS, HR_PAY, HR_PAYROLLS, HR_REQUESTS, HR_SITES } from "./collections"
 import { attachmentBlocks, HR_FILES, type AttachmentKind, type EmployeeFile } from "./attachments"
 import { HR_SETTINGS } from "./settings"
+import { HR_HIRING, openingLeft, type Candidate, type Opening } from "./hiring"
 import { cleanIban, DOC_NUMBER_KEYS, iqamaDueBy, type DocDates, type DocNumbers, type DocType } from "./documents"
 import {
   assignBlocks,
@@ -90,6 +91,9 @@ export interface CreateEmployeeInput extends NewEmployeeInput {
   since?: string | null
   openingLeave?: number
   advanceBalance?: number
+  /** HI-06/HI-07 — a hire: the opening (and the candidate) it fills, linked in the same transaction. A visa
+   * arrival from a batch spends one of the batch's ISSUED visas, never the establishment's balance again. */
+  hiring?: { openingId: string; candidateId?: string | null } | null
 }
 
 export async function createEmployee(
@@ -113,12 +117,14 @@ export async function createEmployee(
     const cRef = doc(firestore, HR_COUNTERS, orgId)
     const c = await tx.get(cRef)
     no = ((c.exists() ? (c.data() as { lastEmployeeNo?: number }).lastEmployeeNo : 0) ?? 0) + 1
+    // A hire fills its opening (and its candidate, accepted) — both read again here.
+    const hire = input.hiring ? await readHire(tx, firestore, orgId, input.hiring, input.source === "visa") : null
     // A visa arrival uses one visa of the establishment file — read again here,
-    // so two arrivals never spend the last visa twice.
+    // so two arrivals never spend the last visa twice. One from a batch spends the batch's issued lot instead.
     const sRef = doc(firestore, HR_SETTINGS, orgId)
     let visasLeft: number | null = null
     let reserved = 0
-    if (input.source === "visa") {
+    if (input.source === "visa" && !hire?.fromLot) {
       const s = await tx.get(sRef)
       const est = s.exists() ? (s.data() as { establishment?: { visas?: unknown; visasReserved?: unknown } }).establishment : null
       visasLeft = typeof est?.visas === "number" ? est.visas : 0
@@ -153,11 +159,13 @@ export async function createEmployee(
       sick: null,
       hajjTaken: false,
     }
+    const hiredFrom = hire ? { hiredFrom: { openingId: hire.ref.id, no: hire.opening.no, candidateId: hire.candidate?.ref.id ?? null }, onb: {} } : {}
     tx.set(cRef, { organizationId: orgId, lastEmployeeNo: no, updatedAt: serverTimestamp() })
     // An arrival spends one visa; one a manpower plan reserved (WF-12) is that reservation arriving — never spent twice.
     if (visasLeft != null) tx.update(sRef, { "establishment.visas": visasLeft - 1, ...(reserved > 0 ? { "establishment.visasReserved": reserved - 1 } : {}) })
     // The old readers (delivery notes, lists) read `name`; pay never sits here.
-    tx.set(ref, { ...emp, name: emp.names.ar, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+    tx.set(ref, { ...emp, ...hiredFrom, name: emp.names.ar, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
+    if (hire) writeHire(tx, hire, ref.id)
     if (withPay) {
       const parts = payFromBasic(input.basic as number, opts.policies ?? DEFAULT_HR_POLICIES)
       const pay: EmployeePay = {
@@ -173,6 +181,7 @@ export async function createEmployee(
       tx.set(doc(firestore, HR_PAY, ref.id), { ...pay, updatedAt: serverTimestamp() })
     }
     log(tx, firestore, ref.id, orgId, actor, input.since ? "imported" : "created", { no, site: emp.siteId, trade: emp.trade })
+    if (hire) log(tx, firestore, ref.id, orgId, actor, hire.fromLot ? "hired_batch" : "hired", { opening: hire.opening.no, agency: hire.opening.batch?.agency ?? null })
   })
   // DC-05 — a visa arrival's iqama is due 90 days after he joins: government relations hears it now.
   if (input.source === "visa" && input.nationality !== "sa" && !input.docs?.iqama && input.join)
@@ -186,6 +195,50 @@ export async function createEmployee(
       employeeId: ref.id,
     })
   return { id: ref.id, no }
+}
+
+// ---------------------------------------------------------------------------
+// A hire (HI-06, HI-07): the opening and the candidate it fills
+// ---------------------------------------------------------------------------
+
+interface HireRead {
+  ref: ReturnType<typeof doc>
+  opening: Opening
+  candidate: { ref: ReturnType<typeof doc>; data: Candidate } | null
+  /** A visa arrival spending the batch's issued lot. */
+  fromLot: boolean
+}
+
+async function readHire(tx: Transaction, firestore: Firestore, orgId: string, h: { openingId: string; candidateId?: string | null }, visa: boolean): Promise<HireRead> {
+  const oRef = doc(firestore, HR_HIRING, h.openingId)
+  const os = await tx.get(oRef)
+  const opening = os.exists() ? ({ ...(os.data() as Omit<Opening, "id">), id: os.id } as Opening) : null
+  if (!opening || opening.kind !== "opening" || opening.organizationId !== orgId) throw new HrWriteError("missing")
+  if (opening.state !== "open" || openingLeft(opening) <= 0) throw new HrWriteError("blocked", ["opening_closed"])
+  let candidate: HireRead["candidate"] = null
+  if (h.candidateId) {
+    const cRef = doc(firestore, HR_HIRING, h.candidateId)
+    const cs = await tx.get(cRef)
+    const data = cs.exists() ? (cs.data() as Candidate) : null
+    if (!data || data.kind !== "candidate" || data.openingId !== opening.id || data.stage !== "acc") throw new HrWriteError("blocked", ["stale"])
+    candidate = { ref: cRef, data }
+  }
+  const fromLot = visa && opening.track === "batch"
+  if (fromLot && (opening.batch?.visas ?? 0) <= 0) throw new HrWriteError("blocked", ["no_visas"])
+  return { ref: oRef, opening, candidate, fromLot }
+}
+
+function writeHire(tx: Transaction, h: HireRead, employeeId: string) {
+  const filled = (h.opening.filled ?? 0) + 1
+  const b = h.opening.batch
+  tx.update(h.ref, {
+    filled,
+    ...(filled >= h.opening.q ? { state: "filled" } : {}),
+    // The arrival takes one issued visa — and a reservation a manpower plan made on the lot, if any.
+    ...(h.fromLot && b ? { batch: { ...b, stage: "arr", visas: b.visas - 1, reserved: Math.max(0, (b.reserved ?? 0) - 1) } } : {}),
+    updatedAt: serverTimestamp(),
+  })
+  if (h.candidate) tx.update(h.candidate.ref, { stage: "hired", employeeId, updatedAt: serverTimestamp() })
 }
 
 /** The other employee records of the company that name this platform user. A transaction cannot query, so it is
