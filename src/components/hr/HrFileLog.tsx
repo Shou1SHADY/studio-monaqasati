@@ -120,6 +120,8 @@ function logParams(l: LogEntry, t: ReturnType<typeof useTranslations>, siteName:
     else if (k === "task") out[k] = t(`pf.short.${v}` as "pf.short.ct")
     else if (k === "was" || k === "now") out[k] = t(`punch.shift.${v}` as "punch.shift.m")
     else if (k === "why") out[k] = t(`punch.otno.${v}` as "punch.otno.nowork")
+    else if (k === "course") out[k] = t(`train.course.${v}` as "train.course.ind")
+    else if (k === "band") out[k] = t(`perf.band.${v}` as "perf.band.A")
     else out[k] = String(v)
   }
   return out

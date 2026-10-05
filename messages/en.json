@@ -8537,7 +8537,9 @@
         "upheld": "The penalty is upheld and deducted in its payroll",
         "cancelled": "The penalty is cancelled and never counts",
         "done": "the assignment was corrected",
-        "refused": "the correction was declined"
+        "refused": "the correction was declined",
+        "raises_ok": "The raises are approved — apply them to pay",
+        "raises_back": "The proposal was returned"
       },
       "table_sort_by": "Sort by {column}",
       "table_show_more": "Show {count} more",
@@ -8569,6 +8571,29 @@
         "nowork": "stayed without assigned work",
         "wait": "waiting for transport",
         "err": "punch error"
+      },
+      "pn_hr_training_scheduled_title": "{course} session {date} — {count} of your workers",
+      "pn_hr_training_scheduled": "{actor} scheduled a {course} session on {date} for {count} of {site}'s workers. A training day is a paid work day.",
+      "pn_hr_training_cost_title": "Training cost to pay — {course}",
+      "pn_hr_training_cost": "{actor} recorded the {course} session ({date}): {count} passed. Pay its cost from the HR desk in Accounting.",
+      "pn_hr_cycle_opened_title": "Review cycle open — {count} of your team",
+      "pn_hr_cycle_opened": "{actor} opened the review cycle until {close}. Rate {count} of your team from Performance.",
+      "pn_hr_reviews_sent_title": "{count} reviews awaiting approval",
+      "pn_hr_reviews_sent": "{actor} sent {count} reviews for approval. Calibrate, then approve or return them from Performance.",
+      "pn_hr_reviews_returned_title": "Your reviews were returned",
+      "pn_hr_reviews_returned": "{actor} returned {count} reviews. Review and send them again before {close}.",
+      "pn_hr_review_ready_title": "Your review is approved — {year}",
+      "pn_hr_review_ready": "Your {year} review is approved. See it in My file — you may discuss it with your manager or HR.",
+      "pn_hr_raises_proposed_title": "Annual review raises await your decision",
+      "pn_hr_raises_proposed": "{actor} prepared review raises for {count} employees from {eff}. Decide them at once from Performance.",
+      "pn_hr_raises_decided_title": "Management decided the review raises",
+      "pn_hr_raises_decided": "{verdict} — {actor}.",
+      "hr_course": {
+        "ind": "Site safety induction",
+        "hgt": "Work at height",
+        "fa": "First aid",
+        "sup": "Field supervision skills",
+        "xl": "Excel for business"
       }
     },
     "Contractor": {
@@ -19212,7 +19237,16 @@
         "jobApprove_warn": "Warn only — it opens at once",
         "offerBand": "An offer above the band",
         "offerBand_block": "Block — goes to management",
-        "offerBand_warn": "Warn only — it is sent"
+        "offerBand_warn": "Warn only — it is sent",
+        "recordWeight": "Record weight in the review score (%)",
+        "recordWeight_note": "{m}% manager + {w}% from the record (absences, penalties)",
+        "raise": "Review raises by band (%)",
+        "raise_note": "Company policy — one management decision on the basic; the allowances follow",
+        "certs_note": "Required certificates: safety induction for anyone on a site, workshop, warehouse or fleet (3-day grace) · work at height: carpenter, steel fixer, painter, plasterer, electrician, foreman on a project · first aid: safety, foreman, warehouse supervisor",
+        "raiseA": "Raise — outstanding (%)",
+        "raiseB": "Raise — very good (%)",
+        "raiseC": "Raise — good (%)",
+        "raiseD": "Raise — needs improvement (%)"
       },
       "law": {
         "overtime": "Overtime hour (art. 107)",
@@ -19323,7 +19357,14 @@
           "punch_exceptions": "Punch exceptions — {n} to decide",
           "device_silent": "No device file from {site} for {n} days",
           "punch_ot": "{n} punch overtime / missing outs — before the month closes",
-          "punch_ready": "{n, plural, one {# day ready to record from punches} other {# days ready to record from punches}}"
+          "punch_ready": "{n, plural, one {# day ready to record from punches} other {# days ready to record from punches}}",
+          "train_gaps": "{count} on duty without a valid safety certificate",
+          "train_gaps_mine": "{count} of your workers lack a valid safety certificate",
+          "train_session": "Training session {date} — {count} participants",
+          "perf_pending": "{count} reviews awaiting your approval",
+          "perf_rate": "Rate your team — {count} left",
+          "perf_apply": "{count} approved review raises not applied",
+          "perf_raises": "Annual review raises — {count} employees"
         },
         "a": {
           "move": "Move",
@@ -19352,7 +19393,12 @@
           "convert": "Convert",
           "record_next": "Record the next step",
           "onboarding": "Onboarding",
-          "import": "Import"
+          "import": "Import",
+          "schedule": "Schedule",
+          "view": "View",
+          "calibrate": "Performance",
+          "apply": "Apply",
+          "rate": "Rate"
         },
         "order": "One trip, in order: {order}",
         "sites_today": "Workplaces today",
@@ -19570,7 +19616,18 @@
           "punch_counts": "{late} late · {nop} no punch · {ot} overtime · {noout} missing out",
           "no_file_no_att": "no file means no attendance, overtime or month closing",
           "ot_unapproved": "unapproved overtime never reaches payroll",
-          "punch_ready": "every exception decided — the sheet is recorded from the punches"
+          "punch_ready": "every exception decided — the sheet is recorded from the punches",
+          "train_booked": "{n} are in a scheduled session — the rest need one",
+          "course": "{course}",
+          "train_record_why": "Record attendance so the certificates issue",
+          "train_next": "Next session {date} — HR schedules",
+          "train_ask_hr": "Ask HR for a session",
+          "perf_flagged": "{names}: mostly “outstanding” — review before approving",
+          "perf_per_rater": "Approve per rater, at once",
+          "perf_apply_why": "In the wage from the first of the month — management approved them",
+          "perf_raise_from": "From {date}",
+          "perf_raise_cost": "{cost} a month",
+          "perf_rate_how": "One grade per worker · the cycle closes {date}"
         },
         "sites_today_word": "{sites} today",
         "ending_cost": "≈{cost} a month",
@@ -20261,7 +20318,9 @@
         "punch_late_excused": "Late on {on} ({min} min) — excused, no violation",
         "punch_out_fixed": "Missing out-punch of {on} set to {at} — no overtime",
         "punch_ot_approved": "Punch overtime approved — {h} h on {on}",
-        "punch_ot_refused": "Overtime not counted — {h} h on {on}: {why}"
+        "punch_ot_refused": "Overtime not counted — {h} h on {on}: {why}",
+        "cert_passed": "Completed {course} — certificate until {to}",
+        "review_approved": "{year} review approved: {band}"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -20854,7 +20913,8 @@
           "decide": "Advance above the HR limit",
           "fee": "Pay a government fee",
           "settlement": "Pay the final settlement",
-          "gosi": "Record the GOSI payment"
+          "gosi": "Record the GOSI payment",
+          "training": "Pay a training cost"
         },
         "confirm": {
           "pay": "Record payment",
@@ -20863,7 +20923,8 @@
           "advance": "Pay out",
           "fee": "Pay",
           "settlement": "Pay out",
-          "gosi": "Record payment"
+          "gosi": "Record payment",
+          "training": "Pay"
         },
         "failed": "Could not complete — check the period is open and try again",
         "block": {
@@ -20888,7 +20949,9 @@
         "gosi_overdue": "Overdue",
         "record_gosi": "Record payment",
         "gosi_paid_ok": "GOSI payment recorded",
-        "show_entry": "The entry"
+        "show_entry": "The entry",
+        "trainings": "Training costs",
+        "training_line": "{course} · {date} · {n} trainees · {amount}"
       },
       "vio": {
         "title": "Violations and penalties",
@@ -22882,6 +22945,350 @@
           "from_title": "Attendance here comes from: {source}",
           "from_note": "The days are recorded from the punches once their exceptions are decided.",
           "open_tab": "Open Attendance"
+        }
+      },
+      "grow": {
+        "segments": "Performance and training sections",
+        "seg": {
+          "perf": "Performance",
+          "train": "Training"
+        },
+        "kpi": {
+          "train_bad": {
+            "label": "On duty without a valid certificate",
+            "note": "{n} already in a scheduled session"
+          },
+          "train_soon": {
+            "label": "Certificates expiring in 60 days",
+            "note": "A certificate is a document — its state comes from its date"
+          },
+          "train_planned": {
+            "label": "Scheduled sessions",
+            "note": "{seats} seats · {hours} training hours this year — feeds the training disclosure"
+          },
+          "perf_done": {
+            "label": "Reviews completed",
+            "note": "of {of} · closes {date} · {outside} under six months are outside"
+          },
+          "perf_pending": {
+            "label": "Awaiting your approval",
+            "flagged": "{n} rater(s) mostly “outstanding” — review first",
+            "none": "No visible rater skew"
+          },
+          "perf_pending_hr": {
+            "label": "Awaiting HR approval",
+            "flagged": "{n} rater(s) mostly “outstanding”",
+            "none": "No visible rater skew"
+          },
+          "perf_raises": {
+            "label": "Review raises a month",
+            "none": "On {n} approved reviews — nothing applies before management approves",
+            "with_mgmt": "The proposal is with management",
+            "approved": "Approved — effective {date}"
+          },
+          "perf_team_sent": {
+            "label": "My team reviews sent",
+            "note": "of {of} · closes {date}"
+          },
+          "perf_drafts": {
+            "label": "Drafts not sent",
+            "note": "A grade does not count before it is sent"
+          },
+          "perf_team_wait": {
+            "label": "Awaiting HR approval",
+            "note": "The employee sees it after approval"
+          }
+        }
+      },
+      "train": {
+        "cert": {
+          "ind": "Safety induction",
+          "hgt": "Work at height",
+          "fa": "First aid"
+        },
+        "course": {
+          "ind": "Site safety induction",
+          "hgt": "Work at height",
+          "fa": "First aid",
+          "sup": "Field supervision skills",
+          "xl": "Excel for business"
+        },
+        "provider": {
+          "ind": "Company safety officer",
+          "hgt": "Occupational Safety Institute",
+          "fa": "Red Crescent Authority",
+          "sup": "Accredited training centre",
+          "xl": "Accredited training centre"
+        },
+        "kind": {
+          "internal": "Internal",
+          "external": "External"
+        },
+        "why": {
+          "site": "Anyone on a site, workshop or warehouse",
+          "height": "{trade} on a project",
+          "trade": "{trade}"
+        },
+        "log": {
+          "passed": "Passed",
+          "absent": "Absent",
+          "scheduled": "Scheduled"
+        },
+        "none": "none",
+        "none_required": "None required for this trade and workplace",
+        "rel_today": "Today",
+        "rel_in": "In {n} days",
+        "rel_ago": "{n} days ago",
+        "col": {
+          "gap": "Certificate — workplace",
+          "not_valid": "Not valid",
+          "soon": "Expiring / in grace",
+          "booked": "In a session",
+          "name": "Name",
+          "trade": "Trade",
+          "session": "Session",
+          "cert": "Certificate",
+          "course": "Course",
+          "date": "Date",
+          "seats": "Seats",
+          "result": "Result",
+          "state": "State",
+          "kind": "Type",
+          "provider": "Provider",
+          "hours": "Hours",
+          "validity": "Certificate validity",
+          "cost": "Cost",
+          "why": "Why required",
+          "expires": "Expires"
+        },
+        "schedule": "Schedule a session",
+        "record": "Record attendance",
+        "done": "Done",
+        "wait_finance": "Cost payment",
+        "passed": "{n} passed",
+        "in_session": "In a session {date}",
+        "months": "{n} months",
+        "free": "Free",
+        "hours": "{n} h",
+        "cert_valid": "Certificate {n} months",
+        "paid_day": "A paid work day",
+        "mine_title": "My workers’ certificates — by name",
+        "mine_note": "Worst first · HR schedules the sessions",
+        "mine_none": "All your workers’ certificates are valid",
+        "gaps_title": "Gaps — by certificate and workplace",
+        "gaps_note": "Requirements come from the trade and the workplace",
+        "gaps_none": "No gaps",
+        "needs_title": "Training needs from reviews",
+        "sessions_title": "Sessions",
+        "sessions_none": "No sessions",
+        "courses_title": "Courses",
+        "file_title": "Certificates & training",
+        "my_title": "My certificates & training",
+        "my_bad": "A certificate is expired or missing",
+        "my_tell": "Tell {name};",
+        "my_supervisor": "your supervisor",
+        "my_booked": "you are booked on a session on {date}.",
+        "my_not_booked": "no session is scheduled for you yet.",
+        "sess_title": "Session — {course}",
+        "f": {
+          "at": "Date",
+          "seats": "Seats",
+          "site": "From which workplace?",
+          "all_sites": "All workplaces",
+          "site_internal": "An internal session runs at the workplace",
+          "estimate": "Estimated cost",
+          "payment": "Payment",
+          "payment_after": "A payment request to Finance after it runs",
+          "participants": "Participants — worst first",
+          "nobody": "No one needs it now",
+          "worst_first": "Untick anyone you leave out — the next one is taken until the seats are full",
+          "holiday": "That date is a public holiday",
+          "by": "Recorded in the name of {name}",
+          "submit": "Schedule"
+        },
+        "scheduled": "Scheduled — {n} participants. A training day is a paid work day",
+        "res_title": "Session result — {course}",
+        "res_note": "Everyone attended and passed — untick the absentees.",
+        "res_valid": "Certificates are valid until {date}.",
+        "res_cost": "Actual cost",
+        "res_charged": "Charged to",
+        "res_submit": "Record",
+        "recorded": "Recorded — {n} passed",
+        "recorded_cost": "Recorded — {n} passed · the cost went to Finance",
+        "block": {
+          "no_course": "Unknown course",
+          "no_date": "Choose the date",
+          "past": "The date is in the past",
+          "bad_seats": "Seats must be a whole number from 1",
+          "no_one": "No participant",
+          "over_seats": "More participants than seats",
+          "not_planned": "This session's result is already recorded",
+          "not_yet": "The session's day has not come",
+          "stale": "It changed — open it again"
+        }
+      },
+      "perf": {
+        "crit": {
+          "g": "Goals achieved",
+          "q": "Work quality",
+          "i": "Initiative & problem solving",
+          "t": "Collaboration & communication"
+        },
+        "grade": {
+          "3": "Dependable",
+          "2": "Steady",
+          "1": "Weak"
+        },
+        "band": {
+          "A": "Outstanding",
+          "B": "Very good",
+          "C": "Good",
+          "D": "Needs improvement"
+        },
+        "st": {
+          "draft": "Draft with the rater",
+          "done": "Awaiting HR approval",
+          "ok": "Approved — not yet seen",
+          "ack": "Seen by the employee"
+        },
+        "col": {
+          "worker": "Worker",
+          "grade": "Grade",
+          "name": "Name",
+          "trade": "Trade",
+          "state": "State",
+          "rater": "Rater",
+          "sent": "Sent",
+          "avg": "Average",
+          "outstanding": "Outstanding",
+          "flags": "Flags",
+          "decision": "Decision",
+          "band": "Result",
+          "count": "Count",
+          "month": "A month"
+        },
+        "no_cycle": "No review cycle open",
+        "no_cycle_desc": "A cycle opens with two dates — those under six months are assessed at probation, not in the cycle",
+        "open_cycle": "Open a review cycle",
+        "cycle_title": "Review cycle",
+        "cycle_sub": "Two dates — the rest is computed",
+        "cycle_open": "Opens",
+        "cycle_close": "Closes",
+        "cycle_scope": "In scope: {n} of {of} (six months’ service). The rater is the line manager.",
+        "cycle_submit": "Open",
+        "cycle_opened": "Cycle opened — {n} reviews",
+        "cycle_name": "{year} annual review",
+        "cycle_not_yet": "The cycle opens {open} and closes {close} — no rating before it opens",
+        "cycle_closed": "The cycle closed on {close} — no new rating; approval and raises go on",
+        "sheet_title": "My workers — one grade each",
+        "sheet_note": "{sent} of {of} sent · closes {date}. One grade per worker — attendance and penalties are read from the record. There is no “all excellent”.",
+        "grade_of": "Grade for {name}",
+        "abs_n": "{n} absent",
+        "pen_n": "{n} penalties",
+        "send_n": "Send {n} for approval",
+        "graded": "Draft saved",
+        "sent": "{n} sent — the HR manager approves them",
+        "staff_title": "My staff",
+        "team_none": "No direct reports in this cycle",
+        "review": "Review",
+        "raters_title": "Raters — calibrate before approving",
+        "raters_note": "Approve each rater’s set at once",
+        "raters_none": "No raters",
+        "management": "Management",
+        "flag_mostly": "Mostly outstanding",
+        "flag_flat": "One grade for almost all",
+        "not_rated": "{n} not rated",
+        "approved_n": "{n} approved",
+        "pending_n": "{n} pending",
+        "not_started": "Not started",
+        "return": "Return",
+        "returned": "Returned to the rater",
+        "approve_n": "Approve {n}",
+        "approved": "{n} approved — their owners see them now",
+        "add_missing": "Add {n} who reached six months",
+        "added": "{n} added to the cycle",
+        "dist_title": "Result distribution",
+        "raises_title": "Review raises",
+        "raise_ready": "Proposed raises on {n} approved reviews: {total} a month — management approves them in one decision",
+        "raise_prepare": "Prepare the proposal",
+        "raise_with_mgmt": "Annual review raises for {n} — with management",
+        "raise_approved": "Raises approved — effective {date}",
+        "raise_month": "{total} a month",
+        "raise_from": "from {date}",
+        "raise_by": "prepared by {name}",
+        "raise_approve": "Approve the raises",
+        "raise_return": "Return",
+        "raise_decided_ok": "Raises approved",
+        "raise_decided_no": "Proposal returned",
+        "apply_note": "{n} approved raises not applied to pay yet — in the wage from {date}",
+        "apply_n": "Apply {n} to pay",
+        "applied": "{n} raises applied — they enter their month's payroll",
+        "raise_title": "Review raise proposal",
+        "raise_sub": "Approved reviews only · from {date}",
+        "pct_of": "Percentage for {band}",
+        "raise_loaded": "Company cost incl. GOSI and the EOS accrual",
+        "raise_rest": "If the remaining {n} reviews are approved at the same rates — additional cost",
+        "raise_note": "Percentages are company policy. The raise is on the basic, and the allowances follow it. One decision for management, not one request per person — and the HR manager never changes his own pay.",
+        "raise_submit": "Send to management",
+        "raise_sent": "Sent to management",
+        "raise_change": "{from} → {to}",
+        "raise_on_file": "Approved raise",
+        "prob_title": "Probation assessments",
+        "prob_note": "The line manager’s view attaches to the decision — it never blocks it",
+        "prob_ends": "ends {date}",
+        "prob_manager": "manager: {name}",
+        "prob_assess": "Assess",
+        "facts_title": "From the record — read, not rated ({w}% of the score):",
+        "facts": "{abs} absence days in the last two months · {pen} applied penalties in 180 days · {ot} overtime hours",
+        "facts_injury": "a recorded work injury",
+        "review_title": "Review — {name}",
+        "self_seen": "His self-assessment:",
+        "need": "Training need?",
+        "need_none": "None",
+        "need_note": "Optional — feeds the training needs list",
+        "note": "Note to the employee",
+        "by": "Recorded in the name of {name}",
+        "review_submit": "Send for approval",
+        "review_sent": "Sent — the employee sees it after HR approval",
+        "self_title": "My self-assessment",
+        "self_info": "Your manager reads it before reviewing you — it is not part of the score",
+        "self_note": "Highlights (optional)",
+        "self_submit": "Send to my manager",
+        "self_sent": "Sent to your manager",
+        "self_send": "Send my self-assessment",
+        "self_done": "Self-assessment sent",
+        "file_title": "Performance",
+        "under_six": "Under six months — assessed at probation",
+        "not_reviewed": "Not reviewed yet",
+        "from_record": "From the record",
+        "rec_short": "{abs} absent · {pen} penalties",
+        "pip": "Improvement plan",
+        "pip_until": "until {date}",
+        "my_title": "My review",
+        "result": "Result",
+        "reviewed_by": "Reviewed by",
+        "my_record": "From my record — read, not rated",
+        "my_raise": "{amount} on the basic from {date}",
+        "ack": "I have seen it",
+        "acked": "Acknowledged",
+        "acked_on": "Seen {date}",
+        "discuss": "You may discuss it with your manager or HR",
+        "my_not_yet": "Your review is not approved yet ({name}) — the cycle closes {date}",
+        "my_not_yet_anon": "Your review is not approved yet — the cycle closes {date}",
+        "block": {
+          "closed": "The cycle is not open",
+          "not_draft": "This review was already sent",
+          "incomplete": "Complete the grades",
+          "nothing": "Nothing awaits approval",
+          "no_open": "Choose the opening date",
+          "no_close": "Choose the closing date",
+          "close_before_open": "The closing date must follow the opening",
+          "running": "A cycle is still running",
+          "proposed": "A proposal already exists",
+          "no_approved": "No approved reviews",
+          "bad_pct": "A percentage is 0 to 25",
+          "not_decided": "Management has not decided yet",
+          "stale": "It changed — open it again"
         }
       }
     },

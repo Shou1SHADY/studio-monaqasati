@@ -265,7 +265,9 @@ service cloud.firestore {
       return p.at == request.time && hrNum(p.day) == hrToday()
         && ((p['in'] == request.time && p.out == null) || (p['in'] == o.get('in', 0) && p.day == o.get('day', '') && p.out == request.time));
     }
-    function hrNotOwn() { return resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner(); }
+    // The record is the caller's own (his request, his payslip, his review).
+    function hrMine() { return resource.data.get('employeeUserId', '') == request.auth.uid; }
+    function hrNotOwn() { return !hrMine() || isOrgOwner(); }
     // Finance's hand in HR (AD-03): an advance above the HR limit.
     function hrFinance() {
       return isOrgOwner() || hasOrgPermission('invoices.manage') || hasOrgPermission('accounting.post');
@@ -3390,6 +3392,40 @@ service cloud.firestore {
         && (hrSeesPay() || hrOwnRecord(request.resource.data.employeeId))
         && hrSamePay(request.resource.data, get(/databases/$(database)/documents/employeePay/$(request.resource.data.employeeId)).data);
       allow delete: if false;
+    }
+
+    // Training sessions (TR-03/04, optional `train`): read by the company — a
+    // supervisor and My file name their own people; written by the HR manager.
+    // The cost goes to Finance on the hrEvents outbox (hr:TRN), never here.
+    match /hrTraining/{id} {
+      allow get, list: if orgReadable();
+      allow create: if createsInOrg() && hrManager();
+      allow update: if keepsOrg() && hrManager();
+    }
+
+    // Performance (PF-01…07, optional `perf`): cycles, reviews, self-assessments.
+    // A cycle is read by the company; its raise decision is management's. A
+    // review is read by the HR manager, management and the rater it names — by
+    // the employee once approved. The rater grades a draft and sends it; the HR
+    // manager approves or returns (never his own); management rates and approves
+    // those naming no rater (the HR manager's). A self-assessment is created by
+    // the employee and read by his rater. No amount on any of them (RL-03).
+    function hrRater(d) { return d.get('raterUserId', '') == request.auth.uid; }
+    match /hrReviews/{id} {
+      allow get, list: if orgReadable() && (resource.data.kind == 'cycle' || hrManager() || hrRole('hr.management') || hrRater(resource.data)
+        || (hrMine() && resource.data.st in ['ok', 'ack', 'self'])
+        || (resource.data.kind == 'self' && hrRater(get(/databases/$(database)/documents/hrReviews/$(resource.data.review)).data)));
+      allow create: if createsInOrg()
+        && ((hrManager() && !('sc' in request.resource.data))
+          || (request.resource.data.st == 'self' && request.resource.data.employeeUserId == request.auth.uid
+              && hrOwnRecord(request.resource.data.employeeId) && id == request.resource.data.review + '__self'));
+      allow update: if keepsOrg() && resource.data.get('st', '') != 'self'
+        && ((hrManager() && hrNotOwn())
+          || (hrRole('hr.management') && (resource.data.kind == 'cycle' ? changedKeys().hasOnly(['raise', 'updatedAt']) : resource.data.raterUserId == null && hrNotOwn()))
+          || (hrRater(resource.data) && resource.data.st == 'draft' && request.resource.data.st in ['draft', 'done']
+              && changedKeys().hasOnly(['sc', 'st', 'need', 'note', 'rated', 'updatedAt']))
+          || (hrMine() && resource.data.st == 'ok'
+              && request.resource.data.st == 'ack' && changedKeys().hasOnly(['st', 'ackAt', 'updatedAt'])));
     }
 
     // The last permanent employee number (EM-02) — only ever moves forward.

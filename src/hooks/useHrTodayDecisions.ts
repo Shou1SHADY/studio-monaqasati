@@ -9,10 +9,12 @@
 import { useMemo } from "react"
 import { useHrViolations, violationWaits } from "@/components/hr/HrViolationList"
 import type { HrAccess } from "@/hooks/useHrAccess"
+import { useHrGrowth } from "@/hooks/useHrGrowth"
 import { useHrLetters } from "@/hooks/useHrLetters"
 import { useHrToday } from "@/hooks/useHrToday"
 import { useHrTodayRoles } from "@/hooks/useHrTodayRoles"
 import { useHrGovDocs } from "@/hooks/useHrGovDocs"
+import { growthTodayItems } from "@/lib/hr/growth-today"
 import { lettersToSign } from "@/lib/hr/letters"
 import { riyadhMinutes } from "@/lib/hr/punches"
 import { requestActions } from "@/lib/hr/requests"
@@ -29,6 +31,8 @@ export function useHrTodayDecisions(access: HrAccess, today: string) {
   // The optional `gov` / `mudad` rows (slice 1): the platform records, read only with a feature on.
   const features = useMemo(() => featureSet(access.settings), [access.settings])
   const govDocs = useHrGovDocs(access, features.has("gov") || features.has("mudad"))
+  // The optional growth features' rows (train / perf) — computed from what this viewer may read.
+  const growth = useHrGrowth(access)
   return useMemo(() => {
     // TD-02 — what waits for this viewer's hand (cancelling is not a decision).
     const waiting = world.requests.filter((r) => requestActions(access.ctx, r, { today, financeAllowed: false }).some((a) => a !== "cancel"))
@@ -41,7 +45,7 @@ export function useHrTodayDecisions(access: HrAccess, today: string) {
       : []
     const extra = platformTodayItems({ ctx: access.ctx, today, features, govHeld, tasks, payrolls: world.payrolls, payDay: access.settings.policies.payDay, documentedBasic: (id) => documentedBasic(id, world.pays.get(id), govDocs) })
     const platforms = taskSummary(tasks)
-    const items = todayItems({
+    const core = todayItems({
       ctx: access.ctx,
       today,
       renewWindowDays: access.settings.policies.renewWindowDays,
@@ -52,8 +56,23 @@ export function useHrTodayDecisions(access: HrAccess, today: string) {
       hiring: world.hiring,
       punch: access.settings.features.includes("punch") ? { nowMin: riyadhMinutes() } : null,
     })
+    const grown = growthTodayItems({
+      ctx: access.ctx,
+      today,
+      features: featureSet(access.settings),
+      renewWindowDays: access.settings.policies.renewWindowDays,
+      recordWeight: access.settings.policies.recordWeight,
+      employees: world.employees,
+      sites: world.sites,
+      sessions: growth.sessions,
+      cycle: growth.cycle,
+      reviews: growth.reviews,
+      pays: world.pays,
+    })
+    const rank = { red: 0, amber: 1, blue: 2 }
+    const items = [...core, ...grown].sort((a, b) => rank[a.severity] - rank[b.severity])
     const count = decisionCount(items, waiting.length + vWaiting.length + lWaiting.length)
     const urgent = items.some((x) => x.severity === "red" && !x.waiting)
     return { world, items, waiting, violations, vWaiting, lWaiting, heldRoles, count, urgent, platforms }
-  }, [world, access, today, violations, letters, heldRoles, govDocs, features])
+  }, [world, access, today, violations, letters, heldRoles, govDocs, features, growth])
 }

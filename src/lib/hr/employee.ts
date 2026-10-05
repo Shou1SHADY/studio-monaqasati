@@ -9,6 +9,7 @@ import { cleanIban, driveDocOf, IBAN_RE, legalOnSite, mayDrive, passportFirst, t
 import { accruedDays } from "./leave"
 import type { HrContext } from "./access"
 import type { PayStep } from "./pay"
+import type { CertKey } from "./training"
 import { addDays, daysBetween, STATUTORY } from "./statutory"
 import { NITAQAT_MIN_BASIC, tradeOf } from "./trades"
 import { UNASSIGNED_SITE, type SiteType } from "./sites"
@@ -88,6 +89,10 @@ export interface HrEmployee {
   /** Set when the exit starts (EX-01): payroll stops the month it falls in — the settlement pays that month (EX-05). */
   lastDay?: string | null
   docs: DocDates
+  /** TR-01 — safety certificates, each its expiry (a document: its state comes from its date). */
+  certs?: Partial<Record<CertKey, string | null>> | null
+  /** PF-07 — an improvement plan set when a review is approved in band D: until a day, by whom. */
+  pip?: { until: string; by: string; byName: string | null; cycleId: string } | null
   /** Annual leave days taken since joining (opening balance adjusts accrual). */
   leaveTaken: number
   openingLeave?: number

@@ -80,6 +80,15 @@ export const HR_NOTICE_KINDS = [
   "hr_offer_approved", // → whoever made the offer: send it
   // Punches (PT-05, optional: punch)
   "hr_ot_refused", // → the employee: punch overtime not counted, with its reason — he may object by a correction
+  // Training (WF-20, optional: train) and performance (WF-21/22, optional: perf)
+  "hr_training_scheduled", // → each participant workplace's supervisor: who of his goes, and when
+  "hr_training_cost", // → Finance: an external course's cost to pay (no amount in the message)
+  "hr_cycle_opened", // → each rater: the cycle is open and how many of his team to rate
+  "hr_reviews_sent", // → the HR manager: a rater's reviews await approval
+  "hr_reviews_returned", // → the rater: his set came back for review
+  "hr_review_ready", // → the employee: his review is approved — he may see it
+  "hr_raises_proposed", // → management: the review raises, one decision
+  "hr_raises_decided", // → the HR manager: approved (apply them) or returned
 ] as const
 export type HrNoticeKind = (typeof HR_NOTICE_KINDS)[number]
 
@@ -157,6 +166,14 @@ export const HR_NOTICE_COPY_AR: Record<HrNoticeKind, { title: string; message: s
   hr_offer_above_band: { title: "عرض فوق النطاق — {name}", message: "عرض {actor} على {name} للشاغر {no} فوق نطاق المهنة. لا يُرسل للمرشح قبل اعتمادك." },
   hr_offer_approved: { title: "اعتُمد عرض {name} — أرسله", message: "اعتمد {actor} العرض على {name} للشاغر {no}. أرسله وسجّل ردّ المرشح حين يصل." },
   hr_ot_refused: { title: "لم يُحتسب إضافي {on}", message: "لم يُحتسب إضافي {h} ساعة ليوم {on} — {why}. لك الاعتراض بطلب تصحيح حضور من «ملفي»." },
+  hr_training_scheduled: { title: "جلسة {course} {date} — {count} من عمالك", message: "جدول {actor} جلسة {course} في {date} لـ{count} من عمال {site}. يوم التدريب يوم عمل بأجر." },
+  hr_training_cost: { title: "طلب صرف تكلفة تدريب — {course}", message: "سجّل {actor} نتيجة جلسة {course} ({date}): اجتازها {count}. اصرف تكلفتها من مكتب الموارد البشرية في المحاسبة." },
+  hr_cycle_opened: { title: "دورة التقييم مفتوحة — {count} من فريقك", message: "فتح {actor} دورة التقييم حتى {close}. قيّم {count} من فريقك من «الأداء»." },
+  hr_reviews_sent: { title: "{count} تقييماً بانتظار الاعتماد", message: "أرسل {actor} {count} تقييماً للاعتماد. عايرها واعتمدها أو أعدها من «الأداء»." },
+  hr_reviews_returned: { title: "أُعيدت تقييماتك للمراجعة", message: "أعاد {actor} {count} تقييماً للمراجعة. راجعها وأرسلها من جديد قبل {close}." },
+  hr_review_ready: { title: "تقييمك معتمد — {year}", message: "اعتُمد تقييمك في دورة {year}. اطّلع عليه في «ملفي» — لك مناقشته مع مديرك أو الموارد البشرية." },
+  hr_raises_proposed: { title: "زيادات التقييم السنوي بانتظار قرارك", message: "أعدّ {actor} زيادات التقييم لـ{count} موظفاً من {eff}. قرّر فيها دفعة واحدة من «الأداء»." },
+  hr_raises_decided: { title: "قرار الإدارة في زيادات التقييم", message: "{verdict} — {actor}." },
 }
 
 /** `@key` params the messages name, with their Arabic text (nested keys of Portal.Shared). */
@@ -183,6 +200,13 @@ export const HR_NOTICE_PARAM_COPY_AR: Record<string, string> = {
   "hr_ot_why.nowork": "بقي بلا تكليف بعمل",
   "hr_ot_why.wait": "ينتظر النقل",
   "hr_ot_why.err": "خطأ بصمة",
+  "hr_verdict.raises_ok": "اعتُمدت الزيادات — طبّقها على الأجور",
+  "hr_verdict.raises_back": "أُعيد المقترح",
+  "hr_course.ind": "تعريف السلامة بالموقع",
+  "hr_course.hgt": "العمل على المرتفعات",
+  "hr_course.fa": "الإسعافات الأولية",
+  "hr_course.sup": "مهارات الإشراف الميداني",
+  "hr_course.xl": "إكسل للأعمال",
 }
 
 /** HR's own document numbers in Arabic (ط.إ / ط.سل / ط.ص / خ) — the shared prefix table is Sales'. */
@@ -313,6 +337,8 @@ export const hrLinks = {
   /** An opening on the Hiring tab (optional: hire). */
   hiring: (openingId?: string | null) => (openingId ? `hr/hiring?job=${openingId}` : "hr/hiring"),
   financeDesk: () => "accounting/hr-desk",
+  perf: () => "hr/perf",
+  training: () => "hr/perf?seg=train",
   custody: () => "warehouses/custody",
   /** Projects live in the contractor portal only. */
   projectTeam: (projectId: string) => `/contractor/projects/${projectId}?tab=team`,

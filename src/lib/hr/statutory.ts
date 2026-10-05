@@ -80,6 +80,13 @@ export interface HrPolicies {
   jobApprove: BlockOrWarn
   /** ST-03 — an offer above the band waits for management (block) or goes with a warning (warn). */
   offerBand: BlockOrWarn
+  /** PF-06 — the review raise on the basic by band, in percent (0–25): A outstanding · B very good · C good · D. */
+  raiseA: number
+  raiseB: number
+  raiseC: number
+  raiseD: number
+  /** PF-04 — the record's share of a review score (absences, penalties): the manager's grade is the rest. */
+  recordWeight: number
 }
 
 export const DEFAULT_HR_POLICIES: HrPolicies = {
@@ -95,10 +102,18 @@ export const DEFAULT_HR_POLICIES: HrPolicies = {
   offerBandHigh: 1.2,
   jobApprove: "block",
   offerBand: "block",
+  raiseA: 7,
+  raiseB: 4,
+  raiseC: 2,
+  raiseD: 0,
+  recordWeight: 0.2,
 }
 
 const frac = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1 ? v : fallback)
 const int = (v: unknown, lo: number, hi: number, fallback: number) => (typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi ? v : fallback)
+
+/** A review raise: 0–25 % in half points (the prototype's raise proposal input). */
+const raisePct = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 25 ? Math.round(v * 2) / 2 : fallback)
 
 /** A stored policy set, or nothing, made complete and sane. */
 export function resolveHrPolicies(raw: Partial<HrPolicies> | null | undefined): HrPolicies {
@@ -115,6 +130,11 @@ export function resolveHrPolicies(raw: Partial<HrPolicies> | null | undefined): 
     ...offerBandOf(raw),
     jobApprove: raw?.jobApprove === "warn" ? "warn" : "block",
     offerBand: raw?.offerBand === "warn" ? "warn" : "block",
+    raiseA: raisePct(raw?.raiseA, d.raiseA),
+    raiseB: raisePct(raw?.raiseB, d.raiseB),
+    raiseC: raisePct(raw?.raiseC, d.raiseC),
+    raiseD: raisePct(raw?.raiseD, d.raiseD),
+    recordWeight: typeof raw?.recordWeight === "number" && Number.isFinite(raw.recordWeight) && raw.recordWeight >= 0 && raw.recordWeight <= 0.5 ? raw.recordWeight : d.recordWeight,
   }
 }
 

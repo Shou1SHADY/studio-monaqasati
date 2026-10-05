@@ -35,7 +35,7 @@ import { STATUTORY, type HrPolicies } from "@/lib/hr/statutory"
 import { HrWriteError } from "@/lib/hr/write-guard"
 
 /** Features whose screens arrive in a later release — their switch is kept, and says so. */
-const LATER: ReadonlySet<string> = new Set(["perf", "train"])
+const LATER: ReadonlySet<string> = new Set<string>([])
 
 /** ST-04 — «ملف المنشأة»: the band (by hand, from Qiwa), the Saudi ratio from the record, the green threshold, and
  * the safety margin; the registrations and the visas with their as-of day. Settings and government relations' Today. */
@@ -113,7 +113,8 @@ export function HrSettingsView({ access }: { access: HrAccess }) {
   const logValue = (field: string, v: string | number | boolean | null) => {
     if (v == null || v === "") return "—"
     if (typeof v === "boolean") return t(v ? "settings.log_on" : "settings.log_off")
-    if (field === "policies.housingShare" || field === "policies.transportShare" || field === "policies.offerBandLow" || field === "policies.offerBandHigh") return `${pct(Number(v))}%`
+    if (field === "policies.housingShare" || field === "policies.transportShare" || field === "policies.offerBandLow" || field === "policies.offerBandHigh" || field === "policies.recordWeight") return `${pct(Number(v))}%`
+    if (/^policies\.raise[ABCD]$/.test(field)) return `${v}%`
     if (field === "businessType") return t(`business_type.${v}` as "business_type.contractor")
     if (field === "establishment.band") return t(`settings.band.${v}` as "settings.band.red")
     if (field === "policies.closeMissing" || field === "policies.jobApprove" || field === "policies.offerBand") return t(`policy.${v}` as "policy.block")
@@ -344,6 +345,31 @@ export function HrSettingsView({ access }: { access: HrAccess }) {
             </>
           )}
         </div>
+        {draft.features.includes("perf") && (
+          // PF-04 / PF-06 — the review's record weight and the raise by band: company policies, logged like any other.
+          <div className="mt-4 grid gap-4 border-t pt-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="hr-p-recordWeight">{t("policy.recordWeight")}</Label>
+              <Input id="hr-p-recordWeight" type="number" min="0" max="50" step="5" dir="ltr" value={pct(draft.policies.recordWeight)} onChange={(e) => setPolicy("recordWeight", Number(e.target.value) / 100)} disabled={off} />
+              <p className="text-[11px] text-muted-foreground">{t("policy.recordWeight_note", { m: 100 - Math.round(draft.policies.recordWeight * 100), w: Math.round(draft.policies.recordWeight * 100) })}</p>
+            </div>
+            <fieldset className="space-y-1.5">
+              <legend className="text-sm font-medium">{t("policy.raise")}</legend>
+              <div className="grid grid-cols-4 gap-2">
+                {(["raiseA", "raiseB", "raiseC", "raiseD"] as const).map((k) => (
+                  <div key={k} className="space-y-1">
+                    <Label htmlFor={`hr-p-${k}`} className="text-[11px] text-muted-foreground">
+                      {t(`perf.band.${k.slice(-1)}` as "perf.band.A")}
+                    </Label>
+                    <Input id={`hr-p-${k}`} type="number" min="0" max="25" step="0.5" dir="ltr" value={String(draft.policies[k])} onChange={(e) => setPolicy(k, Number(e.target.value))} disabled={off} />
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">{t("policy.raise_note")}</p>
+            </fieldset>
+          </div>
+        )}
+        {draft.features.includes("train") && <p className="mt-4 border-t pt-4 text-xs text-muted-foreground">{t("policy.certs_note")}</p>}
       </Panel>
 
       {canEdit && (

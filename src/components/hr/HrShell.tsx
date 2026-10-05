@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, type ReactNode } from "react"
 import { useTranslations } from "next-intl"
-import { BriefcaseBusiness, CalendarCheck2, FileUser, Landmark, LayoutDashboard, Lock, MapPin, Receipt, Settings2, Users, BarChart3, Loader2 } from "lucide-react"
+import { BriefcaseBusiness, CalendarCheck2, FileUser, GraduationCap, Landmark, LayoutDashboard, Lock, MapPin, Receipt, Settings2, Users, BarChart3, Loader2 } from "lucide-react"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { ModuleHeader, type ModuleKpi, type ModuleTab } from "@/components/module-ui/ModuleHeader"
 import { useHrAccess, type HrAccess } from "@/hooks/useHrAccess"
@@ -28,7 +28,7 @@ export function tabLabelKey(tab: HrTab, settings: Pick<HrSettings, "businessType
 }
 
 /** Tabs built so far — an optional feature's tab appears once it is built. */
-export const HR_BUILT_TABS: readonly HrTab[] = ["today", "people", "sites", "attendance", "payroll", "hiring", "platforms", "reports", "settings", "me"]
+export const HR_BUILT_TABS: readonly HrTab[] = ["today", "people", "sites", "attendance", "payroll", "hiring", "perf", "platforms", "reports", "settings", "me"]
 
 const ICON: Partial<Record<HrTab, typeof Users>> = {
   today: LayoutDashboard,
@@ -38,6 +38,7 @@ const ICON: Partial<Record<HrTab, typeof Users>> = {
   payroll: Receipt,
   platforms: Landmark,
   hiring: BriefcaseBusiness,
+  perf: GraduationCap,
   reports: BarChart3,
   settings: Settings2,
   me: FileUser,
