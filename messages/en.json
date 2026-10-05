@@ -18982,7 +18982,7 @@
         "today": "What needs you today, and where the company stands",
         "people": "Every employee on one card",
         "sites": "Every place people work — cost follows the assignment",
-        "attendance": "Sources, exceptions and closing",
+        "attendance": "Today across the workplaces, the days nobody recorded, and each month's closing",
         "payroll": "Computed from closed attendance and the contract",
         "hiring": "Openings, candidates and onboarding",
         "platforms": "Government platform tasks and reconciliation",
@@ -19044,7 +19044,8 @@
           "no_name": "Name the workplace",
           "project_needed": "A project site names its project",
           "bad_end": "The end date is not a date"
-        }
+        },
+        "name_en": "English name (optional)"
       },
       "business_type": {
         "contractor": "Contractor",
@@ -19739,7 +19740,10 @@
         "leave_returned": "Back from leave {no} on {on} — {late} days late",
         "opening_recorded": "Opening balance from the card: leave {leave} days{advance, select, 1 { · and an outstanding advance} other {}}",
         "file_attached": "File attached — {name}",
-        "commission_recorded": "Commission recorded for {month} ({reason})"
+        "commission_recorded": "Commission recorded for {month} ({reason})",
+        "assigned_mp": "Assigned to {site} from {on} — manpower request {request}",
+        "transfer_planned": "Transfer to {site} scheduled for {on} — manpower request {request}",
+        "transfer_cancelled": "Scheduled transfer to {site} on {on} cancelled"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -19830,12 +19834,33 @@
           "no_note": "Give the reason",
           "not_missing": "A chosen day already has a record",
           "not_over": "The month has not ended",
-          "missing": "{n, plural, one {# day has} other {# days have}} no record — record or declare them first"
+          "missing": "{n, plural, one {# day has} other {# days have}} no record — record or declare them first",
+          "past": "A past day is filled by the declaration, not the sheet",
+          "recorded": "This day is already recorded — it is locked",
+          "no_ack": "Tick the statement"
         },
         "on_leave": "On approved leave",
         "on_leave_note": "On approved leave this day — not recorded absent and nothing is deducted.",
         "holiday": "{name} — a paid public holiday; no sheet is needed. Hours worked on it are recorded as overtime.",
-        "ramadan": "Ramadan: the working day is six hours for everyone — anything beyond is overtime."
+        "ramadan": "Ramadan: the working day is six hours for everyone — anything beyond is overtime.",
+        "iqama_expired": "Expired iqama",
+        "day_locked": "This day is recorded and locked. A wrong entry is corrected by an attendance correction, never by editing the sheet.",
+        "day_past": "A past day with no sheet is filled only by the named declaration, under Month & closing.",
+        "unlisted_saved": "Reported working here but not listed",
+        "unlisted_hint": "HR corrects the assignment from these — or the supervisor raises a correction below.",
+        "save_locks": "Once saved, today's sheet is locked.",
+        "fill_open": "Record the missing days",
+        "declaration_people": "{n, plural, =0 {Nobody credited} one {# person credited} other {# people credited}}",
+        "fill_title": "Unrecorded days — {site}",
+        "fill_sub": "{month} · {n, plural, one {# day} other {# days}} · {people, plural, one {# person} other {# people}} here",
+        "fill_why_title": "An unrecorded day used to be paid as worked with nobody saying it was",
+        "fill_why": "Here a named person says it. Real absences are corrected afterwards; the record is never deleted.",
+        "fill_man_days": "Man-days to be recorded present",
+        "fill_people": "People credited",
+        "fill_wages": "Roughly in wages",
+        "fill_ack": "I state that these people were at work on these days",
+        "fill_by": "Recorded under your name: {name}",
+        "fill_submit": "Record under my name"
       },
       "leave_type": {
         "annual": "Annual",
@@ -20426,9 +20451,11 @@
         "from": "From",
         "line": "{count} × {trade} from {date}",
         "state": {
-          "open": "Waiting for HR",
-          "answered": "Answered",
-          "withdrawn": "Withdrawn"
+          "open": "Awaiting our answer",
+          "answered": "Answered — awaiting Projects",
+          "withdrawn": "Withdrawn",
+          "short": "{n} uncovered",
+          "accepted": "Plan accepted"
         },
         "answer": "Answer with the plan",
         "plan": "Covered {covered} of {count}",
@@ -20445,8 +20472,9 @@
           "unassigned": "unassigned now",
           "site_ending": "freed by a site that ends",
           "visa": "on unused visas (arrival)",
-          "hire": "to hire",
-          "ajeer": "or temporary labour (Ajeer, ×1.4 cost)"
+          "hire": "external hire — arrives",
+          "ajeer": "temporary labour (Ajeer) — from",
+          "xfer": "transfer of services — from"
         },
         "why": {
           "iqama_expired": "iqama expired",
@@ -20455,8 +20483,67 @@
         "block": {
           "no_trade": "Choose the trade",
           "bad_count": "A whole number above zero",
-          "no_date": "Choose the start date"
-        }
+          "no_date": "Choose the start date",
+          "no_rest": "Choose how the rest is covered",
+          "no_ajeer": "Temporary labour is not allowed by the company's policy",
+          "no_site": "The project has no HR workplace yet — add it under the workplaces first",
+          "stale": "Something changed since — reopen the request"
+        },
+        "uncovered_said": "left uncovered — said plainly",
+        "pstate": {
+          "open": "Waiting for HR",
+          "answered": "Answered — accept the plan",
+          "withdrawn": "Withdrawn",
+          "short": "{n} uncovered",
+          "accepted": "Plan accepted"
+        },
+        "panel_note": "From Projects · we answer with coverage: move, hire or rent.",
+        "possible": "Possible coverage: {on} on time · {late} late · {short} uncovered",
+        "answer_title": "Answer {no}",
+        "step": {
+          "cover": "Coverage",
+          "answer": "Answer"
+        },
+        "steps": "Answer steps",
+        "kpi": {
+          "on_time": "On time",
+          "late": "Late",
+          "short": "Uncovered",
+          "excluded": "Excluded"
+        },
+        "visa_row": "Arrival — {trade}",
+        "now_at": "Now at {site}",
+        "visa_issued": "Visa issued",
+        "excluded_one": "Excluded — {why}",
+        "nobody": "Nobody of ours can cover it",
+        "short_title": "{n} uncovered",
+        "short_desc": "External hire: earliest arrival {date} ({visas} free visas) — or temporary labour. Choose how the rest is covered.",
+        "rest_legend": "How the rest is covered",
+        "rest": {
+          "hire": "External hire",
+          "xfer": "Transfer of services",
+          "ajeer": "Temporary labour (Ajeer)",
+          "none": "Leave it uncovered"
+        },
+        "rest_sub": {
+          "hire": "Arrives {date}",
+          "xfer": "From another employer, about 30 days ({date}) · counts in our headcount and Nitaqat",
+          "ajeer": "A supply contract through Procurement · not our headcount · ≈ ×{factor}",
+          "ajeer_off": "Not allowed by the company's policy",
+          "none": "We say so plainly"
+        },
+        "ajeer_cost": "≈ {cost} a month each",
+        "sum_on_time": "{n} on time",
+        "sum_late": "{n} late",
+        "sum_short": "{n} uncovered",
+        "sum_title": "The answer",
+        "note_pm": "Note to the project manager",
+        "on_send": "On sending: the unassigned are assigned now, the others are scheduled on their date, the visas are reserved, and Projects is told to accept the plan.",
+        "accepted_line": "Plan accepted by {name} · {at}",
+        "accept": "Accept the plan",
+        "accepted_ok": "Plan accepted",
+        "withdraw": "Withdraw",
+        "withdrawn_ok": "Request withdrawn"
       },
       "letter": {
         "kind": {
@@ -20853,6 +20940,102 @@
           "future_month": "Not a future month",
           "no_wage": "Enter the wage first"
         }
+      },
+      "site_word": {
+        "contractor": "Sites",
+        "supplier": "Branches & warehouses",
+        "developer": "Departments & projects",
+        "none": "Workplaces"
+      },
+      "site": {
+        "page_desc": "Who is here, who is present today, the month's sheet and its closing.",
+        "pm": "Project manager: {name}",
+        "from_projects": "From Projects",
+        "bench_note": "Paid with no output — the first source of coverage for a manpower request.",
+        "k_bench": "Unassigned",
+        "k_bench_cost": "Their pay",
+        "per_month": "a month",
+        "k_expired": "Expired iqamas",
+        "k_assigned": "Assigned",
+        "k_away": "{n} on leave or leaving",
+        "k_present": "Present today",
+        "k_of": "of {n}",
+        "k_month": "Attendance {month}",
+        "month_assumed": "Assumed (office)",
+        "ending_title": "Ends in {n, plural, =0 {less than a day} one {# day} other {# days}}",
+        "ending": "{n, plural, =0 {Nobody} one {# worker} other {# workers}} will be unassigned. Open manpower requests elsewhere read them as a source.",
+        "bench_people": "Unassigned people",
+        "col": {
+          "since": "Since",
+          "today": "Today",
+          "docs": "Documents",
+          "action": "Action"
+        },
+        "assign": "Assign",
+        "move": "Move",
+        "show_more": "Show {n} more",
+        "bench_trades": "Unassigned by trade",
+        "trades": "By trade",
+        "bench_trades_note": "Paid with no output — the first source of coverage.",
+        "trades_note": "Present ÷ assigned",
+        "expired_n": "{n} expired iqama",
+        "month_closed": "Closed",
+        "month_through": "Up to date — recorded through {date}",
+        "month_current": "Up to date",
+        "month_behind": "Stopped since {date} — {n, plural, one {# day} other {# days}} unrecorded",
+        "day": {
+          "present": "Present",
+          "absent": "Absent",
+          "sick": "Sick",
+          "permission": "Permission",
+          "leave": "On leave",
+          "unrecorded": "Not recorded",
+          "rest": "Rest day"
+        },
+        "strip": "Workplaces",
+        "all": "All — {word}",
+        "all_line": "{n} employees · {r, plural, =0 {no new request} one {# new request} other {# new requests}}",
+        "unrecorded_today": "No record today",
+        "present_of": "{p}/{n} present",
+        "bench_n": "{n, plural, =0 {Nobody} one {# worker} other {# workers}}",
+        "planned_title": "Scheduled transfers",
+        "planned_line": "{from} → {to} on {date}",
+        "planned_due": "Due",
+        "planned_wait": "Scheduled",
+        "planned_apply": "Move now",
+        "planned_cancel": "Cancel",
+        "planned_applied": "Moved",
+        "planned_cancelled": "Transfer cancelled",
+        "ending_row": "Ends {date} · {n, plural, =0 {nobody} one {# person} other {# people}} there",
+        "plan": "Plan",
+        "fixes_title": "Assignment corrections waiting",
+        "fixes_note": "Someone working at one place but recorded at another — decided on that place's page.",
+        "fix_line": "Working at {site} since {date} · raised by {by}",
+        "open": "Open",
+        "end_from_project": "From the project's programme: {date}"
+      },
+      "atv": {
+        "k_present": "Present today",
+        "k_present_note": "on the supervisors' sheets",
+        "k_missing": "Unrecorded days",
+        "k_missing_note": "They block closing — an unrecorded day used to be paid as worked",
+        "k_close": "To close for {month}",
+        "k_close_note": "No payroll before every workplace closes",
+        "missing_n": "{n, plural, one {# day unrecorded} other {# days unrecorded}}",
+        "close": "Close",
+        "sheet": "Sheet",
+        "close_title": "Close {month} — the month is over",
+        "close_note": "No payroll before every workplace closes. A closed month never reopens.",
+        "through": "Recorded through {date}",
+        "nothing": "Nothing recorded",
+        "month_title": "Attendance — {month}",
+        "month_note": "Payroll reads closed months only.",
+        "none": "No workplace with people to record",
+        "people_n": "{n, plural, =0 {nobody} one {# person} other {# people}}",
+        "unlisted_title": "Working there but not listed",
+        "unlisted_note": "Reported on a sheet — correct the assignment from that place's page.",
+        "unlisted_line": "{site} · {date} · by {by}",
+        "punch_later": "Punch sources (device, app) and their exceptions join this tab when the Punch feature is switched on."
       }
     },
     "ProcSuppliers": {

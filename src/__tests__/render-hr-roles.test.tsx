@@ -28,7 +28,7 @@ jest.mock("@/ai/genkit", () => jest.requireActual("@/test-utils/render-world").a
 jest.mock("@/components/layout/portal-layout", () => jest.requireActual("@/test-utils/render-world").portalLayoutMock)
 
 import React from "react"
-import { act, render } from "@testing-library/react"
+import { act, fireEvent, render } from "@testing-library/react"
 import { resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import { installDomShims, missingKeys, pushed, queriesRun, setPathname, setSignedIn } from "@/test-utils/render-world"
 import { todayDay } from "@/lib/hr/format"
@@ -38,6 +38,7 @@ import PeoplePage from "@/app/[locale]/(contractor)/contractor/hr/people/page"
 import FilePage from "@/app/[locale]/(contractor)/contractor/hr/people/[id]/page"
 import SitesPage from "@/app/[locale]/(contractor)/contractor/hr/sites/page"
 import SitePage from "@/app/[locale]/(contractor)/contractor/hr/sites/[id]/page"
+import AttendancePage from "@/app/[locale]/(contractor)/contractor/hr/attendance/page"
 import PayrollPage from "@/app/[locale]/(contractor)/contractor/hr/payroll/page"
 import ReportsPage from "@/app/[locale]/(contractor)/contractor/hr/reports/page"
 import SettingsPage from "@/app/[locale]/(contractor)/contractor/hr/settings/page"
@@ -133,6 +134,8 @@ function buildWorld() {
       createdAt: `${TODAY}T08:00:00Z`,
       ...over,
     })
+  // Projects asks for two masons on the tower from today (WF-12).
+  seed("manpowerRequests/mr1", { organizationId: ORG, no: "MP-2026/007", projectId: "p1", projectName: "برج الواحة", siteId: "s1", trade: "mason", count: 2, from: TODAY, state: "open", requested: { by: "pmu", byName: "مدير المشروع", at: `${TODAY}T07:00:00Z` }, answer: null })
   // The HR manager's own leave goes to management (LV-05) — he never decides it.
   leave("q1", "e_hrm", "hrm", "hq", { deciderLevel: "management" })
   // A worker's leave: the site's supervisor endorses it, the HR manager decides.
@@ -167,6 +170,8 @@ const SCREENS: Record<string, Screen> = {
   ownFile: { path: "/contractor/hr/people/e_hrm", id: "e_hrm", tab: "people", node: () => <FilePage /> },
   sites: { path: "/contractor/hr/sites", tab: "sites", node: () => <SitesPage /> },
   site: { path: "/contractor/hr/sites/s1", id: "s1", tab: "sites", node: () => <SitePage /> },
+  bench: { path: "/contractor/hr/sites/__bench__", id: "__bench__", tab: "sites", node: () => <SitePage /> },
+  attendance: { path: "/contractor/hr/attendance", tab: "attendance", node: () => <AttendancePage /> },
   payroll: { path: "/contractor/hr/payroll", tab: "payroll", node: () => <PayrollPage /> },
   reports: { path: "/contractor/hr/reports", tab: "reports", node: () => <ReportsPage /> },
   settings: { path: "/contractor/hr/settings", tab: "settings", node: () => <SettingsPage /> },
@@ -191,14 +196,15 @@ const railLabels = () => Array.from(document.querySelectorAll("nav a")).map((a) 
 
 // The prototype's TABS(): only the BUILT tabs (attendance, hiring, platforms and
 // performance are optional features, off in this company).
-const TAB_AR: Record<string, string> = { today: "اليوم", people: "الموظفون", sites: "مواقع العمل", payroll: "الرواتب", reports: "التقارير", settings: "الإعدادات", me: "ملفي" }
+// The workplaces tab carries the company's word (ST-06): a contractor's «المواقع». Attendance is core.
+const TAB_AR: Record<string, string> = { today: "اليوم", people: "الموظفون", sites: "المواقع", attendance: "الحضور", payroll: "الرواتب", reports: "التقارير", settings: "الإعدادات", me: "ملفي" }
 const RAIL: Record<Role, string[]> = {
-  owner: ["today", "people", "sites", "payroll", "reports", "settings"],
-  manager: ["today", "people", "sites", "payroll", "reports", "settings", "me"],
+  owner: ["today", "people", "sites", "attendance", "payroll", "reports", "settings"],
+  manager: ["today", "people", "sites", "attendance", "payroll", "reports", "settings", "me"],
   gov: ["today", "people", "reports", "me"],
-  payroll: ["today", "people", "sites", "payroll", "reports", "me"],
+  payroll: ["today", "people", "sites", "attendance", "payroll", "reports", "me"],
   supervisor: ["today", "sites", "me"],
-  management: ["today", "people", "sites", "payroll", "reports", "me"],
+  management: ["today", "people", "sites", "attendance", "payroll", "reports", "me"],
   employee: ["me"],
 }
 /** RL-03 — no riyal figure reaches these, outside their own file. */
@@ -347,6 +353,73 @@ describe("a supervisor asks only what the rules let him ask (RL-01, §3 #18)", (
     const view = await openAs("supervisor", "site")
     for (const c of ["employees", "hrInjuries", "hrAssignFixes"]) expect({ c, asked: queriesRun.some((q) => q.path === c && hisSite(q)) }).toEqual({ c, asked: true })
     expect(text()).toContain("موظف e_emp")
+    view.unmount()
+  })
+})
+
+describe("sites, the site page, the unassigned and the Attendance tab (§5 Sites, AT-03/04, AS-02)", () => {
+  it("the Sites strip: the company's word, each place with present today, the unassigned with their monthly cost for pay roles", async () => {
+    let view = await openAs("manager", "sites")
+    expect(text()).toContain("الكل — المواقع")
+    expect(text()).toContain("برج الواحة")
+    expect(text()).toMatch(/بلا تسجيل اليوم|\d+\/\d+ حاضر/)
+    expect(text()).toContain("1 إقامة منتهية")
+    expect(text()).toContain(RIYAL)
+    view.unmount()
+    view = await openAs("supervisor", "sites")
+    expect(text()).not.toContain("الكل — المواقع")
+    view.unmount()
+  })
+
+  it("the site page: assigned · present today · the month, the ending warning, today and documents per person, Move, by trade", async () => {
+    const view = await openAs("manager", "site")
+    for (const x of ["المسندون", "حاضر اليوم", "حضور", "ينتهي خلال", "بالمهنة", "إقامة منتهية"]) expect({ x, shown: text().includes(x) }).toEqual({ x, shown: true })
+    expect(buttons()).toContain("انقل")
+    view.unmount()
+  })
+
+  it("the unassigned page: who, since when, their documents and Assign — the cost to pay roles only", async () => {
+    let view = await openAs("manager", "bench")
+    expect(text()).toContain("موظف w2")
+    expect(buttons()).toContain("أسند")
+    expect(text()).toContain("أجورهم")
+    view.unmount()
+    view = await openAs("supervisor", "bench")
+    expect(text()).not.toContain("أجورهم")
+    expect(text()).not.toContain(RIYAL)
+    view.unmount()
+  })
+
+  it("the Attendance tab: present today, unrecorded days, last month's closing place by place with the declaration", async () => {
+    const view = await openAs("manager", "attendance")
+    expect(text()).toContain("حاضرون اليوم")
+    expect(text()).toContain("أيام بلا تسجيل")
+    expect(text()).toContain(`إقفال حضور ${lastMonth}`)
+    expect(buttons()).toContain("سجّل الأيام الناقصة")
+    fireEvent.click(Array.from(document.querySelectorAll("button")).find((b) => b.textContent?.trim() === "سجّل الأيام الناقصة")!)
+    await flush()
+    expect(text()).toContain("أقرّ أن هؤلاء كانوا على رأس العمل في هذه الأيام")
+    expect(text()).toContain("أيام-عامل ستُسجَّل حضوراً")
+    view.unmount()
+  })
+
+  it("a manpower request: the possible coverage before answering, then the two-step answer", async () => {
+    const view = await openAs("manager", "sites")
+    expect(text()).toContain("بانتظار ردّنا")
+    expect(text()).toContain("التغطية الممكنة")
+    fireEvent.click(Array.from(document.querySelectorAll("button")).find((b) => b.textContent?.trim() === "الرد بالخطة")!)
+    await flush()
+    for (const x of ["التغطية", "في الموعد", "بلا تغطية", "مستبعدون", "كيف يُغطّى الباقي"]) expect({ x, shown: text().includes(x) }).toEqual({ x, shown: true })
+    view.unmount()
+  })
+
+  it("a recorded day is locked on the sheet: no save, the lock said (WF-04)", async () => {
+    seed(`hrAttendance/${ORG}__s1__${TODAY.slice(0, 7)}`, { organizationId: ORG, siteId: "s1", month: TODAY.slice(0, 7), days: { [TODAY]: { by: "sup", byName: "المشرف", at: `${TODAY}T06:00:00Z`, listed: ["e_sup", "e_emp", "w1"], ex: {}, unlisted: [{ name: "سعيد", note: "من موقع آخر" }] } }, declarations: [], closed: null })
+    const view = await openAs("supervisor", "site")
+    expect(text()).toContain("هذا اليوم مسجَّل ومقفل")
+    expect(buttons()).not.toContain("حفظ الكشف")
+    // The sheet's "working here but not listed" is read back, not lost.
+    expect(text()).toContain("سعيد")
     view.unmount()
   })
 })

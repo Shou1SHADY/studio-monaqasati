@@ -14,11 +14,12 @@ import { ModuleHeader, type ModuleKpi, type ModuleTab } from "@/components/modul
 import { useHrAccess, type HrAccess } from "@/hooks/useHrAccess"
 import { useRouter } from "@/i18n/routing"
 import type { HrTab } from "@/lib/hr/access"
+import { siteWordOf } from "@/lib/hr/sites"
 
 export type HrPortal = "contractor" | "supplier"
 
 /** Tabs built so far — an optional feature's tab appears once it is built. */
-export const HR_BUILT_TABS: readonly HrTab[] = ["today", "people", "sites", "payroll", "reports", "settings", "me"]
+export const HR_BUILT_TABS: readonly HrTab[] = ["today", "people", "sites", "attendance", "payroll", "reports", "settings", "me"]
 
 const ICON: Partial<Record<HrTab, typeof Users>> = {
   today: LayoutDashboard,
@@ -59,7 +60,9 @@ export function HrShell({
   const access = useHrAccess()
   const computed = useKpis(access, portal)
   const tabs = access.tabs.filter((x) => HR_BUILT_TABS.includes(x))
-  const rail: ModuleTab[] = tabs.map((x) => ({ id: x, label: t(`tab.${x}`), href: hrHref(portal, x), icon: ICON[x] }))
+  // ST-06 — the workplaces tab carries the company's own word (sites · branches & warehouses · departments & projects).
+  const label = (x: HrTab) => (x === "sites" ? t(`site_word.${siteWordOf(access.settings.businessType)}`) : t(`tab.${x}`))
+  const rail: ModuleTab[] = tabs.map((x) => ({ id: x, label: label(x), href: hrHref(portal, x), icon: ICON[x] }))
   const mayOpen = tabs.includes(tab)
   const router = useRouter()
   // TD-01 — the module's home is Today; a person whose role has no Today (an
@@ -73,9 +76,9 @@ export function HrShell({
     <div className="space-y-6">
       <ModuleHeader
         icon={Users}
-        title={title ?? t(`tab.${tab}`)}
+        title={title ?? label(tab)}
         description={description ?? t(`tab_desc.${tab}`)}
-        crumbs={[{ label: t("module"), href: hrHref(portal, "today") }, { label: t(`tab.${tab}`) }]}
+        crumbs={[{ label: t("module"), href: hrHref(portal, "today") }, { label: label(tab) }]}
         actions={mayOpen ? actions : undefined}
         kpis={mayOpen ? (kpis ?? computed) : undefined}
         kpisLabel={t("kpis_label")}
