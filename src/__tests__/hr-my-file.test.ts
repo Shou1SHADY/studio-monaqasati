@@ -264,6 +264,8 @@ describe("attendance correction (PRD form 11)", () => {
     expect(req(id).state).toBe("approved")
     const wm = readDoc<WorkplaceMonth>(wmId("2026-08"))!
     expect(wm.days["2026-08-04"].ex.e1).toEqual({ note: "not seen" })
+    // The recorded day is locked; the write names the correction it approves, which the rules check (hrAttfixOk).
+    expect(wm.fixReq).toBe(id)
     expect(emp("e1").att?.m?.["2026-08"]).toMatchObject({ present: 1, absent: 0 })
     const notes = listCollection<{ type: string }>("users/wu/notifications")
     expect(notes.map((n) => n.type)).toContain("hr_request_decided")

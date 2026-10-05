@@ -503,7 +503,9 @@ async function decideAttfix(firestore: Firestore, ctx: HrContext, id: string, ac
       const rest = { ...(wm.days[f.day].ex[r.employeeId] ?? {}) }
       delete rest.status
       const kept = Object.keys(rest).length ? rest : null
-      tx.update(wmRef, { [`days.${f.day}.ex.${r.employeeId}`]: kept ?? deleteField(), updatedAt: serverTimestamp() })
+      // A recorded day is locked; the rules let this one entry change because the write names the
+      // correction it approves (`fixReq`) — see hrAttfixOk in firestore.rules.
+      tx.update(wmRef, { [`days.${f.day}.ex.${r.employeeId}`]: kept ?? deleteField(), fixReq: id, updatedAt: serverTimestamp() })
       const ex = { ...wm.days[f.day].ex }
       if (kept) ex[r.employeeId] = kept
       else delete ex[r.employeeId]

@@ -574,3 +574,19 @@ describe("hiring (HI-01…08, optional: hire) — one collection by kind, money 
     expect(HR_GUARD["employee.create"].roles).toContain("gov")
   })
 })
+
+describe("a recorded day stays locked — but an approved attendance correction may change its worker's entry (PT-07)", () => {
+  it("the lock admits only the change hrAttfixOk proves", () => {
+    const [update] = allow(block("hrAttendance"), "update")
+    expect(update).toMatch(/!request\.resource\.data\.days\.diff\(resource\.data\.days\)\.affectedKeys\(\)\.hasAny\(resource\.data\.days\.keys\(\)\)\s*\|\| hrAttfixOk\(\)/)
+  })
+
+  it("…the request is an approved correction decided by the writer, on this workplace; one day, one worker", () => {
+    const fn = rules.slice(rules.indexOf("function hrAttfixOk()"), rules.indexOf("match /hrAttendance/{id}"))
+    expect(fn).toMatch(/getAfter\(\/databases\/\$\(database\)\/documents\/hrRequests\/\$\(request\.resource\.data\.fixReq\)\)/)
+    expect(fn).toMatch(/r\.kind == 'attfix' && r\.state == 'approved' && r\.decision\.by == request\.auth\.uid && r\.siteId == resource\.data\.siteId/)
+    expect(fn).toMatch(/affectedKeys\(\)\.hasOnly\(\[d\]\)/)
+    expect(fn).toMatch(/affectedKeys\(\)\.hasOnly\(\['ex'\]\)/)
+    expect(fn).toMatch(/affectedKeys\(\)\.hasOnly\(\[r\.employeeId\]\)/)
+  })
+})

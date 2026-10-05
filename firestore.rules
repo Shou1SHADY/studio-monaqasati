@@ -2840,6 +2840,17 @@ service cloud.firestore {
               && d.size() == before.size() + 1 && d[0:before.size()] == before && d[before.size()].by == request.auth.uid))
         && (request.resource.data.get('closed', null) == null || hrToday() > hrNum(request.resource.data.month) * 100 + 31);
     }
+    // PT-07 — the correction this write approves (read as the write leaves it): an attendance correction,
+    // approved now by the writer, on this workplace; only its day changes, and in it only its worker's entry.
+    function hrAttfixOk() {
+      let r = getAfter(/databases/$(database)/documents/hrRequests/$(request.resource.data.fixReq)).data;
+      let d = r.attfix.day;
+      return r.kind == 'attfix' && r.state == 'approved' && r.decision.by == request.auth.uid && r.siteId == resource.data.siteId
+        && request.resource.data.days.diff(resource.data.days).affectedKeys().hasOnly([d])
+        && request.resource.data.days[d].diff(resource.data.days[d]).affectedKeys().hasOnly(['ex'])
+        && request.resource.data.days[d].ex.diff(resource.data.days[d].ex).affectedKeys().hasOnly([r.employeeId]);
+    }
+
     match /hrAttendance/{id} {
       // A month is read before it exists (the first sheet, a declaration, the
       // closing, payroll's check): a missing document must read as missing —
@@ -2859,8 +2870,10 @@ service cloud.firestore {
         && request.resource.data.siteId == resource.data.siteId
         && request.resource.data.month == resource.data.month
         && (hrManager() || hrRole('hr.payroll') || hrSupervises(resource.data.siteId))
-        // WF-04 — a recorded day is locked: days are only ever added.
-        && !request.resource.data.days.diff(resource.data.days).affectedKeys().hasAny(resource.data.days.keys())
+        // WF-04 — a recorded day is locked: days are only ever added — except one worker's entry on one
+        // recorded day, by the approval of his attendance correction in the same write (PT-07, `fixReq`).
+        && (!request.resource.data.days.diff(resource.data.days).affectedKeys().hasAny(resource.data.days.keys())
+            || hrAttfixOk())
         && hrSheetOk(resource.data.get('declarations', []));
       allow delete: if false;
     }

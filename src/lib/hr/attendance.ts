@@ -60,6 +60,8 @@ export interface Declaration {
 
 export interface WorkplaceMonth {
   id: string
+  /** The attendance correction whose approval last changed a recorded day (PT-07) — the rules check it. */
+  fixReq?: string | null
   organizationId: string
   siteId: string
   month: string
