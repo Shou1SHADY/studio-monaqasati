@@ -43,6 +43,8 @@ export type ProcEventKind =
   | "plant_answered" // → the requester: the equipment desk answered (allocated, busy until, an alternative, or none)
   | "activity_assigned" // → the assignee: someone planned a to-do for him
   | "activity_done" // → the one who planned it: the assignee marked it done
+  | "doc_comment" // → the other company of a document: a shared comment was posted
+  | "doc_file" // → the other company of a document: a shared attachment was added
 
 export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "po_awaiting_approval",
@@ -70,6 +72,8 @@ export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "plant_answered",
   "activity_assigned",
   "activity_done",
+  "doc_comment",
+  "doc_file",
 ]
 
 /** Who is told: a role, named users, or the org owner. */
@@ -222,6 +226,14 @@ export const PROC_EVENT_COPY_AR: Record<ProcEventKind, { title: string; message:
   activity_done: {
     title: "أُنجزت المهمة — {summary}",
     message: "أنجز {actor} المهمة «{summary}» التي خططت لها. المستند المرتبط: {about}.",
+  },
+  doc_comment: {
+    title: "تعليق جديد على {about}",
+    message: "كتب {actor} تعليقاً على {about}: «{text}»",
+  },
+  doc_file: {
+    title: "مرفق جديد على {about}",
+    message: "أرفق {actor} الملف «{text}» على {about}.",
   },
 }
 
