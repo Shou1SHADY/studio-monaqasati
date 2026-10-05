@@ -39,6 +39,8 @@ export interface HrSite {
   id: string
   organizationId: string
   name: string
+  /** The English name (form "site": n / en) — shown in English, the Arabic one otherwise. */
+  nameEn?: string | null
   type: SiteType
   /** A project site names its project; its end date drives coverage (AS-02). */
   projectId?: string | null
@@ -100,3 +102,44 @@ export function siteBlocks(input: { name: string; type: SiteType; projectId?: st
   if (input.endDate && !/^\d{4}-\d{2}-\d{2}$/.test(input.endDate)) out.push("bad_end")
   return out
 }
+
+/** A workplace's name in the reader's language. */
+export const siteLabel = (s: Pick<HrSite, "name" | "nameEn">, locale: string) => (locale === "ar" ? s.name : s.nameEn?.trim() || s.name)
+
+// ---------------------------------------------------------------------------
+// The Sites tab and the site page (§5 Sites, AS-01, AS-04, ST-06)
+// ---------------------------------------------------------------------------
+
+/** ST-06 — what a company calls its workplaces: a contractor's sites, a supplier's branches and warehouses,
+ * a developer's departments and projects; before a business type is chosen, workplaces. */
+export type SiteWord = "contractor" | "supplier" | "developer" | "none"
+export const siteWordOf = (businessType: string | null | undefined): SiteWord =>
+  businessType === "contractor" || businessType === "supplier" || businessType === "developer" ? businessType : "none"
+
+/** A project site's end comes from Projects (§data "Workplace: project/end"): a PM 1.0 project's start plus
+ * its duration (and any extension granted); otherwise the date typed on the workplace. */
+export function siteEndOf(site: Pick<HrSite, "endDate">, project?: { pm?: { startOn?: string | null; durationDays?: number | null; grantedDays?: number | null } | null; endDate?: string | null } | null): string | null {
+  const pm = project?.pm
+  if (pm?.startOn && typeof pm.durationDays === "number" && pm.durationDays > 0) {
+    const d = new Date(`${pm.startOn.slice(0, 10)}T00:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + pm.durationDays + (pm.grantedDays ?? 0))
+    return d.toISOString().slice(0, 10)
+  }
+  return site.endDate || project?.endDate || null
+}
+
+/** By trade on a workplace (§5 Sites "labour by trade"): assigned · present today · expired iqamas — most first. */
+export function tradeRows<T extends { id: string; trade: string }>(people: readonly T[], present: ReadonlySet<string>, expired: (p: T) => boolean): Array<{ trade: string; n: number; p: number; x: number }> {
+  const by = new Map<string, { trade: string; n: number; p: number; x: number }>()
+  for (const e of people) {
+    const r = by.get(e.trade) ?? { trade: e.trade, n: 0, p: 0, x: 0 }
+    r.n++
+    if (present.has(e.id)) r.p++
+    if (expired(e)) r.x++
+    by.set(e.trade, r)
+  }
+  return [...by.values()].sort((a, b) => b.n - a.n || a.trade.localeCompare(b.trade))
+}
+
+/** Since when someone is unassigned (AS-04): the day he moved off his last workplace, or his join day. */
+export const benchSince = (e: { siteId?: string | null; siteSince?: string | null; join?: string | null }): string | null => (e.siteId ? null : (e.siteSince ?? e.join ?? null))

@@ -63,9 +63,11 @@ describe("an invitation is an authorization", () => {
 describe("a company's projects, handover files and events are listed only by that company", () => {
   it.each([
     ["projects", /resource\.data\.organizationId == getOrganizationId\(\)/],
-    ["pmHandovers", /isOrgMember\(resource\.data\.organizationId\)/],
-    ["pmEvents", /isOrgMember\(resource\.data\.organizationId\)/],
+    // inOrg() is isOrgMember(resource.data.organizationId), folded (compiled-size ceiling).
+    ["pmHandovers", /isOrgMember\(resource\.data\.organizationId\)|inOrg\(\)/],
+    ["pmEvents", /isOrgMember\(resource\.data\.organizationId\)|inOrg\(\)/],
   ])("%s", (name, scoped) => {
+    expect(rules).toMatch(/function inOrg\(\) \{ return isOrgMember\(resource\.data\.organizationId\); \}/)
     const lists = allow(block(name as string), "list")
     expect(lists.length).toBeGreaterThan(0)
     for (const l of lists) expect(l).toMatch(scoped as RegExp)

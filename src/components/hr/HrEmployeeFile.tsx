@@ -2,55 +2,85 @@
 
 // The employee file (PRD EM-01, §5 "Employee file", the prototype's openEmp):
 // a full header (number · name · trade · workplace · nationality · years of
-// service · status · probation), four tiles — leave balance · pay and cost ·
-// nearest document · this month's attendance — and five segments: overview
-// (blocking facts first, personal, job and contract, contact) · documents ·
-// attendance and leave · pay and payroll (only for the roles that see pay) ·
-// requests and log. For everyone else the pay tile reads "•••" and the pay
-// segment is not there at all (RL-03). Nobody acts on his own record where
-// that would be approving for himself (RL-02): pay, probation, exit, IBAN.
+// service · status with its date · probation), four tiles — leave balance ·
+// pay and cost · nearest document · this month's attendance — and five
+// segments: overview (blocking facts first, personal, job and contract,
+// contact and bank) · documents · attendance and leave · pay and payroll (only
+// for the roles that see pay) · requests and log. For everyone else the pay
+// tile reads "•••" and the pay segment is not there at all (RL-03). Nobody
+// acts on his own record where that would be approving for himself (RL-02):
+// pay, probation, exit, IBAN — the HR manager's own pay is management's. A
+// supervisor opens his own workers' files from his site (RL-01), without pay.
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, orderBy, query } from "firebase/firestore"
-import { ArrowRightLeft, BadgeCheck, CalendarClock, FileClock, Gavel, HandCoins, History, Import, Inbox, Link2, Loader2, LogOut, Plane, UserCheck, Wallet } from "lucide-react"
+import {
+  ArrowRightLeft,
+  BadgeCheck,
+  CalendarClock,
+  ClipboardCheck,
+  FileClock,
+  FileSignature,
+  Hash,
+  HandCoins,
+  Import,
+  Link2,
+  Loader2,
+  LogOut,
+  Plane,
+  TrendingUp,
+  UserCheck,
+  UserCog,
+  Wallet,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Callout } from "@/components/module-ui/Callout"
 import { EmptyState } from "@/components/module-ui/EmptyState"
-import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
-import { Panel } from "@/components/module-ui/Panel"
 import { SegmentedNav, type Segment } from "@/components/module-ui/SegmentedNav"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useEmployeePay, useHrPeople } from "@/hooks/useHrPeople"
 import { useHrRequests } from "@/hooks/useHrRequests"
 import type { HrAccess } from "@/hooks/useHrAccess"
-import { useToast } from "@/hooks/use-toast"
+import { usePermissions } from "@/hooks/usePermissions"
 import { Link } from "@/i18n/routing"
-import { lineManagerOf } from "@/lib/hr/access"
-import { assumesPresence, attendanceId, employeeMonth, type WorkplaceMonth } from "@/lib/hr/attendance"
+import { userIsHrManager } from "@/lib/hr/access"
+import { assumesPresence, attendanceId, employeeMonth, onLeaveOn, type WorkplaceMonth } from "@/lib/hr/attendance"
 import { HR_ATTENDANCE, HR_EMPLOYEES } from "@/lib/hr/collections"
-import { docState, DOC_TYPES, iqamaDueBy, iqamaOverdue, legalOnSite } from "@/lib/hr/documents"
-import { displayName, onProbation, probationState, serviceDays, statusOn, type HrEmployee } from "@/lib/hr/employee"
-import { approveIban, fixIban, HR_LOG, type HrActor, type LogEntry } from "@/lib/hr/employee-writes"
-import { gratuity, monthlyEosAccrual } from "@/lib/hr/eos"
-import { empNo, hrDate, hrMoney, nearestDocument, todayDay } from "@/lib/hr/format"
-import { accruedDays, leaveBalance } from "@/lib/hr/leave"
+import { docRows, docState } from "@/lib/hr/documents"
+import {
+  displayName,
+  lineManagerChain,
+  payChangeRefusal,
+  probationState,
+  serviceDays,
+  statusFact,
+  statusOn,
+  todayStateOf,
+  type HrEmployee,
+} from "@/lib/hr/employee"
+import { applyDueMoves, HR_LOG, type HrActor, type LogEntry } from "@/lib/hr/employee-writes"
+import { empNo, hrDate, hrMoney, todayDay } from "@/lib/hr/format"
+import { leaveBalance } from "@/lib/hr/leave"
 import { gosiRates, wageOf } from "@/lib/hr/pay"
+import { monthlyEosAccrual } from "@/lib/hr/eos"
+import { leaveReturn, type HrRequestKind } from "@/lib/hr/requests"
 import { UNASSIGNED_SITE } from "@/lib/hr/sites"
 import { addDays, daysBetween, r2, serviceYears, STATUTORY } from "@/lib/hr/statutory"
-import { tradeOf } from "@/lib/hr/trades"
-import { HrWriteError } from "@/lib/hr/write-guard"
-import { leaveReturn, type HrRequestKind } from "@/lib/hr/requests"
 import { EmployeeActionDialog, type EmployeeAction } from "./EmployeeActionDialogs"
-import { HrExitPanel, StartExitDialog } from "./HrExitPanel"
-import { HrEmployeeFiles } from "./HrEmployeeFiles"
-import { HrInjuryPanel } from "./HrInjuryPanel"
-import { HrLettersPanel } from "./HrLetters"
-import { HrRequestList, ReturnFromLeave } from "./HrRequestList"
-import { HrViolationList, RecordViolationDialog, useHrViolations } from "./HrViolationList"
+import { StartExitDialog } from "./HrExitPanel"
+import { HrFileAttLeave } from "./HrFileAttLeave"
+import { HrFilePunch, HrShiftAction } from "./HrFilePunch"
+import { HrFileDocs } from "./HrFileDocs"
+import { HrFileGrowth } from "./HrFileGrowth"
+import { HrFileLog } from "./HrFileLog"
+import { HrFileOverview } from "./HrFileOverview"
+import { HrFilePay } from "./HrFilePay"
+import { ReturnFromLeave } from "./HrRequestList"
+import { RecordViolationDialog, useHrViolations } from "./HrViolationList"
 import { NewRequestDialog } from "./NewRequestDialog"
+import type { FileView } from "./hr-file-view"
 import type { HrPortal } from "./HrShell"
 import { DOC_TONE, STATUS_TONE } from "./HrPeopleView"
 
@@ -64,6 +94,20 @@ function useSiteMonth(orgId: string | null, siteId: string, month: string) {
   return (data as unknown as WorkplaceMonth | null) ?? null
 }
 
+/** RL-02 — is the platform user behind this record an HR manager (his DEFAULT group, as the rules read it)? */
+function useUserIsHrManager(orgId: string | null, userId: string | null | undefined) {
+  const firestore = useFirestore()
+  const { groups } = usePermissions()
+  const ref = useMemoFirebase(() => (firestore && userId ? doc(firestore, "users", userId) : null), [firestore, userId])
+  const { data } = useDoc(ref)
+  return useMemo(() => {
+    if (!data || !orgId) return false
+    const u = data as unknown as { id: string; organizationId?: string | null; organizationRole?: string | null; defaultGroupId?: string | null }
+    const g = groups.find((x) => x.id === u.defaultGroupId) as { organizationId?: string | null; permissions?: string[] } | undefined
+    return userIsHrManager({ ...u, id: userId as string }, g ?? null, orgId)
+  }, [data, groups, orgId, userId])
+}
+
 export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: HrAccess; portal: HrPortal; employeeId: string; actor: HrActor }) {
   const t = useTranslations("Portal.HR")
   const locale = useLocale()
@@ -74,7 +118,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
   const money = access.seesPay(employeeId)
   const { pay } = useEmployeePay(employeeId, money)
   const [seg, setSeg] = useState<Seg>("ov")
-  const [action, setAction] = useState<EmployeeAction | null>(null)
+  const [action, setAction] = useState<{ id: EmployeeAction; docType?: string | null; requestId?: string | null } | null>(null)
   const [newReq, setNewReq] = useState<HrRequestKind | null>(null)
   const { requests: allRequests } = useHrRequests(access)
   const requests = useMemo(() => allRequests.filter((r) => r.employeeId === employeeId), [allRequests, employeeId])
@@ -90,6 +134,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
   const [recording, setRecording] = useState(false)
   const [exiting, setExiting] = useState(false)
   const own = Boolean(access.ctx.employeeId) && access.ctx.employeeId === employeeId && !access.ctx.owner
+  const isHrManager = useUserIsHrManager(access.orgId, emp?.userId)
 
   const month = today.slice(0, 7)
   const lastMonth = addDays(`${month}-01`, -1).slice(0, 7)
@@ -99,26 +144,15 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
 
   const logQ = useMemoFirebase(() => (firestore ? query(collection(firestore, HR_EMPLOYEES, employeeId, HR_LOG), orderBy("at", "desc")) : null), [firestore, employeeId])
   const { data: logData } = useCollection(logQ)
-  const log = (logData ?? []) as unknown as (LogEntry & { id: string })[]
+  const log = useMemo(() => (logData ?? []) as unknown as (LogEntry & { id: string })[], [logData])
 
-  const facts = useMemo(() => {
-    if (!emp) return null
-    const docs = emp.docs ?? {}
-    const service = emp.join ? serviceYears(emp.join, today) : 0
-    return {
-      service,
-      entitlement: service >= STATUTORY.leave.fiveYears ? STATUTORY.leave.afterFive : STATUTORY.leave.base,
-      accrued: emp.join ? Math.floor(accruedDays(emp.join, today)) : 0,
-      days: emp.join ? serviceDays(emp.join, today) : 0,
-      balance: emp.join ? leaveBalance(emp.join, today, emp.leaveTaken ?? 0, emp.openingLeave ?? 0) : null,
-      nearest: nearestDocument(docs, today, access.settings.policies.renewWindowDays),
-      legal: legalOnSite({ ...emp, docs }, today),
-      overdue: iqamaOverdue({ ...emp, docs }, today),
-      probation: emp.probation ? onProbation(emp, today) : false,
-      probationState: emp.probation ? probationState(emp, today) : null,
-      status: statusOn(emp, today),
-    }
-  }, [emp, today, access.settings.policies.renewWindowDays])
+  // AS-03 — a move dated ahead takes effect on its day: the HR manager's screen applies it once due.
+  const applied = useRef(false)
+  useEffect(() => {
+    if (applied.current || !firestore || !emp?.move || emp.move.on > today || !access.allowed("employee.assign")) return
+    applied.current = true
+    void applyDueMoves(firestore, access.ctx, actor, [emp])
+  }, [firestore, emp, today, access, actor])
 
   if (isLoading) {
     return (
@@ -127,45 +161,99 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
       </div>
     )
   }
-  if (!emp || !facts) {
-    return <EmptyState icon={FileClock} title={t("file.missing")} description={t("file.missing_desc")} action={<Button asChild variant="outline"><Link href={`/${portal}/hr/people`}>{t("file.back")}</Link></Button>} />
+  if (!emp) {
+    const back = access.tabs.includes("people") ? `/${portal}/hr/people` : `/${portal}/hr/sites`
+    return <EmptyState icon={FileClock} title={t("file.missing")} description={t("file.missing_desc")} action={<Button asChild variant="outline"><Link href={back}>{t("file.back")}</Link></Button>} />
   }
   if (!emp.names) {
     // A record from before HR 1.0 — the migration brings it onto the card.
     return <Callout tone="warn">{t("file.legacy")}</Callout>
   }
 
-  const site = sites.find((s) => s.id === emp.siteId)
+  const site = sites.find((s) => s.id === emp.siteId) ?? null
   const assumed = assumesPresence(placeId, site?.type ?? null)
+  const window = access.settings.policies.renewWindowDays
+  const rows = docRows(emp, today, window)
+  const nearest = rows.filter((r) => r.expiry).sort((a, b) => (a.expiry as string).localeCompare(b.expiry as string))[0] ?? null
+  const service = emp.join ? serviceYears(emp.join, today) : 0
+  const entitlement = service >= STATUTORY.leave.fiveYears ? STATUTORY.leave.afterFive : STATUTORY.leave.base
+  const balance = emp.join ? leaveBalance(emp.join, today, emp.leaveTaken ?? 0, emp.openingLeave ?? 0) : null
+  const status = statusOn(emp, today)
+  const pState = emp.probation ? probationState(emp, today) : null
   const thisMonthAtt = employeeMonth(thisWm, emp.id)
-  const lastMonthAtt = employeeMonth(lastWm, emp.id)
+  const onLeave = onLeaveOn(requests, today).has(emp.id)
+  const leaveTo = onLeave ? (requests.find((r) => r.kind === "leave" && r.state === "approved" && r.leave && r.leave.from <= today && r.leave.to >= today)?.leave?.to ?? null) : null
+  const todayState = todayStateOf(emp.id, thisWm?.days?.[today], onLeave)
+  const fact = statusFact(emp, { leaveTo, today: todayState })
   const wage = pay ? wageOf(pay) : 0
   const gosi = pay ? gosiRates(emp.nationality, emp.join) : null
   const employerGosi = pay && gosi ? r2((pay.basic + pay.housing) * gosi.employer) : 0
-  const companyCost = pay ? r2(wage + employerGosi + monthlyEosAccrual(wage, facts.service)) : 0
-  const managerId = lineManagerOf(emp, (sid) => sites.find((s) => s.id === sid)?.supervisorEmployeeId ?? null)
-  const manager = managerId ? employees.find((e) => e.id === managerId) : null
-  const docsDue = DOC_TYPES.filter((d) => emp.docs?.[d] && docState(emp.docs[d], today, access.settings.policies.renewWindowDays) !== "valid").length
+  const companyCost = pay ? r2(wage + employerGosi + monthlyEosAccrual(wage, service)) : 0
+  const chain = lineManagerChain(emp, { employees, supervisorOf: (sid) => sites.find((s) => s.id === sid)?.supervisorEmployeeId ?? null, isHrManager })
+  const managerEmp = chain.id ? (employees.find((e) => e.id === chain.id) ?? null) : null
+  const docsDue = rows.filter((r) => !r.open && (r.state === "expired" || r.state === "d30" || r.state === "d60")).length
   const pending = requests.filter((r) => r.state === "pending" || r.state === "endorsed").length
+  const days = emp.join ? serviceDays(emp.join, today) : 0
+  // The line manager writes his probation view (EM-05): the manager on the card, or the workplace's supervisor.
+  const isLineManager = Boolean(
+    (managerEmp?.userId && managerEmp.userId === access.ctx.uid && !chain.derived) || (emp.siteId && access.ctx.sites.includes(emp.siteId) && access.ctx.roles.has("supervisor"))
+  )
+  const payRefusal = payChangeRefusal(access.ctx, { own: access.ctx.employeeId === emp.id, isHrManager })
+  const mayPay = money && payRefusal === null && emp.status !== "left"
+  const active = emp.status !== "left"
+
+  const view: FileView = {
+    access,
+    actor,
+    portal,
+    emp,
+    pay,
+    money,
+    employees,
+    sites,
+    site,
+    siteName,
+    today,
+    locale,
+    requests,
+    violations,
+    log,
+    rows,
+    manager: { ...chain, name: managerEmp ? displayName(managerEmp, locale) : null },
+    todayState,
+    thisWm,
+    lastWm,
+    assumed,
+    service,
+    entitlement,
+    balance,
+    wage,
+    open: (id, opts) => setAction({ id, docType: opts?.docType ?? null, requestId: opts?.requestId ?? null }),
+  }
 
   const segments: Segment[] = [
     { id: "ov", label: t("file.seg.ov") },
-    { id: "docs", label: t("file.seg.docs"), tone: facts.nearest && (facts.nearest.state === "expired" || facts.nearest.state === "d30") ? "bad" : undefined, count: docsDue || undefined },
+    { id: "docs", label: t("file.seg.docs"), tone: rows.some((r) => r.state === "expired" || r.state === "d30") ? "bad" : undefined, count: docsDue || undefined },
     { id: "att", label: t("file.seg.att") },
     ...(money ? [{ id: "pay", label: t("file.seg.pay") }] : []),
     { id: "log", label: t("file.seg.log"), count: pending || undefined, tone: "warn" as const },
   ]
 
-  const acts: { id: EmployeeAction; icon: typeof Wallet; show: boolean }[] = [
-    { id: "move", icon: ArrowRightLeft, show: access.allowed("employee.assign") && emp.status !== "left" },
-    { id: "pay", icon: Wallet, show: money && access.allowed("pay.change") && emp.status !== "left" && !own },
-    { id: "commission", icon: HandCoins, show: money && access.allowed("pay.change") && emp.status !== "left" && !own },
+  const acts: { id: EmployeeAction; icon: typeof Wallet; show: boolean; label?: string }[] = [
+    { id: "move", icon: ArrowRightLeft, show: access.allowed("employee.assign") && active, label: emp.siteId ? undefined : t("file.act.assign") },
+    { id: "pay", icon: Wallet, show: mayPay },
+    { id: "raise", icon: TrendingUp, show: money && access.ctx.roles.has("manager") && active && (status === "active" || status === "leave") },
+    { id: "commission", icon: HandCoins, show: money && access.allowed("pay.change") && active && !own },
     // Only while it runs (art. 53): past its end with no decision it is over, never "open forever".
-    { id: "probation", icon: BadgeCheck, show: access.allowed("request.decide") && facts.probationState === "on" && emp.status !== "left" && emp.status !== "leaving" && !own },
+    { id: "probation", icon: BadgeCheck, show: access.allowed("request.decide") && pState === "on" && active && emp.status !== "leaving" && !own },
+    { id: "probation_view", icon: ClipboardCheck, show: pState === "on" && active && emp.status !== "leaving" && emp.userId !== access.ctx.uid && access.ctx.employeeId !== emp.id && (isLineManager || access.allowed("request.decide")) },
+    { id: "contract", icon: FileSignature, show: access.allowed("exit.manage") && emp.contract?.type === "fixed" && (emp.status === "active" || emp.status === "leave" || emp.status === "expected") && !own },
+    { id: "manager", icon: UserCog, show: access.allowed("employee.edit") && active },
     { id: "start", icon: UserCheck, show: access.allowed("employee.assign") && emp.status === "expected" },
     // IM-04 — once, for someone who joined before the system and has taken no leave here.
-    { id: "opening", icon: Import, show: access.allowed("employee.edit") && emp.status !== "left" && !emp.opening && (emp.leaveTaken ?? 0) === 0 && facts.days > 30 },
-    { id: "renew", icon: CalendarClock, show: access.allowed("documents.manage") && emp.status !== "left" },
+    { id: "opening", icon: Import, show: access.allowed("employee.edit") && active && !emp.opening && (emp.leaveTaken ?? 0) === 0 && days > 30 },
+    { id: "renew", icon: CalendarClock, show: access.allowed("documents.manage") && active },
+    { id: "numbers", icon: Hash, show: access.allowed("documents.manage") && active },
     { id: "link", icon: Link2, show: access.allowed("employee.edit") && !own },
   ]
 
@@ -173,15 +261,11 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
     <div className="min-w-0 rounded-xl border bg-card p-3 sm:p-4">
       <p className="text-xs font-semibold text-muted-foreground">{label}</p>
       <div className="mt-1 truncate text-lg font-black tabular-nums text-foreground sm:text-xl">{value}</div>
-      {sub && <p className="mt-0.5 truncate text-xs text-muted-foreground">{sub}</p>}
+      {sub && <div className="mt-0.5 truncate text-xs text-muted-foreground">{sub}</div>}
     </div>
   )
-  const monthLine = (label: string, m: ReturnType<typeof employeeMonth>) => (
-    <KeyValueRow label={label} value={assumed ? t("file.att_assumed", { absent: m.absent, sick: m.sick }) : t("file.att_month", { present: m.present + m.declared, absent: m.absent, sick: m.sick, ot: m.overtimeHours })} />
-  )
-
-  const trade = tradeOf(emp.trade)
-  const nearestLeft = facts.nearest ? daysBetween(today, facts.nearest.expiry) : null
+  const nearestLeft = nearest?.expiry ? daysBetween(today, nearest.expiry) : null
+  const monthName = new Date(`${month}-01T00:00:00`).toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn-ca-gregory" : "en-US", { month: "long" })
 
   return (
     <div className="space-y-5">
@@ -199,15 +283,21 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
                 {emp.names.en}
               </span>
             )}
-            <StatusPill tone={STATUS_TONE[facts.status]}>{t(`status.${facts.status}`)}</StatusPill>
-            {facts.probation && <StatusPill tone="info">{t("file.on_probation", { end: hrDate(emp.probation.end, locale) })}</StatusPill>}
+            <StatusPill tone={STATUS_TONE[status]}>{t(`status.${status}`)}</StatusPill>
+            {fact && <StatusPill tone={fact.kind === "absent" ? "bad" : fact.kind === "unassigned" || fact.kind === "leaving" ? "warn" : "violet"}>{t(`file.fact.${fact.kind}`, { date: "date" in fact && fact.date ? hrDate(fact.date, locale) : "—" })}</StatusPill>}
+            {pState === "on" && <StatusPill tone="info">{t("file.on_probation", { end: hrDate(emp.probation.end, locale) })}</StatusPill>}
           </div>
           <p className="text-sm text-muted-foreground">
-            {t(`trade.${emp.trade}` as "trade.mason")} · {siteName(emp.siteId) ?? t("sites.unassigned")} · {t(`nat.${emp.nationality}` as "nat.sa")} · {t("file.service_years", { n: Math.floor(facts.service) })}
+            {t(`trade.${emp.trade}` as "trade.mason")} · {siteName(emp.siteId) ?? t("sites.unassigned")} · {t(`nat.${emp.nationality}` as "nat.sa")} · {t("file.service_years", { n: Math.floor(service) })}
           </p>
+          {emp.move && (
+            <p className="text-xs font-semibold text-module">
+              {t("file.move_scheduled", { to: siteName(emp.move.to) ?? t("sites.unassigned"), date: hrDate(emp.move.on, locale) })}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
-          {access.ctx.roles.has("manager") && emp.status !== "left" && (
+          {access.ctx.roles.has("manager") && active && (
             <>
               <Button size="sm" variant="outline" onClick={() => setNewReq("leave")}>
                 <Plane size={14} className="me-1.5" aria-hidden="true" />
@@ -230,16 +320,22 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
           {acts
             .filter((a) => a.show)
             .map((a) => (
-              <Button key={a.id} size="sm" variant="outline" onClick={() => setAction(a.id)}>
+              <Button key={a.id} size="sm" variant="outline" onClick={() => setAction({ id: a.id })}>
                 <a.icon size={14} className="me-1.5" aria-hidden="true" />
-                {t(`file.act.${a.id}`)}
+                {a.label ?? t(`file.act.${a.id}`)}
               </Button>
             ))}
+          <HrShiftAction access={access} actor={actor} emp={emp as HrEmployee} sites={sites} employees={employees} />
+
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {tile(t("file.tile.leave"), facts.balance == null ? "—" : t("file.days", { n: facts.balance }), t("file.per_year", { n: facts.entitlement }))}
+        {tile(
+          t("file.tile.leave"),
+          balance == null ? "—" : <span className={balance < 0 ? "text-destructive" : undefined}>{t("file.days", { n: balance })}</span>,
+          t("file.per_year", { n: entitlement })
+        )}
         {tile(
           t("file.tile.wage"),
           money ? <span dir="ltr">{pay ? hrMoney(wage) : "—"}</span> : <span aria-label={t("file.pay_hidden")}>•••</span>,
@@ -247,11 +343,15 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
         )}
         {tile(
           t("file.tile.document"),
-          facts.nearest ? t("file.doc_sub", { doc: t(`doc.${facts.nearest.type}`), date: hrDate(facts.nearest.expiry, locale) }) : "—",
-          facts.nearest ? <StatusPill tone={DOC_TONE[facts.nearest.state]}>{nearestLeft != null && nearestLeft >= 0 ? t("file.days_left", { n: nearestLeft }) : t(`doc_state.${facts.nearest.state}`)}</StatusPill> : t("people.no_docs")
+          nearest?.expiry ? t("file.doc_sub", { doc: t(`doc.${nearest.type}`), date: hrDate(nearest.expiry, locale) }) : "—",
+          nearest?.expiry ? (
+            <StatusPill tone={DOC_TONE[docState(nearest.expiry, today, window)]}>{nearestLeft != null && nearestLeft >= 0 ? t("file.days_left", { n: nearestLeft }) : t("file.expired_ago", { n: Math.abs(nearestLeft ?? 0) })}</StatusPill>
+          ) : (
+            t("people.no_docs")
+          )
         )}
         {tile(
-          t("file.tile.attendance", { month }),
+          t("file.tile.attendance", { month: monthName }),
           assumed ? t("file.att_assumed_short") : t("file.days", { n: thisMonthAtt.present + thisMonthAtt.declared }),
           t("file.att_sub", { absent: thisMonthAtt.absent, ot: thisMonthAtt.overtimeHours })
         )}
@@ -269,257 +369,36 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
 
       <SegmentedNav segments={segments} active={seg} onSelect={(s) => setSeg(s as Seg)} ariaLabel={t("file.segments")} />
 
-      {seg === "ov" && (
-        <div className="space-y-4">
-          {!facts.legal && <Callout tone="block">{facts.overdue ? t("file.iqama_overdue", { date: hrDate(iqamaDueBy(emp.join), locale) }) : t("file.iqama_expired")}</Callout>}
-          <HrExitPanel access={access} actor={actor} emp={emp as HrEmployee} pay={pay} sites={sites} />
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Panel title={t("file.personal")}>
-              <KeyValueRow label={t("file.name_ar")} value={emp.names.ar || "—"} />
-              <KeyValueRow label={t("file.name_en")} value={emp.names.en || "—"} ltr />
-              <KeyValueRow label={t("new.id_no")} value={emp.idNo || "—"} ltr />
-              <KeyValueRow label={t("new.gender")} value={t(`gender.${emp.gender}`)} />
-              <KeyValueRow label={t("file.nationality")} value={t(`nat.${emp.nationality}` as "nat.sa")} />
-            </Panel>
-            <Panel title={t("file.job")}>
-              <KeyValueRow label={t("new.trade")} value={t(`trade.${emp.trade}` as "trade.mason")} />
-              <KeyValueRow label={t("file.category")} value={t(`category.${trade?.category ?? emp.category}`)} />
-              <KeyValueRow label={t("new.site")} value={siteName(emp.siteId) ?? t("sites.unassigned")} />
-              <KeyValueRow label={t("file.line_manager")} value={manager ? displayName(manager, locale) : t("file.line_manager_mgmt")} />
-              <KeyValueRow label={t("new.source")} value={t(`source.${emp.source}`)} />
-              <KeyValueRow label={t("new.join")} value={hrDate(emp.join, locale)} />
-              <KeyValueRow label={t("new.contract")} value={emp.contract?.type === "fixed" ? t("file.fixed_until", { date: hrDate(emp.contract.end, locale) }) : t("contract.open")} />
-              <KeyValueRow
-                label={t("file.probation")}
-                value={
-                  emp.probation?.decision
-                    ? t(`file.probation_${emp.probation.decision}`)
-                    : facts.probationState === "lapsed"
-                      ? t("file.probation_lapsed", { date: hrDate(emp.probation?.end, locale) })
-                      : t("file.probation_until", { date: hrDate(emp.probation?.end, locale) })
-                }
-              />
-            </Panel>
-            <Panel title={t("file.contact")}>
-              {(["mobile", "address", "emergency"] as const).map((f) => (
-                <KeyValueRow key={f} label={t(`data_field.${f}`)} value={emp.contact?.[f] || "—"} />
-              ))}
-              <KeyValueRow label={t("file.my_file")} value={emp.userId ? t("file.linked_yes") : t("file.linked_no")} />
-            </Panel>
-          </div>
-        </div>
-      )}
-
-      {seg === "docs" && (
-        <div className="space-y-4">
-          <Panel title={t("file.seg.docs")} bodyClassName="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-max text-sm">
-                <thead className="bg-muted/50 text-xs text-muted-foreground">
-                  <tr>
-                    <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("file.doc_col.doc")}</th>
-                    <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("file.doc_col.expiry")}</th>
-                    <th scope="col" className="px-3 py-2.5 text-end font-bold">{t("file.doc_col.left")}</th>
-                    <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("file.doc_col.state")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {DOC_TYPES.filter((d) => d !== "iqama" || emp.nationality !== "sa").map((d) => {
-                    const exp = emp.docs?.[d]
-                    const st = docState(exp, today, access.settings.policies.renewWindowDays)
-                    return (
-                      <tr key={d} className="border-t">
-                        <td className="px-3 py-2 font-semibold">{t(`doc.${d}`)}</td>
-                        <td className="px-3 py-2">{exp ? hrDate(exp, locale) : "—"}</td>
-                        <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                          {exp ? daysBetween(today, exp) : "—"}
-                        </td>
-                        <td className="px-3 py-2">
-                          <StatusPill tone={DOC_TONE[st]}>{t(`doc_state.${st}`)}</StatusPill>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
-          {(access.allowed("documents.manage") || access.seesPay(emp.id)) && <HrEmployeeFiles access={access} actor={actor} emp={emp as HrEmployee} />}
-          <HrInjuryPanel access={access} actor={actor} emp={emp as HrEmployee} />
-        </div>
-      )}
-
-      {seg === "att" && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Panel title={t("file.att_title")}>
-            {monthLine(t("file.this_month", { month }), thisMonthAtt)}
-            {monthLine(t("file.last_month", { month: lastMonth }), lastMonthAtt)}
-            {assumed && <p className="pt-2 text-[11px] text-muted-foreground">{t("file.att_assumed_note")}</p>}
-          </Panel>
-          <Panel title={t("file.leave_title")}>
-            <KeyValueRow label={t("file.entitlement")} value={t("file.days", { n: facts.entitlement })} />
-            <KeyValueRow label={t("file.accrued")} value={t("file.days", { n: facts.accrued })} />
-            {(emp.openingLeave ?? 0) !== 0 && <KeyValueRow label={t("file.opening")} value={t("file.days", { n: emp.openingLeave ?? 0 })} />}
-            {emp.opening && <KeyValueRow label={t("file.opening_card")} value={t("file.opening_card_v", { n: emp.opening.leave, name: emp.opening.byName || "—", date: hrDate(emp.opening.at?.slice(0, 10), locale) })} />}
-            <KeyValueRow label={t("file.leave_taken_row")} value={t("file.days", { n: emp.leaveTaken ?? 0 })} />
-            <KeyValueRow label={t("file.balance")} value={facts.balance == null ? "—" : t("file.days", { n: facts.balance })} strong />
-            <p className="pt-2 text-[11px] text-muted-foreground">{t("file.balance_formula")}</p>
-            <KeyValueRow label={t("file.sick_used")} value={t("file.days", { n: emp.sick?.days ?? 0 })} />
-          </Panel>
-        </div>
-      )}
-
-      {seg === "pay" && money && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Panel title={t("file.seg.pay")}>
-            {pay ? (
-              <>
-                <KeyValueRow label={t("pay.basic")} value={hrMoney(pay.basic)} ltr />
-                <KeyValueRow label={t("pay.housing")} value={hrMoney(pay.housing)} ltr />
-                <KeyValueRow label={t("pay.transport")} value={hrMoney(pay.transport)} ltr />
-                <KeyValueRow label={t("pay.wage")} value={hrMoney(wage)} ltr strong />
-                {gosi && <KeyValueRow label={t("file.gosi")} value={t("file.gosi_line", { emp: (gosi.employee * 100).toFixed(2), co: (gosi.employer * 100).toFixed(2) })} />}
-                <KeyValueRow label={t("file.iban")} value={pay.iban || "—"} ltr />
-                <IbanActions access={access} employeeId={employeeId} actor={actor} state={pay.ibanState ?? null} fixedBy={(pay as { ibanFixedBy?: string }).ibanFixedBy ?? null} own={own} />
-                {pay.advance && pay.advance.balance > 0 && <KeyValueRow label={t("file.advance")} value={hrMoney(pay.advance.balance)} ltr />}
-                {(pay.retro ?? []).map((r, i) => (
-                  <KeyValueRow key={i} label={t("file.retro", { month: r.month })} value={hrMoney(r.amount)} ltr />
-                ))}
-              </>
-            ) : (
-              <p className="py-4 text-sm text-muted-foreground">{t("file.no_pay")}</p>
-            )}
-          </Panel>
-          {pay && (
-            <Panel title={t("file.cost_title")}>
-              <KeyValueRow label={t("pay.wage")} value={hrMoney(wage)} ltr />
-              <KeyValueRow label={t("file.cost_gosi")} value={hrMoney(employerGosi)} ltr />
-              <KeyValueRow label={t("file.cost_eos")} value={hrMoney(monthlyEosAccrual(wage, facts.service))} ltr />
-              <KeyValueRow label={t("file.cost_total")} value={hrMoney(companyCost)} ltr strong />
-              <KeyValueRow label={t("file.eos_termination")} value={hrMoney(gratuity(wage, emp.join, today, "termination_notice"))} ltr />
-              <KeyValueRow label={t("file.eos_resignation")} value={hrMoney(gratuity(wage, emp.join, today, "resignation"))} ltr />
-            </Panel>
-          )}
-        </div>
-      )}
-
-      {seg === "log" && (
-        <Panel title={t("req.title")} icon={Inbox} count={requests.length}>
-          <HrRequestList access={access} requests={requests} showEmployee={false} empty={t("req.none")} />
-        </Panel>
-      )}
-
-      {seg === "log" && <HrLettersPanel access={access} actor={actor} emp={emp} pay={pay} portal={portal} />}
-
-      {seg === "log" && (
-        <Panel
-          title={t("vio.title")}
-          icon={Gavel}
-          count={violations.length}
-          actions={
-            access.allowed("violation.record", { site: emp.siteId }) && (emp.siteId || access.allowed("violation.record")) && emp.status !== "left" ? (
-              <Button size="sm" variant="outline" onClick={() => setRecording(true)}>
-                {t("vio.record")}
-              </Button>
-            ) : null
-          }
-        >
-          <HrViolationList access={access} actor={actor} violations={violations} all={violations} pay={pay} showEmployee={false} empty={t("vio.none")} />
-        </Panel>
-      )}
-
-      {seg === "log" && (
-        <Panel title={t("file.log_title")} icon={History} count={log.length}>
-          {log.length === 0 ? (
-            <p className="py-4 text-sm text-muted-foreground">{t("file.log_empty")}</p>
-          ) : (
-            <ol className="divide-y">
-              {log.map((l) => (
-                <li key={l.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2.5 text-sm">
-                  <span className="font-semibold text-foreground">{t.has(`log.${l.kind}`) ? t(`log.${l.kind}` as "log.created", logParams(l, t, siteName, locale)) : l.kind}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {l.byName || "—"} · {hrDate(l.at?.slice(0, 10), locale)}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
-        </Panel>
-      )}
+      {seg === "ov" && <HrFileOverview v={view} />}
+      {seg === "ov" && <HrFileGrowth v={view} part="perf" />}
+      {seg === "docs" && <HrFileDocs v={view} />}
+      {seg === "docs" && <HrFileGrowth v={view} part="certs" />}
+      {seg === "att" && <HrFileAttLeave v={view} />}
+      {seg === "att" && <HrFilePunch access={access} emp={emp as HrEmployee} site={sites.find((s) => s.id === emp.siteId) ?? null} wm={thisWm} lastWm={lastWm} />}
+      {seg === "pay" && money && <HrFilePay v={view} companyCost={companyCost} employerGosi={employerGosi} />}
+      {seg === "log" && <HrFileLog v={view} onRecordViolation={() => setRecording(true)} />}
 
       {exiting && <StartExitDialog access={access} actor={actor} emp={emp as HrEmployee} onClose={() => setExiting(false)} />}
       {recording && <RecordViolationDialog access={access} actor={actor} employeeId={employeeId} onClose={() => setRecording(false)} />}
       {newReq && <NewRequestDialog kind={newReq} onClose={() => setNewReq(null)} access={access} actor={actor} emp={emp as HrEmployee} pay={pay} sites={sites} existing={requests} />}
 
       {action && (
-        <EmployeeActionDialog action={action} onClose={() => setAction(null)} access={access} actor={actor} emp={emp as HrEmployee} pay={pay} sites={sites} />
+        <EmployeeActionDialog
+          action={action.id}
+          docType={action.docType ?? null}
+          requestId={action.requestId ?? null}
+          onClose={() => setAction(null)}
+          access={access}
+          actor={actor}
+          emp={emp as HrEmployee}
+          pay={pay}
+          sites={sites}
+          employees={employees}
+          requests={requests}
+          managerName={view.manager.name}
+          isHrManager={isHrManager}
+        />
       )}
     </div>
   )
 }
-
-/** Log params rendered for reading: places and trades by name, days by locale. */
-function logParams(l: LogEntry, t: ReturnType<typeof useTranslations>, siteName: (id: string | null | undefined) => string | null, locale: string): Record<string, string> {
-  const p = l.params ?? {}
-  const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(p)) {
-    if (v == null) out[k] = "—"
-    else if (k === "from" || k === "to") {
-      if (l.kind === "moved") out[k] = siteName(String(v)) ?? t("sites.unassigned")
-      else out[k] = hrDate(String(v), locale)
-    } else if (k === "on" || k === "consent" || k === "lastDay") out[k] = hrDate(String(v), locale)
-    else if (k === "reason" && (l.kind === "exit_started")) out[k] = t(`exit.reasons.${v}` as "exit.reasons.resignation")
-    else if (k === "doc") out[k] = t(`doc.${v}` as "doc.iqama")
-    else if (k === "trade") out[k] = t(`trade.${v}` as "trade.mason")
-    else if (k === "code") out[k] = t(`violation.${v}` as "violation.late15")
-    else if (k === "site") out[k] = siteName(String(v)) ?? t("sites.unassigned")
-    else if (k === "fee") out[k] = hrMoney(Number(v))
-    else out[k] = String(v)
-  }
-  return out
-}
-
-/** A returned transfer's IBAN (PY-03, RL-02): payroll fixes it, the HR manager approves it — never the same hand. */
-function IbanActions({ access, employeeId, actor, state, fixedBy, own }: { access: HrAccess; employeeId: string; actor: HrActor; state: string | null; fixedBy: string | null; own: boolean }) {
-  const t = useTranslations("Portal.HR")
-  const firestore = useFirestore()
-  const { toast } = useToast()
-  const [iban, setIban] = useState("")
-  const [busy, setBusy] = useState(false)
-  if (state !== "returned" && state !== "fixed") return null
-  const run = async (fn: () => Promise<void>, ok: string) => {
-    if (!firestore) return
-    setBusy(true)
-    try {
-      await fn()
-      toast({ title: t(ok) })
-      setIban("")
-    } catch (err) {
-      console.error(err)
-      toast({ title: t(err instanceof HrWriteError ? (err.blocks[0] ? `iban.block.${err.blocks[0]}` : `err.${err.code}`) : "err.save"), variant: "destructive" })
-    } finally {
-      setBusy(false)
-    }
-  }
-  // Never one's own bank details, never the hand that fixed it (RL-02).
-  const mayApprove = state === "fixed" && access.allowed("iban.approve") && !own && (fixedBy !== access.ctx.uid || access.ctx.owner)
-  return (
-    <div className="mt-3 space-y-2">
-      <Callout tone="warn">{t(state === "returned" ? "iban.returned" : "iban.fixed")}</Callout>
-      {state === "returned" && access.allowed("iban.fix") && (
-        <div className="flex flex-wrap gap-2">
-          <Input dir="ltr" aria-label={t("iban.new")} placeholder="SA00 0000 0000 0000 0000 0000" value={iban} onChange={(e) => setIban(e.target.value)} className="h-9 flex-1 basis-60" disabled={busy} />
-          <Button size="sm" disabled={busy || !iban.trim()} onClick={() => void run(() => fixIban(firestore!, access.ctx, employeeId, actor, iban), "iban.fixed_ok")}>
-            {t("iban.fix")}
-          </Button>
-        </div>
-      )}
-      {mayApprove && (
-        <Button size="sm" disabled={busy} onClick={() => void run(() => approveIban(firestore!, access.ctx, employeeId, actor), "iban.approved_ok")}>
-          {t("iban.approve")}
-        </Button>
-      )}
-    </div>
-  )
-}
-

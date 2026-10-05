@@ -67,6 +67,28 @@ export const HR_NOTICE_KINDS = [
   "hr_injury_recorded", // → government relations: GOSI report in 3 working days
   "hr_iqama_clock", // → government relations: a visa arrival's iqama within 90 days
   "hr_iqama_on_site", // → government relations: an expired iqama on a site
+  "hr_iqama_renewed", // → the HR manager: an expired iqama is renewed — he may be assigned again (DC-03)
+  // Attendance (AT-03/04)
+  "hr_sheet_reminder", // → the workplace's supervisor: the sheet stopped — record the missing days
+  // People (AS-01, EM-05)
+  "hr_assigned_to_project", // → the project's manager: someone comes onto his site, and from when
+  "hr_probation_view", // → the HR manager: the line manager's view before the probation decision
+  // Hiring (HI-01, HI-05; optional: hire)
+  "hr_position_to_approve", // → management: a new position is a new cost
+  "hr_position_approved", // → whoever opened it: start the search
+  "hr_offer_above_band", // → management: an offer above the trade's band waits
+  "hr_offer_approved", // → whoever made the offer: send it
+  // Punches (PT-05, optional: punch)
+  "hr_ot_refused", // → the employee: punch overtime not counted, with its reason — he may object by a correction
+  // Training (WF-20, optional: train) and performance (WF-21/22, optional: perf)
+  "hr_training_scheduled", // → each participant workplace's supervisor: who of his goes, and when
+  "hr_training_cost", // → Finance: an external course's cost to pay (no amount in the message)
+  "hr_cycle_opened", // → each rater: the cycle is open and how many of his team to rate
+  "hr_reviews_sent", // → the HR manager: a rater's reviews await approval
+  "hr_reviews_returned", // → the rater: his set came back for review
+  "hr_review_ready", // → the employee: his review is approved — he may see it
+  "hr_raises_proposed", // → management: the review raises, one decision
+  "hr_raises_decided", // → the HR manager: approved (apply them) or returned
 ] as const
 export type HrNoticeKind = (typeof HR_NOTICE_KINDS)[number]
 
@@ -135,6 +157,23 @@ export const HR_NOTICE_COPY_AR: Record<HrNoticeKind, { title: string; message: s
   hr_injury_recorded: { title: "إصابة عمل — {name}", message: "سجّل {actor} إصابة عمل لـ{name} بتاريخ {on}. بلاغ التأمينات خلال 3 أيام عمل — المهلة تنتهي {due}." },
   hr_iqama_clock: { title: "إصدار الإقامة خلال 90 يوماً — {name}", message: "وصل {name} بتأشيرة وباشر في {join}. أصدر إقامته قبل {date}." },
   hr_iqama_on_site: { title: "إقامة منتهية على الموقع — {name}", message: "إقامة {name} منتهية منذ {expiry} وهو على {site}. جدّدها — لا عمل على موقع بإقامة منتهية." },
+  hr_iqama_renewed: { title: "جُدّدت إقامة {name}", message: "جدّد {actor} إقامة {name} حتى {expiry}. يمكن نقله وإسناده إلى موقع من جديد." },
+  hr_sheet_reminder: { title: "حضور {site} لم يُسجَّل منذ {since}", message: "يذكّرك {actor}: سجّل حضور {site} من {since} يوماً بيوم، أو صرّح بالأيام الفائتة باسمك. لا مسير قبل إقفال الشهر." },
+  hr_assigned_to_project: { title: "إسناد إلى موقعك — {name}", message: "أسند {actor} {name} إلى {site} من {on}. مركز التكلفة يتبع الإسناد من تاريخه." },
+  hr_probation_view: { title: "رأي المدير المباشر في التجربة — {name}", message: "أوصى {actor}: {recommend}. تنتهي تجربة {name} في {end} — القرار لك." },
+  hr_position_to_approve: { title: "وظيفة جديدة للاعتماد — {no}", message: "فتح {actor} الشاغر {no} في {site}، مطلوب قبل {need}. وظيفة جديدة = تكلفة جديدة — اعتمدها أو ارفضها قبل البحث." },
+  hr_position_approved: { title: "اعتُمدت الوظيفة {no} — ابدأ البحث", message: "اعتمد {actor} الشاغر {no} في {site}. ابدأ البحث عن المرشحين." },
+  hr_offer_above_band: { title: "عرض فوق النطاق — {name}", message: "عرض {actor} على {name} للشاغر {no} فوق نطاق المهنة. لا يُرسل للمرشح قبل اعتمادك." },
+  hr_offer_approved: { title: "اعتُمد عرض {name} — أرسله", message: "اعتمد {actor} العرض على {name} للشاغر {no}. أرسله وسجّل ردّ المرشح حين يصل." },
+  hr_ot_refused: { title: "لم يُحتسب إضافي {on}", message: "لم يُحتسب إضافي {h} ساعة ليوم {on} — {why}. لك الاعتراض بطلب تصحيح حضور من «ملفي»." },
+  hr_training_scheduled: { title: "جلسة {course} {date} — {count} من عمالك", message: "جدول {actor} جلسة {course} في {date} لـ{count} من عمال {site}. يوم التدريب يوم عمل بأجر." },
+  hr_training_cost: { title: "طلب صرف تكلفة تدريب — {course}", message: "سجّل {actor} نتيجة جلسة {course} ({date}): اجتازها {count}. اصرف تكلفتها من مكتب الموارد البشرية في المحاسبة." },
+  hr_cycle_opened: { title: "دورة التقييم مفتوحة — {count} من فريقك", message: "فتح {actor} دورة التقييم حتى {close}. قيّم {count} من فريقك من «الأداء»." },
+  hr_reviews_sent: { title: "{count} تقييماً بانتظار الاعتماد", message: "أرسل {actor} {count} تقييماً للاعتماد. عايرها واعتمدها أو أعدها من «الأداء»." },
+  hr_reviews_returned: { title: "أُعيدت تقييماتك للمراجعة", message: "أعاد {actor} {count} تقييماً للمراجعة. راجعها وأرسلها من جديد قبل {close}." },
+  hr_review_ready: { title: "تقييمك معتمد — {year}", message: "اعتُمد تقييمك في دورة {year}. اطّلع عليه في «ملفي» — لك مناقشته مع مديرك أو الموارد البشرية." },
+  hr_raises_proposed: { title: "زيادات التقييم السنوي بانتظار قرارك", message: "أعدّ {actor} زيادات التقييم لـ{count} موظفاً من {eff}. قرّر فيها دفعة واحدة من «الأداء»." },
+  hr_raises_decided: { title: "قرار الإدارة في زيادات التقييم", message: "{verdict} — {actor}." },
 }
 
 /** `@key` params the messages name, with their Arabic text (nested keys of Portal.Shared). */
@@ -142,6 +181,11 @@ export const HR_NOTICE_PARAM_COPY_AR: Record<string, string> = {
   "hr_req_kind.leave": "طلب إجازة",
   "hr_req_kind.advance": "طلب سلفة",
   "hr_req_kind.data": "طلب تحديث بيانات",
+  "hr_req_kind.attfix": "طلب تصحيح حضور",
+  "hr_req_kind.raise": "طلب تعديل أجر",
+  "hr_probation_rec.confirm": "التثبيت",
+  "hr_probation_rec.extend": "التمديد",
+  "hr_probation_rec.end": "الإنهاء",
   "hr_verdict.approved": "اعتُمد",
   "hr_verdict.declined": "رُفض",
   "hr_verdict.upheld": "أُيّد الجزاء ويُخصم في مسيره",
@@ -153,10 +197,20 @@ export const HR_NOTICE_PARAM_COPY_AR: Record<string, string> = {
   "hr_letter_kind.noc": "عدم ممانعة",
   "hr_letter_kind.oth": "خطاب آخر",
   "hr_letter_kind.exp": "شهادة خبرة",
+  "hr_ot_why.nowork": "بقي بلا تكليف بعمل",
+  "hr_ot_why.wait": "ينتظر النقل",
+  "hr_ot_why.err": "خطأ بصمة",
+  "hr_verdict.raises_ok": "اعتُمدت الزيادات — طبّقها على الأجور",
+  "hr_verdict.raises_back": "أُعيد المقترح",
+  "hr_course.ind": "تعريف السلامة بالموقع",
+  "hr_course.hgt": "العمل على المرتفعات",
+  "hr_course.fa": "الإسعافات الأولية",
+  "hr_course.sup": "مهارات الإشراف الميداني",
+  "hr_course.xl": "إكسل للأعمال",
 }
 
 /** HR's own document numbers in Arabic (ط.إ / ط.سل / ط.ص / خ) — the shared prefix table is Sales'. */
-const hrNumberAr = (v: string) => v.replace(/^LV-(?=\d{4}\/)/, "ط.إ-").replace(/^AV-(?=\d{4}\/)/, "ط.سل-").replace(/^HQ-(?=\d{4}\/)/, "ط.ص-").replace(/^LT-(?=\d{4}\/)/, "خ-")
+const hrNumberAr = (v: string) => v.replace(/^LV-(?=\d{4}\/)/, "ط.إ-").replace(/^AV-(?=\d{4}\/)/, "ط.سل-").replace(/^HQ-(?=\d{4}\/)/, "ط.ص-").replace(/^AQ-(?=\d{4}\/)/, "ط.ح-").replace(/^RS-(?=\d{4}\/)/, "ط.ز-").replace(/^LT-(?=\d{4}\/)/, "خ-").replace(/^JOB-(?=\d{4}\/)/, "ش-")
 
 const substitute = (template: string, params: EventParams) =>
   template.replace(/\{(\w+)\}/g, (_, k: string) => {
@@ -280,7 +334,11 @@ export const hrLinks = {
   site: (siteId: string) => `hr/sites/${siteId}`,
   sites: () => "hr/sites",
   payroll: () => "hr/payroll",
+  /** An opening on the Hiring tab (optional: hire). */
+  hiring: (openingId?: string | null) => (openingId ? `hr/hiring?job=${openingId}` : "hr/hiring"),
   financeDesk: () => "accounting/hr-desk",
+  perf: () => "hr/perf",
+  training: () => "hr/perf?seg=train",
   custody: () => "warehouses/custody",
   /** Projects live in the contractor portal only. */
   projectTeam: (projectId: string) => `/contractor/projects/${projectId}?tab=team`,

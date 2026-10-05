@@ -9,43 +9,115 @@
 import type { HrContext } from "./access"
 import { mayDecideRequest, mayEndorse } from "./access"
 import type { DocDates } from "./documents"
-import type { EmployeePay, HrEmployee } from "./employee"
+import type { EmployeePay, HrEmployee, RaiseFields } from "./employee"
 import { balanceSplit, leaveBalance, leaveDays, leaveEligibility, leaveEndAfter, LEAVE_RULES, sickSplit, type Holiday, type LeaveEligibility, type LeaveType, type SickSplit } from "./leave"
 import { advanceInstalment, advanceMonths, wageOf } from "./pay"
 import { addDays, daysBetween, serviceYears, STATUTORY, type HrPolicies } from "./statutory"
 
-export const HR_REQUEST_KINDS = ["leave", "advance", "data"] as const
+export const HR_REQUEST_KINDS = ["leave", "advance", "data", "attfix", "raise"] as const
 export type HrRequestKind = (typeof HR_REQUEST_KINDS)[number]
 
 /** pending → (endorsed) → approved | declined | finance → approved | declined; not started → cancelled. */
 export const HR_REQUEST_STATES = ["pending", "endorsed", "approved", "declined", "finance", "cancelled"] as const
 export type HrRequestState = (typeof HR_REQUEST_STATES)[number]
 
-/** The yearly sequence codes — shown ط.إ / ط.سل / ط.ص in Arabic. */
-export const REQUEST_NUMBER_TYPE: Record<HrRequestKind, string> = { leave: "LV", advance: "AV", data: "HQ" }
+/** The yearly sequence codes — shown ط.إ / ط.سل / ط.ص / ط.ح / ط.ز in Arabic. An attendance correction is
+ * AQ (ط.ح, "طلب حضور"): no other sequence uses either (the prototype shared ط.ص with data updates; ours
+ * keeps one sequence per kind so a number names its kind). */
+export const REQUEST_NUMBER_TYPE: Record<HrRequestKind, string> = { leave: "LV", advance: "AV", data: "HQ", attfix: "AQ", raise: "RS" }
 
 /** ES-03 — what an employee may ask to change; he never edits his own record. */
-export const DATA_FIELDS = ["iban", "mobile", "address", "emergency"] as const
+export const DATA_FIELDS = ["iban", "mobile", "address", "emergency", "qualification"] as const
 export type DataField = (typeof DATA_FIELDS)[number]
+
+/** The bank's document as uploaded with the request (EM-07): a Storage object under the employee's folder.
+ * The HR manager's approval files it on the record (`employees/{id}/files`, kind `bank`). */
+export interface DataFile {
+  path: string
+  name: string
+  size: number
+  contentType: string
+}
 
 export interface DataFields {
   field: DataField
   value: string
-  /** The supporting document (a bank letter for an IBAN) — its reference; attachments come later (EM-07). */
+  /** The supporting document's name (a typed reference on requests filed before uploads). */
   document?: string | null
+  /** The uploaded bank document (ES-03) — an IBAN change carries it. */
+  file?: DataFile | null
 }
 
 export type DataBlock = "no_value" | "bad_iban" | "no_document"
 
-export function dataBlocks(input: { field: DataField; value: string; document?: string | null }): DataBlock[] {
+export function dataBlocks(input: { field: DataField; value: string; document?: string | null; file?: DataFile | null }): DataBlock[] {
   const out: DataBlock[] = []
   const v = input.value.trim()
   if (!v) out.push("no_value")
   if (input.field === "iban") {
     if (v && !/^SA\d{22}$/.test(v.replace(/\s+/g, "").toUpperCase())) out.push("bad_iban")
-    if (!input.document?.trim()) out.push("no_document")
+    if (!input.file?.path && !input.document?.trim()) out.push("no_document")
   }
   return out
+}
+
+// ---------------------------------------------------------------------------
+// Attendance correction (PRD form 11, PT-07; the sheet variant is core)
+// ---------------------------------------------------------------------------
+
+/** `abs` — marked absent on the sheet but was at work (every workplace); `miss` — forgot to punch and `out` —
+ * outside the fence on duty exist only where people punch (optional: punch). */
+export const ATTFIX_TYPES = ["abs", "miss", "out"] as const
+export type AttfixType = (typeof ATTFIX_TYPES)[number]
+export const attfixTypesFor = (punch: boolean): AttfixType[] => (punch ? ["miss", "out", "abs"] : ["abs"])
+
+/** A correction is asked within a week of the day (the prototype's window), and forgotten punches at most
+ * three times a month (company policy `fixMax`, the prototype's default). */
+export const ATTFIX_WINDOW_DAYS = 7
+export const ATTFIX_MISS_PER_MONTH = 3
+
+export interface AttfixFields {
+  type: AttfixType
+  day: string
+  reason: string
+}
+
+export type AttfixBlock = "no_day" | "future" | "too_old" | "no_reason" | "bad_fix_type" | "over_cap" | "duplicate"
+
+type AttfixLike = Pick<HrRequest, "kind" | "state" | "attfix" | "createdAt">
+
+/** Forgotten-punch corrections filed this month (cancelled ones do not count). */
+export function attfixUsed(mine: AttfixLike[], month: string): number {
+  return mine.filter((r) => r.kind === "attfix" && r.state !== "cancelled" && r.attfix?.type === "miss" && (r.createdAt ?? "").slice(0, 7) === month).length
+}
+
+export function attfixBlocks(input: { type: AttfixType; day: string; reason: string }, ctx: { today: string; punch: boolean; mine: AttfixLike[] }): AttfixBlock[] {
+  const out: AttfixBlock[] = []
+  if (!attfixTypesFor(ctx.punch).includes(input.type)) out.push("bad_fix_type")
+  if (!input.day) out.push("no_day")
+  else if (input.day > ctx.today) out.push("future")
+  else if (daysBetween(input.day, ctx.today) > ATTFIX_WINDOW_DAYS) out.push("too_old")
+  if (!input.reason.trim()) out.push("no_reason")
+  if (input.type === "miss" && attfixUsed(ctx.mine, ctx.today.slice(0, 7)) >= ATTFIX_MISS_PER_MONTH) out.push("over_cap")
+  if (input.day && ctx.mine.some((r) => r.kind === "attfix" && r.attfix?.day === input.day && (r.state === "pending" || r.state === "approved"))) out.push("duplicate")
+  return out
+}
+
+export type AttfixApplyBlock = "month_closed" | "no_sheet" | "not_absent"
+
+/** Deciding (approve): the day's sheet must still be open and must show him absent — a closed month never
+ * reopens (AT-03; a difference is then a supplementary item). Only `abs` touches the sheet. */
+export function attfixApplyBlocks(
+  wm: { closed?: unknown; days?: Record<string, { listed?: string[]; ex?: Record<string, { status?: string | null }> }> } | null,
+  employeeId: string,
+  f: Pick<AttfixFields, "type" | "day">
+): AttfixApplyBlock[] {
+  if (wm?.closed) return ["month_closed"]
+  if (f.type !== "abs") return []
+  const sheet = wm?.days?.[f.day]
+  if (!sheet) return ["no_sheet"]
+  if (!sheet.listed?.includes(employeeId) || sheet.ex?.[employeeId]?.status !== "absent") return ["not_absent"]
+  return []
 }
 
 export interface Stamp {
@@ -106,6 +178,10 @@ export interface HrRequest {
   leave?: LeaveFields | null
   advance?: AdvanceFields | null
   data?: DataFields | null
+  attfix?: AttfixFields | null
+  /** EM-04 — a raise asked for; approving it IS the pay change (`changePay` with the request), so it carries pay
+   * and is read only by pay roles and the employee. */
+  raise?: RaiseFields | null
   endorsement?: Stamp | null
   decision?: (Stamp & { ownFlagged?: boolean }) | null
   /** Set when an advance goes to Finance — Finance reads by it, before and after deciding. */
@@ -287,27 +363,69 @@ export function advanceQuote(
 
 export type RequestAction = "endorse" | "approve" | "decline" | "cancel" | "finance"
 
-/** A request that has not started may be cancelled: pending by its owner or HR; an approved leave before its first day by HR (LV-07). */
+/** LV-07 — an approved leave the EMPLOYEE may withdraw himself before its first day: one whose only mark on
+ * his record is the balance (sick days and the once-only Hajj are given back by the HR manager). */
+export const ownCancellable = (type: LeaveType) => type !== "sick" && type !== "hajj"
+
+/** A request that has not started may be cancelled: pending by its owner or HR; an approved leave before its
+ * first day by HR, or by the employee himself (LV-07, owner default 5) — his balance comes back. */
 export function mayCancel(ctx: HrContext, r: Pick<HrRequest, "state" | "kind" | "employeeId" | "leave">, today: string): boolean {
   const own = Boolean(ctx.employeeId) && ctx.employeeId === r.employeeId
   const hr = ctx.roles.has("manager")
   if (r.state === "pending" || r.state === "endorsed") return own || hr
-  if (r.state === "approved" && r.kind === "leave" && r.leave && r.leave.from > today) return hr
+  if (r.state === "approved" && r.kind === "leave" && r.leave && r.leave.from > today) return hr || (own && ownCancellable(r.leave.type))
   return false
+}
+
+/** An attendance correction is decided by whoever keeps the sheet it corrects: the workplace's supervisor
+ * (the line manager on a supervisor-sheet workplace) or the HR manager — never the employee himself. */
+export function mayDecideAttfix(ctx: HrContext, r: Pick<HrRequest, "employeeId" | "siteId" | "deciderLevel">): boolean {
+  if (ctx.owner) return true
+  if (ctx.employeeId && ctx.employeeId === r.employeeId) return false
+  if (ctx.roles.has("supervisor") && r.siteId && ctx.sites.includes(r.siteId)) return true
+  return r.deciderLevel === "manager" && ctx.roles.has("manager")
 }
 
 export function requestActions(ctx: HrContext, r: HrRequest, opts: { today: string; financeAllowed: boolean }): RequestAction[] {
   const out: RequestAction[] = []
   const open = r.state === "pending" || r.state === "endorsed"
   if (r.kind === "leave" && r.state === "pending" && mayEndorse(ctx, { employeeId: r.employeeId, site: r.siteId, lineManagerId: r.lineManagerId })) out.push("endorse")
-  if (open && mayDecideRequest(ctx, { employeeId: r.employeeId, isHrManager: r.deciderLevel === "management" }) === null) out.push("approve", "decline")
+  if (r.kind === "attfix") {
+    if (open && mayDecideAttfix(ctx, r)) out.push("approve", "decline")
+  } else if (open && mayDecideRequest(ctx, { employeeId: r.employeeId, isHrManager: r.deciderLevel === "management" }) === null)
+    // A raise is approved as the pay change it asks for — from the employee's file (EM-04); here it is declined.
+    out.push(...(r.kind === "raise" ? (["decline"] as const) : (["approve", "decline"] as const)))
   if (r.state === "finance" && opts.financeAllowed && ctx.employeeId !== r.employeeId) out.push("finance")
   if (mayCancel(ctx, r, opts.today)) out.push("cancel")
   return out
 }
 
-/** The request's number as a person reads it (ط.إ / ط.سل in Arabic). */
+/** The request's number as a person reads it (ط.إ / ط.سل / ط.ص / ط.ح in Arabic). */
 export function requestNoDisplay(no: string, locale: string): string {
   if (locale !== "ar") return no
-  return no.replace(/^LV-/, "ط.إ-").replace(/^AV-/, "ط.سل-").replace(/^HQ-/, "ط.ص-")
+  return no.replace(/^LV-/, "ط.إ-").replace(/^AV-/, "ط.سل-").replace(/^HQ-/, "ط.ص-").replace(/^AQ-/, "ط.ح-").replace(/^RS-/, "ط.ز-")
+}
+
+// ---------------------------------------------------------------------------
+// Who holds a request now (ES-02) — a role the screen resolves to a NAME
+// ---------------------------------------------------------------------------
+
+export type HolderRole = "line_manager" | "supervisor" | "hr" | "management" | "finance"
+
+/** A leave waits for the line manager's endorsement first; an attendance correction for whoever keeps the
+ * sheet; the rest for the HR manager — management for the HR manager's own; an advance above the limit for
+ * Finance. Null once decided. `userId` names the person when the request carries him. */
+export function requestHolder(r: Pick<HrRequest, "kind" | "state" | "deciderLevel" | "lineManagerUserId">): { role: HolderRole; userId: string | null } | null {
+  if (r.state === "finance") return { role: "finance", userId: null }
+  if (r.state !== "pending" && r.state !== "endorsed") return null
+  if (r.kind === "leave" && r.state === "pending" && r.lineManagerUserId) return { role: "line_manager", userId: r.lineManagerUserId }
+  if (r.kind === "attfix" && r.lineManagerUserId) return { role: "supervisor", userId: r.lineManagerUserId }
+  return { role: r.deciderLevel === "management" ? "management" : "hr", userId: null }
+}
+
+/** AD-01 — the schedule as the prototype states it: `instalment × full months + last = amount`. */
+export function instalmentSchedule(amount: number, instalment: number): { instalment: number; full: number; last: number } {
+  if (!(amount > 0) || !(instalment > 0)) return { instalment, full: 0, last: 0 }
+  const months = Math.ceil(amount / instalment)
+  return { instalment, full: months - 1, last: Math.round((amount - instalment * (months - 1)) * 100) / 100 }
 }

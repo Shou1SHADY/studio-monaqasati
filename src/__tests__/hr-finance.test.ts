@@ -13,8 +13,8 @@ import { hrAllowed, type HrContext, type HrRole } from "@/lib/hr/access"
 import type { WorkplaceMonth } from "@/lib/hr/attendance"
 import type { EmployeePay, HrEmployee } from "@/lib/hr/employee"
 import { approveIban, fixIban } from "@/lib/hr/employee-writes"
-import { markReturned, owedLines, payAdvance, payHeldLine, postHrEvent, recordPayrollPaid, returnableLines, transferAmount, type FinancePayroll, type HrEvent } from "@/lib/hr/finance-writes"
-import { computePayroll, payrollTotals, type Payroll } from "@/lib/hr/payroll"
+import { gosiAmount, markReturned, owedLines, payAdvance, payHeldLine, postHrEvent, recordGosiPaid, recordPayrollPaid, returnableLines, transferAmount, type FinancePayroll, type HrEvent } from "@/lib/hr/finance-writes"
+import { computePayroll, financeReconciliation, payrollTotals, type Payroll } from "@/lib/hr/payroll"
 import { approvePayroll, preparePayroll } from "@/lib/hr/payroll-writes"
 import type { HrRequest } from "@/lib/hr/requests"
 import type { HrSite } from "@/lib/hr/sites"
@@ -156,6 +156,32 @@ describe("posting and paying", () => {
     expect(readDoc<EmployeePay>("employeePay/e1")?.ibanState).toBe("ok")
     await payHeldLine(db, fin, ORG, payroll(), "e1", books)
     expect(payroll().paidHeld?.e1).toBeTruthy()
+  })
+
+  it("Finance records the month's GOSI payment once — Dr GOSI payable for both shares, held lines included (PY-09)", async () => {
+    await expect(recordGosiPaid(db, fin, ORG, payroll(), books)).rejects.toMatchObject({ blocks: ["not_posted"] })
+    await postHrEvent(db, fin, ORG, event(`hr:PAY:${M}`), books)
+    await expect(recordGosiPaid(db, { ...fin, allowed: false }, ORG, payroll(), books)).rejects.toMatchObject({ code: "no_role" })
+    const t = payrollTotals(payroll().lines)
+    await recordGosiPaid(db, fin, ORG, payroll(), { ...books, date: "2026-09-12" })
+    expect(payroll().gosiPaid).toMatchObject({ date: "2026-09-12", amount: Math.round((t.gosiEmployee + t.gosiEmployer) * 100) / 100 })
+    const e = journal().find((j) => j.sourceType === "hr_gosi_payment")!
+    expect(e.lines[0]).toMatchObject({ account: ACC.gosiPayable, debit: gosiAmount(payroll()) })
+    expect(sum(e.lines, "debit")).toBe(sum(e.lines, "credit"))
+    await expect(recordGosiPaid(db, fin, ORG, payroll(), books)).rejects.toMatchObject({ blocks: ["stale"] })
+    // HR's reconciliation reads it: paid, not overdue.
+    expect(financeReconciliation(payroll(), "2026-10-20")).toMatchObject({ gosiPaid: { date: "2026-09-12" }, gosiOverdue: false })
+  })
+
+  it("the reconciliation: what was sent, paid, still owed; GOSI overdue after the 15th (PY-09)", async () => {
+    expect(financeReconciliation(payroll(), "2026-09-10")).toMatchObject({ paid: null, owedCount: 1, gosiDue: "2026-09-15", gosiOverdue: false })
+    await postHrEvent(db, fin, ORG, event(`hr:PAY:${M}`), books)
+    await recordPayrollPaid(db, fin, ORG, payroll(), books)
+    const r = financeReconciliation(payroll(), "2026-09-16")
+    const e2 = payroll().lines.find((l) => l.employeeId === "e2")!
+    expect(r).toMatchObject({ owed: e2.net, owedCount: 1, gosiOverdue: true })
+    expect(r.paid).toBe(transferAmount(payroll()))
+    expect(Math.round(((r.paid ?? 0) + r.owed) * 100) / 100).toBe(r.payable)
   })
 
   it("with Accounting off the payment is still recorded, straight from approved", async () => {

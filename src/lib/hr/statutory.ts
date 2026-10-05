@@ -70,6 +70,23 @@ export interface HrPolicies {
   advanceMaxMonths: number
   /** Closing a month with an unrecorded day (AT-04). */
   closeMissing: BlockOrWarn
+  /** AS-02 — temporary labour (Ajeer) offered in a manpower answer, and its cost against a hire. */
+  ajeerAllowed: boolean
+  ajeerFactor: number
+  /** HI-05 — the offer band: a share of the trade's reference wage (90–120%). */
+  offerBandLow: number
+  offerBandHigh: number
+  /** ST-03 — a new position waits for management's approval (block) or opens at once (warn). */
+  jobApprove: BlockOrWarn
+  /** ST-03 — an offer above the band waits for management (block) or goes with a warning (warn). */
+  offerBand: BlockOrWarn
+  /** PF-06 — the review raise on the basic by band, in percent (0–25): A outstanding · B very good · C good · D. */
+  raiseA: number
+  raiseB: number
+  raiseC: number
+  raiseD: number
+  /** PF-04 — the record's share of a review score (absences, penalties): the manager's grade is the rest. */
+  recordWeight: number
 }
 
 export const DEFAULT_HR_POLICIES: HrPolicies = {
@@ -79,10 +96,24 @@ export const DEFAULT_HR_POLICIES: HrPolicies = {
   renewWindowDays: 60,
   advanceMaxMonths: 1,
   closeMissing: "block",
+  ajeerAllowed: true,
+  ajeerFactor: 1.4,
+  offerBandLow: 0.9,
+  offerBandHigh: 1.2,
+  jobApprove: "block",
+  offerBand: "block",
+  raiseA: 7,
+  raiseB: 4,
+  raiseC: 2,
+  raiseD: 0,
+  recordWeight: 0.2,
 }
 
 const frac = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1 ? v : fallback)
 const int = (v: unknown, lo: number, hi: number, fallback: number) => (typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi ? v : fallback)
+
+/** A review raise: 0–25 % in half points (the prototype's raise proposal input). */
+const raisePct = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 25 ? Math.round(v * 2) / 2 : fallback)
 
 /** A stored policy set, or nothing, made complete and sane. */
 export function resolveHrPolicies(raw: Partial<HrPolicies> | null | undefined): HrPolicies {
@@ -94,7 +125,26 @@ export function resolveHrPolicies(raw: Partial<HrPolicies> | null | undefined): 
     renewWindowDays: int(raw?.renewWindowDays, 1, 365, d.renewWindowDays),
     advanceMaxMonths: typeof raw?.advanceMaxMonths === "number" && raw.advanceMaxMonths > 0 && raw.advanceMaxMonths <= 12 ? raw.advanceMaxMonths : d.advanceMaxMonths,
     closeMissing: raw?.closeMissing === "warn" ? "warn" : "block",
+    ajeerAllowed: typeof raw?.ajeerAllowed === "boolean" ? raw.ajeerAllowed : d.ajeerAllowed,
+    ajeerFactor: typeof raw?.ajeerFactor === "number" && Number.isFinite(raw.ajeerFactor) && raw.ajeerFactor >= 1 && raw.ajeerFactor <= 5 ? raw.ajeerFactor : d.ajeerFactor,
+    ...offerBandOf(raw),
+    jobApprove: raw?.jobApprove === "warn" ? "warn" : "block",
+    offerBand: raw?.offerBand === "warn" ? "warn" : "block",
+    raiseA: raisePct(raw?.raiseA, d.raiseA),
+    raiseB: raisePct(raw?.raiseB, d.raiseB),
+    raiseC: raisePct(raw?.raiseC, d.raiseC),
+    raiseD: raisePct(raw?.raiseD, d.raiseD),
+    recordWeight: typeof raw?.recordWeight === "number" && Number.isFinite(raw.recordWeight) && raw.recordWeight >= 0 && raw.recordWeight <= 0.5 ? raw.recordWeight : d.recordWeight,
   }
+}
+
+/** The band's two ends, each sane (50–100% and 100–200% of the reference wage), the low never above the high. */
+function offerBandOf(raw: Partial<HrPolicies> | null | undefined): Pick<HrPolicies, "offerBandLow" | "offerBandHigh"> {
+  const d = DEFAULT_HR_POLICIES
+  const ok = (v: unknown, lo: number, hi: number): v is number => typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi
+  const low = ok(raw?.offerBandLow, 0.5, 1) ? raw!.offerBandLow! : d.offerBandLow
+  const high = ok(raw?.offerBandHigh, 1, 2) ? raw!.offerBandHigh! : d.offerBandHigh
+  return { offerBandLow: low, offerBandHigh: high }
 }
 
 // ---------------------------------------------------------------------------

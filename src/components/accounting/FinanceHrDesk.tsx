@@ -9,7 +9,7 @@
 import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, query, where } from "firebase/firestore"
-import { Banknote, BookCheck, HandCoins, Loader2, Lock, LogOut, Receipt, RotateCcw, Users } from "lucide-react"
+import { Banknote, BookCheck, HandCoins, Loader2, Lock, LogOut, Receipt, RotateCcw, ShieldCheck, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -29,10 +29,15 @@ import { HR_EVENTS, HR_PAY, HR_PAYROLLS, HR_REQUESTS, HR_SETTLEMENTS } from "@/l
 import type { EmployeePay } from "@/lib/hr/employee"
 import { empNo, hrDate, hrMoney, todayDay } from "@/lib/hr/format"
 import type { HrSettlement } from "@/lib/hr/exit-writes"
-import { markReturned, owedLines, payAdvance, payFeeRequest, payHeldLine, paySettlement, postHrEvent, recordPayrollPaid, returnableLines, transferAmount, type FinanceActor, type FinancePayroll, type HrEvent, type HrFeeEvent } from "@/lib/hr/finance-writes"
+import { gosiAmount, markReturned, owedLines, payAdvance, payFeeRequest, payHeldLine, paySettlement, postHrEvent, recordGosiPaid, recordPayrollPaid, returnableLines, transferAmount, type FinanceActor, type FinancePayroll, type HrEvent, type HrFeeEvent } from "@/lib/hr/finance-writes"
+import { gosiDueOn } from "@/lib/hr/payroll"
+import { postHrEos, postHrPay } from "@/lib/accounting/posting-rules"
+import { DrawerSection } from "@/components/module-ui/DrawerSection"
+import { EntryPreview } from "@/components/hr/HrPayrollPanels"
 import { financeDecideAdvance } from "@/lib/hr/request-writes"
 import { requestNoDisplay, type HrRequest } from "@/lib/hr/requests"
 import { r2 } from "@/lib/hr/statutory"
+import { payTrainingCost, type TrainingCostEvent } from "@/lib/hr/training-writes"
 import { HrWriteError } from "@/lib/hr/write-guard"
 import { AccountingShell } from "./AccountingShell"
 
@@ -45,6 +50,8 @@ type Pending =
   | { kind: "decide"; r: HrRequest }
   | { kind: "settlement"; st: HrSettlement }
   | { kind: "fee"; ev: HrFeeEvent }
+  | { kind: "training"; ev: TrainingCostEvent }
+  | { kind: "gosi"; p: PayrollDoc }
 
 const BANKS = POSTABLE_ACCOUNTS.filter((a) => a.code.startsWith("1101")).map((a) => a.code)
 
@@ -83,12 +90,17 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
   const events = ((evData ?? []) as unknown as HrEvent[]).filter((e) => e.state === "sent" && (e.kind === "PAY" || e.kind === "EOS")).sort((a, b) => a.key.localeCompare(b.key))
   // DC-03 — payment requests (hr:PR): a renewal's government fee, paid here.
   const fees = ((evData ?? []) as unknown as Array<HrEvent | HrFeeEvent>).filter((e): e is HrFeeEvent => e.kind === "PR" && e.state === "sent").sort((a, b) => a.key.localeCompare(b.key))
+  // TR-04 — a training session's cost (hr:TRN): an external course, paid here.
+  const trainings = ((evData ?? []) as unknown as Array<{ kind: string; state: string }>).filter((e): e is TrainingCostEvent => e.kind === "TRN" && e.state === "sent").sort((a, b) => a.key.localeCompare(b.key))
   const payrolls = ((prData ?? []) as unknown as PayrollDoc[]).sort((a, b) => b.key.localeCompare(a.key))
   const toPay = payrolls.filter((p) => p.state === "posted" || (p.state === "approved" && !accountingOn))
   // PY-03 — every paid payroll, however old: a held line never drops out of view, and a returned transfer is
   // recorded on the payroll it came from (newest first in the picker).
   const paid = payrolls.filter((p) => p.state === "paid")
   const held = owedLines(payrolls)
+  // PY-09 — fin:GOSIPAID: a main payroll Finance has posted or paid, its contributions not yet paid.
+  const gosiToPay = payrolls.filter((p) => p.kind === "main" && (p.state === "posted" || p.state === "paid") && !p.gosiPaid).sort((a, b) => a.key.localeCompare(b.key))
+  const today = todayDay()
   const advances = (avData ?? []) as unknown as (HrRequest & { payout?: unknown })[]
   const toDecide = advances.filter((r) => r.state === "finance")
   const toPayOut = advances.filter((r) => r.state === "approved" && !r.payout)
@@ -122,6 +134,8 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
     else if (pending.kind === "advance") void run(() => payAdvance(firestore, actor, orgId, pending.r, books), "fhd.advance_paid_ok")
     else if (pending.kind === "settlement") void run(() => paySettlement(firestore, actor, orgId, pending.st, books), "fhd.settlement_paid_ok")
     else if (pending.kind === "fee") void run(() => payFeeRequest(firestore, actor, orgId, pending.ev, books), "fhd.fee_paid_ok")
+    else if (pending.kind === "training") void run(() => payTrainingCost(firestore, actor, orgId, pending.ev, books), "fhd.fee_paid_ok")
+    else if (pending.kind === "gosi") void run(() => recordGosiPaid(firestore, actor, orgId, pending.p, books), "fhd.gosi_paid_ok")
   }
   const decide = (verdict: "approve" | "decline") => {
     if (!firestore || pending?.kind !== "decide") return
@@ -159,13 +173,50 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
               empty(t("fhd.to_post_empty"))
             ) : (
               <ul className="divide-y rounded-xl border">
-                {events.map((e) =>
+                {events.map((e) => (
+                  <li key={e.id} className="space-y-2 px-3 py-2.5">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="min-w-0 flex-1 basis-56">
+                        <p className="text-sm font-bold">
+                          <span dir="ltr">{e.key}</span>
+                        </p>
+                        <p className="text-xs text-muted-foreground">{t(`fhd.event.${e.kind}`, { amount: hrMoney(r2(e.debit.reduce((s, d) => s + d.amount, 0))) })}</p>
+                      </div>
+                      <Button size="sm" disabled={busy || !accountingOn} onClick={() => void run(() => postHrEvent(firestore!, actor, orgId!, e, { accountingOn }), "fhd.posted_ok")}>
+                        {t("fhd.post")}
+                      </Button>
+                    </div>
+                    {/* §7.2 — the entry as it will post, before «Post». */}
+                    <DrawerSection title={t("fhd.show_entry")} defaultOpen={false}>
+                      <EntryPreview
+                        result={
+                          e.kind === "PAY"
+                            ? postHrPay({ key: e.key, month: e.month, date: e.month, debit: e.debit, credit: e.credit as { salariesPayable: number; gosi: number; advances: number; fines: number } })
+                            : postHrEos({ key: e.key, month: e.month, date: e.month, debit: e.debit, credit: e.credit as { eosProvision: number; leaveProvision: number } })
+                        }
+                      />
+                    </DrawerSection>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+
+          <Panel title={t("fhd.gosi")} icon={ShieldCheck} count={gosiToPay.length || undefined}>
+            {gosiToPay.length === 0 ? (
+              empty(t("fhd.gosi_empty"))
+            ) : (
+              <ul className="divide-y rounded-xl border">
+                {gosiToPay.map((p) =>
                   row(
-                    e.id,
-                    <span dir="ltr">{e.key}</span>,
-                    t(`fhd.event.${e.kind}`, { amount: hrMoney(r2(e.debit.reduce((s, d) => s + d.amount, 0))) }),
-                    <Button size="sm" disabled={busy || !accountingOn} onClick={() => void run(() => postHrEvent(firestore!, actor, orgId!, e, { accountingOn }), "fhd.posted_ok")}>
-                      {t("fhd.post")}
+                    p.id,
+                    <span dir="ltr">{p.key}</span>,
+                    <span className="inline-flex flex-wrap items-center gap-2">
+                      {t("fhd.gosi_line", { amount: hrMoney(gosiAmount(p)), date: hrDate(gosiDueOn(p.month), locale) })}
+                      {today > gosiDueOn(p.month) && <StatusPill tone="bad">{t("fhd.gosi_overdue")}</StatusPill>}
+                    </span>,
+                    <Button size="sm" disabled={busy} onClick={() => open({ kind: "gosi", p })}>
+                      {t("fhd.record_gosi")}
                     </Button>
                   )
                 )}
@@ -234,6 +285,23 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
             )}
           </Panel>
 
+          {trainings.length > 0 && (
+            <Panel title={t("fhd.trainings")} icon={Receipt} count={trainings.length}>
+              <ul className="divide-y rounded-xl border">
+                {trainings.map((ev) =>
+                  row(
+                    ev.id,
+                    <span dir="ltr">{ev.key}</span>,
+                    t("fhd.training_line", { course: t(`train.course.${ev.course}` as "train.course.ind"), date: hrDate(ev.at, locale), n: ev.count, amount: hrMoney(ev.amount) }),
+                    <Button size="sm" disabled={busy} onClick={() => open({ kind: "training", ev })}>
+                      {t("fhd.pay_out")}
+                    </Button>
+                  )
+                )}
+              </ul>
+            </Panel>
+          )}
+
           <Panel title={t("fhd.settlements")} icon={LogOut} count={settlements.length || undefined}>
             {settlements.length === 0 ? (
               empty(t("fhd.settlements_empty"))
@@ -294,7 +362,9 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
               {(pending?.kind === "advance" || pending?.kind === "decide") && `${requestNoDisplay(pending.r.no, locale)} · ${pending.r.employeeName} · ${hrMoney(pending.r.advance?.amount)}`}
               {pending?.kind === "return" && t("fhd.return_desc", { key: pending.p.key })}
               {pending?.kind === "settlement" && `${empNo(pending.st.no)} · ${hrMoney(pending.st.net)}`}
-              {pending?.kind === "fee" && `${empNo(pending.ev.employeeNo)} · ${t(`doc.${pending.ev.doc}` as "doc.iqama")} · ${hrMoney(pending.ev.amount)}`}
+              {pending?.kind === "gosi" && `${pending.p.key} · ${hrMoney(gosiAmount(pending.p))}`}
+              {pending?.kind === "training" && `${t(`train.course.${pending.ev.course}` as "train.course.ind")} · ${hrMoney(pending.ev.amount)}`}
+              {pending?.kind === "fee" &&`${empNo(pending.ev.employeeNo)} · ${t(`doc.${pending.ev.doc}` as "doc.iqama")} · ${hrMoney(pending.ev.amount)}`}
             </DialogDescription>
           </DialogHeader>
           {pending?.kind === "return" && (

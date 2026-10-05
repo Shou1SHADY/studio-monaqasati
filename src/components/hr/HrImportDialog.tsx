@@ -11,10 +11,12 @@ import { Download, FileUp, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { DataTable, Figure, type DataColumn } from "@/components/module-ui/DataTable"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import type { HrEmployee } from "@/lib/hr/employee"
 import { createEmployee } from "@/lib/hr/employee-writes"
 import { todayDay } from "@/lib/hr/format"
@@ -22,12 +24,12 @@ import { IMPORT_COLUMNS, interpretRows, parseCsv, templateCsv, type ImportNote, 
 import type { HrSite } from "@/lib/hr/sites"
 import { NATIONALITIES, TRADES } from "@/lib/hr/trades"
 import { HrWriteError } from "@/lib/hr/write-guard"
-import { cn } from "@/lib/utils"
 
 const TONE = { clean: "ok", notes: "warn", rejected: "bad" } as const
 
 export function HrImportDialog({ access, actorName, employees, sites, onClose }: { access: HrAccess; actorName: string; employees: HrEmployee[]; sites: HrSite[]; onClose: () => void }) {
   const t = useTranslations("Portal.HR")
+  const tableLabels = useTableLabels()
   const firestore = useFirestore()
   const { toast } = useToast()
   const [rows, setRows] = useState<ImportRow[] | null>(null)
@@ -92,6 +94,35 @@ export function HrImportDialog({ access, actorName, employees, sites, onClose }:
       column: n.params?.column ? t(`imp.col.${n.params.column}` as "imp.col.name_ar") : "",
     })
 
+  const importColumns: DataColumn<ImportRow>[] = [
+    { key: "line", header: t("imp.line"), cell: (r) => <Figure className="text-muted-foreground">{r.line}</Figure>, sortValue: (r) => r.line, cardHidden: true },
+    { key: "name", header: t("people.col.name"), cell: (r) => <span className="font-semibold" dir="auto">{r.display.name}</span>, sortValue: (r) => r.display.name },
+    { key: "trade", header: t("people.col.trade"), cell: (r) => (r.display.trade ? t(`trade.${r.display.trade}` as "trade.mason") : "—") },
+    { key: "site", header: t("people.col.site"), cell: (r) => r.display.site ?? t("sites.unassigned") },
+    {
+      key: "review",
+      header: t("imp.review"),
+      cell: (r) => (
+        <>
+          <StatusPill tone={TONE[r.status]}>{t(`imp.state.${r.status}`)}</StatusPill>
+          <ul className="mt-1 space-y-0.5 text-xs">
+            {r.errors.map((n, i) => (
+              <li key={`e${i}`} className="text-destructive">
+                {note(n, "err")}
+              </li>
+            ))}
+            {r.notes.map((n, i) => (
+              <li key={`n${i}`} className="text-muted-foreground">
+                {note(n, "note")}
+              </li>
+            ))}
+          </ul>
+        </>
+      ),
+      sortValue: (r) => (r.status === "rejected" ? 0 : r.status === "notes" ? 1 : 2),
+    },
+  ]
+
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
@@ -121,46 +152,18 @@ export function HrImportDialog({ access, actorName, employees, sites, onClose }:
                 </StatusPill>
               ))}
             </div>
-            <div className="overflow-x-auto rounded-xl border">
-              <table className="w-full min-w-max text-sm">
-                <thead className="bg-muted/50 text-xs text-muted-foreground">
-                  <tr>
-                    <th scope="col" className="px-3 py-2 text-start font-bold">{t("imp.line")}</th>
-                    <th scope="col" className="px-3 py-2 text-start font-bold">{t("people.col.name")}</th>
-                    <th scope="col" className="px-3 py-2 text-start font-bold">{t("people.col.trade")}</th>
-                    <th scope="col" className="px-3 py-2 text-start font-bold">{t("people.col.site")}</th>
-                    <th scope="col" className="px-3 py-2 text-start font-bold">{t("imp.review")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.line} className={cn("border-t align-top", r.status === "rejected" && "bg-destructive/5")}>
-                      <td className="px-3 py-2 tabular-nums text-muted-foreground">{r.line}</td>
-                      <td className="px-3 py-2 font-semibold" dir="auto">
-                        {r.display.name}
-                      </td>
-                      <td className="px-3 py-2">{r.display.trade ? t(`trade.${r.display.trade}` as "trade.mason") : "—"}</td>
-                      <td className="px-3 py-2">{r.display.site ?? t("sites.unassigned")}</td>
-                      <td className="px-3 py-2">
-                        <StatusPill tone={TONE[r.status]}>{t(`imp.state.${r.status}`)}</StatusPill>
-                        <ul className="mt-1 space-y-0.5 text-xs">
-                          {r.errors.map((n, i) => (
-                            <li key={`e${i}`} className="text-destructive">
-                              {note(n, "err")}
-                            </li>
-                          ))}
-                          {r.notes.map((n, i) => (
-                            <li key={`n${i}`} className="text-muted-foreground">
-                              {note(n, "note")}
-                            </li>
-                          ))}
-                        </ul>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              dense
+              caption={t("imp.review")}
+              labels={tableLabels}
+              columns={importColumns}
+              rows={rows}
+              rowKey={(r) => String(r.line)}
+              cardTitleKey="name"
+              maxHeight="50vh"
+              rowTone={(r) => (r.status === "rejected" ? "bad" : r.status === "notes" ? "warn" : undefined)}
+              empty={null}
+            />
             <p className="text-xs text-muted-foreground">{t("imp.since_note")}</p>
           </div>
         )}

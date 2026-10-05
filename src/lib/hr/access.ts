@@ -57,6 +57,8 @@ export const HR_GUARD = {
   "attendance.record": { roles: ["manager", "payroll", "supervisor"], siteScoped: ["supervisor"] },
   "attendance.close": { roles: ["manager", "payroll", "supervisor"], siteScoped: ["supervisor"] },
   "attendance.declare": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
+  // SH-03 (optional: punch) — a worker's shift from a date: the HR manager, or the workplace's supervisor.
+  "shift.set": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
   "payroll.prepare": { roles: ["manager", "payroll"] },
   "payroll.approve": { roles: ["manager"] },
   // Payroll fixes, the HR manager approves — never the same hand (RL-02); the owner, who answers to nobody,
@@ -74,7 +76,8 @@ export const HR_GUARD = {
   "letter.sign": { roles: ["manager", "gov", "management"] },
   "pay.change": { roles: ["manager"] },
   "violation.record": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
-  "injury.record": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
+  // DC-07 — government relations may record a work injury too (the prototype: hr, gov; owner default 4).
+  "injury.record": { roles: ["manager", "gov", "supervisor"], siteScoped: ["supervisor"] },
   "injury.report": { roles: ["gov", "manager"] },
   "penalty.apply": { roles: ["manager"] },
   "exit.manage": { roles: ["manager"] },
@@ -82,6 +85,22 @@ export const HR_GUARD = {
   "platform.tasks": { roles: ["gov", "manager"] },
   "settings.manage": { roles: ["manager"] },
   "reports.view": { roles: ["manager", "gov", "payroll", "management"] },
+  // Hiring (optional: hire — WF-17/18): the HR manager runs openings and the individuals track; a recruitment
+  // batch, the conversion to employee and the onboarding ticks are government relations' too; management
+  // approves a new position and an offer above the band (ST-03).
+  "hire.manage": { roles: ["manager"] },
+  "hire.batch": { roles: ["manager", "gov"] },
+  "hire.convert": { roles: ["manager", "gov"] },
+  "hire.onboard": { roles: ["manager", "gov"] },
+  "hire.approve": { roles: ["management"] },
+  // Training (TR-01…05) and performance (PF-01…07) — optional features `train` / `perf`. Rating is the line
+  // manager's (a relation, named on each review), never a role; calibration and raises are the office's.
+  "train.manage": { roles: ["manager"] },
+  "perf.cycle": { roles: ["manager"] },
+  "perf.calibrate": { roles: ["manager", "management"] },
+  "perf.approve": { roles: ["manager"] },
+  "perf.raise": { roles: ["manager"] },
+  "perf.raise.decide": { roles: ["management"] },
 } as const satisfies Record<string, Rule>
 
 export type HrAction = keyof typeof HR_GUARD
@@ -136,20 +155,23 @@ const ROLE_TABS: Record<HrRole, readonly HrTab[]> = {
   gov: ["today", "people", "hiring", "platforms", "reports"],
   payroll: ["today", "people", "sites", "attendance", "payroll", "reports"],
   supervisor: ["today", "sites", "perf"],
-  management: ["today", "people", "sites", "attendance", "payroll", "hiring", "platforms", "perf", "reports"],
+  // Platforms are government relations' (the HR manager's only when nobody holds it) — never management's.
+  management: ["today", "people", "sites", "attendance", "payroll", "hiring", "perf", "reports"],
 }
 
-/** The tab a feature switch hides (ST-02: off = tab, decisions and sections disappear). */
+/** The tab a feature switch hides (ST-02: off = tab, decisions and sections disappear). Attendance is core
+ * (AT-03/04: the closing across workplaces needs no punch) — `punch` adds its sources and exceptions to it. */
 const TAB_FEATURE: Partial<Record<HrTab, (f: ReadonlySet<HrFeature>) => boolean>> = {
-  attendance: (f) => f.has("punch"),
   hiring: (f) => f.has("hire"),
   platforms: (f) => f.has("gov"),
   perf: (f) => f.has("perf") || f.has("train"),
 }
 
-export function hrTabs(ctx: Pick<HrContext, "roles" | "employeeId">, features: ReadonlySet<HrFeature>): HrTab[] {
+/** `govHeld`: does any member of the company hold government relations? The platforms tab is government
+ * relations' — the HR manager has it only when no member holds that role (the prototype's TABS). Unknown = held. */
+export function hrTabs(ctx: Pick<HrContext, "roles" | "employeeId">, features: ReadonlySet<HrFeature>, opts: { govHeld?: boolean } = {}): HrTab[] {
   const set = new Set<HrTab>()
-  for (const r of ctx.roles) for (const t of ROLE_TABS[r]) set.add(t)
+  for (const r of ctx.roles) for (const t of ROLE_TABS[r]) if (t !== "platforms" || r !== "manager" || opts.govHeld === false) set.add(t)
   if (ctx.employeeId) set.add("me")
   return HR_TABS.filter((t) => set.has(t) && (!TAB_FEATURE[t] || TAB_FEATURE[t]!(features)))
 }

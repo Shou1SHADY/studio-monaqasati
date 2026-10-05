@@ -58,6 +58,7 @@ describe("a fixed-id document is readable before it exists", () => {
     hrSettlements: "the exit panel listens to a settlement that is not approved yet",
     employeePay: "changePay reads the pay of a joiner recorded without one",
     hrViolations: "the sheet checks a violation is not already recorded",
+    hrHiring: "makeOffer reads the candidate's pay document before the first offer",
   }
 
   it.each(Object.entries(READ_BEFORE_CREATE))("%s — %s", (collection) => {
@@ -96,9 +97,9 @@ describe("pay stays with those who may see it (RL-02, RL-03)", () => {
   const employees = block("employees")
   const pay = block("employeePay")
 
-  it("government relations renews documents and nothing else on the record", () => {
+  it("government relations renews documents and ticks onboarding (HI-06) — nothing else on the record", () => {
     const [update] = allow(employees.slice(0, employees.indexOf("match /log/")), "update")
-    expect(update).toMatch(/hrRole\('hr\.gov'\) && changedKeys\(\)\.hasOnly\(\['docs', 'updatedAt'\]\)/)
+    expect(update).toMatch(/hrRole\('hr\.gov'\) && changedKeys\(\)\.hasOnly\(\['docs', 'onb', 'updatedAt'\]\)/)
   })
 
   it("the link to a user is the HR manager's, never onto or off himself", () => {
@@ -111,7 +112,8 @@ describe("pay stays with those who may see it (RL-02, RL-03)", () => {
     const [update] = allow(pay, "update")
     // The cheap check first: a payroll approval writes many pay documents in one transaction, and the
     // record lookup behind hrOwnRecord() must not run for each of them (twenty lookups a transaction).
-    expect(update).toMatch(/hrManager\(\) && \(changedKeys\(\)\.hasOnly\(\['advance', 'retro', 'updatedAt'\]\) \|\| isOrgOwner\(\) \|\| !hrOwnRecord\(employeeId\)\)/)
+    // `slip` (My file's projection of the approved line, me-writes.ts) rides with the advance: written per line.
+    expect(update).toMatch(/hrManager\(\) && \(changedKeys\(\)\.hasOnly\(\['advance', 'retro', 'slip', 'updatedAt'\]\) \|\| isOrgOwner\(\) \|\| !hrOwnRecord\(employeeId\)\)/)
     expect(update).toMatch(/changedKeys\(\)\.hasOnly\(\['advance', 'updatedAt'\]\)\s*&& \(isOrgOwner\(\) \|\| !hrOwnRecord\(employeeId\)\)/)
   })
 
@@ -252,6 +254,30 @@ describe("attendance (AT-03, AT-04)", () => {
       expect({ month, today, server: serverAllows(month, today) }).toEqual({ month, today, server: client })
     }
   })
+
+  it("WF-04 — a recorded day is locked: an update may add a day, never change or remove one already there", () => {
+    expect(allow(att, "update")[0]).toMatch(/!request\.resource\.data\.days\.diff\(resource\.data\.days\)\.affectedKeys\(\)\.hasAny\(resource\.data\.days\.keys\(\)\)/)
+  })
+})
+
+describe("manpower requests (AS-02, WF-12)", () => {
+  const [update] = allow(block("manpowerRequests"), "update")
+
+  it("the HR manager answers an open request — the answer and its state only", () => {
+    expect(update).toMatch(/resource\.data\.state == 'open' && \(\s*\(request\.resource\.data\.state == 'answered' && hrManager\(\)\s*&& changedKeys\(\)\.hasOnly\(\['state', 'answer', 'updatedAt'\]\)\)/)
+  })
+
+  it("Projects accepts an answered plan once — whoever asked, or the project's editor — touching nothing else", () => {
+    expect(update).toMatch(/resource\.data\.state == 'answered' && changedKeys\(\)\.hasOnly\(\['accepted', 'updatedAt'\]\) && resource\.data\.get\('accepted', null\) == null/)
+    expect(update).toMatch(/resource\.data\.requested\.by == request\.auth\.uid \|\| hasProjectPermission\(resource\.data\.projectId, 'projects\.edit'\)/)
+  })
+
+  it("government relations only spends visas — an arrival, or a batch's at issue (HI-07) — and its reservation; nothing else of the file", () => {
+    const gov = allow(block("hrSettings"), "update").find((r) => r.includes("hr.gov")) ?? ""
+    expect(gov).toMatch(/affectedKeys\(\)\.hasOnly\(\['visas', 'visasReserved'\]\)/)
+    expect(gov).toMatch(/request\.resource\.data\.establishment\.visas >= 0/)
+    expect(gov).toMatch(/request\.resource\.data\.establishment\.visas < resource\.data\.establishment\.visas/)
+  })
 })
 
 describe("penalties (PN-02, PN-04)", () => {
@@ -277,12 +303,25 @@ describe("penalties (PN-02, PN-04)", () => {
 describe("cancel before it starts (LV-07)", () => {
   it("an approved leave is cancelled only before its first day, in Riyadh — as mayCancel()", () => {
     const [update] = allow(block("hrRequests"), "update")
-    expect(update).toMatch(/resource\.data\.state == 'approved' && resource\.data\.kind == 'leave' && hrManager\(\) && hrToday\(\) < hrNum\(resource\.data\.leave\.from\)/)
+    expect(update).toMatch(/resource\.data\.state == 'approved' && resource\.data\.kind == 'leave' && \(hrManager\(\) \|\| resource\.data\.employeeUserId == request\.auth\.uid\) && hrToday\(\) < hrNum\(resource\.data\.leave\.from\)/)
     const hr = { uid: "h", owner: false, roles: new Set(["manager"] as const), employeeId: null, sites: [] }
+    // …and the employee himself (owner default 5): the same day boundary.
+    const own = { uid: "w", owner: false, roles: new Set<never>(), employeeId: "e", sites: [] }
     for (const [from, today] of [["2026-10-06", "2026-10-05"], ["2026-10-05", "2026-10-05"], ["2026-10-04", "2026-10-05"]] as const) {
-      const r = { state: "approved" as const, kind: "leave" as const, employeeId: "e", leave: { from } as HrRequest["leave"] }
+      const r = { state: "approved" as const, kind: "leave" as const, employeeId: "e", leave: { from, type: "annual" } as HrRequest["leave"] }
       expect({ from, today, server: ruleNum(today) < ruleNum(from) }).toEqual({ from, today, server: mayCancel(hr, r, today) })
+      expect({ from, today, server: ruleNum(today) < ruleNum(from) }).toEqual({ from, today, server: mayCancel(own, r, today) })
     }
+  })
+
+  it("his days come back with it — exactly that leave's, in the same write, named by `undo` (never a balance he sets)", () => {
+    const employees = block("employees")
+    const updates = allow(employees.slice(0, employees.indexOf("match /log/")), "update")
+    const own = updates.find((u) => u.includes("hrUndo("))
+    expect(own).toMatch(/resource\.data\.get\('userId', ''\) == request\.auth\.uid\s*&& changedKeys\(\)\.hasOnly\(\['leaveTaken', 'undo', 'updatedAt'\]\)\s*&& hrUndo\(employeeId, request\.resource\.data\.undo\)/)
+    const f = fn("hrUndo")
+    expect(f).toMatch(/b\.employeeId == e && b\.state == 'approved' && getAfter\(p\)\.data\.state == 'cancelled'/)
+    expect(f).toMatch(/request\.resource\.data\.leaveTaken == resource\.data\.leaveTaken - b\.leave\.fromBalance/)
   })
 })
 
@@ -297,7 +336,7 @@ describe("a supervisor reads his own workplaces only (RL-01)", () => {
   it.each([
     ["employees", /hrOffice\(\) \|\| resource\.data\.get\('userId', ''\) == request\.auth\.uid \|\| hrSupervises\(resource\.data\.siteId\)/],
     ["hrInjuries", /hrOffice\(\) \|\| resource\.data\.get\('employeeUserId', ''\) == request\.auth\.uid \|\| hrSupervises\(resource\.data\.siteId\)/],
-    ["hrRequests", /resource\.data\.kind == 'leave' && \(hrRole\('hr\.gov'\) \|\| hrSupervises\(resource\.data\.siteId\)\)/],
+    ["hrRequests", /resource\.data\.kind in \['leave', 'attfix'\] && \(hrRole\('hr\.gov'\) \|\| hrSupervises\(resource\.data\.siteId\)\)/],
   ])("%s — the company for the office, the supervisor by the record's workplace (a site-by-site query the rule can prove)", (c, re) => {
     for (const op of ["get", "list"]) {
       const [r] = allow(block(c), op)
@@ -344,7 +383,43 @@ describe("the matrix, where the server was laxer than the client (RL-01, RL-02)"
   it("an IBAN payroll fixed is approved by a different hand; management sets one only on the HR manager's own record", () => {
     const [update] = allow(block("employeePay"), "update")
     expect(update).toMatch(/request\.resource\.data\.get\('ibanState', ''\) != 'ok' \|\| resource\.data\.get\('ibanState', ''\) != 'fixed'\s*\|\| resource\.data\.get\('ibanFixedBy', ''\) != request\.auth\.uid \|\| isOrgOwner\(\)/)
-    expect(update).toMatch(/request\.resource\.data\.ibanState == 'ok'\s*&& hrUserManages\(hrEmp\(employeeId\)\.get\('userId', '-'\)\)/)
+    expect(update).toMatch(/request\.resource\.data\.ibanState == 'ok'\)\)\s*&& hrUserManages\(hrEmp\(employeeId\)\.get\('userId', '-'\)\)/)
+  })
+
+  it("management changes the HR manager's pay (EM-04, RL-02) — his figures and history only, never its own record's", () => {
+    const [update] = allow(block("employeePay"), "update")
+    const clause = update.slice(update.indexOf("(hrRole('hr.management') && !hrOwnRecord(employeeId)"))
+    expect(clause).toMatch(/^\(hrRole\('hr\.management'\) && !hrOwnRecord\(employeeId\)\s*&& \(changedKeys\(\)\.hasOnly\(\['basic', 'housing', 'transport', 'steps', 'retro', 'updatedAt'\]\)/)
+    // …and only where the record's user is an HR manager (his DEFAULT group, as access.ts reads it).
+    expect(clause).toMatch(/&& hrUserManages\(hrEmp\(employeeId\)\.get\('userId', '-'\)\)\)+$/)
+  })
+
+  it("the line manager writes his probation view and nothing else of the record (EM-05)", () => {
+    const updates = allow(block("employees"), "update")
+    const view = updates.find((u) => u.includes("probationView"))
+    expect(view).toBeDefined()
+    expect(view).toMatch(/changedKeys\(\)\.hasOnly\(\['probationView', 'updatedAt'\]\)/)
+    expect(view).toMatch(/request\.resource\.data\.probationView\.by == request\.auth\.uid/)
+    // The manager the card names, or the workplace's supervisor — no one else.
+    expect(view).toMatch(/hrSupervises\(resource\.data\.siteId\) \|\| hrEmp\(resource\.data\.managerId\)\.get\('userId', ''\) == request\.auth\.uid/)
+  })
+
+  it("government relations records a work injury (DC-07, owner default 4) — the guard and the rule agree", () => {
+    expect(HR_GUARD["injury.record"].roles).toContain("gov")
+    const [create] = allow(block("hrInjuries"), "create")
+    expect(create).toMatch(/hrManager\(\) \|\| hrOnSite\(request\.resource\.data\) \|\| hrRole\('hr\.gov'\)/)
+    // …a violation stays the HR manager's and the site's supervisor's.
+    expect(allow(block("hrViolations"), "create")[0]).not.toMatch(/hr\.gov/)
+  })
+
+  it("a raise is a request kind (EM-04): carrying pay, it is read by pay roles and the employee only", () => {
+    const [create] = allow(block("hrRequests"), "create")
+    expect(create).toMatch(/kind in \['leave', 'advance', 'data', 'attfix', 'raise'\]/)
+    const [read] = allow(block("hrRequests"), "get")
+    // Only a leave is opened to government relations and supervisors.
+    expect(read).not.toMatch(/'raise'/)
+    // …a leave or an attendance correction (no money either) — never a raise.
+    expect(read).toMatch(/resource\.data\.kind in \['leave', 'attfix'\] && \(hrRole\('hr\.gov'\)/)
   })
 })
 
@@ -373,5 +448,197 @@ describe("access.ts and the rules name the same roles", () => {
 
   it("the rules read a role from the DEFAULT group, as hrRolesOf() does — the owner holding every one", () => {
     expect(fn("hrRole")).toMatch(/return isOrgOwner\(\) \|\| groupGrants\(memberDefaultGroupId\(\), perm\);/)
+  })
+})
+
+describe("Finance records the month's GOSI payment on the payroll (PY-09)", () => {
+  it("Finance's clause lets `gosiPaid` change — and only Finance's", () => {
+    const [update] = allow(block("hrPayrolls"), "update")
+    const clauses = update.split("||")
+    expect(clauses.find((c) => c.includes("hrFinance()"))).toContain("'gosiPaid'")
+    for (const c of clauses.filter((x) => !x.includes("hrFinance()"))) expect(c).not.toContain("gosiPaid")
+  })
+})
+
+describe("My file and self-service (package A)", () => {
+  it("an attendance correction is filed like any request and decided by the supervisor who keeps the sheet — never his own", () => {
+    const [create] = allow(block("hrRequests"), "create")
+    expect(create).toMatch(/request\.resource\.data\.kind in \['leave', 'advance', 'data', 'attfix', 'raise'\]/)
+    // The filer, the company, the employee's user and "himself or the HR manager" — one helper with letters.
+    expect(create).toMatch(/hrFiledFor\(request\.resource\.data\)/)
+    expect(fn("hrFiledFor")).toMatch(/\(hrManager\(\) \|\| d\.employeeUserId == request\.auth\.uid\)/)
+    const [update] = allow(block("hrRequests"), "update")
+    expect(update).toMatch(/\(resource\.data\.kind == 'attfix' && hrSupervises\(resource\.data\.siteId\)\)/)
+    // …inside the decide clause, which keeps hrNotOwn().
+    const decide = update.slice(update.indexOf("// decide"), update.indexOf("// Finance decides"))
+    expect(decide === "" ? update : decide).toMatch(/hrNotOwn\(\)/)
+  })
+
+  it("his attendance is projected onto his record by whoever keeps the sheet — that key (and, for his supervisor, his shift) and nothing else", () => {
+    const employees = block("employees")
+    const [update] = allow(employees.slice(0, employees.indexOf("match /log/")), "update")
+    // SH-03 (optional: punch) — the workplace's supervisor sets a worker's shift; payroll, who closes the month, never does.
+    expect(update).toMatch(/changedKeys\(\)\.hasOnly\(\['att', 'shift', 'updatedAt'\]\) && \(\(hrRole\('hr\.payroll'\) && !\('shift' in changedKeys\(\)\)\) \|\| hrSupervises\(resource\.data\.siteId\)\)/)
+  })
+})
+
+describe("punches (PT-06, optional: punch)", () => {
+  it("the employee writes his own punch only: today's, stamped with the server's now — an in with no out, or an out after an in that stays", () => {
+    const employees = block("employees")
+    const updates = allow(employees.slice(0, employees.indexOf("match /log/")), "update")
+    const own = updates.find((u) => u.includes("hrPunch("))
+    expect(own).toMatch(/resource\.data\.get\('userId', ''\) == request\.auth\.uid\s*&& changedKeys\(\)\.hasOnly\(\['pn', 'py', 'updatedAt'\]\)/)
+    // The day before is kept exactly as it was: `py` unchanged, or his last `pn` moved there.
+    expect(own).toMatch(/request\.resource\.data\.get\('py', null\) in \[resource\.data\.get\('py', null\), resource\.data\.get\('pn', null\)\]/)
+    const f = fn("hrPunch")
+    expect(f).toMatch(/p\.at == request\.time && hrNum\(p\.day\) == hrToday\(\)/)
+    expect(f).toMatch(/\(p\['in'\] == request\.time && p\.out == null\) \|\| \(p\['in'\] == o\.get\('in', 0\) && p\.day == o\.get\('day', ''\) && p\.out == request\.time\)/)
+  })
+
+  it("device files and decisions ride the workplace month: written by those who keep its sheet, locked with it", () => {
+    const [update] = allow(block("hrAttendance"), "update")
+    expect(update).toMatch(/resource\.data\.get\('closed', null\) == null/)
+    expect(update).toMatch(/hrManager\(\) \|\| hrRole\('hr\.payroll'\) \|\| hrSupervises\(resource\.data\.siteId\)/)
+    // A recorded day stays as recorded — the punches sit beside `days`, never inside it.
+    expect(update).toMatch(/!request\.resource\.data\.days\.diff\(resource\.data\.days\)\.affectedKeys\(\)\.hasAny\(resource\.data\.days\.keys\(\)\)/)
+  })
+
+  it("a workplace's source and shifts are the HR manager's (form `am`, `shifts`)", () => {
+    const [update] = allow(block("hrSites"), "update")
+    expect(update).toMatch(/hrManager\(\)/)
+    expect(update).not.toMatch(/hr\.supervisor|hr\.payroll/)
+  })
+})
+
+describe("government platforms and the pre-Mudad check (package F2, GV-02…05, PY-08)", () => {
+  const body = () => block("hrGovTasks")
+
+  it("the platform records are read by the HR office roles only — before they exist too (a task recorded once is read first)", () => {
+    const [get] = allow(body(), "get")
+    expect(get).toMatch(/\(resource == null \|\| inOrg\(\)\) && hrOffice\(\)/)
+    expect(get).not.toMatch(/hrStaff\(\)|hr\.supervisor/)
+  })
+
+  it("created in the writer's own name under `{orgId}__{key}`, of the three kinds; only a reconciliation is replaced; nothing is deleted", () => {
+    const [create] = allow(body(), "create")
+    expect(create).toMatch(/createsInOrg\(\) && hrOffice\(\)/)
+    expect(create).toMatch(/id == request\.resource\.data\.organizationId \+ '__' \+ request\.resource\.data\.key/)
+    expect(create).toMatch(/request\.resource\.data\.by == request\.auth\.uid/)
+    expect(create).toMatch(/request\.resource\.data\.kind in \['done', 'task', 'recon'\]/)
+    const [update] = allow(body(), "update")
+    expect(update).toMatch(/resource\.data\.kind == 'recon'/)
+    expect(update).toMatch(/request\.resource\.data\.key == resource\.data\.key/)
+    expect(allow(body(), "delete")).toEqual(["false"])
+  })
+
+  it("the justifications and the Mudad status ride the payroll — payroll or the HR manager, those two keys only, never Finance's clause", () => {
+    const [update] = allow(block("hrPayrolls"), "update")
+    expect(update).toMatch(/\|\| \(changedKeys\(\)\.hasOnly\(\['just', 'mudad', 'updatedAt'\]\) && \(hrManager\(\) \|\| hrRole\('hr\.payroll'\)\)\)/)
+    for (const c of update.split("||").filter((x) => x.includes("hrFinance()"))) expect(c).not.toMatch(/'just'|'mudad'/)
+  })
+
+  it("Qiwa's documented basic is a pay figure: it rides employeePay, whose writers are pay roles — never government relations", () => {
+    const [update] = allow(block("employeePay"), "update")
+    expect(update).not.toContain("hr.gov")
+  })
+})
+
+describe("hiring (HI-01…08, optional: hire) — one collection by kind, money apart", () => {
+  const hiring = block("hrHiring")
+
+  it("a candidate's money (`pay: true`) is read by pay roles only; government relations reads the rest (RL-03)", () => {
+    expect(fn("hrHiringRead")).toMatch(/inOrg\(\) && \(hrSeesPay\(\) \|\| \(hrOffice\(\) && resource\.data\.pay == false\)\)/)
+    expect(allow(hiring, "get")).toEqual(["(resource == null && hrRole('employees.manage')) || hrHiringRead()"])
+    expect(allow(hiring, "list")).toEqual(["hrHiringRead()"])
+  })
+
+  it("the HR manager creates; government relations moves a batch and converts; management decides — each its keys only", () => {
+    const [create] = allow(hiring, "create")
+    expect(create).toMatch(/createsInOrg\(\) && hrManager\(\)/)
+    const [update] = allow(hiring, "update")
+    expect(update).toMatch(/request\.resource\.data\.kind == resource\.data\.kind/)
+    // Neither government relations nor management touches a pay document.
+    expect(update).toMatch(/hrManager\(\) \|\| \(resource\.data\.pay == false/)
+    expect(update).toMatch(/hrRole\('hr\.gov'\) && changedKeys\(\)\.hasOnly\(\['batch', 'filled', 'state', 'stage', 'employeeId', 'updatedAt'\]\)/)
+    expect(update).toMatch(/hrRole\('hr\.management'\) && changedKeys\(\)\.hasOnly\(\['state', 'okBy', 'closedBy', 'stage', 'offer', 'updatedAt'\]\)/)
+    expect(hiring).toMatch(/allow delete: if false;/)
+  })
+
+  it("the guard says the same: batch, conversion and onboarding are government relations' too; approval is management's", () => {
+    expect(HR_GUARD["hire.manage"].roles).toEqual(["manager"])
+    expect(HR_GUARD["hire.batch"].roles).toEqual(["manager", "gov"])
+    expect(HR_GUARD["hire.convert"].roles).toEqual(["manager", "gov"])
+    expect(HR_GUARD["hire.onboard"].roles).toEqual(["manager", "gov"])
+    expect(HR_GUARD["hire.approve"].roles).toEqual(["management"])
+    // Converting is creating an employee — government relations may (without pay).
+    expect(HR_GUARD["employee.create"].roles).toContain("gov")
+  })
+})
+
+describe("a recorded day stays locked — but an approved attendance correction may change its worker's entry (PT-07)", () => {
+  it("the lock admits only the change hrAttfixOk proves", () => {
+    const [update] = allow(block("hrAttendance"), "update")
+    expect(update).toMatch(/!request\.resource\.data\.days\.diff\(resource\.data\.days\)\.affectedKeys\(\)\.hasAny\(resource\.data\.days\.keys\(\)\)\s*\|\| hrAttfixOk\(\)/)
+  })
+
+  it("…the request is an approved correction decided by the writer, on this workplace; one day, one worker", () => {
+    const fn = rules.slice(rules.indexOf("function hrAttfixOk()"), rules.indexOf("match /hrAttendance/{id}"))
+    expect(fn).toMatch(/getAfter\(\/databases\/\$\(database\)\/documents\/hrRequests\/\$\(request\.resource\.data\.fixReq\)\)/)
+    expect(fn).toMatch(/r\.kind == 'attfix' && r\.state == 'approved' && r\.decision\.by == request\.auth\.uid && r\.siteId == resource\.data\.siteId/)
+    expect(fn).toMatch(/affectedKeys\(\)\.hasOnly\(\[d\]\)/)
+    expect(fn).toMatch(/affectedKeys\(\)\.hasOnly\(\['ex'\]\)/)
+    expect(fn).toMatch(/affectedKeys\(\)\.hasOnly\(\[r\.employeeId\]\)/)
+  })
+})
+
+describe("training and performance (package G2 — optional `train` / `perf`)", () => {
+  it("sessions: read by the company, written by the HR manager only (the cost goes on the hrEvents outbox)", () => {
+    const b = block("hrTraining")
+    expect(allow(b, "get")[0]).toBe("orgReadable()")
+    expect(allow(b, "create")[0]).toBe("createsInOrg() && hrManager()")
+    expect(allow(b, "update")[0]).toBe("keepsOrg() && hrManager()")
+    expect(allow(b, "delete")).toEqual([])
+  })
+
+  it("a review is read by the office and the rater it names; the employee his own only once approved (or his self-assessment)", () => {
+    const [read] = allow(block("hrReviews"), "get")
+    expect(read).toMatch(/resource\.data\.kind == 'cycle' \|\| hrManager\(\) \|\| hrRole\('hr\.management'\) \|\| hrRater\(resource\.data\)/)
+    expect(read).toMatch(/hrMine\(\) && resource\.data\.st in \['ok', 'ack', 'self'\]/)
+    expect(read).not.toMatch(/hrStaff\(\)|hrOffice\(\)|hrSupervises/)
+    expect(fn("hrRater")).toMatch(/d\.get\('raterUserId', ''\) == request\.auth\.uid/)
+    expect(fn("hrNotOwn")).toMatch(/!hrMine\(\) \|\| isOrgOwner\(\)/)
+  })
+
+  it("the rater grades a draft and sends it — those keys only; the HR manager never on his own; management the cycle's raise and the reviews naming no rater", () => {
+    const [update] = allow(block("hrReviews"), "update")
+    expect(update).toMatch(/hrRater\(resource\.data\) && resource\.data\.st == 'draft' && request\.resource\.data\.st in \['draft', 'done'\]\s+&& changedKeys\(\)\.hasOnly\(\['sc', 'st', 'need', 'note', 'rated', 'updatedAt'\]\)/)
+    expect(update).toMatch(/\(hrManager\(\) && hrNotOwn\(\)\)/)
+    expect(update).toMatch(/hrRole\('hr\.management'\) && \(resource\.data\.kind == 'cycle' \? changedKeys\(\)\.hasOnly\(\['raise', 'updatedAt'\]\) : resource\.data\.raterUserId == null && hrNotOwn\(\)\)/)
+    expect(update).toMatch(/hrMine\(\) && resource\.data\.st == 'ok'\s+&& request\.resource\.data\.st == 'ack' && changedKeys\(\)\.hasOnly\(\['st', 'ackAt', 'updatedAt'\]\)/)
+    // A self-assessment never changes.
+    expect(update).toMatch(/resource\.data\.get\('st', ''\) != 'self'/)
+  })
+
+  it("the HR manager creates reviews without a grade; the employee his self-assessment, on his own record, at the review's id + __self", () => {
+    const [create] = allow(block("hrReviews"), "create")
+    expect(create).toMatch(/hrManager\(\) && !\('sc' in request\.resource\.data\)/)
+    expect(create).toMatch(/request\.resource\.data\.st == 'self' && request\.resource\.data\.employeeUserId == request\.auth\.uid\s+&& hrOwnRecord\(request\.resource\.data\.employeeId\) && id == request\.resource\.data\.review \+ '__self'/)
+  })
+
+  it("the writes send exactly the keys the rules allow each hand", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "src/lib/hr/performance-writes.ts"), "utf8")
+    // The rater's three writes: grade, send, staff review — who and when under `rated`.
+    expect(src).toMatch(/\{ sc: grade \? \{ o: grade \} : null, rated: stamp\(actor\), updatedAt: serverTimestamp\(\) \}/)
+    expect(src).toMatch(/\{ st: "done", rated: stamp\(actor\), updatedAt: serverTimestamp\(\) \}/)
+    expect(src).toMatch(/need, note: input\.note\?\.trim\(\) \|\| null, st: "done", rated: stamp\(actor\), updatedAt/)
+    expect(src).toMatch(/\{ st: "ack", ackAt: new Date\(\)\.toISOString\(\), updatedAt: serverTimestamp\(\) \}/)
+    // Management's decision touches the cycle's raise only; a self-assessment is created with st "self".
+    expect(src).toMatch(/updateDoc\(doc\(firestore, HR_REVIEWS, cycle\.id\), \{ raise, updatedAt: serverTimestamp\(\) \}\)/)
+    expect(src).toMatch(/kind: "self", st: "self", review/)
+  })
+
+  it("an HR manager's raise is management's: its pay rule takes basic, allowances and steps only, never on management's own record", () => {
+    const [update] = allow(block("employeePay"), "update")
+    expect(update).toMatch(/hrRole\('hr\.management'\) && !hrOwnRecord\(employeeId\)[\s\S]*changedKeys\(\)\.hasOnly\(\['basic', 'housing', 'transport', 'steps', 'retro', 'updatedAt'\]\)[\s\S]*hrUserManages\(hrEmp\(employeeId\)\.get\('userId', '-'\)\)/)
   })
 })

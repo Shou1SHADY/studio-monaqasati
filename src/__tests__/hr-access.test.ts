@@ -101,8 +101,13 @@ describe("tabs (RL-01, TD-01, ES-00, ST-02)", () => {
     expect(hrTabs(ctx(["management"]), ALL)).not.toContain("settings")
   })
 
-  it("all features off leaves the core: today, people, sites, payroll, reports, settings", () => {
-    expect(hrTabs(ctx(["manager"]), NONE)).toEqual(["today", "people", "sites", "payroll", "reports", "settings"])
+  it("all features off leaves the core: today, people, sites, attendance, payroll, reports, settings", () => {
+    expect(hrTabs(ctx(["manager"]), NONE)).toEqual(["today", "people", "sites", "attendance", "payroll", "reports", "settings"])
+  })
+
+  it("Attendance is core (AT-03/04 closing across workplaces) — the prototype's roles: HR manager, payroll, management; never the supervisor's tab", () => {
+    for (const r of ["manager", "payroll", "management"] as HrRole[]) expect(hrTabs(ctx([r]), NONE)).toContain("attendance")
+    for (const r of ["gov", "supervisor"] as HrRole[]) expect(hrTabs(ctx([r]), ALL)).not.toContain("attendance")
   })
 })
 

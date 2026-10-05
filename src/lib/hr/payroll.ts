@@ -9,14 +9,14 @@
 
 import { addMonths, assumesPresence, EMPTY_MONTH, employeeMonth, type EmployeeMonth, type WorkplaceMonth } from "./attendance"
 import type { EmployeePay, HrEmployee } from "./employee"
-import { monthlyEosAccrual } from "./eos"
+import { gratuity, monthlyEosAccrual } from "./eos"
 import { isHoliday } from "./holidays"
 import { leaveDays, sickSplit, type Holiday } from "./leave"
 import { gosiBase, overtimeOverCap, payLine, payOn, paySegments, wageOf, type PayFacts, type PayLine } from "./pay"
 import type { HrRequest } from "./requests"
 import { monthPenalties, type HrViolation } from "./violations"
 import { costKindOf, UNASSIGNED_SITE, type CostKind, type HrSite } from "./sites"
-import { addDays, monthRange, r2, serviceYears, STATUTORY } from "./statutory"
+import { addDays, daysBetween, monthRange, r2, serviceYears, STATUTORY } from "./statutory"
 
 /** `hrPayrolls/{orgId}__{yyyy-mm}` and its supplementaries `{orgId}__{yyyy-mm}-D`, `-D2`, `-D3`… — each a new
  * event key (hr:PAY:yyyy-mm-D2): what arrives after one supplementary was approved goes to the next, never
@@ -111,6 +111,12 @@ export interface Payroll {
   approved?: Stamp | null
   posted?: (Stamp & { entry?: string | null }) | null
   paid?: (Stamp & { date?: string | null }) | null
+  /** fin:RETURNED — transfers the bank sent back after the payment, by employee (Finance's). */
+  returned?: Record<string, Stamp & { reason?: string | null; date?: string | null }> | null
+  /** Held or returned lines paid since, by employee (Finance's) — they go in the "-R" release file. */
+  paidHeld?: Record<string, Stamp & { date?: string | null }> | null
+  /** fin:GOSIPAID — Finance paid the month's contributions (PY-09). */
+  gosiPaid?: (Stamp & { date: string; amount: number; entry?: string | null }) | null
 }
 
 // ---------------------------------------------------------------------------
@@ -488,12 +494,20 @@ export function payrollTotals(lines: PayrollLine[]): PayrollTotals {
 
 export type LineWarning = "net_negative" | "over_half" | "net_below_90" | "ot_over_cap" | "held" | "declared"
 
-/** PY-08 — the pre-Mudad check, as warnings on the line. */
+/** A day the line was not paid in full for a reason Mudad already knows: a recorded absence, an unpaid or a sick
+ * day (the prototype's "no absence and no leave"). */
+const explainedShortfall = (l: Pick<PayrollLine, "attendance" | "unpaidDeduction" | "sickDeduction" | "reasons">) =>
+  l.attendance.absent > 0 || l.attendance.sick > 0 || l.unpaidDeduction > 0 || l.sickDeduction > 0 || (l.reasons?.unpaidDays ?? 0) > 0
+
+/** PY-08 — the pre-Mudad check, as warnings on the line: a net of zero or less; deductions above half the pay
+ * (art. 93); or — with no recorded absence, unpaid or sick day — a net below 90% of the month's wage less the
+ * employee's GOSI share, which Mudad asks a reason for (the prototype's `mudadFindings`). The GOSI share is a
+ * deduction every Saudi has, never a shortfall: comparing the net with the bare wage flagged every Saudi. */
 export function lineWarnings(l: PayrollLine): LineWarning[] {
   const w: LineWarning[] = []
-  if (l.net < 0) w.push("net_negative")
+  if (l.net <= 0) w.push("net_negative")
   else if (l.gross > 0 && l.gross - l.net > l.gross / 2) w.push("over_half")
-  else if (l.monthWage > 0 && l.net < l.monthWage * 0.9) w.push("net_below_90")
+  else if (l.monthWage > 0 && !explainedShortfall(l) && l.net < (l.monthWage - l.gosiEmployee) * 0.9) w.push("net_below_90")
   if (overtimeOverCap(l.attendance.overtimeHours)) w.push("ot_over_cap")
   if (l.held) w.push("held")
   if (l.attendance.declared > 0) w.push("declared")
@@ -560,6 +574,117 @@ export const eventBalances = (e: { debit: CostCentreRow[]; credit: Record<string
   r2(e.debit.reduce((s, d) => s + d.amount, 0)) === r2(Object.values(e.credit).reduce((s, c) => s + c, 0))
 
 // ---------------------------------------------------------------------------
+// Review (PY-06): exceptions by cost centre — what the payroll officer reads
+// ---------------------------------------------------------------------------
+
+export const LINE_EXCEPTIONS = ["absence", "overtime", "sick", "unpaid", "penalty", "advance", "commission", "held", "negative"] as const
+export type LineException = (typeof LINE_EXCEPTIONS)[number]
+
+/** PY-06 — what makes a line worth a look (the prototype's `isExc`): absence, overtime, sick days, unpaid days,
+ * a penalty, an advance instalment, commission, a held transfer, a net of zero or less. A line with none of these
+ * is the contract wage paid as agreed. */
+export function lineExceptions(l: PayrollLine): LineException[] {
+  const out: LineException[] = []
+  if (l.attendance.absent > 0 || l.absenceDeduction > 0) out.push("absence")
+  if (l.attendance.overtimeHours > 0 || l.overtime > 0) out.push("overtime")
+  if (l.attendance.sick > 0 || l.sickDeduction > 0) out.push("sick")
+  if (l.unpaidDeduction > 0) out.push("unpaid")
+  if (l.penalties > 0) out.push("penalty")
+  if (l.advance > 0) out.push("advance")
+  if (l.commission > 0) out.push("commission")
+  if (l.held) out.push("held")
+  if (l.net <= 0) out.push("negative")
+  return out
+}
+
+/** An exception or a pre-Mudad warning (declared days, over half deducted, net under 90%). */
+export const isException = (l: PayrollLine) => lineExceptions(l).length > 0 || lineWarnings(l).length > 0
+
+export interface LineGroup<L> {
+  /** The workplace — null for the unassigned. */
+  siteId: string | null
+  lines: L[]
+  count: number
+  /** Net of the lines that go now — held lines wait. */
+  net: number
+  gross: number
+}
+
+const unassigned = (siteId: string | null) => !siteId || siteId === UNASSIGNED_SITE
+
+/** PY-06 — lines grouped by cost centre (the workplace): the largest gross first, the unassigned last; inside, the
+ * lines that go now before the held ones, the largest net first. */
+export function groupByCostCentre<L extends { siteId: string | null; held: boolean; net: number; gross?: number }>(lines: L[]): LineGroup<L>[] {
+  const by = new Map<string, L[]>()
+  for (const l of lines) {
+    const k = unassigned(l.siteId) ? UNASSIGNED_SITE : (l.siteId as string)
+    by.set(k, [...(by.get(k) ?? []), l])
+  }
+  const groups = [...by.entries()].map(([k, ls]) => ({
+    siteId: k === UNASSIGNED_SITE ? null : k,
+    lines: ls.slice().sort((a, b) => Number(a.held) - Number(b.held) || b.net - a.net),
+    count: ls.length,
+    net: r2(ls.filter((l) => !l.held).reduce((s, l) => s + l.net, 0)),
+    gross: r2(ls.reduce((s, l) => s + (l.gross ?? l.net), 0)),
+  }))
+  return groups.sort((a, b) => Number(a.siteId === null) - Number(b.siteId === null) || b.gross - a.gross)
+}
+
+/** PY-06 — the cost of the month by cost centre (workplace), as Finance books it: each line's `cost` (what it
+ * earned + employer GOSI) — held lines included, their cost is the month's — largest first, with each one's share. */
+export function costByCentre(lines: Array<Pick<PayrollLine, "siteId" | "cost">>): Array<{ siteId: string | null; amount: number; share: number }> {
+  const by = new Map<string, number>()
+  for (const l of lines) {
+    const k = unassigned(l.siteId) ? UNASSIGNED_SITE : (l.siteId as string)
+    by.set(k, r2((by.get(k) ?? 0) + l.cost))
+  }
+  const total = [...by.values()].reduce((s, v) => s + v, 0)
+  return [...by.entries()]
+    .map(([k, amount]) => ({ siteId: k === UNASSIGNED_SITE ? null : k, amount, share: total > 0 ? amount / total : 0 }))
+    .sort((a, b) => b.amount - a.amount)
+}
+
+// ---------------------------------------------------------------------------
+// The month before its payroll (PY-02) — no lines, the contract estimate
+// ---------------------------------------------------------------------------
+
+/** The contract estimate for a month still running: the wage in force at its end of everyone on it. It enters no
+ * entry and is never a line (the prototype's «تقدير من العقود»). */
+export function contractEstimate(employees: HrEmployee[], pays: Map<string, EmployeePay>, month: string): number {
+  const end = monthRange(month).end
+  let sum = 0
+  for (const e of employees) {
+    const p = pays.get(e.id)
+    if (p && onPayroll(e, month)) sum += wageOf(payOn(p, end))
+  }
+  return r2(sum)
+}
+
+/** The last day every listed workplace has a sheet for — the day attendance is recorded through (null: nothing yet). */
+export function recordedThrough(attendance: WorkplaceMonth[], siteIds: string[]): string | null {
+  if (!siteIds.length) return null
+  let through: string | null = null
+  for (const id of siteIds) {
+    const days = Object.keys(attendance.find((a) => a.siteId === id)?.days ?? {}).sort()
+    const last = days[days.length - 1]
+    if (!last) return null
+    if (through === null || last < through) through = last
+  }
+  return through
+}
+
+/** The day the payroll may open: the day after the month ends. */
+export const payrollOpensOn = (month: string) => addDays(monthRange(month).end, 1)
+
+/** Salaries are due on the policy's pay day of the following month; a payment after it is late (PY-08). */
+export const payDayOf = (month: string, payDay: number) => addDays(monthRange(month).end, payDay)
+
+export function daysAfterPayDay(month: string, payDay: number, paidOn: string | null | undefined): number {
+  if (!paidOn) return 0
+  return Math.max(0, daysBetween(payDayOf(month, payDay), paidOn))
+}
+
+// ---------------------------------------------------------------------------
 // Files for the authorities (PY-07) — produced here, uploaded by a person
 // ---------------------------------------------------------------------------
 
@@ -575,31 +700,322 @@ const frozenPay = (l: PayrollLine, pays: Map<string, EmployeePay>) => {
   return { basic: l.basic ?? p?.basic ?? 0, housing: l.housing ?? p?.housing ?? 0, transport: 0 }
 }
 
-/** The Mudad wage file: one row per paid line, keyed by the ID number; the row adds up to the net. Held lines stay out.
- * Basic and housing stand whole for the days paid; what else was earned (transport, overtime, commission) is "other";
- * an absence is a DEDUCTION like every other — earnings are never negative (the prototype's wpsRows). */
-export function mudadCsv(lines: PayrollLine[], pays: Map<string, EmployeePay>): string {
-  const rows: Array<Array<string | number | null>> = [["id_no", "name", "iban", "basic", "housing", "other_earnings", "deductions", "net"]]
-  for (const l of lines) {
-    if (l.held) continue
-    const p = frozenPay(l, pays)
-    const share = l.days / STATUTORY.monthDays
-    const basic = r2(p.basic * share)
-    const housing = r2(p.housing * share)
-    const other = r2(l.monthWage - basic - housing + l.overtime + l.commission)
-    const deductions = r2(basic + housing + other - l.net)
-    rows.push([l.idNo, l.name, l.iban, basic.toFixed(2), housing.toFixed(2), other.toFixed(2), deductions.toFixed(2), l.net.toFixed(2)])
+/** The Saudi banks by the two digits after the IBAN's check digits — the code Mudad's file carries (SWIFT prefix).
+ * Two merged banks keep their old codes (SAMBA → SNB, Alawwal → SAB). */
+export const SA_BANK_CODES: Readonly<Record<string, string>> = {
+  "05": "INMA",
+  "10": "NCBK",
+  "15": "ALBI",
+  "20": "RIBL",
+  "30": "ARNB",
+  "40": "NCBK",
+  "45": "SABB",
+  "50": "SABB",
+  "55": "BSFR",
+  "60": "BJAZ",
+  "65": "SIBC",
+  "80": "RJHI",
+  "90": "GULF",
+  "95": "EBIL",
+}
+
+/** The bank of a Saudi IBAN (SA + 2 check digits + 2-digit bank code + 18): its code, the bare digits when the bank
+ * is not in the table, null when the IBAN is not a full Saudi one. */
+export function bankOfIban(iban: string | null | undefined): string | null {
+  const m = /^SA\d{2}(\d{2})[0-9A-Z]{18}$/.exec((iban ?? "").replace(/\s+/g, "").toUpperCase())
+  return m ? (SA_BANK_CODES[m[1]] ?? m[1]) : null
+}
+
+export interface MudadRow {
+  employeeId: string
+  idNo: string | null
+  name: string
+  bank: string | null
+  iban: string | null
+  basic: number
+  housing: number
+  /** Transport, overtime, commission — and on a supplementary every late item. */
+  other: number
+  deductions: number
+  net: number
+  /** The bank sent this transfer back after the file was uploaded — the row is marked, not removed. */
+  returned: boolean
+}
+
+type PayrollFiles = Pick<Payroll, "key" | "month" | "kind" | "lines" | "supplementary" | "returned" | "paidHeld">
+
+/** One row per paid line, keyed by the ID number; the row adds up to the net. Held lines stay out. Basic and housing
+ * stand whole for the days paid; what else was earned (transport, overtime, commission) is "other"; an absence is a
+ * DEDUCTION like every other — earnings are never negative (the prototype's wpsRows). */
+export function mudadRows(lines: PayrollLine[], pays: Map<string, EmployeePay>, returned?: Payroll["returned"]): MudadRow[] {
+  return lines
+    .filter((l) => !l.held)
+    .map((l) => {
+      const p = frozenPay(l, pays)
+      const share = l.days / STATUTORY.monthDays
+      const basic = r2(p.basic * share)
+      const housing = r2(p.housing * share)
+      const other = r2(l.monthWage - basic - housing + l.overtime + l.commission)
+      const deductions = r2(basic + housing + other - l.net)
+      return { employeeId: l.employeeId, idNo: l.idNo, name: l.name, bank: bankOfIban(l.iban), iban: l.iban, basic, housing, other, deductions, net: l.net, returned: Boolean(returned?.[l.employeeId]) }
+    })
+}
+
+/** A supplementary's file (PY-04/07): variable items only — no basic, no housing; retro, late commission and a
+ * penalty paid back are "other"; nothing is deducted. */
+export function mudadSupplementaryRows(lines: SupplementaryLine[], returned?: Payroll["returned"]): MudadRow[] {
+  return lines
+    .filter((l) => !l.held)
+    .map((l) => ({ employeeId: l.employeeId, idNo: l.idNo, name: l.name, bank: bankOfIban(l.iban), iban: l.iban, basic: 0, housing: 0, other: l.net, deductions: 0, net: l.net, returned: Boolean(returned?.[l.employeeId]) }))
+}
+
+export const MUDAD_COLUMNS = ["id_no", "name", "bank", "iban", "basic", "housing", "other_earnings", "deductions", "net", "establishment", "period"] as const
+
+/** The Mudad / WPS CSV: the prototype's columns, with the establishment's Mudad number and the period on every row. */
+export function mudadRowsCsv(rows: MudadRow[], opts: { establishment?: string | null; period: string }): string {
+  const out: Array<Array<string | number | null>> = [[...MUDAD_COLUMNS]]
+  for (const r of rows) out.push([r.idNo, r.name, r.bank, r.iban, r.basic.toFixed(2), r.housing.toFixed(2), r.other.toFixed(2), r.deductions.toFixed(2), r.net.toFixed(2), opts.establishment ?? "", opts.period])
+  return csv(out)
+}
+
+/** The Mudad wage file of a main payroll's lines (for callers that hold only the lines). */
+export function mudadCsv(lines: PayrollLine[], pays: Map<string, EmployeePay>, opts: { establishment?: string | null; period?: string } = {}): string {
+  return mudadRowsCsv(mudadRows(lines, pays), { establishment: opts.establishment, period: opts.period ?? "" })
+}
+
+export interface MudadFile {
+  /** `mudad-2026-08.csv`, `mudad-2026-08-D.csv`, the release `mudad-2026-08-R.csv`. */
+  name: string
+  kind: "main" | "supplementary" | "release"
+  period: string
+  rows: MudadRow[]
+  total: number
+  /** Lines left out — held until their IBAN is fixed, then sent in the "-R" release file. */
+  heldCount: number
+  heldNet: number
+  csv: string
+}
+
+const fileOf = (name: string, kind: MudadFile["kind"], period: string, rows: MudadRow[], held: Array<{ net: number }>, establishment?: string | null): MudadFile => ({
+  name,
+  kind,
+  period,
+  rows,
+  total: r2(rows.reduce((s, x) => s + x.net, 0)),
+  heldCount: held.length,
+  heldNet: r2(held.reduce((s, x) => s + x.net, 0)),
+  csv: mudadRowsCsv(rows, { establishment, period }),
+})
+
+/** PY-07 — the payroll's Mudad file (a supplementary's too), for the preview and the download. */
+export function mudadFile(p: PayrollFiles, pays: Map<string, EmployeePay>, establishment?: string | null): MudadFile {
+  if (p.kind === "supplementary") {
+    const sup = p.supplementary ?? []
+    return fileOf(`mudad-${p.key}.csv`, "supplementary", p.month, mudadSupplementaryRows(sup, p.returned), sup.filter((l) => l.held), establishment)
   }
-  return csv(rows)
+  return fileOf(`mudad-${p.key}.csv`, "main", p.month, mudadRows(p.lines, pays, p.returned), p.lines.filter((l) => l.held), establishment)
+}
+
+/** PY-03/07 — the "-R" release file: the lines paid AFTER the month — held at approval or returned by the bank, then
+ * paid once the IBAN was approved (`paidHeld`). Null while none was. */
+export function releaseFile(p: PayrollFiles, pays: Map<string, EmployeePay>, establishment?: string | null): MudadFile | null {
+  const paid = p.paidHeld ?? {}
+  if (!Object.keys(paid).length) return null
+  const rows =
+    p.kind === "supplementary"
+      ? mudadSupplementaryRows((p.supplementary ?? []).filter((l) => paid[l.employeeId]).map((l) => ({ ...l, held: false })))
+      : mudadRows(
+          p.lines.filter((l) => paid[l.employeeId]).map((l) => ({ ...l, held: false })),
+          pays
+        )
+  return rows.length ? fileOf(`mudad-${p.key}-R.csv`, "release", p.month, rows, [], establishment) : null
+}
+
+export interface GosiRow {
+  employeeId: string
+  idNo: string | null
+  name: string
+  nationality: string
+  scheme: PayrollLine["gosiScheme"]
+  base: number
+  employee: number
+  employer: number
+}
+
+export interface GosiStatement {
+  /** Saudis, one row each (the prototype's table). */
+  saudi: GosiRow[]
+  /** Non-Saudis, aggregated: occupational hazards, employer only. */
+  nonSaudi: { count: number; base: number; employer: number }
+  rows: GosiRow[]
+  employee: number
+  employer: number
+  /** = the GOSI credit of hr:PAY (210204). */
+  total: number
 }
 
 /** The GOSI statement: base and both shares per line — its total is the GOSI credit. A held transfer still owes
  * its contributions, so held lines are IN it (they are in the credit). */
+export function gosiStatement(lines: PayrollLine[], pays: Map<string, EmployeePay>): GosiStatement {
+  const rows: GosiRow[] = lines.map((l) => ({ employeeId: l.employeeId, idNo: l.idNo, name: l.name, nationality: l.nationality, scheme: l.gosiScheme, base: gosiBase(frozenPay(l, pays), l.days), employee: l.gosiEmployee, employer: l.gosiEmployer }))
+  const others = rows.filter((x) => x.scheme === "nonSaudi")
+  const employee = r2(rows.reduce((s, x) => s + x.employee, 0))
+  const employer = r2(rows.reduce((s, x) => s + x.employer, 0))
+  return {
+    saudi: rows.filter((x) => x.scheme !== "nonSaudi"),
+    nonSaudi: { count: others.length, base: r2(others.reduce((s, x) => s + x.base, 0)), employer: r2(others.reduce((s, x) => s + x.employer, 0)) },
+    rows,
+    employee,
+    employer,
+    total: r2(employee + employer),
+  }
+}
+
 export function gosiCsv(lines: PayrollLine[], pays: Map<string, EmployeePay>): string {
   const rows: Array<Array<string | number | null>> = [["id_no", "name", "nationality", "scheme", "base", "employee", "employer", "total"]]
-  for (const l of lines) {
-    const base = gosiBase(frozenPay(l, pays), l.days)
-    rows.push([l.idNo, l.name, l.nationality, l.gosiScheme, base.toFixed(2), l.gosiEmployee.toFixed(2), l.gosiEmployer.toFixed(2), r2(l.gosiEmployee + l.gosiEmployer).toFixed(2)])
-  }
+  for (const x of gosiStatement(lines, pays).rows) rows.push([x.idNo, x.name, x.nationality, x.scheme, x.base.toFixed(2), x.employee.toFixed(2), x.employer.toFixed(2), r2(x.employee + x.employer).toFixed(2)])
   return csv(rows)
+}
+
+// ---------------------------------------------------------------------------
+// Reconciliation with Finance (PY-09) — HR reads, Finance pays
+// ---------------------------------------------------------------------------
+
+type AnyPayLine = PayrollLine | SupplementaryLine
+const payLinesOf = (p: Pick<Payroll, "kind" | "lines" | "supplementary">): AnyPayLine[] => (p.kind === "supplementary" ? (p.supplementary ?? []) : p.lines)
+
+/** GOSI contributions of a month are due by the 15th of the next. */
+export const gosiDueOn = (month: string) => addDays(monthRange(month).end, 15)
+
+export interface Reconciliation {
+  /** Salaries payable (210202): the net of every line, held ones included. */
+  payable: number
+  /** Paid so far: transferred and not returned, plus held / returned lines paid since. Null before fin:PAID. */
+  paid: number | null
+  /** Still owed: held lines and returned transfers not paid again. */
+  owed: number
+  owedCount: number
+  gosi: number
+  gosiPaid: { date: string; amount: number } | null
+  gosiDue: string
+  gosiOverdue: boolean
+  eos: number
+  leave: number
+}
+
+export function financeReconciliation(p: Pick<Payroll, "month" | "kind" | "state" | "lines" | "supplementary" | "returned" | "paidHeld" | "gosiPaid">, today: string): Reconciliation {
+  const lines = payLinesOf(p)
+  const paidState = p.state === "paid"
+  const owedLine = (l: AnyPayLine) => (l.held || Boolean(p.returned?.[l.employeeId])) && !p.paidHeld?.[l.employeeId]
+  const owedLs = paidState ? lines.filter(owedLine) : lines.filter((l) => l.held)
+  const payable = r2(lines.reduce((s, l) => s + l.net, 0))
+  const owed = r2(owedLs.reduce((s, l) => s + l.net, 0))
+  const t = p.kind === "main" ? payrollTotals(p.lines) : null
+  const gosiDue = gosiDueOn(p.month)
+  const gosiPaid = p.gosiPaid ? { date: p.gosiPaid.date, amount: p.gosiPaid.amount } : null
+  return {
+    payable,
+    paid: paidState ? r2(payable - owed) : null,
+    owed,
+    owedCount: owedLs.length,
+    gosi: t ? r2(t.gosiEmployee + t.gosiEmployer) : 0,
+    gosiPaid,
+    gosiDue,
+    gosiOverdue: p.kind === "main" && !gosiPaid && today > gosiDue,
+    eos: t?.eos ?? 0,
+    leave: t?.leave ?? 0,
+  }
+}
+
+/** The balance of a credit-side account (a provision) from journal entries: credits less debits. */
+export function creditBalance(entries: Array<{ lines?: Array<{ account: string; debit?: number | null; credit?: number | null }> | null }>, account: string): number {
+  let b = 0
+  for (const e of entries) for (const l of e.lines ?? []) if (l.account === account) b += (l.credit ?? 0) - (l.debit ?? 0)
+  return r2(b)
+}
+
+/** hr:RECON — the end-of-service provision against the ledger: what everyone in service would be owed if his
+ * service ended today (termination, art. 84) against the balance of the provision account; the difference is the
+ * adjustment Finance posts. `ledger` null = Accounting off (nothing to compare). */
+export function eosReconciliation(employees: HrEmployee[], pays: Map<string, EmployeePay>, today: string, ledger: number | null): { accrued: number; people: number; ledger: number | null; difference: number | null } {
+  let accrued = 0
+  let people = 0
+  for (const e of employees) {
+    if (e.status === "left" || !e.join || e.join > today) continue
+    const p = pays.get(e.id)
+    if (!p) continue
+    accrued += gratuity(wageOf(payOn(p, today)), e.join, today, "termination_notice")
+    people++
+  }
+  accrued = r2(accrued)
+  return { accrued, people, ledger, difference: ledger === null ? null : r2(accrued - ledger) }
+}
+
+// ---------------------------------------------------------------------------
+// The payslip's state, as My file reads it (ES-04)
+// ---------------------------------------------------------------------------
+
+export type PayslipState = "none" | "preparing" | "with_finance" | "paid" | "held" | "returned" | "repaid"
+
+/** Where one employee's line of a payroll stands: not on it · being prepared · approved and with Finance · paid
+ * (on the payroll's payment day) · held (no / unapproved / bounced IBAN — paid once fixed) · returned by the bank
+ * (with Finance's reason) · paid again after the fix. Pure — the payroll document as the pay roles read it. */
+export function payslipState(
+  p: Pick<Payroll, "kind" | "state" | "lines" | "supplementary" | "paid" | "returned" | "paidHeld"> | null | undefined,
+  employeeId: string
+): { state: PayslipState; date: string | null; reason: string | null; net: number | null } {
+  if (!p) return { state: "none", date: null, reason: null, net: null }
+  const line = payLinesOf(p).find((l) => l.employeeId === employeeId)
+  if (!line) return { state: "none", date: null, reason: null, net: null }
+  const net = line.net
+  if (p.state === "prepared") return { state: "preparing", date: null, reason: null, net }
+  const again = p.paidHeld?.[employeeId]
+  if (again) return { state: "repaid", date: again.date ?? again.at?.slice(0, 10) ?? null, reason: null, net }
+  const back = p.returned?.[employeeId]
+  if (p.state === "paid" && back) return { state: "returned", date: back.date ?? null, reason: back.reason ?? null, net }
+  if (line.held) return { state: "held", date: null, reason: line.heldReason, net }
+  if (p.state === "paid") return { state: "paid", date: p.paid?.date ?? p.paid?.at?.slice(0, 10) ?? null, reason: null, net }
+  return { state: "with_finance", date: null, reason: null, net }
+}
+
+// ---------------------------------------------------------------------------
+// Advances on the Payroll page (AD-01…03)
+// ---------------------------------------------------------------------------
+
+export interface OutstandingAdvance {
+  employeeId: string
+  no: number
+  name: string
+  amount: number
+  balance: number
+  instalment: number
+  /** Instalments still to take — the last one may be smaller. */
+  monthsLeft: number
+}
+
+/** Every advance with a balance: taken from payroll in instalments, no second one before it is repaid (AD-02). */
+export function outstandingAdvances(employees: Pick<HrEmployee, "id" | "no" | "names">[], pays: Map<string, EmployeePay>): OutstandingAdvance[] {
+  const out: OutstandingAdvance[] = []
+  for (const e of employees) {
+    const a = pays.get(e.id)?.advance
+    if (!a || !(a.balance > 0)) continue
+    const instalment = a.instalment > 0 ? a.instalment : a.balance
+    out.push({ employeeId: e.id, no: e.no, name: e.names?.ar ?? "", amount: a.amount, balance: a.balance, instalment, monthsLeft: Math.ceil(a.balance / instalment) })
+  }
+  return out.sort((a, b) => b.balance - a.balance)
+}
+
+/** The advance requests the Payroll page lists: waiting for a decision, with Finance, approved and not yet paid
+ * out, and those declined in the last 60 days — newest first. */
+export function advanceRequestsInView(requests: HrRequest[], today: string): HrRequest[] {
+  const since = addDays(today, -60)
+  return requests
+    .filter((r) => {
+      if (r.kind !== "advance") return false
+      if (r.state === "pending" || r.state === "endorsed" || r.state === "finance") return true
+      if (r.state === "approved") return !(r as AdvanceRequest).payout
+      if (r.state === "declined") return (r.decision?.at ?? r.createdAt ?? "").slice(0, 10) >= since
+      return false
+    })
+    .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
 }

@@ -89,7 +89,7 @@ describe("raise and decide", () => {
     expect(block).toMatch(/hrManager\(\)\s*&& resource\.data\.state == 'pending'/)
     expect(block).toMatch(/changedKeys\(\)\.hasOnly\(\['state', 'decision', 'employeeId', 'employeeName', 'fromSiteId', 'updatedAt'\]\)/)
     // RL-01 — a supervisor lists his own site's corrections only (the panel and the one-open check ask by site).
-    expect(block).toMatch(/allow get, list: if isOrgMember\(resource\.data\.organizationId\) && \(hrOffice\(\) \|\| hrSupervises\(resource\.data\.siteId\)\);/)
+    expect(block).toMatch(/allow get, list: if (isOrgMember\(resource\.data\.organizationId\)|inOrg\(\)) && \(hrOffice\(\) \|\| hrSupervises\(resource\.data\.siteId\)\);/)
     expect(block).not.toMatch(/hrStaff\(\)/)
     expect(block).toMatch(/allow delete: if false;/)
   })

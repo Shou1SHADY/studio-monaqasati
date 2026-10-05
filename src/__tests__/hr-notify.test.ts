@@ -299,7 +299,7 @@ describe("workplaces, injuries, arrivals", () => {
   it("a manpower request → the HR manager; its answer → whoever asked, on the project's team", async () => {
     const id = await raiseManpowerRequest(db, { uid: "pm", name: "PM", allowed: true }, ORG, { projectId: "p1", projectName: "Tower", siteId: "s1", trade: "mason", count: 4, from: "2026-04-01" })
     expect(one("hrm", "hr_manpower_requested")).toMatchObject({ link: "hr/sites", i18n: { params: { project: "Tower", count: 4 } } })
-    await answerManpowerRequest(db, hrm, id, who(hrm), { plan: [], excluded: [] })
+    await answerManpowerRequest(db, hrm, id, who(hrm), { rows: [], excluded: [], rest: "none" })
     expect(one("pm", "hr_manpower_answered")?.link).toBe("/contractor/projects/p1?tab=team")
   })
 

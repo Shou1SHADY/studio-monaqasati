@@ -39,9 +39,9 @@ const base = (c: HrContext, over: Partial<TodayInput> = {}): TodayInput => ({
 
 describe("Today", () => {
   it("the HR manager: an expired iqama on a site blocks; the month to close; probation ending; the iqama clock", () => {
-    const items = todayItems(base(ctx(["manager"], { uid: "hrm" })))
+    const items = todayItems(base(ctx(["manager"], { uid: "hrm" }), { govHeld: false }))
     const kinds = items.map((x) => `${x.group}:${x.kind}`)
-    expect(kinds).toEqual(expect.arrayContaining(["blocking:iqama_on_site", "blocking:close_month", "due:probation_end", "due:iqama_clock", "blocking:payroll_prepare"]))
+    expect(kinds).toEqual(expect.arrayContaining(["blocking:iqama_on_site", "blocking:close_month", "due:probation_end", "blocking:iqama_clock", "blocking:payroll_prepare"]))
     expect(kinds).not.toContain("blocking:iban_fix")
     const clock = items.find((x) => x.kind === "iqama_clock")!
     expect(clock).toMatchObject({ params: { date: "2026-08-30" }, severity: "red" })
@@ -88,7 +88,7 @@ describe("injuries", () => {
 describe("Today — what the audit found missing or false", () => {
   it("government relations sees an expired iqama of someone on a site — red, to renew (DC-02); the HR manager sees it once, as the block", () => {
     const gov = todayItems(base(ctx(["gov"], { uid: "g" })))
-    expect(gov.find((x) => x.key === "doc:e2")).toMatchObject({ group: "due", severity: "red", action: "renew", href: "people/e2" })
+    expect(gov.find((x) => x.key === "doc:e2")).toMatchObject({ group: "blocking", severity: "red", action: "renew", href: "people/e2?renew=iqama" })
     const hrm = todayItems(base(ctx(["manager"], { uid: "hrm" })))
     expect(hrm.filter((x) => x.key === "doc:e2" || x.key === "iqama:e2").map((x) => x.kind)).toEqual(["iqama_on_site"])
   })
@@ -101,7 +101,7 @@ describe("Today — what the audit found missing or false", () => {
   })
 
   it("custody cleared: the settlement is the HR manager's turn — a row with its action, not a wait (WF-16)", () => {
-    const exits = [{ id: "org__e1", employeeId: "e1", employeeName: "e1", state: "leaving", custody: { state: "cleared" } }] as unknown as HrExit[]
+    const exits = [{ id: "org__e1", employeeId: "e1", employeeName: "e1", state: "leaving", lastDay: "2026-09-12", custody: { state: "cleared" } }] as unknown as HrExit[]
     const items = todayItems(base(ctx(["manager"], { uid: "hrm" }), { exits }))
     expect(items.find((x) => x.kind === "settlement_ready")).toMatchObject({ group: "blocking", severity: "amber", href: "people/e1", action: "settle" })
     expect(leakage(items)).toBe(0)

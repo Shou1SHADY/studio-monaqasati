@@ -174,9 +174,9 @@ describe("Today — overdue returns and assignment corrections (AT-05, AS-03)", 
     // 12 days after 8 March: the written warning is due (art. 80) — it blocks; 2 days after the 18th is due.
     expect(back.map((x) => [x.key, x.kind, x.group, x.href, x.params.days])).toEqual([
       ["return:r1", "leave_return_warning", "blocking", "people/e1", 12],
-      ["return:r2", "leave_return_due", "due", "people/e9", 2],
+      ["return:r2", "leave_return_due", "blocking", "people/e9", 2],
     ])
-    expect(items.find((x) => x.kind === "assign_fix")).toMatchObject({ key: "assignfix:f1", group: "blocking", href: "sites/s1", action: "decide", params: { name: "فهد", site: "Tower", date: "2026-03-10" } })
+    expect(items.find((x) => x.kind === "assign_fix")).toMatchObject({ key: "assignfix:f1", group: "requests", href: "sites/s1", action: "decide", params: { name: "فهد", site: "Tower", date: "2026-03-10" } })
     expect(items.filter((x) => x.kind === "assign_fix")).toHaveLength(1)
     expect(leakage(items)).toBe(0)
   })

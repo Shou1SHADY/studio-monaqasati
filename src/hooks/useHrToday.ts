@@ -20,6 +20,7 @@ import { MANPOWER_REQUESTS, type ManpowerRequest } from "@/lib/hr/manpower"
 import type { Payroll } from "@/lib/hr/payroll"
 import { HR_ASSIGN_FIXES, type AssignFix } from "@/lib/hr/sites"
 import { addDays } from "@/lib/hr/statutory"
+import { useHrHiring } from "@/hooks/useHrHiring"
 
 function useWorkplaceMonths(access: HrAccess, month: string): WorkplaceMonth[] {
   const firestore = useFirestore()
@@ -61,12 +62,15 @@ export function useHrToday(access: HrAccess, today: string) {
   const { data: ex } = useCollection(exQ)
   const { data: pr } = useCollection(prQ)
   const answers = access.allowed("manpower.answer")
-  const mpQ = useMemoFirebase(() => (firestore && orgId && answers ? query(collection(firestore, MANPOWER_REQUESTS), where("organizationId", "==", orgId), where("state", "==", "open")) : null), [firestore, orgId, answers])
+  // Open ones to answer; answered ones wait for Projects to accept the plan (TD-03).
+  const mpQ = useMemoFirebase(() => (firestore && orgId && answers ? query(collection(firestore, MANPOWER_REQUESTS), where("organizationId", "==", orgId), where("state", "in", ["open", "answered"])) : null), [firestore, orgId, answers])
   const { data: mp } = useCollection(mpQ)
   // AS-03 — pending assignment corrections, for the hand that decides them.
   const decidesFixes = access.allowed("employee.assign")
   const afQ = useMemoFirebase(() => (firestore && orgId && decidesFixes ? query(collection(firestore, HR_ASSIGN_FIXES), where("organizationId", "==", orgId), where("state", "==", "pending")) : null), [firestore, orgId, decidesFixes])
   const { data: af } = useCollection(afQ)
+  // Hiring (optional: hire) — null with the switch off, so none of its rows exist.
+  const hiring = useHrHiring(access)
   return useMemo(
     () => ({
       employees,
@@ -80,7 +84,8 @@ export function useHrToday(access: HrAccess, today: string) {
       payrolls: (pr ?? []) as unknown as Payroll[],
       manpower: (mp ?? []) as unknown as ManpowerRequest[],
       assignFixes: (af ?? []) as unknown as AssignFix[],
+      hiring,
     }),
-    [employees, sites, pays, requests, lastWm, thisWm, inj, ex, pr, mp, af]
+    [employees, sites, pays, requests, lastWm, thisWm, inj, ex, pr, mp, af, hiring]
   )
 }

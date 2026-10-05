@@ -2,8 +2,10 @@
 
 // A project's manpower requests (HR PRD AS-02, WF-12), as Projects sees them:
 // the project asks HR for a trade, a count and a start date, and reads HR's
-// answer — the coverage plan with its honest dates. Covering it is HR's; the
-// project never assigns people itself.
+// answer — the coverage plan with its honest dates, and what is left
+// uncovered said plainly. Covering it is HR's; the project never assigns
+// people itself. It accepts the plan (WF-12 step 3) or withdraws a request
+// HR has not answered yet.
 
 import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -18,13 +20,13 @@ import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill } from "@/components/module-ui/StatusPill"
-import { CoverageLines } from "@/components/hr/HrManpowerPanel"
+import { CoverageLines, manpowerState } from "@/components/hr/HrManpowerPanel"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useToast } from "@/hooks/use-toast"
 import { HR_SITES } from "@/lib/hr/collections"
 import { hrDate, todayDay } from "@/lib/hr/format"
-import { MANPOWER_REQUESTS, manpowerBlocks, raiseManpowerRequest, type ManpowerRequest } from "@/lib/hr/manpower"
+import { acceptManpowerPlan, MANPOWER_REQUESTS, manpowerBlocks, manpowerNo, raiseManpowerRequest, withdrawManpowerRequest, type ManpowerRequest } from "@/lib/hr/manpower"
 import type { HrSite } from "@/lib/hr/sites"
 import { TRADES } from "@/lib/hr/trades"
 import { HrWriteError } from "@/lib/hr/write-guard"
@@ -34,7 +36,7 @@ export function ProjectManpowerPanel({ projectId, projectName, organizationId, i
   const locale = useLocale()
   const firestore = useFirestore()
   const { user } = useUser()
-  const { can, profile } = usePermissions(projectId)
+  const { can, profile, isOrgOwner } = usePermissions(projectId)
   const { toast } = useToast()
   const allowed = can("projects.edit") || Boolean(isPm)
   const q = useMemoFirebase(
@@ -53,6 +55,21 @@ export function ProjectManpowerPanel({ projectId, projectName, organizationId, i
   const [note, setNote] = useState("")
   const [busy, setBusy] = useState(false)
   const blocks = manpowerBlocks({ trade, count: Number(count), from })
+  const me = { uid: user?.uid ?? "", name: (profile?.name as string) || null }
+
+  const act = async (fn: () => Promise<unknown>, ok: string) => {
+    if (!firestore) return
+    setBusy(true)
+    try {
+      await fn()
+      toast({ title: t(ok) })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t(err instanceof HrWriteError ? `err.${err.code}` : "err.save"), variant: "destructive" })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const save = async () => {
     if (!firestore) return
@@ -86,15 +103,19 @@ export function ProjectManpowerPanel({ projectId, projectName, organizationId, i
         <p className="py-3 text-sm text-muted-foreground">{t("mp.none")}</p>
       ) : (
         <ul className="divide-y">
-          {requests.map((r) => (
+          {requests.map((r) => {
+            const st = manpowerState(r)
+            const mine = r.requested?.by === me.uid
+            return (
             <li key={r.id} className="space-y-1 py-2.5">
               <p className="flex flex-wrap items-center gap-2 text-sm font-bold">
+                {r.no && <span dir="ltr" className="text-xs text-muted-foreground">{manpowerNo(r.no, locale)}</span>}
                 {t("mp.line", { count: r.count, trade: t(`trade.${r.trade}` as "trade.mason"), date: hrDate(r.from, locale) })}
-                <StatusPill tone={r.state === "open" ? "warn" : r.state === "answered" ? "ok" : "mute"}>{t(`mp.state.${r.state}`)}</StatusPill>
+                <StatusPill tone={st.tone}>{t(`mp.pstate.${st.key}`, { n: st.n ?? 0 })}</StatusPill>
               </p>
               {r.answer ? (
                 <>
-                  <CoverageLines lines={r.answer.plan} excluded={r.answer.excluded} />
+                  <CoverageLines lines={r.answer.plan} excluded={r.answer.excluded} short={r.answer.short} />
                   {r.answer.note && (
                     <p className="text-xs text-muted-foreground" dir="auto">
                       {t("mp.hr_note", { note: r.answer.note, name: r.answer.byName || "—" })}
@@ -104,8 +125,24 @@ export function ProjectManpowerPanel({ projectId, projectName, organizationId, i
               ) : (
                 <p className="text-xs text-muted-foreground">{t("mp.waiting_hr")}</p>
               )}
+              {r.accepted && <p className="text-xs text-muted-foreground">{t("mp.accepted_line", { name: r.accepted.byName || "—", at: hrDate(r.accepted.at, locale) })}</p>}
+              {r.state === "answered" && !r.accepted && (isOrgOwner || mine) && (
+                <div className="flex justify-end">
+                  <Button size="sm" onClick={() => void act(() => acceptManpowerPlan(firestore!, { ...me, allowed: isOrgOwner }, r.id), "mp.accepted_ok")} disabled={busy}>
+                    {t("mp.accept")}
+                  </Button>
+                </div>
+              )}
+              {r.state === "open" && mine && (
+                <div className="flex justify-end">
+                  <Button size="sm" variant="outline" onClick={() => void act(() => withdrawManpowerRequest(firestore!, me, r.id), "mp.withdrawn_ok")} disabled={busy}>
+                    {t("mp.withdraw")}
+                  </Button>
+                </div>
+              )}
             </li>
-          ))}
+            )
+          })}
         </ul>
       )}
       {!site && <p className="pt-2 text-[11px] text-muted-foreground">{t("mp.no_site")}</p>}

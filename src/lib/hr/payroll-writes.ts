@@ -16,6 +16,7 @@ import { monthRange, r2 } from "./statutory"
 import { todayDay } from "./format"
 import { emitHrNotice, hrLinks } from "./notify"
 import { assertHr, HrWriteError } from "./write-guard"
+import { projectSlips } from "./me-writes"
 
 /** "today" is Riyadh's day (§17): a payroll prepared at 01:00 on the 1st is after the month's end there. */
 const localToday = () => todayDay()
@@ -62,6 +63,8 @@ export async function preparePayroll(
       totals: payrollTotals(input.lines),
       prepared: stamp(actor),
       approved: null,
+      // PY-08 — a pre-Mudad justification is written once: recomputing keeps it.
+      ...(cur.exists() && (cur.data() as { just?: unknown }).just ? { just: (cur.data() as { just?: unknown }).just } : {}),
       updatedAt: serverTimestamp(),
     })
   })
@@ -109,10 +112,12 @@ export async function prepareSupplementary(firestore: Firestore, ctx: HrContext,
 export async function approvePayroll(firestore: Firestore, ctx: HrContext, orgId: string, key: string, actor: HrActor): Promise<void> {
   assertHr(ctx, "payroll.approve")
   const ref = doc(firestore, HR_PAYROLLS, payrollId(orgId, key))
+  let approved: Payroll | null = null
   await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new HrWriteError("missing")
     const p = { id: snap.id, ...(snap.data() as Omit<Payroll, "id">) }
+    approved = p
     if (p.state !== "prepared") throw new HrWriteError("blocked", ["approved"])
     if (!ctx.owner && !mayApprovePayroll(ctx, p.prepared.by)) throw new HrWriteError("own_request")
     const pay = payEvent(p)
@@ -157,6 +162,9 @@ export async function approvePayroll(firestore: Firestore, ctx: HrContext, orgId
       }
     }
   })
+  // My file (ES-04): each line on its employee's pay — "with Finance" until the payslip opens at payment.
+  const done = approved as Payroll | null
+  if (done) await projectSlips(firestore, done, todayDay())
   // Approved → Finance posts and pays it (hr:PAY is in the outbox).
   await emitHrNotice(firestore, actor, { kind: "hr_payroll_approved", organizationId: orgId, to: [{ finance: true }], params: { month: key }, link: hrLinks.financeDesk(), once: payrollId(orgId, key) })
 }

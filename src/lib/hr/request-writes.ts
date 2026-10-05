@@ -4,20 +4,30 @@
 // on screen are never trusted. The employee's log names what happened, never
 // an amount (RL-03).
 
-import { collection, doc, runTransaction, serverTimestamp, type DocumentData, type Firestore, type Transaction, type UpdateData } from "firebase/firestore"
+import { collection, deleteField, doc, runTransaction, serverTimestamp, type DocumentData, type Firestore, type Transaction, type UpdateData } from "firebase/firestore"
 import { hrRefusal, mayDecideRequest, userIsHrManager, type HrContext } from "./access"
-import { HR_EMPLOYEES, HR_PAY, HR_REQUESTS } from "./collections"
-import type { EmployeePay, HrEmployee } from "./employee"
+import { attachmentBlocks, HR_FILES, type EmployeeFile } from "./attachments"
+import { attendanceId, monthOf, type WorkplaceMonth } from "./attendance"
+import { HR_ATTENDANCE, HR_EMPLOYEES, HR_PAY, HR_REQUESTS, HR_SITES } from "./collections"
+import type { PunchMonth, PunchSite } from "./punches"
+import { fixPunch, writeFixPunch } from "./punch-writes"
+import type { EmployeeShift } from "./shifts"
+import { raiseRequestBlocks, type EmployeePay, type HrEmployee, type RaiseFields } from "./employee"
 import { HR_LOG, type HrActor } from "./employee-writes"
 import type { Holiday } from "./leave"
 import { LEAVE_RULES, type LeaveType } from "./leave"
 import {
   advanceQuote,
+  attfixApplyBlocks,
+  attfixBlocks,
   dataBlocks,
   leaveQuote,
   mayCancel,
+  mayDecideAttfix,
+  ownCancellable,
   REQUEST_NUMBER_TYPE,
   sickUsedIn,
+  type AttfixFields,
   type DataFields,
   type HrRequest,
   type HrRequestKind,
@@ -28,6 +38,7 @@ import { daysBetween, serviceYears, type HrPolicies } from "./statutory"
 import { drawYearlyDocNumber } from "../sales-numbering"
 import { todayDay } from "./format"
 import { emitHrNotice, emitHrNotices, hrLinks, type HrNotice } from "./notify"
+import { projectAttendance } from "./me-writes"
 import { payOn } from "./pay"
 import { HrWriteError } from "./write-guard"
 
@@ -66,11 +77,23 @@ export interface FileRequestInput {
   leave?: { type: LeaveType; from: string; to: string; note?: string | null }
   advance?: { amount: number; reason: string }
   data?: DataFields
+  attfix?: AttfixFields
+  raise?: RaiseFields
   /** The site's supervisor — the line manager (RL-04) — as the site names him. */
   supervisor?: { employeeId: string | null; userId: string | null } | null
 }
 
-type Opts = { policies: HrPolicies; holidays?: readonly Holiday[]; today?: string; others?: Array<{ from: string; to: string }>; pendingAdvance?: boolean; leaveMode?: LeaveMode | null }
+type Opts = {
+  policies: HrPolicies
+  holidays?: readonly Holiday[]
+  today?: string
+  others?: Array<{ from: string; to: string }>
+  pendingAdvance?: boolean
+  leaveMode?: LeaveMode | null
+  /** An attendance correction: the punch feature (miss/out exist only with it), and his own requests (cap, duplicates). */
+  punch?: boolean
+  mine?: HrRequest[]
+}
 
 /** The employee files his own (My file); the HR manager files on his behalf. */
 export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: string, actor: HrActor, input: FileRequestInput, opts: Opts): Promise<{ id: string; no: string }> {
@@ -84,7 +107,7 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
     const emp = await readEmp(tx, firestore, input.employeeId)
     if (emp.organizationId !== orgId) throw new HrWriteError("missing")
     if (emp.status === "left") throw new HrWriteError("blocked", ["left"])
-    const pay = input.kind === "advance" ? await tx.get(doc(firestore, HR_PAY, emp.id)) : null
+    const pay = input.kind === "advance" || input.kind === "raise" ? await tx.get(doc(firestore, HR_PAY, emp.id)) : null
     // LV-05, RL-02 — the level follows who the employee IS: an HR manager's own request goes to
     // management whoever files it (another HR manager filing for him included).
     const hrManagerEmployee = (own && ctx.roles.has("manager")) || (await employeeIsHrManager(tx, firestore, orgId, emp.userId))
@@ -112,9 +135,25 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
       body = { leave: { type: l.type, from: l.from, to: l.to, days: q.days, balance: q.balance, fromBalance: q.fromBalance, unpaidDays: q.unpaidDays, travel: q.travel, sick: q.sick, note: l.note?.trim() || null } }
     } else if (input.kind === "data") {
       const d = input.data!
-      const blocks = dataBlocks(d)
+      const blocks: string[] = dataBlocks(d)
+      // EM-07 — the bank's document is stored under HIS folder, an image or a PDF.
+      if (d.file) blocks.push(...attachmentBlocks({ kind: "bank", ...d.file }, { orgId, employeeId: emp.id }))
       if (blocks.length) throw new HrWriteError("blocked", blocks)
-      body = { data: { field: d.field, value: d.field === "iban" ? d.value.replace(/\s+/g, "").toUpperCase() : d.value.trim(), document: d.document?.trim() || null } }
+      const file = d.file ? { path: d.file.path, name: d.file.name, size: d.file.size, contentType: d.file.contentType } : null
+      body = { data: { field: d.field, value: d.field === "iban" ? d.value.replace(/\s+/g, "").toUpperCase() : d.value.trim(), document: d.document?.trim() || file?.name || null, file } }
+    } else if (input.kind === "attfix") {
+      // PRD form 11 — decided by whoever keeps the sheet: the workplace's supervisor (the line manager there).
+      const f = input.attfix!
+      const blocks = attfixBlocks(f, { today, punch: Boolean(opts.punch), mine: opts.mine ?? [] })
+      if (blocks.length) throw new HrWriteError("blocked", blocks)
+      body = { attfix: { type: f.type, day: f.day, reason: f.reason.trim() } }
+    } else if (input.kind === "raise") {
+      // EM-04 — asked for (by the HR manager, on a line manager's word; or the employee himself); decided as a pay change.
+      const x = input.raise!
+      const stored = pay?.exists() ? (pay.data() as EmployeePay) : null
+      const blocks = raiseRequestBlocks(x, { currentBasic: stored ? payOn(stored, today).basic : null, nationality: emp.nationality })
+      if (blocks.length) throw new HrWriteError("blocked", blocks)
+      body = { raise: { basic: x.basic, kind: x.kind, effectiveOn: x.effectiveOn, reason: x.reason.trim(), trade: x.kind === "promotion" ? (x.trade ?? null) : null } }
     } else {
       const a = input.advance!
       // The wage in force today — a raise dated in the past applies though the stored figures lag (EM-04).
@@ -136,13 +175,14 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
 const reqKind = (r: Pick<HrRequest, "kind">) => `@hr_req_kind.${r.kind}`
 
 /** A request filed → whoever decides it (management on the HR manager's own) and, for a leave, the line
- * manager who endorses it first. Never the employee himself, whoever filed it. */
+ * manager who endorses it first; an attendance correction → the supervisor who keeps the sheet, else the
+ * HR manager. Never the employee himself, whoever filed it. */
 async function tellFiled(firestore: Firestore, actor: HrActor, r: HrRequest) {
   await emitHrNotices(firestore, actor, [
     {
       kind: "hr_request_filed",
       organizationId: r.organizationId,
-      to: [{ hr: r.deciderLevel === "management" ? "management" : "manager" }],
+      to: [r.kind === "attfix" && r.lineManagerUserId ? { users: [r.lineManagerUserId] } : { hr: r.deciderLevel === "management" ? "management" : "manager" }],
       except: [r.employeeUserId],
       params: { name: r.employeeName, no: r.no, req: reqKind(r) },
       link: hrLinks.today(),
@@ -203,9 +243,12 @@ export async function decideRequest(
   opts: Opts
 ): Promise<{ state: HrRequest["state"] }> {
   const today = opts.today ?? todayDay()
+  const first = await runTransaction(firestore, async (tx) => readReq(tx, firestore, id))
+  if (first.kind === "attfix") return decideAttfix(firestore, ctx, id, actor, verdict, note, today)
   let state: HrRequest["state"] = "declined"
   let decided: HrRequest | null = null
   let abroad = false
+  let ibanBack = false
   await runTransaction(firestore, async (tx) => {
     const r = await readReq(tx, firestore, id)
     decided = r
@@ -220,6 +263,7 @@ export async function decideRequest(
     const paySnap = r.kind === "advance" ? await tx.get(payRef) : null
     const reqRef = doc(firestore, HR_REQUESTS, id)
     const decision = { ...stamp(actor, note), ownFlagged: ctx.owner && ctx.employeeId === r.employeeId }
+    if (verdict === "approve" && r.kind === "raise") throw new HrWriteError("blocked", ["raise_via_pay"])
     if (verdict === "decline") {
       if (!note.trim()) throw new HrWriteError("blocked", ["no_reason"])
       tx.update(reqRef, { state: "declined", decision, updatedAt: serverTimestamp() })
@@ -230,8 +274,30 @@ export async function decideRequest(
     if (r.kind === "data") {
       // ES-03 — applied by the HR manager's approval; the employee never edits his record.
       const d = r.data!
-      if (d.field === "iban") tx.set(doc(firestore, HR_PAY, r.employeeId), { employeeId: r.employeeId, organizationId: r.organizationId, iban: d.value, ibanState: "ok", updatedAt: serverTimestamp() }, { merge: true })
-      else tx.update(doc(firestore, HR_EMPLOYEES, r.employeeId), { [`contact.${d.field}`]: d.value, updatedAt: serverTimestamp() })
+      if (d.field === "iban") {
+        const before = await tx.get(doc(firestore, HR_PAY, r.employeeId))
+        // A returned transfer (PY-03): his own IBAN, checked against the bank's document and approved by the HR
+        // manager — two hands — makes the held line payable again; Finance is told.
+        ibanBack = before.exists() && (before.data() as EmployeePay).ibanState === "returned"
+        tx.set(doc(firestore, HR_PAY, r.employeeId), { employeeId: r.employeeId, organizationId: r.organizationId, iban: d.value, ibanState: "ok", updatedAt: serverTimestamp() }, { merge: true })
+        // EM-07 — the bank's document joins the record's attachments (the HR manager files them; management cannot).
+        if (d.file && ctx.roles.has("manager")) {
+          const entry: Omit<EmployeeFile, "id"> = {
+            organizationId: r.organizationId,
+            employeeId: r.employeeId,
+            kind: "bank",
+            name: d.file.name,
+            path: d.file.path,
+            size: d.file.size,
+            contentType: d.file.contentType,
+            by: actor.uid,
+            byName: actor.name,
+            at: new Date().toISOString(),
+            note: r.no,
+          }
+          if (!attachmentBlocks(entry, { orgId: r.organizationId, employeeId: r.employeeId }).length) tx.set(doc(collection(firestore, HR_EMPLOYEES, r.employeeId, HR_FILES)), entry)
+        }
+      } else tx.update(doc(firestore, HR_EMPLOYEES, r.employeeId), { [`contact.${d.field}`]: d.value, updatedAt: serverTimestamp() })
       tx.update(reqRef, { state: "approved", decision, updatedAt: serverTimestamp() })
       log(tx, firestore, emp, actor, "data_updated", { no: r.no, field: d.field })
       state = "approved"
@@ -294,6 +360,8 @@ export async function decideRequest(
   if (r) {
     const s = state as HrRequest["state"]
     await emitHrNotices(firestore, actor, [
+      s === "approved" &&
+        ibanBack && { kind: "hr_iban_approved", organizationId: r.organizationId, to: [{ finance: true }], except: [r.employeeUserId], params: { name: r.employeeName }, link: hrLinks.financeDesk(), employeeId: r.employeeId },
       s === "finance"
         ? {
             kind: "hr_advance_to_finance",
@@ -383,7 +451,13 @@ export async function cancelRequest(firestore: Firestore, ctx: HrContext, id: st
     const r = await readReq(tx, firestore, id)
     if (!mayCancel(ctx, r, today)) throw new HrWriteError("no_role")
     const emp = await readEmp(tx, firestore, r.employeeId)
-    if (r.state === "approved" && r.leave) {
+    const own = Boolean(ctx.employeeId) && ctx.employeeId === r.employeeId && !ctx.roles.has("manager")
+    if (r.state === "approved" && r.leave && own) {
+      // LV-07 — he withdraws his own approved leave before it starts: exactly its days come back, and the record
+      // names the request they came back for (the rules hold the two against each other).
+      if (!ownCancellable(r.leave.type)) throw new HrWriteError("no_role")
+      if (r.leave.fromBalance) tx.update(doc(firestore, HR_EMPLOYEES, emp.id), { leaveTaken: (emp.leaveTaken ?? 0) - r.leave.fromBalance, undo: r.id, updatedAt: serverTimestamp() })
+    } else if (r.state === "approved" && r.leave) {
       const l = r.leave
       const patch: UpdateData<DocumentData> = { updatedAt: serverTimestamp() }
       if (l.fromBalance) patch.leaveTaken = Math.max(0, (emp.leaveTaken ?? 0) - l.fromBalance)
@@ -394,4 +468,60 @@ export async function cancelRequest(firestore: Firestore, ctx: HrContext, id: st
     tx.update(doc(firestore, HR_REQUESTS, id), { state: "cancelled", cancel: stamp(actor, note), updatedAt: serverTimestamp() })
     log(tx, firestore, emp, actor, `${r.kind}_cancelled`, { no: r.no })
   })
+}
+
+/** PRD form 11 — the supervisor who keeps the sheet (or the HR manager) decides an attendance correction. An
+ * approved "marked absent but present" takes the absence off that day's sheet in the same transaction; a closed
+ * month never reopens, and a day that does not show him absent has nothing to correct. A decline needs its reason. */
+async function decideAttfix(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, verdict: "approve" | "decline", note: string, today: string): Promise<{ state: HrRequest["state"] }> {
+  let decided: HrRequest | null = null
+  let after: WorkplaceMonth | null = null
+  await runTransaction(firestore, async (tx) => {
+    const r = await readReq(tx, firestore, id)
+    if (r.kind !== "attfix" || !r.attfix || (r.state !== "pending" && r.state !== "endorsed")) throw new HrWriteError("blocked", ["stale"])
+    if (ctx.employeeId && ctx.employeeId === r.employeeId && !ctx.owner) throw new HrWriteError("own_request")
+    if (!mayDecideAttfix(ctx, r)) throw new HrWriteError("no_role")
+    const f = r.attfix
+    const wmRef = doc(firestore, HR_ATTENDANCE, attendanceId(r.organizationId, r.siteId ?? "-", monthOf(f.day)))
+    const snap = verdict === "approve" && r.siteId ? await tx.get(wmRef) : null
+    const emp = await readEmp(tx, firestore, r.employeeId)
+    // PT-07 (optional: punch) — a forgotten punch, or one outside the fence on duty, puts a corrected punch on the day.
+    const siteSnap = verdict === "approve" && r.siteId && f.type !== "abs" ? await tx.get(doc(firestore, HR_SITES, r.siteId)) : null
+    const reqRef = doc(firestore, HR_REQUESTS, id)
+    const decision = { ...stamp(actor, note), ownFlagged: ctx.owner && ctx.employeeId === r.employeeId }
+    decided = r
+    if (verdict === "decline") {
+      if (!note.trim()) throw new HrWriteError("blocked", ["no_reason"])
+      tx.update(reqRef, { state: "declined", decision, updatedAt: serverTimestamp() })
+      log(tx, firestore, emp, actor, "attfix_declined", { no: r.no })
+      return
+    }
+    const wm = snap?.exists() ? ({ id: snap.id, ...(snap.data() as Omit<WorkplaceMonth, "id">) } as WorkplaceMonth) : null
+    const blocks = attfixApplyBlocks(wm, r.employeeId, f)
+    if (blocks.length) throw new HrWriteError("blocked", blocks)
+    if (wm && f.type === "abs") {
+      const rest = { ...(wm.days[f.day].ex[r.employeeId] ?? {}) }
+      delete rest.status
+      const kept = Object.keys(rest).length ? rest : null
+      // A recorded day is locked; the rules let this one entry change because the write names the
+      // correction it approves (`fixReq`) — see hrAttfixOk in firestore.rules.
+      tx.update(wmRef, { [`days.${f.day}.ex.${r.employeeId}`]: kept ?? deleteField(), fixReq: id, updatedAt: serverTimestamp() })
+      const ex = { ...wm.days[f.day].ex }
+      if (kept) ex[r.employeeId] = kept
+      else delete ex[r.employeeId]
+      after = { ...wm, days: { ...wm.days, [f.day]: { ...wm.days[f.day], ex } } }
+    }
+    if (r.siteId && (f.type === "miss" || f.type === "out")) {
+      const rec = fixPunch(wm as (WorkplaceMonth & PunchMonth) | null, siteSnap?.exists() ? ({ id: siteSnap.id, ...siteSnap.data() } as PunchSite) : null, emp as HrEmployee & { shift?: EmployeeShift | null }, f.day, f.type)
+      if (rec) writeFixPunch(tx, firestore, wm as PunchMonth | null, r.organizationId, r.siteId, f.day, r.employeeId, rec)
+    }
+    tx.update(reqRef, { state: "approved", decision, updatedAt: serverTimestamp() })
+    log(tx, firestore, emp, actor, "attfix_approved", { no: r.no, day: f.day })
+  })
+  const r = decided as HrRequest | null
+  const fixed = after as WorkplaceMonth | null
+  const approved = verdict === "approve"
+  if (r && fixed) await projectAttendance(firestore, fixed, [r.employeeId], { day: r.attfix?.day ?? null, today })
+  if (r) await emitHrNotice(firestore, actor, decidedNotice(r, approved ? "approved" : "declined", note))
+  return { state: approved ? "approved" : "declined" }
 }

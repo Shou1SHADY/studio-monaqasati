@@ -6,19 +6,29 @@
 // nothing but the reason: the screen is not a guard, but it never shows a
 // door it would refuse.
 
-import { useEffect, type ReactNode } from "react"
+import { useEffect, useMemo, type ReactNode } from "react"
 import { useTranslations } from "next-intl"
-import { CalendarCheck2, FileUser, LayoutDashboard, Lock, MapPin, Receipt, Settings2, Users, BarChart3, Loader2 } from "lucide-react"
+import { BriefcaseBusiness, CalendarCheck2, FileUser, GraduationCap, Landmark, LayoutDashboard, Lock, MapPin, Receipt, Settings2, Users, BarChart3, Loader2 } from "lucide-react"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { ModuleHeader, type ModuleKpi, type ModuleTab } from "@/components/module-ui/ModuleHeader"
 import { useHrAccess, type HrAccess } from "@/hooks/useHrAccess"
+import { useHrTodayCounts } from "@/hooks/useHrTodayCounts"
 import { useRouter } from "@/i18n/routing"
-import type { HrTab } from "@/lib/hr/access"
+import { hrTabs, type HrTab } from "@/lib/hr/access"
+import { featureSet, perfLabelKey, sitesLabelKey, type HrSettings } from "@/lib/hr/settings"
 
 export type HrPortal = "contractor" | "supplier"
 
+/** ST-06 — a tab's label key under `Portal.HR.tab`: the workplaces in the company's own word, the growth tab by
+ * which of its features is on. */
+export function tabLabelKey(tab: HrTab, settings: Pick<HrSettings, "businessType" | "features">): string {
+  if (tab === "sites") return sitesLabelKey(settings.businessType)
+  if (tab === "perf") return perfLabelKey(featureSet(settings))
+  return tab
+}
+
 /** Tabs built so far — an optional feature's tab appears once it is built. */
-export const HR_BUILT_TABS: readonly HrTab[] = ["today", "people", "sites", "payroll", "reports", "settings", "me"]
+export const HR_BUILT_TABS: readonly HrTab[] = ["today", "people", "sites", "attendance", "payroll", "hiring", "perf", "platforms", "reports", "settings", "me"]
 
 const ICON: Partial<Record<HrTab, typeof Users>> = {
   today: LayoutDashboard,
@@ -26,6 +36,9 @@ const ICON: Partial<Record<HrTab, typeof Users>> = {
   sites: MapPin,
   attendance: CalendarCheck2,
   payroll: Receipt,
+  platforms: Landmark,
+  hiring: BriefcaseBusiness,
+  perf: GraduationCap,
   reports: BarChart3,
   settings: Settings2,
   me: FileUser,
@@ -58,8 +71,14 @@ export function HrShell({
   const t = useTranslations("Portal.HR")
   const access = useHrAccess()
   const computed = useKpis(access, portal)
-  const tabs = access.tabs.filter((x) => HR_BUILT_TABS.includes(x))
-  const rail: ModuleTab[] = tabs.map((x) => ({ id: x, label: t(`tab.${x}`), href: hrHref(portal, x), icon: ICON[x] }))
+  // TD-04 — each tab's number is the count of its screen; the platforms tab follows who holds government relations.
+  const { counts, govHeld } = useHrTodayCounts(access)
+  const tabs = useMemo(
+    () => (govHeld === undefined ? access.tabs : hrTabs(access.ctx, featureSet(access.settings), { govHeld })).filter((x) => HR_BUILT_TABS.includes(x)),
+    [access.tabs, access.ctx, access.settings, govHeld]
+  )
+  const label = (x: HrTab) => t(`tab.${tabLabelKey(x, access.settings)}` as "tab.today")
+  const rail: ModuleTab[] = tabs.map((x) => ({ id: x, label: label(x), href: hrHref(portal, x), icon: ICON[x], count: counts[x]?.count, urgent: counts[x]?.urgent }))
   const mayOpen = tabs.includes(tab)
   const router = useRouter()
   // TD-01 — the module's home is Today; a person whose role has no Today (an
@@ -73,9 +92,9 @@ export function HrShell({
     <div className="space-y-6">
       <ModuleHeader
         icon={Users}
-        title={title ?? t(`tab.${tab}`)}
+        title={title ?? label(tab)}
         description={description ?? t(`tab_desc.${tab}`)}
-        crumbs={[{ label: t("module"), href: hrHref(portal, "today") }, { label: t(`tab.${tab}`) }]}
+        crumbs={[{ label: t("module"), href: hrHref(portal, "today") }, { label: label(tab) }]}
         actions={mayOpen ? actions : undefined}
         kpis={mayOpen ? (kpis ?? computed) : undefined}
         kpisLabel={t("kpis_label")}

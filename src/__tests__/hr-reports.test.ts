@@ -67,9 +67,11 @@ const world = (over: Partial<ReportWorld> = {}): ReportWorld => ({
 describe("RP-01 — who is offered which report", () => {
   it("money reports only to the roles that see pay; turnover to the HR manager and management; supervisors and employees none", () => {
     const ids = (roles: HrRole[]) => visibleReports(ctx(roles)).map((r) => r.id)
-    expect(ids(["manager"])).toEqual([...REPORT_IDS])
-    expect(ids(["management"])).toEqual([...REPORT_IDS])
-    expect(ids(["payroll"])).toEqual(REPORT_IDS.filter((x) => x !== "turnover"))
+    // A feature's reports (lateness, roster — punch) are offered only while it is on.
+    const core = REPORT_IDS.filter((x) => !REPORTS[x].feature)
+    expect(ids(["manager"])).toEqual(core)
+    expect(ids(["management"])).toEqual(core)
+    expect(ids(["payroll"])).toEqual(core.filter((x) => x !== "turnover"))
     const gov = ids(["gov"])
     expect(gov).toEqual(["register", "attendance", "documents", "saudization", "movement", "structure"])
     expect(gov.some((id) => REPORTS[id].money)).toBe(false)
@@ -103,11 +105,11 @@ describe("RP-02 — the reports, from the live record", () => {
     expect(rows.find((r) => r[0] === 2)![3]).toBe(15)
   })
 
-  it("labour cost by cost centre reads the latest main payroll: gross + employer GOSI (the PRD's columns), per head", () => {
+  it("labour cost by cost centre reads the latest main payroll: gross + employer GOSI (the PRD's columns), the EOS accrual beside it, per head", () => {
     const rows = reportRows("cost", world())
     expect(rows).toEqual([
-      ["HQ", "520101", 1, 10800, 1269, 12069, 12069],
-      ["Tower", "510201", 2, 9450, 189, 9639, 4819.5],
+      ["HQ", "520101", 1, 10800, 1269, 450, 12069, 12069],
+      ["Tower", "510201", 2, 9450, 189, 393.75, 9639, 4819.5],
     ])
   })
 
@@ -133,7 +135,7 @@ describe("RP-02 — the reports, from the live record", () => {
 
   it("outstanding advances; the penalties register leaves out what is not decided", () => {
     expect(reportRows("advances", world())).toEqual([[1, "Ee1", 2000, 1200, 440, 3]])
-    expect(reportRows("penalties", world())).toEqual([[1, "Ee1", "late30", "2026-08-20", "2026-08-22", 1, 13.5, "applied"]])
+    expect(reportRows("penalties", world())).toEqual([[1, "Ee1", "late30", "2026-08-20", "2026-08-22", "fraction:0.1", 13.5, "applied"]])
   })
 
   it("saudization by trade flags a Saudi-only trade; joiners and leavers within 90 days with the reason", () => {
