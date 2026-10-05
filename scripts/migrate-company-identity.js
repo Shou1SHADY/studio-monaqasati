@@ -17,7 +17,9 @@
 // is (a differing old value is reported as a conflict, never overwritten); nothing is deleted.
 //
 // Credentials: `.env.uat` / `.env.local` (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL,
-// FIREBASE_PRIVATE_KEY) — the same service accounts the other ops scripts use.
+// FIREBASE_PRIVATE_KEY) — the same service accounts the other ops scripts use. For UAT
+// only, with no key in the env file, the signed-in `gcloud` user's token is used instead
+// (the way deploy-rules.js does); production always needs its service account.
 
 const target = process.argv[2]
 const apply = process.argv.includes("--apply")
@@ -28,26 +30,42 @@ if (target !== "uat" && target !== "prod") {
 require("dotenv").config({ path: target === "uat" ? ".env.uat" : ".env.local" })
 
 const { initializeApp, cert } = require("firebase-admin/app")
-const { getFirestore, FieldValue } = require("firebase-admin/firestore")
+let { getFirestore, FieldValue } = require("firebase-admin/firestore")
 
-const projectId = process.env.FIREBASE_PROJECT_ID
+let projectId = process.env.FIREBASE_PROJECT_ID
+let credential
+let db
+if (process.env.FIREBASE_PRIVATE_KEY) {
+  credential = cert({
+    projectId,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+  })
+} else if (target === "uat") {
+  const { execSync } = require("child_process")
+  const { Firestore, FieldValue: GcpFieldValue } = require("@google-cloud/firestore")
+  FieldValue = GcpFieldValue
+  const { OAuth2Client } = require("google-auth-library")
+  const authClient = new OAuth2Client()
+  authClient.setCredentials({ access_token: execSync("gcloud auth print-access-token", { encoding: "utf8" }).trim() })
+  projectId = "mdmaktech-uat"
+  credential = true
+  db = new Firestore({ projectId, authClient })
+  console.log("no service-account key for uat — using the signed-in gcloud user")
+}
 if (target === "uat" && projectId !== "mdmaktech-uat") {
   console.error(`refusing: asked for uat but the credentials are for "${projectId}"`)
   process.exit(1)
 }
-if (target === "prod" && projectId === "mdmaktech-uat") {
-  console.error("refusing: asked for prod but the credentials are for UAT")
+if (target === "prod" && (!credential || projectId === "mdmaktech-uat")) {
+  console.error(projectId === "mdmaktech-uat" ? "refusing: asked for prod but the credentials are for UAT" : "refusing: production needs its service account in .env.local")
   process.exit(1)
 }
 
-initializeApp({
-  credential: cert({
-    projectId,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-  }),
-})
-const db = getFirestore()
+if (!db) {
+  initializeApp({ credential, projectId })
+  db = getFirestore()
+}
 
 // Keep in step with SENSITIVE_IDENTITY_KEYS in src/lib/company-identity.ts.
 const KEYS = ["crNumber", "taxNumber", "legalDocuments", "iban", "bankName"]
