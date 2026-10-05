@@ -21,13 +21,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { Panel } from "@/components/module-ui/Panel"
-import { ShowMoreRow } from "@/components/module-ui/ShowMoreRow"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useHrPeople, useOrgPay } from "@/hooks/useHrPeople"
 import { useHrRequests } from "@/hooks/useHrRequests"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { Link } from "@/i18n/routing"
@@ -127,8 +128,8 @@ export function HrSitePanel({ access, siteId, actor, portal }: { access: HrAcces
   const pays = useOrgPay(access.orgId, money && bench)
   const window = access.settings.policies.renewWindowDays
   const { toast } = useToast()
+  const tableLabels = useTableLabels()
   const [moving, setMoving] = useState<HrEmployee | null>(null)
-  const [all, setAll] = useState(false)
   const mayInjury = !bench && access.allowed("injury.record", { site: siteId })
   const mayViolation = !bench && access.allowed("violation.record", { site: siteId })
   const [injuring, setInjuring] = useState<HrEmployee | null>(null)
@@ -179,8 +180,93 @@ export function HrSitePanel({ access, siteId, actor, portal }: { access: HrAcces
 
   const docOf = (e: HrEmployee) => nearestDocument(e.nationality === "sa" ? { ...e.docs, iqama: null } : e.docs, today, window)
   const rows = here.slice().sort((a, b) => DOC_RANK[docOf(b)?.state ?? "missing"] - DOC_RANK[docOf(a)?.state ?? "missing"] || (a.no ?? 0) - (b.no ?? 0))
-  const shown = all ? rows : rows.slice(0, CLIP)
   const name = (e: HrEmployee) => (e.names ? displayName(e, locale) : "—")
+  const columns: DataColumn<HrEmployee>[] = [
+    {
+      key: "name",
+      header: t("people.col.name"),
+      sortValue: name,
+      cell: (e) => (
+        <>
+          {opensFiles ? (
+            <Link href={`/${portal}/hr/people/${e.id}`} className="font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
+              {name(e)}
+            </Link>
+          ) : (
+            <span className="font-semibold" dir="auto">
+              {name(e)}
+            </span>
+          )}
+          <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <bdi dir="ltr">{empNo(e.no)}</bdi> · {t(`trade.${e.trade}` as "trade.mason")}
+            {expired(e) && <StatusPill tone="bad">{t("att.iqama_expired")}</StatusPill>}
+          </span>
+        </>
+      ),
+    },
+    bench
+      ? { key: "since", header: t("site.col.since"), sortValue: (e) => benchSince(e) ?? null, cell: (e) => <span className="text-xs">{hrDate(benchSince(e), locale)}</span> }
+      : {
+          key: "today",
+          header: t("site.col.today"),
+          sortValue: (e) => (e.status === "leaving" ? t("status.leaving") : t(`site.day.${stateOf(e)}`)),
+          cell: (e) => (e.status === "leaving" ? <StatusPill tone="warn">{t("status.leaving")}</StatusPill> : <StatusPill tone={DAY_TONE[stateOf(e)]}>{t(`site.day.${stateOf(e)}`)}</StatusPill>),
+        },
+    {
+      key: "docs",
+      header: t("site.col.docs"),
+      sortValue: (e) => DOC_RANK[docOf(e)?.state ?? "missing"],
+      cell: (e) => {
+        const d = docOf(e)
+        return d ? (
+          <StatusPill tone={DOC_TONE[d.state]}>
+            {t(`doc.${d.type}`)} · {t(`doc_state.${d.state}`)}
+          </StatusPill>
+        ) : (
+          <span className="text-xs text-muted-foreground">{t("doc_state.missing")}</span>
+        )
+      },
+    },
+    ...(acts
+      ? [
+          {
+            key: "action",
+            header: <span className="sr-only">{t("site.col.action")}</span>,
+            label: t("site.col.action"),
+            cell: (e: HrEmployee) => (
+              <div className="flex flex-wrap justify-end gap-1.5">
+                {mayMove && (e.status === "active" || e.status === "leave") && (
+                  <Button size="sm" variant="outline" onClick={() => setMoving(e)}>
+                    <ArrowRightLeft size={14} className="me-1.5" aria-hidden="true" />
+                    {t(bench ? "site.assign" : "site.move")}
+                  </Button>
+                )}
+                {mayInjury && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setOn(today)
+                      setText("")
+                      setInjuring(e)
+                    }}
+                  >
+                    <Ambulance size={14} className="me-1.5" aria-hidden="true" />
+                    {t("siteppl.injury")}
+                  </Button>
+                )}
+                {mayViolation && (
+                  <Button size="sm" variant="outline" onClick={() => setViolating(e)}>
+                    <Flag size={14} className="me-1.5" aria-hidden="true" />
+                    {t("siteppl.violation")}
+                  </Button>
+                )}
+              </div>
+            ),
+          },
+        ]
+      : []),
+  ]
 
   if (!bench && !site) return null
 
@@ -228,98 +314,18 @@ export function HrSitePanel({ access, siteId, actor, portal }: { access: HrAcces
       <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Panel title={bench ? t("site.bench_people") : t("siteppl.title")} icon={UsersRound} count={here.length} bodyClassName="p-0">
           {(mayInjury || mayViolation) && <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("siteppl.note")}</p>}
-          {here.length === 0 ? (
-            <p className="px-4 py-4 text-sm text-muted-foreground">{t("siteppl.none")}</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-max text-sm">
-                <thead className="bg-muted/50 text-xs text-muted-foreground">
-                  <tr>
-                    <th scope="col" className="px-3 py-2 text-start font-bold">{t("people.col.name")}</th>
-                    <th scope="col" className="px-3 py-2 text-start font-bold">{bench ? t("site.col.since") : t("site.col.today")}</th>
-                    <th scope="col" className="px-3 py-2 text-start font-bold">{t("site.col.docs")}</th>
-                    {acts && <th scope="col" className="px-3 py-2"><span className="sr-only">{t("site.col.action")}</span></th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {shown.map((e) => {
-                    const d = docOf(e)
-                    const st = stateOf(e)
-                    return (
-                      <tr key={e.id} className="border-t">
-                        <td className="px-3 py-2">
-                          {opensFiles ? (
-                            <Link href={`/${portal}/hr/people/${e.id}`} className="font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
-                              {name(e)}
-                            </Link>
-                          ) : (
-                            <span className="font-semibold" dir="auto">
-                              {name(e)}
-                            </span>
-                          )}
-                          <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                            <span dir="ltr">{empNo(e.no)}</span> · {t(`trade.${e.trade}` as "trade.mason")}
-                            {expired(e) && <StatusPill tone="bad">{t("att.iqama_expired")}</StatusPill>}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2">
-                          {bench ? (
-                            <span className="text-xs">{hrDate(benchSince(e), locale)}</span>
-                          ) : e.status === "leaving" ? (
-                            <StatusPill tone="warn">{t("status.leaving")}</StatusPill>
-                          ) : (
-                            <StatusPill tone={DAY_TONE[st]}>{t(`site.day.${st}`)}</StatusPill>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {d ? (
-                            <StatusPill tone={DOC_TONE[d.state]}>
-                              {t(`doc.${d.type}`)} · {t(`doc_state.${d.state}`)}
-                            </StatusPill>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">{t("doc_state.missing")}</span>
-                          )}
-                        </td>
-                        {acts && (
-                          <td className="px-3 py-2">
-                            <div className="flex flex-wrap justify-end gap-1.5">
-                              {mayMove && (e.status === "active" || e.status === "leave") && (
-                                <Button size="sm" variant="outline" onClick={() => setMoving(e)}>
-                                  <ArrowRightLeft size={14} className="me-1.5" aria-hidden="true" />
-                                  {t(bench ? "site.assign" : "site.move")}
-                                </Button>
-                              )}
-                              {mayInjury && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setOn(today)
-                                    setText("")
-                                    setInjuring(e)
-                                  }}
-                                >
-                                  <Ambulance size={14} className="me-1.5" aria-hidden="true" />
-                                  {t("siteppl.injury")}
-                                </Button>
-                              )}
-                              {mayViolation && (
-                                <Button size="sm" variant="outline" onClick={() => setViolating(e)}>
-                                  <Flag size={14} className="me-1.5" aria-hidden="true" />
-                                  {t("siteppl.violation")}
-                                </Button>
-                              )}
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-              {rows.length > CLIP && !all && <ShowMoreRow onClick={() => setAll(true)}>{t("site.show_more", { n: rows.length - CLIP })}</ShowMoreRow>}
-            </div>
-          )}
+          <DataTable
+            caption={bench ? t("site.bench_people") : t("siteppl.title")}
+            labels={tableLabels}
+            dense
+            bordered={false}
+            columns={columns}
+            rows={rows}
+            rowKey={(e) => e.id}
+            pageSize={CLIP}
+            maxHeight="70vh"
+            empty={<p className="px-4 py-4 text-sm text-muted-foreground">{t("siteppl.none")}</p>}
+          />
         </Panel>
 
         <div className="space-y-4">

@@ -530,3 +530,97 @@ describe("sites, the site page, the unassigned and the Attendance tab (§5 Sites
     view.unmount()
   })
 })
+
+describe("every HR table is the shared DataTable — its headers sort (in Arabic)", () => {
+  const sortable = (column: string) => Array.from(document.querySelectorAll("th button")).some((b) => b.getAttribute("aria-label") === `رتّب حسب ${column}`)
+  const segment = async (label: string) => {
+    const tab = Array.from(document.querySelectorAll("[role=tablist] button")).find((b) => (b.textContent ?? "").startsWith(label))
+    expect({ label, found: Boolean(tab) }).toEqual({ label, found: true })
+    fireEvent.click(tab as Element)
+    await flush()
+  }
+  const openFile = async (role: Role, id: string) => {
+    mockRoute.id = id
+    setSignedIn(UID[role])
+    setPathname(`/contractor/hr/people/${id}`)
+    missingKeys.clear()
+    const view = render(<FilePage />)
+    await flush()
+    return view
+  }
+
+  it("People, the site's people, the unassigned", async () => {
+    let view = await openAs("manager", "people")
+    expect(sortable("الاسم")).toBe(true)
+    expect(sortable("الأجر الشهري")).toBe(true)
+    view.unmount()
+    // RL-03 — no wage column (so no sort by it) for a role without pay.
+    view = await openAs("gov", "people")
+    expect(sortable("الاسم")).toBe(true)
+    expect(sortable("الأجر الشهري")).toBe(false)
+    expect(text()).not.toContain(RIYAL)
+    view.unmount()
+    view = await openAs("manager", "site")
+    expect(sortable("الاسم")).toBe(true)
+    expect(sortable("الوثائق")).toBe(true)
+    view.unmount()
+    view = await openAs("manager", "bench")
+    expect(sortable("الاسم")).toBe(true)
+    view.unmount()
+  })
+
+  it("Today: management's labour cost by cost centre, with its total", async () => {
+    const view = await openAs("management", "today")
+    expect(sortable("مركز التكلفة")).toBe(true)
+    expect(sortable("التكلفة · للعامل")).toBe(true)
+    expect(Array.from(document.querySelectorAll("tfoot")).some((f) => (f.textContent ?? "").includes("الإجمالي"))).toBe(true)
+    view.unmount()
+  })
+
+  it("My file: my requests and my documents", async () => {
+    const view = await openAs("employee", "me")
+    await segment("طلباتي")
+    expect(sortable("الرقم")).toBe(true)
+    expect(sortable("التاريخ")).toBe(true)
+    await segment("وثائقي وبياناتي")
+    expect(sortable("الوثيقة")).toBe(true)
+    expect(sortable("المتبقي")).toBe(true)
+    view.unmount()
+  })
+
+  it("the employee file: documents, leaves, penalties and the pay history", async () => {
+    seed(`hrViolations/${ORG}__w1__${lastMonth}-03__late15`, { organizationId: ORG, employeeId: "w1", employeeUserId: null, employeeName: "موظف w1", siteId: "s1", code: "late15", on: `${lastMonth}-03`, source: "manual", state: "applied", recorded: { by: "hrm", byName: null, at: `${lastMonth}-03T08:00:00Z` }, hearing: { on: `${lastMonth}-05` }, amount: 150, deductMonth: lastMonth })
+    seed("employeePay/w1", { organizationId: ORG, employeeId: "w1", basic: 4700, housing: 1000, transport: 400, iban: "SA442000000123456789127", steps: [{ basic: 4500, housing: 1000, transport: 400 }, { from: "2024-01-01", basic: 4700, housing: 1000, transport: 400, kind: "raise", reason: "أداء", byName: "المالك" }] })
+    // The documents segment as the site's supervisor (the attachments panel beside it is the HR manager's).
+    let view = await openFile("supervisor", "w1")
+    await segment("الوثائق والشهادات")
+    expect(sortable("الوثيقة")).toBe(true)
+    expect(sortable("تنتهي")).toBe(true)
+    view.unmount()
+    view = await openFile("manager", "w1")
+    await segment("الأجر والمسير")
+    expect(sortable("المخالفة")).toBe(true)
+    expect(sortable("الأساسي")).toBe(true)
+    expect(text()).toContain("أداء · المالك")
+    expect({ missing: [...missingKeys] }).toEqual({ missing: [] })
+    view.unmount()
+    // e_emp has a leave (q2): his file's leaves table.
+    view = await openFile("manager", "e_emp")
+    await segment("الحضور والإجازات")
+    expect(sortable("من")).toBe(true)
+    expect(sortable("الأيام")).toBe(true)
+    view.unmount()
+  })
+
+  it("Reports: the Mudad file's preview", async () => {
+    const view = await openAs("manager", "reports")
+    const card = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("ملف حماية الأجور (مُدد)"))
+    expect(Boolean(card)).toBe(true)
+    fireEvent.click(card as Element)
+    await flush()
+    expect(Array.from(document.querySelectorAll("th button")).some((b) => (b.getAttribute("aria-label") ?? "").startsWith("رتّب حسب "))).toBe(true)
+    expect(Array.from(document.querySelectorAll("tfoot")).some((f) => (f.textContent ?? "").includes("الإجمالي"))).toBe(true)
+    expect({ missing: [...missingKeys] }).toEqual({ missing: [] })
+    view.unmount()
+  })
+})

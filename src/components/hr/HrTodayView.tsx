@@ -42,6 +42,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { DecisionRow } from "@/components/module-ui/DecisionRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
@@ -51,6 +52,7 @@ import type { HrAccess } from "@/hooks/useHrAccess"
 import { useHrTodayDecisions } from "@/hooks/useHrTodayDecisions"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useToast } from "@/hooks/use-toast"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { Link } from "@/i18n/routing"
 import { buildSteps, nextStep, setupGaps, type BuildTarget } from "@/lib/hr/build-path"
 import { displayName } from "@/lib/hr/employee"
@@ -81,6 +83,7 @@ export function HrTodayView({ access, portal }: { access: HrAccess; portal: HrPo
   const roles = access.ctx.roles
   const money = access.allowed("pay.view")
   const { toast } = useToast()
+  const tableLabels = useTableLabels()
 
   const { user } = useUser()
   const { profile } = usePermissions()
@@ -435,73 +438,52 @@ export function HrTodayView({ access, portal }: { access: HrAccess; portal: HrPo
   // AS-04 — management's labour cost by cost centre (the cost report's computation), on Today.
   const lastPay = useMemo(() => (roles.has("management") && money ? latestMain(world.payrolls) : null), [roles, money, world.payrolls])
   const centres = useMemo(() => (lastPay ? costCentres(lastPay) : null), [lastPay])
+  const costColumns = (c: NonNullable<typeof centres>): DataColumn<(typeof c.rows)[number]>[] => [
+    {
+      key: "centre",
+      header: t("today.cost_col.centre"),
+      sortValue: (r) => siteName(r.siteId),
+      cell: (r) => (
+        <span className="flex flex-wrap items-center gap-1.5" dir="auto">
+          {siteName(r.siteId)}
+          {r.siteId === UNASSIGNED_SITE && <StatusPill tone="bad">{t("today.cost_no_output")}</StatusPill>}
+        </span>
+      ),
+      footer: t("today.cost_total"),
+    },
+    { key: "account", header: t("today.cost_col.account"), sortValue: (r) => r.account, cell: (r) => <bdi dir="ltr" className="tabular-nums text-muted-foreground">{r.account}</bdi> },
+    { key: "people", header: t("today.cost_col.people"), numeric: true, sortValue: (r) => r.n, cell: (r) => r.n, footer: c.rows.reduce((sum, r) => sum + r.n, 0) },
+    {
+      key: "cost",
+      header: t("today.cost_col.cost"),
+      numeric: true,
+      sortValue: (r) => r.cost,
+      cell: (r) => (
+        <>
+          {hrMoney(r.cost)} <span className="text-xs text-muted-foreground">· {hrMoney(r.perHead)}</span>
+        </>
+      ),
+      footer: hrMoney(c.total),
+    },
+    {
+      key: "share",
+      header: t("today.cost_col.share"),
+      sortValue: (r) => r.share,
+      cell: (r) => (
+        <span className="flex items-center gap-2">
+          <span className="h-2 w-20 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+            <span className={cn("block h-full rounded-full", r.siteId === UNASSIGNED_SITE ? "bg-destructive/70" : r.kind === "admin" ? "bg-warning" : "bg-module")} style={{ width: `${r.share}%` }} />
+          </span>
+          <bdi dir="ltr" className="text-xs tabular-nums text-muted-foreground">{`${r.share}%`}</bdi>
+        </span>
+      ),
+    },
+  ]
   const costPanel =
     lastPay && centres && centres.rows.length > 0 ? (
       <Panel title={t("today.cost_title", { month: lastPay.month })} icon={BarChart3} bodyClassName="p-0">
         <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("today.cost_note")}</p>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-max text-sm">
-            <thead className="bg-muted/50 text-xs text-muted-foreground">
-              <tr>
-                <th scope="col" className="px-3 py-2 text-start font-bold">
-                  {t("today.cost_col.centre")}
-                </th>
-                <th scope="col" className="px-3 py-2 text-start font-bold">
-                  {t("today.cost_col.account")}
-                </th>
-                <th scope="col" className="px-3 py-2 text-end font-bold">
-                  {t("today.cost_col.people")}
-                </th>
-                <th scope="col" className="px-3 py-2 text-end font-bold">
-                  {t("today.cost_col.cost")}
-                </th>
-                <th scope="col" className="px-3 py-2 text-start font-bold">
-                  {t("today.cost_col.share")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {centres.rows.map((r) => (
-                <tr key={r.siteId} className="border-t">
-                  <td className="px-3 py-2" dir="auto">
-                    <span className="flex flex-wrap items-center gap-1.5">
-                      {siteName(r.siteId)}
-                      {r.siteId === UNASSIGNED_SITE && <StatusPill tone="bad">{t("today.cost_no_output")}</StatusPill>}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 tabular-nums text-muted-foreground" dir="ltr">
-                    {r.account}
-                  </td>
-                  <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                    {r.n}
-                  </td>
-                  <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                    {hrMoney(r.cost)} <span className="text-xs text-muted-foreground">· {hrMoney(r.perHead)}</span>
-                  </td>
-                  <td className="px-3 py-2">
-                    <span className="flex items-center gap-2">
-                      <span className="h-2 w-20 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-                        <span className={cn("block h-full rounded-full", r.siteId === UNASSIGNED_SITE ? "bg-destructive/70" : r.kind === "admin" ? "bg-warning" : "bg-module")} style={{ width: `${r.share}%` }} />
-                      </span>
-                      <span className="text-xs tabular-nums text-muted-foreground" dir="ltr">{`${r.share}%`}</span>
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="border-t-2 text-xs font-bold">
-              <tr>
-                <td className="px-3 py-2" colSpan={3}>
-                  {t("today.cost_total")}
-                </td>
-                <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                  {hrMoney(centres.total)}
-                </td>
-                <td />
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <DataTable caption={t("today.cost_title", { month: lastPay.month })} labels={tableLabels} dense bordered={false} columns={costColumns(centres)} rows={centres.rows} rowKey={(r) => r.siteId} empty={null} />
         <p className="border-t px-4 py-2 text-xs text-muted-foreground">{t("today.cost_foot", { accounts: [...new Set(centres.rows.map((r) => `${r.account} ${t(`cost_kind.${r.kind}` as "cost_kind.direct")}`))].join(" · ") })}</p>
       </Panel>
     ) : null

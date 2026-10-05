@@ -10,9 +10,12 @@
 import { useLocale, useTranslations } from "next-intl"
 import { BadgeCheck, IdCard, PencilLine } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill } from "@/components/module-ui/StatusPill"
+import { useTableLabels } from "@/hooks/useTableLabels"
+import { DOC_RANK } from "@/lib/hr/documents"
 import { probationState } from "@/lib/hr/employee"
 import { empNo, hrDate } from "@/lib/hr/format"
 import { serviceYears } from "@/lib/hr/statutory"
@@ -27,7 +30,23 @@ export function HrMyDocs({ ctx }: { ctx: MyFileCtx }) {
   const fixed = emp.contract?.type === "fixed"
   const probation = probationState(emp, today) === "on"
   const contact = (emp.contact ?? {}) as { mobile?: string | null; address?: string | null; emergency?: string | null; qualification?: string | null }
-  const th = "px-3 py-2 text-start text-xs font-semibold text-muted-foreground"
+  const labels = useTableLabels()
+  type Doc = MyFileCtx["docs"][number]
+  const columns: DataColumn<Doc>[] = [
+    { key: "doc", header: t("me.col.document"), sortValue: (d) => t(`doc.${d.type}`), cell: (d) => <span className="font-semibold">{t(`doc.${d.type}`)}</span> },
+    { key: "expires", header: t("me.col.expires"), sortValue: (d) => d.expiry ?? null, cell: (d) => <span className="text-muted-foreground">{d.expiry ? hrDate(d.expiry, locale) : t("doc_state.missing")}</span> },
+    {
+      key: "left",
+      header: t("me.col.left"),
+      sortValue: (d) => d.left ?? null,
+      cell: (d) => (
+        <span className={cn("tabular-nums", d.left != null && d.left < 0 ? "text-destructive" : d.left != null && d.left <= 30 ? "text-warning" : "text-muted-foreground")}>
+          {d.left == null ? "—" : d.left < 0 ? t("me.expired_ago", { n: -d.left }) : t("file.days_left", { n: d.left })}
+        </span>
+      ),
+    },
+    { key: "state", header: t("me.col.state"), sortValue: (d) => DOC_RANK[d.state], cell: (d) => <StatusPill tone={DOC_TONE[d.state]}>{t(`doc_state.${d.state}`)}</StatusPill> },
+  ]
   return (
     <div className="space-y-4">
       <Panel
@@ -58,32 +77,17 @@ export function HrMyDocs({ ctx }: { ctx: MyFileCtx }) {
       </Panel>
 
       <Panel title={t("me.documents")} icon={BadgeCheck} count={ctx.docs.length}>
-        <div className="-mx-4 overflow-x-auto">
-          <table className="w-full min-w-[480px] text-sm">
-            <thead className="border-b bg-muted/30">
-              <tr>
-                <th className={th}>{t("me.col.document")}</th>
-                <th className={th}>{t("me.col.expires")}</th>
-                <th className={th}>{t("me.col.left")}</th>
-                <th className={th}>{t("me.col.state")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {ctx.docs.map((d) => (
-                <tr key={d.type}>
-                  <td className="px-3 py-2 font-semibold">{t(`doc.${d.type}`)}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{d.expiry ? hrDate(d.expiry, locale) : t("doc_state.missing")}</td>
-                  <td className={cn("px-3 py-2 tabular-nums", d.left != null && d.left < 0 ? "text-destructive" : d.left != null && d.left <= 30 ? "text-warning" : "text-muted-foreground")}>
-                    {d.left == null ? "—" : d.left < 0 ? t("me.expired_ago", { n: -d.left }) : t("file.days_left", { n: d.left })}
-                  </td>
-                  <td className="px-3 py-2">
-                    <StatusPill tone={DOC_TONE[d.state]}>{t(`doc_state.${d.state}`)}</StatusPill>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          caption={t("me.documents")}
+          labels={labels}
+          dense
+          bordered={false}
+          className="-mx-4"
+          columns={columns}
+          rows={ctx.docs}
+          rowKey={(d) => d.type}
+          empty={null}
+        />
         <p className="pt-2 text-[11px] text-muted-foreground">{t("me.documents_note")}</p>
       </Panel>
     </div>

@@ -8,8 +8,10 @@
 
 import { useLocale, useTranslations } from "next-intl"
 import { Flag, Inbox } from "lucide-react"
+import { DataTable, Figure, type DataColumn } from "@/components/module-ui/DataTable"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill } from "@/components/module-ui/StatusPill"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { hrDate } from "@/lib/hr/format"
 import { requestNoDisplay } from "@/lib/hr/requests"
 import { HrLettersPanel } from "./HrLetters"
@@ -21,60 +23,62 @@ export function HrMyRequests({ ctx }: { ctx: MyFileCtx }) {
   const t = useTranslations("Portal.HR")
   const locale = useLocale()
   const { requests } = ctx
-  const th = "px-3 py-2 text-start text-xs font-semibold text-muted-foreground"
+  const labels = useTableLabels()
+  type Req = MyFileCtx["requests"][number]
+  const decidedBy = (r: Req) => r.finance?.byName ?? r.decision?.byName ?? r.cancel?.byName ?? null
+  const columns: DataColumn<Req>[] = [
+    { key: "request", header: t("me.col.request"), cell: (r) => <span className="font-semibold">{describeRequest(t, r, locale, { money: true })}</span> },
+    {
+      key: "no",
+      header: t("me.col.no"),
+      sortValue: (r) => r.no ?? null,
+      cell: (r) => <Figure className="text-muted-foreground">{requestNoDisplay(r.no, locale)}</Figure>,
+    },
+    { key: "date", header: t("me.col.date"), sortValue: (r) => r.createdAt ?? null, cell: (r) => <span className="text-muted-foreground">{hrDate(r.createdAt, locale)}</span> },
+    { key: "state", header: t("me.col.state"), sortValue: (r) => t(`req.state.${r.state}`), cell: (r) => <StatusPill tone={REQUEST_TONE[r.state]}>{t(`req.state.${r.state}`)}</StatusPill> },
+    {
+      key: "holder",
+      header: t("me.col.holder"),
+      sortValue: (r) => ctx.holderOf(r) ?? decidedBy(r),
+      cell: (r) => {
+        const holder = ctx.holderOf(r)
+        const by = decidedBy(r)
+        const why = r.state === "declined" || r.state === "cancelled" ? (r.finance?.note ?? r.cancel?.note ?? r.decision?.note ?? null) : null
+        return (
+          <span className="text-xs text-muted-foreground">
+            {holder ? t("me.held_by", { name: holder }) : by ? t("me.decided_by", { name: by, date: hrDate((r.finance ?? r.decision ?? r.cancel)?.at, locale) }) : "—"}
+            {why && (
+              <span className="block" dir="auto">
+                {t("me.reason", { text: why })}
+              </span>
+            )}
+          </span>
+        )
+      },
+    },
+    {
+      key: "action",
+      header: <span className="sr-only">{t("me.col.action")}</span>,
+      label: t("me.col.action"),
+      className: "text-end",
+      cell: (r) => <CancelOwnRequest access={ctx.access} r={r} actor={ctx.actor} />,
+    },
+  ]
   return (
     <div className="space-y-4">
       <Panel title={t("me.all_requests")} icon={Inbox} count={requests.length}>
-        {requests.length === 0 ? (
-          <p className="py-4 text-center text-sm text-muted-foreground">{t("req.none")}</p>
-        ) : (
-          <div className="-mx-4 overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead className="border-b bg-muted/30">
-                <tr>
-                  <th className={th}>{t("me.col.request")}</th>
-                  <th className={th}>{t("me.col.no")}</th>
-                  <th className={th}>{t("me.col.date")}</th>
-                  <th className={th}>{t("me.col.state")}</th>
-                  <th className={th}>{t("me.col.holder")}</th>
-                  <th className={th}>
-                    <span className="sr-only">{t("me.col.action")}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {requests.map((r) => {
-                  const holder = ctx.holderOf(r)
-                  const decidedBy = r.finance?.byName ?? r.decision?.byName ?? r.cancel?.byName ?? null
-                  const why = r.state === "declined" || r.state === "cancelled" ? (r.finance?.note ?? r.cancel?.note ?? r.decision?.note ?? null) : null
-                  return (
-                    <tr key={r.id} className="align-top">
-                      <td className="px-3 py-2 font-semibold">{describeRequest(t, r, locale, { money: true })}</td>
-                      <td className="px-3 py-2 tabular-nums text-muted-foreground" dir="ltr">
-                        {requestNoDisplay(r.no, locale)}
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground">{hrDate(r.createdAt, locale)}</td>
-                      <td className="px-3 py-2">
-                        <StatusPill tone={REQUEST_TONE[r.state]}>{t(`req.state.${r.state}`)}</StatusPill>
-                      </td>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">
-                        {holder ? t("me.held_by", { name: holder }) : decidedBy ? t("me.decided_by", { name: decidedBy, date: hrDate((r.finance ?? r.decision ?? r.cancel)?.at, locale) }) : "—"}
-                        {why && (
-                          <span className="block" dir="auto">
-                            {t("me.reason", { text: why })}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-end">
-                        <CancelOwnRequest access={ctx.access} r={r} actor={ctx.actor} />
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DataTable
+          caption={t("me.all_requests")}
+          labels={labels}
+          dense
+          bordered={false}
+          className="-mx-4"
+          columns={columns}
+          rows={requests}
+          rowKey={(r) => r.id}
+          pageSize={50}
+          empty={<p className="py-4 text-center text-sm text-muted-foreground">{t("req.none")}</p>}
+        />
       </Panel>
 
       {/* EM-08 — his letters: status, the reason when declined, the issued letter to view and print. */}

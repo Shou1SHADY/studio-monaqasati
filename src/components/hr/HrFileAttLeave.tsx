@@ -9,9 +9,11 @@
 
 import { useTranslations } from "next-intl"
 import { ArrowRightLeft, MapPin } from "lucide-react"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill } from "@/components/module-ui/StatusPill"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { employeeMonth, type WorkplaceMonth } from "@/lib/hr/attendance"
 import { leaveDaysIn, sickBand, thirtyDaysFrom } from "@/lib/hr/employee"
 import { hrDate, hrMoney } from "@/lib/hr/format"
@@ -26,6 +28,7 @@ const TODAY_TONE = { present: "ok", absent: "bad", sick: "violet", permission: "
 
 export function HrFileAttLeave({ v }: { v: FileView }) {
   const t = useTranslations("Portal.HR")
+  const labels = useTableLabels()
   const { emp, today, locale } = v
   const month = today.slice(0, 7)
   const lastMonth = addDays(`${month}-01`, -1).slice(0, 7)
@@ -34,6 +37,26 @@ export function HrFileAttLeave({ v }: { v: FileView }) {
   const S = STATUTORY.sick
   const accrued = emp.join ? Math.floor(accruedDays(emp.join, today)) : 0
   const leaves = v.requests.filter((r) => r.kind === "leave" && r.leave).sort((a, b) => (b.leave?.from ?? "").localeCompare(a.leave?.from ?? ""))
+  type Leave = (typeof leaves)[number]
+  const leaveColumns: DataColumn<Leave>[] = [
+    {
+      key: "type",
+      header: t("file.leave_col.type"),
+      sortValue: (r) => t(`leave_type.${r.leave!.type}`),
+      cell: (r) => (
+        <>
+          <span className="font-semibold">{t(`leave_type.${r.leave!.type}`)}</span>
+          <bdi dir="ltr" className="ms-1.5 text-xs tabular-nums text-muted-foreground">
+            {requestNoDisplay(r.no, locale)}
+          </bdi>
+        </>
+      ),
+    },
+    { key: "from", header: t("file.leave_col.from"), sortValue: (r) => r.leave!.from, cell: (r) => hrDate(r.leave!.from, locale) },
+    { key: "to", header: t("file.leave_col.to"), sortValue: (r) => r.leave!.to, cell: (r) => hrDate(r.leave!.to, locale) },
+    { key: "days", header: t("file.leave_col.days"), numeric: true, sortValue: (r) => r.leave!.days, cell: (r) => r.leave!.days },
+    { key: "state", header: t("file.leave_col.state"), sortValue: (r) => t(`req.state.${r.state}`), cell: (r) => <StatusPill tone={REQUEST_TONE[r.state]}>{t(`req.state.${r.state}`)}</StatusPill> },
+  ]
   const moves = v.log.filter((l) => l.kind === "moved")
 
   const card = (title: string, wm: WorkplaceMonth | null, m: string, note: string | null) => {
@@ -130,41 +153,16 @@ export function HrFileAttLeave({ v }: { v: FileView }) {
       </Panel>
 
       <Panel title={t("file.leaves")} count={leaves.length} bodyClassName="p-0">
-        {leaves.length === 0 ? (
-          <p className="px-4 py-4 text-sm text-muted-foreground">{t("file.no_leaves")}</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-max text-sm">
-              <thead className="bg-muted/50 text-xs text-muted-foreground">
-                <tr>
-                  <th scope="col" className="px-3 py-2 text-start font-bold">{t("file.leave_col.type")}</th>
-                  <th scope="col" className="px-3 py-2 text-start font-bold">{t("file.leave_col.from")}</th>
-                  <th scope="col" className="px-3 py-2 text-start font-bold">{t("file.leave_col.to")}</th>
-                  <th scope="col" className="px-3 py-2 text-end font-bold">{t("file.leave_col.days")}</th>
-                  <th scope="col" className="px-3 py-2 text-start font-bold">{t("file.leave_col.state")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leaves.map((r) => (
-                  <tr key={r.id} className="border-t">
-                    <td className="px-3 py-2">
-                      <span className="font-semibold">{t(`leave_type.${r.leave!.type}`)}</span>
-                      <span className="ms-1.5 text-xs tabular-nums text-muted-foreground" dir="ltr">
-                        {requestNoDisplay(r.no, locale)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">{hrDate(r.leave!.from, locale)}</td>
-                    <td className="px-3 py-2">{hrDate(r.leave!.to, locale)}</td>
-                    <td className="px-3 py-2 text-end tabular-nums">{r.leave!.days}</td>
-                    <td className="px-3 py-2">
-                      <StatusPill tone={REQUEST_TONE[r.state]}>{t(`req.state.${r.state}`)}</StatusPill>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DataTable
+          caption={t("file.leaves")}
+          labels={labels}
+          dense
+          bordered={false}
+          columns={leaveColumns}
+          rows={leaves}
+          rowKey={(r) => r.id}
+          empty={<p className="px-4 py-4 text-sm text-muted-foreground">{t("file.no_leaves")}</p>}
+        />
       </Panel>
 
       <Panel title={t("file.assignment_history")}>

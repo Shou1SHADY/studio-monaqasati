@@ -10,10 +10,12 @@
 
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill } from "@/components/module-ui/StatusPill"
-import { medicalClass, type DocRow } from "@/lib/hr/documents"
+import { useTableLabels } from "@/hooks/useTableLabels"
+import { DOC_RANK, medicalClass, type DocRow } from "@/lib/hr/documents"
 import { hrDate } from "@/lib/hr/format"
 import { gosiRates } from "@/lib/hr/pay"
 import { daysBetween } from "@/lib/hr/statutory"
@@ -25,6 +27,7 @@ import type { FileView } from "./hr-file-view"
 
 export function HrFileDocs({ v }: { v: FileView }) {
   const t = useTranslations("Portal.HR")
+  const labels = useTableLabels()
   const { emp, today, locale, access } = v
   const no = emp.docs?.no ?? {}
   const gosi = gosiRates(emp.nationality, emp.join)
@@ -45,60 +48,59 @@ export function HrFileDocs({ v }: { v: FileView }) {
     )
   }
 
+  const daysLeft = (r: DocRow) => (r.open || !r.expiry ? null : daysBetween(today, r.expiry))
+  const columns: DataColumn<DocRow>[] = [
+    { key: "doc", header: t("file.doc_col.doc"), sortValue: (r) => t(`doc.${r.type}`), cell: (r) => <span className="font-semibold">{t(`doc.${r.type}`)}</span> },
+    {
+      key: "number",
+      header: t("file.doc_col.number"),
+      sortValue: (r) => (r.type === "contract" ? null : numberOf(r)),
+      cell: (r) => {
+        const num = numberOf(r)
+        return <span className="text-xs tabular-nums text-muted-foreground">{r.type === "contract" ? t("file.contract_qiwa") : num ? <bdi dir="ltr">{num}</bdi> : "—"}</span>
+      },
+    },
+    {
+      key: "expiry",
+      header: t("file.doc_col.expiry"),
+      sortValue: (r) => (r.open ? null : (r.expiry ?? null)),
+      cell: (r) => (r.open ? t("file.open_ended") : r.expiry ? hrDate(r.expiry, locale) : r.pendingDue ? t("file.not_issued") : t("file.doc_missing")),
+    },
+    { key: "left", header: t("file.doc_col.left"), sortValue: daysLeft, cell: (r) => (r.open ? "—" : left(r)) },
+    {
+      key: "state",
+      header: t("file.doc_col.state"),
+      sortValue: (r) => (r.open ? 0 : DOC_RANK[r.state]),
+      cell: (r) => <StatusPill tone={r.open ? "ok" : DOC_TONE[r.state]}>{r.open ? t("doc_state.valid") : r.pendingDue && !r.expiry ? t("file.not_issued") : t(`doc_state.${r.state}`)}</StatusPill>,
+    },
+    ...(mayRenew || mayDecideContract
+      ? [
+          {
+            key: "action",
+            header: <span className="sr-only">{t("file.doc_col.action")}</span>,
+            label: t("file.doc_col.action"),
+            className: "text-end",
+            cell: (r: DocRow) =>
+              r.type === "contract"
+                ? mayDecideContract && (
+                    <Button size="sm" variant="outline" onClick={() => v.open("contract")}>
+                      {t("file.act.contract")}
+                    </Button>
+                  )
+                : mayRenew && (
+                    <Button size="sm" variant="outline" onClick={() => v.open("renew", { docType: r.type })}>
+                      {r.expiry ? t("file.renew_row") : t("file.issue_row")}
+                    </Button>
+                  ),
+          },
+        ]
+      : []),
+  ]
+
   return (
     <div className="space-y-4">
       <Panel title={t("file.seg.docs")} bodyClassName="p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-max text-sm">
-            <thead className="bg-muted/50 text-xs text-muted-foreground">
-              <tr>
-                <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("file.doc_col.doc")}</th>
-                <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("file.doc_col.number")}</th>
-                <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("file.doc_col.expiry")}</th>
-                <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("file.doc_col.left")}</th>
-                <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("file.doc_col.state")}</th>
-                {(mayRenew || mayDecideContract) && (
-                  <th scope="col" className="px-3 py-2.5">
-                    <span className="sr-only">{t("file.doc_col.action")}</span>
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {v.rows.map((r) => {
-                const num = numberOf(r)
-                return (
-                  <tr key={r.type} className="border-t">
-                    <td className="px-3 py-2 font-semibold">{t(`doc.${r.type}`)}</td>
-                    <td className="px-3 py-2 text-xs tabular-nums text-muted-foreground" dir={num ? "ltr" : undefined}>
-                      {r.type === "contract" ? t("file.contract_qiwa") : num || "—"}
-                    </td>
-                    <td className="px-3 py-2">{r.open ? t("file.open_ended") : r.expiry ? hrDate(r.expiry, locale) : r.pendingDue ? t("file.not_issued") : t("file.doc_missing")}</td>
-                    <td className="px-3 py-2">{r.open ? "—" : left(r)}</td>
-                    <td className="px-3 py-2">
-                      <StatusPill tone={r.open ? "ok" : DOC_TONE[r.state]}>{r.open ? t("doc_state.valid") : r.pendingDue && !r.expiry ? t("file.not_issued") : t(`doc_state.${r.state}`)}</StatusPill>
-                    </td>
-                    {(mayRenew || mayDecideContract) && (
-                      <td className="px-3 py-2 text-end">
-                        {r.type === "contract"
-                          ? mayDecideContract && (
-                              <Button size="sm" variant="outline" onClick={() => v.open("contract")}>
-                                {t("file.act.contract")}
-                              </Button>
-                            )
-                          : mayRenew && (
-                              <Button size="sm" variant="outline" onClick={() => v.open("renew", { docType: r.type })}>
-                                {r.expiry ? t("file.renew_row") : t("file.issue_row")}
-                              </Button>
-                            )}
-                      </td>
-                    )}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable caption={t("file.seg.docs")} labels={labels} dense bordered={false} columns={columns} rows={v.rows} rowKey={(r) => r.type} empty={null} />
         <div className="grid gap-x-6 border-t px-4 py-3 sm:grid-cols-3">
           <KeyValueRow
             label={t("file.gosi_no")}

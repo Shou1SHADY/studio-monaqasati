@@ -17,11 +17,13 @@ import { FileUp, Search, UserPlus, Users, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
+import { DataTable, Figure, type DataColumn } from "@/components/module-ui/DataTable"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useFirestore } from "@/firebase"
 import { useHrPeople, useOrgPay } from "@/hooks/useHrPeople"
 import { useHrRequests } from "@/hooks/useHrRequests"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { Link } from "@/i18n/routing"
 import { onLeaveOn } from "@/lib/hr/attendance"
@@ -76,6 +78,7 @@ const segmentOf = (s: PeopleSegment, e: HrEmployee, facts: ReadonlyMap<string, R
 
 export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; portal: HrPortal; actorName: string }) {
   const t = useTranslations("Portal.HR")
+  const tableLabels = useTableLabels()
   const locale = useLocale()
   const firestore = useFirestore()
   const today = todayDay()
@@ -153,6 +156,91 @@ export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; 
         .sort((a, b) => (facts.get(b.id)?.rank ?? 0) - (facts.get(a.id)?.rank ?? 0) || (a.no ?? 0) - (b.no ?? 0)),
     [filtered, searching, docFilter, seg, facts]
   )
+  const wageTotal = money ? rows.reduce((sum, e) => sum + (payMap.get(e.id) ? wageOf(payMap.get(e.id)!) : 0), 0) : 0
+  const columns: DataColumn<HrEmployee>[] = [
+    { key: "no", header: t("people.col.no"), sortValue: (e) => e.no ?? null, cell: (e) => <Figure className="text-muted-foreground">{empNo(e.no)}</Figure>, footer: money ? t("rep.total") : undefined },
+    {
+      key: "name",
+      header: t("people.col.name"),
+      sortValue: (e) => (e.names ? displayName(e, locale) : ((e as unknown as { name?: string }).name ?? null)),
+      cell: (e) => (
+        <>
+          <Link href={`/${portal}/hr/people/${e.id}`} className="rounded font-bold text-foreground hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
+            {e.names ? displayName(e, locale) : (e as unknown as { name?: string }).name}
+          </Link>
+          <span className="block text-[11px] text-muted-foreground">{t(`nat.${e.nationality}` as "nat.sa")}</span>
+        </>
+      ),
+    },
+    {
+      key: "trade",
+      header: t("people.col.trade"),
+      sortValue: (e) => (e.trade ? t(`trade.${e.trade}` as "trade.mason") : (e as unknown as { role?: string }).role || null),
+      cell: (e) => (e.trade ? t(`trade.${e.trade}` as "trade.mason") : (e as unknown as { role?: string }).role || "—"),
+    },
+    {
+      key: "site",
+      header: t("people.col.site"),
+      sortValue: (e) => siteName(e.siteId) ?? null,
+      cell: (e) => {
+        const f = facts.get(e.id)!
+        return (
+          <>
+            {siteName(e.siteId) ?? <span className="text-muted-foreground">{t("sites.unassigned")}</span>}
+            {f.site?.type === "project" && f.site.endDate && <span className="block text-[11px] text-muted-foreground">{t("people.site_ends", { date: hrDate(f.site.endDate, locale) })}</span>}
+            {!e.siteId && e.siteSince && <span className="block text-[11px] text-muted-foreground">{t("file.since", { date: hrDate(e.siteSince, locale) })}</span>}
+          </>
+        )
+      },
+    },
+    {
+      key: "document",
+      header: t("people.col.document"),
+      sortValue: (e) => facts.get(e.id)?.rank ?? 0,
+      cell: (e) => {
+        const f = facts.get(e.id)!
+        return (
+          <>
+            {f.worst ? (
+              <StatusPill tone={DOC_TONE[f.worst.state]}>
+                {t("people.doc_line", { doc: t(`doc.${f.worst.type}`), state: f.worst.pendingDue && !f.worst.expiry ? t("file.not_issued") : f.worst.state === "expired" ? t("doc_state.expired") : hrDate(f.worst.expiry, locale) })}
+              </StatusPill>
+            ) : (
+              <StatusPill tone="ok">{t("people.docs_valid")}</StatusPill>
+            )}
+            {passportFirst(e.docs ?? {}, today) && <span className="ms-1.5 text-[11px] font-semibold text-warning">{t("people.passport_first")}</span>}
+          </>
+        )
+      },
+    },
+    {
+      key: "status",
+      header: t("people.col.status_next"),
+      sortValue: (e) => t(`status.${facts.get(e.id)?.status ?? "active"}`),
+      cell: (e) => {
+        const f = facts.get(e.id)!
+        return (
+          <span className="flex flex-wrap items-center gap-1.5">
+            <StatusPill tone={STATUS_TONE[f.status]}>{t(`status.${f.status}`)}</StatusPill>
+            {f.fact && f.fact.kind !== "absent" && f.fact.kind !== "sick" && <span className="text-[11px] text-muted-foreground">{t(`people.fact.${f.fact.kind}`, { date: "date" in f.fact && f.fact.date ? hrDate(f.fact.date, locale) : "—" })}</span>}
+            {!f.fact && f.next && <span className="text-[11px] text-muted-foreground">{t("people.next", { what: f.next.what === "probation" ? t("file.probation") : t(`doc.${f.next.what}`), date: hrDate(f.next.date, locale) })}</span>}
+          </span>
+        )
+      },
+    },
+    ...(money
+      ? [
+          {
+            key: "wage",
+            header: t("people.col.wage"),
+            numeric: true,
+            sortValue: (e: HrEmployee) => (payMap.get(e.id) ? wageOf(payMap.get(e.id)!) : null),
+            cell: (e: HrEmployee) => <span className="font-semibold">{payMap.get(e.id) ? hrMoney(wageOf(payMap.get(e.id)!)) : "—"}</span>,
+            footer: hrMoney(wageTotal),
+          },
+        ]
+      : []),
+  ]
   const trades = useMemo(() => [...new Set(employees.map((e) => e.trade).filter(Boolean))].map((k) => ({ value: k, label: t(`trade.${k}` as "trade.mason") })).sort((a, b) => a.label.localeCompare(b.label, locale)), [employees, t, locale])
 
   if (!isLoading && employees.length === 0) {
@@ -240,75 +328,17 @@ export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; 
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border">
-        <table className="w-full min-w-max text-sm">
-          <thead className="bg-muted/50 text-xs text-muted-foreground">
-            <tr>
-              <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("people.col.no")}</th>
-              <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("people.col.name")}</th>
-              <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("people.col.trade")}</th>
-              <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("people.col.site")}</th>
-              <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("people.col.document")}</th>
-              <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("people.col.status_next")}</th>
-              {money && <th scope="col" className="px-3 py-2.5 text-end font-bold">{t("people.col.wage")}</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((e) => {
-              const f = facts.get(e.id)!
-              const pay = payMap.get(e.id)
-              return (
-                <tr key={e.id} className="border-t hover:bg-muted/30">
-                  <td className="px-3 py-2 tabular-nums text-muted-foreground" dir="ltr">
-                    {empNo(e.no)}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Link href={`/${portal}/hr/people/${e.id}`} className="rounded font-bold text-foreground hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
-                      {e.names ? displayName(e, locale) : (e as unknown as { name?: string }).name}
-                    </Link>
-                    <span className="block text-[11px] text-muted-foreground">{t(`nat.${e.nationality}` as "nat.sa")}</span>
-                  </td>
-                  <td className="px-3 py-2">{e.trade ? t(`trade.${e.trade}` as "trade.mason") : (e as unknown as { role?: string }).role || "—"}</td>
-                  <td className="px-3 py-2">
-                    {siteName(e.siteId) ?? <span className="text-muted-foreground">{t("sites.unassigned")}</span>}
-                    {f.site?.type === "project" && f.site.endDate && <span className="block text-[11px] text-muted-foreground">{t("people.site_ends", { date: hrDate(f.site.endDate, locale) })}</span>}
-                    {!e.siteId && e.siteSince && <span className="block text-[11px] text-muted-foreground">{t("file.since", { date: hrDate(e.siteSince, locale) })}</span>}
-                  </td>
-                  <td className="px-3 py-2">
-                    {f.worst ? (
-                      <StatusPill tone={DOC_TONE[f.worst.state]}>
-                        {t("people.doc_line", { doc: t(`doc.${f.worst.type}`), state: f.worst.pendingDue && !f.worst.expiry ? t("file.not_issued") : f.worst.state === "expired" ? t("doc_state.expired") : hrDate(f.worst.expiry, locale) })}
-                      </StatusPill>
-                    ) : (
-                      <StatusPill tone="ok">{t("people.docs_valid")}</StatusPill>
-                    )}
-                    {passportFirst(e.docs ?? {}, today) && <span className="ms-1.5 text-[11px] font-semibold text-warning">{t("people.passport_first")}</span>}
-                  </td>
-                  <td className="px-3 py-2">
-                    <span className="flex flex-wrap items-center gap-1.5">
-                      <StatusPill tone={STATUS_TONE[f.status]}>{t(`status.${f.status}`)}</StatusPill>
-                      {f.fact && f.fact.kind !== "absent" && f.fact.kind !== "sick" && <span className="text-[11px] text-muted-foreground">{t(`people.fact.${f.fact.kind}`, { date: "date" in f.fact && f.fact.date ? hrDate(f.fact.date, locale) : "—" })}</span>}
-                      {!f.fact && f.next && <span className="text-[11px] text-muted-foreground">{t("people.next", { what: f.next.what === "probation" ? t("file.probation") : t(`doc.${f.next.what}`), date: hrDate(f.next.date, locale) })}</span>}
-                    </span>
-                  </td>
-                  {money && (
-                    <td className="px-3 py-2 text-end font-semibold tabular-nums" dir="ltr">
-                      {pay ? hrMoney(wageOf(pay)) : "—"}
-                    </td>
-                  )}
-                </tr>
-              )
-            })}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={money ? 7 : 6} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                  {t("people.none_match")}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        caption={t("people.caption")}
+        labels={tableLabels}
+        columns={columns}
+        rows={rows}
+        rowKey={(e) => e.id}
+        cardTitleKey="name"
+        pageSize={50}
+        maxHeight="70vh"
+        empty={<p className="rounded-xl border px-3 py-8 text-center text-sm text-muted-foreground">{t("people.none_match")}</p>}
+      />
       {adding && <NewEmployeeDialog open onOpenChange={setAdding} access={access} actorName={actorName} sites={sites} portal={portal} />}
       {importDialog}
     </div>

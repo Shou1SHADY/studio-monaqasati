@@ -16,12 +16,14 @@ import { ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { mayDecideRequest } from "@/lib/hr/access"
 import { HR_PAYSLIPS } from "@/lib/hr/collections"
@@ -51,6 +53,7 @@ const VIO_TONE = { recorded: "warn", applied: "bad", dismissed: "mute", objected
 export function HrFilePay({ v, companyCost, employerGosi }: { v: FileView; companyCost: number; employerGosi: number }) {
   const t = useTranslations("Portal.HR")
   const firestore = useFirestore()
+  const labels = useTableLabels()
   const { emp, pay, today, locale, access } = v
   const own = Boolean(access.ctx.employeeId) && access.ctx.employeeId === emp.id && !access.ctx.owner
   const [openSlip, setOpenSlip] = useState<string | null>(null)
@@ -77,6 +80,55 @@ export function HrFilePay({ v, companyCost, employerGosi }: { v: FileView; compa
     .map((s, i) => ({ s, prev: i === 0 ? ((pay.steps ?? []).find((x) => !x.from) ?? null) : steps[i - 1] }))
     .reverse()
   const commissions = (pay.commissions ?? []).slice().sort((a, b) => b.month.localeCompare(a.month))
+  type Violation = FileView["violations"][number]
+  const penaltyColumns: DataColumn<Violation>[] = [
+    { key: "violation", header: t("file.pen_col.violation"), sortValue: (x) => t(`violation.${x.code}` as "violation.late15"), cell: (x) => t(`violation.${x.code}` as "violation.late15") },
+    {
+      key: "date",
+      header: t("file.pen_col.date"),
+      sortValue: (x) => x.on,
+      cell: (x) => (
+        <>
+          {hrDate(x.on, locale)}
+          {x.hearing?.on && <span className="block text-xs text-muted-foreground">{t("file.heard", { date: hrDate(x.hearing.on, locale) })}</span>}
+        </>
+      ),
+    },
+    {
+      key: "state",
+      header: t("file.pen_col.state"),
+      sortValue: (x) => t(`vio.state.${x.state}` as "vio.state.recorded"),
+      cell: (x) => <StatusPill tone={VIO_TONE[x.state as keyof typeof VIO_TONE] ?? "mute"}>{t(`vio.state.${x.state}` as "vio.state.recorded")}</StatusPill>,
+    },
+    { key: "month", header: t("file.pen_col.month"), sortValue: (x) => x.deductMonth ?? null, cell: (x) => <bdi dir="ltr" className="tabular-nums">{x.deductMonth ?? "—"}</bdi> },
+    { key: "amount", header: t("file.pen_col.amount"), numeric: true, sortValue: (x) => x.amount || null, cell: (x) => (x.amount ? hrMoney(x.amount) : "—") },
+  ]
+  type Step = (typeof history)[number]
+  const historyColumns: DataColumn<Step>[] = [
+    { key: "kind", header: t("file.hist_col.kind"), sortValue: (h) => (h.s.kind ? t(`paychange.kinds.${h.s.kind}`) : t("file.hist_change")), cell: (h) => <span className="font-semibold">{h.s.kind ? t(`paychange.kinds.${h.s.kind}`) : t("file.hist_change")}</span> },
+    { key: "from", header: t("file.hist_col.from"), sortValue: (h) => h.s.from ?? null, cell: (h) => hrDate(h.s.from, locale) },
+    {
+      key: "basic",
+      header: t("file.hist_col.basic"),
+      numeric: true,
+      sortValue: (h) => h.s.basic,
+      cell: (h) => (
+        <>
+          {h.prev ? `${hrMoney(h.prev.basic)} ← ` : ""}
+          {hrMoney(h.s.basic)}
+        </>
+      ),
+    },
+    {
+      key: "reason",
+      header: t("file.hist_col.reason"),
+      cell: (h) => (
+        <span className="text-xs text-muted-foreground" dir="auto">
+          {[h.s.reason, h.s.byName].filter(Boolean).join(" · ") || "—"}
+        </span>
+      ),
+    },
+  ]
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -227,69 +279,32 @@ export function HrFilePay({ v, companyCost, employerGosi }: { v: FileView; compa
           <p className="py-1 text-sm text-muted-foreground">{t("file.no_advance")}</p>
         )}
         {v.violations.length > 0 && (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-max text-xs">
-              <thead className="text-muted-foreground">
-                <tr>
-                  <th scope="col" className="py-1.5 text-start font-bold">{t("file.pen_col.violation")}</th>
-                  <th scope="col" className="py-1.5 text-start font-bold">{t("file.pen_col.date")}</th>
-                  <th scope="col" className="py-1.5 text-start font-bold">{t("file.pen_col.state")}</th>
-                  <th scope="col" className="py-1.5 text-start font-bold">{t("file.pen_col.month")}</th>
-                  <th scope="col" className="py-1.5 text-end font-bold">{t("file.pen_col.amount")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {v.violations.map((x) => (
-                  <tr key={x.id} className="border-t">
-                    <td className="py-1.5 pe-2">{t(`violation.${x.code}` as "violation.late15")}</td>
-                    <td className="py-1.5 pe-2">
-                      {hrDate(x.on, locale)}
-                      {x.hearing?.on && <span className="block text-muted-foreground">{t("file.heard", { date: hrDate(x.hearing.on, locale) })}</span>}
-                    </td>
-                    <td className="py-1.5 pe-2">
-                      <StatusPill tone={VIO_TONE[x.state as keyof typeof VIO_TONE] ?? "mute"}>{t(`vio.state.${x.state}` as "vio.state.recorded")}</StatusPill>
-                    </td>
-                    <td className="py-1.5 pe-2 tabular-nums">{x.deductMonth ?? "—"}</td>
-                    <td className="py-1.5 text-end tabular-nums" dir="ltr">
-                      {x.amount ? hrMoney(x.amount) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption={t("file.pen_caption")}
+            labels={labels}
+            dense
+            bordered={false}
+            className="mt-3"
+            columns={penaltyColumns}
+            rows={v.violations}
+            rowKey={(x) => x.id}
+            empty={null}
+          />
         )}
       </Panel>
 
       {history.length > 0 && (
         <Panel title={t("file.pay_history")} className="lg:col-span-2" bodyClassName="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-max text-sm">
-              <thead className="bg-muted/50 text-xs text-muted-foreground">
-                <tr>
-                  <th scope="col" className="px-3 py-2 text-start font-bold">{t("file.hist_col.kind")}</th>
-                  <th scope="col" className="px-3 py-2 text-start font-bold">{t("file.hist_col.from")}</th>
-                  <th scope="col" className="px-3 py-2 text-end font-bold">{t("file.hist_col.basic")}</th>
-                  <th scope="col" className="px-3 py-2 text-start font-bold">{t("file.hist_col.reason")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map(({ s, prev }) => (
-                  <tr key={s.from} className="border-t">
-                    <td className="px-3 py-2 font-semibold">{s.kind ? t(`paychange.kinds.${s.kind}`) : t("file.hist_change")}</td>
-                    <td className="px-3 py-2">{hrDate(s.from, locale)}</td>
-                    <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                      {prev ? `${hrMoney(prev.basic)} ← ` : ""}
-                      {hrMoney(s.basic)}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground" dir="auto">
-                      {[s.reason, s.byName].filter(Boolean).join(" · ") || "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            caption={t("file.pay_history")}
+            labels={labels}
+            dense
+            bordered={false}
+            columns={historyColumns}
+            rows={history}
+            rowKey={(h) => h.s.from as string}
+            empty={null}
+          />
         </Panel>
       )}
     </div>

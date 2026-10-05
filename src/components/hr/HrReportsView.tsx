@@ -149,43 +149,29 @@ export function HrReportsView({ access }: { access: HrAccess }) {
           <p className="border-b px-4 py-2 text-xs text-muted-foreground">
             {t(file === "mudad" ? "rep.mudad_preview" : "rep.gosi_preview", { mudad: access.settings.establishment.mudad || "—", held })}
           </p>
-          {pv.count === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t("rep.empty")}</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-max text-sm">
-                <thead className="bg-muted/50 text-xs text-muted-foreground">
-                  <tr>
-                    {pv.header.map((h, i) => (
-                      <th key={h} scope="col" className={cn("px-3 py-2.5 font-bold", pv.totals[i] != null ? "text-end" : "text-start")}>
-                        {colName(h)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {pv.rows.map((r, ri) => (
-                    <tr key={ri} className="border-t">
-                      {r.map((v, i) => (
-                        <td key={i} className={cn("px-3 py-2", pv.totals[i] != null && "text-end tabular-nums")} dir={pv.totals[i] != null || /^[A-Z0-9 ]+$/.test(v) ? "ltr" : "auto"}>
-                          {pv.totals[i] != null && v !== "" ? hrMoney(Number(v)) : v || "—"}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="border-t-2 bg-muted/30 text-xs font-bold">
-                  <tr>
-                    {pv.header.map((h, i) => (
-                      <td key={h} className={cn("px-3 py-2", pv.totals[i] != null && "text-end tabular-nums")} dir={pv.totals[i] != null ? "ltr" : undefined}>
-                        {i === 0 ? t("rep.total") : pv.totals[i] != null ? hrMoney(pv.totals[i] as number) : ""}
-                      </td>
-                    ))}
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
+          <DataTable
+            bordered={false}
+            dense
+            caption={t(file === "mudad" ? "rep.mudad" : "rep.gosi", { month: sent.month })}
+            labels={tableLabels}
+            columns={pv.header.map(
+              (h, i): DataColumn<{ cells: string[]; index: number }> => ({
+                key: `${i}-${h}`,
+                header: colName(h),
+                numeric: pv.totals[i] != null,
+                sortValue: (r) => (pv.totals[i] != null ? (r.cells[i] === "" ? null : Number(r.cells[i])) : r.cells[i] || null),
+                cell: (r) => {
+                  const v = r.cells[i] ?? ""
+                  if (pv.totals[i] != null) return v !== "" ? hrMoney(Number(v)) : "—"
+                  return <bdi dir={/^[A-Z0-9 ]+$/.test(v) ? "ltr" : "auto"}>{v || "—"}</bdi>
+                },
+                footer: i === 0 ? t("rep.total") : pv.totals[i] != null ? hrMoney(pv.totals[i] as number) : undefined,
+              })
+            )}
+            rows={pv.rows.map((cells, index) => ({ cells, index }))}
+            rowKey={(r) => String(r.index)}
+            empty={<p className="px-4 py-8 text-center text-sm text-muted-foreground">{t("rep.empty")}</p>}
+          />
           {pv.count > pv.rows.length && <p className="border-t px-4 py-2 text-xs text-muted-foreground">{t("rep.preview_more", { shown: pv.rows.length, n: pv.count })}</p>}
         </Panel>
       </div>
