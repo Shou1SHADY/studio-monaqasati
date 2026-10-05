@@ -25,6 +25,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable, Figure, type DataColumn } from "@/components/module-ui/DataTable"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
@@ -33,6 +34,7 @@ import { useHrRequests } from "@/hooks/useHrRequests"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { Link } from "@/i18n/routing"
 import { mayApprovePayroll } from "@/lib/hr/access"
 import type { WorkplaceMonth } from "@/lib/hr/attendance"
@@ -75,6 +77,7 @@ function download(name: string, text: string) {
 
 export function HrPayrollView({ access, portal }: { access: HrAccess; portal: HrPortal }) {
   const t = useTranslations("Portal.HR")
+  const tableLabels = useTableLabels()
   const locale = useLocale()
   const firestore = useFirestore()
   const { user } = useUser()
@@ -123,6 +126,41 @@ export function HrPayrollView({ access, portal }: { access: HrAccess; portal: Hr
   const totals = payrollTotals(lines)
   const stale = saved?.state === "prepared" && payrollTotals(saved.lines).net !== payrollTotals(live.lines).net
   const shown = lines.filter((l) => (filter === "held" ? l.held : filter === "exceptions" ? lineWarnings(l).length > 0 : true))
+  const sum = (f: (l: PayrollLine) => number) => hrMoney(shown.reduce((a, l) => a + f(l), 0))
+  const payrollColumns: DataColumn<PayrollLine>[] = [
+    { key: "no", header: t("payroll.col.no"), cell: (l) => <Figure className="text-muted-foreground">{empNo(l.no)}</Figure>, sortValue: (l) => l.no, cardHidden: true },
+    {
+      key: "name",
+      header: t("payroll.col.name"),
+      cell: (l) => (
+        <Link href={`/${portal}/hr/people/${l.employeeId}`} className="rounded font-semibold hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
+          {l.name}
+        </Link>
+      ),
+      sortValue: (l) => l.name,
+      footer: t("payroll.total_row", { n: shown.length }),
+    },
+    { key: "site", header: t("payroll.col.site"), cell: (l) => <span className="text-xs">{l.siteId ? (siteName(l.siteId) ?? "—") : t("sites.unassigned")}</span>, sortValue: (l) => (l.siteId ? (siteName(l.siteId) ?? "") : ""), hideBelow: "lg" },
+    { key: "days", header: t("payroll.col.days"), numeric: true, cell: (l) => l.days, sortValue: (l) => l.days, hideBelow: "xl" },
+    { key: "absent", header: t("payroll.col.absent"), numeric: true, cell: (l) => <span className={cn(l.attendance.absent > 0 && "font-semibold text-destructive")}>{l.attendance.absent}</span>, sortValue: (l) => l.attendance.absent, hideBelow: "xl" },
+    { key: "ot", header: t("payroll.col.ot"), numeric: true, cell: (l) => l.attendance.overtimeHours, sortValue: (l) => l.attendance.overtimeHours, hideBelow: "xl" },
+    { key: "gross", header: t("payroll.col.gross"), numeric: true, cell: (l) => hrMoney(l.gross), sortValue: (l) => l.gross, footer: sum((l) => l.gross) },
+    { key: "deductions", header: t("payroll.col.deductions"), numeric: true, cell: (l) => hrMoney(l.gross - l.net), sortValue: (l) => l.gross - l.net, footer: sum((l) => l.gross - l.net) },
+    { key: "net", header: t("payroll.col.net"), numeric: true, cell: (l) => <span className="font-bold">{hrMoney(l.net)}</span>, sortValue: (l) => l.net, footer: sum((l) => l.net) },
+    {
+      key: "notes",
+      header: t("payroll.col.notes"),
+      cell: (l) => (
+        <div className="flex flex-wrap gap-1">
+          {lineWarnings(l).map((w) => (
+            <StatusPill key={w} tone={w === "held" || w === "net_negative" ? "bad" : "warn"}>
+              {t(`payroll.w.${w}`)}
+            </StatusPill>
+          ))}
+        </div>
+      ),
+    },
+  ]
   const supLines = useMemo(
     () => computeSupplementary({ month, employees, pays, sites, main: saved, done: sups, violations: (vioData ?? []) as unknown as HrViolation[] }),
     [month, employees, pays, sites, saved, sups, vioData]
@@ -253,62 +291,19 @@ export function HrPayrollView({ access, portal }: { access: HrAccess; portal: Hr
           </div>
         }
       >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-max text-sm">
-            <thead className="bg-muted/50 text-xs text-muted-foreground">
-              <tr>
-                {(["no", "name", "site", "days", "absent", "ot", "gross", "deductions", "net", "notes"] as const).map((c) => (
-                  <th key={c} scope="col" className={cn("px-3 py-2 font-bold", ["days", "absent", "ot", "gross", "deductions", "net"].includes(c) ? "text-end" : "text-start")}>
-                    {t(`payroll.col.${c}`)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((l) => (
-                <tr key={l.employeeId} className={cn("border-t", l.held && "bg-warning/5")}>
-                  <td className="px-3 py-2 tabular-nums text-muted-foreground" dir="ltr">
-                    {empNo(l.no)}
-                  </td>
-                  <td className="px-3 py-2 font-semibold">
-                    <Link href={`/${portal}/hr/people/${l.employeeId}`} className="rounded hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
-                      {l.name}
-                    </Link>
-                  </td>
-                  <td className="px-3 py-2 text-xs">{l.siteId ? (siteName(l.siteId) ?? "—") : t("sites.unassigned")}</td>
-                  <td className="px-3 py-2 text-end tabular-nums">{l.days}</td>
-                  <td className="px-3 py-2 text-end tabular-nums">{l.attendance.absent}</td>
-                  <td className="px-3 py-2 text-end tabular-nums">{l.attendance.overtimeHours}</td>
-                  <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                    {hrMoney(l.gross)}
-                  </td>
-                  <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                    {hrMoney(l.gross - l.net)}
-                  </td>
-                  <td className="px-3 py-2 text-end font-bold tabular-nums" dir="ltr">
-                    {hrMoney(l.net)}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex flex-wrap gap-1">
-                      {lineWarnings(l).map((w) => (
-                        <StatusPill key={w} tone={w === "held" || w === "net_negative" ? "bad" : "warn"}>
-                          {t(`payroll.w.${w}`)}
-                        </StatusPill>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {shown.length === 0 && (
-                <tr>
-                  <td colSpan={10} className="px-3 py-8 text-center text-sm text-muted-foreground">
-                    {t("payroll.no_lines")}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          bordered={false}
+          caption={t("payroll.lines")}
+          labels={tableLabels}
+          columns={payrollColumns}
+          rows={shown}
+          rowKey={(l) => l.employeeId}
+          cardTitleKey="name"
+          pageSize={50}
+          maxHeight="70vh"
+          rowTone={(l) => (lineWarnings(l).includes("net_negative") ? "bad" : l.held ? "warn" : undefined)}
+          empty={<p className="px-4 py-10 text-center text-sm text-muted-foreground">{t("payroll.no_lines")}</p>}
+        />
       </Panel>
 
       {frozen && (sups.length > 0 || supLines.length > 0) && (

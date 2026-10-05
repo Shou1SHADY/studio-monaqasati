@@ -8536,7 +8536,10 @@
         "cancelled": "The penalty is cancelled and never counts",
         "done": "the assignment was corrected",
         "refused": "the correction was declined"
-      }
+      },
+      "table_sort_by": "Sort by {column}",
+      "table_show_more": "Show {count} more",
+      "table_actions": "Actions"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -19465,7 +19468,8 @@
           "docs": "Documents due",
           "iqama": "Expired iqama",
           "iqama_site": "Expired iqama on a site"
-        }
+        },
+        "table": "Employees"
       },
       "new": {
         "title": "New employee",
@@ -19835,7 +19839,8 @@
         "on_leave": "On approved leave",
         "on_leave_note": "On approved leave this day — not recorded absent and nothing is deducted.",
         "holiday": "{name} — a paid public holiday; no sheet is needed. Hours worked on it are recorded as overtime.",
-        "ramadan": "Ramadan: the working day is six hours for everyone — anything beyond is overtime."
+        "ramadan": "Ramadan: the working day is six hours for everyone — anything beyond is overtime.",
+        "total": "Total"
       },
       "leave_type": {
         "annual": "Annual",
@@ -20026,7 +20031,8 @@
           "retro": "Retro {amount}",
           "commission": "Commission {amount}",
           "refund": "Penalty refunded {amount}"
-        }
+        },
+        "total_row": "Total ({n})"
       },
       "iban": {
         "returned": "The bank returned this salary transfer — payroll corrects the IBAN, the HR manager approves it, then Finance pays.",
@@ -20723,7 +20729,8 @@
           "set": "Set on the card",
           "derived": "From the workplace",
           "management": "Management"
-        }
+        },
+        "total": "Total"
       },
       "holiday": {
         "founding": "Founding Day",

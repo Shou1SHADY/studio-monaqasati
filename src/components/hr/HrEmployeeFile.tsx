@@ -17,6 +17,7 @@ import { ArrowRightLeft, BadgeCheck, CalendarClock, FileClock, Gavel, HandCoins,
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable, Figure, type DataColumn } from "@/components/module-ui/DataTable"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
@@ -26,12 +27,13 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase
 import { useEmployeePay, useHrPeople } from "@/hooks/useHrPeople"
 import { useHrRequests } from "@/hooks/useHrRequests"
 import type { HrAccess } from "@/hooks/useHrAccess"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
 import { lineManagerOf } from "@/lib/hr/access"
 import { assumesPresence, attendanceId, employeeMonth, type WorkplaceMonth } from "@/lib/hr/attendance"
 import { HR_ATTENDANCE, HR_EMPLOYEES } from "@/lib/hr/collections"
-import { docState, DOC_TYPES, iqamaDueBy, iqamaOverdue, legalOnSite } from "@/lib/hr/documents"
+import { docState, DOC_TYPES, iqamaDueBy, iqamaOverdue, legalOnSite, type DocType } from "@/lib/hr/documents"
 import { displayName, onProbation, probationState, serviceDays, statusOn, type HrEmployee } from "@/lib/hr/employee"
 import { approveIban, fixIban, HR_LOG, type HrActor, type LogEntry } from "@/lib/hr/employee-writes"
 import { gratuity, monthlyEosAccrual } from "@/lib/hr/eos"
@@ -41,6 +43,7 @@ import { gosiRates, wageOf } from "@/lib/hr/pay"
 import { UNASSIGNED_SITE } from "@/lib/hr/sites"
 import { addDays, daysBetween, r2, serviceYears, STATUTORY } from "@/lib/hr/statutory"
 import { tradeOf } from "@/lib/hr/trades"
+import { cn } from "@/lib/utils"
 import { HrWriteError } from "@/lib/hr/write-guard"
 import { leaveReturn, type HrRequestKind } from "@/lib/hr/requests"
 import { EmployeeActionDialog, type EmployeeAction } from "./EmployeeActionDialogs"
@@ -66,6 +69,7 @@ function useSiteMonth(orgId: string | null, siteId: string, month: string) {
 
 export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: HrAccess; portal: HrPortal; employeeId: string; actor: HrActor }) {
   const t = useTranslations("Portal.HR")
+  const tableLabels = useTableLabels()
   const locale = useLocale()
   const firestore = useFirestore()
   const today = todayDay()
@@ -156,6 +160,23 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
     { id: "log", label: t("file.seg.log"), count: pending || undefined, tone: "warn" as const },
   ]
 
+  const docColumns: DataColumn<DocType>[] = [
+    { key: "doc", header: t("file.doc_col.doc"), cell: (d) => <span className="font-semibold">{t(`doc.${d}`)}</span> },
+    { key: "expiry", header: t("file.doc_col.expiry"), cell: (d) => (emp.docs?.[d] ? <Figure>{hrDate(emp.docs[d], locale)}</Figure> : "—"), sortValue: (d) => emp.docs?.[d] ?? null },
+    {
+      key: "left",
+      header: t("file.doc_col.left"),
+      numeric: true,
+      cell: (d) => {
+        const exp = emp.docs?.[d]
+        if (!exp) return "—"
+        const left = daysBetween(today, exp)
+        return <span className={cn(left < 0 && "font-semibold text-destructive")}>{left}</span>
+      },
+      sortValue: (d) => (emp.docs?.[d] ? daysBetween(today, emp.docs[d] as string) : null),
+    },
+    { key: "state", header: t("file.doc_col.state"), cell: (d) => { const st = docState(emp.docs?.[d], today, access.settings.policies.renewWindowDays); return <StatusPill tone={DOC_TONE[st]}>{t(`doc_state.${st}`)}</StatusPill> } },
+  ]
   const acts: { id: EmployeeAction; icon: typeof Wallet; show: boolean }[] = [
     { id: "move", icon: ArrowRightLeft, show: access.allowed("employee.assign") && emp.status !== "left" },
     { id: "pay", icon: Wallet, show: money && access.allowed("pay.change") && emp.status !== "left" && !own },
@@ -313,36 +334,19 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
       {seg === "docs" && (
         <div className="space-y-4">
           <Panel title={t("file.seg.docs")} bodyClassName="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-max text-sm">
-                <thead className="bg-muted/50 text-xs text-muted-foreground">
-                  <tr>
-                    <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("file.doc_col.doc")}</th>
-                    <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("file.doc_col.expiry")}</th>
-                    <th scope="col" className="px-3 py-2.5 text-end font-bold">{t("file.doc_col.left")}</th>
-                    <th scope="col" className="px-3 py-2.5 text-start font-bold">{t("file.doc_col.state")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {DOC_TYPES.filter((d) => d !== "iqama" || emp.nationality !== "sa").map((d) => {
-                    const exp = emp.docs?.[d]
-                    const st = docState(exp, today, access.settings.policies.renewWindowDays)
-                    return (
-                      <tr key={d} className="border-t">
-                        <td className="px-3 py-2 font-semibold">{t(`doc.${d}`)}</td>
-                        <td className="px-3 py-2">{exp ? hrDate(exp, locale) : "—"}</td>
-                        <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                          {exp ? daysBetween(today, exp) : "—"}
-                        </td>
-                        <td className="px-3 py-2">
-                          <StatusPill tone={DOC_TONE[st]}>{t(`doc_state.${st}`)}</StatusPill>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              bordered={false}
+              caption={t("file.seg.docs")}
+              labels={tableLabels}
+              columns={docColumns}
+              rows={DOC_TYPES.filter((d) => d !== "iqama" || emp.nationality !== "sa")}
+              rowKey={(d) => d}
+              rowTone={(d) => {
+                const st = docState(emp.docs?.[d], today, access.settings.policies.renewWindowDays)
+                return st === "expired" ? "bad" : st === "d30" ? "warn" : undefined
+              }}
+              empty={null}
+            />
           </Panel>
           {(access.allowed("documents.manage") || access.seesPay(emp.id)) && <HrEmployeeFiles access={access} actor={actor} emp={emp as HrEmployee} />}
           <HrInjuryPanel access={access} actor={actor} emp={emp as HrEmployee} />

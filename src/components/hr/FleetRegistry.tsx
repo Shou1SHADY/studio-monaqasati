@@ -19,6 +19,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { useTableLabels } from "@/hooks/useTableLabels"
+import { DataTable, Figure, type DataColumn } from "@/components/module-ui/DataTable"
 import { usePermissions } from "@/hooks/usePermissions"
 import { cn } from "@/lib/utils"
 import { FLEET_VEHICLES, saveFleetVehicle, type FleetVehicle } from "@/lib/manufacturing-writes"
@@ -30,6 +32,7 @@ type Draft = { id?: string; driverName: string; plate: string; kind: FleetVehicl
 
 export function FleetRegistry({ orgId, actor }: { orgId: string; actor: { id: string; name: string } }) {
   const t = useTranslations("Portal.Shared")
+  const tableLabels = useTableLabels()
   const locale = useLocale()
   const isRtl = locale === "ar"
   const firestore = useFirestore()
@@ -101,6 +104,50 @@ export function FleetRegistry({ orgId, actor }: { orgId: string; actor: { id: st
     }
   }
 
+  const fleetColumns: DataColumn<FleetVehicle>[] = [
+    { key: "driver", header: t("mfy_fleet_driver"), cell: (v) => <span className={cn("font-semibold", v.active === false ? "text-muted-foreground" : "text-primary")} dir="auto">{v.driverName}</span>, sortValue: (v) => v.driverName },
+    { key: "plate", header: t("mfy_fleet_plate"), cell: (v) => (v.plate ? <Figure className="font-mono">{v.plate}</Figure> : "—"), sortValue: (v) => v.plate || null },
+    { key: "kind", header: t("mfy_fleet_kind"), cell: (v) => t(`mfy_fleet_kind_${v.kind}`), sortValue: (v) => t(`mfy_fleet_kind_${v.kind}`) },
+    {
+      key: "status",
+      header: t("mfy_fleet_status"),
+      cell: (v) => (
+        <Badge className={cn("border-none text-xs", v.active === false ? "bg-muted text-muted-foreground" : "bg-success/10 text-success")}>{t(v.active === false ? "mfy_fleet_inactive" : "mfy_fleet_active")}</Badge>
+      ),
+      sortValue: (v) => (v.active === false ? 1 : 0),
+    },
+    ...(canEdit
+      ? [
+          {
+            key: "actions",
+            header: <span className="sr-only">{t("table_actions")}</span>,
+            label: t("table_actions"),
+            cell: (v: FleetVehicle) => {
+              const inactive = v.active === false
+              return (
+                <div className="flex items-center justify-end gap-1">
+                  <Button size="icon" variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-primary" onClick={() => openEdit(v)} aria-label={t("mfy_fleet_edit_aria", { name: v.driverName })}>
+                    <Pencil size={14} aria-hidden="true" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className={cn("h-9 w-9", inactive ? "text-muted-foreground hover:text-success" : "text-muted-foreground hover:text-destructive")}
+                    onClick={() => toggleActive(v)}
+                    disabled={busyId === v.id}
+                    aria-label={t(inactive ? "mfy_fleet_reactivate_aria" : "mfy_fleet_deactivate_aria", { name: v.driverName })}
+                  >
+                    {busyId === v.id ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Power size={14} aria-hidden="true" />}
+                  </Button>
+                </div>
+              )
+            },
+            className: "w-24",
+          },
+        ]
+      : []),
+  ]
+
   return (
     <section className="space-y-3" dir={isRtl ? "rtl" : "ltr"} aria-labelledby="fleet-title">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
@@ -135,61 +182,15 @@ export function FleetRegistry({ orgId, actor }: { orgId: string; actor: { id: st
           <p className="max-w-md text-sm text-muted-foreground/80">{t("mfy_fleet_empty_hint")}</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border">
-          <table className="w-full text-sm">
-            <thead className="border-b bg-muted/30">
-              <tr>
-                <th className="px-4 py-3 text-start font-bold text-muted-foreground">{t("mfy_fleet_driver")}</th>
-                <th className="px-4 py-3 text-start font-bold text-muted-foreground">{t("mfy_fleet_plate")}</th>
-                <th className="px-4 py-3 text-start font-bold text-muted-foreground">{t("mfy_fleet_kind")}</th>
-                <th className="px-4 py-3 text-start font-bold text-muted-foreground">{t("mfy_fleet_status")}</th>
-                {canEdit && <th className="w-24 px-4 py-3" />}
-              </tr>
-            </thead>
-            <tbody>
-              {vehicles.map((v, idx) => {
-                const inactive = v.active === false
-                return (
-                  <tr key={v.id} className={cn(idx % 2 === 0 ? "bg-white" : "bg-muted/10", inactive && "text-muted-foreground")}>
-                    <td className={cn("px-4 py-3 font-semibold", inactive ? "text-muted-foreground" : "text-primary")} dir="auto">{v.driverName}</td>
-                    <td className="px-4 py-3 font-mono text-sm" dir="ltr">{v.plate || "—"}</td>
-                    <td className="px-4 py-3">{t(`mfy_fleet_kind_${v.kind}`)}</td>
-                    <td className="px-4 py-3">
-                      <Badge className={cn("border-none text-[10px]", inactive ? "bg-muted text-muted-foreground" : "bg-success/10 text-success")}>
-                        {t(inactive ? "mfy_fleet_inactive" : "mfy_fleet_active")}
-                      </Badge>
-                    </td>
-                    {canEdit && (
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-9 w-9 text-muted-foreground hover:text-primary"
-                            onClick={() => openEdit(v)}
-                            aria-label={t("mfy_fleet_edit_aria", { name: v.driverName })}
-                          >
-                            <Pencil size={14} aria-hidden="true" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className={cn("h-9 w-9", inactive ? "text-muted-foreground hover:text-success" : "text-muted-foreground hover:text-destructive")}
-                            onClick={() => toggleActive(v)}
-                            disabled={busyId === v.id}
-                            aria-label={t(inactive ? "mfy_fleet_reactivate_aria" : "mfy_fleet_deactivate_aria", { name: v.driverName })}
-                          >
-                            {busyId === v.id ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Power size={14} aria-hidden="true" />}
-                          </Button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          caption={t("mfy_fleet_title")}
+          labels={tableLabels}
+          columns={fleetColumns}
+          rows={vehicles}
+          rowKey={(v) => v.id}
+          rowTone={(v) => (v.active === false ? "mute" : undefined)}
+          empty={null}
+        />
       )}
 
       <Dialog open={!!draft} onOpenChange={(open) => { if (!open && !saving) setDraft(null) }}>

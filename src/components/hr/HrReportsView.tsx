@@ -14,11 +14,13 @@ import { collection, query, where } from "firebase/firestore"
 import { ArrowRight, Download, FileSpreadsheet, FileText, Landmark, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable, Figure, type DataColumn } from "@/components/module-ui/DataTable"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { HrAccess } from "@/hooks/useHrAccess"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { useHrPeople, useOrgPay } from "@/hooks/useHrPeople"
 import { useHrRequests } from "@/hooks/useHrRequests"
 import type { WorkplaceMonth } from "@/lib/hr/attendance"
@@ -40,8 +42,11 @@ function download(name: string, text: string) {
   URL.revokeObjectURL(url)
 }
 
+const NO_TOTAL = new Set(["years", "days_left", "step", "months_left", "per_head"])
+
 export function HrReportsView({ access }: { access: HrAccess }) {
   const t = useTranslations("Portal.HR")
+  const tableLabels = useTableLabels()
   const locale = useLocale()
   const firestore = useFirestore()
   const params = useSearchParams()
@@ -96,6 +101,20 @@ export function HrReportsView({ access }: { access: HrAccess }) {
     }
   }
   const header = (id: ReportId) => REPORTS[id].columns.map((c) => t(`rep.col.${c.key}` as "rep.col.no"))
+  // Columns that add up; years, days left, a step, months left or a per-head figure do not.
+  const reportColumns = (id: ReportId, rows: Cell[][]): DataColumn<{ cells: Cell[]; index: number }>[] =>
+    REPORTS[id].columns.map((c, i) => {
+      const numeric = c.kind === "money" || c.kind === "num" || c.kind === "pct"
+      const total = (c.kind === "money" || c.kind === "num") && !NO_TOTAL.has(c.key) && rows.length > 0
+      return {
+        key: c.key,
+        header: header(id)[i],
+        numeric,
+        cell: (r) => (c.kind === "no" || c.kind === "date" ? <Figure className={cn(c.kind === "no" && "text-muted-foreground")}>{cell(c, r.cells[i])}</Figure> : cell(c, r.cells[i])),
+        sortValue: (r) => r.cells[i],
+        footer: i === 0 ? t("rep.total") : total ? cell(c, rows.reduce((a, r) => a + (typeof r[i] === "number" ? (r[i] as number) : 0), 0)) : undefined,
+      }
+    })
   const exportCsv = (id: ReportId) => download(`hr-${id}-${today}.csv`, reportCsv(header(id), rowsOf(id).map((r) => r.map((v, i) => cell(REPORTS[id].columns[i], v, true)))))
 
   // The payroll last sent to Finance — its files as they were sent.
@@ -122,38 +141,18 @@ export function HrReportsView({ access }: { access: HrAccess }) {
           <p className="border-b px-4 py-2 text-xs text-muted-foreground">
             {t(`rep.r.${open}.desc` as "rep.r.register.desc", { month })}
           </p>
-          {rows.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t("rep.empty")}</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-max text-sm">
-                <thead className="bg-muted/50 text-xs text-muted-foreground">
-                  <tr>
-                    {def.columns.map((c, i) => (
-                      <th key={c.key} scope="col" className={cn("px-3 py-2.5 font-bold", c.kind === "money" || c.kind === "num" || c.kind === "pct" ? "text-end" : "text-start")}>
-                        {header(open)[i]}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r, ri) => (
-                    <tr key={ri} className="border-t">
-                      {r.map((v, i) => {
-                        const c = def.columns[i]
-                        const numeric = c.kind === "money" || c.kind === "num" || c.kind === "pct" || c.kind === "no"
-                        return (
-                          <td key={c.key} className={cn("px-3 py-2", numeric && "tabular-nums", c.kind === "no" && "text-muted-foreground", numeric && c.kind !== "no" ? "text-end" : "text-start")} dir={numeric || c.kind === "date" ? "ltr" : "auto"}>
-                            {cell(c, v)}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <DataTable
+            bordered={false}
+            caption={t(`rep.r.${open}.title` as "rep.r.register.title")}
+            labels={tableLabels}
+            columns={reportColumns(open, rows)}
+            rows={rows.map((cells, index) => ({ cells, index }))}
+            rowKey={(r) => String(r.index)}
+            cardTitleKey={def.columns.find((c) => c.key === "name")?.key}
+            pageSize={100}
+            maxHeight="70vh"
+            empty={<p className="px-4 py-10 text-center text-sm text-muted-foreground">{t("rep.empty")}</p>}
+          />
         </Panel>
       </div>
     )

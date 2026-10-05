@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { Panel } from "@/components/module-ui/Panel"
 import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
@@ -37,6 +38,7 @@ import { useHrPeople } from "@/hooks/useHrPeople"
 import { useHrRequests } from "@/hooks/useHrRequests"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import {
   assumesPresence,
   attendanceId,
@@ -74,6 +76,7 @@ const NO_VIOLATION = "__none__"
 
 export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; siteId: string; actor: HrActor }) {
   const t = useTranslations("Portal.HR")
+  const tableLabels = useTableLabels()
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
@@ -173,6 +176,17 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
     if (!wm?.closed) employees.filter((e) => onSheet(e, siteId, monthRange(month).end)).forEach((e) => ids.add(e.id))
     return [...ids].map((id) => ({ id, m: employeeMonth(wm, id), no: byId.get(id)?.no ?? 0 })).sort((a, b) => a.no - b.no)
   }, [wm, employees, siteId, month, byId])
+  type Person = (typeof people)[number]
+  const total = (f: (p: Person) => number) => people.reduce((a, p) => a + f(p), 0)
+  const summaryColumns: DataColumn<Person>[] = [
+    { key: "name", header: t("people.col.name"), cell: (p) => <span className="font-semibold" dir="auto">{name(p.id)}</span>, sortValue: (p) => name(p.id), footer: t("att.total") },
+    { key: "present", header: t("att.col.present"), numeric: true, cell: (p) => p.m.present, sortValue: (p) => p.m.present, footer: total((p) => p.m.present) },
+    { key: "absent", header: t("att.col.absent"), numeric: true, cell: (p) => <span className={cn(p.m.absent > 0 && "font-bold text-destructive")}>{p.m.absent}</span>, sortValue: (p) => p.m.absent, footer: total((p) => p.m.absent) },
+    { key: "sick", header: t("att.col.sick"), numeric: true, cell: (p) => p.m.sick, sortValue: (p) => p.m.sick, footer: total((p) => p.m.sick) },
+    { key: "permission", header: t("att.col.permission"), numeric: true, cell: (p) => p.m.permission, sortValue: (p) => p.m.permission, footer: total((p) => p.m.permission) },
+    { key: "declared", header: t("att.col.declared"), numeric: true, cell: (p) => <span className={cn(p.m.declared > 0 && "text-warning")}>{p.m.declared}</span>, sortValue: (p) => p.m.declared, footer: total((p) => p.m.declared) },
+    { key: "ot", header: t("att.col.ot"), numeric: true, cell: (p) => <span className={cn(overtimeOverCap(p.m.overtimeHours) && "font-bold text-warning")}>{p.m.overtimeHours}</span>, sortValue: (p) => p.m.overtimeHours, footer: total((p) => p.m.overtimeHours) },
+  ]
   const rosterNow = employees.filter((e) => onSheet(e, siteId, monthRange(month).end)).map((e) => e.id)
   const months = [monthOf(addDays(`${today.slice(0, 7)}-01`, -1)), today.slice(0, 7)]
 
@@ -420,42 +434,17 @@ export function HrSiteAttendance({ access, siteId, actor }: { access: HrAccess; 
           )}
 
           <Panel title={t("att.people_title")} count={people.length} bodyClassName="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-max text-sm">
-                <thead className="bg-muted/50 text-xs text-muted-foreground">
-                  <tr>
-                    <th scope="col" className="px-3 py-2 text-start font-bold">{t("people.col.name")}</th>
-                    {(["present", "absent", "sick", "permission", "declared", "ot"] as const).map((k) => (
-                      <th key={k} scope="col" className="px-3 py-2 text-end font-bold">
-                        {t(`att.col.${k}`)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {people.map(({ id, m }) => (
-                    <tr key={id} className="border-t">
-                      <td className="px-3 py-2 font-semibold" dir="auto">
-                        {name(id)}
-                      </td>
-                      <td className="px-3 py-2 text-end tabular-nums">{m.present}</td>
-                      <td className={cn("px-3 py-2 text-end tabular-nums", m.absent > 0 && "font-bold text-destructive")}>{m.absent}</td>
-                      <td className="px-3 py-2 text-end tabular-nums">{m.sick}</td>
-                      <td className="px-3 py-2 text-end tabular-nums">{m.permission}</td>
-                      <td className={cn("px-3 py-2 text-end tabular-nums", m.declared > 0 && "text-warning")}>{m.declared}</td>
-                      <td className={cn("px-3 py-2 text-end tabular-nums", overtimeOverCap(m.overtimeHours) && "font-bold text-warning")}>{m.overtimeHours}</td>
-                    </tr>
-                  ))}
-                  {people.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="px-3 py-6 text-center text-sm text-muted-foreground">
-                        {t("att.nobody")}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              bordered={false}
+              dense
+              caption={t("att.people_title")}
+              labels={tableLabels}
+              columns={summaryColumns}
+              rows={people}
+              rowKey={(p) => p.id}
+              rowTone={(p) => (p.m.absent > 0 ? "warn" : undefined)}
+              empty={<p className="px-4 py-8 text-center text-sm text-muted-foreground">{t("att.nobody")}</p>}
+            />
           </Panel>
 
           {!wm?.closed && access.allowed("attendance.close", { site: siteId }) && (
