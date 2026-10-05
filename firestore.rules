@@ -261,6 +261,10 @@ service cloud.firestore {
     // HIS workplace — the person's own, read from the record, never one he names.
     function hrOnSite(d) { return d.get('siteId', null) is string && d.siteId == hrEmp(d.employeeId).get('siteId', null) && hrSupervises(d.siteId); }
     // Nobody acts on a record of his own (RL-02) — the org owner excepted, flagged.
+    function hrPunch(p, o) {
+      return p.at == request.time && hrNum(p.day) == hrToday()
+        && ((p['in'] == request.time && p.out == null) || (p['in'] == o.get('in', 0) && p.day == o.get('day', '') && p.out == request.time));
+    }
     function hrNotOwn() { return resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner(); }
     // Finance's hand in HR (AD-03): an advance above the HR limit.
     function hrFinance() {
@@ -2893,9 +2897,11 @@ service cloud.firestore {
       // manager sets it, and never onto or off himself (the owner excepted).
       // My file's attendance (`att`, me-writes.ts) is written beside the sheet by
       // whoever keeps it: the person's workplace supervisor or payroll (closing).
+      // SH-03 (optional: punch) — a worker's `shift` from a date: the HR manager or
+      // the supervisor of his own workplace — never payroll.
       allow update: if inOrg()
         && (hrManager() || (hrRole('hr.gov') && changedKeys().hasOnly(['docs', 'onb', 'updatedAt']))
-            || (changedKeys().hasOnly(['att', 'updatedAt']) && (hrRole('hr.payroll') || hrSupervises(resource.data.siteId))))
+            || (changedKeys().hasOnly(['att', 'shift', 'updatedAt']) && ((hrRole('hr.payroll') && !('shift' in changedKeys())) || hrSupervises(resource.data.siteId))))
         && request.resource.data.organizationId == resource.data.organizationId
         && request.resource.data.get('no', null) == resource.data.get('no', null)
         && !('salary' in request.resource.data && request.resource.data.salary != resource.data.get('salary', null))
@@ -2913,6 +2919,13 @@ service cloud.firestore {
       allow update: if resource.data.get('userId', '') == request.auth.uid
         && changedKeys().hasOnly(['leaveTaken', 'undo', 'updatedAt'])
         && hrUndo(employeeId, request.resource.data.undo);
+      // PT-06 (optional: punch) — his own punch from My file: today's (Riyadh), its
+      // time the server's now — an in with no out, or the out after an in that
+      // stays; the day before is kept as it was (`py` = his last `pn`).
+      allow update: if resource.data.get('userId', '') == request.auth.uid
+        && changedKeys().hasOnly(['pn', 'py', 'updatedAt'])
+        && hrPunch(request.resource.data.pn, resource.data.get('pn', {}))
+        && request.resource.data.get('py', null) in [resource.data.get('py', null), resource.data.get('pn', null)];
       allow delete: if isAdmin();
 
       // The undeletable log (EM-06): written by HR staff or the employee himself,

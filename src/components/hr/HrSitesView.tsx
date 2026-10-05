@@ -15,6 +15,7 @@ import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
 import { AlertTriangle, ArrowRightLeft, CalendarCheck2, CalendarClock, Loader2, MapPin, Pencil, Plus, Power, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -41,6 +42,8 @@ import { applyPlannedMove, cancelPlannedMove, MANPOWER_REQUESTS, manpowerNo, pla
 import { wageOf } from "@/lib/hr/pay"
 import { costKindOf, HR_ASSIGN_FIXES, SITE_TYPES, siteBlocks, siteEndOf, siteLabel, siteWordOf, UNASSIGNED_SITE, type AssignFix, type HrSite, type SiteType } from "@/lib/hr/sites"
 import { saveSite, setSiteActive } from "@/lib/hr/site-writes"
+import { saveSiteShifts } from "@/lib/hr/punch-writes"
+import { defaultShifts, SHIFT_SITE_TYPES } from "@/lib/hr/shifts"
 import { daysBetween } from "@/lib/hr/statutory"
 import { dutyToday } from "@/lib/hr/today"
 import { HrWriteError } from "@/lib/hr/write-guard"
@@ -48,7 +51,7 @@ import { cn } from "@/lib/utils"
 import type { HrPortal } from "./HrShell"
 import { HrManpowerPanel } from "./HrManpowerPanel"
 
-type Draft = { id?: string; name: string; nameEn: string; type: SiteType; projectId: string; endDate: string; supervisorUserId: string }
+type Draft = { id?: string; name: string; nameEn: string; type: SiteType; projectId: string; endDate: string; supervisorUserId: string; shifts?: boolean }
 const EMPTY: Draft = { name: "", nameEn: "", type: "project", projectId: "", endDate: "", supervisorUserId: "" }
 const ENDING_DAYS = 45
 
@@ -136,7 +139,11 @@ export function HrSitesView({ access, portal, actorName }: { access: HrAccess; p
 
   const save = async () => {
     if (!draft || blocks.length) return
-    const ok = await run(() => saveSite(firestore!, access.ctx, orgId!, { name: draft.name, nameEn: draft.nameEn || null, type: draft.type, projectId: draft.projectId || null, endDate: draft.endDate || null, supervisorUserId: draft.supervisorUserId || null }, draft.id), "sites.saved")
+    const ok = await run(async () => {
+      const id = await saveSite(firestore!, access.ctx, orgId!, { name: draft.name, nameEn: draft.nameEn || null, type: draft.type, projectId: draft.projectId || null, endDate: draft.endDate || null, supervisorUserId: draft.supervisorUserId || null }, draft.id)
+      // Optional: punch — «يعمل بورديات» at creation: the type's default shifts (a workshop three, others two).
+      if (!draft.id && draft.shifts && SHIFT_SITE_TYPES.includes(draft.type)) await saveSiteShifts(firestore!, access.ctx, orgId!, id, actor, defaultShifts(draft.type), [])
+    }, "sites.saved")
     if (ok) setDraft(null)
   }
 
@@ -433,6 +440,15 @@ export function HrSitesView({ access, portal, actorName }: { access: HrAccess; p
                   ) : null}
                 </div>
               </div>
+              {!draft.id && access.settings.features.includes("punch") && SHIFT_SITE_TYPES.includes(draft.type) && (
+                <label className="flex cursor-pointer items-start gap-2 rounded-xl border p-3 text-sm">
+                  <Checkbox checked={Boolean(draft.shifts)} onCheckedChange={(c) => setDraft({ ...draft, shifts: c === true })} disabled={busy} className="mt-0.5" aria-label={t("punch.shifts.on")} />
+                  <span>
+                    <span className="block font-bold">{t("punch.shifts.on")}</span>
+                    <span className="block text-xs text-muted-foreground">{t("punch.shifts.create_note")}</span>
+                  </span>
+                </label>
+              )}
               {draft.type === "project" && (
                 <div className="space-y-1.5">
                   <Label htmlFor="site-project">{t("sites.project")}</Label>

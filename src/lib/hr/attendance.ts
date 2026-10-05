@@ -25,6 +25,8 @@ export interface AttendanceException {
   /** A violation seen that day — the penalty is decided by the HR manager. */
   violation?: ViolationCode | null
   note?: string | null
+  /** SH-04 (optional: punch) — worked a second shift that day; its length is in `ot`. */
+  second?: boolean | null
 }
 
 export interface DaySheet {
@@ -36,6 +38,8 @@ export interface DaySheet {
   ex: Record<string, AttendanceException>
   /** "A worker here but not listed" — for HR to correct the assignment. */
   unlisted?: Array<{ name: string; note?: string | null }>
+  /** Recorded from the day's punches and their decisions (optional: punch) rather than typed. */
+  src?: "punch" | null
 }
 
 export interface Declaration {
@@ -214,6 +218,7 @@ export function compactExceptions(ex: Record<string, AttendanceException>): Reco
     if (e.ot && e.ot > 0 && worked(e.status)) clean.ot = Math.round(e.ot * 4) / 4
     if (e.violation) clean.violation = e.violation
     if (e.note?.trim()) clean.note = e.note.trim()
+    if (e.second && clean.ot) clean.second = true
     if (Object.keys(clean).length) out[id] = clean
   }
   return out

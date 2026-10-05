@@ -14,6 +14,7 @@ import { useHrToday } from "@/hooks/useHrToday"
 import { useHrTodayRoles } from "@/hooks/useHrTodayRoles"
 import { useHrGovDocs } from "@/hooks/useHrGovDocs"
 import { lettersToSign } from "@/lib/hr/letters"
+import { riyadhMinutes } from "@/lib/hr/punches"
 import { requestActions } from "@/lib/hr/requests"
 import { documentedBasic, platformTasks, platformTodayItems, taskSummary } from "@/lib/hr/platforms"
 import { featureSet } from "@/lib/hr/settings"
@@ -49,6 +50,7 @@ export function useHrTodayDecisions(access: HrAccess, today: string) {
       govHeld: heldRoles.isLoading ? undefined : heldRoles.held.has("gov"),
       extra,
       hiring: world.hiring,
+      punch: access.settings.features.includes("punch") ? { nowMin: riyadhMinutes() } : null,
     })
     const count = decisionCount(items, waiting.length + vWaiting.length + lWaiting.length)
     const urgent = items.some((x) => x.severity === "red" && !x.waiting)

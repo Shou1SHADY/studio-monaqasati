@@ -22,8 +22,11 @@ import { addDays, daysBetween, monthRange, r2, serviceYears } from "./statutory"
 import { tradeOf } from "./trades"
 import type { HrViolation } from "./violations"
 import { VIOLATIONS, type ViolationCode } from "./penalties"
+import type { HrFeature } from "./settings"
+import { graceOf, scheduleOf, shiftMinutes, siteDay, sourceOf, type PunchSite, type PunchWm } from "./punches"
+import { rosterRows, type EmployeeShift } from "./shifts"
 
-export const REPORT_IDS = ["register", "attendance", "cost", "documents", "leave", "eos", "advances", "penalties", "saudization", "movement", "turnover", "structure"] as const
+export const REPORT_IDS = ["register", "attendance", "cost", "documents", "leave", "eos", "advances", "penalties", "saudization", "movement", "turnover", "structure", "late", "roster"] as const
 export type ReportId = (typeof REPORT_IDS)[number]
 
 /**
@@ -63,6 +66,8 @@ export interface ReportDef {
   money: boolean
   /** Narrower than "whoever reads reports" (the prototype's `roles`). */
   roles?: readonly HrRole[]
+  /** Offered only while this optional feature is on (the prototype's `feat`). */
+  feature?: HrFeature
   columns: ReportColumn[]
 }
 
@@ -85,13 +90,16 @@ export const REPORTS: Record<ReportId, ReportDef> = {
   movement: { id: "movement", money: false, columns: [NO, NAME, c("event", "enum", "rep.event"), c("date", "date"), c("reason", "enum", "exit.reasons"), TRADE, SITE] },
   turnover: { id: "turnover", money: false, roles: ["manager", "management"], columns: [SITE, c("headcount", "num"), c("joined90", "num"), c("leaving", "num"), c("turnover", "pct")] },
   structure: { id: "structure", money: false, columns: [NO, NAME, TRADE, SITE, c("manager", "text"), c("source", "enum", "rep.mgr")] },
+  // Optional: punch — lateness and punch exceptions; the shift roster (RP-02).
+  late: { id: "late", money: false, feature: "punch", columns: [NO, NAME, SITE, c("att_source", "enum", "punch.src"), c("in_today", "text"), c("late_today", "num"), c("late_month", "num")] },
+  roster: { id: "roster", money: false, feature: "punch", columns: [NO, NAME, TRADE, SITE, c("shift", "enum", "punch.shift"), c("shift_from", "text"), c("shift_to", "text"), c("second_today", "enum", "rep.yes")] },
 }
 
 /** RP-01 — the reports this viewer is offered: money ones only with pay (RL-03). */
-export function visibleReports(ctx: HrContext): ReportDef[] {
+export function visibleReports(ctx: HrContext, features: ReadonlySet<HrFeature> = new Set()): ReportDef[] {
   if (!hrAllowed(ctx, "reports.view")) return []
   const money = hrAllowed(ctx, "pay.view")
-  return REPORT_IDS.map((id) => REPORTS[id]).filter((r) => (!r.money || money) && (!r.roles || r.roles.some((x) => ctx.roles.has(x))))
+  return REPORT_IDS.map((id) => REPORTS[id]).filter((r) => (!r.money || money) && (!r.roles || r.roles.some((x) => ctx.roles.has(x))) && (!r.feature || features.has(r.feature)))
 }
 
 export interface ReportWorld {
@@ -108,6 +116,8 @@ export interface ReportWorld {
   requests: HrRequest[]
   violations: HrViolation[]
   exits: HrExit[]
+  /** Optional: punch — this month's workplace months (punches, today's sheet) and the time in Riyadh. */
+  punch?: { months: PunchWm[]; nowMin: number } | null
 }
 
 const WINDOW_DAYS = 90
@@ -330,6 +340,41 @@ export function reportRows(id: ReportId, w: ReportWorld): Cell[][] {
         const me = m ? byId.get(m) : null
         return [e.no, name(e), e.trade, siteOf(e.siteId), me ? name(me) : null, !m ? "management" : e.managerId && e.managerId !== e.id ? "set" : "derived"]
       })
+    }
+
+    case "late": {
+      // Each person on a punch workplace: today's in-punch, minutes late today, and late days this month.
+      const months = w.punch?.months ?? []
+      const pw = { today: w.today, nowMin: w.punch?.nowMin ?? 0, punch: true, employees: w.employees, sites: w.sites as PunchSite[], months, requests: w.requests }
+      return live.flatMap((e) => {
+        const site = w.sites.find((s) => s.id === e.siteId) as PunchSite | undefined
+        const source = sourceOf(site ?? null, true)
+        if (!site || source === "sheet" || e.status !== "active") return []
+        const ps = e as HrEmployee & { shift?: EmployeeShift | null }
+        const today = siteDay(pw, site, w.today).punches[e.id]
+        const sc = scheduleOf(site, ps, w.today)
+        const lateMin = (inT: string | null | undefined, s: typeof sc) => {
+          const m = shiftMinutes(inT, s)
+          return m != null && m - s.in > graceOf(site) ? m - s.in : 0
+        }
+        const wm = months.find((m) => m.siteId === site.id)
+        const days = Object.keys(wm?.pd ?? {}).filter((d) => lateMin(siteDay(pw, site, d).punches[e.id]?.in, scheduleOf(site, ps, d)) > 0)
+        return [[e.no, name(e), siteOf(e.siteId), source, today?.in ?? null, lateMin(today?.in, sc), days.length]]
+      })
+    }
+
+    case "roster": {
+      const wmToday = (siteId: string) => w.punch?.months.find((m) => m.siteId === siteId)?.days?.[w.today] ?? null
+      return rosterRows(live as Array<HrEmployee & { shift?: EmployeeShift | null }>, w.sites as PunchSite[], w.today).map((r) => [
+        r.emp.no,
+        name(r.emp),
+        r.emp.trade,
+        siteOf(r.siteId),
+        r.shift.id,
+        r.shift.in,
+        r.night ? `${r.shift.out} +1` : r.shift.out,
+        wmToday(r.siteId)?.ex?.[r.emp.id]?.second ? "yes" : null,
+      ])
     }
   }
 }

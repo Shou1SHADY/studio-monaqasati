@@ -71,6 +71,7 @@ import { addDays, daysBetween, r2, serviceYears, STATUTORY } from "@/lib/hr/stat
 import { EmployeeActionDialog, type EmployeeAction } from "./EmployeeActionDialogs"
 import { StartExitDialog } from "./HrExitPanel"
 import { HrFileAttLeave } from "./HrFileAttLeave"
+import { HrFilePunch, HrShiftAction } from "./HrFilePunch"
 import { HrFileDocs } from "./HrFileDocs"
 import { HrFileLog } from "./HrFileLog"
 import { HrFileOverview } from "./HrFileOverview"
@@ -323,6 +324,8 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
                 {a.label ?? t(`file.act.${a.id}`)}
               </Button>
             ))}
+          <HrShiftAction access={access} actor={actor} emp={emp as HrEmployee} sites={sites} employees={employees} />
+
         </div>
       </div>
 
@@ -368,6 +371,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
       {seg === "ov" && <HrFileOverview v={view} />}
       {seg === "docs" && <HrFileDocs v={view} />}
       {seg === "att" && <HrFileAttLeave v={view} />}
+      {seg === "att" && <HrFilePunch access={access} emp={emp as HrEmployee} site={sites.find((s) => s.id === emp.siteId) ?? null} wm={thisWm} lastWm={lastWm} />}
       {seg === "pay" && money && <HrFilePay v={view} companyCost={companyCost} employerGosi={employerGosi} />}
       {seg === "log" && <HrFileLog v={view} onRecordViolation={() => setRecording(true)} />}
 

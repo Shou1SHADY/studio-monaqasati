@@ -43,11 +43,13 @@ import { hrDate, todayDay } from "@/lib/hr/format"
 import type { HrSite } from "@/lib/hr/sites"
 import { addDays } from "@/lib/hr/statutory"
 import { dutyToday } from "@/lib/hr/today"
+import { punchedToday, sourceOf, type PunchSite } from "@/lib/hr/punches"
 import { HrWriteError } from "@/lib/hr/write-guard"
 import { cn } from "@/lib/utils"
 import { HrDeclareMissingDialog } from "./HrDeclareMissingDialog"
 import type { HrPortal } from "./HrShell"
 import { useMonthStatusText } from "./HrSitePanel"
+import { HrPunchAttendance, punchKpiParts, usePunchWorld } from "./HrPunchPanels"
 
 const prevMonthOf = (month: string) => monthOf(addDays(`${month}-01`, -1))
 
@@ -99,6 +101,9 @@ function useAttendanceWorld(access: HrAccess, month: string) {
       curPlaces: placeMonths(sites, employees, cur, current, today, scope),
       prevPlaces: placeMonths(sites, employees, last, prev, today, scope),
       chosenPlaces: placeMonths(sites, employees, chosen, month, today, scope),
+      // The punch feature reads this and last month whole (its evidence and decisions ride them).
+      months: [...cur, ...last],
+      requests,
     }
   }, [today, employees, sites, isLoading, requests, cur, last, chosen, current, prev, month, scope])
 }
@@ -111,6 +116,19 @@ export function useAttendanceKpis(access: HrAccess): ModuleKpi[] | undefined {
   const assigned = w.duty.reduce((s, d) => s + d.assigned, 0)
   const missing = [...w.curPlaces, ...w.prevPlaces].reduce((s, p) => s + p.missing.length, 0)
   const open = monthOver(w.prev, w.today) ? w.prevPlaces.filter((p) => !p.wm?.closed).length : 0
+  const pw = usePunchWorld(access, { employees: w.employees, sites: w.sites, months: w.months, requests: w.requests })
+  if (pw.punch) {
+    // The prototype's VIEWS.att: present by source · exceptions awaiting a decision · unrecorded days.
+    const bySource = (id: string) => sourceOf(w.sites.find((s) => s.id === id) as PunchSite | undefined, true)
+    const sheet = w.duty.filter((d) => bySource(d.siteId) === "sheet").reduce((s, d) => s + d.present, 0)
+    const punched = punchedToday(pw)
+    const k = punchKpiParts(pw, sheet)
+    return [
+      { id: "present", label: t("atv.k_present"), value: `${sheet + punched.ids.size}/${assigned}`, note: t("punch.k_present_note", { sheet, device: punched.device, app: punched.app }), tone: "neutral" },
+      { id: "exceptions", label: t("punch.k_ex"), value: String(k.exceptions), note: t("punch.k_ex_note", { late: k.late, nop: k.nop, ot: k.ot, fixes: k.fixes }), tone: k.exceptions ? "warn" : "good" },
+      { id: "missing", label: t("atv.k_missing"), value: String(missing), note: t("atv.k_missing_note"), tone: missing ? "bad" : "good" },
+    ]
+  }
   return [
     { id: "present", label: t("atv.k_present"), value: `${present}/${assigned}`, note: t("atv.k_present_note"), tone: "neutral" },
     { id: "missing", label: t("atv.k_missing"), value: String(missing), note: t("atv.k_missing_note"), tone: missing ? "bad" : "good" },
@@ -125,6 +143,7 @@ export function HrAttendanceView({ access, actor, portal }: { access: HrAccess; 
   const { toast } = useToast()
   const [month, setMonth] = useState(todayDay().slice(0, 7))
   const w = useAttendanceWorld(access, month)
+  const pw = usePunchWorld(access, { employees: w.employees, sites: w.sites, months: w.months, requests: w.requests })
   const statusText = useMonthStatusText()
   const policy = access.settings.policies.closeMissing
   const [declaring, setDeclaring] = useState<{ p: PlaceMonth; month: string } | null>(null)
@@ -186,6 +205,8 @@ export function HrAttendanceView({ access, actor, portal }: { access: HrAccess; 
         ))}
         <Input type="month" dir="ltr" aria-label={t("att.month")} value={month} max={w.current} onChange={(e) => e.target.value && setMonth(e.target.value)} className="h-9 w-40" />
       </div>
+
+      {pw.punch && <HrPunchAttendance access={access} actor={actor} portal={portal} world={pw} />}
 
       {toClose.length > 0 && (
         <Panel title={t("atv.close_title", { month: w.prev })} icon={Lock} count={toClose.length} countTone="bad">

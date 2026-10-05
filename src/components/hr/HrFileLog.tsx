@@ -118,6 +118,8 @@ function logParams(l: LogEntry, t: ReturnType<typeof useTranslations>, siteName:
     else if (k === "fee") out[k] = hrMoney(Number(v))
     else if (k === "pf") out[k] = t(`pf.name.${v}` as "pf.name.qiwa")
     else if (k === "task") out[k] = t(`pf.short.${v}` as "pf.short.ct")
+    else if (k === "was" || k === "now") out[k] = t(`punch.shift.${v}` as "punch.shift.m")
+    else if (k === "why") out[k] = t(`punch.otno.${v}` as "punch.otno.nowork")
     else out[k] = String(v)
   }
   return out

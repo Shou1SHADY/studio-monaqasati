@@ -78,6 +78,8 @@ export const HR_NOTICE_KINDS = [
   "hr_position_approved", // → whoever opened it: start the search
   "hr_offer_above_band", // → management: an offer above the trade's band waits
   "hr_offer_approved", // → whoever made the offer: send it
+  // Punches (PT-05, optional: punch)
+  "hr_ot_refused", // → the employee: punch overtime not counted, with its reason — he may object by a correction
 ] as const
 export type HrNoticeKind = (typeof HR_NOTICE_KINDS)[number]
 
@@ -154,6 +156,7 @@ export const HR_NOTICE_COPY_AR: Record<HrNoticeKind, { title: string; message: s
   hr_position_approved: { title: "اعتُمدت الوظيفة {no} — ابدأ البحث", message: "اعتمد {actor} الشاغر {no} في {site}. ابدأ البحث عن المرشحين." },
   hr_offer_above_band: { title: "عرض فوق النطاق — {name}", message: "عرض {actor} على {name} للشاغر {no} فوق نطاق المهنة. لا يُرسل للمرشح قبل اعتمادك." },
   hr_offer_approved: { title: "اعتُمد عرض {name} — أرسله", message: "اعتمد {actor} العرض على {name} للشاغر {no}. أرسله وسجّل ردّ المرشح حين يصل." },
+  hr_ot_refused: { title: "لم يُحتسب إضافي {on}", message: "لم يُحتسب إضافي {h} ساعة ليوم {on} — {why}. لك الاعتراض بطلب تصحيح حضور من «ملفي»." },
 }
 
 /** `@key` params the messages name, with their Arabic text (nested keys of Portal.Shared). */
@@ -177,6 +180,9 @@ export const HR_NOTICE_PARAM_COPY_AR: Record<string, string> = {
   "hr_letter_kind.noc": "عدم ممانعة",
   "hr_letter_kind.oth": "خطاب آخر",
   "hr_letter_kind.exp": "شهادة خبرة",
+  "hr_ot_why.nowork": "بقي بلا تكليف بعمل",
+  "hr_ot_why.wait": "ينتظر النقل",
+  "hr_ot_why.err": "خطأ بصمة",
 }
 
 /** HR's own document numbers in Arabic (ط.إ / ط.سل / ط.ص / خ) — the shared prefix table is Sales'. */

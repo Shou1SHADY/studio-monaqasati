@@ -57,6 +57,8 @@ export const HR_GUARD = {
   "attendance.record": { roles: ["manager", "payroll", "supervisor"], siteScoped: ["supervisor"] },
   "attendance.close": { roles: ["manager", "payroll", "supervisor"], siteScoped: ["supervisor"] },
   "attendance.declare": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
+  // SH-03 (optional: punch) — a worker's shift from a date: the HR manager, or the workplace's supervisor.
+  "shift.set": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
   "payroll.prepare": { roles: ["manager", "payroll"] },
   "payroll.approve": { roles: ["manager"] },
   // Payroll fixes, the HR manager approves — never the same hand (RL-02); the owner, who answers to nobody,
