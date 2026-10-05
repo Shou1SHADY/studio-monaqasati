@@ -3012,7 +3012,24 @@ service cloud.firestore {
             && (resource.data.state != 'paid' || request.resource.data.state == 'paid')
             && changedKeys().hasOnly(['state', 'posted', 'paid', 'returned', 'paidHeld', 'gosiPaid', 'updatedAt'])
             && hrFinance())
+          // PY-08 / GV-05 — the pre-Mudad justifications and the month's Mudad status, in any state.
+          || (changedKeys().hasOnly(['just', 'mudad', 'updatedAt']) && (hrManager() || hrRole('hr.payroll')))
         );
+      allow delete: if false;
+    }
+
+    // Government platforms (GV-02…04): `{orgId}__{key}` — a platform act recorded done, a task a pay change or
+    // a reconciliation made, each platform's last reconciliation. No amount is ever written here: every HR
+    // office role reads it. Created in the writer's own name; only a reconciliation is replaced; never deleted.
+    match /hrGovTasks/{id} {
+      allow get, list: if isSignedIn() && (isAdmin() || ((resource == null || inOrg()) && hrOffice()));
+      allow create: if createsInOrg() && hrOffice()
+        && id == request.resource.data.organizationId + '__' + request.resource.data.key
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.kind in ['done', 'task', 'recon'];
+      allow update: if keepsOrg() && hrOffice() && resource.data.kind == 'recon'
+        && request.resource.data.key == resource.data.key
+        && request.resource.data.by == request.auth.uid;
       allow delete: if false;
     }
 

@@ -39,6 +39,7 @@ import type { HrRequest } from "./requests"
 import { startExit } from "./exit-writes"
 import { todayDay } from "./format"
 import { emitHrNotice, hrLinks } from "./notify"
+import { recordQiwaPayTask } from "./platform-writes"
 import { assertHr, HrWriteError } from "./write-guard"
 
 /** `hrCounters/{orgId}` — the last permanent employee number (never reused). */
@@ -482,8 +483,10 @@ export async function changePay(
   let retro = 0
   let retroMonth: string | null = null
   let request: HrRequest | null = null
+  let orgOf: string | null = null
   await runTransaction(firestore, async (tx) => {
     const { ref, emp } = await readEmployee(tx, firestore, id)
+    orgOf = emp.organizationId
     const isHrManager = ctx.owner || ctx.roles.has("manager") ? false : await employeeIsHrManager(tx, firestore, emp.organizationId, emp.userId)
     const refusal = payChangeRefusal(ctx, { own: ctx.employeeId === id || (Boolean(emp.userId) && emp.userId === ctx.uid), isHrManager })
     if (refusal) throw new HrWriteError(refusal)
@@ -548,6 +551,8 @@ export async function changePay(
       log(tx, firestore, id, emp.organizationId, actor, "raise_approved", { no: r.no })
     }
   })
+  // GV-02 — the Qiwa contract's basic follows the change: a platform task, no amount on it.
+  if (orgOf) await recordQiwaPayTask(firestore, orgOf, actor, id, input.effectiveOn)
   const r = request as HrRequest | null
   if (r)
     await emitHrNotice(firestore, actor, {

@@ -92,6 +92,8 @@ export interface TodayInput {
   /** Does any member hold government relations? Without one, the HR manager carries its rows (the prototype's
    * platform rule). Unknown = held. */
   govHeld?: boolean
+  /** Rows an optional feature computes (`platforms.ts` for `gov` / `mudad`), sorted in with the rest. */
+  extra?: TodayItem[]
 }
 
 /** EM-05 — a probation ending within 15 days asks for a decision (no decision = confirmed). */
@@ -398,6 +400,7 @@ export function todayItems(i: TodayInput): TodayItem[] {
         out.push({ key: `finalexit:${x.id}`, group: "due", severity: ready && x.lastDay <= today ? "amber" : "blue", kind: "final_exit", params: { name: x.employeeName, date: x.lastDay }, facts: [{ k: ready ? "final_exit_ready" : "after_settlement" }], ...(ready ? { href: `people/${x.employeeId}`, action: "record" } : {}) })
       }
 
+  out.push(...(i.extra ?? []))
   const rank = { red: 0, amber: 1, blue: 2 }
   return out.sort((a, b) => rank[a.severity] - rank[b.severity])
 }

@@ -63,6 +63,8 @@ export async function preparePayroll(
       totals: payrollTotals(input.lines),
       prepared: stamp(actor),
       approved: null,
+      // PY-08 — a pre-Mudad justification is written once: recomputing keeps it.
+      ...(cur.exists() && (cur.data() as { just?: unknown }).just ? { just: (cur.data() as { just?: unknown }).just } : {}),
       updatedAt: serverTimestamp(),
     })
   })
