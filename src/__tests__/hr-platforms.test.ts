@@ -174,7 +174,7 @@ describe("the writes", () => {
     expect(rec).toMatchObject({ kind: "recon", n: 2, diff: 2, rows: [{ k: "diff", employeeId: "e1", no: "1" }, { k: "unk", employeeId: null, no: "77" }] })
     expect(JSON.stringify(rec)).not.toContain("2028-01-01")
     expect(readDoc<HrEmployee>("employees/e1")?.docs.iqama).toBe("2028-01-01")
-    expect(listCollection("employees/e1/log").map((l) => (l as { kind: string }).kind)).toContain("iqama_from_muqeem")
+    expect(listCollection<{ kind: string }>("employees/e1/log").map((l) => l.kind)).toContain("iqama_from_muqeem")
   })
 
   it("RL-03 — government relations cannot save a WAGE comparison, nor take Qiwa's basic; the HR manager can", async () => {
