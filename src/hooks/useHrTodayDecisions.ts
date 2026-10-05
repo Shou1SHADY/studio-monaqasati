@@ -46,8 +46,9 @@ export function useHrTodayDecisions(access: HrAccess, today: string) {
       renewWindowDays: access.settings.policies.renewWindowDays,
       ...world,
       visas: access.settings.establishment.visas ?? null,
-      govHeld,
+      govHeld: heldRoles.isLoading ? undefined : heldRoles.held.has("gov"),
       extra,
+      hiring: world.hiring,
     })
     const count = decisionCount(items, waiting.length + vWaiting.length + lWaiting.length)
     const urgent = items.some((x) => x.severity === "red" && !x.waiting)

@@ -25,6 +25,7 @@ import { tradeOf } from "./trades"
 import { drawYearlyDocNumber } from "../sales-numbering"
 import { emitHrNotice, hrLinks } from "./notify"
 import { assertHr, HrWriteError } from "./write-guard"
+import { defaultTrack, HR_HIRING, openingDoc, OPENING_NUMBER_TYPE, type Opening, type VisaLot } from "./hiring"
 
 export const MANPOWER_REQUESTS = "manpowerRequests"
 
@@ -59,6 +60,8 @@ export interface CoverageRow {
   fromSiteId: string | null
   date: string
   late: boolean
+  /** A visa of a recruitment batch's issued lot (HI-07) — its opening; none: the establishment's free balance. */
+  lotId?: string | null
 }
 
 export interface ManpowerAnswer {
@@ -74,6 +77,9 @@ export interface ManpowerAnswer {
   /** The workplace the people go to — the request's, or the project's found at answer time. */
   siteId?: string | null
   note?: string | null
+  /** HI-01 — the opening a "hire" remainder opened (with Hiring on). */
+  openingId?: string | null
+  openingNo?: string | null
   by: string
   byName: string | null
   at: string
@@ -112,8 +118,9 @@ export interface Coverage {
 /** Visas free to offer: the establishment's unused visas less those earlier plans reserved. */
 export const freeVisas = (est: { visas?: number | null; visasReserved?: number | null }) => Math.max(0, (est.visas ?? 0) - (est.visasReserved ?? 0))
 
-/** Who can start, in order (AS-02): unassigned now → a site that ends within a week of the start → free visas. */
-export function coverage(input: { trade: string; count: number; from: string; today: string; siteId: string | null; employees: HrEmployee[]; sites: HrSite[]; visas: number | null }): Coverage {
+/** Who can start, in order (AS-02): unassigned now → a site that ends within a week of the start → visas already
+ * issued to a recruitment batch of the trade, at their arrival date (HI-07, with Hiring on) → free visas. */
+export function coverage(input: { trade: string; count: number; from: string; today: string; siteId: string | null; employees: HrEmployee[]; sites: HrSite[]; visas: number | null; lots?: readonly VisaLot[] }): Coverage {
   const rows: CoverageRow[] = []
   const excluded: Array<{ name: string; reason: string }> = []
   const start = input.from > input.today ? input.from : input.today
@@ -152,6 +159,10 @@ export function coverage(input: { trade: string; count: number; from: string; to
   for (const s of ending) {
     const free = addDays(s.endDate as string, 1)
     take("site_ending", free > start ? free : start, same.filter((e) => e.siteId === s.id))
+  }
+  for (const lot of (input.lots ?? []).filter((l) => l.trade === input.trade)) {
+    const date = lot.eta > start ? lot.eta : start
+    for (let i = 0; i < lot.free && left > 0; i++, left--) rows.push({ source: "visa", employeeId: null, name: null, fromSiteId: null, date, late: date > input.from, lotId: lot.openingId })
   }
   const visaDate = addDays(input.today, COVERAGE.visaLeadDays)
   for (let i = 0; i < (input.visas ?? 0) && left > 0; i++, left--) rows.push({ source: "visa", employeeId: null, name: null, fromSiteId: null, date: visaDate, late: visaDate > input.from })
@@ -265,7 +276,7 @@ export async function answerManpowerRequest(
   id: string,
   actor: HrActor,
   input: { rows: CoverageRow[]; excluded: Array<{ name: string; reason: string }>; rest?: RestChoice | null; note?: string | null },
-  opts: { today?: string; policies?: HrPolicies } = {}
+  opts: { today?: string; policies?: HrPolicies; hire?: boolean } = {}
 ): Promise<void> {
   assertHr(ctx, "manpower.answer")
   const today = opts.today ?? todayDay()
@@ -281,8 +292,11 @@ export async function answerManpowerRequest(
     const m = { ...(s.data() as ManpowerRequest), id }
     if (m.state !== "open") throw new HrWriteError("blocked", ["stale"])
     const people = input.rows.filter((r) => r.source !== "visa" && r.employeeId)
-    const visas = input.rows.filter((r) => r.source === "visa").length
-    const covered = people.length + visas
+    const visas = input.rows.filter((r) => r.source === "visa" && !r.lotId).length
+    // Visas of a batch's issued lot, by batch (HI-07): reserved on the lot, never on the balance.
+    const lotCount = new Map<string, number>()
+    for (const r of input.rows) if (r.source === "visa" && r.lotId) lotCount.set(r.lotId, (lotCount.get(r.lotId) ?? 0) + 1)
+    const covered = people.length + visas + [...lotCount.values()].reduce((a, b) => a + b, 0)
     if (covered > m.count) throw new HrWriteError("blocked", ["stale"])
     const short = m.count - covered
     const to = m.siteId ?? siteId
@@ -294,6 +308,14 @@ export async function answerManpowerRequest(
     const sRef = doc(firestore, HR_SETTINGS, m.organizationId)
     const est = visas ? (((await tx.get(sRef)).data() as { establishment?: { visas?: number | null; visasReserved?: number | null } } | undefined)?.establishment ?? {}) : {}
     if (visas && freeVisas(est) < visas) throw new HrWriteError("blocked", ["stale"])
+    const lots = await Promise.all(
+      [...lotCount].map(async ([lotId, n]) => {
+        const snap = await tx.get(doc(firestore, HR_HIRING, lotId))
+        const o = snap.exists() ? (snap.data() as Opening) : null
+        if (!o || o.organizationId !== m.organizationId || o.state !== "open" || o.trade !== m.trade || !o.batch || o.batch.visas - (o.batch.reserved ?? 0) < n) throw new HrWriteError("blocked", ["stale"])
+        return { ref: snap.ref, batch: o.batch, n }
+      })
+    )
     for (const { r, snap } of reads) {
       if (!snap.exists()) throw new HrWriteError("blocked", ["stale"])
       const e = snap.data() as HrEmployee
@@ -302,6 +324,10 @@ export async function answerManpowerRequest(
       if (r.source === "unassigned" && assignBlocks(e, to, today, today).length) throw new HrWriteError("blocked", ["stale"])
     }
 
+    // HI-01 — a "hire" remainder opens an opening, with the answer, needing no approval (Hiring on).
+    const rest0 = short > 0 ? (input.rest ?? null) : null
+    const opens = Boolean(opts.hire && rest0 === "hire")
+    const openingNo = opens ? await drawYearlyDocNumber(firestore, tx, m.organizationId, OPENING_NUMBER_TYPE, Number(today.slice(0, 4))) : null
     const no = m.no ?? null
     const at = new Date().toISOString()
     const logEntry = (employeeId: string, kind: string, params: Record<string, string | null>) =>
@@ -316,8 +342,15 @@ export async function answerManpowerRequest(
       }
     }
     if (visas) tx.update(sRef, { "establishment.visasReserved": (est.visasReserved ?? 0) + visas, updatedAt: serverTimestamp() })
+    for (const l of lots) tx.update(l.ref, { batch: { ...l.batch, reserved: (l.batch.reserved ?? 0) + l.n }, updatedAt: serverTimestamp() })
+    const oRef = opens ? doc(collection(firestore, HR_HIRING)) : null
+    if (oRef && openingNo)
+      tx.set(oRef, {
+        ...openingDoc({ organizationId: m.organizationId, no: openingNo, trade: m.trade, q: short, siteId: to, need: m.from, src: "mr", ref: id, refLabel: no, track: defaultTrack(m.trade), state: "open", opened: { by: actor.uid, byName: actor.name, at } }),
+        updatedAt: serverTimestamp(),
+      })
 
-    const rest = short > 0 ? (input.rest ?? null) : null
+    const rest = rest0
     const lines: CoverageLine[] = []
     for (const source of ["unassigned", "site_ending", "visa"] as const) {
       const of = input.rows.filter((r) => r.source === source)
@@ -336,6 +369,7 @@ export async function answerManpowerRequest(
       visas,
       siteId: to,
       note: input.note?.trim() || null,
+      ...(oRef ? { openingId: oRef.id, openingNo } : {}),
       by: actor.uid,
       byName: actor.name,
       at,

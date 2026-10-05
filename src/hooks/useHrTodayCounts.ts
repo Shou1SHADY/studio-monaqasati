@@ -21,7 +21,7 @@ export function useHrTodayCounts(access: HrAccess): { counts: TabCounts; govHeld
   return useMemo(
     () => ({
       counts: {
-        ...hrTabCounts({ ctx: access.ctx, items: d.items, decisions: d.count, urgent: d.urgent, employees: d.world.employees, manpower: d.world.manpower, payrolls: d.world.payrolls, requests: d.world.requests }),
+        ...hrTabCounts({ ctx: access.ctx, items: d.items, decisions: d.count, urgent: d.urgent, employees: d.world.employees, manpower: d.world.manpower, payrolls: d.world.payrolls, requests: d.world.requests, openings: d.world.hiring?.openings }),
         // GV-02 — the Platforms tab counts the tasks past their day (the prototype's TABS).
         ...(d.platforms.late ? { platforms: { count: d.platforms.late, urgent: true } } : {}),
       },

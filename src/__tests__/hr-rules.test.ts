@@ -58,6 +58,7 @@ describe("a fixed-id document is readable before it exists", () => {
     hrSettlements: "the exit panel listens to a settlement that is not approved yet",
     employeePay: "changePay reads the pay of a joiner recorded without one",
     hrViolations: "the sheet checks a violation is not already recorded",
+    hrHiring: "makeOffer reads the candidate's pay document before the first offer",
   }
 
   it.each(Object.entries(READ_BEFORE_CREATE))("%s — %s", (collection) => {
@@ -96,9 +97,9 @@ describe("pay stays with those who may see it (RL-02, RL-03)", () => {
   const employees = block("employees")
   const pay = block("employeePay")
 
-  it("government relations renews documents and nothing else on the record", () => {
+  it("government relations renews documents and ticks onboarding (HI-06) — nothing else on the record", () => {
     const [update] = allow(employees.slice(0, employees.indexOf("match /log/")), "update")
-    expect(update).toMatch(/hrRole\('hr\.gov'\) && changedKeys\(\)\.hasOnly\(\['docs', 'updatedAt'\]\)/)
+    expect(update).toMatch(/hrRole\('hr\.gov'\) && changedKeys\(\)\.hasOnly\(\['docs', 'onb', 'updatedAt'\]\)/)
   })
 
   it("the link to a user is the HR manager's, never onto or off himself", () => {
@@ -271,10 +272,11 @@ describe("manpower requests (AS-02, WF-12)", () => {
     expect(update).toMatch(/resource\.data\.requested\.by == request\.auth\.uid \|\| hasProjectPermission\(resource\.data\.projectId, 'projects\.edit'\)/)
   })
 
-  it("an arrival by government relations moves the visa count and its reservation, nothing else of the file", () => {
+  it("government relations only spends visas — an arrival, or a batch's at issue (HI-07) — and its reservation; nothing else of the file", () => {
     const gov = allow(block("hrSettings"), "update").find((r) => r.includes("hr.gov")) ?? ""
     expect(gov).toMatch(/affectedKeys\(\)\.hasOnly\(\['visas', 'visasReserved'\]\)/)
-    expect(gov).toMatch(/request\.resource\.data\.establishment\.visas == resource\.data\.establishment\.visas - 1/)
+    expect(gov).toMatch(/request\.resource\.data\.establishment\.visas >= 0/)
+    expect(gov).toMatch(/request\.resource\.data\.establishment\.visas < resource\.data\.establishment\.visas/)
   })
 })
 
@@ -509,5 +511,37 @@ describe("government platforms and the pre-Mudad check (package F2, GV-02…05, 
   it("Qiwa's documented basic is a pay figure: it rides employeePay, whose writers are pay roles — never government relations", () => {
     const [update] = allow(block("employeePay"), "update")
     expect(update).not.toContain("hr.gov")
+  })
+})
+
+describe("hiring (HI-01…08, optional: hire) — one collection by kind, money apart", () => {
+  const hiring = block("hrHiring")
+
+  it("a candidate's money (`pay: true`) is read by pay roles only; government relations reads the rest (RL-03)", () => {
+    expect(fn("hrHiringRead")).toMatch(/inOrg\(\) && \(hrSeesPay\(\) \|\| \(hrOffice\(\) && resource\.data\.pay == false\)\)/)
+    expect(allow(hiring, "get")).toEqual(["(resource == null && hrRole('employees.manage')) || hrHiringRead()"])
+    expect(allow(hiring, "list")).toEqual(["hrHiringRead()"])
+  })
+
+  it("the HR manager creates; government relations moves a batch and converts; management decides — each its keys only", () => {
+    const [create] = allow(hiring, "create")
+    expect(create).toMatch(/createsInOrg\(\) && hrManager\(\)/)
+    const [update] = allow(hiring, "update")
+    expect(update).toMatch(/request\.resource\.data\.kind == resource\.data\.kind/)
+    // Neither government relations nor management touches a pay document.
+    expect(update).toMatch(/hrManager\(\) \|\| \(resource\.data\.pay == false/)
+    expect(update).toMatch(/hrRole\('hr\.gov'\) && changedKeys\(\)\.hasOnly\(\['batch', 'filled', 'state', 'stage', 'employeeId', 'updatedAt'\]\)/)
+    expect(update).toMatch(/hrRole\('hr\.management'\) && changedKeys\(\)\.hasOnly\(\['state', 'okBy', 'closedBy', 'stage', 'offer', 'updatedAt'\]\)/)
+    expect(hiring).toMatch(/allow delete: if false;/)
+  })
+
+  it("the guard says the same: batch, conversion and onboarding are government relations' too; approval is management's", () => {
+    expect(HR_GUARD["hire.manage"].roles).toEqual(["manager"])
+    expect(HR_GUARD["hire.batch"].roles).toEqual(["manager", "gov"])
+    expect(HR_GUARD["hire.convert"].roles).toEqual(["manager", "gov"])
+    expect(HR_GUARD["hire.onboard"].roles).toEqual(["manager", "gov"])
+    expect(HR_GUARD["hire.approve"].roles).toEqual(["management"])
+    // Converting is creating an employee — government relations may (without pay).
+    expect(HR_GUARD["employee.create"].roles).toContain("gov")
   })
 })

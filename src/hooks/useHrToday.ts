@@ -20,6 +20,7 @@ import { MANPOWER_REQUESTS, type ManpowerRequest } from "@/lib/hr/manpower"
 import type { Payroll } from "@/lib/hr/payroll"
 import { HR_ASSIGN_FIXES, type AssignFix } from "@/lib/hr/sites"
 import { addDays } from "@/lib/hr/statutory"
+import { useHrHiring } from "@/hooks/useHrHiring"
 
 function useWorkplaceMonths(access: HrAccess, month: string): WorkplaceMonth[] {
   const firestore = useFirestore()
@@ -68,6 +69,8 @@ export function useHrToday(access: HrAccess, today: string) {
   const decidesFixes = access.allowed("employee.assign")
   const afQ = useMemoFirebase(() => (firestore && orgId && decidesFixes ? query(collection(firestore, HR_ASSIGN_FIXES), where("organizationId", "==", orgId), where("state", "==", "pending")) : null), [firestore, orgId, decidesFixes])
   const { data: af } = useCollection(afQ)
+  // Hiring (optional: hire) — null with the switch off, so none of its rows exist.
+  const hiring = useHrHiring(access)
   return useMemo(
     () => ({
       employees,
@@ -81,7 +84,8 @@ export function useHrToday(access: HrAccess, today: string) {
       payrolls: (pr ?? []) as unknown as Payroll[],
       manpower: (mp ?? []) as unknown as ManpowerRequest[],
       assignFixes: (af ?? []) as unknown as AssignFix[],
+      hiring,
     }),
-    [employees, sites, pays, requests, lastWm, thisWm, inj, ex, pr, mp, af]
+    [employees, sites, pays, requests, lastWm, thisWm, inj, ex, pr, mp, af, hiring]
   )
 }

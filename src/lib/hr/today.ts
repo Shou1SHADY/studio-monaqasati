@@ -22,6 +22,8 @@ import { leaveReturn, type HrRequest, type Stamp } from "./requests"
 import { costKindOf, UNASSIGNED_SITE, type AssignFix, type HrSite } from "./sites"
 import { addDays, daysBetween, monthRange, r2 } from "./statutory"
 import { tradeOf } from "./trades"
+import { hiringTodayItems, type HiringWorld } from "./hiring-today"
+import { visaLots } from "./hiring"
 
 export type TodayGroup = "blocking" | "other" | "requests" | "due"
 export const TODAY_GROUPS: TodayGroup[] = ["blocking", "other", "requests", "due"]
@@ -94,6 +96,8 @@ export interface TodayInput {
   govHeld?: boolean
   /** Rows an optional feature computes (`platforms.ts` for `gov` / `mudad`), sorted in with the rest. */
   extra?: TodayItem[]
+  /** Hiring's world (optional: hire) — absent when the feature is off: no row, no lot in coverage. */
+  hiring?: HiringWorld | null
 }
 
 /** EM-05 — a probation ending within 15 days asks for a decision (no decision = confirmed). */
@@ -105,8 +109,8 @@ const FINAL_EXIT_DAYS = 14
 const WORKING = new Set(["active", "leaving"])
 
 /** AS-02 — a manpower request's coverage in the prototype's terms: on time · late · uncovered · excluded. */
-export function coverageSummary(m: Pick<ManpowerRequest, "trade" | "count" | "from" | "siteId">, w: { today: string; employees: HrEmployee[]; sites: HrSite[]; visas: number | null }) {
-  const c = coverage({ trade: m.trade, count: m.count, from: m.from, today: w.today, siteId: m.siteId, employees: w.employees, sites: w.sites, visas: w.visas })
+export function coverageSummary(m: Pick<ManpowerRequest, "trade" | "count" | "from" | "siteId">, w: { today: string; employees: HrEmployee[]; sites: HrSite[]; visas: number | null; lots?: ReturnType<typeof visaLots> }) {
+  const c = coverage({ trade: m.trade, count: m.count, from: m.from, today: w.today, siteId: m.siteId, employees: w.employees, sites: w.sites, visas: w.visas, lots: w.lots })
   let onTime = 0
   let late = 0
   for (const l of c.lines) {
@@ -298,7 +302,7 @@ export function todayItems(i: TodayInput): TodayItem[] {
   if (may("manpower.answer"))
     for (const m of i.manpower ?? [])
       if (m.state === "open") {
-        const c = coverageSummary(m, { today, employees: i.employees, sites: i.sites, visas: i.visas ?? null })
+        const c = coverageSummary(m, { today, employees: i.employees, sites: i.sites, visas: i.visas ?? null, lots: i.hiring ? visaLots(i.hiring.openings) : [] })
         out.push({
           key: `mp:${m.id}`,
           group: "other",
@@ -399,6 +403,8 @@ export function todayItems(i: TodayInput): TodayItem[] {
         const ready = x.state !== "leaving"
         out.push({ key: `finalexit:${x.id}`, group: "due", severity: ready && x.lastDay <= today ? "amber" : "blue", kind: "final_exit", params: { name: x.employeeName, date: x.lastDay }, facts: [{ k: ready ? "final_exit_ready" : "after_settlement" }], ...(ready ? { href: `people/${x.employeeId}`, action: "record" } : {}) })
       }
+  // Hiring (optional: hire) — only with the switch on.
+  if (i.hiring) out.push(...hiringTodayItems({ ctx, today, hiring: i.hiring, employees: i.employees, sites: i.sites, govDesk }))
 
   out.push(...(i.extra ?? []))
   const rank = { red: 0, amber: 1, blue: 2 }
@@ -425,7 +431,9 @@ export function hrTabCounts(i: {
   manpower: ManpowerRequest[]
   payrolls: Payroll[]
   requests: HrRequest[]
-}): Partial<Record<"today" | "people" | "sites" | "payroll" | "me", { count: number; urgent?: boolean }>> {
+  /** Hiring's openings (optional: hire) — the tab's number is those open or awaiting management. */
+  openings?: ReadonlyArray<{ state: string }> | null
+}): Partial<Record<"today" | "people" | "sites" | "payroll" | "hiring" | "me", { count: number; urgent?: boolean }>> {
   const out: ReturnType<typeof hrTabCounts> = { today: { count: i.decisions, urgent: i.urgent } }
   const people = i.employees.filter((e) => e.status !== "left").length
   if (people) out.people = { count: people }
@@ -436,6 +444,8 @@ export function hrTabCounts(i: {
   const toApprove = hrAllowed(i.ctx, "payroll.approve") ? i.items.filter((x) => x.kind === "payroll_approve").length : 0
   const toPrepare = i.ctx.roles.has("payroll") ? i.items.filter((x) => x.kind === "payroll_prepare").length : 0
   if (toApprove + toPrepare) out.payroll = { count: toApprove + toPrepare }
+  const openings = (i.openings ?? []).filter((o) => o.state === "open" || o.state === "wait").length
+  if (openings) out.hiring = { count: openings, urgent: i.items.some((x) => x.kind === "job_late") }
   if (i.ctx.employeeId) {
     const mine = i.requests.filter((r) => r.employeeId === i.ctx.employeeId && OPEN_REQUEST.has(r.state)).length
     if (mine) out.me = { count: mine }

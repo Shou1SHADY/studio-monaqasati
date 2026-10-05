@@ -73,6 +73,13 @@ export interface HrPolicies {
   /** AS-02 — temporary labour (Ajeer) offered in a manpower answer, and its cost against a hire. */
   ajeerAllowed: boolean
   ajeerFactor: number
+  /** HI-05 — the offer band: a share of the trade's reference wage (90–120%). */
+  offerBandLow: number
+  offerBandHigh: number
+  /** ST-03 — a new position waits for management's approval (block) or opens at once (warn). */
+  jobApprove: BlockOrWarn
+  /** ST-03 — an offer above the band waits for management (block) or goes with a warning (warn). */
+  offerBand: BlockOrWarn
 }
 
 export const DEFAULT_HR_POLICIES: HrPolicies = {
@@ -84,6 +91,10 @@ export const DEFAULT_HR_POLICIES: HrPolicies = {
   closeMissing: "block",
   ajeerAllowed: true,
   ajeerFactor: 1.4,
+  offerBandLow: 0.9,
+  offerBandHigh: 1.2,
+  jobApprove: "block",
+  offerBand: "block",
 }
 
 const frac = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1 ? v : fallback)
@@ -101,7 +112,19 @@ export function resolveHrPolicies(raw: Partial<HrPolicies> | null | undefined): 
     closeMissing: raw?.closeMissing === "warn" ? "warn" : "block",
     ajeerAllowed: typeof raw?.ajeerAllowed === "boolean" ? raw.ajeerAllowed : d.ajeerAllowed,
     ajeerFactor: typeof raw?.ajeerFactor === "number" && Number.isFinite(raw.ajeerFactor) && raw.ajeerFactor >= 1 && raw.ajeerFactor <= 5 ? raw.ajeerFactor : d.ajeerFactor,
+    ...offerBandOf(raw),
+    jobApprove: raw?.jobApprove === "warn" ? "warn" : "block",
+    offerBand: raw?.offerBand === "warn" ? "warn" : "block",
   }
+}
+
+/** The band's two ends, each sane (50–100% and 100–200% of the reference wage), the low never above the high. */
+function offerBandOf(raw: Partial<HrPolicies> | null | undefined): Pick<HrPolicies, "offerBandLow" | "offerBandHigh"> {
+  const d = DEFAULT_HR_POLICIES
+  const ok = (v: unknown, lo: number, hi: number): v is number => typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi
+  const low = ok(raw?.offerBandLow, 0.5, 1) ? raw!.offerBandLow! : d.offerBandLow
+  const high = ok(raw?.offerBandHigh, 1, 2) ? raw!.offerBandHigh! : d.offerBandHigh
+  return { offerBandLow: low, offerBandHigh: high }
 }
 
 // ---------------------------------------------------------------------------

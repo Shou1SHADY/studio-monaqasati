@@ -48,6 +48,8 @@ import {
 import { siteEndOf, type HrSite } from "@/lib/hr/sites"
 import { addDays } from "@/lib/hr/statutory"
 import { HrWriteError } from "@/lib/hr/write-guard"
+import { openingNo, visaLots } from "@/lib/hr/hiring"
+import { useHrHiring } from "@/hooks/useHrHiring"
 import { cn } from "@/lib/utils"
 
 /** One coverage line in words — shared with the project's panel. */
@@ -115,6 +117,9 @@ export function HrManpowerPanel({ access, siteId }: { access: HrAccess; siteId?:
   const visas = freeVisas(est)
   const policies = access.settings.policies
   const money = access.allowed("pay.view")
+  // HI-07 — a batch's issued visas are offered at their arrival date (Hiring on).
+  const hiring = useHrHiring(access)
+  const lots = useMemo(() => (hiring ? visaLots(hiring.openings) : []), [hiring])
   const requests = useMemo(
     () =>
       ((data ?? []) as unknown as ManpowerRequest[])
@@ -129,7 +134,7 @@ export function HrManpowerPanel({ access, siteId }: { access: HrAccess; siteId?:
   const [rest, setRest] = useState<RestChoice | null>(null)
   const [note, setNote] = useState("")
   const [busy, setBusy] = useState(false)
-  const cover = useCallback((r: ManpowerRequest) => coverage({ trade: r.trade, count: r.count, from: r.from, today, siteId: r.siteId, employees, sites, visas }), [today, employees, sites, visas])
+  const cover = useCallback((r: ManpowerRequest) => coverage({ trade: r.trade, count: r.count, from: r.from, today, siteId: r.siteId, employees, sites, visas, lots }), [today, employees, sites, visas, lots])
   const plan = useMemo(() => (answering ? cover(answering) : null), [answering, cover])
   const siteName = (id: string | null) => (id ? (rawSites.find((s) => s.id === id)?.name ?? "—") : t("sites.unassigned"))
 
@@ -156,7 +161,7 @@ export function HrManpowerPanel({ access, siteId }: { access: HrAccess; siteId?:
         answering.id,
         { uid: user?.uid ?? "", name: (profile?.name as string) || null },
         { rows: plan.rows, excluded: plan.excluded, rest: plan.short ? rest : null, note },
-        { policies }
+        { policies, hire: access.settings.features.includes("hire") }
       )
       toast({ title: t("mp.answered_ok") })
       setAnswering(null)
@@ -225,6 +230,11 @@ export function HrManpowerPanel({ access, siteId }: { access: HrAccess; siteId?:
                   </p>
                 )}
                 {r.answer && <CoverageLines lines={r.answer.plan} excluded={r.answer.excluded} short={r.answer.short} />}
+                {r.answer?.openingNo && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("mp.opening_opened")} <bdi dir="ltr">{openingNo(r.answer.openingNo, locale)}</bdi>
+                  </p>
+                )}
               </div>
               {r.state === "open" && access.allowed("manpower.answer") && (
                 <Button size="sm" onClick={() => start(r)}>
@@ -308,6 +318,8 @@ export function HrManpowerPanel({ access, siteId }: { access: HrAccess; siteId?:
                 <Textarea id="mp-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} disabled={busy} />
               </div>
               <p className="text-xs text-muted-foreground">{t("mp.on_send")}</p>
+              {/* HI-01 — with Hiring on, a "hire" remainder opens an opening with the answer. */}
+              {plan.short > 0 && rest === "hire" && hiring && <p className="text-xs text-muted-foreground">{t("mp.hire_opens", { n: plan.short })}</p>}
               <p className="text-xs text-muted-foreground">{t("att.fill_by", { name: (profile?.name as string) || "—" })}</p>
             </div>
           )}
