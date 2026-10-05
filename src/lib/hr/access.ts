@@ -74,7 +74,8 @@ export const HR_GUARD = {
   "letter.sign": { roles: ["manager", "gov", "management"] },
   "pay.change": { roles: ["manager"] },
   "violation.record": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
-  "injury.record": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
+  // DC-07 — government relations may record a work injury too (the prototype: hr, gov; owner default 4).
+  "injury.record": { roles: ["manager", "gov", "supervisor"], siteScoped: ["supervisor"] },
   "injury.report": { roles: ["gov", "manager"] },
   "penalty.apply": { roles: ["manager"] },
   "exit.manage": { roles: ["manager"] },

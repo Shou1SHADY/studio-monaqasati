@@ -218,7 +218,8 @@ describe.each(ROLES)("as %s", (role) => {
     const view = await openAs(role, name)
     expect({ name, role, missing: [...missingKeys] }).toEqual({ name, role, missing: [] })
     expect(text()).not.toMatch(/MISSING|undefined|NaN|Invalid Date/)
-    const offered = RAIL[role].includes(s.tab)
+    // RL-01 — the supervisor has no People tab but opens his workers' files under Workplaces.
+    const offered = RAIL[role].includes(s.tab) || (role === "supervisor" && (name === "file" || name === "ownFile"))
     if (role !== "employee" || name === "me") {
       const rail = railLabels()
       // The rail shows when there is more than one tab (ModuleHeader).
@@ -287,6 +288,53 @@ describe("what each role sees and may do (the PRD's matrix, qa_guards)", () => {
     expect(buttons()).not.toContain("تعديل الأجر")
     expect(buttons()).not.toContain("إنهاء الخدمة")
     expect(buttons()).not.toContain("ربط مستخدم")
+    view.unmount()
+  })
+
+  it("the supervisor opens his own worker's file from his site (RL-01) — without pay; the HR manager's file is not his", async () => {
+    let view = await openAs("supervisor", "site")
+    expect(Array.from(document.querySelectorAll("a")).some((a) => a.getAttribute("href") === "/contractor/hr/people/e_emp")).toBe(true)
+    view.unmount()
+    view = await openAs("supervisor", "file")
+    expect(text()).toContain("موظف w1")
+    expect(text()).toContain("الوثائق والشهادات")
+    expect(text()).not.toContain("الأجر والمسير")
+    expect(text()).toContain("•••")
+    expect(text()).not.toContain(RIYAL)
+    view.unmount()
+    view = await openAs("supervisor", "ownFile")
+    expect(text()).toContain("الموظف غير موجود")
+    view.unmount()
+  })
+
+  it("management changes the HR manager's pay — and nobody else's (RL-02, EM-04)", async () => {
+    let view = await openAs("management", "ownFile")
+    expect(buttons()).toContain("تعديل الأجر")
+    view.unmount()
+    view = await openAs("management", "file")
+    expect(buttons()).not.toContain("تعديل الأجر")
+    view.unmount()
+    // The HR manager asks for his own raise instead (it goes to management).
+    view = await openAs("manager", "ownFile")
+    expect(buttons()).toContain("اطلب تعديل الأجر")
+    view.unmount()
+  })
+
+  it("the file's overview names the expired iqama and the site he is on; the documents hold no licence for a mason", async () => {
+    const view = await openAs("manager", "file")
+    expect(text()).toContain("إقامة منتهية")
+    expect(text()).toContain("وهو على برج الواحة الآن")
+    expect(text()).toContain("مركز التكلفة")
+    expect(text()).toContain("510201")
+    view.unmount()
+  })
+
+  it("People: the prototype's segments with counts, worst documents first", async () => {
+    const view = await openAs("manager", "people")
+    for (const s of ["المواقع", "المكتب", "بلا إسناد", "وثائق تنتهي"]) expect({ s, shown: buttons().some((b) => b.startsWith(s)) }).toEqual({ s, shown: true })
+    const names = Array.from(document.querySelectorAll("tbody a")).map((a) => (a.textContent ?? "").trim())
+    // w1's iqama has expired: he comes first, whatever his number.
+    expect(names[0]).toBe("موظف w1")
     view.unmount()
   })
 

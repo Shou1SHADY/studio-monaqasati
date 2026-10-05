@@ -9,7 +9,7 @@ import { hrRefusal, mayDecideRequest, userIsHrManager, type HrContext } from "./
 import { attachmentBlocks, HR_FILES, type EmployeeFile } from "./attachments"
 import { attendanceId, monthOf, type WorkplaceMonth } from "./attendance"
 import { HR_ATTENDANCE, HR_EMPLOYEES, HR_PAY, HR_REQUESTS } from "./collections"
-import type { EmployeePay, HrEmployee } from "./employee"
+import { raiseRequestBlocks, type EmployeePay, type HrEmployee, type RaiseFields } from "./employee"
 import { HR_LOG, type HrActor } from "./employee-writes"
 import type { Holiday } from "./leave"
 import { LEAVE_RULES, type LeaveType } from "./leave"
@@ -75,6 +75,7 @@ export interface FileRequestInput {
   advance?: { amount: number; reason: string }
   data?: DataFields
   attfix?: AttfixFields
+  raise?: RaiseFields
   /** The site's supervisor — the line manager (RL-04) — as the site names him. */
   supervisor?: { employeeId: string | null; userId: string | null } | null
 }
@@ -103,7 +104,7 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
     const emp = await readEmp(tx, firestore, input.employeeId)
     if (emp.organizationId !== orgId) throw new HrWriteError("missing")
     if (emp.status === "left") throw new HrWriteError("blocked", ["left"])
-    const pay = input.kind === "advance" ? await tx.get(doc(firestore, HR_PAY, emp.id)) : null
+    const pay = input.kind === "advance" || input.kind === "raise" ? await tx.get(doc(firestore, HR_PAY, emp.id)) : null
     // LV-05, RL-02 — the level follows who the employee IS: an HR manager's own request goes to
     // management whoever files it (another HR manager filing for him included).
     const hrManagerEmployee = (own && ctx.roles.has("manager")) || (await employeeIsHrManager(tx, firestore, orgId, emp.userId))
@@ -143,6 +144,13 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
       const blocks = attfixBlocks(f, { today, punch: Boolean(opts.punch), mine: opts.mine ?? [] })
       if (blocks.length) throw new HrWriteError("blocked", blocks)
       body = { attfix: { type: f.type, day: f.day, reason: f.reason.trim() } }
+    } else if (input.kind === "raise") {
+      // EM-04 — asked for (by the HR manager, on a line manager's word; or the employee himself); decided as a pay change.
+      const x = input.raise!
+      const stored = pay?.exists() ? (pay.data() as EmployeePay) : null
+      const blocks = raiseRequestBlocks(x, { currentBasic: stored ? payOn(stored, today).basic : null, nationality: emp.nationality })
+      if (blocks.length) throw new HrWriteError("blocked", blocks)
+      body = { raise: { basic: x.basic, kind: x.kind, effectiveOn: x.effectiveOn, reason: x.reason.trim(), trade: x.kind === "promotion" ? (x.trade ?? null) : null } }
     } else {
       const a = input.advance!
       // The wage in force today — a raise dated in the past applies though the stored figures lag (EM-04).
@@ -252,6 +260,7 @@ export async function decideRequest(
     const paySnap = r.kind === "advance" ? await tx.get(payRef) : null
     const reqRef = doc(firestore, HR_REQUESTS, id)
     const decision = { ...stamp(actor, note), ownFlagged: ctx.owner && ctx.employeeId === r.employeeId }
+    if (verdict === "approve" && r.kind === "raise") throw new HrWriteError("blocked", ["raise_via_pay"])
     if (verdict === "decline") {
       if (!note.trim()) throw new HrWriteError("blocked", ["no_reason"])
       tx.update(reqRef, { state: "declined", decision, updatedAt: serverTimestamp() })

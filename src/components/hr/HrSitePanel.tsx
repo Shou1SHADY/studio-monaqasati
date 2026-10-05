@@ -121,7 +121,8 @@ export function HrSitePanel({ access, siteId, actor, portal }: { access: HrAcces
   const site = bench ? null : (sites.find((s) => s.id === siteId) ?? null)
   const assumed = assumesPresence(siteId, site?.type ?? null)
   const mayMove = access.allowed("employee.assign")
-  const opensFiles = access.tabs.includes("people")
+  // A supervisor opens his own workers' files from his site (RL-01) — he has no People tab.
+  const opensFiles = access.tabs.includes("people") || access.ctx.roles.has("supervisor")
   const money = access.allowed("pay.view")
   const pays = useOrgPay(access.orgId, money && bench)
   const window = access.settings.policies.renewWindowDays
