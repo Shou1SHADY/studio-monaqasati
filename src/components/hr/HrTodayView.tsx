@@ -39,6 +39,9 @@ import {
   UsersRound,
   Wallet,
   Wrench,
+  GraduationCap,
+  Star,
+  TrendingUp,
   type LucideIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -131,6 +134,7 @@ export function HrTodayView({ access, portal }: { access: HrAccess; portal: HrPo
           else if (k === "trade" && typeof v === "string") p[k] = t(`trade.${v}` as "trade.mason")
           else if (k === "order" && typeof v === "string") p[k] = v.split(",").map((d) => t(`doc.${d}` as "doc.iqama")).join(" ← ")
           else if (k === "site" && v === "") p[k] = t("sites.unassigned")
+          else if (k === "course" && typeof v === "string") p[k] = t(`train.course.${v}` as "train.course.ind")
           else p[k] = v
         }
         return t(`today.f.${f.k}` as "today.f.art80", p)
@@ -631,6 +635,13 @@ const KIND_ICON: Record<string, LucideIcon> = {
   settlement_ready: UserCheck,
   exit_reentry: Plane,
   final_exit: Plane,
+  train_gaps: GraduationCap,
+  train_gaps_mine: GraduationCap,
+  train_session: GraduationCap,
+  perf_pending: Star,
+  perf_rate: Star,
+  perf_apply: TrendingUp,
+  perf_raises: TrendingUp,
 }
 
 /** Dates in the reader's language; a document type by its name. */

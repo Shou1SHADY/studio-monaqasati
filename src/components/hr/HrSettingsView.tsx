@@ -113,7 +113,8 @@ export function HrSettingsView({ access }: { access: HrAccess }) {
   const logValue = (field: string, v: string | number | boolean | null) => {
     if (v == null || v === "") return "—"
     if (typeof v === "boolean") return t(v ? "settings.log_on" : "settings.log_off")
-    if (field === "policies.housingShare" || field === "policies.transportShare") return `${pct(Number(v))}%`
+    if (field === "policies.housingShare" || field === "policies.transportShare" || field === "policies.recordWeight") return `${pct(Number(v))}%`
+    if (/^policies\.raise[ABCD]$/.test(field)) return `${v}%`
     if (field === "businessType") return t(`business_type.${v}` as "business_type.contractor")
     if (field === "establishment.band") return t(`settings.band.${v}` as "settings.band.red")
     if (field === "policies.closeMissing") return t(`policy.${v}` as "policy.block")
@@ -293,6 +294,31 @@ export function HrSettingsView({ access }: { access: HrAccess }) {
             <Input id="hr-p-ajeerFactor" type="number" min="1" max="5" step="0.1" dir="ltr" value={String(draft.policies.ajeerFactor)} onChange={(e) => setPolicy("ajeerFactor", Number(e.target.value))} disabled={off || !draft.policies.ajeerAllowed} />
           </div>
         </div>
+        {draft.features.includes("perf") && (
+          // PF-04 / PF-06 — the review's record weight and the raise by band: company policies, logged like any other.
+          <div className="mt-4 grid gap-4 border-t pt-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="hr-p-recordWeight">{t("policy.recordWeight")}</Label>
+              <Input id="hr-p-recordWeight" type="number" min="0" max="50" step="5" dir="ltr" value={pct(draft.policies.recordWeight)} onChange={(e) => setPolicy("recordWeight", Number(e.target.value) / 100)} disabled={off} />
+              <p className="text-[11px] text-muted-foreground">{t("policy.recordWeight_note", { m: 100 - Math.round(draft.policies.recordWeight * 100), w: Math.round(draft.policies.recordWeight * 100) })}</p>
+            </div>
+            <fieldset className="space-y-1.5">
+              <legend className="text-sm font-medium">{t("policy.raise")}</legend>
+              <div className="grid grid-cols-4 gap-2">
+                {(["raiseA", "raiseB", "raiseC", "raiseD"] as const).map((k) => (
+                  <div key={k} className="space-y-1">
+                    <Label htmlFor={`hr-p-${k}`} className="text-[11px] text-muted-foreground">
+                      {t(`perf.band.${k.slice(-1)}` as "perf.band.A")}
+                    </Label>
+                    <Input id={`hr-p-${k}`} type="number" min="0" max="25" step="0.5" dir="ltr" value={String(draft.policies[k])} onChange={(e) => setPolicy(k, Number(e.target.value))} disabled={off} />
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">{t("policy.raise_note")}</p>
+            </fieldset>
+          </div>
+        )}
+        {draft.features.includes("train") && <p className="mt-4 border-t pt-4 text-xs text-muted-foreground">{t("policy.certs_note")}</p>}
       </Panel>
 
       {canEdit && (

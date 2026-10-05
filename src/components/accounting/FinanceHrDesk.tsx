@@ -37,6 +37,7 @@ import { EntryPreview } from "@/components/hr/HrPayrollPanels"
 import { financeDecideAdvance } from "@/lib/hr/request-writes"
 import { requestNoDisplay, type HrRequest } from "@/lib/hr/requests"
 import { r2 } from "@/lib/hr/statutory"
+import { payTrainingCost, type TrainingCostEvent } from "@/lib/hr/training-writes"
 import { HrWriteError } from "@/lib/hr/write-guard"
 import { AccountingShell } from "./AccountingShell"
 
@@ -49,6 +50,7 @@ type Pending =
   | { kind: "decide"; r: HrRequest }
   | { kind: "settlement"; st: HrSettlement }
   | { kind: "fee"; ev: HrFeeEvent }
+  | { kind: "training"; ev: TrainingCostEvent }
   | { kind: "gosi"; p: PayrollDoc }
 
 const BANKS = POSTABLE_ACCOUNTS.filter((a) => a.code.startsWith("1101")).map((a) => a.code)
@@ -88,6 +90,8 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
   const events = ((evData ?? []) as unknown as HrEvent[]).filter((e) => e.state === "sent" && (e.kind === "PAY" || e.kind === "EOS")).sort((a, b) => a.key.localeCompare(b.key))
   // DC-03 — payment requests (hr:PR): a renewal's government fee, paid here.
   const fees = ((evData ?? []) as unknown as Array<HrEvent | HrFeeEvent>).filter((e): e is HrFeeEvent => e.kind === "PR" && e.state === "sent").sort((a, b) => a.key.localeCompare(b.key))
+  // TR-04 — a training session's cost (hr:TRN): an external course, paid here.
+  const trainings = ((evData ?? []) as unknown as Array<{ kind: string; state: string }>).filter((e): e is TrainingCostEvent => e.kind === "TRN" && e.state === "sent").sort((a, b) => a.key.localeCompare(b.key))
   const payrolls = ((prData ?? []) as unknown as PayrollDoc[]).sort((a, b) => b.key.localeCompare(a.key))
   const toPay = payrolls.filter((p) => p.state === "posted" || (p.state === "approved" && !accountingOn))
   // PY-03 — every paid payroll, however old: a held line never drops out of view, and a returned transfer is
@@ -130,6 +134,7 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
     else if (pending.kind === "advance") void run(() => payAdvance(firestore, actor, orgId, pending.r, books), "fhd.advance_paid_ok")
     else if (pending.kind === "settlement") void run(() => paySettlement(firestore, actor, orgId, pending.st, books), "fhd.settlement_paid_ok")
     else if (pending.kind === "fee") void run(() => payFeeRequest(firestore, actor, orgId, pending.ev, books), "fhd.fee_paid_ok")
+    else if (pending.kind === "training") void run(() => payTrainingCost(firestore, actor, orgId, pending.ev, books), "fhd.fee_paid_ok")
     else if (pending.kind === "gosi") void run(() => recordGosiPaid(firestore, actor, orgId, pending.p, books), "fhd.gosi_paid_ok")
   }
   const decide = (verdict: "approve" | "decline") => {
@@ -280,6 +285,23 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
             )}
           </Panel>
 
+          {trainings.length > 0 && (
+            <Panel title={t("fhd.trainings")} icon={Receipt} count={trainings.length}>
+              <ul className="divide-y rounded-xl border">
+                {trainings.map((ev) =>
+                  row(
+                    ev.id,
+                    <span dir="ltr">{ev.key}</span>,
+                    t("fhd.training_line", { course: t(`train.course.${ev.course}` as "train.course.ind"), date: hrDate(ev.at, locale), n: ev.count, amount: hrMoney(ev.amount) }),
+                    <Button size="sm" disabled={busy} onClick={() => open({ kind: "training", ev })}>
+                      {t("fhd.pay_out")}
+                    </Button>
+                  )
+                )}
+              </ul>
+            </Panel>
+          )}
+
           <Panel title={t("fhd.settlements")} icon={LogOut} count={settlements.length || undefined}>
             {settlements.length === 0 ? (
               empty(t("fhd.settlements_empty"))
@@ -341,6 +363,7 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
               {pending?.kind === "return" && t("fhd.return_desc", { key: pending.p.key })}
               {pending?.kind === "settlement" && `${empNo(pending.st.no)} · ${hrMoney(pending.st.net)}`}
               {pending?.kind === "gosi" && `${pending.p.key} · ${hrMoney(gosiAmount(pending.p))}`}
+              {pending?.kind === "training" && `${t(`train.course.${pending.ev.course}` as "train.course.ind")} · ${hrMoney(pending.ev.amount)}`}
               {pending?.kind === "fee" &&`${empNo(pending.ev.employeeNo)} · ${t(`doc.${pending.ev.doc}` as "doc.iqama")} · ${hrMoney(pending.ev.amount)}`}
             </DialogDescription>
           </DialogHeader>

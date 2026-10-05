@@ -60,6 +60,7 @@ import { NewLetterDialog } from "./HrLetterDialogs"
 import { STATUS_TONE } from "./HrPeopleView"
 import { useHrViolations } from "./HrViolationList"
 import { HrMyAttendance } from "./HrMyAttendance"
+import { HrMyGrowth } from "./HrMyGrowth"
 import { HrMyDocs } from "./HrMyDocs"
 import { HrMyHome } from "./HrMyHome"
 import { HrMyPay } from "./HrMyPay"
@@ -227,10 +228,12 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
       />
 
       {seg === "home" && <HrMyHome ctx={ctxData} attention={attention} />}
+      {seg === "home" && <HrMyGrowth ctx={ctxData} part="review" />}
       {seg === "requests" && <HrMyRequests ctx={ctxData} />}
       {seg === "leave" && <HrMyAttendance ctx={ctxData} />}
       {seg === "pay" && <HrMyPay ctx={ctxData} />}
       {seg === "docs" && <HrMyDocs ctx={ctxData} />}
+      {seg === "docs" && <HrMyGrowth ctx={ctxData} part="certs" />}
 
       {letter && <NewLetterDialog access={access} actor={actor} emp={emp} pay={pay} onClose={() => setLetter(false)} />}
       {asking && (

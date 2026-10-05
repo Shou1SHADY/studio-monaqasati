@@ -72,6 +72,7 @@ import { EmployeeActionDialog, type EmployeeAction } from "./EmployeeActionDialo
 import { StartExitDialog } from "./HrExitPanel"
 import { HrFileAttLeave } from "./HrFileAttLeave"
 import { HrFileDocs } from "./HrFileDocs"
+import { HrFileGrowth } from "./HrFileGrowth"
 import { HrFileLog } from "./HrFileLog"
 import { HrFileOverview } from "./HrFileOverview"
 import { HrFilePay } from "./HrFilePay"
@@ -366,7 +367,9 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
       <SegmentedNav segments={segments} active={seg} onSelect={(s) => setSeg(s as Seg)} ariaLabel={t("file.segments")} />
 
       {seg === "ov" && <HrFileOverview v={view} />}
+      {seg === "ov" && <HrFileGrowth v={view} part="perf" />}
       {seg === "docs" && <HrFileDocs v={view} />}
+      {seg === "docs" && <HrFileGrowth v={view} part="certs" />}
       {seg === "att" && <HrFileAttLeave v={view} />}
       {seg === "pay" && money && <HrFilePay v={view} companyCost={companyCost} employerGosi={employerGosi} />}
       {seg === "log" && <HrFileLog v={view} onRecordViolation={() => setRecording(true)} />}

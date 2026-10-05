@@ -15,12 +15,21 @@ import { hrTabCounts } from "@/lib/hr/today"
 
 export type TabCounts = Partial<Record<HrTab, { count: number; urgent?: boolean }>>
 
+/** The growth tab's number (the prototype's grow count): the HR manager's reviews awaiting approval — else the
+ * rater's workers still to rate; red when on-duty people lack a valid certificate. */
+export function withGrowthCount(counts: TabCounts, items: ReadonlyArray<{ kind: string; params: Record<string, string | number>; severity: string }>): TabCounts {
+  const row = items.find((x) => x.kind === "perf_pending") ?? items.find((x) => x.kind === "perf_rate")
+  const urgent = items.some((x) => (x.kind === "train_gaps" || x.kind === "train_gaps_mine") && x.severity === "red")
+  if (!row && !urgent) return counts
+  return { ...counts, perf: { count: Number(row?.params.count ?? 0), urgent } }
+}
+
 export function useHrTodayCounts(access: HrAccess): { counts: TabCounts; govHeld: boolean | undefined } {
   const today = todayDay()
   const d = useHrTodayDecisions(access, today)
   return useMemo(
     () => ({
-      counts: hrTabCounts({ ctx: access.ctx, items: d.items, decisions: d.count, urgent: d.urgent, employees: d.world.employees, manpower: d.world.manpower, payrolls: d.world.payrolls, requests: d.world.requests }),
+      counts: withGrowthCount(hrTabCounts({ ctx: access.ctx, items: d.items, decisions: d.count, urgent: d.urgent, employees: d.world.employees, manpower: d.world.manpower, payrolls: d.world.payrolls, requests: d.world.requests }), d.items),
       govHeld: d.heldRoles.isLoading || !access.ctx.roles.has("manager") ? undefined : d.heldRoles.held.has("gov"),
     }),
     [access.ctx, d]
