@@ -1,80 +1,129 @@
 "use client"
 
-// My file (PRD ES-00…05, WF-23): every user on the record — the HR manager and
-// management included — sees himself here and only himself: his card (number
-// first), his requests with who holds each now, his leave and attendance, his
-// pay and a payslip for every paid month with each deduction's reason, his
-// documents and details. He never edits his record: a change is a request.
+// My file (PRD ES-00…06, WF-23; the prototype's later VIEWS.me): every user on
+// the record — the HR manager and management included — sees himself here and
+// only himself. The head greets him with his number, trade, place and line
+// manager, four tiles (leave balance with its formula · last salary · the
+// document nearest its end · this month's attendance) and his quick actions,
+// each disabled with its reason. Five segments: Home (needs your attention ·
+// my day · requests in progress · last salary), my requests, attendance and
+// leave, my pay, documents and details. He never edits his record: a change
+// is a request. What he reads of attendance and of an unpaid payroll comes from
+// the projections written for him (lib/hr/me.ts) — never a document that holds
+// other people's facts.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, query, where } from "firebase/firestore"
-import { FileText, HandCoins, Loader2, PencilLine, Plane } from "lucide-react"
+import { CalendarClock, CircleUser, FileText, HandCoins, Loader2, PencilLine, Plane } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Callout } from "@/components/module-ui/Callout"
-import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
-import { Panel } from "@/components/module-ui/Panel"
 import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useEmployeePay, useHrPeople } from "@/hooks/useHrPeople"
 import { useHrRequests } from "@/hooks/useHrRequests"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
+import { usePermissions } from "@/hooks/usePermissions"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { HR_EMPLOYEES, HR_PAYSLIPS } from "@/lib/hr/collections"
-import { docState, DOC_TYPES } from "@/lib/hr/documents"
-import { displayName, probationState, statusOn, type HrEmployee } from "@/lib/hr/employee"
+import { displayName, statusOn, type EmployeePay, type HrEmployee } from "@/lib/hr/employee"
 import type { HrActor } from "@/lib/hr/employee-writes"
-import { gratuity } from "@/lib/hr/eos"
 import { empNo, hrDate, hrMoney, todayDay } from "@/lib/hr/format"
-import { leaveBalance } from "@/lib/hr/leave"
-import { wageOf } from "@/lib/hr/pay"
-import type { PayrollLine, SupplementaryLine } from "@/lib/hr/payroll"
-import { requestNoDisplay, type HrRequest, type HrRequestKind } from "@/lib/hr/requests"
-import { serviceYears } from "@/lib/hr/statutory"
+import {
+  attentionItems,
+  isAssumed,
+  myActions,
+  myDocuments,
+  myLeaveFacts,
+  myLineManager,
+  monthName,
+  mySlips,
+  nearestOf,
+  onLeaveToday,
+  roleHolders,
+  staffRoles,
+  type HolderKey,
+  type MemberLite,
+  type MyAction,
+  type MyAttendance,
+  type MyDoc,
+  type MyLeaveFacts,
+  type MySlip,
+  type PayslipDoc,
+  type SlipProjection,
+} from "@/lib/hr/me"
+import { requestHolder, type DataField, type HrRequest, type HrRequestKind } from "@/lib/hr/requests"
+import type { HrSite } from "@/lib/hr/sites"
 import { cn } from "@/lib/utils"
-import { HrViolationList, useHrViolations } from "./HrViolationList"
 import { NewLetterDialog } from "./HrLetterDialogs"
-import { HrLettersPanel } from "./HrLetters"
-import { DOC_TONE, STATUS_TONE } from "./HrPeopleView"
-import { CancelOwnRequest, REQUEST_TONE } from "./HrRequestList"
+import { STATUS_TONE } from "./HrPeopleView"
+import { useHrViolations } from "./HrViolationList"
+import { HrMyAttendance } from "./HrMyAttendance"
+import { HrMyDocs } from "./HrMyDocs"
+import { HrMyHome } from "./HrMyHome"
+import { HrMyPay } from "./HrMyPay"
+import { HrMyRequests } from "./HrMyRequests"
 import { NewRequestDialog } from "./NewRequestDialog"
+import type { HrViolation } from "@/lib/hr/violations"
 
-type Seg = "home" | "requests" | "leave" | "pay" | "docs"
-interface Payslip {
-  id: string
-  key: string
-  month: string
-  kind: "main" | "supplementary"
-  line: PayrollLine | SupplementaryLine
-  paidOn: string
+export type MySeg = "home" | "requests" | "leave" | "pay" | "docs"
+
+/** Everything the segments read — one load, one shape. */
+export interface MyFileCtx {
+  access: HrAccess
+  actor: HrActor
+  emp: HrEmployee
+  /** His pay as in force today, with the projected payroll line (`slip`). Null when none is recorded. */
+  pay: (EmployeePay & { slip?: SlipProjection | null }) | null
+  payKnown: boolean
+  site: HrSite | null
+  siteName: (id: string | null | undefined) => string | null
+  requests: HrRequest[]
+  violations: HrViolation[]
+  slips: MySlip[]
+  att: MyAttendance | null
+  today: string
+  leave: MyLeaveFacts
+  docs: MyDoc[]
+  holders: Record<HolderKey, string | null>
+  lineManager: { userId: string | null; name: string | null } | null
+  memberName: (uid: string | null | undefined) => string | null
+  /** Who holds a request now, by name (ES-02). */
+  holderOf: (r: HrRequest) => string | null
+  assumed: boolean
+  onLeave: boolean
+  ask: (kind: HrRequestKind | "letter", field?: DataField) => void
+  go: (seg: MySeg) => void
 }
+
+const ACTION_ICON: Record<MyAction, typeof Plane> = { leave: Plane, advance: HandCoins, letter: FileText, attfix: CalendarClock, data: PencilLine }
 
 export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }) {
   const t = useTranslations("Portal.HR")
-  const locale = useLocale()
   const firestore = useFirestore()
   const today = todayDay()
   const id = access.ctx.employeeId
   const empRef = useMemoFirebase(() => (firestore && id ? doc(firestore, HR_EMPLOYEES, id) : null), [firestore, id])
   const { data: empData, isLoading } = useDoc(empRef)
-  const emp = (empData as unknown as HrEmployee | null) ?? null
-  const { pay } = useEmployeePay(id, Boolean(id))
-  const { sites, siteName } = useHrPeople(access, false)
+  const emp = (empData as unknown as (HrEmployee & { att?: MyAttendance | null }) | null) ?? null
+  const { pay: payNow, isLoading: payLoading } = useEmployeePay(id, Boolean(id))
+  const pay = payNow as MyFileCtx["pay"]
+  // Staff read their colleagues (the line manager named on the card); an employee reads only himself.
+  const { employees: people, sites, siteName } = useHrPeople(access, access.ctx.roles.size > 0)
   const { requests: all } = useHrRequests(access)
   const requests = useMemo(() => all.filter((r) => r.employeeId === id), [all, id])
   const violations = useHrViolations(access).filter((v) => v.employeeId === id)
   const { orgMembers } = useOrgMembers(access.orgId)
+  const { groups } = usePermissions()
   const psQ = useMemoFirebase(
     () => (firestore && access.orgId && access.ctx.uid ? query(collection(firestore, HR_PAYSLIPS), where("organizationId", "==", access.orgId), where("employeeUserId", "==", access.ctx.uid)) : null),
     [firestore, access.orgId, access.ctx.uid]
   )
   const { data: psData } = useCollection(psQ)
-  const payslips = ((psData ?? []) as unknown as Payslip[]).sort((a, b) => b.key.localeCompare(a.key))
-  const [seg, setSeg] = useState<Seg>("home")
-  const [newReq, setNewReq] = useState<HrRequestKind | null>(null)
-  const [openSlip, setOpenSlip] = useState<string | null>(null)
-  const [asking, setAsking] = useState(false)
+  const [seg, setSeg] = useState<MySeg>("home")
+  const [asking, setAsking] = useState<{ kind: HrRequestKind; field?: DataField } | null>(null)
+  const [letter, setLetter] = useState(false)
 
   if (isLoading) {
     return (
@@ -85,270 +134,184 @@ export function HrMyFile({ access, actor }: { access: HrAccess; actor: HrActor }
   }
   if (!emp || !emp.names) return <Callout tone="info">{t("me.no_record")}</Callout>
 
-  const balance = leaveBalance(emp.join, today, emp.leaveTaken ?? 0, emp.openingLeave ?? 0)
-  const wage = pay ? wageOf(pay) : 0
-  const years = serviceYears(emp.join, today)
-  const memberName = (uid?: string | null) => {
-    const m = orgMembers.find((x) => x.id === uid)
-    return (m?.name as string) || (m?.email as string) || null
+  const members = orgMembers as unknown as MemberLite[]
+  const memberName = (uid: string | null | undefined) => {
+    const m = members.find((x) => x.id === uid)
+    return m ? m.name || m.email || null : null
   }
-  /** ES-02 — who holds the request now, by name where there is one. */
-  const holder = (r: HrRequest) => {
-    if (r.state === "pending" && r.kind === "leave" && r.lineManagerUserId) return memberName(r.lineManagerUserId) ?? t("me.holder.line_manager")
-    if (r.state === "pending" || r.state === "endorsed") return t(r.deciderLevel === "management" ? "me.holder.management" : "me.holder.hr")
-    if (r.state === "finance") return t("me.holder.finance")
-    return null
+  const site = sites.find((s) => s.id === emp.siteId) ?? null
+  const holders = roleHolders(members, groups as unknown as Array<{ id: string; permissions?: string[] }>)
+  const lineManager = myLineManager(emp, site, people, members)
+  const holderOf = (r: HrRequest) => {
+    const h = requestHolder(r)
+    if (!h) return null
+    if (h.role === "line_manager" || h.role === "supervisor") return memberName(h.userId) ?? t(`me.holder.${h.role}`)
+    const name = h.role === "hr" ? holders.manager : h.role === "management" ? holders.management : holders.finance
+    const who = name ?? t(`me.holder.${h.role}`)
+    return r.kind === "data" && h.role === "hr" ? t("me.holder.after_document", { name: who }) : who
   }
-  const site = sites.find((s) => s.id === emp.siteId)
+  const ctxData: MyFileCtx = {
+    access,
+    actor,
+    emp,
+    pay,
+    payKnown: !payLoading,
+    site,
+    siteName,
+    requests,
+    violations,
+    slips: mySlips((psData ?? []) as unknown as PayslipDoc[], pay?.slip ?? null, pay?.ibanState ?? null),
+    att: emp.att ?? null,
+    today,
+    leave: myLeaveFacts(emp, today),
+    docs: myDocuments(emp, today, access.settings.policies.renewWindowDays),
+    holders,
+    lineManager,
+    memberName,
+    holderOf,
+    assumed: isAssumed(emp.siteId, site),
+    onLeave: onLeaveToday(requests, today),
+    ask: (kind, field) => (kind === "letter" ? setLetter(true) : setAsking({ kind, field })),
+    go: setSeg,
+  }
+  const attention = attentionItems({
+    emp,
+    pay,
+    payKnown: !payLoading,
+    violations,
+    requests,
+    today,
+    renewWindowDays: access.settings.policies.renewWindowDays,
+  })
+  const pending = requests.filter((r) => ["pending", "endorsed", "finance"].includes(r.state)).length
+  const actions = myActions({ emp, pay, requests, today })
+  const roles = staffRoles(access.ctx.roles)
 
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border bg-card p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-md bg-module/10 px-2 py-0.5 text-sm font-black tabular-nums text-module" dir="ltr">
-            {empNo(emp.no)}
-          </span>
-          <h2 className="text-lg font-black" dir="auto">
-            {displayName(emp, locale)}
-          </h2>
-          <StatusPill tone={STATUS_TONE[statusOn(emp, today)]}>{t(`status.${statusOn(emp, today)}`)}</StatusPill>
+      <MyHero ctx={ctxData} roles={roles.map((r) => t(`me.role.${r}`))} />
+      {actions.length > 0 && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5" role="group" aria-label={t("me.actions")}>
+          {actions.map((a) => {
+            const Icon = ACTION_ICON[a.key]
+            return (
+              <Button
+                key={a.key}
+                variant="outline"
+                className="h-auto min-h-11 justify-start gap-2 whitespace-normal py-2 text-start"
+                disabled={a.blocked !== null}
+                title={a.blocked ? t(`me.act_block.${a.blocked}`) : undefined}
+                onClick={() => ctxData.ask(a.key === "letter" ? "letter" : (a.key as HrRequestKind))}
+              >
+                <Icon size={16} className="shrink-0 text-module" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block font-semibold">{t(`me.act.${a.key}`)}</span>
+                  {a.blocked && <span className="block text-[11px] font-normal text-muted-foreground">{t(`me.act_block.${a.blocked}`)}</span>}
+                </span>
+              </Button>
+            )
+          })}
         </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {t(`trade.${emp.trade}` as "trade.mason")} · {siteName(emp.siteId) ?? t("sites.unassigned")}
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => setNewReq("leave")}>
-            <Plane size={14} className="me-1.5" aria-hidden="true" />
-            {t("req.new_leave")}
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setNewReq("advance")}>
-            <HandCoins size={14} className="me-1.5" aria-hidden="true" />
-            {t("req.new_advance")}
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setNewReq("data")}>
-            <PencilLine size={14} className="me-1.5" aria-hidden="true" />
-            {t("req.new_data")}
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setAsking(true)}>
-            <FileText size={14} className="me-1.5" aria-hidden="true" />
-            {t("letter.request")}
-          </Button>
-        </div>
-      </div>
+      )}
 
       <SegmentedNav
         segments={(["home", "requests", "leave", "pay", "docs"] as const).map((s) => ({
           id: s,
           label: t(`me.seg.${s}`),
-          count: s === "requests" ? requests.filter((r) => ["pending", "endorsed", "finance"].includes(r.state)).length || undefined : undefined,
-          tone: s === "requests" ? ("warn" as const) : undefined,
+          count: s === "home" ? attention.length || undefined : s === "requests" ? pending || undefined : undefined,
+          tone: s === "home" ? (attention.some((a) => a.tone === "red") ? ("bad" as const) : ("warn" as const)) : s === "requests" ? ("warn" as const) : undefined,
         }))}
         active={seg}
-        onSelect={(s) => setSeg(s as Seg)}
+        onSelect={(s) => setSeg(s as MySeg)}
         ariaLabel={t("me.segments")}
       />
 
-      {seg === "home" && (
-        <Panel title={t("me.card")}>
-          <KeyValueRow label={t("people.col.no")} value={empNo(emp.no)} ltr strong />
-          <KeyValueRow label={t("new.join")} value={hrDate(emp.join, locale)} />
-          <KeyValueRow label={t("file.tile.service")} value={t("file.years", { n: years.toFixed(1) })} />
-          <KeyValueRow label={t("new.contract")} value={emp.contract?.type === "fixed" ? t("file.fixed_until", { date: hrDate(emp.contract.end, locale) }) : t("contract.open")} />
-          <KeyValueRow
-            label={t("file.probation")}
-            value={
-              emp.probation?.decision
-                ? t(`file.probation_${emp.probation.decision}`)
-                : probationState(emp, today) === "lapsed"
-                  ? t("file.probation_lapsed", { date: hrDate(emp.probation?.end, locale) })
-                  : t("file.probation_until", { date: hrDate(emp.probation?.end, locale) })
-            }
-          />
-          <KeyValueRow label={t("me.line_manager")} value={memberName(site?.supervisorUserId) ?? t("me.holder.hr")} />
-          <KeyValueRow label={t("file.tile.leave")} value={t("file.days", { n: balance })} strong />
-          {wage > 0 && (
-            <>
-              <KeyValueRow label={t("me.eos_info")} value={hrMoney(gratuity(wage, emp.join, today, "contract_end"))} ltr />
-              <p className="pt-2 text-[11px] text-muted-foreground">{t("me.eos_note", { resignation: hrMoney(gratuity(wage, emp.join, today, "resignation")) })}</p>
-            </>
-          )}
-        </Panel>
+      {seg === "home" && <HrMyHome ctx={ctxData} attention={attention} />}
+      {seg === "requests" && <HrMyRequests ctx={ctxData} />}
+      {seg === "leave" && <HrMyAttendance ctx={ctxData} />}
+      {seg === "pay" && <HrMyPay ctx={ctxData} />}
+      {seg === "docs" && <HrMyDocs ctx={ctxData} />}
+
+      {letter && <NewLetterDialog access={access} actor={actor} emp={emp} pay={pay} onClose={() => setLetter(false)} />}
+      {asking && (
+        <NewRequestDialog
+          kind={asking.kind}
+          initialField={asking.field}
+          onClose={() => setAsking(null)}
+          access={access}
+          actor={actor}
+          emp={emp}
+          pay={pay}
+          sites={sites}
+          existing={requests}
+          deciders={{ hr: holders.manager, finance: holders.finance, sheet: site?.supervisorUserId ? memberName(site.supervisorUserId) : null }}
+        />
       )}
-
-      {seg === "requests" && (
-        <Panel title={t("req.title")} count={requests.length}>
-          {requests.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">{t("req.none")}</p>
-          ) : (
-            <ul className="divide-y rounded-xl border">
-              {requests.map((r) => (
-                <li key={r.id} className="space-y-0.5 px-3 py-2.5">
-                  <p className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="font-bold tabular-nums" dir="ltr">
-                      {requestNoDisplay(r.no, locale)}
-                    </span>
-                    <span>{t(`req.kind.${r.kind}`)}</span>
-                    <StatusPill tone={REQUEST_TONE[r.state]}>{t(`req.state.${r.state}`)}</StatusPill>
-                    <span className="ms-auto">
-                      <CancelOwnRequest access={access} r={r} actor={actor} />
-                    </span>
-                  </p>
-                  {holder(r) && <p className="text-xs text-muted-foreground">{t("me.held_by", { name: holder(r)! })}</p>}
-                  {(r.decision?.note || r.finance?.note || r.cancel?.note) && (
-                    <p className="text-xs text-muted-foreground" dir="auto">
-                      {t("me.reason", { text: r.finance?.note || r.cancel?.note || r.decision?.note || "" })}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Panel>
-      )}
-
-      {/* EM-08 — his letters: status, the reason when declined, the issued letter to view and print. */}
-      {seg === "requests" && <HrLettersPanel access={access} actor={actor} emp={emp} pay={pay} />}
-
-      {seg === "leave" && (
-        <div className="space-y-4">
-          <Panel title={t("file.seg.leave")}>
-            <KeyValueRow label={t("file.balance")} value={t("file.days", { n: balance })} strong />
-            <KeyValueRow label={t("file.leave_taken_row")} value={t("file.days", { n: emp.leaveTaken ?? 0 })} />
-            <KeyValueRow label={t("file.sick_used")} value={t("file.days", { n: emp.sick?.days ?? 0 })} />
-          </Panel>
-          <Panel title={t("me.month_by_month")}>
-            {payslips.filter((p) => p.kind === "main").length === 0 ? (
-              <p className="py-3 text-sm text-muted-foreground">{t("me.no_payslips")}</p>
-            ) : (
-              payslips
-                .filter((p) => p.kind === "main")
-                .map((p) => {
-                  const l = p.line as PayrollLine
-                  return <KeyValueRow key={p.id} label={p.month} value={t("me.att_line", { absent: l.attendance.absent, sick: l.attendance.sick, ot: l.attendance.overtimeHours })} />
-                })
-            )}
-          </Panel>
-        </div>
-      )}
-
-      {seg === "pay" && (
-        <div className="space-y-4">
-          <Panel title={t("file.seg.pay")}>
-            {pay ? (
-              <>
-                <KeyValueRow label={t("pay.basic")} value={hrMoney(pay.basic)} ltr />
-                <KeyValueRow label={t("pay.housing")} value={hrMoney(pay.housing)} ltr />
-                <KeyValueRow label={t("pay.transport")} value={hrMoney(pay.transport)} ltr />
-                <KeyValueRow label={t("pay.wage")} value={hrMoney(wage)} ltr strong />
-                <KeyValueRow label={t("file.iban")} value={pay.iban || "—"} ltr />
-                {pay.advance && pay.advance.balance > 0 && <KeyValueRow label={t("file.advance")} value={hrMoney(pay.advance.balance)} ltr />}
-              </>
-            ) : (
-              <p className="py-3 text-sm text-muted-foreground">{t("file.no_pay")}</p>
-            )}
-          </Panel>
-          <Panel title={t("me.payslips")} icon={FileText} count={payslips.length}>
-            {payslips.length === 0 ? (
-              <p className="py-3 text-sm text-muted-foreground">{t("me.no_payslips")}</p>
-            ) : (
-              <ul className="divide-y rounded-xl border">
-                {payslips.map((p) => (
-                  <li key={p.id}>
-                    <button
-                      type="button"
-                      className="flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-start text-sm hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-expanded={openSlip === p.id}
-                      onClick={() => setOpenSlip(openSlip === p.id ? null : p.id)}
-                    >
-                      <span className="font-bold" dir="ltr">
-                        {p.key}
-                      </span>
-                      <span className="text-xs text-muted-foreground">{t("me.paid_on", { date: hrDate(p.paidOn, locale) })}</span>
-                      <span className="font-black tabular-nums" dir="ltr">
-                        {hrMoney(p.line.net)}
-                      </span>
-                    </button>
-                    {openSlip === p.id && <PayslipBody slip={p} />}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
-        </div>
-      )}
-
-      {seg === "docs" && (
-        <div className="space-y-4">
-          <Panel title={t("file.seg.docs")}>
-            {DOC_TYPES.filter((d) => d !== "iqama" || emp.nationality !== "sa").map((d) => {
-              const exp = emp.docs?.[d]
-              const st = docState(exp, today, access.settings.policies.renewWindowDays)
-              return (
-                <KeyValueRow
-                  key={d}
-                  label={t(`doc.${d}`)}
-                  value={
-                    <span className="inline-flex items-center gap-2">
-                      {exp && <span className="text-muted-foreground">{hrDate(exp, locale)}</span>}
-                      <StatusPill tone={DOC_TONE[st]}>{t(`doc_state.${st}`)}</StatusPill>
-                    </span>
-                  }
-                />
-              )
-            })}
-          </Panel>
-          <Panel title={t("me.details")}>
-            <KeyValueRow label={t("new.id_no")} value={emp.idNo || "—"} ltr />
-            {(["mobile", "address", "emergency"] as const).map((f) => (
-              <KeyValueRow key={f} label={t(`data_field.${f}`)} value={emp.contact?.[f] || "—"} />
-            ))}
-            <p className="pt-2 text-[11px] text-muted-foreground">{t("me.details_note")}</p>
-          </Panel>
-          <Panel title={t("vio.title")} count={violations.length}>
-            <HrViolationList access={access} actor={actor} violations={violations} all={violations} showEmployee={false} empty={t("vio.none")} />
-          </Panel>
-        </div>
-      )}
-
-      {asking && <NewLetterDialog access={access} actor={actor} emp={emp} pay={pay} onClose={() => setAsking(false)} />}
-      {newReq && <NewRequestDialog kind={newReq} onClose={() => setNewReq(null)} access={access} actor={actor} emp={emp} pay={pay} sites={sites} existing={requests} />}
     </div>
   )
 }
 
-/** ES-04 — every deduction with its reason. */
-function PayslipBody({ slip }: { slip: Payslip }) {
+/** «mhero» — the greeting, his number · trade · place · manager, the staff chip, and the four tiles. */
+function MyHero({ ctx, roles }: { ctx: MyFileCtx; roles: string[] }) {
   const t = useTranslations("Portal.HR")
-  const l = slip.line
-  if (slip.kind === "supplementary") {
-    const s = l as SupplementaryLine
-    return (
-      <div className="border-t bg-muted/20 px-3 py-2">
-        {s.retro !== 0 && <KeyValueRow label={t("me.slip.retro")} value={hrMoney(s.retro)} ltr />}
-        {(s.commission ?? 0) !== 0 && <KeyValueRow label={t("me.slip.commission")} value={hrMoney(s.commission)} ltr />}
-        {(s.refunds ?? 0) !== 0 && <KeyValueRow label={t("me.slip.refund")} value={hrMoney(s.refunds)} ltr />}
-        <KeyValueRow label={t("me.slip.net")} value={hrMoney(s.net)} ltr strong />
-      </div>
-    )
-  }
-  const p = l as PayrollLine
-  const row = (label: string, v: number, minus = false, strong = false) => (v ? <KeyValueRow label={label} value={`${minus ? "− " : ""}${hrMoney(v)}`} ltr strong={strong} /> : null)
-  return (
-    <div className={cn("space-y-0 border-t bg-muted/20 px-3 py-2")}>
-      {row(t("me.slip.month_wage", { days: p.days }), p.monthWage)}
-      {row(t("me.slip.absence", { days: p.attendance.absent }), p.absenceDeduction, true)}
-      {row(t("me.slip.overtime", { hours: p.attendance.overtimeHours }), p.overtime)}
-      {row(t("me.slip.commission"), p.commission)}
-      {row(t("me.slip.gross"), p.gross, false, true)}
-      {row(t("me.slip.gosi"), p.gosiEmployee, true)}
-      {row(t("me.slip.sick", { q: p.reasons?.sickThreeQuarters ?? 0, zero: p.reasons?.sickUnpaid ?? 0 }), p.sickDeduction, true)}
-      {row(t("me.slip.unpaid", { days: p.reasons?.unpaidDays ?? 0 }), p.unpaidDeduction, true)}
-      {(p.reasons?.penalties ?? []).map((x, i) => (
-        <KeyValueRow key={i} label={t("me.slip.penalty", { code: t(`violation.${x.code}` as "violation.late15"), on: x.on })} value={`− ${hrMoney(x.deducted)}`} ltr />
-      ))}
-      {!p.reasons?.penalties?.length && row(t("me.slip.penalties"), p.penalties, true)}
-      {row(t("me.slip.advance"), p.advance, true)}
-      {row(t("me.slip.net"), p.net, false, true)}
+  const locale = useLocale()
+  const { emp, today, leave } = ctx
+  const status = statusOn(emp, today)
+  const first = displayName(emp, locale).replace(/^(م\.|أ\.|د\.)\s*/, "").split(" ")[0]
+  const lastSlip = ctx.slips.find((s) => s.kind === "main") ?? null
+  const nearest = nearestOf(ctx.docs)
+  const month = today.slice(0, 7)
+  const cur = ctx.att?.m?.[month] ?? null
+  const tile = (label: string, value: React.ReactNode, sub?: React.ReactNode, bad = false) => (
+    <div className="min-w-0 rounded-xl border bg-card p-3 sm:p-4">
+      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+      <div className={cn("mt-1 truncate text-lg font-black tabular-nums sm:text-xl", bad ? "text-destructive" : "text-foreground")}>{value}</div>
+      {sub && <div className="mt-0.5 truncate text-xs text-muted-foreground">{sub}</div>}
     </div>
+  )
+  return (
+    <section className="space-y-3 rounded-xl border bg-card p-4" aria-labelledby="me-hello">
+      <div className="flex flex-wrap items-start gap-3">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-module/10 text-module" aria-hidden="true">
+          <CircleUser size={26} />
+        </span>
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 id="me-hello" className="text-lg font-black" dir="auto">
+              {t("me.hello", { name: first })}
+            </h2>
+            <StatusPill tone={STATUS_TONE[status]}>{t(`status.${status}`)}</StatusPill>
+          </div>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+            <span className="font-bold tabular-nums text-module" dir="ltr">
+              #{empNo(emp.no)}
+            </span>
+            <span>· {t(`trade.${emp.trade}` as "trade.mason")}</span>
+            <span>· {ctx.siteName(emp.siteId) ?? t("sites.unassigned")}</span>
+            <span>· {t("me.manager_line", { name: ctx.lineManager?.name ?? t("me.holder.management") })}</span>
+          </p>
+          {roles.length > 0 && <StatusPill tone="info">{t("me.staff_chip", { roles: roles.join("، ") })}</StatusPill>}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {tile(t("me.tile.leave"), t("file.days", { n: leave.balance }), t("me.tile.leave_sub", { accrued: leave.accrued, taken: leave.taken }), leave.balance < 0)}
+        {tile(
+          t("me.tile.salary"),
+          lastSlip ? <span dir="ltr">{hrMoney(lastSlip.line.net)}</span> : "—",
+          lastSlip ? (lastSlip.state === "paid" ? t("me.tile.salary_paid", { month: monthName(lastSlip.month, locale), date: hrDate(lastSlip.paidOn, locale) }) : t(`me.slip_state.${lastSlip.state}`)) : null
+        )}
+        {tile(
+          t("me.tile.document"),
+          nearest ? `${t(`doc.${nearest.type}`)}` : "—",
+          nearest ? `${hrDate(nearest.expiry, locale)} · ${nearest.left != null && nearest.left < 0 ? t("me.expired_ago", { n: -nearest.left }) : t("file.days_left", { n: nearest.left ?? 0 })}` : null,
+          Boolean(nearest && nearest.left != null && nearest.left < 0)
+        )}
+        {tile(
+          t("me.tile.attendance", { month: monthName(month, locale) }),
+          ctx.assumed && !cur ? t("file.att_assumed_short") : t("file.days", { n: (cur?.present ?? 0) + (cur?.declared ?? 0) }),
+          t("me.tile.attendance_sub", { absent: cur?.absent ?? 0, ot: cur?.ot ?? 0 })
+        )}
+      </div>
+    </section>
   )
 }
