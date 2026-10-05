@@ -179,7 +179,7 @@ describe("the line manager's probation view (EM-05) — attached, never blocking
     expect(emp("new").probationView).toMatchObject({ by: "bossUser", rating: 2, recommend: "extend", note: "slow start" })
     // Its own field: the probation itself is untouched (the rules let him write probationView only).
     expect(emp("new").probation).toEqual(onProbation.probation)
-    expect(listCollection("users/hrm/notifications").map((n) => (n as { type: string }).type)).toEqual(["hr_probation_view"])
+    expect(listCollection<{ type: string }>("users/hrm/notifications").map((n) => n.type)).toEqual(["hr_probation_view"])
     // A line manager with no HR role writes no log entry (the rules refuse it) — the view names him.
     expect(logOf("new")).toEqual([])
   })
@@ -295,7 +295,7 @@ describe("a move (AS-01, AS-03, DC-06)", () => {
     expect(readDoc<{ state: string }>("hrAssignFixes/f1")?.state).toBe("done")
     expect(readDoc<{ state: string }>("hrAssignFixes/f2")?.state).toBe("declined")
     expect(logOf("w")[0]).toMatchObject({ kind: "moved", params: { to: "s2", mr: "mr1" } })
-    expect(listCollection("users/pmUser/notifications").map((n) => (n as { type: string }).type)).toEqual(["hr_assigned_to_project"])
+    expect(listCollection<{ type: string }>("users/pmUser/notifications").map((n) => n.type)).toEqual(["hr_assigned_to_project"])
   })
 
   it("dated ahead: he keeps his place until the day, then the move applies", async () => {
