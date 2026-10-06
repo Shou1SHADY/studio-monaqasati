@@ -13,6 +13,7 @@ import { useMemo } from "react"
 import { collection, query, where } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useCompanyNamesForMembers } from "@/hooks/useActiveCompanyName"
+import { COMPANY_PUBLIC_FACTS, factsFromProfile, type CompanyPublicFacts } from "@/lib/company-public-facts"
 import { useIdentityOverlays } from "@/hooks/useIdentityOverlays"
 import { stripIdentityFields } from "@/lib/identity-fields"
 import { SUPPLIER_RECORDS, isInternationalSupplier, starAverage, type SupplierRecord } from "@/lib/procurement/supplier-file"
@@ -87,7 +88,9 @@ export interface PlatformSupplier {
   international: boolean
   since: string | null
   platformVerified: boolean
+  /** The number itself, only while the old profile field exists; screens that show it read the identity document (useSupplierVat). */
   profileVat: string | null
+  profileHasVat: boolean
   profileCrExpiry: string | null
   reviews: PlatformReview[]
   rating: { avg: number; n: number } | null
@@ -126,6 +129,8 @@ export function useSupplierDirectory(orgId: string, favoriteIds: string[], offer
   const { data: linkDocs, isLoading: linksLoading } = useCollection<Omit<LinkDoc, "id">>(linksQ)
   const { data: reviewDocs } = useCollection<Omit<ReviewDoc, "id">>(reviewsQ)
   const { data: recordDocs } = useCollection<Omit<SupplierRecord, "id">>(recordsQ)
+  const factsQ = useMemoFirebase(() => (firestore ? collection(firestore, COMPANY_PUBLIC_FACTS) : null), [firestore])
+  const { data: factDocs } = useCollection<CompanyPublicFacts>(factsQ)
 
   const users = useMemo(() => (userDocs || []) as SupplierUserDoc[], [userDocs])
   const companyNames = useCompanyNamesForMembers(users)
@@ -149,6 +154,8 @@ export function useSupplierDirectory(orgId: string, favoriteIds: string[], offer
     for (const l of (linkDocs || []) as LinkDoc[]) if (l.status === "active" && l.supplierOrgId) activeLinks.set(l.supplierOrgId, l)
     const records = new Map<string, SupplierRecord>()
     for (const r of (recordDocs || []) as SupplierRecord[]) if (r.supplierOrgId) records.set(r.supplierOrgId, r)
+    const factsByOrg = new Map<string, CompanyPublicFacts>()
+    for (const f of (factDocs || []) as Array<CompanyPublicFacts & { id: string }>) factsByOrg.set(f.id, f)
     const implicitFav = new Set(offers.filter((o) => o.status === ACCEPTED).flatMap((o) => [o.supplierId, o.organizationId]).filter((x): x is string => Boolean(x)))
     const explicitFav = new Set(favoriteIds)
 
@@ -163,6 +170,7 @@ export function useSupplierDirectory(orgId: string, favoriteIds: string[], offer
       const isExplicitFavorite = ids.some((id) => explicitFav.has(id))
       const isFavorite = isExplicitFavorite || ids.some((id) => implicitFav.has(id))
       const record = records.get(org) || null
+      const facts = factsFromProfile({ taxNumber: pick("taxNumber"), legalDocuments: owner.legalDocuments }, factsByOrg.get(org))
       return {
         orgId: org,
         memberIds: members.map((m) => m.id),
@@ -178,8 +186,9 @@ export function useSupplierDirectory(orgId: string, favoriteIds: string[], offer
         international: isInternationalSupplier({ phone: str(pick("phone")), record, platformOrigin: raw.supplierOrigin ?? null }),
         since: asDay(raw.createdAt),
         platformVerified: Boolean(owner.isVerified),
-        profileVat: str(pick("taxNumber")),
-        profileCrExpiry: asDay(owner.legalDocuments?.cr?.expiryDate),
+        profileVat: str(facts.vat),
+        profileHasVat: facts.hasVat,
+        profileCrExpiry: asDay(facts.crExpiry),
         reviews,
         rating: starAverage(reviews.map((r) => r.rating)),
         isMine: Boolean(link) || isFavorite,
@@ -190,7 +199,7 @@ export function useSupplierDirectory(orgId: string, favoriteIds: string[], offer
         record,
       }
     })
-  }, [users, reviewDocs, linkDocs, recordDocs, offers, favoriteIds, overlays, companyNames])
+  }, [users, reviewDocs, linkDocs, recordDocs, factDocs, offers, favoriteIds, overlays, companyNames])
 
   return { suppliers, loading: usersLoading || linksLoading }
 }

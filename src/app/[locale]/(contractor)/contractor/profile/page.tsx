@@ -1,6 +1,9 @@
 
 "use client"
 
+import { PrintProfileCard } from "@/components/PrintProfileCard"
+import type { DocumentData, UpdateData } from "firebase/firestore"
+import { mirrorCompanyIdentity } from "@/lib/company-identity-writes"
 import { useState, useEffect } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
@@ -150,6 +153,12 @@ export default function ContractorProfilePage() {
     }
   }, [userData, user])
 
+  const saveIdentity = async (payload: Record<string, unknown>) => {
+    if (!identityWriteRef || !firestore) return
+    await updateDoc(identityWriteRef, payload as UpdateData<DocumentData>)
+    void mirrorCompanyIdentity(firestore, organizationId, payload)
+  }
+
   const handleSave = async () => {
     if (!user || !firestore || !identityWriteRef) return
     setIsLoading(true)
@@ -164,7 +173,7 @@ export default function ContractorProfilePage() {
     )
 
     try {
-      await updateDoc(identityWriteRef, {
+      await saveIdentity({
         name: profile.name,
         companyName: profile.name,
         crNumber: profile.crNumber,
@@ -225,7 +234,7 @@ export default function ContractorProfilePage() {
       // Auto-save to firestore
       if (user && firestore && identityWriteRef) {
         try {
-          await updateDoc(identityWriteRef, {
+          await saveIdentity({
             certificates: updatedCerts
           })
         } catch (err) {
@@ -251,7 +260,7 @@ export default function ContractorProfilePage() {
 
     if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(identityWriteRef, {
+        await saveIdentity({
           certificates: updatedCerts
         })
 
@@ -296,7 +305,7 @@ export default function ContractorProfilePage() {
       // Auto-save to firestore
       if (user && firestore && identityWriteRef) {
         try {
-          await updateDoc(identityWriteRef, {
+          await saveIdentity({
             legalDocuments: updatedDocs
           })
         } catch (err) {
@@ -328,7 +337,7 @@ export default function ContractorProfilePage() {
     // Auto-save to firestore
     if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(identityWriteRef, {
+        await saveIdentity({
           legalDocuments: updatedDocs
         })
       } catch (err) {
@@ -701,6 +710,9 @@ export default function ContractorProfilePage() {
                 </div>
               </CardContent>
             </Card>
+            <div className="mt-6">
+              <PrintProfileCard defaults={{ crNumber: profile.crNumber, taxNumber: profile.taxNumber }} />
+            </div>
           </TabsContent>
 
           {/* CERTIFICATES TAB */}

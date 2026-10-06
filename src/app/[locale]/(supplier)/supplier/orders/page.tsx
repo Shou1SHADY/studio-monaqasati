@@ -32,6 +32,8 @@ import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { cn } from "@/lib/utils"
 import { sarLtr } from "@/lib/riyal"
+import { DocumentThread } from "@/components/documents/DocumentThread"
+import { procLinks } from "@/lib/procurement/events"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { isLumpSum, poStatus, poValue } from "@/lib/procurement/po"
 import { PURCHASE_ORDERS, QUALITY_PAPERS, type PoStatus, type PurchaseOrder, type QualityPaper } from "@/lib/procurement/types"
@@ -889,6 +891,14 @@ const PoOrderCard = forwardRef<HTMLDivElement, PoOrderCardProps>(function PoOrde
                 </ul>
               )}
             </div>
+          </div>
+          <div className="px-4 pb-4">
+            <DocumentThread
+              portal="supplier"
+              target={{ kind: "po", id: po.id, label: displayPoNumber(po.docNumber, locale), href: procLinks.order(po.id), supplierHref: procLinks.supplierOrder(po.id) }}
+              parties={{ buyerOrgId: po.organizationId, supplierOrgId: po.supplierOrgId }}
+              notify={{ buyer: [po.preparedById] }}
+            />
           </div>
         </div>
       )}

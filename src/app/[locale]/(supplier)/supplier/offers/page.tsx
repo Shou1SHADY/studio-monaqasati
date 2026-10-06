@@ -1,5 +1,7 @@
 "use client"
 
+import { DocumentThread } from "@/components/documents/DocumentThread"
+import { offerThread } from "@/lib/document-thread"
 import { useState, useEffect } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
@@ -715,7 +717,7 @@ export default function SupplierOffersPage() {
 
       {/* Offer Detail Dialog */}
       <Dialog open={!!viewOffer} onOpenChange={(open) => !open && setViewOffer(null)}>
-        <DialogContent className={cn("sm:max-w-md", locale === 'ar' ? 'text-right' : 'text-left')} dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+        <DialogContent className={cn("max-h-[90vh] overflow-y-auto sm:max-w-xl", locale === 'ar' ? 'text-right' : 'text-left')} dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
             <DialogTitle>{t("offer_details_title")}</DialogTitle>
             <DialogDescription>{t("offer_details_desc")}</DialogDescription>
@@ -783,6 +785,7 @@ export default function SupplierOffersPage() {
               )}
             </div>
           )}
+          {viewOffer && offerThread(viewOffer) && <DocumentThread portal="supplier" {...(offerThread(viewOffer) as NonNullable<ReturnType<typeof offerThread>>)} />}
           <DialogFooter>
             <Button variant="outline" onClick={() => setViewOffer(null)}>{t("close")}</Button>
           </DialogFooter>

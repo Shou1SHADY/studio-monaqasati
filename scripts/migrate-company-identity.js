@@ -1,7 +1,9 @@
 // Copies each company's sensitive identity (CR number, tax number, certificate
 // files, bank details) from its profile document into companyIdentity/{orgId}
-// (DEV-60). The old fields are NOT removed here: older mobile app versions still
-// read them, so stripping is a separate, later step.
+// (DEV-60), and the few facts its counterparties read in bulk (tax number,
+// registration expiry, "has a registration number") into companyPublicFacts/{orgId}.
+// The old fields are NOT removed here: older mobile app versions still read them,
+// so stripping is a separate, later step.
 //
 //   node scripts/migrate-company-identity.js uat            — DRY RUN: counts and field names, never values
 //   node scripts/migrate-company-identity.js uat  --apply   — writes
@@ -15,7 +17,9 @@
 // is (a differing old value is reported as a conflict, never overwritten); nothing is deleted.
 //
 // Credentials: `.env.uat` / `.env.local` (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL,
-// FIREBASE_PRIVATE_KEY) — the same service accounts the other ops scripts use.
+// FIREBASE_PRIVATE_KEY) — the same service accounts the other ops scripts use. For UAT
+// only, with no key in the env file, the signed-in `gcloud` user's token is used instead
+// (the way deploy-rules.js does); production always needs its service account.
 
 const target = process.argv[2]
 const apply = process.argv.includes("--apply")
@@ -26,26 +30,42 @@ if (target !== "uat" && target !== "prod") {
 require("dotenv").config({ path: target === "uat" ? ".env.uat" : ".env.local" })
 
 const { initializeApp, cert } = require("firebase-admin/app")
-const { getFirestore, FieldValue } = require("firebase-admin/firestore")
+let { getFirestore, FieldValue } = require("firebase-admin/firestore")
 
-const projectId = process.env.FIREBASE_PROJECT_ID
+let projectId = process.env.FIREBASE_PROJECT_ID
+let credential
+let db
+if (process.env.FIREBASE_PRIVATE_KEY) {
+  credential = cert({
+    projectId,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+  })
+} else if (target === "uat") {
+  const { execSync } = require("child_process")
+  const { Firestore, FieldValue: GcpFieldValue } = require("@google-cloud/firestore")
+  FieldValue = GcpFieldValue
+  const { OAuth2Client } = require("google-auth-library")
+  const authClient = new OAuth2Client()
+  authClient.setCredentials({ access_token: execSync("gcloud auth print-access-token", { encoding: "utf8" }).trim() })
+  projectId = "mdmaktech-uat"
+  credential = true
+  db = new Firestore({ projectId, authClient })
+  console.log("no service-account key for uat — using the signed-in gcloud user")
+}
 if (target === "uat" && projectId !== "mdmaktech-uat") {
   console.error(`refusing: asked for uat but the credentials are for "${projectId}"`)
   process.exit(1)
 }
-if (target === "prod" && projectId === "mdmaktech-uat") {
-  console.error("refusing: asked for prod but the credentials are for UAT")
+if (target === "prod" && (!credential || projectId === "mdmaktech-uat")) {
+  console.error(projectId === "mdmaktech-uat" ? "refusing: asked for prod but the credentials are for UAT" : "refusing: production needs its service account in .env.local")
   process.exit(1)
 }
 
-initializeApp({
-  credential: cert({
-    projectId,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-  }),
-})
-const db = getFirestore()
+if (!db) {
+  initializeApp({ credential, projectId })
+  db = getFirestore()
+}
 
 // Keep in step with SENSITIVE_IDENTITY_KEYS in src/lib/company-identity.ts.
 const KEYS = ["crNumber", "taxNumber", "legalDocuments", "iban", "bankName"]
@@ -61,7 +81,19 @@ const pick = (src) => {
   for (const k of KEYS) if (present(src[k])) out[k] = typeof src[k] === "number" ? String(src[k]) : src[k]
   return out
 }
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+const stable = (v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, stable(v[k])])) : Array.isArray(v) ? v.map(stable) : v)
+const same = (a, b) => JSON.stringify(stable(a)) === JSON.stringify(stable(b))
+const text = (v) => (typeof v === "string" || typeof v === "number" ? String(v).trim() : "")
+
+// Keep in step with publicFactsPatch in src/lib/company-public-facts.ts.
+const publicFacts = (src) => {
+  const out = {}
+  if (text(src.taxNumber)) out.hasVat = true
+  if (text(src.crNumber)) out.hasCr = true
+  const expiry = text(src.legalDocuments && src.legalDocuments.cr && src.legalDocuments.cr.expiryDate).slice(0, 10)
+  if (expiry) out.crExpiry = expiry
+  return out
+}
 
 ;(async () => {
   console.log(`${target.toUpperCase()} · project ${projectId} · ${apply ? "APPLYING" : "dry run — nothing will be written"}\n`)
@@ -79,9 +111,12 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
   for (const d of orgs.docs) companies.push({ orgId: d.id, kind: "secondary", source: "organizations", data: d.data() })
 
   const existing = new Map()
+  const existingFacts = new Map()
   for (const c of companies) {
     const snap = await db.collection("companyIdentity").doc(c.orgId).get()
     if (snap.exists) existing.set(c.orgId, snap.data())
+    const facts = await db.collection("companyPublicFacts").doc(c.orgId).get()
+    if (facts.exists) existingFacts.set(c.orgId, facts.data())
   }
 
   let toCreate = 0
@@ -90,7 +125,14 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
   let empty = 0
   let conflicts = 0
   const writes = []
+  const factWrites = []
   for (const c of companies) {
+    const haveFacts = existingFacts.get(c.orgId) || {}
+    const factPatch = {}
+    for (const [k, v] of Object.entries(publicFacts(c.data))) if (!present(haveFacts[k])) factPatch[k] = v
+    // An earlier shape carried the number itself; the public document must hold none.
+    if ("vat" in haveFacts) factPatch.vat = FieldValue.delete()
+    if (Object.keys(factPatch).length) factWrites.push({ orgId: c.orgId, patch: factPatch })
     const wanted = pick(c.data)
     if (!Object.keys(wanted).length) {
       empty++
@@ -122,6 +164,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
   console.log(`companies read: ${companies.length} (${companies.filter((c) => c.kind === "primary").length} primary, ${companies.filter((c) => c.kind === "secondary").length} secondary)`)
   console.log(`  to create: ${toCreate} · to fill: ${toFill} · already up to date: ${upToDate} · nothing sensitive on file: ${empty} · conflicts: ${conflicts}`)
+  console.log(`  public facts to write: ${factWrites.length}`)
   for (const w of writes.slice(0, 15)) console.log(`  ${w.orgId}: ${w.note}`)
   if (writes.length > 15) console.log(`  … and ${writes.length - 15} more`)
 
@@ -136,7 +179,14 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
     }
     await batch.commit()
   }
-  console.log(`\nWrote ${writes.length} identity documents.`)
+  for (let i = 0; i < factWrites.length; i += 400) {
+    const batch = db.batch()
+    for (const w of factWrites.slice(i, i + 400)) {
+      batch.set(db.collection("companyPublicFacts").doc(w.orgId), { ...w.patch, migratedAt: FieldValue.serverTimestamp() }, { merge: true })
+    }
+    await batch.commit()
+  }
+  console.log(`\nWrote ${writes.length} identity documents and ${factWrites.length} public-facts documents.`)
 })().catch((e) => {
   console.error(e)
   process.exit(1)

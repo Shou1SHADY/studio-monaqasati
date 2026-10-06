@@ -1,5 +1,6 @@
 "use client"
 
+import { profileVatMark } from "@/lib/procurement/supplier-file"
 import { DEFAULT_RFQ_PRICING, asksForOffers, effectivePricing, firstDeadline, showsPricingChoice, step3Refusals } from "@/lib/procurement/rfq-form"
 import { useState, useRef, useEffect, useMemo } from "react"
 import { useRouter } from "@/i18n/routing"
@@ -224,7 +225,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
     const records = new Map(procWorld.supplierRecords.map((r) => [r.supplierOrgId, r]))
     return (id: string): SourcingBlock | null => {
       const s = byId.get(id)
-      return s ? sourcingBlockOf(s.record || records.get(id), { vat: s.profileVat, crExpiry: s.profileCrExpiry }, today) : sourcingBlockOf(records.get(id), undefined, today)
+      return s ? sourcingBlockOf(s.record || records.get(id), { vat: profileVatMark(s), crExpiry: s.profileCrExpiry }, today) : sourcingBlockOf(records.get(id), undefined, today)
     }
   }, [platformSuppliers, procWorld.supplierRecords])
 

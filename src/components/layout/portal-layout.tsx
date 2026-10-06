@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { AppSwitcher } from "@/components/layout/app-switcher"
+import { ActivityBell } from "@/components/activities/ActivityBell"
 import { PortalBreadcrumbs } from "@/components/layout/portal-breadcrumbs"
 import { useUser, useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase"
 import { useLocale, useTranslations } from "next-intl"
@@ -689,6 +690,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
           <div className={cn("flex items-center gap-2 md:gap-3", locale === 'ar' ? 'mr-auto' : 'ml-auto')}>
             <AppSwitcher />
             <LanguageSwitcher />
+            {(isSupplier || isContractor) && <ActivityBell portal={isSupplier ? "supplier" : "contractor"} />}
             <DropdownMenu onOpenChange={(open) => { if (!open) setSelectedNotifIds(new Set()) }}>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative text-muted-foreground overflow-visible focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none">

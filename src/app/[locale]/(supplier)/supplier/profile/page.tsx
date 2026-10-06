@@ -1,6 +1,9 @@
 
 "use client"
 
+import { PrintProfileCard } from "@/components/PrintProfileCard"
+import type { DocumentData, UpdateData } from "firebase/firestore"
+import { mirrorCompanyIdentity } from "@/lib/company-identity-writes"
 import { useState, useEffect, useMemo } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
@@ -328,6 +331,12 @@ export default function SupplierProfilePage() {
     },
   ]
 
+  const saveIdentity = async (payload: Record<string, unknown>) => {
+    if (!identityWriteRef || !firestore) return
+    await updateDoc(identityWriteRef, payload as UpdateData<DocumentData>)
+    void mirrorCompanyIdentity(firestore, organizationId, payload)
+  }
+
   const handleSave = async () => {
     if (!user || !firestore || !identityWriteRef) return
     setIsLoading(true)
@@ -342,7 +351,7 @@ export default function SupplierProfilePage() {
     )
 
     try {
-      await updateDoc(identityWriteRef, {
+      await saveIdentity({
         name: profile.name,
         companyName: profile.name,
         phone: profile.phone,
@@ -394,7 +403,7 @@ export default function SupplierProfilePage() {
       return
     }
     try {
-      await updateDoc(identityWriteRef, {
+      await saveIdentity({
         verificationRequested: true
       })
       setProfile(prev => ({ ...prev, verificationRequested: true }))
@@ -427,7 +436,7 @@ export default function SupplierProfilePage() {
       // Auto-save to firestore
       if (user && firestore && identityWriteRef) {
         try {
-          await updateDoc(identityWriteRef, pendingSpecsPayload(newSpecs))
+          await saveIdentity(pendingSpecsPayload(newSpecs))
         } catch (err) {
           console.error("Auto-save failed:", err)
         }
@@ -457,7 +466,7 @@ export default function SupplierProfilePage() {
 
     if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(identityWriteRef, pendingSpecsPayload(updatedSpecs))
+        await saveIdentity(pendingSpecsPayload(updatedSpecs))
       } catch (err) {
         console.error("Auto-save failed:", err)
       }
@@ -474,7 +483,7 @@ export default function SupplierProfilePage() {
 
       if (user && firestore && identityWriteRef) {
         try {
-          await updateDoc(identityWriteRef, pendingSpecsPayload(updatedSpecs))
+          await saveIdentity(pendingSpecsPayload(updatedSpecs))
         } catch (err) {
           console.error("Auto-save failed:", err)
         }
@@ -496,7 +505,7 @@ export default function SupplierProfilePage() {
     // Auto-save to firestore
     if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(identityWriteRef, {
+        await saveIdentity({
           certificates: updatedCerts
         })
       } catch (err) {
@@ -544,7 +553,7 @@ export default function SupplierProfilePage() {
     
     if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(identityWriteRef, {
+        await saveIdentity({
           certificates: updatedCerts
         })
         
@@ -579,7 +588,7 @@ export default function SupplierProfilePage() {
     // Auto-save to firestore to prevent data loss on refresh
     if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(identityWriteRef, {
+        await saveIdentity({
           projects: updatedProjects
         })
       } catch (err) {
@@ -623,7 +632,7 @@ export default function SupplierProfilePage() {
     
     if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(identityWriteRef, {
+        await saveIdentity({
           projects: updatedProjects
         })
 
@@ -666,7 +675,7 @@ export default function SupplierProfilePage() {
       // Auto-save to firestore
       if (user && firestore && identityWriteRef) {
         try {
-          await updateDoc(identityWriteRef, {
+          await saveIdentity({
             companyFiles: updatedFiles
           })
         } catch (err) {
@@ -692,7 +701,7 @@ export default function SupplierProfilePage() {
     
     if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(identityWriteRef, {
+        await saveIdentity({
           companyFiles: updatedFiles
         })
 
@@ -736,7 +745,7 @@ export default function SupplierProfilePage() {
       // Auto-save to firestore
       if (user && firestore && identityWriteRef) {
         try {
-          await updateDoc(identityWriteRef, {
+          await saveIdentity({
             legalDocuments: updatedDocs
           })
         } catch (err) {
@@ -766,7 +775,7 @@ export default function SupplierProfilePage() {
     // Auto-save to firestore
     if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(identityWriteRef, {
+        await saveIdentity({
           legalDocuments: updatedDocs
         })
       } catch (err) {
@@ -1380,6 +1389,9 @@ export default function SupplierProfilePage() {
                   </CardContent>
                 </Card>
               </div>
+            </div>
+            <div className="mt-6">
+              <PrintProfileCard defaults={{ crNumber: profile.crNumber, taxNumber: profile.taxNumber }} />
             </div>
           </TabsContent>
 

@@ -801,6 +801,7 @@ export interface PlantInput {
  * request goes straight to the plant desk. */
 export async function requestPlant(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, input: PlantInput): Promise<{ seq: number; status: "wait" | "go" }> {
   let out: { seq: number; status: "wait" | "go" } = { seq: 0, status: "wait" }
+  let desk: PlantDeskNotice | null = null
   await runTransaction(firestore, async (tx) => {
     const { ref, project, pm } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
@@ -835,20 +836,50 @@ export async function requestPlant(firestore: Firestore, ctx: PmContext, project
     })
     tx.update(ref, { pm: { ...pm, plantReqCount: seq }, updatedAt: serverTimestamp() })
     out = { seq, status: self ? "go" : "wait" }
+    desk = { organizationId: project.organizationId ?? "", project: project.name ?? pm.no ?? projectId, seq, what: input.what.trim(), qty: input.qty, from: input.from, to: input.to }
   })
+  // The manager's own request is approved by the writing of it: the equipment desk is told now.
+  if (out.status === "go" && desk) await tellPlantDesk(firestore, actor, desk)
   return out
 }
 
 export async function decidePlant(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, seq: number, approve: boolean): Promise<void> {
+  let desk: PlantDeskNotice | null = null
   await runTransaction(firestore, async (tx) => {
-    const { project } = await readProject(tx, firestore, projectId)
+    const { project, pm } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "request.decide")
     const ref = doc(firestore, "projects", projectId, PM_PLANT, plantNo(seq))
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new PmSupplyError("missing")
-    if ((snap.data() as { status?: string }).status !== "wait") throw new PmSupplyError("blocked", ["not_pending"])
+    const data = snap.data() as { status?: string; what?: string; qty?: number; from?: string; to?: string }
+    if (data.status !== "wait") throw new PmSupplyError("blocked", ["not_pending"])
     tx.update(ref, { status: approve ? "go" : "rej", decidedBy: actor.uid, decidedByName: actor.name, decidedOn: todayDay(), updatedAt: serverTimestamp() })
+    desk = { organizationId: project.organizationId ?? "", project: project.name ?? pm.no ?? projectId, seq, what: data.what ?? "", qty: data.qty ?? 1, from: data.from ?? "", to: data.to ?? "" }
+  })
+  // Approved: the request is the equipment desk's now (best effort, after the commit).
+  if (approve && desk) await tellPlantDesk(firestore, actor, desk)
+}
+
+interface PlantDeskNotice {
+  organizationId: string
+  project: string
+  seq: number
+  what: string
+  qty: number
+  from: string
+  to: string
+}
+
+/** Tell the store keepers (warehouses.manage) that an approved equipment request waits on their desk. */
+async function tellPlantDesk(firestore: Firestore, actor: SupplyActor, n: PlantDeskNotice): Promise<void> {
+  if (!n.organizationId) return
+  await emitProcEvent(firestore, { uid: actor.uid, name: actor.name ?? "" }, {
+    kind: "plant_requested",
+    organizationId: n.organizationId,
+    to: [{ permission: "warehouses.manage" }],
+    params: { no: plantNo(n.seq), what: n.what, qty: n.qty, project: n.project, from: n.from, to: n.to },
+    link: procLinks.plantDesk(),
   })
 }
 

@@ -7,6 +7,7 @@
 // orders, receipts and invitations, our master record, his agreements (for
 // those who see prices), his last orders and the record's log.
 
+import { useSupplierVat } from "@/hooks/useSupplierVat"
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Loader2, ShieldCheck, Star } from "lucide-react"
@@ -27,8 +28,10 @@ import { agreementsOfSupplier, type PriceAgreement } from "@/lib/procurement/pri
 import {
   SUPPLIER_FILE_ORDERS,
   barWidth,
+  displayVat,
   effectiveCrExpiry,
   effectiveVat,
+  profileVatMark,
   canVouchSuppliers,
   isOffPlatform,
   isUnverified,
@@ -116,10 +119,12 @@ export function SupplierFileDrawer({
   const rated = useMemo(() => (supplier ? ourRatings(orders, supplier.orgId) : []), [orders, supplier])
   const held = useMemo(() => (supplier ? agreementsOfSupplier(agreements, supplier.orgId) : []), [agreements, supplier])
 
+  const supplierVat = useSupplierVat(supplier?.orgId, supplier?.profileVat, open)
+
   if (!supplier) return null
   const record = supplier.record
   const kind = record?.kind || "mat"
-  const vat = effectiveVat(record, supplier.profileVat)
+  const vat = effectiveVat(record, profileVatMark(supplier))
   const docs = supplierDocs(vat, effectiveCrExpiry(record, supplier.profileCrExpiry), today)
   const sep = isRtl ? "، " : ", "
   const hasRecord = Boolean(score && (score.orders > 0 || invited > 0))
@@ -128,7 +133,7 @@ export function SupplierFileDrawer({
     if (!firestore) return
     setVerifying(true)
     try {
-      await verifySupplier(firestore, actor, orgId, supplier.orgId, supplier.profileVat, now, ownerHasTeam)
+      await verifySupplier(firestore, actor, orgId, supplier.orgId, profileVatMark(supplier), now, ownerHasTeam)
       toast({ title: t("toast.verified") })
     } catch (err) {
       const code = err instanceof SupplierWriteError ? err.code : "generic"
@@ -325,7 +330,7 @@ export function SupplierFileDrawer({
 
             <DrawerSection title={t("file.master")}>
               <KeyValueRow label={t("file.supplies")} value={supplier.categories.map((c) => displayCategory(c, locale)).join(sep) || "—"} />
-              <KeyValueRow label={t("file.vat")} ltr value={vat || "—"} />
+              <KeyValueRow label={t("file.vat")} ltr value={displayVat(record, supplierVat) || (vat ? t("file.vat_on_file") : "—")} />
               <KeyValueRow label={t("file.cr_expires")} value={docs.crExpiry ? fmt(docs.crExpiry) : t("file.not_recorded")} />
               <KeyValueRow
                 label={

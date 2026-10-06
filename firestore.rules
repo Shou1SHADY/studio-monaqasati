@@ -500,6 +500,26 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // The few facts a company's counterparties read in bulk — whether it has a tax number, when the
+    // registration ends — never a number, certificate files or bank details (those are in
+    // companyIdentity, closed to the company's own team). Any signed-in user reads; the owner writes.
+    match /companyPublicFacts/{orgId} {
+      allow get, list: if isSignedIn();
+      // Yes/no flags and a date only — a number written here would be readable by the company's own team.
+      allow create, update: if (isAdmin() || isCompanyOwner(orgId))
+        && request.resource.data.keys().hasOnly(['hasVat', 'hasCr', 'crExpiry', 'updatedAt', 'migratedAt']);
+      allow delete: if false;
+    }
+
+    // What the owner chooses to print on documents the team issues (purchase orders, quotations,
+    // receipts) — the registration and tax numbers, only if the owner fills them in. The owner
+    // writes; the whole team reads, because it is printed on their documents.
+    match /companyPrintProfile/{orgId} {
+      allow get: if isSignedIn() && (isAdmin() || isCompanyOwner(orgId) || isOrgMember(orgId));
+      allow create, update: if isAdmin() || isCompanyOwner(orgId);
+      allow delete: if false;
+    }
+
     match /categories/{categoryId} {
       // 'read' = get + list, safe for signed-in users (static reference data)
       allow read: if isSignedIn();
@@ -1809,7 +1829,15 @@ service cloud.firestore {
           && resource.data.status == 'wait'
           && request.resource.data.status in ['go', 'rej']
           && changedKeys().hasOnly(['status', 'decidedBy', 'decidedByName', 'decidedOn', 'updatedAt']);
-        // The site records the plant desk's reply (there is no desk module yet): once,
+        // The equipment desk (Warehouses → equipment desk): the store keeper answers an
+        // approved request, once, and changes nothing else.
+        allow update: if inOpenProject(projectId) && hasOrgPermission('warehouses.manage')
+          && resource.data.status == 'go'
+          && resource.data.get('rep', null) == null
+          && request.resource.data.rep.k in ['alloc', 'late', 'alt', 'none']
+          && request.resource.data.rep.by == request.auth.uid
+          && changedKeys().hasOnly(['rep', 'updatedAt']);
+        // The site's own record of a reply (a company with no equipment desk): once,
         // on an approved request.
         allow update: if pmOpen(projectId, 'req')
           && resource.data.status == 'go'
@@ -4127,6 +4155,59 @@ service cloud.firestore {
       allow list: if isSignedIn();
       allow create: if isSignedIn() && (isAdmin() || createsInOrg());
       allow update, delete: if orgReadable();
+    }
+    // Activities (DEV-69) — scheduled follow-ups: a to-do, call, meeting, e-mail or document to
+    // upload, planned for a day and given to a person of the same company, optionally attached to
+    // a document. The company reads them; the assignee, the one who planned it or the owner
+    // finishes, moves or cancels an OPEN one. Nothing is ever deleted.
+    match /activities/{activityId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if createsInOrg()
+        && request.resource.data.createdById == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.summary is string && request.resource.data.summary.size() > 0 && request.resource.data.summary.size() <= 120
+        && request.resource.data.dueOn is string
+        && request.resource.data.assigneeId is string
+        && (request.resource.data.assigneeId == request.auth.uid
+            || get(/databases/$(database)/documents/users/$(request.resource.data.assigneeId)).data.get('organizationId', '') == request.resource.data.organizationId);
+      allow update: if keepsOrg()
+        && resource.data.status == 'open'
+        && (resource.data.assigneeId == request.auth.uid || resource.data.createdById == request.auth.uid || isOrgOwner())
+        && request.resource.data.status in ['open', 'done', 'cancelled']
+        && changedKeys().hasOnly(['status', 'dueOn', 'doneOn', 'doneById', 'doneByName', 'feedback', 'updatedAt'])
+        && request.resource.data.get('doneById', request.auth.uid) == request.auth.uid;
+      allow delete: if false;
+    }
+    // Document thread (DEV-68) — comments and attachments on a document that links a buyer and
+    // a supplier. A SHARED entry carries both companies and both read it; an INTERNAL one carries
+    // only its author's company. The companies must be the document's own (checked against the
+    // purchase order), the author signs in his own name, and nothing is edited or deleted.
+    match /documentNotes/{noteId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.buyerOrgId) || isOrgMember(resource.data.supplierOrgId));
+      allow create: if isSignedIn()
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.kind in ['comment', 'file']
+        && request.resource.data.visibility in ['shared', 'internal']
+        && request.resource.data.targetKind in ['po', 'offer']
+        && request.resource.data.targetKey == request.resource.data.targetKind + ':' + request.resource.data.targetId
+        && request.resource.data.body is string && request.resource.data.body.size() <= 2000
+        && (request.resource.data.kind == 'file' || request.resource.data.body.size() > 0)
+        && (request.resource.data.visibility == 'shared' || request.resource.data.buyerOrgId == null || request.resource.data.supplierOrgId == null)
+        && (isOrgMember(request.resource.data.buyerOrgId) || isOrgMember(request.resource.data.supplierOrgId))
+        && (request.resource.data.targetKind == 'po' ? noteMatchesPo(request.resource.data.targetId) : noteMatchesOffer(request.resource.data.targetId));
+      allow update, delete: if false;
+    }
+    // The orders (and offers) a thread entry may name: its companies must be the document's.
+    function noteMatchesPo(poId) {
+      let p = get(/databases/$(database)/documents/purchaseOrders/$(poId)).data;
+      return (request.resource.data.buyerOrgId == null || request.resource.data.buyerOrgId == p.organizationId)
+        && (request.resource.data.supplierOrgId == null || request.resource.data.supplierOrgId == p.supplierOrgId);
+    }
+    // An offer's buyer is its contractorOrgId and its supplier is its organizationId.
+    function noteMatchesOffer(offerId) {
+      let o = get(/databases/$(database)/documents/offers/$(offerId)).data;
+      return (request.resource.data.buyerOrgId == null || request.resource.data.buyerOrgId == o.get('contractorOrgId', ''))
+        && (request.resource.data.supplierOrgId == null || request.resource.data.supplierOrgId == o.get('organizationId', ''));
     }
     // Invoices — scoped to an organization
     match /invoices/{invoiceId} {

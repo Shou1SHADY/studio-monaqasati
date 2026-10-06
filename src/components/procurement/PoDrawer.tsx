@@ -12,6 +12,8 @@
 // and the write re-runs it again inside its transaction; a refusal comes back
 // as a `ProcWriteError` code and is shown as the sentence for that code.
 
+import { usePrintProfile } from "@/hooks/usePrintProfile"
+import { printedNumber } from "@/lib/company-print-profile"
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
@@ -30,6 +32,8 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
+import { DocumentThread } from "@/components/documents/DocumentThread"
+import { procLinks } from "@/lib/procurement/events"
 import { displayDocNumber, displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { approvalRefusal, canCancelRemainder, canRecordAcceptance, canSend, canUpdateDate, daysLate, isSelfApproval, lineToArrive, poBlocks, poStatus, receiptDay, receiptsOf, reminderCooldownUntil, todayOf, dayOf } from "@/lib/procurement/po"
 import { PRICE_AGREEMENTS, agreementState, type PriceAgreement } from "@/lib/procurement/prices"
@@ -268,10 +272,11 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
     }
   }
 
+  const print = usePrintProfile()
   const company: PrintCompany = useMemo(() => {
     const p = (profile || {}) as { companyName?: string; name?: string; crNumber?: string; taxNumber?: string; city?: string; location?: string; phone?: string; phoneNumber?: string; email?: string }
-    return { name: p.companyName || world.orgName || p.name || "", cr: p.crNumber || null, vat: p.taxNumber || null, address: p.location || p.city || null, phone: p.phone || p.phoneNumber || null, email: p.email || null }
-  }, [profile, world.orgName])
+    return { name: p.companyName || world.orgName || p.name || "", cr: printedNumber(p.crNumber, print.crNumber), vat: printedNumber(p.taxNumber, print.taxNumber), address: p.location || p.city || null, phone: p.phone || p.phoneNumber || null, email: p.email || null }
+  }, [profile, world.orgName, print.crNumber, print.taxNumber])
 
   const tPrint = (key: string, params?: Record<string, string | number>) => t(`print.${key}`, params)
 
@@ -928,6 +933,14 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 </ol>
               </Section>
             )}
+
+            <DocumentThread
+              portal="contractor"
+              target={{ kind: "po", id: po.id, label: number, href: procLinks.order(po.id), supplierHref: procLinks.supplierOrder(po.id) }}
+              parties={{ buyerOrgId: po.organizationId, supplierOrgId: po.supplierOrgId }}
+              notify={{ buyer: [po.preparedById], supplier: po.supplierUserId ? [po.supplierUserId] : [] }}
+              log={log.map((e) => ({ at: e.at, byName: "", text: logSentence(e) }))}
+            />
           </div>
         </SheetContent>
       </Sheet>

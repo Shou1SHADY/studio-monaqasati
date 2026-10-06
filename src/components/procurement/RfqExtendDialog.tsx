@@ -7,6 +7,7 @@
 // number, CR expired) is listed greyed with the reason. The write re-checks
 // that the RFQ is open.
 
+import { profileVatMark } from "@/lib/procurement/supplier-file"
 import { useEffect, useMemo } from "react"
 import { useTranslations } from "next-intl"
 import { useForm, useWatch } from "react-hook-form"
@@ -96,7 +97,7 @@ function ExtendBody({ target, actor, options, orgId, onOpenChange }: { target: E
   )
   const blockOf = (id: string) => {
     const s = directory.get(id)
-    return s ? sourcingBlockOf(s.record, { vat: s.profileVat, crExpiry: s.profileCrExpiry }, today) : sourcingBlockOf(null, undefined, today)
+    return s ? sourcingBlockOf(s.record, { vat: profileVatMark(s), crExpiry: s.profileCrExpiry }, today) : sourcingBlockOf(null, undefined, today)
   }
 
   return (

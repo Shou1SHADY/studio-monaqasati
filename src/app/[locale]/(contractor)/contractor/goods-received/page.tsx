@@ -11,6 +11,8 @@
 // a receipt itself unless it also holds the receiving permission.
 // `?tab=` names the segment, `?delivery=<id>` opens the drawer.
 
+import { usePrintProfile } from "@/hooks/usePrintProfile"
+import { printedNumber } from "@/lib/company-print-profile"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
@@ -200,10 +202,11 @@ export default function GoodsReceivedPage() {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }, [forwardAsked, openDelivery, searchParams, router, pathname, actor.isOwner, actor.canExpedite])
 
+  const print = usePrintProfile()
   const company = useMemo(() => {
     const p = (profile || {}) as { companyName?: string; name?: string; crNumber?: string; taxNumber?: string; city?: string; location?: string; phone?: string; phoneNumber?: string; email?: string }
-    return { name: p.companyName || orgName || p.name || "", cr: p.crNumber || null, vat: p.taxNumber || null, address: [p.location, p.city].filter(Boolean).join(" · ") || null, phone: p.phone || p.phoneNumber || null, email: p.email || null }
-  }, [profile, orgName])
+    return { name: p.companyName || orgName || p.name || "", cr: printedNumber(p.crNumber, print.crNumber), vat: printedNumber(p.taxNumber, print.taxNumber), address: [p.location, p.city].filter(Boolean).join(" · ") || null, phone: p.phone || p.phoneNumber || null, email: p.email || null }
+  }, [profile, orgName, print.crNumber, print.taxNumber])
 
   // The gate's right — or the buyer's, when the firm has no separate receiver (`buyerReceives`).
   // The owner of a company with a procurement team only reads here: receiving

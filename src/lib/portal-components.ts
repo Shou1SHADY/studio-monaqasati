@@ -44,6 +44,7 @@ import {
   MessageSquare,
   MessagesSquare,
   Bell,
+  ListChecks,
   ClipboardList,
   Search,
   History,
@@ -77,6 +78,7 @@ import {
   BarChart3,
   Sunrise,
   KeyRound,
+  Wrench,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
 import { PROC_TAB_GATES } from "@/lib/procurement/tab-gates"
@@ -168,6 +170,7 @@ export const CONTRACTOR_COMMUNICATION_SECTION: NavSection = {
   items: [
     { titleKey: "contractor_chats", href: "/contractor/chats", icon: MessageSquare },
     { titleKey: "contractor_team_chat", href: "/contractor/team-chat", icon: MessagesSquare },
+    { titleKey: "contractor_activities", href: "/contractor/activities", icon: ListChecks },
     { titleKey: "contractor_notifications", href: "/contractor/notifications", icon: Bell },
   ],
 }
@@ -239,6 +242,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           // it was received; signing for it is gated inside the page.
           { titleKey: "inventory_delivery_notes", href: "/contractor/warehouses/delivery-notes", icon: ClipboardCheck },
           { titleKey: "inventory_mfg_desk", href: "/contractor/warehouses/manufacturing", icon: Factory },
+          { titleKey: "inventory_equipment_desk", href: "/contractor/warehouses/equipment", icon: Wrench, requiredPermission: "warehouses.manage" },
           { titleKey: "inventory_custody", href: "/contractor/warehouses/custody", icon: PackageCheck, requiredAnyPermission: ["warehouses.manage", "warehouses.receive"] },
           { titleKey: "inventory_project_returns", href: "/contractor/warehouses/project-returns", icon: Undo2, requiredAnyPermission: ["warehouses.manage", "warehouses.receive"] },
         ],
@@ -483,6 +487,7 @@ export const SUPPLIER_COMMUNICATION_SECTION: NavSection = {
   items: [
     { titleKey: "supplier_chats", href: "/supplier/chats", icon: MessageSquare },
     { titleKey: "supplier_team_chat", href: "/supplier/team-chat", icon: MessagesSquare },
+    { titleKey: "supplier_activities", href: "/supplier/activities", icon: ListChecks },
     { titleKey: "supplier_notifications", href: "/supplier/notifications", icon: Bell },
   ],
 }

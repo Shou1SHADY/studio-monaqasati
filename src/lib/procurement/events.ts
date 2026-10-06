@@ -40,6 +40,12 @@ export type ProcEventKind =
   | "receipt_expensed" // → Finance: a no-PO receipt Procurement ruled a cash expense
   | "need_filed" // → the warehouse managers: a project's (legacy) purchase request waits for their approval
   | "need_approved" // → buyers (rfq.manage / rfq.create) + owner: a project's material request was approved and is now Procurement's
+  | "plant_requested" // → the equipment desk (warehouses.manage): a project's equipment request was approved and waits for an answer
+  | "plant_answered" // → the requester: the equipment desk answered (allocated, busy until, an alternative, or none)
+  | "activity_assigned" // → the assignee: someone planned a to-do for him
+  | "activity_done" // → the one who planned it: the assignee marked it done
+  | "doc_comment" // → the other company of a document: a shared comment was posted
+  | "doc_file" // → the other company of a document: a shared attachment was added
 
 export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "po_awaiting_approval",
@@ -64,6 +70,12 @@ export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "receipt_expensed",
   "need_approved",
   "need_filed",
+  "plant_requested",
+  "plant_answered",
+  "activity_assigned",
+  "activity_done",
+  "doc_comment",
+  "doc_file",
 ]
 
 /** Who is told: a role, named users, or the org owner. */
@@ -106,6 +118,8 @@ export const procLinks = {
   receipt: (deliveryId: string) => `/contractor/goods-received?delivery=${deliveryId}`,
   /** The needs desk (incoming requests). */
   needs: () => `/contractor/rfqs/requests`,
+  /** Warehouses → the equipment desk (approved project equipment requests). */
+  plantDesk: () => `/contractor/warehouses/equipment`,
 }
 
 // ---------------------------------------------------------------------------
@@ -203,10 +217,44 @@ export const PROC_EVENT_COPY_AR: Record<ProcEventKind, { title: string; message:
     title: "طلب مواد معتمد بانتظار المشتريات — ط.م {no}",
     message: "اعتمد {actor} طلب المواد ط.م {no} لمشروع {project} (عدد البنود: {count}). صار في الطلبات الواردة — راجع المخزون ثم ابدأ طلب تسعير أو أمر شراء.",
   },
+  plant_requested: {
+    title: "طلب معدات بانتظار مكتب المعدات — م.ع {no}",
+    message: "اعتمد {actor} طلب المعدات «{what}» (الكمية {qty}) لمشروع {project} من {from} إلى {to}. صار على مكتب المعدات في المستودعات — أجب بتخصيص وحدة أو موعد توفر أو بديل أو بعدم التوفر.",
+  },
+  plant_answered: {
+    title: "ردّ مكتب المعدات على طلبك — م.ع {no}",
+    message: "ردّ {actor} على طلبك للمعدات «{what}» في مشروع {project}: {reply}",
+  },
+  activity_assigned: {
+    title: "مهمة جديدة لك — {summary}",
+    message: "كلّفك {actor} بمهمة «{summary}» ({type}) مستحقة في {due}. المستند المرتبط: {about}.",
+  },
+  activity_done: {
+    title: "أُنجزت المهمة — {summary}",
+    message: "أنجز {actor} المهمة «{summary}» التي خططت لها. المستند المرتبط: {about}.",
+  },
+  doc_comment: {
+    title: "تعليق جديد على {about}",
+    message: "كتب {actor} تعليقاً على {about}: «{text}»",
+  },
+  doc_file: {
+    title: "مرفق جديد على {about}",
+    message: "أرفق {actor} الملف «{text}» على {about}.",
+  },
 }
 
 /** `@key` params the messages name, with their Arabic text. */
 export const PROC_EVENT_PARAM_COPY_AR: Record<string, string> = {
+  pn_activity_type_todo: "مهمة",
+  pn_activity_type_call: "اتصال",
+  pn_activity_type_meeting: "اجتماع",
+  pn_activity_type_email: "بريد إلكتروني",
+  pn_activity_type_document: "رفع مستند",
+  pn_activity_about_none: "لا يوجد",
+  pn_plant_reply_alloc: "خُصصت لك وحدة من أسطولنا",
+  pn_plant_reply_late: "مشغولة حتى موعد التوفر",
+  pn_plant_reply_alt: "عُرض عليك بديل",
+  pn_plant_reply_none: "غير متوفرة في أسطولنا",
   pn_po_decision_replace: "الاستبدال — أرسل بديلاً عن المرفوض",
   pn_po_decision_discount: "الخصم — نحتفظ بالكمية بسعر مخفّض",
   pn_po_decision_reduce: "تخفيض الأمر — لن تُستبدل الكمية",

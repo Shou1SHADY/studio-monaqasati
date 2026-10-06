@@ -93,8 +93,19 @@ export const CR_WARN_DAYS = 60
 const text = (s: string | null | undefined): string => (s || "").trim()
 
 /** The VAT number we go by: ours when we recorded one, else the supplier's own. */
+/** Stands in for a tax number we know exists but do not hold: presence checks accept it, no screen shows it. */
+export const VAT_ON_FILE = "on-file"
+
+/** What a presence check reads for a supplier's own profile: the number if the old field still has it, else the marker when a tax number is known to exist. */
+export const profileVatMark = (s: { profileVat: string | null; profileHasVat: boolean }): string => text(s.profileVat) || (s.profileHasVat ? VAT_ON_FILE : "")
+
+/** For presence checks — never display this: it may be the marker. */
 export const effectiveVat = (record: Pick<SupplierRecord, "vatNumber"> | null | undefined, profileVat: string | null | undefined): string =>
   text(record?.vatNumber) || text(profileVat)
+
+/** For screens that show or prefill the number: ours if we vouched for one, else the supplier's own. */
+export const displayVat = (record: Pick<SupplierRecord, "vatNumber"> | null | undefined, supplierVat: string | null | undefined): string =>
+  text(record?.vatNumber) || text(supplierVat)
 
 export const effectiveCrExpiry = (record: Pick<SupplierRecord, "crExpiry"> | null | undefined, profileCr: string | null | undefined): string | null =>
   dayOf(text(record?.crExpiry)) || dayOf(text(profileCr)) || null

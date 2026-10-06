@@ -24,6 +24,22 @@ service firebase.storage {
       allow update, delete: if false;
     }
 
+    // DEV-68 — attachments on a document that links a buyer and a supplier. The path names the
+    // buyer's company; Firestore's `documentNotes` entry decides who sees that a file exists.
+    // Images, PDFs and office files up to 15 MB; never overwritten or deleted from the client.
+    // (Same note as above: in force only once the catch-all is narrowed.)
+    match /documents/{buyerOrgId}/{targetKey}/{fileName} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.size > 0
+        && request.resource.size < 15 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*')
+            || request.resource.contentType == 'application/pdf'
+            || request.resource.contentType.matches('application/(msword|vnd\\.ms-excel|vnd\\.openxmlformats-officedocument\\..*)')
+            || request.resource.contentType == 'text/csv');
+      allow update, delete: if false;
+    }
+
     match /{allPaths=**} {
       // Allow any authenticated user to read and write to storage
       allow read, write: if request.auth != null;

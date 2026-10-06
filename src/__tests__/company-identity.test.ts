@@ -37,12 +37,16 @@ describe("company identity helpers", () => {
     expect(pickIdentity({ legalDocuments: {} })).toEqual({})
   })
 
-  it("reads the identity document first and the old profile for what it lacks", () => {
-    const stored = { crNumber: "NEW" }
-    const legacy = { crNumber: "OLD", taxNumber: "300000000000003" }
-    expect(resolveIdentity(stored, legacy)).toEqual({ crNumber: "NEW", taxNumber: "300000000000003" })
-    expect(resolveIdentity(null, legacy)).toEqual({ crNumber: "OLD", taxNumber: "300000000000003" })
+  it("keeps the old profile fields on top while they exist, and fills what they lack from the identity document", () => {
+    const stored = { crNumber: "STALE", iban: "SA03" }
+    const legacy = { crNumber: "NEWER", taxNumber: "300000000000003" }
+    expect(resolveIdentity(stored, legacy)).toEqual({ crNumber: "NEWER", taxNumber: "300000000000003", iban: "SA03" })
+    expect(resolveIdentity(null, legacy)).toEqual({ crNumber: "NEWER", taxNumber: "300000000000003" })
     expect(resolveIdentity(null, null)).toEqual({})
+  })
+
+  it("is the identity document alone once the old fields are removed", () => {
+    expect(resolveIdentity({ crNumber: "1010123456", legalDocuments: { cr: { url: "u" } } }, { name: "Acme", city: "Riyadh" })).toEqual({ crNumber: "1010123456", legalDocuments: { cr: { url: "u" } } })
   })
 
   it("lists what the old profile holds that the identity document does not match", () => {
@@ -83,5 +87,64 @@ describe("companyIdentity rules", () => {
     expect(fn).toContain("request.auth.uid == orgId")
     expect(fn).toContain("exists(/databases/$(database)/documents/organizations/$(orgId))")
     expect(fn).toContain("ownerUserId")
+  })
+})
+
+describe("mirroring a profile write", () => {
+  const { identityPatch } = jest.requireActual<typeof import("@/lib/company-identity")>("@/lib/company-identity")
+
+  it("keeps the sensitive keys a write names, even when blank, and nothing else", () => {
+    expect(identityPatch({ name: "Acme", crNumber: "", taxNumber: "300000000000003", city: "Riyadh" })).toEqual({ crNumber: "", taxNumber: "300000000000003" })
+    expect(identityPatch({ legalDocuments: { cr: { url: "u", expiryDate: "2027-01-01" } } })).toEqual({ legalDocuments: { cr: { url: "u", expiryDate: "2027-01-01" } } })
+    expect(identityPatch({ taxNumber: 300000000000003 }).taxNumber).toBe("300000000000003")
+    expect(identityPatch({ name: "Acme", certificates: [] })).toEqual({})
+    expect(identityPatch({ crNumber: undefined })).toEqual({})
+    expect(identityPatch(null)).toEqual({})
+  })
+})
+
+describe("companyPrintProfile rules", () => {
+  const body = block("companyPrintProfile")
+
+  it("lets the whole team read what the owner chose to print, and nobody outside", () => {
+    const read = allow(body, "get").join(" ")
+    expect(read).toContain("isOrgMember(orgId)")
+    expect(read).toContain("isCompanyOwner(orgId)")
+    expect(read).toContain("isAdmin()")
+    expect(read).not.toContain("!isOrgMember")
+  })
+
+  it("lets only the owner or the admin write it, and nobody delete it", () => {
+    const write = allow(body, "update").join(" ")
+    expect(write).toContain("isCompanyOwner(orgId)")
+    expect(write).not.toContain("isOrgMember")
+    expect(allow(body, "delete")).toEqual(["false"])
+  })
+
+  it("answers a missing document instead of erroring", () => {
+    expect(body).not.toContain("resource.data")
+  })
+})
+
+describe("companyPublicFacts rules", () => {
+  const body = block("companyPublicFacts")
+
+  it("is readable by any signed-in user, with a list for the directory", () => {
+    expect(allow(body, "get")).toEqual(["isSignedIn()"])
+    expect(allow(body, "list")).toEqual(["isSignedIn()"])
+  })
+
+  it("is written only by the owner or the admin, and never deleted", () => {
+    const write = allow(body, "update").join(" ")
+    expect(write).toContain("isCompanyOwner(orgId)")
+    expect(write).not.toContain("isOrgMember")
+    expect(allow(body, "delete")).toEqual(["false"])
+  })
+
+  it("refuses any field but the yes/no flags and the date, so a number can never be written where the company's own team reads", () => {
+    const write = allow(body, "update").join(" ")
+    expect(write).toContain("hasOnly(['hasVat', 'hasCr', 'crExpiry', 'updatedAt', 'migratedAt'])")
+    for (const forbidden of ["vat'", "taxNumber", "crNumber", "iban", "legalDocuments"]) expect(write).not.toContain(forbidden)
+    expect(allow(body, "create")).toEqual(allow(body, "update"))
   })
 })

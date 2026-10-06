@@ -31,9 +31,14 @@ export function pickIdentity(source: Record<string, unknown> | null | undefined)
   return out as CompanyIdentity
 }
 
-/** During the move, a field missing from the identity document is still read from the old profile fields. */
+/**
+ * While the old profile fields exist they win: the mobile app still writes only
+ * them, so a newer value there must not hide behind a stale identity document.
+ * The identity document fills what they lack, and is the only source once they
+ * are removed.
+ */
 export function resolveIdentity(stored: CompanyIdentity | null | undefined, legacy: Record<string, unknown> | null | undefined): CompanyIdentity {
-  return { ...pickIdentity(legacy), ...pickIdentity(stored as Record<string, unknown> | null | undefined) }
+  return { ...pickIdentity(stored as Record<string, unknown> | null | undefined), ...pickIdentity(legacy) }
 }
 
 /** What the old profile document holds that the identity document does not (or holds differently). */
@@ -41,4 +46,17 @@ export function identityGaps(stored: CompanyIdentity | null | undefined, legacy:
   const have = pickIdentity(stored as Record<string, unknown> | null | undefined)
   const old = pickIdentity(legacy)
   return SENSITIVE_IDENTITY_KEYS.filter((k) => k in old && JSON.stringify(old[k]) !== JSON.stringify(have[k]))
+}
+
+/** The sensitive fields a write names, kept even when blank (clearing a value is a write), for mirroring into the identity document. */
+export function identityPatch(payload: Record<string, unknown> | null | undefined): CompanyIdentity {
+  const out: Record<string, unknown> = {}
+  if (!payload) return out
+  for (const key of SENSITIVE_IDENTITY_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(payload, key)) continue
+    const v = payload[key]
+    if (v === undefined) continue
+    out[key] = typeof v === "number" ? String(v) : v
+  }
+  return out as CompanyIdentity
 }
