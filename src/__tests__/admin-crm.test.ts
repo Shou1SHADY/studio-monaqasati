@@ -179,13 +179,21 @@ describe("admin CRM leads", () => {
   })
 
   it("needs a name and one way to reach the lead", () => {
-    const ok = { name: "Sara", company: "", phone: "0501234567", email: "", note: "" }
+    const ok = { source: "ad", kind: "unspecified", name: "Sara", company: "", phone: "0501234567", email: "", city: "", ownerUid: "u1", note: "" }
     expect(manualLeadSchema.safeParse(ok).success).toBe(true)
     expect(manualLeadSchema.safeParse({ ...ok, name: "S" }).success).toBe(false)
     expect(manualLeadSchema.safeParse({ ...ok, phone: "" }).success).toBe(false)
     expect(manualLeadSchema.safeParse({ ...ok, phone: "", email: "S@X.sa" }).success).toBe(true)
     expect(manualLeadSchema.safeParse({ ...ok, email: "nope" }).success).toBe(false)
     expect(manualLeadSchema.safeParse({ ...ok, phone: "abc12345" }).success).toBe(false)
+  })
+
+  it("requires the source, and only the three a person can pick by hand", () => {
+    const ok = { source: "outreach", kind: "contractor", name: "Sara", company: "", phone: "0501234567", email: "", city: "", ownerUid: "", note: "" }
+    expect(manualLeadSchema.safeParse(ok).success).toBe(true)
+    expect(manualLeadSchema.safeParse({ ...ok, source: undefined }).success).toBe(false)
+    expect(manualLeadSchema.safeParse({ ...ok, source: "demo" }).success).toBe(false)
+    expect(manualLeadSchema.safeParse({ ...ok, kind: "partner" }).success).toBe(false)
   })
 })
 
@@ -213,7 +221,9 @@ describe("lead duplicates, clients, removal and intake", () => {
     const m = leadMatches(rows, [{ name: "Sara Co", email: "SARA@x.sa", phone: "" }])
     expect(m.get(leadCrmId("demo", "d1"))?.duplicates.sort()).toEqual([leadCrmId("onboarding", "o1"), leadCrmId("onboarding", "o2")].sort())
     expect(m.get(leadCrmId("onboarding", "o2"))?.duplicates).toEqual([leadCrmId("demo", "d1")]) // أحمد / احمد fold to one name
-    expect(m.get(leadCrmId("manual", "m1"))).toEqual({ duplicates: [], client: "Sara Co" })
+    expect(m.get(leadCrmId("manual", "m1"))).toMatchObject({ duplicates: [], client: "Sara Co" })
+    expect(m.get(leadCrmId("demo", "d1"))?.reasons[leadCrmId("onboarding", "o1")]).toBe("phone")
+    expect(m.get(leadCrmId("onboarding", "o2"))?.reasons[leadCrmId("demo", "d1")]).toBe("name")
     expect(m.has(leadCrmId("demo", "gone"))).toBe(false)
   })
 
@@ -237,7 +247,7 @@ describe("lead duplicates, clients, removal and intake", () => {
       {},
       now,
     )
-    expect(leadIntake(rows, now)).toEqual({ thisWeek: 2, lastWeek: 1, thisMonth: 1, lastMonth: 3, bySource: { demo: 1, onboarding: 0, manual: 0 } })
+    expect(leadIntake(rows, now)).toEqual({ thisWeek: 2, lastWeek: 1, thisMonth: 1, lastMonth: 3, bySource: { demo: 1, onboarding: 0, ad: 0, outreach: 0, other: 0 } })
   })
 })
 
@@ -245,12 +255,13 @@ import { readFileSync } from "fs"
 import { join } from "path"
 import { clientSourceOf, dealSchema, isClientPlan, stageChangeSchema, buildClientRows as rowsOf } from "@/lib/admin-crm"
 
-describe("client record: subscription, source, ID; every stage change states why (6 Oct 2026)", () => {
+describe("client record: subscription, source; every stage change states why (6 Oct 2026)", () => {
   it("a client's subscription is one of the pricing packages or a trial — anything else reads as unset", () => {
     expect(isClientPlan("growth")).toBe(true)
     expect(isClientPlan("gold")).toBe(false)
-    const [a, b] = rowsOf([{ id: "a", role: "Contractor" }, { id: "b", role: "Supplier" }], { a: { plan: "enterprise", idNo: "1012345678" }, b: { plan: "gold" } }, now)
-    expect(a).toMatchObject({ plan: "enterprise", idNo: "1012345678" })
+    const [a, b] = rowsOf([{ id: "a", role: "Contractor" }, { id: "b", role: "Supplier" }], { a: { plan: "enterprise" }, b: { plan: "gold" } }, now)
+    expect(a).toMatchObject({ plan: "enterprise" })
+    expect(a).not.toHaveProperty("idNo") // ADM-05: the ID / passport field is gone
     expect(b.plan).toBeNull()
   })
 

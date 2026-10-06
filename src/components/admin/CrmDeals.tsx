@@ -18,20 +18,24 @@ import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
-import { CLIENT_PLANS, DEAL_STATES, dealSchema, toDateKey, type DealDoc, type DealInput, type DealKind } from "@/lib/admin-crm"
+import { CLIENT_PLANS, DEAL_KINDS, DEAL_STATES, dealSchema, toDateKey, type DealDoc, type DealInput, type DealKind } from "@/lib/admin-crm"
 import { withSarSign } from "@/lib/riyal"
 
 export const ADMIN_CRM_DEALS = "adminCrmDeals"
 
 const TONE: Record<string, PillTone> = { open: "info", won: "ok", lost: "mute", draft: "mute", sent: "info", accepted: "ok", rejected: "bad" }
 
-export function CrmDeals({ clientId, author }: { clientId: string; author: { uid: string; name: string } }) {
+/** `kinds` limits what is shown (the platform CRM keeps quotes only — the opportunity is part of the lead, ADM-07);
+ * `alsoIds` are other records whose deals show here too (a client that came from a lead). */
+export function CrmDeals({ clientId, author, kinds = DEAL_KINDS, alsoIds = [] }: { clientId: string; author: { uid: string; name: string }; kinds?: readonly DealKind[]; alsoIds?: string[] }) {
   const t = useTranslations("Portal.Admin.Crm")
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
   const [adding, setAdding] = useState<DealKind | null>(null)
-  const q = useMemoFirebase(() => (firestore ? query(collection(firestore, ADMIN_CRM_DEALS), where("clientId", "==", clientId)) : null), [firestore, clientId])
+  const ids = [clientId, ...alsoIds].filter(Boolean)
+  const idsKey = ids.join("|")
+  const q = useMemoFirebase(() => (firestore ? query(collection(firestore, ADMIN_CRM_DEALS), where("clientId", "in", idsKey.split("|"))) : null), [firestore, idsKey])
   const { data } = useCollection<Omit<DealDoc, "id">>(q)
   const deals = useMemo(() => ((data ?? []) as DealDoc[]).slice().sort((a, b) => b.date.localeCompare(a.date)), [data])
   const money = (n: number) => withSarSign(n.toLocaleString("en-US", { maximumFractionDigits: 2 }), locale)
@@ -101,8 +105,9 @@ export function CrmDeals({ clientId, author }: { clientId: string; author: { uid
 
   return (
     <div className="space-y-4">
-      {section("opportunity")}
-      {section("quote")}
+      {kinds.map((k) => (
+        <div key={k}>{section(k)}</div>
+      ))}
     </div>
   )
 }

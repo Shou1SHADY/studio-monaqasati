@@ -121,6 +121,45 @@ export async function POST(req: NextRequest) {
         .doc(leadId)
         .update({ status: "converted", convertedUserId: uid, convertedAt: FieldValue.serverTimestamp() })
         .catch((err) => console.error("Failed to mark lead as converted:", err))
+
+      // The lead's file moves with it (ADM-10): the new client keeps the owner, plan and contacts,
+      // and its history shows the conversion. The lead's activities and quotes stay under the
+      // lead's id — the client file reads both. Non-fatal: the account already exists.
+      try {
+        const leadSnap = await db.collection(leadCollection).doc(leadId).get()
+        const kind = leadCollection === "onboardingRequests" ? "onboarding" : leadSnap.data()?.origin === "manual" ? "manual" : "demo"
+        const crmId = `lead_${kind}_${leadId}`
+        const rec = (await db.collection("adminCrmClients").doc(crmId).get()).data() ?? {}
+        await db
+          .collection("adminCrmClients")
+          .doc(uid)
+          .set(
+            {
+              stage: "onboarding",
+              ownerUid: rec.ownerUid ?? "",
+              ownerName: rec.ownerName ?? "",
+              plan: rec.plan ?? "",
+              contacts: rec.contacts ?? [],
+              convertedFromLead: crmId,
+              convertedAt: FieldValue.serverTimestamp(),
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+          )
+        await db.collection("adminCrmActivities").add({
+          clientId: uid,
+          type: "note",
+          system: "converted",
+          status: "done",
+          title: "",
+          note: "",
+          authorUid: decoded.uid,
+          authorName: "",
+          createdAt: FieldValue.serverTimestamp(),
+        })
+      } catch (err) {
+        console.error("Failed to carry the lead's file over to the client:", err)
+      }
     }
 
     return NextResponse.json({ success: true, data: { uid, emailSent } })
