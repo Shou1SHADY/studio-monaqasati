@@ -28,11 +28,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
-import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore"
+import { collection, doc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useMfgFacts } from "@/hooks/useMfgFacts"
 import { purchaseRequestRef } from "@/lib/mfg-outside"
+import { decideProjectRequest, fileProjectRequest } from "@/lib/procurement/project-request-writes"
 import { useNowMs } from "@/components/inventory/MfgOutsideBits"
 import { PlusCircle, ClipboardList, Loader2, CheckCircle2, XCircle, Plus, Trash2, Factory } from "lucide-react"
 import { PrRouteToMfgDialog, type RoutablePurchaseRequest } from "./PrRouteToMfgDialog"
@@ -150,16 +151,8 @@ export function PurchaseRequestsTab({ projectId, canDecide }: PurchaseRequestsTa
     }
     setIsSaving(true)
     try {
-      await addDoc(collection(firestore, "projects", projectId, "purchaseRequests"), {
-        title: title.trim(),
-        items: validItems,
-        notes: notes.trim() || null,
-        status: "pending",
-        requestedByUserId: user.uid,
-        requestedByUserName: profile?.name || user.email || "عضو الفريق",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      })
+      // The warehouse managers are told it waits for them (lib/procurement/project-request-writes.ts).
+      await fileProjectRequest(firestore, { uid: user.uid, name: profile?.name || user.email || "عضو الفريق" }, { projectId, title: title.trim(), items: validItems, notes: notes.trim() || null })
       toast({ title: t("pr_submit_success") })
       resetForm()
       setShowCreate(false)
@@ -175,13 +168,9 @@ export function PurchaseRequestsTab({ projectId, canDecide }: PurchaseRequestsTa
     if (!firestore || !user) return
     setDecidingId(requestId)
     try {
-      await updateDoc(doc(firestore, "projects", projectId, "purchaseRequests", requestId), {
-        status: approve ? "approved" : "rejected",
-        decidedByUserId: user.uid,
-        decidedByUserName: profile?.name || user.email || "عضو الفريق",
-        decidedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      })
+      // An approval tells the buyers the request is theirs now.
+      const count = requests.find((r) => r.id === requestId)?.items?.length ?? 0
+      await decideProjectRequest(firestore, { uid: user.uid, name: profile?.name || user.email || "عضو الفريق" }, { projectId, requestId, approve, count })
       toast({ title: approve ? t("pr_approved_toast") : t("pr_rejected_toast") })
     } catch (err) {
       console.error(err)

@@ -19,7 +19,7 @@ import type { ProcurementPolicies, PurchaseOrder } from "./types"
 
 /** Where a line is now. open/late/mfgl = Purchasing's move; chk/mfgw/mfg =
  * another module's; rfq/po = in hand; done/stk/cx = finished. */
-export type LineState = "open" | "late" | "mfgl" | "chk" | "mfgw" | "mfg" | "rfq" | "po" | "done" | "stk" | "cx"
+export type LineState = "open" | "late" | "mfgl" | "chk" | "pmw" | "mfgw" | "mfg" | "rfq" | "po" | "done" | "stk" | "cx"
 export const ACTION_STATES: LineState[] = ["open", "late", "mfgl"]
 export const isActionState = (s: LineState) => ACTION_STATES.includes(s)
 
@@ -101,6 +101,8 @@ export function needLineState(need: Need, facts: Pick<DeskFacts, "now" | "mfgReq
     case "done":
       return need.endKind === "arrived" || need.kind === "stock" ? "done" : "cx"
     case "waiting": {
+      // A PM request the project manager has not approved yet: shown, never Procurement's to act on.
+      if (need.waitingOn === "project") return "pmw"
       if (need.waitingOn === "workshop") {
         const mr = need.mfgRequestId ? facts.mfgRequests[need.mfgRequestId] : undefined
         if (!mr) return "mfgw"
@@ -269,7 +271,7 @@ export function inSegment(row: Pick<NeedRow, "state">, seg: DeskSegment): boolea
   const s = row.state
   if (seg === "all") return true
   if (seg === "act") return isActionState(s)
-  if (seg === "oth") return s === "chk" || s === "mfgw" || s === "mfg"
+  if (seg === "oth") return s === "chk" || s === "pmw" || s === "mfgw" || s === "mfg"
   if (seg === "rfq") return s === "rfq"
   if (seg === "po") return s === "po"
   return s === "done" || s === "stk" || s === "cx"

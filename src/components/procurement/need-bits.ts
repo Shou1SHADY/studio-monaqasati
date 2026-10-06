@@ -10,6 +10,7 @@ export const LINE_STATE_TONE: Record<LineState, PillTone> = {
   late: "warn",
   mfgl: "warn",
   chk: "mute",
+  pmw: "mute",
   mfgw: "mute",
   mfg: "violet",
   rfq: "info",

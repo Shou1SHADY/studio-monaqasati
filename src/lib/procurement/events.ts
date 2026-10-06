@@ -38,6 +38,7 @@ export type ProcEventKind =
   | "po_budget_decided" // → preparer + approvers: Projects accepted the overrun or asked to renegotiate
   | "receipt_manual" // → Finance: goods recorded by hand (with or without an order)
   | "receipt_expensed" // → Finance: a no-PO receipt Procurement ruled a cash expense
+  | "need_filed" // → the warehouse managers: a project's (legacy) purchase request waits for their approval
   | "need_approved" // → buyers (rfq.manage / rfq.create) + owner: a project's material request was approved and is now Procurement's
 
 export const PROC_EVENT_KINDS: ProcEventKind[] = [
@@ -62,6 +63,7 @@ export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "receipt_manual",
   "receipt_expensed",
   "need_approved",
+  "need_filed",
 ]
 
 /** Who is told: a role, named users, or the org owner. */
@@ -192,6 +194,10 @@ export const PROC_EVENT_COPY_AR: Record<ProcEventKind, { title: string; message:
   receipt_expensed: {
     title: "استلام بلا أمر شراء صار مصروفاً نقدياً — {receipt}",
     message: "قرّر {actor} أن الاستلام {receipt} من {supplier} مصروف نقدي بلا أمر شراء. سجّل الفاتورة مصروفاً.",
+  },
+  need_filed: {
+    title: "طلب شراء من المشروع بانتظار اعتمادك — {no}",
+    message: "طلب {actor} من مشروع {project} مواد (عدد البنود: {count}). اعتمده أو ارفضه من تبويب «طلبات شراء داخلية» في المشروع ليصل إلى المشتريات.",
   },
   need_approved: {
     title: "طلب مواد معتمد بانتظار المشتريات — ط.م {no}",

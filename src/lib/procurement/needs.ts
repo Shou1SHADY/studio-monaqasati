@@ -70,7 +70,7 @@ export interface Need {
   endNote: string | null
   /** How it ended: arrived, sent back to the workshop, refused by the warehouse. */
   endKind: "arrived" | "sent_back" | "refused" | null
-  waitingOn: "warehouse" | "workshop" | null
+  waitingOn: "warehouse" | "workshop" | "project" | null
   projectId: string | null
   projectName: string | null
   /** Carried onto the RFQ and the order, so the need can be closed from them. */
@@ -238,11 +238,13 @@ function addedNeeds(base: Need, pr: ProjectRequestDoc): Need[] {
 
 export function projectNeed(project: { id: string; name: string }, pr: ProjectRequestDoc, ref: string): Need {
   // A PM request is born awaiting the project manager's TECHNICAL approval
-  // (REQ-02): until he approves, nothing of it is Procurement's — it is not a
-  // request the warehouse is slow to answer, and nobody proceeds on it.
+  // (REQ-02): until he approves, nothing of it is Procurement's to act on — it is
+  // not a request the warehouse is slow to answer, and nobody proceeds on it. It
+  // is SHOWN (read-only, "waiting for the project", never selectable) so Procurement
+  // sees what is coming; before 6 Oct 2026 it was hidden until approval.
   const unapproved = Boolean(pr.pm) && pr.status === "pending"
   const behind = linesOfItems(pr)
-  const lines = (unapproved ? [] : pr.items || [])
+  const lines = (pr.items || [])
     .map((i, k) => {
       const own = behind[k]
       const l: NeedLine = { name: (i.name || "").trim(), unit: (i.unit || "").trim(), quantity: own?.inv?.k === "issue" ? toSource(own) : Number(i.quantity) || 0 }
@@ -258,7 +260,10 @@ export function projectNeed(project: { id: string; name: string }, pr: ProjectRe
   let state: NeedState = "action"
   let waitingOn: Need["waitingOn"] = null
   if (pr.status === "rejected") state = "done"
-  else if (unapproved) state = "waiting"
+  else if (unapproved) {
+    state = "waiting"
+    waitingOn = "project"
+  }
   else if (pr.status !== "approved" && !(proceeded && pr.status === "pending")) {
     state = "waiting"
     waitingOn = "warehouse"
