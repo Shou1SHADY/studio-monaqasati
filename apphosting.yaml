@@ -6,6 +6,12 @@ runConfig:
   # more instances in response to increased traffic.
   maxInstances: 1
 env:
+  # The framework build outgrew Node's default heap: build 2026-10-06-004 died with
+  # "JavaScript heap out of memory" (exit 134) while 001-003 passed. Build only —
+  # the running server keeps its own default.
+  - variable: NODE_OPTIONS
+    value: --max-old-space-size=4096
+    availability: [BUILD]
   - variable: RESEND_API_KEY
     secret: RESEND_API_KEY
   - variable: GROQ_API_KEY
