@@ -7,11 +7,14 @@ import { z } from "zod"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
 import { addDoc, collection, doc, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore"
-import { Archive, ArchiveRestore, CalendarClock, CalendarDays, Handshake, LayoutGrid, List, Loader2, Plus, Search, TrendingUp, UserX, UsersRound } from "lucide-react"
+import { Archive, ArchiveRestore, Building2, CalendarClock, CalendarDays, Handshake, LayoutGrid, List, Loader2, Plus, Search, TrendingUp, UserPlus, UserX, UsersRound } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { AddLeadDialog } from "@/components/admin/AddLeadDialog"
 import { CrmBoard, type CrmBoardColumn } from "@/components/admin/CrmBoard"
+import { CrmDeals } from "@/components/admin/CrmDeals"
+import { StageReasonDialog, type PendingStage } from "@/components/admin/StageReasonDialog"
 import { Chip } from "@/components/module-ui/Chip"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { isAllCompanyTypes } from "@/lib/company-types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -37,6 +40,11 @@ import {
   summarizeClients,
   summarizeLeads,
   type ActivityType,
+  type ClientPlan,
+  type ClientSource,
+  type HistoryType,
+  CLIENT_PLANS,
+  CLIENT_SOURCES,
   type ClientRecord,
   type ClientStage,
   type ClientUser,
@@ -49,7 +57,7 @@ import { matchesSearch } from "@/lib/search-text"
 import { cn } from "@/lib/utils"
 
 type StaffUser = { id: string; name?: string; email?: string }
-type ActivityDoc = { id: string; clientId: string; type: ActivityType; note: string; authorName: string; createdAt?: { seconds?: number } }
+type ActivityDoc = { id: string; clientId: string; type: HistoryType; note: string; authorName: string; from?: string; to?: string; createdAt?: { seconds?: number } }
 type Filter = "all" | "mine" | "due" | "stale" | "unowned" | "dupes" | "removed"
 type LeadRef = { col: "demoRequests" | "onboardingRequests"; id: string }
 type Tab = "clients" | "leads"
@@ -77,6 +85,16 @@ type ListRow = {
   leadRef: LeadRef | null
   match: LeadMatch | null
   search: string[]
+  /** A client (an account) or a lead (a request) — the two look different everywhere. */
+  kind: "client" | "lead"
+  phone: string
+  email: string
+  idNo: string
+  plan: ClientPlan | null
+  /** Where he came from, in words. */
+  origin: string
+  /** A client's source as stored (editable); null for a lead (his source is the request). */
+  clientSource: ClientSource | null
 }
 
 const UNASSIGNED = "__none__"
@@ -217,14 +235,21 @@ export default function AdminCrmPage() {
         leadRef: { col: r.source === "onboarding" ? ("onboardingRequests" as const) : ("demoRequests" as const), id: r.id },
         match,
         search: [r.name, r.company, r.email, r.phone, r.city],
+        kind: "lead" as const,
+        phone: r.phone,
+        email: r.email,
+        idNo: r.idNo,
+        plan: null,
+        origin: t(`source_${r.source}`),
+        clientSource: null,
         }
       })
     }
     return rows.map((r) => ({
       id: r.id,
       name: r.name,
-      subtitle: t(r.role === "Contractor" ? "role_contractor" : "role_supplier"),
-      detail: [t(r.role === "Contractor" ? "role_contractor" : "role_supplier"), r.city, r.phone, r.email].filter(Boolean).join(" · "),
+      subtitle: [t(r.role === "Contractor" ? "role_contractor" : "role_supplier"), r.plan ? t(`plan_${r.plan}`) : t("plan_unset")].join(" · "),
+      detail: [t(r.role === "Contractor" ? "role_contractor" : "role_supplier"), r.city].filter(Boolean).join(" · "),
       stage: r.stage,
       stageStyle: STAGE_STYLE[r.stage],
       stages: CLIENT_STAGES,
@@ -243,6 +268,13 @@ export default function AdminCrmPage() {
       leadRef: null,
       match: null,
       search: [r.name, r.email, r.phone, r.city],
+      kind: "client" as const,
+      phone: r.phone,
+      email: r.email,
+      idNo: r.idNo,
+      plan: r.plan,
+      origin: t(`csource_${r.source}`),
+      clientSource: r.source,
     }))
   }, [tab, rows, leadRows, matches, t, locale])
 
@@ -293,6 +325,35 @@ export default function AdminCrmPage() {
       })
       toast({ title: t(archived ? "lead_removed" : "lead_restored") })
       setOpenId(null)
+    } catch {
+      toast({ variant: "destructive", title: t("save_failed") })
+    }
+  }
+
+  // Every stage change states why — the board, its "move to" and the record's field all ask here.
+  const [pendingStage, setPendingStage] = useState<PendingStage | null>(null)
+  const askStage = (id: string, to: string) => {
+    const row = list.find((r) => r.id === id)
+    if (!row || row.stage === to) return
+    setPendingStage({ id, name: row.name, from: row.stage, to })
+  }
+  const confirmStage = async (reason: string) => {
+    const p = pendingStage
+    if (!p || !firestore) return
+    try {
+      await setDoc(doc(firestore, "adminCrmClients", p.id), { stage: p.to, updatedAt: serverTimestamp() }, { merge: true })
+      await addDoc(collection(firestore, "adminCrmActivities"), {
+        clientId: p.id,
+        type: "stage",
+        from: p.from,
+        to: p.to,
+        note: reason,
+        authorUid: user?.uid ?? "",
+        authorName: ownerNameOf(user?.uid ?? "") || user?.email || "",
+        createdAt: serverTimestamp(),
+      })
+      toast({ title: t("stage_changed", { to: t(`stage_${p.to}`) }) })
+      setPendingStage(null)
     } catch {
       toast({ variant: "destructive", title: t("save_failed") })
     }
@@ -368,9 +429,11 @@ export default function AdminCrmPage() {
               className={cn(
                 "rounded-md px-4 py-1.5 text-sm font-semibold transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                tab === k ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                "inline-flex items-center gap-1.5",
+                tab === k ? (k === "leads" ? "bg-background text-warning shadow-sm" : "bg-background text-primary shadow-sm") : "text-muted-foreground hover:text-foreground",
               )}
             >
+              {k === "leads" ? <UserPlus size={14} aria-hidden="true" /> : <Building2 size={14} aria-hidden="true" />}
               {t(`tab_${k}`)}
               <span className="ms-1.5 opacity-70" dir="ltr">{k === "leads" ? leadSummary.total : summary.total}</span>
             </button>
@@ -402,7 +465,8 @@ export default function AdminCrmPage() {
           </section>
         )}
 
-        <Card className="border-none shadow-sm overflow-hidden">
+        {/* Leads and clients never look alike: the panel's edge and every row carry the kind. */}
+        <Card className={cn("border-none shadow-sm overflow-hidden border-t-4", onLeads ? "border-t-warning" : "border-t-primary")}>
           <div className="p-4 border-b flex flex-col md:flex-row md:items-center gap-3">
             <div className="relative md:w-72">
               <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
@@ -444,7 +508,7 @@ export default function AdminCrmPage() {
             </div>
           </div>
           {onLeads && (
-            <div className="px-4 py-3 border-b flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-6">
+            <div className="px-4 py-3 border-b flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-6">
               <div role="group" aria-label={t("stage_filter_label")} className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold text-muted-foreground">{t("stage_filter_label")}</span>
                 <Chip selected={stageFilter === ""} count={leadSummary.total} onClick={() => setStageFilter("")}>
@@ -456,6 +520,7 @@ export default function AdminCrmPage() {
                   </Chip>
                 ))}
               </div>
+              <p className="basis-full text-xs text-muted-foreground lg:order-last">{t("converted_hint")}</p>
               <div role="group" aria-label={t("source_filter_label")} className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold text-muted-foreground">{t("source_filter_label")}</span>
                 <Chip selected={sourceFilter === ""} onClick={() => setSourceFilter("")}>
@@ -481,7 +546,7 @@ export default function AdminCrmPage() {
                 items={visible}
                 columns={boardColumns}
                 onOpen={setOpenId}
-                onMove={(id, stage) => void saveRecord(id, { stage })}
+                onMove={(id, stage) => askStage(id, stage)}
               />
             ) : (
               <Table>
@@ -489,6 +554,7 @@ export default function AdminCrmPage() {
                   <TableRow>
                     <TableHead>{t(onLeads ? "col_lead" : "col_client")}</TableHead>
                     <TableHead>{t("col_stage")}</TableHead>
+                    {!onLeads && <TableHead className="hidden md:table-cell">{t("col_plan")}</TableHead>}
                     <TableHead className="hidden md:table-cell">{t("col_owner")}</TableHead>
                     {onLeads && <TableHead className="hidden sm:table-cell">{t("col_received")}</TableHead>}
                     <TableHead className="hidden sm:table-cell">{t("col_last_contact")}</TableHead>
@@ -512,7 +578,10 @@ export default function AdminCrmPage() {
                     >
                       <TableCell>
                         <p className="font-bold">{r.name}</p>
-                        <p className="text-xs text-muted-foreground">{r.subtitle}</p>
+                        <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                          <KindBadge kind={r.kind} />
+                          {r.subtitle}
+                        </p>
                         {r.flags.length > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1">
                             {r.flags.map((f) => (
@@ -524,6 +593,11 @@ export default function AdminCrmPage() {
                       <TableCell>
                         <Badge variant="outline" className={r.stageStyle}>{t(`stage_${r.stage}`)}</Badge>
                       </TableCell>
+                      {!onLeads && (
+                        <TableCell className="hidden md:table-cell">
+                          {r.plan ? <Badge variant="outline" className="border-cta/20 bg-cta/10 text-cta">{t(`plan_${r.plan}`)}</Badge> : <span className="text-xs text-muted-foreground">{t("plan_unset")}</span>}
+                        </TableCell>
+                      )}
                       <TableCell className="hidden md:table-cell text-sm">{r.ownerName || <span className="text-muted-foreground">{t("unassigned")}</span>}</TableCell>
                       {onLeads && (
                         <TableCell className="hidden sm:table-cell text-sm tabular-nums" dir="ltr">
@@ -559,14 +633,27 @@ export default function AdminCrmPage() {
               currentUid={user?.uid ?? ""}
               currentName={ownerNameOf(user?.uid ?? "") || user?.email || ""}
               onSave={(patch) => saveRecord(open.id, patch)}
+              onStageRequest={(to) => askStage(open.id, to)}
               duplicateNames={(open.match?.duplicates ?? []).map((id) => leadNameOf.get(id) ?? id)}
               onArchive={open.leadRef ? (archived) => setArchived(open, archived) : undefined}
             />
           )}
         </DialogContent>
       </Dialog>
+      <StageReasonDialog pending={pendingStage} stageLabel={(st) => t(`stage_${st}`)} onCancel={() => setPendingStage(null)} onConfirm={confirmStage} />
       <AddLeadDialog open={addLeadOpen} onOpenChange={setAddLeadOpen} ownerName={ownerNameOf(user?.uid ?? "") || user?.email || ""} />
     </PortalLayout>
+  )
+}
+
+/** Client or lead — the same shape in both tabs, never mistaken for one another. */
+function KindBadge({ kind }: { kind: "client" | "lead" }) {
+  const t = useTranslations("Portal.Admin.Crm")
+  return (
+    <Badge variant="outline" className={cn("gap-1 text-[11px] font-semibold", kind === "lead" ? "border-warning/30 bg-warning/10 text-warning" : "border-primary/20 bg-primary/10 text-primary")}>
+      {kind === "lead" ? <UserPlus size={11} aria-hidden="true" /> : <Building2 size={11} aria-hidden="true" />}
+      {t(kind === "lead" ? "kind_lead" : "kind_client")}
+    </Badge>
   )
 }
 
@@ -591,6 +678,7 @@ function ClientPanel({
   currentUid,
   currentName,
   onSave,
+  onStageRequest,
   duplicateNames,
   onArchive,
 }: {
@@ -599,6 +687,8 @@ function ClientPanel({
   currentUid: string
   currentName: string
   onSave: (patch: Partial<ClientRecord>) => Promise<void>
+  /** A stage change asks for its reason first (the page's dialog). */
+  onStageRequest: (to: string) => void
   duplicateNames: string[]
   onArchive?: (archived: boolean) => Promise<void>
 }) {
@@ -646,11 +736,58 @@ function ClientPanel({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{row.name}</DialogTitle>
+        <DialogTitle className="flex flex-wrap items-center gap-2">
+          <span dir="auto">{row.name}</span>
+          <KindBadge kind={row.kind} />
+        </DialogTitle>
         <DialogDescription>
           {row.detail}
         </DialogDescription>
       </DialogHeader>
+
+      {/* The record: how to reach him, who he is, where he came from — and, for a client, his subscription. */}
+      <div className="grid gap-x-6 gap-y-3 rounded-lg border p-4 sm:grid-cols-2">
+        <div className="space-y-0.5">
+          <p className="text-xs text-muted-foreground">{t("rec_phone")}</p>
+          {row.phone ? <a href={`tel:${row.phone}`} className="font-semibold hover:underline" dir="ltr">{row.phone}</a> : <p>—</p>}
+        </div>
+        <div className="space-y-0.5">
+          <p className="text-xs text-muted-foreground">{t("rec_email")}</p>
+          {row.email ? <a href={`mailto:${row.email}`} className="break-all font-semibold hover:underline" dir="ltr">{row.email}</a> : <p>—</p>}
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="crm-idno" className="text-xs font-normal text-muted-foreground">{t("rec_id")}</Label>
+          <Input id="crm-idno" dir="ltr" defaultValue={row.idNo} placeholder={t("rec_id_placeholder")} onBlur={(e) => e.target.value.trim() !== row.idNo && void onSave({ idNo: e.target.value.trim() })} className="h-9" />
+        </div>
+        <div className="space-y-1">
+          {row.clientSource ? (
+            <>
+              <Label htmlFor="crm-source" className="text-xs font-normal text-muted-foreground">{t("rec_source")}</Label>
+              <NativeSelect id="crm-source" value={row.clientSource} onChange={(e) => void onSave({ source: e.target.value })} className="h-9">
+                {CLIENT_SOURCES.map((x) => (
+                  <option key={x} value={x}>{t(`csource_${x}`)}</option>
+                ))}
+              </NativeSelect>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground">{t("rec_source")}</p>
+              <p className="font-semibold">{row.origin}</p>
+            </>
+          )}
+        </div>
+        {row.kind === "client" && (
+          <div className="space-y-1 sm:col-span-2">
+            <Label htmlFor="crm-plan" className="text-xs font-normal text-muted-foreground">{t("plan_label")}</Label>
+            <NativeSelect id="crm-plan" value={row.plan ?? ""} onChange={(e) => void onSave({ plan: e.target.value })} className="h-9 sm:w-64">
+              <option value="">{t("plan_unset")}</option>
+              {CLIENT_PLANS.map((x) => (
+                <option key={x} value={x}>{t(`plan_${x}`)}</option>
+              ))}
+            </NativeSelect>
+          </div>
+        )}
+      </div>
 
       {(row.match?.client || duplicateNames.length > 0) && (
         <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm space-y-1">
@@ -663,7 +800,7 @@ function ClientPanel({
       <div className="grid sm:grid-cols-3 gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="crm-stage">{t("stage_label")}</Label>
-          <Select value={row.stage} onValueChange={(v) => onSave({ stage: v })} disabled={row.stageLocked}>
+          <Select value={row.stage} onValueChange={(v) => onStageRequest(v)} disabled={row.stageLocked}>
             <SelectTrigger id="crm-stage"><SelectValue /></SelectTrigger>
             <SelectContent>
               {(row.stageLocked ? [row.stage] : row.stages).map((s) => <SelectItem key={s} value={s}>{t(`stage_${s}`)}</SelectItem>)}
@@ -725,7 +862,9 @@ function ClientPanel({
             {sorted.map((a) => (
               <li key={a.id} className="rounded-lg bg-muted/40 p-3 text-sm">
                 <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">{t(`type_${a.type}`)} · {a.authorName}</span>
+                  <span className="font-semibold text-foreground">
+                    {a.type === "stage" && a.from && a.to ? t("history_stage", { from: t(`stage_${a.from}`), to: t(`stage_${a.to}`) }) : t(`type_${a.type}`)} · {a.authorName}
+                  </span>
                   <span dir="ltr">{a.createdAt?.seconds ? new Date(a.createdAt.seconds * 1000).toISOString().slice(0, 10) : ""}</span>
                 </div>
                 <p className="mt-1 whitespace-pre-wrap">{a.note}</p>
@@ -733,6 +872,10 @@ function ClientPanel({
             ))}
           </ul>
         )}
+      </div>
+
+      <div className="space-y-2 border-t pt-4">
+        <CrmDeals clientId={row.id} author={{ uid: currentUid, name: currentName }} />
       </div>
 
       {onArchive && (

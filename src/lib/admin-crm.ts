@@ -7,11 +7,50 @@ export type ClientStage = (typeof CLIENT_STAGES)[number]
 
 export const ACTIVITY_TYPES = ["call", "meeting", "email", "note"] as const
 export type ActivityType = (typeof ACTIVITY_TYPES)[number]
+/** What the history shows: the activities logged by hand, and every stage change with its reason. */
+export type HistoryType = ActivityType | "stage"
+
+/** The subscription a client is on — the packages of the pricing page, and a trial before one is chosen. */
+export const CLIENT_PLANS = ["trial", "starter", "growth", "enterprise"] as const
+export type ClientPlan = (typeof CLIENT_PLANS)[number]
+export const isClientPlan = (v: unknown): v is ClientPlan => typeof v === "string" && (CLIENT_PLANS as readonly string[]).includes(v)
+
+/** Where a client came from: the lead his account was created from, or he signed up himself. */
+export const CLIENT_SOURCES = ["demo", "onboarding", "manual", "signup", "referral", "event", "other"] as const
+export type ClientSource = (typeof CLIENT_SOURCES)[number]
+export function clientSourceOf(user: { convertedFromLeadCollection?: string | null }, record?: { source?: string | null } | null): ClientSource {
+  if (record?.source && (CLIENT_SOURCES as readonly string[]).includes(record.source)) return record.source as ClientSource
+  if (user.convertedFromLeadCollection === "demoRequests") return "demo"
+  if (user.convertedFromLeadCollection === "onboardingRequests") return "onboarding"
+  return "signup"
+}
+
+/** Every stage change states why (agreed with the sales team, 6 Oct 2026) — kept in the record's history. */
+export const stageChangeSchema = z.object({ reason: z.string().trim().min(3).max(500) })
+
+/** The record's opportunities and quotes (one collection, `kind`). Amounts in riyals. */
+export const DEAL_KINDS = ["opportunity", "quote"] as const
+export type DealKind = (typeof DEAL_KINDS)[number]
+export const DEAL_STATES: Record<DealKind, readonly string[]> = {
+  opportunity: ["open", "won", "lost"],
+  quote: ["draft", "sent", "accepted", "rejected"],
+}
+export const dealSchema = z.object({
+  kind: z.enum(DEAL_KINDS),
+  title: z.string().trim().min(2).max(200),
+  plan: z.enum(CLIENT_PLANS).nullable(),
+  amount: z.number().min(0).max(100_000_000),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  note: z.string().trim().max(1000),
+})
+export type DealInput = z.infer<typeof dealSchema>
+export type DealDoc = DealInput & { id: string; clientId: string; state: string; authorName: string; createdAt?: { seconds?: number } | null }
 
 export const STALE_DAYS = 30
 
 export type ClientUser = {
   id: string
+  convertedFromLeadCollection?: string | null
   role?: string
   name?: string
   email?: string
@@ -22,6 +61,12 @@ export type ClientUser = {
 
 export type ClientRecord = {
   stage?: string
+  /** The subscription (clients) — CLIENT_PLANS. */
+  plan?: string
+  /** The contact's national ID / iqama / passport number. */
+  idNo?: string
+  /** Set by hand when the derived source is wrong — CLIENT_SOURCES. */
+  source?: string
   ownerUid?: string
   ownerName?: string
   nextFollowUp?: string
@@ -36,6 +81,9 @@ export type ClientRow = {
   phone: string
   city: string
   isVerified: boolean
+  plan: ClientPlan | null
+  source: ClientSource
+  idNo: string
   stage: ClientStage
   ownerUid: string
   ownerName: string
@@ -89,6 +137,9 @@ export function buildClientRows(
       phone: u.phone ?? "",
       city: u.city ?? "",
       isVerified: u.isVerified === true,
+      plan: isClientPlan(rec.plan) ? rec.plan : null,
+      source: clientSourceOf(u, rec),
+      idNo: rec.idNo ?? "",
       stage,
       ownerUid: rec.ownerUid ?? "",
       ownerName: rec.ownerName ?? "",
@@ -160,6 +211,7 @@ export type LeadRow = {
   preferredDate: string
   converted: boolean
   archived: boolean
+  idNo: string
   stage: LeadViewStage
   ownerUid: string
   ownerName: string
@@ -218,6 +270,7 @@ export function buildLeadRows(leads: LeadDoc[], records: Record<string, ClientRe
       preferredDate: l.preferredDate ?? "",
       converted,
       archived: l.archived === true,
+      idNo: rec.idNo ?? "",
       stage,
       ownerUid: rec.ownerUid ?? "",
       ownerName: rec.ownerName ?? "",

@@ -3870,6 +3870,11 @@ service cloud.firestore {
       allow create, update: if isAdmin();
       allow delete: if false;
     }
+    // A client's or lead's opportunities and quotes in the platform's own CRM — staff only, never deleted.
+    match /adminCrmDeals/{dealId} {
+      allow get, list, create, update: if isAdmin();
+      allow delete: if false;
+    }
     match /adminCrmActivities/{activityId} {
       allow get, list: if isAdmin();
       allow create: if isAdmin() && request.resource.data.authorUid == request.auth.uid;

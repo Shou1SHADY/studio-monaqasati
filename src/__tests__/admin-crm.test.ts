@@ -240,3 +240,39 @@ describe("lead duplicates, clients, removal and intake", () => {
     expect(leadIntake(rows, now)).toEqual({ thisWeek: 2, lastWeek: 1, thisMonth: 1, lastMonth: 3, bySource: { demo: 1, onboarding: 0, manual: 0 } })
   })
 })
+
+import { readFileSync } from "fs"
+import { join } from "path"
+import { clientSourceOf, dealSchema, isClientPlan, stageChangeSchema, buildClientRows as rowsOf } from "@/lib/admin-crm"
+
+describe("client record: subscription, source, ID; every stage change states why (6 Oct 2026)", () => {
+  it("a client's subscription is one of the pricing packages or a trial — anything else reads as unset", () => {
+    expect(isClientPlan("growth")).toBe(true)
+    expect(isClientPlan("gold")).toBe(false)
+    const [a, b] = rowsOf([{ id: "a", role: "Contractor" }, { id: "b", role: "Supplier" }], { a: { plan: "enterprise", idNo: "1012345678" }, b: { plan: "gold" } }, now)
+    expect(a).toMatchObject({ plan: "enterprise", idNo: "1012345678" })
+    expect(b.plan).toBeNull()
+  })
+
+  it("the source: set by hand wins, else the lead the account was created from, else he signed up", () => {
+    expect(clientSourceOf({ convertedFromLeadCollection: "demoRequests" })).toBe("demo")
+    expect(clientSourceOf({ convertedFromLeadCollection: "onboardingRequests" })).toBe("onboarding")
+    expect(clientSourceOf({})).toBe("signup")
+    expect(clientSourceOf({ convertedFromLeadCollection: "demoRequests" }, { source: "referral" })).toBe("referral")
+    expect(clientSourceOf({}, { source: "nonsense" })).toBe("signup")
+  })
+
+  it("a stage change needs a reason; a deal needs a title, an amount and a day", () => {
+    expect(stageChangeSchema.safeParse({ reason: "  " }).success).toBe(false)
+    expect(stageChangeSchema.safeParse({ reason: "called, wants a demo" }).success).toBe(true)
+    expect(dealSchema.safeParse({ kind: "quote", title: "Pro Growth — 12 months", plan: "growth", amount: 12000, date: "2026-10-06", note: "" }).success).toBe(true)
+    expect(dealSchema.safeParse({ kind: "quote", title: "x", plan: null, amount: -1, date: "06/10/2026", note: "" }).success).toBe(false)
+  })
+
+  it("opportunities and quotes are platform staff's only, and never deleted", () => {
+    const rules = readFileSync(join(process.cwd(), "firestore.rules"), "utf8")
+    const block = rules.slice(rules.indexOf("match /adminCrmDeals/{dealId}"), rules.indexOf("match /adminCrmActivities/{activityId}"))
+    expect(block).toMatch(/allow get, list, create, update: if isAdmin\(\);/)
+    expect(block).toMatch(/allow delete: if false;/)
+  })
+})
