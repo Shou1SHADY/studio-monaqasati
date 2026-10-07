@@ -1,11 +1,12 @@
 "use client"
 
+import { useModuleComponents } from "@/hooks/useCompanyModules"
 import { useTranslations, useLocale } from "next-intl"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Link } from "@/i18n/routing"
 import { LayoutGrid, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { CONTRACTOR_COMPONENTS, visibleComponents, type AccentToken } from "@/lib/portal-components"
+import { visibleComponents, type AccentToken } from "@/lib/portal-components"
 import { usePermissions } from "@/hooks/usePermissions"
 
 const ACCENT_CLASSES: Record<AccentToken, { tile: string }> = {
@@ -32,7 +33,8 @@ export default function ContractorAppsPage() {
   const isRtl = locale === "ar"
   const { can } = usePermissions()
   // The launcher lists what this member can actually open, nothing more.
-  const components = visibleComponents(CONTRACTOR_COMPONENTS, can)
+  const modules = useModuleComponents("contractor")
+  const components = visibleComponents(modules, can)
 
   return (
     <PortalLayout>

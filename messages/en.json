@@ -8634,7 +8634,13 @@
       "pn_doc_comment_title": "New comment on {about}",
       "pn_doc_comment": "{actor} commented on {about}: \"{text}\"",
       "pn_doc_file_title": "New file on {about}",
-      "pn_doc_file": "{actor} attached \"{text}\" to {about}."
+      "pn_doc_file": "{actor} attached \"{text}\" to {about}.",
+      "module_off_title": "This component is not switched on for your company",
+      "module_off_desc": "{module} is switched off for your company. If you need it, ask the platform team to switch it on.",
+      "module_off_home": "Back to the home page",
+      "module_name_project_management": "Project Management",
+      "module_name_hr": "HR",
+      "module_name_manufacturing": "Manufacturing"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -24018,6 +24024,15 @@
       "empty_desc": "Attach a file on a purchase order or an offer and it appears here at once.",
       "empty_filtered": "No file matches the filters.",
       "open_failed": "Could not open the file."
+    },
+    "AdminModules": {
+      "button": "Components",
+      "title": "The company's components",
+      "note": "Switching a component off hides it from the company's menu, tiles and pages for every member of its team. Its data is kept, and switching it back on restores it as it was. All other components are core and always on.",
+      "save": "Save",
+      "cancel": "Cancel",
+      "saved": "The company's components were saved",
+      "save_failed": "Could not save. Try again."
     }
   },
   "Auth": {

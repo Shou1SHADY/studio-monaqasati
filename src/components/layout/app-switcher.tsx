@@ -19,6 +19,7 @@ import {
   COMPONENT_ACCENT_CLASSES,
   visibleComponents,
 } from "@/lib/portal-components"
+import { useModuleComponents } from "@/hooks/useCompanyModules"
 import { usePermissions } from "@/hooks/usePermissions"
 
 /** Gmail-style waffle-menu trigger — quick-switch between a portal's
@@ -33,11 +34,12 @@ export function AppSwitcher() {
   
   const isContractor = pathname.startsWith("/contractor")
   const isSupplier = pathname.startsWith("/supplier")
+  const modules = useModuleComponents(isContractor ? "contractor" : isSupplier ? "supplier" : null)
   if (!isContractor && !isSupplier) return null
 
   // Only the modules this member is allowed into — a tile they cannot open
   // is a dead end, not a discovery hint.
-  const components = visibleComponents(isContractor ? CONTRACTOR_COMPONENTS : SUPPLIER_COMPONENTS, can)
+  const components = visibleComponents(modules, can)
   const activeId = (isContractor ? resolveActiveContractorComponent(pathname) : resolveActiveSupplierComponent(pathname)).id
   // "See all components" lands wherever every component is actually laid out.
   // For a contractor that is the portal home itself — its welcome screen IS the

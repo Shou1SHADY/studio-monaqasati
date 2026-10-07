@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils"
 import { useWorkQueue, type WorkQueueItem, type WorkQueueItemType } from "@/hooks/useWorkQueue"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModuleComponents } from "@/hooks/useCompanyModules"
 import { CONTRACTOR_COMPONENTS, COMPONENT_ACCENT_CLASSES, isComponentVisible, type PortalComponentId } from "@/lib/portal-components"
 
 // Which tile a queue item's badge count rolls up into, and the permission
@@ -187,6 +188,7 @@ export default function ContractorDashboard() {
   const myOrgId = profile?.organizationId || user?.uid
   const activeCompanyName = useActiveCompanyName(profile, user?.uid)
   const { can, isOrgOwner, groups } = usePermissions()
+  const modules = useModuleComponents("contractor")
 
   const firstName = (profile?.name as string | undefined)?.trim().split(/\s+/)[0] || ""
   const hourNow = new Date().getHours()
@@ -235,7 +237,8 @@ export default function ContractorDashboard() {
     po_attention: can("po.expedite") || can("offers.accept") || can("po.approve"),
   }
   const { items: allQueueItems, isLoading: queueLoading, stats, recentItems } = useWorkQueue(myOrgId, user?.uid, { isOrgOwner })
-  const queueItems = allQueueItems.filter((item) => itemPermission[item.type])
+  // A module the company switched off takes its decisions out of the list too.
+  const queueItems = allQueueItems.filter((item) => itemPermission[item.type] && modules.some((c) => c.id === ITEM_TILE[item.type] && c.launcher !== false))
   const top3 = queueItems.slice(0, 3)
   const ongoingProjectsCount = stats.projectsOngoing
 
@@ -256,7 +259,7 @@ export default function ContractorDashboard() {
   }
 
   const URGENT_TILES = new Set<PortalComponentId>(["procurement", "warehouses", "payments", "project-management"])
-  const sortedComponents = [...CONTRACTOR_COMPONENTS].sort((a, b) => a.displayOrder - b.displayOrder)
+  const sortedComponents = modules.filter((c) => c.launcher !== false).sort((a, b) => a.displayOrder - b.displayOrder)
   const ChevronIcon = isRtl ? ChevronLeft : ChevronRight
 
   // Permission-aware tiles: a module the member can't open anything inside is

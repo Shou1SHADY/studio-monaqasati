@@ -8634,7 +8634,13 @@
       "pn_doc_comment_title": "تعليق جديد على {about}",
       "pn_doc_comment": "كتب {actor} تعليقاً على {about}: «{text}»",
       "pn_doc_file_title": "مرفق جديد على {about}",
-      "pn_doc_file": "أرفق {actor} الملف «{text}» على {about}."
+      "pn_doc_file": "أرفق {actor} الملف «{text}» على {about}.",
+      "module_off_title": "هذا المكوّن غير مفعّل لشركتك",
+      "module_off_desc": "مكوّن {module} متوقف لشركتك. إن كنت تحتاجه فتواصل مع إدارة المنصة لتفعيله.",
+      "module_off_home": "العودة إلى الرئيسية",
+      "module_name_project_management": "إدارة المشاريع",
+      "module_name_hr": "الموارد البشرية",
+      "module_name_manufacturing": "التصنيع"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",
@@ -24018,6 +24024,15 @@
       "empty_desc": "أرفق ملفاً على أمر شراء أو عرض، وسيظهر هنا فوراً.",
       "empty_filtered": "لا يوجد ملف يطابق التصفية.",
       "open_failed": "تعذر فتح الملف."
+    },
+    "AdminModules": {
+      "button": "المكوّنات",
+      "title": "مكوّنات الشركة",
+      "note": "إيقاف مكوّن يخفيه من قائمة الشركة وبطاقاتها وصفحاتها لكل أعضاء فريقها. بياناتها تبقى محفوظة، وإعادة تشغيله ترجعه كما كان. باقي المكوّنات أساسية وتبقى تعمل دائماً.",
+      "save": "حفظ",
+      "cancel": "إلغاء",
+      "saved": "تم حفظ مكوّنات الشركة",
+      "save_failed": "تعذر الحفظ. حاول مرة أخرى."
     }
   },
   "Auth": {

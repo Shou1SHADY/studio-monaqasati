@@ -21,6 +21,7 @@ import {
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { AppSwitcher } from "@/components/layout/app-switcher"
 import { ActivityBell } from "@/components/activities/ActivityBell"
+import { ModuleGate } from "@/components/layout/ModuleGate"
 import { PortalBreadcrumbs } from "@/components/layout/portal-breadcrumbs"
 import { useUser, useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase"
 import { useLocale, useTranslations } from "next-intl"
@@ -984,7 +985,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                 </Button>
               </div>
             )}
-            {children}
+            <ModuleGate>{children}</ModuleGate>
           </div>
         </main>
       </SidebarInset>
