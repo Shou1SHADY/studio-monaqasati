@@ -49,6 +49,10 @@ export interface ThreadEntry {
   targetKey: string
   targetKind: ThreadTargetKind
   targetId: string
+  /** What the person reads ("PO-2026/012") and where it opens on each side — kept with the entry so the Documents page can name and link its source. */
+  targetLabel: string
+  targetHref: string
+  targetSupplierHref: string
   kind: ThreadKind
   visibility: Visibility
   body: string
@@ -138,6 +142,9 @@ export function entryFromDoc(id: string, data: Record<string, unknown>): ThreadE
     targetKey: text(data.targetKey),
     targetKind: data.targetKind === "offer" ? "offer" : "po",
     targetId: text(data.targetId),
+    targetLabel: text(data.targetLabel),
+    targetHref: text(data.targetHref),
+    targetSupplierHref: text(data.targetSupplierHref),
     kind: data.kind === "file" ? "file" : "comment",
     visibility: data.visibility === "internal" ? "internal" : "shared",
     body: text(data.body),

@@ -171,6 +171,7 @@ export const CONTRACTOR_COMMUNICATION_SECTION: NavSection = {
     { titleKey: "contractor_chats", href: "/contractor/chats", icon: MessageSquare },
     { titleKey: "contractor_team_chat", href: "/contractor/team-chat", icon: MessagesSquare },
     { titleKey: "contractor_activities", href: "/contractor/activities", icon: ListChecks },
+    { titleKey: "contractor_documents", href: "/contractor/documents", icon: FolderOpen },
     { titleKey: "contractor_notifications", href: "/contractor/notifications", icon: Bell },
   ],
 }
@@ -488,6 +489,7 @@ export const SUPPLIER_COMMUNICATION_SECTION: NavSection = {
     { titleKey: "supplier_chats", href: "/supplier/chats", icon: MessageSquare },
     { titleKey: "supplier_team_chat", href: "/supplier/team-chat", icon: MessagesSquare },
     { titleKey: "supplier_activities", href: "/supplier/activities", icon: ListChecks },
+    { titleKey: "supplier_documents", href: "/supplier/documents", icon: FolderOpen },
     { titleKey: "supplier_notifications", href: "/supplier/notifications", icon: Bell },
   ],
 }

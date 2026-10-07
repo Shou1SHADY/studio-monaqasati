@@ -31,6 +31,11 @@ describe("a comment", () => {
     expect(listCollection("users/bu1/notifications")).toHaveLength(0)
   })
 
+  it("keeps the document's name and where it opens on each side, so the Documents page can link back to it", async () => {
+    await postComment(db, buyer, { target, parties, visibility: "shared", notify, body: "hi" })
+    expect(notes()[0]).toMatchObject({ targetLabel: "PO-2026/012", targetHref: "/contractor/rfqs/orders?po=p1", targetSupplierHref: "/supplier/orders?po=p1" })
+  })
+
   it("the supplier's reply goes to the buyer's side", async () => {
     await postComment(db, supplier, { target, parties, visibility: "shared", notify, body: "Sunday" })
     const [n] = listCollection<{ link: string }>("users/bu1/notifications")
