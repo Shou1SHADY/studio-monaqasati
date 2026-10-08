@@ -167,7 +167,7 @@ export function SalesDashboardView({ portal }: { portal: CrmPortal }) {
               tone="text-cta"
               label={t("sales_kpi_promised")}
               value={formatSarCompact(kpis.promised, locale)}
-              hint={kpis.promisedNoSupply > 0 ? t("sales_kpi_promised_gap", { amount: formatSar(kpis.promisedNoSupply, locale) }) : t("sales_kpi_promised_ok")}
+              hint={kpis.promisedNoSupply > 0 ? t("sales_kpi_promised_gap", { amount: formatSar(kpis.promisedNoSupply, locale) }) : t(mfgOn ? "sales_kpi_promised_ok" : "sales_kpi_promised_ok_stock")}
               hintTone={kpis.promisedNoSupply > 0 ? "text-destructive" : undefined}
             />
             <Kpi
