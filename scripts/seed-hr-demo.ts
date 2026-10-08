@@ -52,8 +52,8 @@ const arg = (name: string): string | null => {
 const ENV_FILE = arg("--env") || ".env.uat"
 config({ path: resolve(process.cwd(), ENV_FILE) })
 
-import { initializeApp, cert, getApps, applicationDefault } from "firebase-admin/app"
-import { getFirestore, FieldValue, type DocumentReference, type Firestore } from "firebase-admin/firestore"
+import { FieldValue, type DocumentReference, type Firestore } from "@google-cloud/firestore"
+import { openUatDb } from "./lib/uat-db"
 import { buildHrDemo, DEMO_SEED_TAG, SERVER_TS, type DemoMember, type DemoWrite } from "@/lib/hr/demo-seed"
 import { todayDay } from "@/lib/hr/format"
 import { HR_EMPLOYEES, HR_LETTERS, HR_PAYROLLS, HR_REQUESTS } from "@/lib/hr/collections"
@@ -74,15 +74,6 @@ const EMAIL = {
 }
 const DEMO_PROJECT_NAME = "مشروع فلل النخيل السكني"
 const BATCH = 450
-
-function initAdmin() {
-  if (getApps().length > 0) return getApps()[0]!
-  const projectId = process.env.FIREBASE_PROJECT_ID
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n")
-  if (projectId && clientEmail && privateKey) return initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) })
-  return initializeApp({ credential: applicationDefault(), projectId })
-}
 
 interface UserDoc {
   uid: string
@@ -120,14 +111,8 @@ async function existing(db: Firestore, refs: DocumentReference[]): Promise<Map<s
 }
 
 async function main() {
-  const projectId = process.env.FIREBASE_PROJECT_ID ?? "(none)"
-  console.log(`Env file: ${ENV_FILE}\nFirebase project: ${projectId}`)
-  if (projectId !== UAT_PROJECT) {
-    console.error(`Refusing: the HR demo is seeded on ${UAT_PROJECT} only, never on ${projectId}.`)
-    process.exit(2)
-  }
-  initAdmin()
-  const db = getFirestore()
+  const { db, via, projectId } = openUatDb()
+  console.log(`Env file: ${ENV_FILE}\nFirebase project: ${projectId} via ${via === "key" ? "the service account" : "the signed-in gcloud user"}`)
   const today = todayDay()
   console.log(`Today in Riyadh: ${today}${APPLY ? "" : "   (dry run — nothing is written)"}\n`)
 
