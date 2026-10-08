@@ -41,3 +41,27 @@ describe("companyModules rules", () => {
     expect(rule(body, "delete")).toBe("false")
   })
 })
+
+describe("the purchase-order budget gate in firestore.rules", () => {
+  const fn = (name: string) => {
+    const start = rules.indexOf(`function ${name}(`)
+    expect(start).toBeGreaterThan(-1)
+    const end = rules.indexOf("\n    }", start)
+    return strip(rules.slice(start, end))
+  }
+
+  it("stands down for a company whose Project Management is switched off, so the order can still be approved", () => {
+    const gate = fn("poPmBudgetClear")
+    expect(gate).toContain("pmSwitchedOff(resource.data.organizationId)")
+    const off = fn("pmSwitchedOff")
+    expect(off).toContain("companyModules")
+    expect(off).toContain("'project-management' in")
+  })
+
+  it("is still the gate for approval and self-issue when Project Management is on", () => {
+    const body = rules.slice(rules.indexOf("function poApproves()"), rules.indexOf("function poReturns()"))
+    expect(body).toContain("poPmBudgetClear()")
+    const self = rules.slice(rules.indexOf("function poSelfIssues()"), rules.indexOf("function poDecidesHold()"))
+    expect(self).toContain("poPmBudgetClear()")
+  })
+})

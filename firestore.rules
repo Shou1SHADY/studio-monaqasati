@@ -2412,9 +2412,15 @@ service cloud.firestore {
         || resource.data.get('preparedById', '') == request.auth.uid;
     }
     // Projects' budget decision is asked for and not yet given (R-25) — no approval, no self-issue.
+    // A company with Project Management switched off has nobody left to give that decision.
     function poPmBudgetClear() {
       return resource.data.get('pmBudget', null) == null
-        || !(resource.data.pmBudget.get('state', '') in ['pending', 'renegotiate']);
+        || !(resource.data.pmBudget.get('state', '') in ['pending', 'renegotiate'])
+        || pmSwitchedOff(resource.data.organizationId);
+    }
+    function pmSwitchedOff(orgId) {
+      return exists(/databases/$(database)/documents/companyModules/$(orgId))
+        && 'project-management' in get(/databases/$(database)/documents/companyModules/$(orgId)).data.get('off', []);
     }
     // What no update may rewrite: where it came from, who prepared it, what it is worth.
     function poIdentityUntouched() {
