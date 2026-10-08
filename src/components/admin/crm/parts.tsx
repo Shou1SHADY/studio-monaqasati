@@ -36,9 +36,10 @@ export function CrmKpi({
         <Icon size={18} />
       </span>
       <span className="min-w-0 text-start">
-        <span className="block truncate text-xs font-semibold text-muted-foreground">{label}</span>
-        <span className={cn("block text-lg font-black tabular-nums", tone === "danger" ? "text-destructive" : "text-foreground")} dir="ltr">
-          {value}
+        <span className="block text-xs font-semibold leading-snug text-muted-foreground">{label}</span>
+        {/* The figure keeps the card's own direction so it lines up under its label; numbers isolate themselves. */}
+        <span className={cn("block text-lg font-black tabular-nums", tone === "danger" ? "text-destructive" : "text-foreground")}>
+          <bdi>{value}</bdi>
         </span>
         {hint && <span className="block text-xs text-muted-foreground">{hint}</span>}
       </span>
@@ -51,6 +52,73 @@ export function CrmKpi({
     </button>
   ) : (
     <div className={cls}>{body}</div>
+  )
+}
+
+/** A stage's colour — the board's column strip, the dashboard's bar and the badge all read this one table. */
+export const STAGE_TONE: Record<string, { badge: string; strip: string; bar: string }> = {
+  new: { badge: "border-cta/20 bg-cta/10 text-cta", strip: "border-t-cta", bar: "bg-cta" },
+  contacted: { badge: "border-indigo/20 bg-indigo/10 text-indigo", strip: "border-t-indigo", bar: "bg-indigo" },
+  demo: { badge: "border-warning/20 bg-warning/10 text-warning", strip: "border-t-warning", bar: "bg-warning" },
+  negotiation: { badge: "border-primary/20 bg-primary/10 text-primary", strip: "border-t-primary", bar: "bg-primary" },
+  converted: { badge: "border-success/20 bg-success/10 text-success", strip: "border-t-success", bar: "bg-success" },
+  lost: { badge: "border-border bg-muted text-muted-foreground", strip: "border-t-border", bar: "bg-muted-foreground" },
+  onboarding: { badge: "border-cta/20 bg-cta/10 text-cta", strip: "border-t-cta", bar: "bg-cta" },
+  active: { badge: "border-success/20 bg-success/10 text-success", strip: "border-t-success", bar: "bg-success" },
+  at_risk: { badge: "border-warning/20 bg-warning/10 text-warning", strip: "border-t-warning", bar: "bg-warning" },
+  churned: { badge: "border-border bg-muted text-muted-foreground", strip: "border-t-border", bar: "bg-muted-foreground" },
+}
+
+/** A lead's or client's stage as a pill, in the stage's colour; it never breaks over two lines. */
+export function StageBadge({ stage, label, className }: { stage: string; label: string; className?: string }) {
+  return (
+    <span className={cn("inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold", STAGE_TONE[stage]?.badge ?? STAGE_TONE.lost.badge, className)}>
+      {label}
+    </span>
+  )
+}
+
+/** The segment strip over every list (leads, clients, activities): one row that scrolls sideways on a phone, equal widths on a desktop. */
+export function SegmentStrip<K extends string>({
+  label,
+  items,
+  value,
+  onChange,
+  labelOf,
+  counts,
+  hintOf,
+}: {
+  label: string
+  items: readonly K[]
+  value: K
+  onChange: (k: K) => void
+  labelOf: (k: K) => string
+  counts: Record<K, number>
+  hintOf?: (k: K) => string | undefined
+}) {
+  return (
+    <div role="tablist" aria-label={label} className="flex gap-1 overflow-x-auto rounded-xl border bg-muted/40 p-1">
+      {items.map((k) => (
+        <button
+          key={k}
+          type="button"
+          role="tab"
+          aria-selected={value === k}
+          title={hintOf?.(k)}
+          onClick={() => onChange(k)}
+          className={cn(
+            "inline-flex min-h-10 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 text-sm font-bold transition-colors sm:flex-1",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            value === k ? "bg-foreground text-background" : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+          )}
+        >
+          {labelOf(k)}
+          <span className={cn("rounded-full px-1.5 text-[11px] tabular-nums", value === k ? "bg-background/20" : "bg-background")}>
+            <bdi>{counts[k]}</bdi>
+          </span>
+        </button>
+      ))}
+    </div>
   )
 }
 

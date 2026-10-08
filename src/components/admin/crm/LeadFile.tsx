@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Archive, ArchiveRestore, ArrowLeft, ArrowRight, CalendarCheck2, Clock, FileText, Handshake, Loader2, MapPin, Tag, UserRound, Building2, Target, Wallet, ClipboardList } from "lucide-react"
+import { Archive, ArchiveRestore, ArrowLeft, ArrowRight, CalendarCheck2, Clock, FileText, Handshake, Loader2, MapPin, Tag, Mail, Phone, UserPlus, UserRound, Building2, Target, Wallet, ClipboardList } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
-import { Link } from "@/i18n/routing"
+import { Link, useRouter } from "@/i18n/routing"
+import { CreateAccountDialog } from "@/components/admin/CreateAccountDialog"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { staffName, useAdminCrm } from "@/hooks/useAdminCrm"
@@ -19,18 +20,9 @@ import { cn } from "@/lib/utils"
 import { ActivitiesSection } from "./ActivitiesSection"
 import { ContactsSection } from "./ContactsSection"
 import { DuplicateBanner } from "./DuplicateBanner"
-import { CrmKpi, InfoItem, LtrValue, Money } from "./parts"
+import { CrmKpi, InfoItem, LtrValue, Money, StageBadge } from "./parts"
 import { QuotesSection } from "./QuotesSection"
 import { useStageChange } from "./useStageChange"
-
-export const LEAD_STAGE_STYLE: Record<string, string> = {
-  new: "bg-cta/10 text-cta border-cta/20",
-  contacted: "bg-secondary/10 text-secondary border-secondary/20",
-  demo: "bg-warning/10 text-warning border-warning/20",
-  negotiation: "bg-primary/10 text-primary border-primary/20",
-  lost: "bg-muted text-muted-foreground border-border",
-  converted: "bg-success/10 text-success border-success/20",
-}
 
 const UNASSIGNED = ""
 
@@ -51,6 +43,10 @@ export function LeadFile({ crmId }: { crmId: string }) {
   const contacts = useMemo(() => effectiveContacts(rec.contacts, { name: row?.name ?? "", phone: row?.phone ?? "", email: row?.email ?? "" }), [rec.contacts, row?.name, row?.phone, row?.email])
   const mine = useMemo(() => crm.activities.filter((a) => a.clientId === crmId), [crm.activities, crmId])
   const rowsById = useMemo(() => new Map(crm.leadRows.map((r) => [r.crmId, r])), [crm.leadRows])
+  const router = useRouter()
+  const [converting, setConverting] = useState(false)
+  // A converted lead's client file: the account's CRM record names the lead it came from.
+  const clientId = useMemo(() => Object.entries(crm.records).find(([, r]) => r.convertedFromLead === crmId)?.[0] ?? "", [crm.records, crmId])
   const [value, setValue] = useState("")
   useEffect(() => setValue(rec.expectedValue ? String(rec.expectedValue) : ""), [rec.expectedValue])
 
@@ -107,14 +103,37 @@ export function LeadFile({ crmId }: { crmId: string }) {
                 </h1>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">{t("lead_badge")}</Badge>
-                  <Badge variant="outline" className={LEAD_STAGE_STYLE[row.stage]}>{t(`stage_${row.stage}`)}</Badge>
+                  <StageBadge stage={row.stage} label={t(`stage_${row.stage}`)} />
                   {row.kind !== "unspecified" && <Badge variant="outline">{t(`kind_${row.kind}`)}</Badge>}
                   <Badge variant="outline">{t(`channel_${row.channel}`)}</Badge>
                   {row.archived && <Badge variant="outline" className="border-destructive/30 text-destructive">{t("flag_removed")}</Badge>}
                 </div>
                 {row.company && <p className="flex items-center gap-1.5 text-sm text-muted-foreground"><Building2 size={14} aria-hidden="true" />{row.company}</p>}
               </div>
+              {/* ADM-10: the lead becomes a client when its account is created — from here, not from another page. */}
+              {row.converted ? (
+                clientId && (
+                  <Button variant="outline" asChild className="gap-1.5">
+                    <Link href={`/admin/crm/customers/${clientId}`}>
+                      <Building2 size={15} aria-hidden="true" />
+                      {t("open_client_file")}
+                    </Link>
+                  </Button>
+                )
+              ) : (
+                !row.archived && (
+                  <Button onClick={() => setConverting(true)} className="gap-1.5">
+                    <UserPlus size={15} aria-hidden="true" />
+                    {t("create_account")}
+                  </Button>
+                )
+              )}
             </header>
+            <CreateAccountDialog
+              lead={converting ? { id: row.id, source: row.source, name: row.name, company: row.company, email: row.email, phone: row.phone, kind: row.kind } : null}
+              onOpenChange={setConverting}
+              onCreated={(uid) => uid && router.push(`/admin/crm/customers/${uid}`)}
+            />
 
             <DuplicateBanner row={row} match={crm.matches.get(crmId)} rowsById={rowsById} records={crm.records} uid={actor.uid} />
 
@@ -189,10 +208,10 @@ export function LeadFile({ crmId }: { crmId: string }) {
               <InfoItem icon={Clock} label={t("col_received")}>
                 {formatCrmDate(row.createdMs, locale)}
               </InfoItem>
-              <InfoItem icon={UserRound} label={t("phone")}>
+              <InfoItem icon={Phone} label={t("phone")}>
                 <LtrValue value={row.phone} />
               </InfoItem>
-              <InfoItem icon={UserRound} label={t("email")}>
+              <InfoItem icon={Mail} label={t("email")}>
                 <LtrValue value={row.email} />
               </InfoItem>
             </section>

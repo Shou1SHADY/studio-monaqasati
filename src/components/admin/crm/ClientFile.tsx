@@ -2,7 +2,7 @@
 
 import { useMemo } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { ArrowLeft, ArrowRight, Building2, CalendarDays, ClipboardList, Clock, FileText, Loader2, MapPin, Tag, UserRound } from "lucide-react"
+import { ArrowLeft, ArrowRight, Building2, CalendarDays, ClipboardList, Clock, FileText, Loader2, MapPin, Tag, Mail, Phone, UserRound } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -15,16 +15,9 @@ import { CLIENT_STAGES, activityState, companySizeRange, effectiveContacts, form
 import { saveRecord } from "@/lib/admin-crm-writes"
 import { ActivitiesSection } from "./ActivitiesSection"
 import { ContactsSection } from "./ContactsSection"
-import { CrmKpi, InfoItem, LtrValue } from "./parts"
+import { CrmKpi, InfoItem, LtrValue, StageBadge } from "./parts"
 import { QuotesSection } from "./QuotesSection"
 import { useStageChange } from "./useStageChange"
-
-export const CLIENT_STAGE_STYLE: Record<string, string> = {
-  onboarding: "bg-cta/10 text-cta border-cta/20",
-  active: "bg-success/10 text-success border-success/20",
-  at_risk: "bg-warning/10 text-warning border-warning/20",
-  churned: "bg-muted text-muted-foreground border-border",
-}
 
 /** ADM-10: a client's file — same skeleton as a lead's (ADM-05). A client that was a lead brings its activities, contacts and quotes along. */
 export function ClientFile({ clientId }: { clientId: string }) {
@@ -91,7 +84,7 @@ export function ClientFile({ clientId }: { clientId: string }) {
               </h1>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="border-success/30 bg-success/10 text-success">{t("client_badge")}</Badge>
-                <Badge variant="outline" className={CLIENT_STAGE_STYLE[row.stage]}>{t(`stage_${row.stage}`)}</Badge>
+                <StageBadge stage={row.stage} label={t(`stage_${row.stage}`)} />
                 <Badge variant="outline">{t(row.role === "Contractor" ? "role_contractor" : "role_supplier")}</Badge>
               </div>
             </header>
@@ -137,10 +130,10 @@ export function ClientFile({ clientId }: { clientId: string }) {
                   {t(`channel_${leadRow.channel}`)}
                 </InfoItem>
               )}
-              <InfoItem icon={UserRound} label={t("phone")}>
+              <InfoItem icon={Phone} label={t("phone")}>
                 <LtrValue value={row.phone} />
               </InfoItem>
-              <InfoItem icon={UserRound} label={t("email")}>
+              <InfoItem icon={Mail} label={t("email")}>
                 <LtrValue value={row.email} />
               </InfoItem>
             </section>

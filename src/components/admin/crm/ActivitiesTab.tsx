@@ -12,10 +12,9 @@ import { staffName, type AdminCrm } from "@/hooks/useAdminCrm"
 import { ACTIVITY_SEGMENTS, NEW_ACTIVITY_TYPES, inActivitySegment, sortActivities, summarizeActivities, toDateKey, type ActivitySegment, type ActivityType, type CrmActivity } from "@/lib/admin-crm"
 import { deleteActivity, setActivityDone } from "@/lib/admin-crm-writes"
 import { matchesSearch } from "@/lib/search-text"
-import { cn } from "@/lib/utils"
 import { ActivityDialog, type Party } from "./ActivityDialog"
 import { ActivityRow } from "./ActivityRow"
-import { CrmKpi } from "./parts"
+import { CrmKpi, SegmentStrip } from "./parts"
 
 /** ADM-08: every activity of every lead and client in one list — open, late, today, this week, done. */
 export function ActivitiesTab({ crm, dialogOpen, onDialogOpen }: { crm: AdminCrm; dialogOpen: boolean; onDialogOpen: (open: boolean) => void }) {
@@ -75,25 +74,7 @@ export function ActivitiesTab({ crm, dialogOpen, onDialogOpen }: { crm: AdminCrm
       </div>
       <Card className="overflow-hidden border-none shadow-sm">
         <div className="space-y-3 border-b p-4">
-          <div role="tablist" aria-label={t("segments_label")} className="flex gap-1 overflow-x-auto rounded-xl border bg-muted/40 p-1">
-            {ACTIVITY_SEGMENTS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                role="tab"
-                aria-selected={segment === s}
-                onClick={() => setSegment(s)}
-                className={cn(
-                  "inline-flex min-h-10 shrink-0 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 text-sm font-bold transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  segment === s ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {t(`seg_${s}`)}
-                <span className="rounded-full bg-background/20 px-1.5 text-[11px] tabular-nums" dir="ltr">{counts[s]}</span>
-              </button>
-            ))}
-          </div>
+          <SegmentStrip label={t("segments_label")} items={ACTIVITY_SEGMENTS} value={segment} onChange={setSegment} labelOf={(s) => t(`seg_${s}`)} counts={counts} />
           <div className="flex flex-col gap-2 md:flex-row md:items-center">
             <div className="relative md:flex-1">
               <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -108,7 +89,7 @@ export function ActivitiesTab({ crm, dialogOpen, onDialogOpen }: { crm: AdminCrm
               ))}
             </div>
           </div>
-          <p className="text-xs text-muted-foreground" aria-live="polite">{t("showing_of", { shown: visible.length, total: counts[segment] })}</p>
+          <p className="text-xs text-muted-foreground" aria-live="polite">{t("showing_of", { shown: visible.length, total: search.trim() ? summary.all : counts[segment] })}</p>
         </div>
         <CardContent className="p-0">
           {crm.loading.activities ? (

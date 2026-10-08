@@ -1,11 +1,22 @@
 "use client"
 
-import { useTranslations } from "next-intl"
-import { CalendarDays, Check, Circle, Pencil, Trash2 } from "lucide-react"
+import { useState } from "react"
+import { useLocale, useTranslations } from "next-intl"
+import { CalendarDays, Check, Pencil, Trash2 } from "lucide-react"
 import { IconButton } from "@/components/module-ui/IconButton"
+import { buttonVariants } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { activityState, formatCrmDate, type CrmActivity } from "@/lib/admin-crm"
 import { cn } from "@/lib/utils"
-import { useLocale } from "next-intl"
 
 const TYPE_STYLE: Record<string, string> = {
   call: "bg-cta/10 text-cta",
@@ -41,6 +52,9 @@ export function ActivityRow({
   const title = a.system === "converted" ? t("activity_system_converted") : a.type === "stage" && a.from && a.to ? t("history_stage", { from: t(`stage_${a.from}`), to: t(`stage_${a.to}`) }) : a.title?.trim() || a.note
   const sub = [context, a.withName ? t("activity_with_name", { name: a.withName }) : "", a.ownerName || a.authorName].filter(Boolean).join(" · ")
   const legacy = a.status === undefined || Boolean(a.system) || a.type === "stage" // an old log line or a system line: nothing to tick or edit
+  // A stage change carries the reason the team agreed to record, and a conversion is the platform's own line: history, never deleted.
+  const history = Boolean(a.system) || a.type === "stage"
+  const [confirming, setConfirming] = useState(false)
   return (
     <li className="flex flex-wrap items-center gap-3 px-4 py-3">
       <button
@@ -55,7 +69,7 @@ export function ActivityRow({
           done ? "border-success bg-success text-success-foreground" : "border-muted-foreground/40 hover:border-success",
         )}
       >
-        {done ? <Check size={14} aria-hidden="true" /> : <Circle size={0} aria-hidden="true" />}
+        {done && <Check size={14} aria-hidden="true" />}
       </button>
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-2 text-sm font-bold">
@@ -75,8 +89,22 @@ export function ActivityRow({
       </span>
       <div className="flex shrink-0 gap-1">
         {!legacy && <IconButton icon={Pencil} iconSize={14} label={t("edit")} onClick={() => onEdit(a)} />}
-        <IconButton icon={Trash2} iconSize={14} label={t("delete")} onClick={() => onDelete(a)} />
+        {!history && <IconButton icon={Trash2} iconSize={14} label={t("delete")} onClick={() => setConfirming(true)} className="hover:text-destructive" />}
       </div>
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent dir={locale === "ar" ? "rtl" : "ltr"}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("activity_delete_title")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("activity_delete_desc", { title })}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction className={buttonVariants({ variant: "destructive" })} onClick={() => onDelete(a)}>
+              {t("delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </li>
   )
 }

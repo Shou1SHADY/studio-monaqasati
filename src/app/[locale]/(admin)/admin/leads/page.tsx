@@ -1,31 +1,19 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog"
-import { Handshake, Inbox, Loader2, Plus, UserPlus, Building2, ShoppingCart, ChevronDown, Check, Search, X, CheckCircle2 } from "lucide-react"
+import { Handshake, Inbox, Loader2, Plus, UserPlus, CheckCircle2 } from "lucide-react"
 import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase"
 import { collection } from "firebase/firestore"
-import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from "next-intl"
-import { PREDEFINED_CATEGORIES, displayCategory } from "@/lib/constants"
 import { Link } from "@/i18n/routing"
 import { AddLeadDialog } from "@/components/admin/AddLeadDialog"
-import type { LeadSource } from "@/lib/admin-crm"
+import { CreateAccountDialog, type AccountLead } from "@/components/admin/CreateAccountDialog"
+import { leadKind, type LeadSource } from "@/lib/admin-crm"
 import { isAllCompanyTypes, leadCompanyTypes, type CompanyType } from "@/lib/company-types"
 import { cn } from "@/lib/utils"
 
@@ -63,7 +51,6 @@ export default function AdminLeadsPage() {
   const locale = useLocale()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
-  const { toast } = useToast()
 
   const demoQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -132,84 +119,18 @@ export default function AdminLeadsPage() {
     setLocalLeads([...demo, ...onboarding].filter(live).sort((a, b) => received(b) - received(a)))
   }, [demoRequests, onboardingRequests])
 
-  const [dialogOpen, setDialogOpen] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    role: "Contractor" as "Contractor" | "Supplier",
-    specializations: [] as string[],
-  })
-
-  const [specDropdownOpen, setSpecDropdownOpen] = useState(false)
-  const [specSearch, setSpecSearch] = useState("")
-  const specDropdownRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (specDropdownRef.current && !specDropdownRef.current.contains(e.target as Node)) {
-        setSpecDropdownOpen(false)
-        setSpecSearch("")
-      }
-    }
-    if (specDropdownOpen) document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [specDropdownOpen])
-
-  const toggleSpec = (spec: string) => {
-    setFormData(prev => ({
-      ...prev,
-      specializations: prev.specializations.includes(spec)
-        ? prev.specializations.filter(s => s !== spec)
-        : [...prev.specializations, spec],
-    }))
+  const accountLead: AccountLead | null = selectedLead && {
+    id: selectedLead.id,
+    source: selectedLead.source,
+    name: selectedLead.name,
+    company: selectedLead.company,
+    email: selectedLead.email,
+    phone: selectedLead.phone,
+    kind: leadKind(selectedLead.types),
   }
-
-  const openCreateDialog = (lead: Lead) => {
-    setSelectedLead(lead)
-    setFormData({ name: lead.company || lead.name, email: lead.email, phone: lead.phone, role: "Contractor", specializations: [] })
-    setDialogOpen(true)
-  }
-
-  const handleCreateAccount = async () => {
-    if (!user || !selectedLead) return
-    setIsSubmitting(true)
-    try {
-      const idToken = await user.getIdToken()
-      const res = await fetch("/api/admin/users/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          phone: formData.phone,
-          role: formData.role,
-          specializations: formData.role === "Supplier" ? formData.specializations : undefined,
-          leadId: selectedLead.id,
-          leadCollection: selectedLead.source === "onboarding" ? "onboardingRequests" : "demoRequests",
-        }),
-      })
-      const data = await res.json().catch(() => null)
-      if (!res.ok || !data?.success) {
-        if (data?.code === "EMAIL_IN_USE") {
-          toast({ title: t("email_in_use_title"), description: t("email_in_use_desc"), variant: "destructive" })
-        } else {
-          toast({ title: t("error"), description: data?.message || t("error_generic"), variant: "destructive" })
-        }
-        return
-      }
-      setLocalLeads(prev => prev.map(l => (l.id === selectedLead.id ? { ...l, status: "converted" } : l)))
-      toast({ title: t("account_created_title"), description: t("account_created_desc") })
-      setDialogOpen(false)
-    } catch (err: any) {
-      toast({ title: t("error"), description: err.message, variant: "destructive" })
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
+  const markConverted = (id: string) => setLocalLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status: "converted" } : l)))
 
   const isLoading = demoLoading || onboardingLoading
 
@@ -297,7 +218,7 @@ export default function AdminLeadsPage() {
                         <Button
                           size="sm"
                           disabled={lead.status === "converted"}
-                          onClick={() => openCreateDialog(lead)}
+                          onClick={() => setSelectedLead(lead)}
                           className="gap-1.5"
                         >
                           <UserPlus size={14} />
@@ -314,161 +235,7 @@ export default function AdminLeadsPage() {
 
         <AddLeadDialog open={addOpen} onOpenChange={setAddOpen} ownerName={user?.displayName || user?.email || ""} />
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="max-w-lg" dir={locale === "ar" ? "rtl" : "ltr"}>
-            <DialogHeader>
-              <DialogTitle>{t("create_account_title")}</DialogTitle>
-              <DialogDescription>{t("create_account_desc")}</DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-5 py-2">
-              <div className="space-y-3">
-                <Label className="font-bold">{t("role")}</Label>
-                <RadioGroup
-                  value={formData.role}
-                  onValueChange={(v) => setFormData({ ...formData, role: v as "Contractor" | "Supplier", specializations: [] })}
-                  className="grid grid-cols-2 gap-3"
-                >
-                  <div>
-                    <RadioGroupItem value="Contractor" id="lead-contractor" className="peer sr-only" />
-                    <Label
-                      htmlFor="lead-contractor"
-                      className="flex flex-col items-center justify-between rounded-xl border-2 border-slate-200 bg-white p-4 hover:bg-slate-50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all"
-                    >
-                      <Building2 className="mb-2 h-6 w-6 text-primary" />
-                      <span className="font-bold text-sm">{t("contractor")}</span>
-                    </Label>
-                  </div>
-                  <div>
-                    <RadioGroupItem value="Supplier" id="lead-supplier" className="peer sr-only" />
-                    <Label
-                      htmlFor="lead-supplier"
-                      className="flex flex-col items-center justify-between rounded-xl border-2 border-slate-200 bg-white p-4 hover:bg-slate-50 peer-data-[state=checked]:border-success peer-data-[state=checked]:bg-success/5 cursor-pointer transition-all"
-                    >
-                      <ShoppingCart className="mb-2 h-6 w-6 text-success" />
-                      <span className="font-bold text-sm">{t("supplier")}</span>
-                    </Label>
-                  </div>
-                </RadioGroup>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="lead-name" className="font-bold">{t("name")}</Label>
-                <Input id="lead-name" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="lead-email" className="font-bold">{t("email")}</Label>
-                <Input
-                  id="lead-email"
-                  type="email"
-                  dir="ltr"
-                  className="text-left"
-                  value={formData.email}
-                  onChange={e => setFormData({ ...formData, email: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="lead-phone" className="font-bold">{t("phone")}</Label>
-                <Input
-                  id="lead-phone"
-                  type="tel"
-                  dir="ltr"
-                  className="text-left"
-                  value={formData.phone}
-                  onChange={e => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, "") })}
-                />
-              </div>
-
-              {formData.role === "Supplier" && (
-                <div className="space-y-2">
-                  <Label className="font-bold">{t("specializations")}</Label>
-                  <div className="relative" ref={specDropdownRef}>
-                    <button
-                      type="button"
-                      onClick={() => { setSpecDropdownOpen(prev => !prev); setSpecSearch("") }}
-                      className={`w-full flex items-center justify-between h-11 px-4 rounded-xl border-2 bg-slate-50 text-start transition-colors ${formData.specializations.length === 0 ? "border-slate-200 text-slate-400" : "border-primary/40 text-slate-800"
-                        } hover:border-primary/60`}
-                    >
-                      <span className="text-sm truncate">
-                        {formData.specializations.length === 0
-                          ? t("select_specializations")
-                          : t("selected_specializations", { count: formData.specializations.length })}
-                      </span>
-                      <ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${specDropdownOpen ? "rotate-180" : ""}`} />
-                    </button>
-
-                    {specDropdownOpen && (
-                      <div className="absolute z-50 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
-                        <div className="px-3 pt-3 pb-2">
-                          <div className="relative">
-                            <Search size={14} className="absolute end-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <Input
-                              autoFocus
-                              value={specSearch}
-                              onChange={e => setSpecSearch(e.target.value)}
-                              placeholder={t("search_specializations")}
-                              className="h-9 ps-3 pe-9 text-sm rounded-lg bg-slate-100 border-slate-200"
-                            />
-                          </div>
-                        </div>
-                        <div className="max-h-48 overflow-y-auto divide-y divide-slate-100">
-                          {PREDEFINED_CATEGORIES.filter(cat => {
-                            if (!specSearch.trim()) return true
-                            return displayCategory(cat, locale).toLowerCase().includes(specSearch.toLowerCase().trim())
-                          }).map(cat => {
-                            const isSelected = formData.specializations.includes(cat)
-                            return (
-                              <button
-                                key={cat}
-                                type="button"
-                                onClick={() => toggleSpec(cat)}
-                                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-start hover:bg-primary/5 transition-colors ${isSelected ? "bg-primary/5" : ""}`}
-                              >
-                                <div className={`h-4 w-4 shrink-0 rounded border-2 flex items-center justify-center transition-colors ${isSelected ? "bg-primary border-primary" : "border-slate-300 bg-white"}`}>
-                                  {isSelected && <Check size={10} className="text-white" strokeWidth={3} />}
-                                </div>
-                                <span className={isSelected ? "font-bold text-primary" : "text-slate-700"}>{displayCategory(cat, locale)}</span>
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {formData.specializations.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {formData.specializations.map(spec => (
-                        <span key={spec} className="inline-flex items-center gap-1 bg-primary/10 text-primary text-xs font-bold px-2.5 py-1 rounded-full">
-                          {displayCategory(spec, locale)}
-                          <button type="button" onClick={() => toggleSpec(spec)} className="hover:text-destructive transition-colors">
-                            <X size={12} />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isSubmitting}>
-                {t("cancel")}
-              </Button>
-              <Button
-                onClick={handleCreateAccount}
-                disabled={isSubmitting || !formData.name || !formData.email || (formData.role === "Supplier" && formData.specializations.length === 0)}
-                className="gap-2"
-              >
-                {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
-                {t("create_account")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <CreateAccountDialog lead={accountLead} onOpenChange={(o) => !o && setSelectedLead(null)} onCreated={() => selectedLead && markConverted(selectedLead.id)} />
       </div>
     </PortalLayout>
   )

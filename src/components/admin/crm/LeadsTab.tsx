@@ -6,6 +6,7 @@ import { Banknote, LayoutGrid, List, Loader2, Search, UserX, UsersRound, Handsha
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { ToastAction } from "@/components/ui/toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Link } from "@/i18n/routing"
 import { useFirestore } from "@/firebase"
@@ -29,10 +30,9 @@ import { staffName } from "@/hooks/useAdminCrm"
 import { useStageChange } from "./useStageChange"
 import { matchesSearch } from "@/lib/search-text"
 import { cn } from "@/lib/utils"
-import { LEAD_STAGE_STYLE } from "./LeadFile"
 import { ActiveFilterChips, LeadFiltersButton, LeadViewsButton } from "./LeadFilters"
 import { LeadBoard } from "./LeadBoard"
-import { CrmKpi, LtrValue, Money } from "./parts"
+import { CrmKpi, LtrValue, Money, SegmentStrip, StageBadge } from "./parts"
 
 type View = "board" | "list"
 
@@ -54,13 +54,15 @@ export function LeadsTab({ crm, view, onView }: { crm: AdminCrm; view: View; onV
 
   // The strip answers "where is it"; the filters answer "which do I want". A search looks across the strip.
   const inSegment = useMemo(() => crm.leadRows.filter((r) => inLeadSegment(r, segment)), [crm.leadRows, segment])
+  const searching = search.trim() !== ""
+  // A search looks across the strip, so «N of M» counts against the pool it searched.
+  const pool = useMemo(() => (searching ? crm.leadRows.filter((r) => !r.archived || segment === "removed") : inSegment), [crm.leadRows, inSegment, searching, segment])
   const visible = useMemo(() => {
-    const searching = search.trim() !== ""
-    return (searching ? crm.leadRows.filter((r) => !r.archived || segment === "removed") : inSegment)
+    return pool
       .filter((r) => matchesLeadFilters(r, filters, { meUid: me, hasDuplicates: Boolean(crm.matches.get(r.crmId)?.duplicates.length) }))
       .filter((r) => !searching || matchesSearch(search, [r.name, r.company, r.email, r.phone, r.city]))
       .sort((a, b) => b.createdMs - a.createdMs || a.name.localeCompare(b.name))
-  }, [crm.leadRows, crm.matches, inSegment, filters, search, segment, me])
+  }, [pool, crm.matches, filters, search, searching, me])
 
   const run = async (fn: () => Promise<unknown>, ok?: string) => {
     try {
@@ -74,10 +76,28 @@ export function LeadsTab({ crm, view, onView }: { crm: AdminCrm; view: View; onV
     const r = crm.leadRows.find((x) => x.crmId === crmId)
     if (r) stage.ask(crmId, r.name, r.stage, to)
   }
-  const remove = (r: LeadRow) => firestore && run(() => setLeadArchived(firestore, r, true, me), t("lead_removed"))
+  // Removing is one click on the board, so the toast carries its undo.
+  const remove = async (r: LeadRow) => {
+    if (!firestore) return
+    try {
+      await setLeadArchived(firestore, r, true, me)
+      toast({
+        title: t("lead_removed"),
+        description: r.name,
+        action: (
+          <ToastAction altText={t("undo")} onClick={() => void run(() => setLeadArchived(firestore, r, false, me), t("lead_restored"))}>
+            {t("undo")}
+          </ToastAction>
+        ),
+      })
+    } catch {
+      toast({ variant: "destructive", title: t("save_failed") })
+    }
+  }
 
-  const applyCard = (patch: Partial<LeadFilters>) => {
-    setSegment("open")
+  // The first card counts every live lead, so it opens «all»; the others count open leads and open «open».
+  const applyCard = (patch: Partial<LeadFilters>, to: LeadSegment = "open") => {
+    setSegment(to)
     setSearch("")
     setFilters({ ...NO_LEAD_FILTERS, ...patch })
   }
@@ -87,7 +107,7 @@ export function LeadsTab({ crm, view, onView }: { crm: AdminCrm; view: View; onV
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <CrmKpi icon={UsersRound} label={t("kpi_total_leads")} value={cards.leads} onClick={() => applyCard({})} active={!filtered && segment === "open"} />
+        <CrmKpi icon={UsersRound} label={t("kpi_total_leads")} value={cards.leads} onClick={() => applyCard({}, "all")} active={!filtered && segment === "all"} />
         <CrmKpi icon={UserX} label={t("kpi_stale_leads")} value={cards.noContact} tone={cards.noContact > 0 ? "warning" : undefined} onClick={() => applyCard({ contact: "over7" })} active={filters.contact === "over7"} />
         <CrmKpi icon={Handshake} label={t("kpi_unowned")} value={cards.unowned} onClick={() => applyCard({ owner: "none" })} active={filters.owner === "none"} />
         <CrmKpi
@@ -100,27 +120,16 @@ export function LeadsTab({ crm, view, onView }: { crm: AdminCrm; view: View; onV
 
       <Card className="overflow-hidden border-none shadow-sm">
         <div className="space-y-3 border-b p-4">
-          <div role="tablist" aria-label={t("segments_label")} className="grid grid-cols-2 gap-1 rounded-xl border bg-muted/40 p-1 sm:grid-cols-5">
-            {LEAD_SEGMENTS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                role="tab"
-                aria-selected={segment === s}
-                // What «converted» means is a hint on the tab, not a line across the page (ADM-02).
-                title={s === "converted" ? t("converted_hint") : undefined}
-                onClick={() => setSegment(s)}
-                className={cn(
-                  "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-bold transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  segment === s ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {t(`segment_${s}`)}
-                <span className="rounded-full bg-background/20 px-1.5 text-[11px] tabular-nums" dir="ltr">{counts[s]}</span>
-              </button>
-            ))}
-          </div>
+          <SegmentStrip
+            label={t("segments_label")}
+            items={LEAD_SEGMENTS}
+            value={segment}
+            onChange={setSegment}
+            labelOf={(s) => t(`segment_${s}`)}
+            counts={counts}
+            // What «converted» means is a hint on the tab, not a line across the page (ADM-02).
+            hintOf={(s) => (s === "converted" ? t("converted_hint") : undefined)}
+          />
           <div className="flex flex-col gap-2 md:flex-row md:items-center">
             <div className="relative md:flex-1">
               <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -153,7 +162,7 @@ export function LeadsTab({ crm, view, onView }: { crm: AdminCrm; view: View; onV
             </div>
           </div>
           <p className="text-xs text-muted-foreground" aria-live="polite">
-            {t("showing_of", { shown: visible.length, total: filtered ? inSegment.length : counts[segment] })}
+            {t("showing_of", { shown: visible.length, total: pool.length })}
           </p>
         </div>
         <ActiveFilterChips value={filters} onChange={setFilters} staff={crm.staff} />
@@ -199,7 +208,7 @@ export function LeadsTab({ crm, view, onView }: { crm: AdminCrm; view: View; onV
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={LEAD_STAGE_STYLE[r.stage]}>{t(`stage_${r.stage}`)}</Badge>
+                        <StageBadge stage={r.stage} label={t(`stage_${r.stage}`)} />
                       </TableCell>
                       <TableCell className="hidden text-sm md:table-cell">{r.ownerName || <span className="text-muted-foreground">{t("unassigned")}</span>}</TableCell>
                       <TableCell className="hidden text-sm sm:table-cell">{formatCrmDate(r.createdMs, locale)}</TableCell>

@@ -2,12 +2,11 @@
 
 import { useMemo } from "react"
 import { useTranslations } from "next-intl"
-import { CalendarDays, Target, Trophy, TrendingUp } from "lucide-react"
+import { CalendarDays, Loader2, Target, Trophy, TrendingUp } from "lucide-react"
 import type { AdminCrm } from "@/hooks/useAdminCrm"
 import { LEAD_CHANNELS, OPEN_STAGES, leadDashboard, stageTotals } from "@/lib/admin-crm"
-import { CrmKpi, Money } from "./parts"
+import { CrmKpi, Money, STAGE_TONE } from "./parts"
 
-const BAR: Record<string, string> = { new: "bg-cta", contacted: "bg-success", demo: "bg-warning", negotiation: "bg-primary" }
 
 function Bars({ title, icon: Icon, rows }: { title: string; icon: typeof Target; rows: Array<{ key: string; label: string; value: number; extra?: React.ReactNode; bar: string }> }) {
   const max = Math.max(1, ...rows.map((r) => r.value))
@@ -42,6 +41,14 @@ export function DashboardTab({ crm }: { crm: AdminCrm }) {
   const t = useTranslations("Portal.Admin.Crm")
   const d = useMemo(() => leadDashboard(crm.leadRows, new Date()), [crm.leadRows])
   const totals = useMemo(() => stageTotals(crm.leadRows), [crm.leadRows])
+  // Never a row of zeros while the leads are still arriving.
+  if (crm.loading.leads) {
+    return (
+      <div className="flex justify-center p-16">
+        <Loader2 className="animate-spin text-primary" size={28} aria-label={t("loading")} />
+      </div>
+    )
+  }
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -63,7 +70,7 @@ export function DashboardTab({ crm }: { crm: AdminCrm }) {
             key: s,
             label: t(`stage_${s}`),
             value: d.openByStage[s],
-            bar: BAR[s],
+            bar: STAGE_TONE[s].bar,
             extra: totals[s].value > 0 ? <Money amount={totals[s].value} className="text-xs text-muted-foreground" /> : null,
           }))}
         />

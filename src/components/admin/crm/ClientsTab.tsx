@@ -12,8 +12,7 @@ import type { AdminCrm } from "@/hooks/useAdminCrm"
 import { CLIENT_SEGMENTS, clientCards, formatCrmDate, type ClientSegment } from "@/lib/admin-crm"
 import { matchesSearch } from "@/lib/search-text"
 import { cn } from "@/lib/utils"
-import { CLIENT_STAGE_STYLE } from "./ClientFile"
-import { CrmKpi, LtrValue } from "./parts"
+import { CrmKpi, LtrValue, SegmentStrip, StageBadge } from "./parts"
 
 /** ADM-10: the clients that hold an account — one row each, opening the client's file. */
 export function ClientsTab({ crm }: { crm: AdminCrm }) {
@@ -42,30 +41,12 @@ export function ClientsTab({ crm }: { crm: AdminCrm }) {
       </div>
       <Card className="overflow-hidden border-none shadow-sm">
         <div className="space-y-3 border-b p-4">
-          <div role="tablist" aria-label={t("segments_label")} className="grid grid-cols-2 gap-1 rounded-xl border bg-muted/40 p-1 sm:grid-cols-5">
-            {CLIENT_SEGMENTS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                role="tab"
-                aria-selected={segment === s}
-                onClick={() => setSegment(s)}
-                className={cn(
-                  "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-bold transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  segment === s ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {s === "all" ? t("filter_all") : t(`stage_${s}`)}
-                <span className="rounded-full bg-background/20 px-1.5 text-[11px] tabular-nums" dir="ltr">{counts[s]}</span>
-              </button>
-            ))}
-          </div>
+          <SegmentStrip label={t("segments_label")} items={CLIENT_SEGMENTS} value={segment} onChange={setSegment} labelOf={(s) => (s === "all" ? t("filter_all") : t(`stage_${s}`))} counts={counts} />
           <div className="relative md:max-w-md">
             <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("search_placeholder")} aria-label={t("search_placeholder")} className="ps-9" />
           </div>
-          <p className="text-xs text-muted-foreground" aria-live="polite">{t("showing_of", { shown: visible.length, total: counts[segment] })}</p>
+          <p className="text-xs text-muted-foreground" aria-live="polite">{t("showing_of", { shown: visible.length, total: search.trim() ? crm.clientRows.length : counts[segment] })}</p>
         </div>
         <CardContent className="overflow-x-auto p-0">
           {crm.loading.clients ? (
@@ -96,7 +77,7 @@ export function ClientsTab({ crm }: { crm: AdminCrm }) {
                       <div className="max-w-64 text-xs text-muted-foreground"><LtrValue value={r.email || r.phone} /></div>
                     </TableCell>
                     <TableCell><Badge variant="outline">{t(r.role === "Contractor" ? "role_contractor" : "role_supplier")}</Badge></TableCell>
-                    <TableCell><Badge variant="outline" className={CLIENT_STAGE_STYLE[r.stage]}>{t(`stage_${r.stage}`)}</Badge></TableCell>
+                    <TableCell><StageBadge stage={r.stage} label={t(`stage_${r.stage}`)} /></TableCell>
                     <TableCell className="hidden text-sm sm:table-cell">
                       {r.daysSinceContact === null ? <span className="font-medium text-warning">{t("never_contacted")}</span> : <span className={cn(r.stale && "font-medium text-destructive")}>{t("days_ago", { n: r.daysSinceContact })}</span>}
                     </TableCell>

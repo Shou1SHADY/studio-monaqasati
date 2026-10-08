@@ -10,15 +10,7 @@ import { ShowMoreRow } from "@/components/module-ui/ShowMoreRow"
 import { Link } from "@/i18n/routing"
 import { LEAD_STAGES, OPEN_STAGES, formatCrmDate, stageTotals, toDateKey, type LeadMatch, type LeadRow, type OpenStage } from "@/lib/admin-crm"
 import { cn } from "@/lib/utils"
-import { Money } from "./parts"
-
-/** Colour strip on top of each column — the stage's own colour (ADM-03). */
-const STRIP: Record<OpenStage, string> = {
-  new: "border-t-cta",
-  contacted: "border-t-success",
-  demo: "border-t-warning",
-  negotiation: "border-t-primary",
-}
+import { Money, STAGE_TONE } from "./parts"
 
 const PAGE = 10
 
@@ -65,7 +57,7 @@ export function LeadBoard({
               setDragId(null)
               setOver(null)
             }}
-            className={cn("flex min-w-64 flex-col gap-2 rounded-lg border border-t-4 bg-muted/30 p-2 transition-colors", STRIP[stage], over === stage && canDrop && "bg-primary/5 ring-1 ring-primary")}
+            className={cn("flex min-w-64 flex-col gap-2 rounded-lg border border-t-4 bg-muted/30 p-2 transition-colors", STAGE_TONE[stage].strip, over === stage && canDrop && "bg-primary/5 ring-1 ring-primary")}
           >
             <header className="flex items-center justify-between gap-2 px-1 py-1">
               <h3 className="text-sm font-bold">{t(`stage_${stage}`)}</h3>
