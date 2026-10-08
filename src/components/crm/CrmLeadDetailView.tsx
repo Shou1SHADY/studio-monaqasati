@@ -91,7 +91,7 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
   const canManageCrm = can("crm.manage")
   const base = crmBasePath(portal)
 
-  const { orgId, opportunities, quotations, activities, teamMembers, isLoading: isCrmLoading } = useCrmData({
+  const { orgId, opportunities, quotations, activities, teamMembers, actor, isLoading: isCrmLoading } = useCrmData({
     opportunities: true,
     quotations: true,
     activities: true,
@@ -561,6 +561,8 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
         orgId={orgId}
         contacts={[contact]}
         teamMembers={teamMembers}
+        portal={portal}
+        actor={actor}
         fixedContactId={contact.id}
       />
       <CrmOpportunityDialog
@@ -571,6 +573,8 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
         orgId={orgId}
         contacts={[contact]}
         teamMembers={teamMembers}
+        portal={portal}
+        actor={actor}
         fixedContactId={contact.id}
       />
 

@@ -262,6 +262,7 @@ export const CONTRACT_KINDS: ContractKind[] = ["lump_sum", "unit_price", "cost_p
 export type OpportunitySource =
   | "open_tender"
   | "invitation"
+  | "platform"
   | "existing_client"
   | "referral"
   | "main_contractor"
@@ -269,16 +270,47 @@ export type OpportunitySource =
   | "whatsapp"
   | "event"
 
+/** Where we heard of it (Opportunity journey v1.1, OPP-01 #7). «Open tender» and «direct invitation» used to sit here
+ * too, but they say how the work was put to market — that is `route` — so they are kept only to read old records. */
 export const OPPORTUNITY_SOURCES: OpportunitySource[] = [
-  "open_tender",
-  "invitation",
   "existing_client",
   "referral",
   "main_contractor",
+  "platform",
   "direct_outreach",
   "whatsapp",
   "event",
 ]
+
+/** What we deliver if we win (OPP-01 #4). A project is executed on certificates and handed to Project Management;
+ * supply and service end in a sales order. Supply and service combine (supply and install); a project stands alone. */
+export type OpportunityDeliverable = "project" | "supply" | "service"
+export const OPPORTUNITY_DELIVERABLES: OpportunityDeliverable[] = ["project", "supply", "service"]
+
+/** A deal with no `deliverables` was recorded before the question existed — it was always handed to Projects. */
+export function opportunityDeliverables(opp: Pick<CrmOpportunity, "deliverables">): OpportunityDeliverable[] {
+  const list = (opp.deliverables || []).filter((d) => OPPORTUNITY_DELIVERABLES.includes(d))
+  return list.length ? list : ["project"]
+}
+
+export function isProjectDeal(opp: Pick<CrmOpportunity, "deliverables">): boolean {
+  return opportunityDeliverables(opp).includes("project")
+}
+
+/** The kinds of file a deal carries (OPP-10). `quotation` is written by Sales' offers; `tender_docs` is what lets a
+ * tender leave «new» (OPP-03). */
+export type OpportunityFileKind = "tender_docs" | "drawings" | "boq" | "site_photos" | "quotation" | "contract" | "other"
+export const OPPORTUNITY_FILE_KINDS: OpportunityFileKind[] = ["tender_docs", "drawings", "boq", "site_photos", "quotation", "contract", "other"]
+
+/** «Do we bid?» (OPP-03 #3) — a decision with a name and a time, never a bare tick. «No» closes the deal. */
+export interface GoDecision {
+  go: boolean
+  at: string
+  byId: string
+  byName: string
+  reason?: string | null
+  note?: string | null
+}
 
 export const TRACK_BADGE_CLASS: Record<OpportunityTrack, string> = {
   tender: "bg-primary/10 text-primary border-primary/20",
@@ -296,7 +328,7 @@ export const TRACK_BADGE_CLASS: Record<OpportunityTrack, string> = {
  */
 export interface OpportunityGate {
   id: string
-  auto?: "estimate" | "cost" | "submitted_approved" | "fit"
+  auto?: "estimate" | "cost" | "submitted_approved" | "fit" | "tender_docs" | "go"
   module?: "finance" | "procurement" | "projects"
 }
 
@@ -305,30 +337,20 @@ export function gateLabelKey(gate: OpportunityGate): string {
   return `crm_gate_${gate.id}`
 }
 
+// Opportunity journey v1.1 (OPP-03, OPP-05): only «new → qualified» has conditions, and each is a fact — a file of the
+// kind «tender documents» uploaded, eligibility that is not in computed conflict, a recorded «we bid» decision. No
+// estimate is demanded (an invented figure is worse than none). Every later step is moved by an act, not a checklist:
+// the pricing request (qualified → proposal), a sent offer (→ negotiation, → won) — see `stageMoveBlock`.
 const TENDER_GATES: Partial<Record<OpportunityStage, OpportunityGate[]>> = {
-  new: [
-    { id: "bid_docs" },
-    { id: "estimate", auto: "estimate" },
-    { id: "fit", auto: "fit" },
-    { id: "go_no_go" },
-  ],
-  qualified: [{ id: "boq_priced" }, { id: "cost", auto: "cost" }, { id: "margin_approved" }],
-  proposal: [{ id: "bid_bond", module: "finance" }, { id: "submitted", auto: "submitted_approved" }],
-  negotiation: [{ id: "clarifications" }, { id: "final_price" }],
+  new: [{ id: "bid_docs", auto: "tender_docs" }, { id: "fit", auto: "fit" }, { id: "go_no_go", auto: "go" }],
 }
 
 const QUOTATION_GATES: Partial<Record<OpportunityStage, OpportunityGate[]>> = {
-  new: [{ id: "scope_captured" }, { id: "estimate", auto: "estimate" }],
-  qualified: [{ id: "cost", auto: "cost" }],
-  proposal: [{ id: "submitted", auto: "submitted_approved" }],
-  negotiation: [{ id: "discount_answered" }],
+  new: [{ id: "fit", auto: "fit" }, { id: "go_no_go", auto: "go" }],
 }
 
 const RENEWAL_GATES: Partial<Record<OpportunityStage, OpportunityGate[]>> = {
-  new: [{ id: "performance_review", module: "projects" }, { id: "satisfaction_captured" }],
-  qualified: [{ id: "cost", auto: "cost" }],
-  proposal: [{ id: "submitted", auto: "submitted_approved" }],
-  negotiation: [{ id: "renewal_feedback" }],
+  new: [{ id: "fit", auto: "fit" }, { id: "go_no_go", auto: "go" }],
 }
 
 export const OPPORTUNITY_GATES: Record<OpportunityTrack, Partial<Record<OpportunityStage, OpportunityGate[]>>> = {
@@ -371,6 +393,8 @@ export type LostReason =
   | "withdrew_terms"
   | "client_cancelled"
   | "no_reason"
+  /** «We do not bid» — the go/no-go decision closed it (OPP-03 #3); the why is in `goDecision.reason`. */
+  | "withdrew"
 
 export const LOST_REASONS: LostReason[] = [
   "price",
@@ -447,6 +471,18 @@ export type HistoryEvent =
   | "handover_rejected"
   | "on_hold"
   | "reactivated"
+  /** «We bid» recorded (OPP-03). */
+  | "go_decided"
+  /** The pricing request went to Sales — its number in `note` (OPP-04). */
+  | "pricing_requested"
+  /** A revised version was asked of Sales (OPP-04 #7). */
+  | "revision_requested"
+  /** A file was removed by the person who added it — its name in `note` (OPP-10 #7). */
+  | "file_deleted"
+
+/** Why we will not bid (OPP-03 #3). */
+export type NoGoReason = "capacity" | "classification" | "duration" | "payment_terms" | "other"
+export const NO_GO_REASONS: NoGoReason[] = ["capacity", "classification", "duration", "payment_terms", "other"]
 
 export interface StageHistoryEntry {
   event: HistoryEvent
@@ -455,6 +491,8 @@ export interface StageHistoryEntry {
    * appended to an array. */
   at: string
   byName?: string | null
+  /** What the event was about — a request number, a file name. */
+  note?: string | null
 }
 
 /**
@@ -473,8 +511,8 @@ export interface Addendum {
 }
 
 /** Append-ready history entry for right now. */
-export function historyEntry(event: HistoryEvent, byName?: string | null): StageHistoryEntry {
-  return { event, at: new Date().toISOString(), byName: byName || null }
+export function historyEntry(event: HistoryEvent, byName?: string | null, note?: string | null): StageHistoryEntry {
+  return { event, at: new Date().toISOString(), byName: byName || null, ...(note ? { note } : {}) }
 }
 
 export function stageHistory(opp: Pick<CrmOpportunity, "stageHistory">): StageHistoryEntry[] {
@@ -492,6 +530,26 @@ export interface CrmOpportunity {
    * Kept in sync when the contact is renamed (see `renameContactReferences`). */
   contactName?: string | null
   title: string
+  /** «OP-2026/014», shown «ف-2026/014» (OPP-02): drawn once at creation from the org's yearly counter, never changed.
+   * Older deals have none. */
+  docNumber?: string | null
+  /** What exactly is asked for — scope, rough quantities, site, special terms (OPP-01 #3). Sent as is with the
+   * pricing request. Older deals kept this in `notes`. */
+  details?: string | null
+  /** OPP-01 #4 — read through `opportunityDeliverables`. */
+  deliverables?: OpportunityDeliverable[] | null
+  /** OPP-03: the bid / no-bid decision. */
+  goDecision?: GoDecision | null
+  /** How many files of each kind the deal holds — kept beside `files/` so a board card can answer «documents
+   * uploaded?» without reading every deal's files. */
+  fileCounts?: Partial<Record<OpportunityFileKind, number>> | null
+  /** The pricing request sent to Sales (OPP-04): `salesQuoteRequests/{pricingRequestId}`. */
+  pricingRequestId?: string | null
+  pricingRequestNumber?: string | null
+  pricingRequestedAt?: string | null
+  /** Who recorded the deal — there is no owner before handover (OPP-01 #2). */
+  createdById?: string | null
+  createdByName?: string | null
   stage: OpportunityStage
   /** Which sales cycle this is. Defaults to `tender` for records written
    * before tracks existed — see `opportunityTrack`. */
@@ -526,6 +584,9 @@ export interface CrmOpportunity {
   submittedPrice?: number | null
   /** Step 4 — what was actually awarded. May be less than submitted. */
   awardedValue?: number | null
+  /** The Sales offer the award was recorded on (OPP-06) — the handover attaches it. */
+  awardedQuotationId?: string | null
+  awardedQuotationNumber?: string | null
 
   /** 0–100. Drives the weighted pipeline; a deal with no estimate contributes
    * nothing regardless of how confident anyone feels about it. */
@@ -568,6 +629,10 @@ export interface CrmOpportunity {
   projectId?: string | null
   contractNumber?: string | null
   durationMonths?: number | null
+  /** Written by the PM handover (days). Older deals carry `durationMonths`. */
+  durationDays?: number | null
+  /** The open handover file in `pmHandovers`, while it waits for the manager. */
+  pmHandoverId?: string | null
   advancePercent?: number | null
   retentionPercent?: number | null
   projectManagerId?: string | null
@@ -633,6 +698,10 @@ export function opportunityGates(opp: CrmOpportunity): OpportunityGate[] {
  */
 export interface GateContext {
   profile?: CrmOrgProfile | null
+  /** The value of the offer Sales sent, when there is one — eligibility is checked on the best figure available. */
+  offerValue?: number | null
+  /** True once Sales has SENT an offer on this deal (OPP-05): it is what allows «negotiation» and the award. */
+  offerSent?: boolean
 }
 
 export function isGateDone(opp: CrmOpportunity, gate: OpportunityGate, ctx?: GateContext): boolean {
@@ -643,12 +712,13 @@ export function isGateDone(opp: CrmOpportunity, gate: OpportunityGate, ctx?: Gat
       return (opp.approvedCost || 0) > 0
     case "submitted_approved":
       return (opp.submittedPrice || 0) > 0 && (opp.approvalStatus || "none") === "approved"
-    case "fit": {
-      // Unconfigured profile means the question was never set up, and an
-      // unasked question must not hold a deal hostage.
-      if (!ctx?.profile) return true
-      return checkEligibility(opp, ctx.profile).eligible && fitsCapacity(opp, ctx.profile)
-    }
+    case "fit":
+      // Only a COMPUTED conflict blocks; «not checked» (no figure, no profile, no scope) is a warning (OPP-03 #4).
+      return fitCheck(opp, ctx?.profile, ctx?.offerValue).status !== "conflict"
+    case "tender_docs":
+      return (opp.fileCounts?.tender_docs || 0) > 0
+    case "go":
+      return opp.goDecision?.go === true
     default:
       return (opp.completedGates || []).includes(gate.id)
   }
@@ -681,6 +751,10 @@ export type StageMoveBlock =
   | "skip"
   /** Already there. */
   | "same"
+  /** «qualified → proposal» happens only by sending the pricing request to Sales (OPP-04). */
+  | "pricing"
+  /** «→ negotiation» needs an offer Sales has sent (OPP-05). */
+  | "offer"
 
 /**
  * The ONE rule for moving a deal between pipeline columns, shared by the board,
@@ -705,7 +779,15 @@ export function stageMoveBlock(
   if (from === -1 || to === -1) return "closed"
   if (to < from) return null
   if (to > from + 1) return "skip"
-  return gatesRemaining(opp, ctx).length === 0 ? null : "gates"
+  if (gatesRemaining(opp, ctx).length > 0) return "gates"
+  if (target === "proposal") return "pricing"
+  if (target === "negotiation" && !ctx?.offerSent) return "offer"
+  return null
+}
+
+/** The award is recorded only on an offer Sales has sent — «proposal» or «negotiation» (OPP-05 #2, OPP-06 #1). */
+export function canRecordAward(opp: CrmOpportunity, offerSent: boolean): boolean {
+  return isOpportunityOpen(opp) && (opp.stage === "proposal" || opp.stage === "negotiation") && offerSent
 }
 
 export function canMoveToStage(opp: CrmOpportunity, target: OpportunityStage, ctx?: GateContext): boolean {
@@ -757,6 +839,24 @@ export const CRM_ORG_PROFILE = "crmOrgProfile"
 export type ClassificationGrade = 1 | 2 | 3 | 4 | 5
 export const CLASSIFICATION_GRADES: ClassificationGrade[] = [1, 2, 3, 4, 5]
 
+/** The chance a deal at this stage closes, when nobody picked one (OPP-01 #6): «by stage». Editable in CRM settings. */
+export const DEFAULT_STAGE_PROBABILITY: Record<"new" | "qualified" | "proposal" | "negotiation", number> = {
+  new: 10,
+  qualified: 25,
+  proposal: 40,
+  negotiation: 70,
+}
+
+/** The probability a deal counts with: its own, else its stage's from settings, else the default table. */
+export function effectiveProbability(
+  opp: Pick<CrmOpportunity, "probability" | "stage">,
+  profile?: Pick<CrmOrgProfile, "stageProbabilities"> | null
+): number {
+  if (typeof opp.probability === "number") return Math.max(0, Math.min(100, opp.probability))
+  const stage = opp.stage as keyof typeof DEFAULT_STAGE_PROBABILITY
+  return profile?.stageProbabilities?.[stage] ?? DEFAULT_STAGE_PROBABILITY[stage] ?? 0
+}
+
 export interface CrmOrgProfile {
   id: string
   organizationId: string
@@ -772,6 +872,8 @@ export interface CrmOrgProfile {
    * quotation builder. `quotationLogoPath` is its Storage object path. */
   quotationLogoUrl?: string | null
   quotationLogoPath?: string | null
+  /** «By stage» probabilities (OPP-01 #6); missing stages use DEFAULT_STAGE_PROBABILITY. */
+  stageProbabilities?: Partial<Record<"new" | "qualified" | "proposal" | "negotiation", number>> | null
   updatedAt?: unknown
 }
 
@@ -857,6 +959,28 @@ export function capacitySnapshot(
     projectedPercent: ceiling > 0 ? Math.round(((underExecution + weighted) / ceiling) * 100) : 0,
     configured: ceiling > 0,
   }
+}
+
+export interface FitCheck {
+  /** ok — checked and clear · unchecked — nothing to check it with yet (a warning) · conflict — blocks (OPP-03 #4). */
+  status: "ok" | "unchecked" | "conflict"
+  eligibility: EligibilityCheck
+  /** The figure it was checked with: the estimate, else the offer's value. */
+  value: number
+  capacityOk: boolean
+}
+
+/** Eligibility and capacity on the best figure available — the estimate, then the offer once Sales sends one. */
+export function fitCheck(
+  opp: Pick<CrmOpportunity, "value" | "scopeTypes" | "customScopeActivity">,
+  profile: CrmOrgProfile | null | undefined,
+  offerValue?: number | null
+): FitCheck {
+  const value = (opp.value || 0) > 0 ? opp.value : offerValue || 0
+  const eligibility = checkEligibility({ ...opp, value }, profile)
+  const capacityOk = value > 0 ? fitsCapacity({ value }, profile) : true
+  if (eligibility.unknown) return { status: "unchecked", eligibility, value, capacityOk }
+  return { status: eligibility.eligible && capacityOk ? "ok" : "conflict", eligibility, value, capacityOk }
 }
 
 /** Does taking this deal on still fit under the annual ceiling? Unconfigured
@@ -1288,9 +1412,30 @@ export interface PipelineSummary {
    * are excluded on purpose — parking a deal must not flatter the win rate. */
   winRate: number
   avgDealValue: number
+  /** Open deals left out of `openValue`: no figure at all («no estimate») — OPP-08 #1. */
+  excludedNoValue: number
+  /** Open deals left out of `openValue`: a tender whose deadline passed with no offer sent — OPP-08 #3. */
+  excludedOverdue: number
 }
 
-export function summarizeOpportunities(opportunities: CrmOpportunity[]): PipelineSummary {
+/** What one open deal counts with in the pipeline (OPP-08): its figure — the offer Sales sent, else the estimate —
+ * or nothing, and whether it is held out of the totals until its deadline is settled. */
+export interface PipelineFigure {
+  amount: number | null
+  kind: "offer" | "estimate" | "none"
+  overdue: boolean
+}
+
+/** Without Sales' offers at hand, a deal counts with its estimate; an absent estimate is «no estimate», never 0. */
+export function estimateFigure(opp: Pick<CrmOpportunity, "value">): PipelineFigure {
+  return (opp.value || 0) > 0 ? { amount: opp.value, kind: "estimate", overdue: false } : { amount: null, kind: "none", overdue: false }
+}
+
+export function summarizeOpportunities(
+  opportunities: CrmOpportunity[],
+  figureOf: (opp: CrmOpportunity) => PipelineFigure = estimateFigure,
+  profile?: Pick<CrmOrgProfile, "stageProbabilities"> | null
+): PipelineSummary {
   let open = 0
   let won = 0
   let lost = 0
@@ -1299,9 +1444,10 @@ export function summarizeOpportunities(opportunities: CrmOpportunity[]): Pipelin
   let openValue = 0
   let weightedValue = 0
   let wonValue = 0
+  let excludedNoValue = 0
+  let excludedOverdue = 0
 
   for (const opp of opportunities) {
-    const value = Number.isFinite(opp.value) ? opp.value : 0
     switch (opportunityState(opp)) {
       case "won":
       case "handed_over": {
@@ -1318,9 +1464,17 @@ export function summarizeOpportunities(opportunities: CrmOpportunity[]): Pipelin
         break
       default: {
         open++
-        openValue += value
-        const probability = typeof opp.probability === "number" ? opp.probability : 50
-        weightedValue += (value * Math.max(0, Math.min(100, probability))) / 100
+        const figure = figureOf(opp)
+        if (figure.overdue) {
+          excludedOverdue++
+          break
+        }
+        if (figure.amount === null) {
+          excludedNoValue++
+          break
+        }
+        openValue += figure.amount
+        weightedValue += (figure.amount * effectiveProbability(opp, profile)) / 100
       }
     }
   }
@@ -1338,6 +1492,8 @@ export function summarizeOpportunities(opportunities: CrmOpportunity[]): Pipelin
     wonValue,
     winRate: closed === 0 ? 0 : Math.round((won / closed) * 100),
     avgDealValue: won === 0 ? 0 : Math.round(wonValue / won),
+    excludedNoValue,
+    excludedOverdue,
   }
 }
 

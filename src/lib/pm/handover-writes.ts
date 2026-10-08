@@ -59,10 +59,21 @@ export interface HandoverExtras {
   consultantName?: string | null
   /** The CRM deal's own number, when the deal carries one. */
   dealNo?: string | null
+  /** The files CRM sent with it (Opportunity journey v1.1, OPP-07 #4): the signed contract, the priced BOQ and whatever
+   * else was picked from the deal's files — Storage paths, opened with a fresh link. */
+  files?: Array<{ name: string; path: string; kind?: string | null }> | null
+  /** The offer the client accepted — attached by itself; its PDF is Sales' document for that version. */
+  acceptedOffer?: { id: string; number: string; amount: number } | null
 }
 export const fileExtras = (h: PmHandover): HandoverExtras => {
   const x = h as PmHandover & HandoverExtras
-  return { region: x.region?.trim() || null, consultantName: x.consultantName?.trim() || null, dealNo: x.dealNo?.trim() || null }
+  return {
+    region: x.region?.trim() || null,
+    consultantName: x.consultantName?.trim() || null,
+    dealNo: x.dealNo?.trim() || null,
+    files: Array.isArray(x.files) ? x.files : [],
+    acceptedOffer: x.acceptedOffer ?? null,
+  }
 }
 
 export interface SendHandoverInput {
@@ -84,13 +95,17 @@ export interface SendHandoverInput {
   to: string
   toName: string | null
   notification?: Notice
+  files?: HandoverExtras["files"]
+  acceptedOffer?: HandoverExtras["acceptedOffer"]
 }
 
 export async function sendHandoverFile(firestore: Firestore, input: SendHandoverInput): Promise<string> {
   const file: Omit<PmHandover, "id"> & HandoverExtras = {
     region: input.region?.trim() || null,
     consultantName: input.opportunity.consultantName?.trim() || null,
-    dealNo: (input.opportunity as CrmOpportunity & { docNumber?: string | null }).docNumber?.trim() || null,
+    dealNo: input.opportunity.docNumber?.trim() || null,
+    files: input.files ?? [],
+    acceptedOffer: input.acceptedOffer ?? null,
     organizationId: input.organizationId,
     status: "wait",
     to: input.to,

@@ -99,6 +99,8 @@ const ARABIC_PREFIX: Record<string, string> = {
   AG: "اتف",
   // Project Management (PM 1.0): the project number, as the prototype shows it.
   PJ: "م",
+  // CRM — the opportunity (Opportunity journey v1.1, OPP-02): «ف-2026/014».
+  OP: "ف",
 }
 
 /** "QT-2026/070" reads "ع.س-2026/070" in Arabic. Anything that is not one of

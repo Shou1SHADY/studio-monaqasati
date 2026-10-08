@@ -28,19 +28,19 @@ function deal(overrides: Partial<CrmOpportunity> = {}): CrmOpportunity {
 
 describe("stageMoveBlock", () => {
   it("refuses a forward move while the current stage's gates are open", () => {
-    // Quotation track, stage `new`: needs scope_captured (manual) + estimate (auto).
+    // Quotation track, stage `new` (journey v1.1): eligibility not in conflict + a recorded «we bid» decision.
     expect(stageMoveBlock(deal(), "qualified")).toBe("gates")
     expect(canMoveToStage(deal(), "qualified")).toBe(false)
   })
 
   it("allows one step forward once every gate is satisfied", () => {
-    const ready = deal({ value: 150000, completedGates: ["scope_captured"] })
+    const ready = deal({ goDecision: { go: true, at: "2026-10-06T08:00:00Z", byId: "u1", byName: "Saad" } })
     expect(stageMoveBlock(ready, "qualified")).toBeNull()
     expect(canMoveToStage(ready, "qualified")).toBe(true)
   })
 
   it("never allows skipping a stage, even with gates cleared", () => {
-    const ready = deal({ value: 150000, completedGates: ["scope_captured"] })
+    const ready = deal({ goDecision: { go: true, at: "2026-10-06T08:00:00Z", byId: "u1", byName: "Saad" } })
     expect(stageMoveBlock(ready, "proposal")).toBe("skip")
     expect(stageMoveBlock(ready, "negotiation")).toBe("skip")
   })

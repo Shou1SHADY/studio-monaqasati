@@ -13,6 +13,7 @@ import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { CrmFormDialog, RequiredMark, type CrmFormStep } from "@/components/crm/CrmFormDialog"
 import { createFollowUp } from "@/lib/crm-writes"
+import { closeOfferLost, notifySales, type OppActor } from "@/lib/crm-opportunity-writes"
 import {
   CRM_OPPORTUNITIES,
   HOLD_REASONS,
@@ -21,6 +22,7 @@ import {
   isoDateIn,
   stageHistory,
   type CrmOpportunity,
+  type CrmQuotation,
   type HoldReason,
   type LostReason,
 } from "@/lib/crm"
@@ -45,11 +47,17 @@ export function CrmCloseDialog({
   onOpenChange,
   mode,
   opportunity,
+  offer = null,
+  actor,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   mode: CloseMode
   opportunity: CrmOpportunity
+  /** The offer Sales sent, if any — a loss closes it «lost» with the same reason, and Sales is told (OPP-06 #4). */
+  offer?: CrmQuotation | null
+  /** Who closes it — recorded in their name, not a deal owner's (OPP-01 #2). */
+  actor: OppActor
 }) {
   const t = useTranslations("Portal.Shared")
 
@@ -77,10 +85,10 @@ export function CrmCloseDialog({
 
   const gap = useMemo(() => {
     const theirs = parseFloat(competitorPrice)
-    const ours = opportunity.submittedPrice || 0
+    const ours = offer?.amount || opportunity.submittedPrice || 0
     if (!Number.isFinite(theirs) || theirs <= 0 || ours <= 0) return null
     return Math.round(((ours - theirs) / theirs) * 1000) / 10
-  }, [competitorPrice, opportunity.submittedPrice])
+  }, [competitorPrice, opportunity.submittedPrice, offer?.amount])
 
   const handleSave = async () => {
     if (!firestore || isSaving) return
@@ -96,9 +104,19 @@ export function CrmCloseDialog({
           lostToCompetitor: competitor.trim() || null,
           competitorPrice: Number.isFinite(theirs) && theirs > 0 ? theirs : null,
           lessonLearned: lesson.trim() || null,
-          stageHistory: [...stageHistory(opportunity), historyEntry("lost", opportunity.ownerName)],
+          stageHistory: [...stageHistory(opportunity), historyEntry("lost", actor.name)],
           updatedAt: serverTimestamp(),
         })
+        // Sales hears it: the open offer closes «lost» with the same reason.
+        await closeOfferLost(firestore, offer, t(`crm_lost_reason_${lostReason}`), actor).catch((err) => console.error(err))
+        if (offer) {
+          const params = { number: opportunity.docNumber || opportunity.title, title: opportunity.title, reason: t(`crm_lost_reason_${lostReason}`) }
+          void notifySales(firestore, opportunity, actor, {
+            title: t("crm_lost_notif_title"),
+            message: t("crm_lost_notif_msg", params),
+            i18n: { title: "crm_lost_notif_title", message: "crm_lost_notif_msg", params },
+          }, "crm_lost")
+        }
         // Losing a bid is not losing a client. A dated follow-up is the
         // difference between "we lost that one" and "we never called back".
         if (keepRelationship) {
@@ -109,8 +127,8 @@ export function CrmCloseDialog({
             type: "call",
             title: t("crm_lost_followup_title", { deal: opportunity.title }),
             dueInDays: 90,
-            ownerId: opportunity.ownerId,
-            ownerName: opportunity.ownerName,
+            ownerId: actor.uid,
+            ownerName: actor.name,
           })
         }
         toast({ title: t("crm_closed_lost") })
@@ -119,7 +137,7 @@ export function CrmCloseDialog({
           state: "on_hold",
           holdReason,
           holdUntil: holdUntil || null,
-          stageHistory: [...stageHistory(opportunity), historyEntry("on_hold", opportunity.ownerName)],
+          stageHistory: [...stageHistory(opportunity), historyEntry("on_hold", actor.name)],
           updatedAt: serverTimestamp(),
         })
         toast({ title: t("crm_put_on_hold") })

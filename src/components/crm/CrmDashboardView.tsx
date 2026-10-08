@@ -27,6 +27,8 @@ import { usePermissions } from "@/hooks/usePermissions"
 import { createRenewalOpportunity } from "@/lib/crm-writes"
 import { useCrmData } from "@/hooks/useCrmData"
 import { useCrmOrgProfile } from "@/hooks/useCrmOrgProfile"
+import { currentOffersByDeal, dealFigure } from "@/lib/crm-journey"
+import { todayKey } from "@/components/crm/OppBits"
 import { cn } from "@/lib/utils"
 import {
   OPEN_OPPORTUNITY_STAGES,
@@ -66,7 +68,11 @@ import {
 export function CrmDashboardView({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
-  const { orgId, contacts, opportunities, activities, isLoading } = useCrmData({ opportunities: true, activities: true })
+  const { orgId, contacts, opportunities, activities, quotations, isLoading } = useCrmData({ opportunities: true, activities: true, quotations: true })
+  // The same figure the board counts (Opportunity journey v1.1, OPP-08): the offer Sales sent, else the estimate.
+  const today = todayKey()
+  const offers = useMemo(() => currentOffersByDeal(quotations), [quotations])
+  const figureOf = (o: CrmOpportunity) => dealFigure(o, offers.get(o.id) ?? null, today)
   const { profile } = useCrmOrgProfile()
   const { can } = usePermissions()
   const canManage = can("crm.manage")
@@ -97,7 +103,10 @@ export function CrmDashboardView({ portal }: { portal: CrmPortal }) {
     }
   }
 
-  const summary = useMemo(() => summarizeOpportunities(opportunities), [opportunities])
+  const summary = useMemo(
+    () => summarizeOpportunities(opportunities, (o) => dealFigure(o, offers.get(o.id) ?? null, today), profile),
+    [opportunities, offers, today, profile]
+  )
   const capacity = useMemo(() => capacitySnapshot(opportunities, profile), [opportunities, profile])
 
   const open = useMemo(() => opportunities.filter(isOpportunityOpen), [opportunities])
@@ -114,11 +123,15 @@ export function CrmDashboardView({ portal }: { portal: CrmPortal }) {
   const byStage = useMemo(() => {
     const rows = OPEN_OPPORTUNITY_STAGES.map((stage) => {
       const items = open.filter((o) => o.stage === stage)
-      return { stage, count: items.length, value: items.reduce((sum, o) => sum + (o.value || 0), 0) }
+      const value = items.reduce((sum, o) => {
+        const f = dealFigure(o, offers.get(o.id) ?? null, today)
+        return f.overdue || f.amount === null ? sum : sum + f.amount
+      }, 0)
+      return { stage, count: items.length, value }
     })
     const max = Math.max(...rows.map((r) => r.value), 1)
     return { rows, max }
-  }, [open])
+  }, [open, offers, today])
 
   const pendingApproval = useMemo(
     () => opportunities.filter((o) => (o.approvalStatus || "none") === "pending"),
@@ -130,7 +143,7 @@ export function CrmDashboardView({ portal }: { portal: CrmPortal }) {
       open
         .map((o) => ({ opp: o, missing: gatesRemaining(o, { profile }) }))
         .filter((row) => row.missing.length > 0)
-        .sort((a, b) => (b.opp.value || 0) - (a.opp.value || 0))
+        .sort((a, b) => (figureOf(b.opp).amount ?? 0) - (figureOf(a.opp).amount ?? 0))
         .slice(0, 6),
     [open, profile]
   )

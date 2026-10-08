@@ -19,9 +19,11 @@ import {
   serverTimestamp,
   where,
   writeBatch,
+  runTransaction,
   type Firestore,
   getDoc,
 } from "firebase/firestore"
+import { drawYearlyDocNumber } from "./sales-numbering"
 import {
   CRM_QUOTATIONS,
   INSTALLMENT_DEPOSIT_ID,
@@ -236,6 +238,14 @@ export interface QuoteRequestLine {
   quantity: number
 }
 
+/** A file sent with a pricing request — a copy of the opportunity file's Storage path, opened with a fresh URL. */
+export interface QuoteRequestFile {
+  name: string
+  path: string
+  kind?: string | null
+  contentType?: string | null
+}
+
 export interface QuoteRequest {
   id: string
   organizationId: string
@@ -244,6 +254,17 @@ export interface QuoteRequest {
   contactName?: string | null
   opportunityId?: string | null
   opportunityTitle?: string | null
+  /** From an opportunity (Opportunity journey v1.1, OPP-04): «price» asks for an offer; «revision» asks for a new
+   * version of `revisionOfQuotationId` with what the client wants (in `note`) — it lands on that same offer, not as a
+   * new one. Requests from a contact page carry no kind (= price). */
+  kind?: "price" | "revision" | null
+  revisionOfQuotationId?: string | null
+  revisionOfQuotationNumber?: string | null
+  /** The deal's number «OP-2026/014», its details, what we deliver if we win, and the files picked to send. */
+  opportunityNumber?: string | null
+  details?: string | null
+  deliverables?: string[] | null
+  files?: QuoteRequestFile[] | null
   lines: QuoteRequestLine[]
   note?: string | null
   /** When CRM needs the quote submitted by. */
@@ -592,49 +613,82 @@ export async function createQuoteRequest(
     actor: Actor
     recipients: string[]
     notification: NotificationCopy
+    /** From an opportunity (OPP-04): what the deal is, its files, and — for a revision — the offer it revises. */
+    opportunity?: {
+      kind: "price" | "revision"
+      number?: string | null
+      details?: string | null
+      deliverables?: string[] | null
+      files?: QuoteRequestFile[] | null
+      revisionOfQuotationId?: string | null
+      revisionOfQuotationNumber?: string | null
+    } | null
   }
-): Promise<string> {
+): Promise<{ id: string; requestNumber: string }> {
   const lines = input.lines.filter((l) => l.name.trim() && l.quantity > 0)
-  if (lines.length === 0) throw new Error("no_lines")
+  // A contact page asks for items; an opportunity asks for its details and files instead.
+  if (lines.length === 0 && !input.opportunity) throw new Error("no_lines")
   const ref = doc(collection(firestore, SALES_QUOTE_REQUESTS))
   const requestedAt = nowIso()
-  const batch = writeBatch(firestore)
-  batch.set(ref, {
-    organizationId: input.organizationId,
-    requestNumber: generateQuoteRequestNumber(),
-    contactId: input.contact.id,
-    contactName: input.contact.name ?? null,
-    opportunityId: input.opportunityId ?? null,
-    opportunityTitle: input.opportunityTitle ?? null,
-    lines,
-    note: input.note?.trim() || null,
-    dueDate: input.dueDate || null,
-    status: "new",
-    quotationId: null,
-    quotationNumber: null,
-    declineReason: null,
-    declineNote: null,
-    requestedByUserId: input.actor.id,
-    requestedByUserName: input.actor.name,
-    requestedAt,
-    decidedAt: null,
-    decidedByUserId: null,
-    decidedByUserName: null,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+  const opp = input.opportunity
+  // The yearly number «RQ-2026/031», shown «ط.ع-2026/031» — drawn inside the write like every sequenced document.
+  const requestNumber = await runTransaction(firestore, async (tx) => {
+    const number = await drawYearlyDocNumber(firestore, tx, input.organizationId, "RQ")
+    tx.set(ref, {
+      organizationId: input.organizationId,
+      requestNumber: number,
+      contactId: input.contact.id,
+      contactName: input.contact.name ?? null,
+      opportunityId: input.opportunityId ?? null,
+      opportunityTitle: input.opportunityTitle ?? null,
+      ...(opp
+        ? {
+            kind: opp.kind,
+            opportunityNumber: opp.number ?? null,
+            details: opp.details?.trim() || null,
+            deliverables: opp.deliverables ?? null,
+            files: opp.files ?? [],
+            revisionOfQuotationId: opp.revisionOfQuotationId ?? null,
+            revisionOfQuotationNumber: opp.revisionOfQuotationNumber ?? null,
+          }
+        : {}),
+      lines,
+      note: input.note?.trim() || null,
+      dueDate: input.dueDate || null,
+      status: "new",
+      quotationId: null,
+      quotationNumber: null,
+      declineReason: null,
+      declineNote: null,
+      requestedByUserId: input.actor.id,
+      requestedByUserName: input.actor.name,
+      requestedAt,
+      decidedAt: null,
+      decidedByUserId: null,
+      decidedByUserName: null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+    return number
   })
-  queueNotifications(firestore, batch, input.recipients, {
-    type: "quote_request_created",
-    organizationId: input.organizationId,
-    title: input.notification.title,
-    message: input.notification.message,
-    ...(input.notification.i18n ? { i18n: input.notification.i18n } : {}),
-    quoteRequestId: ref.id,
-    contactName: input.contact.name ?? null,
-    createdAt: requestedAt,
-  })
-  await batch.commit()
-  return ref.id
+  // Telling Sales is best effort: the request is in their inbox whether or not the bell rings.
+  try {
+    const batch = writeBatch(firestore)
+    queueNotifications(firestore, batch, input.recipients, {
+      type: "quote_request_created",
+      organizationId: input.organizationId,
+      title: input.notification.title,
+      message: input.notification.message,
+      ...(input.notification.i18n ? { i18n: input.notification.i18n } : {}),
+      quoteRequestId: ref.id,
+      contactName: input.contact.name ?? null,
+      createdAt: requestedAt,
+    })
+    await batch.commit()
+  } catch (err) {
+    console.error("quote request notification failed", err)
+  }
+  return { id: ref.id, requestNumber }
 }
 
 /** "Cannot price" — one of five factual reasons goes back to CRM; no apology. */

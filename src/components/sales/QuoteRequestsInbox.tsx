@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { CalendarClock, Inbox, Loader2, Tag, XCircle, PencilLine } from "lucide-react"
-import { collection, query, where } from "firebase/firestore"
-import { Link } from "@/i18n/routing"
+import { CalendarClock, Inbox, Loader2, Tag, XCircle, PencilLine, RefreshCcw } from "lucide-react"
+import { collection, doc, getDoc, query, where } from "firebase/firestore"
+import { Link, useRouter } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -20,11 +20,14 @@ import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebas
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { cn } from "@/lib/utils"
-import { formatCrmDate } from "@/lib/crm"
+import { CRM_QUOTATIONS, formatCrmDate } from "@/lib/crm"
+import { reviseQuotation } from "@/lib/sales-quotes"
+import { QuoteRequestBrief } from "./QuoteRequestBrief"
 import {
   QUOTE_DECLINE_REASONS,
   SALES_QUOTE_REQUESTS,
   declineQuoteRequest,
+  linkQuoteRequestDraft,
   type QuoteDeclineReason,
   type QuoteRequest,
 } from "@/lib/sales-transfers"
@@ -56,6 +59,7 @@ export function QuoteRequestsInbox({
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
+  const router = useRouter()
   const { can } = usePermissions()
   const canQuote = can("sales.manage")
   const base = salesBasePath(portal)
@@ -80,6 +84,25 @@ export function QuoteRequestsInbox({
   const [reason, setReason] = useState<QuoteDeclineReason | "">("")
   const [note, setNote] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const [revising, setRevising] = useState<string | null>(null)
+
+  // CRM asked for a revised version of an offer: revise THAT offer (the old one is superseded, the draft answers the
+  // request) and continue in the composer — never a new quotation for the same deal (OPP-04 #7).
+  const revise = async (r: QuoteRequest) => {
+    if (!firestore || !user || !r.revisionOfQuotationId || revising) return
+    setRevising(r.id)
+    try {
+      const id = await reviseQuotation(firestore, { quotationId: r.revisionOfQuotationId, today, actor: { id: user.uid, name: actorName }, requestId: r.id })
+      const snap = await getDoc(doc(firestore, CRM_QUOTATIONS, id))
+      await linkQuoteRequestDraft(firestore, { requestId: r.id, quotationId: id, quotationNumber: (snap.data()?.quotationNumber as string) || "" })
+      router.push(`${base}/quotations/new?draft=${id}`)
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("sales_rq_revise_failed"), variant: "destructive" })
+    } finally {
+      setRevising(null)
+    }
+  }
 
   if (requests.length === 0) return null
 
@@ -128,6 +151,9 @@ export function QuoteRequestsInbox({
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-xs text-muted-foreground" dir="ltr">{displayDocNumber(r.requestNumber, locale)}</span>
                   <span className="text-sm font-bold" dir="auto">{r.contactName || "—"}</span>
+                  {r.kind === "revision" && (
+                    <span className="rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10px] font-bold text-warning">{t("sales_rq_revision_badge")}</span>
+                  )}
                   {r.dueDate && (
                     <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1", late ? "bg-destructive/10 text-destructive border-destructive/20" : "bg-muted text-muted-foreground border-border")}>
                       <CalendarClock size={10} aria-hidden="true" />
@@ -136,11 +162,17 @@ export function QuoteRequestsInbox({
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5" dir="auto">
-                  {r.lines.map((l) => `${l.quantity} ${l.unit} ${l.name}`).join(" · ")}
-                  {" · "}
-                  {t("sales_rq_requested_by", { name: r.requestedByUserName })}
+                  {[r.lines.map((l) => `${l.quantity} ${l.unit} ${l.name}`).join(" · "), t("sales_rq_requested_by", { name: r.requestedByUserName })]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </p>
-                {r.note && <p className="text-xs text-muted-foreground mt-0.5" dir="auto">{r.note}</p>}
+                {r.opportunityId ? (
+                  <div className="mt-1.5">
+                    <QuoteRequestBrief request={r} compact />
+                  </div>
+                ) : (
+                  r.note && <p className="text-xs text-muted-foreground mt-0.5" dir="auto">{r.note}</p>
+                )}
               </div>
               {canQuote && (
                 <div className="flex items-center gap-2 shrink-0 flex-wrap">
@@ -148,6 +180,12 @@ export function QuoteRequestsInbox({
                     <XCircle size={13} />
                     {t("sales_rq_decline_btn")}
                   </Button>
+                  {r.kind === "revision" && r.revisionOfQuotationId && !r.draftQuotationId ? (
+                    <Button size="sm" className="h-8 gap-1.5" disabled={revising === r.id} onClick={() => void revise(r)}>
+                      {revising === r.id ? <Loader2 size={13} className="animate-spin" /> : <RefreshCcw size={13} />}
+                      {t("sales_rq_revise_btn")}
+                    </Button>
+                  ) : (
                   <Button size="sm" className="h-8 gap-1.5" asChild>
                     {r.draftQuotationId ? (
                       <Link href={`${base}/quotations/new?draft=${r.draftQuotationId}`}>
@@ -161,6 +199,7 @@ export function QuoteRequestsInbox({
                       </Link>
                     )}
                   </Button>
+                  )}
                 </div>
               )}
             </li>

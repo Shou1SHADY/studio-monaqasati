@@ -308,7 +308,17 @@ export async function extendQuotation(firestore: Firestore, input: { quotationId
  * one is a DRAFT with the base number and the next suffix, carrying the lines,
  * schedule and texts, and the request link moves to it. Returns the new id.
  */
-export async function reviseQuotation(firestore: Firestore, input: { quotationId: string; today: string; actor: Actor }): Promise<string> {
+export async function reviseQuotation(
+  firestore: Firestore,
+  input: {
+    quotationId: string
+    today: string
+    actor: Actor
+    /** A revision CRM asked for (Opportunity journey v1.1, OPP-04 #7): the new draft answers THAT request, so issuing
+     * it closes the request and CRM sees the new version. */
+    requestId?: string | null
+  }
+): Promise<string> {
   const oldRef = doc(firestore, CRM_QUOTATIONS, input.quotationId)
   const newRef = doc(collection(firestore, CRM_QUOTATIONS))
   await runTransaction(firestore, async (tx) => {
@@ -324,7 +334,7 @@ export async function reviseQuotation(firestore: Firestore, input: { quotationId
       contactId: old.contactId,
       contactName: old.contactName ?? null,
       opportunityId: old.opportunityId ?? null,
-      requestId: old.requestId ?? null,
+      requestId: input.requestId ?? old.requestId ?? null,
       quotationNumber: revisionDocNumber(baseDocNumber(old.quotationNumber), revision),
       revision,
       revisionOf: old.revisionOf || old.id,

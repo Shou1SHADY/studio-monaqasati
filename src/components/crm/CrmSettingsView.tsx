@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { doc, serverTimestamp, setDoc } from "firebase/firestore"
-import { AlertTriangle, Gauge, Loader2, Save, Settings, ShieldCheck, Tags } from "lucide-react"
+import { AlertTriangle, Gauge, Loader2, Percent, Save, Settings, ShieldCheck, Tags } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,7 +26,11 @@ import {
   requiredGrade,
   type ClassificationActivity,
   type ClassificationGrade,
+  DEFAULT_STAGE_PROBABILITY,
 } from "@/lib/crm"
+
+const PROB_STAGES = ["new", "qualified", "proposal", "negotiation"] as const
+type ProbStage = (typeof PROB_STAGES)[number]
 import {
   CrmListSkeleton,
   CrmMeter,
@@ -62,12 +66,19 @@ export function CrmSettingsView({ portal }: { portal: CrmPortal }) {
   const [grades, setGrades] = useState<Partial<Record<ClassificationActivity, ClassificationGrade>>>({})
   const [ceiling, setCeiling] = useState("")
   const [underExecution, setUnderExecution] = useState("")
+  const [stageProb, setStageProb] = useState<Record<ProbStage, string>>({ new: "", qualified: "", proposal: "", negotiation: "" })
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
     setGrades(profile?.classifications ?? {})
     setCeiling(profile?.annualCeiling != null ? String(profile.annualCeiling) : "")
     setUnderExecution(profile?.underExecution != null ? String(profile.underExecution) : "")
+    setStageProb({
+      new: String(profile?.stageProbabilities?.new ?? DEFAULT_STAGE_PROBABILITY.new),
+      qualified: String(profile?.stageProbabilities?.qualified ?? DEFAULT_STAGE_PROBABILITY.qualified),
+      proposal: String(profile?.stageProbabilities?.proposal ?? DEFAULT_STAGE_PROBABILITY.proposal),
+      negotiation: String(profile?.stageProbabilities?.negotiation ?? DEFAULT_STAGE_PROBABILITY.negotiation),
+    })
   }, [profile])
 
   // Previewed against what is being typed, not what is saved — the point of
@@ -102,6 +113,9 @@ export function CrmSettingsView({ portal }: { portal: CrmPortal }) {
           classifications: grades,
           annualCeiling: parseFloat(ceiling) || null,
           underExecution: parseFloat(underExecution) || null,
+          stageProbabilities: Object.fromEntries(
+            PROB_STAGES.map((st) => [st, Math.max(0, Math.min(100, Math.round(Number(stageProb[st]) || 0)))])
+          ),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -260,6 +274,32 @@ export function CrmSettingsView({ portal }: { portal: CrmPortal }) {
           )}
         </CrmPanel>
       </div>
+
+      {/* «By stage» (Opportunity journey v1.1, OPP-01 #6): what a deal with no probability of its own counts with. */}
+      <CrmPanel icon={Percent} title={t("crm_settings_stage_prob")} subtitle={t("crm_settings_stage_prob_desc")}>
+        <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-4">
+          {PROB_STAGES.map((st) => (
+            <div key={st} className="space-y-1.5">
+              <Label htmlFor={`sp-${st}`}>{t(`crm_opp_stage_${st}`)}</Label>
+              <div className="relative">
+                <Input
+                  id={`sp-${st}`}
+                  type="number"
+                  min="0"
+                  max="100"
+                  inputMode="numeric"
+                  dir="ltr"
+                  value={stageProb[st]}
+                  onChange={(e) => setStageProb((p) => ({ ...p, [st]: e.target.value }))}
+                  disabled={!canManage || isSaving}
+                  className="pe-8"
+                />
+                <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground" aria-hidden="true">%</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CrmPanel>
 
       <CrmPanel
         icon={Tags}
