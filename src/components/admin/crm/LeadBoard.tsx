@@ -8,7 +8,7 @@ import { IconButton } from "@/components/module-ui/IconButton"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { ShowMoreRow } from "@/components/module-ui/ShowMoreRow"
 import { Link } from "@/i18n/routing"
-import { LEAD_STAGES, OPEN_STAGES, formatCrmDate, stageTotals, toDateKey, type LeadMatch, type LeadRow, type OpenStage } from "@/lib/admin-crm"
+import { LEAD_STAGES, OPEN_STAGES, arrivedAgo, formatCrmDate, stageTotals, toDateKey, type LeadMatch, type LeadRow, type OpenStage } from "@/lib/admin-crm"
 import { cn } from "@/lib/utils"
 import { Money, STAGE_TONE } from "./parts"
 
@@ -32,7 +32,8 @@ export function LeadBoard({
   const [over, setOver] = useState<OpenStage | null>(null)
   const [shown, setShown] = useState<Record<string, number>>({})
   const totals = stageTotals(rows)
-  const today = toDateKey(new Date())
+  const now = new Date()
+  const today = toDateKey(now)
   const dragging = rows.find((r) => r.crmId === dragId) ?? null
 
   return (
@@ -106,6 +107,8 @@ export function LeadBoard({
                       <span className="inline-flex items-center gap-1">
                         <UserRound size={12} aria-hidden="true" />
                         {r.ownerName || t("unassigned")}
+                        {/* No follow-up booked yet: how long it has waited instead (ADM-03). */}
+                        {!r.nextFollowUp && arrivedAgo(r.createdMs, now) && <span>· {t("arrived_ago", arrivedAgo(r.createdMs, now) ?? { unit: "days", n: 0 })}</span>}
                       </span>
                       {r.nextFollowUp && (
                         <span className={cn("inline-flex items-center gap-1", late && "font-semibold text-destructive")}>

@@ -5,17 +5,14 @@ import { useTranslations } from "next-intl"
 import { CalendarDays, Loader2, Target, Trophy, TrendingUp } from "lucide-react"
 import type { AdminCrm } from "@/hooks/useAdminCrm"
 import { LEAD_CHANNELS, OPEN_STAGES, leadDashboard, stageTotals } from "@/lib/admin-crm"
-import { CrmKpi, Money, STAGE_TONE } from "./parts"
+import { CrmPanel, CrmStat, CrmStatRow } from "@/components/crm/CrmShell"
+import { Money, STAGE_TONE } from "./parts"
 
 
 function Bars({ title, icon: Icon, rows }: { title: string; icon: typeof Target; rows: Array<{ key: string; label: string; value: number; extra?: React.ReactNode; bar: string }> }) {
   const max = Math.max(1, ...rows.map((r) => r.value))
   return (
-    <section className="overflow-hidden rounded-xl border bg-card">
-      <header className="flex items-center gap-2 border-b bg-muted/30 px-4 py-3 text-sm font-bold">
-        <Icon size={16} className="text-muted-foreground" aria-hidden="true" />
-        {title}
-      </header>
+    <CrmPanel title={title} icon={Icon}>
       <ul className="space-y-4 p-4">
         {rows.map((r) => (
           <li key={r.key}>
@@ -32,7 +29,7 @@ function Bars({ title, icon: Icon, rows }: { title: string; icon: typeof Target;
           </li>
         ))}
       </ul>
-    </section>
+    </CrmPanel>
   )
 }
 
@@ -51,12 +48,12 @@ export function DashboardTab({ crm }: { crm: AdminCrm }) {
   }
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <CrmKpi icon={TrendingUp} label={t("intake_week")} value={d.thisWeek} hint={t("intake_week_hint", { n: d.lastWeek })} />
-        <CrmKpi icon={CalendarDays} label={t("intake_month")} value={d.thisMonth} hint={t("intake_month_hint", { n: d.lastMonth })} />
-        <CrmKpi icon={Trophy} label={t("converted_month")} value={d.convertedThisMonth} hint={t("converted_month_hint", { n: d.convertedLastMonth })} tone="success" />
-        <CrmKpi icon={Target} label={t("conversion_rate")} value={d.conversionRate === null ? "—" : `${d.conversionRate}%`} hint={t("conversion_hint")} />
-      </div>
+      <CrmStatRow>
+        <CrmStat icon={TrendingUp} label={t("intake_week")} value={d.thisWeek} hint={t("intake_week_hint", { n: d.lastWeek })} accent="cta" />
+        <CrmStat icon={CalendarDays} label={t("intake_month")} value={d.thisMonth} hint={t("intake_month_hint", { n: d.lastMonth })} />
+        <CrmStat icon={Trophy} label={t("converted_month")} value={d.convertedThisMonth} hint={t("converted_month_hint", { n: d.convertedLastMonth })} accent="success" />
+        <CrmStat icon={Target} label={t("conversion_rate")} value={d.conversionRate === null ? "—" : `${d.conversionRate}%`} hint={t("conversion_hint")} accent="indigo" />
+      </CrmStatRow>
       <div className="grid gap-4 lg:grid-cols-2">
         <Bars
           title={t("intake_sources")}

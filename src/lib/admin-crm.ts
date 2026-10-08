@@ -129,6 +129,12 @@ export function isClientStage(value: unknown): value is ClientStage {
   return typeof value === "string" && (CLIENT_STAGES as readonly string[]).includes(value)
 }
 
+/** Calendar days from a moment to now, as people count them: a call on the 6th is «two days ago» on the 8th, whatever
+ * the hour (an activity done on a day is stored at noon UTC — counting elapsed hours made it «yesterday» until 3 pm). */
+export function calendarDaysSince(ms: number, now: Date): number {
+  return Math.max(0, Math.round((Date.parse(toDateKey(now)) - Date.parse(toDateKey(new Date(ms)))) / DAY_MS))
+}
+
 export function toDateKey(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0")
   const day = String(date.getDate()).padStart(2, "0")
@@ -186,6 +192,12 @@ export function activityState(a: CrmActivity, today: string): ActivityState {
 export type ClientDerived = { lastContactAt: string; nextFollowUp: string }
 
 /** Per client: the last contact and the nearest scheduled activity, from the activities alone. */
+function joinDerived(a: ClientDerived | undefined, b: ClientDerived | undefined): ClientDerived | undefined {
+  if (!a || !b) return a ?? b
+  const next = [a.nextFollowUp, b.nextFollowUp].filter(Boolean).sort()[0] ?? ""
+  return { lastContactAt: a.lastContactAt > b.lastContactAt ? a.lastContactAt : b.lastContactAt, nextFollowUp: next }
+}
+
 export function deriveContacts(activities: CrmActivity[]): Record<string, ClientDerived> {
   const out: Record<string, ClientDerived> = {}
   for (const a of activities) {
@@ -276,11 +288,13 @@ export function buildClientRows(
   for (const u of users) {
     if (u.role !== "Contractor" && u.role !== "Supplier") continue
     const rec = records[u.id] ?? {}
-    const d = derived[u.id] ?? derived[rec.convertedFromLead ?? ""]
+    // A converted client's history includes its time as a lead (ADM-10): the latest contact and the nearest follow-up
+    // of either — not the client's alone once it has one activity of its own.
+    const d = joinDerived(derived[u.id], derived[rec.convertedFromLead ?? ""])
     const stage = isClientStage(rec.stage) ? rec.stage : "onboarding"
     const lastContactAt = d?.lastContactAt || rec.lastContactAt || ""
     const lastMs = lastContactAt ? Date.parse(lastContactAt) : NaN
-    const daysSinceContact = Number.isNaN(lastMs) ? null : Math.max(0, Math.floor((now.getTime() - lastMs) / DAY_MS))
+    const daysSinceContact = Number.isNaN(lastMs) ? null : calendarDaysSince(lastMs, now)
     const nextFollowUp = d?.nextFollowUp || rec.nextFollowUp || ""
     const since = u.joinedAt?.seconds ?? u.createdAt?.seconds ?? 0
     rows.push({
@@ -442,10 +456,10 @@ export function buildLeadRows(
     const createdMs = l.createdAt?.seconds ? l.createdAt.seconds * 1000 : 0
     const lastContactAt = d?.lastContactAt || rec.lastContactAt || ""
     const lastMs = lastContactAt ? Date.parse(lastContactAt) : NaN
-    const daysSinceContact = Number.isNaN(lastMs) ? null : Math.max(0, Math.floor((now.getTime() - lastMs) / DAY_MS))
+    const daysSinceContact = Number.isNaN(lastMs) ? null : calendarDaysSince(lastMs, now)
     const nextFollowUp = d?.nextFollowUp || rec.nextFollowUp || ""
     const closed = converted || stage === "lost"
-    const silentDays = daysSinceContact ?? (createdMs ? Math.max(0, Math.floor((now.getTime() - createdMs) / DAY_MS)) : 0)
+    const silentDays = daysSinceContact ?? (createdMs ? calendarDaysSince(createdMs, now) : 0)
     const { types, other } = leadCompanyTypes(l)
     return {
       id: l.id,
@@ -503,7 +517,7 @@ export function summarizeLeads(rows: LeadRow[]): LeadSummary {
 // ── The list: segments, filters, and the four cards (ADM-01, ADM-02) ─────────
 
 /** The strip over the list: where is this lead in its life — and nothing else. */
-export const LEAD_SEGMENTS = ["open", "converted", "lost", "all", "removed"] as const
+export const LEAD_SEGMENTS = ["open", "converted", "lost", "removed", "all"] as const
 export type LeadSegment = (typeof LEAD_SEGMENTS)[number]
 /** The four columns of the board: only the stages a lead moves through while open. */
 export const OPEN_STAGES = ["new", "contacted", "demo", "negotiation"] as const
@@ -524,6 +538,33 @@ export function leadSegmentCounts(rows: LeadRow[]): Record<LeadSegment, number> 
   const out = { open: 0, converted: 0, lost: 0, all: 0, removed: 0 }
   for (const seg of LEAD_SEGMENTS) out[seg] = rows.filter((r) => inLeadSegment(r, seg)).length
   return out
+}
+
+/** Which «last contact» filter buckets a lead falls in (ADM-02): never reached · silent 7 days or more · reached this
+ * week. A lead that was never reached and arrived 7+ days ago is both «never» and «over7». */
+export function leadContactBuckets(r: Pick<LeadRow, "daysSinceContact" | "silentDays">): Array<"never" | "over7" | "within7"> {
+  const out: Array<"never" | "over7" | "within7"> = []
+  if (r.daysSinceContact === null) out.push("never")
+  if (r.silentDays >= LEAD_STALE_DAYS) out.push("over7")
+  if (r.daysSinceContact !== null && r.daysSinceContact < LEAD_STALE_DAYS) out.push("within7")
+  return out
+}
+
+/** The same for a client, on the clients' 30-day line (ADM-10). */
+export function clientContactBuckets(r: { daysSinceContact: number | null }): Array<"never" | "over30" | "within30"> {
+  if (r.daysSinceContact === null) return ["never"]
+  return [r.daysSinceContact >= STALE_DAYS ? "over30" : "within30"]
+}
+
+/** How long ago a lead arrived, for a card with no follow-up yet (ADM-03): hours on its first day, then days. */
+export function arrivedAgo(createdMs: number, now: Date): { unit: "hours" | "days"; n: number } | null {
+  if (!createdMs) return null
+  const ms = Math.max(0, now.getTime() - createdMs)
+  const hours = Math.floor(ms / 3_600_000)
+  if (hours < 24) return { unit: "hours", n: hours }
+  const today = toDateKey(now)
+  const days = Math.round((Date.parse(today) - Date.parse(toDateKey(new Date(createdMs)))) / DAY_MS)
+  return { unit: "days", n: Math.max(1, days) }
 }
 
 export type LeadFilters = {
@@ -750,6 +791,24 @@ export function mergeRecords(keep: ClientRecord, drop: ClientRecord): ClientReco
   }
 }
 
+type MergeSide = { crmId: string; name: string; phone: string; email: string }
+
+/** ADM-09: what a merge writes onto the kept record, and how many people it brings over. Both sides count with their
+ * requester when no contact was entered yet — the person who asked IS a contact — so the other's requester is not lost;
+ * it gets an id of its own so it can never collide with the kept record's. */
+export function planMerge(keep: MergeSide, drop: MergeSide, records: Record<string, ClientRecord>): { record: ClientRecord; contactsMoved: number } {
+  const strip = (r: ClientRecord & { id?: string }) => {
+    const { id: _id, ...rest } = r
+    return rest as ClientRecord
+  }
+  const keepRec = strip(records[keep.crmId] ?? {})
+  const dropRec = strip(records[drop.crmId] ?? {})
+  const keepContacts = effectiveContacts(keepRec.contacts, keep)
+  const dropContacts = effectiveContacts(dropRec.contacts, drop).map((c) => (c.id === "origin" ? { ...c, id: `c_from_${drop.crmId}`, primary: false } : c))
+  const record = mergeRecords({ ...keepRec, contacts: keepContacts }, { ...dropRec, contacts: dropContacts })
+  return { record, contactsMoved: (record.contacts?.length ?? 0) - keepContacts.length }
+}
+
 // ── Intake: how many leads came in, by week and by month ─────────────────────
 // What the ad campaigns are measured on. The week runs Sunday to Saturday (the
 // Saudi working week starts on Sunday); months are calendar months, local time.
@@ -798,6 +857,20 @@ export const manualLeadSchema = z
   })
   .refine((v) => v.phone.length >= 7 || v.email.length > 0, { path: ["phone"] })
   .refine((v) => v.email === "" || z.string().email().safeParse(v.email).success, { path: ["email"] })
+
+/** A lead's own details, edited from the header of its page (ADM-05): name, and a phone or an e-mail to reach it by. */
+export const leadDetailsSchema = z
+  .object({
+    kind: z.enum(["contractor", "supplier", "unspecified"]),
+    name: z.string().trim().min(2).max(200),
+    company: z.string().trim().max(200),
+    phone: z.string().trim().max(30).regex(/^[+\d\s().\-]*$/),
+    email: z.string().trim().toLowerCase().max(200),
+    city: z.string().trim().max(100),
+  })
+  .refine((v) => v.phone.length >= 7 || v.email.length > 0, { path: ["phone"] })
+  .refine((v) => v.email === "" || z.string().email().safeParse(v.email).success, { path: ["email"] })
+export type LeadDetails = z.infer<typeof leadDetailsSchema>
 
 export const contactSchema = z
   .object({

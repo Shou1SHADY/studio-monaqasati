@@ -83,17 +83,19 @@ describe("leads tab numbers", () => {
     const crm = crmWith([lead(1), lead(2, { status: "converted" }), lead(3)], { lead_demo_l3: { stage: "lost" } })
     render(<LeadsTab crm={crm} view="list" onView={() => {}} />)
     fireEvent.click(screen.getByRole("button", { name: /kpi_total_leads/ }))
-    expect(screen.getByRole("tab", { name: /segment_all/ }).getAttribute("aria-selected")).toBe("true")
+    expect(screen.getByRole("button", { name: /^segment_all/ }).getAttribute("aria-pressed")).toBe("true")
     expect(screen.getAllByRole("row")).toHaveLength(4) // header + three
-    expect(screen.getByText("showing_of|3,3")).toBeTruthy()
+    expect(screen.getByText("crm_showing_count|3,3")).toBeTruthy()
   })
 
-  it("a search looks across the strip, so «N of M» counts against everything it searched", () => {
-    const crm = crmWith([lead(1, { name: "Alpha" }), lead(2, { name: "Alpha Two", status: "converted" }), lead(3, { name: "Beta" })])
+  it("search, segment and filters work together (ADM-02 #4), Arabic-folded, and the segments count what the search left", () => {
+    const crm = crmWith([lead(1, { name: "أحمد سالم" }), lead(2, { name: "احمد علي", status: "converted" }), lead(3, { name: "Beta" })])
     render(<LeadsTab crm={crm} view="list" onView={() => {}} />)
-    expect(screen.getByText("showing_of|2,2")).toBeTruthy() // open: Alpha, Beta
-    fireEvent.change(screen.getByLabelText("search_leads_placeholder"), { target: { value: "alpha" } })
-    expect(screen.getByText("showing_of|2,3")).toBeTruthy() // both Alphas, out of all three live leads
+    expect(screen.getByText(/^crm_showing_count\|2,2/)).toBeTruthy() // open: أحمد سالم, Beta
+    fireEvent.change(screen.getByLabelText("crm_search_placeholder"), { target: { value: "احمد" } })
+    expect(screen.getByText(/^crm_showing_count\|1,1/)).toBeTruthy() // open and matching: أحمد سالم only
+    expect(screen.getByText("أحمد سالم")).toBeTruthy()
+    expect(screen.getByRole("button", { name: /^segment_converted/ }).textContent).toBe("segment_converted1")
   })
 })
 

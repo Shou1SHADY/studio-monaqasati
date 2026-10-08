@@ -16,7 +16,7 @@ import { Link } from "@/i18n/routing"
 import { useFirestore, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { staffName, useAdminCrm } from "@/hooks/useAdminCrm"
-import { MANUAL_CHANNELS, findSimilarLead, manualLeadSchema } from "@/lib/admin-crm"
+import { MANUAL_CHANNELS, findSimilarLead, formatCrmDate, manualLeadSchema } from "@/lib/admin-crm"
 import { addManualLead } from "@/lib/admin-crm-writes"
 import type { z } from "zod"
 
@@ -42,6 +42,7 @@ export function AddLeadDialog({ open, onOpenChange, ownerName }: { open: boolean
 
 function AddLeadForm({ onClose, ownerName }: { onClose: () => void; ownerName: string }) {
   const t = useTranslations("Portal.Admin.Crm")
+  const locale = useLocale()
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
@@ -137,7 +138,7 @@ function AddLeadForm({ onClose, ownerName }: { onClose: () => void; ownerName: s
           <div className="min-w-0 flex-1">
             <p className="font-bold">{t(`dup_exists_${similar.reason}`)}</p>
             <p className="text-xs text-muted-foreground">
-              {[similar.row.name, similar.row.company].filter(Boolean).join(" — ")} · {t(`channel_${similar.row.channel}`)}
+              {[similar.row.name, similar.row.company].filter(Boolean).join(" — ")} · {t(`channel_${similar.row.channel}`)} · {t("dup_arrived", { date: formatCrmDate(similar.row.createdMs, locale) })}
             </p>
           </div>
           <Button asChild size="sm" variant="outline">
@@ -153,7 +154,8 @@ function AddLeadForm({ onClose, ownerName }: { onClose: () => void; ownerName: s
         <div className="space-y-1.5">
           <Label htmlFor="al-owner">{t("owner_label")}</Label>
           <NativeSelect id="al-owner" className="w-full" {...form.register("ownerUid")}>
-            <option value={me}>{ownerName || t("me")}</option>
+            {/* You by default (ADM-04 #6); a manager may pick a colleague. */}
+            <option value={me}>{t("you")}</option>
             {crm.staff
               .filter((s) => s.id !== me)
               .map((s) => (

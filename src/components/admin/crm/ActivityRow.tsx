@@ -32,6 +32,7 @@ export function ActivityRow({
   a,
   today,
   context,
+  detail,
   onToggle,
   onEdit,
   onDelete,
@@ -40,6 +41,8 @@ export function ActivityRow({
   today: string
   /** Shown under the title when the list mixes several clients. */
   context?: string
+  /** Under a platform line: what it did (the conversion: what moved over from the lead). */
+  detail?: string
   onToggle: (a: CrmActivity) => void
   onEdit: (a: CrmActivity) => void
   onDelete: (a: CrmActivity) => void
@@ -71,13 +74,17 @@ export function ActivityRow({
       >
         {done && <Check size={14} aria-hidden="true" />}
       </button>
-      <div className="min-w-0 flex-1">
+      {/* Never narrower than a title: on a phone the date and actions wrap under it instead. */}
+      <div className="min-w-[12rem] flex-1">
         <p className="flex flex-wrap items-center gap-2 text-sm font-bold">
-          <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", TYPE_STYLE[a.type] ?? TYPE_STYLE.note)}>{t(a.system ? "type_system" : a.type === "stage" ? "type_stage" : `type_${a.type}`)}</span>
-          <span className={cn(done && "text-muted-foreground")}>{title}</span>
-          {a.result && <span className="text-xs font-medium text-muted-foreground">· {t(`result_${a.result}`)}</span>}
+          {/* The outcome rides on the type — «call · replied» — as on the subscribers' list. */}
+          <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold", a.system ? "bg-indigo/10 text-indigo" : TYPE_STYLE[a.type] ?? TYPE_STYLE.note)}>
+            {[t(a.system ? "type_system" : a.type === "stage" ? "type_stage" : `type_${a.type}`), a.result ? t(`result_${a.result}`) : ""].filter(Boolean).join(" · ")}
+          </span>
+          <span className={cn(done && !a.system && "text-muted-foreground")}>{title}</span>
         </p>
         {a.type === "stage" && a.note && <p className="mt-0.5 text-xs text-muted-foreground">{a.note}</p>}
+        {a.system && detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}
         {sub && <p className="mt-0.5 truncate text-xs text-muted-foreground">{sub}</p>}
       </div>
       <span className={cn("inline-flex items-center gap-1 text-xs tabular-nums", state === "overdue" ? "font-semibold text-destructive" : state === "today" ? "font-semibold text-warning" : "text-muted-foreground")}>

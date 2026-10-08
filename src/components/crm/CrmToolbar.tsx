@@ -24,11 +24,17 @@ export function CrmToolbar<T>({
   config,
   state,
   extra,
+  searchPlaceholder,
+  countAll,
 }: {
   config: CrmListConfig<T>
   state: CrmListState<T>
   /** Page-specific controls (a board/table switch, for instance). */
   extra?: ReactNode
+  /** What this list searches, when it is not name/company/phone/e-mail (activities search titles). */
+  searchPlaceholder?: string
+  /** The page renders every matching row itself (a board pages each column) — count them all, not the first page. */
+  countAll?: boolean
 }) {
   const t = useTranslations("Portal.Shared")
 
@@ -79,9 +85,9 @@ export function CrmToolbar<T>({
           <Input
             value={state.search}
             onChange={(e) => state.setSearch(e.target.value)}
-            placeholder={t("crm_search_placeholder")}
+            placeholder={searchPlaceholder ?? t("crm_search_placeholder")}
             className="ps-9"
-            aria-label={t("crm_search_placeholder")}
+            aria-label={searchPlaceholder ?? t("crm_search_placeholder")}
           />
         </div>
 
@@ -243,8 +249,8 @@ export function CrmToolbar<T>({
       )}
 
       <p className="text-xs text-muted-foreground">
-        {t("crm_showing_count", { shown: state.shown, total: state.matching })}
-        {state.matching < state.total && ` — ${t("crm_of_total", { total: state.total })}`}
+        {t("crm_showing_count", { shown: countAll ? state.matching : state.shown, total: countAll ? state.total : state.matching })}
+        {!countAll && state.matching < state.total && ` — ${t("crm_of_total", { total: state.total })}`}
       </p>
     </div>
   )

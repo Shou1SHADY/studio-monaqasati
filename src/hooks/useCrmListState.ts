@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useMemo, useState } from "react"
+import { matchesSearch } from "@/lib/search-text"
 
 /** A multi-select filter dimension: one key, many selectable values. */
 export interface FacetDef<T> {
@@ -157,11 +158,12 @@ export function useCrmListState<T>(rows: T[], config: CrmListConfig<T>, locale: 
    * counts, so each segment shows how many rows the CURRENT filters leave in
    * it rather than an unfiltered total that never matches what you get. */
   const preSegment = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    // Every word, Arabic-folded (أ/ا, ة/ه, ى/ي, diacritics, ٠-٩) — the platform's one search rule.
+    const q = search.trim()
     return rows.filter((row) => {
       if (mineOnly && config.isMine && !config.isMine(row)) return false
       if (!matchesFacets(row)) return false
-      if (q && !config.searchText(row).toLowerCase().includes(q)) return false
+      if (q && !matchesSearch(q, [config.searchText(row)])) return false
       return true
     })
     // `config` is rebuilt each render by callers; depending on the functions

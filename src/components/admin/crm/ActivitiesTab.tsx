@@ -1,30 +1,33 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useTranslations } from "next-intl"
-import { CalendarCheck2, CalendarClock, ClipboardList, Loader2, Search, TriangleAlert } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Chip } from "@/components/module-ui/Chip"
+import { useLocale, useTranslations } from "next-intl"
+import { CalendarCheck2, CalendarClock, ClipboardList, TriangleAlert } from "lucide-react"
+import { CrmEmptyState, CrmListSkeleton, CrmStat, CrmStatRow } from "@/components/crm/CrmShell"
+import { CrmShowMore, CrmToolbar } from "@/components/crm/CrmToolbar"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { staffName, type AdminCrm } from "@/hooks/useAdminCrm"
-import { ACTIVITY_SEGMENTS, NEW_ACTIVITY_TYPES, inActivitySegment, sortActivities, summarizeActivities, toDateKey, type ActivitySegment, type ActivityType, type CrmActivity } from "@/lib/admin-crm"
+import { useCrmListState, type CrmListConfig } from "@/hooks/useCrmListState"
+import { ACTIVITY_SEGMENTS, NEW_ACTIVITY_TYPES, effectiveContacts, inActivitySegment, sortActivities, summarizeActivities, toDateKey, type CrmActivity } from "@/lib/admin-crm"
 import { deleteActivity, setActivityDone } from "@/lib/admin-crm-writes"
-import { matchesSearch } from "@/lib/search-text"
 import { ActivityDialog, type Party } from "./ActivityDialog"
 import { ActivityRow } from "./ActivityRow"
-import { CrmKpi, SegmentStrip } from "./parts"
 
-/** ADM-08: every activity of every lead and client in one list — open, late, today, this week, done. */
+type Row = CrmActivity & { related: "lead" | "client" | ""; party: string }
+
+const NONE = "__none"
+
+/**
+ * ADM-08 on the subscribers' «Activities» components: four numbers, the due-date strip (open · overdue · due today ·
+ * within 7 days · done · all), the shared toolbar — with a filter that tells a lead's activities from a client's —
+ * and one list for both. Every row says whose it is: «lead · company · with … · owner».
+ */
 export function ActivitiesTab({ crm, dialogOpen, onDialogOpen }: { crm: AdminCrm; dialogOpen: boolean; onDialogOpen: (open: boolean) => void }) {
   const t = useTranslations("Portal.Admin.Crm")
+  const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
-  const [segment, setSegment] = useState<ActivitySegment>("open")
-  const [search, setSearch] = useState("")
-  const [type, setType] = useState<ActivityType | "">("")
-  const [mineOnly, setMineOnly] = useState(false)
   const [edit, setEdit] = useState<CrmActivity | null>(null)
   const now = useMemo(() => new Date(), [])
   const today = toDateKey(now)
@@ -32,29 +35,59 @@ export function ActivitiesTab({ crm, dialogOpen, onDialogOpen }: { crm: AdminCrm
   const actorName = staffName(crm.staff.find((s) => s.id === me) ?? { id: me, email: crm.user?.email ?? "" })
 
   const parties = useMemo<Party[]>(() => {
-    const people = (id: string, name: string, phone: string, email: string) => {
-      const stored = crm.records[id]?.contacts
-      return stored?.length ? stored : [{ id: "origin", name, title: "", phone, email, primary: true }]
-    }
+    const people = (id: string, name: string, phone: string, email: string) => effectiveContacts(crm.records[id]?.contacts, { name, phone, email })
     return [
       ...crm.leadRows.filter((r) => !r.archived).map((r) => ({ id: r.crmId, label: `${t("lead_badge")} · ${[r.name, r.company].filter(Boolean).join(" — ")}`, contacts: people(r.crmId, r.name, r.phone, r.email) })),
       ...crm.clientRows.map((r) => ({ id: r.id, label: `${t("client_badge")} · ${r.name}`, contacts: people(r.id, r.name, r.phone, r.email) })),
     ]
   }, [crm.leadRows, crm.clientRows, crm.records, t])
-  const labelOf = useMemo(() => new Map(parties.map((p) => [p.id, p.label.replace(/^[^·]*· /, "")])), [parties])
 
+  // Whose activity it is: a lead (by its company, else its name) or a client.
+  const owners = useMemo(() => {
+    const out = new Map<string, { related: "lead" | "client"; party: string }>()
+    for (const r of crm.leadRows) out.set(r.crmId, { related: "lead", party: r.company || r.name })
+    for (const r of crm.clientRows) out.set(r.id, { related: "client", party: r.name })
+    return out
+  }, [crm.leadRows, crm.clientRows])
+  const rows = useMemo<Row[]>(
+    () => sortActivities(crm.activities).map((a) => ({ ...a, related: owners.get(a.clientId)?.related ?? "", party: owners.get(a.clientId)?.party ?? "" })),
+    [crm.activities, owners],
+  )
   const summary = useMemo(() => summarizeActivities(crm.activities, now), [crm.activities, now])
-  const visible = useMemo(() => {
-    const searching = search.trim() !== ""
-    return sortActivities(
-      crm.activities
-        .filter((a) => searching || inActivitySegment(a, segment, now))
-        .filter((a) => !type || a.type === type)
-        .filter((a) => !mineOnly || a.ownerUid === me)
-        .filter((a) => !searching || matchesSearch(search, [a.title ?? "", a.note, a.withName ?? "", labelOf.get(a.clientId) ?? ""])),
-    )
-  }, [crm.activities, segment, search, type, mineOnly, now, me, labelOf])
-  const counts: Record<ActivitySegment, number> = { open: summary.open, overdue: summary.overdue, today: summary.today, within7: summary.within7, done: summary.done, all: summary.all }
+
+  const config: CrmListConfig<Row> = {
+    segments: ACTIVITY_SEGMENTS.map((s) => ({ key: s, label: t(`seg_${s}`), predicate: (a: Row) => inActivitySegment(a, s, now) })),
+    facets: [
+      { key: "related", label: t("activity_related"), options: [{ value: "lead", label: t("lead_badge") }, { value: "client", label: t("client_badge") }], valueOf: (a) => a.related || null },
+      { key: "type", label: t("type_label"), options: NEW_ACTIVITY_TYPES.map((k) => ({ value: k, label: t(`type_${k}`) })), valueOf: (a) => a.type },
+      {
+        key: "owner",
+        label: t("owner_label"),
+        options: [
+          { value: me, label: t("filter_me") },
+          { value: NONE, label: t("unassigned") },
+          ...crm.staff.filter((s) => s.id !== me).map((s) => ({ value: s.id, label: staffName(s) })),
+        ],
+        valueOf: (a) => a.ownerUid || NONE,
+      },
+    ],
+    savedViews: [
+      { key: "mine", label: t("view_my_activities"), segment: "open", facets: { owner: [me] } },
+      { key: "mine_today", label: t("view_my_today"), segment: "today", facets: { owner: [me] } },
+      { key: "overdue", label: t("seg_overdue"), segment: "overdue" },
+      { key: "leads", label: t("view_lead_activities"), segment: "open", facets: { related: ["lead"] } },
+      { key: "clients", label: t("view_client_activities"), segment: "open", facets: { related: ["client"] } },
+    ],
+    groups: [
+      { key: "owner", label: t("owner_label"), keyOf: (a) => a.ownerName || a.authorName || t("unassigned") },
+      { key: "type", label: t("type_label"), keyOf: (a) => t(a.system ? "type_system" : a.type === "stage" ? "type_stage" : `type_${a.type}`) },
+      { key: "related", label: t("activity_related"), keyOf: (a) => (a.related ? t(a.related === "lead" ? "lead_badge" : "client_badge") : "—") },
+    ],
+    searchText: (a) => [a.title ?? "", a.note, a.withName ?? "", a.party].join(" "),
+    defaultSegment: "open",
+    pageSize: 30,
+  }
+  const state = useCrmListState(rows, config, locale)
 
   const run = async (fn: () => Promise<unknown>) => {
     try {
@@ -66,58 +99,51 @@ export function ActivitiesTab({ crm, dialogOpen, onDialogOpen }: { crm: AdminCrm
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <CrmKpi icon={ClipboardList} label={t("seg_open")} value={summary.open} />
-        <CrmKpi icon={TriangleAlert} label={t("seg_overdue")} value={summary.overdue} tone={summary.overdue > 0 ? "danger" : undefined} />
-        <CrmKpi icon={CalendarClock} label={t("seg_today")} value={summary.today} tone={summary.today > 0 ? "warning" : undefined} />
-        <CrmKpi icon={CalendarCheck2} label={t("done_this_week")} value={summary.doneThisWeek} tone="success" />
-      </div>
-      <Card className="overflow-hidden border-none shadow-sm">
-        <div className="space-y-3 border-b p-4">
-          <SegmentStrip label={t("segments_label")} items={ACTIVITY_SEGMENTS} value={segment} onChange={setSegment} labelOf={(s) => t(`seg_${s}`)} counts={counts} />
-          <div className="flex flex-col gap-2 md:flex-row md:items-center">
-            <div className="relative md:flex-1">
-              <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("search_activities_placeholder")} aria-label={t("search_activities_placeholder")} className="ps-9" />
-            </div>
-            <div className="flex flex-wrap gap-2" role="group" aria-label={t("filters")}>
-              <Chip selected={mineOnly} onClick={() => setMineOnly((v) => !v)}>{t("filter_mine")}</Chip>
-              {NEW_ACTIVITY_TYPES.map((k) => (
-                <Chip key={k} selected={type === k} onClick={() => setType(type === k ? "" : k)}>
-                  {t(`type_${k}`)}
-                </Chip>
-              ))}
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground" aria-live="polite">{t("showing_of", { shown: visible.length, total: search.trim() ? summary.all : counts[segment] })}</p>
+      <CrmStatRow>
+        <CrmStat icon={ClipboardList} label={t("seg_open")} value={summary.open} onClick={() => state.setSegment("open")} active={state.segment === "open" && !state.activeView} />
+        <CrmStat icon={TriangleAlert} label={t("seg_overdue")} value={summary.overdue} accent="destructive" danger={summary.overdue > 0} onClick={() => state.setSegment("overdue")} active={state.segment === "overdue"} />
+        <CrmStat icon={CalendarClock} label={t("seg_today")} value={summary.today} accent="warning" onClick={() => state.setSegment("today")} active={state.segment === "today"} />
+        <CrmStat icon={CalendarCheck2} label={t("done_this_week")} value={summary.doneThisWeek} accent="success" />
+      </CrmStatRow>
+
+      <CrmToolbar config={config} state={state} searchPlaceholder={t("search_activities_placeholder")} />
+
+      {crm.loading.activities ? (
+        <CrmListSkeleton />
+      ) : state.matching === 0 ? (
+        <div className="rounded-xl border bg-card">
+          <CrmEmptyState icon={ClipboardList} title={crm.activities.length === 0 ? t("activities_empty") : t("empty_filtered")} />
         </div>
-        <CardContent className="p-0">
-          {crm.loading.activities ? (
-            <div className="flex justify-center p-16">
-              <Loader2 className="animate-spin text-primary" size={28} />
+      ) : (
+        <div className="overflow-hidden rounded-xl border bg-card">
+          {state.grouped.map((g) => (
+            <div key={g.key || "all"}>
+              {g.label && (
+                <p className="border-b bg-muted/30 px-4 py-1.5 text-xs font-bold text-muted-foreground">
+                  {g.label} <bdi className="font-normal">({g.rows.length})</bdi>
+                </p>
+              )}
+              <ul className="divide-y">
+                {g.rows.map((a) => (
+                  <ActivityRow
+                    key={a.id}
+                    a={a}
+                    today={today}
+                    context={a.related ? `${t(a.related === "lead" ? "lead_badge" : "client_badge")} · ${a.party}` : undefined}
+                    onToggle={(x) => firestore && run(() => setActivityDone(firestore, x.id, x.status === "scheduled", today, x.type))}
+                    onEdit={(x) => {
+                      setEdit(x)
+                      onDialogOpen(true)
+                    }}
+                    onDelete={(x) => firestore && run(() => deleteActivity(firestore, x.id))}
+                  />
+                ))}
+              </ul>
             </div>
-          ) : visible.length === 0 ? (
-            <p className="p-12 text-center text-sm text-muted-foreground">{crm.activities.length === 0 ? t("activities_empty") : t("empty_filtered")}</p>
-          ) : (
-            <ul className="divide-y">
-              {visible.map((a) => (
-                <ActivityRow
-                  key={a.id}
-                  a={a}
-                  today={today}
-                  context={labelOf.get(a.clientId)}
-                  onToggle={(x) => firestore && run(() => setActivityDone(firestore, x.id, x.status === "scheduled", today, x.type))}
-                  onEdit={(x) => {
-                    setEdit(x)
-                    onDialogOpen(true)
-                  }}
-                  onDelete={(x) => firestore && run(() => deleteActivity(firestore, x.id))}
-                />
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+          ))}
+          <CrmShowMore state={state} />
+        </div>
+      )}
       <ActivityDialog
         open={dialogOpen}
         onOpenChange={(o) => {
