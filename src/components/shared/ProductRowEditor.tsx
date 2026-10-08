@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { CATEGORIES_DATA, SUBCATEGORY_UNIT_MAP, displayCategory, displaySubcategory } from "@/lib/constants"
 import { Trash2, Plus, ShieldCheck } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 export interface ProductRow {
   id: string
@@ -30,6 +31,7 @@ export interface ProductLineExtras {
   projects: Array<{ value: string; label: string }>
   /** Set when the whole form belongs to one project — every line is for it. */
   lockedProjectLabel?: string | null
+  hideProject?: boolean
   minNeedBy: string
   copy: { needBy: string; project: string; general: string; search: string; none: string }
 }
@@ -164,13 +166,14 @@ export function ProductRowEditor({ rows, onChange, locale, t, onFieldTouched, li
               </div>
             </div>
             {lineExtras && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-5">
+              <div className={cn("grid grid-cols-1 gap-5 mt-5", !lineExtras.hideProject && "md:grid-cols-2")}>
                 <div className="space-y-2">
                   <Label htmlFor={`need-by-${row.id}`} className="text-xs font-semibold text-slate-600">
                     {lineExtras.copy.needBy}
                   </Label>
                   <Input id={`need-by-${row.id}`} type="date" dir="ltr" min={lineExtras.minNeedBy} value={row.needBy || ""} onChange={(e) => updateRow(row.id, "needBy", e.target.value)} className="h-11 rounded-xl border-slate-200" />
                 </div>
+                {!lineExtras.hideProject && (
                 <div className="space-y-2">
                   <Label className="text-xs font-semibold text-slate-600">{lineExtras.copy.project}</Label>
                   {lineExtras.lockedProjectLabel ? (
@@ -188,6 +191,7 @@ export function ProductRowEditor({ rows, onChange, locale, t, onFieldTouched, li
                     />
                   )}
                 </div>
+                )}
               </div>
             )}
             <div className="mt-5">

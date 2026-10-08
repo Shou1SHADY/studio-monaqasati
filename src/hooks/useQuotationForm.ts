@@ -6,6 +6,7 @@ import { collection, doc, updateDoc, getDocs, query, where, serverTimestamp } fr
 import { useFirestore, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import {
   CRM_QUOTATIONS,
   defaultInstallments,
@@ -107,6 +108,7 @@ export function useQuotationForm({
   const { user } = useUser()
   const { toast } = useToast()
   const { can, isOrgOwner } = usePermissions()
+  const mfgOn = useModules().on("manufacturing")
   // Marking a quotation accepted is the customer's approval — it posts the
   // deposit to Finance and opens the work order — so it is its own permission
   // (crm.close carries the same authority when a deal is awarded from CRM).
@@ -198,11 +200,13 @@ export function useQuotationForm({
       }
       // What the workshop MAKES (it has a product card) — a made-to-order line
       // needs an advance before production (QC-13).
-      try {
-        const cards = await getDocs(query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", orgId)))
-        if (!cancelled) setManufacturedNames(cards.docs.filter((d) => !d.data().archived).map((d) => (d.data().name as string) || ""))
-      } catch (err) {
-        console.error("Product cards load for quotation failed:", err)
+      if (mfgOn) {
+        try {
+          const cards = await getDocs(query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", orgId)))
+          if (!cancelled) setManufacturedNames(cards.docs.filter((d) => !d.data().archived).map((d) => (d.data().name as string) || ""))
+        } catch (err) {
+          console.error("Product cards load for quotation failed:", err)
+        }
       }
       // The Sales price list — known items with fixed prices.
       try {
@@ -219,7 +223,7 @@ export function useQuotationForm({
       }
     })()
     return () => { cancelled = true }
-  }, [open, firestore, orgId])
+  }, [open, firestore, orgId, mfgOn])
 
   const parsedItems = parseRows(itemRows)
   const itemsTotal = quotationItemsTotal(parsedItems)

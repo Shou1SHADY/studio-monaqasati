@@ -457,6 +457,8 @@ export interface AcceptanceInput {
   }
   /** The delivery promise made at conversion (SO-05). */
   promiseDate?: string | null
+  /** False when the company has switched Manufacturing off: no legacy work order is opened. */
+  manufacturingOn?: boolean
   /** Localised by the caller. `message` receives the first installment so it can name the deposit. */
   notification: { title: string; message: (deposit: InstallmentState | null) => string }
 }
@@ -519,7 +521,7 @@ export async function runQuotationAcceptance(
   }
 
   let workOrderId: string | null = null
-  if (input.quotation.phase !== "post_manufacturing" && !input.quotation.workOrderId) {
+  if (input.manufacturingOn !== false && input.quotation.phase !== "post_manufacturing" && !input.quotation.workOrderId) {
     try {
       const cards = await getDocs(query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", input.orgId)))
       if (cards.empty) {

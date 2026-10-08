@@ -334,6 +334,24 @@ export function returnedNeeds(needs: Need[], orders: PurchaseOrder[]): Need[] {
   return out
 }
 
+/** Which optional modules this company has on. Without Projects there is no project request; without
+ * Manufacturing there is no workshop shortfall and nobody to route a request to. Both default to on. */
+export interface NeedModules {
+  projects: boolean
+  workshop: boolean
+}
+
+export const ALL_NEED_MODULES: NeedModules = { projects: true, workshop: true }
+
+/** The needs a company with some modules off still has. A project request already routed to the
+ * workshop that is now off comes back to Purchasing: the workshop will never answer it. */
+export function needsForModules(needs: Need[], modules: NeedModules = ALL_NEED_MODULES): Need[] {
+  if (modules.projects && modules.workshop) return needs
+  return needs
+    .filter((n) => (modules.projects || n.kind !== "project") && (modules.workshop || n.kind !== "mfg"))
+    .map((n) => (!modules.workshop && n.waitingOn === "workshop" ? { ...n, state: "action" as const, waitingOn: null, mfgRequestId: null } : n))
+}
+
 // ── The award: which order answers a project's request ─────────────────────
 
 /** The RFQ as the award reads its needs: the links (`rfq-view.ts`), and enough of

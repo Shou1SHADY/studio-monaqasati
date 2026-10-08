@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label"
 import { Link, useRouter } from "@/i18n/routing"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { useProcurementWorld, type ProcOffer, type ProcRfq } from "@/hooks/useProcurementWorld"
 import { displayDocNumber } from "@/lib/procurement/format"
@@ -80,6 +81,7 @@ export function ProcurementReports() {
   const locale = useLocale()
   const router = useRouter()
   const params = useSearchParams()
+  const { on } = useModules()
   const loaded = useProcurementWorld()
   const { actor, loading } = loaded
   const [now] = useState(() => new Date())
@@ -87,7 +89,8 @@ export function ProcurementReports() {
 
   const { orders, deliveries, rfqs, offers, policies, supplierFacts, supplierRecords } = loaded
   const firestore = useFirestore()
-  const projectsQ = useMemoFirebase(() => (firestore && loaded.orgId ? query(collection(firestore, "projects"), where("organizationId", "==", loaded.orgId)) : null), [firestore, loaded.orgId])
+  const pmOn = on("project-management")
+  const projectsQ = useMemoFirebase(() => (firestore && loaded.orgId && pmOn ? query(collection(firestore, "projects"), where("organizationId", "==", loaded.orgId)) : null), [firestore, loaded.orgId, pmOn])
   const { data: projectDocs } = useCollection<{ pm?: { no?: string | null } | null }>(projectsQ)
   // The project's own number (PM 1.0 `pm.no`, PJ-yyyy/NNN) beside its name, as the prototype lists them.
   const projectNo = useMemo(() => new Map((projectDocs || []).map((p) => [p.id, p.pm?.no || ""])), [projectDocs])
@@ -253,7 +256,7 @@ export function ProcurementReports() {
                   {project.rows.map((r) => (
                     <tr key={r.key} className="border-t">
                       <Td>
-                        {r.projectId ? (
+                        {r.projectId && pmOn ? (
                           <Link href={`/contractor/projects/${r.projectId}`} className="font-semibold hover:underline" dir="auto">
                             {requester(r)}
                           </Link>

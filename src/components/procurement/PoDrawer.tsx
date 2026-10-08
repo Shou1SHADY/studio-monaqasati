@@ -33,6 +33,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { cn } from "@/lib/utils"
 import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
 import { DocumentThread } from "@/components/documents/DocumentThread"
+import { useModules } from "@/hooks/useCompanyModules"
 import { procLinks } from "@/lib/procurement/events"
 import { displayDocNumber, displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { approvalRefusal, canCancelRemainder, canRecordAcceptance, canSend, canUpdateDate, daysLate, isSelfApproval, lineToArrive, poBlocks, poStatus, receiptDay, receiptsOf, reminderCooldownUntil, todayOf, dayOf } from "@/lib/procurement/po"
@@ -197,6 +198,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const firestore = useFirestore()
   const { toast } = useToast()
   const fmt = useDateText()
+  const modules = useModules()
   const remindUntil = po ? reminderCooldownUntil(po, now) : null
   const { actor, policies } = world
   const { profile } = useResolvedProfile(actor.uid || null)
@@ -296,10 +298,12 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const paidClosed = closedByPayment(asX(po))
   const acts = poActs(po, actor)
   const revision = poRevision(po)
-  const overrun = po.status === "awaiting_approval" ? budgetOverrun(po, boqItems, world.orders) : []
-  const pmWait = awaitsPmBudget(px)
-  const pmAsk = pmBudgetAsk(px, overrun)
-  const samples = po.status === "awaiting_approval" ? samplePending(po, boqItems) : []
+  // Projects switched off for this company: no budget referral and no sample gate — nobody there could clear them.
+  const pmOn = modules.on("project-management")
+  const overrun = pmOn && po.status === "awaiting_approval" ? budgetOverrun(po, boqItems, world.orders) : []
+  const pmWait = pmOn && awaitsPmBudget(px)
+  const pmAsk = pmOn && pmBudgetAsk(px, overrun)
+  const samples = pmOn && po.status === "awaiting_approval" ? samplePending(po, boqItems) : []
   const selfIssue = selfIssueRefusal(po, actor, selfLimit, blocks.length + samples.length + (pmWait ? 1 : 0)) === null && !actor.canApprove && !actor.isOwner
   const advance = advanceState(px)
   const rfqDoc = world.rfqs.find((r) => r.id === po.rfqId) as { requiresWarranty?: boolean } | undefined

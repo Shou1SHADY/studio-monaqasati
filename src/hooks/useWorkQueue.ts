@@ -122,10 +122,13 @@ function toMs(v: unknown): number {
 export interface WorkQueueOptions {
   /** The org owner passes every approval check (limit, own order, retroactive) — `usePermissions().isOrgOwner`. */
   isOrgOwner?: boolean
+  /** False when the company switched Manufacturing off: its work orders, delivery notes and requests are not read. */
+  manufacturing?: boolean
 }
 
 export function useWorkQueue(organizationId: string | undefined | null, userId: string | undefined | null, options: WorkQueueOptions = {}) {
   const firestore = useFirestore()
+  const mfgOn = options.manufacturing !== false
 
   const rfqsQuery = useMemoFirebase(() => {
     if (!firestore || !organizationId) return null
@@ -182,15 +185,15 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
   // Manufacturing's handoffs. Each is a fact on the workshop's own documents
   // that another module acts on — read here so the owner sees it on arrival.
   const workOrdersQuery = useMemoFirebase(() => {
-    if (!firestore || !organizationId) return null
+    if (!firestore || !organizationId || !mfgOn) return null
     return query(collection(firestore, "workOrders"), where("organizationId", "==", organizationId), where("status", "==", "open"))
-  }, [firestore, organizationId])
+  }, [firestore, organizationId, mfgOn])
   const { data: workOrders } = useCollection(workOrdersQuery)
 
   const notesQuery = useMemoFirebase(() => {
-    if (!firestore || !organizationId) return null
+    if (!firestore || !organizationId || !mfgOn) return null
     return query(collection(firestore, "deliveryNotes"), where("organizationId", "==", organizationId), where("status", "==", "in_transit"))
-  }, [firestore, organizationId])
+  }, [firestore, organizationId, mfgOn])
   const { data: notesInTransit } = useCollection(notesQuery)
 
   const depositsQuery = useMemoFirebase(() => {
@@ -200,9 +203,9 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
   const { data: awaitingDeposit } = useCollection(depositsQuery)
 
   const mfgRequestsQuery = useMemoFirebase(() => {
-    if (!firestore || !organizationId) return null
+    if (!firestore || !organizationId || !mfgOn) return null
     return query(collection(firestore, "manufacturingRequests"), where("organizationId", "==", organizationId), where("status", "==", "new"))
-  }, [firestore, organizationId])
+  }, [firestore, organizationId, mfgOn])
   const { data: newMfgRequests } = useCollection(mfgRequestsQuery)
 
   // Procurement's orders and the org's policies — the same org-scoped read the

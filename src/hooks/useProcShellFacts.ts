@@ -22,9 +22,9 @@ import type { NeedRow } from "@/lib/procurement/need-desk"
 import type { ProcurementPolicies, PurchaseOrder, ReceiptFact } from "@/lib/procurement/types"
 
 /** By order id: the overrun of an order awaiting the project manager's budget decision. */
-export function useBudgetOverruns(orders: PurchaseOrder[]): Record<string, number> {
+export function useBudgetOverruns(orders: PurchaseOrder[], enabled = true): Record<string, number> {
   const firestore = useFirestore()
-  const waiting = useMemo(() => orders.filter((o) => awaitsPmBudget(o as PurchaseOrderX) && o.projectId), [orders])
+  const waiting = useMemo(() => (enabled ? orders.filter((o) => awaitsPmBudget(o as PurchaseOrderX) && o.projectId) : []), [orders, enabled])
   const wanted = useMemo(
     () => Array.from(new Set(waiting.flatMap((o) => o.lines.map((l) => (l.boqItemId ? `${o.projectId}/${l.boqItemId}` : "")).filter(Boolean)))).sort(),
     [waiting]
@@ -108,12 +108,12 @@ export function useMfgReadyDates(orgId: string, rows: NeedRow[], requests: Recor
 }
 
 /** By delivery id: the store a notice nobody has forwarded lands in, and the register's person there. */
-export function useForwardFacts(orgId: string, receipts: ReceiptFact[], orders: PurchaseOrder[], policies: ProcurementPolicies): Record<string, { place: string | null; receiver: string | null }> {
+export function useForwardFacts(orgId: string, receipts: ReceiptFact[], orders: PurchaseOrder[], policies: ProcurementPolicies, projectsOn = true): Record<string, { place: string | null; receiver: string | null }> {
   const firestore = useFirestore()
   const untold = useMemo(() => receipts.filter((r) => r.status === "pending_confirmation" && !noticeTold(r, policies)), [receipts, policies])
   const on = Boolean(firestore && orgId && untold.length)
   const { receivers } = useProcReceivers(on ? orgId : null)
-  const projectsQ = useMemoFirebase(() => (firestore && on ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [on, firestore, orgId])
+  const projectsQ = useMemoFirebase(() => (firestore && on && projectsOn ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [on, firestore, orgId, projectsOn])
   const warehousesQ = useMemoFirebase(() => (firestore && on ? query(collection(firestore, "warehouses"), where("organizationId", "==", orgId)) : null), [on, firestore, orgId])
   const { data: projectsData } = useCollection(projectsQ)
   const { data: warehousesData } = useCollection(warehousesQ)

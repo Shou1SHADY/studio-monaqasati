@@ -30,6 +30,19 @@ export function offSet(data: { off?: unknown } | null | undefined, portal: Modul
   return new Set(data.off.filter((id): id is OptionalModule => isOptionalModule(id) && allowed.includes(id)))
 }
 
+/**
+ * Pages that live inside ANOTHER component's menu but only exist to serve one optional module: Inventory's
+ * workshop desk, delivery notes, equipment desk and project returns; Finance's projects and HR desks; the
+ * leaver custody desk. They go with their module — out of the menu, and a notice at their address.
+ */
+export const SATELLITE_PAGES: Record<OptionalModule, (portal: ModulePortal) => readonly string[]> = {
+  "project-management": (portal) => (portal === "contractor" ? ["/contractor/warehouses/equipment", "/contractor/warehouses/project-returns", "/contractor/accounting/projects-desk"] : []),
+  hr: (portal) => [`/${portal}/accounting/hr-desk`, `/${portal}/warehouses/custody`],
+  manufacturing: (portal) => [`/${portal}/warehouses/manufacturing`, `/${portal}/warehouses/delivery-notes`],
+}
+
+const satellitesOf = (ids: Iterable<string>, portal: ModulePortal): string[] => [...ids].filter(isOptionalModule).flatMap((id) => [...SATELLITE_PAGES[id](portal)])
+
 const portalRoot = (portal: ModulePortal) => `/${portal}`
 
 /** The registry as this company sees it. HR and Manufacturing leave it; Project Management keeps only the portal's
@@ -38,10 +51,25 @@ export function applyModuleSwitches(components: PortalComponentDef[], off: Reado
   if (off.size === 0) return components
   const allowed = optionalFor(portal)
   const root = portalRoot(portal)
+  const gone = satellitesOf(off, portal)
+  const without = (c: PortalComponentDef): PortalComponentDef =>
+    gone.length === 0
+      ? c
+      : {
+          ...c,
+          sections: c.sections
+            .map((sec) => ({
+              ...sec,
+              items: sec.items
+                .filter((i) => !gone.includes(hrefPathname(i.href)))
+                .map((i) => (i.children ? { ...i, children: i.children.filter((ch) => !gone.includes(hrefPathname(ch.href))) } : i)),
+            }))
+            .filter((sec) => sec.items.length > 0),
+        }
   const out: PortalComponentDef[] = []
   for (const c of components) {
     if (!off.has(c.id) || !(allowed as readonly string[]).includes(c.id)) {
-      out.push(c)
+      out.push(without(c))
     } else if (c.id === "project-management") {
       out.push({
         ...c,
@@ -60,6 +88,7 @@ export function offModuleOwning(pathname: string, components: PortalComponentDef
   const root = portalRoot(portal)
   for (const id of optionalFor(portal)) {
     if (!off.has(id)) continue
+    if (SATELLITE_PAGES[id](portal).some((h) => matchesPrefix(pathname, h))) return id
     const c = components.find((x) => x.id === id)
     if (!c) continue
     if (id === "project-management") {
@@ -78,4 +107,11 @@ export function offModuleOwning(pathname: string, components: PortalComponentDef
 /** Whether an address belongs to ANY optional module — while the switches load, such a page waits instead of flashing. */
 export function belongsToOptionalModule(pathname: string, components: PortalComponentDef[], portal: ModulePortal): boolean {
   return offModuleOwning(pathname, components, new Set(optionalFor(portal)), portal) !== null
+}
+
+/** Which switched-off module an address (or a link with a query string) belongs to — the one check every link, bell entry and queue item asks. */
+export function moduleOffFor(href: string | null | undefined, components: PortalComponentDef[], off: ReadonlySet<string>, portal: ModulePortal | null): OptionalModule | null {
+  if (!href || !portal || off.size === 0) return null
+  const path = hrefPathname(href)
+  return path.startsWith("/") ? offModuleOwning(path, components, off, portal) : null
 }

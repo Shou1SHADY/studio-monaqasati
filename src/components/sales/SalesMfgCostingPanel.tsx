@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { cn } from "@/lib/utils"
 import { formatCrmDate, formatSar, type CrmContact } from "@/lib/crm"
 import {
@@ -67,6 +68,7 @@ export function SalesMfgCostingPanel({ contacts, canManage }: { portal: CrmPorta
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
+  const mfgOn = useModules().on("manufacturing")
 
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -76,21 +78,21 @@ export function SalesMfgCostingPanel({ contacts, canManage }: { portal: CrmPorta
   const orgId = (profile as { organizationId?: string } | null)?.organizationId || user?.uid || ""
   const actor = { id: user?.uid || "", name: (profile as { name?: string } | null)?.name || user?.email || "" }
 
-  const productsQuery = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const productsQuery = useMemoFirebase(() => (firestore && orgId && mfgOn ? query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", orgId)) : null), [firestore, orgId, mfgOn])
   const { data: productsData } = useCollection(productsQuery)
   const products = useMemo(
     () => ((productsData || []) as MfgProduct[]).filter((p) => !p.archived).sort((a, b) => a.name.localeCompare(b.name, locale)),
     [productsData, locale]
   )
 
-  const estimatesQuery = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, MFG_COST_ESTIMATES), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const estimatesQuery = useMemoFirebase(() => (firestore && orgId && mfgOn ? query(collection(firestore, MFG_COST_ESTIMATES), where("organizationId", "==", orgId)) : null), [firestore, orgId, mfgOn])
   const { data: estimatesData } = useCollection(estimatesQuery)
   const estimates = useMemo(() => (estimatesData || []) as MfgCostEstimate[], [estimatesData])
 
-  const requestsQuery = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, MANUFACTURING_REQUESTS), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const requestsQuery = useMemoFirebase(() => (firestore && orgId && mfgOn ? query(collection(firestore, MANUFACTURING_REQUESTS), where("organizationId", "==", orgId)) : null), [firestore, orgId, mfgOn])
   const { data: requestsData } = useCollection(requestsQuery)
 
-  const settingsRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, MFG_SETTINGS, orgId) : null), [firestore, orgId])
+  const settingsRef = useMemoFirebase(() => (firestore && orgId && mfgOn ? doc(firestore, MFG_SETTINGS, orgId) : null), [firestore, orgId, mfgOn])
   const { data: settingsData } = useDoc(settingsRef)
   const settings = useMemo(() => normalizeMfgSettings(settingsData as Partial<MfgSettings> | null), [settingsData])
 
@@ -123,7 +125,7 @@ export function SalesMfgCostingPanel({ contacts, canManage }: { portal: CrmPorta
   const [tab, setTab] = useState<Tab>("open")
   const [asking, setAsking] = useState(false)
 
-  if (!orgId || (products.length === 0 && statements.length === 0 && costRequests.length === 0)) return null
+  if (!mfgOn || !orgId || (products.length === 0 && statements.length === 0 && costRequests.length === 0)) return null
 
   const openCount = openStatements.length + pendingRequests.length
   const closedCount = closedStatements.length + declinedRequests.length

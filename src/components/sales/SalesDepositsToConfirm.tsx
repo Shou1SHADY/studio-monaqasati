@@ -13,6 +13,7 @@ import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { useModules } from "@/hooks/useCompanyModules"
 import { formatSar } from "@/lib/crm"
 import { SALES_ORDERS, depositTotal, type SalesOrder } from "@/lib/sales-orders"
 import { confirmAdvanceForOrder } from "@/lib/sales-transfers"
@@ -33,6 +34,7 @@ export function SalesDepositsToConfirm({
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
+  const mfgOn = useModules().on("manufacturing")
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const ordersQuery = useMemoFirebase(() => {
@@ -59,7 +61,7 @@ export function SalesDepositsToConfirm({
         notification: { title: t("sales_tn_notif_confirmed_title"), message: t("sales_tn_notif_confirmed_msg", { number: order.quotationNumber || `#${order.orderNumber}`, amount: formatSar(depositTotal(order), locale) }), i18n: { title: "sales_tn_notif_confirmed_title", message: "sales_tn_notif_confirmed_msg", params: { number: order.quotationNumber || `#${order.orderNumber}`, amount: formatSar(depositTotal(order), "en") } } },
       })
       toast({ title: t("so_deposit_marked") })
-      await emitDownPaymentConfirmed(firestore, { copy: t, organizationId: order.organizationId, salesOrderId: order.id, salesOrderNumber: order.orderNumber, quotationId: order.quotationId ?? null, actor })
+      if (mfgOn) await emitDownPaymentConfirmed(firestore, { copy: t, organizationId: order.organizationId, salesOrderId: order.id, salesOrderNumber: order.orderNumber, quotationId: order.quotationId ?? null, actor })
     } catch (err) {
       console.error(err)
       toast({ title: t("so_save_error"), variant: "destructive" })

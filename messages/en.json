@@ -6472,6 +6472,8 @@
       "mfo_close_err_over": "Only {qty} is awaiting close",
       "mfo_close_toast": "{qty} {unit} of {ref} closed — ready to deliver",
       "mfo_close_toast_frozen": "actual cost frozen",
+      "mfo_dn_driver_free": "Driver name (optional)",
+      "mfo_dn_plate_free": "Vehicle or plate (optional)",
       "mfo_dn_title": "Delivery note",
       "mfo_dn_sub": "Manufacturing does not install: it delivers into project custody or to the warehouse as finished goods",
       "mfo_dn_confirm": "Issue the note",
@@ -24067,7 +24069,17 @@
       "save": "Save",
       "cancel": "Cancel",
       "saved": "The company's components were saved",
-      "save_failed": "Could not save. Try again."
+      "save_failed": "Could not save. Try again.",
+      "pending_title": "Unfinished items in this component",
+      "pending_intro": "Nothing is deleted. These items stay in the data and come back when the component is switched on again, but the company's team will not see them meanwhile.",
+      "pending_plant": "{count} approved equipment requests waiting for an answer",
+      "pending_handover": "{count} project handovers waiting to be accepted",
+      "pending_exits": "{count} employees leaving, not settled yet",
+      "pending_advances": "{count} salary advances waiting for Finance",
+      "pending_payroll": "{count} payroll runs not paid yet",
+      "pending_notes": "{count} delivery notes in transit",
+      "pending_requests": "{count} new manufacturing requests",
+      "confirm_off": "Switch off and save"
     }
   },
   "Auth": {

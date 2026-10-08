@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import { useModules } from "@/hooks/useCompanyModules"
 import { QUOTATION_PHASES, formatSar } from "@/lib/crm"
 import type { QuotationForm } from "@/hooks/useQuotationForm"
 
@@ -18,6 +19,8 @@ import type { QuotationForm } from "@/hooks/useQuotationForm"
 export function QuotationPhaseControl({ form }: { form: QuotationForm }) {
   const t = useTranslations("Portal.Shared")
   const { phase, setPhase, isSaving, workOrderNumber } = form
+  const mfgOn = useModules().on("manufacturing")
+  if (!mfgOn) return null
   return (
     <div className="space-y-1.5">
       <Label>{t("crm_quote_phase")}</Label>
@@ -56,6 +59,7 @@ export function QuotationItemsEditor({ form }: { form: QuotationForm }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const nameListId = useId()
+  const mfgOn = useModules().on("manufacturing")
   const {
     itemRows, stockOptions, priceItems, stockPick, pricePick, isSaving, hasItems, itemsTotal,
     setRowName, updateRow, removeRow, addEmptyRow, addFromStock, addFromPriceList,
@@ -114,7 +118,7 @@ export function QuotationItemsEditor({ form }: { form: QuotationForm }) {
                 <Trash2 size={14} />
               </button>
             </div>
-            {row.name.trim() && (
+            {row.name.trim() && (match || mfgOn) && (
               <p className={cn("text-[11px] ps-1", match ? "text-success" : "text-muted-foreground")}>
                 {match
                   ? t("crm_quote_item_in_stock", { qty: match.available, unit: match.unit })

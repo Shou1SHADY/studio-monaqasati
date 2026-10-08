@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DEFAULT_SEGMENT, PO_SEGMENTS, isPoSegment, segmentCounts, visibleOrders, type PoSegment } from "@/components/procurement/PoModel"
 import { Input } from "@/components/ui/input"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { poValue } from "@/lib/procurement/po"
@@ -69,7 +70,9 @@ export default function PurchaseOrdersPage() {
   // general stock or the workshop when a line serves no project. The segment
   // counts are taken after it, as the prototype's are.
   const firestore = useFirestore()
-  const projectsQ = useMemoFirebase(() => (firestore && world.orgId ? query(collection(firestore, "projects"), where("organizationId", "==", world.orgId)) : null), [firestore, world.orgId])
+  const { on } = useModules()
+  const pmOn = on("project-management")
+  const projectsQ = useMemoFirebase(() => (firestore && world.orgId && pmOn ? query(collection(firestore, "projects"), where("organizationId", "==", world.orgId)) : null), [firestore, world.orgId, pmOn])
   const { data: projectDocs } = useCollection<{ name?: string }>(projectsQ)
   const projectNames = useMemo(() => new Map((projectDocs || []).map((p) => [p.id, p.name || ""])), [projectDocs])
   const keysById = useMemo(() => new Map(orders.map((o) => [o.id, poProjectKeys(o, world.rfqs as Array<{ id: string; products?: Array<{ projectId?: string | null }> | null }>)])), [orders, world.rfqs])
@@ -128,6 +131,7 @@ export default function PurchaseOrdersPage() {
                 </button>
               )}
             </div>
+            {pmOn && (
             <Select value={project} onValueChange={setProject}>
               <SelectTrigger className="h-10 w-48 rounded-xl bg-card text-sm" aria-label={t("project_filter")}>
                 <SelectValue />
@@ -146,6 +150,7 @@ export default function PurchaseOrdersPage() {
                 <SelectItem value={WORKSHOP}>{tp("rfqpo.list.workshop")}</SelectItem>
               </SelectContent>
             </Select>
+            )}
           </div>
         </div>
 

@@ -32,6 +32,7 @@ import { useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useCentralWarehouse, createCentralWarehouse, type OrgWarehouse } from "@/hooks/useCentralWarehouse"
 import { useWarehouseDashboardStats } from "@/hooks/useWarehouseDashboardStats"
 import { InventoryValuationCard } from "@/components/inventory/InventoryValuationCard"
@@ -252,6 +253,8 @@ export default function ContractorWarehousesPage() {
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
   const { can } = usePermissions()
+  const { on } = useModules()
+  const pmOn = on("project-management")
   const canManageWarehouses = can("warehouses.manage")
 
   const [showAdd, setShowAdd] = useState(false)
@@ -548,15 +551,21 @@ export default function ContractorWarehousesPage() {
                           <p className="text-xs text-muted-foreground/70 truncate">{wh.description}</p>
                         )}
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          {wh.projectId && (
-                            <Link
-                              href={`/contractor/projects/${wh.projectId}`}
-                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent bg-accent/5 border border-accent/20 rounded-full px-2 py-0.5 hover:bg-accent/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            >
-                              <Building2 size={10} />
-                              {t("wh_linked_project", { name: wh.projectName || wh.projectId })}
-                            </Link>
-                          )}
+                          {wh.projectId &&
+                            (pmOn ? (
+                              <Link
+                                href={`/contractor/projects/${wh.projectId}`}
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent bg-accent/5 border border-accent/20 rounded-full px-2 py-0.5 hover:bg-accent/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              >
+                                <Building2 size={10} />
+                                {t("wh_linked_project", { name: wh.projectName || wh.projectId })}
+                              </Link>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent bg-accent/5 border border-accent/20 rounded-full px-2 py-0.5">
+                                <Building2 size={10} />
+                                {t("wh_linked_project", { name: wh.projectName || wh.projectId })}
+                              </span>
+                            ))}
                           {centrals.length > 1 && centralName(centralOf(wh)) && (
                             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground bg-muted rounded-full px-2 py-0.5">
                               <Star size={10} />

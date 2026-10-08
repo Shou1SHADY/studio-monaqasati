@@ -24,6 +24,7 @@ import { Link, useRouter } from "@/i18n/routing"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { createRenewalOpportunity } from "@/lib/crm-writes"
 import { useCrmData } from "@/hooks/useCrmData"
 import { useCrmOrgProfile } from "@/hooks/useCrmOrgProfile"
@@ -69,6 +70,7 @@ export function CrmDashboardView({ portal }: { portal: CrmPortal }) {
   const { orgId, contacts, opportunities, activities, isLoading } = useCrmData({ opportunities: true, activities: true })
   const { profile } = useCrmOrgProfile()
   const { can } = usePermissions()
+  const { on } = useModules()
   const canManage = can("crm.manage")
   const firestore = useFirestore()
   const router = useRouter()
@@ -290,6 +292,7 @@ export function CrmDashboardView({ portal }: { portal: CrmPortal }) {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {on("project-management") && (
             <CrmPanel icon={Building2} title={t("crm_dash_awaiting_handover")} subtitle={t("crm_dash_awaiting_handover_desc")}>
               {awaitingHandover.length === 0 ? (
                 <p className="px-4 py-8 text-sm text-muted-foreground text-center">{t("crm_dash_nothing_awaiting")}</p>
@@ -305,6 +308,7 @@ export function CrmDashboardView({ portal }: { portal: CrmPortal }) {
                 </ul>
               )}
             </CrmPanel>
+            )}
 
             <CrmPanel icon={ClipboardList} title={t("crm_dash_overdue_activities")} subtitle={t("crm_dash_overdue_activities_desc")}>
               {overdueActivities.length === 0 ? (

@@ -1,5 +1,6 @@
 "use client"
 
+import { useModules } from "@/hooks/useCompanyModules"
 import { usePrintProfile } from "@/hooks/usePrintProfile"
 import { printedNumber } from "@/lib/company-print-profile"
 import { useState, useEffect } from "react"
@@ -55,6 +56,10 @@ import { usePermissions } from "@/hooks/usePermissions"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 
 export default function ContractorRfqsPage() {
+  const { on } = useModules()
+  // With Project Management off a project tender is an ordinary RFQ: it opens on the core pages.
+  const pmOn = on("project-management")
+  const mfgOn = on("manufacturing")
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
   const searching = searchQuery.trim().length > 0
@@ -374,7 +379,7 @@ const handleBatchPublish = async () => {
 
   const canDelete = (rfq: any) => rfq.status === "Draft" && actsOn(rfq)
 
-  const glanceHref = glanceRfq ? (glanceRfq.projectId ? `/contractor/projects/${glanceRfq.projectId}/tenders/${glanceRfq.id}/offers` : `/contractor/rfqs/${glanceRfq.id}/offers`) : ""
+  const glanceHref = glanceRfq ? (glanceRfq.projectId && pmOn ? `/contractor/projects/${glanceRfq.projectId}/tenders/${glanceRfq.id}/offers` : `/contractor/rfqs/${glanceRfq.id}/offers`) : ""
 
   return (
     <PortalLayout>
@@ -398,7 +403,7 @@ const handleBatchPublish = async () => {
         />
 
         {/* Manufacturing's material shortfalls and supplier claims — shown to whoever runs RFQs, who acts on them here (MAT-05) */}
-        {canCreate && (
+        {canCreate && mfgOn && (
           <MfgPurchaseRequestsPanel
             canStartRfq={canCreate}
             canMarkArrived={can("rfq.manage") || can("warehouses.manage")}
@@ -554,8 +559,8 @@ const handleBatchPublish = async () => {
         {!isLoading && filteredRfqs.length > 0 && viewMode === "grid" && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {shownRfqs.map((rfq: any) => {
-              const offersHref = rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers` : `/contractor/rfqs/${rfq.id}/offers`
-              const editHref = rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`
+              const offersHref = rfq.projectId && pmOn ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers` : `/contractor/rfqs/${rfq.id}/offers`
+              const editHref = rfq.projectId && pmOn ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`
               return (
                 <RfqCard
                   key={rfq.id}
@@ -600,7 +605,7 @@ const handleBatchPublish = async () => {
             seesPrices={procWorld.actor.seesPrices}
             selected={selectedRfqs}
             selectable={(rfq) => actsOn(rfq)}
-            hrefOf={(rfq) => (rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers` : `/contractor/rfqs/${rfq.id}/offers`)}
+            hrefOf={(rfq) => (rfq.projectId && pmOn ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers` : `/contractor/rfqs/${rfq.id}/offers`)}
             onToggle={toggleSelectRfq}
             onToggleAll={selectAll}
             onGlance={(rfq) => setGlanceRfq(rfq as SheetRfq)}

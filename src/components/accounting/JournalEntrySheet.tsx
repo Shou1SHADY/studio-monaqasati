@@ -20,6 +20,7 @@ import { accountName } from "@/lib/accounting/accounts"
 import { toIsoTimestamp } from "@/lib/accounting/analytics"
 import { isManualEntry, type JournalEntry } from "@/lib/accounting/journal"
 import { sourceDocumentPath } from "@/lib/accounting/source-links"
+import { useModules } from "@/hooks/useCompanyModules"
 import { Money, accountingBasePath } from "./AccountingShell"
 import { SOURCE_LABEL_KEY } from "./AccountingParts"
 
@@ -64,9 +65,10 @@ export function JournalEntryBadges({ entry }: { entry: JournalEntry }) {
 export function JournalEntryFacts({ entry, portal, className }: { entry: JournalEntry; portal: CrmPortal; className?: string }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
+  const { off } = useModules()
   const captured = formatStamp(toIsoTimestamp(entry.createdAt), locale)
   const srcKey = SOURCE_LABEL_KEY[entry.sourceType]
-  const path = sourceDocumentPath(entry, portal)
+  const path = sourceDocumentPath(entry, portal, off)
   const facts: [string, string | null, boolean][] = [
     [t("acc_date"), entry.date, true],
     [t("acc_period"), entry.period, true],

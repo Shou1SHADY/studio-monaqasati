@@ -15,9 +15,9 @@ export interface ProjectRequests {
   requests: ProjectRequestDoc[]
 }
 
-export function useProjectPurchaseRequests(orgId: string | null): { rows: ProjectRequests[]; loading: boolean } {
+export function useProjectPurchaseRequests(orgId: string | null, enabled = true): { rows: ProjectRequests[]; loading: boolean } {
   const firestore = useFirestore()
-  const q = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const q = useMemoFirebase(() => (firestore && orgId && enabled ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [firestore, orgId, enabled])
   const { data, isLoading } = useCollection(q)
   const projects = useMemo(() => ((data || []) as Array<{ id: string; name?: string }>).map((p) => ({ id: p.id, name: p.name || "" })), [data])
   const ids = projects.map((p) => p.id).join(",")

@@ -162,6 +162,7 @@ jest.mock("@/hooks/useProcurementNeeds", () => ({
   useProcurementNeeds: () => ({ loading: false, rows: [], needs: [], buyers: [], viewerCategories: null, ownerHasTeam: false, mfgByKey: new Map(), mfgRequests: {}, products: [], mfgSettings: {}, stockLoading: false, onHand: () => null }),
 }))
 jest.mock("@/hooks/useRfqQueries", () => ({ useRfqQueries: () => [] }))
+jest.mock("@/hooks/useCompanyModules", () => ({ useModules: () => ({ on: () => true, off: new Set(), loading: false, linkable: () => true }) }))
 jest.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }))
 
 import { ProcurementToday } from "@/components/procurement/ProcurementToday"

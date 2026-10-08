@@ -160,6 +160,7 @@ import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { CATEGORIES_DATA, PREDEFINED_CATEGORIES, displayCategory, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayDistrict } from "@/lib/constants"
 import { getIncompletePublishFields } from "@/utils/publish-gate"
 import { ProjectTeamSection } from "@/components/project-team"
+import { useModules } from "@/hooks/useCompanyModules"
 import { usePermissions } from "@/hooks/usePermissions"
 import { usePmAccess } from "@/hooks/usePmAccess"
 import { usePmItemActualCost } from "@/hooks/usePmItemActualCost"
@@ -366,6 +367,9 @@ export default function ProjectDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [isCreatingWarehouse, setIsCreatingWarehouse] = useState(false)
   const { can, isOrgOwner } = usePermissions(isDeleting ? undefined : projectId)
+  const modules = useModules()
+  const mfgOn = modules.on("manufacturing")
+  const hrOn = modules.on("hr")
   const boqFileRef = useRef<HTMLInputElement>(null)
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
@@ -858,9 +862,9 @@ export default function ProjectDetailPage() {
   // A project with workshop orders always shows the Manufacturing tab: its
   // drawings are approved and its deliveries received into custody there.
   const projectOrdersQuery = useMemoFirebase(() => {
-    if (!firestore || !myOrgId || !projectId) return null
+    if (!firestore || !myOrgId || !projectId || !mfgOn) return null
     return query(collection(firestore, "workOrders"), where("organizationId", "==", myOrgId), where("projectId", "==", projectId), limit(1))
-  }, [firestore, myOrgId, projectId])
+  }, [firestore, myOrgId, projectId, mfgOn])
   const { data: projectOrders } = useCollection(projectOrdersQuery)
   const hasWorkshopOrders = (projectOrders || []).length > 0
 
@@ -868,6 +872,7 @@ export default function ProjectDetailPage() {
   // the PM tabs themselves — never the old placeholder beside them.
   const PM_OWN_SECTIONS: SectionId[] = ["daily", "rfi", "hse", "docs", "subs", "store", "vo", "progress", "qa"]
   const dynamicTabs = SECTION_IDS
+    .filter((id) => id !== "mfg" || mfgOn)
     .filter((id) => enabledSectionIds.includes(id) || (id === "mfg" && hasWorkshopOrders))
     .filter((id) => SECTION_REGISTRY[id].tabRoute && id !== "collect")
     .filter((id) => !(typedProject?.pm && PM_OWN_SECTIONS.includes(id)))
@@ -3625,12 +3630,14 @@ export default function ProjectDetailPage() {
               <ProjectTeamSection projectId={projectId} organizationId={typedProject.organizationId || ""} />
             )}
             {/* HR 1.0 (AS-02): the project asks HR for manpower and reads the coverage plan. */}
-            <ProjectManpowerPanel
-              projectId={projectId}
-              projectName={typedProject.name || ""}
-              organizationId={typedProject.organizationId || ""}
-              isPm={Boolean(typedProject.pm) && (typedProject as { projectManagerId?: string | null }).projectManagerId === user?.uid}
-            />
+            {hrOn && (
+              <ProjectManpowerPanel
+                projectId={projectId}
+                projectName={typedProject.name || ""}
+                organizationId={typedProject.organizationId || ""}
+                isPm={Boolean(typedProject.pm) && (typedProject as { projectManagerId?: string | null }).projectManagerId === user?.uid}
+              />
+            )}
           </div>
         )}
 
@@ -3715,6 +3722,7 @@ export default function ProjectDetailPage() {
             enabledSections={pendingSections}
             onToggle={(id) => setPendingSections((prev) => (prev.has(id) ? cascadeDisable(prev, id) : cascadeEnable(prev, id)))}
             requiredHintLabel={t("proj_manage_sections_required_hint")}
+            hidden={mfgOn ? undefined : ["mfg"]}
             tShared={tShared}
           />
           {typedProject?.pm && secTurnedOff.length > 0 && (

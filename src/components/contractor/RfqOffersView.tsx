@@ -1,5 +1,6 @@
 "use client"
 
+import { useModules } from "@/hooks/useCompanyModules"
 import { usePrintProfile } from "@/hooks/usePrintProfile"
 import { printedNumber } from "@/lib/company-print-profile"
 import { useEffect, useMemo, useState, type ReactNode } from "react"
@@ -148,6 +149,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const tShared = useTranslations("Portal.Shared")
   const locale = useLocale()
   const router = useRouter()
+  const { on } = useModules()
   const { toast } = useToast()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
@@ -360,12 +362,13 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const { data: project } = useDoc(projectDocRef)
 
   const projectOffersQuery = useMemoFirebase(() => {
-    if (!firestore || !projectId) return null
+    if (!firestore || !projectId || !on("project-management")) return null
     return query(collection(firestore, "offers"), where("projectId", "==", projectId))
-  }, [firestore, projectId])
+  }, [firestore, projectId, on])
   const { data: projectOffers } = useCollection(projectOffersQuery)
 
   const awardBudget = (() => {
+    if (!on("project-management")) return null
     const budgetVal = (project as { budget?: number } | null)?.budget
     if (budgetVal == null) return null
     const committed = (projectOffers || [])
@@ -902,7 +905,7 @@ ${t("offers_notif_reduction_note", { note })}`
     }
     if (firestore && acts) void logRfqDocument(firestore, writeActor, rfqId).catch((err) => console.warn("print not logged:", (err as { code?: string })?.code || err))
   }
-  const editHref = projectId ? `/contractor/projects/${projectId}/tenders/new?edit=${rfqId}` : `/contractor/rfqs/new?edit=${rfqId}`
+  const editHref = projectId && on("project-management") ? `/contractor/projects/${projectId}/tenders/new?edit=${rfqId}` : `/contractor/rfqs/new?edit=${rfqId}`
   const deleteDraft = async () => {
     if (!firestore || !rfq || (rfq as { status?: string }).status !== "Draft") return
     setDeletingDraft(true)

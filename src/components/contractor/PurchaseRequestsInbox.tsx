@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { cn } from "@/lib/utils"
 import { matchesSearch } from "@/lib/search-text"
@@ -62,6 +63,7 @@ export function PurchaseRequestsInbox() {
   const searchParams = useSearchParams()
   const { can } = usePermissions()
   const { toast } = useToast()
+  const { on } = useModules()
   const world = useProcurementWorld()
   const { actor: procActor, orgId, policies } = world
   const actor = { id: procActor.uid, name: procActor.name }
@@ -108,7 +110,7 @@ export function PurchaseRequestsInbox() {
       else next.add(needKey)
       return next
     })
-  const hint = acting ? mergeHint(visible, selected) : null
+  const hint = acting ? mergeHint(visible, selected, { project: on("project-management") }) : null
   const summary = useMemo(() => selectionSummary(scoped, selected, { agreements, policies, now }), [scoped, selected, agreements, policies, now])
 
   const [ordering, setOrdering] = useState<{ rows: NeedRow[]; mode: "agreement" | "direct" } | null>(null)
@@ -370,7 +372,7 @@ export function PurchaseRequestsInbox() {
         />
       )}
       {proceeding && <ProceedPurchaseDialog rows={proceeding} actor={procActor} onClose={() => setProceeding(null)} />}
-      {asking && asking.need.source.kind === "project_request" && (
+      {asking && on("manufacturing") && asking.need.source.kind === "project_request" && (
         <PrRouteToMfgDialog
           makeOrBuy
           request={{ id: asking.need.source.purchaseRequestId || "", title: asking.need.refLabel, items: asking.need.lines.map((l) => ({ name: l.name, quantity: String(l.quantity), unit: l.unit })), notes: asking.need.note }}

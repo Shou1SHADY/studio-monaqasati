@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
 import { useProcTeam } from "@/hooks/useProcTeam"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
@@ -103,6 +104,8 @@ export default function GoodsReceivedPage() {
   const router = useRouter()
   const pathname = usePathname()
   const world = useProcurementWorld()
+  const { on } = useModules()
+  const pmOn = on("project-management")
   const { actor, orgId, orgName, orders, deliveries, rfqs, policies, loading } = world
   const { user } = useUser()
   const { profile } = useResolvedProfile(user?.uid)
@@ -134,7 +137,7 @@ export default function GoodsReceivedPage() {
   const [reminding, setReminding] = useState<string | null>(null)
 
   const warehousesQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "warehouses"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
-  const projectsQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const projectsQ = useMemoFirebase(() => (firestore && orgId && pmOn ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [firestore, orgId, pmOn])
   const { data: warehousesData } = useCollection(warehousesQ)
   const { data: projectsData } = useCollection(projectsQ)
   const warehouses = useMemo(() => (warehousesData || []) as WarehouseLite[], [warehousesData])
@@ -311,6 +314,7 @@ export default function GoodsReceivedPage() {
               <Search size={14} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground ltr:left-3 rtl:right-3" aria-hidden="true" />
               <Input value={term} onChange={(e) => setTerm(e.target.value)} placeholder={t("searchPlaceholder")} aria-label={t("searchPlaceholder")} className="h-10 w-full ps-9 sm:w-64" dir="auto" />
             </div>
+            {pmOn && (
             <Select value={placeFilter} onValueChange={setPlaceFilter}>
               <SelectTrigger className={cn("h-10 w-full sm:w-52", placeFilter !== "all" && "border-module text-module")} aria-label={t("projectFilter")}>
                 <SelectValue />
@@ -324,6 +328,7 @@ export default function GoodsReceivedPage() {
                 <SelectItem value={PLACE_WORKSHOP}>{t("place.workshop")}</SelectItem>
               </SelectContent>
             </Select>
+            )}
           </div>
         </div>
 

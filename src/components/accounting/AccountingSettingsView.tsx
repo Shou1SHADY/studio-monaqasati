@@ -11,6 +11,7 @@ import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useAccounting } from "@/hooks/useAccounting"
 import { cn } from "@/lib/utils"
 import { MONEY_SCALES, formatMoney, type MoneyScale } from "@/lib/accounting/display"
@@ -39,6 +40,7 @@ import { MfgPoliciesCard } from "./MfgPoliciesCard"
  */
 export function AccountingSettingsView({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
+  const mfgOn = useModules().on("manufacturing")
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
@@ -210,7 +212,7 @@ export function AccountingSettingsView({ portal }: { portal: CrmPortal }) {
       </div>
 
       {/* Finance owns the manufacturing policies; the workshop reads them (FN-01). */}
-      <MfgPoliciesCard organizationId={data.organizationId} actor={{ id: data.userId, name: data.userName }} canEdit={canEdit} />
+      {mfgOn && <MfgPoliciesCard organizationId={data.organizationId} actor={{ id: data.userId, name: data.userName }} canEdit={canEdit} />}
 
       {data.settingsDoc?.updatedByUserName && (
         <p className="text-[11px] text-muted-foreground">

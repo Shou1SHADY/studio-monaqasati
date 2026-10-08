@@ -29,6 +29,7 @@ import { FleetRegistry } from "@/components/hr/FleetRegistry"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useHrPeople, useOrgPay } from "@/hooks/useHrPeople"
 import { useHrRequests } from "@/hooks/useHrRequests"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
@@ -40,7 +41,7 @@ import { displayName, type HrEmployee } from "@/lib/hr/employee"
 import { hrDate, hrMoney, todayDay } from "@/lib/hr/format"
 import { applyPlannedMove, cancelPlannedMove, MANPOWER_REQUESTS, manpowerNo, plannedBlocks, type ManpowerRequest } from "@/lib/hr/manpower"
 import { wageOf } from "@/lib/hr/pay"
-import { costKindOf, HR_ASSIGN_FIXES, SITE_TYPES, siteBlocks, siteEndOf, siteLabel, siteWordOf, UNASSIGNED_SITE, type AssignFix, type HrSite, type SiteType } from "@/lib/hr/sites"
+import { costKindOf, defaultSiteType, HR_ASSIGN_FIXES, siteBlocks, siteTypesFor, siteEndOf, siteLabel, siteWordOf, UNASSIGNED_SITE, type AssignFix, type HrSite, type SiteType } from "@/lib/hr/sites"
 import { saveSite, setSiteActive } from "@/lib/hr/site-writes"
 import { saveSiteShifts } from "@/lib/hr/punch-writes"
 import { defaultShifts, SHIFT_SITE_TYPES } from "@/lib/hr/shifts"
@@ -70,16 +71,18 @@ export function HrSitesView({ access, portal, actorName }: { access: HrAccess; p
   const money = access.allowed("pay.view")
   const [draft, setDraft] = useState<Draft | null>(null)
   const [busy, setBusy] = useState(false)
+  const { on } = useModules()
+  const pmOn = on("project-management")
 
   const { employees, sites: allSites, isLoading } = useHrPeople(access)
   const { requests } = useHrRequests(access)
   const { months: thisMonth } = useWorkplaceMonths(access, today.slice(0, 7))
   const pays = useOrgPay(orgId, money)
-  const projQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const projQ = useMemoFirebase(() => (firestore && orgId && pmOn ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [firestore, orgId, pmOn])
   const { data: projData } = useCollection(projQ)
   const projects = useMemo(() => (projData ?? []) as Project[], [projData])
   const projectOf = (id?: string | null) => (id ? (projects.find((p) => p.id === id) ?? null) : null)
-  const mrQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, MANPOWER_REQUESTS), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const mrQ = useMemoFirebase(() => (firestore && orgId && pmOn ? query(collection(firestore, MANPOWER_REQUESTS), where("organizationId", "==", orgId)) : null), [firestore, orgId, pmOn])
   const { data: mrData } = useCollection(mrQ)
   const newRequests = ((mrData ?? []) as unknown as ManpowerRequest[]).filter((r) => r.state === "open").length
   // Corrections waiting across places — the office reads them all; a supervisor sees his own on each place.
@@ -225,14 +228,14 @@ export function HrSitesView({ access, portal, actorName }: { access: HrAccess; p
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="space-y-6">
-          <HrManpowerPanel access={access} />
+          {pmOn && <HrManpowerPanel access={access} />}
           <Panel
             title={t("sites.title")}
             icon={MapPin}
             count={live.length || undefined}
             actions={
               canEdit ? (
-                <Button size="sm" onClick={() => setDraft({ ...EMPTY })}>
+                <Button size="sm" onClick={() => setDraft({ ...EMPTY, type: defaultSiteType(pmOn) })}>
                   <Plus size={15} className="me-1.5" aria-hidden="true" />
                   {t("sites.add")}
                 </Button>
@@ -267,7 +270,7 @@ export function HrSitesView({ access, portal, actorName }: { access: HrAccess; p
                             supervisor: s.supervisorUserId ? memberName(s.supervisorUserId) : t("sites.no_supervisor"),
                             count: peopleAt(s.id).length,
                           })}
-                          {s.type === "project" && s.projectId ? ` · ${projectOf(s.projectId)?.name ?? "—"}` : ""}
+                          {pmOn && s.type === "project" && s.projectId ? ` · ${projectOf(s.projectId)?.name ?? "—"}` : ""}
                           {end ? ` · ${t("sites.ends", { date: hrDate(end, locale) })}` : ""}
                         </p>
                       </div>
@@ -423,7 +426,7 @@ export function HrSitesView({ access, portal, actorName }: { access: HrAccess; p
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {SITE_TYPES.map((x) => (
+                      {siteTypesFor(pmOn, draft.type).map((x) => (
                         <SelectItem key={x} value={x}>
                           {t(`site_type.${x}`)} — <span className="text-muted-foreground">{t(`cost_kind.${costKindOf(x)}`)}</span>
                         </SelectItem>
@@ -449,7 +452,7 @@ export function HrSitesView({ access, portal, actorName }: { access: HrAccess; p
                   </span>
                 </label>
               )}
-              {draft.type === "project" && (
+              {draft.type === "project" && pmOn && (
                 <div className="space-y-1.5">
                   <Label htmlFor="site-project">{t("sites.project")}</Label>
                   <SearchableSelect

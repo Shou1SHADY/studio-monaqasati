@@ -1,5 +1,6 @@
 "use client"
 
+import { useModules } from "@/hooks/useCompanyModules"
 import { profileVatMark } from "@/lib/procurement/supplier-file"
 import { DEFAULT_RFQ_PRICING, asksForOffers, effectivePricing, firstDeadline, showsPricingChoice, step3Refusals } from "@/lib/procurement/rfq-form"
 import { useState, useRef, useEffect, useMemo } from "react"
@@ -95,6 +96,8 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
   const { toast } = useToast()
   const router = useRouter()
+  const { on, loading: modulesLoading } = useModules()
+  const pmOn = on("project-management")
   const searchParams = useSearchParams()
   const editId = searchParams.get("edit")
   const isEditing = !!editId
@@ -276,7 +279,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   useEffect(() => {
     if (!editId || !firestore || !user) return
     // Wait for the profile to finish loading before validating ownership/context below.
-    if (isUserLoading || isProfileLoading) return
+    if (isUserLoading || isProfileLoading || modulesLoading) return
     const loadEditData = async () => {
       try {
         const snap = await getDoc(doc(firestore, "rfqs", editId))
@@ -297,7 +300,8 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           // (project-scoped vs standalone) — otherwise saving would silently reassign it.
           const dataProjectId = data.projectId || null
           const expectedProjectId = projectId || null
-          if (dataProjectId !== expectedProjectId) {
+          // (With Project Management off there is no project form: the RFQ is edited here and keeps its project.)
+          if (dataProjectId !== expectedProjectId && pmOn) {
             router.replace(
               dataProjectId
                 ? `/contractor/projects/${dataProjectId}/tenders/new?edit=${editId}`
@@ -355,7 +359,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       }
     }
     loadEditData()
-  }, [editId, firestore, user, isUserLoading, isProfileLoading])
+  }, [editId, firestore, user, isUserLoading, isProfileLoading, modulesLoading, pmOn])
 
   // Pre-populate products from catalog selection (?catalog=id1,id2,...)
   useEffect(() => {
@@ -776,7 +780,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
 
     setIsSubmitting(true)
 
-    const redirectTarget = projectId ? `/contractor/projects/${projectId}?tab=rfqs` : "/contractor/rfqs"
+    const redirectTarget = projectId && pmOn ? `/contractor/projects/${projectId}?tab=rfqs` : "/contractor/rfqs"
 
     if (isEditing && editId) {
       // Edit mode: update the single existing RFQ. projectId is intentionally NOT included here —
@@ -1220,6 +1224,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                     lineExtras={{
                       projects: projectChoices,
                       lockedProjectLabel: projectId ? projectLabelOf(projectId) || tr("form.this_project") : null,
+                      hideProject: !pmOn,
                       minNeedBy: todayDay,
                       copy: { needBy: tr("form.need_by"), project: tr("form.line_project"), general: tr("form.general_stock"), search: tr("form.search_project"), none: t("newrfq_no_results") },
                     }}

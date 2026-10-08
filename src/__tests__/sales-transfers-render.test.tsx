@@ -45,6 +45,9 @@ jest.mock("@/i18n/routing", () => {
 
 const mockToast = jest.fn()
 jest.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: mockToast }) }))
+jest.mock("@/hooks/useCompanyModules", () => ({
+  useModules: () => ({ on: () => true, off: new Set(), loading: false, linkable: () => true }),
+}))
 jest.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({ can: () => true, isLoading: false, isOrgOwner: true, groups: [] }),
 }))

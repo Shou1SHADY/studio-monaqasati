@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useCrmData } from "@/hooks/useCrmData"
 import { useQuotationForm } from "@/hooks/useQuotationForm"
 import { useQuotationBrandingDefaults } from "@/hooks/useQuotationBranding"
@@ -100,6 +101,7 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
   const { toast } = useToast()
   const { user } = useUser()
   const { can, isOrgOwner } = usePermissions()
+  const mfgOn = useModules().on("manufacturing")
   const canManage = can("sales.manage")
   const base = salesBasePath(portal)
 
@@ -107,9 +109,9 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
   const { branding: brandingDefaults, isLoading: brandingLoading } = useQuotationBrandingDefaults()
 
   const ordersQuery = useMemoFirebase(() => {
-    if (!firestore || !orgId) return null
+    if (!firestore || !orgId || !mfgOn) return null
     return query(collection(firestore, WORK_ORDERS), where("organizationId", "==", orgId))
-  }, [firestore, orgId])
+  }, [firestore, orgId, mfgOn])
   const { data: ordersData } = useCollection(ordersQuery)
   const finishedOrders = useMemo(
     () => ((ordersData || []) as WorkOrder[]).filter((o) => o.status === "done").sort((a, b) => (b.orderNumber || 0) - (a.orderNumber || 0)),
@@ -451,7 +453,7 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
                 )}
               </div>
               <QuotationPhaseControl form={form} />
-              {form.phase === "post_manufacturing" && (
+              {mfgOn && form.phase === "post_manufacturing" && (
                 <div className="space-y-1.5">
                   <Label htmlFor="qb-order">{t("sales_pick_work_order")}</Label>
                   <Select

@@ -16,7 +16,7 @@ let stored: { off?: string[] } | null = null
 let loading = false
 jest.mock("@/firebase", () => ({
   useFirestore: () => ({}),
-  useUser: () => ({ user: { uid: "adm", displayName: "Admin", email: "a@x.sa" } }),
+  useUser: () => ({ user: { uid: "adm", displayName: "Admin", email: "a@x.sa", getIdToken: async () => "tok" } }),
   useMemoFirebase: (f: () => unknown) => f(),
   useDoc: () => ({ data: stored, isLoading: loading }),
 }))
@@ -26,7 +26,14 @@ jest.mock("@/lib/company-modules-writes", () => ({ setCompanyModules: (...args: 
 
 import { CompanyModulesDialog } from "@/components/admin/CompanyModulesDialog"
 
+let pendingBody: unknown = {}
+const fetchMock = jest.fn()
+
 beforeEach(() => {
+  pendingBody = {}
+  fetchMock.mockReset()
+  fetchMock.mockImplementation(async () => ({ ok: true, json: async () => ({ success: true, data: pendingBody }) }))
+  global.fetch = fetchMock as unknown as typeof fetch
   save.mockReset()
   save.mockResolvedValue(undefined)
   stored = null
@@ -82,5 +89,46 @@ describe("the components dialog", () => {
     render(<CompanyModulesDialog orgId="o1" companyName="Acme" portal="contractor" onClose={() => undefined} />)
     expect(screen.queryAllByRole("switch")).toHaveLength(0)
     expect(screen.getByRole("button", { name: "save" })).toBeDisabled()
+  })
+
+  it("switching something off with unfinished items warns with the counts and saves only on the second press", async () => {
+    pendingBody = { hr: [{ key: "exits", count: 3 }] }
+    render(<CompanyModulesDialog orgId="o1" companyName="Acme" portal="contractor" onClose={() => undefined} />)
+    fireEvent.click(screen.getByRole("switch", { name: "component_hr" }))
+    fireEvent.click(screen.getByRole("button", { name: "save" }))
+    await waitFor(() => expect(screen.getByText("pending_title")).toBeInTheDocument())
+    expect(screen.getByText("pending_exits")).toBeInTheDocument()
+    expect(save).not.toHaveBeenCalled()
+    expect(fetchMock.mock.calls[0][0]).toContain("orgId=o1")
+    fireEvent.click(screen.getByRole("button", { name: "confirm_off" }))
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    expect([...save.mock.calls[0][2]]).toEqual(["hr"])
+  })
+
+  it("changing a switch after the warning asks again", async () => {
+    pendingBody = { hr: [{ key: "exits", count: 3 }] }
+    render(<CompanyModulesDialog orgId="o1" companyName="Acme" portal="contractor" onClose={() => undefined} />)
+    fireEvent.click(screen.getByRole("switch", { name: "component_hr" }))
+    fireEvent.click(screen.getByRole("button", { name: "save" }))
+    await waitFor(() => expect(screen.getByText("pending_title")).toBeInTheDocument())
+    fireEvent.click(screen.getByRole("switch", { name: "component_hr" }))
+    expect(screen.queryByText("pending_title")).not.toBeInTheDocument()
+  })
+
+  it("never asks the server when nothing is being switched off", async () => {
+    stored = { off: ["hr"] }
+    render(<CompanyModulesDialog orgId="o1" companyName="Acme" portal="contractor" onClose={() => undefined} />)
+    fireEvent.click(screen.getByRole("switch", { name: "component_hr" }))
+    fireEvent.click(screen.getByRole("button", { name: "save" }))
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("a component with nothing in flight saves on the first press", async () => {
+    render(<CompanyModulesDialog orgId="o1" companyName="Acme" portal="contractor" onClose={() => undefined} />)
+    fireEvent.click(screen.getByRole("switch", { name: "component_manufacturing" }))
+    fireEvent.click(screen.getByRole("button", { name: "save" }))
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText("pending_title")).not.toBeInTheDocument()
   })
 })

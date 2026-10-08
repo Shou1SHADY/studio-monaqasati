@@ -20,6 +20,7 @@ import { Link } from "@/i18n/routing"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useSalesWorld } from "@/hooks/useSalesWorld"
+import { useModules } from "@/hooks/useCompanyModules"
 import { cn } from "@/lib/utils"
 import { formatCrmDate, formatSar, formatSarCompact } from "@/lib/crm"
 import { orderLineProgress } from "@/lib/sales-orders"
@@ -57,10 +58,11 @@ export function SalesDashboardView({ portal }: { portal: CrmPortal }) {
   const isRtl = locale === "ar"
   const base = salesBasePath(portal)
   const { world, viewer, isLoading } = useSalesWorld()
+  const mfgOn = useModules().on("manufacturing")
 
   const kpis = useMemo(() => todayKpis(world, viewer), [world, viewer])
   const flow = useMemo(() => flowStrip(world), [world])
-  const decisions = useMemo(() => todayDecisions(world, viewer), [world, viewer])
+  const decisions = useMemo(() => todayDecisions(world, viewer, mfgOn), [world, viewer, mfgOn])
   const [group, setGroup] = useState<DecisionGroup | "all">("all")
   const shown = group === "all" ? decisions : decisions.filter((d) => d.group === group)
   const Chevron = isRtl ? ChevronLeft : ChevronRight
@@ -301,14 +303,14 @@ export function SalesDashboardView({ portal }: { portal: CrmPortal }) {
               )}
               <p className="flex flex-wrap gap-x-3 border-t px-5 py-2 text-[10px] text-muted-foreground">
                 <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-success" aria-hidden="true" />{t("sales_legend_stock")}</span>
-                <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cta" aria-hidden="true" />{t("sales_legend_mfg")}</span>
+                {mfgOn && <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cta" aria-hidden="true" />{t("sales_legend_mfg")}</span>}
                 <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-destructive" aria-hidden="true" />{t("sales_legend_gap")}</span>
               </p>
             </SalesSection>
 
             <div className="space-y-4">
               {/* ── From manufacturing: what we asked and what they answered ── */}
-              <SalesSection title={t("sales_plant_title")} icon={Factory} action={<Badge className="border-none bg-warning/10 text-[10px] text-warning">{t("sset_mod_mfg")}</Badge>}>
+              {mfgOn && <SalesSection title={t("sales_plant_title")} icon={Factory} action={<Badge className="border-none bg-warning/10 text-[10px] text-warning">{t("sset_mod_mfg")}</Badge>}>
                 {fromPlant.length === 0 ? (
                   <p className="p-6 text-center text-sm text-muted-foreground">{t("sales_plant_empty")}</p>
                 ) : (
@@ -331,7 +333,7 @@ export function SalesDashboardView({ portal }: { portal: CrmPortal }) {
                     })}
                   </ul>
                 )}
-              </SalesSection>
+              </SalesSection>}
 
               {/* ── The pipeline, and why we lost ── */}
               <SalesSection title={t("sales_pipeline_title")} icon={FileText}>

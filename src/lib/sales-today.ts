@@ -203,7 +203,7 @@ const GROUP_OF: Record<DecisionKind, DecisionGroup> = {
   promise_overdue: "orders",
 }
 
-export function todayDecisions(w: SalesWorld, viewer: TodayViewer): Decision[] {
+export function todayDecisions(w: SalesWorld, viewer: TodayViewer, manufacturing = true): Decision[] {
   const out: Decision[] = []
   const add = (d: Omit<Decision, "group">) => out.push({ ...d, group: GROUP_OF[d.kind] })
   const orderById = new Map(w.orders.map((o) => [o.id, o]))
@@ -260,14 +260,14 @@ export function todayDecisions(w: SalesWorld, viewer: TodayViewer): Decision[] {
 
       const promiseIn = o.promiseDate ? daysBetween(w.today, o.promiseDate) : null
       // 9 · a gate is closed — the plant records the measurement; the client's approval is ours to chase.
-      const gate = w.gates.get(o.id)
+      const gate = manufacturing ? w.gates.get(o.id) : undefined
       if (gate) add({ key: `gate:${o.id}`, kind: "gate_closed", tone: promiseIn != null && promiseIn < 7 ? "danger" : "warn", risk: promiseIn == null ? 9 : promiseIn - 1, href: `orders?open=${o.id}`, facts: { ...facts, gate } })
 
       // 8 · a line has no supply — send a production request, or adjust the order.
       const gapLine = o.lines.find((l) => (w.coverage.get(`${o.id}|${keyOf(l.name)}`)?.gap || 0) > 0)
       if (gapLine) {
         const gap = w.coverage.get(`${o.id}|${keyOf(gapLine.name)}`)!.gap
-        const asked = w.mfgRequests.filter((r) => r.orderId === o.id && keyOf(r.itemName || "") === keyOf(gapLine.name))
+        const asked = (manufacturing ? w.mfgRequests : []).filter((r) => r.orderId === o.id && keyOf(r.itemName || "") === keyOf(gapLine.name))
         const declined = asked.find((r) => r.status === "rejected")
         const pending = asked.some((r) => r.status === "new")
         if (declined && !pending) {
@@ -285,7 +285,7 @@ export function todayDecisions(w: SalesWorld, viewer: TodayViewer): Decision[] {
 
     // 10 · a production request unanswered past the window — the clock does not
     // run while the order still waits for its advance (PAY-07).
-    for (const r of w.mfgRequests) {
+    for (const r of manufacturing ? w.mfgRequests : []) {
       if (r.status !== "new" || r.sourceKind === "project" || r.kind === "cost" || !r.orderId) continue
       const order = orderById.get(r.orderId)
       if (order?.status === "awaiting_deposit") continue

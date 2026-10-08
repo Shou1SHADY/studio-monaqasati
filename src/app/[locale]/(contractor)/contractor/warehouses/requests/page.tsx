@@ -7,6 +7,7 @@ import { useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { doc } from "firebase/firestore"
 import { useCentralWarehouse } from "@/hooks/useCentralWarehouse"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { WarehouseRequestsSection } from "@/components/contractor/WarehouseRequestsSection"
 import { PmRequestRepliesPanel } from "@/components/inventory/PmRequestRepliesPanel"
 import { ClipboardList, ArrowRight, Loader2 } from "lucide-react"
@@ -19,6 +20,7 @@ export default function ContractorWarehouseRequestsPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { can } = usePermissions()
+  const { on } = useModules()
   const canManageWarehouses = can("warehouses.manage")
 
   const userDocRef = useMemoFirebase(() => {
@@ -62,7 +64,7 @@ export default function ContractorWarehouseRequestsPage() {
           />
         )}
 
-        <PmRequestRepliesPanel />
+        {on("project-management") && <PmRequestRepliesPanel />}
       </div>
     </PortalLayout>
   )

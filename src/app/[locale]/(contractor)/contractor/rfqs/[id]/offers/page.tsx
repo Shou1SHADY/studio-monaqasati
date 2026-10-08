@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from "next/navigation"
 import { useRouter } from "@/i18n/routing"
 import { doc, getDoc } from "firebase/firestore"
 import { useFirestore } from "@/firebase"
+import { useModules } from "@/hooks/useCompanyModules"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Loader2 } from "lucide-react"
 import { RfqOffersView } from "@/components/contractor/RfqOffersView"
@@ -20,18 +21,20 @@ export default function RfqOffersEntryPage() {
   const router = useRouter()
   const firestore = useFirestore()
   const [isStandalone, setIsStandalone] = useState(false)
+  const { on, loading } = useModules()
+  const pmOn = on("project-management")
 
   useEffect(() => {
-    if (!firestore || !rfqId) return
+    if (!firestore || !rfqId || loading) return
     ;(async () => {
       try {
         const snap = await getDoc(doc(firestore, "rfqs", rfqId))
         const projectId = snap.exists() ? (snap.data()?.projectId as string | undefined) : undefined
-        if (projectId) {
+        if (projectId && pmOn) {
           const suffix = tab ? `?tab=${tab}` : ""
           router.replace(`/contractor/projects/${projectId}/tenders/${rfqId}/offers${suffix}`)
         } else if (snap.exists()) {
-          // Confirmed: this RFQ genuinely has no project — render the offers view inline.
+          // No project, or Project Management is off for this company — render the offers view inline.
           setIsStandalone(true)
         } else {
           router.replace("/contractor/rfqs")
@@ -40,7 +43,7 @@ export default function RfqOffersEntryPage() {
         router.replace("/contractor/rfqs")
       }
     })()
-  }, [firestore, rfqId, tab, router])
+  }, [firestore, rfqId, tab, router, pmOn, loading])
 
   if (isStandalone) {
     return <RfqOffersView rfqId={rfqId} />

@@ -19,6 +19,7 @@ import { acceptsHoldPrice, closesOnPayment, HOLD_DECISIONS, HOLD_OWNER, holdVari
 import { resolvePolicies, type ResolvedPolicies } from "./policies"
 import { materialKey, PRICE_HISTORY } from "./prices"
 import { approvalGateBlocks } from "./policy-enforce"
+import { readModulesOff } from "../company-modules-reads"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type PoLogEntry, type ProcActor, type PurchaseOrder } from "./types"
 import { afterApproval, assertActs, ProcWriteError, readGateItems, type WriteOpts } from "./writes"
 
@@ -98,7 +99,8 @@ export async function selfIssuePurchaseOrder(firestore: Firestore, actor: ProcAc
     const settings = await tx.get(doc(firestore, PROCUREMENT_SETTINGS, po.organizationId))
     policies = resolvePolicies(settings.exists() ? (settings.data() as Partial<ResolvedPolicies>) : null)
     const blocks = input.blocks ? poBlocks(po, { ...input.blocks, policies, now }).length : 0
-    const gates = approvalGateBlocks(po, await readGateItems(tx, firestore, po), input.blocks?.otherOrders ?? [])
+    const pmOff = (await readModulesOff(tx, firestore, po.organizationId)).has("project-management")
+    const gates = approvalGateBlocks(po, pmOff ? [] : await readGateItems(tx, firestore, po), input.blocks?.otherOrders ?? [], pmOff)
     const refusal = selfIssueRefusal(po, actor, policies.buyerSelfIssueLimit, blocks + gates.length)
     if (refusal === "over_limit") throw new ProcWriteError("above_limit", { limit: policies.buyerSelfIssueLimit })
     if (refusal === "blocked") throw gates.length ? new ProcWriteError(gates[0].code, gates[0].params) : new ProcWriteError("blocked")

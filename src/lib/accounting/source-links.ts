@@ -10,6 +10,7 @@
 // opening balance IS its own document, and a few sources have no screen of
 // their own yet. The shapes of `sourceId` are posting-rules.ts's.
 
+import type { OptionalModule } from "../company-modules"
 import type { JournalEntry } from "./journal"
 
 type Portal = "contractor" | "supplier"
@@ -23,7 +24,34 @@ export function originalSourceId(entry: Pick<JournalEntry, "sourceId">): string 
   return id
 }
 
-export function sourceDocumentPath(entry: Pick<JournalEntry, "sourceType" | "sourceId" | "lines">, portal: Portal): string | null {
+/** Sources whose document lives in an optional module: with that module off the entry stays readable but has no page to open. */
+const MODULE_OF_SOURCE: Record<string, OptionalModule> = {
+  ipc_claim: "project-management",
+  ipc_collection: "project-management",
+  retention_release: "project-management",
+  pm_sub_certificate: "project-management",
+  pm_sub_payment: "project-management",
+  pm_cash: "project-management",
+  pm_loss: "project-management",
+  pm_xfer: "project-management",
+  work_order_issue: "manufacturing",
+  mfg_material_receipt: "manufacturing",
+  mfg_remnant_receipt: "manufacturing",
+  mfg_scrap: "manufacturing",
+  work_order_delivery: "manufacturing",
+  hr_pay: "hr",
+  hr_eos: "hr",
+  hr_pay_payment: "hr",
+  hr_pay_return: "hr",
+  hr_advance: "hr",
+  hr_settlement: "hr",
+  hr_fee: "hr",
+  hr_gosi_payment: "hr",
+}
+
+export function sourceDocumentPath(entry: Pick<JournalEntry, "sourceType" | "sourceId" | "lines">, portal: Portal, off: ReadonlySet<OptionalModule> = new Set()): string | null {
+  const owner = MODULE_OF_SOURCE[entry.sourceType]
+  if (owner && off.has(owner)) return null
   const id = originalSourceId(entry)
   const head = id.split("__")[0]
   switch (entry.sourceType) {

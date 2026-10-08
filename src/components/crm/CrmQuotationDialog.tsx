@@ -17,6 +17,7 @@ import { DATE_INPUT_CLASS } from "@/components/crm/CrmOpportunityDialog"
 import type { CrmQuotation } from "@/lib/crm"
 import type { WorkOrder } from "@/lib/manufacturing"
 import { useQuotationForm, type QuotationDefaults } from "@/hooks/useQuotationForm"
+import { useModules } from "@/hooks/useCompanyModules"
 
 export type { QuotationDefaults }
 
@@ -49,6 +50,7 @@ export function CrmQuotationDialog({
   onSaved?: (quotationId: string) => void
 }) {
   const t = useTranslations("Portal.Shared")
+  const mfgOn = useModules().on("manufacturing")
   // All state and the save path live in the shared hook — the Sales
   // quotation builder page uses the very same one.
   const form = useQuotationForm({ open, orgId, contactId, quotation, contactName, defaults, contacts, finishedOrders })
@@ -89,7 +91,7 @@ export function CrmQuotationDialog({
           )}
         </div>
         {phaseControl}
-        {phase === "post_manufacturing" && finishedOrders && (
+        {mfgOn && phase === "post_manufacturing" && finishedOrders && (
           <div className="space-y-1.5">
             <Label htmlFor="quote-order">{t("sales_pick_work_order")}</Label>
             <Select value={linkedOrderId || "__none__"} onValueChange={(v) => pickFinishedOrder(v === "__none__" ? "" : v)} disabled={isSaving}>

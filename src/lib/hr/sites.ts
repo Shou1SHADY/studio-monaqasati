@@ -8,6 +8,11 @@
 export const SITE_TYPES = ["project", "workshop", "warehouse", "fleet", "showroom", "department", "hq"] as const
 export type SiteType = (typeof SITE_TYPES)[number]
 
+/** What a workplace may be: with Project Management off nothing new is a project site (one that already is keeps its type). */
+export const siteTypesFor = (projectsOn: boolean, current?: SiteType | null): readonly SiteType[] => (projectsOn ? SITE_TYPES : SITE_TYPES.filter((x) => x !== "project" || x === current))
+
+export const defaultSiteType = (projectsOn: boolean): SiteType => siteTypesFor(projectsOn)[0]
+
 /** The virtual place of whoever is not assigned. */
 export const UNASSIGNED_SITE = "__bench__"
 

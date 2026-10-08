@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useUser } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useCrmData } from "@/hooks/useCrmData"
 import { cn } from "@/lib/utils"
 import {
@@ -47,6 +48,7 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
   const id = String(params.id ?? "")
   const { user } = useUser()
   const { can } = usePermissions()
+  const mfgOn = useModules().on("manufacturing")
   const canManage = can("sales.manage")
   const canApprove = can("sales.approve") || can("crm.close")
   const canRecordPayment = can("invoices.manage") || can("sales.approve")
@@ -270,23 +272,29 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
             </div>
           </SalesSection>
 
-          <SalesSection title={t("sales_section_work_order")} icon={Factory}>
-            <div className="p-5 text-sm space-y-2">
-              {q.workOrderNumber != null ? (
-                <>
-                  <p className="font-bold">{t("sales_work_order_line", { number: q.workOrderNumber })}</p>
-                  <Link href={`/${portal}/manufacturing`} className="text-xs font-semibold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
-                    {t("sales_open_manufacturing")}
-                  </Link>
-                </>
-              ) : (
-                <p className="text-xs text-muted-foreground">{t("sales_no_work_order")}</p>
-              )}
-              <p className="text-[11px] text-muted-foreground">
-                {t(phase === "post_manufacturing" ? "crm_quote_phase_hint_post" : "crm_quote_phase_hint_pre")}
-              </p>
-            </div>
-          </SalesSection>
+          {(mfgOn || q.workOrderNumber != null) && (
+            <SalesSection title={t("sales_section_work_order")} icon={Factory}>
+              <div className="p-5 text-sm space-y-2">
+                {q.workOrderNumber != null ? (
+                  <>
+                    <p className="font-bold">{t("sales_work_order_line", { number: q.workOrderNumber })}</p>
+                    {mfgOn && (
+                      <Link href={`/${portal}/manufacturing`} className="text-xs font-semibold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
+                        {t("sales_open_manufacturing")}
+                      </Link>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">{t("sales_no_work_order")}</p>
+                )}
+                {mfgOn && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {t(phase === "post_manufacturing" ? "crm_quote_phase_hint_post" : "crm_quote_phase_hint_pre")}
+                  </p>
+                )}
+              </div>
+            </SalesSection>
+          )}
 
           <SalesSection title={t("sales_section_timeline")} icon={Clock}>
             <ol className="p-5 space-y-3">

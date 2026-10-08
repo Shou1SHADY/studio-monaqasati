@@ -40,6 +40,7 @@ import { useFirestore } from "@/firebase"
 import { deleteOpportunityCascade } from "@/lib/crm-writes"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useCrmData } from "@/hooks/useCrmData"
 import { useCrmOrgProfile } from "@/hooks/useCrmOrgProfile"
 import { useCrmListState, type CrmListConfig } from "@/hooks/useCrmListState"
@@ -101,13 +102,14 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
   const firestore = useFirestore()
   const { toast } = useToast()
   const { can } = usePermissions()
+  const { on } = useModules()
   const canManageCrm = can("crm.manage")
   const { orgId, contacts, opportunities, teamMembers, isLoading } = useCrmData({ opportunities: true })
   const { profile } = useCrmOrgProfile()
   const router = useRouter()
   const base = crmBasePath(portal)
-  // Projects exist on the contractor portal only.
-  const projectsBase = portal === "contractor" ? "/contractor/projects" : null
+  // Projects exist on the contractor portal only, and only while the company has them on.
+  const projectsBase = portal === "contractor" && on("project-management") ? "/contractor/projects" : null
 
   const [view, setView] = useState<"board" | "list">("board")
   const [showAdd, setShowAdd] = useState(false)

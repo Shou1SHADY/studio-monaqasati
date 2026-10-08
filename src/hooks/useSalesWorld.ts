@@ -12,6 +12,7 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase
 import { useCrmData } from "@/hooks/useCrmData"
 import { useSalesScope } from "@/hooks/useSalesScope"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { MFG_DEPARTMENTS, effectiveOutput } from "@/lib/manufacturing"
 import { MFG_PRODUCTS, MFG_SETTINGS, itemKey, normalizeMfgSettings, type DeptCapacityFields, type MfgProduct, type MfgSettings } from "@/lib/manufacturing-engine"
 import { isV2Order, type WorkOrderV2 } from "@/lib/manufacturing-writes"
@@ -45,6 +46,7 @@ export function useSalesWorld(): {
 } {
   const firestore = useFirestore()
   const { can, isOrgOwner } = usePermissions()
+  const mfgOn = useModules().on("manufacturing")
   const { orgId, quotations: allQuotations, contacts, teamMembers, isLoading: crmLoading } = useCrmData({ quotations: true })
   const scope = useSalesScope(contacts)
 
@@ -54,14 +56,14 @@ export function useSalesWorld(): {
   const ordersQ = useMemoFirebase(() => orgQuery(SALES_ORDERS), [firestore, orgId])
   const notesQ = useMemoFirebase(() => orgQuery(SALES_DELIVERY_NOTES), [firestore, orgId])
   const returnsQ = useMemoFirebase(() => orgQuery(SALES_RETURNS), [firestore, orgId])
-  const mfgRequestsQ = useMemoFirebase(() => orgQuery(MANUFACTURING_REQUESTS), [firestore, orgId])
-  const workOrdersQ = useMemoFirebase(() => orgQuery("workOrders"), [firestore, orgId])
-  const productsQ = useMemoFirebase(() => orgQuery(MFG_PRODUCTS), [firestore, orgId])
-  const departmentsQ = useMemoFirebase(() => orgQuery(MFG_DEPARTMENTS), [firestore, orgId])
+  const mfgRequestsQ = useMemoFirebase(() => (mfgOn ? orgQuery(MANUFACTURING_REQUESTS) : null), [firestore, orgId, mfgOn])
+  const workOrdersQ = useMemoFirebase(() => (mfgOn ? orgQuery("workOrders") : null), [firestore, orgId, mfgOn])
+  const productsQ = useMemoFirebase(() => (mfgOn ? orgQuery(MFG_PRODUCTS) : null), [firestore, orgId, mfgOn])
+  const departmentsQ = useMemoFirebase(() => (mfgOn ? orgQuery(MFG_DEPARTMENTS) : null), [firestore, orgId, mfgOn])
   const warehousesQ = useMemoFirebase(() => orgQuery("warehouses"), [firestore, orgId])
   // Cost is read only by those who may see it — it never reaches a rep's browser from here.
   const priceItemsQ = useMemoFirebase(() => (scope.seesCost ? orgQuery(SALES_PRICE_ITEMS) : null), [firestore, orgId, scope.seesCost])
-  const settingsRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, MFG_SETTINGS, orgId) : null), [firestore, orgId])
+  const settingsRef = useMemoFirebase(() => (firestore && orgId && mfgOn ? doc(firestore, MFG_SETTINGS, orgId) : null), [firestore, orgId, mfgOn])
 
   const { data: requestsData } = useCollection(requestsQ)
   const { data: noticesData } = useCollection(noticesQ)
