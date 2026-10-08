@@ -20,7 +20,10 @@
       "Bash(*)",
       "Edit(*)",
       "Read(*)",
-      "Write(*)"
+      "Write(*)",
+      "Bash(node scripts/create-admin.js:*)",
+      "Bash(node scripts/make-admin.js:*)",
+      "Bash(git push origin uat)"
     ],
     "deny": [
       "Bash(rm -rf *)",
