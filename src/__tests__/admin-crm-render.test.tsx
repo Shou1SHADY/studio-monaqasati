@@ -55,8 +55,9 @@ describe("leads tab", () => {
     for (const stage of ["stage_new", "stage_contacted", "stage_demo", "stage_negotiation"]) expect(screen.getByRole("region", { name: stage })).toBeTruthy()
     expect(screen.queryByRole("region", { name: "stage_lost" })).toBeNull()
     expect(screen.queryByRole("region", { name: "stage_converted" })).toBeNull()
-    const tabs = screen.getAllByRole("tab")
-    expect(tabs.map((t) => t.textContent)).toEqual(["segment_open1", "segment_converted1", "segment_lost1", "segment_all3", "segment_removed0"])
+    // The subscribers' segment strip (ADM-02): open · converted · lost · removed · all, each with its count.
+    const segments = screen.getAllByRole("button", { name: /^segment_/ })
+    expect(segments.map((t) => t.textContent)).toEqual(["segment_open1", "segment_converted1", "segment_lost1", "segment_removed0", "segment_all3"])
   })
 
   it("a column shows its first ten cards, then «show more»", () => {

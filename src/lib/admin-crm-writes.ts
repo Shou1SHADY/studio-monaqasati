@@ -5,8 +5,9 @@ import {
   contactsClient,
   leadCrmId,
   manualLeadSchema,
-  mergeRecords,
+  planMerge,
   type HistoryType,
+  type LeadDetails,
   type ClientRecord,
   type LeadRow,
 } from "@/lib/admin-crm"
@@ -122,20 +123,32 @@ export function dismissDuplicate(db: Firestore, a: string, b: string) {
   ])
 }
 
+/** ADM-05: the lead's own details, on the request it arrived with. The type is written only when it changed, so the
+ * finer types a landing-page request carried (contractor + factory…) are not flattened by an unrelated edit. */
+export async function updateLeadDetails(db: Firestore, row: Pick<LeadRow, "id" | "source" | "kind">, v: LeadDetails) {
+  return updateDoc(doc(db, leadCollectionOf(row), row.id), {
+    name: v.name,
+    company: v.company,
+    phone: v.phone,
+    email: v.email,
+    city: v.city,
+    ...(v.kind !== row.kind ? { businessTypes: v.kind === "unspecified" ? [] : [v.kind], companyTypes: [] } : {}),
+    updatedAt: serverTimestamp(),
+  })
+}
+
 /** ADM-09 merge: the older record keeps its place and takes the other's activities, contacts and quotes;
  * quotes and the other is hidden as «duplicate» (kept, restorable) and points at where it went. */
 export async function mergeLeads(
   db: Firestore,
-  keep: Pick<LeadRow, "id" | "crmId" | "source">,
-  drop: Pick<LeadRow, "id" | "crmId" | "source">,
+  keep: Pick<LeadRow, "id" | "crmId" | "source" | "name" | "phone" | "email">,
+  drop: Pick<LeadRow, "id" | "crmId" | "source" | "name" | "phone" | "email">,
   records: Record<string, ClientRecord>,
   uid: string,
 ) {
   const acts = await getDocs(query(collection(db, "adminCrmActivities"), where("clientId", "==", drop.crmId)))
   const batch = writeBatch(db)
-  const { id: _a, ...keepRec } = (records[keep.crmId] ?? {}) as ClientRecord & { id?: string }
-  const { id: _b, ...dropRec } = (records[drop.crmId] ?? {}) as ClientRecord & { id?: string }
-  batch.set(doc(db, "adminCrmClients", keep.crmId), { ...mergeRecords(keepRec, dropRec), updatedAt: serverTimestamp() }, { merge: true })
+  batch.set(doc(db, "adminCrmClients", keep.crmId), { ...planMerge(keep, drop, records).record, updatedAt: serverTimestamp() }, { merge: true })
   batch.set(doc(db, "adminCrmClients", drop.crmId), { mergedInto: keep.crmId, updatedAt: serverTimestamp() }, { merge: true })
   acts.forEach((d) => batch.update(d.ref, { clientId: keep.crmId, movedFrom: drop.crmId }))
   const deals = await getDocs(query(collection(db, "adminCrmDeals"), where("clientId", "==", drop.crmId)))

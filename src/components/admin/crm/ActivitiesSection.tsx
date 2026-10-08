@@ -20,12 +20,15 @@ export function ActivitiesSection({
   parties,
   staff,
   actor,
+  systemDetail,
 }: {
   recordId: string
   activities: CrmActivity[]
   parties: Party[]
   staff: StaffUser[]
   actor: Actor
+  /** Under the platform's conversion line: what came over from the lead. */
+  systemDetail?: string
 }) {
   const t = useTranslations("Portal.Admin.Crm")
   const firestore = useFirestore()
@@ -62,6 +65,7 @@ export function ActivitiesSection({
               key={a.id}
               a={a}
               today={today}
+              detail={a.system ? systemDetail : undefined}
               onToggle={(x) => firestore && run(() => setActivityDone(firestore, x.id, x.status === "scheduled", today, x.type))}
               onEdit={(x) => setDialog({ open: true, activity: x })}
               onDelete={(x) => firestore && run(() => deleteActivity(firestore, x.id))}

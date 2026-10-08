@@ -8,8 +8,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Link } from "@/i18n/routing"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
-import { formatCrmDate, mergeDirection, type ClientRecord, type LeadMatch, type LeadRow } from "@/lib/admin-crm"
+import { formatCrmDate, mergeDirection, planMerge, type ClientRecord, type CrmActivity, type LeadMatch, type LeadRow } from "@/lib/admin-crm"
 import { dismissDuplicate, mergeLeads } from "@/lib/admin-crm-writes"
+import { useMovedCounts } from "./parts"
 
 /** ADM-09: a lead that may be the same person as another — who, why, and the three things to do about it. */
 export function DuplicateBanner({
@@ -18,12 +19,16 @@ export function DuplicateBanner({
   rowsById,
   records,
   uid,
+  activities,
+  quoteCount,
 }: {
   row: LeadRow
   match: LeadMatch | undefined
   rowsById: Map<string, LeadRow>
   records: Record<string, ClientRecord>
   uid: string
+  activities: CrmActivity[]
+  quoteCount: Record<string, number>
 }) {
   const t = useTranslations("Portal.Admin.Crm")
   const locale = useLocale()
@@ -31,6 +36,7 @@ export function DuplicateBanner({
   const { toast } = useToast()
   const [merging, setMerging] = useState<LeadRow | null>(null)
   const [busy, setBusy] = useState(false)
+  const moved = useMovedCounts()
 
   if (!match || (!match.duplicates.length && !match.client)) return null
 
@@ -66,6 +72,15 @@ export function DuplicateBanner({
   const keepRow = mergePair ? (mergePair.keep === row.crmId ? row : (merging as LeadRow)) : null
   const dropRow = mergePair ? (mergePair.drop === row.crmId ? row : (merging as LeadRow)) : null
   const label = (r: LeadRow) => [r.name, r.company].filter(Boolean).join(" — ")
+  // What the merge carries over, counted the way the write will do it.
+  const moving =
+    keepRow && dropRow
+      ? moved({
+          activities: activities.filter((a) => a.clientId === dropRow.crmId).length,
+          contacts: planMerge(keepRow, dropRow, records).contactsMoved,
+          quotes: quoteCount[dropRow.crmId] ?? 0,
+        })
+      : null
 
   return (
     <div className="space-y-2">
@@ -120,6 +135,16 @@ export function DuplicateBanner({
                 <p className="font-bold">{label(dropRow)}</p>
                 <p className="text-xs text-muted-foreground">{formatCrmDate(dropRow.createdMs, locale)}</p>
               </div>
+            </div>
+          )}
+          {moving && moving.parts.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-bold">{t("merge_moving")}</p>
+              <ul className="flex flex-wrap gap-1.5">
+                {moving.parts.map((p) => (
+                  <li key={p} className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold">{p}</li>
+                ))}
+              </ul>
             </div>
           )}
           <p className="text-xs text-muted-foreground">{t("merge_moves")}</p>

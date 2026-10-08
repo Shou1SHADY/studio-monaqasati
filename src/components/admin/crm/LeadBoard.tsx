@@ -8,17 +8,9 @@ import { IconButton } from "@/components/module-ui/IconButton"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { ShowMoreRow } from "@/components/module-ui/ShowMoreRow"
 import { Link } from "@/i18n/routing"
-import { LEAD_STAGES, OPEN_STAGES, formatCrmDate, stageTotals, toDateKey, type LeadMatch, type LeadRow, type OpenStage } from "@/lib/admin-crm"
+import { LEAD_STAGES, OPEN_STAGES, arrivedAgo, formatCrmDate, stageTotals, toDateKey, type LeadMatch, type LeadRow, type OpenStage } from "@/lib/admin-crm"
 import { cn } from "@/lib/utils"
-import { Money } from "./parts"
-
-/** Colour strip on top of each column — the stage's own colour (ADM-03). */
-const STRIP: Record<OpenStage, string> = {
-  new: "border-t-cta",
-  contacted: "border-t-success",
-  demo: "border-t-warning",
-  negotiation: "border-t-primary",
-}
+import { Money, STAGE_TONE } from "./parts"
 
 const PAGE = 10
 
@@ -40,7 +32,8 @@ export function LeadBoard({
   const [over, setOver] = useState<OpenStage | null>(null)
   const [shown, setShown] = useState<Record<string, number>>({})
   const totals = stageTotals(rows)
-  const today = toDateKey(new Date())
+  const now = new Date()
+  const today = toDateKey(now)
   const dragging = rows.find((r) => r.crmId === dragId) ?? null
 
   return (
@@ -65,7 +58,7 @@ export function LeadBoard({
               setDragId(null)
               setOver(null)
             }}
-            className={cn("flex min-w-64 flex-col gap-2 rounded-lg border border-t-4 bg-muted/30 p-2 transition-colors", STRIP[stage], over === stage && canDrop && "bg-primary/5 ring-1 ring-primary")}
+            className={cn("flex min-w-64 flex-col gap-2 rounded-lg border border-t-4 bg-muted/30 p-2 transition-colors", STAGE_TONE[stage].strip, over === stage && canDrop && "bg-primary/5 ring-1 ring-primary")}
           >
             <header className="flex items-center justify-between gap-2 px-1 py-1">
               <h3 className="text-sm font-bold">{t(`stage_${stage}`)}</h3>
@@ -114,6 +107,8 @@ export function LeadBoard({
                       <span className="inline-flex items-center gap-1">
                         <UserRound size={12} aria-hidden="true" />
                         {r.ownerName || t("unassigned")}
+                        {/* No follow-up booked yet: how long it has waited instead (ADM-03). */}
+                        {!r.nextFollowUp && arrivedAgo(r.createdMs, now) && <span>· {t("arrived_ago", arrivedAgo(r.createdMs, now) ?? { unit: "days", n: 0 })}</span>}
                       </span>
                       {r.nextFollowUp && (
                         <span className={cn("inline-flex items-center gap-1", late && "font-semibold text-destructive")}>

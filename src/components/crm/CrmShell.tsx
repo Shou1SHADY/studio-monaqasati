@@ -64,36 +64,56 @@ export function CrmShell({
         {action && <div className="shrink-0">{action}</div>}
       </div>
 
-      <nav aria-label={t("crm_page_title")} className="border-b border-border">
-        <ul className="flex items-center gap-1 -mb-px overflow-x-auto">
-          {CRM_TABS.map((tab) => {
-            const href = `${base}/${tab.segment}`
-            const isActive = pathname === href || pathname.startsWith(`${href}/`)
-            const TabIcon = tab.icon
-            return (
-              <li key={tab.segment}>
-                <Link
-                  href={href}
-                  aria-current={isActive ? "page" : undefined}
-                  className={cn(
-                    "flex items-center gap-2 whitespace-nowrap px-4 py-2.5 text-sm font-semibold border-b-2 rounded-t-md transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                    isActive
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-                  )}
-                >
-                  <TabIcon size={15} className="shrink-0" />
-                  {t(tab.labelKey)}
-                </Link>
-              </li>
-            )
-          })}
-        </ul>
-      </nav>
+      <CrmTabRail
+        label={t("crm_page_title")}
+        tabs={CRM_TABS.map((tab) => ({ key: tab.segment, href: `${base}/${tab.segment}`, label: t(tab.labelKey), icon: tab.icon }))}
+        isActive={(tab) => pathname === tab.href || pathname.startsWith(`${tab.href}/`)}
+      />
 
       {children}
     </div>
+  )
+}
+
+export type CrmTab = { key: string; href: string; label: string; icon: ElementType; count?: number | null }
+
+/**
+ * The module's tab rail — real links, so each tab has its own URL. Shared by the subscribers' CRM and the platform
+ * staff's CRM (admin), so both products read the same.
+ */
+export function CrmTabRail({ label, tabs, isActive }: { label: string; tabs: CrmTab[]; isActive: (tab: CrmTab) => boolean }) {
+  return (
+    <nav aria-label={label} className="border-b border-border">
+      <ul className="flex items-center gap-1 -mb-px overflow-x-auto">
+        {tabs.map((tab) => {
+          const active = isActive(tab)
+          const TabIcon = tab.icon
+          return (
+            <li key={tab.key}>
+              <Link
+                href={tab.href}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex min-h-11 items-center gap-2 whitespace-nowrap px-4 py-2.5 text-sm font-semibold border-b-2 rounded-t-md transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  active
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                )}
+              >
+                <TabIcon size={15} className="shrink-0" aria-hidden="true" />
+                {tab.label}
+                {tab.count != null && (
+                  <span className="rounded-full bg-muted px-1.5 text-[11px] tabular-nums text-muted-foreground">
+                    <bdi>{tab.count}</bdi>
+                  </span>
+                )}
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+    </nav>
   )
 }
 
@@ -104,12 +124,20 @@ export function CrmStat({
   value,
   accent = "primary",
   hint,
+  danger,
+  onClick,
+  active,
 }: {
   icon: ElementType
   label: string
-  value: string | number
+  value: ReactNode
   accent?: "primary" | "accent" | "success" | "warning" | "destructive" | "cta" | "indigo" | "violet"
   hint?: string
+  /** Paint the figure red (late, at risk). */
+  danger?: boolean
+  /** With `onClick` the card is a button that applies its filter; `active` marks the one applied. */
+  onClick?: () => void
+  active?: boolean
 }) {
   const accentClass = {
     primary: "bg-primary/10 text-primary",
@@ -122,19 +150,34 @@ export function CrmStat({
     violet: "bg-violet/10 text-violet",
   }[accent]
 
-  return (
-    <div className="rounded-xl border bg-card p-4 flex items-center gap-3">
+  const body = (
+    <>
       <span className={cn("grid place-items-center h-10 w-10 rounded-lg shrink-0", accentClass)} aria-hidden="true">
         <Icon size={18} />
       </span>
-      <div className="min-w-0">
-        <p className="text-xs font-semibold text-muted-foreground truncate">{label}</p>
-        <p className="text-lg font-black text-foreground truncate" dir="ltr">
-          {value}
-        </p>
-        {hint && <p className="text-[11px] text-muted-foreground truncate">{hint}</p>}
-      </div>
-    </div>
+      <span className="block min-w-0 text-start">
+        {/* Labels wrap rather than cut off on a phone; the figure keeps the card's direction so it sits under its
+            label in Arabic too (a dir="ltr" block pushed it to the far side), and <bdi> isolates the digits. */}
+        <span className="block text-xs font-semibold leading-snug text-muted-foreground line-clamp-2">{label}</span>
+        <span className={cn("block text-lg font-black truncate tabular-nums", danger ? "text-destructive" : "text-foreground")}>
+          <bdi>{value}</bdi>
+        </span>
+        {hint && <span className="block text-[11px] leading-snug text-muted-foreground line-clamp-2">{hint}</span>}
+      </span>
+    </>
+  )
+  const frame = cn("rounded-xl border bg-card p-4 flex items-center gap-3", active && "border-primary ring-1 ring-primary")
+  return onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(frame, "w-full transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2")}
+    >
+      {body}
+    </button>
+  ) : (
+    <div className={frame}>{body}</div>
   )
 }
 
@@ -171,6 +214,7 @@ export function CrmPanel({
   subtitle,
   icon: Icon,
   action,
+  count,
   children,
   className,
 }: {
@@ -178,6 +222,8 @@ export function CrmPanel({
   subtitle?: string
   icon?: ElementType
   action?: ReactNode
+  /** A section's number of entries, beside its title (contacts 2, activities 3…). */
+  count?: number
   children: ReactNode
   className?: string
 }) {
@@ -188,6 +234,11 @@ export function CrmPanel({
           <h2 className="text-sm font-black text-foreground flex items-center gap-2">
             {Icon && <Icon size={15} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
             <span className="truncate">{title}</span>
+            {count !== undefined && (
+              <span className="rounded-full bg-muted px-2 text-[11px] font-bold tabular-nums text-muted-foreground">
+                <bdi>{count}</bdi>
+              </span>
+            )}
           </h2>
           {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{subtitle}</p>}
         </div>
