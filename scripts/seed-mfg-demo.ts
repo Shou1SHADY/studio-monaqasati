@@ -42,22 +42,14 @@ const arg = (name: string): string | null => {
 const ENV_FILE = arg("--env") || ".env.uat"
 config({ path: resolve(process.cwd(), ENV_FILE) })
 
-import { initializeApp, cert, getApps, applicationDefault } from "firebase-admin/app"
-import { getFirestore, FieldValue, type Firestore } from "firebase-admin/firestore"
+import { FieldValue, type Firestore } from "@google-cloud/firestore"
+import { openUatDb } from "./lib/uat-db"
 
 const UAT_PROJECT = "mdmaktech-uat"
 const APPLY = process.argv.includes("--apply")
 const ORG = arg("--org")
 const PROJECT = arg("--project")
 
-function initAdmin() {
-  if (getApps().length > 0) return getApps()[0]!
-  const projectId = process.env.FIREBASE_PROJECT_ID
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n")
-  if (projectId && clientEmail && privateKey) return initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) })
-  return initializeApp({ credential: applicationDefault(), projectId })
-}
 
 // ── Dates relative to today, like the prototype's day offsets ──
 const DAY = 86400000
@@ -180,17 +172,12 @@ const progress = (p: Pick<MfgProduct, "route">, rows: Array<[number, number]>): 
 type SeedOrder = Omit<WorkOrderV2, "createdAt" | "updatedAt"> & { createdAt?: unknown; updatedAt?: unknown }
 
 async function main() {
-  const projectId = process.env.FIREBASE_PROJECT_ID
-  if (projectId !== UAT_PROJECT) {
-    console.error(`Refusing to run: FIREBASE_PROJECT_ID is "${projectId ?? ""}", this script only seeds ${UAT_PROJECT}.`)
-    process.exit(1)
-  }
+  const { db, via } = openUatDb()
+  console.log(`UAT (${UAT_PROJECT}) via ${via === "key" ? "the service account" : "the signed-in gcloud user"}`)
   if (!ORG) {
     console.error("Missing --org <orgId> (the company to seed).")
     process.exit(1)
   }
-  initAdmin()
-  const db: Firestore = getFirestore()
 
   const orgDoc = await db.collection("users").doc(ORG).get()
   if (!orgDoc.exists) {

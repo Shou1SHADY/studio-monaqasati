@@ -7,6 +7,7 @@
 // header's counts and the Today screen can never read different worlds.
 
 import { useMemo, useState } from "react"
+import { useModules } from "@/hooks/useCompanyModules"
 import { usePermissions } from "@/hooks/usePermissions"
 import { usePmBoundaryEvents } from "@/hooks/usePmBoundaryEvents"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
@@ -37,21 +38,24 @@ export function useProcTodayWorld(): ProcTodayWorld {
   const [now] = useState(() => new Date())
   const openRfqIds = useMemo(() => rfqs.filter((r) => r.status === "New").map((r) => r.id), [rfqs])
   const rfqQueries = useRfqQueries(openRfqIds)
-  const pmEvents = usePmBoundaryEvents(orgId)
+  const { on } = useModules()
+  const pmOn = on("project-management")
+  const mfgOn = on("manufacturing")
+  const pmEvents = usePmBoundaryEvents(orgId, pmOn)
   const canSource = can("rfq.manage")
   const actor = useMemo<TodayActor>(() => ({ ...loaded.actor, canSource: loaded.actor.canPrepare || canSource }), [loaded.actor, canSource])
 
   const needDesk = useMemo(() => ({ rows: needs.rows, buyers: needs.buyers, viewerCategories: needs.viewerCategories }), [needs.rows, needs.buyers, needs.viewerCategories])
-  const budgetOverruns = useBudgetOverruns(orders)
+  const budgetOverruns = useBudgetOverruns(orders, pmOn)
   const readyDates = useMfgReadyDates(orgId, needs.rows, needs.mfgRequests)
-  const forwardFacts = useForwardFacts(orgId, deliveries, orders, policies)
+  const forwardFacts = useForwardFacts(orgId, deliveries, orders, policies, pmOn)
   const sampleNos = useSampleNumbers(needs.rows)
   const world = useMemo(() => {
     const base = toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts })
     const raw = new Map(rfqs.map((r) => [r.id, r as typeof r & { rfqNumber?: string | null; closedEarly?: { at?: string | null } | null }]))
     const withRecord = base.rfqs.map((r) => ({ ...r, number: raw.get(r.id)?.rfqNumber ?? null, closedEarly: raw.get(r.id)?.closedEarly ?? null }))
-    return { ...base, rfqs: withRecord, agreements, history, supplierRecords, needDesk, rfqQueries, pmEvents, ownerHasTeam: needs.ownerHasTeam, budgetOverruns, readyDates, forwardFacts, sampleNos }
-  }, [orders, deliveries, rfqs, offers, policies, supplierFacts, agreements, history, supplierRecords, needDesk, rfqQueries, pmEvents, needs.ownerHasTeam, budgetOverruns, readyDates, forwardFacts, sampleNos])
+    return { ...base, rfqs: withRecord, agreements, history, supplierRecords, needDesk, rfqQueries, pmEvents, ownerHasTeam: needs.ownerHasTeam, budgetOverruns, readyDates, forwardFacts, sampleNos, projectsOn: pmOn, workshopOn: mfgOn }
+  }, [pmOn, mfgOn, orders, deliveries, rfqs, offers, policies, supplierFacts, agreements, history, supplierRecords, needDesk, rfqQueries, pmEvents, needs.ownerHasTeam, budgetOverruns, readyDates, forwardFacts, sampleNos])
   return { loaded, needs, world, actor, now }
 }
 

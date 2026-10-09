@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
+import { useModules } from "@/hooks/useCompanyModules"
 import { ArrowRightLeft, CheckCircle2, Clock, Printer, Truck, Undo2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useFirestore } from "@/firebase"
@@ -107,6 +108,10 @@ export function DeliverForm({ view, onClose }: Props) {
     return n && c.ready >= c.target - 1e-9 ? String(n) : ""
   })
   const [crates, setCrates] = useState("")
+  // HR switched off for the company: its fleet list is not kept, so the driver and vehicle are typed, and optional.
+  const hrOn = useModules().on("hr")
+  const [freeDriver, setFreeDriver] = useState("")
+  const [freePlate, setFreePlate] = useState("")
   const [vehicleId, setVehicleId] = useState(() => data.fleet[0]?.id || "")
   const [note, setNote] = useState("")
   const [issued, setIssued] = useState<PrintableNote | null>(null)
@@ -124,9 +129,9 @@ export function DeliverForm({ view, onClose }: Props) {
         ? toProject
           ? t("mfo_dn_no_project_store")
           : t("mfo_dn_no_store")
-        : !data.fleet.length
+        : hrOn && !data.fleet.length
           ? t("mfo_dn_no_fleet")
-          : !vehicle
+          : hrOn && !vehicle
             ? t("mfg4_err_vehicle_required")
             : null
 
@@ -145,8 +150,16 @@ export function DeliverForm({ view, onClose }: Props) {
 
   const submit = () => {
     setTried(true)
-    if (!firestore || invalid || !wh || !vehicle) return
-    const label = vehicleText(vehicle)
+    if (!firestore || invalid || !wh) return
+    const chosen = hrOn
+      ? vehicle
+        ? { id: vehicle.id as string | null, label: vehicleText(vehicle), driverName: vehicle.driverName, plate: vehicle.plate }
+        : null
+      : freeDriver.trim() || freePlate.trim()
+        ? { id: null, label: freePlate.trim(), driverName: freeDriver.trim(), plate: freePlate.trim() || null }
+        : null
+    if (hrOn && !chosen) return
+    const label = chosen?.label ?? ""
     void run(
       () =>
         issueDeliveryNote(firestore, {
@@ -160,7 +173,8 @@ export function DeliverForm({ view, onClose }: Props) {
           destination: { warehouseId: wh.id, warehouseName: wh.name, kind: toProject ? "project" : "central", projectId: toProject ? view.order.projectId ?? null : null },
           pieces: optNum(pieces),
           crates: optNum(crates),
-          vehicle: { id: vehicle.id, label, driverName: vehicle.driverName, plate: vehicle.plate },
+          vehicle: chosen,
+          vehicleRequired: hrOn,
           note: note.trim() || null,
           actor: data.actor,
         }),
@@ -176,7 +190,7 @@ export function DeliverForm({ view, onClose }: Props) {
           crates: optNum(crates),
           destination: wh.name,
           vehicle: label,
-          driver: vehicle.driverName,
+          driver: chosen?.driverName ?? "",
           sender: data.actor.name,
           note: note.trim() || null,
           cutList: c.slice.drawing?.cutList || [],
@@ -224,7 +238,12 @@ export function DeliverForm({ view, onClose }: Props) {
         <NumField id="dn-pieces" label={t("mfo_dn_pieces")} value={pieces} onChange={setPieces} hint={t("mfo_dn_pieces_hint")} />
         <NumField id="dn-crates" label={t("mfo_dn_crates")} value={crates} onChange={setCrates} />
       </div>
-      {data.fleet.length ? (
+      {!hrOn ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <TextField id="dn-driver" label={t("mfo_dn_driver_free")} value={freeDriver} onChange={setFreeDriver} />
+          <TextField id="dn-plate" label={t("mfo_dn_plate_free")} value={freePlate} onChange={setFreePlate} />
+        </div>
+      ) : data.fleet.length ? (
         <SelectField
           id="dn-vehicle"
           label={t("mfo_dn_vehicle")}

@@ -1336,12 +1336,14 @@ export async function issueDeliveryNote(
     destination: { warehouseId: string; warehouseName: string; kind: "project" | "central"; projectId: string | null }
     pieces: number | null
     crates: number | null
-    vehicle: { id: string; label: string; driverName: string; plate: string | null }
+    /** The fleet entry (HR). Null when the company has HR switched off: a driver and plate may then be typed, or left out. */
+    vehicle: { id: string | null; label: string; driverName: string; plate: string | null } | null
+    vehicleRequired?: boolean
     note: string | null
     actor: Actor
   }
 ): Promise<{ noteId: string; noteNumber: string }> {
-  if (!input.vehicle?.id) throw new Error("vehicle_required")
+  if (input.vehicleRequired !== false && !input.vehicle?.id) throw new Error("vehicle_required")
   const noteRef = doc(collection(firestore, DELIVERY_NOTES))
   let noteNumber = ""
   await mutateOrder(firestore, input.orderId, async (fresh, tx) => {
@@ -1377,10 +1379,10 @@ export async function issueDeliveryNote(
       brokenQuantity: 0,
       pieces: input.pieces,
       crates: input.crates,
-      vehicleId: input.vehicle.id,
-      vehicleLabel: input.vehicle.label,
-      driverName: input.vehicle.driverName,
-      vehiclePlate: input.vehicle.plate,
+      vehicleId: input.vehicle?.id ?? null,
+      vehicleLabel: input.vehicle?.label ?? null,
+      driverName: input.vehicle?.driverName ?? null,
+      vehiclePlate: input.vehicle?.plate ?? null,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     })

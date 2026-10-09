@@ -238,13 +238,13 @@ export interface ExecutionBlocks {
   heldShipments: number
 }
 
-export function executionBlocks(w: SalesWorld): ExecutionBlocks {
+export function executionBlocks(w: SalesWorld, manufacturing = true): ExecutionBlocks {
   const orderById = new Map(w.orders.map((o) => [o.id, o]))
   return {
     uncoveredOrders: w.orders.filter((o) => o.status === "running" && isExternal(o) && o.type !== "framework" && orderGapValue(o, w.coverage) > 0).length,
-    gatedOrders: w.orders.filter((o) => o.status === "running" && w.gates.has(o.id)).length,
+    gatedOrders: manufacturing ? w.orders.filter((o) => o.status === "running" && w.gates.has(o.id)).length : 0,
     // The plant's clock does not run while the order still waits for its advance (PAY-07).
-    unansweredRequests: w.mfgRequests.filter((r) => {
+    unansweredRequests: (manufacturing ? w.mfgRequests : []).filter((r) => {
       if (r.status !== "new" || r.kind === "cost" || !r.orderId) return false
       if (orderById.get(r.orderId)?.status === "awaiting_deposit") return false
       return r.requestedAt ? (w.nowMs - Date.parse(r.requestedAt)) / 3600000 >= w.answerWindowHours : false

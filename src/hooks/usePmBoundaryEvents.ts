@@ -10,11 +10,11 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { PM_EVENTS } from "@/lib/pm/events"
 import { PM_BOUNDARY_KINDS, type PmBoundaryFact } from "@/lib/procurement/today"
 
-export function usePmBoundaryEvents(orgId: string | null | undefined): PmBoundaryFact[] {
+export function usePmBoundaryEvents(orgId: string | null | undefined, enabled = true): PmBoundaryFact[] {
   const firestore = useFirestore()
-  const q = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, PM_EVENTS), where("organizationId", "==", orgId), where("kind", "in", [...PM_BOUNDARY_KINDS])) : null), [firestore, orgId])
+  const q = useMemoFirebase(() => (firestore && orgId && enabled ? query(collection(firestore, PM_EVENTS), where("organizationId", "==", orgId), where("kind", "in", [...PM_BOUNDARY_KINDS])) : null), [firestore, orgId, enabled])
   const { data } = useCollection(q)
-  const pq = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const pq = useMemoFirebase(() => (firestore && orgId && enabled ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [firestore, orgId, enabled])
   const { data: projects } = useCollection(pq)
   return useMemo(() => {
     const names = new Map(((projects || []) as Array<{ id: string; name?: string }>).map((p) => [p.id, p.name || ""]))

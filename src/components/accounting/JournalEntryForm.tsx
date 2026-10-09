@@ -15,6 +15,7 @@ import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useAccounting } from "@/hooks/useAccounting"
+import { useModules } from "@/hooks/useCompanyModules"
 import { cn, sanitizeDecimalInput } from "@/lib/utils"
 import { POSTABLE_ACCOUNTS, accountName } from "@/lib/accounting/accounts"
 import { ClosedPeriodError, isPeriodClosed, periodOf } from "@/lib/accounting/journal"
@@ -145,6 +146,7 @@ export function NewJournalEntryView({ portal }: { portal: CrmPortal }) {
   const { can, isLoading: permsLoading } = usePermissions()
   const canPost = can("accounting.post")
   const data = useAccounting()
+  const { on } = useModules()
 
   const [date, setDate] = useState(isoToday())
   const [reference, setReference] = useState("")
@@ -283,6 +285,7 @@ export function NewJournalEntryView({ portal }: { portal: CrmPortal }) {
                   noResultsText={t("acc_no_options")}
                 />
               </div>
+              {on("project-management") && (
               <div className="space-y-1.5">
                 <Label htmlFor="je-project">{t("acc_filter_project")}</Label>
                 <SearchableSelect
@@ -296,6 +299,7 @@ export function NewJournalEntryView({ portal }: { portal: CrmPortal }) {
                   noResultsText={t("acc_no_options")}
                 />
               </div>
+              )}
               <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
                 <Label htmlFor="je-desc">{t("acc_description")} *</Label>
                 <Textarea

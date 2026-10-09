@@ -17,6 +17,7 @@ import { useFirestore, useStorage } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { TeamMember } from "@/hooks/useCrmData"
 import { useCrmOrgProfile } from "@/hooks/useCrmOrgProfile"
+import { useModules } from "@/hooks/useCompanyModules"
 import { cn } from "@/lib/utils"
 import {
   CLASSIFICATION_ACTIVITIES,
@@ -103,8 +104,11 @@ export function CrmOpportunityDialog({
   const { toast } = useToast()
   const { profile } = useCrmOrgProfile()
   const isEdit = !!opportunity
-  // A supplier has no projects to hand over to — what it wins is supplied or serviced.
-  const deliverableOptions = OPPORTUNITY_DELIVERABLES.filter((d) => portal === "contractor" || d !== "project")
+  // A project is offered only where it can be handed over: the contractor portal, with Project Management switched on.
+  // Otherwise what is won is supplied or serviced, and ends in a sales order.
+  const { on } = useModules()
+  const projectsOn = portal === "contractor" && on("project-management")
+  const deliverableOptions = OPPORTUNITY_DELIVERABLES.filter((d) => projectsOn || d !== "project")
 
   const [isSaving, setIsSaving] = useState(false)
   const [contactId, setContactId] = useState("")
@@ -272,7 +276,7 @@ export function CrmOpportunityDialog({
             </div>
           </CrmFieldGroup>
 
-          <CrmFieldGroup label={`${t("crm_deliverable_question")} *`} hint={portal === "contractor" ? t("crm_deliverable_hint") : undefined}>
+          <CrmFieldGroup label={`${t("crm_deliverable_question")} *`} hint={projectsOn ? t("crm_deliverable_hint") : undefined}>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               {deliverableOptions.map((d) => {
                 const Icon = DELIVERABLE_ICON[d]

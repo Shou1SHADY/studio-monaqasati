@@ -87,7 +87,9 @@ export interface GateBlock {
 
 /** A budget decision Projects was asked for and has not given (or asked to renegotiate), or a
  * line whose sample is not approved. An overrun nobody referred does not block (see `pmBudgetAsk`). */
-export function approvalGateBlocks(po: PurchaseOrderX, items: BoqGateItem[], otherOrders: PurchaseOrder[]): GateBlock[] {
+export function approvalGateBlocks(po: PurchaseOrderX, items: BoqGateItem[], otherOrders: PurchaseOrder[], projectManagementOff = false): GateBlock[] {
+  // Projects switched off for the company: its budget and sample gates have nobody left to clear them, so they do not stand.
+  if (projectManagementOff) return []
   const out: GateBlock[] = []
   if (awaitsPmBudget(po)) {
     const overrun = budgetOverrun(po, items, otherOrders)

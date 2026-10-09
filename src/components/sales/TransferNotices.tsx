@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog"
 import { useFirestore, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { useModules } from "@/hooks/useCompanyModules"
 import { cn } from "@/lib/utils"
 import { INSTALLMENT_DEPOSIT_ID, formatCrmDate, formatSar, type CrmQuotation } from "@/lib/crm"
 import { MFG_PRODUCTS } from "@/lib/manufacturing-engine"
@@ -61,6 +62,7 @@ export function ReportTransferDialog({
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
+  const mfgOn = useModules().on("manufacturing")
 
   const installment = target
     ? installmentStates(target.quotation).find((s) => s.id === target.installmentId) ?? null
@@ -123,7 +125,7 @@ export function ReportTransferDialog({
       // PAY-07 / D8 — reporting the ADVANCE sends the production request: the
       // plant plans while Finance verifies, and executes nothing before it.
       let asked = 0
-      if (order && order.status === "awaiting_deposit" && installment.id === (order.payment.advanceInstallmentId || INSTALLMENT_DEPOSIT_ID)) {
+      if (mfgOn && order && order.status === "awaiting_deposit" && installment.id === (order.payment.advanceInstallmentId || INSTALLMENT_DEPOSIT_ID)) {
         try {
           const org = where("organizationId", "==", order.organizationId)
           const [cards, requests, warehouses] = await Promise.all([
@@ -236,6 +238,7 @@ export function AnswerTransferDialog({
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
+  const mfgOn = useModules().on("manufacturing")
   const [message, setMessage] = useState("")
   const [saving, setSaving] = useState<"confirmed" | "not_found" | null>(null)
 
@@ -274,7 +277,7 @@ export function AnswerTransferDialog({
       // finance.down_payment.confirmed — the workshop hears that this order's
       // work may now be released; the same notice the direct path sends, so
       // the two ways of confirming an advance end the same way.
-      if (released && order) {
+      if (mfgOn && released && order) {
         await emitDownPaymentConfirmed(firestore, { copy: t, organizationId: order.organizationId, salesOrderId: order.id, salesOrderNumber: order.orderNumber, quotationId: order.quotationId ?? null, actor: { id: user.uid, name: actorName } })
       }
       toast({ title: t(result === "confirmed" ? "sales_tn_confirmed_toast" : "sales_tn_not_found_toast") })

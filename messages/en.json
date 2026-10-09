@@ -6697,6 +6697,8 @@
       "mfo_close_err_over": "Only {qty} is awaiting close",
       "mfo_close_toast": "{qty} {unit} of {ref} closed — ready to deliver",
       "mfo_close_toast_frozen": "actual cost frozen",
+      "mfo_dn_driver_free": "Driver name (optional)",
+      "mfo_dn_plate_free": "Vehicle or plate (optional)",
       "mfo_dn_title": "Delivery note",
       "mfo_dn_sub": "Manufacturing does not install: it delivers into project custody or to the warehouse as finished goods",
       "mfo_dn_confirm": "Issue the note",
@@ -7737,6 +7739,7 @@
       "sales_kpi_promised": "Promised, not delivered",
       "sales_kpi_promised_gap": "{amount} of it has no supply",
       "sales_kpi_promised_ok": "All covered by stock or manufacturing",
+      "sales_kpi_promised_ok_stock": "All covered by stock",
       "sales_kpi_live": "{count, plural, =0 {No live quotes} one {# live quote} other {# live quotes}}",
       "sales_kpi_live_expiring": "{count, plural, one {# expires within 7 days} other {# expire within 7 days}}",
       "sales_kpi_live_ok": "Nothing expires this week",
@@ -8859,7 +8862,13 @@
       "pn_doc_comment_title": "New comment on {about}",
       "pn_doc_comment": "{actor} commented on {about}: \"{text}\"",
       "pn_doc_file_title": "New file on {about}",
-      "pn_doc_file": "{actor} attached \"{text}\" to {about}."
+      "pn_doc_file": "{actor} attached \"{text}\" to {about}.",
+      "module_off_title": "This component is not switched on for your company",
+      "module_off_desc": "{module} is switched off for your company. If you need it, ask the platform team to switch it on.",
+      "module_off_home": "Back to the home page",
+      "module_name_project_management": "Project Management",
+      "module_name_hr": "HR",
+      "module_name_manufacturing": "Manufacturing"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -24278,6 +24287,25 @@
       "empty_desc": "Attach a file on a purchase order or an offer and it appears here at once.",
       "empty_filtered": "No file matches the filters.",
       "open_failed": "Could not open the file."
+    },
+    "AdminModules": {
+      "button": "Components",
+      "title": "The company's components",
+      "note": "Switching a component off hides it from the company's menu, tiles and pages for every member of its team. Its data is kept, and switching it back on restores it as it was. All other components are core and always on.",
+      "save": "Save",
+      "cancel": "Cancel",
+      "saved": "The company's components were saved",
+      "save_failed": "Could not save. Try again.",
+      "pending_title": "Unfinished items in this component",
+      "pending_intro": "Nothing is deleted. These items stay in the data and come back when the component is switched on again, but the company's team will not see them meanwhile.",
+      "pending_plant": "Approved equipment requests waiting for an answer: {count}",
+      "pending_handover": "Project handovers waiting to be accepted: {count}",
+      "pending_exits": "Employees leaving, not settled yet: {count}",
+      "pending_advances": "Salary advances waiting for Finance: {count}",
+      "pending_payroll": "Payroll runs not paid yet: {count}",
+      "pending_notes": "Delivery notes in transit: {count}",
+      "pending_requests": "New manufacturing requests: {count}",
+      "confirm_off": "Switch off and save"
     }
   },
   "Auth": {

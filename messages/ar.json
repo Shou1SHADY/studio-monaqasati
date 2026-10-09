@@ -6697,6 +6697,8 @@
       "mfo_close_err_over": "المتاح للإقفال {qty} فقط",
       "mfo_close_toast": "أُقفل إنتاج {qty} {unit} من {ref} — جاهزة للتسليم",
       "mfo_close_toast_frozen": "جُمّدت التكلفة الفعلية",
+      "mfo_dn_driver_free": "اسم السائق (اختياري)",
+      "mfo_dn_plate_free": "المركبة أو اللوحة (اختياري)",
       "mfo_dn_title": "سند تسليم",
       "mfo_dn_sub": "التصنيع لا يركّب: يسلّم للمشروع فيدخل عهدته، أو للمستودع منتجاً تاماً",
       "mfo_dn_confirm": "حرّر السند",
@@ -7737,6 +7739,7 @@
       "sales_kpi_promised": "وُعِد ولم يُسلَّم",
       "sales_kpi_promised_gap": "منه {amount} بلا تغطية",
       "sales_kpi_promised_ok": "كله مغطّى من المخزون أو التصنيع",
+      "sales_kpi_promised_ok_stock": "كله مغطّى من المخزون",
       "sales_kpi_live": "{count, plural, =0 {لا عروض سارية} one {عرض سارٍ واحد} two {عرضان ساريان} few {# عروض سارية} many {# عرضاً سارياً} other {# عرض سارٍ}}",
       "sales_kpi_live_expiring": "{count, plural, one {ينتهي واحد خلال 7 أيام} two {ينتهي اثنان خلال 7 أيام} few {تنتهي # خلال 7 أيام} many {ينتهي # خلال 7 أيام} other {ينتهي # خلال 7 أيام}}",
       "sales_kpi_live_ok": "لا شيء ينتهي هذا الأسبوع",
@@ -8859,7 +8862,13 @@
       "pn_doc_comment_title": "تعليق جديد على {about}",
       "pn_doc_comment": "كتب {actor} تعليقاً على {about}: «{text}»",
       "pn_doc_file_title": "مرفق جديد على {about}",
-      "pn_doc_file": "أرفق {actor} الملف «{text}» على {about}."
+      "pn_doc_file": "أرفق {actor} الملف «{text}» على {about}.",
+      "module_off_title": "هذا المكوّن غير مفعّل لشركتك",
+      "module_off_desc": "مكوّن {module} متوقف لشركتك. إن كنت تحتاجه فتواصل مع إدارة المنصة لتفعيله.",
+      "module_off_home": "العودة إلى الرئيسية",
+      "module_name_project_management": "إدارة المشاريع",
+      "module_name_hr": "الموارد البشرية",
+      "module_name_manufacturing": "التصنيع"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",
@@ -24278,6 +24287,25 @@
       "empty_desc": "أرفق ملفاً على أمر شراء أو عرض، وسيظهر هنا فوراً.",
       "empty_filtered": "لا يوجد ملف يطابق التصفية.",
       "open_failed": "تعذر فتح الملف."
+    },
+    "AdminModules": {
+      "button": "المكوّنات",
+      "title": "مكوّنات الشركة",
+      "note": "إيقاف مكوّن يخفيه من قائمة الشركة وبطاقاتها وصفحاتها لكل أعضاء فريقها. بياناتها تبقى محفوظة، وإعادة تشغيله ترجعه كما كان. باقي المكوّنات أساسية وتبقى تعمل دائماً.",
+      "save": "حفظ",
+      "cancel": "إلغاء",
+      "saved": "تم حفظ مكوّنات الشركة",
+      "save_failed": "تعذر الحفظ. حاول مرة أخرى.",
+      "pending_title": "بنود غير منتهية في هذا المكوّن",
+      "pending_intro": "لن يُحذف أي شيء. تبقى هذه البنود في البيانات وتعود عند إعادة تشغيل المكوّن، لكن فريق الشركة لن يراها في الأثناء.",
+      "pending_plant": "طلبات معدات معتمدة بانتظار الرد: {count}",
+      "pending_handover": "ملفات تسليم مشاريع بانتظار القبول: {count}",
+      "pending_exits": "موظفون في طور المغادرة لم تُسوَّ مستحقاتهم: {count}",
+      "pending_advances": "سلف رواتب بانتظار المالية: {count}",
+      "pending_payroll": "مسيّرات رواتب لم تُدفع بعد: {count}",
+      "pending_notes": "إشعارات تسليم قيد النقل: {count}",
+      "pending_requests": "طلبات تصنيع جديدة: {count}",
+      "confirm_off": "إيقاف وحفظ"
     }
   },
   "Auth": {

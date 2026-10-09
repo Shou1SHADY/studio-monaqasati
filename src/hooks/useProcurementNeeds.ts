@@ -10,6 +10,7 @@
 import { useMemo, useState } from "react"
 import { collection, doc, query, where } from "firebase/firestore"
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
 import { useOrgStock, stockKey } from "@/hooks/useOrgStock"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -25,7 +26,7 @@ import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
 import { MANUFACTURING_REQUESTS, type ManufacturingRequest } from "@/lib/sales-orders"
 import { buildNeedRows, type BuyerScope, type MfgRequestFact, type NeedRow } from "@/lib/procurement/need-desk"
 import { procTeam } from "@/lib/procurement/team"
-import { mfgNeed, projectNeed, returnedNeeds, sortNeeds, stockNeeds, type Need } from "@/lib/procurement/needs"
+import { mfgNeed, needsForModules, projectNeed, returnedNeeds, sortNeeds, stockNeeds, type Need } from "@/lib/procurement/needs"
 
 export interface ProcurementNeeds {
   loading: boolean
@@ -57,20 +58,23 @@ export function useProcurementNeeds(world: ProcurementWorld): ProcurementNeeds {
   const { profile, groups, can: viewerCan } = usePermissions()
   const [now] = useState(() => new Date())
 
-  const woQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, WORK_ORDERS), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const { on } = useModules()
+  const pmOn = on("project-management")
+  const mfgOn = on("manufacturing")
+  const woQ = useMemoFirebase(() => (firestore && orgId && mfgOn ? query(collection(firestore, WORK_ORDERS), where("organizationId", "==", orgId)) : null), [firestore, orgId, mfgOn])
   const { data: woData, isLoading: woLoading } = useCollection(woQ)
-  const productsQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const productsQ = useMemoFirebase(() => (firestore && orgId && mfgOn ? query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", orgId)) : null), [firestore, orgId, mfgOn])
   const { data: productsData } = useCollection(productsQ)
   const whQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "warehouses"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
   const { data: whData } = useCollection(whQ)
-  const mrQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, MANUFACTURING_REQUESTS), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const mrQ = useMemoFirebase(() => (firestore && orgId && mfgOn ? query(collection(firestore, MANUFACTURING_REQUESTS), where("organizationId", "==", orgId)) : null), [firestore, orgId, mfgOn])
   const { data: mrData } = useCollection(mrQ)
-  const settingsRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, MFG_SETTINGS, orgId) : null), [firestore, orgId])
+  const settingsRef = useMemoFirebase(() => (firestore && orgId && mfgOn ? doc(firestore, MFG_SETTINGS, orgId) : null), [firestore, orgId, mfgOn])
   const { data: settingsData } = useDoc(settingsRef)
   const warehouses = useMemo(() => (whData || []) as Array<{ id: string; name?: string; isOutbound?: boolean }>, [whData])
   const stock = useOrgStock(warehouses, warehouses.length > 0)
   const { agreements, history } = useProcurementPrices(orgId || null)
-  const projectRequests = useProjectPurchaseRequests(orgId || null)
+  const projectRequests = useProjectPurchaseRequests(orgId || null, pmOn)
   const { orgMembers } = useOrgMembers(orgId || null)
 
   const products = useMemo(() => ((productsData || []) as MfgProduct[]).filter((p) => !p.archived), [productsData])
@@ -99,8 +103,8 @@ export function useProcurementNeeds(world: ProcurementWorld): ProcurementNeeds {
     const names = new Map(warehouses.map((w) => [w.id, w.name || ""]))
     const stockRows = Array.from(stock.byWarehouse.entries()).flatMap(([warehouseId, rows]) => rows.filter((r) => !r.isManufactured).map((r) => ({ ...r, warehouseId, warehouseName: names.get(warehouseId) || "" })))
     out.push(...stockNeeds(stockRows, { rfqs, orders }))
-    return sortNeeds(out.filter((n) => n.lines.length > 0))
-  }, [mfgByKey, projectRequests.rows, stock.byWarehouse, warehouses, rfqs, orders])
+    return sortNeeds(needsForModules(out, { projects: pmOn, workshop: mfgOn }).filter((n) => n.lines.length > 0))
+  }, [mfgByKey, projectRequests.rows, stock.byWarehouse, warehouses, rfqs, orders, pmOn, mfgOn])
 
   const onHand = useMemo(() => (name: string) => (stock.loading ? null : stock.byName.get(stockKey(name)) ?? null), [stock])
   const makeable = useMemo(() => {
@@ -136,7 +140,7 @@ export function useProcurementNeeds(world: ProcurementWorld): ProcurementNeeds {
   const viewerCategories = team.viewerCategories
 
   return {
-    loading: woLoading || projectRequests.loading || world.loading,
+    loading: woLoading || (pmOn && projectRequests.loading) || world.loading,
     rows,
     needs,
     buyers: team.buyers,

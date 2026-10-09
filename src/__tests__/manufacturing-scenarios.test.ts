@@ -1706,6 +1706,19 @@ describe("7 · the delivery-note concurrency guard", () => {
   })
 })
 
+describe("7b · a company without HR has no fleet registry", () => {
+  it("a note is refused without a vehicle by default, and issues with a typed driver, or with none, when the registry is off", async () => {
+    const id = await stockOrderClosed(9)
+    await refused("no registry entry while HR is on", () => issueDeliveryNote(db, { ...noteInput(id, 3), vehicle: null }), "vehicle_required")
+    const typed = await act("issueDeliveryNote typed driver", issueDeliveryNote(db, { ...noteInput(id, 3), vehicle: { id: null, label: "", driverName: "Salem", plate: "ABC 123" }, vehicleRequired: false }))
+    const bare = await act("issueDeliveryNote no driver", issueDeliveryNote(db, { ...noteInput(id, 3), vehicle: null, vehicleRequired: false }))
+    const notes = listCollection<DeliveryNote>("deliveryNotes")
+    const byNumber = (n: string) => notes.find((x) => x.noteNumber === n)
+    expect(byNumber(typed.noteNumber)).toMatchObject({ vehicleId: null, driverName: "Salem", vehiclePlate: "ABC 123" })
+    expect(byNumber(bare.noteNumber)).toMatchObject({ vehicleId: null, driverName: null, vehiclePlate: null })
+  })
+})
+
 describe("rules conformance coverage", () => {
   it("every act another role performs was checked against firestore.rules at least once", () => {
     expect(Object.keys(ACT_ROLES).filter((k) => !RULES_CHECKED.has(k))).toEqual([])

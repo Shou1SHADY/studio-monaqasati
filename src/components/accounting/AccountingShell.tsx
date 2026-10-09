@@ -6,6 +6,7 @@ import { Calculator, ChevronDown, FileText, LayoutDashboard, Percent, Scale, Set
 import { Link, usePathname } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { setAccountingPrefs, useAccountingPrefs, useMoneyScale } from "@/hooks/useAccountingPrefs"
 import { formatMoney, formatMoneyCompact, type MoneyScale } from "@/lib/accounting/display"
 import type { PermissionId } from "@/lib/permissions"
@@ -136,6 +137,7 @@ export function AccountingShell({
   const isRtl = locale === "ar"
   const pathname = usePathname()
   const { can } = usePermissions()
+  const { linkable } = useModules()
   const base = accountingBasePath(portal)
 
   const hrefOf = (tab: ShellTab) => (tab.portalRoot ? `/${portal}/${tab.segment}` : tab.segment ? `${base}/${tab.segment}` : base)
@@ -147,7 +149,7 @@ export function AccountingShell({
 
   const groups = TAB_GROUPS.map((g) => ({
     ...g,
-    tabs: g.tabs.filter((tab) => can(tab.permission) && (!tab.contractorOnly || portal === "contractor")),
+    tabs: g.tabs.filter((tab) => can(tab.permission) && (!tab.contractorOnly || portal === "contractor") && linkable(hrefOf(tab))),
   })).filter((g) => g.tabs.length > 0)
   // The rail shows the groups; the active group's pages sit under it as pills.
   // The old six-row box of every page at once was taller than some screens'

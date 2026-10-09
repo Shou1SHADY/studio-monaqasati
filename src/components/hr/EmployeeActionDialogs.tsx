@@ -24,6 +24,7 @@ import { Callout } from "@/components/module-ui/Callout"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { collection, query, where } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
@@ -178,7 +179,9 @@ export function EmployeeActionDialog({
   const { data: prData } = useCollection(prQ)
   const lastClosed = ((prData ?? []) as unknown as Payroll[]).filter((p) => p.state !== "prepared").reduce<string | null>((m, p) => (!m || p.month > m ? p.month : m), null)
   // AS-02 — the manpower requests a move may answer: open ones for the place he is moved to.
-  const mrQ = useMemoFirebase(() => (firestore && access.orgId && action === "move" ? query(collection(firestore, MANPOWER_REQUESTS), where("organizationId", "==", access.orgId)) : null), [firestore, access.orgId, action])
+  const { on } = useModules()
+  const pmOn = on("project-management")
+  const mrQ = useMemoFirebase(() => (firestore && access.orgId && action === "move" && pmOn ? query(collection(firestore, MANPOWER_REQUESTS), where("organizationId", "==", access.orgId)) : null), [firestore, access.orgId, action, pmOn])
   const { data: mrData } = useCollection(mrQ)
 
   let title = ""
@@ -244,7 +247,7 @@ export function EmployeeActionDialog({
           </div>
         )}
         {future && <Callout tone="info">{t("move.future_note", { date: hrDate(effectiveOn, locale) })}</Callout>}
-        <p className="text-xs text-muted-foreground">{target?.type === "project" ? t("move.projects_note") : t("move.cost_note")}</p>
+        <p className="text-xs text-muted-foreground">{target?.type === "project" && pmOn ? t("move.projects_note") : t("move.cost_note")}</p>
       </div>
     )
   } else if (action === "pay") {

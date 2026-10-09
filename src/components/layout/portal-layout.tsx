@@ -21,6 +21,8 @@ import {
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { AppSwitcher } from "@/components/layout/app-switcher"
 import { ActivityBell } from "@/components/activities/ActivityBell"
+import { ModuleGate } from "@/components/layout/ModuleGate"
+import { useModules } from "@/hooks/useCompanyModules"
 import { PortalBreadcrumbs } from "@/components/layout/portal-breadcrumbs"
 import { useUser, useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase"
 import { useLocale, useTranslations } from "next-intl"
@@ -126,6 +128,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   const locale = useLocale()
   const router = useRouter()
   const pathname = usePathname()
+  const { linkable } = useModules()
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = React.useState(searchParams.get("search") || "")
   
@@ -520,7 +523,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     // 2. Navigate — a notification that names its screen opens it
     const href = notificationHref(notif.link, basePath)
     if (href) {
-      router.push(href)
+      // A link into a component the company switched off stays text: the entry is read, nothing opens.
+      if (linkable(href)) router.push(href)
       return
     }
     if (notif.type === "invitation") {
@@ -984,7 +988,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                 </Button>
               </div>
             )}
-            {children}
+            <ModuleGate>{children}</ModuleGate>
           </div>
         </main>
       </SidebarInset>

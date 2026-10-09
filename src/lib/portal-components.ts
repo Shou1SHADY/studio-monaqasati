@@ -160,6 +160,8 @@ export interface PortalComponentDef {
   // `resolveActiveComponent`.
   displayOrder: number
   sections: NavSection[]
+  /** False for a module the company switched off but whose dashboard item must stay reachable (Project Management hosts the portal home): it stays in the sidebar logic and is left out of the tile grid, the launcher and the app switcher. */
+  launcher?: boolean
 }
 
 // Always reachable regardless of the active component — appended to the
@@ -746,11 +748,11 @@ export function hrefPathname(href: string): string {
 
 /** Exact match or a "/"-bounded prefix — never a bare `startsWith`, so
  * `/contractor/team` doesn't false-match `/contractor/team-chat`. */
-function matchesPrefix(pathname: string, prefix: string): boolean {
+export function matchesPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(prefix + "/")
 }
 
-function componentOwnsPath(component: PortalComponentDef, pathname: string): boolean {
+export function componentOwnsPath(component: PortalComponentDef, pathname: string): boolean {
   return component.sections.some((section) =>
     section.items.some(
       (item) =>
@@ -825,7 +827,7 @@ export function visibleComponents(
   can: PermissionCheck
 ): PortalComponentDef[] {
   return components
-    .filter((component) => isComponentVisible(component, can))
+    .filter((component) => component.launcher !== false && isComponentVisible(component, can))
     .slice()
     .sort((a, b) => a.displayOrder - b.displayOrder)
 }

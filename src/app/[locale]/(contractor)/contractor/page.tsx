@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils"
 import { useWorkQueue, type WorkQueueItem, type WorkQueueItemType } from "@/hooks/useWorkQueue"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModuleComponents, useModules } from "@/hooks/useCompanyModules"
 import { CONTRACTOR_COMPONENTS, COMPONENT_ACCENT_CLASSES, isComponentVisible, type PortalComponentId } from "@/lib/portal-components"
 
 // Which tile a queue item's badge count rolls up into, and the permission
@@ -187,6 +188,8 @@ export default function ContractorDashboard() {
   const myOrgId = profile?.organizationId || user?.uid
   const activeCompanyName = useActiveCompanyName(profile, user?.uid)
   const { can, isOrgOwner, groups } = usePermissions()
+  const modules = useModuleComponents("contractor")
+  const { on, linkable } = useModules()
 
   const firstName = (profile?.name as string | undefined)?.trim().split(/\s+/)[0] || ""
   const hourNow = new Date().getHours()
@@ -200,9 +203,9 @@ export default function ContractorDashboard() {
   // reads his own workplaces' people only (RL-01): the rules refuse him this company-wide query.
   const seesHr = can("employees.manage") || can("hr.gov") || can("hr.payroll") || can("hr.management")
   const employeesQuery = useMemoFirebase(() => {
-    if (!firestore || !myOrgId || !seesHr) return null
+    if (!firestore || !myOrgId || !seesHr || !on("hr")) return null
     return query(collection(firestore, "employees"), where("organizationId", "==", myOrgId))
-  }, [firestore, myOrgId, seesHr])
+  }, [firestore, myOrgId, seesHr, on])
   const { data: employeesData } = useCollection(employeesQuery)
 
   const contactsQuery = useMemoFirebase(() => {
@@ -234,8 +237,16 @@ export default function ContractorDashboard() {
     po_approve: can("po.approve"),
     po_attention: can("po.expedite") || can("offers.accept") || can("po.approve"),
   }
-  const { items: allQueueItems, isLoading: queueLoading, stats, recentItems } = useWorkQueue(myOrgId, user?.uid, { isOrgOwner })
-  const queueItems = allQueueItems.filter((item) => itemPermission[item.type])
+  const { items: allQueueItems, isLoading: queueLoading, stats, recentItems } = useWorkQueue(myOrgId, user?.uid, { isOrgOwner, manufacturing: on("manufacturing") })
+  // A module the company switched off takes its decisions out of the list too.
+  // What the company has switched off leaves the list: its own decisions, anything that only opens one of its pages,
+  // and a tender link into Projects becomes the core RFQ page.
+  const toTender = (url: string) => (on("project-management") ? url : url.replace(/^\/contractor\/projects\/[^/]+\/tenders\/([^/?]+)\/offers/, "/contractor/rfqs/$1/offers"))
+  const liveQueue = allQueueItems
+    .map((item) => ({ ...item, actionUrl: toTender(item.actionUrl) }))
+    .filter((item) => (on("manufacturing") || !item.type.startsWith("mfg_")) && linkable(item.actionUrl))
+  const liveRecent = recentItems.map((item) => ({ ...item, href: toTender(item.href) })).filter((item) => linkable(item.href))
+  const queueItems = liveQueue.filter((item) => itemPermission[item.type] && modules.some((c) => c.id === ITEM_TILE[item.type] && c.launcher !== false))
   const top3 = queueItems.slice(0, 3)
   const ongoingProjectsCount = stats.projectsOngoing
 
@@ -256,7 +267,7 @@ export default function ContractorDashboard() {
   }
 
   const URGENT_TILES = new Set<PortalComponentId>(["procurement", "warehouses", "payments", "project-management"])
-  const sortedComponents = [...CONTRACTOR_COMPONENTS].sort((a, b) => a.displayOrder - b.displayOrder)
+  const sortedComponents = modules.filter((c) => c.launcher !== false).sort((a, b) => a.displayOrder - b.displayOrder)
   const ChevronIcon = isRtl ? ChevronLeft : ChevronRight
 
   // Permission-aware tiles: a module the member can't open anything inside is
@@ -279,7 +290,7 @@ export default function ContractorDashboard() {
   const guaranteesExpiringCount = allQueueItems.filter((i) => i.type === "guarantee_expiring").length
   const canFinance = can("invoices.manage") || can("offers.accept")
   const kpis = [
-    { key: "projects", allowed: can("projects.view") || can("projects.edit"), value: ongoingProjectsCount, label: t("home_kpi_ongoing_label"), dot: false },
+    { key: "projects", allowed: on("project-management") && (can("projects.view") || can("projects.edit")), value: ongoingProjectsCount, label: t("home_kpi_ongoing_label"), dot: false },
     { key: "decisions", allowed: true, value: queueItems.length, label: t("home_kpi_decisions_label"), dot: queueItems.length > 0 },
     { key: "rfqs", allowed: can("rfq.manage") || can("rfq.create"), value: stats.rfqsOpen, label: t("home_kpi_open_rfqs_label"), dot: false },
     { key: "offers", allowed: can("offers.view"), value: stats.offersTotal, label: t("home_kpi_offers_label"), dot: false },
@@ -532,14 +543,14 @@ export default function ContractorDashboard() {
           })}
 
           {/* Continue where you left off — most recently touched projects/RFQs. */}
-          {recentItems.length > 0 && (
+          {liveRecent.length > 0 && (
             <div className="flex flex-col rounded-[18px] bg-muted/30 border border-border/60 p-[18px] gap-3 min-h-[174px] text-start">
               <span className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground">
                 <History size={13} />
                 {t("home_continue_title")}
               </span>
               <div className="flex flex-col gap-0.5 -mx-2">
-                {recentItems.map((item) => (
+                {liveRecent.map((item) => (
                   <Link
                     key={item.id}
                     href={item.href}

@@ -148,6 +148,10 @@ export interface ProcWorld {
   forwardFacts?: Record<string, { place: string | null; receiver: string | null }>
   /** Projects' boundary events Procurement reads (`pmEvents` SRET · NOPO · EQH). */
   pmEvents?: PmBoundaryFact[]
+  /** The company switched Project Management off: no project events, no wait on a project's decision. Absent = on. */
+  projectsOn?: boolean
+  /** The company switched Manufacturing off: nothing waits on the workshop. Absent = on. */
+  workshopOn?: boolean
 }
 
 /** What a PM project tells Procurement through its outbox (`pmEvents`): a
@@ -494,7 +498,7 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
         } else if (owner === "proc" && sources && !ownerRO) {
           add({ id: `hold:${po.id}:${h.id}`, kind: "finance_hold", priority: 0, severity: "red", titleKey: "task.finance_hold.proc.title", titleParams: params, subKey: "task.finance_hold.proc.sub", subParams: params, actionKey: "actions.decide", ...common })
         } else if (owner === "rcv" && chases) {
-          add({ id: `hold:${po.id}:${h.id}`, kind: "finance_hold", priority: 1, severity: "amber", titleKey: "task.finance_hold.rcv.title", titleParams: params, subKey: "task.finance_hold.rcv.sub", subParams: { ...params, where: po.projectId ? "projects" : "inventory" }, actionKey: "actions.open", ...common })
+          add({ id: `hold:${po.id}:${h.id}`, kind: "finance_hold", priority: 1, severity: "amber", titleKey: "task.finance_hold.rcv.title", titleParams: params, subKey: "task.finance_hold.rcv.sub", subParams: { ...params, where: po.projectId && w.projectsOn !== false ? "projects" : "inventory" }, actionKey: "actions.open", ...common })
         } else if (ownerRO) {
           add({ id: `hold:${po.id}:${h.id}`, kind: "finance_hold", priority: 1, severity: "amber", titleKey: "task.finance_hold.owner.title", titleParams: params, subKey: "task.finance_hold.owner.sub", subParams: { ...params, holdOwner: owner }, actionKey: "actions.view", ...common })
         } else if (owner === "sup" && sources) {
@@ -578,7 +582,7 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
     }
   }
 
-  if (sources) {
+  if (sources && w.projectsOn !== false) {
     for (const e of pmBoundaryTasks(w.pmEvents || [], now)) add({ ...e, amount: money(actor, e.amount), actionKey: look(e.actionKey) })
   }
 
@@ -811,11 +815,13 @@ const PM_BUDGET_WAITS = new Set(["pending", "renegotiate"])
 
 export function todayWaits(w: ProcWorld, actor: TodayActor, now: Date): Wait[] {
   const out: Wait[] = []
+  const pmOn = w.projectsOn !== false
+  const workshopOn = w.workshopOn !== false
   for (const po of w.orders) {
     const st = poStatus(po)
     const base = { number: po.docNumber, supplier: po.supplierName }
     const x = asX(po)
-    if (po.status === "awaiting_approval" && x.pmBudget && PM_BUDGET_WAITS.has(x.pmBudget.state)) {
+    if (pmOn && po.status === "awaiting_approval" && x.pmBudget && PM_BUDGET_WAITS.has(x.pmBudget.state)) {
       // The order runs past the BOQ item's balance: the project manager decides (R-25).
       const over = w.budgetOverruns?.[po.id] ?? null
       out.push({ id: `w_budget:${po.id}`, kind: "pm_budget", module: "projects", titleKey: "wait.pm_budget.title", titleParams: base, subKey: "wait.pm_budget.sub", subParams: { over: actor.seesPrices && over != null ? over : 0, hasOver: actor.seesPrices && over != null && over > 0 ? 1 : 0 }, href: ORDER_HREF(po.id) })
@@ -828,7 +834,7 @@ export function todayWaits(w: ProcWorld, actor: TodayActor, now: Date): Wait[] {
       const owner = holdOwnerOf(h.reason)
       if (owner !== "fin" && owner !== "rcv") continue
       // Finance's own hold (a duplicate, the cash position) or the receiver's missing receipt.
-      out.push({ id: `w_hold:${po.id}:${h.id}`, kind: "invoice_hold", module: owner === "fin" ? "finance" : po.projectId ? "projects" : "inventory", titleKey: "wait.invoice_hold.title", titleParams: { ...base, invoice: h.invoiceNo, holdReason: h.reason }, subKey: "wait.invoice_hold.sub", subParams: { need: h.need || h.text || "", number: po.docNumber }, href: ORDER_HREF(po.id), reasonCode: h.reason })
+      out.push({ id: `w_hold:${po.id}:${h.id}`, kind: "invoice_hold", module: owner === "fin" ? "finance" : po.projectId && pmOn ? "projects" : "inventory", titleKey: "wait.invoice_hold.title", titleParams: { ...base, invoice: h.invoiceNo, holdReason: h.reason }, subKey: "wait.invoice_hold.sub", subParams: { need: h.need || h.text || "", number: po.docNumber }, href: ORDER_HREF(po.id), reasonCode: h.reason })
     }
     if (st === "sent") {
       // W9 · inside the acceptance window it is the supplier's move.
@@ -848,7 +854,7 @@ export function todayWaits(w: ProcWorld, actor: TodayActor, now: Date): Wait[] {
         const holding = w.receipts.find((r) => r.poId === po.id && (r.lines || []).some((d) => d.poLineId === l.id && Number(d.held) > 0))
         const hold = holding?.lines?.find((d) => d.poLineId === l.id && Number(d.held) > 0)
         // Held at a project's site, the project inspects it; at a store, Inventory does.
-        out.push({ id: `w_held:${po.id}:${l.id}`, kind: "held_inspection", module: holding?.projectId ? "projects" : "inventory", titleKey: "wait.held_inspection.title", titleParams: { qty: l.held, unit: l.unit, name: l.name, ...base }, subKey: "wait.held_inspection.sub", subParams: {}, href: ORDER_HREF(po.id), reasonCode: hold?.holdReason || null })
+        out.push({ id: `w_held:${po.id}:${l.id}`, kind: "held_inspection", module: holding?.projectId && pmOn ? "projects" : "inventory", titleKey: "wait.held_inspection.title", titleParams: { qty: l.held, unit: l.unit, name: l.name, ...base }, subKey: "wait.held_inspection.sub", subParams: {}, href: ORDER_HREF(po.id), reasonCode: hold?.holdReason || null })
       }
     }
   }
@@ -862,12 +868,12 @@ export function todayWaits(w: ProcWorld, actor: TodayActor, now: Date): Wait[] {
       const base = { name: r.name, qty: r.state === "mfg" ? r.total : r.open, unit: r.unit }
       const href = NEED_LINE_HREF(r.key)
       if (r.state === "chk") out.push({ id: `w_chk:${r.key}`, kind: "stock_check", module: "inventory", titleKey: "wait.stock_check.title", titleParams: base, subKey: "wait.stock_check.sub", subParams: { ref: r.need.refLabel, cover: Math.min(r.onHand ?? 0, r.total) }, href })
-      else if (r.state === "mfgw") out.push({ id: `w_mfgw:${r.key}`, kind: "workshop_reply", module: "manufacturing", titleKey: "wait.workshop_reply.title", titleParams: base, subKey: "wait.workshop_reply.sub", subParams: { ref: r.need.refLabel }, href })
-      else if (r.state === "mfg") {
+      else if (r.state === "mfgw" && workshopOn) out.push({ id: `w_mfgw:${r.key}`, kind: "workshop_reply", module: "manufacturing", titleKey: "wait.workshop_reply.title", titleParams: base, subKey: "wait.workshop_reply.sub", subParams: { ref: r.need.refLabel }, href })
+      else if (r.state === "mfg" && workshopOn) {
         const ready = w.readyDates?.[r.key] || ""
         out.push({ id: `w_mfg:${r.key}`, kind: "being_made", module: "manufacturing", titleKey: "wait.being_made.title", titleParams: base, subKey: "wait.being_made.sub_ready", subParams: { ref: r.need.refLabel, date: r.needBy || "", hasDate: r.needBy ? 1 : 0, ready, hasReady: ready ? 1 : 0 }, href })
       }
-      if (isActionState(r.state) && r.samplePending) out.push({ id: `w_sample:${r.key}`, kind: "sample_approval", module: "projects", titleKey: "wait.sample_approval.title", titleParams: { name: r.name, no: w.sampleNos?.[r.key] || "", hasNo: w.sampleNos?.[r.key] ? 1 : 0 }, subKey: "wait.sample_approval.sub", subParams: {}, href })
+      if (pmOn && isActionState(r.state) && r.samplePending) out.push({ id: `w_sample:${r.key}`, kind: "sample_approval", module: "projects", titleKey: "wait.sample_approval.title", titleParams: { name: r.name, no: w.sampleNos?.[r.key] || "", hasNo: w.sampleNos?.[r.key] ? 1 : 0 }, subKey: "wait.sample_approval.sub", subParams: {}, href })
     }
   }
   return out

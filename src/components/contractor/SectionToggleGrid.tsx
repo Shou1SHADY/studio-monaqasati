@@ -13,10 +13,12 @@ interface SectionToggleGridProps {
   enabledSections: Set<SectionId>
   onToggle: (id: SectionId) => void
   requiredHintLabel: string
+  /** Sections the company has switched off with their module: not offered, left as stored. */
+  hidden?: readonly SectionId[]
   tShared: ReturnType<typeof useTranslations<"Portal.Shared">>
 }
 
-export function SectionToggleGrid({ enabledSections, onToggle, requiredHintLabel, tShared }: SectionToggleGridProps) {
+export function SectionToggleGrid({ enabledSections, onToggle, requiredHintLabel, hidden, tShared }: SectionToggleGridProps) {
   return (
     <div className="space-y-6">
       {SECTION_GROUPS.map((group) => (
@@ -25,7 +27,7 @@ export function SectionToggleGrid({ enabledSections, onToggle, requiredHintLabel
             {tShared(`sec_group_${group}`)}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {SECTION_IDS.filter((id) => SECTION_REGISTRY[id].group === group).map((id) => {
+            {SECTION_IDS.filter((id) => SECTION_REGISTRY[id].group === group && !hidden?.includes(id)).map((id) => {
               const def = SECTION_REGISTRY[id]
               const enabled = enabledSections.has(id)
               return (

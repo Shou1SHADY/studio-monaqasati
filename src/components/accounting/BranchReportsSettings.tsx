@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
+import { useModules } from "@/hooks/useCompanyModules"
 import { newBranchId } from "@/lib/accounting/branches"
 import type { AccountingSettings } from "@/lib/accounting/settings"
 
@@ -29,6 +30,7 @@ export function BranchReportsSettings({
   canEdit: boolean
 }) {
   const t = useTranslations("Portal.Shared")
+  const { on } = useModules()
 
   const rename = (id: string, name: string) => setDraft((d) => ({ ...d, branches: d.branches.map((b) => (b.id === id ? { ...b, name } : b)) }))
   const add = () => setDraft((d) => ({ ...d, branches: [...d.branches, { id: newBranchId(), name: "" }] }))
@@ -95,7 +97,7 @@ export function BranchReportsSettings({
             )}
           </div>
 
-          {named.length > 0 && (
+          {named.length > 0 && on("project-management") && (
             <div className="space-y-3 p-5">
               <div>
                 <p className="text-sm font-bold">{t("acc_settings_project_branches")}</p>

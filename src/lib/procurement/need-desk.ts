@@ -324,9 +324,9 @@ export interface MergeHint {
 
 /** Lines going to an RFQ that share a category (else a project) and are not
  * all selected yet — the volume improves the price, each line stays its own. */
-export function mergeHint(rows: NeedRow[], selected: Set<string>): MergeHint | null {
+export function mergeHint(rows: NeedRow[], selected: Set<string>, opts: { project?: boolean } = {}): MergeHint | null {
   const pool = rows.filter((r) => r.state === "open" && r.path === "rfq" && r.selectable)
-  for (const by of ["category", "project"] as const) {
+  for (const by of opts.project === false ? (["category"] as const) : (["category", "project"] as const)) {
     const groups = new Map<string, NeedRow[]>()
     for (const r of pool) {
       const k = by === "category" ? r.category : r.need.projectName

@@ -23,6 +23,7 @@ import { Link } from "@/i18n/routing"
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { cn } from "@/lib/utils"
 import type { WasteScope } from "@/hooks/useProjectWasteStats"
 import { DEFAULT_WASTE_TARGET_PERCENT, recordWasteConsumption } from "@/lib/waste-writes"
@@ -44,6 +45,8 @@ export function StandaloneWasteView({ portal }: { portal: "contractor" | "suppli
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
   const { can } = usePermissions()
+  const { on } = useModules()
+  const projectPicker = portal === "contractor" && on("project-management")
   const canManage = can("warehouses.manage")
 
   const userDocRef = useMemoFirebase(() => {
@@ -62,9 +65,9 @@ export function StandaloneWasteView({ portal }: { portal: "contractor" | "suppli
 
   // Only the contractor has projects to offer.
   const projectsQuery = useMemoFirebase(() => {
-    if (!firestore || !orgId || portal !== "contractor") return null
+    if (!firestore || !orgId || !projectPicker) return null
     return query(collection(firestore, "projects"), where("organizationId", "==", orgId))
-  }, [firestore, orgId, portal])
+  }, [firestore, orgId, projectPicker])
   const { data: projectsData } = useCollection(projectsQuery)
   const projects = useMemo(() => (projectsData || []) as ProjectDoc[], [projectsData])
 
@@ -156,7 +159,7 @@ export function StandaloneWasteView({ portal }: { portal: "contractor" | "suppli
           {/* Source first, project second. The project is optional and only
               exists on the contractor side; the warehouse is what the stock
               actually leaves. */}
-          <div className={cn("grid gap-4", portal === "contractor" ? "sm:grid-cols-2" : "sm:grid-cols-1 sm:max-w-md")}>
+          <div className={cn("grid gap-4", projectPicker ? "sm:grid-cols-2" : "sm:grid-cols-1 sm:max-w-md")}>
             <div className="space-y-1.5">
               <Label htmlFor="waste-warehouse">{t("waste_pick_warehouse")}</Label>
               <Select value={warehouseId} onValueChange={setWarehouseId}>
@@ -170,7 +173,7 @@ export function StandaloneWasteView({ portal }: { portal: "contractor" | "suppli
                 </SelectContent>
               </Select>
             </div>
-            {portal === "contractor" && (
+            {projectPicker && (
               <div className="space-y-1.5">
                 <Label htmlFor="waste-project">{t("waste_pick_project")}</Label>
                 <Select value={projectId || NO_PROJECT} onValueChange={(v) => setProjectId(v === NO_PROJECT ? "" : v)}>

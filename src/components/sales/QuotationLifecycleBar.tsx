@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { useQuoteIssueContext } from "@/hooks/useQuoteIssueContext"
+import { useModules } from "@/hooks/useCompanyModules"
 import { cn } from "@/lib/utils"
 import { formatCrmDate, formatSar, quotationPhase, type CrmQuotation } from "@/lib/crm"
 import { runQuotationAcceptance } from "@/lib/sales"
@@ -70,6 +71,7 @@ export function QuotationLifecycleBar({
   canApprove: boolean
 }) {
   const t = useTranslations("Portal.Shared")
+  const mfgOn = useModules().on("manufacturing")
   const locale = useLocale()
   const isRtl = locale === "ar"
   const firestore = useFirestore()
@@ -173,6 +175,7 @@ export function QuotationLifecycleBar({
         orgId,
         user: actor,
         promiseDate,
+        manufacturingOn: mfgOn,
         quotation: {
           id: q.id,
           quotationNumber: q.quotationNumber,

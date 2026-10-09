@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useModuleComponents } from "@/hooks/useCompanyModules"
 import { usePermissions } from "@/hooks/usePermissions"
 import type { PermissionId } from "@/lib/permissions"
 import {
@@ -39,8 +40,6 @@ import {
 import {
   CONTRACTOR_COMMUNICATION_SECTION,
   SUPPLIER_COMMUNICATION_SECTION,
-  CONTRACTOR_COMPONENTS,
-  SUPPLIER_COMPONENTS,
   resolveActiveContractorComponent,
   resolveActiveSupplierComponent,
   visibleSections,
@@ -240,6 +239,9 @@ export function RoleSidebar() {
 
   const pathname = usePathname()
   const search = useSearchParams()
+  const modules = useModuleComponents(pathname.startsWith("/supplier") ? "supplier" : pathname.startsWith("/contractor") ? "contractor" : null)
+  // The path decides the module, but the company's own copy of it (switched-off entries left out) is what renders.
+  const ownCopy = (active: PortalComponentDef) => modules.find((m) => m.id === active.id) ?? visibleComponents(modules, can)[0] ?? active
 
   let sections: NavSection[] = []
   let portalTitleKey = ""
@@ -250,14 +252,14 @@ export function RoleSidebar() {
   let dashboardHref = "/"
 
   if (pathname.startsWith("/supplier")) {
-    const activeComponent = resolveVisibleComponent(resolveActiveSupplierComponent(pathname), SUPPLIER_COMPONENTS, can)
+    const activeComponent = resolveVisibleComponent(ownCopy(resolveActiveSupplierComponent(pathname)), modules, can)
     sections = [...visibleSections(activeComponent.sections, can), SUPPLIER_COMMUNICATION_SECTION]
     portalTitleKey = activeComponent.labelKey
     roleColor = "text-success"
     portalRoleKey = "supplier_portal_role"
     dashboardHref = activeComponent.homeHref
   } else if (pathname.startsWith("/contractor")) {
-    const activeComponent = resolveVisibleComponent(resolveActiveContractorComponent(pathname), CONTRACTOR_COMPONENTS, can)
+    const activeComponent = resolveVisibleComponent(ownCopy(resolveActiveContractorComponent(pathname)), modules, can)
     sections = [...visibleSections(activeComponent.sections, can), CONTRACTOR_COMMUNICATION_SECTION]
     portalTitleKey = activeComponent.labelKey
     roleColor = "text-accent"

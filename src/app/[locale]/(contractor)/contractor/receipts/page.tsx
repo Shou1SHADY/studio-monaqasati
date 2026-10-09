@@ -24,6 +24,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Link } from "@/i18n/routing"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
+import { useModules } from "@/hooks/useCompanyModules"
 import { ComingSoon } from "@/components/shared/ComingSoon"
 import { RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
 import { cn } from "@/lib/utils"
@@ -97,6 +98,8 @@ function ReceiptsRegister() {
   const { user, isUserLoading } = useUser()
   const { organizationId, isLoading: isProfileLoading } = useResolvedProfile(isUserLoading ? null : user?.uid)
   const myOrgId = organizationId || ""
+  const { on } = useModules()
+  const pmOn = on("project-management")
 
   const [search, setSearch] = useState("")
   const [supplierFilter, setSupplierFilter] = useState("all")
@@ -117,9 +120,9 @@ function ReceiptsRegister() {
   const { data: deliveriesData, isLoading: deliveriesLoading } = useCollection(deliveriesQuery)
 
   const projectsQuery = useMemoFirebase(() => {
-    if (!firestore || !myOrgId) return null
+    if (!firestore || !myOrgId || !pmOn) return null
     return query(collection(firestore, "projects"), where("organizationId", "==", myOrgId))
-  }, [firestore, myOrgId])
+  }, [firestore, myOrgId, pmOn])
   const { data: projectsData } = useCollection(projectsQuery)
 
   const projectNames = useMemo(() => {
@@ -206,11 +209,11 @@ function ReceiptsRegister() {
           <p className="text-muted-foreground mt-1">{t("receipts_desc")}</p>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className={cn("grid grid-cols-2 gap-3", pmOn ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
           <StatTile icon={ScrollText} label={t("receipts_stat_total")} value={stats.total} accent="bg-primary/10 text-primary" />
           <StatTile icon={Calendar} label={t("receipts_stat_this_month")} value={stats.thisMonth} accent="bg-cta/10 text-cta" />
           <StatTile icon={Truck} label={t("receipts_stat_suppliers")} value={stats.suppliers} accent="bg-accent/10 text-accent" />
-          <StatTile icon={FolderOpen} label={t("receipts_stat_projects")} value={stats.projects} accent="bg-success/10 text-success" />
+          {pmOn && <StatTile icon={FolderOpen} label={t("receipts_stat_projects")} value={stats.projects} accent="bg-success/10 text-success" />}
         </div>
 
         <div className="flex flex-col xl:flex-row xl:items-center gap-3">
@@ -236,6 +239,7 @@ function ReceiptsRegister() {
                 ))}
               </SelectContent>
             </Select>
+            {pmOn && (
             <Select value={projectFilter} onValueChange={setProjectFilter}>
               <SelectTrigger className="w-[170px]" aria-label={t("receipts_filter_project")}>
                 <SelectValue />
@@ -248,6 +252,7 @@ function ReceiptsRegister() {
                 ))}
               </SelectContent>
             </Select>
+            )}
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
               {t("receipts_date_from")}
               <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} dir="ltr" className={dateInputClass} />
@@ -302,7 +307,7 @@ function ReceiptsRegister() {
                     <TableHead>{t("receipts_col_supplier")}</TableHead>
                     <TableHead>{t("receipts_col_delivery_date")}</TableHead>
                     <TableHead>{t("receipts_col_confirmed")}</TableHead>
-                    <TableHead>{t("receipts_col_project")}</TableHead>
+                    {pmOn && <TableHead>{t("receipts_col_project")}</TableHead>}
                     <TableHead className="text-end">{t("receipts_col_actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -338,6 +343,7 @@ function ReceiptsRegister() {
                       <TableCell className="text-xs text-muted-foreground" suppressHydrationWarning>
                         {fmtDate(r.confirmedAt, locale)}
                       </TableCell>
+                      {pmOn && (
                       <TableCell>
                         {r.projectId ? (
                           <Badge variant="outline" className="text-primary border-primary/20 bg-primary/5 text-[10px] gap-1 max-w-[160px]">
@@ -348,6 +354,7 @@ function ReceiptsRegister() {
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </TableCell>
+                      )}
                       <TableCell>
                         <div className="flex justify-end">
                           <Button asChild size="sm" variant="outline"

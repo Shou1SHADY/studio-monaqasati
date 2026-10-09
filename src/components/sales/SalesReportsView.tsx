@@ -14,6 +14,7 @@ import { useLocale, useTranslations } from "next-intl"
 import { AlertTriangle, BarChart3, ClipboardList, FileText, Filter, Loader2, Lock, Percent, Printer, ShieldAlert, Tags, TrendingUp, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useSalesWorld } from "@/hooks/useSalesWorld"
+import { useModules } from "@/hooks/useCompanyModules"
 import { cn } from "@/lib/utils"
 import { formatSar } from "@/lib/crm"
 import {
@@ -43,6 +44,7 @@ export function SalesReportsView({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const { world, viewer, userId, teamMembers, priceItems, isLoading } = useSalesWorld()
+  const mfgOn = useModules().on("manufacturing")
   const [family, setFamily] = useState<Family>("company")
   const [period, setPeriod] = useState<ReportPeriod>(30)
 
@@ -53,7 +55,7 @@ export function SalesReportsView({ portal }: { portal: CrmPortal }) {
   const book = useMemo(() => orderBook(world), [world])
   const funnel = useMemo(() => salesFunnel(world), [world])
   const outcome = useMemo(() => winLoss(world, period), [world, period])
-  const blocks = useMemo(() => executionBlocks(world), [world])
+  const blocks = useMemo(() => executionBlocks(world, mfgOn), [world, mfgOn])
   const staff = useMemo(
     () => staffReport(world, period, teamMembers.map((m) => ({ id: m.id, name: m.name || "" })), seesCost ? priceItems : null, seesCost ? null : userId),
     [world, period, teamMembers, priceItems, seesCost, userId]
@@ -279,7 +281,9 @@ export function SalesReportsView({ portal }: { portal: CrmPortal }) {
                     ["advance", blocks.awaitingAdvance],
                     ["held", blocks.heldShipments],
                   ] as Array<[string, number]>
-                ).map(([key, n]) => (
+                )
+                  .filter(([key]) => mfgOn || (key !== "gated" && key !== "unanswered"))
+                  .map(([key, n]) => (
                   <div key={key} className="flex items-center justify-between gap-3 px-5 py-2.5">
                     <dt className="font-semibold text-foreground">{t(`sr2_block_${key}`)}</dt>
                     <dd className={cn("font-bold tabular-nums", n > 0 ? "text-destructive" : "text-muted-foreground")}>{n}</dd>

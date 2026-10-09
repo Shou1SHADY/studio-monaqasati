@@ -3,6 +3,7 @@
 import React, { useEffect } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { notificationCopy, notificationHref } from '@/lib/mfg-events'
+import { useModules } from '@/hooks/useCompanyModules'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,6 +16,7 @@ import { Link, useRouter } from "@/i18n/routing"
 
 export default function ContractorNotificationsPage() {
   const router = useRouter()
+  const { linkable } = useModules()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
@@ -348,7 +350,7 @@ export default function ContractorNotificationsPage() {
                   onClick={() => {
                     if (isUnread) markNotifAsRead(notif.id)
                     const href = notificationHref(notif.link, "contractor")
-                    if (href) router.push(href)
+                    if (href && linkable(href)) router.push(href)
                   }}
                   role="button"
                   tabIndex={0}
@@ -357,7 +359,7 @@ export default function ContractorNotificationsPage() {
                       e.preventDefault()
                       if (isUnread) markNotifAsRead(notif.id)
                       const href = notificationHref(notif.link, "contractor")
-                      if (href) router.push(href)
+                      if (href && linkable(href)) router.push(href)
                     }
                   }}
                   className={`transition-shadow border-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${

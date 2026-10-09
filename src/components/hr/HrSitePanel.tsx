@@ -28,6 +28,7 @@ import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useHrPeople, useOrgPay } from "@/hooks/useHrPeople"
 import { useHrRequests } from "@/hooks/useHrRequests"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useTableLabels } from "@/hooks/useTableLabels"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
@@ -129,6 +130,8 @@ export function HrSitePanel({ access, siteId, actor, portal }: { access: HrAcces
   const window = access.settings.policies.renewWindowDays
   const { toast } = useToast()
   const tableLabels = useTableLabels()
+  const { on: moduleOn } = useModules()
+  const pmOn = moduleOn("project-management")
   const [moving, setMoving] = useState<HrEmployee | null>(null)
   const mayInjury = !bench && access.allowed("injury.record", { site: siteId })
   const mayViolation = !bench && access.allowed("violation.record", { site: siteId })
@@ -156,7 +159,7 @@ export function HrSitePanel({ access, siteId, actor, portal }: { access: HrAcces
   const wmRef = useMemoFirebase(() => (firestore && access.orgId ? doc(firestore, HR_ATTENDANCE, attendanceId(access.orgId, siteId, month)) : null), [firestore, access.orgId, siteId, month])
   const { data: wmData } = useDoc(wmRef)
   const wm = (wmData as unknown as WorkplaceMonth | null) ?? null
-  const projRef = useMemoFirebase(() => (firestore && site?.projectId ? doc(firestore, "projects", site.projectId) : null), [firestore, site?.projectId])
+  const projRef = useMemoFirebase(() => (firestore && pmOn && site?.projectId ? doc(firestore, "projects", site.projectId) : null), [firestore, pmOn, site?.projectId])
   const { data: projData } = useDoc(projRef)
   const project = projData as { name?: string; projectManagerName?: string | null; pm?: { no?: string | null; startOn?: string | null; durationDays?: number | null } | null; endDate?: string | null } | null
 
@@ -278,12 +281,12 @@ export function HrSitePanel({ access, siteId, actor, portal }: { access: HrAcces
           <span dir="auto">{bench ? t("sites.unassigned") : siteLabel(site!, locale)}</span>
           {site && <StatusPill tone="module">{t(`site_type.${site.type}`)}</StatusPill>}
         </h2>
-        {site?.type === "project" && (
+        {site?.type === "project" && (pmOn || end) && (
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             {project?.pm?.no && <span dir="ltr">{project.pm.no}</span>}
             {project?.projectManagerName && <span>{t("site.pm", { name: project.projectManagerName })}</span>}
             {end && <span>{t("sites.ends", { date: hrDate(end, locale) })}</span>}
-            <SourceBadge module="project-management" label={project?.name || t("site.from_projects")} />
+            {pmOn && <SourceBadge module="project-management" label={project?.name || t("site.from_projects")} />}
           </p>
         )}
         {bench && <p className="text-xs text-muted-foreground">{t("site.bench_note")}</p>}
@@ -333,7 +336,7 @@ export function HrSitePanel({ access, siteId, actor, portal }: { access: HrAcces
             <p className="mb-3 text-xs text-muted-foreground">{bench ? t("site.bench_trades_note") : t("site.trades_note")}</p>
             <TradeBars rows={trades} />
           </Panel>
-          {!bench && <HrManpowerPanel access={access} siteId={siteId} />}
+          {!bench && pmOn && <HrManpowerPanel access={access} siteId={siteId} />}
         </div>
       </div>
 

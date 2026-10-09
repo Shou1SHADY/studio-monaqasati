@@ -26,6 +26,7 @@ import { Link, useRouter } from "@/i18n/routing"
 import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useCrmData } from "@/hooks/useCrmData"
 import { useCrmOrgProfile } from "@/hooks/useCrmOrgProfile"
 import { useOpportunityFiles } from "@/hooks/useOpportunityFiles"
@@ -95,6 +96,7 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
   const firestore = useFirestore()
   const { toast } = useToast()
   const { can } = usePermissions()
+  const { on } = useModules()
   const canManage = can("crm.manage")
   // Closing — award, loss, handover — is its own permission.
   const canClose = can("crm.close")
@@ -109,8 +111,9 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
   const { files } = useOpportunityFiles(opportunityId, orgId)
 
   const base = crmBasePath(portal)
-  // Projects exist on the contractor portal only; a supplier's won deal continues in Sales.
-  const projectsBase = portal === "contractor" ? "/contractor/projects" : null
+  // Projects exist on the contractor portal only, and only while the company has them on; otherwise a won deal continues
+  // in Sales — the award then waits for the sales order, like supply and service (OPP-06 #5).
+  const projectsBase = portal === "contractor" && on("project-management") ? "/contractor/projects" : null
   const today = todayKey()
 
   const opportunity = useMemo(() => opportunities.find((o) => o.id === opportunityId) ?? null, [opportunities, opportunityId])

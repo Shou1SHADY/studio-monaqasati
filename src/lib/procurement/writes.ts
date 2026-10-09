@@ -13,6 +13,7 @@ import { addDoc, collection, doc, getDoc, getDocs, query, runTransaction, server
 import { loadTeam, resolveRecipients, type Translator } from "../mfg-events"
 import { emitProcEvent, procLinks, sarText } from "./events"
 import { approvalGateBlocks, gateItemIds, noticeReachesReceiver } from "./policy-enforce"
+import { readModulesOff } from "../company-modules-reads"
 import { poActs, type BoqGateItem, type PurchaseOrderX } from "./po-extras"
 import { drawProcDocNumber, drawProcDocNumbers } from "./numbering"
 import { awardLinkPatch, rfqProjectRequests, type AwardedOrder, type AwardedRfq, type ProjectRequestDoc, type ServedRequest } from "./needs"
@@ -708,7 +709,8 @@ export async function approvePurchaseOrder(
       const blocks = poBlocks(po, { ...input.blocks, policies: input.policies, now })
       if (blocks.length) throw new ProcWriteError("blocked", { codes: blocks.map((b) => b.code).join(",") })
     }
-    const gates = approvalGateBlocks(po as PurchaseOrderX, await readGateItems(tx, firestore, po), input.blocks?.otherOrders ?? [])
+    const pmOff = (await readModulesOff(tx, firestore, po.organizationId)).has("project-management")
+    const gates = approvalGateBlocks(po as PurchaseOrderX, pmOff ? [] : await readGateItems(tx, firestore, po), input.blocks?.otherOrders ?? [], pmOff)
     if (gates.length) throw new ProcWriteError(gates[0].code, gates[0].params)
     const self = po.preparedById === actor.uid
     // A retroactive order regularises goods that already arrived: there is

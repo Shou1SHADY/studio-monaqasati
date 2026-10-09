@@ -5,6 +5,7 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { CompanyModulesDialog } from "@/components/admin/CompanyModulesDialog"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -18,6 +19,7 @@ import {
   XCircle,
   Loader2,
   Eye,
+  Layers,
   FileText,
   ExternalLink,
   AlertCircle,
@@ -66,6 +68,7 @@ const DOC_LABELS: Record<string, string> = {
 
 export default function AdminContractorsPage() {
   const t = useTranslations("Portal.Admin.Contractors")
+  const tMod = useTranslations("Portal.AdminModules")
   const locale = useLocale()
   const docLabels: Record<string, string> = {
     cr: t("doc_cr"),
@@ -77,6 +80,7 @@ export default function AdminContractorsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [limitCount, setLimitCount] = useState(20)
   const [selectedContractor, setSelectedContractor] = useState<any>(null)
+  const [modulesFor, setModulesFor] = useState<{ orgId: string; name: string } | null>(null)
   const [showDetailDialog, setShowDetailDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -441,6 +445,12 @@ export default function AdminContractorsPage() {
                             <Eye size={14} />
                             {t("view")}
                           </Button>
+                          {(c.organizationRole ?? "owner") === "owner" && (
+                            <Button variant="outline" size="sm" onClick={() => setModulesFor({ orgId: c.organizationId || c.id, name: c.name })} className="gap-1">
+                              <Layers size={14} />
+                              {tMod("button")}
+                            </Button>
+                          )}
                           {c.verified ? (
                             <Button
                               variant="outline"
@@ -479,7 +489,8 @@ export default function AdminContractorsPage() {
         </Card>
 
         {/* Detail Dialog */}
-        <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
+        {modulesFor && <CompanyModulesDialog orgId={modulesFor.orgId} companyName={modulesFor.name} portal="contractor" onClose={() => setModulesFor(null)} />}
+      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-xl">

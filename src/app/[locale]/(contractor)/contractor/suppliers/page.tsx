@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useToast } from "@/hooks/use-toast"
 import { useProcTeam } from "@/hooks/useProcTeam"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
@@ -122,7 +123,8 @@ export default function SuppliersPage() {
   const invitations = useMemo(() => ((invitationDocs || []) as InvitationDoc[]).filter((i) => i.type === "supplier_invite"), [invitationDocs])
   const pendingInvitations = invitations.filter((i) => i.status === "pending").length
 
-  const productsQ = useMemoFirebase(() => (firestore && orgId && actor.seesPrices ? query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", orgId)) : null), [firestore, orgId, actor.seesPrices])
+  const mfgOn = useModules().on("manufacturing")
+  const productsQ = useMemoFirebase(() => (firestore && orgId && actor.seesPrices && mfgOn ? query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", orgId)) : null), [firestore, orgId, actor.seesPrices, mfgOn])
   const { data: productDocs } = useCollection<{ name?: string }>(productsQ)
   const makeOrBuy = useMemo(() => makeOrBuyKeys((productDocs || []).map((p) => p.name)), [productDocs])
 

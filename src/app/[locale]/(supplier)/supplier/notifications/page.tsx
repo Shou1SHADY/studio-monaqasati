@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { notificationCopy, notificationHref } from '@/lib/mfg-events'
+import { useModules } from '@/hooks/useCompanyModules'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -21,6 +22,7 @@ export default function SupplierNotificationsPage() {
   const tShared = useTranslations("Portal.Shared")
   const locale = useLocale()
   const router = useRouter()
+  const { linkable } = useModules()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
@@ -235,7 +237,7 @@ export default function SupplierNotificationsPage() {
       await markAsRead(notif.id)
     }
     const href = notificationHref(notif.link, "supplier")
-    if (href) router.push(href)
+    if (href && linkable(href)) router.push(href)
   }
 
   const isUnread = (offer: any) => {

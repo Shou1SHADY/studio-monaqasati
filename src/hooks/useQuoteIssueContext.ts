@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { collection, getDocs, query, where } from "firebase/firestore"
 import { useFirestore } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { MFG_PRODUCTS } from "@/lib/manufacturing-engine"
 import { SALES_PRICE_ITEMS, type SalesPriceItem } from "@/lib/sales"
 import { discountCapPercent } from "@/lib/sales-transfers"
@@ -26,6 +27,7 @@ export interface QuoteIssueContext {
 export function useQuoteIssueContext(orgId: string): QuoteIssueContext {
   const firestore = useFirestore()
   const { can, isOrgOwner } = usePermissions()
+  const mfgOn = useModules().on("manufacturing")
   const capPercent = discountCapPercent({ isOwner: isOrgOwner, canApprove: can("sales.approve") })
 
   const [priceItems, setPriceItems] = useState<SalesPriceItem[]>([])
@@ -38,7 +40,7 @@ export function useQuoteIssueContext(orgId: string): QuoteIssueContext {
     const org = where("organizationId", "==", orgId)
     const [priceSnap, productSnap, warehouseSnap] = await Promise.all([
       getDocs(query(collection(firestore, SALES_PRICE_ITEMS), org)),
-      getDocs(query(collection(firestore, MFG_PRODUCTS), org)),
+      mfgOn ? getDocs(query(collection(firestore, MFG_PRODUCTS), org)) : Promise.resolve(null),
       getDocs(query(collection(firestore, "warehouses"), org)),
     ])
     const stock = new Map<string, number>()
@@ -51,10 +53,10 @@ export function useQuoteIssueContext(orgId: string): QuoteIssueContext {
     }
     return {
       priceItems: priceSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<SalesPriceItem, "id">) })),
-      manufacturedNames: productSnap.docs.filter((d) => !d.data().archived).map((d) => (d.data().name as string) || ""),
+      manufacturedNames: (productSnap?.docs ?? []).filter((d) => !d.data().archived).map((d) => (d.data().name as string) || ""),
       stockByName: stock,
     }
-  }, [firestore, orgId])
+  }, [firestore, orgId, mfgOn])
 
   useEffect(() => {
     let alive = true

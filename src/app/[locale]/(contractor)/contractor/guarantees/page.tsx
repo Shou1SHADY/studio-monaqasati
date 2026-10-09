@@ -13,6 +13,7 @@ import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@
 import { collection, query, where, doc, updateDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { GUARANTEE_REVIEW_PERMISSION } from "@/lib/permissions"
 import {
   Loader2,
@@ -193,6 +194,8 @@ export default function GuaranteesPage() {
   const locale = useLocale()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+  const { on } = useModules()
+  const pmOn = on("project-management")
   const [projectFilter, setProjectFilter] = useState<string>("all")
 
   const userDocRef = useMemoFirebase(() => {
@@ -219,9 +222,9 @@ export default function GuaranteesPage() {
 
   // Projects belonging to this org, used only to populate the project filter dropdown.
   const projectsQuery = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore || !myOrgId) return null
+    if (isUserLoading || !user || !firestore || !myOrgId || !pmOn) return null
     return query(collection(firestore, "projects"), where("organizationId", "==", myOrgId))
-  }, [firestore, user, isUserLoading, myOrgId])
+  }, [firestore, user, isUserLoading, myOrgId, pmOn])
   const { data: projects } = useCollection(projectsQuery)
   const projectOptions = (projects || [])
     .map((p: any) => ({ value: p.id, label: p.name || p.id }))
@@ -257,6 +260,7 @@ export default function GuaranteesPage() {
             <h1 className="text-3xl font-black text-foreground font-headline">{t("guarantees_title")}</h1>
             <p className="text-muted-foreground mt-1">{t("guarantees_desc")}</p>
           </div>
+          {pmOn && (
           <div className="w-full sm:w-[220px]">
             <SearchableSelect
               size="md"
@@ -268,6 +272,7 @@ export default function GuaranteesPage() {
               noResultsText={t("guarantees_no_project_results")}
             />
           </div>
+          )}
         </div>
 
         {pageLoading ? (

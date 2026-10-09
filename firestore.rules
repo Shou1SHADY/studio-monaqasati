@@ -2414,9 +2414,15 @@ service cloud.firestore {
         || resource.data.get('preparedById', '') == request.auth.uid;
     }
     // Projects' budget decision is asked for and not yet given (R-25) — no approval, no self-issue.
+    // A company with Project Management switched off has nobody left to give that decision.
     function poPmBudgetClear() {
       return resource.data.get('pmBudget', null) == null
-        || !(resource.data.pmBudget.get('state', '') in ['pending', 'renegotiate']);
+        || !(resource.data.pmBudget.get('state', '') in ['pending', 'renegotiate'])
+        || pmSwitchedOff(resource.data.organizationId);
+    }
+    function pmSwitchedOff(orgId) {
+      return exists(/databases/$(database)/documents/companyModules/$(orgId))
+        && 'project-management' in get(/databases/$(database)/documents/companyModules/$(orgId)).data.get('off', []);
     }
     // What no update may rewrite: where it came from, who prepared it, what it is worth.
     function poIdentityUntouched() {
@@ -4187,6 +4193,14 @@ service cloud.firestore {
         && request.resource.data.status in ['open', 'done', 'cancelled']
         && changedKeys().hasOnly(['status', 'dueOn', 'doneOn', 'doneById', 'doneByName', 'feedback', 'updatedAt'])
         && request.resource.data.get('doneById', request.auth.uid) == request.auth.uid;
+      allow delete: if false;
+    }
+    // Component switches (7 Oct 2026) — which optional components (Project Management, HR, Manufacturing) a company
+    // has switched off, set by the platform admin only. A company reads its own so its menu and pages can follow.
+    match /companyModules/{orgId} {
+      allow get: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
+      allow list: if isAdmin();
+      allow create, update: if isAdmin() && request.resource.data.off is list;
       allow delete: if false;
     }
     // Document thread (DEV-68) — comments and attachments on a document that links a buyer and

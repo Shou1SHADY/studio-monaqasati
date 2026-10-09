@@ -5,6 +5,7 @@ import { useParams } from "next/navigation"
 import { useRouter } from "@/i18n/routing"
 import { doc, getDoc } from "firebase/firestore"
 import { useFirestore } from "@/firebase"
+import { useModules } from "@/hooks/useCompanyModules"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Loader2 } from "lucide-react"
 
@@ -16,14 +17,17 @@ export default function LegacyRfqPage() {
   const rfqId = params.id as string
   const router = useRouter()
   const firestore = useFirestore()
+  const { on, loading } = useModules()
+  const pmOn = on("project-management")
 
   useEffect(() => {
-    if (!firestore || !rfqId) return
+    if (!firestore || !rfqId || loading) return
     ;(async () => {
       try {
         const snap = await getDoc(doc(firestore, "rfqs", rfqId))
         const projectId = snap.exists() ? (snap.data()?.projectId as string | undefined) : undefined
-        if (projectId) {
+        // With Project Management off a tender is just an RFQ: it opens on the core offers page.
+        if (projectId && pmOn) {
           router.replace(`/contractor/projects/${projectId}/tenders/${rfqId}/offers`)
         } else if (snap.exists()) {
           router.replace(`/contractor/rfqs/${rfqId}/offers`)
@@ -34,7 +38,7 @@ export default function LegacyRfqPage() {
         router.replace("/contractor/rfqs")
       }
     })()
-  }, [firestore, rfqId, router])
+  }, [firestore, rfqId, router, pmOn, loading])
 
   return (
     <PortalLayout>
