@@ -1,13 +1,17 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslations } from "next-intl"
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore"
-import { CalendarClock, CheckSquare, ClipboardList, Mail, MapPin, Phone, type LucideIcon } from "lucide-react"
+import { CalendarClock, CheckSquare, ClipboardList, Mail, MapPin, Paperclip, Phone, Trash2, UserRound, type LucideIcon } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { IconButton } from "@/components/module-ui/IconButton"
+import { addOpportunityFiles, oppFileAllowed } from "@/lib/crm-opportunity-writes"
+import { guessFileKind } from "@/components/crm/OppFilesPanel"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useFirestore, useUser } from "@/firebase"
+import { useFirestore, useStorage, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { CrmFormDialog, RequiredMark, type CrmFormStep } from "@/components/crm/CrmFormDialog"
 import type { TeamMember } from "@/hooks/useCrmData"
@@ -19,6 +23,7 @@ import {
   type CrmActivity,
   type CrmContact,
   type CrmOpportunity,
+  type OpportunityFileKind,
 } from "@/lib/crm"
 import { DATE_INPUT_CLASS } from "@/components/crm/CrmOpportunityDialog"
 const ACTIVITY_ICONS: Record<ActivityType, LucideIcon> = {
@@ -58,6 +63,7 @@ export function CrmActivityDialog({
 }) {
   const t = useTranslations("Portal.Shared")
   const firestore = useFirestore()
+  const storage = useStorage()
   const { user } = useUser()
   const { toast } = useToast()
   const [isSaving, setIsSaving] = useState(false)
@@ -66,8 +72,12 @@ export function CrmActivityDialog({
   const [contactId, setContactId] = useState("")
   const [opportunityId, setOpportunityId] = useState("")
   const [dueDate, setDueDate] = useState("")
-  const [ownerId, setOwnerId] = useState("")
   const [notes, setNotes] = useState("")
+  const [attachments, setAttachments] = useState<Array<{ file: File; kind: OpportunityFileKind }>>([])
+  const fileInput = useRef<HTMLInputElement>(null)
+  // No owner field (OPP-10 #4): an activity is recorded in the name of whoever adds it.
+  const me = teamMembers.find((m) => m.id === user?.uid)
+  const myName = me?.name || user?.displayName || user?.email || ""
   useEffect(() => {
     if (!open) return
     setType(activity?.type ?? "call")
@@ -75,9 +85,24 @@ export function CrmActivityDialog({
     setContactId(activity?.contactId ?? fixedContactId ?? "")
     setOpportunityId(activity?.opportunityId ?? fixedOpportunityId ?? "")
     setDueDate(activity?.dueDate ?? "")
-    setOwnerId(activity?.ownerId ?? user?.uid ?? "")
     setNotes(activity?.notes ?? "")
-  }, [open, activity, fixedContactId, fixedOpportunityId, user?.uid])
+    setAttachments([])
+  }, [open, activity, fixedContactId, fixedOpportunityId])
+
+  const pickFiles = (list: FileList | null) => {
+    if (!list) return
+    const next: Array<{ file: File; kind: OpportunityFileKind }> = []
+    for (const file of Array.from(list)) {
+      const check = oppFileAllowed(file)
+      if (check !== "ok") {
+        toast({ variant: "destructive", title: t(`crm_file_err_${check}`, { name: file.name }) })
+        continue
+      }
+      next.push({ file, kind: guessFileKind(file) })
+    }
+    setAttachments((p) => [...p, ...next])
+    if (fileInput.current) fileInput.current.value = ""
+  }
   // Only deals belonging to the chosen contact can be linked — offering the
   // whole org's pipeline here would let a call be filed against a stranger.
   const linkableOpportunities = opportunities.filter((o) => o.contactId === contactId)
@@ -95,7 +120,6 @@ export function CrmActivityDialog({
     try {
       const contact = contacts.find((c) => c.id === contactId)
       const opp = opportunities.find((o) => o.id === opportunityId)
-      const owner = teamMembers.find((m) => m.id === ownerId)
       const data = {
         type,
         title: title.trim(),
@@ -104,16 +128,25 @@ export function CrmActivityDialog({
         opportunityId: opportunityId || null,
         opportunityTitle: opp?.title ?? (opportunityId ? activity?.opportunityTitle ?? null : null),
         dueDate: dueDate || null,
-        ownerId: owner?.id || ownerId || null,
-        ownerName: owner?.name || null,
+        // The person who adds it; an edit keeps whoever added it.
+        ownerId: activity?.ownerId ?? user?.uid ?? null,
+        ownerName: activity?.ownerName ?? (myName || null),
         notes: notes.trim() || null,
         organizationId: orgId,
         updatedAt: serverTimestamp(),
       }
+      let activityId = activity?.id ?? ""
       if (activity) {
         await updateDoc(doc(firestore, CRM_ACTIVITIES, activity.id), data)
       } else {
-        await addDoc(collection(firestore, CRM_ACTIVITIES), { ...data, done: false, createdAt: serverTimestamp() })
+        activityId = (await addDoc(collection(firestore, CRM_ACTIVITIES), { ...data, done: false, createdAt: serverTimestamp() })).id
+      }
+      // The visit report, the site photo, the client's letter: kept on the deal, linked to this activity.
+      if (attachments.length && opp && user) {
+        await addOpportunityFiles(firestore, storage, opp, { uid: user.uid, name: myName }, attachments, "activity", { id: activityId, title: title.trim() }).catch((err) => {
+          console.error(err)
+          toast({ variant: "destructive", title: t("crm_files_failed") })
+        })
       }
       toast({ title: t("crm_activity_saved") })
       onOpenChange(false)
@@ -206,7 +239,7 @@ export function CrmActivityDialog({
                 </Select>
               </div>
             )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:max-w-xs">
               <div className="space-y-1.5">
                 <Label htmlFor="act-due">{t(type === "meeting" || type === "site_visit" ? "crm_activity_when" : "crm_activity_due")}</Label>
                 <input
@@ -219,23 +252,34 @@ export function CrmActivityDialog({
                   className={DATE_INPUT_CLASS}
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="act-owner">{t("crm_owner")}</Label>
-                <Select value={ownerId || "__none__"} onValueChange={(v) => setOwnerId(v === "__none__" ? "" : v)} disabled={isSaving}>
-                  <SelectTrigger id="act-owner"><SelectValue placeholder={t("crm_owner_placeholder")} /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">{t("crm_owner_none")}</SelectItem>
-                    {teamMembers.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="act-notes">{t("crm_notes")}</Label>
               <Textarea id="act-notes" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={isSaving} />
             </div>
+            {opportunityId && (
+              <div className="space-y-1.5">
+                <Label>{t("crm_activity_attachments_label")}</Label>
+                <div className="space-y-1.5 rounded-lg border border-dashed p-3">
+                  {attachments.map((a, i) => (
+                    <div key={`${a.file.name}-${i}`} className="flex items-center gap-2 text-sm">
+                      <Paperclip size={13} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <bdi dir="auto" className="min-w-0 flex-1 truncate">{a.file.name}</bdi>
+                      <IconButton icon={Trash2} iconSize={13} label={t("crm_delete_btn")} onClick={() => setAttachments((list) => list.filter((_, j) => j !== i))} />
+                    </div>
+                  ))}
+                  <input ref={fileInput} type="file" multiple className="sr-only" aria-label={t("crm_files_attach")} onChange={(e) => pickFiles(e.target.files)} />
+                  <Button type="button" size="sm" variant="ghost" className="gap-1.5 text-cta" onClick={() => fileInput.current?.click()} disabled={isSaving}>
+                    <Paperclip size={13} aria-hidden="true" />
+                    {t("crm_files_attach")}
+                  </Button>
+                </div>
+              </div>
+            )}
+            <p className="flex items-start gap-2 rounded-lg border bg-muted/30 p-3 text-[11px] text-muted-foreground">
+              <UserRound size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+              {t("crm_activity_recorded_as", { name: activity?.ownerName || myName || "—" })}
+            </p>
         </>
       ),
     },

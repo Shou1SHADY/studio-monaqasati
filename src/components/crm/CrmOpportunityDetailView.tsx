@@ -1,31 +1,23 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { useParams } from "next/navigation"
+import { useEffect, useMemo, useState } from "react"
+import { useParams, useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore"
 import {
-  AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
   Building2,
   CalendarDays,
-  CheckCircle2,
   ClipboardList,
-  Circle,
-  Coins,
   ExternalLink,
   FileStack,
   FileText,
-  History,
   Loader2,
+  Paperclip,
   Pause,
   Pencil,
   Play,
   Plus,
-  ShieldCheck,
   Target,
-  Trophy,
   XCircle,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -35,8 +27,9 @@ import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useModules } from "@/hooks/useCompanyModules"
-import { useCrmApproval } from "@/hooks/useCrmApproval"
 import { useCrmData } from "@/hooks/useCrmData"
+import { useCrmOrgProfile } from "@/hooks/useCrmOrgProfile"
+import { useOpportunityFiles } from "@/hooks/useOpportunityFiles"
 import { cn } from "@/lib/utils"
 import { PROJECT_STATUS_BADGE_CLASSES, projectStatusLabelKey, resolveProjectStatus } from "@/lib/project-status"
 import {
@@ -44,62 +37,51 @@ import {
   CRM_ACTIVITIES,
   CRM_OPPORTUNITIES,
   HANDOVER_BADGE_CLASS,
-  OPEN_OPPORTUNITY_STAGES,
   OPPORTUNITY_STAGE_BADGE_CLASS,
   OPPORTUNITY_STATE_BADGE_CLASS,
   TRACK_BADGE_CLASS,
-  canAdvanceStage,
-  checkEligibility,
+  canRecordAward,
   daysUntil,
-  fitsCapacity,
   formatCrmDate,
   formatSar,
-  gateLabelKey,
   historyEntry,
-  isGateDone,
-  isPartialAward,
-  nextStage,
+  isProjectDeal,
   opportunityAddenda,
-  opportunityGates,
-  opportunityMargin,
+  opportunityDeliverables,
   opportunityState,
   opportunityTrack,
-  priceGapToWinner,
   primaryScope,
+  priceGapToWinner,
   stageHistory,
   trackDateLabelKey,
-  type CrmOpportunity,
-  type OpportunityGate,
+  type GateContext,
 } from "@/lib/crm"
-import {
-  CrmEmptyState,
-  CrmListSkeleton,
-  CrmPanel,
-  CrmRow,
-  crmBasePath,
-  type CrmPortal,
-} from "@/components/crm/CrmShell"
+import { currentOffer, deadlinePassed, hasSentOffer, offerVersions, pricingState } from "@/lib/crm-journey"
+import { qualifyOpportunity, recordGoDecision } from "@/lib/crm-opportunity-writes"
+import { SALES_ORDERS } from "@/lib/sales-orders"
+import { CrmEmptyState, CrmListSkeleton, CrmPanel, CrmRow, crmBasePath, type CrmPortal } from "@/components/crm/CrmShell"
 import { CrmOpportunityDialog } from "@/components/crm/CrmOpportunityDialog"
-import { CrmValueDialog, type ValueStep } from "@/components/crm/CrmValueDialog"
 import { CrmCloseDialog, type CloseMode } from "@/components/crm/CrmCloseDialog"
 import { CrmHandoverDialog } from "@/components/crm/CrmHandoverDialog"
 import { CrmActivityDialog } from "@/components/crm/CrmActivityDialog"
 import { CrmAddendumDialog } from "@/components/crm/CrmAddendumDialog"
-import { EligibilityBadge } from "@/components/crm/CrmOpportunitiesView"
-import { useCrmOrgProfile } from "@/hooks/useCrmOrgProfile"
-
-/** The four rungs, in the order they get filled in. */
-const LADDER: Array<{ step: ValueStep; field: keyof CrmOpportunity }> = [
-  { step: "estimate", field: "value" },
-  { step: "cost", field: "approvedCost" },
-  { step: "submitted", field: "submittedPrice" },
-  { step: "award", field: "awardedValue" },
-]
+import { OppFilesPanel } from "@/components/crm/OppFilesPanel"
+import { OppNumber, OppStatusLine, todayKey } from "@/components/crm/OppBits"
+import { AwardDialog, EstimateDialog, NoGoDialog, PricingRequestDialog, RevisionRequestDialog } from "@/components/crm/OppJourneyDialogs"
+import {
+  AfterAwardPanel,
+  EligibilityPanel,
+  JourneyHistoryPanel,
+  OfferPanel,
+  PricingStepPanel,
+  QualifyPanel,
+  ValuePanel,
+} from "@/components/crm/OppJourneyPanels"
 
 /**
- * Everything about one deal on one page: what it is worth at each stage of
- * being priced, what still blocks it, what was said to the client, and the
- * actions that move it — including the handover that turns it into a project.
+ * One deal on one page (Opportunity journey v1.1). CRM owns the deal — its client, details, files, qualification,
+ * follow-up, outcome and handover — and never prices it: the offer comes from Sales as a value and a PDF. Each panel
+ * shows a fact and the one act that moves the deal on, recorded in the name of whoever acts.
  */
 export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
@@ -108,6 +90,7 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
   const locale = useLocale()
   const isRtl = locale === "ar"
   const params = useParams()
+  const search = useSearchParams()
   const opportunityId = String(params.id ?? "")
   const router = useRouter()
   const firestore = useFirestore()
@@ -115,29 +98,26 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
   const { can } = usePermissions()
   const { on } = useModules()
   const canManage = can("crm.manage")
-  // Closing — award, loss, handover — is its own permission. Working the
-  // pipeline and declaring its outcome are different levels of trust.
+  // Closing — award, loss, handover — is its own permission.
   const canClose = can("crm.close")
-  const { approvalLimit, canApprovePrices } = useCrmApproval()
 
-  const { orgId, contacts, contactsById, opportunities, quotations, activities, teamMembers, isLoading } =
-    useCrmData({ opportunities: true, quotations: true, activities: true })
+  const { orgId, contacts, contactsById, opportunities, quotations, quoteRequests, activities, teamMembers, actor, isLoading } = useCrmData({
+    opportunities: true,
+    quotations: true,
+    quoteRequests: true,
+    activities: true,
+  })
   const { profile } = useCrmOrgProfile()
+  const { files } = useOpportunityFiles(opportunityId, orgId)
 
   const base = crmBasePath(portal)
-  // Projects exist on the contractor portal only, and only while the company has them on; otherwise a won deal continues in Sales.
+  // Projects exist on the contractor portal only, and only while the company has them on; otherwise a won deal continues
+  // in Sales — the award then waits for the sales order, like supply and service (OPP-06 #5).
   const projectsBase = portal === "contractor" && on("project-management") ? "/contractor/projects" : null
+  const today = todayKey()
 
-  // Picked out of the org-scoped list rather than read by id: the query is
-  // already filtered by `organizationId`, so a deal from another org simply is
-  // not here — no separate cross-org guard to get wrong.
-  const opportunity = useMemo(
-    () => opportunities.find((o) => o.id === opportunityId) ?? null,
-    [opportunities, opportunityId]
-  )
+  const opportunity = useMemo(() => opportunities.find((o) => o.id === opportunityId) ?? null, [opportunities, opportunityId])
 
-  // The project this deal became, so its current stage shows here — the
-  // CRM's view of a deal does not end at the handover.
   const projectRef = useMemoFirebase(() => {
     if (!firestore || !opportunity?.projectId) return null
     return doc(firestore, "projects", opportunity.projectId)
@@ -145,36 +125,38 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
   const { data: project } = useDoc(projectRef)
   const projectStatus = project ? resolveProjectStatus((project as { status?: string }).status) : null
 
+  const versions = useMemo(() => offerVersions(quotations, opportunityId), [quotations, opportunityId])
+  const offer = useMemo(() => currentOffer(quotations, opportunityId), [quotations, opportunityId])
+  // Supply and service end in Sales' sales order (OPP-06 #5): its number, once Sales creates it from the accepted offer.
+  const awardedOffer = useMemo(
+    () => quotations.find((q) => q.id === opportunity?.awardedQuotationId) ?? offer,
+    [quotations, opportunity?.awardedQuotationId, offer]
+  )
+  const orderRef = useMemoFirebase(() => {
+    if (!firestore || !awardedOffer?.salesOrderId) return null
+    return doc(firestore, SALES_ORDERS, awardedOffer.salesOrderId)
+  }, [firestore, awardedOffer?.salesOrderId])
+  const { data: salesOrder } = useDoc(orderRef)
+
   const [showEdit, setShowEdit] = useState(false)
-  const [valueStep, setValueStep] = useState<ValueStep | null>(null)
   const [closeMode, setCloseMode] = useState<CloseMode | null>(null)
-  const [showHandover, setShowHandover] = useState(false)
-  const [showActivity, setShowActivity] = useState(false)
-  const [showAddendum, setShowAddendum] = useState(false)
+  const [dialog, setDialog] = useState<"handover" | "activity" | "addendum" | "nogo" | "price" | "revision" | "award" | "estimate" | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const oppQuotations = useMemo(
-    () =>
-      quotations
-        .filter((q) => q.opportunityId === opportunityId)
-        .sort((a, b) => (b.version || 0) - (a.version || 0)),
-    [quotations, opportunityId]
-  )
+  // The board's «move the date with an addendum» / «close it» on a tender whose deadline passed (OPP-08 #3).
+  useEffect(() => {
+    const action = search.get("do")
+    if (action === "addendum") setDialog("addendum")
+    if (action === "lost") setCloseMode("lost")
+  }, [search])
+
   const oppActivities = useMemo(
-    () =>
-      activities
-        .filter((a) => a.opportunityId === opportunityId)
-        .sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")),
+    () => activities.filter((a) => a.opportunityId === opportunityId).sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")),
     [activities, opportunityId]
   )
-  const handedOverCount = useMemo(
-    () => opportunities.filter((o) => opportunityState(o) === "handed_over").length,
-    [opportunities]
-  )
+  const handedOverCount = useMemo(() => opportunities.filter((o) => opportunityState(o) === "handed_over").length, [opportunities])
 
-  if (isLoading) {
-    return <CrmListSkeleton rows={8} />
-  }
+  if (isLoading) return <CrmListSkeleton rows={8} />
 
   if (!opportunity) {
     return (
@@ -196,26 +178,25 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
   const state = opportunityState(opp)
   const isOpen = state === "open"
   const contact = contactsById.get(opp.contactId) ?? null
-  const gateCtx = { profile }
-  const gates = opportunityGates(opp)
-  const doneGates = gates.filter((g) => isGateDone(opp, g, gateCtx))
-  const remaining = gates.length - doneGates.length
-  const next = nextStage(opp)
-  const eligibility = checkEligibility(opp, profile)
-  const withinCapacity = fitsCapacity(opp, profile)
-  const history = stageHistory(opp)
+  const offerSent = hasSentOffer(opp, offer)
+  const gateCtx: GateContext = { profile, offerValue: offer?.amount ?? null, offerSent }
+  const pricing = pricingState(opp, quoteRequests, quotations, today)
+  const awardAllowed = canClose && canRecordAward(opp, offerSent)
+  const overdue = deadlinePassed(opp, offerSent, today)
   const addenda = opportunityAddenda(opp)
   const scope = primaryScope(opp)
-  const margin = opportunityMargin(opp)
   const days = daysUntil(opp.expectedCloseDate)
-  const approvalPending = (opp.approvalStatus || "none") === "pending"
+  // A supplier has no projects: its won deals always end in a sales order.
+  const projectDeal = !!projectsBase && isProjectDeal(opp)
+  const tenderFiles = files.filter((f) => f.kind === "tender_docs")
+  const details = opp.details || opp.notes || ""
 
-  const patch = async (data: Record<string, unknown>, successKey: string) => {
+  const act = async (fn: () => Promise<unknown>, ok: string) => {
     if (!firestore || busy) return
     setBusy(true)
     try {
-      await updateDoc(doc(firestore, CRM_OPPORTUNITIES, opp.id), { ...data, updatedAt: serverTimestamp() })
-      toast({ title: t(successKey) })
+      await fn()
+      toast({ title: t(ok) })
     } catch (err) {
       console.error(err)
       toast({ title: t("crm_save_error"), variant: "destructive" })
@@ -224,107 +205,111 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
     }
   }
 
-  const toggleGate = (gate: OpportunityGate) => {
-    const current = opp.completedGates || []
-    const next = current.includes(gate.id) ? current.filter((id) => id !== gate.id) : [...current, gate.id]
-    void patch({ completedGates: next }, "crm_gate_updated")
-  }
-
-  const advance = () => {
-    if (!next) return
-    void patch(
-      {
-        // Reaching `won` is an outcome, not just another column.
-        ...(next === "won" ? { stage: "won", state: "won" } : { stage: next }),
-        stageHistory: [...history, historyEntry(next, opp.ownerName)],
-      },
-      "crm_opp_stage_updated"
-    )
-  }
-
   const reactivate = () =>
-    void patch(
-      {
-        state: "open",
-        holdReason: null,
-        holdUntil: null,
-        stageHistory: [...history, historyEntry("reactivated", opp.ownerName)],
-      },
+    act(
+      () =>
+        updateDoc(doc(firestore, CRM_OPPORTUNITIES, opp.id), {
+          state: "open",
+          holdReason: null,
+          holdUntil: null,
+          stageHistory: [...stageHistory(opp), historyEntry("reactivated", actor.name)],
+          updatedAt: serverTimestamp(),
+        }),
       "crm_reactivated"
     )
 
+  const closeProps = {
+    canManage,
+    canClose,
+    onHold: () => setCloseMode("hold"),
+    onLost: () => setCloseMode("lost"),
+  }
+
+  // The stage decides the panel that holds the next act (OPP-05).
+  const stagePanel = !isOpen ? null : opp.stage === "new" ? (
+    <QualifyPanel
+      opp={opp}
+      ctx={gateCtx}
+      tenderFiles={tenderFiles}
+      busy={busy}
+      onGo={() => void act(() => recordGoDecision(firestore, opp, actor, true), "crm_go_saved")}
+      onUndoGo={() => void act(() => recordGoDecision(firestore, opp, actor, null), "crm_go_undone")}
+      onNoGo={() => setDialog("nogo")}
+      onQualify={() => void act(() => qualifyOpportunity(firestore, opp, actor, gateCtx), "crm_opp_stage_updated")}
+      {...closeProps}
+    />
+  ) : opp.stage === "qualified" ? (
+    <PricingStepPanel onRequest={() => setDialog("price")} {...closeProps} />
+  ) : null
+
   return (
     <div className="space-y-6" dir={isRtl ? "rtl" : "ltr"}>
-      <Link
-        href={`${base}/opportunities`}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-      >
-        {isRtl ? <ArrowRight size={15} /> : <ArrowLeft size={15} />}
-        {t("crm_opp_back_to_list")}
-      </Link>
-
-      <header className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+      {/* One way back — the portal's trail above the page (OPP-09 #1). */}
+      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+          <div className="mb-1.5 flex flex-wrap items-center gap-2">
+            <OppNumber number={opp.docNumber} className="text-[11px]" />
             <Badge variant="outline" className={cn("text-[10px]", TRACK_BADGE_CLASS[track])}>
               {t(`crm_track_${track}`)}
             </Badge>
             <Badge variant="outline" className={cn("text-[10px]", OPPORTUNITY_STATE_BADGE_CLASS[state])}>
               {t(`crm_state_${state}`)}
             </Badge>
-            {isOpen && (
-              <Badge className={cn("text-[10px]", OPPORTUNITY_STAGE_BADGE_CLASS[opp.stage])}>
-                {t(`crm_opp_stage_${opp.stage}`)}
-              </Badge>
-            )}
+            {isOpen && <Badge className={cn("text-[10px]", OPPORTUNITY_STAGE_BADGE_CLASS[opp.stage])}>{t(`crm_opp_stage_${opp.stage}`)}</Badge>}
+            {isOpen && <OppStatusLine opp={opp} pricing={pricing} gateCtx={gateCtx} today={today} />}
           </div>
           <h1 className="text-2xl font-black text-primary">{opp.title}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            <Link
-              href={`${base}/leads/${opp.contactId}`}
-              className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-            >
-              {opp.contactName || contact?.name || t("crm_opp_contact")}
+          <p className="mt-1 text-sm text-muted-foreground">
+            <Link href={`${base}/leads/${opp.contactId}`} className="rounded text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {opp.contactName || contact?.name || t("crm_client")}
             </Link>
-            {opp.ownerName && <span> · {opp.ownerName}</span>}
+            {opp.createdByName && <span> · {t("crm_recorded_by", { name: opp.createdByName })}</span>}
           </p>
         </div>
         {canManage && (
-          <Button variant="outline" className="gap-2 shrink-0" onClick={() => setShowEdit(true)}>
-            <Pencil size={15} />
+          <Button variant="outline" className="shrink-0 gap-2" onClick={() => setShowEdit(true)}>
+            <Pencil size={15} aria-hidden="true" />
             {t("crm_opp_edit_title")}
           </Button>
         )}
       </header>
 
-      {/* ---- outcome banners ------------------------------------------- */}
-      {state === "won" && (
-        <div className="rounded-xl border border-success/20 bg-success/5 p-4 flex items-start gap-3">
-          <Trophy size={18} className="text-success shrink-0 mt-0.5" />
-          <div className="min-w-0 space-y-1 flex-1">
-            <p className="font-bold text-sm text-foreground">
-              {t("crm_state_won_banner")}
-              {opp.wonReason && ` — ${t(`crm_won_reason_${opp.wonReason}`)}`}
-            </p>
-            {opp.wonNote && <p className="text-xs text-foreground/80">{opp.wonNote}</p>}
-            {opp.handoverStatus === "rejected" && (
-              <p className="text-xs text-destructive flex items-start gap-1.5 pt-1">
-                <XCircle size={13} className="shrink-0 mt-0.5" />
-                <span>
-                  {t("crm_handover_rejected_banner", { pm: opp.projectManagerName || "" })}
-                  {opp.handoverRejectReason && ` — ${opp.handoverRejectReason}`}
-                </span>
-              </p>
-            )}
-          </div>
+      {/* What is asked, at the top — the same text Sales receives with the pricing request (OPP-01 #3). */}
+      {details && <p className="whitespace-pre-wrap rounded-xl border bg-muted/20 p-4 text-sm leading-relaxed text-foreground/90">{details}</p>}
+
+      {overdue && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+          <CalendarDays size={18} className="shrink-0 text-destructive" aria-hidden="true" />
+          <p className="min-w-0 flex-1 text-sm font-bold">{t("crm_deadline_passed_banner", { date: formatCrmDate(opp.expectedCloseDate, locale) })}</p>
+          {canManage && (
+            <Button size="sm" variant="outline" onClick={() => setDialog("addendum")}>
+              {t("crm_update_deadline")}
+            </Button>
+          )}
+          {canClose && (
+            <Button size="sm" variant="outline" className="text-destructive" onClick={() => setCloseMode("lost")}>
+              {t("crm_close_it")}
+            </Button>
+          )}
         </div>
       )}
 
+      {/* ---- outcome banners ------------------------------------------- */}
+      {state === "won" && opp.handoverStatus === "rejected" && (
+        <p className="flex items-start gap-1.5 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+          <XCircle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>
+            {t("crm_handover_rejected_banner", { pm: opp.projectManagerName || "" })}
+            {opp.handoverRejectReason && ` — ${opp.handoverRejectReason}`}
+          </span>
+        </p>
+      )}
+
       {state === "handed_over" && (
-        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 flex flex-wrap items-center gap-3">
-          <Building2 size={18} className="text-primary shrink-0" />
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <Building2 size={18} className="shrink-0 text-primary" aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <p className="font-bold text-sm text-foreground flex flex-wrap items-center gap-2">
+            <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-foreground">
               {t("crm_state_handed_over_banner")}
               {opp.handoverStatus && (
                 <Badge variant="outline" className={cn("text-[10px]", HANDOVER_BADGE_CLASS[opp.handoverStatus])}>
@@ -338,21 +323,19 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
               )}
             </p>
             <p className="text-xs text-muted-foreground">
-              {[opp.contractNumber, opp.durationMonths ? t("crm_handover_months", { months: opp.durationMonths }) : null, opp.projectManagerName]
+              {[
+                opp.contractNumber,
+                opp.durationDays ? t("crm_handover_days", { days: opp.durationDays }) : opp.durationMonths ? t("crm_handover_months", { months: opp.durationMonths }) : null,
+                opp.projectManagerName,
+              ]
                 .filter(Boolean)
                 .join(" · ") || formatCrmDate(opp.handedOverAt, locale)}
             </p>
-            {opp.wonReason && (
-              <p className="text-xs text-muted-foreground">
-                {t("crm_won_reason")}: {t(`crm_won_reason_${opp.wonReason}`)}
-                {opp.wonNote && ` — ${opp.wonNote}`}
-              </p>
-            )}
           </div>
           {opp.projectId && projectsBase && (
-            <Button asChild variant="outline" size="sm" className="gap-1.5 shrink-0">
+            <Button asChild variant="outline" size="sm" className="shrink-0 gap-1.5">
               <Link href={`${projectsBase}/${opp.projectId}`}>
-                <ExternalLink size={13} />
+                <ExternalLink size={13} aria-hidden="true" />
                 {t("crm_handover_open_project")}
               </Link>
             </Button>
@@ -361,12 +344,13 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
       )}
 
       {state === "lost" && (
-        <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 flex items-start gap-3">
-          <XCircle size={18} className="text-destructive shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+          <XCircle size={18} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
           <div className="min-w-0 space-y-1">
-            <p className="font-bold text-sm text-foreground">
+            <p className="text-sm font-bold text-foreground">
               {t("crm_state_lost_banner")}
               {opp.lostReason && ` — ${t(`crm_lost_reason_${opp.lostReason}`)}`}
+              {opp.lostReason === "withdrew" && opp.goDecision?.reason && ` · ${t(`crm_nogo_reason_${opp.goDecision.reason}`)}`}
             </p>
             <p className="text-xs text-muted-foreground">
               {[
@@ -376,16 +360,16 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
                 .filter(Boolean)
                 .join(" · ") || "—"}
             </p>
-            {opp.lessonLearned && <p className="text-xs text-foreground/80 pt-1">{opp.lessonLearned}</p>}
+            {opp.lessonLearned && <p className="pt-1 text-xs text-foreground/80">{opp.lessonLearned}</p>}
           </div>
         </div>
       )}
 
       {state === "on_hold" && (
-        <div className="rounded-xl border border-warning/20 bg-warning/5 p-4 flex flex-wrap items-center gap-3">
-          <Pause size={18} className="text-warning shrink-0" />
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-warning/20 bg-warning/5 p-4">
+          <Pause size={18} className="shrink-0 text-warning" aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <p className="font-bold text-sm text-foreground">
+            <p className="text-sm font-bold text-foreground">
               {t("crm_state_on_hold_banner")}
               {opp.holdReason && ` — ${t(`crm_hold_reason_${opp.holdReason}`)}`}
             </p>
@@ -396,296 +380,103 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
             )}
           </div>
           {canManage && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 shrink-0"
-              disabled={busy}
-              onClick={reactivate}
-            >
-              {busy ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+            <Button variant="outline" size="sm" className="shrink-0 gap-1.5" disabled={busy} onClick={() => void reactivate()}>
+              {busy ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Play size={13} aria-hidden="true" />}
               {t("crm_reactivate_btn")}
             </Button>
           )}
         </div>
       )}
 
-      {approvalPending && (
-        <div className="rounded-xl border border-warning/20 bg-warning/5 p-4 flex flex-wrap items-center gap-3">
-          <ShieldCheck size={18} className="text-warning shrink-0" />
-          <div className="min-w-0 flex-1">
-            <p className="font-bold text-sm text-foreground">{t("crm_approval_pending_banner")}</p>
-            <p className="text-xs text-muted-foreground" dir="ltr">
-              {formatSar(opp.approvalAmount || opp.submittedPrice || 0, locale)}
-            </p>
+      {/* ---- the act that moves it on, and its value --------------------- */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {stagePanel}
+        {state === "won" && (
+          <AfterAwardPanel
+            opp={opp}
+            offer={awardedOffer}
+            projectDeal={projectDeal}
+            salesOrderNumber={salesOrder ? `SO-${(salesOrder as { orderNumber?: number }).orderNumber ?? ""}` : null}
+            canClose={canClose}
+            onHandover={() => setDialog("handover")}
+          />
+        )}
+        {opp.stage === "new" && isOpen ? (
+          <EligibilityPanel opp={opp} profile={profile} offerValue={offer?.amount ?? null} settingsHref={`${base}/settings`} />
+        ) : (
+          <ValuePanel
+            opp={opp}
+            offer={offer}
+            pricing={pricing}
+            contact={contact}
+            canManage={canManage}
+            awardAllowed={awardAllowed}
+            onEstimate={() => setDialog("estimate")}
+            onAward={() => setDialog("award")}
+          />
+        )}
+        <OfferPanel
+          opp={opp}
+          pricing={pricing}
+          versions={versions}
+          contact={contact}
+          today={today}
+          onRevision={() => setDialog("revision")}
+          onRequestAgain={() => setDialog("price")}
+          {...closeProps}
+        />
+        {opp.stage === "new" && isOpen && (
+          <ValuePanel
+            opp={opp}
+            offer={offer}
+            pricing={pricing}
+            contact={contact}
+            canManage={canManage}
+            awardAllowed={false}
+            onEstimate={() => setDialog("estimate")}
+            onAward={() => undefined}
+          />
+        )}
+        {/* In proposal / negotiation the offer panel holds the actions; postpone and close stay reachable. */}
+        {isOpen && (opp.stage === "proposal" || opp.stage === "negotiation") && pricing.kind !== "declined" && (
+          <div className="flex flex-wrap items-start gap-2 lg:col-span-2">
+            {canManage && (
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setCloseMode("hold")}>
+                <Pause size={13} aria-hidden="true" />
+                {t("crm_hold_btn")}
+              </Button>
+            )}
+            {canClose && (
+              <Button size="sm" variant="outline" className="gap-1.5 text-destructive hover:text-destructive" onClick={() => setCloseMode("lost")}>
+                <XCircle size={13} aria-hidden="true" />
+                {t("crm_close_lost_btn")}
+              </Button>
+            )}
           </div>
-          {canManage && canApprovePrices && (opp.approvalAmount || 0) <= approvalLimit ? (
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Sending back is the other half of approving. Without it the
-                  only way to reject a price is to approve it and re-enter one. */}
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5"
-                disabled={busy}
-                onClick={() =>
-                  void patch(
-                    { approvalStatus: "none", submittedPrice: null, approvalAmount: null },
-                    "crm_price_sent_back"
-                  )
-                }
-              >
-                {t("crm_send_back_btn")}
-              </Button>
-              <Button
-                size="sm"
-                className="gap-1.5"
-                disabled={busy}
-                onClick={() => void patch({ approvalStatus: "approved" }, "crm_price_approved")}
-              >
-                {busy ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />}
-                {t("crm_approve_btn")}
-              </Button>
-            </div>
-          ) : (
-            <span className="text-xs text-muted-foreground shrink-0">{t("crm_approval_above_your_limit")}</span>
-          )}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* ---- value ladder --------------------------------------------- */}
-        <CrmPanel
-          icon={Coins}
-          title={t("crm_value_ladder")}
-          subtitle={t("crm_value_ladder_desc")}
-          action={
-            margin !== null ? (
-              <span className="text-xs font-bold" dir="ltr">
-                <span className="text-muted-foreground font-normal">{t("crm_margin")} </span>
-                <span className={margin >= 12 ? "text-success" : "text-warning"}>{margin}%</span>
-              </span>
-            ) : undefined
-          }
-        >
-          <ol className="divide-y">
-            {LADDER.map((rung, index) => {
-              const amount = (opp[rung.field] as number | null | undefined) || 0
-              const isSet = amount > 0
-              // Each rung unlocks only once the one before it is filled: a
-              // submitted price with no approved cost is a guess, and an award
-              // with nothing submitted is a typo.
-              const previous = index === 0 ? Infinity : ((opp[LADDER[index - 1].field] as number | null) || 0)
-              const unlocked = index === 0 || previous > 0
-              // The award rung IS the "won" button, so it follows the close
-              // permission rather than the general manage one.
-              const editable =
-                unlocked &&
-                (rung.step === "award" ? canClose && (state === "open" || state === "won") : canManage && isOpen)
-              return (
-                <li key={rung.step} className="px-4 py-3 flex items-center gap-3">
-                  <span
-                    className={cn(
-                      "grid place-items-center h-7 w-7 rounded-full text-xs font-black shrink-0",
-                      isSet ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
-                    )}
-                    aria-hidden="true"
-                  >
-                    {isSet ? <CheckCircle2 size={15} /> : index + 1}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-foreground">{t(`crm_value_${rung.step}_label`)}</span>
-                    <span className="block text-[11px] text-muted-foreground">{t(`crm_value_${rung.step}_hint`)}</span>
-                  </span>
-                  <span className="shrink-0 text-end">
-                    <span className={cn("block text-sm font-black", isSet ? "text-foreground" : "text-muted-foreground/60")} dir="ltr">
-                      {isSet ? formatSar(amount, locale) : t("crm_value_not_set")}
-                    </span>
-                    {rung.step === "award" && isPartialAward(opp) && (
-                      <Badge variant="outline" className="mt-1 text-[10px] bg-warning/10 text-warning border-warning/20">
-                        {t("crm_award_partial")} {Math.round((amount / (opp.submittedPrice || 1)) * 100)}%
-                      </Badge>
-                    )}
-                  </span>
-                  {editable && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="shrink-0 h-8"
-                      onClick={() => setValueStep(rung.step)}
-                    >
-                      {isSet ? (rung.step === "submitted" ? t("crm_value_new_version") : t("crm_edit_short")) : t("crm_value_set")}
-                    </Button>
-                  )}
-                </li>
-              )
-            })}
-          </ol>
-        </CrmPanel>
-
-        {/* ---- gates ---------------------------------------------------- */}
-        <CrmPanel
-          icon={CheckCircle2}
-          title={t("crm_gates_title", { stage: t(`crm_opp_stage_${opp.stage}`) })}
-          subtitle={t("crm_gates_desc")}
-          action={
-            <span className="text-xs font-bold text-muted-foreground" dir="ltr">
-              {doneGates.length}/{gates.length}
-            </span>
-          }
-        >
-          {gates.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-muted-foreground text-center">{t("crm_gates_none")}</p>
-          ) : (
-            <ul className="divide-y">
-              {gates.map((gate) => {
-                const done = isGateDone(opp, gate, gateCtx)
-                // Auto gates read the record; ticking them by hand would let a
-                // deal claim a cost it does not have.
-                const interactive = canManage && isOpen && !gate.auto
-                const Row = interactive ? "button" : "div"
-                return (
-                  <li key={gate.id}>
-                    <Row
-                      {...(interactive ? { type: "button" as const, onClick: () => toggleGate(gate), disabled: busy } : {})}
-                      className={cn(
-                        "w-full px-4 py-3 flex items-start gap-3 text-start",
-                        interactive && "hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                      )}
-                    >
-                      {done ? (
-                        <CheckCircle2 size={16} className="shrink-0 mt-0.5 text-success" aria-hidden="true" />
-                      ) : (
-                        <Circle size={16} className="shrink-0 mt-0.5 text-muted-foreground/40" aria-hidden="true" />
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className={cn("block text-sm", done ? "text-foreground font-semibold" : "text-foreground")}>
-                          {t(gateLabelKey(gate))}
-                        </span>
-                        {(gate.auto || gate.module) && (
-                          <span className="block text-[11px] text-muted-foreground mt-0.5">
-                            {gate.auto ? t(`crm_gate_auto_${gate.auto}`) : t(`crm_gate_module_${gate.module}`)}
-                          </span>
-                        )}
-                      </span>
-                      {gate.module && (
-                        <Badge variant="outline" className="shrink-0 text-[10px] bg-muted text-muted-foreground border-border">
-                          {t(`crm_module_${gate.module}`)}
-                        </Badge>
-                      )}
-                    </Row>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-
-          {isOpen && (
-            <div className="p-4 border-t space-y-3 bg-muted/20">
-              {remaining > 0 && (
-                <p className="flex items-start gap-2 text-xs text-warning">
-                  <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-                  <span>{t("crm_gates_blocking", { count: remaining })}</span>
-                </p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {next && next !== "won" ? (
-                  <Button
-                    size="sm"
-                    className="gap-1.5"
-                    disabled={!canManage || busy || !canAdvanceStage(opp, gateCtx)}
-                    onClick={advance}
-                  >
-                    {busy ? <Loader2 size={13} className="animate-spin" /> : isRtl ? <ArrowLeft size={13} /> : <ArrowRight size={13} />}
-                    {t("crm_advance_to", { stage: t(`crm_opp_stage_${next}`) })}
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    className="gap-1.5"
-                    disabled={!canClose || busy || remaining > 0}
-                    onClick={() => setValueStep("award")}
-                    title={!canClose ? t("crm_close_no_permission") : undefined}
-                  >
-                    <Trophy size={13} />
-                    {t("crm_record_award_btn")}
-                  </Button>
-                )}
-                {canManage && (
-                  <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setCloseMode("hold")}>
-                    <Pause size={13} />
-                    {t("crm_hold_btn")}
-                  </Button>
-                )}
-                {canClose && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5 text-destructive hover:text-destructive"
-                    onClick={() => setCloseMode("lost")}
-                  >
-                    <XCircle size={13} />
-                    {t("crm_close_lost_btn")}
-                  </Button>
-                )}
-              </div>
-              {canManage && !canClose && (
-                <p className="text-[11px] text-muted-foreground">{t("crm_close_no_permission")}</p>
-              )}
-            </div>
-          )}
-
-          {state === "won" && !projectsBase && (
-            <div className="p-4 border-t space-y-3 bg-success/5">
-              <p className="text-xs text-muted-foreground">{t("crm_won_continue_in_sales")}</p>
-              <Button asChild size="sm" variant="outline" className="gap-1.5">
-                <Link href={`/${portal}/sales/quotations`}>
-                  <Building2 size={13} />
-                  {t("crm_open_sales")}
-                </Link>
-              </Button>
-            </div>
-          )}
-
-          {state === "won" && projectsBase && (
-            <div className="p-4 border-t space-y-3 bg-success/5">
-              <p className="text-xs text-muted-foreground">{t("crm_handover_prompt")}</p>
-              <Button
-                size="sm"
-                className="gap-1.5"
-                disabled={!canClose}
-                onClick={() => setShowHandover(true)}
-                title={!canClose ? t("crm_close_no_permission") : undefined}
-              >
-                <Building2 size={13} />
-                {t("crm_handover_btn")}
-              </Button>
-            </div>
-          )}
-        </CrmPanel>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* ---- details -------------------------------------------------- */}
         <CrmPanel icon={FileText} title={t("crm_opp_details")}>
           <CrmRow label={t("crm_opp_track")}>{t(`crm_track_${track}`)}</CrmRow>
+          <CrmRow label={t("crm_deliverable")}>{opportunityDeliverables(opp).map((d) => t(`crm_deliverable_${d}`)).join(" · ")}</CrmRow>
           <CrmRow label={t("crm_opp_scope")}>
             {scope || opp.customScopeType ? (
               <span className="flex flex-wrap items-center justify-end gap-1">
-                {(opp.scopeTypes ?? []).map((s, i) => (
-                  <Badge key={s} variant="outline" className="text-[10px] bg-muted text-muted-foreground border-border">
+                {(opp.scopeTypes ?? []).map((s) => (
+                  <Badge key={s} variant="outline" className="border-border bg-muted text-[10px] text-muted-foreground">
                     {t(`crm_scope_${s}`)}
-                    {i === 0 && (opp.scopeTypes?.length ?? 0) > 1 && <span aria-hidden="true"> ★</span>}
                   </Badge>
                 ))}
                 {opp.customScopeType && (
-                  <Badge variant="outline" className="text-[10px] bg-warning/10 text-warning border-warning/20">
+                  <Badge variant="outline" className="border-warning/20 bg-warning/10 text-[10px] text-warning">
                     {opp.customScopeType}
                   </Badge>
                 )}
               </span>
             ) : (
-              <span className="text-muted-foreground font-normal">{t("crm_not_specified")}</span>
+              <span className="font-normal text-muted-foreground">{t("crm_not_specified")}</span>
             )}
           </CrmRow>
           {opp.route && <CrmRow label={t("crm_opp_route")}>{t(`crm_route_${opp.route}`)}</CrmRow>}
@@ -693,10 +484,7 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
           {opp.source && <CrmRow label={t("crm_opp_source")}>{t(`crm_opp_source_${opp.source}`)}</CrmRow>}
           {opp.consultantContactId && (
             <CrmRow label={t("crm_opp_consultant")}>
-              <Link
-                href={`${base}/leads/${opp.consultantContactId}`}
-                className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-              >
+              <Link href={`${base}/leads/${opp.consultantContactId}`} className="rounded text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 {opp.consultantName || t("crm_opp_consultant")}
               </Link>
             </CrmRow>
@@ -709,232 +497,35 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
           <CrmRow label={t(trackDateLabelKey(track))}>
             {opp.expectedCloseDate ? (
               <span className="flex items-center gap-2">
-                <span dir="ltr">{formatCrmDate(opp.expectedCloseDate, locale)}</span>
-                {isOpen && days !== null && (
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-[10px]",
-                      days < 0
-                        ? "bg-destructive/10 text-destructive border-destructive/20"
-                        : days <= 7
-                          ? "bg-warning/10 text-warning border-warning/20"
-                          : "bg-muted text-muted-foreground border-border"
-                    )}
-                  >
+                <span>{formatCrmDate(opp.expectedCloseDate, locale)}</span>
+                {isOpen && days !== null && days <= 7 && (
+                  <Badge variant="outline" className={cn("text-[10px]", days < 0 ? "border-destructive/20 bg-destructive/10 text-destructive" : "border-warning/20 bg-warning/10 text-warning")}>
                     {days < 0 ? t("crm_opp_overdue") : t("crm_opp_due_soon", { days })}
                   </Badge>
                 )}
               </span>
             ) : (
-              <span className="text-muted-foreground font-normal">{t("crm_opp_no_close_date")}</span>
+              <span className="font-normal text-muted-foreground">{t("crm_opp_no_close_date")}</span>
             )}
           </CrmRow>
           <CrmRow label={t("crm_opp_probability")}>
-            <span dir="ltr">{typeof opp.probability === "number" ? `${opp.probability}%` : "—"}</span>
-          </CrmRow>
-          <CrmRow label={t("crm_owner")}>
-            {opp.ownerName || <span className="text-muted-foreground font-normal">{t("crm_owner_none")}</span>}
+            <span dir={typeof opp.probability === "number" ? "ltr" : undefined}>{typeof opp.probability === "number" ? `${opp.probability}%` : t("crm_prob_by_stage")}</span>
           </CrmRow>
           {opp.bidderCount != null && (
-            <CrmRow label={t("crm_value_bidders")}>
+            <CrmRow label={t("crm_award_bidders")}>
               <span dir="ltr">
                 {opp.bidderCount}
                 {opp.ourRank != null && ` · #${opp.ourRank}`}
               </span>
             </CrmRow>
           )}
-          {opp.notes && <p className="px-4 py-3 text-sm text-muted-foreground border-t whitespace-pre-wrap">{opp.notes}</p>}
         </CrmPanel>
 
-        {/* ---- offer versions ------------------------------------------- */}
-        <CrmPanel
-          icon={FileText}
-          title={t("crm_offer_versions")}
-          subtitle={t("crm_offer_versions_desc")}
-          action={
-            oppQuotations.length > 0 ? (
-              <span className="text-xs font-bold text-muted-foreground" dir="ltr">{oppQuotations.length}</span>
-            ) : undefined
-          }
-        >
-          {oppQuotations.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-muted-foreground text-center">{t("crm_offer_versions_empty")}</p>
-          ) : (
-            <ul className="divide-y">
-              {oppQuotations.map((q, index) => (
-                <li key={q.id} className="px-4 py-3 flex items-center gap-3">
-                  <span
-                    className={cn(
-                      "shrink-0 grid place-items-center h-7 w-9 rounded-md text-[11px] font-black",
-                      index === 0 ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
-                    )}
-                    dir="ltr"
-                  >
-                    v{q.version || 1}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-black text-foreground" dir="ltr">{formatSar(q.amount, locale)}</span>
-                    <span className="block text-[11px] text-muted-foreground truncate">
-                      {[
-                        q.date ? formatCrmDate(q.date, locale) : null,
-                        q.validityDays ? t("crm_offer_valid_days", { days: q.validityDays }) : null,
-                        q.paymentTerms,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
-                  </span>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "shrink-0 text-[10px]",
-                      index === 0
-                        ? "bg-success/10 text-success border-success/20"
-                        : "bg-muted text-muted-foreground border-border"
-                    )}
-                  >
-                    {t(index === 0 ? "crm_offer_current" : "crm_offer_superseded")}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CrmPanel>
+        <JourneyHistoryPanel opp={opp} versions={versions} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* ---- eligibility and capacity --------------------------------- */}
-        <CrmPanel
-          icon={ShieldCheck}
-          title={t("crm_eligibility_panel")}
-          subtitle={t("crm_eligibility_panel_desc")}
-          action={
-            <Link
-              href={`${base}/settings`}
-              className="text-[11px] font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-            >
-              {t("crm_settings_page_title")}
-            </Link>
-          }
-        >
-          <CrmRow label={t("crm_classification_activity")}>
-            {eligibility.activity ? (
-              t(`crm_activity_class_${eligibility.activity}`)
-            ) : (
-              <span className="text-muted-foreground font-normal">{t("crm_not_specified")}</span>
-            )}
-          </CrmRow>
-          <CrmRow label={t("crm_required_grade")}>
-            <EligibilityBadge check={eligibility} />
-          </CrmRow>
-          {eligibility.unknown === null && (
-            <CrmRow label={t("crm_grade_comparison")}>
-              <span dir="ltr">
-                {t("crm_eligibility_detail", { required: eligibility.required ?? 0, held: eligibility.held ?? 0 })}
-              </span>
-            </CrmRow>
-          )}
-          <CrmRow label={t("crm_capacity_impact")}>
-            <Badge
-              variant="outline"
-              className={cn(
-                "text-[10px]",
-                withinCapacity
-                  ? "bg-success/10 text-success border-success/20"
-                  : "bg-destructive/10 text-destructive border-destructive/20"
-              )}
-            >
-              {t(withinCapacity ? "crm_capacity_within" : "crm_capacity_exceeds")}
-            </Badge>
-          </CrmRow>
-          {eligibility.unknown && (
-            <p className="px-4 py-3 border-t flex items-start gap-2 text-xs text-muted-foreground">
-              <AlertTriangle size={13} className="shrink-0 mt-0.5 text-warning" />
-              <span>{t(`crm_eligibility_hint_${eligibility.unknown}`)}</span>
-            </p>
-          )}
-          {eligibility.unknown === null && !eligibility.eligible && (
-            <p className="px-4 py-3 border-t flex items-start gap-2 text-xs text-destructive">
-              <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-              <span>{t("crm_eligibility_blocked")}</span>
-            </p>
-          )}
-        </CrmPanel>
-
-        {/* ---- path and history ----------------------------------------- */}
-        <CrmPanel icon={History} title={t("crm_history_title")} subtitle={t("crm_history_desc")}>
-          <ol className="p-4 space-y-0">
-            {OPEN_OPPORTUNITY_STAGES.concat("won").map((s, index) => {
-              const entry = history.find((h) => h.event === s)
-              const currentIndex = OPEN_OPPORTUNITY_STAGES.indexOf(opp.stage)
-              const thisIndex = index
-              const reached = !!entry || (isOpen && thisIndex < currentIndex)
-              const isCurrent = isOpen && s === opp.stage
-              return (
-                <li key={s} className="flex items-start gap-3 pb-4 last:pb-0 relative">
-                  {/* Connector runs behind the markers, stopping at the last. */}
-                  {index < OPEN_OPPORTUNITY_STAGES.length && (
-                    <span
-                      className="absolute start-[11px] top-6 bottom-0 w-px bg-border"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <span
-                    className={cn(
-                      "relative z-10 grid place-items-center h-6 w-6 rounded-full text-[10px] font-black shrink-0",
-                      isCurrent
-                        ? "bg-primary text-primary-foreground"
-                        : reached
-                          ? "bg-success/15 text-success"
-                          : "bg-muted text-muted-foreground"
-                    )}
-                    aria-hidden="true"
-                  >
-                    {reached && !isCurrent ? <CheckCircle2 size={13} /> : index + 1}
-                  </span>
-                  <span className="min-w-0 flex-1 pt-0.5">
-                    <span className={cn("block text-sm", isCurrent ? "font-black text-foreground" : "text-foreground")}>
-                      {t(`crm_opp_stage_${s}`)}
-                    </span>
-                    {entry && (
-                      <span className="block text-[11px] text-muted-foreground">
-                        {formatCrmDate(entry.at, locale)}
-                        {entry.byName && ` · ${entry.byName}`}
-                      </span>
-                    )}
-                  </span>
-                </li>
-              )
-            })}
-            {/* Terminal events are not stages, so they sit after the ladder. */}
-            {history
-              .filter((h) => !OPEN_OPPORTUNITY_STAGES.includes(h.event as never) && h.event !== "won")
-              .map((entry, index) => (
-                <li key={`${entry.event}-${index}`} className="flex items-start gap-3 pt-1">
-                  <span
-                    className={cn(
-                      "grid place-items-center h-6 w-6 rounded-full shrink-0",
-                      entry.event === "lost" || entry.event === "handover_rejected"
-                        ? "bg-destructive/15 text-destructive"
-                        : "bg-primary/15 text-primary"
-                    )}
-                    aria-hidden="true"
-                  >
-                    {entry.event === "lost" || entry.event === "handover_rejected" ? <XCircle size={13} /> : <CheckCircle2 size={13} />}
-                  </span>
-                  <span className="min-w-0 flex-1 pt-0.5">
-                    <span className="block text-sm text-foreground">{t(`crm_history_${entry.event}`)}</span>
-                    <span className="block text-[11px] text-muted-foreground">
-                      {formatCrmDate(entry.at, locale)}
-                      {entry.byName && ` · ${entry.byName}`}
-                    </span>
-                  </span>
-                </li>
-              ))}
-          </ol>
-        </CrmPanel>
-      </div>
+      {/* ---- files and photos (OPP-10) ---------------------------------- */}
+      <OppFilesPanel opp={opp} files={files} offers={versions} contact={contact} actor={actor} canManage={canManage} />
 
       {/* ---- addenda ----------------------------------------------------- */}
       {(track === "tender" || addenda.length > 0) && (
@@ -944,20 +535,20 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
           subtitle={t("crm_addenda_desc")}
           action={
             canManage && isOpen ? (
-              <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => setShowAddendum(true)}>
-                <Plus size={13} />
+              <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setDialog("addendum")}>
+                <Plus size={13} aria-hidden="true" />
                 {t("crm_addendum_add_btn")}
               </Button>
             ) : undefined
           }
         >
           {addenda.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-muted-foreground text-center">{t("crm_addenda_empty")}</p>
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("crm_addenda_empty")}</p>
           ) : (
             <ul className="divide-y">
               {[...addenda].reverse().map((addendum) => (
-                <li key={addendum.number} className="px-4 py-3 flex items-start gap-3">
-                  <Badge variant="outline" className="shrink-0 text-[10px] bg-primary/10 text-primary border-primary/20">
+                <li key={addendum.number} className="flex items-start gap-3 px-4 py-3">
+                  <Badge variant="outline" className="shrink-0 border-primary/20 bg-primary/10 text-[10px] text-primary">
                     {t("crm_addendum_number", { number: addendum.number })}
                   </Badge>
                   <span className="min-w-0 flex-1">
@@ -983,39 +574,38 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
       <CrmPanel
         icon={ClipboardList}
         title={t("crm_nav_activities")}
-        subtitle={t("crm_activities_on_deal_desc")}
+        count={oppActivities.length}
         action={
           canManage ? (
-            <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => setShowActivity(true)}>
-              <Plus size={13} />
+            <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setDialog("activity")}>
+              <Plus size={13} aria-hidden="true" />
               {t("crm_activity_add_btn")}
             </Button>
           ) : undefined
         }
       >
         {oppActivities.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-muted-foreground text-center">{t("crm_activities_empty")}</p>
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("crm_activities_empty")}</p>
         ) : (
           <ul className="divide-y">
             {oppActivities.map((activity) => {
               const due = daysUntil(activity.dueDate)
+              const attached = files.filter((f) => f.activityId === activity.id)
               return (
-                <li key={activity.id} className="px-4 py-3 flex items-center gap-3">
+                <li key={activity.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <Badge variant="outline" className={cn("shrink-0 text-[10px]", ACTIVITY_TYPE_BADGE_CLASS[activity.type])}>
                     {t(`crm_activity_type_${activity.type}`)}
                   </Badge>
-                  <span className={cn("min-w-0 flex-1 text-sm", activity.done && "line-through text-muted-foreground")}>
-                    {activity.title}
+                  <span className="min-w-[10rem] flex-1">
+                    <span className={cn("block text-sm", activity.done && "text-muted-foreground line-through")}>{activity.title}</span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      {[activity.ownerName, attached.length ? t("crm_activity_attachments", { count: attached.length }) : null].filter(Boolean).join(" · ")}
+                      {attached.length > 0 && <Paperclip size={10} className="ms-1 inline" aria-hidden="true" />}
+                    </span>
                   </span>
                   {activity.dueDate && (
-                    <span
-                      className={cn(
-                        "shrink-0 text-[11px] font-semibold",
-                        activity.done ? "text-muted-foreground" : due !== null && due < 0 ? "text-destructive" : "text-muted-foreground"
-                      )}
-                      dir="ltr"
-                    >
-                      <CalendarDays size={11} className="inline me-1" />
+                    <span className={cn("shrink-0 text-[11px] font-semibold", activity.done ? "text-muted-foreground" : due !== null && due < 0 ? "text-destructive" : "text-muted-foreground")}>
+                      <CalendarDays size={11} className="me-1 inline" aria-hidden="true" />
                       {formatCrmDate(activity.dueDate, locale)}
                     </span>
                   )}
@@ -1026,10 +616,7 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
                       className="h-7 shrink-0 text-xs"
                       onClick={() => {
                         if (!firestore) return
-                        void updateDoc(doc(firestore, CRM_ACTIVITIES, activity.id), {
-                          done: !activity.done,
-                          updatedAt: serverTimestamp(),
-                        })
+                        void updateDoc(doc(firestore, CRM_ACTIVITIES, activity.id), { done: !activity.done, updatedAt: serverTimestamp() })
                       }}
                     >
                       {t(activity.done ? "crm_activity_reopen" : "crm_activity_complete")}
@@ -1043,52 +630,29 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
       </CrmPanel>
 
       {/* ---- dialogs ----------------------------------------------------- */}
-      <CrmOpportunityDialog
-        key={`edit-${opp.id}`}
-        open={showEdit}
-        onOpenChange={setShowEdit}
-        opportunity={opp}
-        orgId={orgId}
-        contacts={contacts}
-        teamMembers={teamMembers}
-      />
-      {valueStep && (
-        <CrmValueDialog
-          key={`value-${valueStep}`}
-          open
-          onOpenChange={(open) => { if (!open) setValueStep(null) }}
-          step={valueStep}
-          opportunity={opp}
-          orgId={orgId}
-          quotationCount={oppQuotations.length}
-          currentUserName={opp.ownerName}
-        />
-      )}
+      <CrmOpportunityDialog key={`edit-${opp.id}`} open={showEdit} onOpenChange={setShowEdit} opportunity={opp} orgId={orgId} contacts={contacts} teamMembers={teamMembers} portal={portal} actor={actor} />
       {closeMode && (
-        <CrmCloseDialog
-          key={`close-${closeMode}`}
-          open
-          onOpenChange={(open) => { if (!open) setCloseMode(null) }}
-          mode={closeMode}
+        <CrmCloseDialog key={`close-${closeMode}`} open onOpenChange={(open) => !open && setCloseMode(null)} mode={closeMode} opportunity={opp} offer={offer} actor={actor} />
+      )}
+      {projectsBase && projectDeal && (
+        <CrmHandoverDialog
+          open={dialog === "handover"}
+          onOpenChange={(o) => !o && setDialog(null)}
           opportunity={opp}
+          contact={contact}
+          orgId={orgId}
+          teamMembers={teamMembers}
+          handedOverCount={handedOverCount}
+          projectsBasePath={projectsBase}
+          acceptedOffer={awardedOffer}
+          files={files}
+          actor={actor}
         />
       )}
-      {projectsBase && (
-      <CrmHandoverDialog
-        open={showHandover}
-        onOpenChange={setShowHandover}
-        opportunity={opp}
-        contact={contact}
-        orgId={orgId}
-        teamMembers={teamMembers}
-        handedOverCount={handedOverCount}
-        projectsBasePath={projectsBase}
-      />
-      )}
-      <CrmAddendumDialog open={showAddendum} onOpenChange={setShowAddendum} opportunity={opp} />
+      <CrmAddendumDialog open={dialog === "addendum"} onOpenChange={(o) => !o && setDialog(null)} opportunity={opp} />
       <CrmActivityDialog
-        open={showActivity}
-        onOpenChange={setShowActivity}
+        open={dialog === "activity"}
+        onOpenChange={(o) => !o && setDialog(null)}
         orgId={orgId}
         contacts={contacts}
         opportunities={opportunities}
@@ -1096,6 +660,11 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
         fixedContactId={opp.contactId}
         fixedOpportunityId={opp.id}
       />
+      <NoGoDialog open={dialog === "nogo"} onOpenChange={(o) => !o && setDialog(null)} opp={opp} actor={actor} />
+      <PricingRequestDialog open={dialog === "price"} onOpenChange={(o) => !o && setDialog(null)} opp={opp} actor={actor} files={files} />
+      {offer && <RevisionRequestDialog open={dialog === "revision"} onOpenChange={(o) => !o && setDialog(null)} opp={opp} actor={actor} offer={offer} />}
+      <AwardDialog open={dialog === "award"} onOpenChange={(o) => !o && setDialog(null)} opp={opp} actor={actor} offer={offer} contact={contact} />
+      <EstimateDialog open={dialog === "estimate"} onOpenChange={(o) => !o && setDialog(null)} opp={opp} />
     </div>
   )
 }

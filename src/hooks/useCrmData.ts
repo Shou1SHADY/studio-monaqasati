@@ -14,6 +14,7 @@ import {
   type CrmOpportunity,
   type CrmQuotation,
 } from "@/lib/crm"
+import { SALES_QUOTE_REQUESTS, type QuoteRequest } from "@/lib/sales-transfers"
 
 export interface TeamMember {
   id: string
@@ -38,6 +39,8 @@ export function useCrmData(options?: {
   opportunities?: boolean
   quotations?: boolean
   activities?: boolean
+  /** Sales' pricing requests — where each deal's pricing stands (Opportunity journey v1.1, OPP-04). */
+  quoteRequests?: boolean
 }) {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
@@ -68,6 +71,12 @@ export function useCrmData(options?: {
   }, [firestore, orgId, options?.quotations])
   const { data: quotesData, isLoading: quotesLoading } = useCollection(quotesQuery)
 
+  const requestsQuery = useMemoFirebase(() => {
+    if (!firestore || !orgId || !options?.quoteRequests) return null
+    return query(collection(firestore, SALES_QUOTE_REQUESTS), where("organizationId", "==", orgId))
+  }, [firestore, orgId, options?.quoteRequests])
+  const { data: requestsData, isLoading: requestsLoading } = useCollection(requestsQuery)
+
   const activitiesQuery = useMemoFirebase(() => {
     if (!firestore || !orgId || !options?.activities) return null
     return query(collection(firestore, CRM_ACTIVITIES), where("organizationId", "==", orgId))
@@ -78,6 +87,13 @@ export function useCrmData(options?: {
   const opportunities = useMemo(() => (oppsData || []) as CrmOpportunity[], [oppsData])
   const quotations = useMemo(() => (quotesData || []) as CrmQuotation[], [quotesData])
   const activities = useMemo(() => (activitiesData || []) as CrmActivity[], [activitiesData])
+  const quoteRequests = useMemo(() => (requestsData || []) as QuoteRequest[], [requestsData])
+  // Who is acting — every stage move, decision and file is recorded in this name (OPP-01 #2, OPP-10).
+  const actor = useMemo(() => {
+    const uid = user?.uid || ""
+    const me = (teamData || []).find((m) => (m as { id: string }).id === uid) as { name?: string; email?: string } | undefined
+    return { uid, name: me?.name || me?.email || user?.displayName || user?.email || "" }
+  }, [teamData, user])
 
   const teamMembers = useMemo<TeamMember[]>(
     () =>
@@ -102,6 +118,8 @@ export function useCrmData(options?: {
     opportunities,
     quotations,
     activities,
+    quoteRequests,
+    actor,
     teamMembers,
     isLoading:
       isUserLoading ||
@@ -109,6 +127,7 @@ export function useCrmData(options?: {
       contactsLoading ||
       (!!options?.opportunities && oppsLoading) ||
       (!!options?.quotations && quotesLoading) ||
-      (!!options?.activities && activitiesLoading),
+      (!!options?.activities && activitiesLoading) ||
+      (!!options?.quoteRequests && requestsLoading),
   }
 }

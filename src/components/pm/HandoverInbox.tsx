@@ -20,6 +20,7 @@ import { Panel } from "@/components/module-ui/Panel"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { AcceptHandoverWizard, clientTypeKey } from "@/components/pm/AcceptHandoverWizard"
+import { HandoverAttachments } from "@/components/pm/HandoverAttachments"
 import { PmSeatChip } from "@/components/pm/PmSeatChip"
 import { PmTodayRedCount } from "@/components/pm/PmPortfolioToday"
 import { ReassignHandoverDialog } from "@/components/pm/ReassignHandoverDialog"
@@ -170,6 +171,7 @@ export function HandoverInbox() {
                 <KeyValueRow label={t("field.signed_on")} value={h.signedOn ? pmDate(h.signedOn, locale) : <span className="font-bold text-destructive">{t("not_signed")}</span>} />
                 <KeyValueRow label={t("wizard.row_terms")} value={t("wizard.terms_line", { advance: pmPct(h.advance), retention: pmPct(h.retention) })} />
                 <KeyValueRow label={t("wizard.row_boq")} value={boqN ? t("inbox.boq_from_bid", { count: boqN }) : <span className="font-bold text-destructive">{t("wizard.boq_not_attached")}</span>} />
+                <KeyValueRow label={tShared("crm_handover_attachments")} value={<HandoverAttachments extras={fileExtras(h)} />} />
                 <KeyValueRow label={t("field.assigned_to")} value={h.toName ?? "—"} />
                 {h.note && <KeyValueRow label={t("field.note")} value={<span dir="auto">{h.note}</span>} />}
               </div>

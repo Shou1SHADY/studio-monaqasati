@@ -43,6 +43,8 @@ service cloud.firestore {
     function keepsOrg() { return inOrg() && request.resource.data.organizationId == resource.data.organizationId; }
     function pmOnly(keys) { return changedKeys().hasOnly(['pm', 'updatedAt']) && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(keys); }
     function bySeq() { return request.resource.data.by == request.auth.uid && request.resource.data.seq is int; }
+    // The incoming document — folded so a rules block reads shorter (the ruleset sits at Google's size ceiling).
+    function rd() { return request.resource.data; }
     function warehouseOrg(warehouseId) { return get(/databases/$(database)/documents/warehouses/$(warehouseId)).data.organizationId; }
 
     function getUserData() {
@@ -3514,9 +3516,9 @@ service cloud.firestore {
     // is a project manager's rejection sending a deal back to "won".
     function closesOpportunity() {
       let oldState = ('state' in resource.data) ? resource.data.state : 'open';
-      let newState = ('state' in request.resource.data) ? request.resource.data.state : 'open';
+      let newState = ('state' in request.resource.data) ? rd().state : 'open';
       let oldStage = ('stage' in resource.data) ? resource.data.stage : '';
-      let newStage = ('stage' in request.resource.data) ? request.resource.data.stage : '';
+      let newStage = ('stage' in request.resource.data) ? rd().stage : '';
       return (oldState == 'open' && newState in ['won', 'lost', 'handed_over'])
         || (newState == 'handed_over' && oldState != 'handed_over')
         || (newStage in ['won', 'lost'] && !(oldStage in ['won', 'lost']));
@@ -3526,11 +3528,18 @@ service cloud.firestore {
       allow get: if orgReadable();
       allow list: if isSignedIn();
       allow create: if isSignedIn() && (isAdmin() || createsInOrg())
-        && !(('state' in request.resource.data) && request.resource.data.state in ['won', 'lost', 'handed_over'])
-        && !(('stage' in request.resource.data) && request.resource.data.stage in ['won', 'lost']);
+        && !(('state' in request.resource.data) && rd().state in ['won', 'lost', 'handed_over'])
+        && !(('stage' in request.resource.data) && rd().stage in ['won', 'lost']);
       allow update: if isSignedIn() && (isAdmin() || (inOrg()
         && (!closesOpportunity() || hasOrgPermission('crm.close'))));
       allow delete: if orgReadable();
+      // Files and photos of a deal (OPP-10): read by the company, added in the adder's own name, removed only by
+      // whoever added them. Never edited — a different file is a new file.
+      match /files/{fileId} {
+        allow read: if orgReadable();
+        allow create: if createsInOrg() && rd().byId == request.auth.uid;
+        allow delete: if inOrg() && resource.data.byId == request.auth.uid;
+      }
     }
 
     // Recording a customer's payment (Sales) changes `paidAt` / `payments` /
@@ -3538,15 +3547,15 @@ service cloud.firestore {
     // gate in the Sales view. `.get()` with a default so a quotation written
     // before the fields existed evaluates cleanly instead of erroring.
     function recordsQuotationPayment() {
-      return request.resource.data.get('paidAt', null) != resource.data.get('paidAt', null)
-        || request.resource.data.get('payments', {}) != resource.data.get('payments', {})
-        || request.resource.data.get('paidAmount', null) != resource.data.get('paidAmount', null);
+      return rd().get('paidAt', null) != resource.data.get('paidAt', null)
+        || rd().get('payments', {}) != resource.data.get('payments', {})
+        || rd().get('paidAmount', null) != resource.data.get('paidAmount', null);
     }
     // Marking a quotation accepted is the customer's approval — it posts the
     // deposit to Finance and opens the work order — so it needs sales.approve
     // (or crm.close: the same authority when a deal is awarded from the CRM).
     function acceptsQuotation() {
-      return request.resource.data.get('status', 'draft') == 'accepted'
+      return rd().get('status', 'draft') == 'accepted'
         && resource.data.get('status', 'draft') != 'accepted';
     }
     function canApproveQuotation() {
@@ -3564,7 +3573,7 @@ service cloud.firestore {
     // facts ABOUT the document, not the document. `contactName` is a
     // denormalised label a CRM rename may refresh.
     function qFrom() { return resource.data.get('status', 'draft'); }
-    function qTo() { return request.resource.data.get('status', 'draft'); }
+    function qTo() { return rd().get('status', 'draft'); }
     function qChanged() { return changedKeys(); }
     function quoteStepAllowed() {
       return qTo() == qFrom()
@@ -3582,14 +3591,14 @@ service cloud.firestore {
     // A quote closed as lost carries its reason (T8).
     function lossHasReason() {
       return qTo() != 'rejected' || qFrom() == 'rejected'
-        || (request.resource.data.get('lostReason', '') is string && request.resource.data.get('lostReason', '').size() > 0);
+        || (rd().get('lostReason', '') is string && rd().get('lostReason', '').size() > 0);
     }
 
     match /crmQuotations/{quotationId} {
       allow get: if orgReadable();
       allow list: if isSignedIn();
       allow create: if isSignedIn() && (isAdmin() || (createsInOrg()
-        && (request.resource.data.get('status', 'draft') != 'accepted' || canApproveQuotation())));
+        && (rd().get('status', 'draft') != 'accepted' || canApproveQuotation())));
       allow update: if isSignedIn() && (isAdmin() || (keepsOrg()
         && quoteStepAllowed()
         && lossHasReason()
@@ -3620,12 +3629,12 @@ service cloud.firestore {
       // permission that covers one half and not the other denies the whole.
       return (hasOrgPermission('invoices.manage') || hasOrgPermission('accounting.post'))
         && resource.data.status == 'awaiting_deposit'
-        && request.resource.data.status == 'running'
+        && rd().status == 'running'
         && changedKeys().hasOnly(['payment', 'status', 'updatedAt'])
-        && request.resource.data.payment.kind == 'deposit'
-        && request.resource.data.payment.depositPaid == true
-        && request.resource.data.payment.get('depositPercent', null) == resource.data.payment.get('depositPercent', null)
-        && request.resource.data.payment.get('creditDays', null) == resource.data.payment.get('creditDays', null);
+        && rd().payment.kind == 'deposit'
+        && rd().payment.depositPaid == true
+        && rd().payment.get('depositPercent', null) == resource.data.payment.get('depositPercent', null)
+        && rd().payment.get('creditDays', null) == resource.data.payment.get('creditDays', null);
     }
     match /salesOrders/{orderId} {
       allow get, list: if orgReadable();
@@ -3649,7 +3658,7 @@ service cloud.firestore {
       allow get, list: if orgReadable();
       allow create: if createsInOrg()
         && (hasOrgPermission('sales.manage') || hasOrgPermission('sales.approve'))
-        && request.resource.data.get('status', '') == 'reported';
+        && rd().get('status', '') == 'reported';
       allow update: if keepsOrg()
         && (hasOrgPermission('invoices.manage') || hasOrgPermission('accounting.post')
             || hasOrgPermission('sales.approve'));
@@ -3663,7 +3672,7 @@ service cloud.firestore {
       allow get, list: if orgReadable();
       allow create: if createsInOrg()
         && (hasOrgPermission('crm.manage') || hasOrgPermission('crm.close'))
-        && request.resource.data.get('status', '') == 'new';
+        && rd().get('status', '') == 'new';
       allow update: if keepsOrg()
         && (hasOrgPermission('sales.manage') || hasOrgPermission('sales.approve'));
       allow delete: if isAdmin();

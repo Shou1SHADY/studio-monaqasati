@@ -497,7 +497,8 @@ describe("PM portfolio screens", () => {
     expect({ role, shown: text().includes("مدرسة الرياض الأهلية — المبنى الجديد") }).toEqual({ role, shown: role === "owner" || role === "pm" })
     expect({ role, accept: buttons().includes("اقبل وأنشئ المشروع") }).toEqual({ role, accept: role === "owner" || role === "pm" })
     // The file card names the CRM deal it came from (V1-03).
-    expect({ role, deal: text().includes("الصفقة OP-2026/118") }).toEqual({ role, deal: role === "owner" || role === "pm" })
+    // In Arabic the deal's number reads «ف-2026/118» (Opportunity journey v1.1, OPP-02).
+    expect({ role, deal: text().includes("الصفقة ف-2026/118") }).toEqual({ role, deal: role === "owner" || role === "pm" })
     view.unmount()
   })
 })

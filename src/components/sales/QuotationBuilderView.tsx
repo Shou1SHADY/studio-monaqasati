@@ -32,6 +32,7 @@ import {
 import { SALES_QUOTE_REQUESTS, linkQuoteRequestDraft, type QuoteRequest } from "@/lib/sales-transfers"
 import { VALIDITY_CHOICES, issueBlocks, issueQuotation, quoteEditable, type IssueBlock } from "@/lib/sales-quotes"
 import { displayDocNumber } from "@/lib/sales-numbering"
+import { QuoteRequestBrief } from "./QuoteRequestBrief"
 import { RequiredMark } from "@/components/crm/CrmFormDialog"
 import { DATE_INPUT_CLASS } from "@/components/crm/CrmOpportunityDialog"
 import {
@@ -368,9 +369,13 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
       </div>
 
       {openRequest && (
-        <p className="rounded-lg border border-cta/30 bg-cta/5 px-3 py-2 text-xs font-semibold text-cta" dir="auto">
-          {t("sales_rq_banner", { number: displayDocNumber(openRequest.requestNumber, locale), contact: openRequest.contactName || "—" })}
-        </p>
+        <div className="space-y-2 rounded-lg border border-cta/30 bg-cta/5 px-3 py-2">
+          <p className="text-xs font-semibold text-cta" dir="auto">
+            {t("sales_rq_banner", { number: displayDocNumber(openRequest.requestNumber, locale), contact: openRequest.contactName || "—" })}
+          </p>
+          {/* A request from an opportunity carries what to price from: details, files, the note (OPP-04). */}
+          <QuoteRequestBrief request={openRequest} />
+        </div>
       )}
       {request && !openRequest && (
         <p className="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs font-semibold text-warning" dir="auto">

@@ -75,9 +75,13 @@ import {
   type EligibilityCheck,
   type GateContext,
   type OpportunityStage,
+  type PipelineFigure,
   type OpportunityState,
   type StageMoveBlock,
 } from "@/lib/crm"
+import { currentOffersByDeal, dealFigure, hasSentOffer, pricingState, type PricingState } from "@/lib/crm-journey"
+import { displayDocNumber } from "@/lib/sales-numbering"
+import { OppFigure, OppNumber, OppStatusLine, todayKey } from "@/components/crm/OppBits"
 import { CrmContactDialog } from "@/components/crm/CrmContactDialog"
 import { CrmOpportunityDialog } from "@/components/crm/CrmOpportunityDialog"
 import { CrmShowMore, CrmSortHeader, CrmToolbar } from "@/components/crm/CrmToolbar"
@@ -104,7 +108,11 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
   const { can } = usePermissions()
   const { on } = useModules()
   const canManageCrm = can("crm.manage")
-  const { orgId, contacts, opportunities, teamMembers, isLoading } = useCrmData({ opportunities: true })
+  const { orgId, contacts, opportunities, quotations, quoteRequests, actor, teamMembers, isLoading } = useCrmData({
+    opportunities: true,
+    quotations: true,
+    quoteRequests: true,
+  })
   const { profile } = useCrmOrgProfile()
   const router = useRouter()
   const base = crmBasePath(portal)
@@ -119,7 +127,26 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
   const [isDeleting, setIsDeleting] = useState(false)
   const [movingId, setMovingId] = useState<string | null>(null)
 
-  const summary = useMemo(() => summarizeOpportunities(opportunities), [opportunities])
+  // What each deal counts with (OPP-08): the offer Sales sent, else its estimate, else nothing — and held out of the
+  // totals while a tender's deadline has passed with no offer. The KPIs, the column headers and every card read the
+  // SAME figure, so a header is always the sum of the cards under it.
+  const today = todayKey()
+  const offers = useMemo(() => currentOffersByDeal(quotations), [quotations])
+  const figureOf = (opp: CrmOpportunity) => dealFigure(opp, offers.get(opp.id) ?? null, today)
+  const pricingOf = (opp: CrmOpportunity): PricingState => pricingState(opp, quoteRequests, quotations, today)
+  const ctxFor = (opp: CrmOpportunity): GateContext => {
+    const offer = offers.get(opp.id) ?? null
+    return { profile, offerValue: offer?.amount ?? null, offerSent: hasSentOffer(opp, offer) }
+  }
+  const sumFigures = (items: CrmOpportunity[]) =>
+    items.reduce((sum, o) => {
+      const f = figureOf(o)
+      return f.overdue || f.amount === null ? sum : sum + f.amount
+    }, 0)
+  const summary = useMemo(
+    () => summarizeOpportunities(opportunities, (o) => dealFigure(o, offers.get(o.id) ?? null, today), profile),
+    [opportunities, offers, today, profile]
+  )
 
   const listConfig = useMemo<CrmListConfig<CrmOpportunity>>(
     () => ({
@@ -152,9 +179,9 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
         },
         {
           key: "owner",
-          label: t("crm_owner"),
+          label: t("crm_created_by"),
           options: teamMembers.map((m) => ({ value: m.id, label: m.name })),
-          valueOf: (o) => o.ownerId ?? null,
+          valueOf: (o) => o.createdById ?? o.ownerId ?? null,
         },
       ],
       savedViews: [
@@ -168,31 +195,33 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
       groups: [
         { key: "stage", label: t("crm_col_stage"), keyOf: (o) => t(`crm_opp_stage_${o.stage}`) },
         { key: "track", label: t("crm_opp_track"), keyOf: (o) => t(`crm_track_${opportunityTrack(o)}`) },
-        { key: "owner", label: t("crm_owner"), keyOf: (o) => o.ownerName || t("crm_owner_none") },
+        { key: "owner", label: t("crm_created_by"), keyOf: (o) => o.createdByName || o.ownerName || "—" },
         { key: "contact", label: t("crm_opp_contact"), keyOf: (o) => o.contactName || "—" },
       ],
       sorts: [
+        { key: "number", valueOf: (o) => o.docNumber || "" },
         { key: "title", valueOf: (o) => o.title || "" },
-        { key: "value", valueOf: (o) => o.value || 0 },
+        { key: "value", valueOf: (o) => dealFigure(o, offers.get(o.id) ?? null, today).amount ?? -1 },
         { key: "probability", valueOf: (o) => o.probability ?? 0 },
         // Undated deals sort last: nobody has committed to them.
         { key: "date", valueOf: (o) => toDate(o.expectedCloseDate)?.getTime() ?? Number.MAX_SAFE_INTEGER },
-        { key: "owner", valueOf: (o) => o.ownerName || "" },
+        { key: "owner", valueOf: (o) => o.createdByName || o.ownerName || "" },
       ],
+      // The number searches in both spellings: «OP-2026/014» and «ف-2026/014» (OPP-02 #2).
       searchText: (o) =>
-        [o.title, o.contactName, o.ownerName, o.contractNumber, o.customScopeType].filter(Boolean).join(" "),
-      isMine: (o) => !!o.ownerId && teamMembers.some((m) => m.id === o.ownerId),
+        [o.docNumber, displayDocNumber(o.docNumber, "ar"), o.title, o.contactName, o.createdByName, o.ownerName, o.contractNumber, o.customScopeType]
+          .filter(Boolean)
+          .join(" "),
+      isMine: (o) => (o.createdById ?? o.ownerId) === actor.uid,
       defaultSegment: "open",
       defaultSort: { key: "date", direction: 1 },
       defaultGroup: "",
       pageSize: 15,
     }),
-    [t, teamMembers]
+    [t, teamMembers, offers, today, actor.uid]
   )
 
   const state = useCrmListState(opportunities, listConfig, locale)
-
-  const gateCtx = useMemo<GateContext>(() => ({ profile }), [profile])
 
   // The board and the table render the SAME rows — `state.visible`, after the
   // segment, the filters, the sort and the page limit. The board only
@@ -226,13 +255,11 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
     if (!firestore || stage === opp.stage) return
     // Re-check at the moment of the write, not just when the menu rendered:
     // a gate may have been unticked in another tab since.
-    const block = stageMoveBlock(opp, stage, gateCtx)
+    const block = stageMoveBlock(opp, stage, ctxFor(opp))
     if (block) {
-      toast({
-        title: t(block === "gates" ? "crm_move_blocked_gates" : "crm_move_blocked_terminal"),
-        description: t("crm_move_open_record"),
-        variant: "destructive",
-      })
+      const title =
+        block === "gates" ? "crm_move_blocked_gates" : block === "pricing" ? "crm_move_blocked_pricing" : block === "offer" ? "crm_move_blocked_offer" : "crm_move_blocked_terminal"
+      toast({ title: t(title), description: t("crm_move_open_record"), variant: "destructive" })
       return
     }
     setMovingId(opp.id)
@@ -240,7 +267,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
       await updateDoc(doc(firestore, CRM_OPPORTUNITIES, opp.id), {
         stage,
         state: "open",
-        stageHistory: [...(opp.stageHistory ?? []), historyEntry(stage, opp.ownerName)],
+        stageHistory: [...(opp.stageHistory ?? []), historyEntry(stage, actor.name)],
         updatedAt: serverTimestamp(),
       })
       toast({ title: t("crm_opp_stage_updated") })
@@ -306,7 +333,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
   )
 
   const cellPad = state.dense ? "py-1.5" : ""
-  const columnCount = canManageCrm ? 11 : 10
+  const columnCount = canManageCrm ? 12 : 11
 
   return (
     <CrmShell
@@ -318,14 +345,30 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
     >
       <CrmStatRow>
         <CrmStat icon={Target} label={t("crm_opp_stat_open")} value={summary.open} accent="cta" />
-        <CrmStat icon={Coins} label={t("crm_opp_stat_open_value")} value={formatSarCompact(summary.openValue, locale)} accent="primary" />
+        <CrmStat
+          icon={Coins}
+          label={t("crm_opp_stat_open_value")}
+          value={formatSarCompact(summary.openValue, locale)}
+          accent="primary"
+          hint={
+            summary.excludedNoValue + summary.excludedOverdue > 0
+              ? t("crm_opp_stat_excluded", { none: summary.excludedNoValue, overdue: summary.excludedOverdue })
+              : undefined
+          }
+        />
         <CrmStat icon={Trophy} label={t("crm_opp_stat_won_value")} value={formatSarCompact(summary.wonValue, locale)} accent="success" />
+        {/* A rate says what it was computed from: «5 of 5 decisions» (OPP-08 #4). */}
         <CrmStat
           icon={Trophy}
           label={t("crm_opp_stat_win_rate")}
-          value={`${summary.winRate}%`}
+          value={summary.won + summary.lost > 0 ? `${summary.winRate}%` : "—"}
           accent="accent"
-          hint={summary.avgDealValue > 0 ? `${t("crm_opp_stat_avg")}: ${formatSarCompact(summary.avgDealValue, locale)}` : undefined}
+          hint={[
+            summary.won + summary.lost > 0 ? t("crm_opp_stat_win_basis", { won: summary.won, decided: summary.won + summary.lost }) : t("crm_opp_stat_win_none"),
+            summary.avgDealValue > 0 ? `${t("crm_opp_stat_avg")} ${formatSarCompact(summary.avgDealValue, locale)}` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         />
       </CrmStatRow>
 
@@ -376,7 +419,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                   title={t(`crm_opp_stage_${stage}`)}
                   barClass={OPPORTUNITY_STAGE_BAR_CLASS[stage]}
                   count={items.length}
-                  value={formatSarCompact(items.reduce((sum, o) => sum + (o.value || 0), 0), locale)}
+                  value={sumFigures(items) > 0 ? formatSarCompact(sumFigures(items), locale) : "—"}
                   emptyLabel={t("crm_opp_stage_empty")}
                 >
                   {items.map((opp) => (
@@ -388,9 +431,12 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                       projectHref={opp.projectId && projectsBase ? `${projectsBase}/${opp.projectId}` : null}
                       canManage={canManageCrm}
                       isMoving={movingId === opp.id}
-                      blocking={gatesRemaining(opp, gateCtx).length}
-                      eligibility={checkEligibility(opp, profile)}
-                      moveBlock={(target) => stageMoveBlock(opp, target, gateCtx)}
+                      blocking={gatesRemaining(opp, ctxFor(opp)).length}
+                      figure={figureOf(opp)}
+                      pricing={pricingOf(opp)}
+                      gateCtx={ctxFor(opp)}
+                      today={today}
+                      moveBlock={(target) => stageMoveBlock(opp, target, ctxFor(opp))}
                       onMove={(next) => void moveStage(opp, next)}
                       onEdit={() => setEditOpp(opp)}
                       onDelete={() => setDeleteTarget(opp)}
@@ -420,7 +466,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                   wide={columns.stages.length === 0 && columns.outcomes.length === 1}
                   count={items.length}
                   value={formatSarCompact(
-                    items.reduce((sum, o) => sum + (o.awardedValue || o.submittedPrice || o.value || 0), 0),
+                    items.reduce((sum, o) => sum + (o.awardedValue || (figureOf(o).amount ?? 0)), 0),
                     locale
                   )}
                   emptyLabel={t("crm_opp_stage_empty")}
@@ -435,8 +481,11 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                       canManage={canManageCrm}
                       isMoving={movingId === opp.id}
                       blocking={0}
-                      eligibility={checkEligibility(opp, profile)}
-                      moveBlock={(target) => stageMoveBlock(opp, target, gateCtx)}
+                      figure={figureOf(opp)}
+                      pricing={pricingOf(opp)}
+                      gateCtx={ctxFor(opp)}
+                      today={today}
+                      moveBlock={(target) => stageMoveBlock(opp, target, ctxFor(opp))}
                       onMove={(next) => void moveStage(opp, next)}
                       onEdit={() => setEditOpp(opp)}
                       onDelete={() => setDeleteTarget(opp)}
@@ -460,6 +509,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                       drop out at each breakpoint — the name, value and date
                       survive to the narrowest screen because those are what
                       the list is scanned for. */}
+                  <TableHead><CrmSortHeader state={state} sortKey="number" label={t("crm_col_number")} /></TableHead>
                   <TableHead><CrmSortHeader state={state} sortKey="title" label={t("crm_opp_title")} /></TableHead>
                   <TableHead className="hidden md:table-cell">{t("crm_opp_contact")}</TableHead>
                   <TableHead className="hidden xl:table-cell">{t("crm_opp_track")}</TableHead>
@@ -469,7 +519,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                   <TableHead className="hidden lg:table-cell"><CrmSortHeader state={state} sortKey="probability" label={t("crm_opp_probability")} /></TableHead>
                   <TableHead className="hidden md:table-cell"><CrmSortHeader state={state} sortKey="date" label={t("crm_col_close_date")} /></TableHead>
                   <TableHead className="hidden xl:table-cell">{t("crm_eligibility")}</TableHead>
-                  <TableHead className="hidden lg:table-cell"><CrmSortHeader state={state} sortKey="owner" label={t("crm_owner")} /></TableHead>
+                  <TableHead className="hidden lg:table-cell"><CrmSortHeader state={state} sortKey="owner" label={t("crm_created_by")} /></TableHead>
                   {canManageCrm && <TableHead className="text-end">{t("crm_col_actions")}</TableHead>}
                 </TableRow>
               </TableHeader>
@@ -479,7 +529,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                     key={bucket.key || "__all"}
                     label={bucket.label}
                     count={bucket.rows.length}
-                    value={formatSarCompact(bucket.rows.reduce((sum, o) => sum + (o.value || 0), 0), locale)}
+                    value={sumFigures(bucket.rows) > 0 ? formatSarCompact(sumFigures(bucket.rows), locale) : "—"}
                     colSpan={columnCount}
                   >
                     {bucket.rows.map((opp) => {
@@ -501,6 +551,9 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                               paragraphs. Without a ceiling one of those makes
                               its row 400px tall and squashes every other
                               column into a sliver. */}
+                          <TableCell className={cn("whitespace-nowrap", cellPad)}>
+                            {opp.docNumber ? <OppNumber number={opp.docNumber} /> : <span className="text-xs text-muted-foreground">—</span>}
+                          </TableCell>
                           <TableCell className={cn("font-bold text-foreground max-w-[260px] lg:max-w-[360px]", cellPad)}>
                             <span className="flex items-start gap-1.5">
                               <Link
@@ -552,8 +605,12 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                               {t(`crm_opp_stage_${opp.stage}`)}
                             </Badge>
                           </TableCell>
-                          <TableCell className={cn("font-bold whitespace-nowrap", cellPad)} dir="ltr">
-                            {formatSar(opp.awardedValue || opp.submittedPrice || opp.value, locale)}
+                          <TableCell className={cn("font-bold whitespace-nowrap", cellPad)}>
+                            {opp.awardedValue ? (
+                              <span dir="ltr">{formatSar(opp.awardedValue, locale)}</span>
+                            ) : (
+                              <OppFigure opp={opp} figure={figureOf(opp)} className="justify-start gap-1.5" />
+                            )}
                           </TableCell>
                           <TableCell className={cn("hidden lg:table-cell text-xs text-muted-foreground", cellPad)} dir="ltr">
                             {typeof opp.probability === "number" ? `${opp.probability}%` : "—"}
@@ -573,7 +630,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                             <EligibilityBadge check={checkEligibility(opp, profile)} />
                           </TableCell>
                           <TableCell className={cn("hidden lg:table-cell text-xs text-muted-foreground", cellPad)}>
-                            {opp.ownerName || t("crm_owner_none")}
+                            {opp.createdByName || opp.ownerName || "—"}
                           </TableCell>
                           {canManageCrm && (
                             <TableCell className={cellPad}>
@@ -610,6 +667,8 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
         orgId={orgId}
         contacts={contacts}
         teamMembers={teamMembers}
+        portal={portal}
+        actor={actor}
       />
       <CrmOpportunityDialog
         key={editOpp?.id ?? "edit"}
@@ -619,6 +678,8 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
         orgId={orgId}
         contacts={contacts}
         teamMembers={teamMembers}
+        portal={portal}
+        actor={actor}
       />
       <CrmContactDialog open={showAddContact} onOpenChange={setShowAddContact} orgId={orgId} teamMembers={teamMembers} />
 
@@ -787,7 +848,10 @@ function OpportunityCard({
   canManage,
   isMoving,
   blocking,
-  eligibility,
+  figure,
+  pricing,
+  gateCtx,
+  today,
   moveBlock,
   onMove,
   onEdit,
@@ -800,7 +864,10 @@ function OpportunityCard({
   canManage: boolean
   isMoving: boolean
   blocking: number
-  eligibility: EligibilityCheck
+  figure: PipelineFigure
+  pricing: PricingState
+  gateCtx: GateContext
+  today: string
   moveBlock: (target: OpportunityStage) => StageMoveBlock | null
   onMove: (stage: OpportunityStage) => void
   onEdit: () => void
@@ -815,7 +882,6 @@ function OpportunityCard({
   const isDueSoon = isOpen && days !== null && days >= 0 && days <= 7
   const scope = primaryScope(opp)
   const extraScopes = (opp.scopeTypes?.length ?? 0) - 1
-  const shownValue = opp.awardedValue || opp.submittedPrice || opp.value
   const outcomeAt = isOpen ? null : stageHistory(opp).at(-1)?.at ?? null
 
   return (
@@ -834,17 +900,19 @@ function OpportunityCard({
       />
 
       <div className="relative pointer-events-none space-y-2 flex-1">
-        <div className="flex items-start justify-between gap-2">
-          <Link
-            href={detailHref}
-            className="pointer-events-auto text-sm font-bold text-foreground group-hover:text-primary hover:underline line-clamp-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-          >
-            {opp.title}
-          </Link>
-          <Badge variant="outline" className={cn("shrink-0 text-[9px]", TRACK_BADGE_CLASS[opportunityTrack(opp)])}>
+        {/* The number first, then the track — the deal is referred to by it in Sales and in Projects (OPP-02). */}
+        <div className="flex items-center justify-between gap-2">
+          <OppNumber number={opp.docNumber} />
+          <Badge variant="outline" className={cn("ms-auto shrink-0 text-[9px]", TRACK_BADGE_CLASS[opportunityTrack(opp)])}>
             {t(`crm_track_${opportunityTrack(opp)}`)}
           </Badge>
         </div>
+        <Link
+          href={detailHref}
+          className="pointer-events-auto block text-sm font-bold text-foreground group-hover:text-primary hover:underline line-clamp-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+        >
+          {opp.title}
+        </Link>
 
         {/* The column header already names the stage or outcome; only what
             it does NOT say — where the handover stands — earns a badge. */}
@@ -868,32 +936,46 @@ function OpportunityCard({
           {opp.contactName || t("crm_opp_open_contact")}
         </Link>
 
-        {/* Value and confidence read together — one is meaningless without
-            the other when comparing two cards. */}
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-sm font-black text-foreground" dir="ltr">{formatSar(shownValue, locale)}</span>
-          {typeof opp.probability === "number" && isOpen && (
-            <span className="text-[11px] font-bold text-muted-foreground" dir="ltr">{opp.probability}%</span>
-          )}
-        </div>
+        {/* The figure the column header adds up, and what it is (OPP-08 #1, #2). An awarded deal shows its award. */}
+        {opp.awardedValue ? (
+          <span className="block text-sm font-black text-foreground" dir="ltr">{formatSar(opp.awardedValue, locale)}</span>
+        ) : (
+          <OppFigure opp={opp} figure={figure} />
+        )}
 
-        <div className="flex items-center justify-between gap-2">
-          <EligibilityBadge check={eligibility} />
-          {opp.ownerName && (
-            <span className="text-[10px] text-muted-foreground truncate max-w-[50%]">{opp.ownerName}</span>
-          )}
-        </div>
-
-        {blocking > 0 && (
+        {/* What it waits for next — the pricing, the decision, the conditions (OPP-08 #5). */}
+        {!figure.overdue && <OppStatusLine opp={opp} pricing={pricing} gateCtx={gateCtx} today={today} />}
+        {blocking > 0 && opp.stage !== "new" && (
           <p className="text-[11px] text-muted-foreground flex items-center gap-1">
             <AlertTriangle size={11} className="shrink-0 text-warning" />
             {t("crm_gates_blocking", { count: blocking })}
           </p>
         )}
 
+        {/* A tender whose deadline passed with no offer is held out of the totals until someone moves the date or
+            closes it (OPP-08 #3). */}
+        {figure.overdue && opp.expectedCloseDate && (
+          <div className="space-y-1.5">
+            <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive">
+              <CalendarDays size={11} aria-hidden="true" />
+              {t("crm_deadline_passed", { date: formatCrmDate(opp.expectedCloseDate, locale) })}
+            </span>
+            {canManage && (
+              <div className="pointer-events-auto relative z-10 flex flex-wrap gap-1.5">
+                <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">
+                  <Link href={`${detailHref}?do=addendum`}>{t("crm_update_deadline")}</Link>
+                </Button>
+                <Button asChild size="sm" variant="outline" className="h-7 text-[11px] text-destructive">
+                  <Link href={`${detailHref}?do=lost`}>{t("crm_close_it")}</Link>
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Open deals count down to their close date; decided ones show when
             they were decided — an "expected close" on an awarded deal is noise. */}
-        {isOpen && opp.expectedCloseDate && (
+        {isOpen && opp.expectedCloseDate && !figure.overdue && (
           <p
             className={cn(
               "text-[11px] flex items-center gap-1",
@@ -936,7 +1018,15 @@ function OpportunityCard({
                       value={s}
                       disabled={disabled}
                       className="text-xs"
-                      title={block === "gates" ? t("crm_gates_blocking", { count: blocking }) : undefined}
+                      title={
+                        block === "gates"
+                          ? t("crm_gates_blocking", { count: blocking })
+                          : block === "pricing"
+                            ? t("crm_move_blocked_pricing")
+                            : block === "offer"
+                              ? t("crm_move_blocked_offer")
+                              : undefined
+                      }
                     >
                       <span className="inline-flex items-center gap-1.5">
                         {disabled && <Lock size={10} className="opacity-60" aria-hidden="true" />}
