@@ -440,18 +440,21 @@ function expectWorldInvariants(after: string): void {
 /** Run a write and check the whole world afterwards. */
 // ---------------------------------------------------------------------------
 // Rules conformance — every act writes only the work-order fields firestore.rules
-// grants the role that performs it (a role scoped by `woChanged().hasOnly`)
+// grants the role that performs it (a role scoped by `ck.hasOnly` in woUpdateOk)
 // ---------------------------------------------------------------------------
 
 type RuleRole = "work" | "qc" | "cost" | "warehouses" | "owner_module" | "procurement"
 
 const RULES_SRC = fs.readFileSync(path.join(__dirname, "..", "..", "firestore.rules"), "utf8")
 
-/** The field list of the workOrders update branch that follows `anchor`. */
+/** The field list of the workOrders update branch: the last `ck.hasOnly` before its role `anchor` (a branch names its keys first, then the role). */
 function ruleFields(anchor: RegExp): Set<string> {
-  const block = RULES_SRC.slice(RULES_SRC.indexOf("match /workOrders/{orderId}"))
-  const m = block.match(new RegExp(`${anchor.source}[\\s\\S]*?woChanged\\(\\)\\.hasOnly\\(\\[([^\\]]*)\\]\\)`))
-  if (!m) throw new Error(`rules branch not found: ${anchor}`)
+  const block = RULES_SRC.slice(RULES_SRC.indexOf("function woUpdateOk"))
+  const at = block.search(anchor)
+  if (at < 0) throw new Error(`rules branch not found: ${anchor}`)
+  const all = Array.from(block.slice(0, at).matchAll(/ck\.hasOnly\(\[([^\]]*)\]\)/g))
+  const m = all[all.length - 1]
+  if (!m) throw new Error(`rules keys not found: ${anchor}`)
   return new Set(Array.from(m[1].matchAll(/'([^']+)'/g), (x) => x[1]))
 }
 
@@ -459,9 +462,9 @@ const RULE_FIELDS: Record<RuleRole, Set<string>> = {
   work: ruleFields(/hasOrgPermission\('manufacturing\.work'\)/),
   qc: ruleFields(/hasOrgPermission\('manufacturing\.qc'\)/),
   cost: ruleFields(/hasOrgPermission\('manufacturing\.cost'\)/),
-  warehouses: ruleFields(/hasOrgPermission\('warehouses\.receive'\)\)/),
+  warehouses: ruleFields(/hasOrgAny\(\['warehouses\.manage', 'warehouses\.receive'\]\)/),
   owner_module: ruleFields(/hasProjectPermission\(resource\.data\.projectId, 'projects\.edit'\)\)\)/),
-  procurement: ruleFields(/hasOrgPermission\('rfq\.create'\)/),
+  procurement: ruleFields(/hasOrgAny\(\['rfq\.manage', 'rfq\.create'/),
 }
 /** Branches that may only move the status between open and done. */
 const STATUS_BOUNDED: RuleRole[] = ["cost", "warehouses", "owner_module"]

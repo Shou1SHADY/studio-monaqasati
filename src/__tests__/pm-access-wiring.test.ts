@@ -103,19 +103,22 @@ describe("firestore.rules mirror access.ts", () => {
   const rules = fs.readFileSync(path.join(process.cwd(), "firestore.rules"), "utf8")
   const list = (text: string) => sorted(text.split(",").map((s) => s.trim().replace(/^'|'$/g, "")).filter(Boolean))
 
-  it("pmTemplate carries every project role's template", () => {
-    const body = rules.slice(rules.indexOf("function pmTemplate(role)"), rules.indexOf("function pmCeilingHas(key)"))
+  it("pmRoleDuties carries every project role's template", () => {
+    const body = rules.slice(rules.indexOf("function pmRoleDuties(role)"), rules.indexOf("function pmCeilingOf("))
     for (const [role, duties] of Object.entries(PM_ROLE_TEMPLATES)) {
-      const m = body.match(new RegExp(`'${role}': \\[([^\\]]*)\\]`))
+      const m =
+        role === "pm" || role === "other"
+          ? body.match(/role == 'pm' \|\| role == 'other'\s*\? \[([^\]]*)\]/)
+          : body.match(new RegExp(`role == '${role}' \\? \\[([^\\]]*)\\]`))
       expect(m).not.toBeNull()
       expect(list(m![1])).toEqual(sorted(duties))
     }
   })
 
-  it("pmCeilingHas carries each system role's ceiling", () => {
-    const body = rules.slice(rules.indexOf("function pmCeilingHas(key)"), rules.indexOf("function pmMemberPath("))
+  it("pmCeilingOf carries each system role's ceiling", () => {
+    const body = rules.slice(rules.indexOf("function pmCeilingOf("), rules.indexOf("function pmPerms()"))
     for (const [perm, role] of Object.entries(PM_CEILING_PERMISSIONS)) {
-      const m = body.match(new RegExp(`groupGrants\\(g, '${perm.replace(".", "\\.")}'\\) && key in \\[([^\\]]*)\\]`))
+      const m = body.match(new RegExp(`p\\.hasAny\\(\\['${perm.replace(".", "\\.")}'\\]\\) && key in \\[([^\\]]*)\\]`))
       expect(m).not.toBeNull()
       expect(list(m![1])).toEqual(sorted(PM_SYSTEM_CEILINGS[role]))
     }

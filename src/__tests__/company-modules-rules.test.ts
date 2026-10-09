@@ -59,9 +59,9 @@ describe("the purchase-order budget gate in firestore.rules", () => {
   })
 
   it("is still the gate for approval and self-issue when Project Management is on", () => {
-    const body = rules.slice(rules.indexOf("function poApproves()"), rules.indexOf("function poReturns()"))
+    const body = rules.slice(rules.indexOf("function poApproves("), rules.indexOf("function poReturns("))
     expect(body).toContain("poPmBudgetClear()")
-    const self = rules.slice(rules.indexOf("function poSelfIssues()"), rules.indexOf("function poDecidesHold()"))
+    const self = rules.slice(rules.indexOf("function poSelfIssues("), rules.indexOf("function poDecidesHold("))
     expect(self).toContain("poPmBudgetClear()")
   })
 })

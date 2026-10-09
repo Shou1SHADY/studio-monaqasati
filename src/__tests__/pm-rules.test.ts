@@ -97,13 +97,13 @@ describe("the team: a seat narrows, the owner appoints", () => {
   })
 
   it("a project with no manager is one whose manager id is a real string — null is not a manager", () => {
-    const duty = fn("pmDuty")
+    const duty = fn("pmProjectOk")
     expect(duty).toMatch(/get\('projectManagerId', ''\) is string/)
     expect(duty).toMatch(/get\('projectManagerId', ''\) != ''/)
   })
 
   it("only the owner changes the project manager, and only the owner adopts a project into PM", () => {
-    const updates = allow(block("projects"), "update").join("\n")
+    const updates = fn("projectUpdateOk")
     expect(updates).toMatch(/pmCeilingHas\('admin'\)[\s\S]{0,200}hasOnly\(\['projectManagerId', 'projectManagerName', 'updatedAt'\]\)/)
     expect(updates).toMatch(/!\('pm' in request\.resource\.data\) \|\| pmCeilingHas\('admin'\)/)
   })
@@ -140,7 +140,7 @@ describe("the supply boundary", () => {
   it("a stop reaches the order at whatever stage it is, and an order raised for several projects through the request that names it", () => {
     const stop = fn("poPmStops")
     expect(stop).toMatch(/poFrom\(\) in \['awaiting_approval', 'approved', 'sent', 'accepted'\]/)
-    expect(stop).toMatch(/pmRequestNamesOrder\(projectId, entry, resource\.id\)/)
+    expect(stop).toMatch(/pmRequestNamesOrder\(projectId, entry, poId\)/)
     expect(stop).toMatch(/hasOnly\(\['pmCancels', 'pmCancelKey', 'updatedAt'\]\)/)
   })
 })

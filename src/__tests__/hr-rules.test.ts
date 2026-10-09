@@ -243,7 +243,7 @@ describe("attendance (AT-03, AT-04)", () => {
   it("declarations are append-only: unchanged, or the old ones kept as they were and ONE added in the writer's own name", () => {
     expect(sheet()).toMatch(/d == before/)
     expect(sheet()).toMatch(/\(hrManager\(\) \|\| hrSupervises\(request\.resource\.data\.siteId\)\)/)
-    expect(sheet()).toMatch(/d\.size\(\) == before\.size\(\) \+ 1 && d\[0:before\.size\(\)\] == before && d\[before\.size\(\)\]\.by == request\.auth\.uid/)
+    expect(sheet()).toMatch(/d\.size\(\) == before\.size\(\) \+ 1 && \(before\.size\(\) == 0 \|\| d\[0:before\.size\(\)\] == before\) && d\[before\.size\(\)\]\.by == request\.auth\.uid/)
   })
 
   it("a month is closed only after it ended — today above yyyymm31 — and the client's closeBlocks agree", () => {
