@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Link, useRouter } from "@/i18n/routing"
 import { useFirestore } from "@/firebase"
-import { deleteContactCascade } from "@/lib/crm-writes"
+import { deleteContactCascade, ISSUED_QUOTES } from "@/lib/crm-writes"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
@@ -223,12 +223,12 @@ export function CrmLeadsView({ portal }: { portal: CrmPortal }) {
     if (!firestore || !deleteTarget) return
     setIsDeleting(true)
     try {
-      await deleteContactCascade(firestore, deleteTarget.id, deleteTarget.organizationId || orgId)
+      await deleteContactCascade(firestore, deleteTarget.id, deleteTarget.organizationId || orgId, can("crm.close") || can("sales.approve"))
       toast({ title: t("crm_deleted") })
       setDeleteTarget(null)
     } catch (err) {
       console.error(err)
-      toast({ title: t("crm_save_error"), variant: "destructive" })
+      toast({ title: err instanceof Error && err.message === ISSUED_QUOTES ? t("crm_delete_issued_quotes") : t("crm_save_error"), variant: "destructive" })
     } finally {
       setIsDeleting(false)
     }

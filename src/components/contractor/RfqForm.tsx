@@ -1528,7 +1528,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                       { mode: "private" as const, icon: Lock, label: t("newrfq_visibility_private") },
                       // A direct award can only be BORN — turning an existing open
                       // tender into one would orphan submitted offers.
-                      ...(isEditing ? [] : [{ mode: "direct" as const, icon: Handshake, label: t("newrfq_visibility_direct") }]),
+                      ...(isEditing || !procActor.canPrepare ? [] : [{ mode: "direct" as const, icon: Handshake, label: t("newrfq_visibility_direct") }]),
                     ]).map(({ mode, icon: Icon, label }) => (
                       <button
                         key={mode}

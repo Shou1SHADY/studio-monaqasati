@@ -43,8 +43,9 @@ async function commitInBatches(
   }
 }
 
-async function childRefs(firestore: Firestore, orgId: string, contactId: string): Promise<DocumentReference[]> {
+async function childRefs(firestore: Firestore, orgId: string, contactId: string): Promise<{ refs: DocumentReference[]; issuedQuote: boolean }> {
   const refs: DocumentReference[] = []
+  let issuedQuote = false
   for (const collectionName of [CRM_OPPORTUNITIES, CRM_QUOTATIONS, CRM_ACTIVITIES]) {
     const snapshot = await getDocs(
       query(
@@ -53,10 +54,17 @@ async function childRefs(firestore: Firestore, orgId: string, contactId: string)
         where("contactId", "==", contactId)
       )
     )
-    snapshot.forEach((docSnap) => refs.push(docSnap.ref))
+    snapshot.forEach((docSnap) => {
+      refs.push(docSnap.ref)
+      if (collectionName === CRM_QUOTATIONS && docSnap.data().status !== "draft") issuedQuote = true
+    })
   }
-  return refs
+  return { refs, issuedQuote }
 }
+
+// The rules let only crm.close / sales.approve remove a quotation that has left draft, so a delete that would
+// reach one without that right is refused up front instead of failing half way through the batches.
+export const ISSUED_QUOTES = "issued_quotes"
 
 /**
  * Delete a contact and everything hanging off it. Opportunities, quotations
@@ -68,9 +76,10 @@ async function childRefs(firestore: Firestore, orgId: string, contactId: string)
  * fewer children (recoverable, and the page still renders) rather than orphans
  * with no contact to reach them through.
  */
-export async function deleteContactCascade(firestore: Firestore, contactId: string, orgId: string) {
-  const children = await childRefs(firestore, orgId, contactId)
-  await commitInBatches(firestore, children, (batch, ref) => batch.delete(ref))
+export async function deleteContactCascade(firestore: Firestore, contactId: string, orgId: string, canDeleteIssued: boolean) {
+  const { refs, issuedQuote } = await childRefs(firestore, orgId, contactId)
+  if (issuedQuote && !canDeleteIssued) throw new Error(ISSUED_QUOTES)
+  await commitInBatches(firestore, refs, (batch, ref) => batch.delete(ref))
   await deleteDoc(doc(firestore, CRM_CONTACTS, contactId))
 }
 
@@ -80,7 +89,7 @@ export async function deleteContactCascade(firestore: Firestore, contactId: stri
  * the deal it was logged against is gone — so only the deal reference is
  * cleared, while quotations (which are versions OF the deal) are removed.
  */
-export async function deleteOpportunityCascade(firestore: Firestore, opportunityId: string, orgId: string) {
+export async function deleteOpportunityCascade(firestore: Firestore, opportunityId: string, orgId: string, canDeleteIssued: boolean) {
   const quotes = await getDocs(
     query(
       collection(firestore, CRM_QUOTATIONS),
@@ -88,6 +97,7 @@ export async function deleteOpportunityCascade(firestore: Firestore, opportunity
       where("opportunityId", "==", opportunityId)
     )
   )
+  if (quotes.docs.some((d) => d.data().status !== "draft") && !canDeleteIssued) throw new Error(ISSUED_QUOTES)
   await commitInBatches(
     firestore,
     quotes.docs.map((d) => d.ref),

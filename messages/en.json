@@ -1950,6 +1950,7 @@
       "crm_updated": "Contact updated",
       "crm_deleted": "Contact deleted",
       "crm_save_error": "Couldn't save the contact",
+      "crm_delete_issued_quotes": "Only a CRM closer or a sales approver can delete a deal or client that has issued quotations",
       "crm_delete_confirm_title": "Delete Contact",
       "crm_delete_confirm_desc": "Are you sure you want to delete \"{name}\"? This cannot be undone.",
       "crm_delete_btn": "Delete",

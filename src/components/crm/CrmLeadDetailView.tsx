@@ -43,7 +43,7 @@ import { useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
-import { deleteContactCascade, deleteOpportunityCascade } from "@/lib/crm-writes"
+import { deleteContactCascade, deleteOpportunityCascade, ISSUED_QUOTES } from "@/lib/crm-writes"
 import { cn } from "@/lib/utils"
 import {
   ACTIVITY_TYPE_BADGE_CLASS,
@@ -151,12 +151,12 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
     if (!firestore || !contact) return
     setIsDeleting(true)
     try {
-      await deleteContactCascade(firestore, contact.id, contact.organizationId)
+      await deleteContactCascade(firestore, contact.id, contact.organizationId, can("crm.close") || can("sales.approve"))
       toast({ title: t("crm_deleted") })
       router.push(`${base}/leads`)
     } catch (err) {
       console.error(err)
-      toast({ title: t("crm_save_error"), variant: "destructive" })
+      toast({ title: err instanceof Error && err.message === ISSUED_QUOTES ? t("crm_delete_issued_quotes") : t("crm_save_error"), variant: "destructive" })
       setIsDeleting(false)
     }
   }
@@ -165,11 +165,11 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
     if (!firestore || !deleteOpp) return
     try {
       // Takes the deal's offer versions with it and unlinks its activities.
-      await deleteOpportunityCascade(firestore, deleteOpp.id, deleteOpp.organizationId || orgId)
+      await deleteOpportunityCascade(firestore, deleteOpp.id, deleteOpp.organizationId || orgId, can("crm.close") || can("sales.approve"))
       toast({ title: t("crm_opp_deleted") })
     } catch (err) {
       console.error(err)
-      toast({ title: t("crm_save_error"), variant: "destructive" })
+      toast({ title: err instanceof Error && err.message === ISSUED_QUOTES ? t("crm_delete_issued_quotes") : t("crm_save_error"), variant: "destructive" })
     } finally {
       setDeleteOpp(null)
     }
@@ -182,7 +182,7 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
       toast({ title: t("crm_quote_deleted") })
     } catch (err) {
       console.error(err)
-      toast({ title: t("crm_save_error"), variant: "destructive" })
+      toast({ title: err instanceof Error && err.message === ISSUED_QUOTES ? t("crm_delete_issued_quotes") : t("crm_save_error"), variant: "destructive" })
     } finally {
       setDeleteQuote(null)
     }

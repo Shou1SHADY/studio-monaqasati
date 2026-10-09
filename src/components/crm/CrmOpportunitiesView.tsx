@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Link, useRouter } from "@/i18n/routing"
 import { useFirestore } from "@/firebase"
-import { deleteOpportunityCascade } from "@/lib/crm-writes"
+import { deleteOpportunityCascade, ISSUED_QUOTES } from "@/lib/crm-writes"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useModules } from "@/hooks/useCompanyModules"
@@ -246,7 +246,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
       toast({ title: t("crm_opp_stage_updated") })
     } catch (err) {
       console.error(err)
-      toast({ title: t("crm_save_error"), variant: "destructive" })
+      toast({ title: err instanceof Error && err.message === ISSUED_QUOTES ? t("crm_delete_issued_quotes") : t("crm_save_error"), variant: "destructive" })
     } finally {
       setMovingId(null)
     }
@@ -258,7 +258,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
     try {
       // Offer versions belong to the deal and go with it; logged activities
       // survive with their deal reference cleared.
-      await deleteOpportunityCascade(firestore, deleteTarget.id, deleteTarget.organizationId || orgId)
+      await deleteOpportunityCascade(firestore, deleteTarget.id, deleteTarget.organizationId || orgId, can("crm.close") || can("sales.approve"))
       toast({ title: t("crm_opp_deleted") })
       setDeleteTarget(null)
     } catch (err) {

@@ -106,7 +106,7 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
   const seesCost = isOrgOwner || can("sales.approve")
   const canApprove = can("sales.approve") || can("crm.close")
   // The deposit is Finance's fact; Sales approvers may record it as before.
-  const canConfirmDeposit = canApprove || can("invoices.manage")
+  const canConfirmDeposit = can("sales.approve") || can("invoices.manage") || can("accounting.post")
 
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
