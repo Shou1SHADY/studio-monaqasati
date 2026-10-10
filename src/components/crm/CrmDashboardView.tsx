@@ -74,6 +74,8 @@ export function CrmDashboardView({ portal }: { portal: CrmPortal }) {
   const today = todayKey()
   const offers = useMemo(() => currentOffersByDeal(quotations), [quotations])
   const figureOf = (o: CrmOpportunity) => dealFigure(o, offers.get(o.id) ?? null, today)
+  // A row's figure: what was awarded, else what awaits approval (legacy), else the board's figure — never a 0 for «no estimate».
+  const rowAmount = (o: CrmOpportunity) => o.awardedValue || o.approvalAmount || figureOf(o).amount
   const { profile } = useCrmOrgProfile()
   const { can } = usePermissions()
   const { on } = useModules()
@@ -202,9 +204,27 @@ export function CrmDashboardView({ portal }: { portal: CrmPortal }) {
     >
       <CrmStatRow>
         <CrmStat icon={Target} label={t("crm_opp_stat_open")} value={summary.open} accent="cta" hint={summary.onHold > 0 ? t("crm_dash_on_hold_hint", { count: summary.onHold }) : undefined} />
-        <CrmStat icon={Coins} label={t("crm_opp_stat_open_value")} value={formatSarCompact(summary.openValue, locale)} accent="primary" />
+        <CrmStat
+          icon={Coins}
+          label={t("crm_opp_stat_open_value")}
+          value={formatSarCompact(summary.openValue, locale)}
+          accent="primary"
+          hint={summary.excludedNoValue + summary.excludedOverdue > 0 ? t("crm_opp_stat_excluded", { none: summary.excludedNoValue, overdue: summary.excludedOverdue }) : undefined}
+        />
         <CrmStat icon={TrendingDown} label={t("crm_dash_weighted")} value={formatSarCompact(summary.weightedValue, locale)} accent="accent" hint={t("crm_dash_weighted_hint")} />
-        <CrmStat icon={Trophy} label={t("crm_opp_stat_win_rate")} value={`${summary.winRate}%`} accent="success" hint={summary.avgDealValue > 0 ? `${t("crm_opp_stat_avg")}: ${formatSarCompact(summary.avgDealValue, locale)}` : undefined} />
+        {/* The same basis as the board: «5 of 5 decisions» (OPP-08 #4). */}
+        <CrmStat
+          icon={Trophy}
+          label={t("crm_opp_stat_win_rate")}
+          value={summary.won + summary.lost > 0 ? `${summary.winRate}%` : "—"}
+          accent="success"
+          hint={[
+            summary.won + summary.lost > 0 ? t("crm_opp_stat_win_basis", { won: summary.won, decided: summary.won + summary.lost }) : t("crm_opp_stat_win_none"),
+            summary.avgDealValue > 0 ? `${t("crm_opp_stat_avg")} ${formatSarCompact(summary.avgDealValue, locale)}` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        />
       </CrmStatRow>
 
       {isLoading ? (
@@ -245,7 +265,7 @@ export function CrmDashboardView({ portal }: { portal: CrmPortal }) {
               ) : (
                 <ul className="divide-y">
                   {pendingApproval.map((opp) => (
-                    <DealRow key={opp.id} opp={opp} href={`${base}/opportunities/${opp.id}`} locale={locale}>
+                    <DealRow key={opp.id} opp={opp} amount={rowAmount(opp)} href={`${base}/opportunities/${opp.id}`} locale={locale}>
                       <Badge variant="outline" className="text-[10px] bg-warning/10 text-warning border-warning/20">
                         {t("crm_approval_pending_short")}
                       </Badge>
@@ -285,7 +305,7 @@ export function CrmDashboardView({ portal }: { portal: CrmPortal }) {
               ) : (
                 <ul className="divide-y">
                   {dueSoon.map(({ opp, days }) => (
-                    <DealRow key={opp.id} opp={opp} href={`${base}/opportunities/${opp.id}`} locale={locale}>
+                    <DealRow key={opp.id} opp={opp} amount={rowAmount(opp)} href={`${base}/opportunities/${opp.id}`} locale={locale}>
                       <Badge
                         variant="outline"
                         className={cn(
@@ -312,7 +332,7 @@ export function CrmDashboardView({ portal }: { portal: CrmPortal }) {
               ) : (
                 <ul className="divide-y">
                   {awaitingHandover.map((opp) => (
-                    <DealRow key={opp.id} opp={opp} href={`${base}/opportunities/${opp.id}`} locale={locale}>
+                    <DealRow key={opp.id} opp={opp} amount={rowAmount(opp)} href={`${base}/opportunities/${opp.id}`} locale={locale}>
                       <Badge className={cn("text-[10px]", OPPORTUNITY_STAGE_BADGE_CLASS.won)}>
                         {t("crm_dash_generate_project")}
                       </Badge>
@@ -568,15 +588,18 @@ export function CrmDashboardView({ portal }: { portal: CrmPortal }) {
 /** Deal name + client + value, with a caller-supplied badge on the end. */
 function DealRow({
   opp,
+  amount,
   href,
   locale,
   children,
 }: {
   opp: CrmOpportunity
+  amount: number | null
   href: string
   locale: string
   children?: React.ReactNode
 }) {
+  const t = useTranslations("Portal.Shared")
   return (
     <li className="px-4 py-3 flex items-center gap-3">
       <span className="min-w-0 flex-1">
@@ -588,9 +611,13 @@ function DealRow({
         </Link>
         <span className="block text-[11px] text-muted-foreground truncate">{opp.contactName || "—"}</span>
       </span>
-      <span className="shrink-0 text-xs font-black text-foreground" dir="ltr">
-        {formatSar(opp.approvalAmount || opp.awardedValue || opp.submittedPrice || opp.value, locale)}
-      </span>
+      {amount ? (
+        <span className="shrink-0 text-xs font-black text-foreground" dir="ltr">
+          {formatSar(amount, locale)}
+        </span>
+      ) : (
+        <span className="shrink-0 text-xs font-bold text-muted-foreground">{t("crm_no_estimate")}</span>
+      )}
       {children}
     </li>
   )

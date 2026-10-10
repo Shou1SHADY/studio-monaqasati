@@ -334,6 +334,7 @@ export async function reviseQuotation(
       contactId: old.contactId,
       contactName: old.contactName ?? null,
       opportunityId: old.opportunityId ?? null,
+      opportunityNumber: old.opportunityNumber ?? null,
       requestId: input.requestId ?? old.requestId ?? null,
       quotationNumber: revisionDocNumber(baseDocNumber(old.quotationNumber), revision),
       revision,

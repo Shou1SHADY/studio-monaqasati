@@ -27,10 +27,23 @@ export function offerVersions(quotes: CrmQuotation[], oppId: string): CrmQuotati
     .sort((a, b) => revisionOf(b) - revisionOf(a) || sentDay(b).localeCompare(sentDay(a)))
 }
 
-/** The offer the deal stands on: the newest sent one nobody replaced. */
-export function currentOffer(quotes: CrmQuotation[], oppId: string): CrmQuotation | null {
-  return offerVersions(quotes, oppId).find((q) => !q.supersededById) ?? null
+/**
+ * Replaced = a NEWER version reached the client. Sales stamps `supersededById` the moment it opens the revision's
+ * draft, but until that draft is sent the client still holds this one — so it stays the deal's offer (its figure,
+ * its deadline, its PDF), and only the award waits (`revisionPending`).
+ */
+export function isReplaced(q: CrmQuotation, versions: CrmQuotation[]): boolean {
+  return !!q.supersededById && versions.some((v) => v.id === q.supersededById)
 }
+
+/** The offer the deal stands on: the newest sent one no SENT version replaced. */
+export function currentOffer(quotes: CrmQuotation[], oppId: string): CrmQuotation | null {
+  const versions = offerVersions(quotes, oppId)
+  return versions.find((q) => !isReplaced(q, versions)) ?? null
+}
+
+/** Sales is preparing the next version of the offer the client holds: the award waits for it (one version is won). */
+export const revisionPending = (offer: CrmQuotation | null): boolean => !!offer?.supersededById
 
 /** An offer sent under the old CRM ladder: a number with no Sales document behind it. Still an offer for the rules. */
 const legacyOffer = (opp: Pick<CrmOpportunity, "submittedPrice">) => (opp.submittedPrice || 0) > 0
@@ -65,8 +78,10 @@ export function pricingState(opp: CrmOpportunity, requests: QuoteRequest[], quot
     if (latest.kind === "revision" && offer) return { kind: "revision", request: latest, quote: offer }
     return { kind: "at_sales", request: latest, since: latest.requestedAt }
   }
+  if (offer && revisionPending(offer) && latest?.kind === "revision") return { kind: "revision", request: latest, quote: offer }
   if (offer) {
-    const lifecycle = quoteLifecycle(offer, today)
+    // Read as the client holds it: a revision still in draft does not end its validity.
+    const lifecycle = quoteLifecycle({ ...offer, supersededById: null }, today)
     return { kind: "offer", quote: offer, lifecycle, expired: lifecycle === "expired" }
   }
   if (latest?.status === "declined") return { kind: "declined", request: latest }
@@ -106,7 +121,8 @@ export function currentOffersByDeal(quotes: CrmQuotation[]): Map<string, CrmQuot
   }
   const out = new Map<string, CrmQuotation>()
   for (const [id, list] of byDeal) {
-    const current = offerVersions(list, id).find((q) => !q.supersededById)
+    const versions = offerVersions(list, id)
+    const current = versions.find((q) => !isReplaced(q, versions))
     if (current) out.set(id, current)
   }
   return out

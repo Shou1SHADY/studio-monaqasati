@@ -30,6 +30,7 @@ import {
   type OpportunityFileKind,
   type WonReason,
 } from "@/lib/crm"
+import { revisionPending } from "@/lib/crm-journey"
 import { drawYearlyDocNumber } from "@/lib/sales-numbering"
 import { createQuoteRequest, loadPermissionRecipients, type QuoteRequestFile } from "@/lib/sales-transfers"
 
@@ -356,6 +357,7 @@ export async function recordAward(
   input: { value: number; bidderCount: number | null; ourRank: number | null; reason: WonReason; note: string; notice: NoticeCopy }
 ) {
   if (!canRecordAward(opp, offer !== null || (opp.submittedPrice || 0) > 0)) throw new Error("no_offer")
+  if (revisionPending(offer)) throw new Error("revision_pending")
   if (!(input.value > 0)) throw new Error("value_required")
   const projectDeal = opportunityDeliverables(opp).includes("project")
   const batch = writeBatch(firestore)

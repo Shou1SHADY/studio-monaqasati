@@ -43,6 +43,8 @@ import { useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
+import { currentOffersByDeal, dealFigure } from "@/lib/crm-journey"
+import { todayKey } from "@/components/crm/OppBits"
 import { deleteContactCascade, deleteOpportunityCascade, ISSUED_QUOTES } from "@/lib/crm-writes"
 import { cn } from "@/lib/utils"
 import {
@@ -130,6 +132,9 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
     () => quotations.filter((q) => q.contactId === contactId),
     [quotations, contactId]
   )
+  // Each deal shows the board's figure: the awarded value, else Sales' offer, else the estimate — «no estimate», never 0.
+  const offersByDeal = useMemo(() => currentOffersByDeal(contactQuotations), [contactQuotations])
+  const today = todayKey()
   const contactActivities = useMemo(
     () =>
       activities
@@ -349,6 +354,7 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
               {contactOpportunities.map((opp) => {
                 const days = daysUntil(opp.expectedCloseDate)
                 const isOpen = opp.stage !== "won" && opp.stage !== "lost"
+                const amount = opp.awardedValue || dealFigure(opp, offersByDeal.get(opp.id) ?? null, today).amount
                 return (
                   <li key={opp.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
                     <div className="min-w-0 flex-1">
@@ -372,7 +378,11 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
-                        <span className="font-semibold" dir="ltr">{formatSar(opp.value, locale)}</span>
+                        {amount ? (
+                          <span className="font-semibold" dir="ltr">{formatSar(amount, locale)}</span>
+                        ) : (
+                          <span className="font-semibold">{t("crm_no_estimate")}</span>
+                        )}
                         {opp.expectedCloseDate && (
                           <span className={cn("flex items-center gap-1", isOpen && days !== null && days < 0 && "text-destructive font-semibold")}>
                             · <CalendarDays size={10} />

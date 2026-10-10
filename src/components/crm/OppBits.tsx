@@ -121,6 +121,8 @@ export function OppStatusLine({
       <span className={cn(tone, "bg-indigo/10 text-indigo", className)}>
         <Clock size={11} aria-hidden="true" />
         {t(pricing.kind === "revision" ? "crm_status_revision" : "crm_status_at_sales", { days: daysSince(pricing.request.requestedAt, today) })}
+        {/* The request's number, as on the page — what the pricer is asked about (OPP-04 #4). */}
+        {pricing.request.requestNumber && <span className="font-medium"> · {iso(displayDocNumber(pricing.request.requestNumber, locale))}</span>}
       </span>
     )
   }

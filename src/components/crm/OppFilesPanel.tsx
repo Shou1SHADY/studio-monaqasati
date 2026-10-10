@@ -25,6 +25,7 @@ import { OfferPdfButton } from "@/components/crm/OfferPdfButton"
 import { useFirestore, useStorage } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { OPPORTUNITY_FILE_KINDS, formatCrmDate, type CrmContact, type CrmOpportunity, type CrmQuotation, type OpportunityFileKind } from "@/lib/crm"
+import { isReplaced } from "@/lib/crm-journey"
 import {
   addOpportunityFiles,
   deleteOpportunityFile,
@@ -290,7 +291,7 @@ export function OppFilesPanel({
                     <Badge variant="outline" className="border-indigo/20 bg-indigo/10 text-[10px] text-indigo">{t("crm_from_sales")}</Badge>
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    {[t("crm_file_kind_quotation"), t(q.supersededById ? "crm_offer_superseded" : "crm_offer_current"), q.sentAt ? t("crm_offer_arrived", { date: formatCrmDate(q.sentAt, locale) }) : null]
+                    {[t("crm_file_kind_quotation"), t(isReplaced(q, offers) ? "crm_offer_superseded" : "crm_offer_current"), q.sentAt ? t("crm_offer_arrived", { date: formatCrmDate(q.sentAt, locale) }) : null]
                       .filter(Boolean)
                       .join(" · ")}
                   </p>

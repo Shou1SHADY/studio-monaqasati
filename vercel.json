@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/cron/forward-notices", "schedule": "0 4 * * *" }
+    { "path": "/api/cron/forward-notices", "schedule": "0 4 * * *" },
+    { "path": "/api/cron/offer-expiry", "schedule": "0 5 * * *" }
   ]
 }

@@ -21,8 +21,9 @@ import {
   type CrmOrgProfile,
   type CrmQuotation,
 } from "@/lib/crm"
-import { currentOffer, currentOffersByDeal, dealFigure, deadlinePassed, offerVersions, pricingState } from "@/lib/crm-journey"
+import { currentOffer, currentOffersByDeal, dealFigure, deadlinePassed, isReplaced, offerVersions, pricingState, revisionPending } from "@/lib/crm-journey"
 import { displayDocNumber } from "@/lib/sales-numbering"
+import { expiryNotice, riyadhToday, selectExpiredOffers } from "@/lib/crm-offer-expiry"
 import type { QuoteRequest } from "@/lib/sales-transfers"
 
 jest.mock("next-intl", () => ({
@@ -136,6 +137,29 @@ describe("OPP-04 the offer comes from Sales", () => {
     expect(pricingState(d, [req({ status: "declined", declineReason: "spec" })], [], TODAY).kind).toBe("declined")
   })
 
+  it("while Sales drafts the revision, the client's version stays the deal's offer — only the award waits", async () => {
+    // Sales stamps supersededById on v1 the moment the draft v2 opens; v2 is not sent yet.
+    const held = quote({ id: "q1", amount: 47500, supersededById: "q2", validUntil: "2026-11-08" })
+    const drafting = quote({ id: "q2", status: "draft", revision: 2, amount: 44800 })
+    const quotes = [held, drafting]
+    const d = deal({ stage: "negotiation", value: 30000, expectedCloseDate: "2026-09-30" })
+    expect(currentOffer(quotes, "d1")?.id).toBe("q1")
+    expect(currentOffersByDeal(quotes).get("d1")?.amount).toBe(47500)
+    expect(dealFigure(d, currentOffer(quotes, "d1"), TODAY)).toEqual({ amount: 47500, kind: "offer", overdue: false })
+    const rev = req({ id: "r2", kind: "revision", status: "quoted", revisionOfQuotationId: "q1" })
+    expect(pricingState(d, [rev], quotes, TODAY).kind).toBe("revision")
+    expect(isReplaced(held, offerVersions(quotes, "d1"))).toBe(false)
+    expect(revisionPending(currentOffer(quotes, "d1"))).toBe(true)
+    const notice = { title: "", message: "", i18n: { title: "", message: "", params: {} } }
+    await expect(
+      recordAward({} as never, d, { uid: "u1", name: "Saad" }, held, { value: 47500, bidderCount: 1, ourRank: 1, reason: "price", note: "", notice })
+    ).rejects.toThrow("revision_pending")
+    // Once v2 is sent, v1 is replaced and v2 is the offer.
+    const sent = { ...drafting, status: "sent" as const, sentAt: "2026-10-12" }
+    expect(currentOffer([held, sent], "d1")?.id).toBe("q2")
+    expect(isReplaced(held, offerVersions([held, sent], "d1"))).toBe(true)
+  })
+
   it("an offer past its validity with no answer says so", () => {
     const s = pricingState(deal({ stage: "proposal" }), [], [quote({ validUntil: "2026-10-01" })], TODAY)
     expect(s.kind === "offer" && s.expired).toBe(true)
@@ -191,5 +215,35 @@ describe("OPP-01 and OPP-07", () => {
     expect(projectKindOf({ scopeTypes: ["infrastructure", "mep"] })).toBe("infra")
     expect(projectKindOf({ scopeTypes: ["facilities"] })).toBe("mnt")
     expect(projectKindOf({ scopeTypes: [], customScopeActivity: "roads" })).toBe("road")
+  })
+})
+
+describe("OPP-04 #8 an offer that lapses unanswered tells the requester — once", () => {
+  const lapsed = quote({ validUntil: "2026-10-01" })
+  const requesters = new Map([["r1", "u-req"]])
+  const open = deal({ stage: "proposal", docNumber: "OP-2026/014", pricingRequestId: "r1", createdById: "u-maker" })
+
+  it("selects the deal's current sent offer past validity, addressed to whoever asked Sales", () => {
+    const [hit] = selectExpiredOffers([open], [lapsed], requesters, TODAY)
+    expect(hit.quote.id).toBe("q1")
+    expect(hit.recipientId).toBe("u-req")
+    // No request on record: the deal's creator hears it.
+    expect(selectExpiredOffers([deal({ stage: "proposal", createdById: "u-maker" })], [lapsed], new Map(), TODAY)[0].recipientId).toBe("u-maker")
+  })
+
+  it("never twice, never for a still-valid, revising, answered or closed one", () => {
+    expect(selectExpiredOffers([{ ...open, expiryNoticeQuoteId: "q1" }], [lapsed], requesters, TODAY)).toEqual([])
+    expect(selectExpiredOffers([open], [quote({ validUntil: TODAY })], requesters, TODAY)).toEqual([])
+    expect(selectExpiredOffers([open], [quote({ validUntil: "2026-10-01", supersededById: "q2" })], requesters, TODAY)).toEqual([])
+    expect(selectExpiredOffers([open], [quote({ validUntil: "2026-10-01", status: "accepted" })], requesters, TODAY)).toEqual([])
+    expect(selectExpiredOffers([{ ...open, state: "lost", stage: "lost" }], [lapsed], requesters, TODAY)).toEqual([])
+  })
+
+  it("the notice names the deal and offer in Latin params (each reader localises) and opens the deal", () => {
+    const n = expiryNotice({ opp: open, quote: lapsed, recipientId: "u-req" }, "2026-10-08T05:00:00Z")
+    expect(n.i18n.params).toEqual({ number: "OP-2026/014", title: "Al Nuzha", offer: "QT-2026/118" })
+    expect(n.message).toContain("ف-2026/014")
+    expect(n.link).toBe("crm/opportunities/d1")
+    expect(riyadhToday(new Date("2026-10-07T22:30:00Z"))).toBe("2026-10-08")
   })
 })

@@ -56,7 +56,7 @@ import {
   trackDateLabelKey,
   type GateContext,
 } from "@/lib/crm"
-import { currentOffer, deadlinePassed, hasSentOffer, offerVersions, pricingState } from "@/lib/crm-journey"
+import { currentOffer, deadlinePassed, hasSentOffer, offerVersions, pricingState, revisionPending } from "@/lib/crm-journey"
 import { qualifyOpportunity, recordGoDecision } from "@/lib/crm-opportunity-writes"
 import { SALES_ORDERS } from "@/lib/sales-orders"
 import { CrmEmptyState, CrmListSkeleton, CrmPanel, CrmRow, crmBasePath, type CrmPortal } from "@/components/crm/CrmShell"
@@ -181,7 +181,8 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
   const offerSent = hasSentOffer(opp, offer)
   const gateCtx: GateContext = { profile, offerValue: offer?.amount ?? null, offerSent }
   const pricing = pricingState(opp, quoteRequests, quotations, today)
-  const awardAllowed = canClose && canRecordAward(opp, offerSent)
+  // One version is won: while Sales prepares the next, the award waits for it to reach the client.
+  const awardAllowed = canClose && canRecordAward(opp, offerSent) && !revisionPending(offer)
   const overdue = deadlinePassed(opp, offerSent, today)
   const addenda = opportunityAddenda(opp)
   const scope = primaryScope(opp)

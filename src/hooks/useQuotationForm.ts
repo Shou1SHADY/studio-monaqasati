@@ -42,6 +42,7 @@ export interface QuotationDefaults {
   /** The CRM request this quote answers, and the deal behind it (RQ-04, INT-01). */
   requestId?: string | null
   opportunityId?: string | null
+  opportunityNumber?: string | null
 }
 
 const emptyRow = (): QuotationItemRow => ({ name: "", quantity: "", unit: "", unitPrice: "" })
@@ -366,6 +367,7 @@ export function useQuotationForm({
             ...data,
             status: "draft",
             opportunityId: seeds?.opportunityId ?? null,
+            opportunityNumber: seeds?.opportunityNumber ?? null,
             requestId: seeds?.requestId ?? null,
             workOrderId: linkedOrder?.id ?? seeds?.workOrderId ?? null,
             workOrderNumber: linkedOrder?.orderNumber ?? seeds?.workOrderNumber ?? null,

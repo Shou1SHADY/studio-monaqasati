@@ -48,7 +48,7 @@ import {
   type GateContext,
   type StageHistoryEntry,
 } from "@/lib/crm"
-import type { PricingState } from "@/lib/crm-journey"
+import { isReplaced, type PricingState } from "@/lib/crm-journey"
 import type { OpportunityFile } from "@/lib/crm-opportunity-writes"
 import { displayDocNumber } from "@/lib/sales-numbering"
 import { cn } from "@/lib/utils"
@@ -410,7 +410,7 @@ export function ValuePanel({
               {t("crm_record_award_btn")}
             </Button>
           ) : (
-            <span className="text-xs text-muted-foreground">{t("crm_value_award_after_offer")}</span>
+            <span className="text-xs text-muted-foreground">{t(pricing.kind === "revision" ? "crm_value_award_after_revision" : "crm_value_award_after_offer")}</span>
           )}
         </li>
       </ol>
@@ -532,7 +532,7 @@ export function OfferPanel({
               <div className="min-w-[10rem] flex-1">
                 <p className="text-sm font-black">
                   <bdi dir="ltr">{displayDocNumber(q.quotationNumber, locale)}</bdi>
-                  <span className={cn("ms-2", q.supersededById && "text-muted-foreground line-through")} dir="ltr">
+                  <span className={cn("ms-2", isReplaced(q, versions) && "text-muted-foreground line-through")} dir="ltr">
                     {formatSar(q.amount, locale)}
                   </span>
                 </p>
@@ -543,9 +543,9 @@ export function OfferPanel({
               </div>
               <Badge
                 variant="outline"
-                className={cn("text-[10px]", q.supersededById ? "border-border bg-muted text-muted-foreground" : "border-success/20 bg-success/10 text-success")}
+                className={cn("text-[10px]", isReplaced(q, versions) ? "border-border bg-muted text-muted-foreground" : "border-success/20 bg-success/10 text-success")}
               >
-                {t(q.supersededById ? "crm_offer_superseded" : q.status === "accepted" ? "crm_offer_accepted" : q.status === "rejected" ? "crm_offer_lost" : "crm_offer_current")}
+                {t(isReplaced(q, versions) ? "crm_offer_superseded" : q.status === "accepted" ? "crm_offer_accepted" : q.status === "rejected" ? "crm_offer_lost" : "crm_offer_current")}
               </Badge>
             </li>
           ))}

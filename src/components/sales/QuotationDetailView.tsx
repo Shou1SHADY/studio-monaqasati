@@ -119,6 +119,15 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono text-sm text-muted-foreground" dir="ltr">{displayDocNumber(q.quotationNumber, locale)}</span>
               <Badge className={cn("text-[10px]", QUOTATION_PHASE_BADGE_CLASS[phase])}>{t(`crm_quote_phase_${phase}`)}</Badge>
+              {/* The deal this offer prices — its number, as CRM and the handover file name it (OPP-02 #3). */}
+              {q.opportunityId && q.opportunityNumber && (
+                <Link
+                  href={`${crmBase}/opportunities/${q.opportunityId}`}
+                  className="rounded-sm text-[11px] font-bold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {t("sales_q_for_deal", { number: `\u2068${displayDocNumber(q.opportunityNumber, locale)}\u2069` })}
+                </Link>
+              )}
               {fully && (
                 <Badge className="text-[10px] bg-success/10 text-success border-success/20 gap-1">
                   <CheckCircle2 size={10} aria-hidden="true" />

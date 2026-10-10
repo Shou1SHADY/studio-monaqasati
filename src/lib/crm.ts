@@ -547,6 +547,8 @@ export interface CrmOpportunity {
   pricingRequestId?: string | null
   pricingRequestNumber?: string | null
   pricingRequestedAt?: string | null
+  /** The offer whose lapsed validity the requester was told about (OPP-04 #8, daily cron) — one notice per version. */
+  expiryNoticeQuoteId?: string | null
   /** Who recorded the deal — there is no owner before handover (OPP-01 #2). */
   createdById?: string | null
   createdByName?: string | null
@@ -1155,6 +1157,8 @@ export interface CrmQuotation {
   /** Set when the quotation is a priced version of a specific deal. Absent on
    * standalone quotations written against a contact only. */
   opportunityId?: string | null
+  /** The deal's number («OP-2026/014», shown ف-…) — carried from the pricing request so Sales' offer names its deal (OPP-02 #3). */
+  opportunityNumber?: string | null
   /** 1, 2, 3 … — a re-price never overwrites the figure that was sent. */
   version?: number | null
   quotationNumber: string

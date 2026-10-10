@@ -168,6 +168,7 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
             contactId: openRequest.contactId,
             requestId: openRequest.id,
             opportunityId: openRequest.opportunityId ?? null,
+            opportunityNumber: openRequest.opportunityNumber ?? null,
             items: openRequest.lines.map((l) => ({ name: l.name, quantity: l.quantity, unit: l.unit, unitPrice: 0 })),
           }
         : undefined,
