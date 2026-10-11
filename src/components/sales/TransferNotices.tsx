@@ -62,7 +62,9 @@ export function ReportTransferDialog({
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
-  const mfgOn = useModules().on("manufacturing")
+  const modules = useModules()
+  const mfgOn = modules.on("manufacturing")
+  const financeOn = modules.on("payments")
 
   const installment = target
     ? installmentStates(target.quotation).find((s) => s.id === target.installmentId) ?? null
@@ -108,6 +110,7 @@ export function ReportTransferDialog({
         note,
         actor: { id: user.uid, name: actorName },
         recipients,
+        financeOff: !financeOn,
         notification: {
           title: t("sales_tn_notif_reported_title"),
           message: t("sales_tn_notif_reported_msg", {

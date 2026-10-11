@@ -2,13 +2,19 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Banknote, CheckCircle2, Search, Loader2, Lock, Hourglass, Send } from "lucide-react"
+import { Banknote, CheckCircle2, Search, Loader2, Lock, Hourglass, Printer, Send } from "lucide-react"
 import { collection, query, where } from "firebase/firestore"
 import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useToast } from "@/hooks/use-toast"
+import { useQuotationBrandingDefaults } from "@/hooks/useQuotationBranding"
+import { IconButton } from "@/components/module-ui/IconButton"
+import { displayDocNumber } from "@/lib/sales-numbering"
+import { receiptVoucher } from "@/lib/sales-receipts"
+import { printReceiptVoucher } from "@/lib/sales-receipt-print"
 import { useCrmData } from "@/hooks/useCrmData"
 import { cn } from "@/lib/utils"
 import { formatCrmDate, formatSar, formatSarCompact, type CrmQuotation } from "@/lib/crm"
@@ -40,6 +46,8 @@ export function PaymentsView({ portal }: { portal: CrmPortal }) {
   const canAnswerNotice = can("invoices.manage") || can("accounting.post") || can("sales.approve")
   const canReport = can("sales.manage") || can("sales.approve")
   const base = salesBasePath(portal)
+  const { toast } = useToast()
+  const { branding } = useQuotationBrandingDefaults()
 
   const { orgId, quotations, teamMembers, isLoading } = useCrmData({ quotations: true })
   const actorName = teamMembers.find((m) => m.id === user?.uid)?.name || user?.email || ""
@@ -79,6 +87,10 @@ export function PaymentsView({ portal }: { portal: CrmPortal }) {
   const [report, setReport] = useState<{ quotation: CrmQuotation; installmentId: string } | null>(null)
   const [answering, setAnswering] = useState<TransferNotice | null>(null)
   const label = (l: string) => l || t("crm_quote_installment_full")
+  const printVoucher = (d: InstallmentDue) => {
+    const v = d.entry ? receiptVoucher(d.quotation, label(d.installment.label), d.entry) : null
+    if (v && !printReceiptVoucher(v, branding, locale, (k, p) => t(k, p))) toast({ title: t("rv_popup_blocked"), variant: "destructive" })
+  }
 
   const noticesOf = (quotationId: string) => notices.filter((n) => n.quotationId === quotationId)
   /** Whether this due row carries the report button — only the next unreported
@@ -182,9 +194,16 @@ export function PaymentsView({ portal }: { portal: CrmPortal }) {
                     </span>
                   )
                 })()}
+                {/* The receipt voucher this payment got (older payments have none). */}
+                {d.entry?.receiptNumber && (
+                  <span className="text-[11px] font-semibold text-muted-foreground" dir="ltr">{displayDocNumber(d.entry.receiptNumber, locale)}</span>
+                )}
                 <span className={cn("text-sm font-black tabular-nums", d.entry ? "text-success" : "text-warning")} dir="ltr">
                   {formatSar(d.entry ? d.entry.paidAmount : d.installment.remaining, locale)}
                 </span>
+                {d.entry?.receiptNumber && (
+                  <IconButton label={t("rv_print")} icon={Printer} iconSize={15} onClick={() => printVoucher(d)} />
+                )}
                 {!d.entry && canReportRow(d) && (
                   <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setReport({ quotation: d.quotation, installmentId: d.installment.id })}>
                     <Send size={13} />

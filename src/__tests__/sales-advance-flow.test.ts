@@ -24,6 +24,9 @@ import { installmentStates } from "@/lib/sales-installments"
 import type { ManufacturingRequest, SalesOrder } from "@/lib/sales-orders"
 import { neededByFor, productionNeeds, requestProductionForAdvance, resetOrderPromise } from "@/lib/sales-order-writes"
 import { confirmAdvanceForOrder, installmentNoticeState, reportTransfer, type TransferNotice } from "@/lib/sales-transfers"
+import { recordInstallmentPayment } from "@/lib/sales"
+import { receiptVoucher } from "@/lib/sales-receipts"
+import { buildReceiptVoucherHtml } from "@/lib/sales-receipt-print"
 
 const db = fakeFirestore as unknown as Firestore
 const NOW = new Date("2026-09-17T08:00:00.000Z")
@@ -229,5 +232,57 @@ describe("SO-11 · reset the promise", () => {
 
     seed("salesOrders/so53", { ...(readDoc<Record<string, unknown>>("salesOrders/so53") as Record<string, unknown>), id: "so53", status: "closed" })
     await expect(resetOrderPromise(db, { orderId: "so53", promiseDate: "2026-12-01", reason: "x", today: TODAY, actor: REEM })).rejects.toThrow("order_closed")
+  })
+})
+
+describe("the receipt voucher (سند قبض) — every payment received is numbered, once (11 Oct 2026)", () => {
+  const entriesOf = (id: string) => {
+    const p = (quote().payments || {})[id]
+    return p ? p.entries ?? [p] : []
+  }
+
+  it("a payment typed in Sales draws RV-2026/001, then 002 — with its method and reference", async () => {
+    seedQuote()
+    seedOrder({ status: "running" })
+    const first = await recordInstallmentPayment(db, { quotation: quote(), installmentId: "inst_adv", amount: 5000, note: null, method: "cheque", reference: " CHQ-118 ", actor: REEM, recipients: ["noura"], notification: COPY })
+    const second = await recordInstallmentPayment(db, { quotation: quote(), installmentId: "inst_adv", amount: 1000, note: null, method: "cash", actor: REEM, recipients: [], notification: COPY })
+    expect(first.receiptNumber).toBe("RV-2026/001")
+    expect(second.receiptNumber).toBe("RV-2026/002")
+    expect(entriesOf("inst_adv")).toEqual([
+      expect.objectContaining({ paidAmount: 5000, receiptNumber: "RV-2026/001", method: "cheque", reference: "CHQ-118" }),
+      expect.objectContaining({ paidAmount: 1000, receiptNumber: "RV-2026/002", method: "cash", reference: null }),
+    ])
+    expect(listCollection<{ receiptNumber: string }>("users/noura/notifications")[0].receiptNumber).toBe("RV-2026/001")
+  })
+
+  it("Finance confirming a reported transfer numbers it too — by transfer, with the notice as the reference", async () => {
+    seedQuote()
+    seedOrder()
+    await report(advanceAmount())
+    await confirmAdvanceForOrder(db, { order: order(), actor: NOURA, notification: COPY })
+    expect(entriesOf("inst_adv")[0]).toMatchObject({ receiptNumber: "RV-2026/001", method: "transfer", reference: notices()[0].noticeNumber })
+  })
+
+  it("and so does confirming an advance nobody reported", async () => {
+    seedQuote()
+    seedOrder()
+    await confirmAdvanceForOrder(db, { order: order(), actor: NOURA, notification: COPY })
+    expect(entriesOf("inst_adv")[0]).toMatchObject({ receiptNumber: "RV-2026/001", method: "transfer" })
+  })
+
+  it("prints: the Arabic number, the amount in figures and in words, who paid and for what — client text escaped", () => {
+    const v = receiptVoucher({ quotationNumber: "QT-2026/068-2", contactName: "Al-Diyar <b>" }, "Advance", {
+      paidAt: NOW.toISOString(), paidAmount: 19734, paidByUserId: "reem", paidByUserName: "Reem", note: null, receiptNumber: "RV-2026/001", method: "transfer", reference: "SNB-7781",
+    })!
+    const branding = { logoUrl: null, companyName: "Mdmak", crNumber: "1010", vatNumber: "300", address: "", phone: "", email: "", website: "" }
+    const html = buildReceiptVoucherHtml(v, branding, "ar", (k) => k)
+    expect(html).toContain("س.ق-2026/001")
+    expect(html).toContain("19,734.00 ر.س")
+    expect(html).toContain("ألف")
+    expect(html).toContain("Al-Diyar &lt;b&gt;")
+    expect(html).toContain("rv_method_transfer")
+    expect(html).toContain("SNB-7781")
+    // An older payment, recorded before vouchers existed, has none to print.
+    expect(receiptVoucher({ quotationNumber: "QT-1", contactName: "x" }, "", { paidAt: "", paidAmount: 1, paidByUserId: null, paidByUserName: null, note: null })).toBeNull()
   })
 })

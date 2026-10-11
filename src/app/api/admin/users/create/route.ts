@@ -3,6 +3,7 @@ import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { sendEmail, buildAccountCreatedEmail } from "@/lib/email"
+import { COMPANY_MODULES, SALES_ONLY_OFF } from "@/lib/company-modules"
 
 // Admin-only account creation. This is the sole way a Contractor/Supplier
 // account can come into existence now that public self-registration has
@@ -19,6 +20,8 @@ const bodySchema = z
     specializations: z.array(z.string().trim().min(1)).optional(),
     leadId: z.string().trim().min(1).optional(),
     leadCollection: z.enum(["demoRequests", "onboardingRequests"]).optional(),
+    /** A supplier that only sells starts with CRM, Inventory, Finance, HR and Manufacturing switched off. */
+    salesOnly: z.boolean().optional(),
   })
   .refine((data) => data.role !== "Supplier" || (data.specializations && data.specializations.length > 0), {
     message: "At least one specialization is required for supplier accounts",
@@ -101,6 +104,15 @@ export async function POST(req: NextRequest) {
       console.error("Failed to write user profile, rolling back Auth user:", err)
       await adminAuth.deleteUser(uid).catch(() => {})
       return errorResponse("Failed to create account", "INTERNAL_ERROR", 500)
+    }
+
+    // --- A sales-only supplier starts with its other components switched off (non-fatal: the admin can set them later) ---
+    if (role === "Supplier" && parsed.data.salesOnly) {
+      await db
+        .collection(COMPANY_MODULES)
+        .doc(uid)
+        .set({ organizationId: uid, off: [...SALES_ONLY_OFF], updatedById: decoded.uid, updatedByName: sender.name || sender.email || "", updatedAt: FieldValue.serverTimestamp() })
+        .catch((err) => console.error("Failed to switch the new supplier to sales-only:", err))
     }
 
     // --- Email the new user a password-set link ---

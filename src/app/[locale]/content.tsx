@@ -10,6 +10,7 @@ import { useTranslations, useLocale } from 'next-intl';
 import { cn } from '@/lib/utils';
 import BelowFoldSections from './BelowFoldSections'
 import { OnboardingWizard } from '@/components/OnboardingWizard';
+import type { CompanyType } from '@/lib/company-types';
 
 const HERO_SLIDES = [
   { wm: { ar: '٢٤',  en: '24'  } },
@@ -340,7 +341,17 @@ export default function HomeContent() {
   const [scrolled,        setScrolled]       = useState(false);
   const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false);
   const [onboardingOpen,  setOnboardingOpen]  = useState(false);
+  const [joinTypes,       setJoinTypes]       = useState<CompanyType[]>([]);
   const [liveData,        setLiveData]       = useState<LandingPreview | null>(null);
+
+  // `?join=supplier` (the offer and RFQ pages' «register» buttons) or `?join=1` opens the Join form on arrival —
+  // contractors and suppliers subscribe through the same form.
+  useEffect(() => {
+    const join = new URLSearchParams(window.location.search).get('join');
+    if (!join) return;
+    if (join === 'supplier') setJoinTypes(['supplier']);
+    setOnboardingOpen(true);
+  }, []);
 
   useEffect(() => {
     fetch('/api/landing/preview')
@@ -661,7 +672,7 @@ export default function HomeContent() {
 
       <BelowFoldSections />
 
-      <OnboardingWizard open={onboardingOpen} onClose={() => setOnboardingOpen(false)} />
+      <OnboardingWizard open={onboardingOpen} onClose={() => setOnboardingOpen(false)} initialTypes={joinTypes} />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
@@ -67,6 +68,8 @@ function AccountForm({ lead, onClose, onCreated }: { lead: AccountLead; onClose:
   const [email, setEmail] = useState(lead.email)
   const [phone, setPhone] = useState(lead.phone.replace(/\D/g, ""))
   const [specs, setSpecs] = useState<string[]>([])
+  // Most suppliers only sell (11 Oct 2026): the account starts with Order Management, Sales and Governance only.
+  const [salesOnly, setSalesOnly] = useState(true)
   const [specOpen, setSpecOpen] = useState(false)
   const [specSearch, setSpecSearch] = useState("")
   const [busy, setBusy] = useState(false)
@@ -88,6 +91,7 @@ function AccountForm({ lead, onClose, onCreated }: { lead: AccountLead; onClose:
           phone,
           role,
           specializations: role === "Supplier" ? specs : undefined,
+          salesOnly: role === "Supplier" ? salesOnly : undefined,
           leadId: lead.id,
           leadCollection: lead.source === "onboarding" ? "onboardingRequests" : "demoRequests",
         }),
@@ -155,6 +159,16 @@ function AccountForm({ lead, onClose, onCreated }: { lead: AccountLead; onClose:
           <Label htmlFor="acc-phone" className="font-bold">{t("phone")}</Label>
           <Input id="acc-phone" type="tel" dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))} />
         </div>
+
+        {role === "Supplier" && (
+          <div className="flex items-start justify-between gap-3 rounded-lg border px-3 py-2.5">
+            <div className="min-w-0">
+              <Label htmlFor="acc-sales-only" className="font-bold">{t("sales_only")}</Label>
+              <p className="text-xs text-muted-foreground">{t("sales_only_desc")}</p>
+            </div>
+            <Switch id="acc-sales-only" checked={salesOnly} onCheckedChange={setSalesOnly} disabled={busy} />
+          </div>
+        )}
 
         {role === "Supplier" && (
           <div className="space-y-2">

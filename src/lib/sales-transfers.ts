@@ -20,10 +20,13 @@ import {
   where,
   writeBatch,
   runTransaction,
+  type DocumentData,
+  type DocumentReference,
   type Firestore,
   getDoc,
 } from "firebase/firestore"
 import { drawYearlyDocNumber } from "./sales-numbering"
+import { drawReceiptNumber } from "./sales-receipts"
 import {
   CRM_QUOTATIONS,
   INSTALLMENT_DEPOSIT_ID,
@@ -302,9 +305,12 @@ type NotificationCopy = {
   i18n?: { title: string; message: string; params: Record<string, string | number | null> }
 }
 
+/** A batch or a transaction — both write notifications the same way. */
+type DocWriter = { set(ref: DocumentReference, data: DocumentData): unknown }
+
 function queueNotifications(
   firestore: Firestore,
-  batch: ReturnType<typeof writeBatch>,
+  batch: DocWriter,
   recipients: string[],
   payload: Record<string, unknown> & { type: string; organizationId: string; createdAt: string } & NotificationCopy
 ) {
@@ -360,6 +366,8 @@ export async function reportTransfer(
     actor: Actor
     recipients: string[]
     notification: NotificationCopy
+    /** Finance switched off (a sales-only supplier): the notice is answered in Sales → Payments instead. */
+    financeOff?: boolean
   }
 ): Promise<string> {
   const error = validateTransferReport({
@@ -402,7 +410,7 @@ export async function reportTransfer(
     type: "transfer_notice_reported",
     // Opens Finance's own desk — portal-relative, so it lands under the
     // reader's portal (see `notificationHref`).
-    link: "accounting/sales-desk",
+    link: input.financeOff ? "sales/payments" : "accounting/sales-desk",
     organizationId: input.quotation.organizationId,
     title: input.notification.title,
     message: input.notification.message,
@@ -440,14 +448,17 @@ export async function answerTransferNotice(
   if (input.notice.status !== "reported") throw new Error("already_answered")
   let released = false
   const answeredAt = nowIso()
-  const batch = writeBatch(firestore)
-  batch.update(doc(firestore, SALES_TRANSFER_NOTICES, input.notice.id), {
-    status: input.result,
-    financeMessage: input.message?.trim() || null,
-    answeredAt,
-    answeredByUserId: input.actor.id,
-    answeredByUserName: input.actor.name,
-    updatedAt: serverTimestamp(),
+  // A transaction: a confirmed transfer is money received, and its receipt voucher's number is drawn with it.
+  await runTransaction(firestore, async (tx) => {
+    released = false // a retried transaction decides again
+    const receiptNumber = input.result === "confirmed" && input.quotation ? await drawReceiptNumber(firestore, tx, input.notice.organizationId) : null
+    tx.update(doc(firestore, SALES_TRANSFER_NOTICES, input.notice.id), {
+      status: input.result,
+      financeMessage: input.message?.trim() || null,
+      answeredAt,
+      answeredByUserId: input.actor.id,
+      answeredByUserName: input.actor.name,
+      updatedAt: serverTimestamp(),
   })
 
   if (input.result === "confirmed" && input.quotation) {
@@ -457,8 +468,11 @@ export async function answerTransferNotice(
       paidByUserId: input.actor.id,
       paidByUserName: input.actor.name,
       note: input.notice.noticeNumber,
+      receiptNumber,
+      method: "transfer",
+      reference: input.notice.noticeNumber,
     })
-    batch.update(doc(firestore, CRM_QUOTATIONS, input.quotation.id), {
+    tx.update(doc(firestore, CRM_QUOTATIONS, input.quotation.id), {
       payments: next.payments,
       paidAmount: next.paidAmount,
       paidAt: next.paidAt,
@@ -467,7 +481,7 @@ export async function answerTransferNotice(
     })
     if (shouldReleaseOrder(input.order, input.notice.installmentId, next.installmentSettled)) {
       released = true
-      batch.update(doc(firestore, SALES_ORDERS, (input.order as SalesOrder).id), {
+      tx.update(doc(firestore, SALES_ORDERS, (input.order as SalesOrder).id), {
         "payment.depositPaid": true,
         "payment.depositPaidAt": answeredAt,
         status: "running",
@@ -476,7 +490,7 @@ export async function answerTransferNotice(
     }
   }
 
-  queueNotifications(firestore, batch, [input.notice.createdByUserId].filter((id) => id && id !== input.actor.id), {
+  queueNotifications(firestore, tx, [input.notice.createdByUserId].filter((id) => id && id !== input.actor.id), {
     type: input.result === "confirmed" ? "transfer_notice_confirmed" : "transfer_notice_not_found",
     // Back to the seller: where he re-reports a transfer Finance could not find.
     link: "sales/payments",
@@ -491,7 +505,7 @@ export async function answerTransferNotice(
     financeMessage: input.message?.trim() || null,
     createdAt: answeredAt,
   })
-  await batch.commit()
+  })
 
   if (input.result === "confirmed" && input.quotation) {
     onQuotationPaymentRecorded(
@@ -517,7 +531,7 @@ export async function answerTransferNotice(
  * does, or the two drift: the seller's open notice (if he filed one) is
  * answered "confirmed"; otherwise the advance is recorded on the quotation's
  * instalment for what is still owed on it. Either way the order is released in
- * the same batch and the ledger hears of the advance — so the instalment never
+ * the same transaction and the ledger hears of the advance — so the instalment never
  * stays "awaiting Finance" after Finance has confirmed it, and a later invoice
  * recovers a deposit that was actually booked.
  *
@@ -548,20 +562,31 @@ export async function confirmAdvance(
   }
 
   const at = nowIso()
-  const batch = writeBatch(firestore)
-  batch.update(doc(firestore, SALES_ORDERS, order.id), { "payment.depositPaid": true, "payment.depositPaidAt": at, status: "running", updatedAt: serverTimestamp() })
   const amount = quotation ? remainingOn(quotation, advanceId) : 0
-  if (quotation && amount > 0) {
-    const next = applyInstallmentPayment(quotation, advanceId, { paidAt: at, paidAmount: amount, paidByUserId: input.actor.id, paidByUserName: input.actor.name, note: null })
-    batch.update(doc(firestore, CRM_QUOTATIONS, quotation.id), {
-      payments: next.payments,
-      paidAmount: next.paidAmount,
-      paidAt: next.paidAt,
-      ...(next.allPaid ? { paidByUserId: input.actor.id, paidByUserName: input.actor.name } : {}),
-      updatedAt: serverTimestamp(),
-    })
-  }
-  await batch.commit()
+  // Money received is numbered as a receipt voucher in the same write as the release.
+  await runTransaction(firestore, async (tx) => {
+    const receiptNumber = quotation && amount > 0 ? await drawReceiptNumber(firestore, tx, order.organizationId) : null
+    tx.update(doc(firestore, SALES_ORDERS, order.id), { "payment.depositPaid": true, "payment.depositPaidAt": at, status: "running", updatedAt: serverTimestamp() })
+    if (quotation && amount > 0) {
+      const next = applyInstallmentPayment(quotation, advanceId, {
+        paidAt: at,
+        paidAmount: amount,
+        paidByUserId: input.actor.id,
+        paidByUserName: input.actor.name,
+        note: null,
+        receiptNumber,
+        method: "transfer",
+        reference: null,
+      })
+      tx.update(doc(firestore, CRM_QUOTATIONS, quotation.id), {
+        payments: next.payments,
+        paidAmount: next.paidAmount,
+        paidAt: next.paidAt,
+        ...(next.allPaid ? { paidByUserId: input.actor.id, paidByUserName: input.actor.name } : {}),
+        updatedAt: serverTimestamp(),
+      })
+    }
+  })
   if (quotation && amount > 0) {
     onQuotationPaymentRecorded(
       firestore,

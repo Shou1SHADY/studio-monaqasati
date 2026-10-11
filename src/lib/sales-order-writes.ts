@@ -244,7 +244,8 @@ export type ScheduleError = "order_not_running" | "lines_required" | "over_open"
 export function scheduleBlock(input: {
   order: SalesOrder
   lines: Array<{ name: string; quantity: number }>
-  warehouseId: string
+  /** null = a DIRECT delivery (Inventory switched off): no warehouse, no stock to check. */
+  warehouseId: string | null
   stockRows: Array<{ name: string; quantity?: number | null }>
   allNotes: SalesDeliveryNote[]
 }): ScheduleError | null {
@@ -256,18 +257,24 @@ export function scheduleBlock(input: {
     const line = progress.find((x) => itemKey(x.name) === itemKey(l.name))
     if (!line || l.quantity > line.open + 0.005) return "over_open"
   }
+  if (!input.warehouseId) return null
   return deliveryShortfalls(wanted, input.warehouseId, input.stockRows, input.allNotes).length ? "insufficient_stock" : null
 }
 
 /** Step 1 — Sales requests the issue; nothing moves yet. Inventory authorises
- * it, and stock leaves only when the client signs. */
+ * it, and stock leaves only when the client signs.
+ *
+ * A DIRECT delivery (`warehouseId: null` — a company with Inventory switched off, e.g. a sales-only supplier, 11 Oct
+ * 2026) has no storekeeper and no stock: the note is born authorised, in the seller's name, and the client's signature
+ * still closes it — so invoices, the order's progress and sales reports work as before. The rules allow that only for a
+ * note without a warehouse, which moves no stock. */
 export async function scheduleDelivery(
   firestore: Firestore,
   input: {
     order: SalesOrder
     lines: Array<{ name: string; quantity: number }>
-    warehouseId: string
-    warehouseName: string
+    warehouseId: string | null
+    warehouseName: string | null
     receiverName?: string | null
     /** The chosen warehouse's rows and every note — the availability check. */
     stockRows: Array<{ name: string; quantity?: number | null }>
@@ -286,7 +293,8 @@ export async function scheduleDelivery(
     orderNumber: input.order.orderNumber,
     contactId: input.order.contactId ?? null,
     contactName: input.order.contactName ?? null,
-    status: "requested",
+    status: input.warehouseId ? "requested" : "authorized",
+    ...(input.warehouseId ? {} : { direct: true, authorizedAt: nowIso(), authorizedByUserId: input.actor.id, authorizedByUserName: input.actor.name }),
     lines: input.lines.filter((l) => l.quantity > 0),
     warehouseId: input.warehouseId,
     warehouseName: input.warehouseName,

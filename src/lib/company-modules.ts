@@ -1,25 +1,59 @@
 // Component switches (7 Oct 2026): the platform admin can turn a company's optional components on
-// and off. Only three are optional — Project Management, HR and Manufacturing; everything else is
-// core and always on. A company with no switch document has all of them on, so nothing changes
-// until someone turns one off.
+// and off. A company with no switch document has all of them on, so nothing changes until someone turns
+// one off.
 //
 // "Off" is a product switch, not a security boundary: the module's tile, menu entries and pages
 // disappear for every member of the company (the pages show a notice if reached by address). The
 // data rules still go by permission, and the mobile app is not switched by this.
 //
-// The supplier portal has no Project Management module — its "project-management" slot is the
-// supplier's own dashboard — so a supplier has two switches, a contractor three. Pure: no I/O.
+// A contractor has three switches — Project Management, HR and Manufacturing. A supplier has five
+// (11 Oct 2026): most suppliers only want to SELL, so CRM, Inventory and Finance can go too, leaving
+// Order Management, Sales and Governance — the "sales-only" preset. The supplier portal has no Project
+// Management module (its "project-management" slot is Order Management), and Sales lives in its
+// "procurement" slot, so neither is switchable. Pure: no I/O.
 
 import { componentOwnsPath, hrefPathname, matchesPrefix, type PortalComponentDef } from "./portal-components"
 
 export const COMPANY_MODULES = "companyModules"
 
-export const OPTIONAL_MODULES = ["project-management", "hr", "manufacturing"] as const
+export const OPTIONAL_MODULES = ["project-management", "hr", "manufacturing", "crm", "warehouses", "payments"] as const
 export type OptionalModule = (typeof OPTIONAL_MODULES)[number]
 export type ModulePortal = "contractor" | "supplier"
 
+const CONTRACTOR_SWITCHES: readonly OptionalModule[] = ["project-management", "hr", "manufacturing"]
+const SUPPLIER_SWITCHES: readonly OptionalModule[] = ["crm", "warehouses", "payments", "hr", "manufacturing"]
+
 /** The switches a company of this portal has. */
-export const optionalFor = (portal: ModulePortal): readonly OptionalModule[] => (portal === "supplier" ? ["hr", "manufacturing"] : OPTIONAL_MODULES)
+export const optionalFor = (portal: ModulePortal): readonly OptionalModule[] => (portal === "supplier" ? SUPPLIER_SWITCHES : CONTRACTOR_SWITCHES)
+
+/** A supplier that only sells: Order Management, Sales and Governance stay; everything else is off. */
+export const SALES_ONLY_OFF: readonly OptionalModule[] = SUPPLIER_SWITCHES
+
+/**
+ * What a module cannot work without. HR pays through Finance's HR desk and clears a leaver's custody in Inventory;
+ * Manufacturing draws its materials and hands its products over through Inventory. So switching the needed one off
+ * switches these off with it — the dialog shows it, and a stored list is read the same way.
+ */
+export const MODULE_NEEDS: Partial<Record<OptionalModule, readonly OptionalModule[]>> = {
+  hr: ["payments", "warehouses"],
+  manufacturing: ["warehouses"],
+}
+
+/** The off list with every module that needs an off one added, within this portal's switches. */
+export function withDependents(off: Iterable<OptionalModule>, portal: ModulePortal): Set<OptionalModule> {
+  const allowed = optionalFor(portal)
+  const out = new Set([...off].filter((id) => allowed.includes(id)))
+  for (const id of allowed) {
+    if ((MODULE_NEEDS[id] || []).some((need) => allowed.includes(need) && out.has(need))) out.add(id)
+  }
+  return out
+}
+
+/** Which off module forces this one off, if any (to say why its switch is locked). */
+export function forcedOffBy(id: OptionalModule, off: ReadonlySet<OptionalModule>, portal: ModulePortal): OptionalModule | null {
+  const allowed = optionalFor(portal)
+  return (MODULE_NEEDS[id] || []).find((need) => allowed.includes(need) && off.has(need)) ?? null
+}
 
 export const isOptionalModule = (id: unknown): id is OptionalModule => typeof id === "string" && (OPTIONAL_MODULES as readonly string[]).includes(id)
 
@@ -27,7 +61,7 @@ export const isOptionalModule = (id: unknown): id is OptionalModule => typeof id
 export function offSet(data: { off?: unknown } | null | undefined, portal: ModulePortal | null): ReadonlySet<OptionalModule> {
   if (!portal || !data || !Array.isArray(data.off)) return new Set()
   const allowed = optionalFor(portal)
-  return new Set(data.off.filter((id): id is OptionalModule => isOptionalModule(id) && allowed.includes(id)))
+  return withDependents(data.off.filter((id): id is OptionalModule => isOptionalModule(id) && allowed.includes(id)), portal)
 }
 
 /**
@@ -38,7 +72,13 @@ export function offSet(data: { off?: unknown } | null | undefined, portal: Modul
 export const SATELLITE_PAGES: Record<OptionalModule, (portal: ModulePortal) => readonly string[]> = {
   "project-management": (portal) => (portal === "contractor" ? ["/contractor/warehouses/equipment", "/contractor/warehouses/project-returns", "/contractor/accounting/projects-desk"] : []),
   hr: (portal) => [`/${portal}/accounting/hr-desk`, `/${portal}/warehouses/custody`],
-  manufacturing: (portal) => [`/${portal}/warehouses/manufacturing`, `/${portal}/warehouses/delivery-notes`],
+  // Delivery notes stay with Inventory: the same page authorises SALES' customer deliveries (it only hides the
+  // workshop's notes when Manufacturing is off).
+  manufacturing: (portal) => [`/${portal}/warehouses/manufacturing`],
+  // CRM, Inventory and Finance own their pages outright — nothing of theirs lives in another module's menu.
+  crm: () => [],
+  warehouses: () => [],
+  payments: () => [],
 }
 
 const satellitesOf = (ids: Iterable<string>, portal: ModulePortal): string[] => [...ids].filter(isOptionalModule).flatMap((id) => [...SATELLITE_PAGES[id](portal)])

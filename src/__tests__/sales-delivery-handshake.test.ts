@@ -223,6 +223,21 @@ describe("S6 · the three-step handshake", () => {
   })
 })
 
+describe("a DIRECT delivery — the company has no Inventory (sales-only supplier, 11 Oct 2026)", () => {
+  it("needs no warehouse and no stock, is born authorised by the seller, and the client's signature closes it", async () => {
+    seedOrder({ lines: [{ name: DOOR, unit: "pc", quantity: 10, unitPrice: 1180, unitCost: null }] })
+    expect(scheduleBlock({ order: order(), lines: [{ name: DOOR, quantity: 10 }], warehouseId: null, stockRows: [], allNotes: [] })).toBeNull()
+    // Still never above what is open, and never on an order not in progress.
+    expect(scheduleBlock({ order: order(), lines: [{ name: DOOR, quantity: 11 }], warehouseId: null, stockRows: [], allNotes: [] })).toBe("over_open")
+    const id = await scheduleDelivery(db, { order: order(), lines: [{ name: DOOR, quantity: 10 }], warehouseId: null, warehouseName: null, stockRows: [], allNotes: [], actor: REEM })
+    expect(note(id)).toMatchObject({ status: "authorized", direct: true, warehouseId: null, authorizedByUserId: REEM.id })
+    await confirmDelivery(db, { note: note(id), order: order(), allNotes: notes(), stockRows: [], signerName: "Fahad", actor: REEM })
+    expect(note(id).status).toBe("delivered")
+    expect(order().status).toBe("closed")
+    expect(deliveredSales(notes(), [order()], "2026-09-01", "2026-09-30").external).toBe(10 * 1180)
+  })
+})
+
 describe("DLV-03 · a hold is Finance's, and nothing leaves while it stands", () => {
   it("held from either step, blocked at both, released to where it stood — the seller only asks", async () => {
     seedStock(100)

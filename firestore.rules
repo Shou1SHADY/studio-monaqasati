@@ -3746,9 +3746,11 @@ service cloud.firestore {
 
     match /salesDeliveryNotes/{noteId} {
       allow get, list: if orgReadable();
+      // A DIRECT delivery (no warehouse — the company has no Inventory) is born authorised: it moves no stock.
       allow create: if createsInOrg()
         && hasOrgPermission('sales.manage')
-        && request.resource.data.get('status', '') == 'requested';
+        && (rd().get('status', '') == 'requested'
+            || (rd().get('status', '') == 'authorized' && rd().get('warehouseId', null) == null));
       allow update: if keepsOrg()
         && (
           // Inventory authorises the issue.

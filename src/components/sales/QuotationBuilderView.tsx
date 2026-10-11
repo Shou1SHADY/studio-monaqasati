@@ -34,6 +34,7 @@ import { VALIDITY_CHOICES, issueBlocks, issueQuotation, quoteEditable, type Issu
 import { displayDocNumber } from "@/lib/sales-numbering"
 import { QuoteRequestBrief } from "./QuoteRequestBrief"
 import { RequiredMark } from "@/components/crm/CrmFormDialog"
+import { CrmContactDialog } from "@/components/crm/CrmContactDialog"
 import { DATE_INPUT_CLASS } from "@/components/crm/CrmOpportunityDialog"
 import {
   QuotationItemsEditor,
@@ -106,7 +107,9 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
   const canManage = can("sales.manage")
   const base = salesBasePath(portal)
 
-  const { orgId, contacts, isLoading } = useCrmData()
+  const { orgId, contacts, teamMembers, isLoading } = useCrmData()
+  // A seller adds his client here: with CRM switched off (a sales-only supplier) there is nowhere else to.
+  const [addingClient, setAddingClient] = useState(false)
   const { branding: brandingDefaults, isLoading: brandingLoading } = useQuotationBrandingDefaults()
 
   const ordersQuery = useMemoFirebase(() => {
@@ -442,7 +445,15 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
           <SalesSection title={t("sales_qb_section_customer")} icon={Contact}>
             <fieldset disabled={figuresDisabled} className="p-5 space-y-4 min-w-0">
               <div className="space-y-1.5">
-                <Label htmlFor="qb-customer">{t("sales_pick_contact")} <RequiredMark /></Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="qb-customer">{t("sales_pick_contact")} <RequiredMark /></Label>
+                  {!draft && !openRequest && orgId && (
+                    <Button type="button" size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs text-cta" onClick={() => setAddingClient(true)} disabled={figuresDisabled}>
+                      <Plus size={13} aria-hidden="true" />
+                      {t("sales_add_client")}
+                    </Button>
+                  )}
+                </div>
                 {draft ? (
                   <p id="qb-customer" className="rounded-lg border bg-muted/30 px-3 py-2 text-sm font-semibold" dir="auto">{form.effectiveContactName || "—"}</p>
                 ) : sortedContacts.length > 0 ? (
@@ -456,6 +467,16 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
                   </Select>
                 ) : (
                   <p className="text-xs text-muted-foreground border border-dashed rounded-lg p-3">{t("sales_no_contacts")}</p>
+                )}
+                {orgId && (
+                  <CrmContactDialog
+                    open={addingClient}
+                    onOpenChange={setAddingClient}
+                    orgId={orgId}
+                    teamMembers={teamMembers}
+                    defaultOwnerId={user?.uid ?? null}
+                    onSaved={(id) => form.setSelectedContactId(id)}
+                  />
                 )}
               </div>
               <QuotationPhaseControl form={form} />
