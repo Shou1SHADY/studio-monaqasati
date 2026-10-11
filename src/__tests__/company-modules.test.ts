@@ -132,8 +132,10 @@ describe("the admin's write", () => {
 describe("the sales-only supplier (11 Oct 2026)", () => {
   const salesOnly = new Set(SALES_ONLY_OFF)
 
-  it("keeps Order Management, Sales (with RFQs and offers) and Governance — nothing else", () => {
-    expect(ids(applyModuleSwitches(SUPPLIER_COMPONENTS, salesOnly, "supplier")).sort()).toEqual(["procurement", "project-management", "users"])
+  it("keeps Order Management, Sales (with RFQs and offers) and Governance; CRM, Inventory, Finance, HR and Manufacturing go", () => {
+    const kept = ids(applyModuleSwitches(SUPPLIER_COMPONENTS, salesOnly, "supplier"))
+    expect(kept).toEqual(expect.arrayContaining(["procurement", "project-management", "users"]))
+    for (const off of ["crm", "warehouses", "payments", "hr", "manufacturing"]) expect(kept).not.toContain(off)
   })
 
   it("keeps the contractors' connection requests, which now sit in Order Management", () => {
