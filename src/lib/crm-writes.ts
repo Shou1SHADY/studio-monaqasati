@@ -136,8 +136,8 @@ export async function renameContactReferences(
   newName: string
 ) {
   try {
-    const children = await childRefs(firestore, orgId, contactId)
-    await commitInBatches(firestore, children, (batch, ref) => batch.update(ref, { contactName: newName }))
+    const { refs } = await childRefs(firestore, orgId, contactId)
+    await commitInBatches(firestore, refs, (batch, ref) => batch.update(ref, { contactName: newName }))
   } catch (err) {
     console.error("Failed to propagate CRM contact rename", err)
   }

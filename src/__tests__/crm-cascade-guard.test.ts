@@ -7,7 +7,7 @@ jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-u
 
 import type { Firestore } from "firebase/firestore"
 import { fakeFirestore, listCollection, resetFakeDb, seed } from "@/test-utils/fake-firestore"
-import { deleteContactCascade, deleteOpportunityCascade, ISSUED_QUOTES } from "@/lib/crm-writes"
+import { deleteContactCascade, deleteOpportunityCascade, ISSUED_QUOTES, renameContactReferences } from "@/lib/crm-writes"
 
 const db = fakeFirestore as unknown as Firestore
 const ORG = "org1"
@@ -53,5 +53,14 @@ describe("deleting a client", () => {
     world("accepted")
     await deleteContactCascade(db, "c1", ORG, true)
     expect([count("crmContacts"), count("crmQuotations"), count("crmOpportunities"), count("crmActivities")]).toEqual([0, 0, 0, 0])
+  })
+})
+
+describe("renaming a client", () => {
+  it("carries the new name to its deals, quotations and activities", async () => {
+    world("draft")
+    await renameContactReferences(db, "c1", ORG, "New name")
+    const names = [...listCollection<{ contactName?: string }>("crmOpportunities"), ...listCollection<{ contactName?: string }>("crmQuotations"), ...listCollection<{ contactName?: string }>("crmActivities")].map((d) => d.contactName)
+    expect(names).toEqual(["New name", "New name", "New name"])
   })
 })
