@@ -13,6 +13,7 @@ import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { useTranslations, useLocale } from "next-intl"
 import { cn } from "@/lib/utils"
 import { useWorkQueue, type WorkQueueItem, type WorkQueueItemType } from "@/hooks/useWorkQueue"
+import { useMyTodoCounts } from "@/hooks/useMyTodoCounts"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useModuleComponents, useModules } from "@/hooks/useCompanyModules"
@@ -249,12 +250,14 @@ export default function ContractorDashboard() {
   const queueItems = liveQueue.filter((item) => itemPermission[item.type] && modules.some((c) => c.id === ITEM_TILE[item.type] && c.launcher !== false))
   const top3 = queueItems.slice(0, 3)
   const ongoingProjectsCount = stats.projectsOngoing
+  const { counts: todoCounts } = useMyTodoCounts(myOrgId, user?.uid, "contractor")
 
   const badgeCountByTile = new Map<PortalComponentId, number>()
   queueItems.forEach((item) => {
     const tileId = ITEM_TILE[item.type]
     badgeCountByTile.set(tileId, (badgeCountByTile.get(tileId) || 0) + 1)
   })
+  if (todoCounts.due > 0) badgeCountByTile.set("activities", todoCounts.due)
 
   // Informational one-liner under each tile title — real org numbers, muted styling.
   const tileStats: Partial<Record<PortalComponentId, string>> = {
@@ -264,9 +267,10 @@ export default function ContractorDashboard() {
     warehouses: t("tile_stats_inventory", { items: stats.inventoryItemsTotal, warehouses: stats.warehousesTotal }),
     payments: t("tile_stats_finance", { count: stats.guaranteesActive }),
     hr: t("tile_stats_hr", { count: (employeesData || []).length }),
+    activities: t("tile_stats_activities", { overdue: todoCounts.overdue, today: todoCounts.today, planned: todoCounts.planned }),
   }
 
-  const URGENT_TILES = new Set<PortalComponentId>(["procurement", "warehouses", "payments", "project-management"])
+  const URGENT_TILES = new Set<PortalComponentId>(["procurement", "warehouses", "payments", "project-management", ...(todoCounts.overdue > 0 ? (["activities"] as const) : [])])
   const sortedComponents = modules.filter((c) => c.launcher !== false).sort((a, b) => a.displayOrder - b.displayOrder)
   const ChevronIcon = isRtl ? ChevronLeft : ChevronRight
 
@@ -529,7 +533,9 @@ export default function ContractorDashboard() {
                   </span>
                 )}
                 <div className="mt-auto pt-2.5 border-t border-border/40 flex items-center gap-2 text-xs font-semibold whitespace-nowrap">
-                  {count > 0 ? (
+                  {component.id === "documents" ? (
+                    <span className="text-muted-foreground/70">{t("tile_documents_footer")}</span>
+                  ) : count > 0 ? (
                     <span className={cn("flex items-center gap-2", isUrgent ? "text-destructive" : "text-cta")}>
                       <span className="h-[7px] w-[7px] rounded-full bg-current shrink-0" />
                       <b className="font-bold">{count}</b> {t("tile_needs_action_word")}

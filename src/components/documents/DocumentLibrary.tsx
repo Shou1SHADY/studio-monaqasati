@@ -1,9 +1,10 @@
 "use client"
 
-// The Documents page (DEV-71, Odoo's Documents): every file attached on a purchase order
-// or an offer the company can see, in one searchable list. A file opens from here, and the
-// document it belongs to is one click away. Files are added where the work happens — on the
-// document itself (DocumentThread) — and appear here at once.
+// The Documents page (DEV-71, Odoo's Documents): every file the company can see, in one
+// searchable list — those added on a purchase order or an offer through the document thread,
+// and those that were already attached on RFQs, offers, goods receipts, project records and
+// CRM deals. A file opens from here, and the record it belongs to is one click away. Files are
+// added where the work happens and appear here at once.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -25,20 +26,29 @@ import {
   NO_LIBRARY_FILTER,
   applyLibraryFilter,
   countLibraryFilters,
-  fileKindOf,
-  isShared,
+  isRecordFile,
+  itemAt,
+  itemAuthorName,
+  itemHref,
+  itemIsShared,
+  itemKindOf,
+  itemLabel,
+  itemName,
+  itemSize,
   libraryCounts,
-  sourceHref,
-  sourceLabel,
   type FileKind,
-  type LibraryFile,
   type LibraryFilter,
+  type LibraryItem,
+  type LibrarySource,
 } from "@/lib/document-library"
 import { fileSizeLabel } from "@/lib/document-thread"
 import { pmDate } from "@/lib/pm/format"
 import { cn } from "@/lib/utils"
 
 const KIND_ICON: Record<FileKind, typeof FileIcon> = { pdf: FileText, image: FileImage, sheet: FileSpreadsheet, doc: FileText, other: FileIcon }
+
+const THREAD_SOURCES: LibrarySource[] = ["po", "offer"]
+const RECORD_SOURCES: LibrarySource[] = ["rfq", "receipt", "project", "crm"]
 
 export function DocumentLibrary({ portal }: { portal: ActivityPortal }) {
   const t = useTranslations("Portal.Library")
@@ -56,24 +66,29 @@ export function DocumentLibrary({ portal }: { portal: ActivityPortal }) {
   const active = countLibraryFilters(filter)
   const set = <K extends keyof LibraryFilter>(k: K, v: LibraryFilter[K]) => setFilter((f) => ({ ...f, [k]: v }))
 
-  const open = async (f: LibraryFile) => {
-    if (!storage) return
+  const open = async (f: LibraryItem) => {
     try {
-      window.open(await getDownloadURL(ref(storage, f.file.path)), "_blank", "noopener,noreferrer")
+      if (isRecordFile(f) && f.url) {
+        window.open(f.url, "_blank", "noopener,noreferrer")
+        return
+      }
+      const path = isRecordFile(f) ? f.path : f.file.path
+      if (!storage || !path) return
+      window.open(await getDownloadURL(ref(storage, path)), "_blank", "noopener,noreferrer")
     } catch (err) {
       console.error(err)
       toast({ title: t("open_failed"), variant: "destructive" })
     }
   }
 
-  const columns: DataColumn<LibraryFile>[] = [
+  const columns: DataColumn<LibraryItem>[] = [
     {
       key: "file",
       header: t("col_file"),
       label: t("col_file"),
-      sortValue: (f) => f.file.name,
+      sortValue: (f) => itemName(f),
       cell: (f) => {
-        const Icon = KIND_ICON[fileKindOf(f.file.contentType, f.file.name)]
+        const Icon = KIND_ICON[itemKindOf(f)]
         return (
           <div className="flex min-w-0 items-start gap-2.5">
             <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-module/10 text-module">
@@ -86,9 +101,9 @@ export function DocumentLibrary({ portal }: { portal: ActivityPortal }) {
                 className="max-w-full truncate rounded text-start text-sm font-semibold text-cta underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 dir="auto"
               >
-                {f.file.name}
+                {itemName(f) || t("unnamed_file")}
               </button>
-              {f.body && (
+              {!isRecordFile(f) && f.body && (
                 <p className="text-xs text-muted-foreground" dir="auto">
                   {f.body}
                 </p>
@@ -102,13 +117,15 @@ export function DocumentLibrary({ portal }: { portal: ActivityPortal }) {
       key: "source",
       header: t("col_source"),
       label: t("col_source"),
-      sortValue: (f) => sourceLabel(f),
+      sortValue: (f) => itemLabel(f),
       cell: (f) => (
         <div className="min-w-0">
-          <Link href={sourceHref(f, portal)} className="rounded text-sm font-semibold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
-            {sourceLabel(f)}
+          <Link href={itemHref(f, portal)} className="rounded text-sm font-semibold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
+            {itemLabel(f)}
           </Link>
-          <p className="text-xs text-muted-foreground">{t(`kind_${f.targetKind}`)}</p>
+          <p className="text-xs text-muted-foreground" dir="auto">
+            {isRecordFile(f) ? [t(`rec_${f.recordKind}`), f.detail].filter(Boolean).join(" · ") : t(`kind_${f.targetKind}`)}
+          </p>
         </div>
       ),
     },
@@ -117,12 +134,12 @@ export function DocumentLibrary({ portal }: { portal: ActivityPortal }) {
       header: t("col_audience"),
       label: t("col_audience"),
       hideBelow: "lg",
-      sortValue: (f) => (isShared(f) ? 0 : 1),
-      cell: (f) => <StatusPill tone={isShared(f) ? "info" : "mute"}>{t(isShared(f) ? "aud_shared" : "aud_internal")}</StatusPill>,
+      sortValue: (f) => (itemIsShared(f) ? 0 : 1),
+      cell: (f) => <StatusPill tone={itemIsShared(f) ? "info" : "mute"}>{t(itemIsShared(f) ? "aud_shared" : "aud_internal")}</StatusPill>,
     },
-    { key: "by", header: t("col_by"), label: t("col_by"), hideBelow: "xl", sortValue: (f) => f.authorName, cell: (f) => <span dir="auto">{f.authorName || "—"}</span> },
-    { key: "date", header: t("col_date"), label: t("col_date"), sortValue: (f) => f.at, cell: (f) => pmDate(f.at.slice(0, 10), locale) },
-    { key: "size", header: t("col_size"), label: t("col_size"), numeric: true, hideBelow: "lg", sortValue: (f) => f.file.size, cell: (f) => fileSizeLabel(f.file.size) },
+    { key: "by", header: t("col_by"), label: t("col_by"), hideBelow: "xl", sortValue: (f) => itemAuthorName(f), cell: (f) => <span dir="auto">{itemAuthorName(f) || "—"}</span> },
+    { key: "date", header: t("col_date"), label: t("col_date"), sortValue: (f) => itemAt(f), cell: (f) => (itemAt(f) ? pmDate(itemAt(f).slice(0, 10), locale) : "—") },
+    { key: "size", header: t("col_size"), label: t("col_size"), numeric: true, hideBelow: "lg", sortValue: (f) => itemSize(f) ?? -1, cell: (f) => (itemSize(f) === null ? "—" : fileSizeLabel(itemSize(f) ?? 0)) },
   ]
 
   return (
@@ -165,12 +182,13 @@ export function DocumentLibrary({ portal }: { portal: ActivityPortal }) {
           <Chip selected={filter.audience === "internal"} onClick={() => set("audience", filter.audience === "internal" ? "all" : "internal")} count={counts.internal}>
             {t("aud_internal")}
           </Chip>
-          <Chip selected={filter.source === "po"} onClick={() => set("source", filter.source === "po" ? "all" : "po")} count={counts.bySource.po}>
-            {t("kind_po_plural")}
-          </Chip>
-          <Chip selected={filter.source === "offer"} onClick={() => set("source", filter.source === "offer" ? "all" : "offer")} count={counts.bySource.offer}>
-            {t("kind_offer_plural")}
-          </Chip>
+          {[...THREAD_SOURCES, ...RECORD_SOURCES]
+            .filter((s) => THREAD_SOURCES.includes(s) || (counts.bySource[s] ?? 0) > 0 || filter.source === s)
+            .map((s) => (
+              <Chip key={s} selected={filter.source === s} onClick={() => set("source", filter.source === s ? "all" : s)} count={counts.bySource[s] ?? 0}>
+                {t(`kind_${s}_plural`)}
+              </Chip>
+            ))}
           <Chip selected={filter.mine} onClick={() => set("mine", !filter.mine)} count={counts.mine}>
             {t("kpi_mine")}
           </Chip>

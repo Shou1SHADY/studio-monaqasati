@@ -18,6 +18,7 @@ jest.mock("@/firebase", () => ({ useFirestore: () => ({}), useUser: () => ({ use
 jest.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: jest.fn() }) }))
 jest.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ isOrgOwner: false }) }))
 jest.mock("@/hooks/useResolvedProfile", () => ({ useResolvedProfile: () => ({ profile: { name: "Mona" }, organizationId: "org" }) }))
+jest.mock("@/hooks/useQueueTasks", () => ({ useQueueTasks: () => ({ loading: false, tasks: [] }) }))
 jest.mock("@/hooks/useOrgMembers", () => ({
   useOrgMembers: () => ({ orgMembers: [{ id: "u1", name: "Mona" }, { id: "u2", name: "Omar" }], isLoading: false }),
 }))

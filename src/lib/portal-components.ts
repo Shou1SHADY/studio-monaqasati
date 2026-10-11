@@ -23,6 +23,7 @@
 import type { ElementType } from "react"
 import {
   Undo2,
+  Files,
   LayoutDashboard,
   SlidersHorizontal,
   FolderOpen,
@@ -126,6 +127,8 @@ export type PortalComponentId =
   | "manufacturing"
   | "sales"
   | "users"
+  | "activities"
+  | "documents"
 
 // One colour per module, carried through its tile, its sidebar, its shell and
 // its inner screens (the `module` colour token). No two modules share one.
@@ -172,8 +175,6 @@ export const CONTRACTOR_COMMUNICATION_SECTION: NavSection = {
   items: [
     { titleKey: "contractor_chats", href: "/contractor/chats", icon: MessageSquare },
     { titleKey: "contractor_team_chat", href: "/contractor/team-chat", icon: MessagesSquare },
-    { titleKey: "contractor_activities", href: "/contractor/activities", icon: ListChecks },
-    { titleKey: "contractor_documents", href: "/contractor/documents", icon: FolderOpen },
     { titleKey: "contractor_notifications", href: "/contractor/notifications", icon: Bell },
   ],
 }
@@ -481,6 +482,36 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
       },
     ],
   },
+  {
+    id: "activities",
+    labelKey: "component_activities",
+    descKey: "component_activities_desc",
+    homeHref: "/contractor/activities",
+    icon: ListChecks,
+    accentToken: "cta",
+    displayOrder: 10,
+    sections: [
+      {
+        labelKey: "component_activities",
+        items: [{ titleKey: "contractor_activities", href: "/contractor/activities", icon: ListChecks }],
+      },
+    ],
+  },
+  {
+    id: "documents",
+    labelKey: "component_documents",
+    descKey: "component_documents_desc",
+    homeHref: "/contractor/documents",
+    icon: Files,
+    accentToken: "primary",
+    displayOrder: 11,
+    sections: [
+      {
+        labelKey: "component_documents",
+        items: [{ titleKey: "contractor_documents", href: "/contractor/documents", icon: Files }],
+      },
+    ],
+  },
 ]
 
 // Always reachable regardless of the active component — appended to the
@@ -490,8 +521,6 @@ export const SUPPLIER_COMMUNICATION_SECTION: NavSection = {
   items: [
     { titleKey: "supplier_chats", href: "/supplier/chats", icon: MessageSquare },
     { titleKey: "supplier_team_chat", href: "/supplier/team-chat", icon: MessagesSquare },
-    { titleKey: "supplier_activities", href: "/supplier/activities", icon: ListChecks },
-    { titleKey: "supplier_documents", href: "/supplier/documents", icon: FolderOpen },
     { titleKey: "supplier_notifications", href: "/supplier/notifications", icon: Bell },
   ],
 }
@@ -734,6 +763,36 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "supplier_dashboard", href: "/supplier", icon: LayoutDashboard },
           { titleKey: "supplier_orders", href: "/supplier/orders", icon: ClipboardList },
         ],
+      },
+    ],
+  },
+  {
+    id: "activities",
+    labelKey: "component_activities",
+    descKey: "component_activities_desc",
+    homeHref: "/supplier/activities",
+    icon: ListChecks,
+    accentToken: "cta",
+    displayOrder: 9,
+    sections: [
+      {
+        labelKey: "component_activities",
+        items: [{ titleKey: "supplier_activities", href: "/supplier/activities", icon: ListChecks }],
+      },
+    ],
+  },
+  {
+    id: "documents",
+    labelKey: "component_documents",
+    descKey: "component_documents_desc",
+    homeHref: "/supplier/documents",
+    icon: Files,
+    accentToken: "primary",
+    displayOrder: 10,
+    sections: [
+      {
+        labelKey: "component_documents",
+        items: [{ titleKey: "supplier_documents", href: "/supplier/documents", icon: Files }],
       },
     ],
   },

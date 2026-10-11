@@ -43,6 +43,8 @@ export interface WorkQueueItem {
   sortMs: number
   actionUrl: string
   data: Record<string, unknown>
+  /** Absolute ms: when the item started waiting, or its deadline for rfq_closing_soon and guarantee_expiring. Absent when the records carry no date. */
+  since?: number
 }
 
 export interface WorkQueueStats {
@@ -271,6 +273,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "guarantee_expiring",
       tier: TIER.guarantee_expiring,
       sortMs: now - expiresMs,
+      since: expiresMs,
       actionUrl: "/contractor/guarantees",
       data: {
         itemName: g.itemName || g.itemNameEn || g.rfqTitle || "",
@@ -281,12 +284,14 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
   })
 
   // RFQs awaiting decision — grouped by rfqId from pending offers.
-  const pendingOffersByRfq = new Map<string, { count: number; rfqTitle: string; latestMs: number }>()
+  const pendingOffersByRfq = new Map<string, { count: number; rfqTitle: string; latestMs: number; earliestMs: number }>()
   ;(offers || []).forEach((o: any) => {
     if (o.status !== "قيد المراجعة") return
-    const existing = pendingOffersByRfq.get(o.rfqId) || { count: 0, rfqTitle: o.rfqTitle || "", latestMs: 0 }
+    const existing = pendingOffersByRfq.get(o.rfqId) || { count: 0, rfqTitle: o.rfqTitle || "", latestMs: 0, earliestMs: 0 }
+    const createdMs = toMs(o.createdAt)
     existing.count += 1
-    existing.latestMs = Math.max(existing.latestMs, toMs(o.createdAt))
+    existing.latestMs = Math.max(existing.latestMs, createdMs)
+    if (createdMs && (!existing.earliestMs || createdMs < existing.earliestMs)) existing.earliestMs = createdMs
     pendingOffersByRfq.set(o.rfqId, existing)
   })
   pendingOffersByRfq.forEach((v, rfqId) => {
@@ -296,6 +301,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "rfq_decision",
       tier: TIER.rfq_decision,
       sortMs: v.latestMs,
+      since: v.earliestMs || undefined,
       actionUrl: rfq?.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfqId}/offers` : `/contractor/rfqs/${rfqId}/offers`,
       data: { rfqTitle: v.rfqTitle, offerCount: v.count },
     })
@@ -322,6 +328,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
         type: "rfq_no_offers",
         tier: TIER.rfq_no_offers,
         sortMs: now - createdMs,
+        since: createdMs,
         actionUrl: rfqActionUrl,
         data: { rfqTitle: r.title || "", daysOpen: Math.floor((now - createdMs) / (24 * 60 * 60 * 1000)) },
       })
@@ -335,6 +342,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
           type: "rfq_closing_soon",
           tier: TIER.rfq_closing_soon,
           sortMs: now - deadlineMs,
+          since: deadlineMs,
           actionUrl: rfqActionUrl,
           data: { rfqTitle: r.title || "", hoursLeft: Math.max(0, Math.round((deadlineMs - now) / (60 * 60 * 1000))), isOverdue: deadlineMs < now },
         })
@@ -349,6 +357,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "delivery_confirm",
       tier: TIER.delivery_confirm,
       sortMs: toMs(d.deliveryDate || d.createdAt),
+      since: toMs(d.deliveryDate || d.createdAt) || undefined,
       actionUrl: "/contractor/goods-received?tab=incoming",
       data: { rfqTitle: d.rfqTitle || "", supplierName: d.supplierName || "" },
     })
@@ -364,6 +373,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "project_waiting_approval",
       tier: TIER.project_waiting_approval,
       sortMs: updatedMs ? now - updatedMs : 0,
+      since: updatedMs || undefined,
       actionUrl: `/contractor/projects/${p.id}`,
       data: { projectName: p.name || "", statusLabelKey: projectStatusLabelKey(status) },
     })
@@ -389,6 +399,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "team_invite_pending",
       tier: TIER.team_invite_pending,
       sortMs: now - toMs(inv.createdAt),
+      since: toMs(inv.createdAt) || undefined,
       actionUrl: "/contractor/team",
       data: { email: inv.email || "", name: inv.name || "" },
     })
@@ -396,9 +407,13 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
 
   // ── Manufacturing handoffs (one card per kind, or per project / sales order) ──
   const liveOrders = ((workOrders || []) as QueueWorkOrder[]).filter((o) => !!o.productId)
-  const oldestAge = (isos: Array<string | undefined>) => {
+  const oldestMs = (isos: Array<string | undefined>) => {
     const ms = isos.map((x) => toMs(x)).filter(Boolean)
-    return ms.length ? now - Math.min(...ms) : 0
+    return ms.length ? Math.min(...ms) : undefined
+  }
+  const oldestAge = (isos: Array<string | undefined>) => {
+    const oldest = oldestMs(isos)
+    return oldest ? now - oldest : 0
   }
 
   const deposits = (awaitingDeposit || []) as Array<{ id: string; payment?: { kind?: string; depositPaid?: boolean; depositReportedAt?: string | null } }>
@@ -409,6 +424,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "sales_deposits_to_confirm",
       tier: TIER.sales_deposits_to_confirm,
       sortMs: oldestAge(unpaid.map((o) => o.payment?.depositReportedAt || undefined)),
+      since: oldestMs(unpaid.map((o) => o.payment?.depositReportedAt || undefined)),
       actionUrl: "/contractor/sales/payments",
       data: { count: unpaid.length, reported: unpaid.filter((o) => o.payment?.depositReportedAt).length },
     })
@@ -422,6 +438,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "mfg_materials_to_issue",
       tier: TIER.mfg_materials_to_issue,
       sortMs: oldestAge(Array.from(withdrawals.values())),
+      since: oldestMs(Array.from(withdrawals.values())),
       actionUrl: "/contractor/warehouses/manufacturing",
       data: { count: withdrawals.size },
     })
@@ -434,6 +451,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "mfg_requests_unanswered",
       tier: TIER.mfg_requests_unanswered,
       sortMs: oldestAge(requests.map((r) => r.requestedAt)),
+      since: oldestMs(requests.map((r) => r.requestedAt)),
       actionUrl: "/contractor/manufacturing/requests",
       data: { count: requests.length },
     })
@@ -448,6 +466,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "mfg_client_drawings_due",
       tier: TIER.mfg_client_drawings_due,
       sortMs: oldestAge(clientDrawings.map((o) => o.drawing?.submittedAt || undefined)),
+      since: oldestMs(clientDrawings.map((o) => o.drawing?.submittedAt || undefined)),
       actionUrl: "/contractor/sales/orders",
       data: { count: clientDrawings.length },
     })
@@ -469,6 +488,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "mfg_drawing_results_due",
       tier: TIER.mfg_drawing_results_due,
       sortMs: oldestAge(row.since),
+      since: oldestMs(row.since),
       actionUrl: `/contractor/projects/${pid}?tab=mfg`,
       data: { count: row.count, projectName: row.name },
     })
@@ -482,6 +502,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "mfg_notes_to_receive",
       tier: TIER.mfg_notes_to_receive,
       sortMs: oldestAge(toStores.map((n) => n.sentAt)),
+      since: oldestMs(toStores.map((n) => n.sentAt)),
       actionUrl: "/contractor/warehouses/delivery-notes",
       data: { count: toStores.length },
     })
@@ -501,6 +522,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "mfg_custody_to_receive",
       tier: TIER.mfg_custody_to_receive,
       sortMs: oldestAge(row.since),
+      since: oldestMs(row.since),
       actionUrl: `/contractor/projects/${pid}?tab=mfg`,
       data: { count: row.count, projectName: project?.name || "" },
     })
@@ -513,6 +535,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "mfg_purchase_requests",
       tier: TIER.mfg_purchase_requests,
       sortMs: oldestAge(purchases.map((p) => p.at)),
+      since: oldestMs(purchases.map((p) => p.at)),
       actionUrl: "/contractor/rfqs/requests",
       data: { count: purchases.length },
     })
@@ -532,6 +555,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
         type: "po_approve",
         tier: TIER.po_approve,
         sortMs: oldestAge(waiting.map((o) => o.createdAt)),
+        since: oldestMs(waiting.map((o) => o.createdAt)),
         actionUrl: "/contractor/rfqs/orders?filter=awaiting_approval",
         data: { count: counts.approve },
       })

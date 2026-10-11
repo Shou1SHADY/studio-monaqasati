@@ -3,6 +3,8 @@
 // "My to-dos" (DEV-69, Odoo's "My activities"): one list of what is planned for
 // me across every module, grouped overdue · today · planned, plus what I planned
 // for others and what was finished lately. Plan one here or from any document.
+// The decisions waiting on me (the home page's work queue) join the same groups,
+// derived live from the records: they clear when the work is done, not by ticking.
 
 import { useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
@@ -11,21 +13,25 @@ import { Button } from "@/components/ui/button"
 import { Panel } from "@/components/module-ui/Panel"
 import { ActivityFormDialog } from "@/components/activities/ActivityFormDialog"
 import { ActivityRow } from "@/components/activities/ActivityRow"
+import { QueueTaskRow } from "@/components/activities/QueueTaskRow"
 import { useUser } from "@/firebase"
 import { useMyActivities } from "@/hooks/useActivities"
+import { useQueueTasks } from "@/hooks/useQueueTasks"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { isOpen, recentlyDone } from "@/lib/activities"
 import type { ActivityActor, ActivityPortal } from "@/lib/activity-writes"
 import { todayDay } from "@/lib/pm/format"
 import { cn } from "@/lib/utils"
+import { groupTasks, mergeRows, todoCounts, type TodoRow } from "@/lib/work-queue-tasks"
 
 export function MyActivities({ portal }: { portal: ActivityPortal }) {
   const t = useTranslations("Portal.Activities")
   const { user } = useUser()
   const { profile, organizationId } = useResolvedProfile(user?.uid)
   const { isOrgOwner } = usePermissions()
-  const { loading, activities, groups, counts } = useMyActivities(organizationId || null, user?.uid)
+  const { loading, activities, groups } = useMyActivities(organizationId || null, user?.uid)
+  const { tasks } = useQueueTasks(organizationId || null, user?.uid, portal)
   const [adding, setAdding] = useState(false)
   const today = todayDay()
 
@@ -39,7 +45,26 @@ export function MyActivities({ portal }: { portal: ActivityPortal }) {
     [activities, actor.uid]
   )
   const done = useMemo(() => recentlyDone(activities.filter((a) => a.assigneeId === actor.uid || a.createdById === actor.uid)), [activities, actor.uid])
+  const counts = todoCounts(groups, tasks)
+  const queue = groupTasks(tasks)
+  const mine = {
+    overdue: mergeRows(groups.overdue, queue.overdue),
+    today: mergeRows(groups.today, queue.today),
+    planned: mergeRows(groups.planned, queue.planned),
+  }
   const mineCount = counts.overdue + counts.today + counts.planned
+
+  const mineList = (rows: TodoRow[]) => (
+    <div className="divide-y">
+      {rows.map((r) =>
+        r.kind === "activity" ? (
+          <ActivityRow key={r.activity.id} activity={r.activity} today={today} actor={actor} portal={portal} />
+        ) : (
+          <QueueTaskRow key={r.task.id} task={r.task} today={today} />
+        )
+      )}
+    </div>
+  )
 
   const list = (rows: typeof groups.overdue, forOthers = false) => (
     <div className="divide-y">
@@ -80,19 +105,19 @@ export function MyActivities({ portal }: { portal: ActivityPortal }) {
       ) : (
         <>
           {mineCount === 0 && <p className="rounded-xl border bg-card px-4 py-8 text-center text-sm text-muted-foreground">{t("empty_mine")}</p>}
-          {groups.overdue.length > 0 && (
-            <Panel title={t("group_overdue")} count={groups.overdue.length} countTone="bad" bodyClassName="p-0">
-              {list(groups.overdue)}
+          {mine.overdue.length > 0 && (
+            <Panel title={t("group_overdue")} count={mine.overdue.length} countTone="bad" bodyClassName="p-0">
+              {mineList(mine.overdue)}
             </Panel>
           )}
-          {groups.today.length > 0 && (
-            <Panel title={t("group_today")} count={groups.today.length} bodyClassName="p-0">
-              {list(groups.today)}
+          {mine.today.length > 0 && (
+            <Panel title={t("group_today")} count={mine.today.length} bodyClassName="p-0">
+              {mineList(mine.today)}
             </Panel>
           )}
-          {groups.planned.length > 0 && (
-            <Panel title={t("group_planned")} count={groups.planned.length} bodyClassName="p-0">
-              {list(groups.planned)}
+          {mine.planned.length > 0 && (
+            <Panel title={t("group_planned")} count={mine.planned.length} bodyClassName="p-0">
+              {mineList(mine.planned)}
             </Panel>
           )}
           {byMe.length > 0 && (
