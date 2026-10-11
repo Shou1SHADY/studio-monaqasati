@@ -48,7 +48,10 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
   const id = String(params.id ?? "")
   const { user } = useUser()
   const { can } = usePermissions()
-  const mfgOn = useModules().on("manufacturing")
+  const modules = useModules()
+  const mfgOn = modules.on("manufacturing")
+  // CRM may be switched off (a sales-only supplier): its pages are then text, not links.
+  const crmOn = modules.on("crm")
   const canManage = can("sales.manage")
   const canApprove = can("sales.approve") || can("crm.close")
   const canRecordPayment = can("invoices.manage") || can("sales.approve")
@@ -120,7 +123,7 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
               <span className="font-mono text-sm text-muted-foreground" dir="ltr">{displayDocNumber(q.quotationNumber, locale)}</span>
               <Badge className={cn("text-[10px]", QUOTATION_PHASE_BADGE_CLASS[phase])}>{t(`crm_quote_phase_${phase}`)}</Badge>
               {/* The deal this offer prices — its number, as CRM and the handover file name it (OPP-02 #3). */}
-              {q.opportunityId && q.opportunityNumber && (
+              {crmOn && q.opportunityId && q.opportunityNumber && (
                 <Link
                   href={`${crmBase}/opportunities/${q.opportunityId}`}
                   className="rounded-sm text-[11px] font-bold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -136,7 +139,7 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
               )}
             </div>
             <h2 className="text-xl font-black text-foreground" dir="auto">
-              {q.contactId ? (
+              {q.contactId && crmOn ? (
                 <Link href={`${crmBase}/leads/${q.contactId}`} className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
                   {q.contactName || t("sales_col_customer")}
                 </Link>
@@ -271,7 +274,7 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
           <SalesSection title={t("sales_section_customer")} icon={Contact}>
             <div className="p-5 space-y-2 text-sm">
               <p className="font-bold" dir="auto">{q.contactName || "—"}</p>
-              {q.contactId && (
+              {q.contactId && crmOn && (
                 <Link href={`${crmBase}/leads/${q.contactId}`} className="text-xs font-semibold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
                   {t("crm_nav_leads")}
                 </Link>

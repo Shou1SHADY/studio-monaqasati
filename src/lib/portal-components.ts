@@ -501,9 +501,9 @@ export const SUPPLIER_COMMUNICATION_SECTION: NavSection = {
 // contractor side. "Order Management" mirrors Project Management (the
 // supplier's core work: orders instead of projects); "Sales" mirrors
 // Procurement (their RFQ-facing pipeline: browsing RFQs and tracking
-// submitted offers, instead of sourcing materials). CRM's home is the
-// existing Connections page — managing contractor relationships already IS a
-// CRM, no stub needed here.
+// submitted offers, instead of sourcing materials). Connections (contractors
+// asking to link) sit in Order Management, so a sales-only supplier — CRM,
+// Inventory, Finance, HR and Manufacturing switched off — keeps them.
 export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
   {
     id: "procurement",
@@ -664,10 +664,6 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "crm_nav_opportunities", href: "/supplier/crm/opportunities", icon: Target, requiredPermission: "crm.manage" },
           { titleKey: "crm_nav_activities", href: "/supplier/crm/activities", icon: ClipboardList, requiredPermission: "crm.manage" },
           { titleKey: "crm_nav_settings", href: "/supplier/crm/settings", icon: SlidersHorizontal, requiredPermission: "crm.manage" },
-          // Connections (incoming contractor link requests) is a relationship
-          // inbox, so it belongs under CRM — it just is not one of the
-          // pipeline pages.
-          { titleKey: "supplier_connections", href: "/supplier/connections", icon: Link2, requiredPermission: "crm.manage" },
         ],
       },
     ],
@@ -733,6 +729,9 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
         items: [
           { titleKey: "supplier_dashboard", href: "/supplier", icon: LayoutDashboard },
           { titleKey: "supplier_orders", href: "/supplier/orders", icon: ClipboardList },
+          // Connections (contractors asking to link — what puts us on their RFQ lists) belong to the selling
+          // relationship, so they stay when a sales-only supplier has no CRM (11 Oct 2026).
+          { titleKey: "supplier_connections", href: "/supplier/connections", icon: Link2, requiredAnyPermission: ["crm.manage", "offers.view"] },
         ],
       },
     ],

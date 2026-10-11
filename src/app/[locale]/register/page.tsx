@@ -43,7 +43,8 @@ export default function RegisterPage() {
     const params = new URLSearchParams(window.location.search)
     const inviteParam = params.get("invite")
     if (!inviteParam) {
-      router.replace("/#demo")
+      // No invitation: the Join form every company subscribes through.
+      router.replace("/?join=1")
       return
     }
     setInviteToken(inviteParam)

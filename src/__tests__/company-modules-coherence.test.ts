@@ -31,7 +31,9 @@ describe("pages that live inside another component but belong to a switchable on
 
   it("show the notice of the module they belong to, not a blank page", () => {
     expect(offModuleOwning("/contractor/accounting/hr-desk", CONTRACTOR_COMPONENTS, new Set(["hr"]), "contractor")).toBe("hr")
-    expect(offModuleOwning("/contractor/warehouses/delivery-notes", CONTRACTOR_COMPONENTS, new Set(["manufacturing"]), "contractor")).toBe("manufacturing")
+    // Delivery notes stay: the same page authorises Sales' customer deliveries (it hides only the workshop's notes).
+    expect(offModuleOwning("/contractor/warehouses/manufacturing", CONTRACTOR_COMPONENTS, new Set(["manufacturing"]), "contractor")).toBe("manufacturing")
+    expect(offModuleOwning("/contractor/warehouses/delivery-notes", CONTRACTOR_COMPONENTS, new Set(["manufacturing"]), "contractor")).toBeNull()
     expect(offModuleOwning("/contractor/accounting/hr-desk", CONTRACTOR_COMPONENTS, new Set(["manufacturing"]), "contractor")).toBeNull()
     expect(offModuleOwning("/contractor/warehouses", CONTRACTOR_COMPONENTS, new Set(["hr", "manufacturing", "project-management"]), "contractor")).toBeNull()
   })

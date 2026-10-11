@@ -7,18 +7,23 @@ jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-u
 
 import { fakeFirestore, readDoc, resetFakeDb } from "@/test-utils/fake-firestore"
 import type { Firestore } from "firebase/firestore"
-import { applyModuleSwitches, belongsToOptionalModule, isOptionalModule, offModuleOwning, offSet, optionalFor } from "@/lib/company-modules"
+import { SALES_ONLY_OFF, applyModuleSwitches, belongsToOptionalModule, forcedOffBy, isOptionalModule, offModuleOwning, offSet, optionalFor, withDependents } from "@/lib/company-modules"
 import { setCompanyModules } from "@/lib/company-modules-writes"
 import { CONTRACTOR_COMPONENTS, SUPPLIER_COMPONENTS, visibleComponents } from "@/lib/portal-components"
 
 const ids = (list: { id: string }[]) => list.map((c) => c.id)
 
 describe("what is switched off", () => {
-  it("only three components can be switched, and a supplier has two of them", () => {
+  it("a contractor has three switches; a supplier five — CRM, Inventory, Finance, HR and Manufacturing", () => {
     expect(optionalFor("contractor")).toEqual(["project-management", "hr", "manufacturing"])
-    expect(optionalFor("supplier")).toEqual(["hr", "manufacturing"])
+    expect(optionalFor("supplier")).toEqual(["crm", "warehouses", "payments", "hr", "manufacturing"])
     expect(isOptionalModule("hr")).toBe(true)
-    expect(isOptionalModule("payments")).toBe(false)
+    expect(isOptionalModule("payments")).toBe(true)
+    expect(isOptionalModule("sales")).toBe(false)
+  })
+
+  it("a contractor's Finance can never be switched off, whatever is stored", () => {
+    expect([...offSet({ off: ["payments", "crm", "warehouses"] }, "contractor")]).toEqual([])
   })
 
   it("reads the stored list, ignoring anything that is not one of the portal's switches", () => {
@@ -112,7 +117,7 @@ describe("the admin's write", () => {
   beforeEach(() => resetFakeDb())
 
   it("stores the company's own switches, deduplicated and only the three that exist, in the admin's name", async () => {
-    await setCompanyModules(db, "org1", ["hr", "hr", "manufacturing", "payments" as never], { uid: "adm", name: "Admin" })
+    await setCompanyModules(db, "org1", ["hr", "hr", "manufacturing", "sales" as never], { uid: "adm", name: "Admin" })
     expect(readDoc("companyModules/org1")).toMatchObject({ organizationId: "org1", off: ["hr", "manufacturing"], updatedById: "adm", updatedByName: "Admin" })
   })
 
@@ -120,5 +125,39 @@ describe("the admin's write", () => {
     await setCompanyModules(db, "org1", ["hr"], { uid: "adm", name: "A" })
     await setCompanyModules(db, "org1", [], { uid: "adm", name: "A" })
     expect(readDoc<{ off: string[] }>("companyModules/org1")?.off).toEqual([])
+  })
+})
+
+
+describe("the sales-only supplier (11 Oct 2026)", () => {
+  const salesOnly = new Set(SALES_ONLY_OFF)
+
+  it("keeps Order Management, Sales (with RFQs and offers) and Governance — nothing else", () => {
+    expect(ids(applyModuleSwitches(SUPPLIER_COMPONENTS, salesOnly, "supplier")).sort()).toEqual(["procurement", "project-management", "users"])
+  })
+
+  it("keeps the contractors' connection requests, which now sit in Order Management", () => {
+    const own = applyModuleSwitches(SUPPLIER_COMPONENTS, salesOnly, "supplier")
+    const hrefs = own.flatMap((c) => c.sections.flatMap((s) => s.items.map((i) => i.href)))
+    expect(hrefs).toEqual(expect.arrayContaining(["/supplier", "/supplier/orders", "/supplier/connections", "/supplier/rfqs", "/supplier/sales/quotations", "/supplier/sales/payments", "/supplier/profile"]))
+    expect(offModuleOwning("/supplier/connections", SUPPLIER_COMPONENTS, salesOnly, "supplier")).toBeNull()
+  })
+
+  it("blocks the switched-off modules' pages by address", () => {
+    expect(offModuleOwning("/supplier/crm/leads", SUPPLIER_COMPONENTS, salesOnly, "supplier")).toBe("crm")
+    expect(offModuleOwning("/supplier/warehouses", SUPPLIER_COMPONENTS, salesOnly, "supplier")).toBe("warehouses")
+    expect(offModuleOwning("/supplier/accounting/journal", SUPPLIER_COMPONENTS, salesOnly, "supplier")).toBe("payments")
+    expect(offModuleOwning("/supplier/invoices", SUPPLIER_COMPONENTS, salesOnly, "supplier")).toBe("payments")
+    expect(offModuleOwning("/supplier/sales/payments", SUPPLIER_COMPONENTS, salesOnly, "supplier")).toBeNull()
+  })
+
+  it("a module goes off with what it needs: HR with Finance or Inventory, Manufacturing with Inventory", () => {
+    expect([...withDependents(["payments"], "supplier")].sort()).toEqual(["hr", "payments"])
+    expect([...withDependents(["warehouses"], "supplier")].sort()).toEqual(["hr", "manufacturing", "warehouses"])
+    expect([...offSet({ off: ["warehouses"] }, "supplier")].sort()).toEqual(["hr", "manufacturing", "warehouses"])
+    expect(forcedOffBy("hr", new Set(["payments"]), "supplier")).toBe("payments")
+    expect(forcedOffBy("crm", new Set(["payments"]), "supplier")).toBeNull()
+    // A contractor's Finance and Inventory are core: nothing is forced there.
+    expect([...withDependents(["hr"], "contractor")]).toEqual(["hr"])
   })
 })

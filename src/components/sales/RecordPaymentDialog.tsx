@@ -19,12 +19,15 @@ import { useFirestore, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { cn } from "@/lib/utils"
-import { formatCrmDate, formatSar, type CrmQuotation } from "@/lib/crm"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
+import { PAYMENT_METHODS, formatCrmDate, formatSar, type CrmQuotation, type PaymentMethod } from "@/lib/crm"
 import { installmentStates, nextUnpaidInstallment, paymentRecipients, recordInstallmentPayment } from "@/lib/sales"
+import { displayDocNumber } from "@/lib/sales-numbering"
 
 /**
  * Record a customer payment against one installment. Finance is notified in
- * the same write. Used from the quotation list, its detail page and the
+ * the same write, and the payment gets its numbered receipt voucher (سند قبض) —
+ * printed from Sales → Payments → Received. Used from the quotation list, its detail page and the
  * Payments page, so the three never drift.
  */
 export function RecordPaymentDialog({
@@ -56,6 +59,9 @@ export function RecordPaymentDialog({
   const [picked, setPicked] = useState("")
   const [amount, setAmount] = useState("")
   const [note, setNote] = useState("")
+  // Printed on the receipt voucher this payment gets.
+  const [method, setMethod] = useState<PaymentMethod>("transfer")
+  const [reference, setReference] = useState("")
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
@@ -65,6 +71,8 @@ export function RecordPaymentDialog({
     setPicked(next?.id || "")
     setAmount(next ? String(next.remaining) : "")
     setNote("")
+    setMethod("transfer")
+    setReference("")
     // `states` derives from `quotation`; re-running on it would loop.
   }, [quotation?.id, installmentId])
 
@@ -92,11 +100,13 @@ export function RecordPaymentDialog({
     setIsSaving(true)
     try {
       const recipients = paymentRecipients({ ownerId: orgId, actorId: user.uid, members: teamMembers, groups })
-      await recordInstallmentPayment(firestore, {
+      const { receiptNumber } = await recordInstallmentPayment(firestore, {
         quotation,
         installmentId: picked,
         amount: parsed,
         note: note.trim() || null,
+        method,
+        reference: reference.trim() || null,
         actor: { id: user.uid, name: actorName },
         recipients,
         notification: {
@@ -109,7 +119,7 @@ export function RecordPaymentDialog({
           }),
         },
       })
-      toast({ title: t("sales_paid_toast", { count: recipients.length }) })
+      toast({ title: t("sales_paid_toast", { count: recipients.length }), description: t("rv_issued_toast", { number: displayDocNumber(receiptNumber, locale) }) })
       onOpenChange(false)
     } catch (err) {
       console.error(err)
@@ -164,6 +174,20 @@ export function RecordPaymentDialog({
           <div className="space-y-1.5">
             <Label htmlFor="sales-paid-amount">{t("sales_paid_amount")}</Label>
             <Input id="sales-paid-amount" type="number" min="0" step="any" inputMode="decimal" dir="ltr" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={isSaving} />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="sales-paid-method">{t("rv_method")}</Label>
+              <NativeSelect id="sales-paid-method" className="h-10 w-full" value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)} disabled={isSaving}>
+                {PAYMENT_METHODS.map((m) => (
+                  <option key={m} value={m}>{t(`rv_method_${m}`)}</option>
+                ))}
+              </NativeSelect>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="sales-paid-ref">{t("rv_reference")}</Label>
+              <Input id="sales-paid-ref" dir="ltr" value={reference} onChange={(e) => setReference(e.target.value)} disabled={isSaving || method === "cash"} />
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="sales-paid-note">{t("sales_payment_note")}</Label>

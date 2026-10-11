@@ -48,9 +48,27 @@ describe("the components dialog", () => {
     sw.forEach((s) => expect(s).toBeChecked())
   })
 
-  it("gives a supplier two: no Project Management", () => {
+  it("the sales-only preset switches a supplier's five off and saves them", async () => {
     render(<CompanyModulesDialog orgId="o1" companyName="Acme" portal="supplier" onClose={() => undefined} />)
-    expect(screen.getAllByRole("switch")).toHaveLength(2)
+    fireEvent.click(screen.getByRole("button", { name: "preset_sales_only" }))
+    screen.getAllByRole("switch").forEach((s) => expect(s).not.toBeChecked())
+    fireEvent.click(screen.getByRole("button", { name: "save" }))
+    await waitFor(() => expect(save).toHaveBeenCalled())
+    expect([...(save.mock.calls[0][2] as string[])].sort()).toEqual(["crm", "hr", "manufacturing", "payments", "warehouses"])
+  })
+
+  it("switching Finance off takes HR with it, and HR's switch says why and is locked", () => {
+    render(<CompanyModulesDialog orgId="o1" companyName="Acme" portal="supplier" onClose={() => undefined} />)
+    fireEvent.click(screen.getByRole("switch", { name: "component_finance" }))
+    const hr = screen.getByRole("switch", { name: "component_hr" })
+    expect(hr).not.toBeChecked()
+    expect(hr).toBeDisabled()
+    expect(screen.getByText("needs_off")).toBeInTheDocument()
+  })
+
+  it("gives a supplier five: no Project Management", () => {
+    render(<CompanyModulesDialog orgId="o1" companyName="Acme" portal="supplier" onClose={() => undefined} />)
+    expect(screen.getAllByRole("switch")).toHaveLength(5)
     expect(screen.queryByRole("switch", { name: "component_project_management" })).not.toBeInTheDocument()
   })
 

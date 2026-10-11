@@ -101,7 +101,10 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
   const { can, isOrgOwner } = usePermissions()
-  const mfgOn = useModules().on("manufacturing")
+  const modules = useModules()
+  const mfgOn = modules.on("manufacturing")
+  // No Inventory (a sales-only supplier): deliveries are DIRECT — no warehouse, no stock, the client still signs.
+  const direct = !modules.on("warehouses")
   const canManage = can("sales.manage")
   const seesCost = isOrgOwner || can("sales.approve")
   const canApprove = can("sales.approve") || can("crm.close")
@@ -379,7 +382,7 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
     const lines = rows
       .map((l) => ({ name: l.name, quantity: Number(deliverQty[l.name]) || 0, max: l.open }))
       .filter((l) => l.quantity > 0)
-    if (!deliverWarehouseId || lines.length === 0) {
+    if ((!direct && !deliverWarehouseId) || lines.length === 0) {
       toast({ title: t("so_delivery_needs_lines"), variant: "destructive" })
       return
     }
@@ -387,8 +390,9 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
       toast({ title: t("so_delivery_over_open"), variant: "destructive" })
       return
     }
-    if (!deliverStock) return
-    const block = scheduleBlock({ order: deliverFor, lines, warehouseId: deliverWarehouseId, stockRows: deliverStock, allNotes: notes })
+    if (!direct && !deliverStock) return
+    const stockRows = direct ? [] : deliverStock ?? []
+    const block = scheduleBlock({ order: deliverFor, lines, warehouseId: direct ? null : deliverWarehouseId, stockRows, allNotes: notes })
     if (block) {
       toast({ title: t(SCHEDULE_ERROR_KEY[block]), variant: "destructive" })
       return
@@ -398,10 +402,10 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
       await scheduleDelivery(firestore, {
         order: deliverFor,
         lines,
-        warehouseId: deliverWarehouseId,
-        warehouseName: warehouses.find((w) => w.id === deliverWarehouseId)?.name || "",
+        warehouseId: direct ? null : deliverWarehouseId,
+        warehouseName: direct ? null : warehouses.find((w) => w.id === deliverWarehouseId)?.name || "",
         receiverName: deliverReceiver.trim() || null,
-        stockRows: deliverStock,
+        stockRows,
         allNotes: notes,
         actor: { id: user.uid, name: actorName },
       })
@@ -769,7 +773,8 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
                       <th className="px-4 py-2.5 text-end">{t("so_col_ordered")}</th>
                       <th className="px-4 py-2.5 text-end">{t("so_col_delivered")}</th>
                       <th className="px-4 py-2.5 text-end">{t("so_col_open")}</th>
-                      <th className="px-4 py-2.5 text-start">{t("so_col_coverage")}</th>
+                      {/* Coverage reads warehouse stock: meaningless with no Inventory. */}
+                      {!direct && <th className="px-4 py-2.5 text-start">{t("so_col_coverage")}</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -783,6 +788,7 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
                           <td className="px-4 py-2.5 text-end tabular-nums" dir="ltr">{line.quantity}</td>
                           <td className="px-4 py-2.5 text-end tabular-nums text-success" dir="ltr">{line.delivered}</td>
                           <td className="px-4 py-2.5 text-end tabular-nums" dir="ltr">{line.open}</td>
+                          {!direct && (
                           <td className="px-4 py-2.5 text-xs">
                             {line.remaining <= 0 ? (
                               <span className="text-success flex items-center gap-1"><CheckCircle2 size={12} />{t("so_cov_done")}</span>
@@ -820,6 +826,7 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
                               "—"
                             )}
                           </td>
+                          )}
                         </tr>
                       )
                     })}
@@ -862,6 +869,9 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
                 <DialogDescription>{t("so_delivery_desc")}</DialogDescription>
               </DialogHeader>
               <div className="space-y-3 py-1">
+                {direct ? (
+                  <p className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">{t("so_delivery_direct_hint")}</p>
+                ) : (
                 <div className="space-y-1.5">
                   <Label>{t("so_delivery_warehouse")} *</Label>
                   <Select value={deliverWarehouseId} onValueChange={setDeliverWarehouseId}>
@@ -873,6 +883,7 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
                     </SelectContent>
                   </Select>
                 </div>
+                )}
                 {schedulableLines(deliverFor, notes).map((line) => {
                   const available = availableFor(line.name)
                   const short = available != null && (Number(deliverQty[line.name]) || 0) > available + 0.005
@@ -905,7 +916,7 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDeliverFor(null)} disabled={isScheduling}>{t("crm_cancel")}</Button>
-                <Button onClick={submitDelivery} disabled={isScheduling || !deliverStock} className="gap-1.5">
+                <Button onClick={submitDelivery} disabled={isScheduling || (!direct && !deliverStock)} className="gap-1.5">
                   {isScheduling ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
                   {t("so_delivery_submit")}
                 </Button>

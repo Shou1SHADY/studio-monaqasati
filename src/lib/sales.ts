@@ -10,6 +10,7 @@ import {
   doc,
   getDocs,
   query,
+  runTransaction,
   where,
   writeBatch,
   serverTimestamp,
@@ -25,6 +26,7 @@ import {
   type QuotationInstallment,
   type QuotationItem,
   type QuotationPayment,
+  type PaymentMethod,
   type QuotationPaymentEntry,
   type QuotationStatus,
 } from "./crm"
@@ -35,6 +37,7 @@ import { createSalesOrderFromQuotation } from "./sales-order-writes"
 import { MFG_PRODUCTS } from "./manufacturing-engine"
 import { matchesSearch } from "./search-text"
 import { displayDocNumber } from "./sales-numbering"
+import { drawReceiptNumber } from "./sales-receipts"
 
 // ---------------------------------------------------------------------------
 // Price list — the org's known items with fixed prices, picked into quotations.
@@ -281,6 +284,9 @@ export interface RecordPaymentInput {
   installmentId: string
   amount: number
   note: string | null
+  /** How the client paid, and the transfer / cheque / card reference — printed on the receipt voucher. */
+  method?: PaymentMethod | null
+  reference?: string | null
   actor: { id: string; name: string }
   recipients: string[]
   /** Localised by the caller — the notification page renders it verbatim. */
@@ -289,41 +295,53 @@ export interface RecordPaymentInput {
 
 /**
  * Record a customer payment against one installment and tell Finance, in one
- * batch. The quotation counts as paid only when every installment is.
+ * transaction that also numbers its receipt voucher. The quotation counts as
+ * paid only when every installment is.
  */
-export async function recordInstallmentPayment(firestore: Firestore, input: RecordPaymentInput): Promise<void> {
+export async function recordInstallmentPayment(firestore: Firestore, input: RecordPaymentInput): Promise<{ receiptNumber: string }> {
   const paidAt = new Date().toISOString()
-  const entry: QuotationPaymentEntry = {
-    paidAt,
-    paidAmount: input.amount,
-    paidByUserId: input.actor.id,
-    paidByUserName: input.actor.name,
-    note: input.note,
-  }
-  const next = applyInstallmentPayment(input.quotation, input.installmentId, entry)
-  const batch = writeBatch(firestore)
-  batch.update(doc(firestore, CRM_QUOTATIONS, input.quotation.id), {
-    payments: next.payments,
-    paidAmount: next.paidAmount,
-    paidAt: next.paidAt,
-    ...(next.allPaid ? { paidByUserId: input.actor.id, paidByUserName: input.actor.name, paymentNote: input.note } : {}),
-    updatedAt: serverTimestamp(),
+  // The receipt voucher's number is drawn in the same transaction as the payment: never skipped, never twice.
+  const receiptNumber = await runTransaction(firestore, async (tx) => {
+    const receiptNumber = await drawReceiptNumber(firestore, tx, input.quotation.organizationId)
+    const entry: QuotationPaymentEntry = {
+      paidAt,
+      paidAmount: input.amount,
+      paidByUserId: input.actor.id,
+      paidByUserName: input.actor.name,
+      note: input.note,
+      receiptNumber,
+      method: input.method ?? null,
+      reference: input.reference?.trim() || null,
+    }
+    const next = applyInstallmentPayment(input.quotation, input.installmentId, entry)
+    tx.update(doc(firestore, CRM_QUOTATIONS, input.quotation.id), {
+      payments: next.payments,
+      paidAmount: next.paidAmount,
+      paidAt: next.paidAt,
+      ...(next.allPaid ? { paidByUserId: input.actor.id, paidByUserName: input.actor.name, paymentNote: input.note } : {}),
+      updatedAt: serverTimestamp(),
+    })
+    for (const uid of input.recipients) {
+      tx.set(doc(collection(firestore, "users", uid, "notifications")), {
+        type: "quotation_paid",
+        organizationId: input.quotation.organizationId,
+        title: input.notification.title,
+        message: input.notification.message,
+        quotationId: input.quotation.id,
+        quotationNumber: input.quotation.quotationNumber,
+        contactName: input.quotation.contactName ?? null,
+        installmentId: input.installmentId,
+        amount: input.amount,
+        fullyPaid: next.allPaid,
+        installmentSettled: next.installmentSettled,
+        receiptNumber,
+        createdAt: paidAt,
+        userId: uid,
+        read: false,
+      })
+    }
+    return receiptNumber
   })
-  queueNotifications(firestore, batch, input.recipients, {
-    type: "quotation_paid",
-    organizationId: input.quotation.organizationId,
-    title: input.notification.title,
-    message: input.notification.message,
-    quotationId: input.quotation.id,
-    quotationNumber: input.quotation.quotationNumber,
-    contactName: input.quotation.contactName ?? null,
-    installmentId: input.installmentId,
-    amount: input.amount,
-    fullyPaid: next.allPaid,
-    installmentSettled: next.installmentSettled,
-    createdAt: paidAt,
-  })
-  await batch.commit()
 
   // Every quotation payment is an ADVANCE now: revenue is recognised by the
   // sales invoice built on delivered goods, so money that arrives earlier is a
@@ -346,6 +364,7 @@ export async function recordInstallmentPayment(firestore: Firestore, input: Reco
       isAdvance: true,
     }
   )
+  return { receiptNumber }
 }
 
 // ---------------------------------------------------------------------------

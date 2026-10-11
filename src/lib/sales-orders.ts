@@ -129,6 +129,8 @@ export interface SalesDeliveryNote {
   lines: SalesDeliveryNoteLine[]
   /** Where the goods were drawn from — stock leaves when the note delivers. */
   warehouseId?: string | null
+  /** A delivery with no warehouse and no stock (Inventory switched off): born authorised by the seller. */
+  direct?: boolean | null
   warehouseName?: string | null
   /** The receiving contact named when scheduling — not the signature. */
   receiverName?: string | null

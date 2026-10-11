@@ -42,6 +42,9 @@ import type { AnsweredQuery } from "@/lib/procurement/guest-supplier"
 import { GuestAnsweredQueries } from "@/components/procurement/guest/GuestAnsweredQueries"
 import { GuestPapersPanel, type GuestPaperSummary } from "@/components/procurement/guest/GuestPapersPanel"
 
+// The same Join form contractors subscribe through, with «Supplier» ticked (11 Oct 2026).
+const JOIN_AS_SUPPLIER = { pathname: "/", query: { join: "supplier" } } as const
+
 type GuestOfferData = {
   offer: {
     id: string
@@ -300,7 +303,7 @@ export function GuestOfferContent() {
                 {isRTL ? "English" : "العربية"}
               </Button>
             </Link>
-            <Link href="/register">
+            <Link href={JOIN_AS_SUPPLIER}>
               <Button size="sm" className="rounded-lg font-bold shadow-sm">
                 {t("register_cta")}
               </Button>
@@ -332,7 +335,7 @@ export function GuestOfferContent() {
               </p>
             </div>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-              <Link href="/register">
+              <Link href={JOIN_AS_SUPPLIER}>
                 <Button className="rounded-xl h-11 px-6 font-bold shadow-lg shadow-primary/20">
                   {t("register_cta_long")}
                 </Button>
@@ -762,7 +765,7 @@ export function GuestOfferContent() {
                 <XCircle size={18} className="text-slate-400 shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm text-slate-700 leading-relaxed">{t("rejected_desc")}</p>
-                  <Link href="/register" className="inline-block pt-2">
+                  <Link href={JOIN_AS_SUPPLIER} className="inline-block pt-2">
                     <Button size="sm" className="rounded-lg font-bold">
                       {t("register_cta_long")}
                     </Button>
