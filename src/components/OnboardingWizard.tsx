@@ -19,7 +19,9 @@ const selectCls =
   "w-full h-11 rounded-xl bg-[#0f1e33] border border-white/[0.1] text-sm font-medium ps-3 pe-9 focus:outline-none focus:border-[#20CBD5]/50 transition-all appearance-none cursor-pointer"
 const errorBorderCls = "border-red-500/40 focus:border-red-500/50"
 
-export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: () => void }) {
+/** The one Join form for every company (contractor or supplier). `initialTypes` ticks a type on opening — a supplier
+ * coming from an offer or RFQ page arrives with «Supplier» ticked. */
+export function OnboardingWizard({ open, onClose, initialTypes }: { open: boolean; onClose: () => void; initialTypes?: CompanyType[] }) {
   const t = useTranslations("Landing.Onboarding")
   const tType = useTranslations("Landing.CompanyType")
   const locale = useLocale()
@@ -45,6 +47,11 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
   }, [])
 
   const handleClose = useCallback(() => { reset(); onClose() }, [reset, onClose])
+
+  const presetKey = (initialTypes || []).join(",")
+  useEffect(() => {
+    if (open && presetKey) setCompanyTypes(presetKey.split(",") as CompanyType[])
+  }, [open, presetKey])
 
   useEffect(() => {
     if (!open) return

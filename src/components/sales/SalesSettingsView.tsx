@@ -39,6 +39,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useModules } from "@/hooks/useCompanyModules"
 import { cn } from "@/lib/utils"
 import { MFG_SETTINGS, normalizeMfgSettings, type MfgSettings } from "@/lib/manufacturing-engine"
 import { DEFAULT_QUOTATION_VAT_PERCENT } from "@/lib/quotation-document"
@@ -101,6 +102,7 @@ const range = (n: number) => Array.from({ length: n }, (_, i) => i + 1)
 
 export function SalesSettingsView({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
+  const financeOn = useModules().on("payments")
   const locale = useLocale()
   const isRtl = locale === "ar"
   const firestore = useFirestore()
@@ -297,7 +299,8 @@ export function SalesSettingsView({ portal }: { portal: CrmPortal }) {
               <DefaultRow label={t("sset_def_below_cost")} value={<Badge className="border-none bg-destructive/10 text-[10px] text-destructive">{t("sset_def_below_cost_v")}</Badge>} />
               <DefaultRow label={t("sset_def_advance")} value={<Badge className="border-none bg-warning/10 text-[10px] text-warning">{t("sset_def_advance_v")}</Badge>} />
               <DefaultRow label={t("sset_def_plant_window")} value={t("sset_def_plant_window_v", { hours: answerWindowHours })} />
-              <DefaultRow label={t("sset_def_invoicing")} value={<Badge className="border-none bg-muted text-[10px] text-muted-foreground">{t("sset_def_invoicing_v")}</Badge>} />
+              {/* With Finance switched off (a sales-only supplier), Sales records the money and issues its receipt voucher. */}
+              <DefaultRow label={t("sset_def_invoicing")} value={<Badge className="border-none bg-muted text-[10px] text-muted-foreground">{t(financeOn ? "sset_def_invoicing_v" : "sset_def_invoicing_sales_v")}</Badge>} />
             </dl>
           </SalesSection>
 

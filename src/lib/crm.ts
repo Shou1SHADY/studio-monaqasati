@@ -1069,7 +1069,15 @@ export interface QuotationPaymentEntry {
   paidByUserId: string | null
   paidByUserName: string | null
   note: string | null
+  /** The receipt voucher (سند قبض) — «RV-2026/001», drawn in the same write (11 Oct 2026). Absent on older payments. */
+  receiptNumber?: string | null
+  method?: PaymentMethod | null
+  /** The transfer, cheque or card reference the client gave. */
+  reference?: string | null
 }
+
+export const PAYMENT_METHODS = ["cash", "transfer", "cheque", "card"] as const
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
 
 /** The running total paid against one installment. `paidAmount` accumulates
  * across `entries` (each partial payment); the other fields describe the

@@ -22,6 +22,7 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
+import { useModules } from "@/hooks/useCompanyModules"
 import { cn } from "@/lib/utils"
 import { formatCrmDate } from "@/lib/crm"
 import {
@@ -66,6 +67,8 @@ export function DeliveryNotesView({ portal }: { portal: CrmPortal }) {
   // A note into project custody is the project's to receive (T19); a
   // warehouse manager may still sign for it.
   const canManageWarehouses = can("warehouses.manage")
+  // The page serves two modules: Sales' customer deliveries (always) and the workshop's notes (only with Manufacturing on).
+  const workshop = useModules().on("manufacturing")
   const { orgId, teamMembers, isLoading: isOrgLoading } = useCrmData()
   const actorName = teamMembers.find((m) => m.id === user?.uid)?.name || user?.email || ""
   const nowMs = useNowMs()
@@ -175,10 +178,13 @@ export function DeliveryNotesView({ portal }: { portal: CrmPortal }) {
             {t("dn_page_title")}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {t("dn_page_desc")}{" "}
-            <Link href={`/${portal}/warehouses/requests`} className="text-cta font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
-              {t("dn_requests_link")}
-            </Link>
+            {t(!workshop ? "dn_page_desc_customers" : portal === "contractor" ? "dn_page_desc" : "dn_page_desc_short")}{" "}
+            {/* Warehouse requests exist on the contractor side only. */}
+            {workshop && portal === "contractor" && (
+              <Link href={`/${portal}/warehouses/requests`} className="text-cta font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
+                {t("dn_requests_link")}
+              </Link>
+            )}
           </p>
           {!isOrgLoading && !canReceive && (
             <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
@@ -193,6 +199,8 @@ export function DeliveryNotesView({ portal }: { portal: CrmPortal }) {
           storekeeper authorises it against real stock before the client can sign. */}
       {orgId && <CustomerIssuesPanel orgId={orgId} actor={{ id: user?.uid || "", name: actorName }} canAuthorize={canReceive} />}
 
+      {workshop && (
+      <>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           {TABS.map((s) => (
@@ -325,6 +333,8 @@ export function DeliveryNotesView({ portal }: { portal: CrmPortal }) {
             )
           })}
         </ul>
+      )}
+      </>
       )}
 
       <MfgNoteReceiptDialog

@@ -57,6 +57,7 @@ export function CrmContactDialog({
   orgId,
   teamMembers,
   onSaved,
+  defaultOwnerId,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -64,6 +65,8 @@ export function CrmContactDialog({
   orgId: string
   teamMembers: TeamMember[]
   onSaved?: (contactId: string) => void
+  /** A new client added from Sales is the adding rep's, so his scoped lists show it (useSalesScope reads the owner). */
+  defaultOwnerId?: string | null
 }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
@@ -105,7 +108,7 @@ export function CrmContactDialog({
     setEmail(contact?.email ?? "")
     setStatus(contact?.status ?? "new")
     setSource(contact?.source ?? "other")
-    setOwnerId(contact?.ownerId ?? "")
+    setOwnerId(contact ? contact.ownerId ?? "" : defaultOwnerId ?? "")
     setNotes(contact?.notes ?? "")
     setEmailError(false)
     setCity(contact?.city ?? "")
@@ -117,7 +120,7 @@ export function CrmContactDialog({
     setPartyType(contact?.partyType ?? "")
     setRoles(contact ? partyRoles(contact) : ["client"])
     setPeople(contact ? contactPeople(contact) : [])
-  }, [open, contact])
+  }, [open, contact, defaultOwnerId])
 
   const toggleRole = (role: PartyRole) =>
     setRoles((prev) => {

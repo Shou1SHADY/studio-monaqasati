@@ -8,6 +8,9 @@ export const PENDING_KEYS = {
   "project-management": ["plant", "handover"],
   hr: ["exits", "advances", "payroll"],
   manufacturing: ["notes", "requests"],
+  crm: ["deals"],
+  warehouses: ["deliveries"],
+  payments: ["notices"],
 } as const satisfies Record<OptionalModule, readonly string[]>
 
 export type PendingKey = (typeof PENDING_KEYS)[OptionalModule][number]

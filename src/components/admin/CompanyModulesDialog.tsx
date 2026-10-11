@@ -1,7 +1,9 @@
 "use client"
 
-// Admin → a company's components. Project Management, HR and Manufacturing can be switched off for one
-// company; everything else is core and stays on. The company's menu, tiles and pages follow at once.
+// Admin → a company's components. A contractor's Project Management, HR and Manufacturing — and a supplier's CRM,
+// Inventory, Finance, HR and Manufacturing — can be switched off for one company; everything else is core and stays
+// on. A module that needs an off one goes off with it (HR needs Finance and Inventory; Manufacturing needs Inventory).
+// The company's menu, tiles and pages follow at once.
 
 import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
@@ -13,7 +15,7 @@ import { Switch } from "@/components/ui/switch"
 import { Callout } from "@/components/module-ui/Callout"
 import { useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
-import { COMPANY_MODULES, offSet, optionalFor, type ModulePortal, type OptionalModule } from "@/lib/company-modules"
+import { COMPANY_MODULES, SALES_ONLY_OFF, forcedOffBy, offSet, optionalFor, withDependents, type ModulePortal, type OptionalModule } from "@/lib/company-modules"
 import { setCompanyModules } from "@/lib/company-modules-writes"
 import { readPending, warningsFor, type PendingByModule } from "@/lib/company-modules-pending"
 
@@ -21,6 +23,9 @@ const LABEL: Record<OptionalModule, { name: string; desc: string }> = {
   "project-management": { name: "component_project_management", desc: "component_project_management_desc" },
   hr: { name: "component_hr", desc: "component_hr_desc" },
   manufacturing: { name: "component_manufacturing", desc: "component_manufacturing_desc" },
+  crm: { name: "component_crm", desc: "supplier_component_crm_desc" },
+  warehouses: { name: "component_inventory", desc: "component_inventory_desc" },
+  payments: { name: "component_finance", desc: "component_finance_desc" },
 }
 
 export function CompanyModulesDialog({ orgId, companyName, portal, onClose }: { orgId: string; companyName: string; portal: ModulePortal; onClose: () => void }) {
@@ -51,8 +56,12 @@ export function CompanyModulesDialog({ orgId, companyName, portal, onClose }: { 
       const next = new Set(prev)
       if (on) next.delete(id)
       else next.add(id)
-      return next
+      return withDependents(next, portal)
     })
+  }
+  const preset = (list: readonly OptionalModule[]) => {
+    setPending(null)
+    setOff(withDependents(list, portal))
   }
 
   const warnings = pending ? warningsFor(initial, off, pending) : []
@@ -100,16 +109,30 @@ export function CompanyModulesDialog({ orgId, companyName, portal, onClose }: { 
           </div>
         ) : (
           <div className="space-y-3">
+            {/* Most suppliers only sell: one press leaves Order Management, Sales and Governance. */}
+            {portal === "supplier" && (
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => preset(SALES_ONLY_OFF)} disabled={busy} title={t("preset_sales_only_desc")}>
+                  {t("preset_sales_only")}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => preset([])} disabled={busy}>
+                  {t("preset_all_on")}
+                </Button>
+              </div>
+            )}
             <ul className="divide-y rounded-lg border">
               {optionalFor(portal).map((id) => {
                 const on = !off.has(id)
+                const forcedBy = forcedOffBy(id, off, portal)
                 return (
                   <li key={id} className="flex items-center justify-between gap-3 px-3 py-3">
                     <div className="min-w-0">
                       <p className="text-sm font-bold">{tSide(LABEL[id].name)}</p>
-                      <p className="text-xs text-muted-foreground">{tSide(LABEL[id].desc)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {forcedBy ? t("needs_off", { module: tSide(LABEL[forcedBy].name) }) : tSide(LABEL[id].desc)}
+                      </p>
                     </div>
-                    <Switch checked={on} onCheckedChange={(v) => toggle(id, v)} aria-label={tSide(LABEL[id].name)} disabled={busy} />
+                    <Switch checked={on} onCheckedChange={(v) => toggle(id, v)} aria-label={tSide(LABEL[id].name)} disabled={busy || forcedBy !== null} />
                   </li>
                 )
               })}

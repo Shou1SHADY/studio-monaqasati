@@ -51,6 +51,9 @@ import { GuestAnsweredQueries } from "@/components/procurement/guest/GuestAnswer
 import { GuestOtpField, type GuestOtpValue } from "@/components/procurement/guest/GuestOtpField"
 import { GuestPapersField, type GuestPaperFiles } from "@/components/procurement/guest/GuestPapersField"
 
+// The same Join form contractors subscribe through, with «Supplier» ticked (11 Oct 2026).
+const JOIN_AS_SUPPLIER = { pathname: "/", query: { join: "supplier" } } as const
+
 type SharedRfq = {
   id: string
   number?: string | null
@@ -315,7 +318,7 @@ export function PublicRfqContent() {
                 {isRTL ? "English" : "العربية"}
               </Button>
             </Link>
-            <Link href="/register">
+            <Link href={JOIN_AS_SUPPLIER}>
               <Button size="sm" className="rounded-lg font-bold shadow-sm">
                 {t("register_cta")}
               </Button>
@@ -348,7 +351,7 @@ export function PublicRfqContent() {
               </p>
             </div>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-              <Link href="/register">
+              <Link href={JOIN_AS_SUPPLIER}>
                 <Button className="rounded-xl h-11 px-6 font-bold shadow-lg shadow-primary/20">
                   {t("register_cta_long")}
                 </Button>
@@ -413,7 +416,7 @@ export function PublicRfqContent() {
             <div className="p-5 bg-gradient-to-br from-primary/5 to-accent/5 rounded-2xl border border-primary/10 text-start space-y-2">
               <p className="font-bold text-slate-800 text-sm">{t("success_register_title")}</p>
               <p className="text-sm text-slate-600 leading-relaxed">{t("success_register_desc")}</p>
-              <Link href="/register" className="inline-block pt-1">
+              <Link href={JOIN_AS_SUPPLIER} className="inline-block pt-1">
                 <Button size="sm" className="rounded-lg font-bold">
                   {t("register_cta_long")}
                 </Button>
