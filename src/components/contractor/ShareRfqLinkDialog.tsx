@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+import { shareErrorKey } from "@/lib/rfq-share-errors"
 import { useUser } from "@/firebase"
 import { Callout } from "@/components/module-ui/Callout"
 import { displayCity, displayDistrict } from "@/lib/constants"
@@ -59,7 +60,7 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose, onPrint }: ShareRfqLi
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [expiresAt, setExpiresAt] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
-  const [generateError, setGenerateError] = useState(false)
+  const [generateError, setGenerateError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [emailTo, setEmailTo] = useState("")
   const [isSendingEmail, setIsSendingEmail] = useState(false)
@@ -79,7 +80,7 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose, onPrint }: ShareRfqLi
   const generateLink = useCallback(async () => {
     if (!user || !rfq) return
     setIsGenerating(true)
-    setGenerateError(false)
+    setGenerateError(null)
     try {
       const idToken = await user.getIdToken()
       const res = await fetch("/api/rfq-share/create", {
@@ -94,7 +95,7 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose, onPrint }: ShareRfqLi
       takeResponse(json.data)
     } catch (err) {
       console.error("Failed to generate share link:", err)
-      setGenerateError(true)
+      setGenerateError(err instanceof Error ? err.message : "FAILED")
     } finally {
       setIsGenerating(false)
     }
@@ -237,7 +238,7 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose, onPrint }: ShareRfqLi
           ) : generateError ? (
             <div className="p-4 bg-destructive/5 border border-destructive/20 rounded-xl text-center space-y-3">
               <AlertCircle size={22} className="text-destructive mx-auto" />
-              <p className="text-sm text-slate-600">{t("rfq_share_generate_failed")}</p>
+              <p className="text-sm text-slate-600">{t(shareErrorKey(generateError))}</p>
               <Button variant="outline" size="sm" onClick={generateLink} className="rounded-lg">
                 {t("rfq_share_retry")}
               </Button>
