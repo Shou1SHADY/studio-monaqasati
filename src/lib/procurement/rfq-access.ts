@@ -5,7 +5,9 @@
 //   manager (mgr)  → po.approve (usually + offers.accept) — runs every RFQ, closes early
 //   buyer          → offers.accept, or rfq.manage / rfq.create without po.approve — runs HIS OWN RFQs
 //   expediter      → po.expedite only — never runs an RFQ
-//   owner          → runs while the org has no procurement staff; with staff he reads (`ro`)
+//   owner          → runs while the org has no procurement staff; with staff he reads (`ro`) — except the RFQs he
+//                    raised himself, which stay his (as a buyer's own do): otherwise an RFQ the owner raised before the
+//                    team existed would belong to nobody who can share, extend or award it
 // Awarding prepares purchase orders, so it also needs offers.accept (or the
 // owner): an rfq.manage-only member (seeded supply_chain) runs the round but
 // leaves the award to whoever may prepare orders. Pure: no I/O.
@@ -46,8 +48,11 @@ export function rfqMine(rfq: RfqAuthorLike, a: RfqRunner): boolean {
   return (rfq.createdByUserId || rfq.contractorId || "") === a.uid
 }
 
+/** The owner raised it himself. */
+export const ownerRaised = (rfq: RfqAuthorLike, a: Pick<RfqRunner, "uid" | "isOwner">): boolean => a.isOwner && (rfq.createdByUserId || rfq.contractorId || "") === a.uid
+
 /** Publish, extend, share, cancel, exclude, answer, record an offer, ask the round. */
-export const actsOnRfq = (rfq: RfqAuthorLike, a: RfqRunner): boolean => runsRfqs(a) && rfqMine(rfq, a)
+export const actsOnRfq = (rfq: RfqAuthorLike, a: RfqRunner): boolean => (a.isOwner && a.ownerHasTeam ? ownerRaised(rfq, a) : runsRfqs(a) && rfqMine(rfq, a))
 
 /** The award prepares purchase orders: offers.accept or the owner. */
 export const awardsOnRfq = (rfq: RfqAuthorLike, a: RfqRunner): boolean => actsOnRfq(rfq, a) && (a.isOwner || a.canPrepare)

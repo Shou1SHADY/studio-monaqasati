@@ -283,7 +283,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const acts = isPlatformAdmin || actsOnRfq(rfqAuthor, runner)
   const canDecide = isPlatformAdmin || awardsOnRfq(rfqAuthor, runner)
   const closes = closesRfqEarly(rfqAuthor, runner)
-  const ownerReads = ownerReadsRfqs(runner)
+  const ownerReads = ownerReadsRfqs(runner) && !acts
   const notMine = !isPlatformAdmin && runsRfqs(runner) && !rfqMine(rfqAuthor, runner)
   const writeActor: RfqWriteActor = { ...runner, canPrepare: runner.canPrepare || isPlatformAdmin }
   const policiesRef = useMemoFirebase(() => (firestore && procOrgId ? doc(firestore, PROCUREMENT_SETTINGS, procOrgId) : null), [firestore, procOrgId])
