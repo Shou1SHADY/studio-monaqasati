@@ -41,13 +41,9 @@ export function AppSwitcher() {
   // is a dead end, not a discovery hint.
   const components = visibleComponents(modules, can)
   const activeId = (isContractor ? resolveActiveContractorComponent(pathname) : resolveActiveSupplierComponent(pathname)).id
-  // "See all components" lands wherever every component is actually laid out.
-  // For a contractor that is the portal home itself — its welcome screen IS the
-  // full tile grid (see the contractor dashboard, and the sidebar it suppresses
-  // for exactly that reason), so sending them to the separate launcher page was
-  // a detour to a second, near-identical grid. The supplier home is an RFQ
-  // dashboard, not a launcher, so that side still needs /supplier/apps.
-  const appsHref = isContractor ? "/contractor" : "/supplier/apps"
+  // "See all components" lands on the portal home: its welcome screen IS the
+  // full tile grid, the same for a contractor and a supplier (PortalHomeView).
+  const appsHref = isContractor ? "/contractor" : "/supplier"
 
   return (
     <DropdownMenu>

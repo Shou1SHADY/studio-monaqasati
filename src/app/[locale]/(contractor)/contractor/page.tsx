@@ -1,60 +1,18 @@
 "use client"
 
-import { useState } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Crown, UsersRound, History, ChevronLeft, ChevronRight, Lock, Check, KeyRound, Loader2 } from "lucide-react"
-import { Link } from "@/i18n/routing"
+import { PortalHomeView, type HomeDecision, type HomeKpi } from "@/components/portal-home/PortalHomeView"
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query, where, addDoc } from "firebase/firestore"
-import { useToast } from "@/hooks/use-toast"
+import { collection, query, where } from "firebase/firestore"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
-import { useTranslations, useLocale } from "next-intl"
-import { cn } from "@/lib/utils"
+import { useTranslations } from "next-intl"
 import { useWorkQueue, type WorkQueueItem, type WorkQueueItemType } from "@/hooks/useWorkQueue"
 import { useMyTodoCounts } from "@/hooks/useMyTodoCounts"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useModuleComponents, useModules } from "@/hooks/useCompanyModules"
-import { CONTRACTOR_COMPONENTS, COMPONENT_ACCENT_CLASSES, isComponentVisible, type PortalComponentId } from "@/lib/portal-components"
-
-// Which tile a queue item's badge count rolls up into, and the permission
-// that gates showing that count at all (owners always pass — see can()).
-const ITEM_TILE: Record<WorkQueueItemType, PortalComponentId> = {
-  guarantee_expiring: "payments",
-  rfq_decision: "procurement",
-  rfq_closing_soon: "procurement",
-  rfq_no_offers: "procurement",
-  delivery_confirm: "procurement",
-  project_waiting_approval: "project-management",
-  low_stock: "warehouses",
-  team_invite_pending: "users",
-  sales_deposits_to_confirm: "sales",
-  mfg_materials_to_issue: "warehouses",
-  mfg_requests_unanswered: "manufacturing",
-  mfg_drawing_results_due: "project-management",
-  mfg_client_drawings_due: "sales",
-  mfg_notes_to_receive: "warehouses",
-  mfg_custody_to_receive: "project-management",
-  mfg_purchase_requests: "procurement",
-  po_approve: "procurement",
-  po_attention: "procurement",
-}
-
-// Solid accent classes for the tile hover-bar and decision-card rail — the
-// shared COMPONENT_ACCENT_CLASSES only carries the soft 10% variants.
-const ACCENT_SOLID: Record<string, string> = {
-  primary: "bg-primary",
-  secondary: "bg-secondary",
-  accent: "bg-accent",
-  success: "bg-success",
-  cta: "bg-cta",
-  warning: "bg-warning",
-  destructive: "bg-destructive",
-  indigo: "bg-indigo",
-  violet: "bg-violet",
-}
+import type { PortalComponentId } from "@/lib/portal-components"
+import { QUEUE_ITEM_TILE, liveQueueItems, queueItemPermissions } from "@/lib/work-queue-tasks"
 
 // Primary action label on each decision card, per item type.
 const ITEM_ACTION_KEY: Record<WorkQueueItemType, string> = {
@@ -121,16 +79,6 @@ function cardMetrics(item: WorkQueueItem, t: TFn): Array<{ label: string; value:
   }
 }
 
-function relativeTimeLabel(ms: number, t: TFn): string {
-  const diff = Date.now() - ms
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return t("time_ago_now")
-  if (minutes < 60) return t("time_ago_minutes", { count: minutes })
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return t("time_ago_hours", { count: hours })
-  return t("time_ago_days", { count: Math.floor(hours / 24) })
-}
-
 function describePriorityItem(item: WorkQueueItem, t: ReturnType<typeof useTranslations<"Portal.Contractor">>): string {
   switch (item.type) {
     case "guarantee_expiring":
@@ -176,29 +124,21 @@ function describePriorityItem(item: WorkQueueItem, t: ReturnType<typeof useTrans
   }
 }
 
+// The contractor's home: the shared portal home (PortalHomeView), fed with the
+// contractor's numbers — the work queue's decisions, projects, RFQs, guarantees.
 export default function ContractorDashboard() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const t = useTranslations("Portal.Contractor")
-  const tSidebar = useTranslations("Portal.Sidebar")
-  const locale = useLocale()
-  const isRtl = locale === "ar"
-  const { toast } = useToast()
+  const tHome = useTranslations("Portal.Home")
 
   const { profile } = useResolvedProfile(isUserLoading ? null : user?.uid)
   const myOrgId = profile?.organizationId || user?.uid
   const activeCompanyName = useActiveCompanyName(profile, user?.uid)
-  const { can, isOrgOwner, groups } = usePermissions()
+  const { can, isOrgOwner } = usePermissions()
   const modules = useModuleComponents("contractor")
-  const { on, linkable } = useModules()
-
-  const firstName = (profile?.name as string | undefined)?.trim().split(/\s+/)[0] || ""
-  const hourNow = new Date().getHours()
-  const greeting = hourNow < 12 ? t("greet_morning") : t("greet_evening")
-  const todayLabel = new Date().toLocaleDateString(locale === "ar" ? "ar-SA" : "en-US", { weekday: "long", day: "numeric", month: "long" })
-  const myGroup = groups.find((g) => g.id === profile?.defaultGroupId)
-
-  const roleChip = isOrgOwner ? t("role_owner_chip") : myGroup?.name || null
+  const switches = useModules()
+  const { on, linkable } = switches
 
   // HR records are read by HR roles only (HR 1.0, RL-03) — others see no headcount. A workplace supervisor
   // reads his own workplaces' people only (RL-01): the rules refuse him this company-wide query.
@@ -216,450 +156,78 @@ export default function ContractorDashboard() {
   const { data: contactsData } = useCollection(contactsQuery)
 
   // Each work-queue item type is only counted toward a tile's badge (and the
-  // top-priorities card) if this member can actually act on it — a finance
-  // member shouldn't be nudged about RFQ decisions they can't take.
-  const itemPermission: Record<WorkQueueItemType, boolean> = {
-    guarantee_expiring: can("offers.accept") || can("invoices.manage"),
-    rfq_decision: can("offers.view") || can("rfq.manage"),
-    rfq_closing_soon: can("rfq.manage") || can("rfq.create"),
-    rfq_no_offers: can("rfq.manage") || can("rfq.create"),
-    delivery_confirm: can("deliveries.confirm"),
-    project_waiting_approval: can("projects.edit") || can("projects.publish"),
-    low_stock: can("warehouses.manage"),
-    team_invite_pending: can("team.manage"),
-    sales_deposits_to_confirm: can("invoices.manage") || can("sales.approve"),
-    mfg_materials_to_issue: can("warehouses.manage"),
-    mfg_requests_unanswered: can("manufacturing.manage"),
-    mfg_drawing_results_due: can("projects.edit"),
-    mfg_client_drawings_due: can("sales.manage"),
-    mfg_notes_to_receive: can("warehouses.receive") || can("warehouses.manage"),
-    mfg_custody_to_receive: can("projects.edit"),
-    mfg_purchase_requests: can("rfq.manage") || can("rfq.create"),
-    po_approve: can("po.approve"),
-    po_attention: can("po.expedite") || can("offers.accept") || can("po.approve"),
-  }
+  // decisions) if this member can actually act on it — a finance member
+  // shouldn't be nudged about RFQ decisions they can't take.
+  const itemPermission = queueItemPermissions(can)
   const { items: allQueueItems, isLoading: queueLoading, stats, recentItems } = useWorkQueue(myOrgId, user?.uid, { isOrgOwner, manufacturing: on("manufacturing") })
-  // A module the company switched off takes its decisions out of the list too.
-  // What the company has switched off leaves the list: its own decisions, anything that only opens one of its pages,
+  // What the company switched off leaves the list: its own decisions, anything that only opens one of its pages,
   // and a tender link into Projects becomes the core RFQ page.
   const toTender = (url: string) => (on("project-management") ? url : url.replace(/^\/contractor\/projects\/[^/]+\/tenders\/([^/?]+)\/offers/, "/contractor/rfqs/$1/offers"))
-  const liveQueue = allQueueItems
-    .map((item) => ({ ...item, actionUrl: toTender(item.actionUrl) }))
-    .filter((item) => (on("manufacturing") || !item.type.startsWith("mfg_")) && linkable(item.actionUrl))
   const liveRecent = recentItems.map((item) => ({ ...item, href: toTender(item.href) })).filter((item) => linkable(item.href))
-  const queueItems = liveQueue.filter((item) => itemPermission[item.type] && modules.some((c) => c.id === ITEM_TILE[item.type] && c.launcher !== false))
-  const top3 = queueItems.slice(0, 3)
-  const ongoingProjectsCount = stats.projectsOngoing
+  const queueItems = liveQueueItems(allQueueItems, switches).filter(
+    (item) => itemPermission[item.type] && modules.some((c) => c.id === QUEUE_ITEM_TILE[item.type] && c.launcher !== false)
+  )
   const { counts: todoCounts } = useMyTodoCounts(myOrgId, user?.uid, "contractor")
 
-  const badgeCountByTile = new Map<PortalComponentId, number>()
+  const badges = new Map<PortalComponentId, number>()
   queueItems.forEach((item) => {
-    const tileId = ITEM_TILE[item.type]
-    badgeCountByTile.set(tileId, (badgeCountByTile.get(tileId) || 0) + 1)
+    const tileId = QUEUE_ITEM_TILE[item.type]
+    badges.set(tileId, (badges.get(tileId) || 0) + 1)
   })
-  if (todoCounts.due > 0) badgeCountByTile.set("activities", todoCounts.due)
+  if (todoCounts.due > 0) badges.set("activities", todoCounts.due)
 
   // Informational one-liner under each tile title — real org numbers, muted styling.
   const tileStats: Partial<Record<PortalComponentId, string>> = {
-    crm: t("tile_stats_crm", { count: (contactsData || []).length }),
+    crm: tHome("tile_stats_crm", { count: (contactsData || []).length }),
     "project-management": t("tile_stats_projects", { total: stats.projectsTotal, ongoing: stats.projectsOngoing }),
     procurement: t("tile_stats_procurement", { open: stats.rfqsOpen, offers: stats.offersTotal }),
     warehouses: t("tile_stats_inventory", { items: stats.inventoryItemsTotal, warehouses: stats.warehousesTotal }),
     payments: t("tile_stats_finance", { count: stats.guaranteesActive }),
-    hr: t("tile_stats_hr", { count: (employeesData || []).length }),
-    activities: t("tile_stats_activities", { overdue: todoCounts.overdue, today: todoCounts.today, planned: todoCounts.planned }),
+    hr: tHome("tile_stats_hr", { count: (employeesData || []).length }),
+    activities: tHome("tile_stats_activities", { overdue: todoCounts.overdue, today: todoCounts.today, planned: todoCounts.planned }),
   }
-
-  const URGENT_TILES = new Set<PortalComponentId>(["procurement", "warehouses", "payments", "project-management", ...(todoCounts.overdue > 0 ? (["activities"] as const) : [])])
-  const sortedComponents = modules.filter((c) => c.launcher !== false).sort((a, b) => a.displayOrder - b.displayOrder)
-  const ChevronIcon = isRtl ? ChevronLeft : ChevronRight
-
-  // Permission-aware tiles: a module the member can't open anything inside is
-  // shown locked (or hidden via the toggle) — same gate as sidebar/launcher.
-  const accessibleById = new Map(sortedComponents.map((c) => [c.id, isComponentVisible(c, can)]))
-  const accessibleCount = sortedComponents.filter((c) => accessibleById.get(c.id)).length
-  const lockedCount = sortedComponents.length - accessibleCount
-  const [showLocked, setShowLocked] = useState(true)
-  // A member's own modules come FIRST, in their usual order; what is locked
-  // follows. A Manufacturing- or Sales-only member used to scroll past seven
-  // locked tiles to reach the one they work in, because the grid kept the fixed
-  // order whatever they could open. The owner opens everything, so his order
-  // does not change.
-  const openFirst = [...sortedComponents.filter((c) => accessibleById.get(c.id)), ...sortedComponents.filter((c) => !accessibleById.get(c.id))]
-  const gridComponents = showLocked ? openFirst : openFirst.filter((c) => accessibleById.get(c.id))
+  const urgentTiles = new Set<PortalComponentId>(["procurement", "warehouses", "payments", "project-management", ...(todoCounts.overdue > 0 ? (["activities"] as const) : [])])
 
   // Role-aware hero KPIs — the first 3 stats this member is allowed to see, so
-  // the hero keeps the same size and shape for every role. Finance-leaning
-  // members fall through to real guarantees data (invoices aren't live yet).
+  // the hero keeps the same size and shape for every role.
   const guaranteesExpiringCount = allQueueItems.filter((i) => i.type === "guarantee_expiring").length
   const canFinance = can("invoices.manage") || can("offers.accept")
-  const kpis = [
-    { key: "projects", allowed: on("project-management") && (can("projects.view") || can("projects.edit")), value: ongoingProjectsCount, label: t("home_kpi_ongoing_label"), dot: false },
-    { key: "decisions", allowed: true, value: queueItems.length, label: t("home_kpi_decisions_label"), dot: queueItems.length > 0 },
+  const kpis: HomeKpi[] = [
+    { key: "projects", allowed: on("project-management") && (can("projects.view") || can("projects.edit")), value: stats.projectsOngoing, label: t("home_kpi_ongoing_label"), dot: false },
+    { key: "decisions", allowed: true, value: queueItems.length, label: tHome("home_kpi_decisions_label"), dot: queueItems.length > 0 },
     { key: "rfqs", allowed: can("rfq.manage") || can("rfq.create"), value: stats.rfqsOpen, label: t("home_kpi_open_rfqs_label"), dot: false },
     { key: "offers", allowed: can("offers.view"), value: stats.offersTotal, label: t("home_kpi_offers_label"), dot: false },
     { key: "guarantees", allowed: canFinance, value: stats.guaranteesActive, label: t("home_kpi_guarantees_label"), dot: false },
     { key: "guarantees_exp", allowed: canFinance, value: guaranteesExpiringCount, label: t("home_kpi_guarantees_exp_label"), dot: guaranteesExpiringCount > 0 },
-  ].filter((k) => k.allowed).slice(0, 3)
+  ]
+    .filter((k) => k.allowed)
+    .slice(0, 3)
+    .map(({ allowed: _allowed, ...k }) => k)
 
-  // Access requests this member already sent — locked tiles show "request sent"
-  // instead of the button, and the create is skipped while one is pending.
-  const myAccessRequestsQuery = useMemoFirebase(() => {
-    if (!firestore || !user || isOrgOwner || !myOrgId) return null
-    return query(
-      collection(firestore, "accessRequests"),
-      where("requesterId", "==", user.uid),
-      where("organizationId", "==", myOrgId)
-    )
-  }, [firestore, user, isOrgOwner, myOrgId])
-  const { data: myAccessRequests } = useCollection(myAccessRequestsQuery)
-  const pendingRequestModules = new Set(
-    ((myAccessRequests || []) as { moduleId?: string; status?: string }[])
-      .filter((r) => r.status === "pending")
-      .map((r) => r.moduleId)
-  )
-  const [justRequested, setJustRequested] = useState<Set<string>>(new Set())
-  const [requestingModule, setRequestingModule] = useState<string | null>(null)
-
-  const handleRequestAccess = async (componentId: PortalComponentId, moduleLabel: string) => {
-    if (!firestore || !user || !myOrgId || requestingModule) return
-    setRequestingModule(componentId)
-    try {
-      const requesterName =
-        (profile?.name as string) || (profile?.companyName as string) || user.email || ""
-      await addDoc(collection(firestore, "accessRequests"), {
-        organizationId: myOrgId,
-        requesterId: user.uid,
-        requesterName,
-        moduleId: componentId,
-        status: "pending",
-        createdAt: new Date().toISOString(),
-      })
-      await addDoc(collection(firestore, "users", myOrgId, "notifications"), {
-        title: t("access_request_notif_title"),
-        message: t("access_request_notif_msg", { name: requesterName, module: moduleLabel }),
-        type: "access_request",
-        createdAt: new Date().toISOString(),
-        read: false,
-      })
-      setJustRequested((prev) => new Set(prev).add(componentId))
-      toast({ title: t("access_request_sent_toast") })
-    } catch (err) {
-      console.error(err)
-      toast({ title: t("generic_error_title"), variant: "destructive" })
-    } finally {
-      setRequestingModule(null)
-    }
-  }
-
-  if (!profile) {
-    return (
-      <PortalLayout>
-        <div className="space-y-8 pb-10">
-          <Skeleton className="h-40 rounded-3xl w-full" />
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {[1, 2, 3, 4, 5, 6, 7].map((i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
-          </div>
-          <Skeleton className="h-48 rounded-2xl w-full" />
-        </div>
-      </PortalLayout>
-    )
-  }
+  const decisions: HomeDecision[] = queueItems.map((item) => ({
+    id: item.id,
+    moduleId: QUEUE_ITEM_TILE[item.type],
+    title: describePriorityItem(item, t),
+    chip: cardChip(item, t),
+    metrics: cardMetrics(item, t),
+    actionLabel: t(ITEM_ACTION_KEY[item.type]),
+    href: item.actionUrl,
+  }))
 
   return (
     <PortalLayout>
-      <div className="space-y-6 pb-10">
-        {/* Hero — rounded card, greeting block at the start, KPIs at the end,
-            over a navy→blue gradient with a brick-outline wall and a teal glow. */}
-        <div
-          className="relative overflow-hidden rounded-[20px] text-white px-6 py-5 sm:px-7 flex items-center gap-5 flex-wrap shadow-[0_14px_34px_rgba(11,26,43,.2)]"
-          style={{
-            background: "linear-gradient(115deg, #0a1a2a 0%, #123152 55%, #0d4d75 100%)",
-          }}
-        >
-          <svg className="absolute inset-0 h-full w-full opacity-50 pointer-events-none" aria-hidden="true">
-            <defs>
-              <pattern id="hero-bricks" width="64" height="36" patternUnits="userSpaceOnUse">
-                <path d="M6 2h52l-6 14H0z" fill="none" stroke="rgba(255,255,255,.07)" strokeWidth="1" />
-                <path d="M38 20h52l-6 14H32z" fill="none" stroke="rgba(255,255,255,.07)" strokeWidth="1" />
-                <path d="M-26 20h52l-6 14h-52z" fill="none" stroke="rgba(255,255,255,.07)" strokeWidth="1" />
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#hero-bricks)" />
-          </svg>
-          <span
-            className={cn("absolute -top-[230px] h-[440px] w-[440px] rounded-full pointer-events-none", isRtl ? "-right-[110px]" : "-left-[110px]")}
-            style={{ background: "radial-gradient(circle, rgba(44,182,236,.3), rgba(44,182,236,0) 65%)" }}
-          />
-
-          <div className="relative min-w-0">
-            <h1 suppressHydrationWarning className="flex items-center gap-3 flex-wrap text-xl sm:text-2xl font-bold leading-[1.4] text-white">
-              <span>
-                {greeting}{locale === "ar" ? "،" : ","}{" "}
-                <em className="not-italic text-cyan-300">{firstName || activeCompanyName || t("welcome_fallback")}</em>
-              </span>
-              {roleChip && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/15 text-[11.5px] font-bold text-slate-200 whitespace-nowrap">
-                  {isOrgOwner ? <Crown className="h-3 w-3" /> : <UsersRound className="h-3 w-3" />}
-                  {roleChip}
-                </span>
-              )}
-            </h1>
-            <p suppressHydrationWarning className="mt-0.5 flex items-center gap-2.5 flex-wrap text-[12.5px] text-slate-300/80 font-medium">
-              {activeCompanyName && (
-                <>
-                  <span>{activeCompanyName}</span>
-                  <i className="h-[3px] w-[3px] rounded-full bg-slate-500" />
-                </>
-              )}
-              <span>{todayLabel}</span>
-              <i className="h-[3px] w-[3px] rounded-full bg-slate-500" />
-              <span>
-                {isOrgOwner || lockedCount === 0
-                  ? t("home_perms_all")
-                  : t("home_perms_partial", { n: accessibleCount, total: sortedComponents.length })}
-              </span>
-            </p>
-          </div>
-
-          {/* Live KPIs — end side on desktop, full-width divider row on mobile. */}
-          <div className="relative flex items-stretch ms-auto max-sm:basis-full max-sm:w-full max-sm:ms-0 max-sm:border-t max-sm:border-white/10 max-sm:pt-3">
-            {kpis.map((kpi, i) => (
-              <div
-                key={kpi.key}
-                className={cn(
-                  "px-5 sm:px-6 text-start max-sm:flex-1 max-sm:px-3",
-                  i > 0 && "border-s border-white/[.13]"
-                )}
-              >
-                <b className="block text-[21px] font-bold leading-[1.25] tabular-nums whitespace-nowrap">
-                  {kpi.value}
-                </b>
-                <span className="flex items-center gap-1.5 text-xs text-slate-300/80 whitespace-nowrap">
-                  {kpi.dot && <span className="h-1.5 w-1.5 rounded-full bg-red-300" />}
-                  {kpi.label}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Component tile grid — one tile per portal component. Each tile carries
-            a real stats line (org totals) and a "needs action" footer fed by the
-            work queue. Modules outside this member's permissions render locked
-            (same gate as sidebar/launcher) behind an optional toggle. */}
-        <div className="flex items-center justify-between gap-3 flex-wrap -mb-3">
-          <h2 className="text-sm font-black text-foreground">{t("tiles_section_title")}</h2>
-          {lockedCount > 0 && (
-            <label className="flex items-center gap-2 text-[11.5px] font-medium text-muted-foreground cursor-pointer select-none">
-              <span className="text-muted-foreground/60">{t("tiles_locked_count", { count: lockedCount })}</span>
-              <Checkbox checked={showLocked} onCheckedChange={(v) => setShowLocked(v === true)} className="h-3.5 w-3.5" />
-              {t("tiles_show_locked")}
-            </label>
-          )}
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-5">
-          {gridComponents.map((component) => {
-            const accent = COMPONENT_ACCENT_CLASSES[component.accentToken]
-            const count = badgeCountByTile.get(component.id) || 0
-            const isUrgent = URGENT_TILES.has(component.id)
-            const statsLine = tileStats[component.id]
-            const accessible = accessibleById.get(component.id)
-
-            if (!accessible) {
-              return (
-                <div
-                  key={component.id}
-                  className="flex flex-col gap-2 p-[18px] rounded-[18px] bg-white border border-dashed border-border min-h-[174px] text-start"
-                >
-                  <span className="relative h-[46px] w-[46px] rounded-[14px] grid place-items-center mb-0.5 bg-muted text-muted-foreground/60">
-                    <component.icon size={23} strokeWidth={1.65} />
-                    <span className={cn("absolute -bottom-1 h-[18px] w-[18px] rounded-full bg-white border border-border grid place-items-center text-muted-foreground", isRtl ? "-left-1" : "-right-1")}>
-                      <Lock size={10} />
-                    </span>
-                  </span>
-                  <span className="text-[15px] font-bold text-muted-foreground leading-[1.4]">
-                    {tSidebar(component.labelKey)}
-                  </span>
-                  <span className="text-xs text-muted-foreground/50">—</span>
-                  <div className="mt-auto pt-2.5 border-t border-border/40 flex items-center min-h-[34px]">
-                    {isOrgOwner ? (
-                      <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground/60">
-                        <Lock size={13} />
-                        {t("tile_no_permission")}
-                      </span>
-                    ) : pendingRequestModules.has(component.id) || justRequested.has(component.id) ? (
-                      <span className="flex items-center gap-1.5 text-xs font-semibold text-success">
-                        <Check size={13} />
-                        {t("tile_request_sent")}
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleRequestAccess(component.id, tSidebar(component.labelKey))}
-                        disabled={requestingModule === component.id}
-                        className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg border border-cta/30 text-cta text-xs font-semibold hover:bg-cta/5 disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        {requestingModule === component.id ? <Loader2 size={13} className="animate-spin" /> : <KeyRound size={13} />}
-                        {t("tile_request_access")}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )
-            }
-
-            return (
-              <Link
-                key={component.id}
-                href={component.homeHref}
-                className="group relative overflow-hidden flex flex-col gap-2 p-[18px] rounded-[18px] bg-white border border-border/60 shadow-sm hover:shadow-lg hover:-translate-y-[3px] min-h-[174px] text-start transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                <span
-                  className={cn(
-                    "absolute top-0 start-0 h-[3px] w-0 group-hover:w-full transition-[width] duration-300",
-                    ACCENT_SOLID[component.accentToken]
-                  )}
-                />
-                <span className={cn("h-[46px] w-[46px] rounded-[14px] grid place-items-center mb-0.5 transition-transform group-hover:scale-105", accent.tile)}>
-                  <component.icon size={23} strokeWidth={1.65} />
-                </span>
-                <span className="text-[15px] font-bold text-foreground leading-[1.4]">
-                  {tSidebar(component.labelKey)}
-                </span>
-                {statsLine && (
-                  <span className="text-xs text-muted-foreground leading-relaxed" suppressHydrationWarning>
-                    {statsLine}
-                  </span>
-                )}
-                <div className="mt-auto pt-2.5 border-t border-border/40 flex items-center gap-2 text-xs font-semibold whitespace-nowrap">
-                  {component.id === "documents" ? (
-                    <span className="text-muted-foreground/70">{t("tile_documents_footer")}</span>
-                  ) : count > 0 ? (
-                    <span className={cn("flex items-center gap-2", isUrgent ? "text-destructive" : "text-cta")}>
-                      <span className="h-[7px] w-[7px] rounded-full bg-current shrink-0" />
-                      <b className="font-bold">{count}</b> {t("tile_needs_action_word")}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground/70">{t("tile_all_clear")}</span>
-                  )}
-                </div>
-              </Link>
-            )
-          })}
-
-          {/* Continue where you left off — most recently touched projects/RFQs. */}
-          {liveRecent.length > 0 && (
-            <div className="flex flex-col rounded-[18px] bg-muted/30 border border-border/60 p-[18px] gap-3 min-h-[174px] text-start">
-              <span className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground">
-                <History size={13} />
-                {t("home_continue_title")}
-              </span>
-              <div className="flex flex-col gap-0.5 -mx-2">
-                {liveRecent.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={item.href}
-                    className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <span className="h-[7px] w-[7px] rounded-full bg-accent shrink-0" />
-                    <span className="text-xs font-semibold text-foreground truncate flex-1 min-w-0">{item.name}</span>
-                    <span className="text-[10.5px] text-muted-foreground whitespace-nowrap" suppressHydrationWarning>
-                      {relativeTimeLabel(item.ms, t)}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Needs your decision today — the 3 most urgent real items across the
-            org that this member can act on, ranked by useWorkQueue's tier
-            system, as action cards with a primary CTA per item. */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-black text-foreground">{t("home_priorities_title")}</h2>
-            {queueItems.length > 3 && (
-              <span className="text-[12.5px] font-semibold text-cta">
-                {t("home_priorities_more", { count: queueItems.length - 3 })}
-              </span>
-            )}
-          </div>
-          {queueLoading ? (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-36 rounded-2xl" />)}
-            </div>
-          ) : top3.length === 0 ? (
-            <div className="rounded-2xl border border-border/60 bg-white shadow-sm p-8 text-center text-sm text-muted-foreground">
-              {t("home_priorities_empty")}
-            </div>
-          ) : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {top3.map((item) => {
-                const moduleComponent = CONTRACTOR_COMPONENTS.find((c) => c.id === ITEM_TILE[item.type])
-                const moduleAccent = moduleComponent ? COMPONENT_ACCENT_CLASSES[moduleComponent.accentToken] : null
-                const chip = cardChip(item, t)
-                const metrics = cardMetrics(item, t)
-                const ModuleIcon = moduleComponent?.icon
-                return (
-                  <div
-                    key={item.id}
-                    className="relative overflow-hidden flex flex-col gap-3 rounded-[18px] border border-border/60 bg-white shadow-sm p-[18px] hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
-                  >
-                    {/* Accent rail in the module's color, like the reference cards. */}
-                    <span
-                      className={cn(
-                        "absolute start-0 top-0 bottom-0 w-[3px]",
-                        moduleComponent ? ACCENT_SOLID[moduleComponent.accentToken] : "bg-accent"
-                      )}
-                    />
-                    <div className="flex items-center gap-2">
-                      <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold", moduleAccent?.tile || "bg-muted text-muted-foreground")}>
-                        {ModuleIcon && <ModuleIcon size={13} strokeWidth={1.9} />}
-                        {moduleComponent ? tSidebar(moduleComponent.labelKey) : ""}
-                      </span>
-                      {chip && (
-                        <span
-                          className={cn(
-                            "ms-auto inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap",
-                            chip.tone === "destructive" ? "bg-destructive/10 text-destructive" : "bg-warning/10 text-warning"
-                          )}
-                          suppressHydrationWarning
-                        >
-                          {chip.label}
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="text-[13.5px] font-semibold leading-[1.65] text-foreground line-clamp-2 min-h-[45px]">
-                      {describePriorityItem(item, t)}
-                    </h3>
-                    {metrics.length > 0 && (
-                      <div className="flex items-stretch gap-4 flex-wrap rounded-xl bg-muted/30 border border-border/50 px-3 py-2.5">
-                        {metrics.map((m) => (
-                          <div key={m.label} className="leading-[1.3]">
-                            <span className="block text-[10.5px] text-muted-foreground">{m.label}</span>
-                            <b className="text-[13px] font-bold text-foreground tabular-nums" suppressHydrationWarning>{m.value}</b>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="mt-auto flex items-center gap-2">
-                      <Link
-                        href={item.actionUrl}
-                        className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-[10px] bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      >
-                        {t(ITEM_ACTION_KEY[item.type])}
-                        <ChevronIcon size={14} />
-                      </Link>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+      <PortalHomeView
+        profile={profile as Record<string, unknown> | null}
+        orgId={myOrgId}
+        companyName={activeCompanyName}
+        modules={modules}
+        kpis={kpis}
+        tileStats={tileStats}
+        badges={badges}
+        urgentTiles={urgentTiles}
+        recent={liveRecent}
+        decisions={{ loading: queueLoading, items: decisions }}
+      />
     </PortalLayout>
   )
 }

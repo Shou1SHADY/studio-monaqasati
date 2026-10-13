@@ -19,7 +19,13 @@ import { pmDate } from "@/lib/pm/format"
 import { cn } from "@/lib/utils"
 
 export const TYPE_ICON: Record<ActivityType, LucideIcon> = { todo: CheckSquare, call: Phone, meeting: Users, email: Mail, document: FileUp }
-const DUE_TONE: Record<"overdue" | "today" | "planned", PillTone> = { overdue: "bad", today: "warn", planned: "mute" }
+const DUE_TONE: Record<"overdue" | "today" | "planned", PillTone> = { overdue: "bad", today: "warn", planned: "ok" }
+/** The state light behind the type icon — Odoo's red / orange / green. */
+export const BUCKET_TONE: Record<"overdue" | "today" | "planned", string> = {
+  overdue: "bg-destructive/10 text-destructive",
+  today: "bg-warning/10 text-warning",
+  planned: "bg-success/10 text-success",
+}
 
 export interface ActivityRowProps {
   activity: Activity
@@ -28,9 +34,11 @@ export interface ActivityRowProps {
   portal: ActivityPortal
   /** Show who it is for (the list of what I planned) instead of who planned it. */
   forOthers?: boolean
+  /** A list row (default) or a kanban card. */
+  layout?: "row" | "card"
 }
 
-export function ActivityRow({ activity: a, today, actor, portal, forOthers }: ActivityRowProps) {
+export function ActivityRow({ activity: a, today, actor, portal, forOthers, layout = "row" }: ActivityRowProps) {
   const t = useTranslations("Portal.Activities")
   const locale = useLocale()
   const [dialog, setDialog] = useState<"done" | "move" | null>(null)
@@ -40,53 +48,59 @@ export function ActivityRow({ activity: a, today, actor, portal, forOthers }: Ac
   const due = dueLabel(a, today)
   const manage = mayManage(a, actor.uid, Boolean(actor.isOwner))
 
+  const card = layout === "card"
+  const tone = open ? BUCKET_TONE[bucket] : a.status === "done" ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
+
   return (
-    <div className="flex flex-wrap items-start gap-3 px-4 py-3">
-      <span className={cn("mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg", open && bucket === "overdue" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground")}>
-        <Icon size={15} aria-hidden="true" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-bold" dir="auto">
-          {a.summary}
-        </p>
-        <p className="text-xs text-muted-foreground" dir="auto">
-          {t(`type_${a.type}`)} · {forOthers ? t("assigned_to", { name: a.assigneeName || "—" }) : t("assigned_by", { name: a.createdByName || "—" })}
-          {a.status === "done" && a.doneByName ? ` · ${t("done_by", { name: a.doneByName, date: pmDate(a.doneOn, locale) })}` : ""}
-          {a.status === "cancelled" ? ` · ${t("cancelled")}` : ""}
-        </p>
-        {a.note && (
-          <p className="mt-1 whitespace-pre-line text-xs text-foreground/80" dir="auto">
-            {a.note}
+    <div className={cn(card ? "flex h-full flex-col gap-2 rounded-xl border bg-card p-3 shadow-sm transition-shadow hover:shadow-md" : "flex flex-wrap items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/30")}>
+      <div className={cn("flex min-w-0 items-start gap-3", card ? "w-full" : "flex-1")}>
+        {/* The state light, as Odoo shows it: red late, orange today, green planned. */}
+        <span className={cn("mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full", tone)} title={open ? t(`kpi_${bucket}`) : undefined}>
+          <Icon size={15} aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold" dir="auto">
+            {a.summary}
           </p>
-        )}
-        {a.feedback && (
-          <p className="mt-1 rounded-md bg-success/10 px-2 py-1 text-xs text-success" dir="auto">
-            {a.feedback}
+          <p className="text-xs text-muted-foreground" dir="auto">
+            {t(`type_${a.type}`)} · {forOthers ? t("assigned_to", { name: a.assigneeName || "—" }) : t("assigned_by", { name: a.createdByName || "—" })}
+            {a.status === "done" && a.doneByName ? ` · ${t("done_by", { name: a.doneByName, date: pmDate(a.doneOn, locale) })}` : ""}
+            {a.status === "cancelled" ? ` · ${t("cancelled")}` : ""}
           </p>
-        )}
-        {a.target && (
-          <Link href={a.target.href} className="mt-1 inline-flex items-center gap-1 rounded text-xs font-semibold text-cta underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <Link2 size={12} aria-hidden="true" />
-            <span dir="auto">{a.target.label}</span>
-          </Link>
-        )}
+          {a.note && (
+            <p className={cn("mt-1 whitespace-pre-line text-xs text-foreground/80", card && "line-clamp-3")} dir="auto">
+              {a.note}
+            </p>
+          )}
+          {a.feedback && (
+            <p className="mt-1 rounded-md bg-success/10 px-2 py-1 text-xs text-success" dir="auto">
+              {a.feedback}
+            </p>
+          )}
+          {a.target && (
+            <Link href={a.target.href} className="mt-1 inline-flex items-center gap-1 rounded text-xs font-semibold text-cta underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Link2 size={12} aria-hidden="true" />
+              <span dir="auto">{a.target.label}</span>
+            </Link>
+          )}
+        </div>
       </div>
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+      <div className={cn("flex shrink-0 flex-wrap items-center gap-2", card ? "mt-auto w-full justify-between border-t border-border/60 pt-2" : "justify-end")}>
         {open ? (
           <StatusPill tone={DUE_TONE[bucket]}>{t(`due_${due.kind}`, { n: due.days })}</StatusPill>
         ) : (
           <StatusPill tone={a.status === "done" ? "ok" : "mute"}>{t(a.status === "done" ? "status_done" : "status_cancelled")}</StatusPill>
         )}
         {open && manage && (
-          <>
-            <Button size="sm" onClick={() => setDialog("done")}>
+          <span className="flex items-center gap-2">
+            <Button size="sm" variant="success" onClick={() => setDialog("done")}>
               <CheckCheck size={14} className="me-1" aria-hidden="true" />
               {t("done")}
             </Button>
             <Button size="icon" variant="outline" className="h-9 w-9" aria-label={t("reschedule")} title={t("reschedule")} onClick={() => setDialog("move")}>
               <CalendarClock size={15} aria-hidden="true" />
             </Button>
-          </>
+          </span>
         )}
       </div>
       {dialog === "done" && <DoneDialog activity={a} actor={actor} portal={portal} onClose={() => setDialog(null)} />}

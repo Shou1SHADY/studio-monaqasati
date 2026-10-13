@@ -748,7 +748,9 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
     id: "project-management",
     labelKey: "supplier_component_order_management",
     descKey: "supplier_component_order_management_desc",
-    homeHref: "/supplier",
+    // The orders, not the portal root: the root is the home's tile grid (as on
+    // the contractor side, whose Project Management opens its own Today).
+    homeHref: "/supplier/orders",
     icon: LayoutDashboard,
     accentToken: "pm",
     displayOrder: 2,

@@ -191,11 +191,11 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   
   const basePath = pathname.split("/")[1] || "admin"
   const isAdminOverview = pathname === "/admin"
-  // The contractor home dashboard IS the navigation (a full tile grid to every
-  // component) — a persistent sidebar there is redundant, not just visually
-  // but literally: it'd fall back to the "project management" component's
-  // sidebar, which only duplicates two of the seven tiles already on screen.
-  const isContractorDashboardHome = pathname === "/contractor"
+  // The portal home IS the navigation (a full tile grid to every component, the
+  // same screen in both portals) — a persistent sidebar there is redundant, not
+  // just visually but literally: it'd fall back to the "project management" /
+  // "order management" component's sidebar, which only repeats tiles on screen.
+  const isPortalHome = pathname === "/contractor" || pathname === "/supplier"
 
   // Role-based redirect guard — chat now lives inside role groups, no exception needed
   React.useEffect(() => {
@@ -665,10 +665,10 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider data-accent={moduleAccent}>
       <CompanySwitchOverlay show={!!switchingOrgId} />
-      {!isContractorDashboardHome && <RoleSidebar />}
+      {!isPortalHome && <RoleSidebar />}
       <SidebarInset>
         <header className={cn("sticky top-0 z-50 flex h-14 items-center gap-2 md:gap-4 border-b bg-background px-3 md:px-6 shadow-sm", isAdminOverview && "md:ml-24")}>
-          {!isContractorDashboardHome && <SidebarTrigger />}
+          {!isPortalHome && <SidebarTrigger />}
 
           <div className="hidden md:flex flex-1 max-w-md">
             <TooltipProvider>
@@ -965,7 +965,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
             padding and a solid background. A full p-8 above it read as dead space
             between the quick-search bar and the greeting, so the top inset is
             trimmed there only — every other page keeps the standard breathing room. */}
-        <main className={cn("flex-1 p-6 md:p-8 overflow-y-auto min-w-0", isContractorDashboardHome && "pt-4 md:pt-4")}>
+        <main className={cn("flex-1 p-6 md:p-8 overflow-y-auto min-w-0", isPortalHome && "pt-4 md:pt-4")}>
           <div className="mx-auto max-w-7xl">
             {/* Every portal page except the two dashboard roots gets a way back up. */}
             <PortalBreadcrumbs />

@@ -2,7 +2,7 @@
  * "My to-dos": what a person sees (grouped, in order, only theirs), finishing one
  * through the dialog, and planning a new one.
  */
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { Activity } from "@/lib/activities"
 
 jest.mock("lucide-react", () => {
@@ -101,11 +101,15 @@ describe("My to-dos screen", () => {
     expect(screen.getByRole("link", { name: /PO-2026\/012/ })).toHaveAttribute("href", "/contractor/rfqs/orders?po=po1")
   })
 
-  it("lists what I planned for others under its own heading", () => {
+  it("keeps what I planned for others under its own scope, counted on its tab", () => {
     rows = [act({ id: "5", summary: "For Omar", assigneeId: "u2", assigneeName: "Omar", createdById: "u1", createdByName: "Mona" })]
     render(<MyActivities portal="contractor" />)
-    expect(screen.getByText("group_by_me")).toBeInTheDocument()
+    expect(screen.queryByText("For Omar")).not.toBeInTheDocument()
+    const tab = screen.getByRole("tab", { name: /group_by_me/ })
+    expect(within(tab).getByText("1")).toBeInTheDocument()
+    fireEvent.click(tab)
     expect(screen.getByText("For Omar")).toBeInTheDocument()
+    expect(screen.getByText("assigned_to|Omar", { exact: false })).toBeInTheDocument()
   })
 
   it("finishes one through the dialog with the outcome", async () => {
@@ -135,5 +139,45 @@ describe("My to-dos screen", () => {
     expect(actor).toMatchObject({ uid: "u1" })
     expect([orgId, portal]).toEqual(["org", "supplier"])
     expect(input).toMatchObject({ type: "todo", summary: "Chase the invoice", dueOn: todayDay(), assignee: { id: "u2", name: "Omar" } })
+  })
+})
+
+describe("My to-dos laid out as Odoo's activities", () => {
+  beforeEach(() => {
+    rows = [
+      act({ id: "1", summary: "Late call", type: "call", dueOn: shift(-2) }),
+      act({ id: "2", summary: "Today todo" }),
+      act({ id: "3", summary: "Later meeting", type: "meeting", dueOn: shift(4) }),
+    ]
+  })
+
+  it("counts each state in its colour and shows only that state when it is pressed", () => {
+    render(<MyActivities portal="contractor" />)
+    const overdue = screen.getByRole("button", { name: /kpi_overdue/ })
+    expect(within(overdue).getByText("1")).toBeInTheDocument()
+    fireEvent.click(overdue)
+    expect(overdue).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByText("Late call")).toBeInTheDocument()
+    expect(screen.queryByText("Today todo")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "clear_filters" }))
+    expect(screen.getByText("Today todo")).toBeInTheDocument()
+  })
+
+  it("filters by type and by search, and says when nothing matches", () => {
+    render(<MyActivities portal="contractor" />)
+    fireEvent.click(screen.getByRole("button", { name: /type_meeting/ }))
+    expect(screen.getByText("Later meeting")).toBeInTheDocument()
+    expect(screen.queryByText("Late call")).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("search_label"), { target: { value: "zzz" } })
+    expect(screen.getByText("empty_filtered")).toBeInTheDocument()
+  })
+
+  it("folds a group away in the list, and lays the states out as columns in the kanban", () => {
+    render(<MyActivities portal="contractor" />)
+    fireEvent.click(screen.getByRole("button", { name: /group_overdue/ }))
+    expect(screen.queryByText("Late call")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /view_kanban/ }))
+    for (const g of ["group_overdue", "group_today", "group_planned"]) expect(screen.getByRole("region", { name: g })).toBeInTheDocument()
+    expect(within(screen.getByRole("region", { name: "group_overdue" })).getByText("Late call")).toBeInTheDocument()
   })
 })

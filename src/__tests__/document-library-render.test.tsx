@@ -107,3 +107,35 @@ describe("the Documents page", () => {
     expect(screen.queryByRole("button", { name: /type_image/ })).not.toBeInTheDocument()
   })
 })
+
+describe("the Documents page laid out as Odoo's", () => {
+  it("shows files as cards first, and as the sortable list when asked", () => {
+    rows = filesOf([entry()])
+    render(<DocumentLibrary portal="contractor" />)
+    expect(screen.getByRole("button", { name: /view_kanban/ })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.queryByRole("table")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /view_list/ }))
+    expect(screen.getByRole("table")).toBeInTheDocument()
+    expect(screen.getByText("quote.pdf")).toBeInTheDocument()
+  })
+
+  it("carries an active filter as a facet in the search bar, removable on its own", () => {
+    rows = filesOf([entry({ id: "a" }), entry({ id: "b", file: { name: "site photo.png", size: 1, contentType: "image/png", path: "p2" } })])
+    render(<DocumentLibrary portal="contractor" />)
+    fireEvent.click(screen.getByRole("button", { name: /type_image/ }))
+    expect(screen.queryByText("quote.pdf")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "remove_filter_named|type_image" }))
+    expect(screen.getByText("quote.pdf")).toBeInTheDocument()
+  })
+
+  it("opens a file's details with its record, who added it, and the way to the record", () => {
+    rows = filesOf([entry()])
+    render(<DocumentLibrary portal="supplier" />)
+    fireEvent.click(screen.getByRole("button", { name: "details_of|quote.pdf" }))
+    const panel = screen.getByRole("dialog")
+    expect(within(panel).getByText("details_title")).toBeInTheDocument()
+    expect(within(panel).getByText("Mona")).toBeInTheDocument()
+    expect(within(panel).getByRole("link", { name: /go_to_record/ })).toHaveAttribute("href", "/supplier/orders?po=p1")
+    expect(within(panel).getByRole("button", { name: /open_file/ })).toBeInTheDocument()
+  })
+})
