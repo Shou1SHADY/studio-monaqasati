@@ -52,6 +52,7 @@ import {
 } from "@/utils/invoice-utils"
 import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
 import { FreeInvoices } from "@/components/supplier-free/FreeInvoices"
+import { OrderInvoicesSection } from "@/components/supplier-free/OrderInvoicesSection"
 
 type Invoice = {
   id: string
@@ -455,6 +456,13 @@ function LegacySupplierInvoicesPage() {
           </div>
         )}
       </div>
+
+      {/* After an upgrade from the free account, the invoices filed on orders and their transfers stay in view (SUB-04). */}
+      {myOrgId && (
+        <div className="mt-8" dir={isRtl ? "rtl" : "ltr"}>
+          <OrderInvoicesSection orgId={myOrgId} />
+        </div>
+      )}
 
       <InvoiceDialog open={showCreate} onOpenChange={setShowCreate} orgId={myOrgId} t={t} locale={locale} />
       {editInvoice && (

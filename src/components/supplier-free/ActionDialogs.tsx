@@ -165,7 +165,7 @@ function quoteCtx(f: Free, d: Deal, env: WriteEnv): QuoteContext | null {
 
 // ---- Accept the order -------------------------------------------------------------------------------
 
-function AcceptPo({ f, d, env, onClose }: P) {
+function AcceptPo({ f, d, onClose }: P) {
   const { t, fmt, today, L } = f
   const po = f.poOf(d.id)
   const [date, setDate] = useState(d.po?.need && d.po.need >= today ? d.po.need : today)
@@ -192,7 +192,7 @@ function AcceptPo({ f, d, env, onClose }: P) {
           label={t("btnAcceptPO")}
           onSubmit={() =>
             void run(async () => {
-              await acceptOrder(env.firestore, env.side, env.orgId, po.id, { promisedDate: date, note, today })
+              await acceptOrder(po.id, { promisedDate: date, note })
               return t("tAccepted", { po: d.po?.no || "" })
             })
           }
@@ -258,7 +258,7 @@ function AcceptPo({ f, d, env, onClose }: P) {
 
 // ---- Decline the order ---------------------------------------------------------------------------------
 
-function DeclinePo({ f, d, env, onClose }: P) {
+function DeclinePo({ f, d, onClose }: P) {
   const { t } = f
   const po = f.poOf(d.id)
   const [reason, setReason] = useState<DeclineReason | "">("")
@@ -282,7 +282,9 @@ function DeclinePo({ f, d, env, onClose }: P) {
           label={t("btnDeclinePO")}
           onSubmit={() =>
             void run(async () => {
-              await declineOrder(env.firestore, env.side, env.orgId, po.id, { reason: reason as DeclineReason, reasonText: t(`dr_${reason}` as "dr_stock"), note })
+              const reasonText = t(`dr_${reason}` as "dr_stock")
+              // The prototype's decline also says why in the conversation: «السبب — الملاحظة».
+              await declineOrder(po.id, { reason: reason as DeclineReason, reasonText, note, message: note.trim() ? `${reasonText} — ${note.trim()}` : reasonText })
               return t("tDeclined")
             })
           }
@@ -308,7 +310,7 @@ function DeclinePo({ f, d, env, onClose }: P) {
 
 // ---- Report delivery ------------------------------------------------------------------------------------
 
-function Deliver({ f, d, env, onClose }: P) {
+function Deliver({ f, d, onClose }: P) {
   const { t, today, fmt, L } = f
   const po = f.poOf(d.id)
   const [date, setDate] = useState(today)
@@ -335,7 +337,8 @@ function Deliver({ f, d, env, onClose }: P) {
           label={t("btnRepSend")}
           onSubmit={() =>
             void run(async () => {
-              await reportDelivery(env.firestore, env.side, env.orgId, po.id, { date, note })
+              const said = t("msgRep", { x: fmt.date(date, true) })
+              await reportDelivery(po.id, { date, note, message: note.trim() ? `${said} — ${note.trim()}` : said })
               return t("tRepSent", { c: c?.name || "" })
             })
           }
@@ -426,7 +429,13 @@ function Invoice({ f, d, env, onClose }: P) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ poId: po.id, grns: picked, number: number.trim(), date, amountNet: net, fileName: up.name, fileUrl: up.url }),
       })
-      if (!res.ok) throw new Error(String(res.status))
+      if (!res.ok) {
+        // The server ran the same rule again (another invoice may have billed the receipt meanwhile): say which one.
+        const refusal = (await res.json().catch(() => null)) as { blocks?: InvoiceBlockCode[] } | null
+        const first = refusal?.blocks?.[0]
+        toast({ title: first ? blockText(first) : t("errSave"), variant: "destructive" })
+        return
+      }
       toast({ title: t("tInvSent", { c: L.C(d.c)?.name || "" }) })
       onClose()
     } catch (err) {
@@ -766,7 +775,8 @@ function Warranty({ f, d, env, onClose }: P) {
   const { t, today } = f
   const storage = useStorage()
   const po = f.poOf(d.id)
-  const items = d.po ? d.po.lines.map((l) => d.items.find((i) => i.id === l.it)).filter((i): i is NonNullable<typeof i> => !!i) : []
+  // Only what the contractor accepted at the gate can carry a warranty (ORD-14); the server checks it again.
+  const items = d.po ? d.po.lines.filter((l) => l.got > 0).map((l) => d.items.find((i) => i.id === l.it)).filter((i): i is NonNullable<typeof i> => !!i) : []
   const [item, setItem] = useState(items[0]?.id || "")
   const [until, setUntil] = useState("")
   const [file, setFile] = useState<File | null>(null)
@@ -791,8 +801,7 @@ function Warranty({ f, d, env, onClose }: P) {
             void run(async () => {
               if (!storage || !file) return
               const up = await uploadSupplierFile(storage, env.orgId, "warranties", file)
-              const it = items.find((i) => i.id === item)
-              await registerWarranty(env.firestore, env.side, po, { itemId: item, itemName: it?.name || "", category: d.cat, until, file: { name: up.name, url: up.url } }, today)
+              await registerWarranty(env.firestore, env.side, po, { itemId: item, until, file: { name: up.name, url: up.url } }, today)
               return t("tWar", { c: f.L.C(d.c)?.name || "" })
             })
           }
@@ -828,7 +837,7 @@ function Warranty({ f, d, env, onClose }: P) {
   )
 }
 
-function Rate({ f, d, env, onClose }: P) {
+function Rate({ f, d, onClose }: P) {
   const { t, L } = f
   const po = f.poOf(d.id)
   const offer = f.rawOffer(d.id)
@@ -855,7 +864,7 @@ function Rate({ f, d, env, onClose }: P) {
           label={t("btnRateSend")}
           onSubmit={() =>
             void run(async () => {
-              await rateContractor(env.firestore, env.side, { po, offerId: offer.id, rfqId: d.id, contractorId: String(rfq.organizationId || rfq.contractorId || ""), contractorName: c?.name || "", stars, text })
+              await rateContractor({ po, stars, text })
               return t("tRated")
             })
           }

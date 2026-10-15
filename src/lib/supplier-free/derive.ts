@@ -11,7 +11,7 @@ import { awardDisclosed, supplierSegmentOf } from "@/lib/procurement/supplier"
 import { isWithdrawnOffer } from "@/lib/procurement/award"
 import { termsListOf } from "@/lib/procurement/terms-freeze"
 import type { PurchaseOrder } from "@/lib/procurement/types"
-import { addDaysTo, dayNum } from "./deal-logic"
+import { addDaysTo, createDealLogic, dayNum } from "./deal-logic"
 import { rfqItems } from "./quote-rules"
 import { momentOf, riyadhDayOf } from "./format"
 import type {
@@ -474,6 +474,9 @@ export function deriveWorld(raw: RawWorld): World {
           grns: Array.isArray(i.grns) ? (i.grns as unknown[]).map(str) : [],
           id: str(i.id),
         }
+        // The VAT rate the invoice was stored with (0 for a supplier with no tax number) — its gross is its own, never
+        // re-read from the supplier's current flag (BIL-03).
+        if (typeof i.vat === "number" && Number.isFinite(i.vat)) inv.vat = i.vat
         deal.invs.push(inv)
       }
       deal.invs.sort((a, b) => dayNum(a.date || "1970-01-01") - dayNum(b.date || "1970-01-01"))
@@ -516,18 +519,13 @@ export function deriveWorld(raw: RawWorld): World {
     deals.push(deal)
   }
 
-  // A deal with an order that is fully received, billed and paid is finished (stage "done").
+  // A deal with an order that is fully received, every receipt invoiced and every invoice's own gross paid is finished
+  // (stage "done") — the same rule the deal's money section reads (`isFullyPaid`), so a short invoice still closes it.
+  const L = createDealLogic(today)
   for (const d of deals) {
-    if (!d.po || d.closed) continue
-    const allIn = d.po.lines.every((l) => l.qty - l.got - l.can <= 0)
-    if (!allIn || !d.invs.length) continue
-    const gross = d.invs.reduce((s, i) => s + i.amt * 1.15, 0)
-    const paid = d.pays.filter((p) => p.st === "ok").reduce((s, p) => s + p.amt, 0)
-    const billed = d.po.lump != null ? d.po.lump : d.po.lines.reduce((s, l) => s + l.got * (l.price || 0), 0)
-    if (gross - paid <= 0.01 && d.invs.reduce((s, i) => s + i.amt, 0) >= billed - 0.01) {
-      const last = d.pays.filter((p) => p.st === "ok").map((p) => p.okAt || p.at).sort().pop() || today
-      d.closed = { k: "paid", at: last }
-    }
+    if (!d.po || d.closed || !L.isFullyPaid(d)) continue
+    const last = d.pays.filter((p) => p.st === "ok").map((p) => p.okAt || p.at).sort().pop() || today
+    d.closed = { k: "paid", at: last }
   }
 
   const invites: ConnectionInvite[] = raw.invitations

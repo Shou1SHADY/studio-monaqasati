@@ -8,7 +8,7 @@ import { isQuoteAct, QuoteActError, quoteActSchema, runQuoteAct, supplierFieldOf
 
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
 
-const STATUS: Record<string, number> = { not_found: 404, order_missing: 404, no_permission: 403, not_yours: 403, wrong_state: 409, already_reported: 409, reminded_today: 409, nothing_left: 409, no_report: 409 }
+const STATUS: Record<string, number> = { not_found: 404, order_missing: 404, no_permission: 403, not_yours: 403, wrong_state: 409, already_reported: 409, reminded_today: 409, nothing_left: 409, no_report: 409, no_receipt: 409, not_paid: 409, already_rated: 409 }
 const QUOTE_STATUS: Record<string, number> = { rfq_missing: 404, offer_missing: 404, not_yours: 403, not_reached: 403, rfq_closed: 409, deadline: 409, reply_closed: 409, already_quoted: 409, wrong_state: 409 }
 
 /** The supplier's quote acts (new quote, version, final price, withdraw, sample sent, decline) — dispatched first. */

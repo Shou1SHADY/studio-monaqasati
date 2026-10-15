@@ -446,14 +446,8 @@ export function SecPay({ f, d }: { f: Free; d: Deal }) {
     return L.daysTo(due) < 0 ? ("late" as const) : ("due" as const)
   }
   const ordered = [...d.invs.map((i, n) => ({ i, n }))].sort((a, b) => a.i.date.localeCompare(b.i.date) || a.n - b.n)
-  const lateness = (pay: Deal["pays"][number]) => {
-    if (pay.st === "miss") return 0
-    const first = ordered[0]
-    if (!first) return 0
-    const due = L.sched(d, first.i)[0]?.due
-    const n = due ? L.daysTo(pay.at, due) : 0
-    return n > 0 ? n : 0
-  }
+  // Days after the instalment each transfer covers — over every invoice's schedule, not just the first (WF-14).
+  const lateBy = L.payLateness(d)
   const fully = L.isFullyPaid(d)
   return (
     <DrawerSection title={<span className="inline-flex items-center gap-2"><Wallet size={15} aria-hidden="true" />{t("secPay")}</span>} defaultOpen={st === "collect" || (st === "done" && !!d.closed && d.closed.k === "paid") || L.canInvoice(d)}>
@@ -512,7 +506,7 @@ export function SecPay({ f, d }: { f: Free; d: Deal }) {
             <h4 className="mb-2 text-sm font-bold">{t("paysTitle")}</h4>
             <ul className="divide-y rounded-lg border">
               {d.pays.map((p, i) => {
-                const late = lateness(p)
+                const late = lateBy[i] || 0
                 return (
                   <li key={i} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
                     <div className="min-w-0 text-sm">

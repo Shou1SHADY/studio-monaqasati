@@ -1013,37 +1013,8 @@ export async function recordSupplierAcceptance(
   return po
 }
 
-/** The supplier's own act in his portal: sent → accepted with the date he
- * commits to. He cannot read the buyer's team, so only named users are told
- * (the preparer and whoever sent it). */
-export async function supplierAcceptPurchaseOrder(
-  firestore: Firestore,
-  supplier: { uid: string; name: string },
-  poId: string,
-  promisedDate: string,
-  opts: Pick<WriteOpts, "copy" | "now"> = {}
-): Promise<PurchaseOrder> {
-  assertDay(promisedDate)
-  const at = (opts.now ?? new Date()).toISOString()
-  const po = await transition(firestore, poId, (po) => {
-    if (!canRecordAcceptance(po)) throw new ProcWriteError("wrong_state")
-    return {
-      patch: { status: "accepted", supplierAcceptedAt: at, promisedDate, acceptanceRecordedBy: "supplier" },
-      log: entry(supplier, "supplier_accepted", at, { params: { date: promisedDate, recordedBy: "supplier" } }),
-    }
-  })
-  await emitProcEvent(firestore, supplier, {
-    kind: "po_supplier_accepted",
-    organizationId: po.organizationId,
-    to: [{ users: [po.preparedById, po.sentById] }],
-    params: { number: po.docNumber, supplier: po.supplierName, date: promisedDate },
-    poId: po.id,
-    rfqId: po.rfqId,
-    offerId: po.offerId,
-    copy: opts.copy,
-  })
-  return po
-}
+// The supplier's own acceptance in his portal runs on the server (`po.accept` in /api/supplier-free/act — the rules let
+// no supplier write an order); `recordSupplierAcceptance` above is the buyer recording it for him.
 
 /** A new promise while goods are still owed; the old date stays in the log. */
 export async function updatePromisedDate(firestore: Firestore, actor: ProcActor, poId: string, input: { date: string; note?: string | null }, opts: WriteOpts = {}): Promise<PurchaseOrder> {
