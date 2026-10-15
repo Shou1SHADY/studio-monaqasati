@@ -4,7 +4,7 @@
 // badges and the deal drawer read the same deals (G-04). The documents are read as they are stored; the
 // deals are derived from them (`lib/supplier-free/derive.ts`).
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { collection, doc, deleteField, query, setDoc, updateDoc, where, serverTimestamp, type DocumentData, type Firestore, type UpdateData } from "firebase/firestore"
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useChunkedDocs } from "@/hooks/useChunkedDocs"
@@ -67,6 +67,10 @@ export function FreeWorldProvider({ children }: { children: ReactNode }) {
   const today = useToday()
   const orgId = organizationId || user?.uid || ""
 
+  // `resolved` is a new object on every render, so nothing below may key on its identity: a query or an effect that
+  // did would restart on every render and never settle. Everything keys on what it says.
+  const resolvedSig = resolved ? JSON.stringify([resolved.name, resolved.companyName, resolved.phone, resolved.email, resolved.city, resolved.specializations, resolved.coverageCities, resolved.isVerified, resolved.taxNumber]) : ""
+  const uid = user?.uid
   const profile = useMemo<FreeProfile | null>(() => {
     if (!user || !resolved || !orgId) return null
     const p = resolved as Record<string, unknown>
@@ -84,7 +88,8 @@ export function FreeWorldProvider({ children }: { children: ReactNode }) {
       isVerified: !!p.isVerified,
       raw: p,
     }
-  }, [user, resolved, orgId])
+  }, [uid, resolvedSig, orgId])
+  const hasProfile = !!profile
   const specsKey = profile ? profile.specializations.slice(0, 30).join("|") : ""
 
   // ---- What the supplier owns or is addressed in ----
@@ -95,11 +100,11 @@ export function FreeWorldProvider({ children }: { children: ReactNode }) {
 
   // ---- Requests: public ones in his field, those that name him, and those he quoted ----
   const publicQ = useMemoFirebase(() => {
-    if (!firestore || !profile) return null
+    if (!firestore || !hasProfile) return null
     const specs = specsKey ? specsKey.split("|") : []
     if (!specs.length) return null
     return query(collection(firestore, "rfqs"), where("status", "==", "New"), where("visibility", "==", "public"), where("category", "in", specs))
-  }, [firestore, profile, specsKey])
+  }, [firestore, hasProfile, specsKey])
   const { data: publicRfqs, isLoading: publicLoading } = useCollection(publicQ)
   const inviteQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "rfqs"), where("allowedSupplierOrgIds", "array-contains", orgId)) : null), [firestore, orgId])
   const { data: inviteRfqs, isLoading: inviteLoading } = useCollection(inviteQ)
@@ -129,18 +134,22 @@ export function FreeWorldProvider({ children }: { children: ReactNode }) {
   const { data: links } = useCollection(linksQ)
   // Invitations are addressed by e-mail or by mobile, so the server finds his and the page asks it (the rules key on the e-mail).
   const [invitations, setInvitations] = useState<Record<string, unknown>[]>([])
+  const userRef = useRef(user)
+  userRef.current = user
   const refreshInvites = useCallback(async () => {
-    if (!user || !profile) return
+    const current = userRef.current
+    if (!current || !hasProfile) return
     try {
-      const token = await user.getIdToken()
+      const token = await current.getIdToken()
       const res = await fetch("/api/supplier-free/invitations", { headers: { Authorization: `Bearer ${token}` } })
       if (!res.ok) return
       const body = (await res.json()) as { data?: Record<string, unknown>[] }
-      setInvitations((body.data || []).map((i) => ({ ...i, type: "supplier_invite", status: "pending" })))
+      const next = (body.data || []).map((i) => ({ ...i, type: "supplier_invite", status: "pending" }))
+      setInvitations((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
     } catch (err) {
       console.error("invitations", err)
     }
-  }, [user, profile])
+  }, [uid, hasProfile])
   useEffect(() => {
     void refreshInvites()
   }, [refreshInvites])

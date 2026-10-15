@@ -12,6 +12,7 @@ import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { cn } from "@/lib/utils"
 import type { Deal } from "@/lib/supplier-free/types"
+import { useFreeWorld } from "./FreeWorldProvider"
 import type { Free } from "./useFree"
 
 // ---- The page template ----------------------------------------------------------------------------
@@ -74,6 +75,7 @@ export function FreePage({
   kpis?: PageKpi[]
   children: ReactNode
 }) {
+  const { ready } = useFreeWorld()
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -88,14 +90,24 @@ export function FreePage({
         </div>
         {action && <div className="flex flex-wrap items-center gap-2">{action}</div>}
       </div>
-      {kpis && kpis.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-3">
-          {kpis.map((k) => (
-            <Kpi key={k.id} k={k} />
+      {!ready ? (
+        <div className="grid gap-3 sm:grid-cols-3" role="status" aria-busy="true">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-24 animate-pulse rounded-xl border bg-card" />
           ))}
         </div>
+      ) : (
+        <>
+          {kpis && kpis.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-3">
+              {kpis.map((k) => (
+                <Kpi key={k.id} k={k} />
+              ))}
+            </div>
+          )}
+          {children}
+        </>
       )}
-      {children}
     </div>
   )
 }

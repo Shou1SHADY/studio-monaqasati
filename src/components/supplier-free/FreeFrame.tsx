@@ -135,7 +135,7 @@ export function FreeFrame({ children }: { children: ReactNode }) {
   const FoldIcon = f.isAr ? (rail ? ChevronLeft : ChevronRight) : rail ? ChevronRight : ChevronLeft
 
   return (
-    <div data-accent="cta" className="min-h-screen bg-muted/30 text-foreground md:flex">
+    <div data-accent="cta" className="min-h-screen bg-slate-100 text-foreground md:flex">
       {open && <button type="button" aria-label={t("sideClose")} className="fixed inset-0 z-[90] bg-primary/60 md:hidden" onClick={() => setOpen(false)} />}
 
       <aside
