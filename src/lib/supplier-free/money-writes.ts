@@ -3,9 +3,10 @@
 // deal. The invoice itself goes through the server route (it re-runs every rule); everything here is a small write
 // the rules bound to the supplier's own documents (NFR-06: each carries who and when).
 
-import { addDoc, collection, doc, getDoc, increment, serverTimestamp, setDoc, updateDoc, type Firestore } from "firebase/firestore"
+import { addDoc, collection, doc, getDoc, increment, setDoc, updateDoc, type Firestore } from "firebase/firestore"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import { tellAboutPo, type SupplierSide } from "./events"
+import { callAct } from "./act-client"
 import { sarText } from "@/lib/procurement/events"
 
 type Rec = Record<string, unknown>
@@ -14,25 +15,19 @@ export type TransferDoc = { id: string; amount: number; bank: string; ref: strin
 
 const day = (iso: string) => iso.slice(0, 10)
 
-/** "It arrived": the instalment it covers is settled (WF-13). */
-export async function confirmTransfer(firestore: Firestore, s: SupplierSide, po: PurchaseOrder, t: TransferDoc, now: Date = new Date()): Promise<void> {
-  const at = now.toISOString()
-  await updateDoc(doc(firestore, "supplierTransfers", t.id), { state: "ok", confirmedAt: at, confirmedById: s.actor.uid, updatedAt: serverTimestamp() })
-  await tellAboutPo(firestore, s, po, "po_payment_confirmed", { amount: sarText(t.amount), bank: t.bank, ref: t.ref })
+/** "It arrived": the instalment it covers is settled (WF-13). The server runs it. */
+export async function confirmTransfer(_firestore: Firestore, _s: SupplierSide, _po: PurchaseOrder, t: TransferDoc): Promise<void> {
+  await callAct({ action: "transfer.answer", transferId: t.id, answer: "ok" })
 }
 
 /** "It did not arrive": stays open for both sides until a later transfer arrives (G-09). */
-export async function reportTransferMissing(firestore: Firestore, s: SupplierSide, po: PurchaseOrder, t: TransferDoc, note: string, now: Date = new Date()): Promise<void> {
-  const at = now.toISOString()
-  await updateDoc(doc(firestore, "supplierTransfers", t.id), { state: "miss", confirmedAt: at, confirmedById: s.actor.uid, note: note.trim().slice(0, 500), updatedAt: serverTimestamp() })
-  await tellAboutPo(firestore, s, po, "po_payment_missing", { amount: sarText(t.amount), ref: t.ref, note: note.trim() })
+export async function reportTransferMissing(_firestore: Firestore, _s: SupplierSide, _po: PurchaseOrder, t: TransferDoc, note: string): Promise<void> {
+  await callAct({ action: "transfer.answer", transferId: t.id, answer: "miss", note: note.trim().slice(0, 500) })
 }
 
 /** "It arrived later": a transfer reported missing is closed (WF-13). */
-export async function transferArrivedLater(firestore: Firestore, s: SupplierSide, po: PurchaseOrder, t: TransferDoc, now: Date = new Date()): Promise<void> {
-  const at = now.toISOString()
-  await updateDoc(doc(firestore, "supplierTransfers", t.id), { state: "ok", confirmedAt: at, confirmedById: s.actor.uid, arrivedLater: true, updatedAt: serverTimestamp() })
-  await tellAboutPo(firestore, s, po, "po_payment_later", { amount: sarText(t.amount), ref: t.ref })
+export async function transferArrivedLater(_firestore: Firestore, _s: SupplierSide, _po: PurchaseOrder, t: TransferDoc): Promise<void> {
+  await callAct({ action: "transfer.answer", transferId: t.id, answer: "later" })
 }
 
 /** A message in the deal's conversation, the way the chat page writes one. */
@@ -94,26 +89,11 @@ export interface WarrantyInput {
   file: { name: string; url: string }
 }
 
-/** A warranty for a warranty-eligible material, after receipt, ending in the future (ORD-14). */
-export async function registerWarranty(firestore: Firestore, s: SupplierSide, po: PurchaseOrder, input: WarrantyInput, today: string): Promise<string> {
+/** A warranty for a warranty-eligible material, after receipt, ending in the future (ORD-14). The server runs it. */
+export async function registerWarranty(_firestore: Firestore, _s: SupplierSide, po: PurchaseOrder, input: WarrantyInput, today: string): Promise<string> {
   if (!input.until || input.until <= today) throw new Error("WARRANTY_DATE")
-  const ref = await addDoc(collection(firestore, "supplierWarranties"), {
-    poId: po.id,
-    rfqId: po.rfqId,
-    supplierOrgId: po.supplierOrgId,
-    buyerOrgId: po.organizationId,
-    itemId: input.itemId,
-    itemName: input.itemName,
-    category: input.category,
-    until: input.until,
-    file: input.file,
-    state: "wait",
-    createdAt: new Date().toISOString(),
-    createdById: s.actor.uid,
-    createdByName: s.actor.name,
-  })
-  await tellAboutPo(firestore, s, po, "po_warranty_registered", { item: input.itemName, until: input.until })
-  return ref.id
+  const r = await callAct<{ id?: string }>({ action: "warranty.register", poId: po.id, itemId: input.itemId, itemName: input.itemName, category: input.category, until: input.until, file: input.file })
+  return r.id || ""
 }
 
 /** The supplier rates the contractor — after full payment only (B-09, WF-16). */

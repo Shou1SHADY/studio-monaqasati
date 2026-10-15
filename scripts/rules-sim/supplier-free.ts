@@ -65,29 +65,20 @@ const cases: RuleCase[] = [
   mk("invoice: nobody edits it", SUP, "update", "supplierInvoices/i1", "DENY", invoice, { ...invoice, amountNet: 1 }),
   mk("invoice: nobody deletes it", SUP, "delete", "supplierInvoices/i1", "DENY", invoice),
 
-  // ---- supplierTransfers
-  mk("transfer: the buyer's owner reports one", BUY, "create", "supplierTransfers/t1", "ALLOW", undefined, transfer),
-  mk("transfer: Finance (invoices.manage) reports one", FIN, "create", "supplierTransfers/t1", "ALLOW", undefined, transfer),
-  mk("transfer: the supplier cannot report one", SUP, "create", "supplierTransfers/t1", "DENY", undefined, transfer),
-  mk("transfer: a zero amount is refused", BUY, "create", "supplierTransfers/t1", "DENY", undefined, { ...transfer, amount: 0 }),
-  mk("transfer: it cannot start as already confirmed", BUY, "create", "supplierTransfers/t1", "DENY", undefined, { ...transfer, state: "ok" }),
-  mk("transfer: the order's supplier must match", BUY, "create", "supplierTransfers/t1", "DENY", undefined, { ...transfer, supplierOrgId: SUP2 }),
-  mk("transfer: the supplier confirms it arrived", SUP, "update", "supplierTransfers/t1", "ALLOW", transfer, { ...transfer, state: "ok", confirmedAt: "x", confirmedById: SUP, updatedAt: "x" }),
-  mk("transfer: the supplier says it did not arrive", SUP, "update", "supplierTransfers/t1", "ALLOW", transfer, { ...transfer, state: "miss", note: "n", confirmedAt: "x", confirmedById: SUP, updatedAt: "x" }),
-  mk("transfer: a missing one arrives later", SUP, "update", "supplierTransfers/t1", "ALLOW", { ...transfer, state: "miss" }, { ...transfer, state: "ok", arrivedLater: true, confirmedAt: "x", confirmedById: SUP, updatedAt: "x" }),
-  mk("transfer: a confirmed one is final", SUP, "update", "supplierTransfers/t1", "DENY", { ...transfer, state: "ok" }, { ...transfer, state: "miss", updatedAt: "x" }),
-  mk("transfer: the supplier cannot change the amount", SUP, "update", "supplierTransfers/t1", "DENY", transfer, { ...transfer, state: "ok", amount: 5, updatedAt: "x" }),
-  mk("transfer: the buyer cannot confirm his own", BUY, "update", "supplierTransfers/t1", "DENY", transfer, { ...transfer, state: "ok", updatedAt: "x" }),
+  // ---- supplierTransfers and supplierWarranties: both companies read, every write is the server's
+  mk("transfer: the supplier reads his", SUP, "get", "supplierTransfers/t1", "ALLOW", transfer),
+  mk("transfer: the buyer reads it", BUY, "get", "supplierTransfers/t1", "ALLOW", transfer),
+  mk("transfer: a stranger cannot read it", SUP2, "get", "supplierTransfers/t1", "DENY", transfer),
+  mk("transfer: the buyer cannot create one from the client", BUY, "create", "supplierTransfers/t1", "DENY", undefined, transfer),
+  mk("transfer: Finance cannot create one from the client", FIN, "create", "supplierTransfers/t1", "DENY", undefined, transfer),
+  mk("transfer: the supplier cannot create one", SUP, "create", "supplierTransfers/t1", "DENY", undefined, transfer),
+  mk("transfer: the supplier cannot answer from the client", SUP, "update", "supplierTransfers/t1", "DENY", transfer, { ...transfer, state: "ok", confirmedAt: "x", updatedAt: "x" }),
   mk("transfer: nobody deletes it", BUY, "delete", "supplierTransfers/t1", "DENY", transfer),
-
-  // ---- supplierWarranties
-  mk("warranty: the order's supplier registers one", SUP, "create", "supplierWarranties/w1", "ALLOW", undefined, warranty),
-  mk("warranty: another supplier cannot register on the order", SUP2, "create", "supplierWarranties/w1", "DENY", undefined, { ...warranty, supplierOrgId: SUP2 }),
-  mk("warranty: it cannot be born accepted", SUP, "create", "supplierWarranties/w1", "DENY", undefined, { ...warranty, state: "ok" }),
-  mk("warranty: the buyer's owner accepts it", BUY, "update", "supplierWarranties/w1", "ALLOW", warranty, { ...warranty, state: "ok", acceptedAt: "x", acceptedById: BUY, updatedAt: "x" }),
-  mk("warranty: the supplier cannot accept his own", SUP, "update", "supplierWarranties/w1", "DENY", warranty, { ...warranty, state: "ok", updatedAt: "x" }),
-  mk("warranty: acceptance is final", BUY, "update", "supplierWarranties/w1", "DENY", { ...warranty, state: "ok" }, { ...warranty, state: "wait", updatedAt: "x" }),
-  mk("warranty: the buyer cannot rewrite the terms", BUY, "update", "supplierWarranties/w1", "DENY", warranty, { ...warranty, state: "ok", until: "2099-01-01", updatedAt: "x" }),
+  mk("warranty: the supplier reads his", SUP, "get", "supplierWarranties/w1", "ALLOW", warranty),
+  mk("warranty: the buyer reads it", BUY, "get", "supplierWarranties/w1", "ALLOW", warranty),
+  mk("warranty: a stranger cannot read it", SUP2, "get", "supplierWarranties/w1", "DENY", warranty),
+  mk("warranty: the supplier cannot create one from the client", SUP, "create", "supplierWarranties/w1", "DENY", undefined, warranty),
+  mk("warranty: the buyer cannot accept from the client", BUY, "update", "supplierWarranties/w1", "DENY", warranty, { ...warranty, state: "ok", updatedAt: "x" }),
 
   // ---- supplierWorkspace
   mk("workspace: a member reads his company's", SUP, "get", `supplierWorkspace/${SUP}`, "ALLOW", { organizationId: SUP }),
@@ -96,17 +87,12 @@ const cases: RuleCase[] = [
   mk("workspace: nobody writes another company's", SUP2, "update", `supplierWorkspace/${SUP}`, "DENY", { organizationId: SUP }, { organizationId: SUP, seen: {} }),
   mk("workspace: no listing", SUP, "list", "supplierWorkspace/x", "DENY"),
 
-  // ---- the supplier's acts on his order
+  // ---- the supplier's acts on his order: accept stays a client write; decline and reports are the server's
   mk("order: he accepts with a date and a note", SUP, "update", "purchaseOrders/po1", "ALLOW", sent, { ...sent, status: "accepted", supplierAcceptedAt: "x", promisedDate: "2026-10-20", acceptanceRecordedBy: "supplier", supplierAcceptNote: "ok", log: [{}], updatedAt: "x" }),
-  mk("order: he declines with a reason", SUP, "update", "purchaseOrders/po1", "ALLOW", sent, { ...sent, status: "cancelled", cancelledReason: "no stock", closedAt: "x", supplierDecline: { at: "x", reason: "stock", byId: SUP, byName: "S" }, log: [{}], updatedAt: "x" }),
-  mk("order: a decline needs a known reason", SUP, "update", "purchaseOrders/po1", "DENY", sent, { ...sent, status: "cancelled", cancelledReason: "x", closedAt: "x", supplierDecline: { at: "x", reason: "mood", byId: SUP, byName: "S" }, log: [{}], updatedAt: "x" }),
-  mk("order: a decline needs a stated reason", SUP, "update", "purchaseOrders/po1", "DENY", sent, { ...sent, status: "cancelled", cancelledReason: "", closedAt: "x", supplierDecline: { at: "x", reason: "stock", byId: SUP, byName: "S" }, log: [{}], updatedAt: "x" }),
-  mk("order: he reports a delivery on an accepted order", SUP, "update", "purchaseOrders/po1", "ALLOW", accepted, { ...accepted, deliveryReports: [report], log: [{}], updatedAt: "x" }),
-  mk("order: a report cannot remove an earlier one", SUP, "update", "purchaseOrders/po1", "DENY", { ...accepted, deliveryReports: [report] }, { ...accepted, deliveryReports: [], log: [{}], updatedAt: "x" }),
-  mk("order: a report cannot ride on a price change", SUP, "update", "purchaseOrders/po1", "DENY", accepted, { ...accepted, totalExVat: 1, deliveryReports: [report], log: [{}], updatedAt: "x" }),
-  mk("order: he cannot report before accepting", SUP, "update", "purchaseOrders/po1", "DENY", sent, { ...sent, deliveryReports: [report], log: [{}], updatedAt: "x" }),
-  mk("order: another supplier cannot decline it", SUP2, "update", "purchaseOrders/po1", "DENY", sent, { ...sent, status: "cancelled", cancelledReason: "x", closedAt: "x", supplierDecline: { at: "x", reason: "stock", byId: SUP2, byName: "S" }, log: [{}], updatedAt: "x" }),
-  mk("order: a guest's order has no supplier acts", SUP, "update", "purchaseOrders/poGuest", "DENY", { ...sent, supplierOrgId: "guest" }, { ...sent, supplierOrgId: "guest", status: "cancelled", cancelledReason: "x", closedAt: "x", supplierDecline: { at: "x", reason: "stock", byId: SUP, byName: "S" }, log: [{}], updatedAt: "x" }),
+  mk("order: he cannot decline from the client", SUP, "update", "purchaseOrders/po1", "DENY", sent, { ...sent, status: "cancelled", cancelledReason: "no stock", closedAt: "x", supplierDecline: { at: "x", reason: "stock", byId: SUP, byName: "S" }, log: [{}], updatedAt: "x" }),
+  mk("order: he cannot report a delivery from the client", SUP, "update", "purchaseOrders/po1", "DENY", accepted, { ...accepted, deliveryReports: [report], log: [{}], updatedAt: "x" }),
+  mk("order: another supplier cannot accept it", SUP2, "update", "purchaseOrders/po1", "DENY", sent, { ...sent, status: "accepted", supplierAcceptedAt: "x", promisedDate: "2026-10-20", acceptanceRecordedBy: "supplier", log: [{}], updatedAt: "x" }),
+  mk("order: a guest's order has no supplier acts", SUP, "update", "purchaseOrders/poGuest", "DENY", { ...sent, supplierOrgId: "guest" }, { ...sent, supplierOrgId: "guest", status: "accepted", supplierAcceptedAt: "x", promisedDate: "2026-10-20", acceptanceRecordedBy: "supplier", log: [{}], updatedAt: "x" }),
 ]
 
 runAll(cases.slice(Number(process.env.FROM || 0))).then((bad) => process.exit(bad ? 1 : 0))

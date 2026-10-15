@@ -729,7 +729,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               Section={Section}
               busy={busy === "warranty"}
               canAcceptWarranty={actor.isOwner || actor.canPrepare || actor.canApprove}
-              onAcceptWarranty={(w) => f && void run("warranty", () => acceptSupplierWarranty(f, actor, po, w, opts), "supplier.toast_warranty")}
+              onAcceptWarranty={(w) => f && void run("warranty", () => acceptSupplierWarranty(f, actor, po, w), "supplier.toast_warranty")}
             />
 
             <Section title={t("sec.lines", { count: po.lines.length })}>
@@ -1027,7 +1027,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 "pay",
                 async () => {
                   const paid = await recordFinancePayment(f, actor, isFinance, po.id, input)
-                  await reportTransferToSupplier(f, actor, isFinance, po, { amount: input.amount, bank: input.bank || "", reference: input.reference, valueDate: input.valueDate }, opts).catch(() => undefined)
+                  await reportTransferToSupplier(f, actor, isFinance, po, { amount: input.amount, bank: input.bank || "", reference: input.reference, valueDate: input.valueDate }).catch(() => undefined)
                   return paid
                 },
                 "toast.saved"

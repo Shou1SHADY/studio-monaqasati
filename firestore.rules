@@ -38,6 +38,8 @@ service cloud.firestore {
 
     // Folded shapes (5 Oct 2026, compiled-size ceiling — see CLAUDE.md): the same
     // checks the blocks below used to spell out, called by name.
+    function isContractorOrg() { return resource.data.contractorOrgId == getOrganizationId(); }
+    function isSupplierOrg() { return resource.data.supplierOrgId == getOrganizationId(); }
     function orgReadable() { return isSignedIn() && (isAdmin() || inOrg()); }
     function createsInOrg() { return isOrgMember(request.resource.data.organizationId); }
     function keepsOrg() { return inOrg() && request.resource.data.organizationId == resource.data.organizationId; }
@@ -740,7 +742,7 @@ service cloud.firestore {
         resource.data.supplierId == request.auth.uid ||
         resource.data.contractorId == request.auth.uid ||
         resource.data.organizationId == getOrganizationId() ||
-        resource.data.contractorOrgId == getOrganizationId() ||
+        isContractorOrg() ||
         isAdmin()
       );
       // 'list' (collection query): allow any signed-in user; the app's 'where' clause
@@ -756,7 +758,7 @@ service cloud.firestore {
         || (isSignedIn()
             && request.resource.data.get('directAward', false) == true
             && request.resource.data.status == 'مقبول'
-            && request.resource.data.contractorOrgId == getOrganizationId()
+            && request.isContractorOrg()
             && request.resource.data.rfqId is string
             && get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data.organizationId == getOrganizationId()
             && hasRfqPermission(get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data, 'offers.accept'))
@@ -764,7 +766,7 @@ service cloud.firestore {
             && request.resource.data.get('isManualOffer', false) == true
             && request.resource.data.status == 'قيد المراجعة'
             && request.resource.data.recordedById == request.auth.uid
-            && request.resource.data.contractorOrgId == getOrganizationId()
+            && request.isContractorOrg()
             && request.resource.data.rfqId is string
             && get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data.organizationId == getOrganizationId()
             && get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data.status == 'New'
@@ -782,7 +784,7 @@ service cloud.firestore {
         // is asked ONCE — it is the costly part and used to be asked in three branches.
         || (isSignedIn()
             && (resource.data.contractorId == request.auth.uid
-                || resource.data.contractorOrgId == getOrganizationId()
+                || isContractorOrg()
                 || (resource.data.rfqId != null
                     && (get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.organizationId == getOrganizationId()
                         || get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.contractorId == request.auth.uid)))
@@ -802,8 +804,8 @@ service cloud.firestore {
         resource == null ||
         resource.data.contractorId == request.auth.uid ||
         resource.data.supplierId == request.auth.uid ||
-        resource.data.contractorOrgId == getOrganizationId() ||
-        resource.data.supplierOrgId == getOrganizationId() ||
+        isContractorOrg() ||
+        isSupplierOrg() ||
         isAdmin()
       );
       // 'list' (collection query): allow any signed-in user; app 'where' clause filters by orgId
@@ -813,8 +815,8 @@ service cloud.firestore {
       allow update: if isSignedIn() && (
         resource.data.contractorId == request.auth.uid ||
         resource.data.supplierId == request.auth.uid ||
-        resource.data.contractorOrgId == getOrganizationId() ||
-        resource.data.supplierOrgId == getOrganizationId() ||
+        isContractorOrg() ||
+        isSupplierOrg() ||
         isAdmin()
       );
 
@@ -975,8 +977,8 @@ service cloud.firestore {
       // Both parties can read their own links
       allow get: if isSignedIn() && (
         resource == null ||
-        resource.data.contractorOrgId == getOrganizationId() ||
-        resource.data.supplierOrgId == getOrganizationId() ||
+        isContractorOrg() ||
+        isSupplierOrg() ||
         isAdmin()
       );
       allow list: if isSignedIn();
@@ -985,14 +987,14 @@ service cloud.firestore {
       // skipping the invite-and-wait step).
       allow create: if isSignedIn()
         && (
-          (request.resource.data.supplierOrgId == getOrganizationId()
+          (request.isSupplierOrg()
             && (request.resource.data.requestedBy == "supplier" || request.resource.data.requestedBy == "contractor"))
-          || (request.resource.data.contractorOrgId == getOrganizationId()
+          || (request.isContractorOrg()
               && request.resource.data.requestedBy == "contractor_favorite"
               && request.resource.data.status == "active"
               && procSupplierManager())
           // «أضِفه إلى مورّدينا» from the platform directory
-          || (request.resource.data.contractorOrgId == getOrganizationId()
+          || (request.isContractorOrg()
               && request.resource.data.requestedBy == "contractor_directory"
               && request.resource.data.status == "active"
               && procSupplierManager())
@@ -1000,12 +1002,12 @@ service cloud.firestore {
       // Contractors can accept/reject (update status); suppliers can cancel their own request
       allow update: if isSignedIn() && (
         // Our side is Procurement's buyers and manager (not an expediter who only reads the list).
-        (resource.data.contractorOrgId == getOrganizationId() && procSupplierManager()) ||
-        (resource.data.supplierOrgId == getOrganizationId() && resource.data.requestedBy == "supplier") ||
+        (isContractorOrg() && procSupplierManager()) ||
+        (isSupplierOrg() && resource.data.requestedBy == "supplier") ||
         isAdmin()
       );
       allow delete: if isAdmin()
-        || (isSignedIn() && resource.data.supplierOrgId == getOrganizationId());
+        || (isSignedIn() && isSupplierOrg());
     }
 
     // What only Finance records on the pm block: the retention released (the close-out gate reads it).
@@ -2295,8 +2297,8 @@ service cloud.firestore {
     match /deliveries/{deliveryId} {
       allow get: if isSignedIn() && (
         resource == null ||
-        resource.data.contractorOrgId == getOrganizationId() ||
-        resource.data.supplierOrgId == getOrganizationId() ||
+        isContractorOrg() ||
+        isSupplierOrg() ||
         resource.data.supplierId == request.auth.uid ||
         resource.data.confirmedByUserId == request.auth.uid ||
         isAdmin()
@@ -2304,12 +2306,12 @@ service cloud.firestore {
       allow list: if isSignedIn();
       // Supplier creates delivery notice for their own accepted offer
       allow create: if (isSupplier()
-        && request.resource.data.supplierOrgId == getOrganizationId())
+        && request.isSupplierOrg())
         // Contractor manually logs a receipt for materials received outside the platform —
         // must already be self-confirmed (no supplier notice/confirmation step to go through)
         // and must not reference a real supplier account, to prevent impersonating one.
         || (isContractor()
-          && request.resource.data.contractorOrgId == getOrganizationId()
+          && request.isContractorOrg()
           && request.resource.data.contractorId == request.auth.uid
           && request.resource.data.status == "confirmed"
           && request.resource.data.confirmedByUserId == request.auth.uid
@@ -2334,8 +2336,8 @@ service cloud.firestore {
       // no entry — and a manual receipt regularised by a retroactive order gains a
       // `poId`, never the four identity fields above.
       allow update: if isSignedIn() && (
-        (resource.data.contractorOrgId == getOrganizationId() && hasOrgPermission('deliveries.confirm')) ||
-        resource.data.supplierOrgId == getOrganizationId() ||
+        (isContractorOrg() && hasOrgPermission('deliveries.confirm')) ||
+        isSupplierOrg() ||
         isAdmin()
       ) && (
         isAdmin() || !('supplierOrgId' in request.resource.data) || 'supplierOrgId' in resource.data
@@ -2350,7 +2352,7 @@ service cloud.firestore {
       // order or marks it a cash expense — only while it has no order and was never
       // regularised, never touching the identity fields (S-26).
       allow update: if isSignedIn()
-        && resource.data.contractorOrgId == getOrganizationId()
+        && isContractorOrg()
         && (isOrgOwner() || buysOrApproves())
         && resource.data.get('source', '') == 'manual'
         && resource.data.get('poId', null) == null
@@ -2363,7 +2365,7 @@ service cloud.firestore {
       // Under `buyerReceives` the buyer confirms a pending notice (flagged); a receipt
       // recorded without the notice trims / closes that order's pending notice.
       allow update: if isSignedIn()
-        && resource.data.contractorOrgId == getOrganizationId()
+        && isContractorOrg()
         && hasOrgPermission('offers.accept')
         && procBuyerReceives()
         && resource.data.status == 'pending_confirmation'
@@ -2373,7 +2375,7 @@ service cloud.firestore {
         && !changedKeys().hasAny(['supplierOrgId', 'supplierId', 'offerId', 'rfqId', 'contractorOrgId']);
 
       allow update: if isSignedIn()
-        && resource.data.contractorOrgId == getOrganizationId()
+        && isContractorOrg()
         && (isOrgOwner() || buysOrApproves())
         && resource.data.status == 'pending_confirmation'
         && request.resource.data.status == 'pending_confirmation'
@@ -2388,26 +2390,26 @@ service cloud.firestore {
     match /guarantees/{guaranteeId} {
       allow get: if isSignedIn() && (
         resource == null ||
-        resource.data.contractorOrgId == getOrganizationId() ||
-        resource.data.supplierOrgId == getOrganizationId() ||
+        isContractorOrg() ||
+        isSupplierOrg() ||
         isAdmin()
       );
       allow list: if isSignedIn();
       // Supplier submits the guarantee answer for their own accepted offer, from the standalone
       // supplier Guarantees page — independent of sending the delivery notice.
       allow create: if isSupplier()
-        && request.resource.data.supplierOrgId == getOrganizationId()
+        && request.isSupplierOrg()
         && (request.resource.data.status == 'pending_review' || request.resource.data.status == 'none');
       allow update: if isSignedIn() && (
         // Contractor accepts/rejects a submitted guarantee; only the review fields may change.
-        (resource.data.contractorOrgId == getOrganizationId()
+        (isContractorOrg()
           && hasOrgPermission('deliveries.confirm')
           && changedKeys().hasOnly(['status', 'reviewedAt', 'reviewedByUserId'])
           && (request.resource.data.status == 'accepted' || request.resource.data.status == 'rejected'))
         // Owning supplier edits/resubmits their own answer before or after rejection, but never
         // once the contractor has accepted it.
         || (isSupplier()
-          && resource.data.supplierOrgId == getOrganizationId()
+          && isSupplierOrg()
           && resource.data.status != 'accepted'
           && changedKeys()
             .hasOnly(['hasGuarantee', 'fileUrl', 'filePath', 'fileType', 'expirationDate', 'status'])
@@ -2658,32 +2660,15 @@ service cloud.firestore {
         && (isOrgOwner() || buysOrApproves())
         && poMineOrNotBuyer();
     }
-    // The supplier, in his own portal (his own company's order, never a guest's): sent → accepted with the date he
-    // commits to · sent → cancelled with his reason (a decline) · a "delivered" report or a reminder on an accepted order.
-    function poSupplierActs(ck) {
+    // The supplier, in his own portal: sent → accepted with the date he commits to (and an optional note). His other acts
+    // on an order (decline, delivery report) run on the server — /api/supplier-free/act.
+    function poSupplierAccepts(ck) {
       return resource.data.get('supplierOrgId', '') == getOrganizationId()
         && resource.data.get('supplierOrgId', '') != 'guest'
-        && (poSupplierAccepts(ck) || poSupplierDeclines(ck) || poSupplierReports(ck));
-    }
-    function poSupplierAccepts(ck) {
-      return poFrom() == 'sent' && poTo() == 'accepted'
+        && poFrom() == 'sent' && poTo() == 'accepted'
         && request.resource.data.get('acceptanceRecordedBy', '') == 'supplier'
         && request.resource.data.get('promisedDate', '') is string
         && ck.hasOnly(['status', 'supplierAcceptedAt', 'promisedDate', 'acceptanceRecordedBy', 'supplierAcceptNote', 'log', 'updatedAt']);
-    }
-    function poSupplierDeclines(ck) {
-      return poFrom() == 'sent' && poTo() == 'cancelled'
-        && ck.hasOnly(['status', 'cancelledReason', 'closedAt', 'supplierDecline', 'log', 'updatedAt'])
-        && request.resource.data.supplierDecline.byId == request.auth.uid
-        && request.resource.data.supplierDecline.reason in ['stock', 'price', 'date', 'other']
-        && request.resource.data.cancelledReason is string && request.resource.data.cancelledReason.size() > 0;
-    }
-    function poSupplierReports(ck) {
-      return poFrom() == 'accepted' && poTo() == 'accepted'
-        && ck.hasOnly(['deliveryReports', 'log', 'updatedAt'])
-        && request.resource.data.deliveryReports is list
-        && request.resource.data.deliveryReports.size() >= resource.data.get('deliveryReports', []).size()
-        && request.resource.data.deliveryReports.size() <= 100;
     }
     // The keys that changed are worked out ONCE and handed to every step (a request may evaluate
     // only 1000 expressions, and the diff of a whole order is not cheap).
@@ -2694,7 +2679,7 @@ service cloud.firestore {
                 || poApproves(ck) || poReturns(ck) || poResubmits(ck) || poExpedites(ck) || poDecides(ck) || poReceives(ck) || poRates(ck)
                 || poSelfIssues(ck) || poDecidesHold(ck) || poFinance(ck) || poFinanceCloses(ck)
                 || poRefersBudget(ck) || poPmDecidesBudget(ck)))
-        || poSupplierActs(ck)
+        || poSupplierAccepts(ck)
         || isAdmin());
     }
     match /purchaseOrders/{poId} {
@@ -2702,7 +2687,7 @@ service cloud.firestore {
       // (A guest's order carries supplierOrgId "guest", which is nobody's org id.)
       allow get, list: if isSignedIn() && (isAdmin()
         || inOrg()
-        || resource.data.supplierOrgId == getOrganizationId());
+        || isSupplierOrg());
       // Prepared by whoever may award, in their own name, born awaiting approval —
       // never born approved, sent or rated.
       allow create: if createsInOrg()
@@ -4290,64 +4275,23 @@ service cloud.firestore {
       allow create, update: if isAdmin() && request.resource.data.off is list;
       allow delete: if false;
     }
-    // Which journey a supplier company is on — the free one (Supplier 1.0) or the full portal. Admin only
-    // writes it; the company reads its own so its pages can follow. No document = free.
+    // Which journey a supplier company is on — the free one (Supplier 1.0) or the full portal (no document = free). Admin writes it.
     match /companyPlans/{orgId} {
       allow get: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
-      allow list: if isAdmin();
-      allow create, update: if isAdmin() && request.resource.data.supplierPlan in ['free', 'full'];
+      allow list, create, update: if isAdmin();
       allow delete: if false;
     }
-    // The free supplier journey (Supplier 1.0) — what the supplier owns beside the contractor's order.
-    // An invoice is written ONLY by the server, which re-runs every blocking rule (amount, date, file, receipts); both
-    // companies read it. A transfer is reported by the contractor's Finance and answered by the supplier. A warranty is
-    // registered by the supplier and accepted by the contractor. The workspace holds the supplier's own marks.
+    // The free supplier journey: both companies read what ties them (an invoice, a transfer, a warranty); every write is the
+    // server's (/api/supplier-free/*), which checks who is asking and the state. The workspace holds the supplier's own marks.
     function sfBoth() {
-      return isSignedIn() && (isAdmin() || resource.data.supplierOrgId == getOrganizationId() || resource.data.buyerOrgId == getOrganizationId());
+      return isSignedIn() && (isAdmin() || isSupplierOrg() || resource.data.buyerOrgId == getOrganizationId());
     }
-    function sfPo() {
-      return get(/databases/$(database)/documents/purchaseOrders/$(request.resource.data.poId)).data;
-    }
-    match /supplierInvoices/{invoiceId} {
-      allow get, list: if sfBoth();
-      allow create, update, delete: if false;
-    }
-    match /supplierTransfers/{transferId} {
-      allow get, list: if sfBoth();
-      allow create: if isSignedIn()
-        && request.resource.data.buyerOrgId == getOrganizationId()
-        && (isOrgOwner() || hasOrgPermission('invoices.manage'))
-        && request.resource.data.state == 'sent'
-        && request.resource.data.amount is number && request.resource.data.amount > 0
-        && request.resource.data.poId is string
-        && sfPo().organizationId == request.resource.data.buyerOrgId
-        && sfPo().supplierOrgId == request.resource.data.supplierOrgId;
-      allow update: if isSignedIn()
-        && resource.data.supplierOrgId == getOrganizationId()
-        && changedKeys().hasOnly(['state', 'confirmedAt', 'confirmedById', 'note', 'arrivedLater', 'updatedAt'])
-        && ((resource.data.state == 'sent' && request.resource.data.state in ['ok', 'miss'])
-            || (resource.data.state == 'miss' && request.resource.data.state == 'ok'));
-      allow delete: if false;
-    }
-    match /supplierWarranties/{warrantyId} {
-      allow get, list: if sfBoth();
-      allow create: if isSignedIn()
-        && request.resource.data.supplierOrgId == getOrganizationId()
-        && request.resource.data.state == 'wait'
-        && request.resource.data.poId is string
-        && sfPo().supplierOrgId == getOrganizationId()
-        && sfPo().organizationId == request.resource.data.buyerOrgId;
-      allow update: if isSignedIn()
-        && resource.data.buyerOrgId == getOrganizationId()
-        && (isOrgOwner() || buysOrApproves())
-        && resource.data.state == 'wait' && request.resource.data.state == 'ok'
-        && changedKeys().hasOnly(['state', 'acceptedAt', 'acceptedById', 'updatedAt']);
-      allow delete: if false;
-    }
+    match /supplierInvoices/{docId} { allow get, list: if sfBoth(); }
+    match /supplierTransfers/{docId} { allow get, list: if sfBoth(); }
+    match /supplierWarranties/{docId} { allow get, list: if sfBoth(); }
     match /supplierWorkspace/{orgId} {
       allow get: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
       allow create, update: if isSignedIn() && isOrgMember(orgId) && request.resource.data.get('organizationId', orgId) == orgId;
-      allow list, delete: if false;
     }
     // Document thread (DEV-68) — comments and attachments on a document that links a buyer and
     // a supplier. A SHARED entry carries both companies and both read it; an INTERNAL one carries

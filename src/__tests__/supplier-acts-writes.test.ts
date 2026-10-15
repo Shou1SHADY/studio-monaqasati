@@ -1,17 +1,25 @@
 /**
- * Supplier 1.0, contractor side — Finance tells the supplier about a transfer, the buyer accepts a warranty.
- * Each is one small write followed by a notice to the supplier's side only.
+ * Supplier 1.0, contractor side — Finance tells the supplier about a transfer, the buyer accepts a warranty (both are
+ * asked of the server), a buyer answers a supplier's request to connect, and the order freezes the offer's terms.
  */
 
-import { addDoc, updateDoc } from "firebase/firestore"
+import { updateDoc } from "firebase/firestore"
+import { ActRefused, callAct } from "@/lib/supplier-free/act-client"
 import { emitProcEvent } from "@/lib/procurement/events"
 import { acceptSupplierWarranty, answerConnectionRequest, reportTransferToSupplier } from "@/lib/procurement/supplier-acts-writes"
 import { frozenTermsOf } from "@/lib/procurement/terms-freeze"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import type { ProcActor, PurchaseOrder } from "@/lib/procurement/types"
 
+jest.mock("@/lib/supplier-free/act-client", () => {
+  class ActRefused extends Error {
+    constructor(readonly code: string) {
+      super(code)
+    }
+  }
+  return { ActRefused, callAct: jest.fn(async () => ({ id: "tr1" })) }
+})
 jest.mock("firebase/firestore", () => ({
-  addDoc: jest.fn(async () => ({ id: "tr1" })),
   updateDoc: jest.fn(async () => undefined),
   collection: jest.fn((_db: unknown, name: string) => ({ name })),
   doc: jest.fn((_db: unknown, name: string, id: string) => ({ name, id })),
@@ -30,39 +38,36 @@ const input = { amount: 1150, bank: " Al Rajhi ", reference: " TX-9 ", valueDate
 beforeEach(() => jest.clearAllMocks())
 
 describe("reportTransferToSupplier", () => {
-  it("writes the transfer as sent for both companies and tells the supplier's side", async () => {
-    const id = await reportTransferToSupplier(db, actor(), true, po, input, { orgName: "Buyer Co" })
+  it("asks the server to record it, with the figures trimmed", async () => {
+    const id = await reportTransferToSupplier(db, actor(), true, po, input)
     expect(id).toBe("tr1")
-    expect(addDoc).toHaveBeenCalledWith(
-      { name: "supplierTransfers" },
-      expect.objectContaining({ poId: "po1", supplierOrgId: "sup", buyerOrgId: "buyer", amount: 1150, bank: "Al Rajhi", ref: "TX-9", state: "sent", reportedById: "u1" })
-    )
-    expect(emitProcEvent).toHaveBeenCalledWith(
-      db,
-      expect.anything(),
-      expect.objectContaining({ kind: "po_payment_reported", to: [{ users: ["supUser", "sup"] }], params: expect.objectContaining({ contractor: "Buyer Co", number: "PO-2026/001", amount: "1150 SAR", ref: "TX-9" }) })
-    )
+    expect(callAct).toHaveBeenCalledWith({ action: "transfer.report", poId: "po1", amount: 1150, bank: "Al Rajhi", reference: "TX-9", valueDate: "2026-10-12" })
   })
 
-  it("refuses someone who is not Finance, a zero amount and an off-platform supplier", async () => {
+  it("refuses someone who is not Finance, a zero amount and an off-platform supplier before asking", async () => {
     await expect(reportTransferToSupplier(db, actor(), false, po, input)).rejects.toMatchObject({ code: "no_permission" })
     await expect(reportTransferToSupplier(db, actor(), true, po, { ...input, amount: 0 })).rejects.toBeInstanceOf(ProcWriteError)
     await expect(reportTransferToSupplier(db, actor(), true, { ...po, supplierOrgId: "guest" } as PurchaseOrder, input)).rejects.toMatchObject({ code: "wrong_state" })
-    expect(addDoc).not.toHaveBeenCalled()
-    expect(emitProcEvent).not.toHaveBeenCalled()
+    expect(callAct).not.toHaveBeenCalled()
+  })
+
+  it("a refusal from the server is said the way the drawer says write errors", async () => {
+    ;(callAct as jest.Mock).mockRejectedValueOnce(new ActRefused("no_permission"))
+    await expect(reportTransferToSupplier(db, actor(), true, po, input)).rejects.toMatchObject({ code: "no_permission" })
+    ;(callAct as jest.Mock).mockRejectedValueOnce(new ActRefused("wrong_state"))
+    await expect(reportTransferToSupplier(db, actor(), true, po, input)).rejects.toMatchObject({ code: "wrong_state" })
   })
 })
 
 describe("acceptSupplierWarranty", () => {
-  it("marks it accepted with who and when, and tells the supplier", async () => {
-    await acceptSupplierWarranty(db, actor({ canPrepare: true }), po, { id: "w1", itemName: "Roof membrane" }, { orgName: "Buyer Co", now: new Date("2026-10-12T08:00:00Z") })
-    expect(updateDoc).toHaveBeenCalledWith({ name: "supplierWarranties", id: "w1" }, expect.objectContaining({ state: "ok", acceptedAt: "2026-10-12T08:00:00.000Z", acceptedById: "u1" }))
-    expect(emitProcEvent).toHaveBeenCalledWith(db, expect.anything(), expect.objectContaining({ kind: "po_warranty_accepted", params: expect.objectContaining({ item: "Roof membrane" }) }))
+  it("asks the server to accept it", async () => {
+    await acceptSupplierWarranty(db, actor({ canPrepare: true }), po, { id: "w1", itemName: "Roof membrane" })
+    expect(callAct).toHaveBeenCalledWith({ action: "warranty.accept", warrantyId: "w1" })
   })
 
   it("is for the owner, a buyer or an approver only", async () => {
     await expect(acceptSupplierWarranty(db, actor(), po, { id: "w1", itemName: "x" })).rejects.toMatchObject({ code: "no_permission" })
-    expect(updateDoc).not.toHaveBeenCalled()
+    expect(callAct).not.toHaveBeenCalled()
   })
 })
 

@@ -5,8 +5,8 @@
 import type { Firestore } from "firebase-admin/firestore"
 import { buildProcNotification, procEventKey, type ProcEvent } from "@/lib/procurement/events"
 
-export async function notifyNamed(db: Firestore, actor: { uid: string; name: string }, e: Omit<ProcEvent, "to">, users: (string | null | undefined)[]): Promise<number> {
-  const recipients = [...new Set([...users, e.organizationId].filter((x): x is string => !!x && x !== actor.uid))]
+export async function notifyNamed(db: Firestore, actor: { uid: string; name: string }, e: Omit<ProcEvent, "to">, users: (string | null | undefined)[], opts: { owner?: boolean } = {}): Promise<number> {
+  const recipients = [...new Set([...users, ...(opts.owner === false ? [] : [e.organizationId])].filter((x): x is string => !!x && x !== actor.uid))]
   const at = new Date().toISOString()
   const key = procEventKey({ kind: e.kind, poId: e.poId })
   await Promise.all(

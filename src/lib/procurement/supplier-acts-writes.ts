@@ -1,9 +1,10 @@
 // The contractor's side of the free supplier journey (Supplier 1.0): Finance tells the supplier a transfer was made
-// (he confirms it arrived), and the buyer accepts the warranty the supplier registered. Each is one small write the
-// rules bound to the buyer's own documents, followed by a best-effort notice to the supplier.
+// (he confirms it arrived), the buyer accepts the warranty the supplier registered — both run on the server — and a
+// buyer answers a supplier's request to connect.
 
-import { addDoc, collection, doc, serverTimestamp, updateDoc, type Firestore } from "firebase/firestore"
-import { emitProcEvent, sarText } from "./events"
+import { doc, serverTimestamp, updateDoc, type Firestore } from "firebase/firestore"
+import { emitProcEvent } from "./events"
+import { ActRefused, callAct } from "@/lib/supplier-free/act-client"
 import { ProcWriteError, type WriteOpts } from "./writes"
 import type { ProcActor, PurchaseOrder } from "./types"
 
@@ -14,56 +15,26 @@ export interface TransferInput {
   valueDate: string
 }
 
-const supplierSide = (po: PurchaseOrder) => [...new Set([po.supplierUserId, po.supplierOrgId].filter((u): u is string => Boolean(u) && u !== "guest"))]
-
-export async function reportTransferToSupplier(firestore: Firestore, actor: ProcActor, isFinance: boolean, po: PurchaseOrder, input: TransferInput, opts: WriteOpts = {}): Promise<string> {
-  if (!isFinance) throw new ProcWriteError("no_permission")
-  if (!(input.amount > 0) || !po.supplierOrgId || po.supplierOrgId === "guest") throw new ProcWriteError("wrong_state")
-  const at = (opts.now ?? new Date()).toISOString()
-  const ref = await addDoc(collection(firestore, "supplierTransfers"), {
-    poId: po.id,
-    rfqId: po.rfqId,
-    supplierOrgId: po.supplierOrgId,
-    buyerOrgId: po.organizationId,
-    amount: input.amount,
-    bank: input.bank.trim(),
-    ref: input.reference.trim(),
-    valueDate: input.valueDate,
-    state: "sent",
-    reportedAt: at,
-    reportedById: actor.uid,
-    reportedByName: actor.name,
-    createdAt: serverTimestamp(),
-  })
-  await emitProcEvent(firestore, actor, {
-    kind: "po_payment_reported",
-    organizationId: po.organizationId,
-    to: [{ users: supplierSide(po) }],
-    supplier: { userId: po.supplierUserId, orgId: po.supplierOrgId },
-    params: { contractor: opts.orgName || actor.name, number: po.docNumber, amount: sarText(input.amount), bank: input.bank.trim(), ref: input.reference.trim() },
-    poId: po.id,
-    rfqId: po.rfqId,
-    offerId: po.offerId,
-    copy: opts.copy,
-  })
-  return ref.id
+/** The server checks who is asking and tells the supplier; a refusal comes back as the write errors the drawer already says. */
+async function act(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  try {
+    return await callAct(body)
+  } catch (err) {
+    if (err instanceof ActRefused) throw new ProcWriteError(err.code === "no_permission" || err.code === "UNAUTHENTICATED" ? "no_permission" : "wrong_state")
+    throw err
+  }
 }
 
-export async function acceptSupplierWarranty(firestore: Firestore, actor: ProcActor, po: PurchaseOrder, warranty: { id: string; itemName: string }, opts: WriteOpts = {}): Promise<void> {
+export async function reportTransferToSupplier(_firestore: Firestore, _actor: ProcActor, isFinance: boolean, po: PurchaseOrder, input: TransferInput): Promise<string> {
+  if (!isFinance) throw new ProcWriteError("no_permission")
+  if (!(input.amount > 0) || !po.supplierOrgId || po.supplierOrgId === "guest") throw new ProcWriteError("wrong_state")
+  const r = await act({ action: "transfer.report", poId: po.id, amount: input.amount, bank: input.bank.trim(), reference: input.reference.trim(), valueDate: input.valueDate })
+  return String(r.id || "")
+}
+
+export async function acceptSupplierWarranty(_firestore: Firestore, actor: ProcActor, _po: PurchaseOrder, warranty: { id: string; itemName: string }): Promise<void> {
   if (!actor.isOwner && !actor.canPrepare && !actor.canApprove) throw new ProcWriteError("no_permission")
-  const at = (opts.now ?? new Date()).toISOString()
-  await updateDoc(doc(firestore, "supplierWarranties", warranty.id), { state: "ok", acceptedAt: at, acceptedById: actor.uid, updatedAt: serverTimestamp() })
-  await emitProcEvent(firestore, actor, {
-    kind: "po_warranty_accepted",
-    organizationId: po.organizationId,
-    to: [{ users: supplierSide(po) }],
-    supplier: { userId: po.supplierUserId, orgId: po.supplierOrgId },
-    params: { contractor: opts.orgName || actor.name, number: po.docNumber, item: warranty.itemName },
-    poId: po.id,
-    rfqId: po.rfqId,
-    offerId: po.offerId,
-    copy: opts.copy,
-  })
+  await act({ action: "warranty.accept", warrantyId: warranty.id })
 }
 
 export interface ConnectionRequest {
