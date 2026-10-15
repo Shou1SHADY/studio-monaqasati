@@ -4,7 +4,7 @@ import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { verifyOtp, type OtpVerdict } from "@/lib/otp"
 import { normalizePhoneE164 } from "@/lib/sms"
-import { claimedOfferPatch, claimedOrderPatch, isClaimableGuestOffer, newAccountSchema, newSupplierUser, phoneSubject } from "@/lib/supplier-free/phone-auth"
+import { claimedOfferPatch, claimedOrderPatch, fieldFromClaims, isClaimableGuestOffer, newAccountSchema, newSupplierUser, phoneSubject } from "@/lib/supplier-free/phone-auth"
 
 // Public: checks the code and signs the supplier in. A mobile that already has an account enters it; a new one needs
 // a name and a company first (answered BEFORE the code is spent, so the same code is then used once), and the account
@@ -32,20 +32,31 @@ const VERDICT_ERRORS: Record<Exclude<OtpVerdict, "ok">, { message: string; code:
   unavailable: { message: "The code could not be checked right now", code: "OTP_UNAVAILABLE", status: 503 },
 }
 
-async function claimGuestWork(uid: string, phone: string, name: string, company: string): Promise<number> {
+/** The verified guest offers of this mobile become his (with their orders), and the requests they answered seed his
+ * specialties and cities — empty lists would show him no request at all (LNK-02). Lists he already chose are kept. */
+async function claimGuestWork(uid: string, phone: string, name: string, company: string, orgId: string = uid): Promise<number> {
   const db = getAdminFirestore()
   const at = new Date().toISOString()
   const snap = await db.collection("offers").where("guestContact.phone", "==", phone).get()
   let claimed = 0
+  const rfqIds: string[] = []
   for (const doc of snap.docs) {
-    const offer = doc.data() as Parameters<typeof isClaimableGuestOffer>[0]
+    const offer = doc.data() as Parameters<typeof isClaimableGuestOffer>[0] & { rfqId?: string }
     if (!isClaimableGuestOffer(offer, phone)) continue
     const batch = db.batch()
-    batch.update(doc.ref, claimedOfferPatch(uid, name, company, at))
+    batch.update(doc.ref, { ...claimedOfferPatch(uid, name, company, at), organizationId: orgId })
     const orders = await db.collection("purchaseOrders").where("offerId", "==", doc.id).get()
-    for (const o of orders.docs) if (o.data().supplierOrgId === "guest") batch.update(o.ref, claimedOrderPatch(uid, company))
+    for (const o of orders.docs) if (o.data().supplierOrgId === "guest") batch.update(o.ref, { ...claimedOrderPatch(uid, company), supplierOrgId: orgId })
     await batch.commit()
     claimed++
+    if (offer.rfqId) rfqIds.push(offer.rfqId)
+  }
+  if (rfqIds.length) {
+    const rfqs = await Promise.all([...new Set(rfqIds)].map((id) => db.collection("rfqs").doc(id).get().then((d) => d.data() || null).catch(() => null)))
+    const userRef = db.collection("users").doc(uid)
+    const current = (await userRef.get()).data() as { specializations?: unknown; coverageCities?: unknown } | undefined
+    const seed = fieldFromClaims(rfqs, current)
+    if (seed) await userRef.set(seed, { merge: true })
   }
   return claimed
 }
@@ -76,6 +87,12 @@ export async function POST(req: NextRequest) {
       uid = existing.uid
       if (existingProfile.role !== "Supplier") return fail("This mobile belongs to another kind of account", "WRONG_ROLE", 403)
       await db.collection("users").doc(uid).set({ lastLoginAt: FieldValue.serverTimestamp() }, { merge: true })
+      // A quote he sent as a visitor after the account existed is his too (LNK-04: merging with an existing account).
+      const p = existingProfile as { name?: string; companyName?: string; organizationId?: string }
+      claimed = await claimGuestWork(uid, phone, p.name || p.companyName || "", p.companyName || p.name || "", p.organizationId || uid).catch((err) => {
+        console.error("Guest work not claimed:", err)
+        return 0
+      })
     } else if (account.success) {
       uid = existing ? existing.uid : (await auth.createUser({ phoneNumber: phone, displayName: account.data.name })).uid
       await db.collection("users").doc(uid).set({ ...newSupplierUser(uid, phone, account.data), joinedAt: FieldValue.serverTimestamp(), lastLoginAt: FieldValue.serverTimestamp() })

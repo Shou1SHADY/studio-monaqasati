@@ -3,6 +3,7 @@ import { getAdminFirestore } from "@/lib/firebaseAdmin"
 import { resolveShareToken, isRfqDeadlinePassed } from "@/lib/rfq-share"
 import { canSendCodes } from "@/lib/sms"
 import { answeredQueries, guestOtpRequired, shareLinkValidUntil, type InquiryDoc } from "@/lib/procurement/guest-supplier"
+import { termsListOf } from "@/lib/procurement/terms-freeze"
 
 // Public endpoint: resolves a share token to the RFQ's display data so a
 // guest supplier can review it without an account. Tokens are unguessable
@@ -85,6 +86,8 @@ export async function GET(
           pdfUrl: rfq.pdfUrl || null,
           attachments,
           paymentTerms: rfq.paymentTerms || null,
+          // The buyer's payment terms (RFQ-11), shown to the visitor before he quotes.
+          paymentTermsList: termsListOf(rfq.paymentTermsList),
           requiresWarranty: Boolean(rfq.requiresWarranty),
           shipmentMode: rfq.shipmentMode || null,
           pricingMode: rfq.pricingMode || null,

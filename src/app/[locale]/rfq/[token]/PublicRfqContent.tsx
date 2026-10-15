@@ -51,6 +51,8 @@ import { GuestAnsweredQueries } from "@/components/procurement/guest/GuestAnswer
 import { GuestOtpField, type GuestOtpValue } from "@/components/procurement/guest/GuestOtpField"
 import { JoinFreeButton } from "@/components/supplier-free/JoinFreeButton"
 import { GuestPapersField, type GuestPaperFiles } from "@/components/procurement/guest/GuestPapersField"
+import { guestValidityDefault, saudiMobileE164 } from "@/lib/supplier-free/phone-auth"
+import { bareNumber } from "@/lib/supplier-free/derive"
 
 // The same Join form contractors subscribe through, with «Supplier» ticked (11 Oct 2026).
 
@@ -76,6 +78,8 @@ type SharedRfq = {
   pdfUrl: string | null
   attachments?: Array<{ name: string; url: string }>
   paymentTerms: string | null
+  /** The buyer's payment terms (RFQ-11): rows of a share and days after the invoice. */
+  paymentTermsList?: Array<{ pct: number; days: number }> | null
   requiresWarranty: boolean
   locationCoords: { lat: number; lng: number } | null
   /** "line" when the buyer asked for a rate per material (PRD §4). */
@@ -94,11 +98,12 @@ type LookupData = {
   queries?: AnsweredQuery[]
 }
 
+// Three things are required (LNK-01, B-12): the prices, the company name and a Saudi mobile. The rest is his choice.
 const offerSchema = z.object({
   companyName: z.string().trim().min(2).max(200),
-  contactName: z.string().trim().min(2).max(200),
-  email: z.string().trim().email().max(254),
-  phone: z.string().trim().min(7).max(20).regex(/^[+\d][\d\s-]+$/),
+  contactName: z.string().trim().max(200).optional().or(z.literal("")),
+  email: z.string().trim().email().max(254).optional().or(z.literal("")),
+  phone: z.string().trim().max(20).refine((v) => saudiMobileE164(v) != null),
   price: z.coerce.number().positive().finite(),
   deliveryLocation: z.string().trim().max(300).optional().or(z.literal("")),
   deliveryDate: z.string().optional().or(z.literal("")),
@@ -152,7 +157,7 @@ export function PublicRfqContent() {
     formState: { errors, isSubmitting },
   } = useForm<OfferFormValues>({
     resolver: zodResolver(offerSchema),
-    defaultValues: { deliveryLocation: "", deliveryDate: "", executionDuration: "", website: "", message: "", vatNumber: "" },
+    defaultValues: { contactName: "", email: "", deliveryLocation: "", deliveryDate: "", executionDuration: "", website: "", message: "", vatNumber: "" },
   })
   const phoneValue = useWatch({ control, name: "phone" }) || ""
 
@@ -167,7 +172,10 @@ export function PublicRfqContent() {
         if (!res.ok || json.error) {
           setErrorCode(json.code || "NOT_FOUND")
         } else {
-          setLookup(json.data as LookupData)
+          const data = json.data as LookupData
+          setLookup(data)
+          // The validity starts at the deadline + 14 days; he may change it (LNK-01).
+          setTerms((cur) => (cur.validUntil ? cur : { ...cur, validUntil: guestValidityDefault(data.rfq.deadline) }))
         }
       } catch {
         if (!cancelled) setErrorCode("NETWORK")
@@ -230,9 +238,9 @@ export function PublicRfqContent() {
       const form = new FormData()
       for (const [k, v] of Object.entries(parsedTerms.terms)) form.set(k, String(v))
       form.set("companyName", values.companyName)
-      form.set("contactName", values.contactName)
-      form.set("email", values.email)
-      form.set("phone", values.phone)
+      if (values.contactName) form.set("contactName", values.contactName)
+      if (values.email) form.set("email", values.email)
+      form.set("phone", saudiMobileE164(values.phone) || values.phone)
       // In line mode the rates ARE the quote; the server recomputes the total
       // from them and ignores whatever `price` says, so both are sent and only
       // one is trusted.
@@ -461,7 +469,7 @@ export function PublicRfqContent() {
                           </span>
                         )}
                         <span className="text-[10px] text-slate-400 font-mono bg-white/70 px-2 py-0.5 rounded-md border border-slate-200" dir="ltr">
-                          {rfq.number || `#${rfq.id.substring(0, 8).toUpperCase()}`}
+                          {rfq.number ? t("rfq_number", { no: bareNumber(rfq.number) }) : rfq.title}
                         </span>
                         {rfq.requiresWarranty && (
                           <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-200">
@@ -583,6 +591,21 @@ export function PublicRfqContent() {
                     )
                   )}
 
+                  {/* The contractor's payment terms, in view before quoting (RFQ-11, OFR-01) */}
+                  {rfq.paymentTermsList && rfq.paymentTermsList.length > 0 && (
+                    <div className="p-4 rounded-xl border bg-muted/40">
+                      <h2 className="mb-1.5 flex items-center gap-2 text-sm font-bold text-slate-700">
+                        <Banknote size={14} className="text-primary" aria-hidden="true" />
+                        {t("terms_title")}
+                      </h2>
+                      <ul className="space-y-0.5 text-sm text-slate-700">
+                        {rfq.paymentTermsList.map((x, i) => (
+                          <li key={i}>{x.days > 0 ? t("terms_row", { pct: x.pct, days: x.days }) : t("terms_now", { pct: x.pct })}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {/* Notes */}
                   {rfq.notes && (
                     <div className="p-4 bg-gradient-to-br from-amber-50/60 to-white rounded-xl border border-amber-100 shadow-sm">
@@ -670,7 +693,7 @@ export function PublicRfqContent() {
                       <div className="space-y-1.5">
                         <Label htmlFor="contactName" className="text-sm font-semibold flex items-center gap-1.5">
                           <User size={13} className="text-primary" />
-                          {t("contact_name")} <span className="text-red-500">*</span>
+                          {t("contact_name")} <span className="text-xs font-normal text-muted-foreground">{t("optional_mark")}</span>
                         </Label>
                         <Input
                           id="contactName"
@@ -678,13 +701,13 @@ export function PublicRfqContent() {
                           placeholder={t("contact_name_placeholder")}
                           className={cn("h-11 rounded-xl border-2 border-input focus:border-primary", errors.contactName && "border-destructive")}
                         />
-                        {errors.contactName && <p className="text-xs text-destructive">{t("field_required")}</p>}
+
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-1.5">
                           <Label htmlFor="email" className="text-sm font-semibold flex items-center gap-1.5">
                             <Mail size={13} className="text-primary" />
-                            {t("email")} <span className="text-red-500">*</span>
+                            {t("email")} <span className="text-xs font-normal text-muted-foreground">{t("optional_mark")}</span>
                           </Label>
                           <Input
                             id="email"
@@ -709,7 +732,7 @@ export function PublicRfqContent() {
                             dir="ltr"
                             className={cn("h-11 rounded-xl border-2 border-input focus:border-primary text-left", errors.phone && "border-destructive")}
                           />
-                          {errors.phone && <p className="text-xs text-destructive">{t("invalid_phone")}</p>}
+                          {errors.phone && <p className="text-xs text-destructive">{t("invalid_saudi_phone")}</p>}
                         </div>
                       </div>
                       {lookup.otpRequired && <GuestOtpField token={token} phone={phoneValue} onChange={onOtpChange} invalid={otpMissing} />}

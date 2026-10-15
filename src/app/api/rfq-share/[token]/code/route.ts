@@ -4,7 +4,8 @@ import { getAdminFirestore } from "@/lib/firebaseAdmin"
 import { OTP_CHALLENGES, issueOtp, issueRemoteOtp, maskPhone } from "@/lib/otp"
 import { canSendCodes, isSmsConfigured, isVerifyConfigured, sendSms, startVerification } from "@/lib/sms"
 import { resolveShareToken, isRfqDeadlinePassed } from "@/lib/rfq-share"
-import { GUEST_OTP_LINK_CAP_PER_HOUR, guestOtpRequired, guestOtpSubject, guestOtpSubjectRange, normalizeGuestMobile } from "@/lib/procurement/guest-supplier"
+import { GUEST_OTP_LINK_CAP_PER_HOUR, guestOtpRequired, guestOtpSubject, guestOtpSubjectRange } from "@/lib/procurement/guest-supplier"
+import { saudiMobileE164 } from "@/lib/supplier-free/phone-auth"
 
 // Public endpoint: sends a one-time code to the mobile a guest supplier typed
 // on the RFQ's guest page (prototype «يُوثَّق برمز تحقق»). The offer route checks
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     const { token } = await params
     const parsed = bodySchema.safeParse(await req.json().catch(() => null))
     if (!parsed.success) return fail("Enter a mobile number", "INVALID_INPUT", 400)
-    const phone = normalizeGuestMobile(parsed.data.phone)
+    const phone = saudiMobileE164(parsed.data.phone)
     if (!phone) return fail("Enter a valid mobile number", "INVALID_PHONE", 400)
     const locale = parsed.data.locale === "en" ? "en" : "ar"
 
