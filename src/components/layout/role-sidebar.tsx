@@ -23,6 +23,9 @@ import {
 
 import { cn } from "@/lib/utils"
 import { useModuleComponents } from "@/hooks/useCompanyModules"
+import { usePortalRegistry, useSupplierPlanName } from "@/hooks/usePortalRegistry"
+import { usePortalFrame } from "@/components/layout/portal-frame-context"
+import { supplierCommunicationSection } from "@/lib/company-modules"
 import { usePermissions } from "@/hooks/usePermissions"
 import type { PermissionId } from "@/lib/permissions"
 import {
@@ -39,13 +42,13 @@ import {
 } from "@/components/ui/sidebar"
 import {
   CONTRACTOR_COMMUNICATION_SECTION,
-  SUPPLIER_COMMUNICATION_SECTION,
   resolveActiveContractorComponent,
   resolveActiveSupplierComponent,
   visibleSections,
   visibleComponents,
   hrefPathname,
   itemIsVisible,
+  type NavBadge,
   type NavItem,
   type NavSection,
   type PortalComponentDef,
@@ -102,7 +105,23 @@ function childIsActive(children: NavItem[], pathname: string, search: URLSearchP
   )
 }
 
-function NavItemRenderer({ item, pathname, search, t, can }: { item: NavItem; pathname: string; search: URLSearchParams; t: ReturnType<typeof useTranslations>; can: (p: PermissionId) => boolean }) {
+/** An item's count (a plan's NAV-03): its page's own number, red when it waits on the user. */
+function ItemBadge({ badge }: { badge: NavBadge }) {
+  return (
+    <span
+      data-testid="nav-badge"
+      dir="ltr"
+      className={cn(
+        "ms-auto grid h-5 min-w-5 shrink-0 place-items-center rounded-full px-1.5 text-[10.5px] font-bold tabular-nums",
+        badge.tone === "red" ? "bg-destructive text-destructive-foreground" : badge.tone === "blue" ? "bg-cta text-cta-foreground" : "bg-sidebar-accent text-sidebar-foreground"
+      )}
+    >
+      {badge.n}
+    </span>
+  )
+}
+
+function NavItemRenderer({ item, pathname, search, t, can, badge }: { item: NavItem; pathname: string; search: URLSearchParams; t: ReturnType<typeof useTranslations>; can: (p: PermissionId) => boolean; badge?: NavBadge }) {
   if (!itemIsVisible(item, can)) return null
   const hasChildren = !!item.children?.length
   const isChildActive = hasChildren && childIsActive(item.children!, pathname, search)
@@ -213,6 +232,7 @@ function NavItemRenderer({ item, pathname, search, t, can }: { item: NavItem; pa
         <Link href={item.href} className="flex items-center gap-3">
           <item.icon className="h-4 w-4 shrink-0" />
           <span className="text-sm font-medium">{t(item.titleKey)}</span>
+          {badge && badge.n ? <ItemBadge badge={badge} /> : null}
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -240,6 +260,10 @@ export function RoleSidebar() {
   const pathname = usePathname()
   const search = useSearchParams()
   const modules = useModuleComponents(pathname.startsWith("/supplier") ? "supplier" : pathname.startsWith("/contractor") ? "contractor" : null)
+  // The supplier registry as the company's plan shapes it, and what the plan adds to the frame (its counts).
+  const plan = useSupplierPlanName()
+  const supplierComponents = usePortalRegistry("supplier")
+  const navBadges = usePortalFrame()?.navBadges
   // The path decides the module, but the company's own copy of it (switched-off entries left out) is what renders.
   const ownCopy = (active: PortalComponentDef) => modules.find((m) => m.id === active.id) ?? visibleComponents(modules, can)[0] ?? active
 
@@ -252,8 +276,8 @@ export function RoleSidebar() {
   let dashboardHref = "/"
 
   if (pathname.startsWith("/supplier")) {
-    const activeComponent = resolveVisibleComponent(ownCopy(resolveActiveSupplierComponent(pathname)), modules, can)
-    sections = [...visibleSections(activeComponent.sections, can), SUPPLIER_COMMUNICATION_SECTION]
+    const activeComponent = resolveVisibleComponent(ownCopy(resolveActiveSupplierComponent(pathname, supplierComponents)), modules, can)
+    sections = [...visibleSections(activeComponent.sections, can), supplierCommunicationSection(plan)]
     portalTitleKey = activeComponent.labelKey
     roleColor = "text-success"
     portalRoleKey = "supplier_portal_role"
@@ -298,6 +322,9 @@ export function RoleSidebar() {
             <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full bg-white/10 w-fit", roleColor)}>
               {t(portalTitleKey)}
             </span>
+            {plan === "free" && pathname.startsWith("/supplier") && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/20 text-accent w-fit">{t("free_plan_chip")}</span>
+            )}
           </div>
         </div>
       </SidebarHeader>
@@ -313,7 +340,7 @@ export function RoleSidebar() {
             <SidebarGroupContent>
               <SidebarMenu className="px-3 gap-1">
                 {section.items.map((item) => (
-                  <NavItemRenderer key={item.titleKey} item={item} pathname={pathname} search={search} t={t} can={can} />
+                  <NavItemRenderer key={item.titleKey} item={item} pathname={pathname} search={search} t={t} can={can} badge={navBadges?.[item.href]} />
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>

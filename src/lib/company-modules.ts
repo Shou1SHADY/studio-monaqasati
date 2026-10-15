@@ -12,7 +12,18 @@
 // Management module (its "project-management" slot is Order Management), and Sales lives in its
 // "procurement" slot, so neither is switchable. Pure: no I/O.
 
-import { componentOwnsPath, hrefPathname, matchesPrefix, type PortalComponentDef } from "./portal-components"
+import {
+  SUPPLIER_COMMUNICATION_SECTION,
+  SUPPLIER_COMPONENTS,
+  componentOwnsPath,
+  hrefPathname,
+  matchesPrefix,
+  type NavItem,
+  type NavSection,
+  type PortalComponentDef,
+  type PortalComponentId,
+} from "./portal-components"
+import type { SupplierPlan } from "./supplier-plan"
 
 export const COMPANY_MODULES = "companyModules"
 
@@ -155,3 +166,72 @@ export function moduleOffFor(href: string | null | undefined, components: Portal
   const path = hrefPathname(href)
   return path.startsWith("/") ? offModuleOwning(path, components, off, portal) : null
 }
+
+// ---------------------------------------------------------------------------
+// The supplier's plan (Supplier 1.0 inside the unified portal — the owner's decision of 15 Oct 2026)
+// ---------------------------------------------------------------------------
+//
+// A free supplier works in the same frame and lands on the same home as a contractor or a subscribed supplier: the
+// registry is what the plan changes. Sales keeps the two quote screens, Order Management the home, the orders, the
+// invoices and transfers (a free supplier has no Finance — an order's money is part of the order) and the contractors,
+// Governance the company account (one user, no team). The modules of the subscription stay on the home and in the app
+// switcher as locked tiles that say what it adds (SUB-02); their pages are not his (`freePathAllowed`). Every place —
+// the sidebar, the active module and its colour, the breadcrumbs, the app switcher, the home — reads this one registry.
+
+/** The free journey's pages by the module that hosts them, under the PRD's names (B-06). */
+export const FREE_SUPPLIER_NAV: Partial<Record<PortalComponentId, ReadonlyArray<readonly [href: string, titleKey: string]>>> = {
+  procurement: [
+    ["/supplier/rfqs", "free_nav_rfqs"],
+    ["/supplier/offers", "free_nav_offers"],
+  ],
+  "project-management": [
+    ["/supplier", "supplier_dashboard"],
+    ["/supplier/orders", "free_nav_orders"],
+    ["/supplier/invoices", "free_nav_invoices"],
+    ["/supplier/connections", "free_nav_connections"],
+  ],
+  users: [["/supplier/profile", "free_nav_account"]],
+}
+
+/** The icon the full registry already gives an address, so a page looks the same on both plans. */
+function iconOf(components: PortalComponentDef[], href: string, fallback: NavItem["icon"]): NavItem["icon"] {
+  for (const c of components)
+    for (const s of c.sections)
+      for (const i of s.items) {
+        if (i.href === href) return i.icon
+        const child = i.children?.find((ch) => ch.href === href)
+        if (child) return child.icon
+      }
+  return fallback
+}
+
+/** The supplier registry for a plan. "full" is the registry untouched (the same array); "free" keeps the free journey's
+ * pages, ungated (the free account is its company's only user, the owner), and locks every other module. Pure. */
+export function applySupplierPlan(components: PortalComponentDef[], plan: SupplierPlan): PortalComponentDef[] {
+  if (plan === "full") return components
+  return components.map((c): PortalComponentDef => {
+    const nav = FREE_SUPPLIER_NAV[c.id]
+    if (!nav) return { ...c, sections: [], planLocked: true }
+    return { ...c, sections: [{ labelKey: c.labelKey, items: nav.map(([href, titleKey]) => ({ titleKey, href, icon: iconOf(components, href, c.icon) })) }] }
+  })
+}
+
+let freeRegistry: PortalComponentDef[] | null = null
+
+/** The whole supplier registry as a company on this plan sees it, before any module switch. */
+export function supplierRegistry(plan: SupplierPlan): PortalComponentDef[] {
+  if (plan === "full") return SUPPLIER_COMPONENTS
+  if (!freeRegistry) freeRegistry = applySupplierPlan(SUPPLIER_COMPONENTS, "free")
+  return freeRegistry
+}
+
+const FREE_COMMUNICATION_SECTION: NavSection = {
+  labelKey: SUPPLIER_COMMUNICATION_SECTION.labelKey,
+  // No team chat: a free account is one person.
+  items: SUPPLIER_COMMUNICATION_SECTION.items
+    .filter((i) => i.href !== "/supplier/team-chat")
+    .map((i) => (i.href === "/supplier/chats" ? { ...i, titleKey: "free_nav_messages" } : i)),
+}
+
+/** The communication section under every supplier sidebar, for the plan. */
+export const supplierCommunicationSection = (plan: SupplierPlan): NavSection => (plan === "free" ? FREE_COMMUNICATION_SECTION : SUPPLIER_COMMUNICATION_SECTION)

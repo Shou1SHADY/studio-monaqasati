@@ -500,6 +500,14 @@
   },
   "Portal": {
     "Sidebar": {
+      "free_nav_rfqs": "طلبات التسعير",
+      "free_nav_offers": "عروضي",
+      "free_nav_orders": "الأوامر والتسليم",
+      "free_nav_invoices": "الفواتير والحوالات",
+      "free_nav_connections": "المقاولون",
+      "free_nav_account": "حساب الشركة",
+      "free_nav_messages": "المحادثات",
+      "free_plan_chip": "حساب مجاني",
       "supplier_portal": "بوابة الموردين",
       "contractor_portal": "بوابة المقاولين",
       "admin_portal": "بوابة الإدارة",
@@ -678,6 +686,8 @@
       "supplier_documents": "المستندات"
     },
     "Layout": {
+      "subscription_adds": "ما يضيفه الاشتراك",
+      "app_switcher_in_subscription": "ضمن الاشتراك",
       "app_switcher_label": "تبديل المكون",
       "app_switcher_see_all": "عرض كل المكونات",
       "search_placeholder": "بحث سريع...",
@@ -10917,6 +10927,8 @@
       "rfqv_stage_direct": "إسناد مباشر"
     },
     "Home": {
+      "tile_in_subscription": "ما يضيفه الاشتراك",
+      "home_plan_free": "حساب مجاني",
       "greet_morning": "صباح الخير",
       "greet_evening": "مساء الخير",
       "welcome_fallback": "شريكنا العزيز",
@@ -25159,6 +25171,9 @@
     }
   },
   "SupplierFree": {
+    "tileSales": "مفتوحة: {open} · جديدة: {fresh}",
+    "tileOrders": "للتوريد: {orders} · دعوات: {invites}",
+    "tileAccount": "اكتمال الملف {pct}%",
     "mWithdrawPh": "ملاحظة للمقاول عن السبب إن أردت (اختياري)",
     "phTitleUp": "أنشئ حسابك المجاني كمورّد",
     "phTitleIn": "الدخول برقم جوالك",

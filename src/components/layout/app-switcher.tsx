@@ -2,7 +2,7 @@
 
 import { useLocale, useTranslations } from "next-intl"
 import { Link, usePathname } from "@/i18n/routing"
-import { LayoutGrid, ArrowRight } from "lucide-react"
+import { LayoutGrid, ArrowRight, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -12,8 +12,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import {
-  CONTRACTOR_COMPONENTS,
-  SUPPLIER_COMPONENTS,
   resolveActiveContractorComponent,
   resolveActiveSupplierComponent,
   COMPONENT_ACCENT_CLASSES,
@@ -21,6 +19,8 @@ import {
 } from "@/lib/portal-components"
 import { useModuleComponents } from "@/hooks/useCompanyModules"
 import { usePermissions } from "@/hooks/usePermissions"
+import { usePortalRegistry } from "@/hooks/usePortalRegistry"
+import { usePortalFrame } from "@/components/layout/portal-frame-context"
 
 /** Gmail-style waffle-menu trigger — quick-switch between a portal's
  * standalone components. Contractor and supplier only: renders nothing on
@@ -35,12 +35,17 @@ export function AppSwitcher() {
   const isContractor = pathname.startsWith("/contractor")
   const isSupplier = pathname.startsWith("/supplier")
   const modules = useModuleComponents(isContractor ? "contractor" : isSupplier ? "supplier" : null)
+  const supplierComponents = usePortalRegistry("supplier")
+  const openSubscription = usePortalFrame()?.openSubscription
   if (!isContractor && !isSupplier) return null
 
   // Only the modules this member is allowed into — a tile they cannot open
-  // is a dead end, not a discovery hint.
+  // is a dead end, not a discovery hint. The exception is a module of a
+  // subscription the company is not on: it shows locked and says what the
+  // subscription adds (a free supplier, SUB-02).
   const components = visibleComponents(modules, can)
-  const activeId = (isContractor ? resolveActiveContractorComponent(pathname) : resolveActiveSupplierComponent(pathname)).id
+  const planLocked = modules.filter((c) => c.planLocked).sort((a, b) => a.displayOrder - b.displayOrder)
+  const activeId = (isContractor ? resolveActiveContractorComponent(pathname) : resolveActiveSupplierComponent(pathname, supplierComponents)).id
   // "See all components" lands on the portal home: its welcome screen IS the
   // full tile grid, the same for a contractor and a supplier (PortalHomeView).
   const appsHref = isContractor ? "/contractor" : "/supplier"
@@ -86,6 +91,22 @@ export function AppSwitcher() {
               </DropdownMenuItem>
             )
           })}
+          {planLocked.map((component) => (
+            <DropdownMenuItem
+              key={component.id}
+              onSelect={() => openSubscription?.()}
+              aria-label={`${tSidebar(component.labelKey)} · ${t("app_switcher_in_subscription")}`}
+              className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl text-center cursor-pointer focus:bg-muted [&_svg]:size-[18px]"
+            >
+              <span className="relative h-10 w-10 rounded-xl flex items-center justify-center bg-muted text-muted-foreground/60">
+                <component.icon size={18} />
+                <span className="absolute -bottom-1 -end-1 h-4 w-4 rounded-full bg-background border border-border grid place-items-center [&_svg]:size-[9px]">
+                  <Lock size={9} aria-hidden="true" />
+                </span>
+              </span>
+              <span className="text-[11px] font-semibold text-muted-foreground leading-tight line-clamp-2">{tSidebar(component.labelKey)}</span>
+            </DropdownMenuItem>
+          ))}
         </div>
         <DropdownMenuItem asChild className="p-0 gap-1.5 mt-2 rounded-b-md focus:bg-muted [&_svg]:size-3">
           <Link

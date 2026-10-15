@@ -22,7 +22,9 @@ import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { AppSwitcher } from "@/components/layout/app-switcher"
 import { ActivityBell } from "@/components/activities/ActivityBell"
 import { ModuleGate } from "@/components/layout/ModuleGate"
+import { usePortalFrame } from "@/components/layout/portal-frame-context"
 import { useModules } from "@/hooks/useCompanyModules"
+import { usePortalRegistry } from "@/hooks/usePortalRegistry"
 import { PortalBreadcrumbs } from "@/components/layout/portal-breadcrumbs"
 import { useUser, useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase"
 import { useLocale, useTranslations } from "next-intl"
@@ -129,9 +131,18 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
   const { linkable } = useModules()
+  // A plan's additions (a free supplier's counts, bell and search); null everywhere else.
+  const frame = usePortalFrame()
+  const supplierComponents = usePortalRegistry("supplier")
   const searchParams = useSearchParams()
-  const [searchQuery, setSearchQuery] = React.useState(searchParams.get("search") || "")
-  
+  const searchParam = frame?.search?.param ?? "search"
+  const [searchQuery, setSearchQuery] = React.useState(searchParams.get(searchParam) || "")
+  // A plan's frame stays mounted across its pages: its results page shows what was searched in the box (NAV-04).
+  const searchedHere = frame?.search && pathname === frame.search.path ? searchParams.get(frame.search.param) || "" : null
+  React.useEffect(() => {
+    if (searchedHere != null) setSearchQuery(searchedHere)
+  }, [searchedHere])
+
   React.useEffect(() => {
     if (!isUserLoading) {
       // An anonymous session (the guest RFQ/offer pages sign one in) is not an
@@ -218,9 +229,11 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   const isContractor = basePath === "contractor"
 
   // --- Notifications: fetch recent offers and RFQs relevant to current role ---
-  // Supplier: their own submitted offers + NEW RFQs matching their specializations
+  // Supplier: their own submitted offers + NEW RFQs matching their specializations.
+  // A plan that brings its own bell (the free supplier's) reads none of this.
+  const legacySupplierBell = isSupplier && !frame?.bell
   const supplierOffersQuery = useMemoFirebase(() => {
-    if (!isSupplier || isUserLoading || !user || !firestore) return null
+    if (!legacySupplierBell || isUserLoading || !user || !firestore) return null
     // Fall back to supplierId if no organizationId (matches supplier/offers/page.tsx pattern)
     if (profile?.organizationId) {
       return query(
@@ -233,17 +246,17 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
         where("supplierId", "==", user.uid)
       )
     }
-  }, [firestore, user, isUserLoading, isSupplier, profile?.organizationId])
+  }, [firestore, user, isUserLoading, legacySupplierBell, profile?.organizationId])
 
   const supplierMatchingRfqsQuery = useMemoFirebase(() => {
-    if (!isSupplier || isUserLoading || !user || !firestore) return null
+    if (!legacySupplierBell || isUserLoading || !user || !firestore) return null
     return query(
       collection(firestore, "rfqs"),
       where("status", "==", "New"),
       where("visibility", "==", "public"),
       limit(20)
     )
-  }, [firestore, user, isUserLoading, isSupplier])
+  }, [firestore, user, isUserLoading, legacySupplierBell])
 
   // Contractor: fetch their RFQs first to build rfqIds, then fetch offers on those
   const contractorRfqsQuery = useMemoFirebase(() => {
@@ -257,7 +270,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
 
   const { data: supplierOffersRaw } = useCollection(supplierOffersQuery)
   // The bell must not ring for an award Finance has not approved yet.
-  const { ordersById: supplierOrdersById } = useSupplierOrdersById(isSupplier ? profile?.organizationId || user?.uid : null)
+  const { ordersById: supplierOrdersById } = useSupplierOrdersById(legacySupplierBell ? profile?.organizationId || user?.uid : null)
   const supplierOffers = React.useMemo(
     () => (supplierOffersRaw ? asSupplierSees(supplierOffersRaw as any[], supplierOrdersById) : supplierOffersRaw),
     [supplierOffersRaw, supplierOrdersById]
@@ -460,6 +473,11 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
+    if (frame?.search) {
+      const q = searchQuery.trim()
+      if (q) router.push(`${frame.search.path}?${frame.search.param}=${encodeURIComponent(q)}`)
+      return
+    }
     if (searchQuery.trim()) {
       router.push(`/${basePath}/rfqs?search=${encodeURIComponent(searchQuery)}`)
     } else {
@@ -471,8 +489,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     const val = e.target.value
     setSearchQuery(val)
     
-    // Live filter if we are already on the rfqs list page
-    if (pathname.endsWith('/rfqs')) {
+    // Live filter if we are already on the rfqs list page (a plan with its own search page searches on submit)
+    if (!frame?.search && pathname.endsWith('/rfqs')) {
       if (val.trim()) {
         router.replace(`/${basePath}/rfqs?search=${encodeURIComponent(val)}`)
       } else {
@@ -657,7 +675,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   // every screen inside. Read once here from the registry the sidebar already
   // resolves against, so a module never has to colour itself.
   const moduleAccent = pathname.startsWith("/supplier")
-    ? resolveActiveSupplierComponent(pathname).accentToken
+    ? resolveActiveSupplierComponent(pathname, supplierComponents).accentToken
     : pathname.startsWith("/contractor")
       ? resolveActiveContractorComponent(pathname).accentToken
       : undefined
@@ -676,7 +694,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                 <TooltipTrigger asChild>
                   <form onSubmit={handleSearch} className="relative w-full">
                     <Search className={cn("absolute top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground", locale === 'ar' ? 'right-3' : 'left-3')} />
-                    <Input 
+                    <Input
+                      aria-label={t("search_placeholder")}
                       placeholder={t("search_placeholder")}
                       className={cn("bg-muted border-none focus-visible:ring-1", locale === 'ar' ? 'pr-10' : 'pl-10')}
                       value={searchQuery}
@@ -694,7 +713,20 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
           <div className={cn("flex items-center gap-2 md:gap-3", locale === 'ar' ? 'mr-auto' : 'ml-auto')}>
             <AppSwitcher />
             <LanguageSwitcher />
-            {(isSupplier || isContractor) && <ActivityBell portal={isSupplier ? "supplier" : "contractor"} />}
+            {(isSupplier || isContractor) && !frame?.hideActivityBell && <ActivityBell portal={isSupplier ? "supplier" : "contractor"} />}
+            {frame?.bell ? (
+              // The plan's bell opens its notifications page and counts what that page counts as unread (MSG-04).
+              <Button asChild variant="ghost" size="icon" className="relative text-muted-foreground overflow-visible focus-visible:ring-2 focus-visible:ring-ring">
+                <Link href={frame.bell.href} aria-label={frame.bell.count > 0 ? `${t("notifications")} · ${t("new_count", { count: frame.bell.count })}` : t("notifications")}>
+                  <Bell size={20} aria-hidden="true" />
+                  {frame.bell.count > 0 && (
+                    <span data-testid="portal-bell-count" className={cn("absolute top-0 h-4 min-w-4 px-0.5 rounded-full bg-destructive text-white text-[9px] font-bold flex items-center justify-center tabular-nums", locale === 'ar' ? 'right-0' : 'left-0')}>
+                      {frame.bell.count}
+                    </span>
+                  )}
+                </Link>
+              </Button>
+            ) : (
             <DropdownMenu onOpenChange={(open) => { if (!open) setSelectedNotifIds(new Set()) }}>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative text-muted-foreground overflow-visible focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none">
@@ -894,7 +926,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                 </div>
               </DropdownMenuContent>
             </DropdownMenu>
-            
+            )}
+
             <div className="h-8 w-px bg-border mx-1" />
             
             {isUserLoading ? (
@@ -917,6 +950,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuItem onClick={() => router.push(`/${basePath}/profile`)}>{t("profile")}</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => router.push(`/${basePath}/profile`)}>{t("settings")}</DropdownMenuItem>
+                  {frame?.openSubscription && (
+                    <DropdownMenuItem onClick={frame.openSubscription}>{t("subscription_adds")}</DropdownMenuItem>
+                  )}
                   {orgMemberships.length > 1 && (
                     <>
                       <DropdownMenuSeparator />
@@ -970,7 +1006,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
             {/* Every portal page except the two dashboard roots gets a way back up. */}
             <PortalBreadcrumbs />
             {/* Only the owner can complete the company profile — a member is never asked to (DEV-60). */}
-            {REQUIRE_COMPLETE_PROFILE && profile && profile.role !== "Admin" && legacyAwareRole(profile as Record<string, unknown>) === "owner" && (resolvedProfileCompleted !== true || !resolvedLegalDocuments?.cr?.url || !resolvedLegalDocuments?.vat?.url) && pathname !== `/${profile.role.toLowerCase()}/profile` && (
+            {REQUIRE_COMPLETE_PROFILE && !frame?.hideProfileBanner && profile && profile.role !== "Admin" && legacyAwareRole(profile as Record<string, unknown>) === "owner" && (resolvedProfileCompleted !== true || !resolvedLegalDocuments?.cr?.url || !resolvedLegalDocuments?.vat?.url) && pathname !== `/${profile.role.toLowerCase()}/profile` && (
               <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
                 <div className="flex items-center gap-3 text-amber-800">
                   <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />

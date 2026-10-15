@@ -4,7 +4,8 @@
 // (PortalHomeView — tiles for every module, locked ones with "request access",
 // what was touched last, the decisions of the day), fed with the supplier's
 // numbers: the RFQs open to him, his offers, and the orders waiting for his
-// acceptance. Browsing and answering RFQs lives in Sales → RFQs.
+// acceptance. Browsing and answering RFQs lives in Sales → RFQs. A free
+// supplier lands on the same view, fed from his free world (FreeHome).
 
 import { useMemo } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -22,7 +23,7 @@ import { displayPoNumber } from "@/lib/procurement/format"
 import type { PortalComponentId } from "@/lib/portal-components"
 import { recentOffers, supplierDecisions, supplierHomeCounts, type HomeOffer, type HomeRfq } from "@/lib/supplier-home"
 import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
-import { FreeToday } from "@/components/supplier-free/FreeToday"
+import { FreeHome } from "@/components/supplier-free/FreeHome"
 
 function LegacySupplierDashboard() {
   const firestore = useFirestore()
@@ -149,5 +150,5 @@ function LegacySupplierDashboard() {
 }
 
 export default function Page() {
-  return <PlanSwitch free={<FreeToday />} full={<LegacySupplierDashboard />} />
+  return <PlanSwitch free={<FreeHome />} full={<LegacySupplierDashboard />} />
 }
