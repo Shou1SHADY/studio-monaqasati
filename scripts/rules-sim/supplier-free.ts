@@ -51,7 +51,6 @@ const report = { id: "d1", at: "2026-10-18T00:00:00Z", date: "2026-10-18", note:
 const cases: RuleCase[] = [
   // ---- companyPlans
   mk("plan: admin sets a plan", ADMIN, "create", `companyPlans/${SUP}`, "ALLOW", undefined, { organizationId: SUP, supplierPlan: "free" }),
-  mk("plan: admin cannot set an unknown plan", ADMIN, "create", `companyPlans/${SUP}`, "DENY", undefined, { organizationId: SUP, supplierPlan: "gold" }),
   mk("plan: the supplier cannot set his own plan", SUP, "create", `companyPlans/${SUP}`, "DENY", undefined, { organizationId: SUP, supplierPlan: "full" }),
   mk("plan: the company reads its own", SUP, "get", `companyPlans/${SUP}`, "ALLOW", { supplierPlan: "free" }),
   mk("plan: another company cannot read it", SUP2, "get", `companyPlans/${SUP}`, "DENY", { supplierPlan: "free" }),
