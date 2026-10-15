@@ -308,8 +308,8 @@ export function ShowMore({ f, shown, total, onMore }: { f: Free; shown: number; 
 }
 
 /** A list header for a group: its label, its count from the WHOLE list, optionally its value. */
-export function GroupHead({ label, n, value, tone }: { label: string; n: number; value?: string; tone?: "r" | "a" | "m" | "g" }) {
-  const dot = tone === "r" ? "bg-destructive" : tone === "a" ? "bg-warning" : tone === "g" ? "bg-success" : "bg-muted-foreground/40"
+export function GroupHead({ label, n, value, tone }: { label: string; n: number; value?: string; tone?: "r" | "a" | "b" | "m" | "g" }) {
+  const dot = tone === "r" ? "bg-destructive" : tone === "a" ? "bg-warning" : tone === "b" ? "bg-cta" : tone === "g" ? "bg-success" : "bg-muted-foreground/40"
   return (
     <div className="mb-2 mt-5 flex items-center gap-2 first:mt-0">
       <span className={cn("h-2.5 w-2.5 rounded-full", dot)} aria-hidden="true" />

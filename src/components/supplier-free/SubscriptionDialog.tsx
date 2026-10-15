@@ -48,7 +48,10 @@ export function SubscriptionDialog({ onClose }: { onClose: () => void }) {
             </ul>
           </section>
         </div>
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            {t("close")}
+          </Button>
           <Button asChild>
             <Link href="/contact" onClick={onClose}>
               {t("upgCta")}

@@ -111,3 +111,6 @@ service-account.json
 
 # C:\Users\MCYF8797\Mdak\studio-monaqasati\index.html
 index.html
+# oh-my-claudecode session state
+.omc/
+**/.omc/

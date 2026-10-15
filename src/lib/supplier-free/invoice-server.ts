@@ -11,6 +11,7 @@ import { allLinesComplete } from "@/lib/procurement/po"
 import type { PoLogEntry, PurchaseOrder } from "@/lib/procurement/types"
 import { storedReceiptAccepts } from "./deal-logic"
 import { invoiceBlocks, type InvoiceBlockCode, type InvoiceFacts } from "./invoice-rules"
+import { discountReceipts } from "./discount-receipts"
 import { notifyNamed } from "./server-notify"
 
 export interface InvoiceInput {
@@ -92,6 +93,8 @@ export async function createSupplierInvoice(db: Firestore, s: InvoiceSupplier, i
         const net = prices.some((p) => p == null) ? null : r2(lines.reduce((sum, l) => sum + (Number(l.accepted) || 0) * (priceOf.get(String(l.poLineId)) as number), 0))
         return { id: String(d.docNumber || d.id), day: riyadh(d.confirmedAt), net }
       })
+    // A quantity the contractor kept at a discount and released is a receipt of its own, at the discounted price.
+    for (const dr of discountReceipts(po)) receipts.push({ id: dr.id, day: dr.day, net: dr.net })
     const lump = po.lines.length === 0 || po.lines.some((l) => l.unitPrice == null)
     const lockedGrns = input.grns.filter((_, i) => lockSnaps[i].exists)
     const facts: InvoiceFacts = {

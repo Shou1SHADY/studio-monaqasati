@@ -14,6 +14,7 @@ import type { PurchaseOrder } from "@/lib/procurement/types"
 import { addDaysTo, createDealLogic, dayNum } from "./deal-logic"
 import { rfqItems } from "./quote-rules"
 import { momentOf, riyadhDayOf } from "./format"
+import { discountReceipts } from "./discount-receipts"
 import type {
   ConnectionInvite,
   ContractorRef,
@@ -280,6 +281,13 @@ function targetOfLines(offer: Rec, items: DealItem[]): number {
   return Math.round(sum * 100) / 100
 }
 
+/** What the contractor decided about a line's rejected quantity, read off the stored line. */
+function rejectTermsFact(l: unknown): Pick<PoLineFact, "dec" | "repl" | "dst"> {
+  const x = l as { rejectDecision?: unknown; rejectReplaceBy?: unknown; rejectDiscountState?: unknown }
+  const dec = x.rejectDecision === "replace" || x.rejectDecision === "discount" || x.rejectDecision === "reduce" ? x.rejectDecision : null
+  return { dec, repl: dec === "replace" && typeof x.rejectReplaceBy === "string" && x.rejectReplaceBy ? x.rejectReplaceBy.slice(0, 10) : null, dst: x.rejectDiscountState === "wait" || x.rejectDiscountState === "released" ? x.rejectDiscountState : null }
+}
+
 function termsOfPo(po: PurchaseOrder & Rec): PaymentTerm[] {
   const list = Array.isArray(po.termsList) ? (po.termsList as Rec[]) : null
   if (list && list.length) return list.map((x) => ({ pct: numOf(x.pct), days: numOf(x.days) }))
@@ -407,7 +415,7 @@ export function deriveWorld(raw: RawWorld): World {
       const lines: PoLineFact[] = p.lines.map((l) => {
         const id = itemId(l)
         if (!items.some((i) => i.id === id)) items.push({ id, name: l.name, unit: l.unit, qty: l.quantity, spec: "" })
-        return { it: id, qty: l.quantity, price: l.unitPrice, got: l.accepted || 0, rej: l.rejected || 0, can: l.cancelled || 0, held: l.held || 0 }
+        return { it: id, qty: l.quantity, price: l.unitPrice, got: l.accepted || 0, rej: l.rejected || 0, can: l.cancelled || 0, held: l.held || 0, ...rejectTermsFact(l) }
       })
       const dec = declineOf(p)
       deal.po = {
@@ -458,6 +466,13 @@ export function deriveWorld(raw: RawWorld): World {
         }
         if (Object.keys(why).length) rcp.why = why
         deal.ship.push(rcp)
+      }
+      // A quantity kept at a discount and released: a receipt of its own, at the discounted price (decision 3).
+      for (const dr of discountReceipts(p)) {
+        const line = p.lines.find((x) => x.id === dr.lineId)
+        if (!line) continue
+        const id = itemId(line)
+        deal.ship.push({ st: "ok", grn: dr.id, no: "", date: dr.day, okAt: dr.day, t: "", by: "", items: { [id]: dr.qty }, got: { [id]: dr.qty }, net: dr.net })
       }
       const reports = Array.isArray(p.deliveryReports) ? (p.deliveryReports as unknown as Rec[]) : []
       for (const r of reports) {

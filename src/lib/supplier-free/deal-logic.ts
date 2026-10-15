@@ -151,7 +151,19 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
   /** What is still owed by the supplier: the quantity left less what sits on the contractor's hold (a certificate, a test,
    * the consultant) — he delivered it, so it is not his to deliver and never makes the order late. */
   const owedToDeliver = (d: Deal) =>
-    d.po && !isLump(d.po) ? r2(d.po.lines.reduce((s, l) => s + Math.max(0, lineSt(l).left - (l.held || 0)) * (l.price as number), 0)) : unsentValue(d)
+    d.po && !isLump(d.po) ? r2(d.po.lines.reduce((s, l) => s + lateShares(l).base * (l.price as number), 0)) : unsentValue(d)
+  /** A line's quantity still owed, split by when it falls due: the part due on the committed date, the part the contractor
+   * agreed to take back by a later date (replacement), and what is set aside — on hold, or kept at a discount (decision 3). */
+  function lateShares(l: PoLineFact): { base: number; replacement: number } {
+    const left = lineSt(l).left
+    const held = l.held || 0
+    const rej = Math.max(0, l.rej || 0)
+    const asideDiscount = l.dec === "discount" && l.dst === "wait" ? Math.min(rej, left) : 0
+    const replacement = l.dec === "replace" && l.repl ? Math.min(rej, Math.max(0, left - asideDiscount)) : 0
+    return { base: Math.max(0, r2(left - held - asideDiscount - replacement)), replacement }
+  }
+  /** A replacement whose own date has passed and which has not arrived. */
+  const replacementLate = (d: Deal) => !!d.po && !isLump(d.po) && d.po.lines.some((l) => lateShares(l).replacement > 0 && l.repl && daysTo(l.repl) < 0)
   const deliveredPct = (d: Deal) => {
     const v = r2(poValue(d) - canValue(d))
     return v > 0 ? Math.min(100, Math.round((gotValue(d) / v) * 100)) : 0
@@ -219,6 +231,7 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
   /** Accepted value of one receipt, before VAT. A lump-sum order has none until it is complete. */
   function receiptNet(d: Deal, r: DealReceipt): number {
     if (!d.po || isLump(d.po)) return 0
+    if (r.net != null) return r.net
     return r2(d.po.lines.reduce((s, l) => s + (r.got[l.it] != null ? r.got[l.it] : r.items[l.it] || 0) * (l.price as number), 0))
   }
   /** Value of the receipts no invoice names yet (before VAT) — what the supplier may still bill. An invoice below
@@ -240,9 +253,7 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
       d.po &&
       d.po.acc &&
       !d.closed &&
-      owedToDeliver(d) > 0 &&
-      daysTo(d.po.acc.date) < 0 &&
-      !waiting(d).some((s) => daysTo(s.date, (d.po as DealPo).acc!.date) <= 0)
+      ((owedToDeliver(d) > 0 && daysTo(d.po.acc.date) < 0 && !waiting(d).some((s) => daysTo(s.date, (d.po as DealPo).acc!.date) <= 0)) || (unsentValue(d) > 0 && replacementLate(d)))
     )
   const shipOnTime = (d: Deal, s: { date: string }) => !d.po || !d.po.acc || daysTo(d.po.acc.date, s.date) >= 0
 

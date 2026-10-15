@@ -75,6 +75,7 @@ export function FreeAccount() {
   const { t, profile } = f
   const q = useQueryState()
   const tab = TABS.find(([k]) => k === q.get("tab"))?.[0] || "basic"
+  const ratedCount = useReviews(profile?.orgId, f.pos).length
   if (!profile) return null
   const facts = profileFacts(profile.raw)
   const pct = profilePct(facts)
@@ -124,7 +125,7 @@ export function FreeAccount() {
         ariaLabel={t("navAccount")}
         active={tab}
         onSelect={(id) => q.set({ tab: id === "basic" ? "" : id })}
-        segments={TABS.map(([k, l]) => ({ id: k, label: t(l), count: k === "legal" && missing ? missing : undefined, tone: k === "legal" ? ("warn" as const) : undefined }))}
+        segments={TABS.map(([k, l]) => ({ id: k, label: t(l), count: k === "legal" && missing ? missing : k === "ratings" && ratedCount ? ratedCount : undefined, tone: k === "legal" ? ("warn" as const) : undefined }))}
       />
 
       {tab === "basic" && <BasicTab />}
@@ -254,7 +255,22 @@ function BasicTab() {
         </label>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <span className="text-xs text-muted-foreground">{t("abSaveHint")}</span>
-          <Button type="submit" disabled={busy} className="ms-auto bg-cta text-cta-foreground hover:bg-cta/90">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            className="ms-auto"
+            onClick={() => {
+              setTax(String(raw.taxNumber || ""))
+              setEmail(String(raw.email || profile.email || ""))
+              setCity(String(raw.city || ""))
+              setAddr(String(raw.nationalAddress || raw.location || ""))
+              setAbout(String(raw.description || ""))
+            }}
+          >
+            {t("cancel")}
+          </Button>
+          <Button type="submit" disabled={busy} className="bg-cta text-cta-foreground hover:bg-cta/90">
             {busy ? <Loader2 size={15} className="me-1.5 animate-spin" aria-hidden="true" /> : <Check size={15} className="me-1.5" aria-hidden="true" />}
             {t("saveChanges")}
           </Button>
@@ -323,7 +339,7 @@ function SpecsDialog({ onClose }: { onClose: () => void }) {
       setBusy(false)
     }
   }
-  const chip = (on: boolean) => cn("inline-flex min-h-8 items-center rounded-full border px-3 text-xs font-semibold", on ? "border-primary bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground")
+  const chip = (on: boolean) => cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", on ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:border-foreground/30 hover:text-foreground")
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
@@ -462,10 +478,14 @@ function WorksTab() {
   const works = ((raw.projects as { name?: string; client?: string; year?: number | string; value?: string }[] | undefined) || []).filter((w) => w && w.name)
   const certs = ((raw.certificates as { name?: string; expiryDate?: string }[] | undefined) || []).filter((c) => c && c.name)
   const onMdmak = world.deals.filter((d) => d.closed && d.closed.k === "paid")
-  const add = async (kind: "work" | "cert", v: Record<string, string>) => {
+  const storage = useStorage()
+  const add = async (kind: "work" | "cert", v: Record<string, string>, file: File | null) => {
     try {
       if (kind === "work") await save({ projects: [...works, { name: v.name, client: v.client, year: v.year, value: v.value }] })
-      else await save({ certificates: [...(((raw.certificates as unknown[]) || []) as object[]), { name: v.name, expiryDate: v.exp }] })
+      else {
+        const up = file && storage ? await uploadSupplierFile(storage, profile.orgId, "documents", file) : null
+        await save({ certificates: [...(((raw.certificates as unknown[]) || []) as object[]), { name: v.name, expiryDate: v.exp, ...(up ? { url: up.url } : {}) }] })
+      }
       toast({ title: t("tSaved") })
       setDlg(null)
     } catch {
@@ -512,14 +532,15 @@ function WorksTab() {
           )}
         </Panel>
       </div>
-      {dlg && <EntryDialog kind={dlg} onClose={() => setDlg(null)} onSave={(v) => void add(dlg, v)} />}
+      {dlg && <EntryDialog kind={dlg} onClose={() => setDlg(null)} onSave={(v, file) => void add(dlg, v, file)} />}
     </div>
   )
 }
 
-function EntryDialog({ kind, onClose, onSave }: { kind: "work" | "cert"; onClose: () => void; onSave: (v: Record<string, string>) => void }) {
+function EntryDialog({ kind, onClose, onSave }: { kind: "work" | "cert"; onClose: () => void; onSave: (v: Record<string, string>, file: File | null) => void }) {
   const { t } = useFree()
-  const [v, setV] = useState<Record<string, string>>({})
+  const [v, setV] = useState<Record<string, string>>(kind === "work" ? { year: String(new Date().getFullYear()) } : {})
+  const [file, setFile] = useState<File | null>(null)
   const block = !(v.name || "").trim() ? t(kind === "work" ? "blkWorkName" : "blkCertName") : ""
   const set = (k: string, val: string) => setV((x) => ({ ...x, [k]: val }))
   return (
@@ -539,12 +560,15 @@ function EntryDialog({ kind, onClose, onSave }: { kind: "work" | "cert"; onClose
             </div>
           </>
         ) : (
-          <label className="block text-sm font-semibold">{t("docExp")}<input type="date" className={`${input} mt-1`} value={v.exp || ""} onChange={(e) => set("exp", e.target.value)} /></label>
+          <>
+            <label className="block text-sm font-semibold">{t("docExp")}<input type="date" className={`${input} mt-1`} value={v.exp || ""} onChange={(e) => set("exp", e.target.value)} /></label>
+            <label className="block text-sm font-semibold">{t("acFile")}<input type="file" accept=".pdf,image/*" className={`${input} mt-1 h-auto py-2`} onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
+          </>
         )}
         <div className="flex items-center gap-3 border-t pt-3">
           <p className="flex-1 text-xs font-semibold text-destructive">{block}</p>
           <Button variant="outline" onClick={onClose}>{t("cancel")}</Button>
-          <Button disabled={!!block} onClick={() => onSave(v)} className="bg-cta text-cta-foreground hover:bg-cta/90">{t("save")}</Button>
+          <Button disabled={!!block} onClick={() => onSave(v, file)} className="bg-cta text-cta-foreground hover:bg-cta/90">{t("save")}</Button>
         </div>
       </DialogContent>
     </Dialog>

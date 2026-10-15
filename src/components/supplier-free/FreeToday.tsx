@@ -90,8 +90,18 @@ function TodayBody() {
 
   return (
     <div className="space-y-5">
-      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary to-cta/30 p-4 text-primary-foreground sm:p-6">
-        <div className="pointer-events-none absolute -top-20 start-1/3 h-56 w-96 rounded-full bg-accent/10 blur-3xl" aria-hidden="true" />
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary to-cta/30 p-4 text-primary-foreground shadow-lg sm:p-6">
+        <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-50" aria-hidden="true">
+          <defs>
+            <pattern id="free-brk" width="64" height="36" patternUnits="userSpaceOnUse">
+              <path d="M6 2h52l-6 14H0z" fill="none" className="stroke-white/10" />
+              <path d="M38 20h52l-6 14H32z" fill="none" className="stroke-white/10" />
+              <path d="M-26 20h52l-6 14h-52z" fill="none" className="stroke-white/10" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#free-brk)" />
+        </svg>
+        <div className="pointer-events-none absolute -top-24 -start-28 h-96 w-96 rounded-full bg-accent/25 blur-3xl [mask-image:radial-gradient(circle,black,transparent_65%)]" aria-hidden="true" />
         <div className="relative flex flex-wrap items-start justify-between gap-4 sm:gap-5">
           <div className="min-w-0 flex-1 basis-72">
             <h1 className="flex flex-wrap items-center gap-3 text-xl font-black sm:text-2xl">

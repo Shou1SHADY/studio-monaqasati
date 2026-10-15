@@ -906,7 +906,16 @@ function GrnView({ f, d, onClose, grn }: P & { grn?: string }) {
   const r = f.L.receipts(d).find((x) => x.grn === grn)
   if (!r) return null
   return (
-    <Shell title={f.t("grnModalT", { n: (r.no || "").replace(/^\D+-?/, "") || "—" })} onClose={onClose} wide>
+    <Shell
+      title={f.t("grnModalT", { n: (r.no || "").replace(/^\D+-?/, "") || "—" })}
+      onClose={onClose}
+      wide
+      actions={
+        <Button type="button" variant="outline" onClick={onClose}>
+          {f.t("close")}
+        </Button>
+      }
+    >
       <ReceiptDoc f={f} d={d} r={r} />
     </Shell>
   )

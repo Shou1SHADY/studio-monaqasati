@@ -269,10 +269,7 @@ export function FreeOpps() {
 }
 
 function chip(on: boolean) {
-  return cn(
-    "inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-    on ? "border-primary bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:border-foreground/30 hover:text-foreground"
-  )
+  return cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", on ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:border-foreground/30 hover:text-foreground")
 }
 
 function GroupRows({

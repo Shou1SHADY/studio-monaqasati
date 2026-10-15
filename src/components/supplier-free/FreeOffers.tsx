@@ -140,7 +140,7 @@ function OfferRow({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, s
           <span className="block text-xs text-muted-foreground">{L.offerSt(d) === "reduce" && o.reduce ? t("ocAsk", { v: fmt.money(o.reduce.target) }) : t("beforeVat")}</span>
         </span>
       </td>
-      <td className="hidden whitespace-nowrap px-3 text-xs xl:table-cell">
+      <td className="hidden whitespace-nowrap px-3 text-xs lg:table-cell">
         {fmt.date(v.at)}
         <span className="block text-muted-foreground">{[g === "reply" || g === "wait" ? t("ocValidTill", { x: fmt.date(v.valid) }) : "", ver].filter(Boolean).join(" · ")}</span>
       </td>
@@ -194,7 +194,7 @@ export function FreeOffers() {
   }
   const gHead = (g: (typeof GROUPS)[number]) => {
     const inG = list.filter((d) => L.offerSeg(d) === g.seg)
-    return <GroupHead label={t(g.k as "osAll")} n={inG.length} value={g.sum ? f.fmt.money(Math.round(inG.reduce((s, d) => s + L.offerTotal(d), 0))) : undefined} tone={g.tone === "a" ? "a" : g.tone === "g" ? "g" : "m"} />
+    return <GroupHead label={t(g.k as "osAll")} n={inG.length} value={g.sum ? f.fmt.money(Math.round(inG.reduce((s, d) => s + L.offerTotal(d), 0))) : undefined} tone={g.tone} />
   }
 
   const kpis: PageKpi[] = [
@@ -203,7 +203,7 @@ export function FreeOffers() {
     { id: "won", icon: Award, label: t("osWon"), value: cnt("won"), sub: t("ofkWonSub"), tone: "up", href: href({ seg: "won" }) },
   ]
   const select = "h-9 rounded-lg border bg-card px-2.5 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-  const chip = (on: boolean) => cn("inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold", on ? "border-primary bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:text-foreground")
+  const chip = (on: boolean) => cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", on ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:border-foreground/30 hover:text-foreground")
   return (
     <FreePage
       icon={Send}
@@ -233,12 +233,14 @@ export function FreeOffers() {
         <div className="ms-auto flex flex-wrap items-center gap-2">
           <form
             role="search"
+            className="relative"
             onSubmit={(e) => {
               e.preventDefault()
               q.set({ q: String(new FormData(e.currentTarget).get("q") || "") })
             }}
           >
-            <input name="q" defaultValue={filter.q || ""} key={filter.q || ""} placeholder={t("offSearchPh")} aria-label={t("offSearchPh")} className="h-9 w-56 rounded-lg border bg-card px-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+            <Search size={14} className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <input name="q" defaultValue={filter.q || ""} key={filter.q || ""} placeholder={t("offSearchPh")} aria-label={t("offSearchPh")} className="h-9 w-56 rounded-lg border bg-card ps-8 pe-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
           </form>
           <NativeSelect aria-label={t("thContractor")} className={select} value={filter.c || ""} onChange={(e) => q.set({ c: e.target.value })}>
             <option value="">{t("allContractors")}</option>
@@ -289,7 +291,7 @@ export function FreeOffers() {
                   <tr>
                     <th className="px-3 py-2 text-start">{t("thRequest")}</th>
                     <th className="px-3 text-start">{t("thOfferVal")}</th>
-                    <th className="hidden px-3 text-start xl:table-cell">{t("thSent")}</th>
+                    <th className="hidden px-3 text-start lg:table-cell">{t("thSent")}</th>
                     <th className="px-3 text-start">{t("thState")}</th>
                     <th />
                   </tr>

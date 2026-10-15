@@ -65,6 +65,12 @@ export interface PoLineFact {
   /** Cancelled from the order by the contractor. */
   can: number
   held?: number
+  /** What the contractor decided about the rejected quantity (decision 3): replace it (by a date), deduct it (it is cancelled), or keep it at a discount. */
+  dec?: "replace" | "discount" | "reduce" | null
+  /** The replacement's date, when the decision is "replace" and one was given. */
+  repl?: string | null
+  /** A discounted quantity waits on the contractor's release, then counts as accepted. */
+  dst?: "wait" | "released" | null
 }
 
 export interface PaymentTerm {
@@ -106,6 +112,8 @@ export interface DealReceipt {
   chk?: string[]
   note?: string
   files?: DealFile[]
+  /** The value (before VAT) when it is not the quantity at the order's price — a quantity kept at a discount. */
+  net?: number
 }
 
 /** "I delivered" — a date and a note, no quantity, number, driver or plate. */
