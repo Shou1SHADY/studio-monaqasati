@@ -73,7 +73,7 @@ export function freeHomeModel(f: HomeFree): FreeHomeModel {
   const fresh = isFresh(f)
   const pct = profileCompletion(f.profile)
   // The riyal sign stands left of the figure in both scripts (SAMA); a left-to-right isolate makes that the visual order in an Arabic page too.
-  const money = (v: number) => `⁦${fmt.cur} ${fmt.kM(v)}⁩`
+  const money = (v: number) => `⁦${fmt.cur} ${fmt.kM(v).replace(/ /g, " ")}⁩`
 
   // The banner's three figures (TDY-01): awaiting your reply · yours to deliver (before VAT) · owed to you (with VAT).
   const kpis: HomeKpi[] = fresh

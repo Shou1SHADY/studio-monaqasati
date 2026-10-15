@@ -48,7 +48,7 @@ export function Kpi({ k }: { k: PageKpi }) {
         {k.unit && <bdi className="text-xs font-bold text-muted-foreground max-sm:block sm:me-1">{k.unit}</bdi>}
         <bdi>{k.value}</bdi>
       </p>
-      {k.sub && <p className={cn("mt-1.5 inline-block max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold sm:text-[11px]", KPI_SUB[k.tone ?? "neutral"])}>{k.sub}</p>}
+      {k.sub && <p className={cn("mt-1.5 inline-block max-w-full rounded-md px-1.5 py-0.5 text-[10px] font-semibold sm:truncate sm:text-[11px]", KPI_SUB[k.tone ?? "neutral"])}>{k.sub}</p>}
     </>
   )
   const cls = "block h-full rounded-xl border bg-card p-3 text-start transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:p-4"
