@@ -85,6 +85,47 @@ Three independent read-only audits (design tokens, the prototype's screens again
 
 **QA pack — real gaps:** (1) rejected quantity — replace/deduct (decision 3) is not read by the supplier's lateness and the discounted quantity cannot be invoiced; (2) goods on the contractor's hold (`held`) count as "left"; (3) the account is "Verified" when the three documents are uploaded, with no Mdmak review (WF-21/ACC-03); (4) B-04: the contractor's phone is stripped in the client only; (5) no test of the G-01…G-12 invariants over `deriveWorld` output. A delivery report dated before the promise stops the lateness clock: that is the package's own rule (conflict 2), not a gap.
 
+## Inside the unified portal (15 Oct 2026, the owner's decision)
+
+"Don't break the system UI/UX and unified dashboard — same dashboard of components as contractor and other parts of the
+system." NAV-01/02 and TDY-01…07 are now realised inside the platform's own frame and home, not a frame of their own:
+
+- **One frame.** `SupplierPlanFrame` → `FreeShell` = `FreeWorldProvider` + `FreeOverlays` (deal drawer, quote form) around
+  `PortalLayout`. `FreeFrame` (its navy sidebar, top bar and subscription card) and `FreeToday` are deleted; `TaskCard.tsx`
+  keeps only `taskView`/`leftText`. The free pages render their own `FreePage` content inside the portal's main area.
+- **One registry, plan-aware.** `applySupplierPlan(components, plan)` / `supplierRegistry(plan)` / `supplierCommunicationSection(plan)`
+  in `src/lib/company-modules.ts`; the plan reaches the frame through `SupplierPlanContext` (`src/hooks/usePortalRegistry.ts`).
+  Read by `useModuleComponents("supplier")`, `useModules`, the sidebar, the active module and its colour, the breadcrumbs,
+  the app switcher and `ModuleGate`. "full" is the registry untouched (the same array); the contractor portal never reads the plan.
+- **What moved where (free plan).** Sales: Quote requests `/supplier/rfqs`, My quotes `/supplier/offers`. Order Management:
+  Dashboard `/supplier`, Orders & delivery, **Invoices & transfers** (under Finance in the full plan), Contractors. Governance:
+  Company account only (no team). Communication: Messages, Notifications (no team chat). CRM, Inventory, Finance, HR,
+  Manufacturing, My to-dos and Documents are **locked tiles** on the home and in the app switcher; opening one shows "What a
+  subscription adds" (SUB-02 — nothing free is locked; the window is never inside a workflow); their pages stay redirected
+  (`freePathAllowed`). My to-dos and Documents are locked because they read the full portal's queue and records — their
+  numbers would not be the free journey's (G-04).
+- **Home.** `/supplier` = `PortalHomeView` fed by `FreeHome` / `home-model.ts` from the free world: the three figures
+  (awaiting your reply · yours to deliver before VAT · owed to you with VAT), every task of "Needs your reply" as a decision
+  in the G-12 order (chip red when overdue, amber today/tomorrow; the card opens the deal's drawer over the list that owns it),
+  tile counts from `badges()` (red = waits on the supplier → urgent; open/new requests as the Sales tile's line). A new account
+  gets no figures, "Nothing yet" and "Complete your profile" (TDY-07).
+- **Sidebar counts (NAV-03).** `PortalFrameContext` (`src/components/layout/portal-frame-context.ts`) carries `navBadges`
+  (`freeNavBadges` — each item's page number; the account's completion %), the bell, the search target and the
+  subscription window. Nothing provides it on the contractor or full supplier portal.
+- **Bell (MSG-04).** For the free plan the bell is a link to Notifications counting what that page counts — unread
+  notifications except public-request announcements, plus connection invitations (`useFreeNotifications`); the legacy
+  supplier bell's offer and public-RFQ queries do not run. The to-do bell and the profile banner are not shown (the free
+  account has its own completion, ACC-04).
+- **Search (NAV-04).** The header's box sends a free supplier to `/supplier/search?q=` and shows the query there.
+- **Differences from the prototype, by this decision:** the sidebar shows the active module's pages (switch modules from the
+  app switcher or the home), not all eight in three groups; it folds the portal's way; the header search is hidden under
+  `md` as everywhere else in the portal; "Needs your reply" on the home shows three cards and the count of the rest, as every
+  portal home does — the rest are on their pages' counts.
+
+Tests: `supplier-free-unified-frame.test.tsx` (registry free/full/contractor, `/supplier/invoices` → Order Management vs
+Finance, free nav titles, the home model over the UAT demo world, the home and `SupplierPlanFrame` rendered with
+`PortalLayout`).
+
 ## Checks
 
 `npx tsc --noEmit` · `npx jest` (316 suites / 4,929 tests on 15 Oct, second pass) · `node scripts/check-i18n-links.mjs` · `npx next build` ·

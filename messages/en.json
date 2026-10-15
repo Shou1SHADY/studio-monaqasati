@@ -500,6 +500,14 @@
   },
   "Portal": {
     "Sidebar": {
+      "free_nav_rfqs": "Quote requests",
+      "free_nav_offers": "My quotes",
+      "free_nav_orders": "Orders & delivery",
+      "free_nav_invoices": "Invoices & transfers",
+      "free_nav_connections": "Contractors",
+      "free_nav_account": "Company account",
+      "free_nav_messages": "Messages",
+      "free_plan_chip": "Free account",
       "supplier_portal": "Suppliers Portal",
       "contractor_portal": "Contractors Portal",
       "admin_portal": "Admin Portal",
@@ -678,6 +686,8 @@
       "supplier_documents": "Documents"
     },
     "Layout": {
+      "subscription_adds": "What a subscription adds",
+      "app_switcher_in_subscription": "In the subscription",
       "app_switcher_label": "Switch component",
       "app_switcher_see_all": "See all components",
       "search_placeholder": "Quick search...",
@@ -10917,6 +10927,8 @@
       "rfqv_stage_direct": "Direct award"
     },
     "Home": {
+      "tile_in_subscription": "What a subscription adds",
+      "home_plan_free": "Free account",
       "greet_morning": "Good morning",
       "greet_evening": "Good evening",
       "welcome_fallback": "Dear Partner",
@@ -25159,6 +25171,9 @@
     }
   },
   "SupplierFree": {
+    "tileSales": "Open: {open} · New: {fresh}",
+    "tileOrders": "To deliver: {orders} · Invitations: {invites}",
+    "tileAccount": "Profile {pct}% complete",
     "mWithdrawPh": "A note to the contractor about why, if you want to (optional)",
     "phTitleUp": "Create your free supplier account",
     "phTitleIn": "Sign in with your mobile",

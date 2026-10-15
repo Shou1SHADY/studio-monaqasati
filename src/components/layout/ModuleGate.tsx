@@ -11,15 +11,16 @@ import { usePathname } from "next/navigation"
 import { Link } from "@/i18n/routing"
 import { useCompanyModules } from "@/hooks/useCompanyModules"
 import { belongsToOptionalModule, offModuleOwning, type ModulePortal } from "@/lib/company-modules"
-import { CONTRACTOR_COMPONENTS, SUPPLIER_COMPONENTS } from "@/lib/portal-components"
+import { usePortalRegistry } from "@/hooks/usePortalRegistry"
 
 export function ModuleGate({ children }: { children: ReactNode }) {
   const pathname = usePathname() || ""
   const portal: ModulePortal | null = pathname.startsWith("/contractor") ? "contractor" : pathname.startsWith("/supplier") ? "supplier" : null
   const { off, loading } = useCompanyModules(portal)
+  // The registry as the company's plan shapes it (a free supplier's locked modules own no page here).
+  const all = usePortalRegistry(portal)
   const t = useTranslations("Portal.Shared")
   if (!portal) return <>{children}</>
-  const all = portal === "supplier" ? SUPPLIER_COMPONENTS : CONTRACTOR_COMPONENTS
   if (loading) {
     return belongsToOptionalModule(pathname, all, portal) ? (
       <div className="flex h-[40vh] items-center justify-center">

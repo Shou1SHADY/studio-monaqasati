@@ -4,9 +4,10 @@ import { useMemo } from "react"
 import { usePathname } from "next/navigation"
 import { doc } from "firebase/firestore"
 import { useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
-import { COMPANY_MODULES, applyModuleSwitches, moduleOffFor, offSet, type ModulePortal, type OptionalModule } from "@/lib/company-modules"
+import { COMPANY_MODULES, applyModuleSwitches, moduleOffFor, offSet, supplierRegistry, type ModulePortal, type OptionalModule } from "@/lib/company-modules"
 import { CONTRACTOR_COMPONENTS, SUPPLIER_COMPONENTS, type PortalComponentDef } from "@/lib/portal-components"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
+import { useSupplierPlanName } from "@/hooks/usePortalRegistry"
 
 /** What the signed-in company has switched off. A company nobody has switched anything for has everything on. */
 export function useCompanyModules(portal: ModulePortal | null): { off: ReadonlySet<OptionalModule>; loading: boolean } {
@@ -19,10 +20,16 @@ export function useCompanyModules(portal: ModulePortal | null): { off: ReadonlyS
   return { off, loading: Boolean(portal) && (isLoading || (!ref && Boolean(user))) }
 }
 
-/** The portal's component registry as THIS company sees it (its switched-off modules left out). */
+/** The portal's component registry as THIS company sees it: a free supplier's plan registry (its plan decides, not the
+ * switches), else the full one with the switched-off modules left out. */
 export function useModuleComponents(portal: ModulePortal | null): PortalComponentDef[] {
   const { off } = useCompanyModules(portal)
-  return useMemo(() => (portal ? applyModuleSwitches(portal === "supplier" ? SUPPLIER_COMPONENTS : CONTRACTOR_COMPONENTS, off, portal) : []), [off, portal])
+  const plan = useSupplierPlanName()
+  return useMemo(() => {
+    if (!portal) return []
+    if (portal === "supplier" && plan === "free") return supplierRegistry("free")
+    return applyModuleSwitches(portal === "supplier" ? SUPPLIER_COMPONENTS : CONTRACTOR_COMPONENTS, off, portal)
+  }, [off, portal, plan])
 }
 
 /**
@@ -33,7 +40,8 @@ export function useModules(): { on: (id: OptionalModule) => boolean; off: Readon
   const pathname = usePathname() || ""
   const portal: ModulePortal | null = pathname.startsWith("/contractor") ? "contractor" : pathname.startsWith("/supplier") ? "supplier" : null
   const { off, loading } = useCompanyModules(portal)
-  const all = portal === "supplier" ? SUPPLIER_COMPONENTS : CONTRACTOR_COMPONENTS
+  const plan = useSupplierPlanName()
+  const all = portal === "supplier" ? supplierRegistry(plan) : CONTRACTOR_COMPONENTS
   return useMemo(
     () => ({
       on: (id: OptionalModule) => !off.has(id),
