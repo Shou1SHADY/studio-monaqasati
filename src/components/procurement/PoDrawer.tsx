@@ -634,7 +634,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                     <Button
                       disabled={busy != null}
                       onClick={() =>
-                        void run("reaward", () => reopenAwardAfterDecline(f, actor, po.id), "toast.reaward_done").then(() => setReawardAsk(false))
+                        void run("reaward", () => reopenAwardAfterDecline(po.id), "toast.reaward_done").then(() => setReawardAsk(false))
                       }
                     >
                       {t("next.reaward_confirm")}

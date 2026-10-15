@@ -6,9 +6,9 @@
 // a stale screen is refused, never half-applied. Notifications ride after the
 // write, best-effort, carrying i18n keys so each reader sees his own language.
 
-import { addDoc, collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where, type DocumentData, type Firestore, type UpdateData } from "firebase/firestore"
+import { addDoc, collection, doc, getDocs, query, runTransaction, serverTimestamp, where, type DocumentData, type Firestore, type UpdateData } from "firebase/firestore"
 import type { Translator } from "../mfg-events"
-import { buildExclusion, OFFER_ORDER_DECLINED } from "./award"
+import { buildExclusion } from "./award"
 import { drawRfqNumber, riyadhYear } from "./numbering"
 import { todayOf } from "./po"
 import {
@@ -28,8 +28,9 @@ import {
   type RfqLogEntry,
 } from "./rfq-detail"
 import { rfqMine, type RfqWriteActor } from "./rfq-access"
+import { ActRefused, callAct } from "@/lib/supplier-free/act-client"
+import type { ReopenAwardRefusal } from "./reopen-award"
 import { awaitsOutcome, emitRfqOutcomes, type OutcomeOffer } from "./rfq-outcome"
-import { PURCHASE_ORDERS, type ProcActor, type PurchaseOrder } from "./types"
 import { ProcWriteError } from "./writes"
 
 interface RfqDoc {
@@ -143,75 +144,25 @@ export async function cancelRfq(
 // Re-award after the supplier declined the order (Supplier 1.0 DEC, ORD-03)
 // ---------------------------------------------------------------------------
 
-export type ReopenAwardRefusal = "no_permission" | "not_your_rfq" | "not_declined" | "rfq_not_awarded" | "award_split_live"
-
-/** Why this order's award may not be reopened — null when it may. The order was cancelled by its supplier's
- * decline; the RFQ still reads `Awarded`; the buyer runs it (the award's own rule). */
-export function reopenAwardRefusal(
-  po: Pick<PurchaseOrder, "status" | "supplierDecline" | "rfqId" | "offerId"> | null,
-  rfq: Pick<RfqDoc, "status" | "createdByUserId" | "contractorId"> | null,
-  actor: Pick<ProcActor, "uid" | "isOwner" | "canPrepare" | "canApprove">
-): ReopenAwardRefusal | null {
-  if (!actor.isOwner && !actor.canPrepare) return "no_permission"
-  if (!po || po.status !== "cancelled" || !po.supplierDecline || !po.rfqId || !po.offerId) return "not_declined"
-  if (!rfq || rfq.status !== "Awarded") return "rfq_not_awarded"
-  if (!actor.isOwner && !actor.canApprove && (rfq.createdByUserId || rfq.contractorId || "") !== actor.uid) return "not_your_rfq"
-  return null
-}
+export { reopenAwardRefusal, type ReopenAwardRefusal } from "./reopen-award"
+const REOPEN_CODES = new Set<string>(["no_permission", "not_your_rfq", "not_declined", "rfq_not_awarded", "award_split_live"])
 
 /**
  * «أعد الترسية» — the supplier declined the order (`po.decline` cancels it and stamps `supplierDecline`); the RFQ
- * still reads `Awarded`, so nothing could be awarded again. In ONE transaction: the RFQ goes back to `New` (logged),
- * the declined quote closes as «اعتذر عن الأمر» with `declinedOrder` (it keeps its `poId`, so the supplier's deal still
- * reads «declined the order», and it leaves the comparison), and every quote that was told «awarded to another» loses
- * that outcome — it waits for a decision again. Then the ordinary award runs. A split award whose other orders still
- * live is refused: reopening would let their lines be awarded twice.
+ * still reads `Awarded`, so nothing could be awarded again. The server reopens it in one transaction (`award.reopen`,
+ * supplier-free/server-acts.ts): the RFQ goes back to `New` (logged), the declined quote closes as «اعتذر عن الأمر»
+ * with `declinedOrder`, and every quote told «awarded to another» waits for a decision again. It runs on the server
+ * because a buyer holding only `offers.accept` may not move the RFQ's status in the rules, and the ruleset has no
+ * room for one more branch.
  */
-export async function reopenAwardAfterDecline(firestore: Firestore, actor: ProcActor, poId: string, now = new Date()): Promise<{ rfqId: string }> {
-  const at = now.toISOString()
-  // The RFQ's quotes are found by a query (a transaction reads documents, not queries); each is re-read inside it.
-  const first = await getDoc(doc(firestore, PURCHASE_ORDERS, poId))
-  const firstRfq = first.exists() ? (first.data() as { rfqId?: string | null }).rfqId || "" : ""
-  const offerIds = firstRfq ? (await getDocs(query(collection(firestore, "offers"), where("rfqId", "==", firstRfq)))).docs.map((d) => d.id) : []
-  return runTransaction(firestore, async (tx) => {
-    const poSnap = await tx.get(doc(firestore, PURCHASE_ORDERS, poId))
-    const po = poSnap.exists() ? ({ ...(poSnap.data() as Omit<PurchaseOrder, "id">), id: poSnap.id } as PurchaseOrder) : null
-    const rfqId = po?.rfqId || ""
-    const rSnap = rfqId ? await tx.get(rfqRef(firestore, rfqId)) : null
-    const rfq = rSnap && rSnap.exists() ? (rSnap.data() as RfqDoc) : null
-    const refusal = reopenAwardRefusal(po, rfq, actor)
-    if (refusal || !po || !rfq) throw new ProcWriteError(refusal || "not_declined")
-    // Every quote on it, re-read: the declined one, the losers to reopen, and any other order still running.
-    const ids = [...new Set([po.offerId as string, ...offerIds])]
-    const reads: Array<{ id: string; data: { status?: string; poId?: string | null; outcome?: { k?: string } | null; declinedOrder?: unknown } }> = []
-    for (const id of ids) {
-      const s = await tx.get(doc(firestore, "offers", id))
-      if (s.exists()) reads.push({ id, data: s.data() as (typeof reads)[number]["data"] })
-    }
-    for (const r of reads) {
-      if (r.id === po.offerId || !r.data.poId || r.data.declinedOrder) continue
-      const other = await tx.get(doc(firestore, PURCHASE_ORDERS, r.data.poId))
-      if (other.exists() && (other.data() as { status?: string }).status !== "cancelled") throw new ProcWriteError("award_split_live")
-    }
-    const decline = po.supplierDecline as NonNullable<PurchaseOrder["supplierDecline"]>
-    tx.update(doc(firestore, "offers", po.offerId as string), {
-      status: OFFER_ORDER_DECLINED,
-      declinedOrder: { poId: po.id, poNumber: po.docNumber, at: decline.at, reason: decline.reason },
-      awaitingOrderApproval: false,
-      updatedAt: serverTimestamp(),
-    })
-    for (const r of reads) {
-      if (r.id === po.offerId || r.data.outcome?.k !== "lost") continue
-      tx.update(doc(firestore, "offers", r.id), { outcome: null, updatedAt: serverTimestamp() })
-    }
-    tx.update(rfqRef(firestore, rfqId), {
-      status: "New",
-      awardReopened: { poId: po.id, poNumber: po.docNumber, at, byId: actor.uid, byName: actor.name },
-      log: [...(rfq.log || []), rfqLogEntry(actor, "award_reopened", at, { params: { number: po.docNumber, supplier: po.supplierName } })],
-      updatedAt: serverTimestamp(),
-    })
-    return { rfqId }
-  })
+export async function reopenAwardAfterDecline(poId: string): Promise<{ rfqId: string }> {
+  try {
+    return await callAct<{ rfqId: string }>({ action: "award.reopen", poId })
+  } catch (err) {
+    // The server's refusal is one of the reopen codes (each has its sentence); "not found" reads as a missing order.
+    if (err instanceof ActRefused) throw new ProcWriteError(REOPEN_CODES.has(err.code) ? (err.code as ReopenAwardRefusal) : "order_missing")
+    throw err
+  }
 }
 
 export interface ExcludeInput {

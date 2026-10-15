@@ -9,7 +9,10 @@ import { FieldValue, type Firestore, type Transaction } from "firebase-admin/fir
 import { z } from "zod"
 import { riyadhDay } from "@/lib/hr/format"
 import { sarParam } from "@/lib/procurement/events"
+import { OFFER_ORDER_DECLINED } from "@/lib/procurement/award"
 import { canRecordAcceptance, lineOutstanding } from "@/lib/procurement/po"
+import { reopenAwardRefusal, type ReopenAwardRefusal } from "@/lib/procurement/reopen-award"
+import { rfqLogEntry } from "@/lib/procurement/rfq-detail"
 import type { PoDeliveryReport, PoLogEntry, PurchaseOrder } from "@/lib/procurement/types"
 import { callerOf } from "@/lib/receipt-links"
 import { paidInFull, storedReceiptAccepts } from "./deal-logic"
@@ -34,6 +37,7 @@ export type ActErrorCode =
   | "no_permission"
   | "not_found"
   | "invalid"
+  | ReopenAwardRefusal
 
 export class ActError extends Error {
   constructor(readonly code: ActErrorCode) {
@@ -68,6 +72,8 @@ export const actSchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("transfer.report"), poId: id, amount: z.number().positive().max(1e9), bank: z.string().trim().max(120), reference: z.string().trim().min(1).max(120), valueDate: day }),
   z.object({ action: z.literal("warranty.accept"), warrantyId: id }),
+  // The buyer reopens an award whose order the supplier declined (DEC).
+  z.object({ action: z.literal("award.reopen"), poId: id }),
 ])
 export type Act = z.infer<typeof actSchema>
 
@@ -461,7 +467,52 @@ export async function runBuyerAct(db: Firestore, uid: string, act: Act, now: Dat
     await toSupplier(await loadPo(db, String(w.poId)), "po_warranty_accepted", { item: String(w.itemName || "") })
     return {}
   }
+  if (act.action === "award.reopen") return reopenAward(db, caller, act.poId, at)
   throw new ActError("invalid")
 }
 
-export const isBuyerAct = (act: Act): boolean => act.action === "transfer.report" || act.action === "warranty.accept"
+/**
+ * «أعد الترسية» in ONE transaction: the RFQ goes back to `New` (logged), the declined quote closes as «اعتذر عن الأمر»
+ * with `declinedOrder` (it keeps its `poId`, so the supplier's deal still reads «declined the order», and it leaves the
+ * comparison), and every quote told «awarded to another» loses that outcome. A split award whose other orders still
+ * run is refused: reopening would let their lines be awarded twice.
+ */
+async function reopenAward(db: Firestore, caller: NonNullable<Awaited<ReturnType<typeof callerOf>>>, poId: string, at: string): Promise<{ rfqId: string }> {
+  const actor = { uid: caller.uid, isOwner: false, canPrepare: caller.can("offers.accept"), canApprove: caller.can("po.approve") }
+  return db.runTransaction(async (tx) => {
+    const poSnap = await tx.get(poRefOf(db, poId))
+    const po = poSnap.exists ? asPo(poSnap) : null
+    if (!po || po.organizationId !== caller.orgId) throw new ActError("not_found")
+    const rfqRef = db.collection("rfqs").doc(String(po.rfqId || "_"))
+    const rSnap = await tx.get(rfqRef)
+    const rfq = rSnap.exists ? (rSnap.data() as { status?: string; createdByUserId?: string; contractorId?: string; log?: unknown[] }) : null
+    const refusal = reopenAwardRefusal(po, rfq, actor)
+    if (refusal || !rfq) throw new ActError(refusal || "not_declined")
+    const offers = (await tx.get(db.collection("offers").where("rfqId", "==", po.rfqId))).docs.map((d) => ({ id: d.id, data: (d.data() || {}) as { poId?: string | null; outcome?: { k?: string } | null; declinedOrder?: unknown } }))
+    for (const o of offers) {
+      if (o.id === po.offerId || !o.data.poId || o.data.declinedOrder) continue
+      const other = await tx.get(poRefOf(db, o.data.poId))
+      if (other.exists && (other.data() as { status?: string }).status !== "cancelled") throw new ActError("award_split_live")
+    }
+    const decline = po.supplierDecline as NonNullable<PurchaseOrder["supplierDecline"]>
+    tx.update(db.collection("offers").doc(String(po.offerId)), {
+      status: OFFER_ORDER_DECLINED,
+      declinedOrder: { poId: po.id, poNumber: po.docNumber, at: decline.at, reason: decline.reason },
+      awaitingOrderApproval: false,
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+    for (const o of offers) {
+      if (o.id === po.offerId || o.data.outcome?.k !== "lost") continue
+      tx.update(db.collection("offers").doc(o.id), { outcome: null, updatedAt: FieldValue.serverTimestamp() })
+    }
+    tx.update(rfqRef, {
+      status: "New",
+      awardReopened: { poId: po.id, poNumber: po.docNumber, at, byId: caller.uid, byName: caller.name },
+      log: [...(Array.isArray(rfq.log) ? rfq.log : []), rfqLogEntry({ uid: caller.uid, name: caller.name }, "award_reopened", at, { params: { number: po.docNumber, supplier: po.supplierName } })],
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+    return { rfqId: String(po.rfqId) }
+  })
+}
+
+export const isBuyerAct = (act: Act): boolean => act.action === "transfer.report" || act.action === "warranty.accept" || act.action === "award.reopen"

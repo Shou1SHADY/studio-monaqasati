@@ -16,16 +16,16 @@ import { fakeFirestore, listCollection, readDoc, resetFakeDb, seed } from "@/tes
 import ar from "../../messages/ar.json"
 import en from "../../messages/en.json"
 import { CITIES_BY_COUNTRY, CITIES_EN, SAUDI_CITIES } from "@/lib/constants"
-import { competingOffers, OFFER_ORDER_DECLINED, reviewAward, supplierFactsFromProfile, supplierVerified } from "@/lib/procurement/award"
+import { reviewAward, supplierFactsFromProfile, supplierVerified } from "@/lib/procurement/award"
 import { PROC_EVENT_COPY_AR, PROC_EVENT_PARAM_COPY_AR, type ProcEvent } from "@/lib/procurement/events"
 import { deadlineEnd } from "@/lib/procurement/guest-supplier"
 import { daysLate, poBlocks, poLate, poWarnings } from "@/lib/procurement/po"
 import { incomingRows } from "@/lib/procurement/receipt-desk"
 import { rfqOutcomeEvent } from "@/lib/procurement/rfq-outcome"
-import { cancelRfq, createRfqWithNumber, reopenAwardAfterDecline, reopenAwardRefusal } from "@/lib/procurement/rfq-writes"
+import { cancelRfq, createRfqWithNumber, reopenAwardRefusal } from "@/lib/procurement/rfq-writes"
 import { frozenTermsOf, rfqTermsToStore } from "@/lib/procurement/terms-freeze"
 import { DEFAULT_POLICIES, type ProcActor, type PurchaseOrder } from "@/lib/procurement/types"
-import { awardRfq, retroactivePurchaseOrder, type AwardOfferLike, type AwardRfqInput } from "@/lib/procurement/writes"
+import { awardRfq, retroactivePurchaseOrder, type AwardOfferLike } from "@/lib/procurement/writes"
 import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
 import { isRfqDeadlinePassed } from "@/lib/rfq-share"
 import { createDealLogic } from "@/lib/supplier-free/deal-logic"
@@ -206,41 +206,7 @@ describe("re-award after the supplier declined", () => {
     expect(reopenAwardRefusal(po({ status: "cancelled", supplierDecline: declined as never }), rfq, a)).toBeNull()
   })
 
-  it("reopens the RFQ, closes the declined quote, puts the losers back to «awaiting a decision» — and the award runs again", async () => {
-    await reopenAwardAfterDecline(db, actor(), "p1", NOW)
-    const r = readDoc<{ status: string; awardReopened: { poId: string }; log: Array<{ action: string }> }>("rfqs/r1")
-    expect(r?.status).toBe("New")
-    expect(r?.awardReopened.poId).toBe("p1")
-    expect(r?.log.map((e) => e.action)).toEqual(["award_reopened"])
-    const o1 = readDoc<{ status: string; poId: string; declinedOrder: { poId: string; reason: string } }>("offers/o1")
-    expect(o1).toMatchObject({ status: OFFER_ORDER_DECLINED, poId: "p1", declinedOrder: { poId: "p1", reason: "stock" } })
-    expect(readDoc<{ outcome: unknown }>("offers/o2")?.outcome).toBeNull()
-    // The excluded one keeps its exclusion; the declined one leaves the comparison.
-    expect(readDoc<{ status: string }>("offers/o3")?.status).toBe("مرفوض")
-    const all = listCollection<{ status: string }>("offers")
-    expect(competingOffers(all).map((o) => o.id)).toEqual(["o2"])
-
-    const o2: AwardOfferLike = { id: "o2", price: "320", supplierId: "sup2", organizationId: "sup2", status: "قيد المراجعة", companyName: "S2" }
-    const input: AwardRfqInput = {
-      rfq: { id: "r1", title: "بلوك", organizationId: ORG, contractorId: "buyer", products: rfq.products },
-      offers: [o2],
-      groups: [{ offer: o2, lines: [{ rfqProductIndex: 0, unitPrice: 3.2 }], total: 320, requestedDeliveryDate: "2026-10-25", lowestForLines: 320, offLowest: false }],
-      unpicked: [],
-      awardReason: null,
-      breakdown: false,
-      policies: DEFAULT_POLICIES,
-    }
-    const out = await awardRfq(db, actor(), input, { now: NOW })
-    expect(out).toHaveLength(1)
-    expect(readDoc<{ status: string }>("rfqs/r1")?.status).toBe("Awarded")
-  })
-
-  it("is refused while another order of the same award still runs (a split award)", async () => {
-    seedPo("p2", { status: "approved", offerId: "o4" })
-    seed("offers/o4", { rfqId: "r1", supplierId: "sup4", organizationId: "sup4", status: "مقبول", price: "100", poId: "p2" })
-    await expect(reopenAwardAfterDecline(db, actor(), "p1", NOW)).rejects.toMatchObject({ code: "award_split_live" })
-    expect(readDoc<{ status: string }>("rfqs/r1")?.status).toBe("Awarded")
-  })
+  // The reopening itself runs on the server — supplier-free-reaward-server.test.ts.
 
   it("names the PRD's state in both languages and logs the reopening", () => {
     const C = (l: typeof ar) => (l as unknown as { Portal: { Contractor: Record<string, string>; Procurement: Record<string, string> & { rfqd: { log: Record<string, string> } } } }).Portal
