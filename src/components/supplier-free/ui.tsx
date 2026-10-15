@@ -102,7 +102,9 @@ export function FreePage({
 
 // ---- Address state: every screen, drawer and quote form opens by its address (NAV-06) -------------------
 
-/** The page's query string, read and rewritten without a scroll jump. Empty values leave the address. */
+/** The page's query string, read and rewritten without a scroll jump. Empty values leave the address. Every change is
+ * a new history entry — a segment, a tab, opening or closing the drawer — so the browser's back button walks them back
+ * (NAV-06); `{ replace: true }` is for what should not stack up, such as a form that leads straight to its result. */
 export function useQueryState() {
   const params = useSearchParams()
   const pathname = usePathname()
@@ -121,10 +123,10 @@ export function useQueryState() {
     [params, pathname]
   )
   const set = useCallback(
-    (patch: Record<string, string | null | undefined>, opts?: { push?: boolean }) => {
+    (patch: Record<string, string | null | undefined>, opts?: { replace?: boolean }) => {
       const url = href(patch)
-      if (opts?.push) router.push(url as never, { scroll: false })
-      else router.replace(url as never, { scroll: false })
+      if (opts?.replace) router.replace(url as never, { scroll: false })
+      else router.push(url as never, { scroll: false })
     },
     [href, router]
   )
@@ -135,28 +137,76 @@ export function useQueryState() {
 
 export type ViewMode = "cards" | "rows"
 
-export function useViewMode(page: string): [ViewMode, (v: ViewMode) => void] {
-  const [view, setView] = useState<ViewMode>("cards")
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(`mdmak.supplierFree.view.${page}`)
-      if (saved === "rows" || saved === "cards") setView(saved)
-    } catch {
-      /* storage blocked: the default view stays */
+/** The choice kept for the session even when browser storage is blocked (RFQ-08): read before storage, so moving
+ * between pages keeps it; storage then carries it across visits when it may. */
+const viewMemory = new Map<string, ViewMode>()
+const viewKey = (page: string) => `mdmak.supplierFree.view.${page}`
+
+export function readView(page: string): ViewMode {
+  const kept = viewMemory.get(page)
+  if (kept) return kept
+  try {
+    const saved = window.localStorage.getItem(viewKey(page))
+    if (saved === "rows" || saved === "cards") {
+      viewMemory.set(page, saved)
+      return saved
     }
-  }, [page])
+  } catch {
+    /* storage blocked: the default view */
+  }
+  return "cards"
+}
+
+export function writeView(page: string, v: ViewMode): void {
+  viewMemory.set(page, v)
+  try {
+    window.localStorage.setItem(viewKey(page), v)
+  } catch {
+    /* the choice lives for this session only */
+  }
+}
+
+export function useViewMode(page: string): [ViewMode, (v: ViewMode) => void] {
+  const [view, setView] = useState<ViewMode>(() => viewMemory.get(page) || "cards")
+  useEffect(() => setView(readView(page)), [page])
   const set = useCallback(
     (v: ViewMode) => {
       setView(v)
-      try {
-        window.localStorage.setItem(`mdmak.supplierFree.view.${page}`, v)
-      } catch {
-        /* the choice just is not remembered */
-      }
+      writeView(page, v)
     },
     [page]
   )
   return [view, set]
+}
+
+// ---- Selection that belongs to the list it was made on (RFQ-10) --------------------------------------------
+
+/** Selected ids, emptied whenever the list changes (a filter, a segment, a search), so a bulk action never reaches a
+ * card the supplier can no longer see. */
+export function useListSelection(listKey: string) {
+  const [sel, setSel] = useState<Record<string, boolean>>({})
+  useEffect(() => setSel({}), [listKey])
+  return [sel, setSel] as const
+}
+
+// ---- Rows that stack on a phone (NFR-03, RFQ-07, OFR-11) --------------------------------------------------
+
+/** A list table that becomes three-line cards under 768px: the head hides, every row is a block, the first cell is the
+ * title and every other cell carries its label from `data-l` (the prototype's `.tbl.stk`). No horizontal scroll. */
+export const stk = {
+  wrap: "rounded-xl border bg-card md:overflow-x-auto",
+  table: "w-full text-start max-md:block",
+  thead: "border-b bg-muted/40 text-[11px] font-bold text-muted-foreground max-md:hidden",
+  tbody: "max-md:block",
+  tr: "max-md:block max-md:px-3 max-md:py-2",
+  /** The first cell: the title block. */
+  head: "max-md:block max-md:max-w-none max-md:px-0 max-md:py-0.5 max-md:text-start",
+  /** Any other cell: its label at the start, its value at the end. */
+  cell: "max-md:flex max-md:min-w-0 max-md:items-center max-md:justify-between max-md:gap-2.5 max-md:px-0 max-md:py-0.5 max-md:text-end max-md:before:shrink-0 max-md:before:text-[11px] max-md:before:font-semibold max-md:before:text-muted-foreground max-md:before:content-[attr(data-l)]",
+  /** Buttons: no label, at the end. */
+  act: "max-md:flex max-md:justify-end max-md:px-0 max-md:pt-1.5",
+  /** Only on wide screens (a select box, a spacer). */
+  wide: "max-md:hidden",
 }
 
 export function ViewToggle({ view, onChange, f }: { view: ViewMode; onChange: (v: ViewMode) => void; f: Free }) {

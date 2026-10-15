@@ -5,7 +5,7 @@
 // four figures, and collapsible sections from the request to the transfer — every figure the one the lists show.
 
 import { useEffect } from "react"
-import { Building2, Check, MapPin, MessageSquare, Phone, Search, Send, Truck, Wallet } from "lucide-react"
+import { Building2, Check, Loader2, MapPin, MessageSquare, Phone, Search, Send, Truck, Wallet } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
@@ -27,16 +27,27 @@ export function DealDrawer() {
     if (d) markSeen(d.id)
   }, [d, markSeen])
   if (!id) return null
+  // Closing is a step of its own in the history: back reopens the deal, as it does for every address (NAV-06).
   const close = () => q.set({ deal: null, m: null, quote: null, mode: null })
   return (
     <Sheet open onOpenChange={(o) => !o && close()}>
       <SheetContent side={f.isAr ? "left" : "right"} className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl" aria-describedby="deal-desc">
-        {d ? <Body f={f} d={d} href={q.href} focusMsgs={q.get("m") === "1"} /> : <NotFound f={f} />}
+        {d ? <Body f={f} d={d} href={q.href} focusMsgs={q.get("m") === "1"} /> : f.ready ? <NotFound f={f} /> : <Loading f={f} />}
         <SheetDescription id="deal-desc" className="sr-only">
-          {d ? d.title : f.t("notFound")}
+          {d ? d.title : f.ready ? f.t("notFound") : f.t("loadingWorld")}
         </SheetDescription>
       </SheetContent>
     </Sheet>
+  )
+}
+
+/** A deep link (`?deal=`) opened before the world has loaded: a loader, never "not found" (NAV-06). */
+function Loading({ f }: { f: ReturnType<typeof useFree> }) {
+  return (
+    <div className="grid flex-1 place-items-center p-8 text-center" role="status" aria-busy="true">
+      <Loader2 size={24} className="animate-spin text-module" aria-hidden="true" />
+      <SheetTitle className="sr-only">{f.t("loadingWorld")}</SheetTitle>
+    </div>
   )
 }
 
@@ -88,12 +99,12 @@ function Body({ f, d, href, focusMsgs }: { f: ReturnType<typeof useFree>; d: Non
           </p>
           <div className="mt-2.5 flex flex-wrap gap-2">
             {showCall && c && (
-              <a href={`tel:${c.phone}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-card px-3 text-xs font-bold hover:bg-muted/50">
+              <a href={`tel:${c.phone}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-card px-3 text-xs font-bold hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <Phone size={13} aria-hidden="true" />
                 {t("call")}
               </a>
             )}
-            <Link href={href({ m: "1" }) as never} scroll={false} className={cn("inline-flex h-8 items-center gap-1.5 rounded-lg border bg-card px-3 text-xs font-bold hover:bg-muted/50")}>
+            <Link href={href({ m: "1" }) as never} scroll={false} className={cn("inline-flex h-8 items-center gap-1.5 rounded-lg border bg-card px-3 text-xs font-bold hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}>
               <MessageSquare size={13} aria-hidden="true" />
               {t("secMsgs")}
               {(d.chat?.unread || 0) > 0 && <span className="rounded-full bg-destructive px-1.5 text-[10px] text-white tabular-nums">{d.chat?.unread}</span>}

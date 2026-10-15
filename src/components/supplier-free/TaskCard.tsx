@@ -101,7 +101,7 @@ export function TaskCard({ f, a, href }: { f: Free; a: Task; href: (p: Record<st
         {v.title}
       </h3>
       {d && (
-        <Link href={href({ deal: d.id }) as never} scroll={false} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-module">
+        <Link href={href({ deal: d.id }) as never} scroll={false} className="flex items-center gap-1.5 rounded text-xs text-muted-foreground hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <FileText size={13} aria-hidden="true" />
           <bdi className="line-clamp-1">{d.title}</bdi>
         </Link>

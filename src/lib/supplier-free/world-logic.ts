@@ -243,19 +243,23 @@ export function createWorldLogic(today: string, world: World, vatRate?: number) 
   }
 
   /** The sidebar's counters, two colours, each equal to the number its page shows (NAV-03):
-   * red = awaits the supplier, blue = information. */
+   * red = awaits the supplier, blue = information. Today turns red only when a task is overdue; connection
+   * invitations and messages are information (the prototype's sidebar). */
   function badges() {
     const acts = allActs()
     const k = dashK()
+    const late = acts.some((a) => a.due && daysTo(a.due) < 0)
     const ordersYou = deals.filter((d) => ["new", "supply"].includes(poSt(d) as string)).length
     const invoicesYou = invoiceRows().filter((r) => r.st === "toinv" || r.st === "sent").length
+    const unreadMsgs = deals.reduce((s, d) => s + (d.chat ? d.chat.unread : 0), 0)
     return {
-      home: { n: acts.length, tone: "red" as const },
+      home: { n: acts.length, tone: late ? ("red" as const) : ("blue" as const) },
       opps: { n: k.oppsNew, tone: "blue" as const },
       offers: { n: k.reply, tone: "red" as const },
       orders: { n: ordersYou, tone: "red" as const },
       invoices: { n: invoicesYou, tone: "red" as const },
-      connections: { n: world.invites.length, tone: "red" as const },
+      connections: { n: world.invites.length, tone: "blue" as const },
+      messages: { n: unreadMsgs, tone: "blue" as const },
     }
   }
 

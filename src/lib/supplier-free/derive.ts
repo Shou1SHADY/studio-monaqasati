@@ -10,6 +10,7 @@
 import { awardDisclosed, supplierSegmentOf } from "@/lib/procurement/supplier"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import { addDaysTo, dayNum } from "./deal-logic"
+import { momentOf, riyadhDayOf } from "./format"
 import type {
   ConnectionInvite,
   ContractorRef,
@@ -38,15 +39,9 @@ const numOf = (v: unknown): number => {
   const n = Number(String(v ?? "").replace(/[,\s]/g, ""))
   return Number.isFinite(n) ? n : 0
 }
-const dayOf = (v: unknown): string => {
-  if (!v) return ""
-  if (typeof v === "string") return v.slice(0, 10)
-  if (typeof v === "object" && v !== null && "toDate" in v && typeof (v as { toDate: () => Date }).toDate === "function") {
-    return new Date((v as { toDate: () => Date }).toDate().getTime() + 3 * 3_600_000).toISOString().slice(0, 10)
-  }
-  if (typeof v === "object" && v !== null && "seconds" in v) return new Date(((v as { seconds: number }).seconds + 3 * 3600) * 1000).toISOString().slice(0, 10)
-  return ""
-}
+/** The Riyadh day of a stored value (NFR-05): a bare date as written, a moment — ISO string or Timestamp — shifted to
+ * Riyadh, so a request posted at 22:30 UTC is the next day's, as it is for the supplier reading it. */
+const dayOf = (v: unknown): string => (typeof v === "string" || (typeof v === "object" && v !== null) ? riyadhDayOf(v) : "")
 const timeOf = (iso: unknown): string => {
   if (typeof iso !== "string" || iso.length < 16) return ""
   const t = Date.parse(iso)
@@ -92,6 +87,24 @@ export interface RawWorld {
 }
 
 // ---- Small mappings --------------------------------------------------------------------
+
+/** A deal's conversation as its list reads it (MSG-02): the last message, when (every writer stamps `lastMessageAt`;
+ * `updatedAt` is the older field), whether it was his, and his unread count. Without a sender stamp, a last message
+ * the other side has not read yet and he has is his own. */
+export function chatOf(chat: Rec, myUid: string, chatId: string): NonNullable<Deal["chat"]> {
+  const at = chat.lastMessageAt || chat.updatedAt
+  const unreadFor = Array.isArray(chat.unreadFor) ? (chat.unreadFor as string[]) : []
+  const sender = str(chat.lastSenderId)
+  const mine = sender ? sender === myUid : unreadFor.length > 0 && !unreadFor.includes(myUid)
+  return {
+    last: str(chat.lastMessage),
+    lastAt: dayOf(at),
+    lastTs: momentOf(at),
+    mine,
+    unread: numOf((chat.unreadCounts as Rec | undefined)?.[myUid]) || (unreadFor.includes(myUid) ? 1 : 0),
+    chatId,
+  }
+}
 
 /** `RFQ-2026/031` → `2026/031`: the supplier reads the contractor's number as a word and a number. */
 export function bareNumber(n: unknown): string {
@@ -356,7 +369,7 @@ export function deriveWorld(raw: RawWorld): World {
       const disclosed = !offer.poId || awardDisclosed({ status: str(offer.status), poId: str(offer.poId), awaitingOrderApproval: !!offer.awaitingOrderApproval }, posById as ReadonlyMap<string, PurchaseOrder>)
       deal.offer = offerOf(offer, rfq, items, pricing, !!po, disclosed, today)
       const chat = chatByOffer.get(offer.id)
-      if (chat) deal.chat = { last: str(chat.lastMessage), lastAt: dayOf(chat.updatedAt), unread: numOf((chat.unreadCounts as Rec | undefined)?.[raw.myUid]) || (Array.isArray(chat.unreadFor) && (chat.unreadFor as string[]).includes(raw.myUid) ? 1 : 0), chatId: offer.id }
+      if (chat) deal.chat = chatOf(chat, raw.myUid, offer.id)
       if (!deal.chat && deal.offer) deal.chat = { last: "", lastAt: "", unread: 0, chatId: offer.id }
     }
 

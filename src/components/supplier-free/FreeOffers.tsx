@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils"
 import { r2, type OfferSeg } from "@/lib/supplier-free/deal-logic"
 import { PAGE_SIZE, type OfferFilter } from "@/lib/supplier-free/world-logic"
 import type { Deal } from "@/lib/supplier-free/types"
-import { FreePage, GroupHead, Pill, ShowMore, ViewToggle, VerifiedMark, docWord, useQueryState, useViewMode, type PageKpi } from "./ui"
+import { FreePage, GroupHead, Pill, ShowMore, ViewToggle, VerifiedMark, docWord, stk, useQueryState, useViewMode, type PageKpi } from "./ui"
 import { OfferPill } from "./Pills"
 import { useActions } from "./ActionsProvider"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
@@ -122,8 +122,8 @@ function OfferRow({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, s
   if (!o || !v) return null
   const ver = o.v.length > 1 ? t("ocVer", { n: o.v.length }) : ""
   return (
-    <tr className="border-b last:border-b-0 hover:bg-muted/30">
-      <td className="max-w-[300px] px-3 py-2.5">
+    <tr className={cn("border-b last:border-b-0 hover:bg-muted/30", stk.tr)}>
+      <td className={cn("max-w-[300px] px-3 py-2.5", stk.head)}>
         <Link href={href({ deal: d.id }) as never} scroll={false} className="block truncate text-sm font-bold hover:text-module" dir="auto">
           {d.title}
         </Link>
@@ -132,19 +132,23 @@ function OfferRow({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, s
           <bdi>{c?.name}</bdi> <VerifiedMark f={f} verified={!!c?.verified} /> · {docWord(f, "rfq", d.rfq)}
         </span>
       </td>
-      <td className="px-3 text-sm">
-        <b className="tabular-nums" dir="ltr">{fmt.money(L.offerTotal(d))}</b>
-        <span className="block text-xs text-muted-foreground">{L.offerSt(d) === "reduce" && o.reduce ? t("ocAsk", { v: fmt.money(o.reduce.target) }) : t("beforeVat")}</span>
+      <td className={cn("px-3 text-sm", stk.cell)} data-l={t("thOfferVal")}>
+        <span>
+          <b className="tabular-nums" dir="ltr">{fmt.money(L.offerTotal(d))}</b>
+          <span className="block text-xs text-muted-foreground">{L.offerSt(d) === "reduce" && o.reduce ? t("ocAsk", { v: fmt.money(o.reduce.target) }) : t("beforeVat")}</span>
+        </span>
       </td>
       <td className="hidden whitespace-nowrap px-3 text-xs xl:table-cell">
         {fmt.date(v.at)}
         <span className="block text-muted-foreground">{[g === "reply" || g === "wait" ? t("ocValidTill", { x: fmt.date(v.valid) }) : "", ver].filter(Boolean).join(" · ")}</span>
       </td>
-      <td className="px-3">
-        <OfferPill f={f} d={d} />
-        <span className={cn("mt-0.5 block text-xs", h.tone === "bad" ? "text-destructive" : h.tone === "warn" ? "text-warning" : "text-muted-foreground")}>{[h.txt, why(f, d)].filter(Boolean).join(" · ")}</span>
+      <td className={cn("px-3", stk.cell)} data-l={t("thState")}>
+        <span>
+          <OfferPill f={f} d={d} />
+          <span className={cn("mt-0.5 block text-xs", h.tone === "bad" ? "text-destructive" : h.tone === "warn" ? "text-warning" : "text-muted-foreground")}>{[h.txt, why(f, d)].filter(Boolean).join(" · ")}</span>
+        </span>
       </td>
-      <td className="whitespace-nowrap px-3 text-end">
+      <td className={cn("whitespace-nowrap px-3 text-end", stk.act)}>
         <StepButton f={f} d={d} href={href} />
       </td>
     </tr>
@@ -277,9 +281,9 @@ export function FreeOffers() {
         <>
           {list.length > PAGE_SIZE && <p className="text-xs text-muted-foreground">{t("showingN", { a: f.fmt.n(page.length), b: f.fmt.n(list.length) })}</p>}
           {view === "rows" ? (
-            <div className="overflow-x-auto rounded-xl border bg-card">
-              <table className="w-full text-start">
-                <thead className="border-b bg-muted/40 text-[11px] font-bold text-muted-foreground">
+            <div className={stk.wrap}>
+              <table className={stk.table}>
+                <thead className={stk.thead}>
                   <tr>
                     <th className="px-3 py-2 text-start">{t("thRequest")}</th>
                     <th className="px-3 text-start">{t("thOfferVal")}</th>
@@ -288,7 +292,7 @@ export function FreeOffers() {
                     <th />
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className={stk.tbody}>
                   {blocks.map((b, i) => (
                     <FragmentRows key={i} head={b.g ? gHead(b.g) : null}>
                       {b.items.map((d) => (
@@ -322,8 +326,8 @@ function FragmentRows({ head, children }: { head: ReactNode; children: ReactNode
   return (
     <>
       {head && (
-        <tr className="bg-muted/30">
-          <td colSpan={5} className="px-3 py-1.5">
+        <tr className={cn("bg-muted/30", stk.tr)}>
+          <td colSpan={5} className={cn("px-3 py-1.5", stk.head)}>
             {head}
           </td>
         </tr>

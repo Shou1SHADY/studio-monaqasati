@@ -5,13 +5,14 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Bell, ClipboardList, FileText, MessageSquare, Paperclip, Send, Shield, Truck, Upload, Wallet } from "lucide-react"
-import { addDoc, collection, doc, orderBy, query, updateDoc } from "firebase/firestore"
+import { addDoc, arrayRemove, collection, doc, orderBy, query, updateDoc, type Firestore } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { DrawerSection } from "@/components/module-ui/DrawerSection"
 import { Callout } from "@/components/module-ui/Callout"
 import { displayCategory } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { r2 } from "@/lib/supplier-free/deal-logic"
+import { riyadhDayOf } from "@/lib/supplier-free/format"
 import { sendDealMessage } from "@/lib/supplier-free/money-writes"
 import { canRegisterWarranty } from "@/lib/supplier-free/warranty"
 import type { Deal, DealReceipt, DealReport } from "@/lib/supplier-free/types"
@@ -574,6 +575,19 @@ export function SecWar({ f, d }: { f: Free; d: Deal }) {
 
 // ---- The conversation -----------------------------------------------------------------------------------------
 
+/** Reading the conversation clears the reader's own counter and takes only HIM off the unread list — the other side's
+ * flag is theirs to clear (MSG-01: writing `unreadFor: []` used to wipe the contractor's). */
+export function markChatRead(firestore: Firestore, chatId: string, uid: string): Promise<void> {
+  return updateDoc(doc(firestore, "chats", chatId), { unreadFor: arrayRemove(uid), [`unreadCounts.${uid}`]: 0 })
+}
+
+/** Which messages are the unread ones: the last `n` from the other side. */
+export function unreadMarks(list: readonly { senderId?: string }[], myUid: string, n: number): Set<number> {
+  const out = new Set<number>()
+  for (let i = list.length - 1; i >= 0 && out.size < n; i--) if (list[i].senderId !== myUid) out.add(i)
+  return out
+}
+
 export function SecMsgs({ f, d, focus }: { f: Free; d: Deal; focus: boolean }) {
   const { t, fmt, L } = f
   const firestore = useFirestore()
@@ -586,11 +600,14 @@ export function SecMsgs({ f, d, focus }: { f: Free; d: Deal; focus: boolean }) {
   const [sending, setSending] = useState(false)
   const end = useRef<HTMLDivElement>(null)
   const unread = d.chat?.unread || 0
+  // How many were unread when he opened it: those stay marked while he reads, though reading clears the counter.
+  const unreadAtOpen = useRef<number | null>(null)
+  if (unreadAtOpen.current === null) unreadAtOpen.current = unread
   useEffect(() => end.current?.scrollIntoView({ block: "nearest" }), [msgs?.length])
-  // Reading it clears the counter.
+  // Reading it clears HIS counter only — the contractor's unread flag stays (MSG-01).
   useEffect(() => {
     if (!firestore || !user || !chatId || !unread) return
-    void updateDoc(doc(firestore, "chats", chatId), { unreadFor: [], [`unreadCounts.${user.uid}`]: 0 }).catch(() => undefined)
+    void markChatRead(firestore, chatId, user.uid).catch(() => undefined)
   }, [firestore, user, chatId, unread])
   const offer = f.rawOffer(d.id)
   const send = async () => {
@@ -607,6 +624,7 @@ export function SecMsgs({ f, d, focus }: { f: Free; d: Deal; focus: boolean }) {
     }
   }
   const list = useMemo(() => msgs || [], [msgs])
+  const fresh = useMemo(() => unreadMarks(list, user?.uid || "", unreadAtOpen.current || 0), [list, user?.uid])
   return (
     <DrawerSection title={<span className="inline-flex items-center gap-2"><MessageSquare size={15} aria-hidden="true" />{t("secMsgs")}</span>} count={list.length || undefined} defaultOpen={focus || unread > 0}>
       <div id="sec-msgs" className="space-y-3 py-2">
@@ -614,10 +632,23 @@ export function SecMsgs({ f, d, focus }: { f: Free; d: Deal; focus: boolean }) {
           <div className="max-h-72 space-y-2 overflow-y-auto">
             {list.map((m, i) => {
               const mine = m.senderId === user?.uid
+              const isNew = fresh.has(i)
               return (
-                <div key={i} className={cn("max-w-[85%] rounded-xl px-3 py-2 text-sm", mine ? "ms-auto bg-cta/10" : "bg-muted")}>
-                  <small className="block text-[10px] text-muted-foreground">{mine ? t("you") : c?.name} · {fmt.date((m.createdAt || "").slice(0, 10))}</small>
-                  <span dir="auto">{m.text}</span>
+                <div key={i}>
+                  {isNew && !fresh.has(i - 1) && (
+                    <p className="my-1 flex items-center gap-2 text-[11px] font-bold text-destructive" role="separator">
+                      <span className="h-px flex-1 bg-destructive/30" aria-hidden="true" />
+                      {t("newMsgs")}
+                      <span className="h-px flex-1 bg-destructive/30" aria-hidden="true" />
+                    </p>
+                  )}
+                  <div className={cn("max-w-[85%] rounded-xl px-3 py-2 text-sm", mine ? "ms-auto bg-cta/10" : "bg-muted", isNew && "ring-1 ring-destructive/40")}>
+                    <small className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                      {isNew && <span className="h-1.5 w-1.5 rounded-full bg-destructive" aria-label={t("unreadDot")} />}
+                      <span>{mine ? t("you") : c?.name} · {fmt.date(riyadhDayOf(m.createdAt))}</span>
+                    </small>
+                    <span dir="auto">{m.text}</span>
+                  </div>
                 </div>
               )
             })}
@@ -635,7 +666,7 @@ export function SecMsgs({ f, d, focus }: { f: Free; d: Deal; focus: boolean }) {
             }}
           >
             <input value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder={t("msgPh", { c: c?.name || "" })} aria-label={t("secMsgs")} className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-            <button disabled={sending || !text.trim()} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-cta px-3 text-sm font-bold text-cta-foreground hover:bg-cta/90 disabled:opacity-50">
+            <button disabled={sending || !text.trim()} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-cta px-3 text-sm font-bold text-cta-foreground hover:bg-cta/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
               <Send size={14} aria-hidden="true" />
               {t("send")}
             </button>
