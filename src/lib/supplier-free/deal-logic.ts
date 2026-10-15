@@ -148,6 +148,10 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
   const canValue = (d: Deal) => sumLines(d, (x) => x.can)
   const gotValue = (d: Deal) => (d.po && isLump(d.po) ? (allGot(d) ? lumpTotal(d) : 0) : sumLines(d, (x) => x.got))
   const unsentValue = (d: Deal) => (d.po && isLump(d.po) ? (allGot(d) ? 0 : lumpTotal(d)) : sumLines(d, (x) => x.left))
+  /** What is still owed by the supplier: the quantity left less what sits on the contractor's hold (a certificate, a test,
+   * the consultant) — he delivered it, so it is not his to deliver and never makes the order late. */
+  const owedToDeliver = (d: Deal) =>
+    d.po && !isLump(d.po) ? r2(d.po.lines.reduce((s, l) => s + Math.max(0, lineSt(l).left - (l.held || 0)) * (l.price as number), 0)) : unsentValue(d)
   const deliveredPct = (d: Deal) => {
     const v = r2(poValue(d) - canValue(d))
     return v > 0 ? Math.min(100, Math.round((gotValue(d) / v) * 100)) : 0
@@ -236,7 +240,7 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
       d.po &&
       d.po.acc &&
       !d.closed &&
-      unsentValue(d) > 0 &&
+      owedToDeliver(d) > 0 &&
       daysTo(d.po.acc.date) < 0 &&
       !waiting(d).some((s) => daysTo(s.date, (d.po as DealPo).acc!.date) <= 0)
     )

@@ -73,6 +73,18 @@ templates, all 55 QA-pack checks, and a correctness review of the morning's merg
 - QA-pack checks that differ on purpose: invoice per receipt (decision 1) vs "after full receipt" in G-07/G-11/WF-12; notes for decline/final/sample/missing transfer go as notifications, not chat (WF-22); specialties apply at once (PRD ACC-02) where the pack expects review.
 - PRD decisions 5–12 remain open (second free user, visitor-link rules, validity expiry, ±3% tolerance, non-VAT supplier, question visibility, numbering code, discount on total).
 
+## UI and prototype audit (15 Oct 2026, evening)
+
+Three independent read-only audits (design tokens, the prototype's screens against the code, the QA pack against the code) and a live check of UAT in Chrome.
+
+**Colours, fonts, shapes — decision.** The prototype's own palette (brand #0a89c1, bg #f5f7fa, IBM Plex Sans Arabic, 15 px cards, 11 px buttons) is mapped onto the application's tokens, never copied: brand → `cta` through `data-accent="cta"` (`bg-module`/`text-module`), ink/ink2/ink3 → `foreground`/`secondary`/`muted-foreground`, line → `border`, navy → `primary`/`sidebar`, red/amber/green → `destructive`/`warning`/`success`, 15 px → `rounded-xl`/`rounded-2xl`, font → `font-body` (Noto Sans Arabic / Inter; Plex is not imported). Shared pieces: `StatusPill`, `DrawerSection`, `EmptyState`, `Callout`, `NativeSelect`; page header and KPI cards now match `ModuleHeader`.
+
+**Fixed:** the whole card/row opens its deal (`useRowGo`); request cards carry the stage top edge; Enter submits a dialog; destructive dialogs are red; withdraw takes a note for the conversation and "sample sent" posts its message; notices carry a kind icon and tone; drawer section summaries; archive on Today's request cards; `slate-*` on the navy frame replaced by sidebar tokens; opaque frame background. **Render sweep** (`supplier-free-render-sweep.test.tsx`, the package's qa_sweep): nine screens x two languages over the prototype's 144 deals, no `undefined`/`NaN`/`{var}`/old codes, no unnamed button.
+
+**Still different (low impact, left on purpose or open):** hand-styled `h-8` action buttons and filter chips instead of `Button`/`Chip` (same look, one size smaller than `Button sm`); raw inputs with the shared class string instead of `ui/input`; a few missing `focus-visible` rings on row links; the hero has a gradient and glow but not the prototype's brick pattern; contractors request dialog uses a select where the prototype has a radio list; Company account: no Cancel on Basic, no file on "Add certificate", no count badge on Ratings.
+
+**QA pack — real gaps:** (1) rejected quantity — replace/deduct (decision 3) is not read by the supplier's lateness and the discounted quantity cannot be invoiced; (2) goods on the contractor's hold (`held`) count as "left"; (3) the account is "Verified" when the three documents are uploaded, with no Mdmak review (WF-21/ACC-03); (4) B-04: the contractor's phone is stripped in the client only; (5) no test of the G-01…G-12 invariants over `deriveWorld` output. A delivery report dated before the promise stops the lateness clock: that is the package's own rule (conflict 2), not a gap.
+
 ## Checks
 
 `npx tsc --noEmit` · `npx jest` (316 suites / 4,929 tests on 15 Oct, second pass) · `node scripts/check-i18n-links.mjs` · `npx next build` ·
