@@ -126,6 +126,7 @@ export function FreeOrders() {
     <FreePage icon={FileText} title={t("navOrders")} description={t("poSub")} kpis={kpis}>
       <div className="flex flex-wrap items-center gap-3">
         <SegmentedNav
+          variant="track"
           ariaLabel={t("navOrders")}
           active={seg}
           onSelect={(id) => q.set({ seg: id === "all" ? "" : id })}

@@ -133,6 +133,7 @@ export function FreeInvoices() {
     <FreePage icon={Wallet} title={t("navInvoices")} description={t("invSub")} kpis={kpis}>
       <div className="flex flex-wrap items-center gap-3">
         <SegmentedNav
+          variant="track"
           ariaLabel={t("navInvoices")}
           active={seg}
           onSelect={(id) => q.set({ seg: id === "all" ? "" : id })}

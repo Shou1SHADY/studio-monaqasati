@@ -121,6 +121,7 @@ export function FreeOpps() {
     >
       <div className="flex flex-wrap items-center gap-3">
         <SegmentedNav
+          variant="track"
           ariaLabel={t("oppT")}
           active={tab}
           onSelect={(id) => setParam({ tab: id === "all" ? "" : id })}

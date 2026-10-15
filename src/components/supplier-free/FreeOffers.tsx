@@ -218,6 +218,7 @@ export function FreeOffers() {
     >
       <div className="flex flex-wrap items-center gap-3">
         <SegmentedNav
+          variant="track"
           ariaLabel={t("navOffers")}
           active={seg}
           onSelect={(id) => q.set({ seg: id === "all" ? "" : id })}
