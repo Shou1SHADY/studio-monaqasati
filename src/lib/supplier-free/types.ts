@@ -195,7 +195,7 @@ export interface Deal {
   /** The contractor's payment terms shown before quoting. */
   terms?: PaymentTerm[]
   /** The conversation of the deal: its last message and what the supplier has not read. */
-  chat?: { last: string; lastAt: string; unread: number; chatId: string }
+  chat?: { last: string; lastAt: string; unread: number; chatId: string; /** ms of the last message, for ordering. */ lastTs?: number; /** The last message is his own. */ mine?: boolean }
   /** Stars the supplier gave the contractor after full payment. */
   rated?: { stars: number; text: string; at: string }
 }

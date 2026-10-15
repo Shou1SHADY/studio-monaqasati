@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 import { displayCategory } from "@/lib/constants"
 import type { Deal } from "@/lib/supplier-free/types"
 import type { Free } from "./useFree"
-import { DeadlinePill, Pill, VerifiedMark, dealPlace } from "./ui"
+import { DeadlinePill, Pill, VerifiedMark, dealPlace, stk } from "./ui"
 
 interface Props {
   f: Free
@@ -100,11 +100,11 @@ export function RequestRow({ f, d, href, selected, onSelect, onArchive }: Props)
   const archived = !!f.world.arch[d.id]
   const i0 = d.items[0]
   return (
-    <tr className={cn("border-b last:border-b-0 hover:bg-muted/30", selected && "bg-module/5")}>
-      <td className="w-9 ps-3">
+    <tr className={cn("border-b last:border-b-0 hover:bg-muted/30", stk.tr, selected && "bg-module/5")}>
+      <td className={cn("w-9 ps-3", stk.wide)}>
         {onSelect && <input type="checkbox" checked={!!selected} onChange={(e) => onSelect(d.id, e.target.checked)} aria-label={f.t("selOne")} className="h-4 w-4 accent-[hsl(var(--module))]" />}
       </td>
-      <td className="max-w-[320px] px-3 py-2.5">
+      <td className={cn("max-w-[320px] px-3 py-2.5", stk.head)}>
         <Link href={href({ deal: d.id }) as never} scroll={false} className="block truncate text-sm font-bold hover:text-module" dir="auto">
           {d.title}
         </Link>
@@ -114,25 +114,25 @@ export function RequestRow({ f, d, href, selected, onSelect, onArchive }: Props)
         </p>
       </td>
       <td className="hidden px-3 text-xs xl:table-cell">{displayCategory(d.cat, f.locale)}</td>
-      <td className="px-3 text-xs">
+      <td className={cn("px-3 text-xs", stk.cell)} data-l={f.t("thFirstItem")}>
         {i0 && (
-          <>
+          <span className="min-w-0 max-md:truncate">
             <b className="tabular-nums" dir="ltr">
               {f.fmt.n(i0.qty)} {i0.unit}
             </b>
-            <p className="truncate text-muted-foreground">
+            <span className="block truncate text-muted-foreground max-md:ms-1 max-md:inline">
               <bdi>{i0.name}</bdi>
               {d.items.length > 1 && ` ${f.t("plusMore", { n: f.pl("pl_item", d.items.length - 1) })}`}
-            </p>
-          </>
+            </span>
+          </span>
         )}
       </td>
       <td className="hidden whitespace-nowrap px-3 text-xs md:table-cell">{f.fmt.date(d.needBy)}</td>
-      <td className="px-3">
+      <td className={cn("px-3", stk.cell)} data-l={f.t("fDeadline")}>
         <DeadlinePill f={f} iso={d.deadline} />
       </td>
-      <td className="whitespace-nowrap px-3 text-end">
-        <Link href={href({ quote: d.id, mode: "new" }) as never} scroll={false} className="inline-flex h-8 items-center rounded-lg bg-cta px-3 text-xs font-bold text-cta-foreground hover:bg-cta/90">
+      <td className={cn("whitespace-nowrap px-3 text-end", stk.act)}>
+        <Link href={href({ quote: d.id, mode: "new" }) as never} scroll={false} className="inline-flex h-8 items-center rounded-lg bg-cta px-3 text-xs font-bold text-cta-foreground hover:bg-cta/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           {f.t("btnOffer")}
         </Link>
         {onArchive && (
@@ -141,7 +141,7 @@ export function RequestRow({ f, d, href, selected, onSelect, onArchive }: Props)
             onClick={() => onArchive(d.id, !archived)}
             title={archived ? f.t("unarchive") : f.t("notForMe")}
             aria-label={archived ? f.t("unarchive") : f.t("notForMe")}
-            className="ms-1.5 inline-grid h-8 w-8 place-items-center rounded-lg border text-muted-foreground hover:text-foreground"
+            className="ms-1.5 inline-grid h-8 w-8 place-items-center rounded-lg border text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {archived ? <ArchiveRestore size={15} aria-hidden="true" /> : <Archive size={15} aria-hidden="true" />}
           </button>

@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils"
 import { PAGE_SIZE, type OppFilter } from "@/lib/supplier-free/world-logic"
 import type { Deal } from "@/lib/supplier-free/types"
 import { RequestCard, RequestRow } from "./RequestCard"
-import { FreePage, GroupHead, ShowMore, ViewToggle, useQueryState, useViewMode, type PageKpi } from "./ui"
+import { FreePage, GroupHead, ShowMore, ViewToggle, stk, useListSelection, useQueryState, useViewMode, type PageKpi } from "./ui"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { useFree } from "./useFree"
 
@@ -33,7 +33,6 @@ export function FreeOpps() {
   const { toast } = useToast()
   const [view, setView] = useViewMode("opps")
   const [n, setN] = useState(PAGE_SIZE)
-  const [sel, setSel] = useState<Record<string, boolean>>({})
 
   const tab = (["all", "new", "invite", "arch"] as const).find((x) => x === q.get("tab")) || "all"
   const filter: OppFilter = {
@@ -47,6 +46,7 @@ export function FreeOpps() {
   }
   const key = JSON.stringify(filter)
   useEffect(() => setN(PAGE_SIZE), [key])
+  const [sel, setSel] = useListSelection(key)
 
   const list = useMemo(() => L.opps(filter), [L, key])
   const all = useMemo(() => L.opps({}), [L])
@@ -208,9 +208,9 @@ export function FreeOpps() {
             </button>
           </p>
           {view === "rows" ? (
-            <div className="overflow-x-auto rounded-xl border bg-card">
-              <table className="w-full text-start">
-                <thead className="border-b bg-muted/40 text-[11px] font-bold text-muted-foreground">
+            <div className={stk.wrap}>
+              <table className={stk.table}>
+                <thead className={stk.thead}>
                   <tr>
                     <th className="w-9" />
                     <th className="px-3 py-2 text-start">{t("thRequest")}</th>
@@ -221,7 +221,7 @@ export function FreeOpps() {
                     <th />
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className={stk.tbody}>
                   {blocks.map((b, i) => (
                     <GroupRows key={i} f={f} b={b} n={b.g ? groupN(b.g) : 0} sel={sel} onSelect={onSelect} href={href} archive={(id, on) => void doArchive([id], on)} />
                   ))}
@@ -260,7 +260,7 @@ export function FreeOpps() {
         <Callout tone="info">
           <span className="inline-flex items-start gap-1.5">
             <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-            {t("oppListSub", { s: profile.specializations.map((c) => displayCategory(c, f.locale)).join("، ") || "—", c: profile.coverageCities.map((c) => displayCity(c, f.locale)).join("، ") || "—" })}
+            {t("oppListSub", { s: profile.specializations.map((c) => displayCategory(c, f.locale)).join(t("listSep")) || "—", c: profile.coverageCities.map((c) => displayCity(c, f.locale)).join(t("listSep")) || "—" })}
           </span>
         </Callout>
       )}
@@ -295,8 +295,8 @@ function GroupRows({
   return (
     <>
       {b.g && (
-        <tr className="bg-muted/30">
-          <td colSpan={7} className="px-3 py-1.5">
+        <tr className={cn("bg-muted/30", stk.tr)}>
+          <td colSpan={7} className={cn("px-3 py-1.5", stk.head)}>
             <GroupHead label={f.t(b.g.k)} n={n} tone={b.g.tone} />
           </td>
         </tr>

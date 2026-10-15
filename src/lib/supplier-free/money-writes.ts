@@ -55,6 +55,7 @@ export async function sendDealMessage(firestore: Firestore, args: { chatId: stri
   await updateDoc(chatRef, {
     lastMessage: text,
     lastMessageAt: at,
+    lastSenderId: uid,
     ...(other ? { unreadFor: [other], [`unreadCounts.${other}`]: increment(1) } : {}),
   }).catch((err) => console.warn("chat metadata update:", (err as { code?: string }).code))
   if (other) {

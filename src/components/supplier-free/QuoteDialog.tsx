@@ -42,15 +42,26 @@ function initialValues(d: Deal, mode: QuoteMode, today: string): QuoteValues {
   return { prices, skip, total: cur.total != null ? String(cur.total) : "", arrive: cur.arrive || "", valid: cur.valid || addDaysTo(today, 14), note: cur.note || "" }
 }
 
+/** A deal past quoting (delivering, collecting, done) never opens the quote form. */
+export const quoteGuard = (stage: string) => stage === "deliver" || stage === "collect" || stage === "done"
+
 export function QuoteDialog() {
   const f = useFree()
   const q = useQueryState()
   const id = q.get("quote")
   const deal = id ? f.world.deals.find((d) => d.id === id) || null : null
-  if (!deal) return null
   const wanted = q.get("mode")
+  // The prototype's stage guard: an address that asks for a new quote on a quoted request, or any quote once the deal is
+  // awarded, opens the deal instead of the form.
+  const guarded = !!deal && (quoteGuard(f.L.stage(deal)) || (wanted === "new" && !!deal.offer))
+  const setQuery = q.set
+  const dealId = deal?.id || ""
+  useEffect(() => {
+    if (guarded) setQuery({ quote: null, mode: null, deal: dealId }, { replace: true })
+  }, [guarded, dealId, setQuery])
+  if (!deal || guarded) return null
   const mode: QuoteMode = deal.offer ? (wanted === "reduce" && deal.offer.reduce ? "reduce" : "edit") : "new"
-  return <Form key={`${deal.id}:${mode}`} f={f} d={deal} mode={mode} onClose={() => q.set({ quote: null, mode: null })} onDone={(dealId) => q.set({ quote: null, mode: null, deal: dealId })} />
+  return <Form key={`${deal.id}:${mode}`} f={f} d={deal} mode={mode} onClose={() => q.set({ quote: null, mode: null })} onDone={(dealId) => q.set({ quote: null, mode: null, deal: dealId }, { replace: true })} />
 }
 
 function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; d: Deal; mode: QuoteMode; onClose: () => void; onDone: (id: string) => void }) {

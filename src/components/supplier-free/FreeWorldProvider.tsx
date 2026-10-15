@@ -165,8 +165,11 @@ export function FreeWorldProvider({ children }: { children: ReactNode }) {
 
   const world = useMemo<World>(() => {
     if (!profile || !ready) return EMPTY_WORLD
+    // A contractor's phone is kept only for one he deals with directly — an invitation, an order or a connection
+    // (B-04): the free journey shows "call" for those alone, so a public request's contractor keeps his number.
+    const close = closeContractors(orgId, rfqs, (pos || []) as PurchaseOrder[], (links || []) as Record<string, unknown>[], invitations)
     const contractors: Record<string, Record<string, unknown>> = {}
-    for (const c of contractorDocs) contractors[c.id] = c
+    for (const c of contractorDocs) contractors[c.id] = close.has(c.id) ? c : withoutPhone(c)
     const raw: RawWorld = {
       today,
       myOrgId: orgId,
@@ -248,6 +251,30 @@ async function updateOrCreate(firestore: Firestore, orgId: string, patch: Record
     }
     await setDoc(ref, { ...base, arch, seen, updatedAt: serverTimestamp() })
   }
+}
+
+/** The contractors the supplier deals with directly: who invited him to a request or to connect, who ordered from him,
+ * and those he is connected with. */
+export function closeContractors(
+  orgId: string,
+  rfqs: readonly Record<string, unknown>[],
+  pos: readonly { organizationId?: string }[],
+  links: readonly Record<string, unknown>[],
+  invitations: readonly Record<string, unknown>[]
+): Set<string> {
+  const out = new Set<string>()
+  const names = (v: unknown) => Array.isArray(v) && (v as unknown[]).includes(orgId)
+  for (const r of rfqs) if (names(r.allowedSupplierOrgIds) || names(r.invitedSupplierOrgIds)) out.add(String(r.organizationId || r.contractorId || ""))
+  for (const p of pos) out.add(String(p.organizationId || ""))
+  for (const l of links) if (l.status === "active") out.add(String(l.contractorOrgId || ""))
+  for (const i of invitations) out.add(String(i.contractorOrgId || i.invitedBy || ""))
+  out.delete("")
+  return out
+}
+
+function withoutPhone(c: Record<string, unknown> & { id: string }): Record<string, unknown> & { id: string } {
+  const { phone: _phone, ...rest } = c
+  return rest as Record<string, unknown> & { id: string }
 }
 
 /** A public request is his only when it is in his coverage cities; one that names him or he quoted always is. */

@@ -70,3 +70,44 @@ export function normalizeMobile(value: string): string {
     .replace(/[^\d]/g, "")
 }
 export const isSaudiMobile = (value: string) => /^05\d{8}$/.test(normalizeMobile(value))
+
+// ---- Riyadh time (NFR-05) ---------------------------------------------------------------------------------
+
+const RIYADH_MS = 3 * 3_600_000
+
+/** The moment a stored value names, in ms — an ISO string, a Firestore Timestamp, or `{ seconds }`. 0 when none. */
+export function momentOf(v: unknown): number {
+  if (!v) return 0
+  if (typeof v === "string") {
+    const t = Date.parse(v.length <= 10 ? `${v}T00:00:00Z` : v)
+    return Number.isFinite(t) ? t : 0
+  }
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0
+  if (typeof v === "object" && "toDate" in v && typeof (v as { toDate: () => Date }).toDate === "function") return (v as { toDate: () => Date }).toDate().getTime()
+  if (typeof v === "object" && "seconds" in v) return Number((v as { seconds: number }).seconds) * 1000
+  return 0
+}
+
+/** The Riyadh day (`yyyy-mm-dd`) of a stored value. A bare date stays as written; a moment is read in Riyadh, so a
+ * post at 22:30 UTC belongs to the next day there. */
+export function riyadhDayOf(v: unknown): string {
+  if (!v) return ""
+  if (typeof v === "string" && v.length <= 10) return v
+  const t = momentOf(v)
+  if (!t) return typeof v === "string" ? v.slice(0, 10) : ""
+  return new Date(t + RIYADH_MS).toISOString().slice(0, 10)
+}
+
+/** The day-group a notification sits under: today · yesterday · its own date. */
+export function dayGroup(day: string, today: string): "today" | "yesterday" | "date" | "" {
+  if (!day) return ""
+  const n = Math.round((dayNum(day) - dayNum(today)) / 86_400_000)
+  return n === 0 ? "today" : n === -1 ? "yesterday" : "date"
+}
+
+/** A notification shown to the supplier starts with the contractor's name (MSG-03) — unless its title already names him. */
+export function leadWithName(title: string, name: string | null | undefined): string {
+  const n = (name || "").trim()
+  if (!n || n === "—" || title.includes(n)) return title
+  return `${n} · ${title}`
+}

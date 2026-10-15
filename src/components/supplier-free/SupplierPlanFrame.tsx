@@ -4,7 +4,7 @@
 // its pages; a company on the full portal gets its pages untouched (each brings its own PortalLayout). A free
 // account that reaches a page of the full portal by its address is sent home.
 
-import { useEffect, type ReactNode } from "react"
+import { useEffect, useMemo, type ReactNode } from "react"
 import { getAuth, signOut } from "firebase/auth"
 import { useUser } from "@/firebase"
 import { useRouter, usePathname } from "@/i18n/routing"
@@ -14,13 +14,14 @@ import { freePathAllowed } from "@/lib/supplier-plan"
 import { FreeFrame } from "./FreeFrame"
 import { FreeOverlays } from "./FreeOverlays"
 import { FreeWorldProvider } from "./FreeWorldProvider"
-import { Splash } from "./PlanSwitch"
+import { Splash, SupplierPlanContext, type PlanState } from "./PlanSwitch"
 
 export function SupplierPlanFrame({ children }: { children: ReactNode }) {
-  const { plan, loading } = useSupplierPlan()
+  const { plan, loading, orgId } = useSupplierPlan()
+  // The pages' PlanSwitch reads this answer: one subscription for the layout, never one per page.
+  const state = useMemo<PlanState>(() => ({ plan, loading, orgId }), [plan, loading, orgId])
   if (loading) return <Splash />
-  if (plan === "full") return <>{children}</>
-  return <FreeShell>{children}</FreeShell>
+  return <SupplierPlanContext.Provider value={state}>{plan === "full" ? children : <FreeShell>{children}</FreeShell>}</SupplierPlanContext.Provider>
 }
 
 function FreeShell({ children }: { children: ReactNode }) {

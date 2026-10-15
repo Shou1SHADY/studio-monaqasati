@@ -21,7 +21,8 @@ interface Challenge {
   testCode?: string
 }
 
-const ERRORS: Record<string, string> = {
+/** Server refusal codes → the words the supplier reads (shared with the Security tab's code-confirmed changes). */
+export const ERRORS: Record<string, string> = {
   INVALID_PHONE: "phErrPhone",
   INVALID_INPUT: "phErrInput",
   TOO_SOON: "phErrSoon",
@@ -35,6 +36,9 @@ const ERRORS: Record<string, string> = {
   OTP_MISMATCH: "phErrMissing",
   OTP_UNAVAILABLE: "phErrSms",
   WRONG_ROLE: "phErrRole",
+  SAME_PHONE: "phErrSame",
+  PHONE_TAKEN: "phErrTaken",
+  INVALID_CR: "phErrCr",
 }
 
 async function post<T>(url: string, body: Record<string, unknown>): Promise<{ ok: true; data: T } | { ok: false; code: string }> {
