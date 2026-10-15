@@ -45,7 +45,7 @@ export const REJECT_REASON_CODES = ["damaged", "wrong_item", "wrong_spec", "samp
 export const HOLD_REASON_CODES = ["certificate", "test", "consultant"] as const satisfies readonly HoldReasonCode[]
 export const REJECT_DECISIONS = ["replace", "discount", "reduce"] as const satisfies readonly RejectDecision[]
 export const RECEIPT_CHECKS = ["delivery_note", "weighbridge", "certificate", "photos", "driver_signature"] as const satisfies readonly ReceiptCheck[]
-export const PO_LOG_ACTIONS = ["created", "approved", "returned", "resubmitted", "sent", "supplier_accepted", "date_updated", "reminded", "received", "remainder_cancelled", "reject_decided", "closed", "cancelled", "rated"] as const satisfies readonly PoLogEntry["action"][]
+export const PO_LOG_ACTIONS = ["created", "approved", "returned", "resubmitted", "sent", "supplier_accepted", "date_updated", "reminded", "received", "remainder_cancelled", "reject_decided", "closed", "cancelled", "rated", "supplier_declined", "delivery_reported", "delivery_reminded"] as const satisfies readonly PoLogEntry["action"][]
 
 // ---------------------------------------------------------------------------
 // Days — dates are `YYYY-MM-DD` or ISO strings; offsets are calendar days

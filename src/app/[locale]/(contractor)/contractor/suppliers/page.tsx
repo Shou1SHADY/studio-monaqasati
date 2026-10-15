@@ -66,6 +66,7 @@ import { SupplierDirectory } from "@/components/procurement/SupplierDirectory"
 import { SupplierFileDrawer } from "@/components/procurement/SupplierFileDrawer"
 import { DirectoryDrawer } from "@/components/procurement/DirectoryDrawer"
 import { SupplierInvitations, type InvitationDoc } from "@/components/procurement/SupplierInvitations"
+import { SupplierConnectionRequests } from "@/components/procurement/SupplierConnectionRequests"
 import { InviteSupplierDialog } from "@/components/procurement/InviteSupplierDialog"
 import { PriceAgreementsView } from "@/components/procurement/PriceAgreementsView"
 import { PriceHistoryView } from "@/components/procurement/PriceHistoryView"
@@ -348,6 +349,7 @@ export default function SuppliersPage() {
           <SupplierDirectory suppliers={shownPlatform} onOpen={setDirId} />
         ) : (
           <div className="space-y-4">
+            <SupplierConnectionRequests orgId={orgId} orgName={orgName} actor={actor} canManage={canManage} />
             <SupplierInvitations invitations={invitations} canManage={canManage} orgName={orgName} now={now} />
             {shownMine.length === 0 ? (
               searchQuery ? (

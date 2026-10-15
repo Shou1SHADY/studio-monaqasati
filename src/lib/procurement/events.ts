@@ -46,6 +46,29 @@ export type ProcEventKind =
   | "activity_done" // → the one who planned it: the assignee marked it done
   | "doc_comment" // → the other company of a document: a shared comment was posted
   | "doc_file" // → the other company of a document: a shared attachment was added
+  | "sup_quote_version" // → the RFQ's owner: the supplier edited or lowered his quote (no amount: a sealed round names none)
+  | "sup_quote_final" // → the RFQ's owner: a price cut was answered with a final price
+  | "sup_quote_withdrawn" // → the RFQ's owner: a quote was withdrawn
+  | "sup_invite_declined" // → the RFQ's owner: an invited supplier declined
+  | "sup_sample_sent" // → the RFQ's owner: a requested sample was sent
+  | "po_supplier_declined" // → preparer + owner: the supplier declined an order — re-award or talk to him
+  | "po_delivery_reported" // → preparer + receivers: record the receipt
+  | "po_delivery_reminder" // → preparer + receivers: the supplier's reminder
+  | "po_invoice_uploaded" // → preparer + Finance: a supplier invoice to match
+  | "po_payment_confirmed" // → preparer + Finance: a transfer was confirmed
+  | "po_payment_missing" // → preparer + Finance: a transfer was reported missing
+  | "po_payment_later" // → preparer + Finance: a missing transfer arrived
+  | "po_payment_reminder" // → preparer + Finance: the supplier's payment reminder
+  | "po_warranty_registered" // → preparer + owner: a warranty to accept
+  | "po_supplier_rated" // → preparer + owner: the supplier rated the contractor after full payment
+  | "sup_connection_requested" // → the owner: a supplier asked for a connection
+  | "sup_connection_accepted" // → the inviter: the invitation was accepted
+  | "sup_connection_declined" // → the inviter: the invitation was declined
+  | "rfq_outcome" // → the supplier: his quote ended with a result (won with the order, another won, or closed with no award)
+  | "po_payment_reported" // → the supplier: a transfer to confirm
+  | "po_warranty_accepted" // → the supplier: a warranty was accepted
+  | "sup_request_accepted" // → the supplier: the contractor accepted his request to connect
+  | "sup_request_declined" // → the supplier: the contractor declined his request to connect
 
 export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "po_awaiting_approval",
@@ -76,6 +99,29 @@ export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "activity_done",
   "doc_comment",
   "doc_file",
+  "sup_quote_version",
+  "sup_quote_final",
+  "sup_quote_withdrawn",
+  "sup_invite_declined",
+  "sup_sample_sent",
+  "po_supplier_declined",
+  "po_delivery_reported",
+  "po_delivery_reminder",
+  "po_invoice_uploaded",
+  "po_payment_confirmed",
+  "po_payment_missing",
+  "po_payment_later",
+  "po_payment_reminder",
+  "po_warranty_registered",
+  "po_supplier_rated",
+  "sup_connection_requested",
+  "sup_connection_accepted",
+  "sup_connection_declined",
+  "rfq_outcome",
+  "po_payment_reported",
+  "po_warranty_accepted",
+  "sup_request_accepted",
+  "sup_request_declined",
 ]
 
 /** Who is told: a role, named users, or the org owner. */
@@ -240,6 +286,98 @@ export const PROC_EVENT_COPY_AR: Record<ProcEventKind, { title: string; message:
   doc_file: {
     title: "مرفق جديد على {about}",
     message: "أرفق {actor} الملف «{text}» على {about}.",
+  },
+  sup_quote_version: {
+    title: "عرض بنسخة جديدة على {rfq}",
+    message: "عدّل {supplier} عرضه على {rfq} (النسخة {n}).",
+  },
+  sup_quote_final: {
+    title: "ثبّت {supplier} سعره على {rfq}",
+    message: "ردّ {supplier} على طلب التخفيض بأن سعره نهائي. {note}",
+  },
+  sup_quote_withdrawn: {
+    title: "سحب {supplier} عرضه على {rfq}",
+    message: "سحب {supplier} عرضه على {rfq} قبل إغلاق التقديم.",
+  },
+  sup_invite_declined: {
+    title: "اعتذر {supplier} عن التسعير على {rfq}",
+    message: "اعتذر {supplier} عن دعوتك إلى التسعير. {note}",
+  },
+  sup_sample_sent: {
+    title: "أرسل {supplier} العيّنة — {rfq}",
+    message: "أكّد {supplier} إرسال العيّنة بتاريخ {date}. استلمها: {by}. {note}",
+  },
+  po_supplier_declined: {
+    title: "اعتذر {supplier} عن أمر الشراء {number}",
+    message: "اعتذر {supplier} عن الأمر. السبب: {reason}. {note}",
+  },
+  po_delivery_reported: {
+    title: "أبلغ {supplier} بتسليم أمر الشراء {number}",
+    message: "يقول {supplier} إنه سلّم بتاريخ {date}. سجّل سند الاستلام في مدماك. {note}",
+  },
+  po_delivery_reminder: {
+    title: "تذكير بتسجيل الاستلام — {number}",
+    message: "يذكّرك {supplier}: سلّم بتاريخ {date} ولم يُسجَّل الاستلام بعد.",
+  },
+  po_invoice_uploaded: {
+    title: "فاتورة جديدة على أمر الشراء {number}",
+    message: "رفع {supplier} الفاتورة {invoice} بمبلغ {amount} (قبل الضريبة). راجعها للمطابقة والجدولة.",
+  },
+  po_payment_confirmed: {
+    title: "أكّد {supplier} وصول الحوالة — {number}",
+    message: "وصلت حوالة {amount} من {bank} (المرجع {ref}) على أمر الشراء {number}.",
+  },
+  po_payment_missing: {
+    title: "لم تصل الحوالة — {number}",
+    message: "أبلغ {supplier} أن حوالة {amount} (المرجع {ref}) لم تصل. {note}",
+  },
+  po_payment_later: {
+    title: "وصلت الحوالة التي لم تصل — {number}",
+    message: "أكّد {supplier} أن حوالة {amount} (المرجع {ref}) وصلت لاحقاً.",
+  },
+  po_payment_reminder: {
+    title: "تذكير بالدفعة — {number}",
+    message: "يذكّرك {supplier} بدفعة {amount} كانت مستحقة في {date}.",
+  },
+  po_warranty_registered: {
+    title: "ضمان بانتظار قبولك — {number}",
+    message: "سجّل {supplier} ضماناً للبند {item} سارياً حتى {until}. اقبله من لوح الأمر.",
+  },
+  po_supplier_rated: {
+    title: "قيّمك {supplier}",
+    message: "قيّم {supplier} تعاملكم على أمر الشراء {number}: {stars} من 5.",
+  },
+  sup_connection_requested: {
+    title: "طلب {supplier} الارتباط بك",
+    message: "يطلب {supplier} أن يرتبط بدليل مورّديك. اقبل الطلب من «الموردون».",
+  },
+  sup_connection_accepted: {
+    title: "قبل {supplier} دعوتك",
+    message: "قبل {supplier} دعوتك وصار في دليل مورّديك.",
+  },
+  sup_connection_declined: {
+    title: "اعتذر {supplier} عن دعوتك",
+    message: "اعتذر {supplier} عن دعوة الارتباط.",
+  },
+  rfq_outcome: {
+    title: "نتيجة عرضك على {rfq}",
+    message: "{result} {reason}",
+  },
+  po_payment_reported: {
+    title: "أبلغ {contractor} بحوالة — {number}",
+    message: "حوّل {contractor} مبلغ {amount} إلى {bank} (المرجع {ref}). أكّد وصولها.",
+  },
+  po_warranty_accepted: {
+    title: "قبل {contractor} ضمانك — {number}",
+    message: "قبل {contractor} الضمان الذي سجّلته للبند {item}.",
+  },
+  sup_request_accepted: {
+    title: "قبل {contractor} طلب ارتباطك",
+    message: "قبل {contractor} طلبك وصرتم مرتبطين. ستصلك طلبات التسعير منه.",
+  },
+  sup_request_declined: {
+    title: "اعتذر {contractor} عن طلب ارتباطك",
+    message: "اعتذر {contractor} عن طلب الارتباط. يمكنك طلب الارتباط بمقاول آخر.",
   },
 }
 

@@ -50,6 +50,8 @@ import {
   getInvoiceStatusVariant,
   resolveInvoiceStatus,
 } from "@/utils/invoice-utils"
+import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
+import { FreeInvoices } from "@/components/supplier-free/FreeInvoices"
 
 type Invoice = {
   id: string
@@ -272,7 +274,7 @@ function InvoiceDialog({
 
 const STATUS_TABS: Array<InvoiceStatus | "all"> = ["all", "draft", "sent", "paid", "overdue"]
 
-export default function SupplierInvoicesPage() {
+function LegacySupplierInvoicesPage() {
   const t = useTranslations("Portal.Supplier")
   const locale = useLocale()
   const isRtl = locale === "ar"
@@ -461,4 +463,8 @@ export default function SupplierInvoicesPage() {
       )}
     </PortalLayout>
   )
+}
+
+export default function Page() {
+  return <PlanSwitch free={<FreeInvoices />} full={<LegacySupplierInvoicesPage />} />
 }

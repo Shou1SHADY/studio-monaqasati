@@ -13,6 +13,8 @@ import { collection, query, where, doc, addDoc, updateDoc, serverTimestamp } fro
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName, useCompanyNamesForMembers } from "@/hooks/useActiveCompanyName"
 import { Loader2, Users, Link2, Calendar, Building2, CheckCircle2, XCircle, Mail } from "lucide-react"
+import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
+import { FreeConnections } from "@/components/supplier-free/FreeConnections"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -55,7 +57,7 @@ type Invitation = {
   createdAt?: unknown
 }
 
-export default function SupplierConnectionsPage() {
+function LegacySupplierConnectionsPage() {
   const t = useTranslations("Portal.Supplier")
   const locale = useLocale()
   const isRtl = locale === "ar"
@@ -328,4 +330,8 @@ export default function SupplierConnectionsPage() {
       </div>
     </PortalLayout>
   )
+}
+
+export default function Page() {
+  return <PlanSwitch free={<FreeConnections />} full={<LegacySupplierConnectionsPage />} />
 }

@@ -2658,14 +2658,32 @@ service cloud.firestore {
         && (isOrgOwner() || buysOrApproves())
         && poMineOrNotBuyer();
     }
-    // The supplier, in his own portal: sent → accepted with the date he commits to.
-    function poSupplierAccepts(ck) {
+    // The supplier, in his own portal (his own company's order, never a guest's): sent → accepted with the date he
+    // commits to · sent → cancelled with his reason (a decline) · a "delivered" report or a reminder on an accepted order.
+    function poSupplierActs(ck) {
       return resource.data.get('supplierOrgId', '') == getOrganizationId()
         && resource.data.get('supplierOrgId', '') != 'guest'
-        && poFrom() == 'sent' && poTo() == 'accepted'
+        && (poSupplierAccepts(ck) || poSupplierDeclines(ck) || poSupplierReports(ck));
+    }
+    function poSupplierAccepts(ck) {
+      return poFrom() == 'sent' && poTo() == 'accepted'
         && request.resource.data.get('acceptanceRecordedBy', '') == 'supplier'
         && request.resource.data.get('promisedDate', '') is string
-        && ck.hasOnly(['status', 'supplierAcceptedAt', 'promisedDate', 'acceptanceRecordedBy', 'log', 'updatedAt']);
+        && ck.hasOnly(['status', 'supplierAcceptedAt', 'promisedDate', 'acceptanceRecordedBy', 'supplierAcceptNote', 'log', 'updatedAt']);
+    }
+    function poSupplierDeclines(ck) {
+      return poFrom() == 'sent' && poTo() == 'cancelled'
+        && ck.hasOnly(['status', 'cancelledReason', 'closedAt', 'supplierDecline', 'log', 'updatedAt'])
+        && request.resource.data.supplierDecline.byId == request.auth.uid
+        && request.resource.data.supplierDecline.reason in ['stock', 'price', 'date', 'other']
+        && request.resource.data.cancelledReason is string && request.resource.data.cancelledReason.size() > 0;
+    }
+    function poSupplierReports(ck) {
+      return poFrom() == 'accepted' && poTo() == 'accepted'
+        && ck.hasOnly(['deliveryReports', 'log', 'updatedAt'])
+        && request.resource.data.deliveryReports is list
+        && request.resource.data.deliveryReports.size() >= resource.data.get('deliveryReports', []).size()
+        && request.resource.data.deliveryReports.size() <= 100;
     }
     // The keys that changed are worked out ONCE and handed to every step (a request may evaluate
     // only 1000 expressions, and the diff of a whole order is not cheap).
@@ -2676,7 +2694,7 @@ service cloud.firestore {
                 || poApproves(ck) || poReturns(ck) || poResubmits(ck) || poExpedites(ck) || poDecides(ck) || poReceives(ck) || poRates(ck)
                 || poSelfIssues(ck) || poDecidesHold(ck) || poFinance(ck) || poFinanceCloses(ck)
                 || poRefersBudget(ck) || poPmDecidesBudget(ck)))
-        || poSupplierAccepts(ck)
+        || poSupplierActs(ck)
         || isAdmin());
     }
     match /purchaseOrders/{poId} {
@@ -4271,6 +4289,65 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow create, update: if isAdmin() && request.resource.data.off is list;
       allow delete: if false;
+    }
+    // Which journey a supplier company is on — the free one (Supplier 1.0) or the full portal. Admin only
+    // writes it; the company reads its own so its pages can follow. No document = free.
+    match /companyPlans/{orgId} {
+      allow get: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
+      allow list: if isAdmin();
+      allow create, update: if isAdmin() && request.resource.data.supplierPlan in ['free', 'full'];
+      allow delete: if false;
+    }
+    // The free supplier journey (Supplier 1.0) — what the supplier owns beside the contractor's order.
+    // An invoice is written ONLY by the server, which re-runs every blocking rule (amount, date, file, receipts); both
+    // companies read it. A transfer is reported by the contractor's Finance and answered by the supplier. A warranty is
+    // registered by the supplier and accepted by the contractor. The workspace holds the supplier's own marks.
+    function sfBoth() {
+      return isSignedIn() && (isAdmin() || resource.data.supplierOrgId == getOrganizationId() || resource.data.buyerOrgId == getOrganizationId());
+    }
+    function sfPo() {
+      return get(/databases/$(database)/documents/purchaseOrders/$(request.resource.data.poId)).data;
+    }
+    match /supplierInvoices/{invoiceId} {
+      allow get, list: if sfBoth();
+      allow create, update, delete: if false;
+    }
+    match /supplierTransfers/{transferId} {
+      allow get, list: if sfBoth();
+      allow create: if isSignedIn()
+        && request.resource.data.buyerOrgId == getOrganizationId()
+        && (isOrgOwner() || hasOrgPermission('invoices.manage'))
+        && request.resource.data.state == 'sent'
+        && request.resource.data.amount is number && request.resource.data.amount > 0
+        && request.resource.data.poId is string
+        && sfPo().organizationId == request.resource.data.buyerOrgId
+        && sfPo().supplierOrgId == request.resource.data.supplierOrgId;
+      allow update: if isSignedIn()
+        && resource.data.supplierOrgId == getOrganizationId()
+        && changedKeys().hasOnly(['state', 'confirmedAt', 'confirmedById', 'note', 'arrivedLater', 'updatedAt'])
+        && ((resource.data.state == 'sent' && request.resource.data.state in ['ok', 'miss'])
+            || (resource.data.state == 'miss' && request.resource.data.state == 'ok'));
+      allow delete: if false;
+    }
+    match /supplierWarranties/{warrantyId} {
+      allow get, list: if sfBoth();
+      allow create: if isSignedIn()
+        && request.resource.data.supplierOrgId == getOrganizationId()
+        && request.resource.data.state == 'wait'
+        && request.resource.data.poId is string
+        && sfPo().supplierOrgId == getOrganizationId()
+        && sfPo().organizationId == request.resource.data.buyerOrgId;
+      allow update: if isSignedIn()
+        && resource.data.buyerOrgId == getOrganizationId()
+        && (isOrgOwner() || buysOrApproves())
+        && resource.data.state == 'wait' && request.resource.data.state == 'ok'
+        && changedKeys().hasOnly(['state', 'acceptedAt', 'acceptedById', 'updatedAt']);
+      allow delete: if false;
+    }
+    match /supplierWorkspace/{orgId} {
+      allow get: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
+      allow create, update: if isSignedIn() && isOrgMember(orgId) && request.resource.data.get('organizationId', orgId) == orgId;
+      allow list, delete: if false;
     }
     // Document thread (DEV-68) — comments and attachments on a document that links a buyer and
     // a supplier. A SHARED entry carries both companies and both read it; an INTERNAL one carries

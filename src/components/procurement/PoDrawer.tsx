@@ -124,6 +124,8 @@ import {
 import { printPurchaseOrder, printReceiptStatement } from "./PoPrint"
 import { PoRateDialog } from "./PoRateDialog"
 import { PoSendDialog } from "./PoSendDialog"
+import { PoSupplierSection } from "./PoSupplierSection"
+import { acceptSupplierWarranty, reportTransferToSupplier } from "@/lib/procurement/supplier-acts-writes"
 import { PoReceiverLine } from "./PoReceiverLine"
 
 type Tone = "red" | "amber" | "blue" | "green"
@@ -720,6 +722,16 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               />
             )}
 
+            <PoSupplierSection
+              po={po}
+              orgId={world.orgId}
+              open={open}
+              Section={Section}
+              busy={busy === "warranty"}
+              canAcceptWarranty={actor.isOwner || actor.canPrepare || actor.canApprove}
+              onAcceptWarranty={(w) => f && void run("warranty", () => acceptSupplierWarranty(f, actor, po, w, opts), "supplier.toast_warranty")}
+            />
+
             <Section title={t("sec.lines", { count: po.lines.length })}>
               {po.lines.map((l) => {
                 const la = acts.acts ? lineActions(po, l, actor, now) : { cancelRemainder: false, decideReject: false }
@@ -1010,7 +1022,17 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             onOpenChange={(o) => !o && setDialog(null)}
             onSubmit={({ decision, note, price }) => (dialog?.kind === "decide_hold" ? run("hold", () => decideHold(f, actor, po.id, { holdId: dialog.hold.id, decision, note, price }, opts), "toast.saved") : Promise.resolve(false))}
           />
-          <RecordPaymentDialog open={dialog?.kind === "pay"} onOpenChange={(o) => !o && setDialog(null)} po={px} now={now} onSubmit={(input) => run("pay", () => recordFinancePayment(f, actor, isFinance, po.id, input), "toast.saved")} />
+          <RecordPaymentDialog open={dialog?.kind === "pay"} onOpenChange={(o) => !o && setDialog(null)} po={px} now={now} onSubmit={(input) =>
+              run(
+                "pay",
+                async () => {
+                  const paid = await recordFinancePayment(f, actor, isFinance, po.id, input)
+                  await reportTransferToSupplier(f, actor, isFinance, po, { amount: input.amount, bank: input.bank || "", reference: input.reference, valueDate: input.valueDate }, opts).catch(() => undefined)
+                  return paid
+                },
+                "toast.saved"
+              )
+            } />
           <HoldInvoiceDialog open={dialog?.kind === "hold_invoice"} lines={po.lines} onOpenChange={(o) => !o && setDialog(null)} onSubmit={(input) => run("hold_invoice", () => holdInvoice(f, actor, isFinance, po.id, input), "toast.saved")} />
           <RejectDecisionDialog
             open={dialog?.kind === "reject"}

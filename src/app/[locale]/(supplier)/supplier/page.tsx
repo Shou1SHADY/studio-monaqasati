@@ -21,8 +21,10 @@ import { useSupplierOrdersById } from "@/hooks/useSupplierOrdersById"
 import { displayPoNumber } from "@/lib/procurement/format"
 import type { PortalComponentId } from "@/lib/portal-components"
 import { recentOffers, supplierDecisions, supplierHomeCounts, type HomeOffer, type HomeRfq } from "@/lib/supplier-home"
+import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
+import { FreeToday } from "@/components/supplier-free/FreeToday"
 
-export default function SupplierDashboard() {
+function LegacySupplierDashboard() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const t = useTranslations("Portal.Supplier")
@@ -144,4 +146,8 @@ export default function SupplierDashboard() {
       />
     </PortalLayout>
   )
+}
+
+export default function Page() {
+  return <PlanSwitch free={<FreeToday />} full={<LegacySupplierDashboard />} />
 }

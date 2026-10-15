@@ -41,8 +41,10 @@ import { displayPoNumber } from "@/lib/procurement/format"
 import { priceOffer, pricedProducts, revisePrice, type PricedProduct } from "@/lib/procurement/offer-pricing"
 import { CLOSED_UNAWARDED, asSupplierSees, legacyItemsFromRfq, type RfqProductLike } from "@/lib/procurement/supplier"
 import { useSupplierOrdersById } from "@/hooks/useSupplierOrdersById"
+import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
+import { FreeOffers } from "@/components/supplier-free/FreeOffers"
 
-export default function SupplierOffersPage() {
+function LegacySupplierOffersPage() {
   const t = useTranslations("Portal.Supplier")
   const ts = useTranslations("Portal.Shared")
   const locale = useLocale()
@@ -1019,4 +1021,8 @@ function ContractorWhatsAppButton({ contractorId }: { contractorId?: string }) {
       <Phone size={16} />
     </a>
   )
+}
+
+export default function Page() {
+  return <PlanSwitch free={<FreeOffers />} full={<LegacySupplierOffersPage />} />
 }

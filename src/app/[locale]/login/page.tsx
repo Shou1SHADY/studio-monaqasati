@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { OnboardingWizard } from "@/components/OnboardingWizard"
+import { JoinFreeButton } from "@/components/supplier-free/JoinFreeButton"
 
 const GoogleIcon = () => (
   <svg className="h-5 w-5" viewBox="0 0 24 24">
@@ -47,6 +48,7 @@ export default function LoginPage() {
   const { auth, firestore } = useFirebase()
   const { toast } = useToast()
   const t = useTranslations("Auth.Login")
+  const tFree = useTranslations("SupplierFree")
   const locale = useLocale()
 
   const [isLoading, setIsLoading] = useState(false)
@@ -448,6 +450,12 @@ export default function LoginPage() {
               </Button>
             </>
           )}
+
+          <div className="mt-6 text-center">
+            <JoinFreeButton mode="signin" variant="link" className="text-sm font-semibold">
+              {tFree("phSignInLink")}
+            </JoinFreeButton>
+          </div>
 
           <p className="mt-10 text-center text-sm text-muted-foreground">
             {t("no_account")}{" "}

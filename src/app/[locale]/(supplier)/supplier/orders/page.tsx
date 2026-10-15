@@ -61,6 +61,8 @@ import {
   type NoticeError,
   type SupplierSegment,
 } from "@/lib/procurement/supplier"
+import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
+import { FreeOrders } from "@/components/supplier-free/FreeOrders"
 
 // ---------------------------------------------------------------------------
 // Small local helpers — money and dates the way the supplier reads them
@@ -121,7 +123,7 @@ interface LegacyOffer {
   poNumber?: string | null
 }
 
-export default function SupplierOrdersPage() {
+function LegacySupplierOrdersPage() {
   const t = useTranslations("Portal.Supplier")
   const tp = useTranslations("Portal.Procurement")
   const tShared = useTranslations("Portal.Shared")
@@ -1224,4 +1226,8 @@ function DeliveryNoticeDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+export default function Page() {
+  return <PlanSwitch free={<FreeOrders />} full={<LegacySupplierOrdersPage />} />
 }

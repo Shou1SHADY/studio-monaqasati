@@ -45,6 +45,7 @@ import {
   type BlockContext,
 } from "./po"
 import { orderTermsOf } from "./offer-terms"
+import { frozenTermsOf } from "./terms-freeze"
 import { SUPPLIER_RECORDS, supplierRecordId } from "./supplier-file"
 import {
   PURCHASE_ORDERS,
@@ -328,6 +329,7 @@ export function draftPurchaseOrder(actor: ProcActor, input: CreateFromAwardInput
     purchaseSource: rfq.purchaseSource ?? null,
     ...supplierOfOffer(offer),
     ...orderTermsOf(offer),
+    ...frozenTermsOf(offer),
     lines,
     totalExVat,
     vatRate: 0.15,
@@ -512,6 +514,7 @@ export function draftSplitOrder(actor: ProcActor, input: AwardRfqInput, group: A
     rfqTitle: (rfq.title || "").trim(),
     offerId: group.offer.id,
     ...orderTermsOf(group.offer),
+    ...frozenTermsOf(group.offer),
     projectId: rfq.projectId ?? null,
     projectName: rfq.projectName ?? null,
     category: rfq.category ?? null,
@@ -1269,7 +1272,10 @@ export function applyReceipt(
   const accepted = round2(deliveryLines.reduce((s, d) => s + Math.max(0, (d.counted ?? 0) - (d.rejected ?? 0) - (d.held ?? 0)), 0))
   const log = [...(po.log || []), entry(actor, "received", at, { params: { number: receipt.docNumber || receipt.deliveryId, deliveryId: receipt.deliveryId, accepted } })]
   const acceptance = po.status === "sent" ? { status: "accepted" as const, supplierAcceptedAt: at, acceptanceRecordedBy: "buyer" as const } : {}
-  tx.update(poRef, { lines, log, ...acceptance, updatedAt: serverTimestamp() })
+  // The supplier's "I delivered" waits for this receipt: recording it answers every report still open.
+  const open = (po.deliveryReports || []).some((r) => !r.closedAt)
+  const answered = open ? { deliveryReports: (po.deliveryReports || []).map((r) => (r.closedAt ? r : { ...r, closedAt: at, closedBy: receipt.docNumber || receipt.deliveryId })) } : {}
+  tx.update(poRef, { lines, log, ...acceptance, ...answered, updatedAt: serverTimestamp() })
   return lines
 }
 

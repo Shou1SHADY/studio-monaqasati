@@ -49,10 +49,10 @@ import { offerPricingFields, priceOffer, pricedProducts, pricingModeOf } from "@
 import type { AnsweredQuery } from "@/lib/procurement/guest-supplier"
 import { GuestAnsweredQueries } from "@/components/procurement/guest/GuestAnsweredQueries"
 import { GuestOtpField, type GuestOtpValue } from "@/components/procurement/guest/GuestOtpField"
+import { JoinFreeButton } from "@/components/supplier-free/JoinFreeButton"
 import { GuestPapersField, type GuestPaperFiles } from "@/components/procurement/guest/GuestPapersField"
 
 // The same Join form contractors subscribe through, with «Supplier» ticked (11 Oct 2026).
-const JOIN_AS_SUPPLIER = { pathname: "/", query: { join: "supplier" } } as const
 
 type SharedRfq = {
   id: string
@@ -318,11 +318,9 @@ export function PublicRfqContent() {
                 {isRTL ? "English" : "العربية"}
               </Button>
             </Link>
-            <Link href={JOIN_AS_SUPPLIER}>
-              <Button size="sm" className="rounded-lg font-bold shadow-sm">
+            <JoinFreeButton size="sm" className="rounded-lg font-bold shadow-sm">
                 {t("register_cta")}
-              </Button>
-            </Link>
+              </JoinFreeButton>
           </div>
         </div>
       </header>
@@ -351,11 +349,9 @@ export function PublicRfqContent() {
               </p>
             </div>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-              <Link href={JOIN_AS_SUPPLIER}>
-                <Button className="rounded-xl h-11 px-6 font-bold shadow-lg shadow-primary/20">
+              <JoinFreeButton className="rounded-xl h-11 px-6 font-bold shadow-lg shadow-primary/20">
                   {t("register_cta_long")}
-                </Button>
-              </Link>
+                </JoinFreeButton>
               <Link href="/">
                 <Button variant="outline" className="rounded-xl h-11 px-6">
                   {t("go_home")}
@@ -416,11 +412,9 @@ export function PublicRfqContent() {
             <div className="p-5 bg-gradient-to-br from-primary/5 to-accent/5 rounded-2xl border border-primary/10 text-start space-y-2">
               <p className="font-bold text-slate-800 text-sm">{t("success_register_title")}</p>
               <p className="text-sm text-slate-600 leading-relaxed">{t("success_register_desc")}</p>
-              <Link href={JOIN_AS_SUPPLIER} className="inline-block pt-1">
-                <Button size="sm" className="rounded-lg font-bold">
+              <JoinFreeButton size="sm" className="rounded-lg font-bold">
                   {t("register_cta_long")}
-                </Button>
-              </Link>
+                </JoinFreeButton>
             </div>
           </div>
         )}

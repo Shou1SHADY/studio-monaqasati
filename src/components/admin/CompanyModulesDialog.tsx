@@ -18,6 +18,8 @@ import { useToast } from "@/hooks/use-toast"
 import { COMPANY_MODULES, SALES_ONLY_OFF, forcedOffBy, offSet, optionalFor, withDependents, type ModulePortal, type OptionalModule } from "@/lib/company-modules"
 import { setCompanyModules } from "@/lib/company-modules-writes"
 import { readPending, warningsFor, type PendingByModule } from "@/lib/company-modules-pending"
+import { COMPANY_PLANS, planOf, type SupplierPlan } from "@/lib/supplier-plan"
+import { setSupplierPlan } from "@/lib/supplier-plan-writes"
 
 const LABEL: Record<OptionalModule, { name: string; desc: string }> = {
   "project-management": { name: "component_project_management", desc: "component_project_management_desc" },
@@ -36,6 +38,10 @@ export function CompanyModulesDialog({ orgId, companyName, portal, onClose }: { 
   const { toast } = useToast()
   const ref = useMemoFirebase(() => (firestore ? doc(firestore, COMPANY_MODULES, orgId) : null), [firestore, orgId])
   const { data, isLoading } = useDoc(ref)
+  const planRef = useMemoFirebase(() => (firestore && portal === "supplier" ? doc(firestore, COMPANY_PLANS, orgId) : null), [firestore, orgId, portal])
+  const { data: planDoc, isLoading: planLoading } = useDoc(planRef)
+  const [plan, setPlan] = useState<SupplierPlan>("free")
+  const [initialPlan, setInitialPlan] = useState<SupplierPlan>("free")
   const [off, setOff] = useState<ReadonlySet<OptionalModule>>(new Set())
   const [ready, setReady] = useState(false)
   const [initial, setInitial] = useState<ReadonlySet<OptionalModule>>(new Set())
@@ -43,12 +49,15 @@ export function CompanyModulesDialog({ orgId, companyName, portal, onClose }: { 
   const [pending, setPending] = useState<PendingByModule | null>(null)
 
   useEffect(() => {
-    if (isLoading || ready) return
+    if (isLoading || planLoading || ready) return
     const current = offSet(data as { off?: unknown } | null, portal)
     setOff(current)
     setInitial(current)
+    const p = planOf(planDoc as { supplierPlan?: unknown } | null)
+    setPlan(p)
+    setInitialPlan(p)
     setReady(true)
-  }, [isLoading, data, portal, ready])
+  }, [isLoading, planLoading, data, planDoc, portal, ready])
 
   const toggle = (id: OptionalModule, on: boolean) => {
     setPending(null)
@@ -86,6 +95,7 @@ export function CompanyModulesDialog({ orgId, companyName, portal, onClose }: { 
         if (warningsFor(initial, off, found).length > 0) return
       }
       await setCompanyModules(firestore, orgId, [...off], { uid: user.uid, name: user.displayName || user.email || "" })
+      if (portal === "supplier" && plan !== initialPlan) await setSupplierPlan(firestore, orgId, plan, { uid: user.uid, name: user.displayName || user.email || "" })
       toast({ title: t("saved") })
       onClose()
     } catch (err) {
@@ -109,6 +119,22 @@ export function CompanyModulesDialog({ orgId, companyName, portal, onClose }: { 
           </div>
         ) : (
           <div className="space-y-3">
+            {portal === "supplier" && (
+              <fieldset className="rounded-lg border p-3">
+                <legend className="px-1 text-xs font-bold text-muted-foreground">{t("plan_title")}</legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {(["free", "full"] as const).map((p) => (
+                    <label key={p} className={`flex cursor-pointer gap-2 rounded-lg border p-2.5 text-sm ${plan === p ? "border-primary bg-primary/5" : ""}`}>
+                      <input type="radio" name="supplier-plan" className="mt-1" checked={plan === p} onChange={() => setPlan(p)} disabled={busy} />
+                      <span>
+                        <b className="block">{t(p === "free" ? "plan_free" : "plan_full")}</b>
+                        <span className="text-xs text-muted-foreground">{t(p === "free" ? "plan_free_desc" : "plan_full_desc")}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
             {/* Most suppliers only sell: one press leaves Order Management, Sales and Governance. */}
             {portal === "supplier" && (
               <div className="flex flex-wrap gap-2">

@@ -15,8 +15,10 @@ import { useSupplierOrdersById } from "@/hooks/useSupplierOrdersById"
 import { CLOSED_UNAWARDED, asSupplierSees } from "@/lib/procurement/supplier"
 import { awaitsSupplier } from "@/lib/supplier-notifications"
 import { Link, useRouter } from "@/i18n/routing"
+import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
+import { FreeNotifications } from "@/components/supplier-free/FreeInbox"
 
-export default function SupplierNotificationsPage() {
+function LegacySupplierNotificationsPage() {
   const t = useTranslations("Portal.Supplier")
   const tLayout = useTranslations("Portal.Layout")
   const tShared = useTranslations("Portal.Shared")
@@ -536,4 +538,8 @@ export default function SupplierNotificationsPage() {
         </div>
     </PortalLayout>
   )
+}
+
+export default function Page() {
+  return <PlanSwitch free={<FreeNotifications />} full={<LegacySupplierNotificationsPage />} />
 }

@@ -66,7 +66,7 @@ interface TestResult {
 async function call(testCase: unknown, mocks: unknown[]): Promise<TestResult> {
   const body = JSON.stringify({ source: { files: [{ name: "firestore.rules", content: rulesSource() }] }, testSuite: { testCases: [{ ...(testCase as object), functionMocks: mocks }] } })
   let last = "rules test failed"
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (let attempt = 0; attempt < 12; attempt++) {
     const res = await fetch(`https://firebaserules.googleapis.com/v1/projects/${UAT_PROJECT}:test`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token()}`, "x-goog-user-project": UAT_PROJECT, "Content-Type": "application/json" },
@@ -75,7 +75,7 @@ async function call(testCase: unknown, mocks: unknown[]): Promise<TestResult> {
     const json = (await res.json()) as { testResults?: TestResult[]; error?: { message: string } }
     if (json.testResults) return json.testResults[0]
     last = json.error?.message ?? last
-    await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)))
+    await new Promise((r) => setTimeout(r, Math.min(15000, 2000 * (attempt + 1))))
   }
   throw new Error(last)
 }

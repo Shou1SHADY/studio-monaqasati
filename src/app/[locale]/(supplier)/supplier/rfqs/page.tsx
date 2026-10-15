@@ -50,8 +50,10 @@ import { useRouter } from "@/i18n/routing"
 import { useStorage } from "@/firebase"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { SubmitOfferDialog } from "@/components/supplier/SubmitOfferDialog"
+import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
+import { FreeOpps } from "@/components/supplier-free/FreeOpps"
 
-export default function AvailableRfqsPage() {
+function LegacyAvailableRfqsPage() {
   const t = useTranslations("Portal.Supplier")
   const locale = useLocale()
   const { toast } = useToast()
@@ -868,4 +870,7 @@ export default function AvailableRfqsPage() {
 
     </PortalLayout>
   )
+}
+export default function Page() {
+  return <PlanSwitch free={<FreeOpps />} full={<LegacyAvailableRfqsPage />} />
 }

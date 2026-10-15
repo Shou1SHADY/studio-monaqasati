@@ -72,6 +72,8 @@ import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { usePermissions } from "@/hooks/usePermissions"
 import { OwnerOnlyNotice } from "@/components/OwnerOnlyNotice"
 import { identityDocRef } from "@/lib/org-identity"
+import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
+import { FreeAccount } from "@/components/supplier-free/FreeAccount"
 
 interface Certificate {
   id: string
@@ -119,7 +121,7 @@ function RatingStars({ value, size = 16, className = "" }: { value: number; size
   )
 }
 
-export default function SupplierProfilePage() {
+function LegacySupplierProfilePage() {
   const t = useTranslations("Portal.Supplier")
   const locale = useLocale()
   const { toast } = useToast()
@@ -1850,4 +1852,8 @@ export default function SupplierProfilePage() {
       )}
     </PortalLayout>
   )
+}
+
+export default function Page() {
+  return <PlanSwitch free={<FreeAccount />} full={<LegacySupplierProfilePage />} />
 }
