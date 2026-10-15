@@ -132,3 +132,10 @@ Finance, free nav titles, the home model over the UAT demo world, the home and `
 
 `npx tsc --noEmit` · `npx jest` (316 suites / 4,929 tests on 15 Oct, second pass) · `node scripts/check-i18n-links.mjs` · `npx next build` ·
 `RULES_FILE=firestore.rules node_modules/.bin/tsx scripts/rules-sim/supplier-free.ts`
+
+## Final parity pass (15 Oct 2026)
+
+- Filter and tab strips on Requests, My offers, Orders, Invoices, Contractors and Company account use the prototype's grey track with a white active segment (`SegmentedNav variant="track"`); the pill look stays for the rest of the app.
+- Compared on the UAT build against the prototype: home banner (riyal sign left of the figure), Contractors, Company account, Orders, Invoices, deal drawer (stepper, next-step card, four figures, collapsible sections) and the report-delivery dialog.
+- Phone widths: the UAT origin refuses framing, so a 375px check needs a signed-in browser pane; a source audit found no fixed widths wider than a table cell inside a scrolling wrapper.
+- B-04 (contractor phone only for those he deals with directly) is enforced in the screen layer. The platform `users` read rule lets any signed-in user read the document, so a server-side guarantee needs that rule changed for the whole app; it is left as is.
