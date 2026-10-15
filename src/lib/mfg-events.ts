@@ -331,6 +331,12 @@ export async function emitDownPaymentConfirmed(
 /** A string param as a reader sees it: document numbers with their Arabic
  * prefix, a `YYYY-MM-DD` day as a written date ("28 سبتمبر 2026", not the ISO). */
 export function displayParam(v: string, locale: string): string {
+  // An amount stored as a fact (`sar:12500`), written in the reader's language — "12,500 ر.س" / "SAR 12,500" (no glyph: push has no font).
+  const sar = /^sar:(-?\d+(?:\.\d+)?)$/.exec(v)
+  if (sar) {
+    const figure = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(Number(sar[1]))
+    return locale === "ar" ? `${figure} ر.س` : `SAR ${figure}`
+  }
   if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
     const d = new Date(`${v}T00:00:00`)
     if (!Number.isNaN(d.getTime())) return d.toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { day: "numeric", month: "long", year: "numeric" })

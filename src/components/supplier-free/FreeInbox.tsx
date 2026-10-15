@@ -4,19 +4,20 @@
 // starts with the contractor's name and opens the deal it is about; the search matches a request or order number, a
 // contractor or a material and says where each result lives.
 
-import { useMemo } from "react"
+import { useEffect, useMemo } from "react"
 import { useTranslations } from "next-intl"
-import { Bell, Building2, Check, Link2, MessageSquare, Search } from "lucide-react"
-import { Link } from "@/i18n/routing"
+import { Bell, Building2, Check, Link2, Loader2, MessageSquare, Search } from "lucide-react"
+import { Link, useRouter } from "@/i18n/routing"
 import { notificationCopy } from "@/lib/mfg-events"
 import type { Translator } from "@/lib/mfg-events"
 import { cn } from "@/lib/utils"
+import { dayGroup, leadWithName, riyadhDayOf } from "@/lib/supplier-free/format"
 import type { Deal } from "@/lib/supplier-free/types"
 import { EmptyState } from "@/components/module-ui/EmptyState"
-import { FreePage, Pill, docWord } from "./ui"
+import { FreePage, Pill, docWord, stk } from "./ui"
 import { DealPill } from "./Pills"
 import { useFree, type Free } from "./useFree"
-import { useFreeNotifications, type FreeNotification } from "./useFreeNotifications"
+import { stripEmoji, useFreeNotifications, type FreeNotification } from "./useFreeNotifications"
 
 /** Where a deal lives in the sidebar: used by the search and the notifications. */
 export function whereOf(f: Free, d: Deal): { href: string; label: string } {
@@ -30,26 +31,31 @@ export function whereOf(f: Free, d: Deal): { href: string; label: string } {
   return { href: "/supplier/orders", label: f.t("navOrders") }
 }
 
+/** The conversations, newest message first (MSG-02): ordered on the full moment of the last message, not its day. */
+export function messageThreads(deals: readonly Deal[]): Deal[] {
+  return deals
+    .filter((d) => d.chat && (d.chat.last || d.chat.unread))
+    .sort((a, b) => (b.chat?.lastTs || 0) - (a.chat?.lastTs || 0) || (b.chat?.lastAt || "").localeCompare(a.chat?.lastAt || ""))
+}
+
 export function FreeMessages() {
   const f = useFree()
   const { t, world, L, fmt } = f
-  const threads = useMemo(
-    () => world.deals.filter((d) => d.chat && (d.chat.last || d.chat.unread)).sort((a, b) => (b.chat?.lastAt || "").localeCompare(a.chat?.lastAt || "")),
-    [world.deals]
-  )
+  const threads = useMemo(() => messageThreads(world.deals), [world.deals])
   return (
     <FreePage icon={MessageSquare} title={t("navMessages")} description={t("mSub")}>
       {threads.length ? (
         <ul className="divide-y overflow-hidden rounded-xl border bg-card">
           {threads.map((d) => {
             const c = L.C(d.c)
+            const last = d.chat?.last || ""
             return (
               <li key={d.id}>
-                <Link href={`/supplier/chats?deal=${d.id}&m=1` as never} scroll={false} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30">
+                <Link href={`/supplier/chats?deal=${d.id}&m=1` as never} scroll={false} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
                   <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-cta/10 text-cta"><Building2 size={17} aria-hidden="true" /></span>
                   <div className="min-w-0 flex-1">
                     <b className="block truncate text-sm"><bdi>{c?.name}</bdi></b>
-                    <span className="block truncate text-xs text-muted-foreground"><bdi>{d.title}</bdi> — {d.chat?.last}</span>
+                    <span className="block truncate text-xs text-muted-foreground"><bdi>{d.title}</bdi> — <bdi>{d.chat?.mine ? t("mYou", { x: last }) : last}</bdi></span>
                   </div>
                   <span className="whitespace-nowrap text-xs text-muted-foreground">{d.chat?.lastAt ? fmt.date(d.chat.lastAt) : ""}</span>
                   {(d.chat?.unread || 0) > 0 && <Pill tone="bad">{d.chat?.unread}</Pill>}
@@ -65,7 +71,18 @@ export function FreeMessages() {
   )
 }
 
-const KIND_ICON: Record<string, typeof Bell> = { supplier_invite_received: Link2, supplier_connected: Link2 }
+const KIND_ICON: Record<string, typeof Bell> = { supplier_invite_received: Link2, supplier_connected: Link2, sup_request_accepted: Link2, sup_request_declined: Link2 }
+
+/** Where a notice about a connection with a contractor opens when no deal is behind it: an invitation opens the
+ * invitations, an answer to his own request his requests, a made connection the contractors he works with. */
+export function connectionHref(type: string): string | null {
+  if (type === "supplier_invite_received" || type.startsWith("sup_connection_")) return "/supplier/connections?tab=inv"
+  if (type === "sup_request_declined") return "/supplier/connections?tab=req"
+  if (type === "supplier_connected" || type === "sup_request_accepted") return "/supplier/connections"
+  return null
+}
+
+const rowCls = "flex items-center gap-3 border-t px-4 py-3 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
 
 export function FreeNotifications() {
   const f = useFree()
@@ -87,9 +104,10 @@ export function FreeNotifications() {
     }
     return n.rfqId ? world.deals.find((d) => d.id === n.rfqId) || null : null
   }
-  const text = (n: FreeNotification) => {
+  const text = (n: FreeNotification, d: Deal | null) => {
     const c = n.i18n ? notificationCopy({ title: n.title, message: n.message, i18n: n.i18n as never }, shared as unknown as Translator, f.locale) : { title: n.title, message: n.message }
-    return { title: c.title || n.title, message: c.message || n.message }
+    const who = (d && L.C(d.c)?.name) || String(n.i18n?.params?.contractor || "")
+    return { title: leadWithName(stripEmoji(c.title || n.title), who), message: stripEmoji(c.message || n.message) }
   }
   const total = unread.length + world.invites.length
   let last = ""
@@ -100,7 +118,7 @@ export function FreeNotifications() {
       description={t("nSub", { n: f.fmt.n(total) })}
       action={
         unread.length > 0 ? (
-          <button type="button" onClick={() => void markAll()} className="inline-flex h-9 items-center gap-1.5 rounded-lg border bg-card px-3 text-sm font-bold hover:bg-muted/50">
+          <button type="button" onClick={() => void markAll()} className="inline-flex h-9 items-center gap-1.5 rounded-lg border bg-card px-3 text-sm font-bold hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <Check size={15} aria-hidden="true" />
             {t("markAll")}
           </button>
@@ -108,7 +126,7 @@ export function FreeNotifications() {
       }
     >
       {world.invites.length > 0 && (
-        <Link href="/supplier/connections?tab=inv" className="flex items-center gap-3 rounded-xl border border-cta/30 bg-cta/5 px-4 py-3 text-sm hover:bg-cta/10">
+        <Link href="/supplier/connections?tab=inv" className="flex items-center gap-3 rounded-xl border border-cta/30 bg-cta/5 px-4 py-3 text-sm hover:bg-cta/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-cta/15 text-cta"><Link2 size={17} aria-hidden="true" /></span>
           <b>{t("nInvite", { c: L.C(world.invites[0].c)?.name || "" })}</b>
           {world.invites.length > 1 && <Pill tone="info">+{world.invites.length - 1}</Pill>}
@@ -118,13 +136,14 @@ export function FreeNotifications() {
         <ul className="overflow-hidden rounded-xl border bg-card">
           {list.map((n) => {
             const d = dealOf(n)
-            const when = (n.createdAt || "").slice(0, 10)
-            const dn = when ? L.daysTo(when, today) : 0
-            const group = !when ? "" : dn === 0 ? t("today") : dn === 1 ? t("yesterday") : fmt.date(when, true)
+            const when = riyadhDayOf(n.createdAt)
+            const g = dayGroup(when, today)
+            const group = g === "today" ? t("today") : g === "yesterday" ? t("yesterday") : g ? fmt.date(when, true) : ""
             const head = group !== last ? group : ""
             last = group
-            const c = text(n)
+            const c = text(n, d)
             const Icon = KIND_ICON[n.type] || Bell
+            const conn = d ? null : connectionHref(n.type)
             const inner = (
               <>
                 <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", n.read ? "bg-muted text-muted-foreground" : "bg-cta/10 text-cta")}><Icon size={17} aria-hidden="true" /></span>
@@ -138,12 +157,12 @@ export function FreeNotifications() {
             return (
               <li key={n.id}>
                 {head && <div className="bg-muted/40 px-4 py-1.5 text-xs font-bold text-muted-foreground">{head}</div>}
-                {d ? (
-                  <Link href={`/supplier/notifications?deal=${d.id}` as never} scroll={false} onClick={() => void markRead(n.id)} className="flex items-center gap-3 border-t px-4 py-3 hover:bg-muted/30">
+                {d || conn ? (
+                  <Link href={(d ? `/supplier/notifications?deal=${d.id}` : conn) as never} scroll={false} onClick={() => void markRead(n.id)} className={rowCls}>
                     {inner}
                   </Link>
                 ) : (
-                  <button type="button" onClick={() => void markRead(n.id)} className="flex w-full items-center gap-3 border-t px-4 py-3 text-start hover:bg-muted/30">
+                  <button type="button" onClick={() => void markRead(n.id)} className={cn(rowCls, "w-full text-start")}>
                     {inner}
                   </button>
                 )}
@@ -166,9 +185,9 @@ export function FreeSearch({ q }: { q: string }) {
   return (
     <FreePage icon={Search} title={t("searchT")} description={needle ? t("searchSub", { q: needle, n: f.pl("pl_deal", list.length) }) : t("searchEmpty")}>
       {list.length ? (
-        <div className="overflow-x-auto rounded-xl border bg-card">
-          <table className="w-full text-start">
-            <thead className="border-b bg-muted/40 text-[11px] font-bold text-muted-foreground">
+        <div className={stk.wrap}>
+          <table className={stk.table}>
+            <thead className={stk.thead}>
               <tr>
                 <th className="px-3 py-2 text-start">{t("thRequest")}</th>
                 <th className="px-3 text-start">{t("thContractor")}</th>
@@ -176,18 +195,18 @@ export function FreeSearch({ q }: { q: string }) {
                 <th className="px-3 text-start">{t("thState")}</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className={stk.tbody}>
               {list.map((d) => {
                 const w = whereOf(f, d)
                 return (
-                  <tr key={d.id} className="border-b last:border-b-0 hover:bg-muted/30">
-                    <td className="px-3 py-2.5">
-                      <Link href={`/supplier/search?q=${encodeURIComponent(needle)}&deal=${d.id}` as never} scroll={false} className="block text-sm font-bold hover:text-module" dir="auto">{d.title}</Link>
+                  <tr key={d.id} className={cn("border-b last:border-b-0 hover:bg-muted/30", stk.tr)}>
+                    <td className={cn("px-3 py-2.5", stk.head)}>
+                      <Link href={`/supplier/search?q=${encodeURIComponent(needle)}&deal=${d.id}` as never} scroll={false} className="block text-sm font-bold hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">{d.title}</Link>
                       <span className="text-xs text-muted-foreground">{docWord(f, "rfq", d.rfq)}{d.po ? ` · ${docWord(f, "po", d.po.no)}` : ""}</span>
                     </td>
-                    <td className="px-3 text-sm"><bdi>{L.C(d.c)?.name}</bdi></td>
-                    <td className="px-3 text-sm"><Link href={w.href as never} className="text-module hover:underline">{w.label}</Link></td>
-                    <td className="px-3"><DealPill f={f} d={d} /></td>
+                    <td className={cn("px-3 text-sm", stk.cell)} data-l={t("thContractor")}><bdi>{L.C(d.c)?.name}</bdi></td>
+                    <td className={cn("px-3 text-sm", stk.cell)} data-l={t("thWhere")}><Link href={w.href as never} className="text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{w.label}</Link></td>
+                    <td className={cn("px-3", stk.cell)} data-l={t("thState")}><DealPill f={f} d={d} /></td>
                   </tr>
                 )
               })}
@@ -198,5 +217,25 @@ export function FreeSearch({ q }: { q: string }) {
         <EmptyState icon={Search} title={needle ? t("listEmptyF") : t("searchEmpty")} />
       )}
     </FreePage>
+  )
+}
+
+/** Where an old conversation link (`/supplier/chat/<offer>`, from a push or an e-mail) lands for a free account: its
+ * deal, opened on the conversation — the free journey has no separate chat page (MSG-01). */
+export function freeChatTarget(deals: readonly Deal[], chatId: string): string {
+  const d = deals.find((x) => x.chat?.chatId === chatId || x.id === chatId)
+  return d ? `/supplier/chats?deal=${d.id}&m=1` : "/supplier/chats"
+}
+
+export function FreeChatRedirect({ chatId }: { chatId: string }) {
+  const { ready, world } = useFree()
+  const router = useRouter()
+  useEffect(() => {
+    if (ready) router.replace(freeChatTarget(world.deals, chatId) as never)
+  }, [ready, world.deals, chatId, router])
+  return (
+    <div className="grid min-h-[40vh] place-items-center">
+      <Loader2 className="animate-spin text-module" size={24} aria-hidden="true" />
+    </div>
   )
 }

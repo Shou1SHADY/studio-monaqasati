@@ -45,6 +45,9 @@ import { useProcActor } from "@/hooks/useProcActor"
 import { resolvePolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_SETTINGS, type ProcurementPolicies } from "@/lib/procurement/types"
 import { createPurchaseOrderFromAward } from "@/lib/procurement/writes"
+import { createRfqWithNumber, updateRfqNumbered } from "@/lib/procurement/rfq-writes"
+import { DEFAULT_TERMS, termsListOf, termsRefusal } from "@/lib/procurement/terms-freeze"
+import { RfqTermsPicker, termRowsOf, type TermRow } from "@/components/procurement/rfq/RfqTermsPicker"
 import { toAmount, type PricingMode } from "@/lib/procurement/offer-pricing"
 import { incompleteProducts, productComplete } from "@/lib/rfq-products"
 import { displayPoNumber } from "@/lib/procurement/format"
@@ -129,6 +132,8 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   // default — the only way a multi-line RFQ can be split across suppliers and
   // an order carries a unit price; one total is the buyer's explicit choice.
   const [pricingMode, setPricingMode] = useState<PricingMode>(DEFAULT_RFQ_PRICING)
+  // The buyer's payment terms (RFQ-11): the supplier reads them before quoting; the award freezes them on the order.
+  const [termRows, setTermRows] = useState<TermRow[]>(() => termRowsOf(null))
   // Which suppliers a private RFQ goes to. null means "not narrowed" — every
   // connected supplier, which is what private meant before this picker existed
   // and stays the default so an untouched form behaves exactly as it used to.
@@ -334,6 +339,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           )
           setVisibilityMode(data.visibility === "private" ? "private" : "public")
           setPricingMode(data.pricingMode === "line" ? "line" : "total")
+          setTermRows(termRowsOf(data.paymentTermsList))
           // An empty list on an existing RFQ means it predates this picker, so
           // leave it null — "everyone connected", the rule it was saved under.
           setPrivateRecipients(Array.isArray(data.allowedSupplierOrgIds) && data.allowedSupplierOrgIds.length > 0 ? data.allowedSupplierOrgIds : null)
@@ -638,6 +644,8 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       if (refusal === "deadline_past") errors.push({ field: "deadline", message: tp("rfqx.form.deadline_after_today") })
     }
 
+    if (termsRefusal(termRows)) errors.push({ field: "rfq-terms", message: termsRefusal(termRows) === "sum" ? tp("rfqpo.form.terms_sum", { sum: termRows.reduce((s, r) => s + (Number(r.pct) || 0), 0) }) : tp("rfqpo.form.terms_row") })
+
     // A private RFQ addressed to nobody is invisible to every supplier —
     // publishing it would look like success and then produce silence.
     if (visibilityMode === "private" && supplierOptions.length > 0 && selectedRecipients.length === 0) {
@@ -822,11 +830,12 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         allowedSupplierOrgIds: visibilityMode === "private" ? [...selectedRecipients] : [],
         orderedFromMdmakDirect: false,
         requiresWarranty: validProducts.some(p => p.requiresWarranty),
+        paymentTermsList: termsListOf(termRows) || DEFAULT_TERMS.map((x) => ({ ...x })),
         updatedAt: new Date().toISOString()
       }
 
       try {
-        await updateDoc(doc(firestore, "rfqs", editId), rfqData)
+        await updateRfqNumbered(firestore, editId, rfqData)
         if (status === "New") void notifyFavoriteSuppliersOfPublish(user, [editId])
         toast({
           title: t("newrfq_toast_updated"),
@@ -844,8 +853,6 @@ export function RfqForm({ projectId }: { projectId?: string }) {
     }
 
     // Create mode: group products by category and create separate RFQs (project-scoped or standalone)
-    const rfqsRef = collection(firestore, "rfqs")
-
     // Group products by their main category
     const groupedProducts = validProducts.reduce((acc, product) => {
       const cat = product.category
@@ -909,6 +916,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         ...(visibilityMode === "direct" ? { directAward: true, awardedAt: new Date().toISOString() } : {}),
         orderedFromMdmakDirect: false,
         requiresWarranty: catProducts.some(p => p.requiresWarranty),
+        paymentTermsList: termsListOf(termRows) || DEFAULT_TERMS.map((x) => ({ ...x })),
         createdByUserId: user.uid,
         createdByUserName: profile?.name || user.email || "عضو الفريق",
         createdAt: new Date().toISOString()
@@ -920,26 +928,26 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       try {
         const catNeeds = Array.from(new Map(catProducts.filter((p) => pickedNeeds[p.id]).map((p) => [pickedNeeds[p.id].key, pickedNeeds[p.id]])).values())
         const source = purchaseSource ?? (catNeeds.length === 1 ? catNeeds[0].source : null)
-        const ref = await addDoc(rfqsRef, source ? { ...rfqData, purchaseSource: source } : rfqData)
+        const ref = await createRfqWithNumber(firestore, source ? { ...rfqData, purchaseSource: source } : rfqData)
         createdRfqIds.push(ref.id)
         // Each picked need is told which RFQ it became (its own home records it).
         for (const n of catNeeds) {
           try {
-            await linkNeed(firestore, n.source, { rfqId: ref.id, rfqNumber: null }, (profile as { name?: string } | null)?.name || user?.email || "")
+            await linkNeed(firestore, n.source, { rfqId: ref.id, rfqNumber: ref.rfqNumber }, (profile as { name?: string } | null)?.name || user?.email || "")
           } catch (linkErr) {
             console.error("need ↔ RFQ link failed:", linkErr)
           }
         }
         if (purchaseSource && createdRfqIds.length === 1) {
           try {
-            await linkNeed(firestore, purchaseSource, { rfqId: ref.id, rfqNumber: (rfqData as { rfqNumber?: string }).rfqNumber ?? null }, (profile as { name?: string } | null)?.name || user?.email || "")
+            await linkNeed(firestore, purchaseSource, { rfqId: ref.id, rfqNumber: ref.rfqNumber }, (profile as { name?: string } | null)?.name || user?.email || "")
           } catch (linkErr) {
             // The RFQ exists; only the back-reference failed — Purchasing can still see both.
             console.error("purchase request ↔ RFQ link failed:", linkErr)
           }
           for (const extra of extraSources) {
             try {
-              await linkNeed(firestore, extra, { rfqId: ref.id, rfqNumber: (rfqData as { rfqNumber?: string }).rfqNumber ?? null }, (profile as { name?: string } | null)?.name || user?.email || "")
+              await linkNeed(firestore, extra, { rfqId: ref.id, rfqNumber: ref.rfqNumber }, (profile as { name?: string } | null)?.name || user?.email || "")
             } catch (linkErr) {
               console.error("combined need ↔ RFQ link failed:", linkErr)
             }
@@ -1066,6 +1074,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                 directAward: true,
                 products: groupedProducts[categories[0]]?.map((p) => ({ name: (p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory) || p.category, quantity: Number(p.quantity), unitOfMeasure: p.unit })) || null,
                 purchaseSource: purchaseSource ?? null,
+                paymentTermsList: termsListOf(termRows),
               },
               offer: { ...directOffer, directAward: true, companyName: directOffer.supplierName, deliveryLocation: formData.city, status: "مقبول", lines: validProducts.map((p, idx) => ({ rfqProductIndex: idx, unitPrice: Number(directLinePrices[p.id]) })) },
               offers: [{ ...directOffer, status: "مقبول" }],
@@ -1467,6 +1476,8 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                   </div>
                 </div>
                 )}
+
+                <RfqTermsPicker rows={termRows} onChange={(rows) => { setTermRows(rows); clearError("rfq-terms") }} invalid={hasError("rfq-terms")} />
 
                 {/* Visibility mode */}
                 {/* How to be quoted (PRD SS4): one figure, or a rate per material.

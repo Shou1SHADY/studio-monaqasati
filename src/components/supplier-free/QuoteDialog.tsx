@@ -14,11 +14,20 @@ import { Callout } from "@/components/module-ui/Callout"
 import { useToast } from "@/hooks/use-toast"
 import { profilePapers } from "@/components/procurement/rfq/rfqOfferView"
 import { addDaysTo, r2 } from "@/lib/supplier-free/deal-logic"
-import { quoteBlocks, submitNewQuote, submitNextVersion, type QuoteMode, type QuoteValues } from "@/lib/supplier-free/quote-writes"
+import { quoteBlocks, QuoteRefused, submitNewQuote, submitNextVersion, type QuoteMode, type QuoteValues } from "@/lib/supplier-free/quote-writes"
 import { uploadSupplierFile } from "@/lib/supplier-free/uploads"
 import type { Deal } from "@/lib/supplier-free/types"
 import { termsText, useQueryState } from "./ui"
 import { useFree } from "./useFree"
+
+/** What the server's refusal says to the supplier (it ran the same rules the form shows). */
+const REFUSAL_KEY: Record<string, string> = {
+  deadline: "blkDeadline",
+  rfq_closed: "errRfqClosed",
+  reply_closed: "errReplyClosed",
+  already_quoted: "errAlreadyQuoted",
+  not_reached: "errNotReached",
+}
 
 function initialValues(d: Deal, mode: QuoteMode, today: string): QuoteValues {
   const cur = d.offer ? d.offer.v[d.offer.v.length - 1] : null
@@ -33,15 +42,26 @@ function initialValues(d: Deal, mode: QuoteMode, today: string): QuoteValues {
   return { prices, skip, total: cur.total != null ? String(cur.total) : "", arrive: cur.arrive || "", valid: cur.valid || addDaysTo(today, 14), note: cur.note || "" }
 }
 
+/** A deal past quoting (delivering, collecting, done) never opens the quote form. */
+export const quoteGuard = (stage: string) => stage === "deliver" || stage === "collect" || stage === "done"
+
 export function QuoteDialog() {
   const f = useFree()
   const q = useQueryState()
   const id = q.get("quote")
   const deal = id ? f.world.deals.find((d) => d.id === id) || null : null
-  if (!deal) return null
   const wanted = q.get("mode")
+  // The prototype's stage guard: an address that asks for a new quote on a quoted request, or any quote once the deal is
+  // awarded, opens the deal instead of the form.
+  const guarded = !!deal && (quoteGuard(f.L.stage(deal)) || (wanted === "new" && !!deal.offer))
+  const setQuery = q.set
+  const dealId = deal?.id || ""
+  useEffect(() => {
+    if (guarded) setQuery({ quote: null, mode: null, deal: dealId }, { replace: true })
+  }, [guarded, dealId, setQuery])
+  if (!deal || guarded) return null
   const mode: QuoteMode = deal.offer ? (wanted === "reduce" && deal.offer.reduce ? "reduce" : "edit") : "new"
-  return <Form key={`${deal.id}:${mode}`} f={f} d={deal} mode={mode} onClose={() => q.set({ quote: null, mode: null })} onDone={(dealId) => q.set({ quote: null, mode: null, deal: dealId })} />
+  return <Form key={`${deal.id}:${mode}`} f={f} d={deal} mode={mode} onClose={() => q.set({ quote: null, mode: null })} onDone={(dealId) => q.set({ quote: null, mode: null, deal: dealId }, { replace: true })} />
 }
 
 function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; d: Deal; mode: QuoteMode; onClose: () => void; onDone: (id: string) => void }) {
@@ -99,13 +119,14 @@ function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; 
       } else {
         const offer = rawOffer(d.id)
         if (!offer) throw new Error("no offer")
-        await submitNextVersion(ctx, offer.id, v, mode, offer)
+        await submitNextVersion(ctx, offer.id, v, mode)
         toast({ title: t("tVersionSent", { n: (d.offer?.v.length || 1) + 1 }) })
       }
       onDone(d.id)
     } catch (err) {
       console.error("quote", err)
-      toast({ title: t("errSave"), variant: "destructive" })
+      const key = err instanceof QuoteRefused ? REFUSAL_KEY[err.code] : undefined
+      toast({ title: t((key || "errSave") as "errSave"), variant: "destructive" })
     } finally {
       setBusy(false)
     }

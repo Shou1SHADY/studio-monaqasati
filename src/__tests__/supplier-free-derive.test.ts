@@ -114,12 +114,14 @@ describe("a request the supplier has not quoted", () => {
     expect(deriveWorld(base({ rfqs: [rfq({ status: "Cancelled" })] })).deals).toHaveLength(0)
   })
 
-  it("an invitation he declined to quote closes as declined and leaves the open list", () => {
+  it("an invitation he declined to quote closes as declined and leaves the open list — and is no quote (RFQ-13)", () => {
     const w = deriveWorld(base({ declined: { r1: { at: "2026-10-10", note: "x" } } }))
     const L = createWorldLogic(TODAY, w)
-    expect(w.deals[0].closed?.k).toBe("noquote")
+    expect(w.deals[0].closed).toEqual({ k: "noquote", at: "2026-10-10" })
     expect(L.opps({})).toHaveLength(0)
-    expect(L.offerSeg(w.deals[0])).toBe("lost")
+    // No 0-riyal card in My quotes, not counted in any of its groups.
+    expect(w.deals[0].offer).toBeNull()
+    expect(L.offerSeg(w.deals[0])).toBeNull()
   })
 })
 

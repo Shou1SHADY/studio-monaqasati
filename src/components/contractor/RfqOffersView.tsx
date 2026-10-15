@@ -28,7 +28,7 @@ import { offerRates, pricedProducts } from "@/lib/procurement/offer-pricing"
 import { lastPaid } from "@/lib/procurement/prices"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type AwardReasonCode, type ProcurementPolicies, type PurchaseOrder, type ReceiptFact, type SupplierFacts } from "@/lib/procurement/types"
-import { poBlocks, poStatus, supplierScore } from "@/lib/procurement/po"
+import { addDays, poBlocks, poStatus, supplierScore, todayOf } from "@/lib/procurement/po"
 import { awardDisclosed } from "@/lib/procurement/supplier"
 import { createPurchaseOrderFromAward, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
 import { procLinks } from "@/lib/procurement/events"
@@ -37,6 +37,7 @@ import { legacyLinesOf, recordReceipt } from "@/lib/procurement/receipt-writes"
 import {
   awardSupplierOrgId,
   competingOffers,
+  OFFER_WITHDRAWN,
   offersSealed,
   supplierFactsFromProfile,
   type OfferAwardReason,
@@ -162,6 +163,8 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [openingChat, setOpeningChat] = useState<string | null>(null)
   const [sampleRequestOffer, setSampleRequestOffer] = useState<any | null>(null)
+  // What the sample request says (OFR-06, WF-05): what and how much, where, and the day it is due.
+  const [sampleAsk, setSampleAsk] = useState({ what: "", place: "", by: "" })
   const [threadOffer, setThreadOffer] = useState<OfferLike | null>(null)
   const [raisingOrderId, setRaisingOrderId] = useState<string | null>(null)
   const [reviewOffer, setReviewOffer] = useState<any | null>(null)
@@ -606,6 +609,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
       directAward: Boolean((rfq as { directAward?: boolean }).directAward),
       products: (rfq as { products?: RfqLike["products"] }).products || null,
       purchaseSource: (rfq as { purchaseSource?: RfqLike["purchaseSource"] }).purchaseSource || null,
+      paymentTermsList: (rfq as { paymentTermsList?: RfqLike["paymentTermsList"] }).paymentTermsList || null,
     }
     // An Admin deciding on an Mdmak-posted RFQ may award here without a team
     // permission; the order's rules ask for membership, so his attempt is
@@ -739,13 +743,25 @@ ${t("offers_notif_reduction_note", { note })}`
     })
   }
 
+  const openSampleRequest = (offer: any) => {
+    const r = (rfq || {}) as { deliveryLocation?: string; district?: string; city?: string }
+    setSampleAsk({ what: "", place: r.deliveryLocation || [r.city, r.district].filter(Boolean).join(" — "), by: addDays(todayOf(new Date()), 5) })
+    setSampleRequestOffer(offer)
+  }
+  const sampleAskOk = Boolean(sampleAsk.what.trim() && sampleAsk.place.trim() && sampleAsk.by && sampleAsk.by >= todayOf(new Date()))
+
   const handleSampleAction = async (offerId: string, action: "مطلوبة" | "تم الاستلام") => {
     if (!firestore || !user) return;
     setProcessingId(offerId);
     try {
+       const now = new Date().toISOString()
        await updateDoc(doc(firestore, "offers", offerId), {
          sampleStatus: action,
-         sampleUpdatedAt: new Date().toISOString()
+         sampleUpdatedAt: now,
+         // A request carries what, where and by when; a new one clears the last sample's answer.
+         ...(action === "مطلوبة"
+           ? { sampleWhat: sampleAsk.what.trim().slice(0, 300), samplePlace: sampleAsk.place.trim().slice(0, 300), sampleBy: sampleAsk.by, sampleRequestedAt: now, sampleSentAt: null, sampleReceivedBy: null, sampleNote: null }
+           : {}),
        });
 
       const offerSnap = await getDoc(doc(firestore, "offers", offerId));
@@ -858,6 +874,7 @@ ${t("offers_notif_reduction_note", { note })}`
       case "تم التسليم": return <Badge className="bg-blue-50 text-blue-600 border-blue-100">{t("offers_status_completed")}</Badge>
       case "مرفوض": return <Badge variant="destructive" className="bg-destructive/10 text-destructive border-none">{t("offers_status_rejected")}</Badge>
       case "مطلوب تخفيض": return <Badge className="bg-amber-100 text-amber-700 border-none">{t("offers_status_reduction")}</Badge>
+      case OFFER_WITHDRAWN: return <Badge variant="outline" className="text-muted-foreground">{t("offers_status_withdrawn")}</Badge>
       default: return <Badge className="bg-amber-50 text-amber-600 border-amber-100">{t("offers_status_review")}</Badge>
     }
   }
@@ -1146,14 +1163,14 @@ ${t("offers_notif_reduction_note", { note })}`
                   <Card key={offer.id} className={cn(
                     "shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative",
                     offer.status === "مقبول" ? "border-success/30" :
-                    offer.status === "مرفوض" ? "border-slate-200 opacity-65" :
+                    offer.status === "مرفوض" || offer.status === OFFER_WITHDRAWN ? "border-slate-200 opacity-65" :
                     isMdmak ? "border-accent/40 bg-accent/[0.015]" :
                     offer.isGuestOffer ? "border-violet/30" :
                     isBestOffer ? "border-amber-300/70 shadow-amber-50" : "border-slate-100"
                   )} style={{
                     borderInlineStart: `3px solid ${
                       offer.status === "مقبول" ? "hsl(155 80% 35%)" :
-                      offer.status === "مرفوض" ? "hsl(215 16% 75%)" :
+                      offer.status === "مرفوض" || offer.status === OFFER_WITHDRAWN ? "hsl(215 16% 75%)" :
                       isMdmak ? "hsl(186 79% 46%)" :
                       offer.isGuestOffer ? "hsl(var(--violet))" :
                       isBestOffer ? "hsl(35 92% 50%)" : "hsl(214 32% 88%)"
@@ -1550,7 +1567,7 @@ ${t("offers_notif_reduction_note", { note })}`
                             </Button>
                             {(!offer.sampleStatus || offer.sampleStatus === "تم الاستلام") && (
                               <Button
-                                onClick={() => offer.sampleStatus ? handleSampleAction(offer.id, "مطلوبة") : setSampleRequestOffer(offer)}
+                                onClick={() => openSampleRequest(offer)}
                                 disabled={processingId === offer.id}
                                 variant="outline"
                                 className="w-full gap-2 rounded-full border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 hover:border-blue-500 hover:text-blue-800 transition-all font-medium mt-1"
@@ -1897,6 +1914,29 @@ ${t("offers_notif_reduction_note", { note })}`
               {t("offers_sample_dialog_desc")}
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="sample-what" className="text-xs font-bold">
+                {t("offers_sample_what")} <span className="text-destructive">*</span>
+              </Label>
+              <Input id="sample-what" value={sampleAsk.what} maxLength={300} placeholder={t("offers_sample_what_ph")} onChange={(e) => setSampleAsk((x) => ({ ...x, what: e.target.value }))} />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="sample-place" className="text-xs font-bold">
+                  {t("offers_sample_place")} <span className="text-destructive">*</span>
+                </Label>
+                <Input id="sample-place" value={sampleAsk.place} maxLength={300} onChange={(e) => setSampleAsk((x) => ({ ...x, place: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="sample-by" className="text-xs font-bold">
+                  {t("offers_sample_by")} <span className="text-destructive">*</span>
+                </Label>
+                <Input id="sample-by" type="date" dir="ltr" min={todayOf(new Date())} value={sampleAsk.by} onChange={(e) => setSampleAsk((x) => ({ ...x, by: e.target.value }))} />
+              </div>
+            </div>
+            {!sampleAskOk && <p className="text-[11px] text-destructive">{t("offers_sample_err")}</p>}
+          </div>
           <DialogFooter className="flex flex-row justify-end gap-2 mt-4">
             <Button
               variant="outline"
@@ -1906,7 +1946,7 @@ ${t("offers_notif_reduction_note", { note })}`
                   setSampleRequestOffer(null);
                 }
               }}
-              disabled={!!processingId}
+              disabled={!!processingId || !sampleAskOk}
             >
               {t("offers_send_notification")}
             </Button>
@@ -1919,7 +1959,7 @@ ${t("offers_notif_reduction_note", { note })}`
                   setSampleRequestOffer(null);
                 }
               }}
-              disabled={!!processingId || !!openingChat}>
+              disabled={!!processingId || !!openingChat || !sampleAskOk}>
               {t("offers_send_and_chat")}
             </Button>
           </DialogFooter>

@@ -54,9 +54,15 @@ export function offersSealed(rfq: SealableRfq | null | undefined, policies: Proc
   return todayOf(now) <= day
 }
 
-/** Offers still in the running: everything not rejected, whatever else it is. */
+/** The stored literal of a quote its supplier withdrew before the deadline (Supplier 1.0 OFR-04). */
+export const OFFER_WITHDRAWN = "مسحوب"
+
+/** Withdrawn by its supplier — by status, or the mark an earlier free-journey withdrawal left alone. */
+export const isWithdrawnOffer = (o: { status?: string | null; withdrawnAt?: unknown }): boolean => o.status === OFFER_WITHDRAWN || Boolean(o.withdrawnAt)
+
+/** Offers still in the running: everything not rejected and not withdrawn, whatever else it is. */
 export function competingOffers<T extends { status?: string | null }>(offers: T[]): T[] {
-  return offers.filter((o) => o.status !== OFFER_REJECTED)
+  return offers.filter((o) => o.status !== OFFER_REJECTED && !isWithdrawnOffer(o as { status?: string | null; withdrawnAt?: unknown }))
 }
 
 // ---------------------------------------------------------------------------

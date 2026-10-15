@@ -4,9 +4,34 @@
 
 import type { Firestore } from "firebase-admin/firestore"
 import { buildProcNotification, procEventKey, type ProcEvent } from "@/lib/procurement/events"
+import { resolveRecipients, type TeamSnapshot } from "@/lib/mfg-events"
+import type { PermissionId, TeamGroup } from "@/lib/permissions"
 
-export async function notifyNamed(db: Firestore, actor: { uid: string; name: string }, e: Omit<ProcEvent, "to">, users: (string | null | undefined)[], opts: { owner?: boolean } = {}): Promise<number> {
-  const recipients = [...new Set([...users, ...(opts.owner === false ? [] : [e.organizationId])].filter((x): x is string => !!x && x !== actor.uid))]
+/** The holders of these permissions in a company (its owner always among them) — the team read with the Admin SDK. */
+export async function permissionHolders(db: Firestore, orgId: string, permissions: readonly PermissionId[]): Promise<string[]> {
+  if (!permissions.length || !orgId) return []
+  const [users, groups] = await Promise.all([db.collection("users").where("organizationId", "==", orgId).get(), db.collection("teamGroups").where("organizationId", "==", orgId).get()])
+  const team: TeamSnapshot = {
+    ownerId: orgId,
+    members: users.docs.map((d) => {
+      const u = d.data() as { defaultGroupId?: string | null; organizationRole?: string | null }
+      return { id: d.id, defaultGroupId: u.defaultGroupId ?? null, organizationRole: "organizationRole" in u ? (u.organizationRole ?? null) : "owner" }
+    }),
+    groups: groups.docs.map((d) => ({ id: d.id, permissions: ((d.data() as { permissions?: TeamGroup["permissions"] }).permissions || []) as TeamGroup["permissions"] })),
+    departments: [],
+  }
+  return resolveRecipients(team, permissions.map((permission) => ({ permission })), "")
+}
+
+export async function notifyNamed(
+  db: Firestore,
+  actor: { uid: string; name: string },
+  e: Omit<ProcEvent, "to">,
+  users: (string | null | undefined)[],
+  opts: { owner?: boolean; permissions?: readonly PermissionId[] } = {}
+): Promise<number> {
+  const holders = opts.permissions?.length ? await permissionHolders(db, e.organizationId, opts.permissions).catch(() => [] as string[]) : []
+  const recipients = [...new Set([...users, ...holders, ...(opts.owner === false ? [] : [e.organizationId])].filter((x): x is string => !!x && x !== actor.uid))]
   const at = new Date().toISOString()
   const key = procEventKey({ kind: e.kind, poId: e.poId })
   await Promise.all(

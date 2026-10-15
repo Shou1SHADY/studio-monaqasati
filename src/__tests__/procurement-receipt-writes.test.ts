@@ -85,7 +85,7 @@ function order(over: Partial<PurchaseOrder> = {}): PurchaseOrder {
 }
 
 function seedWorld(po: PurchaseOrder = order()) {
-  seed(`users/${ORG}`, { organizationId: ORG, name: "Owner" })
+  seed(`users/${ORG}`, { organizationId: ORG, name: "Owner", companyName: "شركة المقاول" })
   seed("users/buyer", { organizationId: ORG, organizationRole: "member", defaultGroupId: "g-buy" })
   seed("users/fin", { organizationId: ORG, organizationRole: "member", defaultGroupId: "g-fin" })
   seed("teamGroups/g-buy", { organizationId: ORG, permissions: ["offers.accept"] })
@@ -216,9 +216,17 @@ describe("recordReceipt on an order", () => {
     expect(buyerInbox.map((n) => n.type)).toContain("po_receipt_recorded")
     expect(buyerInbox.find((n) => n.type === "po_receipt_recorded")?.i18n.params).toMatchObject({ number: "PO-2026/001", receipt: "GR-2026/001", accepted: 7, ordered: 15 })
     expect(listCollection<{ type: string }>("users/fin/notifications").map((n) => n.type)).toContain("po_receipt_recorded")
-    const sup = listCollection<{ type: string; title: string; message: string; i18n: { title: string; params: { rfq: string } }; offerId: string; rfqId: string; organizationId: string; read: boolean }>("users/sup-user/notifications")
+    // WF-11: the supplier reads who received it (the contractor's company first), the receipt as a word and a bare number,
+    // and that a quantity differed (l1 had a reject) — no emoji, no GR-/PO- codes.
+    const sup = listCollection<{ type: string; title: string; message: string; i18n: { title: string; params: Record<string, unknown> }; offerId: string; rfqId: string; organizationId: string; read: boolean; link: string }>("users/sup-user/notifications")
     expect(sup).toHaveLength(1)
-    expect(sup[0]).toMatchObject({ type: "delivery_confirmed", organizationId: "sup-org", offerId: "of1", rfqId: "rfq1", read: false, i18n: { title: "pn_delivery_confirmed_title", params: { rfq: "حديد تسليح" } }, title: "✅ تم تأكيد الاستلام" })
+    expect(sup[0]).toMatchObject({ type: "po_receipt_for_supplier", organizationId: "sup-org", offerId: "of1", rfqId: "rfq1", read: false, link: "/supplier/orders?po=po1" })
+    expect(sup[0].i18n).toMatchObject({ title: "pn_po_receipt_for_supplier_title", params: { contractor: "شركة المقاول", receipt: "2026/001", number: "2026/001", diff: "@pn_po_receipt_with_diff" } })
+    expect(sup[0].title).toBe("سجّل شركة المقاول استلام توريدك — سند 2026/001")
+    expect(sup[0].message).toContain("بفرق في الكمية")
+    expect(`${sup[0].title}${sup[0].message}`).not.toMatch(/GR-|PO-|✅/)
+    // His company's owner reads it too.
+    expect(listCollection<{ type: string }>("users/sup-org/notifications").map((n) => n.type)).toEqual(["po_receipt_for_supplier"])
   })
 
   it("a failure in one consequence does not stop the others, and the result says what did not happen", async () => {
@@ -233,7 +241,7 @@ describe("recordReceipt on an order", () => {
     expect(mocked(markPurchaseArrived)).not.toHaveBeenCalled()
     // The preparer, Finance and the supplier still hear of the receipt.
     expect(listCollection<{ type: string }>("users/buyer/notifications").map((n) => n.type)).toContain("po_receipt_recorded")
-    expect(listCollection<{ type: string }>("users/sup-user/notifications").map((n) => n.type)).toContain("delivery_confirmed")
+    expect(listCollection<{ type: string }>("users/sup-user/notifications").map((n) => n.type)).toContain("po_receipt_for_supplier")
 
     // And Manufacturing failing does not silence the rest either.
     resetFakeDb()
@@ -241,7 +249,7 @@ describe("recordReceipt on an order", () => {
     mocked(markPurchaseArrived).mockRejectedValueOnce(new Error("permission-denied"))
     const r2 = await recordReceipt(db, gate, { delivery: delivery(), po: po(), lines, receiverName: "سلمى", policies: DEFAULT_POLICIES }, { now: NOW, copy })
     expect(r2).toMatchObject({ stockLanded: true, posted: true, mfgClosed: false })
-    expect(listCollection<{ type: string }>("users/sup-user/notifications").map((n) => n.type)).toContain("delivery_confirmed")
+    expect(listCollection<{ type: string }>("users/sup-user/notifications").map((n) => n.type)).toContain("po_receipt_for_supplier")
   })
 
   it("refuses an over-receipt before touching anything, a receiver name is required, and only a receiver may record", async () => {
@@ -330,8 +338,10 @@ describe("the other doors", () => {
     for (const forbidden of ["offerId", "rfqId", "supplierOrgId", "supplierId", "source"]) expect(d).not.toHaveProperty(forbidden)
     expect(po().lines[1].accepted).toBe(5)
     expect(mocked(receiveDelivery)).toHaveBeenCalledWith(expect.objectContaining({ items: [{ name: "حديد 16مم", unit: "طن", quantity: 5, unitCost: 3200 }] }))
-    // The supplier is still told, through the order's user.
-    expect(listCollection<{ type: string }>("users/sup-user/notifications").map((n) => n.type)).toContain("delivery_confirmed")
+    // The supplier is still told, through the order's user — with no difference: nothing was rejected.
+    const told = listCollection<{ type: string; i18n: { params: Record<string, unknown> } }>("users/sup-user/notifications")
+    expect(told.map((n) => n.type)).toContain("po_receipt_for_supplier")
+    expect(told[0].i18n.params.diff).toBe("")
     // From the manual form it is additionally flagged manual.
     const r2 = await createArrivalWithoutNotice(db, gate, { po: po(), lines: [{ poLineId: "l1", name: "x", unit: "طن", noticeQuantity: 0, counted: 2 }], receiverName: "س", policies: DEFAULT_POLICIES, manual: true }, { now: NOW })
     expect(readDoc<{ source: string; docNumber: string }>(`deliveries/${r2.deliveryId}`)).toMatchObject({ source: "manual", docNumber: "GR-2026/002" })

@@ -59,7 +59,7 @@ export const OFFER_SEG = {
   reply: ["reduce", "sample"],
   wait: ["review", "sampleSent"],
   won: ["won"],
-  lost: ["lost", "noaward", "withdrawn", "declinedPo", "noquote"],
+  lost: ["lost", "noaward", "withdrawn", "declinedPo"],
 } as const
 export type OfferSeg = keyof typeof OFFER_SEG
 export const OFFER_ORDER: readonly OfferSeg[] = ["reply", "wait", "won", "lost"]
@@ -77,6 +77,25 @@ export interface InvoiceAlloc {
 }
 
 export const FALLBACK_TERMS: PaymentTerm[] = [{ pct: 100, days: 30 }]
+
+/** The facts "paid in full" stands on, as plain values so the server (rating, B-09) asks the same question the screen
+ * does: every line arrived or was cancelled, every receipt is named by an invoice, and confirmed transfers cover the
+ * invoices' own gross (each with the VAT rate it carried; 15% when it names none). */
+export interface PaidFacts {
+  lines: { qty: number; got: number; can: number }[]
+  receipts: string[]
+  invoices: { amt: number; vat?: number | null; grns?: string[] | null }[]
+  paidOk: number
+}
+
+export function paidInFull(x: PaidFacts, vatRate: number = VAT): boolean {
+  if (!x.lines.length || !x.invoices.length) return false
+  if (!x.lines.every((l) => r2(l.qty - (l.got || 0) - (l.can || 0)) <= 0)) return false
+  const named = new Set(x.invoices.flatMap((i) => i.grns || []))
+  if (!x.receipts.every((r) => named.has(r))) return false
+  const gross = r2(x.invoices.reduce((s, i) => s + r2(i.amt * (1 + (i.vat != null ? i.vat : vatRate))), 0))
+  return r2(gross - x.paidOk) <= 0.01
+}
 
 export function createDealLogic(today: string, vatRate: number = VAT) {
   const daysTo = (iso: string, from: string = today) => Math.round((dayNum(iso) - dayNum(from)) / MS_DAY)
@@ -173,10 +192,6 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
     return i >= 0 && i === d.pays.length - 1
   }
 
-  /** Accepted value not yet invoiced (before VAT) — what the supplier may still bill. */
-  function uninvoicedNet(d: Deal): number {
-    return Math.max(0, r2(gotValue(d) - invoicedNet(d)))
-  }
   /** The receipts no invoice names yet. */
   const uninvoicedReceipts = (d: Deal): DealReceipt[] => {
     const named = new Set(d.invs.flatMap((i) => i.grns || []))
@@ -186,6 +201,15 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
   function receiptNet(d: Deal, r: DealReceipt): number {
     if (!d.po || isLump(d.po)) return 0
     return r2(d.po.lines.reduce((s, l) => s + (r.got[l.it] != null ? r.got[l.it] : r.items[l.it] || 0) * (l.price as number), 0))
+  }
+  /** Value of the receipts no invoice names yet (before VAT) — what the supplier may still bill. An invoice below
+   * its receipts' value closes them all the same (the shortfall is shown, never billed twice). A lump-sum order
+   * bills its total once, when it is complete. */
+  function uninvoicedNet(d: Deal): number {
+    const open = uninvoicedReceipts(d)
+    if (!d.po || !open.length) return 0
+    if (isLump(d.po)) return allGot(d) ? Math.max(0, r2(lumpTotal(d) - invoicedNet(d))) : 0
+    return r2(open.reduce((s, r) => s + receiptNet(d, r), 0))
   }
 
   // ---- Lateness (G-05) ---------------------------------------------------------------
@@ -263,7 +287,8 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
   }
   /** Something received and not billed yet — one invoice per receipt, so a pending report
    * for the rest of the order does not hold it back (decision 1). */
-  const canInvoice = (d: Deal) => !!d.po && !!d.po.acc && !(d.closed && d.closed.k === "declined") && uninvoicedNet(d) > 0.009
+  const canInvoice = (d: Deal) =>
+    !!d.po && !!d.po.acc && !(d.closed && d.closed.k === "declined") && uninvoicedReceipts(d).length > 0 && (!isLump(d.po) || allGot(d))
 
   /** Confirmed transfers cover invoices oldest first; reported ones are shown apart. */
   function invAlloc(d: Deal): InvoiceAlloc[] {
@@ -283,7 +308,41 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
       })
   }
 
-  const isFullyPaid = (d: Deal) => !!d.po && allGot(d) && d.invs.length > 0 && uninvoicedNet(d) <= 0.009 && owed(d) <= 0.01
+  /** Everything arrived, every receipt is on an invoice, and the invoices' own totals (with the VAT each carried) are
+   * covered by confirmed transfers. */
+  const isFullyPaid = (d: Deal) =>
+    !!d.po &&
+    paidInFull(
+      { lines: d.po.lines.map((l) => ({ qty: l.qty, got: l.got, can: l.can })), receipts: receipts(d).map((r) => r.grn), invoices: d.invs.map((i) => ({ amt: i.amt, vat: i.vat, grns: i.grns })), paidOk: paidOk(d) },
+      vatRate
+    )
+
+  /** For each transfer, how many days after the instalment it covers it was reported (prototype `payLateness`): the
+   * instalments of every invoice, oldest first, are consumed in the order the transfers came; a missing one covers
+   * nothing and is never late. */
+  function payLateness(d: Deal): number[] {
+    const sc = d.invs
+      .map((i, n) => ({ i, n }))
+      .sort((a, b) => dayNum(a.i.date || "1970-01-01") - dayNum(b.i.date || "1970-01-01") || a.n - b.n)
+      .flatMap(({ i }) => sched(d, i))
+    let idx = 0
+    let rem = sc.length ? sc[0].amt : 0
+    return d.pays.map((p) => {
+      if (p.st === "miss" || idx >= sc.length) return 0
+      const n = daysTo(p.at, sc[idx].due)
+      let a = p.amt
+      while (a > 0.009 && idx < sc.length) {
+        const take = Math.min(a, rem)
+        a = r2(a - take)
+        rem = r2(rem - take)
+        if (rem <= 0.009) {
+          idx++
+          rem = idx < sc.length ? sc[idx].amt : 0
+        }
+      }
+      return n > 0 ? n : 0
+    })
+  }
 
   return {
     daysTo,
@@ -320,6 +379,7 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
     receiptNet,
     canInvoice,
     isFullyPaid,
+    payLateness,
     invAlloc,
     isLate,
     shipOnTime,

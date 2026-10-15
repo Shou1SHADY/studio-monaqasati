@@ -54,6 +54,8 @@ export type ProcEventKind =
   | "po_supplier_declined" // → preparer + owner: the supplier declined an order — re-award or talk to him
   | "po_delivery_reported" // → preparer + receivers: record the receipt
   | "po_delivery_reminder" // → preparer + receivers: the supplier's reminder
+  | "po_receipt_window_remind" // → receivers: a delivery the supplier reported 2 days ago still has no receipt (daily job)
+  | "po_receipt_window_escalated" // → the procurement manager (po.approve) + owner: 5 days and still no receipt (daily job)
   | "po_invoice_uploaded" // → preparer + Finance: a supplier invoice to match
   | "po_payment_confirmed" // → preparer + Finance: a transfer was confirmed
   | "po_payment_missing" // → preparer + Finance: a transfer was reported missing
@@ -67,6 +69,7 @@ export type ProcEventKind =
   | "rfq_outcome" // → the supplier: his quote ended with a result (won with the order, another won, or closed with no award)
   | "po_payment_reported" // → the supplier: a transfer to confirm
   | "po_warranty_accepted" // → the supplier: a warranty was accepted
+  | "po_receipt_for_supplier" // → the supplier: the contractor recorded a receipt on his order (with a quantity difference, when one)
   | "sup_request_accepted" // → the supplier: the contractor accepted his request to connect
   | "sup_request_declined" // → the supplier: the contractor declined his request to connect
 
@@ -107,6 +110,8 @@ export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "po_supplier_declined",
   "po_delivery_reported",
   "po_delivery_reminder",
+  "po_receipt_window_remind",
+  "po_receipt_window_escalated",
   "po_invoice_uploaded",
   "po_payment_confirmed",
   "po_payment_missing",
@@ -120,6 +125,7 @@ export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "rfq_outcome",
   "po_payment_reported",
   "po_warranty_accepted",
+  "po_receipt_for_supplier",
   "sup_request_accepted",
   "sup_request_declined",
 ]
@@ -319,6 +325,14 @@ export const PROC_EVENT_COPY_AR: Record<ProcEventKind, { title: string; message:
     title: "تذكير بتسجيل الاستلام — {number}",
     message: "يذكّرك {supplier}: سلّم بتاريخ {date} ولم يُسجَّل الاستلام بعد.",
   },
+  po_receipt_window_remind: {
+    title: "توريد بلا سند استلام منذ {days} أيام — {number}",
+    message: "أبلغ {supplier} بأنه سلّم أمر الشراء {number} بتاريخ {date}، ولم يُسجَّل سند الاستلام بعد. سجّله من بوابة الاستلام.",
+  },
+  po_receipt_window_escalated: {
+    title: "تصعيد: توريد بلا سند استلام منذ {days} أيام — {number}",
+    message: "سلّم {supplier} أمر الشراء {number} بتاريخ {date} ولم يُسجَّل الاستلام بعد، رغم التذكير. تابع المستلم ليسجّل السند.",
+  },
   po_invoice_uploaded: {
     title: "فاتورة جديدة على أمر الشراء {number}",
     message: "رفع {supplier} الفاتورة {invoice} بمبلغ {amount} (قبل الضريبة). راجعها للمطابقة والجدولة.",
@@ -364,12 +378,16 @@ export const PROC_EVENT_COPY_AR: Record<ProcEventKind, { title: string; message:
     message: "{result} {reason}",
   },
   po_payment_reported: {
-    title: "أبلغ {contractor} بحوالة — {number}",
+    title: "أبلغ {contractor} بحوالة — أمر الشراء {number}",
     message: "حوّل {contractor} مبلغ {amount} إلى {bank} (المرجع {ref}). أكّد وصولها.",
   },
   po_warranty_accepted: {
-    title: "قبل {contractor} ضمانك — {number}",
+    title: "قبل {contractor} ضمانك — أمر الشراء {number}",
     message: "قبل {contractor} الضمان الذي سجّلته للبند {item}.",
+  },
+  po_receipt_for_supplier: {
+    title: "سجّل {contractor} استلام توريدك — سند {receipt}",
+    message: "سجّل {contractor} سند الاستلام {receipt} على أمر الشراء {number}{diff}. افتح الأمر لترى ما قُبل.",
   },
   sup_request_accepted: {
     title: "قبل {contractor} طلب ارتباطك",
@@ -399,6 +417,7 @@ export const PROC_EVENT_PARAM_COPY_AR: Record<string, string> = {
   pn_po_closed_complete: "مكتمل",
   pn_po_closed_short_flag: "مغلق قبل اكتماله",
   pn_po_ceiling_unknown: "غير محدّد (أمر بمبلغ إجمالي)",
+  pn_po_receipt_with_diff: " — بفرق في الكمية",
   pn_po_reminder_ask_accept: "لم يُقبل بعد — اقبله وحدّد موعد التسليم.",
   pn_po_reminder_ask_deliver: "التسليم مستحق — أخبرنا بموعد الوصول.",
   pn_po_budget_accepted: "قبل تجاوز الموازنة — يمضي الأمر إلى اعتماده",
@@ -440,6 +459,17 @@ export function renderProcCopy(kind: ProcEventKind, params: EventParams, copy?: 
   return { title: substitute(ar.title, shown).trim(), message: substitute(ar.message, shown).replace(/\s+/g, " ").trim() }
 }
 
+/** An amount handed to a notification as a fact, formatted for each READER (NFR-01): `displayParam` turns
+ * `sar:12500` into "12,500 ر.س" for an Arabic reader and "SAR 12,500" for an English one. */
+export const sarParam = (amount: number): string => `sar:${Math.round((amount + Number.EPSILON) * 100) / 100}`
+
+/** `PO-2026/031` → `2026/031`: the supplier reads the contractor's numbers as a word and a number, never its codes. */
+export function bareDocNumber(n: unknown): string {
+  const s = typeof n === "string" ? n : n == null ? "" : String(n)
+  const m = /(\d{4}\/\d+)\s*$/.exec(s)
+  return m ? m[1] : s.replace(/^[A-Za-z\u0600-\u06FF.]+-?/, "")
+}
+
 /** "12,500 ر.س" / "SAR 12,500" — for notification text only (no glyph). */
 export function sarText(amount: number | null | undefined, locale: "ar" | "en" = "ar"): string {
   if (amount == null || !Number.isFinite(amount)) return ""
@@ -468,9 +498,13 @@ export interface ProcNotificationDoc {
   createdAt: string
 }
 
+/** The params a supplier reads: the order's and the receipt's numbers bare. */
+const SUPPLIER_BARE = ["number", "receipt"] as const
+
 export function buildProcNotification(e: ProcEvent, actor: { uid: string; name: string }, userId: string, nowIso: string): ProcNotificationDoc {
-  const params: EventParams = { actor: actor.name, ...(e.params || {}) }
   const forSupplier = Boolean(e.supplier?.userId) && (userId === e.supplier?.userId || userId === e.supplier?.orgId)
+  const params: EventParams = { actor: actor.name, ...(e.params || {}) }
+  if (forSupplier) for (const k of SUPPLIER_BARE) if (typeof params[k] === "string") params[k] = bareDocNumber(params[k])
   const text = renderProcCopy(e.kind, params, e.copy)
   return {
     userId,

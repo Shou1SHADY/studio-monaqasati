@@ -126,7 +126,7 @@ async function executeAction(
         supplierId: userId,
         price: Number(p.price) || 0,
         notes: p.notes ?? '',
-        status: 'Pending',
+        status: 'قيد المراجعة', // the stored literal every reader compares; the rules refuse any other on a supplier's new offer
         createdAt: serverTimestamp(),
       });
       break;

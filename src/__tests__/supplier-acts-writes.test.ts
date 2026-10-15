@@ -98,9 +98,17 @@ describe("frozenTermsOf", () => {
     expect(frozenTermsOf({ advancePercent: "25" })).toEqual({ termsList: [{ pct: 25, days: 0 }, { pct: 75, days: 30 }] })
   })
 
-  it("credit alone is one instalment; nothing stated freezes nothing", () => {
+  it("credit alone is one instalment; nothing stated freezes the explicit default — never no terms (G-08)", () => {
     expect(frozenTermsOf({ creditDays: 60 })).toEqual({ termsList: [{ pct: 100, days: 60 }] })
-    expect(frozenTermsOf({})).toEqual({})
-    expect(frozenTermsOf({ advancePercent: 100 })).toEqual({})
+    expect(frozenTermsOf({})).toEqual({ termsList: [{ pct: 100, days: 30 }] })
+    expect(frozenTermsOf({ advancePercent: 100 })).toEqual({ termsList: [{ pct: 100, days: 30 }] })
+  })
+
+  it("the RFQ's own terms come first, then the offer's, then the default", () => {
+    const rfq = { paymentTermsList: [{ pct: 40, days: 0 }, { pct: 60, days: 45 }] }
+    expect(frozenTermsOf({ advancePercent: 30, creditDays: 45 }, rfq)).toEqual({ termsList: [{ pct: 40, days: 0 }, { pct: 60, days: 45 }] })
+    // A list that does not add up to 100% is not terms: the offer's stand.
+    expect(frozenTermsOf({ creditDays: 60 }, { paymentTermsList: [{ pct: 40, days: 0 }] })).toEqual({ termsList: [{ pct: 100, days: 60 }] })
+    expect(frozenTermsOf({}, null)).toEqual({ termsList: [{ pct: 100, days: 30 }] })
   })
 })

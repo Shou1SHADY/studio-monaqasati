@@ -200,6 +200,7 @@ import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { groupOf, groupTabs, visibleTab, type ProjectGroup } from "@/lib/pm/project-tabs"
 import { bulkDeleteSplit } from "@/lib/procurement/rfq-view"
+import { createRfqWithNumber } from "@/lib/procurement/rfq-writes"
 import { Activity, ClipboardCheck, Coins, FileStack, HardHat, Mail, SlidersHorizontal, Truck, ScrollText } from "lucide-react"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { AdoptProjectDialog } from "@/components/pm/AdoptProjectDialog"
@@ -1455,7 +1456,6 @@ export default function ProjectDetailPage() {
         return
       }
 
-      const rfqsRef = collection(firestore, "rfqs")
       const projectName = typedProject?.name || ""
       let created = 0
       try {
@@ -1501,7 +1501,7 @@ export default function ProjectDetailPage() {
             createdByUserName: (profile as { name?: string } | null)?.name || user.email || "عضو الفريق",
             createdAt: new Date().toISOString(),
           }
-          const newRfqRef = await addDoc(rfqsRef, rfqData)
+          const newRfqRef = await createRfqWithNumber(firestore, rfqData)
           created++
           await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayUnion(newRfqRef.id) })
 

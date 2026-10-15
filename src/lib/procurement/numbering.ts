@@ -27,6 +27,16 @@ export async function drawProcDocNumber(
   return drawYearlyDocNumber(firestore, tx, organizationId, type, year)
 }
 
+/** The RFQ's own yearly sequence (`RFQ-2026/031`, Supplier 1.0 NAV-08 / G-10): the counter
+ * `{orgId}__RFQ__{year}` beside PO and GR — a number never repeats within its type, and the
+ * supplier reads it as a word ("طلب 2026/031"). Three letters, so it never meets another
+ * module's two-letter code (`RQ` is Sales' quote request). */
+export const RFQ_DOC_TYPE = "RFQ"
+
+export async function drawRfqNumber(firestore: Firestore, tx: Transaction, organizationId: string, year = new Date().getUTCFullYear()): Promise<string> {
+  return drawYearlyDocNumber(firestore, tx, organizationId, RFQ_DOC_TYPE, year)
+}
+
 /**
  * Several numbers of one type in ONE transaction (a split award prepares an
  * order per supplier at once). A transaction may not read a document after

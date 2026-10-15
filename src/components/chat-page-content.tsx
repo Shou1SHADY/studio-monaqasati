@@ -224,6 +224,7 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
       updateDoc(doc(firestore, "chats", chatId), {
         lastMessage: msgText,
         lastMessageAt: new Date().toISOString(),
+        lastSenderId: user.uid,
         unreadFor: newUnread,
         ...(otherId ? { [`unreadCounts.${otherId}`]: increment(1) } : {})
       }).catch((err) => console.warn("chat metadata update:", err?.code))

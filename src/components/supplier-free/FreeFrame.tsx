@@ -23,6 +23,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react"
+import { useSearchParams } from "next/navigation"
 import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -44,37 +45,55 @@ interface SideItem {
 }
 
 const RAIL_KEY = "mdmak.supplierFree.rail"
+/** Under this width the sidebar opens over the page (the `md` breakpoint every class of the frame switches at). */
+export const OVERLAY_BELOW = 768
+/** Under this width the sidebar starts folded until the supplier chooses (NAV-02). */
+export const FOLD_BELOW = 1100
+
+/** The session's fold choice, kept even when storage is blocked. */
+let railMemory: boolean | null = null
+
+/** Folded or not: the supplier's own choice when he made one, else folded under 1100px. */
+export function initialRail(width: number): boolean {
+  if (railMemory != null) return railMemory
+  let saved: string | null = null
+  try {
+    saved = window.localStorage.getItem(RAIL_KEY)
+  } catch {
+    saved = null
+  }
+  return saved === "1" ? true : saved === "0" ? false : width < FOLD_BELOW
+}
 
 export function FreeFrame({ children }: { children: ReactNode }) {
   const f = useFree()
-  const { t, L, profile, world } = f
+  const { t, L, profile } = f
   const pathname = usePathname()
   const router = useRouter()
+  const params = useSearchParams()
   const [rail, setRail] = useState(false)
   const [open, setOpen] = useState(false)
   const [upgrade, setUpgrade] = useState(false)
   const [q, setQ] = useState("")
 
-  // Folded by default under 1100px; afterwards the supplier's own choice, kept in the browser.
+  // The results page shows what was searched in the box that searched it (NAV-04).
+  const searched = pathname === "/supplier/search" ? params.get("q") || "" : null
   useEffect(() => {
-    let saved: string | null = null
-    try {
-      saved = window.localStorage.getItem(RAIL_KEY)
-    } catch {
-      saved = null
-    }
-    setRail(saved === "1" ? true : saved === "0" ? false : window.innerWidth < 1100)
-  }, [])
+    if (searched != null) setQ(searched)
+  }, [searched])
+
+  useEffect(() => setRail(initialRail(window.innerWidth)), [])
   const toggleRail = useCallback(() => {
-    if (window.innerWidth < 700) {
+    if (window.innerWidth < OVERLAY_BELOW) {
       setOpen((o) => !o)
       return
     }
     setRail((r) => {
+      railMemory = !r
       try {
         window.localStorage.setItem(RAIL_KEY, r ? "0" : "1")
       } catch {
-        /* storage blocked: the fold simply is not remembered */
+        /* storage blocked: remembered for this session only */
       }
       return !r
     })
@@ -88,33 +107,28 @@ export function FreeFrame({ children }: { children: ReactNode }) {
   }, [open])
 
   const { unread } = useFreeNotifications()
-  const bell = unread.length + world.invites.length
+  const bell = unread.length + f.world.invites.length
 
+  // Every badge's number AND colour come from badges() (NAV-03, G-04): one definition for the frame and the tests.
   const badges = L.badges()
-  const unreadMsgs = world.deals.reduce((s, d) => s + (d.chat ? d.chat.unread : 0), 0)
   const pct = useMemo(() => (profile ? profilePct(profileFacts(profile.raw)) : 0), [profile])
+  const item = (key: keyof typeof badges, href: string, icon: LucideIcon, label: string): SideItem => ({ key, href, icon, label, count: badges[key].n, tone: badges[key].tone })
 
   const groups: { label: string | null; items: SideItem[] }[] = [
-    { label: null, items: [{ key: "home", href: "/supplier", icon: Zap, label: t("tToday"), count: badges.home.n, tone: "red" }] },
+    { label: null, items: [item("home", "/supplier", Zap, t("tToday"))] },
     {
       label: t("sgBefore"),
-      items: [
-        { key: "opps", href: "/supplier/rfqs", icon: Search, label: t("navOpps"), count: badges.opps.n, tone: "blue" },
-        { key: "offers", href: "/supplier/offers", icon: Send, label: t("navOffers"), count: badges.offers.n, tone: "red" },
-      ],
+      items: [item("opps", "/supplier/rfqs", Search, t("navOpps")), item("offers", "/supplier/offers", Send, t("navOffers"))],
     },
     {
       label: t("sgAfter"),
-      items: [
-        { key: "orders", href: "/supplier/orders", icon: FileText, label: t("navOrders"), count: badges.orders.n, tone: "red" },
-        { key: "invoices", href: "/supplier/invoices", icon: Wallet, label: t("navInvoices"), count: badges.invoices.n, tone: "red" },
-      ],
+      items: [item("orders", "/supplier/orders", FileText, t("navOrders")), item("invoices", "/supplier/invoices", Wallet, t("navInvoices"))],
     },
     {
       label: t("sgAcct"),
       items: [
-        { key: "connections", href: "/supplier/connections", icon: Link2, label: t("navConnections"), count: badges.connections.n, tone: "blue" },
-        { key: "messages", href: "/supplier/chats", icon: MessageSquare, label: t("navMessages"), count: unreadMsgs, tone: "blue" },
+        item("connections", "/supplier/connections", Link2, t("navConnections")),
+        item("messages", "/supplier/chats", MessageSquare, t("navMessages")),
         { key: "account", href: "/supplier/profile", icon: Building2, label: t("navAccount"), count: pct < 100 ? `${pct}%` : 0, tone: "muted" },
       ],
     },
@@ -175,7 +189,7 @@ export function FreeFrame({ children }: { children: ReactNode }) {
           {groups.map((g, gi) => (
             <div key={gi}>
               {g.label ? (
-                <h6 className={cn("mx-2.5 mb-1.5 mt-4 text-[11px] font-semibold text-slate-500", rail && "md:mx-2 md:my-3 md:h-px md:overflow-hidden md:bg-white/10 md:text-[0px]")}>{g.label}</h6>
+                <h6 className={cn("mx-2.5 mb-1.5 mt-4 text-[11px] font-semibold text-slate-400", rail && "md:mx-2 md:my-3 md:h-px md:overflow-hidden md:bg-white/10 md:text-[0px]")}>{g.label}</h6>
               ) : (
                 <div className="h-1" />
               )}

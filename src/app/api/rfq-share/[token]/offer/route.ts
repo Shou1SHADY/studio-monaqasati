@@ -15,6 +15,7 @@ import { newOfferNotice, newOfferNoticeId } from "@/lib/procurement/offer-announ
 import { resolvePolicies } from "@/lib/procurement/policies"
 import type { ProcurementPolicies } from "@/lib/procurement/types"
 import { verifyOtp } from "@/lib/otp"
+import { guestValidityDefault, saudiMobileE164 } from "@/lib/supplier-free/phone-auth"
 import { canSendCodes } from "@/lib/sms"
 import {
   GUEST_PAPER_KINDS,
@@ -22,7 +23,6 @@ import {
   guestOtpSubject,
   guestPaperPath,
   guestPaperRefusal,
-  normalizeGuestMobile,
   type GuestPaper,
 } from "@/lib/procurement/guest-supplier"
 
@@ -50,16 +50,17 @@ const linesSchema = z
   .array(z.object({ rfqProductIndex: z.coerce.number().int().min(0).max(999), unitPrice: z.coerce.number().positive().finite() }))
   .max(200)
 
+// Three things are required of a visitor (LNK-01, B-12): the prices, the company name and a Saudi mobile
+// (05XXXXXXXX or +9665XXXXXXXX, stored as E.164). The contact name and the e-mail are his to give or not.
 const fieldsSchema = z.object({
   companyName: z.string().trim().min(2).max(200),
-  contactName: z.string().trim().min(2).max(200),
-  email: z.string().trim().toLowerCase().email().max(254),
+  contactName: z.string().trim().max(200).optional().or(z.literal("")),
+  email: z.string().trim().toLowerCase().email().max(254).optional().or(z.literal("")),
   phone: z
     .string()
     .trim()
-    .min(7)
     .max(20)
-    .regex(/^[+\d][\d\s-]+$/, "Invalid phone number"),
+    .refine((v) => saudiMobileE164(v) != null, "Invalid Saudi mobile"),
   price: z.coerce.number().positive().finite(),
   deliveryLocation: z.string().trim().max(300).optional().or(z.literal("")),
   deliveryDate: z
@@ -149,9 +150,10 @@ export async function POST(
       return errorResponse("Please review the submitted fields", "INVALID_INPUT", 400)
     }
     const data = parsed.data
-    const phoneE164 = normalizeGuestMobile(data.phone)
+    const phoneE164 = saudiMobileE164(data.phone) as string
+    const email = data.email || ""
+    const contactName = data.contactName || ""
     const otpNeeded = guestOtpRequired(canSendCodes(), isUat())
-    if (otpNeeded && !phoneE164) return errorResponse("Enter a valid mobile number", "INVALID_PHONE", 400)
     const otp = otpNeeded ? otpSchema.safeParse({ challengeId: raw.challengeId, code: raw.code }) : null
     if (otp && !otp.success) return errorResponse("Verify your mobile number first", "CODE_REQUIRED", 400)
 
@@ -167,16 +169,16 @@ export async function POST(
 
     const db = getAdminFirestore()
 
-    // One offer per email per RFQ — a guest resending the form shouldn't
-    // flood the contractor with duplicates.
+    // One offer per mobile per RFQ — the mobile is the one thing every visitor gives, so a resent form
+    // never floods the contractor with duplicates.
     const dup = await db
       .collection("offers")
       .where("rfqId", "==", rfqId)
-      .where("guestContact.email", "==", data.email)
+      .where("guestContact.phone", "==", phoneE164)
       .limit(1)
       .get()
     if (!dup.empty) {
-      return errorResponse("An offer from this email already exists for this RFQ", "DUPLICATE_OFFER", 409)
+      return errorResponse("An offer from this mobile already exists for this RFQ", "DUPLICATE_OFFER", 409)
     }
 
     if (otp?.success && phoneE164) {
@@ -254,7 +256,7 @@ export async function POST(
       companyName: data.companyName,
       supplierWebsite: data.website || null,
       submittedByUserId: null,
-      submittedByUserName: data.contactName,
+      submittedByUserName: contactName || data.companyName,
       rfqId,
       rfqTitle: rfq.title || "",
       projectId: rfq.projectId || null,
@@ -274,9 +276,9 @@ export async function POST(
       status: "قيد المراجعة",
       isGuestOffer: true,
       guestContact: {
-        name: data.contactName,
-        email: data.email,
-        phone: phoneE164 || data.phone,
+        name: contactName,
+        email,
+        phone: phoneE164,
         vatNumber: data.vatNumber || null,
         phoneVerified: Boolean(otp?.success),
         ...(otp?.success ? { phoneVerifiedAt: nowIso } : {}),
@@ -290,7 +292,7 @@ export async function POST(
       createdAt: nowIso,
     }
     // The offer's commercial terms (R-16) — the same parser as the portal's dialog.
-    const parsedTerms = parseOfferTerms({ priceBasis: raw.priceBasis, validUntil: raw.validUntil, advancePercent: raw.advancePercent, creditDays: raw.creditDays }, new Date().toISOString().slice(0, 10))
+    const parsedTerms = parseOfferTerms({ priceBasis: raw.priceBasis, validUntil: raw.validUntil || guestValidityDefault(rfq.deadline as string | null), advancePercent: raw.advancePercent, creditDays: raw.creditDays }, new Date().toISOString().slice(0, 10))
     if (parsedTerms.error) return errorResponse("Invalid offer terms", "INVALID_INPUT", 400)
     Object.assign(offerData, parsedTerms.terms)
     if (data.executionDuration) {
@@ -313,8 +315,8 @@ export async function POST(
         organizationId: (rfq.organizationId as string) || (rfq.contractorId as string) || null,
         shareLinkId: linkId,
         channel: link.channel,
-        email: data.email,
-        phone: data.phone,
+        email,
+        phone: phoneE164,
       })
       offerUrl = guestLink.url
       await offerRef.update({ guestOfferLinkId: guestLink.linkId }).catch(() => {})
@@ -322,16 +324,16 @@ export async function POST(
       console.error("Failed to create guest offer link:", err)
     }
 
-    // Receipt email doubles as delivery of that link — every guest leaves an
-    // email address, so this is the one channel that always reaches them.
-    if (offerUrl) {
+    // A receipt e-mail doubles as delivery of that link, when he left an address
+    // (the page also hands him the link on screen).
+    if (offerUrl && email) {
       const { subject, html } = buildGuestOfferReceiptEmail({
         companyName: data.companyName,
         rfqTitle: (rfq.title as string) || "",
         price: total,
         offerUrl,
       })
-      await sendEmail({ to: data.email, subject, html }).catch((err) =>
+      await sendEmail({ to: email, subject, html }).catch((err) =>
         console.error("Failed to send guest offer receipt:", err)
       )
     }

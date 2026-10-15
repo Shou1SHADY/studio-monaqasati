@@ -8,8 +8,12 @@
 // every older document carries, so a quote or an order from before this release still reads.
 
 import { awardDisclosed, supplierSegmentOf } from "@/lib/procurement/supplier"
+import { isWithdrawnOffer } from "@/lib/procurement/award"
+import { termsListOf } from "@/lib/procurement/terms-freeze"
 import type { PurchaseOrder } from "@/lib/procurement/types"
-import { addDaysTo, dayNum } from "./deal-logic"
+import { addDaysTo, createDealLogic, dayNum } from "./deal-logic"
+import { rfqItems } from "./quote-rules"
+import { momentOf, riyadhDayOf } from "./format"
 import type {
   ConnectionInvite,
   ContractorRef,
@@ -38,15 +42,9 @@ const numOf = (v: unknown): number => {
   const n = Number(String(v ?? "").replace(/[,\s]/g, ""))
   return Number.isFinite(n) ? n : 0
 }
-const dayOf = (v: unknown): string => {
-  if (!v) return ""
-  if (typeof v === "string") return v.slice(0, 10)
-  if (typeof v === "object" && v !== null && "toDate" in v && typeof (v as { toDate: () => Date }).toDate === "function") {
-    return new Date((v as { toDate: () => Date }).toDate().getTime() + 3 * 3_600_000).toISOString().slice(0, 10)
-  }
-  if (typeof v === "object" && v !== null && "seconds" in v) return new Date(((v as { seconds: number }).seconds + 3 * 3600) * 1000).toISOString().slice(0, 10)
-  return ""
-}
+/** The Riyadh day of a stored value (NFR-05): a bare date as written, a moment — ISO string or Timestamp — shifted to
+ * Riyadh, so a request posted at 22:30 UTC is the next day's, as it is for the supplier reading it. */
+const dayOf = (v: unknown): string => (typeof v === "string" || (typeof v === "object" && v !== null) ? riyadhDayOf(v) : "")
 const timeOf = (iso: unknown): string => {
   if (typeof iso !== "string" || iso.length < 16) return ""
   const t = Date.parse(iso)
@@ -93,6 +91,24 @@ export interface RawWorld {
 
 // ---- Small mappings --------------------------------------------------------------------
 
+/** A deal's conversation as its list reads it (MSG-02): the last message, when (every writer stamps `lastMessageAt`;
+ * `updatedAt` is the older field), whether it was his, and his unread count. Without a sender stamp, a last message
+ * the other side has not read yet and he has is his own. */
+export function chatOf(chat: Rec, myUid: string, chatId: string): NonNullable<Deal["chat"]> {
+  const at = chat.lastMessageAt || chat.updatedAt
+  const unreadFor = Array.isArray(chat.unreadFor) ? (chat.unreadFor as string[]) : []
+  const sender = str(chat.lastSenderId)
+  const mine = sender ? sender === myUid : unreadFor.length > 0 && !unreadFor.includes(myUid)
+  return {
+    last: str(chat.lastMessage),
+    lastAt: dayOf(at),
+    lastTs: momentOf(at),
+    mine,
+    unread: numOf((chat.unreadCounts as Rec | undefined)?.[myUid]) || (unreadFor.includes(myUid) ? 1 : 0),
+    chatId,
+  }
+}
+
 /** `RFQ-2026/031` → `2026/031`: the supplier reads the contractor's number as a word and a number. */
 export function bareNumber(n: unknown): string {
   const s = str(n)
@@ -103,7 +119,11 @@ export function bareNumber(n: unknown): string {
 /** The number the supplier reads on a receipt: `GR-2026/031` → `2026/031`. */
 export const receiptNumber = bareNumber
 
-const EXCLUSION_TO_WHY: Record<string, OutcomeWhy> = { price: "price", terms: "price", lead: "time", spec: "spec" }
+/** The contractor's exclusion reasons (R-41, and the older set still stored) as the supplier reads them. */
+const EXCLUSION_TO_WHY: Record<string, OutcomeWhy> = { price: "price", terms: "price", lead: "time", spec: "spec", incomplete: "incomplete", documents: "docs", not_qualified: "docs", other: "other" }
+
+/** Why a request was cancelled (R-12) → the no-award reason the supplier reads. */
+const CANCEL_TO_WHY: Record<string, OutcomeWhy> = { need: "need", spec: "spec", reissue: "reissue" }
 
 const CHECK_MAP: Record<string, string> = { photos: "ph", weighbridge: "wt", certificate: "cert" }
 
@@ -113,17 +133,6 @@ export function shortTitle(title: string, items: DealItem[]): string {
   if (t && t.length <= 90 && !t.includes("\n")) return t
   if (items.length === 1) return items[0].name
   return t.split(/[\n.،;]/)[0].slice(0, 90) || items[0]?.name || ""
-}
-
-function rfqItems(rfq: Rec): DealItem[] {
-  const products = Array.isArray(rfq.products) ? (rfq.products as Rec[]) : []
-  return products.map((p, i) => ({
-    id: `i${i + 1}`,
-    name: str(p.name).trim() || str(p.description).trim(),
-    unit: str(p.unitOfMeasure || p.unit),
-    qty: numOf(p.quantity),
-    spec: str(p.description) !== str(p.name) ? str(p.description) : "",
-  }))
 }
 
 function channelOf(rfq: Rec, myOrgId: string, offer: Rec | null): DealChannel {
@@ -174,7 +183,7 @@ function versionsOf(offer: Rec, items: DealItem[], pricing: "item" | "total"): Q
 }
 
 /** The outcome of a quote the contractor decided (or the closing of its request). */
-function outcomeOf(offer: Rec, rfq: Rec, hasOwnPo: boolean, disclosed: boolean): { st: OfferStatus; at: string; why?: OutcomeWhy } | null {
+function outcomeOf(offer: Rec, rfq: Rec, hasOwnPo: boolean, disclosed: boolean, posById: ReadonlyMap<string, PurchaseOrder>): { st: OfferStatus; at: string; why?: OutcomeWhy } | null {
   const out = offer.outcome as Rec | undefined
   if (out && typeof out.k === "string") {
     const k = out.k as string
@@ -187,21 +196,35 @@ function outcomeOf(offer: Rec, rfq: Rec, hasOwnPo: boolean, disclosed: boolean):
     return { st: "lost", at: dayOf(ex?.at) || dayOf(offer.decidedAt) || dayOf(offer.updatedAt), why }
   }
   if (hasOwnPo && disclosed) return { st: "won", at: dayOf(offer.decidedAt) || dayOf(offer.updatedAt) }
-  if (str(rfq.status) === "Cancelled") return { st: "noaward", at: dayOf((rfq.cancellation as Rec | undefined)?.at) || dayOf(rfq.updatedAt), why: "cancelled" }
+  // HIS quote was chosen: its order is with the buyer's approval, so it waits — never "awarded to another" (OFR-07).
+  if (status === "مقبول" || status === "تم التسليم" || offer.poId) {
+    const p = offer.poId ? posById.get(str(offer.poId)) : undefined
+    // The order was refused before it was ever sent: the request closed without an award for him.
+    if (p && p.status === "cancelled" && supplierSegmentOf(p) == null) return { st: "noaward", at: dayOf(p.closedAt) || dayOf((p as unknown as Rec).updatedAt) }
+    // An award from before purchase orders was told at the time.
+    if (!offer.poId && !offer.awaitingOrderApproval) return { st: "won", at: dayOf(offer.decidedAt) || dayOf(offer.updatedAt) }
+    return null
+  }
+  if (str(rfq.status) === "Cancelled") {
+    const c = rfq.cancellation as Rec | undefined
+    return { st: "noaward", at: dayOf(c?.at) || dayOf(rfq.cancelledAt) || dayOf(rfq.updatedAt), why: CANCEL_TO_WHY[str(c?.code)] || "cancelled" }
+  }
   if (str(rfq.status) === "Awarded" && !hasOwnPo) return { st: "lost", at: dayOf(rfq.awardedAt) || dayOf(rfq.updatedAt) }
   return null
 }
 
-function offerOf(offer: Rec, rfq: Rec, items: DealItem[], pricing: "item" | "total", hasOwnPo: boolean, disclosed: boolean, today: string): DealOffer {
+function offerOf(offer: Rec, rfq: Rec, items: DealItem[], pricing: "item" | "total", hasOwnPo: boolean, disclosed: boolean, today: string, posById: ReadonlyMap<string, PurchaseOrder>): DealOffer {
   const v = versionsOf(offer, items, pricing)
   const status = str(offer.status)
-  const out = outcomeOf(offer, rfq, hasOwnPo, disclosed)
+  const out = outcomeOf(offer, rfq, hasOwnPo, disclosed, posById)
   const o: DealOffer = { status: "review", v }
   const hasReduce = status === "مطلوب تخفيض"
   const sample = str(offer.sampleStatus)
 
-  if (offer.withdrawnAt) {
+  if (isWithdrawnOffer(offer as { status?: string; withdrawnAt?: unknown })) {
     o.status = "withdrawn"
+    // The day he withdrew it, not the day it is looked at (OFR-04).
+    o.out = { at: dayOf(offer.withdrawnAt) || dayOf(offer.updatedAt) || today }
     return o
   }
   if (out) {
@@ -211,11 +234,11 @@ function offerOf(offer: Rec, rfq: Rec, items: DealItem[], pricing: "item" | "tot
     return o
   }
   if (hasReduce) {
-    const at = dayOf(offer.reductionAt) || dayOf(offer.updatedAt) || today
+    const at = dayOf(offer.reductionAt) || dayOf(offer.decidedAt) || dayOf(offer.updatedAt) || today
     o.status = "reduce"
     o.reduce = {
       at,
-      target: numOf(offer.targetPrice),
+      target: numOf(offer.targetPrice) || targetOfLines(offer, items),
       by: dayOf(offer.reductionBy) || addDaysTo(at, 3),
       note: str(offer.reductionNote),
     }
@@ -237,10 +260,23 @@ function offerOf(offer: Rec, rfq: Rec, items: DealItem[], pricing: "item" | "tot
       by: dayOf(offer.sampleBy) || addDaysTo(at, 5),
       sentAt: dayOf(offer.sampleSentAt) || dayOf(offer.sampleUpdatedAt) || at,
       receivedBy: str(offer.sampleReceivedBy) || undefined,
+      note: str(offer.sampleNote) || undefined,
     }
     return o
   }
   return o
+}
+
+/** A round's line targets × quantities, before VAT — what a cut asked when no total was named. */
+function targetOfLines(offer: Rec, items: DealItem[]): number {
+  const targets = Array.isArray(offer.reductionTargets) ? (offer.reductionTargets as Rec[]) : []
+  let sum = 0
+  for (const t of targets) {
+    const item = items[numOf(t.rfqProductIndex)]
+    if (!item) return 0
+    sum += numOf(t.unitPrice) * item.qty
+  }
+  return Math.round(sum * 100) / 100
 }
 
 function termsOfPo(po: PurchaseOrder & Rec): PaymentTerm[] {
@@ -320,13 +356,15 @@ export function deriveWorld(raw: RawWorld): World {
     // A request the supplier never quoted and that is no longer open is not his to see.
     if (!offer && str(rfq.status) !== "New") continue
     const declinedMark = !offer ? raw.declined[rfq.id] : undefined
+    const terms = termsListOf(rfq.paymentTermsList)
 
     const pricing: "item" | "total" = str(rfq.pricingMode) === "line" ? "item" : "total"
     const channel = channelOf(rfq, myOrgId, offer)
     const district = str(rfq.district)
     const deal: Deal = {
       id: rfq.id,
-      rfq: bareNumber(rfq.rfqNumber) || rfq.id.slice(0, 6),
+      // The contractor's own number as a word; an RFQ from before numbering reads by its title, never an id fragment.
+      rfq: bareNumber(rfq.rfqNumber) || shortTitle(str(rfq.title), items),
       c: refOf(orgId),
       title: shortTitle(str(rfq.title), items),
       city: district ? `${str(rfq.city)} — ${district}` : str(rfq.city),
@@ -351,12 +389,13 @@ export function deriveWorld(raw: RawWorld): World {
       msgs: [],
       log: [],
     }
+    if (terms) deal.terms = terms
 
     if (offer) {
       const disclosed = !offer.poId || awardDisclosed({ status: str(offer.status), poId: str(offer.poId), awaitingOrderApproval: !!offer.awaitingOrderApproval }, posById as ReadonlyMap<string, PurchaseOrder>)
-      deal.offer = offerOf(offer, rfq, items, pricing, !!po, disclosed, today)
+      deal.offer = offerOf(offer, rfq, items, pricing, !!po, disclosed, today, posById as ReadonlyMap<string, PurchaseOrder>)
       const chat = chatByOffer.get(offer.id)
-      if (chat) deal.chat = { last: str(chat.lastMessage), lastAt: dayOf(chat.updatedAt), unread: numOf((chat.unreadCounts as Rec | undefined)?.[raw.myUid]) || (Array.isArray(chat.unreadFor) && (chat.unreadFor as string[]).includes(raw.myUid) ? 1 : 0), chatId: offer.id }
+      if (chat) deal.chat = chatOf(chat, raw.myUid, offer.id)
       if (!deal.chat && deal.offer) deal.chat = { last: "", lastAt: "", unread: 0, chatId: offer.id }
     }
 
@@ -435,6 +474,9 @@ export function deriveWorld(raw: RawWorld): World {
           grns: Array.isArray(i.grns) ? (i.grns as unknown[]).map(str) : [],
           id: str(i.id),
         }
+        // The VAT rate the invoice was stored with (0 for a supplier with no tax number) — its gross is its own, never
+        // re-read from the supplier's current flag (BIL-03).
+        if (typeof i.vat === "number" && Number.isFinite(i.vat)) inv.vat = i.vat
         deal.invs.push(inv)
       }
       deal.invs.sort((a, b) => dayNum(a.date || "1970-01-01") - dayNum(b.date || "1970-01-01"))
@@ -461,7 +503,7 @@ export function deriveWorld(raw: RawWorld): World {
         deal.war = wr
       }
     } else if (declinedMark) {
-      deal.offer = { status: "noquote", v: [], out: { at: dayOf(declinedMark.at) || today } }
+      // He declined to quote: no quote exists, so none is counted in My quotes (RFQ-13, WF-02) — the request closes.
       deal.closed = { k: "noquote", at: dayOf(declinedMark.at) || today }
     } else if (deal.offer && deal.offer.status === "lost" && deal.offer.out) {
       deal.closed = { k: "lost", at: deal.offer.out.at }
@@ -477,18 +519,13 @@ export function deriveWorld(raw: RawWorld): World {
     deals.push(deal)
   }
 
-  // A deal with an order that is fully received, billed and paid is finished (stage "done").
+  // A deal with an order that is fully received, every receipt invoiced and every invoice's own gross paid is finished
+  // (stage "done") — the same rule the deal's money section reads (`isFullyPaid`), so a short invoice still closes it.
+  const L = createDealLogic(today)
   for (const d of deals) {
-    if (!d.po || d.closed) continue
-    const allIn = d.po.lines.every((l) => l.qty - l.got - l.can <= 0)
-    if (!allIn || !d.invs.length) continue
-    const gross = d.invs.reduce((s, i) => s + i.amt * 1.15, 0)
-    const paid = d.pays.filter((p) => p.st === "ok").reduce((s, p) => s + p.amt, 0)
-    const billed = d.po.lump != null ? d.po.lump : d.po.lines.reduce((s, l) => s + l.got * (l.price || 0), 0)
-    if (gross - paid <= 0.01 && d.invs.reduce((s, i) => s + i.amt, 0) >= billed - 0.01) {
-      const last = d.pays.filter((p) => p.st === "ok").map((p) => p.okAt || p.at).sort().pop() || today
-      d.closed = { k: "paid", at: last }
-    }
+    if (!d.po || d.closed || !L.isFullyPaid(d)) continue
+    const last = d.pays.filter((p) => p.st === "ok").map((p) => p.okAt || p.at).sort().pop() || today
+    d.closed = { k: "paid", at: last }
   }
 
   const invites: ConnectionInvite[] = raw.invitations

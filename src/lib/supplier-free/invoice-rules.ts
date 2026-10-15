@@ -64,3 +64,12 @@ export function invoiceBlocks(facts: InvoiceFacts, input: InvoiceInput): Invoice
   if (!input.hasFile) out.push("file")
   return out
 }
+
+/** A stored invoice's own figures (BIL-03): before VAT, the VAT rate it carried — 0 for a supplier with no tax number,
+ * 15% when it names none — the VAT and its total. Never re-read from the supplier's current flag. */
+export function invoiceFigures(i: Record<string, unknown>): { net: number; vatRate: number; vat: number; gross: number } {
+  const net = typeof i.amountNet === "number" && Number.isFinite(i.amountNet) ? i.amountNet : 0
+  const vatRate = typeof i.vat === "number" && Number.isFinite(i.vat) ? i.vat : 0.15
+  const vat = r2(net * vatRate)
+  return { net, vatRate, vat, gross: r2(net + vat) }
+}

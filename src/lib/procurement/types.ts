@@ -107,6 +107,13 @@ export interface PoLogEntry {
     | "supplier_declined"
     | "delivery_reported"
     | "delivery_reminded"
+    | "invoice_uploaded"
+    | "transfer_confirmed"
+    | "transfer_missing"
+    | "transfer_arrived_later"
+    | "warranty_registered"
+    | "warranty_accepted"
+    | "supplier_rated"
   note?: string | null
   /** Free parameters for the rendered sentence (channel, date, quantity…). */
   params?: Record<string, string | number> | null

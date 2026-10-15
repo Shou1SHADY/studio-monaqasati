@@ -63,6 +63,8 @@ export interface RfqView extends NoteRfq {
   allowedSupplierOrgIds?: string[] | null
   invitedSupplierOrgIds?: string[] | null
   purchaseSource?: { kind: string; workOrderId?: string; purchaseRequestId?: string } | null
+  /** The buyer's payment terms (RFQ-11): rows of a share and days, summing to 100. */
+  paymentTermsList?: Array<{ pct: number; days: number }> | null
   closedEarly?: RfqEarlyClose | null
   cancellation?: RfqCancellation | null
   unawardedLines?: number[] | null

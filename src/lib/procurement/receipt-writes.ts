@@ -274,23 +274,40 @@ async function runEffects(firestore: Firestore, actor: ProcActor, e: EffectsInpu
     }
   }
 
-  // 5 · The supplier — the same notification the offers view has always sent;
-  // a guest has no user to tell and reads it on his offer page.
+  // 5 · The supplier. On an order he reads who received it (the contractor's company first), the receipt as a word
+  // and a number («سند 2026/031» — never the GR- code) and whether a quantity differed; a guest has no user to tell
+  // and reads it on his offer page. A delivery with no order keeps the notice the offers view has always sent.
   const supplierUid = e.delivery.supplierId
   if (e.notifySupplier && supplierUid && supplierUid !== "guest" && !e.delivery.isGuestDelivery) {
     try {
-      await addDoc(collection(firestore, "users", supplierUid, "notifications"), {
-        userId: supplierUid,
-        organizationId: e.delivery.supplierOrgId || supplierUid,
-        type: "delivery_confirmed",
-        i18n: { title: "pn_delivery_confirmed_title", message: "pn_delivery_confirmed", params: { rfq: e.delivery.rfqTitle || e.po?.rfqTitle || "" } },
-        title: "✅ تم تأكيد الاستلام",
-        message: `أكد المقاول استلام الشحنة لطلب عروض الأسعار: ${e.delivery.rfqTitle || e.po?.rfqTitle || ""}`,
-        offerId: e.delivery.offerId ?? e.po?.offerId ?? null,
-        rfqId: e.delivery.rfqId ?? e.po?.rfqId ?? null,
-        createdAt: new Date().toISOString(),
-        read: false,
-      })
+      if (e.po && e.po.supplierOrgId && e.po.supplierOrgId !== "guest") {
+        const contractor = opts.orgName || (((await getDoc(doc(firestore, "users", e.orgId)).catch(() => null))?.data() as { companyName?: string } | undefined)?.companyName ?? "") || actor.name
+        const differs = e.lines.some((l) => (Number(l.rejected) || 0) > 0)
+        await emitProcEvent(firestore, actor, {
+          kind: "po_receipt_for_supplier",
+          organizationId: e.orgId,
+          to: [{ users: [supplierUid, e.po.supplierOrgId] }],
+          supplier: { userId: supplierUid, orgId: e.po.supplierOrgId },
+          params: { contractor, receipt: e.docNumber, number: e.po.docNumber, diff: differs ? "@pn_po_receipt_with_diff" : "" },
+          poId: e.po.id,
+          rfqId: e.po.rfqId,
+          offerId: e.po.offerId,
+          copy: opts.copy,
+        })
+      } else {
+        await addDoc(collection(firestore, "users", supplierUid, "notifications"), {
+          userId: supplierUid,
+          organizationId: e.delivery.supplierOrgId || supplierUid,
+          type: "delivery_confirmed",
+          i18n: { title: "pn_delivery_confirmed_title", message: "pn_delivery_confirmed", params: { rfq: e.delivery.rfqTitle || e.po?.rfqTitle || "" } },
+          title: "تم تأكيد الاستلام",
+          message: `أكد المقاول استلام الشحنة لطلب عروض الأسعار: ${e.delivery.rfqTitle || e.po?.rfqTitle || ""}`,
+          offerId: e.delivery.offerId ?? e.po?.offerId ?? null,
+          rfqId: e.delivery.rfqId ?? e.po?.rfqId ?? null,
+          createdAt: new Date().toISOString(),
+          read: false,
+        })
+      }
     } catch (err) {
       console.warn("supplier not told of the receipt:", err)
     }
