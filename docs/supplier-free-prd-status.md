@@ -27,7 +27,35 @@ plus a rules hotfix, merged at `2e79aeb` / `9a58a96`.
 | Mobile-code account | `/api/supplier-free/phone/{code,verify,change}` · `PhoneSignInDialog` | New number → Supplier owning a company, free. Sign-in (new or existing) claims that number's verified guest quotes and seeds empty specialties/cities from them. Security tab changes the mobile (code to the new number) or the CR (code to the current mobile; the CR certificate is removed so "Verified" waits for the new one) |
 | Visitor link | `rfq/[token]` · `/api/rfq-share/[token]/offer` | Three required fields: prices, company name, Saudi mobile; validity pre-filled deadline + 14; duplicates found by phone; contractor terms shown |
 | Full portal after upgrade | `OrderInvoicesSection` on `/supplier/invoices` | Free-account invoices, transfers (confirm) and warranties stay visible |
-| Rules | `firestore.rules` | 147,167 stripped characters (was 147,603). Offers refuse buyer-owned keys from a supplier; `termsList` frozen; supplier connection requests only to `pending`; reviews need `reviewerId == uid`. Hotfix `9a58a96`: six `request.is*Org()` calls from `80462da` denied silently on prod |
+| Rules | `firestore.rules` | 147,562 stripped characters (147,603 released on 15 Oct morning; keep under ~147,600). Offers refuse buyer-owned keys from a supplier; `termsList` frozen; supplier connection requests only to `pending`; reviews need `reviewerId == uid`. Hotfix `9a58a96`: six `request.is*Org()` calls from `80462da` denied silently on prod |
+
+## Second pass (15 Oct afternoon) — the rest of the package
+
+Checked the Supplier-Pipeline contracts and its ten settled conflicts, the live-system review SUP-01…14, the R1-start
+templates, all 55 QA-pack checks, and a correctness review of the morning's merge. Fixed (`25cd597`, `728c13c`, `ee43098`, `47319a6`):
+
+| Finding | Fix |
+|---|---|
+| B-01: a supplier could create or edit a "confirmed" delivery (the invoice cap reads them) | Rules `supNoticeOnly()`; the invoice server counts only receipts confirmed by the buying company (`issuedByBuyer`) |
+| Company account lost list items (works, certificates, files) after the second add | `FreeWorldProvider` signs the WHOLE profile (`profileSignature`) |
+| A free winner's order could not be approved (unverified, no VAT) | Verified = `isVerified` OR the documents rule; no VAT number is a warning (`poWarnings`) |
+| Al-Kharj missing from the city lists | Added |
+| Contractor's `daysLate` ignored an on-time delivery report (conflict 2, SUP-05) | `deliveryReportedInTime` — both sides agree (tested) |
+| Supplier declines the order → nothing could be awarded again | «أعد الترسية» in the order drawer → server act `award.reopen` |
+| `rfq_outcome` never sent | `rfq-outcome.ts`: losers on award, every live quote on cancel; the winner hears through `po_sent` |
+| RFQ terms stored always → the offer's advance never frozen; retro orders without terms | `rfqTermsToStore` (only when set); every order kind freezes terms |
+| Acts used the caller's own user doc (VAT 0 for a team member, wrong company for a secondary one) | `supplierCompanyOf` |
+| Quote 15% vs invoice 0% for a non-VAT supplier | One rule: VAT number → 15%, else 0, stored on each version (decision 9's recommendation) |
+| Supplier could still change a price directly after the deadline | Offers rule: price/status fields only while the RFQ is `New` |
+| Supplier could self-connect (`active` on create) | Supplier creates only `pending`; accepting an invitation goes through `/api/supplier-free/invitations` |
+| Double submit → two live quotes | The one-quote check runs inside the transaction |
+| A fully rejected receipt kept "paid in full" from ever being true | Receipts with nothing accepted are not billable |
+| Cut reply skipping an item kept the old batch total | Revised on its total |
+| Receipt window counted from the supplier's chosen date | From the later of that and the day reported |
+| A receipt with no number showed a document-id fragment | «—» |
+| "Remind about payment" and questions were client writes; all inquiries readable by anyone signed in | Server acts `po.payremind`, `quote.ask`; questions served by `/api/supplier-free/questions`; inquiries readable by the asker's and the RFQ's company |
+| RFQ number year and guest-link deadline in UTC | Riyadh year; end of the Riyadh day |
+| «تحصيلك» in the subscription card | Reworded |
 
 ## Open
 
@@ -38,10 +66,14 @@ plus a rules hotfix, merged at `2e79aeb` / `9a58a96`.
 - Drawer tables in `DealSections` (request, offer, PO, payments) still scroll sideways at 390px.
 - Connection notices from `/api/invitations/*` have hard-coded Arabic titles and no contractor id.
 - "Did not arrive" cannot be answered from the full portal's invoices section (confirm only).
-- Mobile app mirrors to recopy: `src/lib/procurement/types.ts`, `po.ts` (new log actions), `src/lib/mfg-events.ts` (`sar:` params) — then `check-mirrors`.
+- Mobile app mirrors to recopy: `src/lib/procurement/types.ts` (log actions incl. `payment_reminded`), `po.ts` (log actions, `deliveryReportedInTime`, warnings), `src/lib/mfg-events.ts` (`sar:` params) — then `check-mirrors`. Mobile writes questions and connection acceptances straight to Firestore: questions still save (nobody is notified); a supplier's direct `active` link is now refused.
+- Review-day items not built: Finance has no consumer for supplier invoices (no three-way match, no payables entry); the payment notice carries no payment number; PO versions; cancelling a chosen quantity (only the whole remainder); the supplier does not see the contractor's reject decision (replace/deduct/discount); receipts show checklist chips, not openable files; the free account stores no IBAN number or English name; no CSV import for the R1 templates (onboard by mobile code on UAT, or a script).
+- The manager's `verifyRefusal` still refuses to vouch for a supplier without VAT; a directory supplier recorded `verified:false` stays blocked.
+- Contract decisions built ahead of review day (confirm or reverse): 1–4 (PRD recommendations), 6 (code before the visitor's offer when SMS is configured), 9 (no VAT without a number), 11 (`RFQ-` series).
+- QA-pack checks that differ on purpose: invoice per receipt (decision 1) vs "after full receipt" in G-07/G-11/WF-12; notes for decline/final/sample/missing transfer go as notifications, not chat (WF-22); specialties apply at once (PRD ACC-02) where the pack expects review.
 - PRD decisions 5–12 remain open (second free user, visitor-link rules, validity expiry, ±3% tolerance, non-VAT supplier, question visibility, numbering code, discount on total).
 
 ## Checks
 
-`npx tsc --noEmit` · `npx jest` (311 suites / 4,873 tests on 15 Oct) · `node scripts/check-i18n-links.mjs` · `npx next build` ·
+`npx tsc --noEmit` · `npx jest` (316 suites / 4,929 tests on 15 Oct, second pass) · `node scripts/check-i18n-links.mjs` · `npx next build` ·
 `RULES_FILE=firestore.rules node_modules/.bin/tsx scripts/rules-sim/supplier-free.ts`
