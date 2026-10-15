@@ -165,6 +165,16 @@ export interface PortalComponentDef {
   sections: NavSection[]
   /** False for a module the company switched off but whose dashboard item must stay reachable (Project Management hosts the portal home): it stays in the sidebar logic and is left out of the tile grid, the launcher and the app switcher. */
   launcher?: boolean
+  /** Part of a subscription the company is not on (a free supplier — `applySupplierPlan`): nothing inside it opens;
+   * the home and the app switcher show it as a locked tile that says what the subscription adds. */
+  planLocked?: boolean
+}
+
+/** A count beside a sidebar item (the free supplier's NAV-03): red = waits on the user, blue = information, muted =
+ * a figure such as the profile's completion. Always the number the item's own page shows. */
+export interface NavBadge {
+  n: number | string
+  tone: "red" | "blue" | "muted"
 }
 
 // Always reachable regardless of the active component — appended to the
@@ -840,8 +850,10 @@ export function resolveActiveContractorComponent(pathname: string): PortalCompon
   return resolveActiveComponent(CONTRACTOR_COMPONENTS, pathname)
 }
 
-export function resolveActiveSupplierComponent(pathname: string): PortalComponentDef {
-  return resolveActiveComponent(SUPPLIER_COMPONENTS, pathname)
+/** `components` is the supplier registry as the company's plan shapes it (`supplierRegistry(plan)` in
+ * company-modules); the full portal's when omitted. */
+export function resolveActiveSupplierComponent(pathname: string, components: PortalComponentDef[] = SUPPLIER_COMPONENTS): PortalComponentDef {
+  return resolveActiveComponent(components, pathname)
 }
 
 // ---------------------------------------------------------------------------

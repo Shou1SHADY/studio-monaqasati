@@ -6,9 +6,9 @@ import { Link, usePathname } from "@/i18n/routing"
 
 import { cn } from "@/lib/utils"
 import { usePermissions } from "@/hooks/usePermissions"
+import { usePortalRegistry } from "@/hooks/usePortalRegistry"
 import {
   CONTRACTOR_COMPONENTS,
-  SUPPLIER_COMPONENTS,
   hrefPathname,
   isComponentVisible,
   resolveNavTrail,
@@ -39,12 +39,14 @@ export function PortalBreadcrumbs() {
   const t = useTranslations("Portal.Sidebar")
   const tShared = useTranslations("Portal.Shared")
   const { can } = usePermissions()
+  // The supplier registry as the company's plan shapes it — a free supplier's trail follows his sidebar.
+  const supplierComponents = usePortalRegistry("supplier")
 
   const portal: { components: PortalComponentDef[]; root: string; rootKey: string } | null =
     pathname.startsWith("/contractor")
       ? { components: CONTRACTOR_COMPONENTS, root: "/contractor", rootKey: "contractor_dashboard" }
       : pathname.startsWith("/supplier")
-        ? { components: SUPPLIER_COMPONENTS, root: "/supplier", rootKey: "supplier_dashboard" }
+        ? { components: supplierComponents, root: "/supplier", rootKey: "supplier_dashboard" }
         : null
 
   if (!portal || pathname === portal.root) return null

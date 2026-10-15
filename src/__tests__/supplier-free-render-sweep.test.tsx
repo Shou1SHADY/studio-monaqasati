@@ -58,6 +58,7 @@ jest.mock("@/firebase", () => ({
 }))
 jest.mock("@/hooks/useResolvedProfile", () => ({ useResolvedProfile: () => ({ profile: null, organizationId: "u1", isLoading: false }) }))
 jest.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: jest.fn() }) }))
+jest.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ can: () => true, isOrgOwner: true, groups: [] }) }))
 jest.mock("@/components/supplier-free/useFreeNotifications", () => ({
   stripEmoji: (s: string) => s,
   useFreeNotifications: () => ({ list: [], unread: [], markRead: jest.fn(), markAll: jest.fn() }),
@@ -81,7 +82,8 @@ import { FreeOrders } from "@/components/supplier-free/FreeOrders"
 import { FreeInvoices } from "@/components/supplier-free/FreeInvoices"
 import { FreeConnections } from "@/components/supplier-free/FreeConnections"
 import { FreeMessages, FreeNotifications, FreeSearch } from "@/components/supplier-free/FreeInbox"
-import { FreeToday } from "@/components/supplier-free/FreeToday"
+import { FreeHome } from "@/components/supplier-free/FreeHome"
+import { SupplierPlanContext } from "@/components/supplier-free/PlanSwitch"
 
 installDomShims()
 
@@ -120,7 +122,14 @@ function makeFree(locale: "ar" | "en") {
 }
 
 const SCREENS: [string, () => React.ReactElement][] = [
-  ["Today", () => <FreeToday />],
+  [
+    "Home",
+    () => (
+      <SupplierPlanContext.Provider value={{ plan: "free", loading: false, orgId: "u1" }}>
+        <FreeHome />
+      </SupplierPlanContext.Provider>
+    ),
+  ],
   ["Quote requests", () => <FreeOpps />],
   ["My quotes", () => <FreeOffers />],
   ["Orders", () => <FreeOrders />],

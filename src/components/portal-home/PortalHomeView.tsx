@@ -7,10 +7,11 @@
 // (ContractorHome / SupplierHome); the layout, the access requests and the
 // locked-tile toggle live here once, so a change to the home is made once.
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { addDoc, collection, query, where } from "firebase/firestore"
-import { Check, ChevronLeft, ChevronRight, Crown, History, KeyRound, Loader2, Lock, UsersRound } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Crown, History, KeyRound, Loader2, Lock, Sparkles, UsersRound } from "lucide-react"
+import { usePortalFrame } from "@/components/layout/portal-frame-context"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
@@ -74,6 +75,8 @@ export interface PortalHomeViewProps {
   urgentTiles: ReadonlySet<PortalComponentId>
   recent: HomeRecent[]
   decisions: { loading: boolean; items: HomeDecision[] }
+  /** A short note under the greeting (a new free account: nothing yet, and how to complete the profile — TDY-07). */
+  banner?: ReactNode
 }
 
 type HomeT = ReturnType<typeof useTranslations<"Portal.Home">>
@@ -87,7 +90,8 @@ function relativeTimeLabel(ms: number, t: HomeT): string {
   return t("time_ago_days", { count: Math.floor(hours / 24) })
 }
 
-export function PortalHomeView({ profile, orgId, companyName, modules, kpis, tileStats, badges, urgentTiles, recent, decisions }: PortalHomeViewProps) {
+export function PortalHomeView({ profile, orgId, companyName, modules, kpis, tileStats, badges, urgentTiles, recent, decisions, banner }: PortalHomeViewProps) {
+  const openSubscription = usePortalFrame()?.openSubscription
   const firestore = useFirestore()
   const { user } = useUser()
   const t = useTranslations("Portal.Home")
@@ -220,11 +224,18 @@ export function PortalHomeView({ profile, orgId, companyName, modules, kpis, til
             )}
             <span>{todayLabel}</span>
             <i className="h-[3px] w-[3px] rounded-full bg-slate-500" />
-            <span>{isOrgOwner || lockedCount === 0 ? t("home_perms_all") : t("home_perms_partial", { n: accessibleCount, total: sortedComponents.length })}</span>
+            <span>
+              {sortedComponents.some((c) => c.planLocked)
+                ? t("home_plan_free")
+                : isOrgOwner || lockedCount === 0
+                  ? t("home_perms_all")
+                  : t("home_perms_partial", { n: accessibleCount, total: sortedComponents.length })}
+            </span>
           </p>
         </div>
 
-        {/* Live KPIs — end side on desktop, full-width divider row on mobile. */}
+        {/* Live KPIs — end side on desktop, full-width divider row on mobile. None for an account with nothing yet. */}
+        {kpis.length > 0 && (
         <div className="relative flex items-stretch ms-auto max-sm:basis-full max-sm:w-full max-sm:ms-0 max-sm:border-t max-sm:border-white/10 max-sm:pt-3">
           {kpis.map((kpi, i) => (
             <div key={kpi.key} className={cn("px-5 sm:px-6 text-start max-sm:flex-1 max-sm:px-3", i > 0 && "border-s border-white/[.13]")}>
@@ -236,7 +247,10 @@ export function PortalHomeView({ profile, orgId, companyName, modules, kpis, til
             </div>
           ))}
         </div>
+        )}
       </div>
+
+      {banner}
 
       {/* Component tile grid — one tile per portal component, with a real stats
           line and a "needs action" footer. Modules outside this member's
@@ -246,7 +260,7 @@ export function PortalHomeView({ profile, orgId, companyName, modules, kpis, til
         {lockedCount > 0 && (
           <label className="flex items-center gap-2 text-[11.5px] font-medium text-muted-foreground cursor-pointer select-none">
             <span className="text-muted-foreground/60">{t("tiles_locked_count", { count: lockedCount })}</span>
-            <Checkbox checked={showLocked} onCheckedChange={(v) => setShowLocked(v === true)} className="h-3.5 w-3.5" />
+            <Checkbox checked={showLocked} onCheckedChange={(v) => setShowLocked(v === true)} aria-label={t("tiles_show_locked")} className="h-3.5 w-3.5" />
             {t("tiles_show_locked")}
           </label>
         )}
@@ -269,7 +283,24 @@ export function PortalHomeView({ profile, orgId, companyName, modules, kpis, til
                 <span className="text-[15px] font-bold text-muted-foreground leading-[1.4]">{tSidebar(component.labelKey)}</span>
                 <span className="text-xs text-muted-foreground/50">—</span>
                 <div className="mt-auto pt-2.5 border-t border-border/40 flex items-center min-h-[34px]">
-                  {isOrgOwner ? (
+                  {component.planLocked ? (
+                    // Part of the subscription, not a permission: say what it adds (SUB-02) — never "request access".
+                    openSubscription ? (
+                      <button
+                        type="button"
+                        onClick={openSubscription}
+                        className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg border border-cta/30 text-cta text-xs font-semibold hover:bg-cta/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <Sparkles size={13} aria-hidden="true" />
+                        {t("tile_in_subscription")}
+                      </button>
+                    ) : (
+                      <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground/60">
+                        <Lock size={13} />
+                        {t("tile_in_subscription")}
+                      </span>
+                    )
+                  ) : isOrgOwner ? (
                     <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground/60">
                       <Lock size={13} />
                       {t("tile_no_permission")}

@@ -1,10 +1,9 @@
 /**
- * Supplier 1.0 — the free frame, Today, the lists' layout, the address, messages and notifications (audit of 15 Oct
- * 2026: MSG-01…03, NAV-02…06, TDY-01/07, NFR-03/05/07, RFQ-02/08/10, B-04). Each case fails on the code before the fix.
+ * Supplier 1.0 — the lists' layout, the address, messages and notifications (audit of 15 Oct
+ * 2026: MSG-01…03, NAV-03…06, NFR-03/05/07, RFQ-02/08/10, B-04; the frame and the home: supplier-free-unified-frame.test.tsx).
+ * Each case fails on the code before the fix.
  */
 
-import fs from "fs"
-import path from "path"
 import React from "react"
 import { act, render, renderHook, screen } from "@testing-library/react"
 
@@ -77,8 +76,6 @@ import type { Deal, World } from "@/lib/supplier-free/types"
 import { readView, stk, useListSelection, useQueryState, writeView } from "@/components/supplier-free/ui"
 import { connectionHref, freeChatTarget, messageThreads, FreeSearch } from "@/components/supplier-free/FreeInbox"
 import { markChatRead, unreadMarks } from "@/components/supplier-free/DealSections"
-import { closeWelcome, FreeToday, welcomeClosed } from "@/components/supplier-free/FreeToday"
-import { FOLD_BELOW, OVERLAY_BELOW, initialRail } from "@/components/supplier-free/FreeFrame"
 import { closeContractors } from "@/components/supplier-free/FreeWorldProvider"
 import { quoteGuard } from "@/components/supplier-free/QuoteDialog"
 import { DealDrawer } from "@/components/supplier-free/DealDrawer"
@@ -255,21 +252,6 @@ describe("sidebar badges", () => {
   })
 })
 
-// ---- NAV-02: one breakpoint ------------------------------------------------------------------------------------
-
-describe("the sidebar's breakpoints", () => {
-  it("opens over the page under md (768) — the width its classes switch at — and folds by default under 1100", () => {
-    expect(OVERLAY_BELOW).toBe(768)
-    expect(FOLD_BELOW).toBe(1100)
-    const get = jest.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-      throw new Error("blocked")
-    })
-    expect(initialRail(1000)).toBe(true)
-    expect(initialRail(1300)).toBe(false)
-    get.mockRestore()
-  })
-})
-
 // ---- NAV-06: the address --------------------------------------------------------------------------------------
 
 describe("the address", () => {
@@ -345,59 +327,6 @@ describe("rows stack on a phone", () => {
     expect(cells.slice(1).every((c) => !!c.getAttribute("data-l"))).toBe(true)
     expect(stk.cell).toContain("max-md:before:content-[attr(data-l)]")
     expect(container.querySelector(".overflow-x-auto")).toBeNull()
-  })
-})
-
-// ---- TDY-01 / TDY-07: Today ---------------------------------------------------------------------------------------
-
-describe("Today", () => {
-  it("a new account sees 'Nothing yet', never 0 / 0 SAR, and a welcome it can close", () => {
-    window.localStorage.clear()
-    mockFree = makeFree()
-    const { container } = render(<FreeToday />)
-    expect(screen.getAllByText("Nothing yet").length).toBeGreaterThan(0)
-    expect(screen.queryByText("Owed to you")).toBeNull()
-    expect(container.textContent).toContain("Welcome to Mdmak")
-    act(() => screen.getByRole("button", { name: /Close/ }).click())
-    expect(container.textContent).not.toContain("Welcome to Mdmak")
-    expect(welcomeClosed("u1")).toBe(true)
-  })
-  it("the welcome stays closed with storage blocked", () => {
-    const set = jest.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new Error("blocked")
-    })
-    const get = jest.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-      throw new Error("blocked")
-    })
-    closeWelcome("u7")
-    expect(welcomeClosed("u7")).toBe(true)
-    set.mockRestore()
-    get.mockRestore()
-  })
-  it("waits for the world: no welcome flash before it has loaded", () => {
-    window.localStorage.clear()
-    mockFree = makeFree({ ready: false })
-    render(<FreeToday />)
-    expect(document.body.textContent).not.toContain("Welcome to Mdmak")
-    expect(screen.getByRole("status")).toBeTruthy()
-  })
-  it("in English no Arabic comma; 'Awaiting your reply' opens all tasks", () => {
-    const { today, world } = protoWorld()
-    mockFree = makeFree({ world, today })
-    const { container } = render(<FreeToday />)
-    expect(container.textContent).not.toContain("،")
-    const tasks = () => container.querySelectorAll("#today-acts article").length
-    const all = (mockFree.L as ReturnType<typeof createWorldLogic>).allActs().length
-    expect(all).toBeGreaterThan(3)
-    expect(tasks()).toBe(3)
-    act(() => screen.getByRole("button", { name: /Awaiting your reply/ }).click())
-    expect(tasks()).toBe(all)
-  })
-  it("the source writes no Arabic comma between words", () => {
-    for (const f of ["FreeToday.tsx", "FreeOpps.tsx"]) {
-      const src = fs.readFileSync(path.join(process.cwd(), "src/components/supplier-free", f), "utf8")
-      expect(src.replace(/\/\/.*$/gm, "")).not.toMatch(/[}"]\s*،|"،/)
-    }
   })
 })
 
