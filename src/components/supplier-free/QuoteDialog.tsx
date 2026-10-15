@@ -329,7 +329,7 @@ function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; 
           </div>
 
           <div className="flex flex-wrap items-center gap-3 border-t bg-muted/20 px-5 py-3">
-            <p className="min-w-0 flex-1 text-xs font-semibold text-destructive" role="status">
+            <p className="min-w-0 flex-1 max-sm:basis-full text-xs font-semibold text-destructive" role="status">
               {check.blocks.length > 0 && (
                 <span className="inline-flex items-start gap-1.5">
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />

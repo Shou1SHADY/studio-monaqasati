@@ -44,8 +44,8 @@ export function Kpi({ k }: { k: PageKpi }) {
         <Icon size={14} className="hidden shrink-0 text-module sm:block" aria-hidden="true" />
         <span className="line-clamp-2">{k.label}</span>
       </p>
-      <p className="mt-1.5 truncate text-lg font-black tabular-nums text-foreground sm:text-2xl" dir="ltr">
-        {k.unit && <bdi className="me-1 text-xs font-bold text-muted-foreground">{k.unit}</bdi>}
+      <p className="mt-1.5 break-words text-base font-black leading-tight tabular-nums text-foreground sm:truncate sm:text-2xl" dir="ltr">
+        {k.unit && <bdi className="text-xs font-bold text-muted-foreground max-sm:block sm:me-1">{k.unit}</bdi>}
         <bdi>{k.value}</bdi>
       </p>
       {k.sub && <p className={cn("mt-1.5 inline-block max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold sm:text-[11px]", KPI_SUB[k.tone ?? "neutral"])}>{k.sub}</p>}
