@@ -87,7 +87,7 @@ export function TaskCard({ f, a, href }: { f: Free; a: Task; href: (p: Record<st
   const d = a.deal ? f.world.deals.find((x) => x.id === a.deal) : null
   const btn = "inline-flex h-8 items-center rounded-lg px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
   return (
-    <article className="relative flex flex-col gap-2 overflow-hidden rounded-xl border bg-card p-4 ps-5">
+    <article className="relative flex flex-col gap-2 overflow-hidden rounded-2xl border bg-card p-4 ps-5 shadow-sm">
       <span className={cn("absolute inset-y-0 start-0 w-1", dom.edge)} aria-hidden="true" />
       <div className="flex items-center gap-2">
         <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold", dom.badge)}>
