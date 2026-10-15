@@ -184,6 +184,7 @@ function RequestDialog({ onClose, onSent }: { onClose: () => void; onSent: (name
   const f = useFree()
   const { t, world, L, profile } = f
   const firestore = useFirestore()
+  const { toast } = useToast()
   const [pick, setPick] = useState("")
   const [note, setNote] = useState("")
   const [busy, setBusy] = useState(false)
@@ -202,7 +203,9 @@ function RequestDialog({ onClose, onSent }: { onClose: () => void; onSent: (name
       await tellOwnerAboutRequest(firestore, { orgId: profile.orgId, uid: profile.uid, name: profile.name, company: profile.companyName }, pick, note)
       onSent(L.C(pick)?.name || "")
     } catch (err) {
+      // A refused write (an old link the rules will not reopen, the network) is said, never swallowed (CON-03).
       console.error(err)
+      toast({ title: t("errSave"), variant: "destructive" })
     } finally {
       setBusy(false)
     }

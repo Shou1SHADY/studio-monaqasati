@@ -37,7 +37,8 @@ import { procLinks } from "@/lib/procurement/events"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { isLumpSum, poStatus, poValue } from "@/lib/procurement/po"
 import { PURCHASE_ORDERS, QUALITY_PAPERS, type PoStatus, type PurchaseOrder, type QualityPaper } from "@/lib/procurement/types"
-import { ProcWriteError, supplierAcceptPurchaseOrder } from "@/lib/procurement/writes"
+import { ProcWriteError } from "@/lib/procurement/writes"
+import { acceptOrder, SupplierPoError } from "@/lib/supplier-free/po-writes"
 import { noticeAudience } from "@/lib/procurement/policy-enforce"
 import {
   DELIVERY_WINDOWS,
@@ -126,7 +127,6 @@ interface LegacyOffer {
 function LegacySupplierOrdersPage() {
   const t = useTranslations("Portal.Supplier")
   const tp = useTranslations("Portal.Procurement")
-  const tShared = useTranslations("Portal.Shared")
   const locale = useLocale()
   const firestore = useFirestore()
   const storage = useStorage()
@@ -305,12 +305,11 @@ function LegacySupplierOrdersPage() {
     })
 
   const writeError = (err: unknown) => {
-    const code = err instanceof ProcWriteError ? err.code : ""
-    const description = code === "wrong_state" ? t("po_err_wrong_state") : code === "date_invalid" ? t("po_err_date_invalid") : t("po_err_generic")
+    const code = err instanceof ProcWriteError || err instanceof SupplierPoError ? err.code : ""
+    const description = code === "wrong_state" ? t("po_err_wrong_state") : code === "date_invalid" || code === "date_past" || code === "date_missing" ? t("po_err_date_invalid") : t("po_err_generic")
     toast({ title: t("error_title"), description, variant: "destructive" })
   }
 
-  const supplierActor = { uid: user?.uid || "", name: (profile?.name as string | undefined) || activeCompanyName || (user?.displayName as string | undefined) || t("generic_supplier") }
 
   return (
     <PortalLayout>
@@ -638,7 +637,8 @@ function LegacySupplierOrdersPage() {
           onSubmit={async (date) => {
             if (!firestore || !user) return
             try {
-              await supplierAcceptPurchaseOrder(firestore, supplierActor, acceptPo.id, date, { copy: tShared })
+              // The server records the acceptance (the rules let no supplier write an order) and tells the buyer.
+              await acceptOrder(acceptPo.id, { promisedDate: date })
               toast({ title: t("po_accepted_toast"), description: t("po_accepted_toast_desc", { date: dayText(date) }) })
               setAcceptPo(null)
             } catch (err) {

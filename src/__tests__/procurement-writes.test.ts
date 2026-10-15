@@ -39,7 +39,6 @@ import {
   retroactivePurchaseOrder,
   returnPurchaseOrder,
   sendPurchaseOrder,
-  supplierAcceptPurchaseOrder,
   supplierOfOffer,
   updatePromisedDate,
   type AwardOfferLike,
@@ -410,17 +409,6 @@ describe("dispatch and the supplier's answer", () => {
     expect(poStatus(po(id))).toBe("in_delivery")
     expect(inbox("buyer").map((n) => n.type)).toContain("po_supplier_accepted")
     expect(inbox("exp").filter((n) => n.type !== "po_ready_to_send")).toEqual([]) // the actor (told only to send, at approval)
-  })
-
-  it("the supplier accepts in his portal — sent → accepted, by 'supplier', and only named users are told", async () => {
-    const id = await approvedOrder()
-    await expect(supplierAcceptPurchaseOrder(db, { uid: "sup-user", name: "أحمد" }, id, "2026-10-05")).rejects.toMatchObject({ code: "wrong_state" })
-    await sendPurchaseOrder(db, buyer, id, "portal")
-    await supplierAcceptPurchaseOrder(db, { uid: "sup-user", name: "أحمد" }, id, "2026-10-05")
-    expect(po(id)).toMatchObject({ status: "accepted", acceptanceRecordedBy: "supplier", promisedDate: "2026-10-05" })
-    expect(last(po(id).log)).toMatchObject({ action: "supplier_accepted", byId: "sup-user", params: { date: "2026-10-05", recordedBy: "supplier" } })
-    expect(inbox("buyer").map((n) => n.type)).toContain("po_supplier_accepted")
-    expect(inbox("exp").filter((n) => n.type !== "po_ready_to_send")).toEqual([]) // no team load from the supplier's side
   })
 
   it("a new date keeps the old one in the log and tells the gate; a reminder names what is asked", async () => {

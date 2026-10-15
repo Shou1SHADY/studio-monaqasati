@@ -194,6 +194,7 @@ export type TaskKind =
   | "notice_incoming" // T8/T9 — a pending notice, its date not yet passed
   | "notice_overdue" // T9a — its date passed with no receipt
   | "notice_late_date" // T9b — dated after the supplier's own promise
+  | "delivery_reported" // a supplier on the free account said "I delivered" on the order — record the receipt
   | "rate" // T10
   | "receipt_no_po" // T11
   | "rfq_draft" // T3
@@ -256,6 +257,13 @@ export const NEED_LINE_HREF = (key: string) => `/contractor/rfqs/requests?line=$
 /** A project's page on one of its tabs. */
 export const PROJECT_HREF = (id: string, tab: string) => `/contractor/projects/${id}?tab=${tab}`
 
+/** The goods-received desk's incoming tab, where a receipt is recorded against an order with no notice. */
+export const RECEIVE_PO_HREF = "/contractor/goods-received?tab=incoming"
+/** Decision 2 (Supplier 1.0): a reported delivery with no receipt reminds the receivers after 2 days and goes to the
+ * procurement manager after 5. The supplier is never late while it waits. */
+export const RECEIPT_REMIND_DAYS = 2
+export const RECEIPT_ESCALATE_DAYS = 5
+
 /** The goods-received desk opens the forward dialog for this notice. */
 export const FORWARD_HREF = (id: string) => `/contractor/goods-received?tab=incoming&delivery=${id}&forward=1`
 
@@ -271,6 +279,7 @@ const GROUP_OF: Record<TaskKind, TaskGroup> = {
   notice_incoming: "delivery",
   notice_overdue: "delivery",
   notice_late_date: "delivery",
+  delivery_reported: "delivery",
   rate: "delivery",
   receipt_no_po: "delivery",
   rfq_draft: "rfq",
@@ -549,6 +558,33 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
       // T9b · the supplier announces a date after his own promise — the delay is known before it happens.
       const behind = d - promised
       add({ id: `notice_late_date:${r.id}`, kind: "notice_late_date", priority: 1, severity: "amber", sortDays: d, titleKey: "task.notice_late_date.title", titleParams: { supplier, days: behind }, subKey: "task.notice_late_date.sub", subParams: { number, date: dayOf(r.deliveryDate), promised: po?.promisedDate || "" }, amount: null, href: RECEIPT_HREF(r.id), actionKey: action })
+    }
+  }
+
+  // The free supplier's "I delivered" (Supplier 1.0 WF-09) is a date and a note on the ORDER, not a notice: until a
+  // receipt answers it, it is the receivers' to record. After 2 days it turns amber, after 5 red — the daily job
+  // reminds the receivers and then the procurement manager on the same days (decision 2).
+  if (actor.canReceive || chases) {
+    for (const po of w.orders) {
+      if (!mine(po) || po.status !== "accepted") continue
+      for (const r of po.deliveryReports || []) {
+        if (r.closedAt) continue
+        const ago = Math.max(0, -(daysFromNow(r.date, now) ?? 0))
+        add({
+          id: `delivery_reported:${po.id}:${r.id}`,
+          kind: "delivery_reported",
+          priority: 1,
+          severity: ago >= RECEIPT_ESCALATE_DAYS ? "red" : ago >= RECEIPT_REMIND_DAYS ? "amber" : "blue",
+          sortDays: -ago,
+          titleKey: "task.delivery_reported.title",
+          titleParams: { supplier: po.supplierName, number: po.docNumber },
+          subKey: "task.delivery_reported.sub",
+          subParams: { date: r.date, daysAgo: ago, note: r.note || "", hasNote: r.note ? 1 : 0, reminded: r.reminders.length },
+          amount: null,
+          href: RECEIVE_PO_HREF,
+          actionKey: actor.canReceive && !ownerRO ? "actions.receive" : "actions.open",
+        })
+      }
     }
   }
 

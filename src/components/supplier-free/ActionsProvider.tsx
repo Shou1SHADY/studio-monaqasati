@@ -115,7 +115,9 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
       const po = f.poOf(dealId)
       // Direct acts: no window, just the act and its toast.
       if (kind === "remind" && env && po) {
-        void remindReceipt(env.firestore, env.side, env.orgId, po.id)
+        const waiting = d ? f.L.waiting(d) : []
+        const last = waiting[waiting.length - 1]
+        void remindReceipt(po.id, last ? f.t("msgRemind", { x: f.fmt.date(last.date, true) }) : undefined)
           .then(() => toast({ title: f.t("tReminded") }))
           .catch((err) => toast({ title: poErrorText(f, err), variant: "destructive" }))
         return

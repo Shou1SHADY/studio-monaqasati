@@ -24,7 +24,10 @@ import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { Callout } from "@/components/module-ui/Callout"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { cn } from "@/lib/utils"
-import { FreePage, Pill, useQueryState } from "./ui"
+import { FreePage, Pill, docWord, useQueryState } from "./ui"
+import { bareNumber } from "@/lib/supplier-free/derive"
+import { deliveryReviews, type ReviewDoc } from "@/lib/supplier-free/reviews"
+import type { PurchaseOrder } from "@/lib/procurement/types"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { useFree } from "./useFree"
 
@@ -147,16 +150,17 @@ function useIdentityWriter() {
   }
 }
 
-function useReviews(orgId: string | undefined) {
+/** The contractors' ratings of him, each tied to a completed delivery of his and naming its material (ACC-07). */
+function useReviews(orgId: string | undefined, pos: PurchaseOrder[]) {
   const firestore = useFirestore()
   const q = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "reviews"), where("revieweeId", "==", orgId)) : null), [firestore, orgId])
-  const { data } = useCollection<{ rating?: number; comment?: string; createdAt?: string; reviewerName?: string; reviewerRole?: string; poId?: string }>(q)
-  return useMemo(() => (data || []).filter((r) => r.reviewerRole === "Contractor"), [data])
+  const { data } = useCollection<ReviewDoc>(q)
+  return useMemo(() => deliveryReviews(data || [], pos), [data, pos])
 }
 
 function RatingStat() {
   const f = useFree()
-  const reviews = useReviews(f.profile?.orgId)
+  const reviews = useReviews(f.profile?.orgId, f.pos)
   const avg = reviews.length ? Math.round((reviews.reduce((s, r) => s + (r.rating || 0), 0) / reviews.length) * 10) / 10 : null
   return (
     <div className="rounded-lg border px-3 py-2">
@@ -550,7 +554,7 @@ function EntryDialog({ kind, onClose, onSave }: { kind: "work" | "cert"; onClose
 function RatingsTab() {
   const f = useFree()
   const { t, profile, fmt, pos } = f
-  const reviews = useReviews(profile?.orgId)
+  const reviews = useReviews(profile?.orgId, pos)
   const avg = reviews.length ? Math.round((reviews.reduce((s, r) => s + (r.rating || 0), 0) / reviews.length) * 10) / 10 : 0
   const rated = pos.filter((p) => p.rating)
   const crit = useMemo(() => {
@@ -570,6 +574,7 @@ function RatingsTab() {
           {reviews.map((r, i) => (
             <li key={i} className="py-3">
               <div className="flex items-center gap-2 text-xs text-muted-foreground"><Stars v={r.rating || 0} /><span>{r.reviewerName ? <bdi>{r.reviewerName}</bdi> : null} · {fmt.date((r.createdAt || "").slice(0, 10), true)}</span></div>
+              <p className="mt-0.5 text-xs text-muted-foreground">{t("arFor", { m: r.material, po: docWord(f, "po", bareNumber(r.poNumber)) })}</p>
               {r.comment && <p className="mt-1 text-sm" dir="auto">{r.comment}</p>}
             </li>
           ))}

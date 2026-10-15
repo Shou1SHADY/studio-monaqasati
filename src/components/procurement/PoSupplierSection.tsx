@@ -6,10 +6,12 @@
 // payment it records.
 
 import { useMemo, type ReactElement, type ReactNode } from "react"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { Button } from "@/components/ui/button"
+import { displayReceiptNumber } from "@/lib/procurement/format"
+import { invoiceFigures } from "@/lib/supplier-free/invoice-rules"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import { Money, useDateText } from "./PoBits"
 
@@ -17,6 +19,7 @@ type Doc = Record<string, unknown> & { id: string }
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
+
 const fileOf = (d: Doc) => {
   const f = d.file as { name?: unknown; url?: unknown } | undefined
   return { name: str(f?.name) || str(d.fileName), url: str(f?.url) }
@@ -55,6 +58,7 @@ export function PoSupplierSection({
   Section: (props: { title: string; children: ReactNode }) => ReactElement
 }) {
   const t = useTranslations("Portal.ProcOrders")
+  const locale = useLocale()
   const fmt = useDateText()
   const { data: invoicesData } = useBuyerDocs("supplierInvoices", orgId, po.id, open)
   const { data: transfersData } = useBuyerDocs("supplierTransfers", orgId, po.id, open)
@@ -103,20 +107,43 @@ export function PoSupplierSection({
         <Block title={t("supplier.invoices", { count: invoices.length })}>
           {invoices.map((i) => {
             const file = fileOf(i)
+            const fig = invoiceFigures(i)
+            const grns = Array.isArray(i.grns) ? (i.grns as unknown[]).map(String) : []
             return (
-              <div key={i.id} className="flex items-start justify-between gap-3 text-sm">
-                <div className="min-w-0">
-                  <p className="font-bold" dir="ltr">
-                    {str(i.number)}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">{fmt(str(i.date))}</p>
-                  {file.url && (
-                    <a href={file.url} target="_blank" rel="noopener noreferrer" className="text-xs text-cta underline-offset-2 hover:underline">
-                      {file.name || t("supplier.file")}
-                    </a>
-                  )}
+              <div key={i.id} className="space-y-1 rounded-lg border p-2.5 text-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-bold" dir="ltr">
+                      {str(i.number)}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">{fmt(str(i.date))}</p>
+                  </div>
+                  <Money value={fig.gross} className="shrink-0 font-bold" />
                 </div>
-                <Money value={num(i.amountNet)} className="shrink-0 font-bold" />
+                <dl className="grid grid-cols-3 gap-2 text-[11px]">
+                  <div>
+                    <dt className="text-muted-foreground">{t("supplier.inv_net")}</dt>
+                    <dd><Money value={fig.net} /></dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">{t("supplier.inv_vat", { rate: Math.round(fig.vatRate * 100) })}</dt>
+                    <dd><Money value={fig.vat} /></dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">{t("supplier.inv_gross")}</dt>
+                    <dd><Money value={fig.gross} /></dd>
+                  </div>
+                </dl>
+                {grns.length > 0 && (
+                  <p className="text-[11px] text-muted-foreground">
+                    {t("supplier.inv_covers", { list: grns.map((g) => displayReceiptNumber(g, locale)).join(locale === "ar" ? "، " : ", ") })}
+                  </p>
+                )}
+                {file.url && (
+                  <a href={file.url} target="_blank" rel="noopener noreferrer" className="text-xs text-cta underline-offset-2 hover:underline">
+                    {file.name || t("supplier.file")}
+                  </a>
+                )}
               </div>
             )
           })}

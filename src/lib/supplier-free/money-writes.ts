@@ -83,37 +83,21 @@ export async function remindPayment(firestore: Firestore, s: SupplierSide, args:
 
 export interface WarrantyInput {
   itemId: string
-  itemName: string
-  category: string
   until: string
   file: { name: string; url: string }
 }
 
-/** A warranty for a warranty-eligible material, after receipt, ending in the future (ORD-14). The server runs it. */
+/** A warranty for a warranty-eligible material, after receipt, ending in the future (ORD-14). The server runs it and reads
+ * the category from the request and the item from the order — the screen's words are not trusted. */
 export async function registerWarranty(_firestore: Firestore, _s: SupplierSide, po: PurchaseOrder, input: WarrantyInput, today: string): Promise<string> {
   if (!input.until || input.until <= today) throw new Error("WARRANTY_DATE")
-  const r = await callAct<{ id?: string }>({ action: "warranty.register", poId: po.id, itemId: input.itemId, itemName: input.itemName, category: input.category, until: input.until, file: input.file })
+  const r = await callAct<{ id?: string }>({ action: "warranty.register", poId: po.id, itemId: input.itemId, until: input.until, file: input.file })
   return r.id || ""
 }
 
-/** The supplier rates the contractor — after full payment only (B-09, WF-16). */
-export async function rateContractor(firestore: Firestore, s: SupplierSide, args: { po: PurchaseOrder; offerId: string; rfqId: string; contractorId: string; contractorName: string; stars: number; text: string }): Promise<void> {
+/** The supplier rates the contractor — after full payment only, once per order (B-09, WF-16). The server checks both and
+ * writes the review with the order and its material, so a rating always stands on a delivery that happened (ACC-07). */
+export async function rateContractor(args: { po: PurchaseOrder; stars: number; text: string }): Promise<void> {
   const stars = Math.min(5, Math.max(1, Math.round(args.stars)))
-  const at = new Date().toISOString()
-  await addDoc(collection(firestore, "reviews"), {
-    offerId: args.offerId,
-    rfqId: args.rfqId,
-    poId: args.po.id,
-    reviewerId: s.actor.uid,
-    reviewerName: s.company,
-    reviewerRole: "Supplier",
-    revieweeId: args.contractorId,
-    revieweeName: args.contractorName,
-    revieweeRole: "Contractor",
-    rating: stars,
-    comment: args.text.trim().slice(0, 1000),
-    createdAt: at,
-  })
-  await updateDoc(doc(firestore, "offers", args.offerId), { supplierRated: true, supplierRating: { stars, text: args.text.trim().slice(0, 1000), at } })
-  await tellAboutPo(firestore, s, args.po, "po_supplier_rated", { stars })
+  await callAct({ action: "po.rate", poId: args.po.id, stars, text: args.text.trim().slice(0, 1000) })
 }

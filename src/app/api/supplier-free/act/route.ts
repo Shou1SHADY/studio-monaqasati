@@ -7,7 +7,7 @@ import { ActError, actSchema, isBuyerAct, runBuyerAct, runSupplierAct } from "@/
 
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
 
-const STATUS: Record<string, number> = { not_found: 404, order_missing: 404, no_permission: 403, not_yours: 403, wrong_state: 409, already_reported: 409, reminded_today: 409, nothing_left: 409, no_report: 409 }
+const STATUS: Record<string, number> = { not_found: 404, order_missing: 404, no_permission: 403, not_yours: 403, wrong_state: 409, already_reported: 409, reminded_today: 409, nothing_left: 409, no_report: 409, no_receipt: 409, not_paid: 409, already_rated: 409 }
 
 export async function POST(req: Request) {
   const header = req.headers.get("authorization") || ""

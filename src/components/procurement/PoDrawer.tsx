@@ -634,6 +634,11 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
       invoice: p.invoice ? String(p.invoice) : "",
       line: p.line ? String(p.line) : "",
       qty: p.qty != null ? figure(Number(p.qty)) : "",
+      // The free supplier's acts: the transfer he answered, the warranty's item, his stars, the receipts an invoice covers.
+      ref: p.ref ? String(p.ref) : "",
+      item: p.item ? String(p.item) : "",
+      stars: p.stars != null ? Number(p.stars) : "",
+      receipts: p.receipts ? String(p.receipts) : "",
     }
     let s = tProc(`log.${e.action}`, params)
     if (e.action === "approved" && p.selfApproved) s += ` · ${tProc("selfApproval")}`
@@ -1027,7 +1032,16 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 "pay",
                 async () => {
                   const paid = await recordFinancePayment(f, actor, isFinance, po.id, input)
-                  await reportTransferToSupplier(f, actor, isFinance, po, { amount: input.amount, bank: input.bank || "", reference: input.reference, valueDate: input.valueDate }).catch(() => undefined)
+                  // A registered supplier confirms the transfer from his side. The payment stands either way — but if
+                  // he was not told, Finance must know it (never a silent catch).
+                  if (po.supplierOrgId && po.supplierOrgId !== "guest") {
+                    try {
+                      await reportTransferToSupplier(f, actor, isFinance, po, { amount: input.amount, bank: input.bank || "", reference: input.reference, valueDate: input.valueDate })
+                    } catch (err) {
+                      console.error("transfer not reported to the supplier:", err)
+                      toast({ title: t("supplier.transfer_not_told"), description: t("supplier.transfer_not_told_desc"), variant: "destructive" })
+                    }
+                  }
                   return paid
                 },
                 "toast.saved"
