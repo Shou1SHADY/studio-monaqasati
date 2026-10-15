@@ -122,6 +122,7 @@ export function FreeAccount() {
       </section>
 
       <SegmentedNav
+        variant="track"
         ariaLabel={t("navAccount")}
         active={tab}
         onSelect={(id) => q.set({ tab: id === "basic" ? "" : id })}

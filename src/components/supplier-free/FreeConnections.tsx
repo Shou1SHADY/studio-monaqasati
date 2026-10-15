@@ -61,6 +61,7 @@ export function FreeConnections() {
       }
     >
       <SegmentedNav
+        variant="track"
         ariaLabel={t("navConnections")}
         active={tab}
         onSelect={(id) => q.set({ tab: id === "active" ? "" : id })}
