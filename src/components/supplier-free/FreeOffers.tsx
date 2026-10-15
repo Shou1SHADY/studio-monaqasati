@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils"
 import { r2, type OfferSeg } from "@/lib/supplier-free/deal-logic"
 import { PAGE_SIZE, type OfferFilter } from "@/lib/supplier-free/world-logic"
 import type { Deal } from "@/lib/supplier-free/types"
-import { FreePage, GroupHead, Pill, ShowMore, ViewToggle, VerifiedMark, docWord, stk, useQueryState, useViewMode, type PageKpi } from "./ui"
+import { FreePage, GroupHead, Pill, ShowMore, ViewToggle, VerifiedMark, docWord, stk, useQueryState, useRowGo, useViewMode, type PageKpi } from "./ui"
 import { OfferPill } from "./Pills"
 import { useActions } from "./ActionsProvider"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
@@ -76,6 +76,7 @@ function StepButton({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string,
 }
 
 function OfferCard({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, string | null>) => string }) {
+  const go = useRowGo()
   const { t, fmt, L } = f
   const c = L.C(d.c)
   const o = d.offer
@@ -87,7 +88,7 @@ function OfferCard({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, 
   const foot = L.offerSt(d) === "sample" && o.sample ? t("ocSampleWhat", { w: o.sample.what }) : (g === "reply" || g === "wait") && v ? t("ocValidTill", { x: fmt.date(v.valid) }) : why(f, d)
   const edge = g === "reply" ? "border-s-4 border-s-warning" : g === "won" ? "border-s-4 border-s-success" : g === "lost" ? "border-s-4 border-s-muted-foreground/40" : ""
   return (
-    <article className={cn("flex flex-col gap-2 rounded-xl border bg-card p-3.5 transition-shadow hover:shadow-md", edge)}>
+    <article {...go(href({ deal: d.id }))} className={cn("flex cursor-pointer flex-col gap-2 rounded-2xl border bg-card p-3.5 shadow-sm transition-shadow hover:shadow-md", edge)}>
       <div className="flex flex-wrap items-center gap-1.5">
         <OfferPill f={f} d={d} />
         {L.isNewResult(d) && <span className="rounded-full bg-cta px-2 py-0.5 text-[10px] font-black text-white">{t("newTag")}</span>}
@@ -113,6 +114,7 @@ function OfferCard({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, 
 }
 
 function OfferRow({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, string | null>) => string }) {
+  const go = useRowGo()
   const { t, fmt, L } = f
   const c = L.C(d.c)
   const o = d.offer
@@ -122,7 +124,7 @@ function OfferRow({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, s
   if (!o || !v) return null
   const ver = o.v.length > 1 ? t("ocVer", { n: o.v.length }) : ""
   return (
-    <tr className={cn("border-b last:border-b-0 hover:bg-muted/30", stk.tr)}>
+    <tr {...go(href({ deal: d.id }))} className={cn("cursor-pointer border-b last:border-b-0 hover:bg-muted/30", stk.tr)}>
       <td className={cn("max-w-[300px] px-3 py-2.5", stk.head)}>
         <Link href={href({ deal: d.id }) as never} scroll={false} className="block truncate text-sm font-bold hover:text-module" dir="auto">
           {d.title}

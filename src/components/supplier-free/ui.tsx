@@ -39,24 +39,24 @@ export function Kpi({ k }: { k: PageKpi }) {
   const Icon = k.icon
   const body = (
     <>
-      <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-        <Icon size={14} className="shrink-0 text-module" aria-hidden="true" />
+      <p className="flex items-center gap-1.5 text-[11px] font-semibold leading-snug text-muted-foreground sm:text-xs">
+        <Icon size={14} className="hidden shrink-0 text-module sm:block" aria-hidden="true" />
         <span className="line-clamp-2">{k.label}</span>
       </p>
-      <p className="mt-1.5 text-2xl font-black tabular-nums text-foreground" dir="ltr">
+      <p className="mt-1.5 truncate text-lg font-black tabular-nums text-foreground sm:text-2xl" dir="ltr">
         {k.value}
         {k.unit && <small className="ms-1 text-xs font-bold text-muted-foreground">{k.unit}</small>}
       </p>
-      {k.sub && <p className={cn("mt-1.5 inline-block max-w-full truncate rounded-md px-1.5 py-0.5 text-[11px] font-semibold", KPI_SUB[k.tone ?? "neutral"])}>{k.sub}</p>}
+      {k.sub && <p className={cn("mt-1.5 inline-block max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold sm:text-[11px]", KPI_SUB[k.tone ?? "neutral"])}>{k.sub}</p>}
     </>
   )
-  const cls = "block rounded-xl border bg-card p-4 text-start transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+  const cls = "block h-full rounded-xl border bg-card p-3 text-start transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:p-4"
   return k.href ? (
     <Link href={k.href as never} className={cls}>
       {body}
     </Link>
   ) : (
-    <div className="rounded-xl border bg-card p-4">{body}</div>
+    <div className="h-full rounded-xl border bg-card p-3 sm:p-4">{body}</div>
   )
 }
 
@@ -80,18 +80,20 @@ export function FreePage({
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="flex items-center gap-2 text-xl font-black text-foreground">
-            <span className="grid h-9 w-9 place-items-center rounded-lg bg-module/10 text-module">
-              <Icon size={18} aria-hidden="true" />
+          <div className="flex items-start gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-module/10 text-module">
+              <Icon size={22} aria-hidden="true" />
             </span>
-            {title}
-          </h1>
-          {description && <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>}
+            <div className="min-w-0">
+              <h1 className="text-2xl font-black text-primary">{title}</h1>
+              {description && <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>}
+            </div>
+          </div>
         </div>
         {action && <div className="flex flex-wrap items-center gap-2">{action}</div>}
       </div>
       {!ready ? (
-        <div className="grid gap-3 sm:grid-cols-3" role="status" aria-busy="true">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3" role="status" aria-busy="true">
           {[0, 1, 2].map((i) => (
             <div key={i} className="h-24 animate-pulse rounded-xl border bg-card" />
           ))}
@@ -99,7 +101,7 @@ export function FreePage({
       ) : (
         <>
           {kpis && kpis.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {kpis.map((k) => (
                 <Kpi key={k.id} k={k} />
               ))}
@@ -110,6 +112,17 @@ export function FreePage({
       )}
     </div>
   )
+}
+
+/** The whole card or row opens its deal, not only the title (the prototype's `data-go`): a click on a link, button or field inside keeps its own job. */
+export function useRowGo() {
+  const router = useRouter()
+  return (url: string) => ({
+    onClick: (e: React.MouseEvent) => {
+      if ((e.target as HTMLElement).closest("a,button,input,label,select,textarea,[role='button']")) return
+      router.push(url as never, { scroll: false })
+    },
+  })
 }
 
 // ---- Address state: every screen, drawer and quote form opens by its address (NAV-06) -------------------

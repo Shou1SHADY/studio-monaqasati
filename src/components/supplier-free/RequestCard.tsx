@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 import { displayCategory } from "@/lib/constants"
 import type { Deal } from "@/lib/supplier-free/types"
 import type { Free } from "./useFree"
-import { DeadlinePill, Pill, VerifiedMark, dealPlace, stk } from "./ui"
+import { DeadlinePill, Pill, VerifiedMark, dealPlace, stk, useRowGo } from "./ui"
 
 interface Props {
   f: Free
@@ -45,13 +45,15 @@ function FirstItem({ f, d }: { f: Free; d: Deal }) {
 }
 
 export function RequestCard({ f, d, href, selected, onSelect, onArchive }: Props) {
+  const go = useRowGo()
   const c = f.L.C(d.c)
   const archived = !!f.world.arch[d.id]
   return (
     <article
+      {...go(href({ deal: d.id }))}
       className={cn(
-        "relative flex flex-col gap-2 rounded-xl border bg-card p-3.5 transition-shadow hover:shadow-md",
-        d.channel === "invite" && "border-s-4 border-s-violet",
+        "relative flex cursor-pointer flex-col gap-2 rounded-2xl border border-t-[3px] bg-card p-3.5 shadow-sm transition-shadow hover:shadow-md",
+        d.channel === "invite" ? "border-t-violet" : "border-t-cta",
         selected && "ring-2 ring-module"
       )}
     >
@@ -96,11 +98,12 @@ export function RequestCard({ f, d, href, selected, onSelect, onArchive }: Props
 }
 
 export function RequestRow({ f, d, href, selected, onSelect, onArchive }: Props) {
+  const go = useRowGo()
   const c = f.L.C(d.c)
   const archived = !!f.world.arch[d.id]
   const i0 = d.items[0]
   return (
-    <tr className={cn("border-b last:border-b-0 hover:bg-muted/30", stk.tr, selected && "bg-module/5")}>
+    <tr {...go(href({ deal: d.id }))} className={cn("cursor-pointer border-b last:border-b-0 hover:bg-muted/30", stk.tr, selected && "bg-module/5")}>
       <td className={cn("w-9 ps-3", stk.wide)}>
         {onSelect && <input type="checkbox" checked={!!selected} onChange={(e) => onSelect(d.id, e.target.checked)} aria-label={f.t("selOne")} className="h-4 w-4 accent-[hsl(var(--module))]" />}
       </td>

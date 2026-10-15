@@ -180,7 +180,7 @@ export function SecOffer({ f, d }: { f: Free; d: Deal }) {
   const vatRate = L.quoteVatRate(d, v)
   const vat = r2(tot * vatRate)
   return (
-    <DrawerSection title={<span className="inline-flex items-center gap-2"><Send size={15} aria-hidden="true" />{t("secOffer")}</span>} count={undefined} defaultOpen={st === "offered" || (st === "done" && !d.po)}>
+    <DrawerSection title={<span className="inline-flex items-center gap-2"><Send size={15} aria-hidden="true" />{t("secOffer")}</span>} summary={<bdi>{fmt.money(tot)}</bdi>} defaultOpen={st === "offered" || (st === "done" && !d.po)}>
       <div className="space-y-3 py-2">
         {o.reduce && (
           <Callout tone="warn">
@@ -280,7 +280,7 @@ export function SecPo({ f, d }: { f: Free; d: Deal }) {
   const anyRej = lines.some((x) => x.s.rej)
   const anyCan = lines.some((x) => x.s.can)
   return (
-    <DrawerSection title={<span className="inline-flex items-center gap-2"><FileText size={15} aria-hidden="true" />{t("secPO")}</span>} defaultOpen={st === "deliver"}>
+    <DrawerSection title={<span className="inline-flex items-center gap-2"><FileText size={15} aria-hidden="true" />{t("secPO")}</span>} summary={<bdi>{docWord(f, "po", po.no)}</bdi>} defaultOpen={st === "deliver"}>
       <dl className="grid gap-3 py-2 sm:grid-cols-2">
         <KV k={t("fPONo")} v={docWord(f, "po", po.no)} />
         <KV k={t("fPODate")} v={fmt.date(po.at, true)} />
@@ -442,7 +442,7 @@ export function SecPay({ f, d }: { f: Free; d: Deal }) {
   const lateBy = L.payLateness(d)
   const fully = L.isFullyPaid(d)
   return (
-    <DrawerSection title={<span className="inline-flex items-center gap-2"><Wallet size={15} aria-hidden="true" />{t("secPay")}</span>} defaultOpen={st === "collect" || (st === "done" && !!d.closed && d.closed.k === "paid") || L.canInvoice(d)}>
+    <DrawerSection title={<span className="inline-flex items-center gap-2"><Wallet size={15} aria-hidden="true" />{t("secPay")}</span>} summary={d.invs.length ? <bdi>{fmt.money(L.grossTotal(d))}</bdi> : undefined} defaultOpen={st === "collect" || (st === "done" && !!d.closed && d.closed.k === "paid") || L.canInvoice(d)}>
       <div className="space-y-3 py-2">
         {!d.invs.length ? (
           <Callout tone="info">
@@ -548,7 +548,7 @@ export function SecWar({ f, d }: { f: Free; d: Deal }) {
   if (!w) return null
   const item = d.items.find((i) => i.id === w.it)
   return (
-    <DrawerSection title={<span className="inline-flex items-center gap-2"><Shield size={15} aria-hidden="true" />{t("secWar")}</span>} defaultOpen={false}>
+    <DrawerSection title={<span className="inline-flex items-center gap-2"><Shield size={15} aria-hidden="true" />{t("secWar")}</span>} summary={w.st === "ok" ? t("warOk", { x: fmt.date(w.okAt) }) : t("warWait")} defaultOpen={false}>
       <dl className="grid gap-3 py-2 sm:grid-cols-3">
         <KV k={t("fWarItem")} v={<bdi>{item?.name || "—"}</bdi>} />
         <KV k={t("fWarUntil")} v={fmt.date(w.until, true)} />

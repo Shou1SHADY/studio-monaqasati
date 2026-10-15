@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { invoiceBlocks, invoiceCap, type InvoiceBlockCode, type InvoiceFacts } from "@/lib/supplier-free/invoice-rules"
 import { acceptOrder, declineOrder, DECLINE_REASONS, reportDelivery } from "@/lib/supplier-free/po-writes"
-import { confirmTransfer, rateContractor, registerWarranty, reportTransferMissing } from "@/lib/supplier-free/money-writes"
+import { confirmTransfer, rateContractor, registerWarranty, reportTransferMissing, sendDealMessage } from "@/lib/supplier-free/money-writes"
 import { confirmSample, declineInvitation, submitFinalPrice, withdrawQuote, type QuoteContext } from "@/lib/supplier-free/quote-writes"
 import { uploadSupplierFile } from "@/lib/supplier-free/uploads"
 import { r2 } from "@/lib/supplier-free/deal-logic"
@@ -55,7 +55,18 @@ function Shell({
 }) {
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className={cn("max-h-[92vh] gap-0 overflow-hidden p-0", wide ? "max-w-2xl" : "max-w-lg")}>
+      <DialogContent
+        className={cn("max-h-[92vh] gap-0 overflow-hidden p-0", wide ? "max-w-2xl" : "max-w-lg")}
+        onKeyDown={(e) => {
+          // Enter submits a form field the way the prototype's modal does; a textarea, a select and a button keep their own Enter
+          if (e.key !== "Enter" || e.shiftKey || (e.target as HTMLElement).tagName !== "INPUT") return
+          const primary = e.currentTarget.querySelector<HTMLButtonElement>("[data-primary]")
+          if (primary && !primary.disabled) {
+            e.preventDefault()
+            primary.click()
+          }
+        }}
+      >
         <DialogHeader className="border-b px-5 py-4 text-start">
           <DialogTitle dir="auto">{title}</DialogTitle>
           {sub ? <DialogDescription dir="auto">{sub}</DialogDescription> : <DialogDescription className="sr-only">.</DialogDescription>}
@@ -79,13 +90,13 @@ function Shell({
   )
 }
 
-function Footer({ f, onClose, busy, disabled, label, onSubmit }: { f: Free; onClose: () => void; busy: boolean; disabled: boolean; label: string; onSubmit: () => void }) {
+function Footer({ f, onClose, busy, disabled, label, onSubmit, danger }: { f: Free; onClose: () => void; busy: boolean; disabled: boolean; label: string; onSubmit: () => void; danger?: boolean }) {
   return (
     <>
       <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
         {f.t("cancel")}
       </Button>
-      <Button type="button" onClick={onSubmit} disabled={disabled || busy} className="bg-cta text-cta-foreground hover:bg-cta/90">
+      <Button type="button" data-primary onClick={onSubmit} disabled={disabled || busy} variant={danger ? "destructive" : "default"} className={danger ? undefined : "bg-cta text-cta-foreground hover:bg-cta/90"}>
         {busy && <Loader2 size={15} className="me-1.5 animate-spin" aria-hidden="true" />}
         {label}
       </Button>
@@ -280,6 +291,7 @@ function DeclinePo({ f, d, onClose }: P) {
           busy={busy}
           disabled={!!block}
           label={t("btnDeclinePO")}
+          danger
           onSubmit={() =>
             void run(async () => {
               const reasonText = t(`dr_${reason}` as "dr_stock")
@@ -597,6 +609,7 @@ function PayMiss({ f, d, env, onClose, refId }: P & { refId?: string }) {
           busy={busy}
           disabled={false}
           label={t("btnPayMissing")}
+          danger
           onSubmit={() =>
             void run(async () => {
               await reportTransferMissing(env.firestore, env.side, po, { id: tr.id as string, amount: tr.amt, bank: tr.bank, ref: tr.ref, state: tr.st }, note || t("msgPayMissing", { r: tr.ref }))
@@ -643,6 +656,7 @@ function SampleSent({ f, d, env, onClose }: P) {
             void run(async () => {
               if (!offer || !ctx) return
               await confirmSample(ctx, offer.id, { sentAt, receivedBy: by, note })
+              await sendDealMessage(env.firestore, { chatId: offer.id, offer, uid: env.side.actor.uid, text: [t("msgSample", { x: f.fmt.date(sentAt, true) }), note.trim()].filter(Boolean).join(" — ") }).catch(() => undefined)
               return t("tSample")
             })
           }
@@ -702,6 +716,7 @@ function FinalPrice({ f, d, env, onClose }: P) {
 
 function Withdraw({ f, d, env, onClose }: P) {
   const { t } = f
+  const [note, setNote] = useState("")
   const { busy, run } = useRun(f, onClose)
   const offer = f.rawOffer(d.id)
   const ctx = quoteCtx(f, d, env)
@@ -718,10 +733,12 @@ function Withdraw({ f, d, env, onClose }: P) {
           busy={busy}
           disabled={!offer || !ctx}
           label={t("btnWithdraw")}
+          danger
           onSubmit={() =>
             void run(async () => {
               if (!offer || !ctx) return
               await withdrawQuote(ctx, offer.id)
+              if (note.trim()) await sendDealMessage(env.firestore, { chatId: offer.id, offer, uid: env.side.actor.uid, text: note.trim().slice(0, 500) }).catch(() => undefined)
               return t("tWithdrawn")
             })
           }
@@ -729,6 +746,7 @@ function Withdraw({ f, d, env, onClose }: P) {
       }
     >
       <Callout tone="warn">{t("mWithdrawSub")}</Callout>
+      <textarea rows={3} maxLength={500} placeholder={t("mWithdrawPh")} aria-label={t("fNote")} className={`${inputCls} h-auto py-2`} value={note} onChange={(e) => setNote(e.target.value)} />
     </Shell>
   )
 }
@@ -751,6 +769,7 @@ function NoQuote({ f, d, env, onClose }: P) {
           busy={busy}
           disabled={!ctx}
           label={t("btnNoQuote")}
+          danger
           onSubmit={() =>
             void run(async () => {
               if (!ctx) return

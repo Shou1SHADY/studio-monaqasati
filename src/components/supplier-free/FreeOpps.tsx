@@ -250,7 +250,7 @@ export function FreeOpps() {
           <button type="button" onClick={() => void doArchive(selIds, tab !== "arch")} className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold hover:bg-white/25">
             {tab === "arch" ? t("unarchive") : t("archSel")}
           </button>
-          <button type="button" onClick={() => setSel({})} className="text-xs font-bold text-slate-300 hover:text-white">
+          <button type="button" onClick={() => setSel({})} className="text-xs font-bold text-sidebar-foreground/80 hover:text-white">
             {t("cancel")}
           </button>
         </div>

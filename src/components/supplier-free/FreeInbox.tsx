@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo } from "react"
 import { useTranslations } from "next-intl"
-import { Bell, Building2, Check, Link2, Loader2, MessageSquare, Search } from "lucide-react"
+import { Banknote, Bell, Building2, Check, FileText, Link2, Loader2, MessageSquare, Package, Receipt, Search, ShieldCheck, Star, Truck } from "lucide-react"
 import { Link, useRouter } from "@/i18n/routing"
 import { notificationCopy } from "@/lib/mfg-events"
 import type { Translator } from "@/lib/mfg-events"
@@ -72,6 +72,16 @@ export function FreeMessages() {
 }
 
 const KIND_ICON: Record<string, typeof Bell> = { supplier_invite_received: Link2, supplier_connected: Link2, sup_request_accepted: Link2, sup_request_declined: Link2 }
+
+/** One icon and one tone per kind of notice (the prototype's `n*` rows): what it is about, and whether it is good, bad or a nudge. */
+export function kindStyle(type: string): { Icon: typeof Bell; tone: "good" | "bad" | "warn" | "info" } {
+  const Icon =
+    KIND_ICON[type] ||
+    (/warranty/.test(type) ? ShieldCheck : /payment|transfer/.test(type) ? Banknote : /invoice/.test(type) ? Receipt : /deliver|receipt|received/.test(type) ? Truck : /rated|review/.test(type) ? Star : /chat|message/.test(type) ? MessageSquare : /^po_|order/.test(type) ? Package : /rfq|quote|offer|outcome|sample|reduction/.test(type) ? FileText : Bell)
+  const tone = /declin|missing|reject|lost|cancel|withdr|excluded/.test(type) ? "bad" : /remind|late|expir|overdue/.test(type) ? "warn" : /accept|confirm|won|connected|awarded|approved|sent|later/.test(type) ? "good" : "info"
+  return { Icon, tone }
+}
+const TONE_CLS = { good: "bg-success/10 text-success", bad: "bg-destructive/10 text-destructive", warn: "bg-warning/15 text-warning", info: "bg-cta/10 text-cta" } as const
 
 /** Where a notice about a connection with a contractor opens when no deal is behind it: an invitation opens the
  * invitations, an answer to his own request his requests, a made connection the contractors he works with. */
@@ -142,11 +152,11 @@ export function FreeNotifications() {
             const head = group !== last ? group : ""
             last = group
             const c = text(n, d)
-            const Icon = KIND_ICON[n.type] || Bell
+            const { Icon, tone } = kindStyle(n.type)
             const conn = d ? null : connectionHref(n.type)
             const inner = (
               <>
-                <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", n.read ? "bg-muted text-muted-foreground" : "bg-cta/10 text-cta")}><Icon size={17} aria-hidden="true" /></span>
+                <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", n.read ? "bg-muted text-muted-foreground" : TONE_CLS[tone])}><Icon size={17} aria-hidden="true" /></span>
                 <span className="min-w-0 flex-1">
                   <b className="block text-sm" dir="auto">{c.title}</b>
                   {c.message && <span className="block text-xs text-muted-foreground" dir="auto">{c.message}</span>}

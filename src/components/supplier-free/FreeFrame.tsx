@@ -149,12 +149,12 @@ export function FreeFrame({ children }: { children: ReactNode }) {
   const FoldIcon = f.isAr ? (rail ? ChevronLeft : ChevronRight) : rail ? ChevronRight : ChevronLeft
 
   return (
-    <div data-accent="cta" className="min-h-screen bg-slate-100 text-foreground md:flex">
+    <div data-accent="cta" className="min-h-screen bg-background text-foreground md:flex">
       {open && <button type="button" aria-label={t("sideClose")} className="fixed inset-0 z-[90] bg-primary/60 md:hidden" onClick={() => setOpen(false)} />}
 
       <aside
         className={cn(
-          "z-[95] flex shrink-0 flex-col overflow-y-auto bg-primary text-slate-300 [scrollbar-width:none]",
+          "z-[95] flex shrink-0 flex-col overflow-y-auto bg-primary text-sidebar-foreground/80 [scrollbar-width:none]",
           "fixed inset-y-0 start-0 w-[272px] shadow-2xl md:sticky md:top-0 md:h-screen md:shadow-none",
           open ? "flex" : "hidden md:flex",
           rail ? "md:w-[72px]" : "md:w-[256px]"
@@ -165,7 +165,7 @@ export function FreeFrame({ children }: { children: ReactNode }) {
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/10 font-black">م</span>
             <span className={cn("min-w-0 leading-tight", rail && "md:hidden")}>
               <b className="block truncate text-sm">{t("brandName")}</b>
-              <small className="text-[10px] tracking-wide text-slate-400" dir="ltr">
+              <small className="text-[10px] tracking-wide text-sidebar-foreground/60" dir="ltr">
                 MDMAK TECH
               </small>
             </span>
@@ -175,7 +175,7 @@ export function FreeFrame({ children }: { children: ReactNode }) {
             onClick={toggleRail}
             aria-label={t(rail ? "sideOpen" : "sideClose")}
             title={t(rail ? "sideOpen" : "sideClose")}
-            className="hidden h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent md:grid"
+            className="hidden h-8 w-8 place-items-center rounded-lg text-sidebar-foreground/60 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent md:grid"
           >
             <FoldIcon size={16} aria-hidden="true" />
           </button>
@@ -189,7 +189,7 @@ export function FreeFrame({ children }: { children: ReactNode }) {
           {groups.map((g, gi) => (
             <div key={gi}>
               {g.label ? (
-                <h6 className={cn("mx-2.5 mb-1.5 mt-4 text-[11px] font-semibold text-slate-400", rail && "md:mx-2 md:my-3 md:h-px md:overflow-hidden md:bg-white/10 md:text-[0px]")}>{g.label}</h6>
+                <h6 className={cn("mx-2.5 mb-1.5 mt-4 text-[11px] font-semibold text-sidebar-foreground/60", rail && "md:mx-2 md:my-3 md:h-px md:overflow-hidden md:bg-white/10 md:text-[0px]")}>{g.label}</h6>
               ) : (
                 <div className="h-1" />
               )}
@@ -205,17 +205,17 @@ export function FreeFrame({ children }: { children: ReactNode }) {
                     className={cn(
                       "relative mb-0.5 flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] font-medium transition-colors",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-                      on ? "bg-white/10 font-semibold text-white" : "text-slate-300 hover:bg-white/5 hover:text-white",
+                      on ? "bg-white/10 font-semibold text-white" : "text-sidebar-foreground/80 hover:bg-white/5 hover:text-white",
                       rail && "md:justify-center md:px-0 md:py-3"
                     )}
                   >
-                    <Icon size={17} className={cn("shrink-0", on ? "text-accent" : "text-slate-400")} aria-hidden="true" />
+                    <Icon size={17} className={cn("shrink-0", on ? "text-accent" : "text-sidebar-foreground/60")} aria-hidden="true" />
                     <span className={cn("truncate", rail && "md:hidden")}>{it.label}</span>
                     {it.count ? (
                       <span
                         className={cn(
                           "ms-auto grid h-[19px] min-w-5 place-items-center rounded-full px-1.5 text-[10.5px] font-bold text-white tabular-nums",
-                          it.tone === "red" ? "bg-destructive" : it.tone === "blue" ? "bg-cta" : "bg-white/10 text-slate-200",
+                          it.tone === "red" ? "bg-destructive" : it.tone === "blue" ? "bg-cta" : "bg-white/10 text-sidebar-foreground",
                           rail && "md:absolute md:end-1.5 md:top-0.5 md:ms-0 md:h-[17px] md:min-w-[17px] md:border-2 md:border-primary md:px-1 md:text-[9.5px]",
                           rail && it.tone === "muted" && "md:hidden"
                         )}
@@ -236,7 +236,7 @@ export function FreeFrame({ children }: { children: ReactNode }) {
             <Sparkles size={14} className="text-accent" aria-hidden="true" />
             {t("upCardT")}
           </b>
-          <p className="mt-1 leading-relaxed text-slate-400">{t("upCardX")}</p>
+          <p className="mt-1 leading-relaxed text-sidebar-foreground/60">{t("upCardX")}</p>
           <button type="button" onClick={() => setUpgrade(true)} className="mt-2 w-full rounded-lg bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">
             {t("upCardBtn")}
           </button>
@@ -254,7 +254,7 @@ export function FreeFrame({ children }: { children: ReactNode }) {
           type="button"
           onClick={() => void logout()}
           title={rail ? t("logout") : undefined}
-          className={cn("flex items-center gap-3 border-t border-white/10 px-5 py-3.5 text-[13.5px] text-slate-300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent", rail && "md:justify-center md:px-0")}
+          className={cn("flex items-center gap-3 border-t border-white/10 px-5 py-3.5 text-[13.5px] text-sidebar-foreground/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent", rail && "md:justify-center md:px-0")}
         >
           <LogOut size={17} aria-hidden="true" />
           <span className={cn(rail && "md:hidden")}>{t("logout")}</span>

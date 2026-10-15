@@ -90,7 +90,8 @@ function TodayBody() {
 
   return (
     <div className="space-y-5">
-      <section className="relative overflow-hidden rounded-2xl bg-primary p-4 text-primary-foreground sm:p-6">
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary to-cta/30 p-4 text-primary-foreground sm:p-6">
+        <div className="pointer-events-none absolute -top-20 start-1/3 h-56 w-96 rounded-full bg-accent/10 blur-3xl" aria-hidden="true" />
         <div className="relative flex flex-wrap items-start justify-between gap-4 sm:gap-5">
           <div className="min-w-0 flex-1 basis-72">
             <h1 className="flex flex-wrap items-center gap-3 text-xl font-black sm:text-2xl">
@@ -104,7 +105,7 @@ function TodayBody() {
                 {t("roleSupplier")} · {t("planFree")}
               </span>
             </h1>
-            <p className="mt-2 flex flex-wrap items-center gap-x-3 text-sm text-slate-300">
+            <p className="mt-2 flex flex-wrap items-center gap-x-3 text-sm text-sidebar-foreground/80">
               <span dir="auto">{profile?.companyName}</span>
               <span aria-hidden="true">·</span>
               <span>
@@ -113,7 +114,7 @@ function TodayBody() {
                 {fmt.date(today, true)}
               </span>
             </p>
-            {welcome && linkedName && <p className="mt-2 max-w-xl text-sm text-slate-300">{t("welX", { c: linkedName })}</p>}
+            {welcome && linkedName && <p className="mt-2 max-w-xl text-sm text-sidebar-foreground/80">{t("welX", { c: linkedName })}</p>}
             {welcome && (
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link href="/supplier/profile" className={cn("inline-flex h-8 items-center rounded-lg bg-accent px-3 text-xs font-bold text-accent-foreground hover:bg-accent/90", focusRing)}>
@@ -136,22 +137,22 @@ function TodayBody() {
                 <b className={figure} dir="ltr">
                   {all.length}
                 </b>
-                <span className="flex items-center gap-1 text-[11px] text-slate-300">
+                <span className="flex items-center gap-1 text-[11px] text-sidebar-foreground/80">
                   {late && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" aria-hidden="true" />}
                   {t("hsActs")}
                 </span>
               </button>
               <Link href="/supplier/orders?seg=you" className={cn(stat, "block hover:bg-white/10", focusRing)}>
                 <b className={figure} dir="ltr">
-                  {fmt.kM(k.accUnsent)} <small className="text-[11px] font-bold text-slate-300 sm:text-xs">{fmt.cur}</small>
+                  {fmt.kM(k.accUnsent)} <small className="text-[11px] font-bold text-sidebar-foreground/80 sm:text-xs">{fmt.cur}</small>
                 </b>
-                <span className="text-[11px] text-slate-300">{t("hsUnsent")}</span>
+                <span className="text-[11px] text-sidebar-foreground/80">{t("hsUnsent")}</span>
               </Link>
               <Link href="/supplier/invoices" className={cn(stat, "block hover:bg-white/10", focusRing)}>
                 <b className={figure} dir="ltr">
-                  {fmt.kM(k.owed)} <small className="text-[11px] font-bold text-slate-300 sm:text-xs">{fmt.cur}</small>
+                  {fmt.kM(k.owed)} <small className="text-[11px] font-bold text-sidebar-foreground/80 sm:text-xs">{fmt.cur}</small>
                 </b>
-                <span className="text-[11px] text-slate-300">{t("dkOwed")}</span>
+                <span className="text-[11px] text-sidebar-foreground/80">{t("dkOwed")}</span>
               </Link>
             </div>
           )}
@@ -199,7 +200,7 @@ function TodayBody() {
         {open.length ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {open.slice(0, 4).map((d) => (
-              <RequestCard key={d.id} f={f} d={d} href={q.href} />
+              <RequestCard key={d.id} f={f} d={d} href={q.href} onArchive={(id, on) => void f.archive([id], on)} />
             ))}
           </div>
         ) : (

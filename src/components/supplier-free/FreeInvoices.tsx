@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/module-ui/EmptyState"
 import { cn } from "@/lib/utils"
 import { r2 } from "@/lib/supplier-free/deal-logic"
 import type { InvoiceRow } from "@/lib/supplier-free/world-logic"
-import { FreePage, GroupHead, docWord, useQueryState, type PageKpi } from "./ui"
+import { FreePage, GroupHead, docWord, useQueryState, useRowGo, type PageKpi } from "./ui"
 import { useActions } from "./ActionsProvider"
 import { useFree, type Free } from "./useFree"
 
@@ -23,6 +23,7 @@ const GROUPS = [
 ]
 
 function Row({ f, r, href }: { f: Free; r: InvoiceRow; href: (p: Record<string, string | null>) => string }) {
+  const go = useRowGo()
   const { t, fmt, L, rel } = f
   const act = useActions()
   const d = r.deal
@@ -65,7 +66,7 @@ function Row({ f, r, href }: { f: Free; r: InvoiceRow; href: (p: Record<string, 
   }
   const amt = r.st === "paid" ? r.gross : r.left
   return (
-    <li className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted/30">
+    <li {...go(href({ deal: r.deal.id }))} className="flex cursor-pointer flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted/30">
       <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", tone)}>
         <Icon size={17} aria-hidden="true" />
       </span>

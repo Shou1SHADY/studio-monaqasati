@@ -11,7 +11,7 @@ import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { cn } from "@/lib/utils"
 import type { Deal } from "@/lib/supplier-free/types"
-import { FreePage, docWord, useQueryState, type PageKpi } from "./ui"
+import { FreePage, docWord, useQueryState, useRowGo, type PageKpi } from "./ui"
 import { leftText } from "./TaskCard"
 import { useActions } from "./ActionsProvider"
 import { useFree, type Free } from "./useFree"
@@ -26,6 +26,7 @@ const GROUPS = [
 const TONE_ICON = { amber: "bg-warning/10 text-warning", blue: "bg-cta/10 text-cta", red: "bg-destructive/10 text-destructive", violet: "bg-violet/10 text-violet", green: "bg-success/10 text-success" } as const
 
 function OrderRow({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, string | null>) => string }) {
+  const go = useRowGo()
   const { t, fmt, L, pl } = f
   const act = useActions()
   const st = L.poSt(d)
@@ -66,7 +67,7 @@ function OrderRow({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, s
     nextTone = is === "toinv" || is === "sent" ? "text-warning" : ""
   }
   return (
-    <li className="flex flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted/30">
+    <li {...go(href({ deal: d.id }))} className="flex cursor-pointer flex-wrap items-center gap-3 px-4 py-3 hover:bg-muted/30">
       <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", TONE_ICON[tone])}>
         <Icon size={17} aria-hidden="true" />
       </span>
