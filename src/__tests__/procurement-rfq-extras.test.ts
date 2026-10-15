@@ -118,7 +118,7 @@ describe("share link — valid until the deadline", () => {
 
   it("an extension reopens a closed link — the validity follows the RFQ", () => {
     const link = { expiresWith: "deadline" as const }
-    expect(shareLinkValidUntil(link, { deadline: "2026-10-05" })).toBe("2026-10-05T23:59:59.999Z")
+    expect(shareLinkValidUntil(link, { deadline: "2026-10-05" })).toBe("2026-10-05T20:59:59.999Z") // the end of the Riyadh day
     expect(shareLinkState(link, { status: "New", deadline: "2026-10-05" }, new Date("2026-10-03T00:00:00Z"))).toBe("open")
   })
 
@@ -130,7 +130,7 @@ describe("share link — valid until the deadline", () => {
   })
 
   it("reads a deadline stored with a time", () => {
-    expect(deadlineEnd("2026-10-05T00:00:00.000Z")).toBe("2026-10-05T23:59:59.999Z")
+    expect(deadlineEnd("2026-10-05T00:00:00.000Z")).toBe("2026-10-05T20:59:59.999Z")
     expect(deadlineEnd(null)).toBeNull()
     expect(deadlineEnd("soon")).toBeNull()
   })
@@ -182,8 +182,8 @@ describe("sourcing — who may be invited or awarded", () => {
     expect(sourcingBlockOf(null, undefined, TODAY)).toBeNull()
   })
 
-  it("with the profile read: no VAT or an expired CR blocks", () => {
-    expect(sourcingBlockOf(null, { vat: "", crExpiry: null }, TODAY)).toBe("no_vat")
+  it("with the profile read: an expired CR blocks; no VAT does not (optional, B-11)", () => {
+    expect(sourcingBlockOf(null, { vat: "", crExpiry: null }, TODAY)).toBeNull()
     expect(sourcingBlockOf(null, { vat: "300000000000003", crExpiry: "2026-09-01" }, TODAY)).toBe("cr_expired")
     expect(sourcingBlockOf({ verified: true }, { vat: "300000000000003", crExpiry: "2027-09-01" }, TODAY)).toBeNull()
   })

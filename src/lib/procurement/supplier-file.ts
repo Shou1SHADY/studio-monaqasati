@@ -511,14 +511,14 @@ export function supplierInScope(
 // Sourcing from an unverified supplier (prototype `wAll` 2083, `canOrder` 1820)
 // ---------------------------------------------------------------------------
 
-export type SourcingBlock = "unverified" | "no_vat" | "cr_expired"
+export type SourcingBlock = "unverified" | "cr_expired"
 
 /** Why this supplier may not be sent a private RFQ or be awarded one: a
- * supplier added and not yet vouched for, one with no VAT number (Finance will
- * not take his invoice), one whose CR has lapsed. Null = he may. */
+ * supplier added and not yet vouched for, one whose CR has lapsed. Null = he
+ * may. No VAT number is not a reason: it is optional (Supplier 1.0 B-11,
+ * decision 9) — a supplier who is not VAT-registered invoices without VAT. */
 export function supplierSourcingBlock(record: Pick<SupplierRecord, "verified" | "vatNumber" | "crExpiry"> | null | undefined, profile: { vat?: string | null; crExpiry?: string | null } | null | undefined, today: string): SourcingBlock | null {
   if (isUnverified(record)) return "unverified"
-  if (!effectiveVat(record, profile?.vat)) return "no_vat"
   const cr = effectiveCrExpiry(record, profile?.crExpiry)
   if (cr && cr < today) return "cr_expired"
   return null

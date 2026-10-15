@@ -15,6 +15,7 @@ import { newOfferNotice, newOfferNoticeId } from "@/lib/procurement/offer-announ
 import { resolvePolicies } from "@/lib/procurement/policies"
 import type { ProcurementPolicies } from "@/lib/procurement/types"
 import { verifyOtp } from "@/lib/otp"
+import { riyadhDay } from "@/lib/hr/format"
 import { guestValidityDefault, saudiMobileE164 } from "@/lib/supplier-free/phone-auth"
 import { canSendCodes } from "@/lib/sms"
 import {
@@ -292,7 +293,7 @@ export async function POST(
       createdAt: nowIso,
     }
     // The offer's commercial terms (R-16) — the same parser as the portal's dialog.
-    const parsedTerms = parseOfferTerms({ priceBasis: raw.priceBasis, validUntil: raw.validUntil || guestValidityDefault(rfq.deadline as string | null), advancePercent: raw.advancePercent, creditDays: raw.creditDays }, new Date().toISOString().slice(0, 10))
+    const parsedTerms = parseOfferTerms({ priceBasis: raw.priceBasis, validUntil: raw.validUntil || guestValidityDefault(rfq.deadline as string | null), advancePercent: raw.advancePercent, creditDays: raw.creditDays }, riyadhDay())
     if (parsedTerms.error) return errorResponse("Invalid offer terms", "INVALID_INPUT", 400)
     Object.assign(offerData, parsedTerms.terms)
     if (data.executionDuration) {

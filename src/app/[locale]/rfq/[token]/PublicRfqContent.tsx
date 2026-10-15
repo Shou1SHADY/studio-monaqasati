@@ -46,7 +46,7 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
 import { offerPricingFields, priceOffer, pricedProducts, pricingModeOf } from "@/lib/procurement/offer-pricing"
-import type { AnsweredQuery } from "@/lib/procurement/guest-supplier"
+import { deadlineEnd, type AnsweredQuery } from "@/lib/procurement/guest-supplier"
 import { GuestAnsweredQueries } from "@/components/procurement/guest/GuestAnsweredQueries"
 import { GuestOtpField, type GuestOtpValue } from "@/components/procurement/guest/GuestOtpField"
 import { JoinFreeButton } from "@/components/supplier-free/JoinFreeButton"
@@ -189,9 +189,10 @@ export function PublicRfqContent() {
   }, [token])
 
   const getRemainingTime = (dateString: string) => {
-    const deadline = new Date(dateString)
-    deadline.setHours(23, 59, 59, 999)
-    const diff = deadline.getTime() - Date.now()
+    // The deadline closes at the end of its day in Riyadh — the instant the offer route stops taking offers.
+    const end = deadlineEnd(dateString)
+    const diff = (end ? new Date(end).getTime() : NaN) - Date.now()
+    if (!Number.isFinite(diff)) return ""
     if (diff < 0) return t("expired")
     const days = Math.floor(diff / (1000 * 60 * 60 * 24))
     if (days === 0) return t("expires_today")

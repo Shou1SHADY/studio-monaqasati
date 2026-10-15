@@ -2,7 +2,7 @@
 // Never import this file in client components.
 
 import { getAdminFirestore } from "@/lib/firebaseAdmin"
-import { shareLinkState } from "@/lib/procurement/guest-supplier"
+import { deadlineEnd, shareLinkState } from "@/lib/procurement/guest-supplier"
 
 // Guest links are handed to suppliers outside the platform (Gmail, WhatsApp,
 // ...), so they must always point at the canonical production domain — never a
@@ -40,9 +40,8 @@ export async function resolveShareToken(token: string): Promise<ShareLinkResolut
   return { ok: true, linkId: linkDoc.id, link, rfq: rfqSnap.data()!, rfqId: rfqSnap.id }
 }
 
-export function isRfqDeadlinePassed(rfq: FirebaseFirestore.DocumentData): boolean {
-  if (!rfq.deadline) return false
-  const deadline = new Date(rfq.deadline as string)
-  deadline.setHours(23, 59, 59, 999)
-  return deadline.getTime() < Date.now()
+/** Past the end of the deadline's day in Riyadh — not the server's day (UTC on Vercel). */
+export function isRfqDeadlinePassed(rfq: FirebaseFirestore.DocumentData, now: Date = new Date()): boolean {
+  const end = deadlineEnd(rfq.deadline as string | null)
+  return end != null && new Date(end).getTime() < now.getTime()
 }

@@ -11,6 +11,7 @@ import { drawProcDocNumber } from "./numbering"
 import { requiredApprover } from "./po"
 import { PRICE_AGREEMENTS, type PriceAgreement } from "./prices"
 import { serviceOrderLine, serviceOrderRefusal, serviceOrderValue } from "./service-order"
+import { frozenTermsOf } from "./terms-freeze"
 import { PURCHASE_ORDERS, type ProcActor, type ProcurementPolicies, type PurchaseOrder } from "./types"
 import { ProcWriteError, type WriteOpts } from "./writes"
 
@@ -88,6 +89,8 @@ export async function createOrderWithoutRfq(firestore: Firestore, actor: ProcAct
       awardReasonText: reason,
       shortCompetition: singleSource,
       noOfficialQuote: !agreement,
+      // Every order carries its frozen terms (G-08): no RFQ and no offer, so the default, written out.
+      ...frozenTermsOf({}, null),
       preparedById: actor.uid,
       preparedByName: actor.name,
       createdAt: at,
@@ -181,6 +184,7 @@ export async function createServiceOrder(firestore: Firestore, actor: ProcActor,
       awardReasonText: null,
       shortCompetition: false,
       noOfficialQuote: true,
+      ...frozenTermsOf({}, null),
       preparedById: actor.uid,
       preparedByName: actor.name,
       createdAt: at,

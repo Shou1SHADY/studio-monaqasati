@@ -30,6 +30,13 @@ export function termsListOf(v: unknown): FrozenTerm[] | null {
   return Math.abs(rows.reduce((s, x) => s + x.pct, 0) - 100) <= 0.01 ? rows : null
 }
 
+/** What an RFQ stores from the picker: the rows only when the buyer SET terms (touched the picker, or the RFQ already
+ * carried them). Untouched, the RFQ names none — so the award freezes the offer's own advance/credit terms, and only
+ * without those the default (RFQ › offer › default). The picker shows the default; showing it is not choosing it. */
+export function rfqTermsToStore(rows: Array<{ pct: string | number; days: string | number }>, set: boolean): FrozenTerm[] | null {
+  return set ? termsListOf(rows.map((x) => ({ pct: Number(x.pct), days: Number(x.days) }))) : null
+}
+
 /** Why a picker's rows cannot be saved: `sum` (not 100%), `row` (a share or a day count out of range), or null. */
 export function termsRefusal(rows: Array<{ pct: string | number; days: string | number }>): "sum" | "row" | null {
   const parsed = rows.map((x) => ({ pct: Number(x.pct), days: Number(x.days) }))

@@ -135,11 +135,12 @@ export interface ShareRfqLike {
   deadline?: string | null
 }
 
-/** The last instant of the deadline's day — the same instant the offer route stops taking offers. */
+/** The last instant of the deadline's day IN RIYADH (23:59:59.999 +03:00, stored as UTC) — the same instant the offer
+ * route stops taking offers. Never the server's clock: on Vercel that is UTC, three hours late. */
 export function deadlineEnd(deadline: string | null | undefined): string | null {
   const day = (deadline || "").slice(0, 10)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null
-  return `${day}T23:59:59.999Z`
+  return new Date(`${day}T23:59:59.999+03:00`).toISOString()
 }
 
 export type ShareLinkState = "open" | "closed" | "gone"

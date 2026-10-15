@@ -18,6 +18,7 @@ import {
   PO_STATUSES,
   RECEIPT_CHECKS,
   REFUSAL_CODES,
+  WARNING_CODES,
   REJECT_DECISIONS,
   REJECT_REASON_CODES,
 } from "@/lib/procurement/po"
@@ -48,6 +49,7 @@ const PROCUREMENT_KEYS = [
   "approver.owner",
   "selfApproval",
   ...BLOCK_CODES.map((c) => `blocks.${c}`),
+  ...WARNING_CODES.map((c) => `warnings.${c}`),
   ...REFUSAL_CODES.map((c) => `refusal.${c}`),
   ...AWARD_REASON_CODES.map((c) => `awardReason.${c}`),
   ...REJECT_REASON_CODES.map((c) => `rejectReason.${c}`),

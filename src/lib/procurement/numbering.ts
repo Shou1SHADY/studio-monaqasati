@@ -7,6 +7,7 @@
 // Arabic prefix is a display matter (`format.ts`).
 
 import { doc, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
+import { riyadhDay } from "../hr/format"
 import { MFG_COUNTERS } from "../manufacturing-engine"
 import { drawYearlyDocNumber, formatYearlyDocNumber } from "../sales-numbering"
 import type { ProcDocType } from "./format"
@@ -33,7 +34,10 @@ export async function drawProcDocNumber(
  * module's two-letter code (`RQ` is Sales' quote request). */
 export const RFQ_DOC_TYPE = "RFQ"
 
-export async function drawRfqNumber(firestore: Firestore, tx: Transaction, organizationId: string, year = new Date().getUTCFullYear()): Promise<string> {
+/** The year of the Riyadh calendar day — at 1 AM on 1 January in Riyadh, UTC still says last year. */
+export const riyadhYear = (now: Date = new Date()): number => Number(riyadhDay(now).slice(0, 4))
+
+export async function drawRfqNumber(firestore: Firestore, tx: Transaction, organizationId: string, year = riyadhYear()): Promise<string> {
   return drawYearlyDocNumber(firestore, tx, organizationId, RFQ_DOC_TYPE, year)
 }
 

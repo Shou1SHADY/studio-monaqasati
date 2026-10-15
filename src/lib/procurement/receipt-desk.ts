@@ -6,7 +6,7 @@
 // one row per receipt line and carries no money (an expediter may export it).
 // Pure: every function takes what it needs and `now`.
 
-import { daysFromNow, dayOf, lineToArrive, poStatus, receiptDay, round2 } from "./po"
+import { daysFromNow, dayOf, deliveryReportedInTime, lineToArrive, poStatus, receiptDay, round2 } from "./po"
 import { receiptState, shortVsNotice, type ReceiptState } from "./receipts"
 import { acceptedOf } from "./po"
 import { noticeNumberFor } from "./format"
@@ -117,7 +117,7 @@ export function incomingRows(deliveries: DeskDelivery[], orders: PurchaseOrder[]
     if (!po.lines.some((l) => lineToArrive(l) > 0)) continue
     const d = daysFromNow(po.promisedDate, now)
     if (d == null || d > horizonDays) continue
-    out.push({ kind: "due", id: `d:${po.id}`, po, day: po.promisedDate, daysFromNow: d, daysLate: d < 0 ? -d : 0 })
+    out.push({ kind: "due", id: `d:${po.id}`, po, day: po.promisedDate, daysFromNow: d, daysLate: d < 0 && !deliveryReportedInTime(po) ? -d : 0 })
   }
   return out.sort((a, b) => (a.day || "9999").localeCompare(b.day || "9999"))
 }
