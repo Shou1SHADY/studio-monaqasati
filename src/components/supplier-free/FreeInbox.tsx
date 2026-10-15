@@ -161,7 +161,7 @@ export function FreeNotifications() {
                   <b className="block text-sm" dir="auto">{c.title}</b>
                   {c.message && <span className="block text-xs text-muted-foreground" dir="auto">{c.message}</span>}
                 </span>
-                {!n.read && <span className="h-2 w-2 shrink-0 rounded-full bg-destructive" aria-label={t("unreadDot")} />}
+                {!n.read && <span className="h-2 w-2 shrink-0 rounded-full bg-cta" aria-label={t("unreadDot")} />}
               </>
             )
             return (
