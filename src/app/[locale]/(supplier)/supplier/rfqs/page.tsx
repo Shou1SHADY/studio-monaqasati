@@ -43,8 +43,9 @@ import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity, disp
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
+import { useSupplierQuestions } from "@/hooks/useSupplierQuestions"
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
-import { collection, query, where, orderBy, doc, addDoc, serverTimestamp, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
+import { collection, query, where, doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
 import { useRouter } from "@/i18n/routing"
 import { useStorage } from "@/firebase"
@@ -114,15 +115,10 @@ function LegacyAvailableRfqsPage() {
   const { data: profile } = useDoc(userDocRef)
   const activeCompanyName = useActiveCompanyName(profile, user?.uid)
 
-  const inquiriesQuery = useMemoFirebase(() => {
-    if (!firestore || !selectedRfq?.id) return null
-    return query(
-      collection(firestore, "rfqs", selectedRfq.id, "inquiries"),
-      orderBy("createdAt", "desc")
-    )
-  }, [firestore, selectedRfq?.id])
-
-  const { data: inquiries, isLoading: inquiriesLoading } = useCollection(inquiriesQuery)
+  // His company's questions and the answered ones of other bidders (never who asked) — served by the server, which also
+  // writes a new question and tells the request's owner. The rules no longer let a supplier list them himself.
+  const { rows: questionRows, isLoading: inquiriesLoading, ask: askQuestion } = useSupplierQuestions(selectedRfq?.id)
+  const inquiries = useMemo(() => [...questionRows].reverse(), [questionRows])
 
   // ✅ تطبيق نمط الحماية: العودة بـ null طالما أن حالة المستخدم لم تكتمل
   const rfqsQuery = useMemoFirebase(() => {
@@ -262,21 +258,10 @@ function LegacyAvailableRfqsPage() {
   }) || [];
 
   const submitQuestion = async () => {
-    if (!user || !firestore || !selectedRfq?.id || !newQuestion.trim()) return
+    if (!user || !selectedRfq?.id || !newQuestion.trim()) return
     setIsSubmittingQuestion(true)
     try {
-      await addDoc(collection(firestore, "rfqs", selectedRfq.id, "inquiries"), {
-        question: newQuestion.trim(),
-        supplierId: user.uid,
-        organizationId: profile?.organizationId || user.uid,
-        userId: user.uid,
-        supplierName: activeCompanyName || t("generic_supplier"),
-        submittedByUserId: user.uid,
-        submittedByUserName: profile?.name || user.email || t("generic_team_member"),
-        createdAt: new Date().toISOString(),
-        reply: null,
-        repliedAt: null
-      })
+      await askQuestion(newQuestion.trim().slice(0, 1000))
       setNewQuestion("")
       toast({ title: t("question_sent_title"), description: t("question_sent_desc") })
     } catch (error) {
@@ -822,14 +807,14 @@ function LegacyAvailableRfqsPage() {
                     <div className="flex justify-center py-6"><Loader2 size={20} className="animate-spin text-muted-foreground" /></div>
                   ) : inquiries && inquiries.length > 0 ? (
                     <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                      {inquiries.map((inq: any) => (
-                        <div key={inq.id} className={`p-3 rounded-xl ${inq.supplierId === user?.uid ? 'bg-primary/5 border border-primary/20' : 'bg-slate-50 border border-slate-100'}`}>
+                      {inquiries.map((inq) => (
+                        <div key={inq.id} className={`p-3 rounded-xl ${inq.mine ? 'bg-primary/5 border border-primary/20' : 'bg-slate-50 border border-slate-100'}`}>
                           <div className="flex items-start gap-2">
                             <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                               <MessageCircle size={12} className="text-primary" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-slate-700">{inq.supplierName}</p>
+                              {inq.mine && <p className="text-sm font-bold text-slate-700">{activeCompanyName || t("generic_supplier")}</p>}
                               <p className="text-sm text-slate-600 leading-relaxed">{inq.question}</p>
                               {inq.reply && (
                                 <div className="mt-2 p-2.5 bg-green-50 rounded-lg border border-green-200">

@@ -88,6 +88,16 @@ export interface PaidFacts {
   paidOk: number
 }
 
+/** A receipt accepted something — the only kind an invoice can name (one where all was rejected or held has a cap of 0). */
+export const receiptAccepts = (r: { got: Record<string, number> }): boolean => Object.values(r.got || {}).some((q) => (Number(q) || 0) > 0)
+
+/** Server-side twin of `receiptAccepts`, over a stored receipt's lines (`accepted`, else counted − rejected − held). */
+export const storedReceiptAccepts = (lines: unknown): boolean =>
+  (Array.isArray(lines) ? (lines as Record<string, unknown>[]) : []).some((l) => {
+    const n = (v: unknown) => Number(v) || 0
+    return (l.accepted != null ? n(l.accepted) : n(l.counted ?? l.noticeQuantity) - n(l.rejected) - n(l.held)) > 0
+  })
+
 export function paidInFull(x: PaidFacts, vatRate: number = VAT): boolean {
   if (!x.lines.length || !x.invoices.length) return false
   if (!x.lines.every((l) => r2(l.qty - (l.got || 0) - (l.can || 0)) <= 0)) return false
@@ -109,6 +119,8 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
     if (d.pricing === "total") return r2(v.total || 0)
     return r2(d.items.reduce((s, i) => s + (v.prices[i.id] != null ? (v.prices[i.id] as number) * i.qty : 0), 0))
   }
+  /** The VAT rate a quote version carried (stored with it); one from before the rate was stored reads today's. */
+  const quoteVatRate = (d: Deal, v: QuoteVersion | null = curV(d)): number => (v && v.vat != null ? v.vat : vatRate)
 
   const isLump = (po: DealPo) => po.lump != null || po.lines.some((l) => l.price == null)
 
@@ -192,10 +204,13 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
     return i >= 0 && i === d.pays.length - 1
   }
 
+  /** The receipts there is something to bill on: a receipt where everything was rejected or held accepted nothing, and
+   * an invoice on it is refused (its cap is 0) — so it never waits for one, nor holds "paid in full" back. */
+  const billableReceipts = (d: Deal): DealReceipt[] => receipts(d).filter(receiptAccepts)
   /** The receipts no invoice names yet. */
   const uninvoicedReceipts = (d: Deal): DealReceipt[] => {
     const named = new Set(d.invs.flatMap((i) => i.grns || []))
-    return receipts(d).filter((r) => !named.has(r.grn))
+    return billableReceipts(d).filter((r) => !named.has(r.grn))
   }
   /** Accepted value of one receipt, before VAT. A lump-sum order has none until it is complete. */
   function receiptNet(d: Deal, r: DealReceipt): number {
@@ -313,7 +328,7 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
   const isFullyPaid = (d: Deal) =>
     !!d.po &&
     paidInFull(
-      { lines: d.po.lines.map((l) => ({ qty: l.qty, got: l.got, can: l.can })), receipts: receipts(d).map((r) => r.grn), invoices: d.invs.map((i) => ({ amt: i.amt, vat: i.vat, grns: i.grns })), paidOk: paidOk(d) },
+      { lines: d.po.lines.map((l) => ({ qty: l.qty, got: l.got, can: l.can })), receipts: billableReceipts(d).map((r) => r.grn), invoices: d.invs.map((i) => ({ amt: i.amt, vat: i.vat, grns: i.grns })), paidOk: paidOk(d) },
       vatRate
     )
 
@@ -349,6 +364,7 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
     addDays,
     curV,
     offerTotal,
+    quoteVatRate,
     isLump,
     lineSt,
     allGot,
@@ -375,6 +391,7 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
     isOverdue,
     payIssue,
     uninvoicedNet,
+    billableReceipts,
     uninvoicedReceipts,
     receiptNet,
     canInvoice,

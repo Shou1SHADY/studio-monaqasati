@@ -10,6 +10,7 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@
 import { useChunkedDocs } from "@/hooks/useChunkedDocs"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { riyadhDay } from "@/lib/hr/format"
+import { COMPANY_PUBLIC_FACTS, factsFromProfile, type CompanyPublicFacts } from "@/lib/company-public-facts"
 import { PURCHASE_ORDERS, type PurchaseOrder } from "@/lib/procurement/types"
 import { deriveWorld, type RawWorld } from "@/lib/supplier-free/derive"
 import { createWorldLogic, type WorldLogic } from "@/lib/supplier-free/world-logic"
@@ -178,6 +179,10 @@ export function FreeWorldProvider({ children }: { children: ReactNode }) {
   // ---- The supplier's own marks: archived requests, deals he has opened ----
   const wsRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, SUPPLIER_WORKSPACE, orgId) : null), [firestore, orgId])
   const { data: ws, isLoading: wsLoading } = useDoc(wsRef)
+  // Whether the COMPANY has a VAT number: a team member's own profile carries none, so the public yes/no fills it
+  // (DEV-60). The server reads the same (`supplierCompanyOf`) — quotes and invoices charge 15% or 0 by one rule.
+  const factsRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, COMPANY_PUBLIC_FACTS, orgId) : null), [firestore, orgId])
+  const { data: publicFacts } = useDoc<CompanyPublicFacts>(factsRef)
 
   const ready = !!profile && !profileLoading && !offersLoading && !posLoading && !publicLoading && !inviteLoading && quotedReady && deliveriesReady && !wsLoading
 
@@ -213,7 +218,7 @@ export function FreeWorldProvider({ children }: { children: ReactNode }) {
     return deriveWorld(raw)
   }, [profile, ready, today, orgId, rfqs, quotedSet, offers, pos, deliveries, invoices, transfers, warranties, chats, contractorDocs, links, invitations, ws])
 
-  const vatOn = !!(profile && String(profile.raw.taxNumber || "").trim())
+  const vatOn = !!profile && factsFromProfile(profile.raw as Parameters<typeof factsFromProfile>[0], publicFacts).hasVat
   const L = useMemo(() => createWorldLogic(today, world, vatOn ? 0.15 : 0), [today, world, vatOn])
 
   const archive = useCallback(

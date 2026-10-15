@@ -35,8 +35,9 @@ export type QuoteShape = Pick<Deal, "pricing" | "items" | "deadline">
 /** Whole days from `from` to `iso` (negative = past). */
 export const daysBetween = (iso: string, from: string): number => Math.round((dayNum(iso) - dayNum(from)) / 864e5)
 
-/** The reasons a quote cannot go, in the order they are shown, and the figures it would carry (net, VAT, gross). */
-export function quoteBlocks(deal: QuoteShape, v: QuoteValues, mode: QuoteMode, L: Pick<DealLogic, "daysTo">): QuoteCheck {
+/** The reasons a quote cannot go, in the order they are shown, and the figures it would carry (net, VAT, gross). The VAT
+ * is the supplier company's own rate — 15% with a VAT number, 0 without (decision 9) — the same rule as his invoices. */
+export function quoteBlocks(deal: QuoteShape, v: QuoteValues, mode: QuoteMode, L: Pick<DealLogic, "daysTo">, vatRate: number = VAT): QuoteCheck {
   const blocks: QuoteCheck["blocks"] = []
   const lines: Record<string, number | null> = {}
   let net = 0
@@ -72,7 +73,7 @@ export function quoteBlocks(deal: QuoteShape, v: QuoteValues, mode: QuoteMode, L
   if (mode !== "reduce" && deal.deadline && L.daysTo(deal.deadline) < 0) blocks.push({ code: "deadline" })
   if (!v.valid) blocks.push({ code: "valid" })
   net = r2(net)
-  return { blocks, net, vat: r2(net * VAT), gross: r2(net * (1 + VAT)), lines }
+  return { blocks, net, vat: r2(net * vatRate), gross: r2(net * (1 + vatRate)), lines }
 }
 
 export interface StoredVersion {
@@ -84,11 +85,14 @@ export interface StoredVersion {
   fileUrl: string | null
   total: number
   lines?: { rfqProductIndex: number; unitPrice: number }[]
+  /** The VAT rate this version was quoted with (0.15 or 0) — its gross is its own, never re-read from today's flag. */
+  vatRate?: number
 }
 
 /** The stored version a form becomes (`n` is set by `nextVersions`). */
-export function versionOf(deal: QuoteShape, v: QuoteValues, today: string, fileUrl?: string | null): StoredVersion {
+export function versionOf(deal: QuoteShape, v: QuoteValues, today: string, fileUrl?: string | null, vatRate?: number): StoredVersion {
   const out: StoredVersion = { n: 1, at: today, arrive: v.arrive || null, valid: v.valid, note: v.note.trim().slice(0, 1000), fileUrl: fileUrl || null, total: 0 }
+  if (vatRate != null) out.vatRate = vatRate
   if (deal.pricing === "total") out.total = r2(toAmount(v.total))
   else {
     const lines: { rfqProductIndex: number; unitPrice: number }[] = []

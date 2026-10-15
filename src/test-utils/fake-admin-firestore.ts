@@ -120,7 +120,19 @@ export class FakeAdminDb {
     }
   }
 
+  /** Run transactions one after another, as Firestore does for two that read and write the same document (the second
+   * retries after the first commits). Off by default: most tests run one act at a time. */
+  serialTx = false
+  private txChain: Promise<unknown> = Promise.resolve()
+
   async runTransaction<T>(fn: (tx: FakeTx) => Promise<T>): Promise<T> {
+    if (!this.serialTx) return this.runOne(fn)
+    const run = this.txChain.then(() => this.runOne(fn))
+    this.txChain = run.catch(() => undefined)
+    return run
+  }
+
+  private async runOne<T>(fn: (tx: FakeTx) => Promise<T>): Promise<T> {
     const pending: (() => Promise<void>)[] = []
     const tx: FakeTx = {
       get: ((target: FakeDocRef | FakeQuery) => ("path" in target ? (target as FakeDocRef).get() : (target as FakeQuery).get())) as FakeTx["get"],

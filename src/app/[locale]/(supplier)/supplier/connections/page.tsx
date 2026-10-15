@@ -9,9 +9,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, doc, addDoc, updateDoc, serverTimestamp } from "firebase/firestore"
+import { collection, query, where, doc, updateDoc } from "firebase/firestore"
+import { answerInvitation } from "@/lib/supplier-free/connections"
 import { useToast } from "@/hooks/use-toast"
-import { useActiveCompanyName, useCompanyNamesForMembers } from "@/hooks/useActiveCompanyName"
+import { useCompanyNamesForMembers } from "@/hooks/useActiveCompanyName"
 import { Loader2, Users, Link2, Calendar, Building2, CheckCircle2, XCircle, Mail } from "lucide-react"
 import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
 import { FreeConnections } from "@/components/supplier-free/FreeConnections"
@@ -73,7 +74,6 @@ function LegacySupplierConnectionsPage() {
   const { data: profile } = useDoc(userDocRef)
   const typedProfile = profile as { organizationId?: string; companyName?: string; name?: string; specializations?: string[] } | null
   const myOrgId = typedProfile?.organizationId || user?.uid
-  const activeCompanyName = useActiveCompanyName(typedProfile, user?.uid)
 
   // My active links (as supplier)
   const linksQuery = useMemoFirebase(() => {
@@ -108,62 +108,13 @@ function LegacySupplierConnectionsPage() {
     if (!contractorsByOrgId.has(orgId)) contractorsByOrgId.set(orgId, c)
   })
 
-  // Already linked contractor org IDs (to avoid duplicate links on accept)
-  const linkedContractorOrgIds = new Set(
-    ((allLinks || []) as SupplierLink[])
-      .filter((l) => l.status === "active")
-      .map((l) => l.contractorOrgId)
-  )
-
-  const notifyInviter = async (inv: Invitation) => {
-    if (!firestore || !inv.invitedBy) return
-    try {
-      await addDoc(collection(firestore, "users", inv.invitedBy, "notifications"), {
-        title: "تم قبول دعوة المورد",
-        message: `${activeCompanyName || user?.email || ""} قبل دعوتك وانضم إلى دليل مورّديك.`,
-        type: "supplier_invite_accepted",
-        createdAt: new Date().toISOString(),
-        read: false,
-      })
-    } catch (err) {
-      console.error("Failed to notify inviter of acceptance:", err)
-    }
-  }
-
+  // The server checks the invitation is addressed to him, opens the connection and tells the inviter (CON-02) — the rules
+  // never let a supplier create an active link himself.
   const handleAcceptInvitation = async (inv: Invitation) => {
-    if (!firestore || !user || !myOrgId || !inv.contractorOrgId) return
-    if (linkedContractorOrgIds.has(inv.contractorOrgId)) {
-      // Already linked — just mark the invitation accepted
-      setProcessingId(inv.id)
-      try {
-        await updateDoc(doc(firestore, "invitations", inv.id), { status: "accepted", acceptedAt: serverTimestamp() })
-        await notifyInviter(inv)
-        toast({ title: t("conn_inv_accepted_toast") })
-      } catch (err) {
-        console.error(err)
-        toast({ title: t("conn_inv_error"), variant: "destructive" })
-      } finally {
-        setProcessingId(null)
-      }
-      return
-    }
+    if (!user || !inv.contractorOrgId) return
     setProcessingId(inv.id)
     try {
-      // Create the contractor-supplier link (contractor-initiated, already accepted)
-      await addDoc(collection(firestore, "contractorSupplierLinks"), {
-        contractorOrgId: inv.contractorOrgId,
-        supplierOrgId: myOrgId,
-        supplierName: activeCompanyName || "",
-        supplierCategories: typedProfile?.specializations || [],
-        status: "active",
-        requestedBy: "contractor",
-        requestedAt: serverTimestamp(),
-        connectedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      })
-      // Mark invitation as accepted
-      await updateDoc(doc(firestore, "invitations", inv.id), { status: "accepted", acceptedAt: serverTimestamp() })
-      await notifyInviter(inv)
+      await answerInvitation(inv.id, "accepted")
       toast({ title: t("conn_inv_accepted_toast") })
     } catch (err) {
       console.error(err)

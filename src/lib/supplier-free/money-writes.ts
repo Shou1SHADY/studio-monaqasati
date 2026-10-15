@@ -5,15 +5,12 @@
 
 import { addDoc, collection, doc, getDoc, increment, setDoc, updateDoc, type Firestore } from "firebase/firestore"
 import type { PurchaseOrder } from "@/lib/procurement/types"
-import { tellAboutPo, type SupplierSide } from "./events"
-import { callAct } from "./act-client"
-import { sarText } from "@/lib/procurement/events"
+import type { SupplierSide } from "./events"
+import { ActRefused, callAct } from "./act-client"
 
 type Rec = Record<string, unknown>
 
 export type TransferDoc = { id: string; amount: number; bank: string; ref: string; state: string }
-
-const day = (iso: string) => iso.slice(0, 10)
 
 /** "It arrived": the instalment it covers is settled (WF-13). The server runs it. */
 export async function confirmTransfer(_firestore: Firestore, _s: SupplierSide, _po: PurchaseOrder, t: TransferDoc): Promise<void> {
@@ -70,16 +67,16 @@ export async function sendDealMessage(firestore: Firestore, args: { chatId: stri
   }
 }
 
-/** "Remind about the payment": a message in the conversation and a notice to the contractor — at most once a day per order. */
-export async function remindPayment(firestore: Firestore, s: SupplierSide, args: { po: PurchaseOrder; offer: Rec; chatId: string; text: string; due: string; amount: number; orgId: string }, now: Date = new Date()): Promise<"sent" | "today"> {
-  const ref = doc(firestore, "supplierWorkspace", args.orgId)
-  const snap = await getDoc(ref).catch(() => null)
-  const last = snap && snap.exists() ? ((snap.data().remind as Rec | undefined) || {})[args.po.id] : null
-  if (typeof last === "string" && day(last) === day(now.toISOString())) return "today"
-  await sendDealMessage(firestore, { chatId: args.chatId, offer: args.offer, uid: s.actor.uid, text: args.text })
-  await setDoc(ref, { organizationId: args.orgId, remind: { [args.po.id]: now.toISOString() } }, { merge: true })
-  await tellAboutPo(firestore, s, args.po, "po_payment_reminder", { amount: sarText(args.amount), date: args.due })
-  return "sent"
+/** "Remind about the payment" (WF-14): the server runs it — once a day per invoice, in the order's log, in the deal's
+ * conversation, and a notice to Finance and the owner. */
+export async function remindPayment(args: { po: PurchaseOrder; invoiceId: string; text: string; due: string; amount: number }): Promise<"sent" | "today"> {
+  try {
+    await callAct({ action: "po.payremind", poId: args.po.id, invoiceId: args.invoiceId, amount: args.amount, due: args.due, message: args.text })
+    return "sent"
+  } catch (err) {
+    if (err instanceof ActRefused && err.code === "reminded_today") return "today"
+    throw err
+  }
 }
 
 export interface WarrantyInput {

@@ -12,7 +12,7 @@ import { sarParam } from "@/lib/procurement/events"
 import { canRecordAcceptance, lineOutstanding } from "@/lib/procurement/po"
 import type { PoDeliveryReport, PoLogEntry, PurchaseOrder } from "@/lib/procurement/types"
 import { callerOf } from "@/lib/receipt-links"
-import { paidInFull } from "./deal-logic"
+import { paidInFull, storedReceiptAccepts } from "./deal-logic"
 import { notifyNamed } from "./server-notify"
 import { warrantyEligible } from "./warranty"
 
@@ -52,6 +52,8 @@ export const actSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("po.decline"), poId: id, reason: z.enum(["stock", "price", "date", "other"]), reasonText: z.string().trim().min(1).max(200), note: z.string().trim().max(500).optional(), message }),
   z.object({ action: z.literal("po.report"), poId: id, date: day, note: z.string().trim().max(500).optional(), message }),
   z.object({ action: z.literal("po.remind"), poId: id, message }),
+  // "Remind about the payment" (WF-14): the invoice whose instalment is due, the amount and date his screen computed.
+  z.object({ action: z.literal("po.payremind"), poId: id, invoiceId: id, amount: z.number().positive().max(1e9), due: day, message }),
   z.object({ action: z.literal("po.rate"), poId: id, stars: z.number().int().min(1).max(5), text: z.string().trim().max(1000).optional() }),
   z.object({ action: z.literal("transfer.answer"), transferId: id, answer: z.enum(["ok", "miss", "later"]), note: z.string().trim().max(500).optional() }),
   z.object({
@@ -179,7 +181,11 @@ async function paidFacts(db: Firestore, po: PurchaseOrder): Promise<boolean> {
     db.collection("supplierInvoices").where("poId", "==", po.id).get(),
     db.collection("supplierTransfers").where("poId", "==", po.id).get(),
   ])
-  const receipts = rcpt.docs.map((d): Rec & { id: string } => ({ ...(d.data() as Rec), id: d.id })).filter((d) => d.status === "confirmed").map((d) => String(d.docNumber || d.id))
+  // A receipt that accepted nothing cannot be invoiced, so it never holds "paid in full" back.
+  const receipts = rcpt.docs
+    .map((d): Rec & { id: string } => ({ ...(d.data() as Rec), id: d.id }))
+    .filter((d) => d.status === "confirmed" && storedReceiptAccepts(d.lines))
+    .map((d) => String(d.docNumber || d.id))
   const invoices = inv.docs.map((d) => d.data() as Rec).map((i) => ({ amt: num(i.amountNet), vat: typeof i.vat === "number" ? i.vat : null, grns: Array.isArray(i.grns) ? (i.grns as unknown[]).map(String) : [] }))
   const paidOk = round2(tr.docs.map((d) => d.data() as Rec).filter((t) => t.state === "ok").reduce((s, t) => s + num(t.amount), 0))
   return paidInFull({ lines: po.lines.map((l) => ({ qty: num(l.quantity), got: num(l.accepted), can: num(l.cancelled) })), receipts, invoices, paidOk })
@@ -246,6 +252,32 @@ export async function runSupplierAct(db: Firestore, s: Supplier, act: Act, now: 
       // ORD-09: «تذكير: سلّمت {date}، وأرجو تسجيل الاستلام» in the conversation, then the notice to the receivers.
       await postDealMessage(db, po, s, act.message, at)
       await tellBuyer(db, s, po, "po_delivery_reminder", { date }, { permissions: ["deliveries.confirm"] })
+      return {}
+    }
+    case "po.payremind": {
+      // Once a day per invoice; the reminder is written on the invoice (read-only to clients) and in the order's log,
+      // posted in the deal's conversation, and Finance (invoices.manage) and the owner hear it.
+      const today = riyadhDay(now)
+      const invRef = db.collection("supplierInvoices").doc(act.invoiceId)
+      const { po, number, amount } = await db.runTransaction(async (tx) => {
+        const [poSnap, invSnap] = await Promise.all([tx.get(poRefOf(db, act.poId)), tx.get(invRef)])
+        if (!poSnap.exists) throw new ActError("order_missing")
+        const p = asPo(poSnap)
+        if (!mine(p, s)) throw new ActError("not_yours")
+        const inv = invSnap.exists ? (invSnap.data() as Rec) : null
+        if (!inv || inv.poId !== p.id || inv.supplierOrgId !== s.orgId) throw new ActError("not_found")
+        const reminders = Array.isArray(inv.reminders) ? (inv.reminders as unknown[]).map(String) : []
+        if (reminders.some((r) => riyadhDay(new Date(r)) === today)) throw new ActError("reminded_today")
+        // Never more than the invoice itself comes to (its own VAT).
+        const gross = round2(num(inv.amountNet) * (1 + (typeof inv.vat === "number" ? inv.vat : 0.15)))
+        const amt = Math.min(round2(act.amount), gross)
+        const no = String(inv.number || "")
+        tx.update(invRef, { reminders: [...reminders, at], updatedAt: FieldValue.serverTimestamp() })
+        appendLog(tx, db, p, logEntry(me, "payment_reminded", at, { params: { invoice: no, amount: amt, date: act.due } }))
+        return { po: p, number: no, amount: amt }
+      })
+      await postDealMessage(db, po, s, act.message, at)
+      await tellBuyer(db, s, po, "po_payment_reminder", { amount: sarParam(amount), date: act.due, invoice: number }, { permissions: ["invoices.manage"] })
       return {}
     }
     case "transfer.answer": {

@@ -111,6 +111,7 @@ export interface PoLogEntry {
     | "transfer_confirmed"
     | "transfer_missing"
     | "transfer_arrived_later"
+    | "payment_reminded"
     | "warranty_registered"
     | "warranty_accepted"
     | "supplier_rated"

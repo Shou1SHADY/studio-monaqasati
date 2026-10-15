@@ -159,6 +159,7 @@ function versionsOf(offer: Rec, items: DealItem[], pricing: "item" | "total"): Q
       file: str(x.fileUrl) || null,
     }
     if (pricing === "total" || !lines.length) v.total = numOf(x.total ?? x.price)
+    if (typeof x.vatRate === "number" && Number.isFinite(x.vatRate)) v.vat = x.vatRate
     return v
   }
   if (raw && raw.length) return raw.map(toVersion)
@@ -443,7 +444,9 @@ export function deriveWorld(raw: RawWorld): World {
         }
         const rcp: DealReceipt = {
           st: "ok",
+          // The key invoices name (number, else id) stays internal; what is shown is the number or nothing (G-10).
           grn: str(r.docNumber) || r.id,
+          no: str(r.docNumber),
           date: dayOf(r.deliveryDate) || dayOf(r.confirmedAt),
           okAt: dayOf(r.confirmedAt),
           t: timeOf(r.confirmedAt),

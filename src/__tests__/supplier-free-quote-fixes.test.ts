@@ -267,8 +267,12 @@ describe("the offers rules (NFR-08)", () => {
     expect(update).toContain("resource.data.supplierId == request.auth.uid || ownsDoc()")
     expect(update).toContain("!changedKeys().hasAny(buyerOfferKeys().concat(['supplierId', 'organizationId', 'rfqId', 'contractorId', 'contractorOrgId']))")
     expect(update).toContain("rd().status == 'قيد المراجعة'")
-    // Once decided, neither its status nor its price moves.
-    expect(update).toContain(": !changedKeys().hasAny(['status', 'price', 'lines', 'deliveryBatches', 'totalBatchesPrice', 'validUntil'])")
+    // Status and price move only under review / a price cut — and only while the RFQ is open (a closed RFQ's price is
+    // the server act's), so a direct write after the deadline cannot skip the act.
+    const flat = update.replace(/\/\/[^\n]*/g, "").replace(/\s+/g, " ")
+    expect(flat).toContain(
+      "(!changedKeys().hasAny(['status', 'price', 'lines', 'deliveryBatches', 'totalBatchesPrice', 'validUntil']) || (resource.data.get('status', '') in ['قيد المراجعة', 'مطلوب تخفيض'] && (!changedKeys().hasAny(['status']) || rd().status == 'قيد المراجعة') && rfqData(resource.data.rfqId).status == 'New'))"
+    )
     // The old unconditional supplier branch is gone.
     expect(update).not.toMatch(/\(isSignedIn\(\) && resource\.data\.supplierId == request\.auth\.uid\)\s*\|\|/)
   })

@@ -9,6 +9,7 @@ import { riyadhDay } from "@/lib/hr/format"
 import { sarParam } from "@/lib/procurement/events"
 import { allLinesComplete } from "@/lib/procurement/po"
 import type { PoLogEntry, PurchaseOrder } from "@/lib/procurement/types"
+import { storedReceiptAccepts } from "./deal-logic"
 import { invoiceBlocks, type InvoiceBlockCode, type InvoiceFacts } from "./invoice-rules"
 import { notifyNamed } from "./server-notify"
 
@@ -27,7 +28,8 @@ export interface InvoiceSupplier {
   orgId: string
   name: string
   company: string
-  taxNumber: string
+  /** The rate his ACTIVE company charges (15% with a VAT number, else 0) — `supplierCompanyOf`, never the caller's own doc. */
+  vatRate: number
 }
 
 export type InvoiceErrorCode = "NOT_FOUND" | "FORBIDDEN" | "WRONG_STATE" | "INVOICE_BLOCKED"
@@ -58,7 +60,7 @@ export async function createSupplierInvoice(db: Firestore, s: InvoiceSupplier, i
   const invRef = db.collection("supplierInvoices").doc()
   const locks = db.collection("supplierInvoiceLocks")
   const at = now.toISOString()
-  const vat = s.taxNumber.trim() ? 0.15 : 0
+  const vat = s.vatRate
 
   const po = await db.runTransaction(async (tx) => {
     const poSnap = await tx.get(poRef)
@@ -82,6 +84,8 @@ export async function createSupplierInvoice(db: Firestore, s: InvoiceSupplier, i
     const priceOf = new Map(po.lines.map((l) => [l.id, l.unitPrice]))
     const receipts = confirmed
       .filter((d) => issuedByBuyer(confirmerOrg.get(String(d.confirmedByUserId || "")), po.organizationId))
+      // A receipt that accepted nothing (all rejected or held) is never billed — nor does it hold a lump sum back.
+      .filter((d) => storedReceiptAccepts(d.lines))
       .map((d) => {
         const lines = Array.isArray(d.lines) ? (d.lines as { poLineId?: string; accepted?: number }[]) : []
         const prices = lines.map((l) => priceOf.get(String(l.poLineId)))

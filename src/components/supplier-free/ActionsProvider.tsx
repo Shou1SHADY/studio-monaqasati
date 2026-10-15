@@ -132,16 +132,14 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
       }
       if (kind === "pay-remind" && env && po && d) {
         const nd = f.L.nextDue(d)
-        const offer = f.rawOffer(dealId)
-        if (!nd || !offer) return
-        void remindPayment(env.firestore, env.side, {
+        const invoiceId = nd ? d.invs[nd.inv]?.id : null
+        if (!nd || !invoiceId) return
+        void remindPayment({
           po,
-          offer,
-          chatId: offer.id,
+          invoiceId,
           text: f.t("msgPayRemind", { v: f.fmt.money(nd.amt), x: f.fmt.date(nd.due, true) }),
           due: nd.due,
           amount: nd.amt,
-          orgId: env.orgId,
         })
           .then((r) => toast({ title: f.t(r === "sent" ? "tPayRemind" : "errRemindedToday") }))
           .catch(() => toast({ title: f.t("errSave"), variant: "destructive" }))

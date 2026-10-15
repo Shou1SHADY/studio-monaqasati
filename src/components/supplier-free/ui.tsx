@@ -313,6 +313,8 @@ export function GroupHead({ label, n, value, tone }: { label: string; n: number;
 
 /** "Request 2026/031" / "Order 2026/041" / "Receipt 1187": the contractor's number written as a word and a number. */
 export function docWord(f: Free, kind: "rfq" | "po" | "grn" | "inv", no: string): string {
+  // A receipt without a number shows none — never the document id behind it (G-10).
+  if (kind === "grn" && !no) return "—"
   const key = kind === "rfq" ? "dwRfq" : kind === "po" ? "dwPo" : kind === "grn" ? "dwGrn" : "dwInv"
   return f.t(key, { no: kind === "grn" ? no.replace(/^\D+-?/, "") : no })
 }

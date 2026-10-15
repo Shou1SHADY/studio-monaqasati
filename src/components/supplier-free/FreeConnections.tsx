@@ -5,7 +5,6 @@
 
 import { useMemo, useState } from "react"
 import { collection, doc, getDocs, query, setDoc, updateDoc, where, serverTimestamp } from "firebase/firestore"
-import { getAuth } from "firebase/auth"
 import { Building2, Check, Link2, Loader2, MessageSquare, Phone, Plus } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { useFirestore } from "@/firebase"
@@ -14,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { useToast } from "@/hooks/use-toast"
-import { tellOwnerAboutRequest } from "@/lib/supplier-free/connections"
+import { answerInvitation, tellOwnerAboutRequest } from "@/lib/supplier-free/connections"
 import { FreePage, Pill, VerifiedMark, useQueryState } from "./ui"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { useFree } from "./useFree"
@@ -35,9 +34,7 @@ export function FreeConnections() {
   const answer = async (id: string, contractorOrgId: string, a: "accepted" | "declined") => {
     setBusy(id)
     try {
-      const token = await getAuth().currentUser?.getIdToken()
-      const res = await fetch("/api/supplier-free/invitations", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ id, answer: a }) })
-      if (!res.ok) throw new Error(String(res.status))
+      await answerInvitation(id, a)
       await refreshInvites()
       toast({ title: a === "accepted" ? t("tInvOk", { c: L.C(contractorOrgId)?.name || "" }) : t("tInvNo") })
     } catch (err) {

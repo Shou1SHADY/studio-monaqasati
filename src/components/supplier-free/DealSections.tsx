@@ -5,9 +5,11 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Bell, ClipboardList, FileText, MessageSquare, Paperclip, Send, Shield, Truck, Upload, Wallet } from "lucide-react"
-import { addDoc, arrayRemove, collection, doc, orderBy, query, updateDoc, type Firestore } from "firebase/firestore"
+import { arrayRemove, collection, doc, orderBy, query, updateDoc, type Firestore } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { DrawerSection } from "@/components/module-ui/DrawerSection"
+import { useToast } from "@/hooks/use-toast"
+import { useSupplierQuestions } from "@/hooks/useSupplierQuestions"
 import { Callout } from "@/components/module-ui/Callout"
 import { displayCategory } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -64,33 +66,22 @@ export function SecRequest({ f, d }: { f: Free; d: Deal }) {
   const { t, fmt, L, rel, pl } = f
   const st = L.stage(d)
   const open = L.daysTo(d.deadline) >= 0 && (st === "new" || st === "offered")
-  const firestore = useFirestore()
-  const { user } = useUser()
   const [q, setQ] = useState("")
   const [sending, setSending] = useState(false)
-  const qQ = useMemoFirebase(() => (firestore ? query(collection(firestore, "rfqs", d.id, "inquiries")) : null), [firestore, d.id])
-  const { data: asked } = useCollection<{ question?: string; reply?: string | null; organizationId?: string; createdAt?: string }>(qQ)
-  const mine = f.profile?.orgId
-  // His own questions with their state, and the answered ones of others without the asker (decision 10: visible to all bidders).
-  const list = (asked || [])
-    .filter((x) => x.organizationId === mine || !!x.reply)
-    .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
+  // His own questions with their state, and the answered ones of others without the asker (decision 10: visible to all
+  // bidders) — served by the server; asking goes through it too, so the request's owner is told.
+  const { rows: list, ask: askServer } = useSupplierQuestions(d.id)
+  const { toast } = useToast()
   const ask = async () => {
     const text = q.trim()
-    if (!text || !firestore || !user || !f.profile) return
+    if (!text || !f.profile) return
     setSending(true)
     try {
-      await addDoc(collection(firestore, "rfqs", d.id, "inquiries"), {
-        question: text.slice(0, 1000),
-        supplierId: user.uid,
-        organizationId: f.profile.orgId,
-        userId: user.uid,
-        supplierName: f.profile.companyName,
-        reply: null,
-        repliedAt: null,
-        createdAt: new Date().toISOString(),
-      })
+      await askServer(text.slice(0, 1000))
       setQ("")
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("errSave"), variant: "destructive" })
     } finally {
       setSending(false)
     }
@@ -186,7 +177,8 @@ export function SecOffer({ f, d }: { f: Free; d: Deal }) {
   if (!o || !v) return null
   const st = L.stage(d)
   const tot = L.offerTotal(d)
-  const vat = r2(tot * L.vatRate)
+  const vatRate = L.quoteVatRate(d, v)
+  const vat = r2(tot * vatRate)
   return (
     <DrawerSection title={<span className="inline-flex items-center gap-2"><Send size={15} aria-hidden="true" />{t("secOffer")}</span>} count={undefined} defaultOpen={st === "offered" || (st === "done" && !d.po)}>
       <div className="space-y-3 py-2">
@@ -248,7 +240,7 @@ export function SecOffer({ f, d }: { f: Free; d: Deal }) {
         )}
         <dl className="space-y-1 rounded-lg bg-muted/40 px-3 py-2 text-sm">
           <div className="flex justify-between"><dt className="text-muted-foreground">{t("sumNet")}</dt><dd className="font-bold"><Money>{fmt.money(tot)}</Money></dd></div>
-          {L.vatRate > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">{t("sumVat")}</dt><dd className="font-bold"><Money>{fmt.money(vat)}</Money></dd></div>}
+          {vatRate > 0 && <div className="flex justify-between"><dt className="text-muted-foreground">{t("sumVat")}</dt><dd className="font-bold"><Money>{fmt.money(vat)}</Money></dd></div>}
           <div className="flex justify-between border-t pt-1 text-base"><dt className="font-bold">{t("sumGross")}</dt><dd className="font-black"><Money>{fmt.money(r2(tot + vat))}</Money></dd></div>
         </dl>
         <dl className="grid gap-3 sm:grid-cols-2">
@@ -342,7 +334,7 @@ function ReceiptCard({ f, d, r }: { f: Free; d: Deal; r: DealReceipt }) {
     <div className="rounded-xl border p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          <b className="text-sm tabular-nums">{docWord(f, "grn", r.grn)}</b>
+          <b className="text-sm tabular-nums">{docWord(f, "grn", r.no || "")}</b>
           <Pill tone="ok" dot>{t("rcRec", { x: fmt.date(r.okAt) })}</Pill>
           <Pill tone={ot ? "mute" : "bad"}>{t(ot ? "onTime" : "afterCommit")}</Pill>
         </div>
