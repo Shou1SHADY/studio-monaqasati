@@ -12,7 +12,7 @@ import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { cn } from "@/lib/utils"
 import type { Deal } from "@/lib/supplier-free/types"
-import { useFreeWorld } from "./FreeWorldProvider"
+import { useWorldReady } from "./FreeWorldProvider"
 import type { Free } from "./useFree"
 
 // ---- The page template ----------------------------------------------------------------------------
@@ -75,7 +75,7 @@ export function FreePage({
   kpis?: PageKpi[]
   children: ReactNode
 }) {
-  const { ready } = useFreeWorld()
+  const ready = useWorldReady()
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">

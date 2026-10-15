@@ -303,3 +303,8 @@ export function useFreeWorld(): FreeWorldValue {
   if (!v) throw new Error("useFreeWorld outside FreeWorldProvider")
   return v
 }
+
+/** Whether the world has finished loading; true where no provider wraps the page (a page rendered on its own shows its content). */
+export function useWorldReady(): boolean {
+  return useContext(Ctx)?.ready ?? true
+}
