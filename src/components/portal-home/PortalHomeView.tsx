@@ -238,8 +238,8 @@ export function PortalHomeView({ profile, orgId, companyName, modules, kpis, til
         {kpis.length > 0 && (
         <div className="relative flex items-stretch ms-auto max-sm:basis-full max-sm:w-full max-sm:ms-0 max-sm:border-t max-sm:border-white/10 max-sm:pt-3">
           {kpis.map((kpi, i) => (
-            <div key={kpi.key} className={cn("px-5 sm:px-6 text-start max-sm:min-w-0 max-sm:flex-1 max-sm:px-3", i > 0 && "border-s border-white/[.13]")}>
-              <b className="block text-[21px] font-bold leading-[1.25] tabular-nums whitespace-nowrap max-sm:text-[17px]">{kpi.value}</b>
+            <div key={kpi.key} className={cn("px-5 sm:px-6 text-start max-sm:min-w-0 max-sm:flex-1 max-sm:px-2", i > 0 && "border-s border-white/[.13]")}>
+              <b className="block text-[21px] font-bold leading-[1.25] tabular-nums whitespace-nowrap max-sm:whitespace-normal max-sm:text-[15px] max-sm:leading-tight">{kpi.value}</b>
               <span className="flex items-center gap-1.5 text-xs text-slate-300/80 whitespace-nowrap max-sm:whitespace-normal">
                 {kpi.dot && <span className="h-1.5 w-1.5 rounded-full bg-red-300" />}
                 {kpi.label}
