@@ -6,9 +6,11 @@
 // a stale screen is refused, never half-applied. Notifications ride after the
 // write, best-effort, carrying i18n keys so each reader sees his own language.
 
-import { addDoc, collection, doc, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
+import { addDoc, collection, doc, runTransaction, serverTimestamp, type DocumentData, type Firestore, type UpdateData } from "firebase/firestore"
 import type { Translator } from "../mfg-events"
 import { buildExclusion } from "./award"
+import { drawRfqNumber } from "./numbering"
+import { todayOf } from "./po"
 import {
   canCancelRfq,
   canCloseEarly,
@@ -39,6 +41,31 @@ interface RfqDoc {
 }
 
 const rfqRef = (firestore: Firestore, rfqId: string) => doc(firestore, "rfqs", rfqId)
+
+/** A new RFQ with its number (`RFQ-2026/031`) drawn in the same transaction — an abandoned form spends none, and two
+ * buyers never hold the same one (NAV-08, G-10). Every create path goes through here. */
+export async function createRfqWithNumber(firestore: Firestore, data: Record<string, unknown> & { organizationId: string }, now = new Date()): Promise<{ id: string; rfqNumber: string }> {
+  const ref = doc(collection(firestore, "rfqs"))
+  const rfqNumber = await runTransaction(firestore, async (tx) => {
+    const no = await drawRfqNumber(firestore, tx, data.organizationId, now.getUTCFullYear())
+    tx.set(ref, { ...data, rfqNumber: no })
+    return no
+  })
+  return { id: ref.id, rfqNumber }
+}
+
+/** An edit of an RFQ; one saved before numbering (a draft) gets its number now, in the same write. */
+export async function updateRfqNumbered(firestore: Firestore, rfqId: string, patch: Record<string, unknown>, now = new Date()): Promise<string | null> {
+  return runTransaction(firestore, async (tx) => {
+    const snap = await tx.get(rfqRef(firestore, rfqId))
+    if (!snap.exists()) throw new ProcWriteError("rfq_missing")
+    const cur = snap.data() as { rfqNumber?: string | null; organizationId?: string | null; contractorId?: string | null }
+    const org = cur.organizationId || cur.contractorId || ""
+    const no = cur.rfqNumber || (org ? await drawRfqNumber(firestore, tx, org, now.getUTCFullYear()) : null)
+    tx.update(rfqRef(firestore, rfqId), (no && !cur.rfqNumber ? { ...patch, rfqNumber: no } : patch) as UpdateData<DocumentData>)
+    return no
+  })
+}
 
 /** «أغلِق الآن وافتح الأسعار» — the manager's, with a reason, logged in his name. */
 export async function closeRfqNow(firestore: Firestore, actor: RfqWriteActor, rfqId: string, reason: string, now = new Date()): Promise<void> {
@@ -195,6 +222,23 @@ export interface ReductionRoundInput {
   targets: ReductionRound["targets"]
   /** What the supplier reads; the same text is given to copy for guests. */
   message: string
+  /** The day the suppliers answer by (`YYYY-MM-DD`, today or later) — their clock, not the passed deadline (OFR-05). */
+  replyBy: string
+  /** The whole quote's target before VAT, when the buyer names one; else the line targets × quantities. */
+  targetTotal?: number | null
+}
+
+/** The target each supplier reads before VAT: the total the buyer typed, else Σ line target × quantity, else none. */
+export function reductionTargetTotal(targetTotal: number | null | undefined, targets: ReductionRound["targets"], products: Array<{ quantity?: unknown }> | null | undefined): number | null {
+  if (targetTotal != null && Number.isFinite(targetTotal) && targetTotal > 0) return Math.round(targetTotal * 100) / 100
+  if (!targets.length) return null
+  let sum = 0
+  for (const t of targets) {
+    const q = Number((products || [])[t.rfqProductIndex]?.quantity)
+    if (!Number.isFinite(q) || q <= 0) return null
+    sum += t.unitPrice * q
+  }
+  return Math.round(sum * 100) / 100
 }
 
 /**
@@ -207,11 +251,13 @@ export interface ReductionRoundInput {
  */
 export async function requestReductionRound(firestore: Firestore, actor: RfqWriteActor, input: ReductionRoundInput, now = new Date()): Promise<string[]> {
   if (!canRunRfq(actor)) throw new ProcWriteError("no_permission")
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.replyBy || "") || input.replyBy < todayOf(now)) throw new ProcWriteError("date_invalid")
   const at = now.toISOString()
   return runTransaction(firestore, async (tx) => {
     const rSnap = await tx.get(rfqRef(firestore, input.rfqId))
     if (!rSnap.exists()) throw new ProcWriteError("rfq_missing")
-    const rfq = rSnap.data() as RfqDoc & { reductionRound?: ReductionRound | null }
+    const rfq = rSnap.data() as RfqDoc & { reductionRound?: ReductionRound | null; products?: Array<{ quantity?: unknown }> }
+    const targetPrice = reductionTargetTotal(input.targetTotal, input.targets, rfq.products)
     if (!rfqMine(rfq, actor)) throw new ProcWriteError("no_permission")
     if (rfq.status !== "New" || rfq.reductionRound) throw new ProcWriteError("rfq_not_open")
     const reached: string[] = []
@@ -229,6 +275,9 @@ export async function requestReductionRound(firestore: Firestore, actor: RfqWrit
         reductionNote: input.message.trim() || null,
         reductionTargets: input.targets,
         reductionRound: true,
+        targetPrice,
+        reductionAt: at,
+        reductionBy: input.replyBy,
         decidedByUserId: actor.uid,
         decidedByUserName: actor.name,
         decidedAt: at,

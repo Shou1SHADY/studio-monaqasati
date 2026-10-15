@@ -59,7 +59,7 @@ export const OFFER_SEG = {
   reply: ["reduce", "sample"],
   wait: ["review", "sampleSent"],
   won: ["won"],
-  lost: ["lost", "noaward", "withdrawn", "declinedPo", "noquote"],
+  lost: ["lost", "noaward", "withdrawn", "declinedPo"],
 } as const
 export type OfferSeg = keyof typeof OFFER_SEG
 export const OFFER_ORDER: readonly OfferSeg[] = ["reply", "wait", "won", "lost"]

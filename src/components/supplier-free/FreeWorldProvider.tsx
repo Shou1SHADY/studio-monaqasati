@@ -258,6 +258,7 @@ function inField(rfq: Record<string, unknown> & { id: string }, profile: FreePro
   if (rfq.visibility === "private") return false
   if (!profile.coverageCities.length) return false
   const city = String(rfq.city || "")
+  // Deliberate (RFQ-01): a request that names no city is nationwide, so it reaches every supplier in its specialty.
   return !city || profile.coverageCities.includes(city)
 }
 

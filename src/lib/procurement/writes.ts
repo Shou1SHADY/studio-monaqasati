@@ -46,6 +46,7 @@ import {
 } from "./po"
 import { orderTermsOf } from "./offer-terms"
 import { frozenTermsOf } from "./terms-freeze"
+import { isWithdrawnOffer } from "./award"
 import { SUPPLIER_RECORDS, supplierRecordId } from "./supplier-file"
 import {
   PURCHASE_ORDERS,
@@ -207,6 +208,8 @@ export interface RfqLike {
   directAward?: boolean | null
   products?: Array<{ name?: string | null; quantity?: number | string | null; unitOfMeasure?: string | null; unit?: string | null; boqItemId?: string | null }> | null
   purchaseSource?: { kind: string; workOrderId?: string; purchaseRequestId?: string } | null
+  /** The buyer's payment terms on the RFQ (RFQ-11) — frozen onto the order at the award (G-08). */
+  paymentTermsList?: Array<{ pct: number; days: number }> | null
 }
 
 /** The offer as stored (`price` is a string, excluding VAT). Per-line prices
@@ -329,7 +332,7 @@ export function draftPurchaseOrder(actor: ProcActor, input: CreateFromAwardInput
     purchaseSource: rfq.purchaseSource ?? null,
     ...supplierOfOffer(offer),
     ...orderTermsOf(offer),
-    ...frozenTermsOf(offer),
+    ...frozenTermsOf(offer, rfq),
     lines,
     totalExVat,
     vatRate: 0.15,
@@ -423,6 +426,7 @@ export async function createPurchaseOrderFromAward(
     if (!offerSnap.exists()) throw new ProcWriteError("offer_missing")
     const existing = offerSnap.data().poId as string | undefined
     if (existing) return { id: existing, docNumber: (offerSnap.data().poNumber as string) || "", created: false }
+    if (isWithdrawnOffer(offerSnap.data() as { status?: string; withdrawnAt?: string })) throw new ProcWriteError("offer_taken")
     // The needs the RFQ answers are on the RFQ itself (the screen hands over only part of it).
     const rfqSnap = await tx.get(rfqRef)
     const linked: AwardedRfq = rfqSnap.exists() ? (rfqSnap.data() as AwardedRfq) : input.rfq
@@ -480,6 +484,17 @@ export interface AwardRfqInput {
   policies: ProcurementPolicies
   /** The preparer ticked that a guest supplier gets this order unregistered (R-10). */
   acceptedGuest?: boolean
+  /** Why the other quotes lost, when the buyer says (Supplier 1.0 OFR-07) — written on each as its outcome. */
+  lossReason?: AwardLossReason | null
+}
+
+export const AWARD_LOSS_REASONS = ["price", "time", "spec"] as const
+export type AwardLossReason = (typeof AWARD_LOSS_REASONS)[number]
+
+/** The competing offers an award leaves out: still live, not picked — each is told it lost (G-06). */
+export function losingOfferIds(offers: Array<Pick<AwardOfferLike, "id" | "status" | "poId">>, picked: string[]): string[] {
+  const won = new Set(picked)
+  return offers.filter((o) => !won.has(o.id) && !o.poId && o.status !== "مرفوض" && o.status !== "مقبول" && !isWithdrawnOffer(o)).map((o) => o.id)
 }
 
 /** One supplier's order out of a split award — pure, so the dialog and the tests see the document. */
@@ -514,7 +529,7 @@ export function draftSplitOrder(actor: ProcActor, input: AwardRfqInput, group: A
     rfqTitle: (rfq.title || "").trim(),
     offerId: group.offer.id,
     ...orderTermsOf(group.offer),
-    ...frozenTermsOf(group.offer),
+    ...frozenTermsOf(group.offer, rfq),
     projectId: rfq.projectId ?? null,
     projectName: rfq.projectName ?? null,
     category: rfq.category ?? null,
@@ -586,8 +601,14 @@ export async function awardRfq(
     for (const ref of offerRefs) {
       const snap = await tx.get(ref)
       if (!snap.exists()) throw new ProcWriteError("offer_missing")
-      const o = snap.data() as { status?: string; poId?: string }
-      if (o.poId || o.status === "مرفوض" || o.status === "مقبول") throw new ProcWriteError("offer_taken")
+      const o = snap.data() as { status?: string; poId?: string; withdrawnAt?: string }
+      if (o.poId || o.status === "مرفوض" || o.status === "مقبول" || isWithdrawnOffer(o)) throw new ProcWriteError("offer_taken")
+    }
+    // The quotes left out are re-read too: one withdrawn or decided meanwhile is not told it lost.
+    const losers: string[] = []
+    for (const lid of losingOfferIds(input.offers, input.groups.map((g) => g.offer.id))) {
+      const snap = await tx.get(doc(firestore, "offers", lid))
+      if (snap.exists() && losingOfferIds([{ ...(snap.data() as Pick<AwardOfferLike, "status" | "poId">), id: lid }], []).length) losers.push(lid)
     }
     const linked = rfqSnap.data() as AwardedRfq
     const served = await readServedRequests(tx, firestore, linked)
@@ -612,6 +633,10 @@ export async function awardRfq(
         updatedAt: serverTimestamp(),
       })
     })
+    // Every quote ends with a result (G-06): the others are "awarded to another", with the buyer's reason when given.
+    for (const lid of losers) {
+      tx.update(doc(firestore, "offers", lid), { outcome: { k: "lost", at, why: input.lossReason || null }, updatedAt: serverTimestamp() })
+    }
     const logEntry = rfqLogEntry(actor, "awarded", at, { params: { orders: numbers.join(" · "), suppliers: drafts.map((d) => d.supplierName).join(" · "), unawarded: input.unpicked.length } })
     tx.update(rfqRef, {
       status: "Awarded",

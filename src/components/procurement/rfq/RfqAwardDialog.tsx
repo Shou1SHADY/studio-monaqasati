@@ -27,7 +27,7 @@ import { awardSummary, checkBreakdown, guestAwardRefusal, lowestForLines, offerT
 import { Checkbox } from "@/components/ui/checkbox"
 import type { AwardReasonCode, ProcurementPolicies } from "@/lib/procurement/types"
 import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
-import { awardRfq, ProcWriteError, type AwardGroupInput, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
+import { AWARD_LOSS_REASONS, awardRfq, losingOfferIds, ProcWriteError, type AwardGroupInput, type AwardLossReason, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 import { leadDaysOf, useTermsText } from "./RfqComparison"
@@ -95,6 +95,7 @@ export function RfqAwardDialog({
   const [reasonText, setReasonText] = useState("")
   const [budgetReason, setBudgetReason] = useState("")
   const [acceptGuest, setAcceptGuest] = useState(false)
+  const [lossReason, setLossReason] = useState<AwardLossReason | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -111,6 +112,7 @@ export function RfqAwardDialog({
     setReasonText("")
     setBudgetReason("")
     setAcceptGuest(false)
+    setLossReason(null)
     setError(null)
     // Reset only when the dialog opens on a new set of picks.
   }, [open])
@@ -122,6 +124,7 @@ export function RfqAwardDialog({
   const projected = budget ? budget.committed + summary.total : 0
   const overBudget = budget != null && projected > budget.budget
   const unregistered = summary.groups.map((g) => byId.get(g.offerId)).filter((o): o is RfqOfferView => Boolean(o?.isGuestOffer))
+  const losers = losingOfferIds(live as unknown as AwardOfferLike[], summary.groups.map((g) => g.offerId))
   const noQuote = summary.groups.map((g) => byId.get(g.offerId)).filter((o): o is RfqOfferView => Boolean(o && !o.offerPdfUrl))
 
   const refusal: string | null = (() => {
@@ -152,6 +155,7 @@ export function RfqAwardDialog({
       directAward: Boolean(rfq.directAward),
       products: (rfq.products || []) as RfqLike["products"],
       purchaseSource: rfq.purchaseSource || null,
+      paymentTermsList: rfq.paymentTermsList || null,
     }
     const groups: AwardGroupInput[] = summary.groups.map((g) => {
       const offer = byId.get(g.offerId) as RfqOfferView
@@ -188,6 +192,7 @@ export function RfqAwardDialog({
           breakdown: needsBreakdown,
           policies,
           acceptedGuest: acceptGuest,
+          lossReason,
         },
         { copy: tShared, locale: locale === "en" ? "en" : "ar", orgName }
       )
@@ -349,6 +354,29 @@ export function RfqAwardDialog({
                 />
               )}
               <p className="text-[11px] text-muted-foreground">{tc("offers_award_reason_hint")}</p>
+            </fieldset>
+          )}
+
+          {losers.length > 0 && (
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-bold">{t("award.loss_legend", { count: losers.length })}</legend>
+              <div className="flex flex-wrap gap-2" role="radiogroup">
+                {[null, ...AWARD_LOSS_REASONS].map((code) => (
+                  <button
+                    key={code || "none"}
+                    type="button"
+                    role="radio"
+                    aria-checked={lossReason === code}
+                    onClick={() => setLossReason(code)}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      lossReason === code ? "border-module bg-module/10 text-module" : "hover:bg-muted"
+                    )}
+                  >
+                    {t(`award.loss_${code || "none"}`)}
+                  </button>
+                ))}
+              </div>
             </fieldset>
           )}
 
