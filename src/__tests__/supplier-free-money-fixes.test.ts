@@ -177,7 +177,7 @@ describe("BIL-05 / WF-14 — how late each transfer was, over every invoice's in
 })
 
 describe("BIL-02 / G-07 — the invoice is one transaction with a lock per receipt", () => {
-  const SUP = { uid: "su", orgId: "sup", name: "Sami", company: "Al Noor", taxNumber: "" }
+  const SUP = { uid: "su", orgId: "sup", name: "Sami", company: "Al Noor", vatRate: 0 }
   const input = { poId: "po1", grns: ["GR-2026/004"], number: "INV-77", date: "2026-10-14", amountNet: 150, fileName: "f.pdf", fileUrl: "https://x.test/f.pdf" }
   const world = () =>
     new FakeAdminDb()

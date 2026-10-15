@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { createSupplierInvoice, InvoiceError } from "@/lib/supplier-free/invoice-server"
+import { supplierCompanyOf } from "@/lib/supplier-free/supplier-company"
 
 // A supplier's invoice on an order (PRD BIL-01/02, G-07). The rule is the one the form shows — `invoiceBlocks` — run
 // again on the server inside one transaction, because a button that hides is not a control: the request itself is
@@ -41,10 +42,11 @@ export async function POST(req: Request) {
 
   try {
     const db = getAdminFirestore()
-    const user = (await db.collection("users").doc(uid).get()).data() as { role?: string; organizationId?: string; name?: string; companyName?: string; taxNumber?: string } | undefined
+    const user = (await db.collection("users").doc(uid).get()).data() as ({ role?: string } & Record<string, unknown>) | undefined
     if (!user || user.role !== "Supplier") return fail("Suppliers only", "FORBIDDEN", 403)
-    const company = user.companyName || user.name || ""
-    const data = await createSupplierInvoice(db, { uid, orgId: user.organizationId || uid, name: user.name || company, company, taxNumber: String(user.taxNumber || "") }, parsed.data)
+    // The ACTIVE company's name and VAT standing — a team member or a secondary company is not the caller's own doc.
+    const c = await supplierCompanyOf(db, uid, user)
+    const data = await createSupplierInvoice(db, { uid, orgId: c.orgId, name: c.name, company: c.company, vatRate: c.vatRate }, parsed.data)
     return NextResponse.json({ success: true, data })
   } catch (error) {
     if (error instanceof InvoiceError) {

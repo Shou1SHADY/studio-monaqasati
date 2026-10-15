@@ -30,7 +30,7 @@ export function ReceiptDoc({ f, d, r }: { f: Free; d: Deal; r: DealReceipt }) {
         <div>
           <b className="block text-sm">{t("grnDocT")}</b>
           <span className="text-xs text-muted-foreground">
-            {docWord(f, "grn", r.grn)} · {d.po ? docWord(f, "po", d.po.no) : ""}
+            {docWord(f, "grn", r.no || "")} · {d.po ? docWord(f, "po", d.po.no) : ""}
           </span>
         </div>
         <div className="text-end">

@@ -730,12 +730,13 @@ service cloud.firestore {
             && resource.data.get('status', '') == 'Draft');
 
       // Subcollection: inquiries (questions from suppliers about the RFQ)
+      // Read by the asker's company and the RFQ's; a supplier reads others' answered questions (never who
+      // asked) through /api/supplier-free/questions.
       match /inquiries/{inquiryId} {
-        allow read: if isSignedIn();
+        function rfqOrg() { return rfqData(rfqId).organizationId == getOrganizationId(); }
+        allow read: if isSignedIn() && (resource.data.get('organizationId', '') == getOrganizationId() || rfqOrg() || isAdmin());
         allow create: if isSignedIn();
-        allow update: if (isSignedIn() && resource.data.userId == request.auth.uid)
-          || (isSignedIn() && rfqData(rfqId).organizationId == getOrganizationId())
-          || isAdmin();
+        allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || rfqOrg()) || isAdmin();
         allow delete: if isAdmin()
           || (isSignedIn() && resource.data.userId == request.auth.uid);
       }
@@ -785,9 +786,12 @@ service cloud.firestore {
       allow update: if isAdmin()
         || ((resource.data.supplierId == request.auth.uid || ownsDoc())
             && !changedKeys().hasAny(buyerOfferKeys().concat(['supplierId', 'organizationId', 'rfqId', 'contractorId', 'contractorOrgId']))
-            && (resource.data.get('status', '') in ['قيد المراجعة', 'مطلوب تخفيض']
-                ? (!changedKeys().hasAny(['status']) || rd().status == 'قيد المراجعة')
-                : !changedKeys().hasAny(['status', 'price', 'lines', 'deliveryBatches', 'totalBatchesPrice', 'validUntil'])))
+            // Status and price move only while under review or a price cut, back to «قيد المراجعة» at most, and only
+            // while the RFQ is open — after it closes the price is the server act's (the cut reply's own clock).
+            && (!changedKeys().hasAny(['status', 'price', 'lines', 'deliveryBatches', 'totalBatchesPrice', 'validUntil'])
+                || (resource.data.get('status', '') in ['قيد المراجعة', 'مطلوب تخفيض']
+                    && (!changedKeys().hasAny(['status']) || rd().status == 'قيد المراجعة')
+                    && rfqData(resource.data.rfqId).status == 'New')))
         // Any member of the buying company marks an offer read (the bell) — those two fields only.
         || (resource.data.get('contractorOrgId', null) == getOrganizationId()
             && changedKeys().hasOnly(['contractorReadAt', 'contractorUnread']))
@@ -993,13 +997,13 @@ service cloud.firestore {
         isAdmin()
       );
       allow list: if isSignedIn();
-      // Supplier-initiated requests, supplier accepting a contractor invitation,
-      // OR a contractor marking a supplier as favorite (auto-connects immediately,
-      // skipping the invite-and-wait step).
+      // A supplier only ASKS ('pending' — CON-03); accepting a contractor's invitation is the server's
+      // (/api/supplier-free/invitations checks it is his). A contractor marking a supplier as favorite
+      // auto-connects immediately, skipping the invite-and-wait step.
       allow create: if isSignedIn()
         && (
           (rd().supplierOrgId == getOrganizationId()
-            && (rd().requestedBy == "supplier" || rd().requestedBy == "contractor"))
+            && rd().requestedBy == "supplier" && rd().status == 'pending')
           || (rd().contractorOrgId == getOrganizationId()
               && request.resource.data.requestedBy == "contractor_favorite"
               && request.resource.data.status == "active"

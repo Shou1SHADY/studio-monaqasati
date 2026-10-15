@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { ActError, actSchema, isBuyerAct, runBuyerAct, runSupplierAct } from "@/lib/supplier-free/server-acts"
-import { isQuoteAct, QuoteActError, quoteActSchema, runQuoteAct, supplierFieldOf } from "@/lib/supplier-free/server-quote-acts"
+import { isQuoteAct, QuoteActError, quoteActSchema, runQuoteAct } from "@/lib/supplier-free/server-quote-acts"
+import { supplierCompanyOf } from "@/lib/supplier-free/supplier-company"
 
 // The supplier journey's acts on a document the other company owns (decline, delivery report, answer to a transfer,
 // warranty; and the contractor's transfer report and warranty acceptance). One door, checked on the server (NFR-08).
@@ -17,12 +18,10 @@ async function quoteAct(uid: string, body: unknown) {
   if (!parsed.success) return fail("Invalid request", "invalid", 400)
   try {
     const db = getAdminFirestore()
-    const user = (await db.collection("users").doc(uid).get()).data() as ({ role?: string; organizationId?: string; name?: string; companyName?: string } & Record<string, unknown>) | undefined
+    const user = (await db.collection("users").doc(uid).get()).data() as ({ role?: string } & Record<string, unknown>) | undefined
     if (!user || user.role !== "Supplier") return fail("Suppliers only", "no_permission", 403)
-    const orgId = user.organizationId || uid
-    const name = user.name || user.companyName || ""
-    const field = await supplierFieldOf(db, user, orgId, uid)
-    return NextResponse.json({ success: true, data: await runQuoteAct(db, { uid, name, orgId, company: user.companyName || name, field }, parsed.data) })
+    // The active company — its name, its field and its VAT standing — never the caller's own doc (a member, a secondary company).
+    return NextResponse.json({ success: true, data: await runQuoteAct(db, await supplierCompanyOf(db, uid, user), parsed.data) })
   } catch (error) {
     if (error instanceof QuoteActError) return NextResponse.json({ error: true, message: error.code, code: error.code, detail: error.detail ?? null }, { status: QUOTE_STATUS[error.code] || 400 })
     console.error("Supplier quote act error:", error)
@@ -48,10 +47,9 @@ export async function POST(req: Request) {
   try {
     const db = getAdminFirestore()
     if (isBuyerAct(act)) return NextResponse.json({ success: true, data: await runBuyerAct(db, uid, act) })
-    const user = (await db.collection("users").doc(uid).get()).data() as { role?: string; organizationId?: string; name?: string; companyName?: string } | undefined
+    const user = (await db.collection("users").doc(uid).get()).data() as ({ role?: string } & Record<string, unknown>) | undefined
     if (!user || user.role !== "Supplier") return fail("Suppliers only", "no_permission", 403)
-    const name = user.name || user.companyName || ""
-    return NextResponse.json({ success: true, data: await runSupplierAct(db, { uid, name, orgId: user.organizationId || uid, company: user.companyName || name }, act) })
+    return NextResponse.json({ success: true, data: await runSupplierAct(db, await supplierCompanyOf(db, uid, user), act) })
   } catch (error) {
     if (error instanceof ActError) return fail(error.code, error.code, STATUS[error.code] || 400)
     console.error("Supplier act error:", error)

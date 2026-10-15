@@ -75,10 +75,11 @@ function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; 
   const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const c = L.C(d.c)
-  const vatOn = !!(profile && String(profile.raw.taxNumber || "").trim())
-  const check = useMemo(() => quoteBlocks(d, v, mode, L), [d, v, mode, L])
-  const vat = vatOn ? check.vat : 0
-  const gross = r2(check.net + vat)
+  // The company's own rate (15% with a VAT number, else 0) — the one the server stores on the version and on his invoices.
+  const vatOn = L.vatRate > 0
+  const check = useMemo(() => quoteBlocks(d, v, mode, L, L.vatRate), [d, v, mode, L])
+  const vat = check.vat
+  const gross = check.gross
   useEffect(() => {
     const el = document.getElementById("quote-first-input")
     if (el) setTimeout(() => (el as HTMLInputElement).focus(), 80)

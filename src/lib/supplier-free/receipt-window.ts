@@ -18,7 +18,7 @@ export interface WindowItem {
   poId: string
   reportId: string
   stage: "remind" | "escalate"
-  /** Whole days since the delivery date the supplier gave. */
+  /** Whole days since the report's window opened (`windowStart`). */
   days: number
 }
 
@@ -31,6 +31,14 @@ export const daysSince = (from: string, today: string) => Math.round((dayNum(tod
 /** Riyadh's today, `YYYY-MM-DD`. */
 export const riyadhToday = (now: Date = new Date()) => new Date(now.getTime() + 3 * 3_600_000).toISOString().slice(0, 10)
 
+/** The day a report's window opens: the delivery date he gave, but never before the day he REPORTED it (Riyadh) — a
+ * report back-dated to last week starts its two days today, not already late. */
+export const windowStart = (r: Pick<PoDeliveryReport, "date" | "at">): string => {
+  const reported = typeof r.at === "string" && r.at ? riyadhToday(new Date(r.at)) : ""
+  const given = r.date.slice(0, 10)
+  return reported > given ? reported : given
+}
+
 /** Pure: what each open report is owed today. Escalation also reminds the receivers when they were never reminded
  * (a report the job first sees on day 5). Only an accepted order still waiting for goods has a window. */
 export function receiptWindowDue(pos: readonly PurchaseOrder[], today: string): WindowItem[] {
@@ -39,7 +47,7 @@ export function receiptWindowDue(pos: readonly PurchaseOrder[], today: string): 
     if (po.status !== "accepted") continue
     for (const r of (po.deliveryReports || []) as WindowReport[]) {
       if (r.closedAt || !r.date) continue
-      const days = daysSince(r.date, today)
+      const days = daysSince(windowStart(r), today)
       if (days >= ESCALATE_AFTER_DAYS && !r.escalatedAt) out.push({ poId: po.id, reportId: r.id, stage: "escalate", days })
       if (days >= REMIND_AFTER_DAYS && !r.nudgedAt) out.push({ poId: po.id, reportId: r.id, stage: "remind", days })
     }

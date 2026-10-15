@@ -40,6 +40,8 @@ export interface QuoteVersion {
   valid: string
   note: string
   file?: string | null
+  /** The VAT rate this version was quoted with (0.15 or 0); absent on a version stored before the rate was. */
+  vat?: number
 }
 
 export interface DealOffer {
@@ -90,7 +92,10 @@ export type DeclineReason = "stock" | "price" | "date" | "other"
 /** A goods receipt the contractor recorded. The supplier only reads it. */
 export interface DealReceipt {
   st: "ok"
+  /** The receipt's key as invoices name it (its number, else the document id) — never shown (G-10). */
   grn: string
+  /** Its number as shown — "" when it has none; the screen then shows «—», never an id. */
+  no?: string
   date: string
   okAt: string
   t: string

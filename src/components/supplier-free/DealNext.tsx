@@ -252,7 +252,7 @@ export function DealStats({ f, d }: { f: Free; d: Deal }) {
     return (
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat label={t("dsOffer")} value={fmt.money(tot)} sub={t("beforeVat")} />
-        <Stat label={t("sumGross")} value={fmt.money(r2(tot * (1 + L.vatRate)))} sub={t("inclVat")} />
+        <Stat label={t("sumGross")} value={fmt.money(r2(tot * (1 + L.quoteVatRate(d, v))))} sub={t("inclVat")} />
         <Stat label={t("fValid")} value={v?.valid ? fmt.date(v.valid, true) : "—"} sub={v?.valid ? rel(v.valid) : undefined} />
         <Stat label={t("fVersion")} value={d.offer.v.length} sub={fmt.date(v?.at, true)} />
       </div>

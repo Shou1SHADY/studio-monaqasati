@@ -373,7 +373,7 @@ const INV_BLOCK_KEY: Record<InvoiceBlockCode, string> = {
 }
 
 function Invoice({ f, d, env, onClose }: P) {
-  const { t, fmt, today, L, world, profile } = f
+  const { t, fmt, today, L, world } = f
   const storage = useStorage()
   const { toast } = useToast()
   const [busy, setBusy] = useState(false)
@@ -384,12 +384,12 @@ function Invoice({ f, d, env, onClose }: P) {
   const [date, setDate] = useState(today)
   const [amount, setAmount] = useState("")
   const [file, setFile] = useState<File | null>(null)
-  const vatOn = !!(profile && String(profile.raw.taxNumber || "").trim())
+  const vatOn = L.vatRate > 0
 
   const facts: InvoiceFacts = useMemo(
     () => ({
       today,
-      receipts: L.receipts(d).map((r) => ({ id: r.grn, day: r.okAt, net: d.po && L.isLump(d.po) ? null : L.receiptNet(d, r) })),
+      receipts: L.billableReceipts(d).map((r) => ({ id: r.grn, day: r.okAt, net: d.po && L.isLump(d.po) ? null : L.receiptNet(d, r) })),
       billed: d.invs.flatMap((i) => i.grns || []),
       lumpTotalWhenComplete: d.po && L.isLump(d.po) && L.allGot(d) ? d.po.lump || 0 : null,
       usedNumbers: world.deals.flatMap((x) => x.invs.map((i) => i.no)),
@@ -409,7 +409,7 @@ function Invoice({ f, d, env, onClose }: P) {
 
   const net = Number(amount) || 0
   const blocks = invoiceBlocks(facts, { number, date, amountNet: net, hasFile: !!file, grns: picked })
-  const vat = vatOn ? r2(net * 0.15) : 0
+  const vat = r2(net * L.vatRate)
   const rcptWord = (g: string) => docWord(f, "grn", g)
   const blockText = (b: InvoiceBlockCode) => {
     if (b === "over") return t("blkInvOver", { v: fmt.money(cap) })
@@ -472,7 +472,7 @@ function Invoice({ f, d, env, onClose }: P) {
                     setPicked((p) => (e.target.checked ? [...p, r.grn] : p.filter((x) => x !== r.grn)))
                   }}
                 />
-                <b>{rcptWord(r.grn)}</b>
+                <b>{rcptWord(r.no || "")}</b>
                 <span className="text-xs text-muted-foreground">{fmt.date(r.okAt, true)}</span>
               </span>
               <span className="tabular-nums" dir="ltr">
@@ -887,7 +887,7 @@ function GrnView({ f, d, onClose, grn }: P & { grn?: string }) {
   const r = f.L.receipts(d).find((x) => x.grn === grn)
   if (!r) return null
   return (
-    <Shell title={f.t("grnModalT", { n: r.grn.replace(/^\D+-?/, "") })} onClose={onClose} wide>
+    <Shell title={f.t("grnModalT", { n: (r.no || "").replace(/^\D+-?/, "") || "—" })} onClose={onClose} wide>
       <ReceiptDoc f={f} d={d} r={r} />
     </Shell>
   )

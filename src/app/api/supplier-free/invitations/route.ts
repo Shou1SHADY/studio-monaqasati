@@ -4,6 +4,7 @@ import { FieldValue, type Firestore } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { normalizePhoneE164 } from "@/lib/sms"
 import { notifyNamed } from "@/lib/supplier-free/server-notify"
+import { supplierCompanyOf } from "@/lib/supplier-free/supplier-company"
 
 // A contractor's connection invitations to this supplier (PRD CON-02, WF-17). They are addressed by e-mail OR by mobile
 // (a free account is created with a mobile and may have no e-mail), so the supplier cannot read them under the rules
@@ -33,14 +34,16 @@ async function caller(req: Request, db: Firestore): Promise<Caller | NextRespons
   }
   const user = (await db.collection("users").doc(uid).get()).data() as Record<string, unknown> | undefined
   if (!user || user.role !== "Supplier") return fail("Suppliers only", "FORBIDDEN", 403)
+  // The link names the ACTIVE company (a member's or a secondary company's own name and field), not the caller's doc.
+  const c = await supplierCompanyOf(db, uid, user)
   return {
     uid,
-    orgId: String(user.organizationId || uid),
+    orgId: c.orgId,
     email: String(user.email || "").toLowerCase(),
     phone: normalizePhoneE164(String(user.phone || "")) || "",
-    company: String(user.companyName || user.name || ""),
+    company: c.company,
     name: String(user.name || ""),
-    specs: Array.isArray(user.specializations) ? (user.specializations as string[]) : [],
+    specs: c.field.specs,
   }
 }
 
