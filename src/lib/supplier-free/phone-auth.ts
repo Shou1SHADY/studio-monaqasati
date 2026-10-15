@@ -57,3 +57,27 @@ export function claimedOfferPatch(uid: string, name: string, company: string, at
 export function claimedOrderPatch(uid: string, company: string): Record<string, string | boolean> {
   return { supplierOrgId: uid, supplierUserId: uid, supplierName: company, isGuestSupplier: false }
 }
+
+// ---- Changing the locked fields (ACC-05) ----------------------------------------------------------------------
+// The sign-in mobile and the commercial register are never edited inline; each changes under Security with a code.
+// A new mobile is proved by a code sent TO it; a new register by a code sent to the sign-in mobile. Both are applied
+// at once — the register's old certificate is taken off, so "Verified" waits for the new one (ACC-04).
+
+export const accountChangeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("phone"), challengeId: z.string().trim().min(8).max(64), code: z.string().trim().min(4).max(8), phone: z.string().trim().min(7).max(20) }),
+  z.object({ kind: z.literal("cr"), challengeId: z.string().trim().min(8).max(64), code: z.string().trim().min(4).max(8), crNumber: z.string().trim().min(5).max(20) }),
+])
+export type AccountChange = z.infer<typeof accountChangeSchema>
+
+/** A Saudi commercial register (or unified) number: ten digits, typed in either numeral set. */
+export function normalizeCr(value: string): string | null {
+  const digits = value.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[\s-]/g, "")
+  return /^\d{10}$/.test(digits) ? digits : null
+}
+
+/** Why a new sign-in mobile is refused before its code is spent: the same number, or a number another account holds. */
+export function phoneChangeRefusal(uid: string, current: string, next: string, holders: readonly string[]): "SAME_PHONE" | "PHONE_TAKEN" | null {
+  if (next === current) return "SAME_PHONE"
+  if (holders.some((h) => h && h !== uid)) return "PHONE_TAKEN"
+  return null
+}

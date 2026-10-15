@@ -8,7 +8,7 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react"
 import { collection, doc, query, updateDoc, where, type DocumentData, type UpdateData } from "firebase/firestore"
 import { getAuth } from "firebase/auth"
-import { Award, BadgeCheck, Briefcase, Building2, Check, FileText, Folder, Globe, Hash, KeyRound, Loader2, Lock, MapPin, PenLine, Plus, Shield, ShieldAlert, Star, Tag, Upload, Wallet } from "lucide-react"
+import { Award, BadgeCheck, Briefcase, Building2, Check, FileText, Folder, Globe, Hash, KeyRound, Loader2, Lock, MapPin, PenLine, Plus, Shield, ShieldAlert, Smartphone, Star, Tag, Upload, Wallet } from "lucide-react"
 import { useCollection, useFirestore, useMemoFirebase, useStorage, useUser } from "@/firebase"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { useToast } from "@/hooks/use-toast"
@@ -17,6 +17,8 @@ import { mirrorCompanyIdentity } from "@/lib/company-identity-writes"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
 import { DOC_KEYS, docState, isVerified, profileChecks, profileFacts, profilePct, type DocKey } from "@/lib/supplier-free/profile"
 import { uploadSupplierFile } from "@/lib/supplier-free/uploads"
+import { normalizeCr } from "@/lib/supplier-free/phone-auth"
+import { ERRORS as PHONE_ERRORS } from "./PhoneSignInDialog"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
@@ -210,7 +212,7 @@ function BasicTab() {
           <label className="block text-sm font-semibold">
             {t("fCR")} <span className="text-destructive">*</span>
             <input className={`${input} mt-1`} dir="ltr" value={String(raw.crNumber || "")} readOnly />
-            <span className="mt-1 block text-xs font-normal text-muted-foreground">{t("abNameHint")}</span>
+            <span className="mt-1 block text-xs font-normal text-muted-foreground">{t("abCrHint")}</span>
           </label>
           <label className="block text-sm font-semibold">
             {t("fMob")} <span className="text-destructive">*</span>
@@ -655,6 +657,7 @@ function SecurityTab() {
   const { toast } = useToast()
   const raw = (profile?.raw || {}) as Record<string, unknown>
   const [flags, setFlags] = useState({ twoFactorEnabled: !!raw.twoFactorEnabled, showPhone: raw.showPhone !== false, emailNotif: raw.emailNotif !== false })
+  const [change, setChange] = useState<"phone" | "cr" | null>(null)
   if (!profile) return null
   const set = async (k: keyof typeof flags, v: boolean) => {
     setFlags((x) => ({ ...x, [k]: v }))
@@ -671,12 +674,24 @@ function SecurityTab() {
     ["showPhone", "asecPhone", "asecPhoneX"],
     ["emailNotif", "asecMail", "asecMailX"],
   ]
+  const changeBtn = "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border bg-card px-3 text-xs font-bold hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Panel icon={Lock} title={t("asecT")} sub={t("asecSub")}>
         <div className="flex items-center justify-between gap-3 border-b py-3">
           <div><b className="text-sm">{t("asecLogin")}</b><p className="text-xs text-muted-foreground">{t("asecLoginX", { m: profile.phone })}</p></div>
           <Pill tone="ok" dot>{t("active")}</Pill>
+        </div>
+        <div className="flex items-center justify-between gap-3 border-b py-3">
+          <div className="min-w-0"><b className="text-sm">{t("chMob")}</b><p className="text-xs text-muted-foreground">{t("chMobX")}</p></div>
+          <button type="button" className={changeBtn} onClick={() => setChange("phone")}><Smartphone size={14} aria-hidden="true" />{t("chBtn")}</button>
+        </div>
+        <div className="flex items-center justify-between gap-3 border-b py-3">
+          <div className="min-w-0">
+            <b className="text-sm">{t("chCr")}</b>
+            <p className="text-xs text-muted-foreground">{t("fCR")}: <bdi dir="ltr">{String(raw.crNumber || "—")}</bdi></p>
+          </div>
+          <button type="button" className={changeBtn} onClick={() => setChange("cr")}><FileText size={14} aria-hidden="true" />{t("chBtn")}</button>
         </div>
         {rows.map(([k, a, b]) => (
           <div key={k} className="flex items-center justify-between gap-3 border-b py-3 last:border-b-0">
@@ -693,7 +708,111 @@ function SecurityTab() {
         </div>
         <p className="mt-4 flex gap-2 text-xs text-muted-foreground"><ShieldAlert size={14} className="mt-0.5 shrink-0" aria-hidden="true" />{t("abMobHint")}</p>
       </Panel>
+      {change && <LockedChangeDialog kind={change} phone={profile.phone} onClose={() => setChange(null)} />}
     </div>
   )
+}
+
+/** ACC-05: the sign-in mobile (a code to the NEW number) or the register (a code to the sign-in mobile), applied by the
+ * server once the code is right. */
+function LockedChangeDialog({ kind, phone, onClose }: { kind: "phone" | "cr"; phone: string; onClose: () => void }) {
+  const { t, locale } = useFree()
+  const { toast } = useToast()
+  const [value, setValue] = useState("")
+  const [challenge, setChallenge] = useState<{ id: string; masked: string; testCode?: string } | null>(null)
+  const [code, setCode] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const fail = (c: string) => setError(t((PHONE_ERRORS[c] || "phErrGeneric") as "phErrGeneric"))
+
+  const sendCode = async () => {
+    if (kind === "cr" && !normalizeCr(value)) return fail("INVALID_CR")
+    setBusy(true)
+    setError(null)
+    const r = await postJson<{ challengeId: string; phoneMasked: string; testCode?: string }>("/api/supplier-free/phone/code", { phone: kind === "phone" ? value : phone, locale })
+    setBusy(false)
+    if (!r.ok) return fail(r.code)
+    setChallenge({ id: r.data.challengeId, masked: r.data.phoneMasked, testCode: r.data.testCode })
+  }
+  const confirm = async () => {
+    if (!challenge) return
+    setBusy(true)
+    setError(null)
+    const token = await getAuth().currentUser?.getIdToken().catch(() => undefined)
+    const body = kind === "phone" ? { kind, phone: value, challengeId: challenge.id, code } : { kind, crNumber: value, challengeId: challenge.id, code }
+    const r = await postJson<Record<string, string>>("/api/supplier-free/phone/change", body, token)
+    setBusy(false)
+    if (!r.ok) return fail(r.code)
+    toast({ title: t(kind === "phone" ? "tMobChanged" : "tCrChanged") })
+    onClose()
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t(kind === "phone" ? "chMob" : "chCr")}</DialogTitle>
+          <DialogDescription>{kind === "phone" ? t("chMobX") : t("chCrX", { m: phone })}</DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void (challenge ? confirm() : sendCode())
+          }}
+        >
+          <label className="block text-sm font-semibold">
+            {t(kind === "phone" ? "chNewMob" : "chNewCr")}
+            <input
+              className={`${input} mt-1`}
+              dir="ltr"
+              inputMode={kind === "phone" ? "tel" : "numeric"}
+              autoComplete={kind === "phone" ? "tel" : "off"}
+              placeholder={kind === "phone" ? "05xxxxxxxx" : "10xxxxxxxx"}
+              value={value}
+              readOnly={!!challenge}
+              onChange={(e) => setValue(e.target.value)}
+            />
+          </label>
+          {challenge && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                {t("phSentTo")} <span dir="ltr" className="font-bold text-foreground">{challenge.masked}</span>
+              </p>
+              {challenge.testCode && (
+                <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm" dir="ltr">
+                  {t("phTestCode")}: <b>{challenge.testCode}</b>
+                </p>
+              )}
+              <label className="block text-sm font-semibold">
+                {t("phCode")}
+                <input className={`${input} mt-1 tracking-latin text-lg`} dir="ltr" inputMode="numeric" autoComplete="one-time-code" maxLength={8} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
+              </label>
+            </>
+          )}
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <Button type="submit" className="w-full gap-2" disabled={busy || (challenge ? code.trim().length < 4 : value.trim().length < (kind === "phone" ? 7 : 10))}>
+            {busy && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
+            {t(challenge ? "chConfirm" : "phSend")}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+async function postJson<T>(url: string, body: Record<string, unknown>, token?: string): Promise<{ ok: true; data: T } | { ok: false; code: string }> {
+  try {
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) })
+    const json = (await res.json().catch(() => null)) as { success?: boolean; data?: T; code?: string } | null
+    if (res.ok && json?.success && json.data) return { ok: true, data: json.data }
+    return { ok: false, code: json?.code || "INTERNAL" }
+  } catch {
+    return { ok: false, code: "INTERNAL" }
+  }
 }
 
