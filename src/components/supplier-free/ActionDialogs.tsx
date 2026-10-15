@@ -611,10 +611,11 @@ function SampleSent({ f, d, env, onClose }: P) {
   const { t, today, fmt } = f
   const [sentAt, setSentAt] = useState(today)
   const [by, setBy] = useState("")
+  const [note, setNote] = useState("")
   const { busy, run } = useRun(f, onClose)
   const offer = f.rawOffer(d.id)
   const ctx = quoteCtx(f, d, env)
-  const block = !sentAt ? t("blkDate") : ""
+  const block = !sentAt ? t("blkDate") : sentAt > today ? t("blkRepFuture") : ""
   return (
     <Shell
       title={t("mSampleT")}
@@ -632,7 +633,7 @@ function SampleSent({ f, d, env, onClose }: P) {
           onSubmit={() =>
             void run(async () => {
               if (!offer || !ctx) return
-              await confirmSample(ctx, offer.id, { sentAt, receivedBy: by })
+              await confirmSample(ctx, offer.id, { sentAt, receivedBy: by, note })
               return t("tSample")
             })
           }
@@ -646,6 +647,10 @@ function SampleSent({ f, d, env, onClose }: P) {
       <label className="block text-sm font-semibold">
         {t("fSampleWith")}
         <input className={`${inputCls} mt-1`} value={by} onChange={(e) => setBy(e.target.value)} />
+      </label>
+      <label className="block text-sm font-semibold">
+        {t("fNote")}
+        <textarea rows={2} maxLength={500} className={`${inputCls} mt-1 h-auto py-2`} value={note} onChange={(e) => setNote(e.target.value)} />
       </label>
       {d.offer?.sample && <p className="text-xs text-muted-foreground">{t("ocSampleBy", { x: fmt.date(d.offer.sample.by) })}</p>}
     </Shell>

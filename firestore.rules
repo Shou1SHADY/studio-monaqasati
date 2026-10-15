@@ -386,8 +386,14 @@ service cloud.firestore {
     function hasOfferDecisionPermission(offerData) {
       return (('rfqId' in offerData) && offerData.rfqId != null && offerData.rfqId is string
               && exists(/databases/$(database)/documents/rfqs/$(offerData.rfqId)))
-        ? actsOnRfq(get(/databases/$(database)/documents/rfqs/$(offerData.rfqId)).data)
+        ? actsOnRfq(rfqData(offerData.rfqId))
         : hasOrgAny(['offers.accept', 'po.approve', 'rfq.manage', 'rfq.create']);
+    }
+    function rfqData(rfqId) { return get(/databases/$(database)/documents/rfqs/$(rfqId)).data; }
+    // An offer's keys only the buying side writes — the award, the exclusion, the price cut, the sample request,
+    // the outcome, a withdrawal (the server's) — so a supplier never sets them on his own offer (Supplier 1.0 NFR-08).
+    function buyerOfferKeys() {
+      return ['outcome', 'poId', 'poNumber', 'awardedLines', 'awardedTotal', 'awardReason', 'awaitingOrderApproval', 'decidedAt', 'decidedByUserId', 'exclusion', 'targetPrice', 'reductionAt', 'reductionBy', 'reductionNote', 'reductionTargets', 'reductionRound', 'sampleWhat', 'samplePlace', 'sampleBy', 'sampleRequestedAt', 'breakdown', 'requestedDeliveryDate', 'withdrawnAt', 'versions', 'directAward', 'isManualOffer', 'contractorRated'];
     }
 
     // Runs RFQs (rfq-access.ts runsRfqs): the manager, a buyer, supply chain.
@@ -590,11 +596,11 @@ service cloud.firestore {
       return (
           ownsDoc()
           && (
-            (!('projectId' in request.resource.data)) || request.resource.data.projectId == null
+            (!('projectId' in rd())) || rd().projectId == null
             || (
-              request.resource.data.projectId is string
-              && request.resource.data.projectId.size() > 0
-              && get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.organizationId == getOrganizationId()
+              rd().projectId is string
+              && rd().projectId.size() > 0
+              && get(/databases/$(database)/documents/projects/$(rd().projectId)).data.organizationId == getOrganizationId()
             )
           )
           // The manager, the buyers and whoever raises RFQs complete and publish their own drafts.
@@ -606,7 +612,7 @@ service cloud.firestore {
         // the same transaction under their own rules.
         || (
           resource.data.get('status', '') == 'New'
-          && request.resource.data.status == 'Awarded'
+          && rd().status == 'Awarded'
           && ck
                .hasOnly(['status', 'awardedAt', 'unawardedLines', 'awardSplit', 'log', 'updatedAt'])
           && rfqLogAppendsOne()
@@ -617,11 +623,11 @@ service cloud.firestore {
         // R-12 — cancelled before any award, with one of three reasons.
         || (
           resource.data.get('status', '') in ['New', 'Draft']
-          && request.resource.data.status == 'Cancelled'
+          && rd().status == 'Cancelled'
           && ck
                .hasOnly(['status', 'cancellation', 'cancelledAt', 'log', 'updatedAt'])
-          && request.resource.data.cancellation.code in ['need', 'spec', 'reissue']
-          && request.resource.data.cancellation.byId == request.auth.uid
+          && rd().cancellation.code in ['need', 'spec', 'reissue']
+          && rd().cancellation.byId == request.auth.uid
           && rfqLogAppendsOne()
           && rfqSameProject()
           && ownsDoc()
@@ -635,11 +641,11 @@ service cloud.firestore {
           && resource.data.get('closedEarly', null) == null
           && ck
                .hasOnly(['deadline', 'closedEarly', 'log', 'updatedAt'])
-          && request.resource.data.deadline is string
-          && request.resource.data.deadline < resource.data.get('deadline', '9999-12-31')
-          && request.resource.data.closedEarly.byId == request.auth.uid
-          && request.resource.data.closedEarly.reason is string
-          && request.resource.data.closedEarly.reason.size() > 0
+          && rd().deadline is string
+          && rd().deadline < resource.data.get('deadline', '9999-12-31')
+          && rd().closedEarly.byId == request.auth.uid
+          && rd().closedEarly.reason is string
+          && rd().closedEarly.reason.size() > 0
           && rfqLogAppendsOne()
           && rfqSameProject()
           && ownsDoc()
@@ -651,7 +657,7 @@ service cloud.firestore {
           resource.data.get('status', '') == 'New'
           && resource.data.get('reductionRound', null) == null
           && ck.hasOnly(['reductionRound', 'log', 'updatedAt'])
-          && request.resource.data.reductionRound.byId == request.auth.uid
+          && rd().reductionRound.byId == request.auth.uid
           && rfqLogAppendsOne()
           && rfqSameProject()
           && ownsDoc()
@@ -663,7 +669,7 @@ service cloud.firestore {
         // off-platform offer also counts itself, by exactly one.
         || (
           ck.hasOnly(['log', 'offersCount', 'updatedAt'])
-          && request.resource.data.get('offersCount', 0) in [resource.data.get('offersCount', 0), resource.data.get('offersCount', 0) + 1]
+          && rd().get('offersCount', 0) in [resource.data.get('offersCount', 0), resource.data.get('offersCount', 0) + 1]
           && rfqLogAppendsOne()
           && rfqSameProject()
           && ownsDoc()
@@ -671,7 +677,7 @@ service cloud.firestore {
         )
         || (resource.data.status == 'New'
             && resource.data.get('directAward', false) != true
-            && request.resource.data.status == 'New'
+            && rd().status == 'New'
             && ck
                  .hasOnly(['deadline', 'allowedSupplierOrgIds', 'invitedSupplierOrgIds', 'log', 'updatedAt'])
             && rfqLogAppendsOne()
@@ -694,17 +700,17 @@ service cloud.firestore {
       allow create: if isAdmin()
         || (
           isSignedIn()
-          && request.resource.data.organizationId == getOrganizationId()
+          && rd().organizationId == getOrganizationId()
           && (
-            (!('projectId' in request.resource.data)) || request.resource.data.projectId == null
+            (!('projectId' in rd())) || rd().projectId == null
             || (
-              request.resource.data.projectId is string
-              && request.resource.data.projectId.size() > 0
-              && get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.organizationId == getOrganizationId()
+              rd().projectId is string
+              && rd().projectId.size() > 0
+              && get(/databases/$(database)/documents/projects/$(rd().projectId)).data.organizationId == getOrganizationId()
             )
           )
           // Whoever sources raises an RFQ: rfq.create, or the manager / a buyer (rfq-access.ts).
-          && hasRfqAny(request.resource.data, ['rfq.create', 'projects.publish', 'offers.accept', 'po.approve'])
+          && hasRfqAny(rd(), ['rfq.create', 'projects.publish', 'offers.accept', 'po.approve'])
         );
       // Org members / admins can update everything, but re-verify projectId ownership
       // on every update too (not just create) so an RFQ can't be re-pointed at a
@@ -728,55 +734,60 @@ service cloud.firestore {
         allow read: if isSignedIn();
         allow create: if isSignedIn();
         allow update: if (isSignedIn() && resource.data.userId == request.auth.uid)
-          || (isSignedIn() && get(/databases/$(database)/documents/rfqs/$(rfqId)).data.organizationId == getOrganizationId())
+          || (isSignedIn() && rfqData(rfqId).organizationId == getOrganizationId())
           || isAdmin();
         allow delete: if isAdmin()
           || (isSignedIn() && resource.data.userId == request.auth.uid);
       }
     }
 
-      match /offers/{offerId} {
+    match /offers/{offerId} {
       // 'get' (single document): check the resource fields for ownership
       allow get: if isSignedIn() && (
         resource == null ||
         resource.data.supplierId == request.auth.uid ||
         resource.data.contractorId == request.auth.uid ||
-        resource.data.organizationId == getOrganizationId() ||
+        inOrg() ||
         isContractorOrg() ||
         isAdmin()
       );
       // 'list' (collection query): allow any signed-in user; the app's 'where' clause
       // (filtering by rfqId, organizationId, etc.) ensures data isolation.
       allow list: if isSignedIn();
+      // A supplier quotes only on an open RFQ, born under review, and never carrying a key the buying side owns
+      // (Supplier 1.0 NFR-08). The free supplier's quote acts run on the server (/api/supplier-free/act), which
+      // also checks the deadline and who the RFQ reaches; the full portal still writes here.
       allow create: if isAdmin()
-        || isSupplier()
-        || (isSignedIn() && request.resource.data.supplierId == request.auth.uid)
-        || (isSignedIn() && request.resource.data.organizationId == getOrganizationId())
+        || (isSignedIn()
+            && (isSupplier() || rd().supplierId == request.auth.uid || createsInOrg())
+            && rd().get('status', '') == 'قيد المراجعة'
+            && !rd().keys().hasAny(buyerOfferKeys())
+            && rfqData(rd().rfqId).status == 'New')
         // Direct award: the CONTRACTOR creates the accepted offer on behalf of
         // the chosen supplier — only on their own RFQ, only born accepted, and
         // only with the same permission that accepting an offer requires.
-        || (isSignedIn()
-            && request.resource.data.get('directAward', false) == true
-            && request.resource.data.status == 'مقبول'
-            && request.isContractorOrg()
-            && request.resource.data.rfqId is string
-            && get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data.organizationId == getOrganizationId()
-            && hasRfqPermission(get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data, 'offers.accept'))
-        || (isSignedIn()
-            && request.resource.data.get('isManualOffer', false) == true
-            && request.resource.data.status == 'قيد المراجعة'
-            && request.resource.data.recordedById == request.auth.uid
-            && request.isContractorOrg()
-            && request.resource.data.rfqId is string
-            && get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data.organizationId == getOrganizationId()
-            && get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data.status == 'New'
-            && actsOnRfq(get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data));
-      // Supplier can update their own offer; contractor-side updates (accept /
-      // reject / reduction / sample requests) additionally require the
-      // offers.accept permission (org owners always have it).
+        || (rd().get('directAward', false) == true
+            && rd().status == 'مقبول'
+            && rd().contractorOrgId == getOrganizationId()
+            && rfqData(rd().rfqId).organizationId == getOrganizationId()
+            && hasRfqPermission(rfqData(rd().rfqId), 'offers.accept'))
+        || (rd().get('isManualOffer', false) == true
+            && rd().status == 'قيد المراجعة'
+            && rd().recordedById == request.auth.uid
+            && rd().contractorOrgId == getOrganizationId()
+            && rfqData(rd().rfqId).organizationId == getOrganizationId()
+            && rfqData(rd().rfqId).status == 'New'
+            && actsOnRfq(rfqData(rd().rfqId)));
+      // The supplier (or his company) updates his own offer — never a key the buying side owns, never who it
+      // belongs to; while under review or a price cut its status may only return to «قيد المراجعة», and once
+      // decided (accepted, rejected, withdrawn…) neither its status nor its price moves. Contractor-side
+      // updates (accept / reject / reduction / sample requests) require the offers.accept permission.
       allow update: if isAdmin()
-        || (isSignedIn() && resource.data.supplierId == request.auth.uid)
-        || (ownsDoc())
+        || ((resource.data.supplierId == request.auth.uid || ownsDoc())
+            && !changedKeys().hasAny(buyerOfferKeys().concat(['supplierId', 'organizationId', 'rfqId', 'contractorId', 'contractorOrgId']))
+            && (resource.data.get('status', '') in ['قيد المراجعة', 'مطلوب تخفيض']
+                ? (!changedKeys().hasAny(['status']) || rd().status == 'قيد المراجعة')
+                : !changedKeys().hasAny(['status', 'price', 'lines', 'deliveryBatches', 'totalBatchesPrice', 'validUntil'])))
         // Any member of the buying company marks an offer read (the bell) — those two fields only.
         || (resource.data.get('contractorOrgId', null) == getOrganizationId()
             && changedKeys().hasOnly(['contractorReadAt', 'contractorUnread']))
@@ -786,8 +797,8 @@ service cloud.firestore {
             && (resource.data.contractorId == request.auth.uid
                 || isContractorOrg()
                 || (resource.data.rfqId != null
-                    && (get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.organizationId == getOrganizationId()
-                        || get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.contractorId == request.auth.uid)))
+                    && (rfqData(resource.data.rfqId).organizationId == getOrganizationId()
+                        || rfqData(resource.data.rfqId).contractorId == request.auth.uid)))
             && hasOfferDecisionPermission(resource.data));
       allow delete: if isAdmin()
         || (isSignedIn() && resource.data.supplierId == request.auth.uid);

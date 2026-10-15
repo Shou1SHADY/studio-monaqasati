@@ -269,15 +269,21 @@ export function ReductionRoundDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const by = new Date(`${addDays(todayOf(new Date()), 2)}T00:00:00`).toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { year: "numeric", month: "short", day: "numeric" })
+  const today = todayOf(new Date())
+  const [replyBy, setReplyBy] = useState(() => addDays(today, 2))
+  const [total, setTotal] = useState("")
+  const replyOk = /^\d{4}-\d{2}-\d{2}$/.test(replyBy) && replyBy >= today
+  const by = replyOk ? new Date(`${replyBy}T00:00:00`).toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { year: "numeric", month: "short", day: "numeric" }) : ""
   const message = t("round.message", { rfq: rfqTitle, date: by })
   const submit = async () => {
-    if (!firestore) return
+    if (!firestore || !replyOk) return
     setBusy(true)
     setError(null)
     try {
-      const reached = await requestReductionRound(firestore, actor, { rfqId, offerIds, targets: reductionTargets(typed), message })
+      const targetTotal = Number(total.replace(/[,\s]/g, ""))
+      const reached = await requestReductionRound(firestore, actor, { rfqId, offerIds, targets: reductionTargets(typed), message, replyBy, targetTotal: targetTotal > 0 ? targetTotal : null })
       setTyped({})
+      setTotal("")
       onDone(reached, message)
     } catch (err) {
       setError(refusalText(err))
@@ -286,7 +292,23 @@ export function ReductionRoundDialog({
     }
   }
   return (
-    <Shell open={open} onOpenChange={onOpenChange} title={t("round.title")} sub={t("round.sub")} error={error} busy={busy} submitLabel={t("round.submit")} disabled={!offerIds.length} onSubmit={submit}>
+    <Shell open={open} onOpenChange={onOpenChange} title={t("round.title")} sub={t("round.sub")} error={error ?? (replyOk ? null : t("round.err_reply_by"))} busy={busy} submitLabel={t("round.submit")} disabled={!offerIds.length || !replyOk} onSubmit={submit}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="round-reply-by" className="text-xs font-bold">
+            {t("round.reply_by")} <span className="text-destructive">*</span>
+          </Label>
+          <Input id="round-reply-by" type="date" min={today} dir="ltr" className="h-9" value={replyBy} onChange={(e) => setReplyBy(e.target.value)} aria-required="true" />
+          <p className="text-[11px] text-muted-foreground">{t("round.reply_by_hint")}</p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="round-target-total" className="text-xs font-bold">
+            {t("round.target_total")}
+          </Label>
+          <Input id="round-target-total" type="number" min="0" step="any" inputMode="decimal" dir="ltr" className="h-9" value={total} onChange={(e) => setTotal(e.target.value)} />
+          <p className="text-[11px] text-muted-foreground">{t("round.target_total_hint")}</p>
+        </div>
+      </div>
       <fieldset className="space-y-1.5">
         <legend className="text-xs font-bold">{t("round.targets")}</legend>
         <div className="divide-y rounded-xl border">

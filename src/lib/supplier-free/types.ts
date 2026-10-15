@@ -9,7 +9,7 @@ export type PricingMode = "item" | "total"
 export type SupplierCategory = "blocks" | "cement" | "steel" | "insulation" | "doors" | "plumbing" | "electric" | "finishes"
 
 export type OfferStatus = "review" | "reduce" | "sample" | "sampleSent" | "won" | "lost" | "noaward" | "withdrawn" | "noquote"
-export type OutcomeWhy = "price" | "time" | "spec" | "cancelled"
+export type OutcomeWhy = "price" | "time" | "spec" | "cancelled" | "need" | "reissue" | "incomplete" | "docs" | "other"
 
 export interface DealItem {
   id: string

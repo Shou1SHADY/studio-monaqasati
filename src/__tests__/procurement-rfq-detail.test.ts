@@ -288,6 +288,30 @@ describe("awardRfq", () => {
     expect(r?.log.map((e) => e.action)).toEqual(["awarded"])
   })
 
+  it("tells every other live quote it lost, with the buyer's reason; a withdrawn one is left alone (OFR-07, G-06)", async () => {
+    seed("offers/C", { id: "C", price: "50000", supplierId: "uc", organizationId: "oc", status: "قيد المراجعة" })
+    seed("offers/D", { id: "D", price: "30000", supplierId: "ud", organizationId: "od", status: "مسحوب", withdrawnAt: "2026-09-20T00:00:00.000Z" })
+    const offers = [offerA, offerB, { id: "C", price: "50000", status: "قيد المراجعة" }, { id: "D", price: "30000", status: "مسحوب" }] as AwardOfferLike[]
+    await awardRfq(db, actor(), input({ offers, lossReason: "price" }), { now: NOW })
+    expect(readDoc<{ outcome: unknown }>("offers/C")?.outcome).toEqual({ k: "lost", at: NOW.toISOString(), why: "price" })
+    expect(readDoc<{ outcome?: unknown }>("offers/D")?.outcome).toBeUndefined()
+    // The winners carry no loss.
+    expect(readDoc<{ outcome?: unknown }>("offers/A")?.outcome).toBeUndefined()
+  })
+
+  it("never awards a quote its supplier withdrew (OFR-04)", async () => {
+    seed("offers/B", { ...offerB, status: "مسحوب", withdrawnAt: "2026-09-21T00:00:00.000Z" })
+    await expect(awardRfq(db, actor(), input(), { now: NOW })).rejects.toMatchObject({ code: "offer_taken" })
+    seed("offers/B", { ...offerB, status: "قيد المراجعة", withdrawnAt: "2026-09-21T00:00:00.000Z" })
+    await expect(awardRfq(db, actor(), input(), { now: NOW })).rejects.toMatchObject({ code: "offer_taken" })
+  })
+
+  it("freezes the RFQ's payment terms on every order (G-08)", async () => {
+    const terms = [{ pct: 30, days: 0 }, { pct: 70, days: 60 }]
+    await awardRfq(db, actor(), input({ rfq: { ...rfqDoc, paymentTermsList: terms } }), { now: NOW })
+    expect(listCollection<PurchaseOrder>("purchaseOrders").map((o) => o.termsList)).toEqual([terms, terms])
+  })
+
   it("refuses the whole award when an offer was excluded meanwhile", async () => {
     seed("offers/B", { ...offerB, status: "مرفوض" })
     await expect(awardRfq(db, actor(), input(), { now: NOW })).rejects.toMatchObject({ code: "offer_taken" })
@@ -344,12 +368,15 @@ describe("rfq writes", () => {
 
   it("sends one reduction round to every live offer, and never a second", async () => {
     seed("offers/B", { ...offerB, status: "مرفوض" })
-    const reached = await requestReductionRound(db, actor(), { rfqId: "rfq1", offerIds: ["A", "B"], targets: [{ rfqProductIndex: 0, unitPrice: 2900 }], message: "best and final" }, NOW)
+    // A reply-by date before today is refused before anything is read.
+    await expect(requestReductionRound(db, actor(), { rfqId: "rfq1", offerIds: ["A"], targets: [], message: "", replyBy: "2026-09-21" }, NOW)).rejects.toMatchObject({ code: "date_invalid" })
+    const reached = await requestReductionRound(db, actor(), { rfqId: "rfq1", offerIds: ["A", "B"], targets: [{ rfqProductIndex: 0, unitPrice: 2900 }], message: "best and final", replyBy: "2026-09-25" }, NOW)
     expect(reached).toEqual(["A"])
-    expect(readDoc<{ status: string; reductionTargets: unknown[] }>("offers/A")).toMatchObject({ status: "مطلوب تخفيض", reductionTargets: [{ rfqProductIndex: 0, unitPrice: 2900 }] })
+    // The supplier reads a target before VAT (the line target × its quantity), the day it was asked and the reply-by (OFR-05).
+    expect(readDoc<{ status: string; reductionTargets: unknown[] }>("offers/A")).toMatchObject({ status: "مطلوب تخفيض", reductionTargets: [{ rfqProductIndex: 0, unitPrice: 2900 }], targetPrice: 29000, reductionAt: NOW.toISOString(), reductionBy: "2026-09-25", reductionNote: "best and final" })
     expect(readDoc<{ status: string }>("offers/B")?.status).toBe("مرفوض")
     expect(readDoc<{ reductionRound: { offers: number } }>("rfqs/rfq1")?.reductionRound.offers).toBe(1)
-    await expect(requestReductionRound(db, actor(), { rfqId: "rfq1", offerIds: ["A"], targets: [], message: "" }, NOW)).rejects.toMatchObject({ code: "rfq_not_open" })
+    await expect(requestReductionRound(db, actor(), { rfqId: "rfq1", offerIds: ["A"], targets: [], message: "", replyBy: "2026-09-25" }, NOW)).rejects.toMatchObject({ code: "rfq_not_open" })
   })
 
   it("records an off-platform offer in the buyer's name — an unknown company is a guest", async () => {

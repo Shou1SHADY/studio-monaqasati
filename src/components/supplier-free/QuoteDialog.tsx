@@ -14,11 +14,20 @@ import { Callout } from "@/components/module-ui/Callout"
 import { useToast } from "@/hooks/use-toast"
 import { profilePapers } from "@/components/procurement/rfq/rfqOfferView"
 import { addDaysTo, r2 } from "@/lib/supplier-free/deal-logic"
-import { quoteBlocks, submitNewQuote, submitNextVersion, type QuoteMode, type QuoteValues } from "@/lib/supplier-free/quote-writes"
+import { quoteBlocks, QuoteRefused, submitNewQuote, submitNextVersion, type QuoteMode, type QuoteValues } from "@/lib/supplier-free/quote-writes"
 import { uploadSupplierFile } from "@/lib/supplier-free/uploads"
 import type { Deal } from "@/lib/supplier-free/types"
 import { termsText, useQueryState } from "./ui"
 import { useFree } from "./useFree"
+
+/** What the server's refusal says to the supplier (it ran the same rules the form shows). */
+const REFUSAL_KEY: Record<string, string> = {
+  deadline: "blkDeadline",
+  rfq_closed: "errRfqClosed",
+  reply_closed: "errReplyClosed",
+  already_quoted: "errAlreadyQuoted",
+  not_reached: "errNotReached",
+}
 
 function initialValues(d: Deal, mode: QuoteMode, today: string): QuoteValues {
   const cur = d.offer ? d.offer.v[d.offer.v.length - 1] : null
@@ -99,13 +108,14 @@ function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; 
       } else {
         const offer = rawOffer(d.id)
         if (!offer) throw new Error("no offer")
-        await submitNextVersion(ctx, offer.id, v, mode, offer)
+        await submitNextVersion(ctx, offer.id, v, mode)
         toast({ title: t("tVersionSent", { n: (d.offer?.v.length || 1) + 1 }) })
       }
       onDone(d.id)
     } catch (err) {
       console.error("quote", err)
-      toast({ title: t("errSave"), variant: "destructive" })
+      const key = err instanceof QuoteRefused ? REFUSAL_KEY[err.code] : undefined
+      toast({ title: t((key || "errSave") as "errSave"), variant: "destructive" })
     } finally {
       setBusy(false)
     }
