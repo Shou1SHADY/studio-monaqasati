@@ -9,8 +9,9 @@
 // will run into at approval.
 
 import { factsFromProfile, type CompanyPublicFacts } from "@/lib/company-public-facts"
+import { isVerified as documentsVerify, profileFacts, type DocKey, type ProfileDoc } from "@/lib/supplier-free/profile"
 import { z } from "zod"
-import { AWARD_REASON_CODES, awardNeedsReason, dayOf, isShortCompetition, lowestOffer, offerPrice, poBlocks, todayOf, type OfferLike, type PoBlock } from "./po"
+import { AWARD_REASON_CODES, awardNeedsReason, dayOf, isShortCompetition, lowestOffer, offerPrice, poBlocks, poWarnings, todayOf, type OfferLike, type PoBlock, type PoWarning } from "./po"
 import type { AwardReasonCode, ProcurementPolicies, PurchaseOrder, SupplierFacts } from "./types"
 
 /** The stored literal — the one every reader compares (impl-b §2.1). */
@@ -57,12 +58,16 @@ export function offersSealed(rfq: SealableRfq | null | undefined, policies: Proc
 /** The stored literal of a quote its supplier withdrew before the deadline (Supplier 1.0 OFR-04). */
 export const OFFER_WITHDRAWN = "مسحوب"
 
+/** The stored literal of a quote whose order its supplier declined, once the buyer reopened the award (Supplier 1.0
+ * DEC): out of the comparison, keeping its `poId` so the supplier's deal still reads «declined the order». */
+export const OFFER_ORDER_DECLINED = "اعتذر عن الأمر"
+
 /** Withdrawn by its supplier — by status, or the mark an earlier free-journey withdrawal left alone. */
 export const isWithdrawnOffer = (o: { status?: string | null; withdrawnAt?: unknown }): boolean => o.status === OFFER_WITHDRAWN || Boolean(o.withdrawnAt)
 
-/** Offers still in the running: everything not rejected and not withdrawn, whatever else it is. */
+/** Offers still in the running: everything not rejected, not withdrawn and not a declined order, whatever else it is. */
 export function competingOffers<T extends { status?: string | null }>(offers: T[]): T[] {
-  return offers.filter((o) => o.status !== OFFER_REJECTED && !isWithdrawnOffer(o as { status?: string | null; withdrawnAt?: unknown }))
+  return offers.filter((o) => o.status !== OFFER_REJECTED && o.status !== OFFER_ORDER_DECLINED && !isWithdrawnOffer(o as { status?: string | null; withdrawnAt?: unknown }))
 }
 
 // ---------------------------------------------------------------------------
@@ -142,6 +147,8 @@ export interface AwardReview {
   guest: boolean
   /** What will stop the ORDER's approval (not the award): facts about the supplier. */
   blocks: PoBlock[]
+  /** What the approver is told and may approve over (no VAT number — it is optional). */
+  warnings: PoWarning[]
 }
 
 /** The offer's total excluding VAT — a multi-shipment offer sums its batches. */
@@ -184,22 +191,34 @@ export function reviewAward(offer: AwardOfferFacts, offers: OfferLike[], policie
     noOfficialQuote: !offer.offerPdfUrl,
     guest,
     blocks: poBlocks(shadow, { supplier: guest ? null : supplier, otherOrders: [], policies, now }),
+    warnings: poWarnings(shadow, { supplier: guest ? null : supplier }),
   }
+}
+
+/** The profile fields the approval reads — the legal documents carry their file (`url`) and expiry. */
+export interface SupplierProfileData {
+  taxNumber?: string | null
+  isVerified?: boolean | null
+  legalDocuments?: Partial<Record<DocKey, (ProfileDoc & { expiryDate?: string | null }) | null>> | null
+}
+
+/** Verified for the approval: the platform's verification (`isVerified`, the admin's) OR the free account's
+ * documents rule — the commercial register, the national address and the IBAN letter uploaded (Supplier 1.0
+ * ACC-04, B-11). A free supplier is never verified by an admin; his documents are what verify him. */
+export function supplierVerified(data: SupplierProfileData): boolean {
+  if (data.isVerified) return true
+  return documentsVerify(profileFacts({ legalDocuments: data.legalDocuments || {} }))
 }
 
 /** The supplier's platform profile, read the way the approval reads it
  * (`useProcurementWorld`): a missing document is "unknown", which never blocks. */
-export function supplierFactsFromProfile(
-  orgId: string,
-  data: { taxNumber?: string | null; isVerified?: boolean | null; legalDocuments?: { cr?: { expiryDate?: string | null } | null } | null } | null | undefined,
-  publicFacts?: CompanyPublicFacts | null
-): SupplierFacts {
+export function supplierFactsFromProfile(orgId: string, data: SupplierProfileData | null | undefined, publicFacts?: CompanyPublicFacts | null): SupplierFacts {
   if (!data) return { orgId, hasVatNumber: null, verified: null, crExpiry: null }
-  const facts = factsFromProfile(data, publicFacts)
+  const facts = factsFromProfile(data as Parameters<typeof factsFromProfile>[0], publicFacts)
   return {
     orgId,
     hasVatNumber: facts.hasVat,
-    verified: Boolean(data.isVerified),
+    verified: supplierVerified(data),
     crExpiry: facts.crExpiry || null,
   }
 }

@@ -22,7 +22,7 @@ import { moneyFigure } from "@/components/procurement/PoModel"
 import { useFirestore } from "@/firebase"
 import { competingOffers, parseAwardReason } from "@/lib/procurement/award"
 import { pricedProducts } from "@/lib/procurement/offer-pricing"
-import { AWARD_REASON_CODES, addDays, todayOf, type PoBlock } from "@/lib/procurement/po"
+import { AWARD_REASON_CODES, addDays, todayOf, type PoBlock, type PoWarning } from "@/lib/procurement/po"
 import { awardSummary, checkBreakdown, guestAwardRefusal, lowestForLines, offerTotal, type Picks } from "@/lib/procurement/rfq-award"
 import { Checkbox } from "@/components/ui/checkbox"
 import type { AwardReasonCode, ProcurementPolicies } from "@/lib/procurement/types"
@@ -52,6 +52,7 @@ export function RfqAwardDialog({
   policies,
   orgName,
   blocksFor,
+  warningsFor,
   budget,
   onDone,
   sourcingFor,
@@ -66,6 +67,8 @@ export function RfqAwardDialog({
   policies: ProcurementPolicies
   orgName: string | null
   blocksFor: (offer: RfqOfferView) => PoBlock[]
+  /** What the order's approver will be told and may approve over (no VAT number). */
+  warningsFor?: (offer: RfqOfferView) => PoWarning[]
   budget: { budget: number; committed: number } | null
   onDone: (done: AwardDone) => void
   /** Why a registered supplier may not be ordered from yet — said beside his name; his order waits (`supplierSourcingBlock`). */
@@ -316,6 +319,11 @@ export function RfqAwardDialog({
                       </ul>
                     </Callout>
                   )}
+                  {(warningsFor?.(o) || []).map((w) => (
+                    <Callout key={w.code} tone="info">
+                      <span className="text-xs">{tProc(`warnings.${w.code}`, w.params)}</span>
+                    </Callout>
+                  ))}
                 </section>
               )
             })

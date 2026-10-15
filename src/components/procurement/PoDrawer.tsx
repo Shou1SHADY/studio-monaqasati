@@ -36,7 +36,7 @@ import { DocumentThread } from "@/components/documents/DocumentThread"
 import { useModules } from "@/hooks/useCompanyModules"
 import { procLinks } from "@/lib/procurement/events"
 import { displayDocNumber, displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
-import { approvalRefusal, canCancelRemainder, canRecordAcceptance, canSend, canUpdateDate, daysLate, isSelfApproval, lineToArrive, poBlocks, poStatus, receiptDay, receiptsOf, reminderCooldownUntil, todayOf, dayOf } from "@/lib/procurement/po"
+import { approvalRefusal, canCancelRemainder, canRecordAcceptance, canSend, canUpdateDate, daysLate, isSelfApproval, lineToArrive, poBlocks, poStatus, poWarnings, receiptDay, receiptsOf, reminderCooldownUntil, todayOf, dayOf } from "@/lib/procurement/po"
 import { PRICE_AGREEMENTS, agreementState, type PriceAgreement } from "@/lib/procurement/prices"
 import { AGREEMENT_HREF } from "@/lib/procurement/today"
 import type { PoLine, PoLogEntry, PoSendChannel, PurchaseOrder, RejectDecision } from "@/lib/procurement/types"
@@ -126,6 +126,7 @@ import { PoRateDialog } from "./PoRateDialog"
 import { PoSendDialog } from "./PoSendDialog"
 import { PoSupplierSection } from "./PoSupplierSection"
 import { acceptSupplierWarranty, reportTransferToSupplier } from "@/lib/procurement/supplier-acts-writes"
+import { reopenAwardAfterDecline, reopenAwardRefusal } from "@/lib/procurement/rfq-writes"
 import { PoReceiverLine } from "./PoReceiverLine"
 
 type Tone = "red" | "amber" | "blue" | "green"
@@ -206,6 +207,8 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const { profile } = useResolvedProfile(actor.uid || null)
   const [dialog, setDialog] = useState<DialogState>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  // «أعد الترسية» asks once before it reopens the award.
+  const [reawardAsk, setReawardAsk] = useState(false)
   const perms = usePermissions()
   // Finance's acts; the owner acts as Finance here only on an order he may act on (not one a buyer prepared).
   const isFinance = perms.isOrgOwner ? !(po && poActs(po, actor).ownerReadOnly) : perms.can("invoices.manage") || perms.can("accounting.post")
@@ -252,6 +255,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
     () => (po && po.status === "awaiting_approval" ? poBlocks(po, { supplier: world.supplierFacts.get(po.supplierOrgId) ?? null, otherOrders: world.orders, policies, now }) : []),
     [po, world.supplierFacts, world.orders, policies, now]
   )
+  const warnings = useMemo(() => (po && po.status === "awaiting_approval" ? poWarnings(po, { supplier: world.supplierFacts.get(po.supplierOrgId) ?? null }) : []), [po, world.supplierFacts])
 
   // The writes stamp their own clock: the page's `now` is a render-time value.
   const opts: WriteOpts = { copy: tShared, locale, orgName: world.orgName }
@@ -435,6 +439,11 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 {tProc(`blocks.${b.code}`, b.params)}
               </Callout>
             ))}
+            {warnings.map((w) => (
+              <Callout key={w.code} tone="amber">
+                {tProc(`warnings.${w.code}`, w.params)}
+              </Callout>
+            ))}
             {samples.map((i) => (
               <Callout key={`sample-${i.id}`} tone="red">
                 {tProc("rfqpo.po.sample_pending", { item: i.description || i.name || i.id })}
@@ -606,8 +615,46 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             )}
           </>
         )
-      case "cancelled":
-        return <Callout tone="amber">{t("next.cancelled_body", { reason: po.cancelledReason || "—" })}</Callout>
+      case "cancelled": {
+        // The supplier declined the order (DEC): its RFQ still reads «awarded», so the buyer reopens the award here.
+        const rfq = po.rfqId ? world.rfqs.find((r) => r.id === po.rfqId) : undefined
+        const canReaward = Boolean(f && po.supplierDecline && rfq && reopenAwardRefusal(po, rfq, actor) === null)
+        return (
+          <>
+            <Callout tone="amber">
+              {po.supplierDecline ? <b>{t("next.declined_title")}</b> : null}
+              {po.supplierDecline ? " — " : null}
+              {t("next.cancelled_body", { reason: po.cancelledReason || "—" })}
+            </Callout>
+            {canReaward && f && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">{t("next.reaward_body")}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {reawardAsk ? (
+                    <Button
+                      disabled={busy != null}
+                      onClick={() =>
+                        void run("reaward", () => reopenAwardAfterDecline(f, actor, po.id), "toast.reaward_done").then(() => setReawardAsk(false))
+                      }
+                    >
+                      {t("next.reaward_confirm")}
+                    </Button>
+                  ) : (
+                    <Button variant="outline" disabled={busy != null} onClick={() => setReawardAsk(true)}>
+                      {t("next.reaward")}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+            {po.supplierDecline && rfq?.status === "New" && po.rfqId && (
+              <Link href={`/contractor/rfqs/${po.rfqId}/offers`} className="text-xs font-bold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {t("next.reaward_open_rfq")}
+              </Link>
+            )}
+          </>
+        )
+      }
       default:
         return null
     }

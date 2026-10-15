@@ -27,6 +27,7 @@ import {
   lowestOffer,
   offerPrice,
   poBlocks,
+  poWarnings,
   poCommitment,
   poFacts,
   poLate,
@@ -200,11 +201,13 @@ describe("approvalRefusal — why THIS actor may not approve", () => {
 describe("poBlocks — facts, not checkboxes", () => {
   const ctx = (over: Partial<Parameters<typeof poBlocks>[1]> = {}) => ({ supplier: null, otherOrders: [], policies: POL, now: NOW, ...over })
 
-  it("supplier facts: no VAT, unverified, expired CR — unknown (null) never blocks", () => {
+  it("supplier facts: unverified, expired CR block — no VAT is a warning (optional, B-11); unknown (null) never blocks", () => {
     const p = po({ status: "awaiting_approval" })
     expect(poBlocks(p, ctx({ supplier: { orgId: "sup1", hasVatNumber: null, verified: null, crExpiry: null } }))).toEqual([])
     const blocked = poBlocks(p, ctx({ supplier: { orgId: "sup1", hasVatNumber: false, verified: false, crExpiry: "2026-09-01" } }))
-    expect(blocked.map((b) => b.code)).toEqual(["supplier_cr_expired", "supplier_unverified", "supplier_no_vat"])
+    expect(blocked.map((b) => b.code)).toEqual(["supplier_cr_expired", "supplier_unverified"])
+    expect(poWarnings(p, { supplier: { orgId: "sup1", hasVatNumber: false, verified: true, crExpiry: null } }).map((w) => w.code)).toEqual(["supplier_no_vat"])
+    expect(poBlocks(p, ctx({ supplier: { orgId: "sup1", hasVatNumber: false, verified: true, crExpiry: null } }))).toEqual([])
     expect(blocked[0].params).toEqual({ date: "2026-09-01", daysAgo: 21 })
     expect(poBlocks(p, ctx({ supplier: { orgId: "sup1", hasVatNumber: true, verified: true, crExpiry: "2026-09-22" } }))).toEqual([])
   })

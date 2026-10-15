@@ -46,7 +46,7 @@ import { resolvePolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_SETTINGS, type ProcurementPolicies } from "@/lib/procurement/types"
 import { createPurchaseOrderFromAward } from "@/lib/procurement/writes"
 import { createRfqWithNumber, updateRfqNumbered } from "@/lib/procurement/rfq-writes"
-import { DEFAULT_TERMS, termsListOf, termsRefusal } from "@/lib/procurement/terms-freeze"
+import { rfqTermsToStore, termsRefusal } from "@/lib/procurement/terms-freeze"
 import { RfqTermsPicker, termRowsOf, type TermRow } from "@/components/procurement/rfq/RfqTermsPicker"
 import { toAmount, type PricingMode } from "@/lib/procurement/offer-pricing"
 import { incompleteProducts, productComplete } from "@/lib/rfq-products"
@@ -134,6 +134,9 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const [pricingMode, setPricingMode] = useState<PricingMode>(DEFAULT_RFQ_PRICING)
   // The buyer's payment terms (RFQ-11): the supplier reads them before quoting; the award freezes them on the order.
   const [termRows, setTermRows] = useState<TermRow[]>(() => termRowsOf(null))
+  // Whether the buyer SET terms — the picker touched, or an edited RFQ that already named them. Untouched, the RFQ
+  // stores none and the order freezes the offer's own terms (RFQ › offer › default, terms-freeze).
+  const [termsSet, setTermsSet] = useState(false)
   // Which suppliers a private RFQ goes to. null means "not narrowed" — every
   // connected supplier, which is what private meant before this picker existed
   // and stays the default so an untouched form behaves exactly as it used to.
@@ -340,6 +343,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           setVisibilityMode(data.visibility === "private" ? "private" : "public")
           setPricingMode(data.pricingMode === "line" ? "line" : "total")
           setTermRows(termRowsOf(data.paymentTermsList))
+          setTermsSet(Array.isArray(data.paymentTermsList) && data.paymentTermsList.length > 0)
           // An empty list on an existing RFQ means it predates this picker, so
           // leave it null — "everyone connected", the rule it was saved under.
           setPrivateRecipients(Array.isArray(data.allowedSupplierOrgIds) && data.allowedSupplierOrgIds.length > 0 ? data.allowedSupplierOrgIds : null)
@@ -830,7 +834,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         allowedSupplierOrgIds: visibilityMode === "private" ? [...selectedRecipients] : [],
         orderedFromMdmakDirect: false,
         requiresWarranty: validProducts.some(p => p.requiresWarranty),
-        paymentTermsList: termsListOf(termRows) || DEFAULT_TERMS.map((x) => ({ ...x })),
+        paymentTermsList: rfqTermsToStore(termRows, termsSet),
         updatedAt: new Date().toISOString()
       }
 
@@ -916,7 +920,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         ...(visibilityMode === "direct" ? { directAward: true, awardedAt: new Date().toISOString() } : {}),
         orderedFromMdmakDirect: false,
         requiresWarranty: catProducts.some(p => p.requiresWarranty),
-        paymentTermsList: termsListOf(termRows) || DEFAULT_TERMS.map((x) => ({ ...x })),
+        paymentTermsList: rfqTermsToStore(termRows, termsSet),
         createdByUserId: user.uid,
         createdByUserName: profile?.name || user.email || "عضو الفريق",
         createdAt: new Date().toISOString()
@@ -1074,7 +1078,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                 directAward: true,
                 products: groupedProducts[categories[0]]?.map((p) => ({ name: (p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory) || p.category, quantity: Number(p.quantity), unitOfMeasure: p.unit })) || null,
                 purchaseSource: purchaseSource ?? null,
-                paymentTermsList: termsListOf(termRows),
+                paymentTermsList: rfqTermsToStore(termRows, termsSet),
               },
               offer: { ...directOffer, directAward: true, companyName: directOffer.supplierName, deliveryLocation: formData.city, status: "مقبول", lines: validProducts.map((p, idx) => ({ rfqProductIndex: idx, unitPrice: Number(directLinePrices[p.id]) })) },
               offers: [{ ...directOffer, status: "مقبول" }],
@@ -1477,7 +1481,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                 </div>
                 )}
 
-                <RfqTermsPicker rows={termRows} onChange={(rows) => { setTermRows(rows); clearError("rfq-terms") }} invalid={hasError("rfq-terms")} />
+                <RfqTermsPicker rows={termRows} onChange={(rows) => { setTermRows(rows); setTermsSet(true); clearError("rfq-terms") }} invalid={hasError("rfq-terms")} />
 
                 {/* Visibility mode */}
                 {/* How to be quoted (PRD SS4): one figure, or a rate per material.

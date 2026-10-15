@@ -134,8 +134,10 @@ export function CloseNowDialog({ open, onOpenChange, rfqId, actor, offered, invi
   )
 }
 
-export function CancelRfqDialog({ open, onOpenChange, rfqId, actor, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; rfqId: string; actor: RfqWriteActor; onDone: () => void }) {
+export function CancelRfqDialog({ open, onOpenChange, rfqId, actor, onDone, orgName }: { open: boolean; onOpenChange: (o: boolean) => void; rfqId: string; actor: RfqWriteActor; onDone: () => void; orgName?: string | null }) {
   const t = useTranslations("Portal.Procurement.rfqd")
+  // Each supplier is told the request closed with no award (OFR-07), in the sender's words for push.
+  const tShared = useTranslations("Portal.Shared")
   const firestore = useFirestore()
   const refusalText = useRefusalText()
   const [code, setCode] = useState<RfqCancelCode | "">("")
@@ -146,7 +148,7 @@ export function CancelRfqDialog({ open, onOpenChange, rfqId, actor, onDone }: { 
     setBusy(true)
     setError(null)
     try {
-      await cancelRfq(firestore, actor, rfqId, code)
+      await cancelRfq(firestore, actor, rfqId, code, new Date(), { copy: tShared, orgName })
       setCode("")
       onDone()
     } catch (err) {

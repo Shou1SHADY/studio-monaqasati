@@ -117,7 +117,8 @@ describe("reviewAward", () => {
   })
   it("lists what will stop the order's approval from the supplier's facts", () => {
     const r = reviewAward({ id: "b", price: 11500, supplierId: "u2", organizationId: "org2" }, offers, policies, { orgId: "org2", hasVatNumber: false, verified: false, crExpiry: "2026-09-01" }, NOW)
-    expect(r.blocks.map((b) => b.code)).toEqual(["supplier_cr_expired", "supplier_unverified", "supplier_no_vat"])
+    expect(r.blocks.map((b) => b.code)).toEqual(["supplier_cr_expired", "supplier_unverified"])
+    expect(r.warnings.map((w) => w.code)).toEqual(["supplier_no_vat"])
   })
   it("never blocks a guest (no record to fail) but says so", () => {
     const r = reviewAward({ id: "g", price: "9000", isGuestOffer: true, supplierId: "guest" }, [...offers, { id: "g", price: "9000" }], policies, { orgId: "guest", hasVatNumber: false, verified: false, crExpiry: null }, NOW)

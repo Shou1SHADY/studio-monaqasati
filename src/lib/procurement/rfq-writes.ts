@@ -6,10 +6,10 @@
 // a stale screen is refused, never half-applied. Notifications ride after the
 // write, best-effort, carrying i18n keys so each reader sees his own language.
 
-import { addDoc, collection, doc, runTransaction, serverTimestamp, type DocumentData, type Firestore, type UpdateData } from "firebase/firestore"
+import { addDoc, collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where, type DocumentData, type Firestore, type UpdateData } from "firebase/firestore"
 import type { Translator } from "../mfg-events"
-import { buildExclusion } from "./award"
-import { drawRfqNumber } from "./numbering"
+import { buildExclusion, OFFER_ORDER_DECLINED } from "./award"
+import { drawRfqNumber, riyadhYear } from "./numbering"
 import { todayOf } from "./po"
 import {
   canCancelRfq,
@@ -28,11 +28,15 @@ import {
   type RfqLogEntry,
 } from "./rfq-detail"
 import { rfqMine, type RfqWriteActor } from "./rfq-access"
+import { awaitsOutcome, emitRfqOutcomes, type OutcomeOffer } from "./rfq-outcome"
+import { PURCHASE_ORDERS, type ProcActor, type PurchaseOrder } from "./types"
 import { ProcWriteError } from "./writes"
 
 interface RfqDoc {
   createdByUserId?: string | null
   contractorId?: string | null
+  organizationId?: string | null
+  rfqNumber?: string | null
   status?: string
   deadline?: string | null
   title?: string
@@ -47,7 +51,7 @@ const rfqRef = (firestore: Firestore, rfqId: string) => doc(firestore, "rfqs", r
 export async function createRfqWithNumber(firestore: Firestore, data: Record<string, unknown> & { organizationId: string }, now = new Date()): Promise<{ id: string; rfqNumber: string }> {
   const ref = doc(collection(firestore, "rfqs"))
   const rfqNumber = await runTransaction(firestore, async (tx) => {
-    const no = await drawRfqNumber(firestore, tx, data.organizationId, now.getUTCFullYear())
+    const no = await drawRfqNumber(firestore, tx, data.organizationId, riyadhYear(now))
     tx.set(ref, { ...data, rfqNumber: no })
     return no
   })
@@ -61,7 +65,7 @@ export async function updateRfqNumbered(firestore: Firestore, rfqId: string, pat
     if (!snap.exists()) throw new ProcWriteError("rfq_missing")
     const cur = snap.data() as { rfqNumber?: string | null; organizationId?: string | null; contractorId?: string | null }
     const org = cur.organizationId || cur.contractorId || ""
-    const no = cur.rfqNumber || (org ? await drawRfqNumber(firestore, tx, org, now.getUTCFullYear()) : null)
+    const no = cur.rfqNumber || (org ? await drawRfqNumber(firestore, tx, org, riyadhYear(now)) : null)
     tx.update(rfqRef(firestore, rfqId), (no && !cur.rfqNumber ? { ...patch, rfqNumber: no } : patch) as UpdateData<DocumentData>)
     return no
   })
@@ -90,10 +94,17 @@ export async function closeRfqNow(firestore: Firestore, actor: RfqWriteActor, rf
 /** «ألغِ الطلب» — before any award, with one of three reasons. The status
  * becomes "Cancelled" (counted under completed); a stock need reads only open
  * RFQs and so returns to the needs by itself. */
-export async function cancelRfq(firestore: Firestore, actor: RfqWriteActor, rfqId: string, code: RfqCancelCode, now = new Date()): Promise<void> {
+export async function cancelRfq(
+  firestore: Firestore,
+  actor: RfqWriteActor,
+  rfqId: string,
+  code: RfqCancelCode,
+  now = new Date(),
+  opts: { copy?: Translator | null; orgName?: string | null } = {}
+): Promise<void> {
   if (!canRunRfq(actor)) throw new ProcWriteError("no_permission")
   if (!isRfqCancelCode(code)) throw new ProcWriteError("reason_required")
-  await runTransaction(firestore, async (tx) => {
+  const cancelled = await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(rfqRef(firestore, rfqId))
     if (!snap.exists()) throw new ProcWriteError("rfq_missing")
     const rfq = snap.data() as RfqDoc
@@ -107,6 +118,99 @@ export async function cancelRfq(firestore: Firestore, actor: RfqWriteActor, rfqI
       log: [...(rfq.log || []), rfqLogEntry(actor, "cancelled", at, { params: { reason: `@rfqCancel.${code}` } })],
       updatedAt: serverTimestamp(),
     })
+    return rfq
+  })
+  // Every quote on it closes with no award, with the reason (OFR-07) — told after the write, best-effort.
+  try {
+    const snap = await getDocs(query(collection(firestore, "offers"), where("rfqId", "==", rfqId)))
+    const offers = snap.docs.map((d) => ({ ...(d.data() as Omit<OutcomeOffer, "id">), id: d.id })).filter(awaitsOutcome)
+    await emitRfqOutcomes(firestore, actor, offers, {
+      organizationId: cancelled.organizationId || cancelled.contractorId || "",
+      rfqId,
+      rfqNumber: cancelled.rfqNumber || null,
+      rfqTitle: cancelled.title || null,
+      contractor: opts.orgName || actor.name,
+      result: "noaward",
+      why: code,
+      copy: opts.copy,
+    })
+  } catch (err) {
+    console.warn("rfq outcome not told:", (err as { code?: string })?.code || err)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Re-award after the supplier declined the order (Supplier 1.0 DEC, ORD-03)
+// ---------------------------------------------------------------------------
+
+export type ReopenAwardRefusal = "no_permission" | "not_your_rfq" | "not_declined" | "rfq_not_awarded" | "award_split_live"
+
+/** Why this order's award may not be reopened — null when it may. The order was cancelled by its supplier's
+ * decline; the RFQ still reads `Awarded`; the buyer runs it (the award's own rule). */
+export function reopenAwardRefusal(
+  po: Pick<PurchaseOrder, "status" | "supplierDecline" | "rfqId" | "offerId"> | null,
+  rfq: Pick<RfqDoc, "status" | "createdByUserId" | "contractorId"> | null,
+  actor: Pick<ProcActor, "uid" | "isOwner" | "canPrepare" | "canApprove">
+): ReopenAwardRefusal | null {
+  if (!actor.isOwner && !actor.canPrepare) return "no_permission"
+  if (!po || po.status !== "cancelled" || !po.supplierDecline || !po.rfqId || !po.offerId) return "not_declined"
+  if (!rfq || rfq.status !== "Awarded") return "rfq_not_awarded"
+  if (!actor.isOwner && !actor.canApprove && (rfq.createdByUserId || rfq.contractorId || "") !== actor.uid) return "not_your_rfq"
+  return null
+}
+
+/**
+ * «أعد الترسية» — the supplier declined the order (`po.decline` cancels it and stamps `supplierDecline`); the RFQ
+ * still reads `Awarded`, so nothing could be awarded again. In ONE transaction: the RFQ goes back to `New` (logged),
+ * the declined quote closes as «اعتذر عن الأمر» with `declinedOrder` (it keeps its `poId`, so the supplier's deal still
+ * reads «declined the order», and it leaves the comparison), and every quote that was told «awarded to another» loses
+ * that outcome — it waits for a decision again. Then the ordinary award runs. A split award whose other orders still
+ * live is refused: reopening would let their lines be awarded twice.
+ */
+export async function reopenAwardAfterDecline(firestore: Firestore, actor: ProcActor, poId: string, now = new Date()): Promise<{ rfqId: string }> {
+  const at = now.toISOString()
+  // The RFQ's quotes are found by a query (a transaction reads documents, not queries); each is re-read inside it.
+  const first = await getDoc(doc(firestore, PURCHASE_ORDERS, poId))
+  const firstRfq = first.exists() ? (first.data() as { rfqId?: string | null }).rfqId || "" : ""
+  const offerIds = firstRfq ? (await getDocs(query(collection(firestore, "offers"), where("rfqId", "==", firstRfq)))).docs.map((d) => d.id) : []
+  return runTransaction(firestore, async (tx) => {
+    const poSnap = await tx.get(doc(firestore, PURCHASE_ORDERS, poId))
+    const po = poSnap.exists() ? ({ ...(poSnap.data() as Omit<PurchaseOrder, "id">), id: poSnap.id } as PurchaseOrder) : null
+    const rfqId = po?.rfqId || ""
+    const rSnap = rfqId ? await tx.get(rfqRef(firestore, rfqId)) : null
+    const rfq = rSnap && rSnap.exists() ? (rSnap.data() as RfqDoc) : null
+    const refusal = reopenAwardRefusal(po, rfq, actor)
+    if (refusal || !po || !rfq) throw new ProcWriteError(refusal || "not_declined")
+    // Every quote on it, re-read: the declined one, the losers to reopen, and any other order still running.
+    const ids = [...new Set([po.offerId as string, ...offerIds])]
+    const reads: Array<{ id: string; data: { status?: string; poId?: string | null; outcome?: { k?: string } | null; declinedOrder?: unknown } }> = []
+    for (const id of ids) {
+      const s = await tx.get(doc(firestore, "offers", id))
+      if (s.exists()) reads.push({ id, data: s.data() as (typeof reads)[number]["data"] })
+    }
+    for (const r of reads) {
+      if (r.id === po.offerId || !r.data.poId || r.data.declinedOrder) continue
+      const other = await tx.get(doc(firestore, PURCHASE_ORDERS, r.data.poId))
+      if (other.exists() && (other.data() as { status?: string }).status !== "cancelled") throw new ProcWriteError("award_split_live")
+    }
+    const decline = po.supplierDecline as NonNullable<PurchaseOrder["supplierDecline"]>
+    tx.update(doc(firestore, "offers", po.offerId as string), {
+      status: OFFER_ORDER_DECLINED,
+      declinedOrder: { poId: po.id, poNumber: po.docNumber, at: decline.at, reason: decline.reason },
+      awaitingOrderApproval: false,
+      updatedAt: serverTimestamp(),
+    })
+    for (const r of reads) {
+      if (r.id === po.offerId || r.data.outcome?.k !== "lost") continue
+      tx.update(doc(firestore, "offers", r.id), { outcome: null, updatedAt: serverTimestamp() })
+    }
+    tx.update(rfqRef(firestore, rfqId), {
+      status: "New",
+      awardReopened: { poId: po.id, poNumber: po.docNumber, at, byId: actor.uid, byName: actor.name },
+      log: [...(rfq.log || []), rfqLogEntry(actor, "award_reopened", at, { params: { number: po.docNumber, supplier: po.supplierName } })],
+      updatedAt: serverTimestamp(),
+    })
+    return { rfqId }
   })
 }
 

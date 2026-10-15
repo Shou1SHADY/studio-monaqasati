@@ -45,6 +45,7 @@ import {
   type BlockContext,
 } from "./po"
 import { orderTermsOf } from "./offer-terms"
+import { emitRfqOutcomes } from "./rfq-outcome"
 import { frozenTermsOf } from "./terms-freeze"
 import { isWithdrawnOffer } from "./award"
 import { SUPPLIER_RECORDS, supplierRecordId } from "./supplier-file"
@@ -114,6 +115,10 @@ export type ProcWriteErrorCode =
   | "nothing_picked"
   | "breakdown_mismatch"
   | "offer_taken"
+  // Re-award after the supplier declined the order (rfq-writes.ts `reopenAwardAfterDecline`).
+  | "not_declined"
+  | "rfq_not_awarded"
+  | "award_split_live"
   // Projects' gates, re-run at approval (R-25).
   | "pm_budget_pending"
   | "sample_pending"
@@ -591,10 +596,12 @@ export async function awardRfq(
   const rfqRef = doc(firestore, "rfqs", input.rfq.id)
   const offerRefs = input.groups.map((g) => doc(firestore, "offers", g.offer.id))
   const poRefs = input.groups.map(() => doc(collection(firestore, PURCHASE_ORDERS)))
+  // Who lost, and the request's number — read in the transaction, told after it (OFR-07).
+  const told: { losers: AwardOfferLike[]; rfqNumber: string | null } = { losers: [], rfqNumber: null }
   const result = await runTransaction(firestore, async (tx) => {
     const rfqSnap = await tx.get(rfqRef)
     if (!rfqSnap.exists()) throw new ProcWriteError("rfq_missing")
-    const rfqData = rfqSnap.data() as { status?: string; log?: RfqLogEntry[]; createdByUserId?: string | null; contractorId?: string | null }
+    const rfqData = rfqSnap.data() as { status?: string; log?: RfqLogEntry[]; createdByUserId?: string | null; contractorId?: string | null; rfqNumber?: string | null }
     if (rfqData.status !== "New") throw new ProcWriteError("rfq_not_open")
     // A buyer awards only the RFQs he raised; the manager and the owner award any.
     if (!actor.isOwner && !actor.canApprove && (rfqData.createdByUserId || rfqData.contractorId || "") !== actor.uid) throw new ProcWriteError("not_your_rfq")
@@ -606,9 +613,13 @@ export async function awardRfq(
     }
     // The quotes left out are re-read too: one withdrawn or decided meanwhile is not told it lost.
     const losers: string[] = []
+    told.losers = [] // a retried transaction starts over
     for (const lid of losingOfferIds(input.offers, input.groups.map((g) => g.offer.id))) {
       const snap = await tx.get(doc(firestore, "offers", lid))
-      if (snap.exists() && losingOfferIds([{ ...(snap.data() as Pick<AwardOfferLike, "status" | "poId">), id: lid }], []).length) losers.push(lid)
+      if (snap.exists() && losingOfferIds([{ ...(snap.data() as Pick<AwardOfferLike, "status" | "poId">), id: lid }], []).length) {
+        losers.push(lid)
+        told.losers.push({ ...(snap.data() as Omit<AwardOfferLike, "id">), id: lid })
+      }
     }
     const linked = rfqSnap.data() as AwardedRfq
     const served = await readServedRequests(tx, firestore, linked)
@@ -637,6 +648,7 @@ export async function awardRfq(
     for (const lid of losers) {
       tx.update(doc(firestore, "offers", lid), { outcome: { k: "lost", at, why: input.lossReason || null }, updatedAt: serverTimestamp() })
     }
+    told.rfqNumber = rfqData.rfqNumber || null
     const logEntry = rfqLogEntry(actor, "awarded", at, { params: { orders: numbers.join(" · "), suppliers: drafts.map((d) => d.supplierName).join(" · "), unawarded: input.unpicked.length } })
     tx.update(rfqRef, {
       status: "Awarded",
@@ -668,6 +680,14 @@ export async function awardRfq(
         copy: opts.copy,
       })
     )
+  )
+  // Each quote left out is told it was awarded to another, with the buyer's reason when he gave one. The winners hear
+  // with their order, once it is approved and sent (`po_sent`) — never before (OFR-07).
+  await emitRfqOutcomes(
+    firestore,
+    actor,
+    told.losers,
+    { organizationId: drafts[0].organizationId, rfqId: input.rfq.id, rfqNumber: told.rfqNumber, rfqTitle: input.rfq.title, contractor: opts.orgName || actor.name, result: "lost", why: input.lossReason || null, copy: opts.copy }
   )
   return result
 }
@@ -1513,6 +1533,8 @@ export async function retroactivePurchaseOrder(firestore: Firestore, actor: Proc
       awardReasonText: reason,
       shortCompetition: false,
       noOfficialQuote: true,
+      // Every order carries its frozen terms (G-08): no RFQ and no offer here, so the default, written out.
+      ...frozenTermsOf({}, null),
       preparedById: actor.uid,
       preparedByName: actor.name,
       createdAt: at,

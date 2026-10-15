@@ -28,7 +28,7 @@ import { offerRates, pricedProducts } from "@/lib/procurement/offer-pricing"
 import { lastPaid } from "@/lib/procurement/prices"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type AwardReasonCode, type ProcurementPolicies, type PurchaseOrder, type ReceiptFact, type SupplierFacts } from "@/lib/procurement/types"
-import { addDays, poBlocks, poStatus, supplierScore, todayOf } from "@/lib/procurement/po"
+import { addDays, poBlocks, poStatus, poWarnings, supplierScore, todayOf } from "@/lib/procurement/po"
 import { awardDisclosed } from "@/lib/procurement/supplier"
 import { createPurchaseOrderFromAward, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
 import { procLinks } from "@/lib/procurement/events"
@@ -38,6 +38,7 @@ import {
   awardSupplierOrgId,
   competingOffers,
   OFFER_WITHDRAWN,
+  OFFER_ORDER_DECLINED,
   offersSealed,
   supplierFactsFromProfile,
   type OfferAwardReason,
@@ -875,6 +876,7 @@ ${t("offers_notif_reduction_note", { note })}`
       case "مرفوض": return <Badge variant="destructive" className="bg-destructive/10 text-destructive border-none">{t("offers_status_rejected")}</Badge>
       case "مطلوب تخفيض": return <Badge className="bg-amber-100 text-amber-700 border-none">{t("offers_status_reduction")}</Badge>
       case OFFER_WITHDRAWN: return <Badge variant="outline" className="text-muted-foreground">{t("offers_status_withdrawn")}</Badge>
+      case OFFER_ORDER_DECLINED: return <Badge variant="outline" className="text-muted-foreground">{t("offers_status_order_declined")}</Badge>
       default: return <Badge className="bg-amber-50 text-amber-600 border-amber-100">{t("offers_status_review")}</Badge>
     }
   }
@@ -894,13 +896,14 @@ ${t("offers_notif_reduction_note", { note })}`
   const liveOffers = competingOffers(offerViews)
   const rfqOpen = (rfq as { status?: string } | null)?.status === "New"
   const canPick = canDecide && rfqOpen && !sealed
-  // «يصدر له أمر»: a registered supplier needs a VAT number and a verified
-  // record (unknown facts are not held against him); a guest is judged at the award.
+  // «يصدر له أمر»: a registered supplier needs a verified record (unknown facts
+  // are not held against him); a guest is judged at the award. The VAT number is
+  // optional (Supplier 1.0 B-11) — its absence is a warning, never a stop.
   const canOrder = (o: OrderableOffer) => {
     if (o.isGuestOffer) return true
     const id = awardSupplierOrgId(o as RfqOfferView)
     const f = id ? supplierFacts[id] : null
-    return !f || (f.hasVatNumber !== false && f.verified !== false)
+    return !f || f.verified !== false
   }
   const bestIds = sealed || !rfqOpen ? new Set<string>() : bestOfferIds(rfqView, offerViews as OrderableOffer[], canOrder)
   const guestOffers = offerViews.filter((o) => o.isGuestOffer).length
@@ -970,6 +973,10 @@ ${t("offers_notif_reduction_note", { note })}`
     if (!id) return []
     const shadow = { id: "", basis: "rfq", isGuestSupplier: false, supplierOrgId: id, supplierName: "", lines: [], totalExVat: 0, status: "awaiting_approval", createdAt: new Date().toISOString() } as unknown as PurchaseOrder
     return poBlocks(shadow, { supplier: supplierFacts[id] || null, otherOrders: [], policies, now: new Date() })
+  }
+  const warningsFor = (o: RfqOfferView) => {
+    const id = awardSupplierOrgId(o)
+    return id && !o.isGuestOffer ? poWarnings({ isGuestSupplier: false }, { supplier: supplierFacts[id] || null }) : []
   }
   const acceptOffer = (offer: any) => {
     if (!rfqView) return
@@ -1163,7 +1170,7 @@ ${t("offers_notif_reduction_note", { note })}`
                   <Card key={offer.id} className={cn(
                     "shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative",
                     offer.status === "مقبول" ? "border-success/30" :
-                    offer.status === "مرفوض" || offer.status === OFFER_WITHDRAWN ? "border-slate-200 opacity-65" :
+                    offer.status === "مرفوض" || offer.status === OFFER_WITHDRAWN || offer.status === OFFER_ORDER_DECLINED ? "border-slate-200 opacity-65" :
                     isMdmak ? "border-accent/40 bg-accent/[0.015]" :
                     offer.isGuestOffer ? "border-violet/30" :
                     isBestOffer ? "border-amber-300/70 shadow-amber-50" : "border-slate-100"
@@ -1833,6 +1840,7 @@ ${t("offers_notif_reduction_note", { note })}`
           policies={policies}
           orgName={procOrgName || activeCompanyName || null}
           blocksFor={blocksFor}
+          warningsFor={warningsFor}
           budget={awardBudget}
           onDone={onAwarded}
           sourcingFor={sourcingFor}
@@ -1899,6 +1907,7 @@ ${t("offers_notif_reduction_note", { note })}`
         onOpenChange={setCancelOpen}
         rfqId={rfqId}
         actor={writeActor}
+        orgName={procOrgName || activeCompanyName || null}
         onDone={() => {
           setCancelOpen(false)
           toast({ title: tRfqd("cancel.done") })

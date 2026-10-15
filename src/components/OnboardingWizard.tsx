@@ -8,7 +8,7 @@ import { CompanyTypePicker } from "@/components/CompanyTypePicker"
 import { hasCompanyType, type CompanyType } from "@/lib/company-types"
 
 const SAUDI_CITIES = [
-  "الرياض", "جدة", "مكة المكرمة", "المدينة المنورة", "الدمام",
+  "الرياض", "الخرج", "جدة", "مكة المكرمة", "المدينة المنورة", "الدمام",
   "الخبر", "الأحساء", "تبوك", "أبها", "بريدة", "حائل",
   "نجران", "جازان", "عرعر", "سكاكا", "الطائف",
 ]

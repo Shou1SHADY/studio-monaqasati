@@ -92,8 +92,11 @@ describe("T5a/T5b · approvals — mine float to the top, everybody else's wait"
   })
 
   it("a blocked approval is demoted to blue and its subtitle is the first block, from the Procurement namespace", () => {
-    const t = todayTasks(world({ orders: [small], supplierFacts: { sup1: { orgId: "sup1", hasVatNumber: false, verified: true, crExpiry: null } } }), MANAGER, NOW)[0]
-    expect(t).toMatchObject({ kind: "approve", severity: "blue", subNs: "Procurement", subKey: "blocks.supplier_no_vat" })
+    const t = todayTasks(world({ orders: [small], supplierFacts: { sup1: { orgId: "sup1", hasVatNumber: true, verified: false, crExpiry: null } } }), MANAGER, NOW)[0]
+    expect(t).toMatchObject({ kind: "approve", severity: "blue", subNs: "Procurement", subKey: "blocks.supplier_unverified" })
+    // No VAT number is optional (Supplier 1.0 B-11): the approval stays actionable.
+    const noVat = todayTasks(world({ orders: [small], supplierFacts: { sup1: { orgId: "sup1", hasVatNumber: false, verified: true, crExpiry: null } } }), MANAGER, NOW)[0]
+    expect(noVat).toMatchObject({ kind: "approve", severity: "amber", subKey: "task.approve.sub" })
   })
 })
 

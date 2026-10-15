@@ -299,8 +299,8 @@ describe("approval", () => {
     const { id } = await createPurchaseOrderFromAward(db, buyer, { rfq, offer: { ...offer, price: "160000" }, offers: [offer], policies: DEFAULT_POLICIES })
     await expect(approvePurchaseOrder(db, approver, id, { policies: MANUAL_SEND })).rejects.toMatchObject({ code: "above_limit" })
     await expect(
-      approvePurchaseOrder(db, owner, id, { policies: MANUAL_SEND, blocks: { supplier: { orgId: "sup-org", hasVatNumber: false, verified: true, crExpiry: null }, otherOrders: [] } })
-    ).rejects.toMatchObject({ code: "blocked", params: { codes: "supplier_no_vat" } })
+      approvePurchaseOrder(db, owner, id, { policies: MANUAL_SEND, blocks: { supplier: { orgId: "sup-org", hasVatNumber: true, verified: false, crExpiry: null }, otherOrders: [] } })
+    ).rejects.toMatchObject({ code: "blocked", params: { codes: "supplier_unverified" } })
     expect(po(id).status).toBe("awaiting_approval")
   })
 

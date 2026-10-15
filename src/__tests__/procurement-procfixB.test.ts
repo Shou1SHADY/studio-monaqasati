@@ -146,9 +146,9 @@ describe("a buyer's suppliers (S-32, the prototype's supScope)", () => {
 })
 
 describe("sourcing from a supplier nobody vouched for (prototype wAll / canOrder)", () => {
-  it("unverified first, then no VAT number, then a lapsed CR; our record wins over his profile", () => {
+  it("unverified first, then a lapsed CR; no VAT number is no block (optional, B-11); our record wins over his profile", () => {
     expect(supplierSourcingBlock({ verified: false, vatNumber: "300000000000003" }, null, TODAY)).toBe("unverified")
-    expect(supplierSourcingBlock({ verified: true }, { vat: "" }, TODAY)).toBe("no_vat")
+    expect(supplierSourcingBlock({ verified: true }, { vat: "" }, TODAY)).toBeNull()
     expect(supplierSourcingBlock(null, { vat: "300000000000003", crExpiry: "2026-09-01" }, TODAY)).toBe("cr_expired")
     expect(supplierSourcingBlock({ verified: true, crExpiry: "2027-01-01" }, { vat: "300000000000003", crExpiry: "2026-09-01" }, TODAY)).toBeNull()
     // A legacy record (no `verified` field) blocks nothing.
