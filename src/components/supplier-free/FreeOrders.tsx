@@ -11,7 +11,7 @@ import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { cn } from "@/lib/utils"
 import type { Deal } from "@/lib/supplier-free/types"
-import { FreePage, docWord, useQueryState, useRowGo, type PageKpi } from "./ui"
+import { actionBtn, FreePage, docWord, useQueryState, useRowGo, type PageKpi } from "./ui"
 import { leftText } from "./TaskCard"
 import { useActions } from "./ActionsProvider"
 import { useFree, type Free } from "./useFree"
@@ -85,7 +85,7 @@ function OrderRow({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, s
         <button
           type="button"
           onClick={btn.run}
-          className={cn("inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", btn.outline ? "border bg-card hover:bg-muted/50" : "bg-cta text-cta-foreground hover:bg-cta/90")}
+          className={actionBtn(btn.outline ? "outline" : "primary")}
         >
           {btn.icon && <btn.icon size={13} aria-hidden="true" />}
           {btn.label}

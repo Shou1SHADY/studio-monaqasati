@@ -25171,6 +25171,7 @@
     }
   },
   "SupplierFree": {
+    "mConnNote": "A note to the contractor (optional)",
     "tileSales": "Open: {open} · New: {fresh}",
     "tileOrders": "To deliver: {orders} · Invitations: {invites}",
     "tileAccount": "Profile {pct}% complete",
@@ -25980,7 +25981,7 @@
     "showingN": "Showing {a} of {b}",
     "selN": "{n} selected",
     "archSel": "Not for me — archive selected",
-    "tArchN": "Archived {n}",
+    "tArchN": "{n, plural, one {1 request archived} other {# requests archived}}",
     "okNewSub": "{n} new, not opened yet",
     "otNew": "New",
     "oppEmptyNew": "No new requests — you have seen everything",

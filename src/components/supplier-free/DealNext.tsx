@@ -13,6 +13,7 @@ import type { Deal } from "@/lib/supplier-free/types"
 import type { Free } from "./useFree"
 import { useActions, type ActionKind } from "./ActionsProvider"
 import { leftText } from "./TaskCard"
+import { actionBtn } from "./ui"
 
 type Step = { k: string; s: "done" | "cur" | "bad" | "todo"; sub: string }
 
@@ -159,11 +160,7 @@ export function NextBox({ f, d, href }: { f: Free; d: Deal; href: (p: Record<str
   const act = useActions()
   const n = nextStep(f, d, href)
   const Icon = n.icon
-  const btnCls = (tone: Btn["tone"]) =>
-    cn(
-      "inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-      tone === "outline" ? "border bg-card hover:bg-muted/50" : tone === "danger" ? "border border-destructive/30 bg-card text-destructive hover:bg-destructive/5" : "bg-cta text-cta-foreground hover:bg-cta/90"
-    )
+  const btnCls = (tone: Btn["tone"]) => actionBtn(tone === "outline" ? "outline" : tone === "danger" ? "danger" : "primary")
   return (
     <div className={cn("flex flex-wrap items-start gap-3 rounded-xl border p-3.5", TONE[n.tone])}>
       <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", TICON[n.tone])}>

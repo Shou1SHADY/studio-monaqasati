@@ -11,6 +11,7 @@ import { LayoutGrid, Rows3, ShieldCheck } from "lucide-react"
 import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { cn } from "@/lib/utils"
+import { buttonVariants } from "@/components/ui/button"
 import type { Deal } from "@/lib/supplier-free/types"
 import { useWorldReady } from "./FreeWorldProvider"
 import type { Free } from "./useFree"
@@ -111,6 +112,18 @@ export function FreePage({
         </>
       )}
     </div>
+  )
+}
+
+/** The small action button of a row, card or drawer: the shared Button's look (focus ring, disabled state) at the compact size
+ * the lists use, on a link or a plain button. */
+export function actionBtn(tone: "primary" | "outline" | "danger" = "primary", size: "sm" | "md" = "sm") {
+  return cn(
+    buttonVariants({ variant: tone === "primary" ? "default" : "ghost", size: "sm" }),
+    size === "sm" ? "h-8 gap-1.5 px-3 text-xs font-bold" : "h-9 gap-1.5 px-3 text-sm font-bold",
+    tone === "primary" && "bg-cta text-cta-foreground hover:bg-cta/90 hover:shadow-none",
+    tone === "outline" && "border bg-card hover:bg-muted/50",
+    tone === "danger" && "border border-destructive/30 bg-card text-destructive hover:bg-destructive/5"
   )
 }
 

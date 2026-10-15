@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 import { displayCategory } from "@/lib/constants"
 import type { Deal } from "@/lib/supplier-free/types"
 import type { Free } from "./useFree"
-import { DeadlinePill, Pill, VerifiedMark, dealPlace, stk, useRowGo } from "./ui"
+import { actionBtn, DeadlinePill, Pill, VerifiedMark, dealPlace, stk, useRowGo } from "./ui"
 
 interface Props {
   f: Free
@@ -77,7 +77,7 @@ export function RequestCard({ f, d, href, selected, onSelect, onArchive }: Props
         <Link
           href={href({ quote: d.id, mode: "new" }) as never}
           scroll={false}
-          className="inline-flex h-8 items-center rounded-lg bg-cta px-3 text-xs font-bold text-cta-foreground hover:bg-cta/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={actionBtn()}
         >
           {f.t("btnOffer")}
         </Link>
@@ -135,7 +135,7 @@ export function RequestRow({ f, d, href, selected, onSelect, onArchive }: Props)
         <DeadlinePill f={f} iso={d.deadline} />
       </td>
       <td className={cn("whitespace-nowrap px-3 text-end", stk.act)}>
-        <Link href={href({ quote: d.id, mode: "new" }) as never} scroll={false} className="inline-flex h-8 items-center rounded-lg bg-cta px-3 text-xs font-bold text-cta-foreground hover:bg-cta/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <Link href={href({ quote: d.id, mode: "new" }) as never} scroll={false} className={actionBtn()}>
           {f.t("btnOffer")}
         </Link>
         {onArchive && (

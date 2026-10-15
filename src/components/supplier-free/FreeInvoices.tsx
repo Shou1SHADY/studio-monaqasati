@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/module-ui/EmptyState"
 import { cn } from "@/lib/utils"
 import { r2 } from "@/lib/supplier-free/deal-logic"
 import type { InvoiceRow } from "@/lib/supplier-free/world-logic"
-import { FreePage, GroupHead, docWord, useQueryState, useRowGo, type PageKpi } from "./ui"
+import { actionBtn, FreePage, GroupHead, docWord, useQueryState, useRowGo, type PageKpi } from "./ui"
 import { useActions } from "./ActionsProvider"
 import { useFree, type Free } from "./useFree"
 
@@ -89,7 +89,7 @@ function Row({ f, r, href }: { f: Free; r: InvoiceRow; href: (p: Record<string, 
         <button
           type="button"
           onClick={btn.run}
-          className={cn("inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", btn.outline ? "border bg-card hover:bg-muted/50" : "bg-cta text-cta-foreground hover:bg-cta/90")}
+          className={actionBtn(btn.outline ? "outline" : "primary")}
         >
           {btn.icon && <btn.icon size={13} aria-hidden="true" />}
           {btn.label}

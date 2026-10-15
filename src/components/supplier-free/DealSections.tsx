@@ -20,7 +20,7 @@ import { canRegisterWarranty } from "@/lib/supplier-free/warranty"
 import type { Deal, DealReceipt, DealReport } from "@/lib/supplier-free/types"
 import type { Free } from "./useFree"
 import { useActions } from "./ActionsProvider"
-import { Pill, docWord, termsText } from "./ui"
+import { Pill, actionBtn, docWord, termsText } from "./ui"
 import { InstalmentPill } from "./Pills"
 
 const lblCls = "text-xs text-muted-foreground"
@@ -49,10 +49,7 @@ function SmallBtn({ onClick, icon: Icon, children, tone = "outline" }: { onClick
     <button
       type="button"
       onClick={onClick}
-      className={cn(
-        "inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        tone === "primary" ? "bg-cta text-cta-foreground hover:bg-cta/90" : "border bg-card hover:bg-muted/50"
-      )}
+      className={actionBtn(tone === "primary" ? "primary" : "outline")}
     >
       {Icon && <Icon size={13} aria-hidden="true" />}
       {children}
@@ -652,7 +649,7 @@ export function SecMsgs({ f, d, focus }: { f: Free; d: Deal; focus: boolean }) {
             }}
           >
             <input value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder={t("msgPh", { c: c?.name || "" })} aria-label={t("secMsgs")} className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-            <button disabled={sending || !text.trim()} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-cta px-3 text-sm font-bold text-cta-foreground hover:bg-cta/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
+            <button disabled={sending || !text.trim()} className={actionBtn("primary", "md")}>
               <Send size={14} aria-hidden="true" />
               {t("send")}
             </button>

@@ -285,8 +285,8 @@ describe("the free home's model", () => {
     expect(m.fresh).toBe(false)
     expect(m.kpis.map((x) => [x.key, x.value])).toEqual([
       ["acts", L.allActs().length],
-      ["unsent", `${f.fmt.kM(k.accUnsent)} ${f.fmt.cur}`],
-      ["owed", `${f.fmt.kM(k.owed)} ${f.fmt.cur}`],
+      ["unsent", `⁦${f.fmt.cur} ${f.fmt.kM(k.accUnsent)}⁩`],
+      ["owed", `⁦${f.fmt.cur} ${f.fmt.kM(k.owed)}⁩`],
     ])
     expect(m.kpis.map((x) => x.label)).toEqual(["Awaiting your reply", "Yours to deliver", "Owed to you"])
     expect(m.kpis[0].dot).toBe(L.allActs().some((a) => !!a.due && L.daysTo(a.due) < 0))

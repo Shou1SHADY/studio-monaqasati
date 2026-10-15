@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils"
 import { r2, type OfferSeg } from "@/lib/supplier-free/deal-logic"
 import { PAGE_SIZE, type OfferFilter } from "@/lib/supplier-free/world-logic"
 import type { Deal } from "@/lib/supplier-free/types"
-import { FreePage, GroupHead, Pill, ShowMore, ViewToggle, VerifiedMark, docWord, stk, useQueryState, useRowGo, useViewMode, type PageKpi } from "./ui"
+import { actionBtn, FreePage, GroupHead, Pill, ShowMore, ViewToggle, VerifiedMark, docWord, stk, useQueryState, useRowGo, useViewMode, type PageKpi } from "./ui"
 import { OfferPill } from "./Pills"
 import { useActions } from "./ActionsProvider"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
@@ -52,22 +52,21 @@ function why(f: Free, d: Deal): string {
 function StepButton({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, string | null>) => string }) {
   const act = useActions()
   const s = f.L.offerSt(d)
-  const cls = "inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
   if (s === "reduce")
     return (
-      <Link href={href({ deal: d.id }) as never} scroll={false} className={cn(cls, "bg-cta text-cta-foreground hover:bg-cta/90")}>
+      <Link href={href({ deal: d.id }) as never} scroll={false} className={actionBtn()}>
         {f.t("btnReply")}
       </Link>
     )
   if (s === "sample")
     return (
-      <button type="button" onClick={() => act.open("sample-sent", d.id)} className={cn(cls, "bg-cta text-cta-foreground hover:bg-cta/90")}>
+      <button type="button" onClick={() => act.open("sample-sent", d.id)} className={actionBtn()}>
         {f.t("btnSampleShort")}
       </button>
     )
   if (s === "won" && d.po)
     return (
-      <Link href={`/supplier/orders?q=${encodeURIComponent(d.po.no)}` as never} className={cn(cls, "border bg-card hover:bg-muted/50")}>
+      <Link href={`/supplier/orders?q=${encodeURIComponent(d.po.no)}` as never} className={actionBtn("outline")}>
         <FileText size={13} aria-hidden="true" />
         {docWord(f, "po", d.po.no)}
       </Link>
@@ -210,7 +209,7 @@ export function FreeOffers() {
       title={t("navOffers")}
       description={t("offSub")}
       action={
-        <Link href="/supplier/rfqs" className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-cta px-3 text-sm font-bold text-cta-foreground hover:bg-cta/90">
+        <Link href="/supplier/rfqs" className={actionBtn("primary", "md")}>
           <Search size={15} aria-hidden="true" />
           {t("heroCta")}
         </Link>

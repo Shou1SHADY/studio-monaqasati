@@ -25171,6 +25171,7 @@
     }
   },
   "SupplierFree": {
+    "mConnNote": "ملاحظة للمقاول (اختياري)",
     "tileSales": "مفتوحة: {open} · جديدة: {fresh}",
     "tileOrders": "للتوريد: {orders} · دعوات: {invites}",
     "tileAccount": "اكتمال الملف {pct}%",
@@ -25980,7 +25981,7 @@
     "showingN": "يعرض {a} من {b}",
     "selN": "{n} محدد",
     "archSel": "لا يناسبني — أرشف المحدد",
-    "tArchN": "أُرشف {n}",
+    "tArchN": "{n, plural, one {أُرشف طلب واحد} two {أُرشف طلبان} few {أُرشفت # طلبات} many {أُرشف # طلباً} other {أُرشف # طلب}}",
     "okNewSub": "{n} جديدة لم تفتحها",
     "otNew": "جديدة",
     "oppEmptyNew": "لا طلبات جديدة — اطّلعت على كل ما وصلك",

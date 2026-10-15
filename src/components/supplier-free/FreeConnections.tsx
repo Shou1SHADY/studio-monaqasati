@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/module-ui/EmptyState"
 import { useToast } from "@/hooks/use-toast"
 import { answerInvitation, tellOwnerAboutRequest } from "@/lib/supplier-free/connections"
 import { FreePage, Pill, VerifiedMark, useQueryState } from "./ui"
-import { NativeSelect } from "@/components/module-ui/NativeSelect"
+import { cn } from "@/lib/utils"
 import { useFree } from "./useFree"
 
 export function FreeConnections() {
@@ -216,14 +216,33 @@ function RequestDialog({ onClose, onSent }: { onClose: () => void; onSent: (name
         </DialogHeader>
         {options.length ? (
           <>
+            <div role="radiogroup" aria-label={t("mConnPick")} className="space-y-1.5">
+              <p className="text-sm font-semibold">{t("mConnPick")}</p>
+              <div className="max-h-56 space-y-1.5 overflow-y-auto">
+                {options.map(([id, c]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={pick === id}
+                    onClick={() => setPick(id)}
+                    className={cn(
+                      "flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-start text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      pick === id ? "border-module bg-module/5 font-bold" : "hover:bg-muted/50"
+                    )}
+                  >
+                    <span className={cn("grid h-4 w-4 shrink-0 place-items-center rounded-full border", pick === id ? "border-module" : "border-muted-foreground/40")} aria-hidden="true">
+                      {pick === id && <span className="h-2 w-2 rounded-full bg-module" />}
+                    </span>
+                    <bdi>{c.name}</bdi>
+                  </button>
+                ))}
+              </div>
+            </div>
             <label className="block text-sm font-semibold">
-              {t("mConnPick")}
-              <NativeSelect className="mt-1 h-10 w-full rounded-lg border bg-background px-3 text-sm" value={pick} onChange={(e) => setPick(e.target.value)}>
-                <option value="" />
-                {options.map(([id, c]) => <option key={id} value={id}>{c.name}</option>)}
-              </NativeSelect>
+              {t("mConnNote")}
+              <textarea rows={2} maxLength={300} placeholder={t("mConnPh")} className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal" value={note} onChange={(e) => setNote(e.target.value)} />
             </label>
-            <textarea rows={2} maxLength={300} placeholder={t("mConnPh")} aria-label={t("mConnPh")} className="w-full rounded-lg border bg-background px-3 py-2 text-sm" value={note} onChange={(e) => setNote(e.target.value)} />
           </>
         ) : (
           <p className="text-sm text-muted-foreground">{t("tNoMoreConn")}</p>
