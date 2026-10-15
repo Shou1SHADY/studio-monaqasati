@@ -6,7 +6,7 @@
  */
 
 import { act, render } from "@testing-library/react"
-import { FreeWorldProvider, useFreeWorld } from "@/components/supplier-free/FreeWorldProvider"
+import { FreeWorldProvider, profileSignature, useFreeWorld } from "@/components/supplier-free/FreeWorldProvider"
 
 const queries: unknown[][] = []
 
@@ -36,9 +36,10 @@ jest.mock("@/firebase", () => {
   }
 })
 jest.mock("@/hooks/useChunkedDocs", () => ({ useChunkedDocs: () => ({ data: [], ready: true }) }))
+const stored: { certificates: string[] } = { certificates: [] }
 jest.mock("@/hooks/useResolvedProfile", () => ({
   // a NEW object on every call, as the real hook returns
-  useResolvedProfile: () => ({ profile: { name: "Sami", companyName: "Al Noor", phone: "0500000000", email: "s@x.test", city: "الرياض", specializations: ["حديد ومعادن"], coverageCities: ["الرياض"], isVerified: false }, organizationId: "sup1", isLoading: false }),
+  useResolvedProfile: () => ({ profile: { name: "Sami", companyName: "Al Noor", phone: "0500000000", email: "s@x.test", city: "الرياض", specializations: ["حديد ومعادن"], coverageCities: ["الرياض"], isVerified: false, certificates: [...stored.certificates] }, organizationId: "sup1", isLoading: false }),
 }))
 
 const fetchMock = jest.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }))
@@ -72,5 +73,27 @@ describe("FreeWorldProvider", () => {
     expect(latest).not.toBeNull()
     expect(latest!.ready).toBe(true)
     expect(latest!.profile?.orgId).toBe("sup1")
+  })
+
+  it("hands screens the profile as it is NOW: a list saved mid-session reaches `raw` (else the next save drops it)", async () => {
+    stored.certificates = []
+    let latest: ReturnType<typeof useFreeWorld> | null = null
+    // a fresh element each time, so React renders the provider again (as a parent's re-render does)
+    const ui = () => (
+      <FreeWorldProvider>
+        <Probe onValue={(v) => (latest = v)} />
+      </FreeWorldProvider>
+    )
+    const { rerender } = render(ui())
+    stored.certificates = ["A"]
+    await act(async () => rerender(ui()))
+    expect((latest!.profile?.raw as { certificates: string[] }).certificates).toEqual(["A"])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("signs Timestamps by their millis and never by identity", () => {
+    const ts = (ms: number) => Object.assign(Object.create({ toMillis() { return (this as { ms: number }).ms } }), { ms })
+    expect(profileSignature({ at: ts(5) })).toBe(profileSignature({ at: ts(5) }))
+    expect(profileSignature({ at: ts(5) })).not.toBe(profileSignature({ at: ts(6) }))
   })
 })

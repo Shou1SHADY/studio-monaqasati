@@ -47,6 +47,9 @@ const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 const riyadh = (iso: unknown) => (typeof iso === "string" && iso ? new Date(Date.parse(iso) + 3 * 3_600_000).toISOString().slice(0, 10) : "")
 
 /** One lock per receipt of an order (a receipt is billed once) and one per invoice number of a supplier. */
+/** A confirmed delivery is a receipt only when a member of the buying company confirmed it (B-01). */
+export const issuedByBuyer = (confirmerOrgId: string | undefined, buyerOrgId: string | undefined): boolean => !!confirmerOrgId && !!buyerOrgId && confirmerOrgId === buyerOrgId
+
 export const receiptLockId = (poId: string, grn: string) => `${poId}__grn__${createHash("sha1").update(grn).digest("hex").slice(0, 24)}`
 export const numberLockId = (orgId: string, number: string) => `${orgId}__no__${createHash("sha1").update(number.trim().toLowerCase()).digest("hex").slice(0, 24)}`
 
@@ -71,10 +74,14 @@ export async function createSupplierInvoice(db: Firestore, s: InvoiceSupplier, i
       tx.get(db.collection("supplierInvoices").where("supplierOrgId", "==", s.orgId)),
       ...lockRefs.map((r) => tx.get(r)),
     ])
+    // A receipt is the contractor's document (B-01): only one confirmed by a member of the buying company counts.
+    const confirmed = receiptSnap.docs.map((d): Rec & { id: string } => ({ ...(d.data() as Rec), id: d.id })).filter((d) => d.status === "confirmed")
+    const confirmerIds = [...new Set(confirmed.map((d) => String(d.confirmedByUserId || "")).filter(Boolean))]
+    const confirmerSnaps = await Promise.all(confirmerIds.map((uid) => tx.get(db.collection("users").doc(uid))))
+    const confirmerOrg = new Map(confirmerSnaps.map((u, i) => [confirmerIds[i], u.exists ? String((u.data() as { organizationId?: string }).organizationId || u.id) : ""]))
     const priceOf = new Map(po.lines.map((l) => [l.id, l.unitPrice]))
-    const receipts = receiptSnap.docs
-      .map((d): Rec & { id: string } => ({ ...(d.data() as Rec), id: d.id }))
-      .filter((d) => d.status === "confirmed")
+    const receipts = confirmed
+      .filter((d) => issuedByBuyer(confirmerOrg.get(String(d.confirmedByUserId || "")), po.organizationId))
       .map((d) => {
         const lines = Array.isArray(d.lines) ? (d.lines as { poLineId?: string; accepted?: number }[]) : []
         const prices = lines.map((l) => priceOf.get(String(l.poLineId)))

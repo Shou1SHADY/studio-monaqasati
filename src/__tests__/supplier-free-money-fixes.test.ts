@@ -11,7 +11,7 @@ import path from "path"
 import { createDealLogic, paidInFull } from "@/lib/supplier-free/deal-logic"
 import { deriveWorld, type RawWorld } from "@/lib/supplier-free/derive"
 import { invoiceFigures } from "@/lib/supplier-free/invoice-rules"
-import { createSupplierInvoice, InvoiceError } from "@/lib/supplier-free/invoice-server"
+import { createSupplierInvoice, InvoiceError, issuedByBuyer } from "@/lib/supplier-free/invoice-server"
 import { deliveryReviews } from "@/lib/supplier-free/reviews"
 import { receiptWindowDue, runReceiptWindow } from "@/lib/supplier-free/receipt-window"
 import { permissionHolders, notifyNamed } from "@/lib/supplier-free/server-notify"
@@ -182,7 +182,7 @@ describe("BIL-02 / G-07 — the invoice is one transaction with a lock per recei
   const world = () =>
     new FakeAdminDb()
       .seed("purchaseOrders/po1", { organizationId: "buyer", supplierOrgId: "sup", status: "accepted", docNumber: "PO-2026/001", rfqId: "r1", offerId: "o1", preparedById: "p1", lines: [{ id: "l1", name: "Block", unit: "pc", quantity: 100, unitPrice: 2, accepted: 100, rejected: 0, held: 0, cancelled: 0 }], log: [], totalExVat: 200 })
-      .seed("deliveries/d1", { poId: "po1", status: "confirmed", docNumber: "GR-2026/004", confirmedAt: "2026-10-13T08:00:00.000Z", lines: [{ poLineId: "l1", accepted: 100 }] })
+      .seed("deliveries/d1", { poId: "po1", status: "confirmed", docNumber: "GR-2026/004", confirmedByUserId: "fin", confirmedAt: "2026-10-13T08:00:00.000Z", lines: [{ poLineId: "l1", accepted: 100 }] })
       .seed("users/buyer", { organizationId: "buyer" })
       .seed("users/fin", { organizationId: "buyer", organizationRole: "member", defaultGroupId: "g-fin" })
       .seed("teamGroups/g-fin", { organizationId: "buyer", permissions: ["invoices.manage"] })
@@ -211,10 +211,20 @@ describe("BIL-02 / G-07 — the invoice is one transaction with a lock per recei
     expect((again as InvoiceError).blocks).toContain("billed")
   })
 
+  it("a delivery the supplier marked confirmed himself is no receipt (B-01): nothing to invoice against", async () => {
+    const db = world().seed("deliveries/d1", { poId: "po1", status: "confirmed", docNumber: "GR-2026/004", confirmedByUserId: "su", confirmedAt: "2026-10-13T08:00:00.000Z", lines: [{ poLineId: "l1", accepted: 100 }] }).seed("users/su", { organizationId: "sup" })
+    const r = await createSupplierInvoice(db as never, SUP, input, NOW).catch((e: unknown) => e)
+    expect(r).toBeInstanceOf(InvoiceError)
+    expect(db.list("supplierInvoices")).toHaveLength(0)
+    expect(issuedByBuyer("buyer", "buyer")).toBe(true)
+    expect(issuedByBuyer("sup", "buyer")).toBe(false)
+    expect(issuedByBuyer(undefined, "buyer")).toBe(false)
+  })
+
   it("an invoice number is used once by a supplier — even across orders", async () => {
     const db = world().seed("supplierInvoiceLocks/x", {})
     await createSupplierInvoice(db as never, SUP, input, NOW)
-    db.seed("purchaseOrders/po2", { ...(db.get("purchaseOrders/po1") as Doc), log: [] }).seed("deliveries/d2", { poId: "po2", status: "confirmed", docNumber: "GR-2026/005", confirmedAt: "2026-10-13T08:00:00.000Z", lines: [{ poLineId: "l1", accepted: 100 }] })
+    db.seed("purchaseOrders/po2", { ...(db.get("purchaseOrders/po1") as Doc), log: [] }).seed("deliveries/d2", { poId: "po2", status: "confirmed", docNumber: "GR-2026/005", confirmedByUserId: "fin", confirmedAt: "2026-10-13T08:00:00.000Z", lines: [{ poLineId: "l1", accepted: 100 }] })
     const dup = await createSupplierInvoice(db as never, SUP, { ...input, poId: "po2", grns: ["GR-2026/005"] }, NOW).catch((e: unknown) => e)
     expect((dup as InvoiceError).blocks).toContain("duplicate")
   })

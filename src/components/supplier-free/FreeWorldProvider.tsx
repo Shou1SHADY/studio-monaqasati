@@ -60,6 +60,15 @@ function useToday(): string {
   return today
 }
 
+/** A stable text for a profile object: Timestamps by their millis, other class instances by their text, never by identity. */
+export function profileSignature(v: unknown): string {
+  return JSON.stringify(v, (_k, x: unknown) => {
+    if (!x || typeof x !== "object" || Array.isArray(x) || Object.getPrototypeOf(x) === Object.prototype) return x
+    const t = x as { toMillis?: () => number }
+    return typeof t.toMillis === "function" ? t.toMillis() : String(x)
+  })
+}
+
 export function FreeWorldProvider({ children }: { children: ReactNode }) {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
@@ -69,7 +78,9 @@ export function FreeWorldProvider({ children }: { children: ReactNode }) {
 
   // `resolved` is a new object on every render, so nothing below may key on its identity: a query or an effect that
   // did would restart on every render and never settle. Everything keys on what it says.
-  const resolvedSig = resolved ? JSON.stringify([resolved.name, resolved.companyName, resolved.phone, resolved.email, resolved.city, resolved.specializations, resolved.coverageCities, resolved.isVerified, resolved.taxNumber]) : ""
+  // The signature covers the WHOLE profile: screens write back lists read from `raw` (works, certificates, files), so a
+  // `raw` frozen at a narrower signature lost every item but the last one added in a session.
+  const resolvedSig = resolved ? profileSignature(resolved) : ""
   const uid = user?.uid
   const profile = useMemo<FreeProfile | null>(() => {
     if (!user || !resolved || !orgId) return null
