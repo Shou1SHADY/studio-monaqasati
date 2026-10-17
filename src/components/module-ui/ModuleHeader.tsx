@@ -16,6 +16,8 @@ export interface ModuleKpi {
   label: string
   /** Already formatted — the header never sees a raw amount. */
   value: string
+  /** The unit of an amount (the riyal sign): left of the figure, above it on a phone so the figure is never cut. */
+  unit?: string
   note?: string
   tone?: "good" | "bad" | "warn" | "neutral"
   href?: string
@@ -47,8 +49,10 @@ function KpiBody({ kpi }: { kpi: ModuleKpi }) {
         {Icon && <Icon size={14} className="hidden shrink-0 text-module sm:block" aria-hidden="true" />}
         <span className="line-clamp-2">{kpi.label}</span>
       </p>
-      <p className="mt-1.5 truncate text-lg font-black tabular-nums text-foreground sm:text-2xl" dir="ltr">
-        {kpi.value}
+      <p className={cn("mt-1.5 text-lg font-black tabular-nums text-foreground sm:truncate sm:text-2xl", kpi.unit ? "max-sm:break-words max-sm:text-base max-sm:leading-tight" : "truncate")} dir="ltr">
+        {/* The figure line is LTR while the unit is Arabic text: its gap is set on the physical right, toward the figure. */}
+        {kpi.unit && <bdi className="text-xs font-bold text-muted-foreground max-sm:block sm:mr-1">{kpi.unit}</bdi>}
+        {kpi.unit ? <bdi>{kpi.value}</bdi> : kpi.value}
       </p>
       {kpi.note && <p className={cn("mt-1.5 inline-block max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold sm:text-[11px]", TONE_CHIP[kpi.tone ?? "neutral"])}>{kpi.note}</p>}
     </>

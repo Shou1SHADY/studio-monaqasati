@@ -34,14 +34,14 @@ export interface PageKpi {
   href?: string
 }
 
-/** A page figure as the module header shows it: the unit (the riyal sign) LEFT of the figure, kept together. */
+/** A page figure as the module header shows it (the unit — the riyal sign — left of the figure). */
 function toModuleKpi(k: PageKpi): ModuleKpi {
-  const value = String(k.value)
   return {
     id: k.id,
     icon: k.icon,
     label: k.label,
-    value: k.unit ? `${k.unit}\u00a0${value}` : value,
+    value: String(k.value),
+    unit: k.unit,
     note: k.sub,
     tone: k.tone === "warn" ? "warn" : k.tone === "up" ? "good" : k.tone === "down" ? "bad" : "neutral",
     href: k.href,

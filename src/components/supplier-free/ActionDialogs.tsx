@@ -22,7 +22,7 @@ import type { Deal, DeclineReason } from "@/lib/supplier-free/types"
 import type { Free } from "./useFree"
 import { poErrorText, useWriteEnv, type WriteEnv } from "./ActionsProvider"
 import { ReceiptDoc } from "./ReceiptDoc"
-import { docWord, termsText } from "./ui"
+import { docWord, stk, termsText } from "./ui"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { useFree } from "./useFree"
 
@@ -210,28 +210,28 @@ function AcceptPo({ f, d, onClose }: P) {
         />
       }
     >
-      <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/30 text-xs text-muted-foreground">
+      <div className="rounded-lg border md:overflow-x-auto">
+        <table className={cn("text-sm", stk.table)}>
+          <thead className="bg-muted/30 text-xs text-muted-foreground max-md:hidden">
             <tr>
               <th className="px-3 py-2 text-start">{t("thItem")}</th>
               <th className="px-3 text-start">{t("thUnitPrice")}</th>
               <th className="px-3 text-start">{t("thOrdered")}</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className={stk.tbody}>
             {d.po.lines.map((l) => {
               const i = d.items.find((x) => x.id === l.it)
               return (
-                <tr key={l.it} className="border-t">
-                  <td className="px-3 py-2 font-bold">
+                <tr key={l.it} className="border-t max-md:block max-md:px-3 max-md:py-2 max-md:first:border-t-0">
+                  <td className={cn("px-3 py-2 font-bold", stk.head)}>
                     <bdi>{i?.name}</bdi>
                   </td>
-                  <td className="px-3 tabular-nums" dir="ltr">
-                    {l.price != null ? fmt.money(l.price) : "—"}
+                  <td className={cn("px-3 tabular-nums", stk.cell)} data-l={t("thUnitPrice")}>
+                    <span dir="ltr">{l.price != null ? fmt.money(l.price) : "—"}</span>
                   </td>
-                  <td className="px-3 tabular-nums" dir="ltr">
-                    {fmt.n(l.qty)} {i?.unit}
+                  <td className={cn("px-3 tabular-nums", stk.cell)} data-l={t("thOrdered")}>
+                    <span dir="ltr">{fmt.n(l.qty)} {i?.unit}</span>
                   </td>
                 </tr>
               )
