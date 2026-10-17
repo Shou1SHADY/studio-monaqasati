@@ -5,7 +5,8 @@
 // filters, deadline groups counted over the WHOLE list, 24 then more, select-and-archive, cards or rows.
 
 import { useEffect, useMemo, useState } from "react"
-import { Clock, Info, PenLine, Search, Send } from "lucide-react"
+import { Archive, ArchiveRestore, Clock, Info, PenLine, Search, Send, X } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Link } from "@/i18n/routing"
 import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { EmptyState } from "@/components/module-ui/EmptyState"
@@ -13,10 +14,11 @@ import { Callout } from "@/components/module-ui/Callout"
 import { useToast } from "@/hooks/use-toast"
 import { displayCategory, displayCity } from "@/lib/constants"
 import { cn } from "@/lib/utils"
+import { Chip } from "@/components/module-ui/Chip"
 import { PAGE_SIZE, type OppFilter } from "@/lib/supplier-free/world-logic"
 import type { Deal } from "@/lib/supplier-free/types"
 import { RequestCard, RequestRow } from "./RequestCard"
-import { FreePage, GroupHead, ShowMore, ViewToggle, stk, useListSelection, useQueryState, useViewMode, type PageKpi } from "./ui"
+import { actionBtn, SearchBox, FreePage, GroupHead, ShowMore, ViewToggle, stk, useListSelection, useQueryState, useViewMode, type PageKpi } from "./ui"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { useFree } from "./useFree"
 
@@ -112,7 +114,7 @@ export function FreeOpps() {
       title={t("oppT")}
       description={t("oppSub")}
       action={
-        <Link href="/supplier/profile?tab=specs" className="inline-flex h-9 items-center gap-1.5 rounded-lg border bg-card px-3 text-sm font-bold hover:bg-muted/50">
+        <Link href="/supplier/profile?tab=specs" className={actionBtn("outline", "md")}>
           <PenLine size={15} aria-hidden="true" />
           {t("editSpecs")}
         </Link>
@@ -121,7 +123,6 @@ export function FreeOpps() {
     >
       <div className="flex flex-wrap items-center gap-3">
         <SegmentedNav
-          variant="track"
           ariaLabel={t("oppT")}
           active={tab}
           onSelect={(id) => setParam({ tab: id === "all" ? "" : id })}
@@ -133,18 +134,7 @@ export function FreeOpps() {
           ]}
         />
         <div className="ms-auto flex flex-wrap items-center gap-2">
-          <form
-            role="search"
-            onSubmit={(e) => {
-              e.preventDefault()
-              const v = new FormData(e.currentTarget).get("q")
-              setParam({ q: String(v || "") })
-            }}
-            className="relative"
-          >
-            <Search size={14} className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <input name="q" defaultValue={filter.q || ""} key={filter.q || ""} placeholder={t("oppSearchPh")} aria-label={t("oppSearchPh")} className="h-9 w-56 rounded-lg border bg-card ps-8 pe-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-          </form>
+          <SearchBox value={filter.q || ""} onSearch={(v) => q.set({ q: v }, { replace: true })} placeholder={t("oppSearchPh")} />
           <NativeSelect aria-label={t("fCity")} className={select} value={filter.city || ""} onChange={(e) => setParam({ city: e.target.value })}>
             <option value="">{t("allCities")}</option>
             {cities.map((c) => (
@@ -176,14 +166,28 @@ export function FreeOpps() {
 
       {tab !== "arch" && (
         <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("fCat")}>
-          <button type="button" aria-pressed={!filter.cat} onClick={() => setParam({ cat: "" })} className={chip(!filter.cat)}>
+          <Chip selected={!filter.cat} onClick={() => setParam({ cat: "" })}>
             {t("allCats")} <b className="tabular-nums">{pool.length}</b>
-          </button>
+          </Chip>
           {catN.map(([c, k]) => (
-            <button key={c} type="button" aria-pressed={filter.cat === c} onClick={() => setParam({ cat: filter.cat === c ? "" : c })} className={chip(filter.cat === c)}>
+            <Chip key={c} selected={filter.cat === c} onClick={() => setParam({ cat: filter.cat === c ? "" : c })}>
               {displayCategory(c, f.locale)} <b className="tabular-nums">{k}</b>
-            </button>
+            </Chip>
           ))}
+        </div>
+      )}
+
+      {selIds.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-module/30 bg-module/5 px-3 py-2">
+          <b className="text-sm tabular-nums">{t("selN", { n: f.fmt.n(selIds.length) })}</b>
+          <Button type="button" size="sm" onClick={() => void doArchive(selIds, tab !== "arch")} className="h-8 gap-2 rounded-lg bg-module text-module-foreground hover:bg-module/90">
+            {tab === "arch" ? <ArchiveRestore size={14} aria-hidden="true" /> : <Archive size={14} aria-hidden="true" />}
+            {tab === "arch" ? t("unarchive") : t("archSel")}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setSel({})} className="h-8 gap-2 rounded-lg text-muted-foreground">
+            <X size={14} aria-hidden="true" />
+            {t("cancel")}
+          </Button>
         </div>
       )}
 
@@ -194,7 +198,7 @@ export function FreeOpps() {
           description={filtered ? undefined : t("oppEmptyX")}
           action={
             filtered ? (
-              <Link href={href({ cat: "", city: "", c: "", due: "", q: "" }) as never} className="inline-flex h-9 items-center rounded-lg border bg-card px-3 text-sm font-bold">
+              <Link href={href({ cat: "", city: "", c: "", due: "", q: "" }) as never} className={actionBtn("outline", "md")}>
                 {t("clearFilters")}
               </Link>
             ) : undefined
@@ -245,18 +249,6 @@ export function FreeOpps() {
         </>
       )}
 
-      {selIds.length > 0 && (
-        <div className="fixed inset-x-0 bottom-4 z-50 mx-auto flex w-fit max-w-[92vw] items-center gap-3 rounded-2xl bg-primary px-4 py-2.5 text-primary-foreground shadow-2xl">
-          <b className="text-sm tabular-nums">{t("selN", { n: f.fmt.n(selIds.length) })}</b>
-          <button type="button" onClick={() => void doArchive(selIds, tab !== "arch")} className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold hover:bg-white/25">
-            {tab === "arch" ? t("unarchive") : t("archSel")}
-          </button>
-          <button type="button" onClick={() => setSel({})} className="text-xs font-bold text-sidebar-foreground/80 hover:text-white">
-            {t("cancel")}
-          </button>
-        </div>
-      )}
-
       {profile && (
         <Callout tone="info">
           <span className="inline-flex items-start gap-1.5">
@@ -267,10 +259,6 @@ export function FreeOpps() {
       )}
     </FreePage>
   )
-}
-
-function chip(on: boolean) {
-  return cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", on ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:border-foreground/30 hover:text-foreground")
 }
 
 function GroupRows({

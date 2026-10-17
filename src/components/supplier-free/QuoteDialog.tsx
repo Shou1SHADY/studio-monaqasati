@@ -135,7 +135,7 @@ function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; 
 
   const titleKey = mode === "reduce" ? "ofReduceT" : mode === "edit" ? "ofEditT" : "ofNewT"
   const when = reduce ? t("ofReplyBy", { x: fmt.date(reduce.by), r: rel(reduce.by) }) : `${t("fDeadline")}: ${fmt.date(d.deadline)} (${rel(d.deadline)})`
-  const input = "h-10 w-full rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+  const input = "h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"  // the shared Input's look (16px on phones: no zoom on focus)
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
@@ -343,7 +343,7 @@ function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; 
             <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
               {t("cancel")}
             </Button>
-            <Button type="submit" disabled={check.blocks.length > 0 || busy} className="bg-cta text-cta-foreground hover:bg-cta/90">
+            <Button type="submit" disabled={check.blocks.length > 0 || busy}>
               {busy ? <Loader2 size={15} className="me-1.5 animate-spin" aria-hidden="true" /> : <Send size={15} className="me-1.5" aria-hidden="true" />}
               {t(mode === "new" ? "btnSendOffer" : "btnSendVersion")}
             </Button>

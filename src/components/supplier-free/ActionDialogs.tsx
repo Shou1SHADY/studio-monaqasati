@@ -32,7 +32,7 @@ interface Open {
   ref?: string
 }
 
-const inputCls = "h-10 w-full rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+const inputCls = "h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"  // the shared Input's look (16px on phones: no zoom on focus)
 
 function Shell({
   title,
@@ -96,7 +96,7 @@ function Footer({ f, onClose, busy, disabled, label, onSubmit, danger }: { f: Fr
       <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
         {f.t("cancel")}
       </Button>
-      <Button type="button" data-primary onClick={onSubmit} disabled={disabled || busy} variant={danger ? "destructive" : "default"} className={danger ? undefined : "bg-cta text-cta-foreground hover:bg-cta/90"}>
+      <Button type="button" data-primary onClick={onSubmit} disabled={disabled || busy} variant={danger ? "destructive" : "default"}>
         {busy && <Loader2 size={15} className="me-1.5 animate-spin" aria-hidden="true" />}
         {label}
       </Button>

@@ -20,6 +20,8 @@ import { canRegisterWarranty } from "@/lib/supplier-free/warranty"
 import type { Deal, DealReceipt, DealReport } from "@/lib/supplier-free/types"
 import type { Free } from "./useFree"
 import { useActions } from "./ActionsProvider"
+import { buttonVariants } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Pill, actionBtn, docWord, termsText } from "./ui"
 import { InstalmentPill } from "./Pills"
 
@@ -154,8 +156,8 @@ export function SecRequest({ f, d }: { f: Free; d: Deal }) {
             void ask()
           }}
         >
-          <input value={q} onChange={(e) => setQ(e.target.value)} maxLength={1000} placeholder={t("qaPh")} aria-label={t("qaPh")} className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-          <button disabled={sending || !q.trim()} className="h-9 rounded-lg border bg-card px-3 text-sm font-bold hover:bg-muted/50 disabled:opacity-50">
+          <Input value={q} onChange={(e) => setQ(e.target.value)} maxLength={1000} placeholder={t("qaPh")} aria-label={t("qaPh")} className="h-9 min-w-0 flex-1" />
+          <button disabled={sending || !q.trim()} className={buttonVariants({ variant: "outline", size: "sm" })}>
             {t("qaSend")}
           </button>
         </form>
@@ -648,8 +650,8 @@ export function SecMsgs({ f, d, focus }: { f: Free; d: Deal; focus: boolean }) {
               void send()
             }}
           >
-            <input value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder={t("msgPh", { c: c?.name || "" })} aria-label={t("secMsgs")} className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-            <button disabled={sending || !text.trim()} className={actionBtn("primary", "md")}>
+            <Input value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder={t("msgPh", { c: c?.name || "" })} aria-label={t("secMsgs")} className="h-9 min-w-0 flex-1" />
+            <button disabled={sending || !text.trim()} className={buttonVariants({ size: "sm" })}>
               <Send size={14} aria-hidden="true" />
               {t("send")}
             </button>

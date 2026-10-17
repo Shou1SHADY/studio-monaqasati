@@ -326,7 +326,8 @@ describe("rows stack on a phone", () => {
     expect(cells[0].getAttribute("data-l")).toBeNull()
     expect(cells.slice(1).every((c) => !!c.getAttribute("data-l"))).toBe(true)
     expect(stk.cell).toContain("max-md:before:content-[attr(data-l)]")
-    expect(container.querySelector(".overflow-x-auto")).toBeNull()
+    // Nothing in the list scrolls sideways (the module header's tab rail is the portal's own and may).
+    expect(container.querySelector("table")?.closest(".overflow-x-auto") ?? null).toBeNull()
   })
 })
 
