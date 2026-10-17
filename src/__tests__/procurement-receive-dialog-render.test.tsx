@@ -9,7 +9,7 @@
  * "nothing counted" and no PO-backed receipt could be saved anywhere.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import fs from "fs"
 import path from "path"
 import { DEFAULT_POLICIES, type PoLine, type ProcActor, type PurchaseOrder } from "@/lib/procurement/types"
@@ -42,7 +42,16 @@ jest.mock("lucide-react", () => {
   return new Proxy({}, { get: (_t, name) => (name === "__esModule" ? false : () => React.createElement("svg", { "data-icon": String(name) })) })
 })
 
-jest.mock("@/firebase", () => ({ useFirestore: () => ({}) }))
+jest.mock("@/firebase", () => ({ useFirestore: () => ({}), useStorage: () => ({}) }))
+jest.mock("firebase/storage", () => ({
+  ref: (_s: unknown, path: string) => ({ path }),
+  uploadBytes: jest.fn(async () => ({})),
+  getDownloadURL: jest.fn(async (r: { path: string }) => `https://files/${r.path}`),
+}))
+jest.mock("@/lib/procurement/receipt-writes", () => ({
+  ...jest.requireActual("@/lib/procurement/receipt-writes"),
+  recordReceipt: jest.fn(async () => ({ docNumber: "GR-2026/001", deliveryId: "d1", stockLanded: true, posted: true, mfgClosed: true, po: null })),
+}))
 jest.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: jest.fn() }) }))
 jest.mock("@/components/SignaturePad", () => ({ SignaturePad: () => null }))
 
@@ -146,5 +155,25 @@ describe("ReceiveDeliveryDialog — a typed count reaches the derived state", ()
     fireEvent.change(counted(), { target: { value: "7" } })
     expect(submit().textContent).toContain("7")
     expect(submit().textContent).not.toContain("9")
+  })
+})
+
+describe("ReceiveDeliveryDialog — the receiver's attachments (Supplier ORD-12)", () => {
+  test("a photo added at the gate is uploaded with the receipt and ticks 'photos'", async () => {
+    const { recordReceipt } = jest.requireMock("@/lib/procurement/receipt-writes") as { recordReceipt: jest.Mock }
+    const { counted, submit } = renderDesk()
+    const input = document.getElementById("rcv-files") as HTMLInputElement
+    const photo = new File(["x"], "pallets.jpg", { type: "image/jpeg" })
+    const huge = new File(["x"], "video.mp4", { type: "video/mp4" })
+    fireEvent.change(input, { target: { files: [photo, huge] } })
+    expect(screen.getByText("pallets.jpg")).toBeInTheDocument()
+    expect(screen.queryByText("video.mp4")).not.toBeInTheDocument()
+    fireEvent.change(counted(), { target: { value: "9" } })
+    fireEvent.click(submit())
+    await waitFor(() => expect(recordReceipt).toHaveBeenCalled())
+    const input0 = recordReceipt.mock.calls[0][2] as { attachmentUrls: string[]; checklist: string[] }
+    expect(input0.attachmentUrls).toHaveLength(1)
+    expect(input0.attachmentUrls[0]).toMatch(/^https:\/\/files\/deliveries\/receipts\/d1\/\d+_0_pallets\.jpg$/)
+    expect(input0.checklist).toContain("photos")
   })
 })

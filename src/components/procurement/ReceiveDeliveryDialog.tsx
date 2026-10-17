@@ -14,13 +14,14 @@
 // arrival with no notice against an order (`po` alone), and a legacy notice
 // (`delivery` with neither order nor lines).
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage"
 import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, ChevronDown, Loader2, PackageCheck, ShieldAlert, Truck } from "lucide-react"
-import { useFirestore } from "@/firebase"
+import { AlertTriangle, ChevronDown, FileText, Image as ImageIcon, Loader2, PackageCheck, Paperclip, ShieldAlert, Truck, X } from "lucide-react"
+import { useFirestore, useStorage } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -40,6 +41,11 @@ import type { DeskDelivery } from "@/lib/procurement/receipt-desk"
 import { ReceiptValidationError, countedLines, createArrivalWithoutNotice, legacyLinesOf, linesForReceipt, recordReceipt, validateReceiptLines, type PurchaseSource, type RecordReceiptResult } from "@/lib/procurement/receipt-writes"
 import type { DeliveryLine, HoldReasonCode, ProcActor, ProcurementPolicies, PurchaseOrder, ReceiptCheck, RejectReasonCode } from "@/lib/procurement/types"
 import { ProcWriteError } from "@/lib/procurement/writes"
+
+/** The receiver's attachments (photos, weighbridge ticket, certificate — PRD Supplier ORD-12): images and PDFs. */
+const MAX_FILES = 6
+const MAX_FILE_BYTES = 15 * 1024 * 1024
+const acceptable = (f: File) => f.type.startsWith("image/") || f.type === "application/pdf"
 
 const lineSchema = z.object({
   poLineId: z.string(),
@@ -126,6 +132,9 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
   const [signature, setSignature] = useState<string | null>(null)
   const [openReject, setOpenReject] = useState<Record<string, boolean>>({})
   const [openHold, setOpenHold] = useState<Record<string, boolean>>({})
+  const storage = useStorage()
+  const [files, setFiles] = useState<File[]>([])
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const legacy = Boolean(delivery) && !po && !(delivery?.lines && delivery.lines.length)
   const noNotice = !delivery && Boolean(po)
@@ -185,6 +194,7 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
     setSignature(report?.signatureData || null)
     setOpenReject(Object.fromEntries((report?.lines || []).filter((l) => l.rejected > 0).map((l) => [l.poLineId, true])))
     setOpenHold(Object.fromEntries((report?.lines || []).filter((l) => (l.held ?? 0) > 0).map((l) => [l.poLineId, true])))
+    setFiles([])
   }, [open, base, actor.name, delivery, defaultWarehouseId, reset])
 
   // useWatch, not watch: watch("lines") hands back the same array RHF mutates in
@@ -205,6 +215,27 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
   const formErrors = errors.filter((e) => !e.poLineId)
   const totalAccepted = round2(countedLines(domainLines).reduce((s, l) => s + acceptedOf(l), 0))
 
+  const addFiles = (list: FileList | null) => {
+    const picked = Array.from(list || [])
+    const ok = picked.filter((f) => acceptable(f) && f.size > 0 && f.size < MAX_FILE_BYTES)
+    if (ok.length < picked.length) toast({ title: t("receive.attachRefused"), variant: "destructive" })
+    setFiles((cur) => [...cur, ...ok].slice(0, MAX_FILES))
+    if (fileRef.current) fileRef.current.value = ""
+  }
+
+  /** Uploaded with the receipt, under its notice (or order); a photo ticks "photos" on the checklist. */
+  const uploadFiles = async (): Promise<string[]> => {
+    if (!files.length || !storage) return []
+    const key = delivery?.id || po?.id || actor.uid
+    return Promise.all(
+      files.map(async (f, i) => {
+        const r = storageRef(storage, `deliveries/receipts/${key}/${Date.now()}_${i}_${f.name.replace(/[^A-Za-z0-9._\u0600-\u06FF-]+/g, "_")}`)
+        await uploadBytes(r, f, { contentType: f.type })
+        return getDownloadURL(r)
+      })
+    )
+  }
+
   const toggleCheck = (c: ReceiptCheck, on: boolean) => {
     const cur = new Set(checklist || [])
     if (on) cur.add(c)
@@ -218,9 +249,13 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
     if (!firestore) return
     setSaving(true)
     try {
+      const attachmentUrls = await uploadFiles()
+      const checks = new Set(values.checklist as ReceiptCheck[])
+      if (files.some((f) => f.type.startsWith("image/"))) checks.add("photos")
       const common = {
         receiverName: values.receiverName,
-        checklist: values.checklist as ReceiptCheck[],
+        checklist: Array.from(checks),
+        attachmentUrls,
         signatureData: signature,
         vehiclePlate: values.vehiclePlate,
         paperNoteNumber: values.paperNoteNumber,
@@ -472,6 +507,31 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
                 ))}
               </div>
             )}
+
+            <div className="space-y-2">
+              <p className="text-xs font-bold text-muted-foreground">{t("receive.attachTitle")}</p>
+              <input ref={fileRef} id="rcv-files" type="file" multiple accept="image/*,application/pdf" className="sr-only" onChange={(e) => addFiles(e.target.files)} />
+              {files.length > 0 && (
+                <ul className="space-y-1">
+                  {files.map((f, i) => (
+                    <li key={`${f.name}-${i}`} className="flex min-h-[44px] items-center gap-2 rounded-md border px-3 text-sm">
+                      {f.type.startsWith("image/") ? <ImageIcon size={15} className="shrink-0 text-muted-foreground" aria-hidden="true" /> : <FileText size={15} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
+                      <bdi className="min-w-0 flex-1 truncate">{f.name}</bdi>
+                      <Button type="button" variant="ghost" size="sm" className="h-8 w-8 shrink-0 p-0" aria-label={t("receive.attachRemove", { name: f.name })} onClick={() => setFiles((cur) => cur.filter((_, k) => k !== i))}>
+                        <X size={14} aria-hidden="true" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {files.length < MAX_FILES && (
+                <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => fileRef.current?.click()}>
+                  <Paperclip size={14} aria-hidden="true" />
+                  {t("receive.attachAdd")}
+                </Button>
+              )}
+              <p className="text-[11px] text-muted-foreground">{t("receive.attachHint", { n: MAX_FILES })}</p>
+            </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {noNotice && (

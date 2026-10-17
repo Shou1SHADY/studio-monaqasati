@@ -13721,6 +13721,11 @@
         "noNotice": "No notice"
       },
       "receive": {
+        "attachTitle": "Attachments — photos, weighbridge ticket, certificate",
+        "attachAdd": "Add files",
+        "attachRemove": "Remove {name}",
+        "attachHint": "Images or PDF, up to {n} files, 15 MB each. The supplier sees them on the receipt.",
+        "attachRefused": "Some files were not added: images or PDF under 15 MB only.",
         "title": "Receiver screen — record what arrived",
         "supplier": "Supplier",
         "order": "Purchase order",

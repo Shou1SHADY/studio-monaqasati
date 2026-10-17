@@ -18,7 +18,7 @@
 // Nothing here decides for Procurement: an order that is complete after the
 // receipt stays `accepted` (its status is derived) until Procurement closes it.
 
-import { addDoc, collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, type DocumentReference, type Firestore, type Transaction } from "firebase/firestore"
+import { addDoc, arrayUnion, collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, type DocumentReference, type Firestore, type Transaction } from "firebase/firestore"
 import { onGoodsReceived } from "../accounting/hooks"
 import { markPurchaseArrived, type WorkOrderV2 } from "../manufacturing-writes"
 import { orderRef as workOrderRef } from "../manufacturing-view"
@@ -328,6 +328,9 @@ export interface RecordReceiptInput {
   lines?: DeliveryLine[] | null
   receiverName: string
   checklist?: ReceiptCheck[] | null
+  /** Files the receiver attaches (photos, weighbridge ticket, certificate — PRD Supplier ORD-12); added beside any
+   * the notice already carries. */
+  attachmentUrls?: string[] | null
   signatureData?: string | null
   vehiclePlate?: string | null
   paperNoteNumber?: string | null
@@ -411,6 +414,7 @@ export async function recordReceipt(firestore: Firestore, actor: ProcActor, inpu
       confirmedByUserId: actor.uid,
       confirmedByName: actor.name,
       checklist: input.checklist || [],
+      ...(input.attachmentUrls?.length ? { attachmentUrls: arrayUnion(...input.attachmentUrls) } : {}),
       vehiclePlate: input.vehiclePlate?.trim() || null,
       paperNoteNumber: input.paperNoteNumber?.trim() || null,
       receiptNote: input.note?.trim() || null,
