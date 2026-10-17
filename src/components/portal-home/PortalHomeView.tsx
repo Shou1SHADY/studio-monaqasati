@@ -77,6 +77,10 @@ export interface PortalHomeViewProps {
   decisions: { loading: boolean; items: HomeDecision[] }
   /** A short note under the greeting (a new free account: nothing yet, and how to complete the profile — TDY-07). */
   banner?: ReactNode
+  /** Opt-in: "+N more" becomes a button that lists every decision here ("All tasks (N)" — Supplier TDY-04). */
+  allDecisions?: { all: string; fewer: string }
+  /** A section of the portal's own under the decisions (the free supplier's open requests — TDY-05). */
+  after?: ReactNode
 }
 
 type HomeT = ReturnType<typeof useTranslations<"Portal.Home">>
@@ -93,7 +97,7 @@ function relativeTimeLabel(ms: number, t: HomeT): string {
 /** A figure long enough (an amount with its unit) to need wrapping in a phone-width hero cell. */
 const longFigure = (v: unknown) => typeof v === "string" && v.length > 8
 
-export function PortalHomeView({ profile, orgId, companyName, modules, kpis, tileStats, badges, urgentTiles, recent, decisions, banner }: PortalHomeViewProps) {
+export function PortalHomeView({ profile, orgId, companyName, modules, kpis, tileStats, badges, urgentTiles, recent, decisions, banner, allDecisions, after }: PortalHomeViewProps) {
   const openSubscription = usePortalFrame()?.openSubscription
   const firestore = useFirestore()
   const { user } = useUser()
@@ -180,7 +184,9 @@ export function PortalHomeView({ profile, orgId, companyName, modules, kpis, til
     )
   }
 
+  const [showAllDecisions, setShowAllDecisions] = useState(false)
   const top3 = decisions.items.slice(0, 3)
+  const shownDecisions = allDecisions && showAllDecisions ? decisions.items : top3
 
   return (
     <div className="space-y-6 pb-10">
@@ -394,7 +400,19 @@ export function PortalHomeView({ profile, orgId, companyName, modules, kpis, til
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-black text-foreground">{t("home_priorities_title")}</h2>
-          {decisions.items.length > 3 && <span className="text-[12.5px] font-semibold text-cta">{t("home_priorities_more", { count: decisions.items.length - 3 })}</span>}
+          {decisions.items.length > 3 &&
+            (allDecisions ? (
+              <button
+                type="button"
+                aria-expanded={showAllDecisions}
+                onClick={() => setShowAllDecisions((v) => !v)}
+                className="rounded text-[12.5px] font-semibold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {showAllDecisions ? allDecisions.fewer : allDecisions.all}
+              </button>
+            ) : (
+              <span className="text-[12.5px] font-semibold text-cta">{t("home_priorities_more", { count: decisions.items.length - 3 })}</span>
+            ))}
         </div>
         {decisions.loading ? (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -404,7 +422,7 @@ export function PortalHomeView({ profile, orgId, companyName, modules, kpis, til
           <div className="rounded-2xl border border-border/60 bg-white shadow-sm p-8 text-center text-sm text-muted-foreground">{t("home_priorities_empty")}</div>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {top3.map((item) => {
+            {shownDecisions.map((item) => {
               const moduleComponent = modules.find((c) => c.id === item.moduleId)
               const moduleAccent = moduleComponent ? COMPONENT_ACCENT_CLASSES[moduleComponent.accentToken] : null
               const ModuleIcon = moduleComponent?.icon
@@ -459,6 +477,8 @@ export function PortalHomeView({ profile, orgId, companyName, modules, kpis, til
           </div>
         )}
       </div>
+
+      {after}
     </div>
   )
 }
