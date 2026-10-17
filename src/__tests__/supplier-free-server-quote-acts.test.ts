@@ -215,3 +215,40 @@ describe("withdraw, sample sent, decline", () => {
     expect(await refusal(run(withDb({ "rfqs/r1": rfq() }), { action: "quote.decline", rfqId: "r1" }))).toBe("not_reached")
   })
 })
+
+// ---- NFR-06: every act on a quote leaves who, when and what changed ------------------------------------------------
+
+describe("the quote's log (NFR-06)", () => {
+  const logOf = (db: FakeDb, offerId: string) =>
+    [...db.docs].filter(([k]) => k.startsWith(`offers/${offerId}/log/`)).map(([, d]) => d as Doc & { action: string; detail: Doc })
+
+  it("records the new quote, each version, the final answer, the sample and the withdrawal, by name and time", async () => {
+    const db = withDb({ "rfqs/r1": rfq() })
+    const { offerId } = (await run(db, { action: "quote.new", rfqId: "r1", values: values() })) as { offerId: string }
+    await run(db, { action: "quote.version", offerId, mode: "edit", values: values({ prices: { i1: "2", i2: "3" } }) })
+    db.docs.set(`offers/${offerId}`, { ...(db.docs.get(`offers/${offerId}`) as Doc), status: "مطلوب تخفيض", reductionBy: "2026-10-16", sampleStatus: "مطلوبة" })
+    await run(db, { action: "quote.final", offerId, note: "أقل سعر" })
+    await run(db, { action: "quote.sample", offerId, sentAt: "2026-10-12", receivedBy: "خالد" })
+    await run(db, { action: "quote.withdraw", offerId })
+    const log = logOf(db, offerId)
+    expect(log.map((e) => e.action)).toEqual(["quote.new", "quote.version", "quote.final", "quote.sample", "quote.withdraw"])
+    for (const e of log) expect(e).toMatchObject({ at: NOW.toISOString(), byId: "su", byName: "Sami", orgId: "sup" })
+    expect(log[0].detail).toMatchObject({ total: 400, validUntil: "2026-10-27" })
+    expect(log[1].detail).toMatchObject({ mode: "edit", version: 2, total: 350, from: 400 })
+    expect(log[2].detail).toMatchObject({ note: "أقل سعر" })
+    expect(log[3].detail).toMatchObject({ sentAt: "2026-10-12", receivedBy: "خالد" })
+    expect(log[4].detail).toMatchObject({ from: "قيد المراجعة" })
+  })
+
+  it("a refused act writes nothing to the log", async () => {
+    const db = withDb({ "rfqs/r1": rfq({ deadline: "2026-10-12" }), "offers/o1": offer() })
+    expect(await refusal(run(db, { action: "quote.withdraw", offerId: "o1" }))).toBe("deadline")
+    expect(logOf(db, "o1")).toHaveLength(0)
+  })
+
+  it("a declined invitation names who declined it", async () => {
+    const db = withDb({ "rfqs/r1": rfq({ visibility: "private", allowedSupplierOrgIds: ["sup"] }) })
+    await run(db, { action: "quote.decline", rfqId: "r1", note: "لا مخزون" })
+    expect(db.docs.get("supplierWorkspace/sup")).toMatchObject({ declined: { r1: { byId: "su", byName: "Sami", atTime: NOW.toISOString() } } })
+  })
+})
