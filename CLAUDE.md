@@ -547,6 +547,8 @@ node scripts/deploy-rules.js prod           # service-account creds from .env.lo
 node scripts/deploy-rules.js uat --check
 node scripts/deploy-rules.js uat            # gcloud token if gcloud is installed, else the
                                             # service account in .env.uat (no gcloud on the WSL box)
+node scripts/deploy-rules.js prod --storage --check   # the same for storage.rules (finds the
+node scripts/deploy-rules.js prod --storage           # project's firebase.storage release itself)
 node scripts/deploy-indexes.js prod --check # composite indexes of firestore.indexes.json the
 node scripts/deploy-indexes.js prod         # project lacks — creates only those, deletes nothing
 ```

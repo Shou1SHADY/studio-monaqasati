@@ -9,9 +9,9 @@ service firebase.storage {
     // that a file exists); images and PDFs up to 15 MB; never overwritten or
     // deleted from the client.
     //
-    // NOTE: the catch-all below still lets ANY signed-in user read and write
-    // every path, this one included — rules are OR-ed, so this block takes
-    // effect only once the catch-all is narrowed. It is kept as the contract.
+    // NOTE: the open rule at the end still lets ANY signed-in user read and write
+    // this path — rules are OR-ed, so this block takes effect only once that rule
+    // excludes `organizations`. It is kept as the contract.
     match /organizations/{orgId}/hr/employees/{employeeId}/{fileName} {
       function member() {
         let u = firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
@@ -40,9 +40,29 @@ service firebase.storage {
       allow update, delete: if false;
     }
 
-    match /{allPaths=**} {
-      // Allow any authenticated user to read and write to storage
-      allow read, write: if request.auth != null;
+    // Companies' legal documents — the commercial registration, the tax certificate, the national address, the IBAN
+    // letter (supplier onboarding, 18 Oct 2026). Only their uploader reads, lists or writes them through Storage; the
+    // admin, the company and the contractors who may see one open it by the link saved on the company's record. They
+    // used to fall under the catch-all, which let any signed-in user list and overwrite every company's papers.
+    // No cross-service lookup here on purpose: the uploader's own id is in the path.
+    match /legalDocuments/{uid}/{rest=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /suppliers/{orgId}/documents/{uid}/{fileName} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    // Free-account documents uploaded before the uploader's id joined the path: the primary company's owner only.
+    match /suppliers/{orgId}/documents/{fileName} {
+      allow read, write: if request.auth != null && request.auth.uid == orgId;
+    }
+
+    // Everything else: any signed-in user, as before. A supplier's other folders (quotes, invoices, warranties, files)
+    // stay open; the two folders above never fall through to here.
+    match /{top}/{rest=**} {
+      allow read, write: if request.auth != null && top != 'legalDocuments' && top != 'suppliers';
+    }
+    match /suppliers/{orgId}/{folder}/{rest=**} {
+      allow read, write: if request.auth != null && folder != 'documents';
     }
   }
 }

@@ -10,6 +10,9 @@
 //   node scripts/deploy-rules.js <prod|uat> --check
 //                                                — READ-ONLY: which ruleset is live, when it was released,
 //                                                  and whether it matches the file byte for byte
+//   node scripts/deploy-rules.js <prod|uat> --storage [--check]
+//                                                — the same for storage.rules (the project's firebase.storage
+//                                                  release, found by listing the releases — never a guessed bucket)
 //
 // Always `git fetch` and diff firestore.rules against origin/main BEFORE
 // running this: deploying a stale local copy wipes other sessions' rules.
@@ -24,6 +27,8 @@ const { execSync } = require("child_process")
 const target = process.argv[2]
 const checkOnly = process.argv.includes("--check")
 const force = process.argv.includes("--force")
+const storageMode = process.argv.includes("--storage")
+const RULES_FILE = storageMode ? "storage.rules" : "firestore.rules"
 if (target !== "prod" && target !== "uat") {
   console.error("usage: node scripts/deploy-rules.js <prod|uat> [--check]")
   process.exit(1)
@@ -31,7 +36,7 @@ if (target !== "prod" && target !== "uat") {
 // Only the chosen target's credentials are loaded — never both.
 require("dotenv").config({ path: target === "uat" ? ".env.uat" : ".env.local" })
 
-const source = fs.readFileSync("firestore.rules", "utf8")
+const source = fs.readFileSync(RULES_FILE, "utf8")
 const base = "https://firebaserules.googleapis.com/v1"
 
 // Ask gcloud for the token rather than probing for the binary: `command -v` is a
@@ -94,9 +99,18 @@ async function token() {
   const h = { Authorization: "Bearer " + (await token()), "Content-Type": "application/json" }
   if (quotaHeader) h["x-goog-user-project"] = project
 
+  // Firestore has one release; Storage has one per bucket — the default bucket's, found by listing.
+  let releaseName = `projects/${project}/releases/cloud.firestore`
+  if (storageMode) {
+    const list = await fetch(`${base}/projects/${project}/releases?pageSize=100`, { headers: h }).then((r) => r.json())
+    const found = (list.releases || []).map((r) => r.name).filter((n) => n.includes("/releases/firebase.storage/"))
+    if (found.length !== 1) throw new Error(`expected one firebase.storage release, found ${found.length}: ${found.join(", ")}`)
+    releaseName = found[0]
+  }
+
   const live = async () => {
-    const rel = await fetch(`${base}/projects/${project}/releases/cloud.firestore`, { headers: h }).then((r) => r.json())
-    if (!rel.rulesetName) throw new Error(`no cloud.firestore release: ${JSON.stringify(rel).slice(0, 300)}`)
+    const rel = await fetch(`${base}/${releaseName}`, { headers: h }).then((r) => r.json())
+    if (!rel.rulesetName) throw new Error(`no ${releaseName} release: ${JSON.stringify(rel).slice(0, 300)}`)
     const rs = await fetch(`${base}/${rel.rulesetName}`, { headers: h }).then((r) => r.json())
     return { id: rel.rulesetName.split("/").pop(), updated: rel.updateTime, content: rs.source.files[0].content }
   }
@@ -118,10 +132,10 @@ async function token() {
       // splits the command at a "|", which turned this whole lookup into a
       // silent failure on Windows — and its catch reports the alarming
       // "someone deployed uncommitted rules".
-      const commits = execSync('git log --format="%h %ad %s" --date=short -- firestore.rules', { maxBuffer: 1 << 24 }).toString().trim().split("\n")
+      const commits = execSync(`git log --format="%h %ad %s" --date=short -- ${RULES_FILE}`, { maxBuffer: 1 << 24 }).toString().trim().split("\n")
       for (const line of commits) {
         const h = line.split(" ")[0]
-        if (same(execSync(`git show ${h}:firestore.rules`, { maxBuffer: 1 << 26 }).toString(), content)) return line
+        if (same(execSync(`git show ${h}:${RULES_FILE}`, { maxBuffer: 1 << 26 }).toString(), content)) return line
       }
     } catch {
       /* not a git checkout */
@@ -137,7 +151,7 @@ async function token() {
       : from
         ? `is the file as committed in ${from} — deploying loses nothing`
         : "matches NO commit in the file's history — someone deployed rules this checkout has never seen (uncommitted, or not fetched yet); `git fetch`, merge and compare before overwriting"
-    console.log(`${target.toUpperCase()} project=${project} live ruleset ${l.id} released ${l.updated} (${l.content.length} chars; file ${source.length}) — ${verdict}`)
+    console.log(`${target.toUpperCase()}${storageMode ? " STORAGE" : ""} project=${project} live ruleset ${l.id} released ${l.updated} (${l.content.length} chars; file ${source.length}) — ${verdict}`)
     return
   }
 
@@ -153,7 +167,7 @@ async function token() {
   }
   if (!force && !commitOf(before.content)) {
     console.error(
-      `refusing: the live ruleset ${before.id} (released ${before.updated}, ${before.content.length} chars) matches NO commit in this checkout's history of firestore.rules.\n` +
+      `refusing: the live ruleset ${before.id} (released ${before.updated}, ${before.content.length} chars) matches NO commit in this checkout's history of ${RULES_FILE}.\n` +
         "Someone deployed rules you do not have. `git fetch origin`, merge, and run again — or pass --force once you have compared them."
     )
     process.exit(2)
@@ -162,7 +176,7 @@ async function token() {
   let res = await fetch(`${base}/projects/${project}/rulesets`, {
     method: "POST",
     headers: h,
-    body: JSON.stringify({ source: { files: [{ name: "firestore.rules", content: source }] } }),
+    body: JSON.stringify({ source: { files: [{ name: RULES_FILE, content: source }] } }),
   })
   let body = await res.json()
   if (!res.ok) {
@@ -171,11 +185,11 @@ async function token() {
   }
   const rulesetName = body.name
 
-  res = await fetch(`${base}/projects/${project}/releases/cloud.firestore`, {
+  res = await fetch(`${base}/${releaseName}`, {
     method: "PATCH",
     headers: h,
     body: JSON.stringify({
-      release: { name: `projects/${project}/releases/cloud.firestore`, rulesetName },
+      release: { name: releaseName, rulesetName },
       updateMask: "rulesetName",
     }),
   })

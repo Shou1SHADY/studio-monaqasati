@@ -409,7 +409,7 @@ function LegalTab() {
     if (!storage) return
     setBusy(k)
     try {
-      const up = await uploadSupplierFile(storage, profile.orgId, "documents", file)
+      const up = await uploadSupplierFile(storage, profile.orgId, "documents", file, profile.uid)
       if (k === "conf") {
         await save({ certificates: [...(facts.certificates || []), { name: file.name, url: up.url, expiryDate: expiry[k] || "" }] })
       } else {
@@ -512,7 +512,7 @@ function WorksTab() {
     try {
       if (kind === "work") await save({ projects: [...works, { name: v.name, client: v.client, year: v.year, value: v.value }] })
       else {
-        const up = file && storage ? await uploadSupplierFile(storage, profile.orgId, "documents", file) : null
+        const up = file && storage ? await uploadSupplierFile(storage, profile.orgId, "documents", file, profile.uid) : null
         await save({ certificates: [...(((raw.certificates as unknown[]) || []) as object[]), { name: v.name, expiryDate: v.exp, ...(up ? { url: up.url } : {}) }] })
       }
       toast({ title: t("tSaved") })
