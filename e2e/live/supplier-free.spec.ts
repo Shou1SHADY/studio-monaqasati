@@ -32,23 +32,24 @@ test.describe('what was changed, on the live build', () => {
   test.use({ viewport: { width: 1280, height: 800 } })
 
   for (const path of ['/supplier/orders', '/supplier/invoices', '/supplier/offers', '/supplier/connections', '/supplier/profile']) {
-    test(`${path}: the tab strip is the prototype grey track with rounded tabs`, async ({ page }) => {
+    test(`${path}: the tab strip is the portal's segmented pills — the same as the contractor's lists`, async ({ page }) => {
       await page.goto(path)
       await expectLoaded(page)
-      const track = page.getByRole('tablist').first()
-      await expect(track).toBeVisible()
-      const css = await track.evaluate((el) => ({ bg: getComputedStyle(el).backgroundColor, radius: getComputedStyle(el).borderRadius }))
-      expect(css.bg).toBe('rgb(241, 245, 249)')
-      expect(css.radius).toBe('12px')
+      const strip = page.getByRole('tablist').first()
+      await expect(strip).toBeVisible()
+      const tabs = strip.getByRole('tab')
+      expect(await tabs.count()).toBeGreaterThanOrEqual(2)
+      await expect(tabs.first()).toHaveCSS('border-radius', '9999px')
+      await expect(strip.locator('[aria-selected="true"]')).toHaveCount(1)
     })
   }
 
-  test('notifications: the unread dot is the brand blue', async ({ page }) => {
+  test('notifications: the unread dot is red, as everywhere else in the portal', async ({ page }) => {
     await page.goto('/supplier/notifications')
     await expectLoaded(page)
     const dot = page.locator('span.h-2.w-2.rounded-full').first()
     test.skip((await dot.count()) === 0, 'no unread notification on this account')
-    await expect(dot).toHaveCSS('background-color', 'rgb(3, 105, 161)')
+    await expect(dot).toHaveCSS('background-color', 'rgb(239, 68, 68)')
   })
 
   test('orders: a row opens the deal drawer with the five-step tracker, and Escape closes it', async ({ page }) => {
@@ -88,6 +89,10 @@ test.describe('what was changed, on the live build', () => {
     const row = page.locator('li.cursor-pointer').first()
     test.skip((await row.count()) === 0, 'no order on this account')
     await row.click()
-    await expect(page.getByRole('dialog').getByRole('textbox').first()).toBeVisible()
+    const drawer = page.getByRole('dialog')
+    await expect(drawer).toBeVisible()
+    const section = drawer.locator('button[aria-expanded]').last()
+    if ((await section.getAttribute('aria-expanded')) !== 'true') await section.click()
+    await expect(drawer.getByRole('textbox').first()).toBeVisible()
   })
 })
