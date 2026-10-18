@@ -44,6 +44,11 @@ describe("reportTransferToSupplier", () => {
     expect(callAct).toHaveBeenCalledWith({ action: "transfer.report", poId: "po1", amount: 1150, bank: "Al Rajhi", reference: "TX-9", valueDate: "2026-10-12" })
   })
 
+  it("passes Finance's payment number along", async () => {
+    await reportTransferToSupplier(db, actor(), true, po, { ...input, paymentNo: "PAY-2026/041-1" })
+    expect(callAct).toHaveBeenCalledWith(expect.objectContaining({ action: "transfer.report", paymentNo: "PAY-2026/041-1" }))
+  })
+
   it("refuses someone who is not Finance, a zero amount and an off-platform supplier before asking", async () => {
     await expect(reportTransferToSupplier(db, actor(), false, po, input)).rejects.toMatchObject({ code: "no_permission" })
     await expect(reportTransferToSupplier(db, actor(), true, po, { ...input, amount: 0 })).rejects.toBeInstanceOf(ProcWriteError)

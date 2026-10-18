@@ -13,6 +13,8 @@ export interface TransferInput {
   bank: string
   reference: string
   valueDate: string
+  /** Finance's payment number on the order (`PAY-…-n`) — the supplier quotes it when he answers. */
+  paymentNo?: string | null
 }
 
 /** The server checks who is asking and tells the supplier; a refusal comes back as the write errors the drawer already says. */
@@ -28,7 +30,7 @@ async function act(body: Record<string, unknown>): Promise<Record<string, unknow
 export async function reportTransferToSupplier(_firestore: Firestore, _actor: ProcActor, isFinance: boolean, po: PurchaseOrder, input: TransferInput): Promise<string> {
   if (!isFinance) throw new ProcWriteError("no_permission")
   if (!(input.amount > 0) || !po.supplierOrgId || po.supplierOrgId === "guest") throw new ProcWriteError("wrong_state")
-  const r = await act({ action: "transfer.report", poId: po.id, amount: input.amount, bank: input.bank.trim(), reference: input.reference.trim(), valueDate: input.valueDate })
+  const r = await act({ action: "transfer.report", poId: po.id, amount: input.amount, bank: input.bank.trim(), reference: input.reference.trim(), valueDate: input.valueDate, ...(input.paymentNo ? { paymentNo: input.paymentNo } : {}) })
   return String(r.id || "")
 }
 

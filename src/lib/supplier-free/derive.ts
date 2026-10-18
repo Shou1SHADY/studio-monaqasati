@@ -521,6 +521,7 @@ export function deriveWorld(raw: RawWorld): World {
           note: str(t.note) || undefined,
           id: str(t.id),
         }
+        if (str(t.paymentNo)) pay.no = str(t.paymentNo)
         deal.pays.push(pay)
       }
       deal.pays.sort((a, b) => dayNum(a.at || "1970-01-01") - dayNum(b.at || "1970-01-01") || str(a.id).localeCompare(str(b.id)))

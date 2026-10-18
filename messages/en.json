@@ -13237,7 +13237,8 @@
         "warranty_ok": "Accepted",
         "warranty_wait": "Waiting for acceptance",
         "warranty_accept": "Accept warranty",
-        "toast_warranty": "Warranty accepted and the supplier was told"
+        "toast_warranty": "Warranty accepted and the supplier was told",
+        "bank": "Bank account (as the supplier keeps it)"
       },
       "title": "Purchase orders",
       "desc": "An approved PO reaches Finance as a commitment and the receiver to receive against — the invoice and payment are Finance's",
@@ -26129,6 +26130,21 @@
     "apprGo": "Go to documents",
     "errNotApproved": "Your company is not approved yet — upload your documents and request approval",
     "errQuota": "You have used this month's free quotes. Subscribe to send more.",
-    "quotaLeft": "You have sent {used} of this month's {limit} free quotes."
+    "quotaLeft": "You have sent {used} of this month's {limit} free quotes.",
+    "payNo": "Payment {no}",
+    "fPayNo": "Contractor's payment no.",
+    "rejReplace": "Contractor: to be replaced",
+    "rejReplaceBy": "Contractor: replace by {x}",
+    "rejReduce": "Contractor: deducted from the order",
+    "rejDiscountWait": "Contractor: keeps it at a discount — awaiting release",
+    "rejDiscountReleased": "Contractor: kept at a discount — billable",
+    "rejUndecided": "Awaiting the contractor's decision",
+    "fCoEn": "Company name in English",
+    "abNameEnHint": "As it should appear on English documents and invoices",
+    "bankT": "Bank account",
+    "bankSub": "Where contractors transfer your payments. Only you, Mdmak Tech and the contractors you deal with see it — the IBAN letter in Documents is the proof.",
+    "fIban": "IBAN",
+    "fBankName": "Bank name",
+    "ibanBad": "A Saudi IBAN is SA followed by 22 digits"
   }
 }

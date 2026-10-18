@@ -585,6 +585,14 @@ function PayOk({ f, d, env, onClose, refId }: P & { refId?: string }) {
             {tr.ref}
           </dd>
         </div>
+        {tr.no && (
+          <div>
+            <dt className="text-xs text-muted-foreground">{t("fPayNo")}</dt>
+            <dd className="font-bold" dir="ltr">
+              {tr.no.replace(/^\D+-?/, "")}
+            </dd>
+          </div>
+        )}
       </dl>
     </Shell>
   )

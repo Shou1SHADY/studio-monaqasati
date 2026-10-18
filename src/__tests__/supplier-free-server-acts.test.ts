@@ -216,6 +216,13 @@ describe("the contractor's acts", () => {
     expect(notifyNamed).toHaveBeenCalledWith(db, expect.anything(), expect.objectContaining({ kind: "po_payment_reported", params: expect.objectContaining({ contractor: "Binaa Co", amount: "sar:1150" }) }), ["sup", "sup"], { owner: false })
   })
 
+  it("carries Finance's payment number to the supplier when the payment reported it", async () => {
+    caller(["invoices.manage"])
+    const db = withDb({ "purchaseOrders/po1": po({ status: "accepted" }), "users/buyer": { companyName: "Binaa Co" } })
+    const r = await runBuyerAct(db as never, "bu", actSchema.parse({ action: "transfer.report", poId: "po1", amount: 1150, bank: "Rajhi", reference: "T9", valueDate: "2026-10-12", paymentNo: "PAY-2026/041-1" }), NOW)
+    expect(db.get(`supplierTransfers/${String(r.id)}`)).toMatchObject({ paymentNo: "PAY-2026/041-1" })
+  })
+
   it("not without the permission, not on another company's order, not for a guest supplier", async () => {
     caller(["offers.accept"])
     expect(await refusal(runBuyerAct(withDb({ "purchaseOrders/po1": po() }) as never, "bu", report, NOW))).toBe("no_permission")

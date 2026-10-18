@@ -70,7 +70,7 @@ export const actSchema = z.discriminatedUnion("action", [
     until: day,
     file: z.object({ name: z.string().trim().min(1).max(200), url: z.string().url().max(2000) }),
   }),
-  z.object({ action: z.literal("transfer.report"), poId: id, amount: z.number().positive().max(1e9), bank: z.string().trim().max(120), reference: z.string().trim().min(1).max(120), valueDate: day }),
+  z.object({ action: z.literal("transfer.report"), poId: id, amount: z.number().positive().max(1e9), bank: z.string().trim().max(120), reference: z.string().trim().min(1).max(120), valueDate: day, paymentNo: z.string().trim().max(60).optional() }),
   z.object({ action: z.literal("warranty.accept"), warrantyId: id }),
   // The buyer reopens an award whose order the supplier declined (DEC).
   z.object({ action: z.literal("award.reopen"), poId: id }),
@@ -441,6 +441,8 @@ export async function runBuyerAct(db: Firestore, uid: string, act: Act, now: Dat
       amount: round2(act.amount),
       bank: act.bank,
       ref: act.reference,
+      // Finance's payment number on the order — the supplier reads it beside the bank reference.
+      paymentNo: act.paymentNo || null,
       valueDate: act.valueDate,
       state: "sent",
       answers: [],

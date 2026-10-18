@@ -153,6 +153,8 @@ export interface DealTransfer {
   okAt?: string
   note?: string
   id?: string
+  /** The contractor's payment number (`PAY-2026/041-1`), when Finance's payment reported it. */
+  no?: string
 }
 
 export interface DealWarranty {

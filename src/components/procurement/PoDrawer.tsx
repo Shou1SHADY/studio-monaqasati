@@ -1083,7 +1083,8 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                   // he was not told, Finance must know it (never a silent catch).
                   if (po.supplierOrgId && po.supplierOrgId !== "guest") {
                     try {
-                      await reportTransferToSupplier(f, actor, isFinance, po, { amount: input.amount, bank: input.bank || "", reference: input.reference, valueDate: input.valueDate })
+                      const paymentNo = (paid.financePayments || []).at(-1)?.no || null
+                      await reportTransferToSupplier(f, actor, isFinance, po, { amount: input.amount, bank: input.bank || "", reference: input.reference, valueDate: input.valueDate, paymentNo })
                     } catch (err) {
                       console.error("transfer not reported to the supplier:", err)
                       toast({ title: t("supplier.transfer_not_told"), description: t("supplier.transfer_not_told_desc"), variant: "destructive" })

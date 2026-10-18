@@ -274,6 +274,14 @@ export function SecOffer({ f, d }: { f: Free; d: Deal }) {
 
 // ---- The purchase order -------------------------------------------------------------------------------------
 
+/** The contractor's decision on a line's rejected quantity, as the supplier reads it. */
+function rejDecision(f: Free, l: { dec?: "replace" | "discount" | "reduce" | null; repl?: string | null; dst?: "wait" | "released" | null }): string {
+  if (l.dec === "replace") return l.repl ? f.t("rejReplaceBy", { x: f.fmt.date(l.repl, true) }) : f.t("rejReplace")
+  if (l.dec === "reduce") return f.t("rejReduce")
+  if (l.dec === "discount") return f.t(l.dst === "released" ? "rejDiscountReleased" : "rejDiscountWait")
+  return f.t("rejUndecided")
+}
+
 export function SecPo({ f, d }: { f: Free; d: Deal }) {
   const { t, fmt, L } = f
   const po = d.po
@@ -314,7 +322,13 @@ export function SecPo({ f, d }: { f: Free; d: Deal }) {
                 <td className={cn(td, stk.cell)} data-l={t("thUnitPrice")}><span dir="ltr">{l.price != null ? fmt.money(l.price) : "—"}</span></td>
                 <td className={cn(td, stk.cell)} data-l={t("thOrdered")}><span dir="ltr">{fmt.n(s.ord)} {i?.unit}</span></td>
                 <td className={cn(td, stk.cell)} data-l={t("thGot")}><span dir="ltr">{fmt.n(s.got)}</span></td>
-                {anyRej && <td className={cn(td, "text-destructive", stk.cell)} data-l={t("thRej")}><span dir="ltr">{fmt.n(s.rej)}</span></td>}
+                {anyRej && (
+                  <td className={cn(td, stk.cell)} data-l={t("thRej")}>
+                    <span className="text-destructive" dir="ltr">{fmt.n(s.rej)}</span>
+                    {/* What the contractor decided about it (decision 3) — replace, deduct, or keep at a discount. */}
+                    {s.rej > 0 && <span className="block text-[11px] text-muted-foreground">{rejDecision(f, l)}</span>}
+                  </td>
+                )}
                 {anyCan && <td className={cn(td, stk.cell)} data-l={t("thCan")}><span dir="ltr">{fmt.n(s.can)}</span></td>}
                 <td className={cn(td, "font-bold", stk.cell)} data-l={t("thLeft")}><span dir="ltr">{fmt.n(s.left)}</span></td>
               </tr>
@@ -507,6 +521,7 @@ export function SecPay({ f, d }: { f: Free; d: Deal }) {
                     <div className="min-w-0 text-sm">
                       <b className="tabular-nums" dir="ltr">{fmt.money(p.amt)}</b>
                       <span className="block text-xs text-muted-foreground">
+                        {p.no && <>{t("payNo", { no: p.no.replace(/^\D+-?/, "") })} · </>}
                         {fmt.date(p.at, true)} · {p.bank} · <bdi>{p.ref}</bdi>
                         {p.note && ` · ${p.note}`}
                         {late > 0 && <span className="text-warning"> · {t("payLate", { x: f.pl("pl_day", late) })}</span>}
