@@ -1,4 +1,5 @@
 import tseslint from 'typescript-eslint';
+import reactHooks from 'eslint-plugin-react-hooks';
 
 /** @type {import('eslint').Linter.Config[]} */
 export default tseslint.config(
@@ -14,6 +15,12 @@ export default tseslint.config(
       // Disable no-undef since typescript handles it
       'no-undef': 'off',
     },
+  },
+  {
+    // A hook after an early return runs on some renders only, and React throws #310 (18 Oct 2026: the portal home,
+    // the sidebar and the supplier account). Only that rule — the dependency-list advice stays off.
+    plugins: { 'react-hooks': reactHooks },
+    rules: { 'react-hooks/rules-of-hooks': 'error' },
   },
   {
     ignores: [
