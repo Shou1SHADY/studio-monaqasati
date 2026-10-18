@@ -1,0 +1,9 @@
+﻿code,name_ar,name_en,warranty_eligible
+blocks,طوب وبلوك,Blocks & bricks,no
+cement,أسمنت وخرسانة,Cement & concrete,no
+steel,حديد ومعادن,Steel & metals,no
+insulation,عزل وأسقف,Insulation & roofing,yes
+doors,أبواب ونوافذ,Doors & windows,yes
+plumbing,أدوات صحية وسباكة,Plumbing & sanitary,yes
+electric,كهرباء وإنارة,Electrical & lighting,yes
+finishes,أرضيات وتشطيبات,Flooring & finishes,yes
