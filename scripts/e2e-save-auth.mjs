@@ -4,6 +4,7 @@
 //
 //   node scripts/e2e-save-auth.mjs supplier e2e/.auth/supplier.json
 //   node scripts/e2e-save-auth.mjs admin e2e/.auth/admin.json
+//   node scripts/e2e-save-auth.mjs contractor e2e/.auth/contractor.json   (a member of a company whose Finance is off)
 //
 // Then:  E2E_SUPPLIER_STATE=e2e/.auth/supplier.json E2E_ADMIN_STATE=e2e/.auth/admin.json npx playwright test -c playwright.uat.config.ts
 
@@ -13,11 +14,11 @@ import { chromium } from '@playwright/test'
 
 const [, , who, out] = process.argv
 if (!who || !out) {
-  console.error('usage: node scripts/e2e-save-auth.mjs <supplier|admin> <output.json>')
+  console.error('usage: node scripts/e2e-save-auth.mjs <supplier|admin|contractor> <output.json>')
   process.exit(1)
 }
 const base = process.env.E2E_BASE_URL || 'https://studio-monaqasati--mdmaktech-uat.us-east4.hosted.app'
-const home = who === 'admin' ? '/admin' : '/supplier'
+const home = who === 'admin' ? '/admin' : who === 'contractor' ? '/contractor' : '/supplier'
 
 const browser = await chromium.launch({ headless: false })
 const context = await browser.newContext()

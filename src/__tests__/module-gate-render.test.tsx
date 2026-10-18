@@ -73,6 +73,41 @@ describe("the module gate", () => {
     expect(screen.getByText("the page")).toBeInTheDocument()
   })
 
+  describe("a contractor with Finance switched off (HR goes with it)", () => {
+    const financeOff: OptionalModule[] = ["payments", "hr"]
+
+    it.each(["/contractor/accounting", "/contractor/accounting/sales-desk", "/contractor/accounting/journal", "/contractor/invoices", "/contractor/guarantees", "/contractor/receipts"])(
+      "turns %s into a notice that names Finance and leads home",
+      (p) => {
+        setup(p, financeOff)
+        expect(screen.queryByText("the page")).not.toBeInTheDocument()
+        expect(screen.getByText("module_off_desc|module_name_payments")).toBeInTheDocument()
+        expect(screen.getByRole("link", { name: "module_off_home" })).toHaveAttribute("href", "/contractor")
+      }
+    )
+
+    it("turns the HR pages into a notice too, because HR went off with Finance", () => {
+      setup("/contractor/hr/people", financeOff)
+      expect(screen.getByText("module_off_desc|module_name_hr")).toBeInTheDocument()
+    })
+
+    it.each(["/contractor/receipts/abc123", "/contractor/goods-received", "/contractor/sales/payments", "/contractor/rfqs", "/contractor/warehouses", "/contractor/projects/abc", "/contractor/manufacturing", "/contractor"])(
+      "leaves %s open — the delivery receipt, Procurement, Sales, Inventory, Projects and Manufacturing keep working",
+      (p) => {
+        setup(p, financeOff)
+        expect(screen.getByText("the page")).toBeInTheDocument()
+      }
+    )
+
+    it("makes the Finance pages wait while the switches load, but not the delivery receipt", () => {
+      const { unmount } = setup("/contractor/accounting", [], true)
+      expect(screen.queryByText("the page")).not.toBeInTheDocument()
+      unmount()
+      setup("/contractor/receipts/abc123", [], true)
+      expect(screen.getByText("the page")).toBeInTheDocument()
+    })
+  })
+
   it("does nothing in the admin portal", () => {
     setup("/admin/crm", ["hr"])
     expect(screen.getByText("the page")).toBeInTheDocument()
