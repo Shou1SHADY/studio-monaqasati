@@ -141,6 +141,10 @@ describe("the rules keep the approval the admin's", () => {
     expect(org).toContain("!rd().keys().hasAny(['isVerified'])")
     expect(org).toContain("!changedKeys().hasAny(['isVerified'])")
   })
+  it("a supplier never deletes a quote — withdrawing marks it on the server and the buyer keeps it", () => {
+    const del = block("offers").match(/allow delete: if ([^;]*);/)?.[1] || ""
+    expect(del.trim()).toBe("isAdmin()")
+  })
   it("no browser branch lets a supplier create a quote", () => {
     const create = block("offers").match(/allow create: if ([\s\S]*?);\n/)?.[1] || ""
     expect(create).not.toMatch(/isSupplier\(\)/)

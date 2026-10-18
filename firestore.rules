@@ -802,8 +802,8 @@ service cloud.firestore {
                     && (rfqData(resource.data.rfqId).organizationId == getOrganizationId()
                         || rfqData(resource.data.rfqId).contractorId == request.auth.uid)))
             && hasOfferDecisionPermission(resource.data));
-      allow delete: if isAdmin()
-        || (isSignedIn() && resource.data.supplierId == request.auth.uid);
+      // A quote is never deleted by its supplier: withdrawing marks it (server act quote.withdraw) and the buyer keeps it.
+      allow delete: if isAdmin();
     }
 
     match /notification_queue/{queueEntryId} {

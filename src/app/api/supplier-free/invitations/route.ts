@@ -66,7 +66,7 @@ export async function GET(req: Request) {
   await Promise.all([run("email", c.email), run("phone", c.phone), run("phone", c.phone.replace(/^\+966/, "0"))])
   const data = [...found.values()]
     .filter((i) => (i.type === "supplier_invite" || i.type == null) && mine(c, i))
-    .map((i) => ({ id: i.id, contractorOrgId: i.contractorOrgId || null, invitedBy: i.invitedBy || null, message: i.message || "", createdAt: i.createdAt || null }))
+    .map((i) => ({ id: i.id, contractorOrgId: i.contractorOrgId || null, contractorName: i.contractorName || null, invitedBy: i.invitedBy || null, message: i.message || "", createdAt: i.createdAt || null }))
   return NextResponse.json({ success: true, data })
 }
 

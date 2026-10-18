@@ -838,7 +838,7 @@
       "archive_success_desc": "This offer will be automatically deleted 30 days after archiving",
       "archive_failed": "Failed to archive offer",
       "archived_offers_title": "Archived Offers",
-      "archived_offers_desc": "These offers will be automatically deleted 30 days after being archived",
+      "archived_offers_desc": "Archived offers leave this list 30 days after being archived. They are never deleted — the contractor keeps their copy.",
       "archived_on": "Archived On",
       "auto_delete_on": "Deletes In",
       "days_left": "{count} days left",

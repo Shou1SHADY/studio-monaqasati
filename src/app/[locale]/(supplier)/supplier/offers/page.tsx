@@ -2,7 +2,7 @@
 
 import { DocumentThread } from "@/components/documents/DocumentThread"
 import { offerThread } from "@/lib/document-thread"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -31,7 +31,8 @@ import { Label } from "@/components/ui/label"
 import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Trash2, Calendar, Tag, DollarSign, MessageSquare, Phone, ArrowDown, Box, FileText, CircleDot, Check, AlertCircle, Archive, ChevronDown, ChevronUp, Truck } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, deleteDoc, doc, getDoc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore"
+import { collection, query, where, doc, getDoc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore"
+import { callAct } from "@/lib/supplier-free/act-client"
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { useRouter } from "@/i18n/routing"
@@ -191,18 +192,6 @@ function LegacySupplierOffersPage() {
     }
   }
 
-  // Auto-delete archived offers older than 30 days
-  useEffect(() => {
-    if (!firestore || !rawOffers) return
-    const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
-    const expired = rawOffers.filter((o: any) => {
-      if (!o.archived || !o.archivedAt) return false
-      return Date.now() - new Date(o.archivedAt).getTime() > THIRTY_DAYS
-    })
-    expired.forEach((o: any) => {
-      deleteDoc(doc(firestore, "offers", o.id)).catch(() => {})
-    })
-  }, [firestore, rawOffers])
   // An award still waiting for Finance reads "under review" here — the
   // badge, the counts and the delivery button all follow (`awardDisclosed`).
   const { ordersById } = useSupplierOrdersById(profile?.organizationId || user?.uid)
@@ -217,7 +206,9 @@ function LegacySupplierOffersPage() {
       )
     : []
   const offers = allOffers.filter((o: any) => !o.archived)
-  const archivedOffers = allOffers.filter((o: any) => o.archived)
+  // An archived quote leaves this list 30 days after it was archived. It is never deleted: the contractor's copy of it —
+  // an award, an order — is the same document (it used to be deleted here, taking the contractor's record with it).
+  const archivedOffers = allOffers.filter((o: any) => o.archived && !(o.archivedAt && Date.now() - new Date(o.archivedAt).getTime() > 30 * 24 * 60 * 60 * 1000))
 
   // Stats
   const pendingCount = offers.filter((o: any) => o.status === "قيد المراجعة").length
@@ -269,33 +260,9 @@ function LegacySupplierOffersPage() {
     if (!firestore) return
     setDeletingId(offerId)
     try {
-      // Fetch offer data before deleting so we can notify the contractor
-      let contractorId: string | null = null
-      let rfqTitle = ""
-      try {
-        const snap = await getDoc(doc(firestore, "offers", offerId))
-        if (snap.exists()) {
-          contractorId = snap.data()?.contractorId || null
-          rfqTitle = snap.data()?.rfqTitle || ""
-        }
-      } catch {}
-
-      await deleteDoc(doc(firestore, "offers", offerId))
-
-      // Notify contractor of withdrawal
-      if (contractorId) {
-        try {
-          await addDoc(collection(firestore, "users", contractorId, "notifications"), {
-            userId: contractorId,
-            type: "offer_withdrawn",
-            title: t("withdraw_notif_title"),
-            message: t("withdraw_notif_msg", { title: rfqTitle }),
-            createdAt: new Date().toISOString(),
-            read: false
-          })
-        } catch {}
-      }
-
+      // The server marks it withdrawn (never deleted — the contractor keeps it, out of comparison and award), logs who
+      // and when, and tells the contractor: the same act the free journey uses.
+      await callAct({ action: "quote.withdraw", offerId })
       toast({ title: t("withdraw_success"), description: t("withdraw_success_desc") })
     } catch {
       toast({ title: t("error_title"), description: t("withdraw_failed"), variant: "destructive" })
