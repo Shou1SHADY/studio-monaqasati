@@ -12,6 +12,7 @@
 
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where, type Firestore } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
+import { COMPANY_MODULES, offSet } from "../company-modules"
 import { PM_CERTIFICATES } from "./certificate"
 import type { PmCertificate } from "./certificate-writes"
 import { openClaims, PM_CLAIMS, type ClaimStatus } from "./claim"
@@ -266,6 +267,10 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
   const col = (name: string) => getDocs(collection(firestore, "projects", projectId, name)).catch(() => null)
   const pSnap = await getDoc(doc(firestore, "projects", projectId)).catch(() => null)
   const orgId = (pSnap?.exists() ? (pSnap.data() as { organizationId?: string }).organizationId : null) ?? null
+  // Finance records collections and pays subcontractors: switched off, they are not this project's to wait for.
+  const financeOff = orgId
+    ? await getDoc(doc(firestore, COMPANY_MODULES, orgId)).then((s) => offSet(s.exists() ? (s.data() as { off?: unknown }) : null, "contractor").has("payments")).catch(() => false)
+    : false
   const [certs, store, boq, history, subs, subCerts, docs, daily, obstacles, incidents, permits, vos, wirs, punch, claims, acts, weeks, plant, plantReqs, zones, petty, letters, ncrs, sheets, reqs] = await Promise.all([
     col(PM_CERTIFICATES),
     col(PM_STORE),
@@ -352,6 +357,7 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
     certificates: certList,
     retentionHeld: project.pm?.retentionHeld ?? 0,
     retentionReleased: project.pm?.retentionReleased === true,
+    financeOff,
     storeLines: on.has("store") ? held.lines : null,
     subs: on.has("subs") || contracts.length ? dues : null,
     letters: letterRows,
@@ -360,11 +366,11 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
   return {
     storeLines: held.lines,
     storeValue: Math.round(held.value),
-    uncollected: open.length,
-    uncollectedAmount: Math.round(open.reduce((a, c) => a + (c.net ?? 0) * (1 - Math.min(1, Math.max(0, c.collected ?? 0))), 0)),
+    uncollected: financeOff ? 0 : open.length,
+    uncollectedAmount: financeOff ? 0 : Math.round(open.reduce((a, c) => a + (c.net ?? 0) * (1 - Math.min(1, Math.max(0, c.collected ?? 0))), 0)),
     certificates: certList.filter((c) => c.status !== "void").length,
     subcontracts: contracts.length,
-    subDue: dues.due,
+    subDue: financeOff ? 0 : dues.due,
     subPending: dues.pending,
     docs: docs?.size ?? 0,
     daily: daily?.size ?? 0,

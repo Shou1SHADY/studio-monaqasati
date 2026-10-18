@@ -57,6 +57,12 @@ describe("decisions", () => {
     expect(find({ certificates: [{ status: "appr", net: 50_000, dueOn: "2026-08-01", collected: 0 }] }, "collection_overdue")?.severity).toBe("red")
   })
 
+  it("with Finance switched off nobody chases a collection from here", () => {
+    const certs = [{ status: "appr" as const, net: 50_000, dueOn: "2026-08-01", collected: 0 }]
+    expect(kinds({ certificates: certs })).toContain("collection_overdue")
+    expect(kinds({ certificates: certs, financeOff: true })).not.toContain("collection_overdue")
+  })
+
   it("an IPC is ready when more than 40,000 of executed work is unbilled", () => {
     expect(find({ items: [{ quantity: 100, rate: 10_000, executed: 90, billed: 80 }] }, "ipc_ready")).toMatchObject({ severity: "red", amount: 100_000, tab: "ipc" })
     expect(kinds({ items: [{ quantity: 100, rate: 10_000, executed: 90, billed: 87 }] })).not.toContain("ipc_ready")

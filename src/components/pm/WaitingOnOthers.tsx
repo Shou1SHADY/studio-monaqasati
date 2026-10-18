@@ -18,6 +18,7 @@ import { collection, query, where } from "firebase/firestore"
 import { CheckCircle2, Clock, Link2 } from "lucide-react"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useModules } from "@/hooks/useCompanyModules"
 import { Link } from "@/i18n/routing"
 import { JOURNAL_ENTRIES } from "@/lib/accounting/journal"
 import { isAccountingEnabled } from "@/lib/accounting/post"
@@ -39,7 +40,7 @@ const MODULE: Record<WaitModule, PortalComponentId> = { proc: "procurement", fin
 export function WaitingOnOthers({
   organizationId,
   projects,
-  finance = false,
+  finance: financeProp = false,
   money = false,
   crm = null,
   onOpenTab,
@@ -65,6 +66,9 @@ export function WaitingOnOthers({
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
+  // Finance switched off: nothing is waited for from it.
+  const financeOn = useModules().on("payments")
+  const finance = financeProp && financeOn
   const firestore = useFirestore()
   const [showAll, setShowAll] = useState(false)
   const single = projects.length === 1 ? projects[0].id : null

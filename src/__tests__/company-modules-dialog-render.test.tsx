@@ -41,11 +41,24 @@ beforeEach(() => {
 })
 
 describe("the components dialog", () => {
-  it("gives a contractor three switches, all on for a company nobody switched anything for", () => {
+  it("gives a contractor four switches, all on for a company nobody switched anything for", () => {
     render(<CompanyModulesDialog orgId="o1" companyName="Acme" portal="contractor" onClose={() => undefined} />)
     const sw = screen.getAllByRole("switch")
-    expect(sw).toHaveLength(3)
+    expect(sw).toHaveLength(4)
     sw.forEach((s) => expect(s).toBeChecked())
+    expect(sw.map((s) => s.getAttribute("aria-label"))).toEqual(["component_project_management", "component_finance", "component_hr", "component_manufacturing"])
+  })
+
+  it("a contractor's Finance switch takes HR with it, locks HR's switch and saves both", async () => {
+    render(<CompanyModulesDialog orgId="o1" companyName="Acme" portal="contractor" onClose={() => undefined} />)
+    fireEvent.click(screen.getByRole("switch", { name: "component_finance" }))
+    const hr = screen.getByRole("switch", { name: "component_hr" })
+    expect(hr).not.toBeChecked()
+    expect(hr).toBeDisabled()
+    expect(screen.getByRole("switch", { name: "component_manufacturing" })).toBeChecked()
+    fireEvent.click(screen.getByRole("button", { name: "save" }))
+    await waitFor(() => expect(save).toHaveBeenCalled())
+    expect([...(save.mock.calls[0][2] as string[])].sort()).toEqual(["hr", "payments"])
   })
 
   it("the sales-only preset switches a supplier's five off and saves them", async () => {

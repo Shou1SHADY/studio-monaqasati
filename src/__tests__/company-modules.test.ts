@@ -14,20 +14,21 @@ import { CONTRACTOR_COMPONENTS, SUPPLIER_COMPONENTS, visibleComponents } from "@
 const ids = (list: { id: string }[]) => list.map((c) => c.id)
 
 describe("what is switched off", () => {
-  it("a contractor has three switches; a supplier five — CRM, Inventory, Finance, HR and Manufacturing", () => {
-    expect(optionalFor("contractor")).toEqual(["project-management", "hr", "manufacturing"])
+  it("a contractor has four switches — Project Management, Finance, HR and Manufacturing; a supplier five — CRM, Inventory, Finance, HR and Manufacturing", () => {
+    expect(optionalFor("contractor")).toEqual(["project-management", "payments", "hr", "manufacturing"])
     expect(optionalFor("supplier")).toEqual(["crm", "warehouses", "payments", "hr", "manufacturing"])
     expect(isOptionalModule("hr")).toBe(true)
     expect(isOptionalModule("payments")).toBe(true)
     expect(isOptionalModule("sales")).toBe(false)
   })
 
-  it("a contractor's Finance can never be switched off, whatever is stored", () => {
-    expect([...offSet({ off: ["payments", "crm", "warehouses"] }, "contractor")]).toEqual([])
+  it("a contractor's Finance can be switched off, and takes HR with it; CRM and Inventory stay core whatever is stored", () => {
+    expect([...offSet({ off: ["payments", "crm", "warehouses"] }, "contractor")].sort()).toEqual(["hr", "payments"])
   })
 
   it("reads the stored list, ignoring anything that is not one of the portal's switches", () => {
-    expect([...offSet({ off: ["hr", "payments", 7, "manufacturing", "hr"] }, "contractor")].sort()).toEqual(["hr", "manufacturing"])
+    expect([...offSet({ off: ["hr", "payments", 7, "manufacturing", "hr"] }, "contractor")].sort()).toEqual(["hr", "manufacturing", "payments"])
+    expect([...offSet({ off: ["hr", 7, "manufacturing", "hr"] }, "contractor")].sort()).toEqual(["hr", "manufacturing"])
     expect([...offSet({ off: ["project-management", "hr"] }, "supplier")]).toEqual(["hr"])
   })
 
@@ -109,6 +110,46 @@ describe("what an address belongs to", () => {
     expect(belongsToOptionalModule("/contractor", CONTRACTOR_COMPONENTS, "contractor")).toBe(false)
     expect(belongsToOptionalModule("/contractor/rfqs", CONTRACTOR_COMPONENTS, "contractor")).toBe(false)
     expect(belongsToOptionalModule("/supplier/orders", SUPPLIER_COMPONENTS, "supplier")).toBe(false)
+  })
+})
+
+describe("a contractor's Finance (18 Oct 2026)", () => {
+  const off = (...x: string[]) => new Set(x)
+
+  it("switching it off takes HR with it (HR pays through Finance's desk) and leaves Project Management and Manufacturing alone", () => {
+    expect([...withDependents(["payments"], "contractor")].sort()).toEqual(["hr", "payments"])
+    expect(forcedOffBy("hr", new Set(["payments"]), "contractor")).toBe("payments")
+    expect(forcedOffBy("manufacturing", new Set(["payments"]), "contractor")).toBeNull()
+    expect(forcedOffBy("project-management", new Set(["payments"]), "contractor")).toBeNull()
+    expect([...offSet({ off: ["payments"] }, "contractor")].sort()).toEqual(["hr", "payments"])
+  })
+
+  it("its tile, menu and the HR module leave the company's registry; everything else stays", () => {
+    const own = applyModuleSwitches(CONTRACTOR_COMPONENTS, withDependents(["payments"], "contractor"), "contractor")
+    expect(ids(own)).not.toContain("payments")
+    expect(ids(own)).not.toContain("hr")
+    expect(ids(own)).toEqual(expect.arrayContaining(["procurement", "warehouses", "crm", "sales", "manufacturing", "project-management", "users"]))
+    expect(ids(visibleComponents(own, () => true))).not.toContain("payments")
+  })
+
+  it("its pages — the books, invoices, receipts, guarantees and every Finance desk — say so, and nothing else does", () => {
+    for (const path of ["/contractor/accounting", "/contractor/accounting/sales-desk", "/contractor/accounting/procurement-desk", "/contractor/invoices", "/contractor/receipts", "/contractor/guarantees"]) {
+      expect(offModuleOwning(path, CONTRACTOR_COMPONENTS, off("payments"), "contractor")).toBe("payments")
+    }
+    for (const path of ["/contractor/sales/payments", "/contractor/rfqs", "/contractor/warehouses", "/contractor/projects", "/contractor/manufacturing", "/contractor"]) {
+      expect(offModuleOwning(path, CONTRACTOR_COMPONENTS, off("payments"), "contractor")).toBeNull()
+    }
+    expect(offModuleOwning("/contractor/accounting/hr-desk", CONTRACTOR_COMPONENTS, off("hr"), "contractor")).toBe("hr")
+  })
+
+  it("never blocks the printable delivery receipt that Goods Received and the RFQ offers open, though its address is Finance's", () => {
+    expect(offModuleOwning("/contractor/receipts/abc123", CONTRACTOR_COMPONENTS, off("payments"), "contractor")).toBeNull()
+    expect(belongsToOptionalModule("/contractor/receipts/abc123", CONTRACTOR_COMPONENTS, "contractor")).toBe(false)
+    expect(offModuleOwning("/contractor/receipts", CONTRACTOR_COMPONENTS, off("payments"), "contractor")).toBe("payments")
+  })
+
+  it("is part of what waits while the switches load", () => {
+    expect(belongsToOptionalModule("/contractor/accounting", CONTRACTOR_COMPONENTS, "contractor")).toBe(true)
   })
 })
 

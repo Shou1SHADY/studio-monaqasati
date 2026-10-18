@@ -8,6 +8,7 @@ import { collection, doc, getDoc, getDocs, runTransaction, serverTimestamp, type
 import { assertPm, type PmContext } from "./access"
 import type { Acceptances } from "./acceptance"
 import { readContract } from "./addendum-writes"
+import { readModulesOff } from "../company-modules-reads"
 import { PM_CERTIFICATES } from "./certificate"
 import type { PmCertificate } from "./certificate-writes"
 import { archiveSnapshot, closeBlocks, closeoutRows, storeDocOf, storeHoldings, storeItemOf, subDues, type CloseInput, type ClosingCost } from "./closeout"
@@ -93,6 +94,7 @@ export async function closeAndArchive(firestore: Firestore, ctx: PmContext, proj
     if (lifecycleOf(project) !== "done") throw new PmCloseError("not_done")
     const block = pm as { acceptances?: Acceptances; cutPool?: number; retentionHeld?: number; advanceRecovered?: number; retentionReleased?: boolean; durationDays?: number; startedAt?: string | null }
     const today = todayDay()
+    const financeOff = (await readModulesOff(tx, firestore, project.organizationId)).has("payments")
     const input: CloseInput = {
       hasClient: certificatesApply(original, terms),
       acceptances: block.acceptances ?? {},
@@ -108,6 +110,7 @@ export async function closeAndArchive(firestore: Firestore, ctx: PmContext, proj
       subs: facts.subs,
       letters: facts.letters,
       plantOnSite: facts.plantOnSite,
+      financeOff,
       today,
     }
     const blocked = closeBlocks(closeoutRows(input))

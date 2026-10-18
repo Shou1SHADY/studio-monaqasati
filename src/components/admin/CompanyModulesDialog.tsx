@@ -1,6 +1,6 @@
 "use client"
 
-// Admin → a company's components. A contractor's Project Management, HR and Manufacturing — and a supplier's CRM,
+// Admin → a company's components. A contractor's Project Management, Finance, HR and Manufacturing — and a supplier's CRM,
 // Inventory, Finance, HR and Manufacturing — can be switched off for one company; everything else is core and stays
 // on. A module that needs an off one goes off with it (HR needs Finance and Inventory; Manufacturing needs Inventory).
 // The company's menu, tiles and pages follow at once.

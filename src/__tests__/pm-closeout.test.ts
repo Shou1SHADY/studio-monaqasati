@@ -74,6 +74,17 @@ describe("the one gate", () => {
     expect(closeBlocks(closeoutRows({ ...base, items: [...base.items, { rate: 0, executed: 4, billed: 0 }] })).map((r) => r.key)).toEqual(["unpriced"])
   })
 
+  it("Finance switched off: what only Finance can settle — overdue collection, retention, subcontractor dues — is not waited for; PM's own rows still block", () => {
+    const off = { ...base, financeOff: true }
+    expect(closeBlocks(closeoutRows({ ...off, today: "2026-11-01" }))).toEqual([])
+    expect(closeBlocks(closeoutRows({ ...off, retentionHeld: 500 }))).toEqual([])
+    expect(closeBlocks(closeoutRows({ ...off, subs: { due: 900, pending: 0 } }))).toEqual([])
+    expect(closeBlocks(closeoutRows({ ...off, subs: { due: 900, pending: 2 } })).map((r) => r.key)).toEqual(["subs"])
+    expect(closeBlocks(closeoutRows({ ...off, items: [{ rate: 100, executed: 12, billed: 10 }] })).map((r) => r.key)).toEqual(["unbilled"])
+    expect(closeBlocks(closeoutRows({ ...off, certificates: [{ status: "sub", net: 5 }] })).map((r) => r.key)).toEqual(["in_progress"])
+    expect(closeoutRows(off).map((r) => r.key)).not.toEqual(expect.arrayContaining(["retention", "overdue"]))
+  })
+
   it("nobody pays: no money rows", () => {
     expect(closeoutRows({ ...base, hasClient: false }).map((r) => r.key)).toEqual(["punch", "ncr", "prov", "final"])
   })
@@ -134,6 +145,14 @@ describe("close and archive (WF-26)", () => {
     await expect(closeAndArchive(db, pm, "p1", pmA)).rejects.toMatchObject({ code: "not_done" })
     seedDone({ retentionHeld: 100 })
     await expect(closeAndArchive(db, pm, "p1", pmA)).rejects.toMatchObject({ code: "blocked", blocks: ["retention"] })
+  })
+
+  it("with Finance switched off for the company, retention nobody can release no longer shuts the gate", async () => {
+    seedDone({ retentionHeld: 100 })
+    await expect(closeAndArchive(db, pm, "p1", pmA)).rejects.toMatchObject({ code: "blocked", blocks: ["retention"] })
+    seed("companyModules/org", { organizationId: "org", off: ["payments"] })
+    await closeAndArchive(db, pm, "p1", pmA)
+    expect((readDoc<Record<string, any>>("projects/p1") as Record<string, any>).pm).toMatchObject({ lifecycle: "closed" })
   })
 
   it("freezes the snapshot, and afterwards nothing changes — the owner included (INV-21)", async () => {

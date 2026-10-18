@@ -6,7 +6,7 @@
 // disappear for every member of the company (the pages show a notice if reached by address). The
 // data rules still go by permission, and the mobile app is not switched by this.
 //
-// A contractor has three switches — Project Management, HR and Manufacturing. A supplier has five
+// A contractor has four switches — Project Management, HR, Manufacturing and Finance (18 Oct 2026). A supplier has five
 // (11 Oct 2026): most suppliers only want to SELL, so CRM, Inventory and Finance can go too, leaving
 // Order Management, Sales and Governance — the "sales-only" preset. The supplier portal has no Project
 // Management module (its "project-management" slot is Order Management), and Sales lives in its
@@ -31,7 +31,7 @@ export const OPTIONAL_MODULES = ["project-management", "hr", "manufacturing", "c
 export type OptionalModule = (typeof OPTIONAL_MODULES)[number]
 export type ModulePortal = "contractor" | "supplier"
 
-const CONTRACTOR_SWITCHES: readonly OptionalModule[] = ["project-management", "hr", "manufacturing"]
+const CONTRACTOR_SWITCHES: readonly OptionalModule[] = ["project-management", "payments", "hr", "manufacturing"]
 const SUPPLIER_SWITCHES: readonly OptionalModule[] = ["crm", "warehouses", "payments", "hr", "manufacturing"]
 
 /** The switches a company of this portal has. */
@@ -133,9 +133,17 @@ export function applyModuleSwitches(components: PortalComponentDef[], off: Reado
   return out
 }
 
+/**
+ * Pages that sit under one module's menu but belong to everyone who opens them, so no switch ever blocks them: the
+ * printable delivery receipt, reached from Procurement's Goods Received and the RFQ offers view though its address is
+ * Finance's `/contractor/receipts` (only the register at that address is Finance's).
+ */
+const SHARED_PAGES: readonly RegExp[] = [/^\/contractor\/receipts\/[^/]+/]
+
 /** Which switched-off module a page belongs to, if any. `components` is the FULL registry of the portal. */
 export function offModuleOwning(pathname: string, components: PortalComponentDef[], off: ReadonlySet<string>, portal: ModulePortal): OptionalModule | null {
   if (off.size === 0) return null
+  if (SHARED_PAGES.some((re) => re.test(pathname))) return null
   const root = portalRoot(portal)
   for (const id of optionalFor(portal)) {
     if (!off.has(id)) continue

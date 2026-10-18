@@ -10,6 +10,7 @@ import { useMemo } from "react"
 import { useTranslations } from "next-intl"
 import { collection } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useModules } from "@/hooks/useCompanyModules"
 import { SegmentedNav, type Segment, type SegmentTone } from "@/components/module-ui/SegmentedNav"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { usePmExecCounts } from "@/hooks/usePmExecCounts"
@@ -129,11 +130,12 @@ export function PmSubTabNav({
   const members = useRows<Record<string, unknown> & { id: string }>(projectId, "members", group === "settings")
   const cost = useProjectCost(projectId, orgId, moneyGroup && money && has("pmMatch"))
 
+  const financeOff = !useModules().on("payments")
   const badges = useMemo(() => {
     const storeItems: StoreItem[] = items.map((i) => ({ id: i.id, code: i.code, description: "", unit: i.unit ?? "", quantity: i.quantity, executed: i.executed }))
     const lines = stores.map((d) => storeLineOf(d.id, d))
     const states = lines.map((x) => storeState(x, storeItems))
-    const overdue = certs.some((c) => (c.status === "appr" || c.status === "part") && Boolean(c.dueOn) && (c.dueOn as string).slice(0, 10) < today && (c.collected ?? 0) < 1)
+    const overdue = !financeOff && certs.some((c) => (c.status === "appr" || c.status === "part") && Boolean(c.dueOn) && (c.dueOn as string).slice(0, 10) < today && (c.collected ?? 0) < 1)
     const eacAge = project.eac ? Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${project.eac.on.slice(0, 10)}T00:00:00Z`)) / DAY_MS) : null
     const rows = close
       ? closeoutRows({
@@ -151,6 +153,7 @@ export function PmSubTabNav({
           // The panel adds the row when the section is on or a contract exists; with neither it would hold (ok), so it never counts.
           subs: subcontracts.length || subCerts.length ? subDues(subcontracts, subCerts as Array<{ status: SubCertStatus }>) : null,
           letters,
+          financeOff,
           today,
         })
       : []
@@ -175,7 +178,7 @@ export function PmSubTabNav({
       matchOver: money ? matchRows(cost.pos, cost.invoices).filter((r) => r.state === "over").length : 0,
       cvrStale: project.lifecycle === "live" && (eacAge === null || eacAge > 35),
     })
-  }, [today, hasManager, members, addenda, variations, claims, terms, subCerts, subcontracts, docs, sheets, letters, requests, stores, items, certs, punch, ncrs, close, project, money, access, cost.pos, cost.invoices])
+  }, [today, hasManager, members, addenda, variations, claims, terms, subCerts, subcontracts, docs, sheets, letters, requests, stores, items, certs, punch, ncrs, close, project, money, access, cost.pos, cost.invoices, financeOff])
 
   const segments: Segment[] = tabs.map((x) => {
     const e = x.key === "pmUnits" ? (unitsReady ? { count: unitsReady, tone: "ok" as SegmentTone } : undefined) : (exec as Record<string, { count?: number; tone?: SegmentTone } | undefined>)[x.key]

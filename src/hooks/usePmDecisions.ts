@@ -12,6 +12,7 @@ import { useMemo } from "react"
 import { collection, query, where } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { useModules } from "@/hooks/useCompanyModules"
 import { usePmIndirect } from "@/hooks/usePmIndirect"
 import { usePulseCost } from "@/hooks/usePulseCost"
 import { progressOf, type Acceptances } from "@/lib/pm/acceptance"
@@ -185,6 +186,7 @@ export function usePmDecisions(
     }
   }, [on, supply.stores, supply.requests, supply.activities, storeItems, project?.pm?.startedAt, today, obstacles.rows, items.rows, vos.rows])
 
+  const financeOff = !useModules().on("payments")
   const decisions = useMemo(() => {
     const pm = project?.pm
     if (!project || !pm) return []
@@ -246,10 +248,11 @@ export function usePmDecisions(
       plant: plant.rows,
       margin: cost ? cost.total.earned - cost.total.actual : null,
       budgetReferrals,
+      financeOff,
       today,
       viewer: access.uid ? { uid: access.uid, has: (k) => access.has(k as Parameters<PmAccess["has"]>[0]), owner: access.has("admin") } : null,
     })
-  }, [project, items.rows, sheets.rows, addenda.rows, certs.rows, punch.rows, units.rows, inspections.rows, zoneOn, vos.rows, claims.rows, submittals.rows, subCerts.rows, docs.rows, letters.rows, obstacles.rows, supply.requests, supply.stores, facts.shortages, plantRequests.rows, plant.rows, cost, budgetReferrals, poData, storeCostOf, money, client, onHold, indirect.actual, access, today, plan])
+  }, [project, items.rows, sheets.rows, addenda.rows, certs.rows, punch.rows, units.rows, inspections.rows, zoneOn, vos.rows, claims.rows, submittals.rows, subCerts.rows, docs.rows, letters.rows, obstacles.rows, supply.requests, supply.stores, facts.shortages, plantRequests.rows, plant.rows, cost, budgetReferrals, poData, storeCostOf, money, client, onHold, indirect.actual, access, today, plan, financeOff])
 
   const progress = useMemo(() => progressOf(items.rows.map((d) => ({ quantity: num(d.quantity), rate: num(d.unitPrice), executed: num(d.executedQuantity) }))), [items.rows])
 

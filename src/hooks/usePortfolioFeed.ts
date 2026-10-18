@@ -9,6 +9,7 @@
 import { useMemo } from "react"
 import { collection } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useModules } from "@/hooks/useCompanyModules"
 import { usePmAccess } from "@/hooks/usePmAccess"
 import { usePmDecisions, type PmDecisionProject } from "@/hooks/usePmDecisions"
 import { useProjectFigures } from "@/hooks/useProjectFigures"
@@ -98,6 +99,7 @@ export function usePortfolioFeed(project: PortfolioProject): PortfolioFeed {
   const { data: vos } = useCollection(voQ)
   const certQ = useMemoFirebase(() => sub(PM_CERTIFICATES, done && money), [firestore, project.id, done, money])
   const { data: certs } = useCollection(certQ)
+  const financeOff = !useModules().on("payments")
 
   return useMemo(() => {
     const rows = (items ?? []) as Array<Record<string, unknown>>
@@ -119,6 +121,7 @@ export function usePortfolioFeed(project: PortfolioProject): PortfolioFeed {
             certificates: money ? ((certs ?? []) as unknown as PmCertificate[]) : [],
             retentionHeld: pm.retentionHeld ?? 0,
             retentionReleased: Boolean(pm.retentionReleased),
+            financeOff,
             today: todayDay(),
           })
         ).length === 0
@@ -140,5 +143,5 @@ export function usePortfolioFeed(project: PortfolioProject): PortfolioFeed {
       overdue,
       archivable,
     }
-  }, [items, decisions, done, project.pm, project.budget, punch, ncrs, vos, certs, money, ready, access.isLoading, fig, obstacles, facts.approvedVariations])
+  }, [items, decisions, done, project.pm, project.budget, punch, ncrs, vos, certs, money, ready, access.isLoading, fig, obstacles, facts.approvedVariations, financeOff])
 }

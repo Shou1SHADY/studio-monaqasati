@@ -9,7 +9,7 @@ jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-u
 import { fakeFirestore, readDoc, resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import type { Firestore } from "firebase/firestore"
 import { PmAccessError, pmCeiling, type PmContext } from "@/lib/pm/access"
-import { PmSectionsError, switchBlocks, switchOffBlockers, switchSections } from "@/lib/pm/sections-governance"
+import { PmSectionsError, readSectionFacts, switchBlocks, switchOffBlockers, switchSections } from "@/lib/pm/sections-governance"
 
 const db = fakeFirestore as unknown as Firestore
 const pm: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.manage"] }), seat: { uid: "pm1", role: "pm" }, archived: false }
@@ -31,6 +31,21 @@ describe("the rules", () => {
   it("off needs a reason, other stated; core never switches off; on needs none", () => {
     expect(switchBlocks({ archived: false, turnedOn: [], turnedOff: ["contract", "ipc"], reason: "other", reasonText: " ", facts: none })).toEqual(["core", "reason_text"])
     expect(switchBlocks({ archived: false, turnedOn: ["docs"], turnedOff: [], reason: null, facts: none })).toEqual([])
+  })
+})
+
+describe("the facts the gate reads", () => {
+  const uncollectedCert = () => seed("projects/p1/pmCertificates/01", { seq: 1, status: "appr", net: 5000, collected: 0, dueOn: "2026-01-01" })
+
+  it("an uncollected certificate and what subcontractors are owed are counted", async () => {
+    uncollectedCert()
+    expect(await readSectionFacts(db, "p1")).toMatchObject({ uncollected: 1, uncollectedAmount: 5000 })
+  })
+
+  it("with Finance switched off nothing is uncollected from here: only Finance records a collection", async () => {
+    uncollectedCert()
+    seed("companyModules/org", { organizationId: "org", off: ["payments"] })
+    expect(await readSectionFacts(db, "p1")).toMatchObject({ uncollected: 0, uncollectedAmount: 0, subDue: 0 })
   })
 })
 

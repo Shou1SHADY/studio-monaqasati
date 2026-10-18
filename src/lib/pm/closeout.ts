@@ -71,6 +71,9 @@ export interface CloseInput {
   subs?: { due: number; pending: number } | null
   /** Formal letters — one still open (sent or received, no reply) blocks. */
   letters?: Array<{ status: "out" | "in" | "rep" | "done" }> | null
+  /** Finance is switched off for the company: what only Finance can settle — collections, the retention release and
+   * what subcontractors are owed — is not waited for, so a project can still close. */
+  financeOff?: boolean
   today: string
 }
 
@@ -105,16 +108,16 @@ export function closeoutRows(input: CloseInput): CloseRow[] {
     )
     rows.push(
       { key: "unbilled", ok: unbilled <= 1, n: unbilled },
-      { key: "retention", ok: input.retentionHeld <= 1 || input.retentionReleased, n: input.retentionHeld },
+      ...(input.financeOff ? [] : [{ key: "retention" as const, ok: input.retentionHeld <= 1 || input.retentionReleased, n: input.retentionHeld }]),
       { key: "in_progress", ok: inProgress === 0, n: inProgress },
-      { key: "overdue", ok: overdue <= 1, n: overdue }
+      ...(input.financeOff ? [] : [{ key: "overdue" as const, ok: overdue <= 1, n: overdue }])
     )
     const pending = pricedPending(input.variations ?? [])
     rows.push({ key: "vo_pending", ok: pending.length === 0, n: pending.length })
   }
   if (input.subs) {
     const due = r2(Math.max(0, input.subs.due))
-    rows.push({ key: "subs", ok: due <= 0.5 && input.subs.pending === 0, n: due, m: input.subs.pending })
+    rows.push({ key: "subs", ok: (input.financeOff || due <= 0.5) && input.subs.pending === 0, n: input.financeOff ? 0 : due, m: input.subs.pending })
   }
   if (input.letters) {
     const openLetters = input.letters.filter(isLetterOpen).length

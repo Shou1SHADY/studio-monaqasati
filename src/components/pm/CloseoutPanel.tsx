@@ -40,6 +40,7 @@ import { PM_SUB_CERTIFICATES, PM_SUBCONTRACTS, type PmSubCertificate, type PmSub
 import { PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
 import { usePmIndirect } from "@/hooks/usePmIndirect"
+import { useModules } from "@/hooks/useCompanyModules"
 import { onSite, PM_PLANT, type PmPlant } from "@/lib/pm/plant"
 
 const AMOUNT_ROWS = new Set<CloseRow["key"]>(["unbilled", "overdue", "retention"])
@@ -121,6 +122,7 @@ export function CloseoutPanel({
   const { data: plant } = useCollection(plantQ)
   const seatQ = useMemoFirebase(() => sub("members"), [firestore, projectId])
   const { data: members } = useCollection(seatQ)
+  const financeOff = !useModules().on("payments")
   const storeLines = useMemo(() => (storeOn ? storeHoldings(supply.stores, items).lines : null), [storeOn, supply.stores, items])
   const lost = useMemo(() => (storeOn || supply.stores.length ? materialLost(supply.stores, supply.costOf) : null), [storeOn, supply.stores, supply.costOf])
   const closingCost = useMemo(() => {
@@ -148,9 +150,10 @@ export function CloseoutPanel({
       subs: subsOn || scList.length ? subDues(scList, (subCerts ?? []) as unknown as PmSubCertificate[]) : null,
       letters: (letters ?? []) as unknown as PmLetter[],
       plantOnSite: plant?.length ? onSite(plant as unknown as Array<Pick<PmPlant, "status">>).length : null,
+      financeOff,
       today: todayDay(),
     })
-  }, [hasClient, pm, punch, items, certs, ncrs, vos, contracts, subCerts, letters, storeLines, subsOn, plant])
+  }, [hasClient, pm, punch, items, certs, ncrs, vos, contracts, subCerts, letters, storeLines, subsOn, plant, financeOff])
   const blocked = closeBlocks(rows)
   // Without money the certificates are not read — their rows are not shown rather
   // than shown wrong; without the client side they are not this person's to see.

@@ -192,6 +192,8 @@ export interface DecisionViewer {
 }
 
 export interface DecisionFacts {
+  /** Finance is switched off for the company: its collections are not chased from here. */
+  financeOff?: boolean
   lifecycle: string
   managerless: boolean
   startOn: string | null
@@ -632,7 +634,8 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
   const withConsultant = f.certificates.filter((c) => c.status === "sub")
   if (withConsultant.length) out.push({ kind: "cert_consultant", severity: "blue", count: withConsultant.length, amount: r2(withConsultant.reduce((a, c) => a + c.net, 0)), tab: "ipc" })
   const overdue = f.certificates.filter((c) => (c.status === "appr" || c.status === "part") && c.dueOn && c.dueOn < f.today)
-  if (overdue.length) {
+  // Finance records what is collected: with Finance switched off there is nobody to chase it with.
+  if (overdue.length && !f.financeOff) {
     const age = oldest(overdue.map((c) => c.dueOn as string), f.today)
     const payer = f.payer?.trim()
     out.push({
