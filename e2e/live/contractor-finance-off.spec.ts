@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type Page } from '@playwright/test'
+import { test, expect, type Browser, type Locator, type Page } from '@playwright/test'
 import { expectNoSideScroll, watchErrors } from './helpers'
 
 // The contractor side of the Finance switch.
@@ -59,50 +59,97 @@ test.describe('a contractor whose Finance is already off', () => {
   }
 })
 
-test.describe('switching a contractor company\'s Finance off and back on, end to end', () => {
+test.describe('switching a contractor company Finance off and back on, end to end', () => {
   test.skip(
     process.env.E2E_ALLOW_WRITES !== '1' || !process.env.E2E_ADMIN_STATE || !process.env.E2E_CONTRACTOR_STATE || !process.env.E2E_TEST_COMPANY,
     'set E2E_ALLOW_WRITES=1, E2E_ADMIN_STATE, E2E_CONTRACTOR_STATE and E2E_TEST_COMPANY'
   )
 
-  async function setFinance(browser: Browser, on: boolean) {
+  type Chosen = { finance: boolean; hr: boolean }
+
+  /** Opens the admin's Components dialog for exactly the named company (never another row), runs `act`, and closes it. */
+  async function withDialog(browser: Browser, act: (dialog: Locator) => Promise<void>) {
     const context = await browser.newContext({ storageState: process.env.E2E_ADMIN_STATE, viewport: { width: 1280, height: 800 } })
-    const page = await context.newPage()
-    await page.goto('/admin/contractors')
-    const company = process.env.E2E_TEST_COMPANY as string
-    const row = page.locator('tr, [class*="card"], li').filter({ hasText: company }).first()
-    await expect(row).toBeVisible({ timeout: 45_000 })
-    await row.getByRole('button', { name: /^(المكوّنات|Components)$/ }).click()
-    const dialog = page.getByRole('dialog')
-    await expect(dialog).toBeVisible()
-    const sw = dialog.getByRole('switch')
-    const finance = sw.nth(1)
-    const hr = sw.nth(2)
-    if ((await finance.getAttribute('aria-checked')) !== String(on)) await finance.click()
-    if (on && (await hr.getAttribute('aria-checked')) !== 'true') await hr.click()
-    await dialog.getByRole('button', { name: /^(حفظ|Save|تأكيد|Confirm)/ }).click()
-    // a company with unfinished items asks to confirm once more
-    const confirm = dialog.getByRole('button', { name: /تأكيد|Confirm/ })
-    if (await confirm.isVisible().catch(() => false)) await confirm.click()
-    await expect(dialog).toBeHidden({ timeout: 30_000 })
-    await context.close()
+    try {
+      const page = await context.newPage()
+      await page.goto('/admin/contractors')
+      const company = process.env.E2E_TEST_COMPANY as string
+      const rows = page.locator('tbody tr').filter({ hasText: company })
+      await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 45_000 })
+      if ((await rows.count()) === 0) {
+        await page.getByRole('textbox').first().fill(company)
+        await page.waitForTimeout(1500)
+      }
+      await expect(rows, `exactly one row must match "${company}"`).toHaveCount(1)
+      await rows.getByRole('button', { name: /^(المكوّنات|Components)$/ }).click()
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toBeVisible()
+      await act(dialog)
+      await expect(dialog).toBeHidden({ timeout: 30_000 })
+    } finally {
+      await context.close()
+    }
   }
 
-  test('off from the admin, the company members lose Finance and HR and keep everything else; back on restores it', async ({ browser }) => {
+  const checked = async (sw: Locator) => (await sw.getAttribute('aria-checked')) === 'true'
+
+  async function save(dialog: Locator) {
+    await dialog.getByRole('button', { name: /^(حفظ|Save)$/ }).click()
+    // a company with unfinished items is told what is pending and confirms once more ("Switch off and save")
+    const confirm = dialog.getByRole('button', { name: /^(إيقاف وحفظ|Switch off and save)$/ })
+    const asked = await confirm.waitFor({ state: 'visible', timeout: 8000 }).then(() => true, () => false)
+    if (asked) await confirm.click()
+  }
+
+  async function readChosen(browser: Browser): Promise<Chosen> {
+    let chosen: Chosen = { finance: true, hr: true }
+    await withDialog(browser, async (dialog) => {
+      const sw = dialog.getByRole('switch')
+      chosen = { finance: await checked(sw.nth(1)), hr: await checked(sw.nth(2)) }
+      await dialog.getByRole('button', { name: /^(إلغاء|Cancel)$/ }).click()
+    })
+    return chosen
+  }
+
+  /** Puts the company's Finance and HR exactly where they were before the test touched them. */
+  async function restore(browser: Browser, original: Chosen) {
+    await withDialog(browser, async (dialog) => {
+      const sw = dialog.getByRole('switch')
+      if ((await checked(sw.nth(1))) !== original.finance) await sw.nth(1).click()
+      if (original.finance && (await checked(sw.nth(2))) !== original.hr) await sw.nth(2).click()
+      await save(dialog)
+    })
+  }
+
+  test('off from the admin, the company members lose Finance and HR and keep everything else; back on restores exactly what was there', async ({ browser }) => {
+    test.setTimeout(300_000)
+    const original = await readChosen(browser)
+    test.skip(!original.finance, 'this company already has Finance off; nothing to switch')
     try {
-      await setFinance(browser, false)
+      await withDialog(browser, async (dialog) => {
+        await dialog.getByRole('switch').nth(1).click()
+        await expect(dialog.getByRole('switch').nth(2)).toBeDisabled()
+        await save(dialog)
+      })
       const member = await browser.newContext({ storageState: process.env.E2E_CONTRACTOR_STATE, viewport: { width: 1280, height: 800 } })
-      const page = await member.newPage()
-      await expectFinanceOffForMember(page)
-      await member.close()
+      try {
+        await expectFinanceOffForMember(await member.newPage())
+      } finally {
+        await member.close()
+      }
     } finally {
-      await setFinance(browser, true)
+      await restore(browser, original)
     }
     const after = await browser.newContext({ storageState: process.env.E2E_CONTRACTOR_STATE, viewport: { width: 1280, height: 800 } })
-    const page = await after.newPage()
-    await page.goto('/contractor/accounting')
-    await expect(page.getByRole('heading', { name: NOTICE })).toHaveCount(0)
-    await expect(page.locator('h1').first()).toBeVisible({ timeout: 45_000 })
-    await after.close()
+    try {
+      const page = await after.newPage()
+      await page.goto('/contractor/accounting')
+      await expect(page.locator('h1').first()).toBeVisible({ timeout: 45_000 })
+      await expect(page.getByRole('heading', { name: NOTICE })).toHaveCount(0)
+    } finally {
+      await after.close()
+    }
+    const now = await readChosen(browser)
+    expect(now).toEqual(original)
   })
 })

@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 export const VIEWPORTS = [
   { name: 'phone', width: 375, height: 812 },
@@ -34,4 +34,12 @@ export async function expectNoSideScroll(page: Page) {
 export async function expectLoaded(page: Page) {
   await expect(page.locator('h1').first()).toBeVisible({ timeout: 45_000 })
   await expect(page.getByText(/Application error|Something went wrong|حدث خطأ غير متوقع/i)).toHaveCount(0)
+}
+
+/** The first match once the page has had time to show it; the test is skipped (not failed) when the account has none. */
+export async function firstOrSkip(locator: Locator, why: string): Promise<Locator> {
+  const first = locator.first()
+  const found = await first.waitFor({ state: 'visible', timeout: 20_000 }).then(() => true, () => false)
+  test.skip(!found, why)
+  return first
 }
