@@ -122,3 +122,7 @@ index.html
 .github/agents/impeccable-*
 .github/skills/impeccable/
 .github/hooks/impeccable.json
+
+# live e2e: saved sign-in states and reports
+e2e/.auth/
+playwright-report-live/

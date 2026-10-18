@@ -15,6 +15,8 @@
     "test:coverage": "jest --coverage",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
+    "e2e:live": "playwright test -c playwright.uat.config.ts",
+    "e2e:save-auth": "node scripts/e2e-save-auth.mjs",
     "runner": "node scripts/runner.js",
     "check": "node scripts/check-all.js",
     "check:quick": "powershell -ExecutionPolicy Bypass -File scripts/quick-check.ps1",
