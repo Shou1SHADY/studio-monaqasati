@@ -114,3 +114,11 @@ index.html
 # oh-my-claudecode session state
 .omc/
 **/.omc/
+
+# Impeccable design tool — installed locally, not part of the project (owner, 18 Oct 2026)
+.impeccable/
+.claude/agents/impeccable-*
+.claude/skills/impeccable/
+.github/agents/impeccable-*
+.github/skills/impeccable/
+.github/hooks/impeccable.json
