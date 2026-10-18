@@ -122,13 +122,13 @@ function ItemBadge({ badge }: { badge: NavBadge }) {
 }
 
 function NavItemRenderer({ item, pathname, search, t, can, badge }: { item: NavItem; pathname: string; search: URLSearchParams; t: ReturnType<typeof useTranslations>; can: (p: PermissionId) => boolean; badge?: NavBadge }) {
-  if (!itemIsVisible(item, can)) return null
   const hasChildren = !!item.children?.length
   const isChildActive = hasChildren && childIsActive(item.children!, pathname, search)
   // A parent whose child tab is selected hands the highlight to that child.
   const isParentActive = hrefIsActive(item.href, pathname, search) && !isChildActive
 
   const [expanded, setExpanded] = useState(isChildActive || isParentActive)
+  if (!itemIsVisible(item, can)) return null
 
   const handleToggle = (e: React.MouseEvent) => {
     e.preventDefault()

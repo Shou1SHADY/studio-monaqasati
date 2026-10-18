@@ -474,12 +474,12 @@ function WorksTab() {
   const save = useIdentityWriter()
   const { toast } = useToast()
   const [dlg, setDlg] = useState<"work" | "cert" | null>(null)
+  const storage = useStorage()
   if (!profile) return null
   const raw = profile.raw
   const works = ((raw.projects as { name?: string; client?: string; year?: number | string; value?: string }[] | undefined) || []).filter((w) => w && w.name)
   const certs = ((raw.certificates as { name?: string; expiryDate?: string }[] | undefined) || []).filter((c) => c && c.name)
   const onMdmak = world.deals.filter((d) => d.closed && d.closed.k === "paid")
-  const storage = useStorage()
   const add = async (kind: "work" | "cert", v: Record<string, string>, file: File | null) => {
     try {
       if (kind === "work") await save({ projects: [...works, { name: v.name, client: v.client, year: v.year, value: v.value }] })
