@@ -26128,6 +26128,7 @@
     "apprNeedB": "Every supplier uploads the commercial registration and the tax registration certificate and is approved by Mdmak Tech before sending quotes.",
     "apprGo": "Go to documents",
     "errNotApproved": "Your company is not approved yet — upload your documents and request approval",
-    "errQuota": "You have used this month's free quotes. Subscribe to send more."
+    "errQuota": "You have used this month's free quotes. Subscribe to send more.",
+    "quotaLeft": "You have sent {used} of this month's {limit} free quotes."
   }
 }

@@ -10,7 +10,7 @@ import path from "path"
 import { FakeAdminDb } from "@/test-utils/fake-admin-firestore"
 import { approvalState, missingApprovalDocs, monthlyLimitOf, quoteCountId, riyadhMonth } from "@/lib/supplier-approval"
 import { createSupplierOffer, SupplierOfferError, BUYER_OFFER_KEYS } from "@/lib/supplier-offer-server"
-import { monthlyLimitFor } from "@/lib/supplier-approval-server"
+import { monthlyLimitFor, quoteUsage } from "@/lib/supplier-approval-server"
 import { QuoteActError, quoteActSchema, runQuoteAct, type QuoteAct, type QuoteSupplier } from "@/lib/supplier-free/server-quote-acts"
 
 jest.mock("firebase-admin/firestore", () => ({ FieldValue: { serverTimestamp: () => "TS", increment: (n: number) => ({ __inc: n }) } }))
@@ -51,6 +51,9 @@ describe("the monthly allowance", () => {
     expect(await monthlyLimitFor(db as never, "sup")).toBe(30) // no plan document = free
     db.seed("companyPlans/full1", { supplierPlan: "full" })
     expect(await monthlyLimitFor(db as never, "full1")).toBeNull()
+    db.seed(`supplierQuoteCounts/${quoteCountId("sup", "2026-10")}`, { count: 7 })
+    expect(await quoteUsage(db as never, "sup", NOW)).toEqual({ month: "2026-10", used: 7, limit: 30 })
+    expect(await quoteUsage(db as never, "full1", NOW)).toMatchObject({ used: 0, limit: null })
   })
 })
 

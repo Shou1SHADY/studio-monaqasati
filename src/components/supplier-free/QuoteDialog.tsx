@@ -20,6 +20,7 @@ import { uploadSupplierFile } from "@/lib/supplier-free/uploads"
 import type { Deal } from "@/lib/supplier-free/types"
 import { termsText, useQueryState } from "./ui"
 import { useFree } from "./useFree"
+import { useQuoteUsage } from "@/hooks/useQuoteUsage"
 
 /** What the server's refusal says to the supplier (it ran the same rules the form shows). */
 const REFUSAL_KEY: Record<string, string> = {
@@ -138,6 +139,10 @@ function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; 
 
   // No quotation before the platform approves the company (onboarding) — said here, refused again by the server.
   const notApproved = mode === "new" && !!f.profile && !f.profile.isVerified
+  // The free plan's monthly allowance, when the admin set one — shown before he fills the form, refused by the server too.
+  const usage = useQuoteUsage(user, mode === "new" && !notApproved)
+  const quotaLeft = usage && usage.limit != null ? Math.max(0, usage.limit - usage.used) : null
+  const quotaUsed = quotaLeft === 0
   const titleKey = mode === "reduce" ? "ofReduceT" : mode === "edit" ? "ofEditT" : "ofNewT"
   const when = reduce ? t("ofReplyBy", { x: fmt.date(reduce.by), r: rel(reduce.by) }) : `${t("fDeadline")}: ${fmt.date(d.deadline)} (${rel(d.deadline)})`
   const input = "h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"  // the shared Input's look (16px on phones: no zoom on focus)
@@ -166,6 +171,9 @@ function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; 
                   {t("apprGo")}
                 </Link>
               </Callout>
+            )}
+            {usage && usage.limit != null && (
+              <Callout tone={quotaUsed ? "block" : "info"}>{quotaUsed ? t("errQuota") : t("quotaLeft", { used: fmt.n(usage.used), limit: fmt.n(usage.limit) })}</Callout>
             )}
             {reduce && (
               <Callout tone="warn">
@@ -356,7 +364,7 @@ function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; 
             <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
               {t("cancel")}
             </Button>
-            <Button type="submit" disabled={check.blocks.length > 0 || busy || notApproved}>
+            <Button type="submit" disabled={check.blocks.length > 0 || busy || notApproved || quotaUsed}>
               {busy ? <Loader2 size={15} className="me-1.5 animate-spin" aria-hidden="true" /> : <Send size={15} className="me-1.5" aria-hidden="true" />}
               {t(mode === "new" ? "btnSendOffer" : "btnSendVersion")}
             </Button>
