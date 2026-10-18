@@ -108,6 +108,8 @@ export function PortalHomeView({ profile, orgId, companyName, modules, kpis, til
   const { toast } = useToast()
   const { can, isOrgOwner, groups } = usePermissions()
   const [showLocked, setShowLocked] = useState(true)
+  // Every hook stays above the loading return below: a hook after it runs only once the profile arrives (React #310).
+  const [showAllDecisions, setShowAllDecisions] = useState(false)
   const [justRequested, setJustRequested] = useState<Set<string>>(new Set())
   const [requestingModule, setRequestingModule] = useState<string | null>(null)
 
@@ -184,7 +186,6 @@ export function PortalHomeView({ profile, orgId, companyName, modules, kpis, til
     )
   }
 
-  const [showAllDecisions, setShowAllDecisions] = useState(false)
   const top3 = decisions.items.slice(0, 3)
   const shownDecisions = allDecisions && showAllDecisions ? decisions.items : top3
 
