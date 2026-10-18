@@ -15,7 +15,8 @@ import { useToast } from "@/hooks/use-toast"
 import { identityDocRef } from "@/lib/org-identity"
 import { mirrorCompanyIdentity } from "@/lib/company-identity-writes"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
-import { DOC_KEYS, docState, isVerified, profileChecks, profileFacts, profilePct, type DocKey } from "@/lib/supplier-free/profile"
+import { DOC_KEYS, docState, profileChecks, profileFacts, profilePct, type DocKey } from "@/lib/supplier-free/profile"
+import { approvalState, missingApprovalDocs } from "@/lib/supplier-approval"
 import { uploadSupplierFile } from "@/lib/supplier-free/uploads"
 import { normalizeCr } from "@/lib/supplier-free/phone-auth"
 import { ERRORS as PHONE_ERRORS } from "./PhoneSignInDialog"
@@ -80,9 +81,11 @@ export function FreeAccount() {
   if (!profile) return null
   const facts = profileFacts(profile.raw)
   const pct = profilePct(facts)
-  const verified = isVerified(facts)
+  // "Verified" is the platform admin's approval of the company (onboarding, 18 Oct 2026) — no quotation before it.
+  const approval = approvalState(profile.raw)
+  const verified = approval === "approved"
   const done = f.world.deals.filter((d) => d.closed && d.closed.k === "paid").length + ((profile.raw.projects as unknown[] | undefined) || []).length
-  const missing = profileChecks(facts).filter((c) => !["basic", "specs"].includes(c.k) && !c.ok && c.k !== "vat" && c.k !== "conf").length
+  const missing = profileChecks(facts).filter((c) => !["basic", "specs"].includes(c.k) && !c.ok && c.k !== "conf").length
 
   return (
     <FreePage icon={Building2} title={t("navAccount")} description={t("pSub")}>
@@ -101,7 +104,7 @@ export function FreeAccount() {
               {profile.companyName || profile.name}
             </h2>
             <div className="mt-1 flex flex-wrap gap-1.5">
-              {verified ? <Pill tone="ok" dot>{t("verifiedLong")}</Pill> : <Pill tone="mute">{t("notVerified")}</Pill>}
+              {verified ? <Pill tone="ok" dot>{t("verifiedLong")}</Pill> : approval === "pending" ? <Pill tone="warn">{t("apprPending")}</Pill> : <Pill tone="mute">{t("notVerified")}</Pill>}
               {profile.email && <Pill tone="mute"><bdi>{profile.email}</bdi></Pill>}
               {profile.phone && <Pill tone="mute"><bdi>{profile.phone}</bdi></Pill>}
               {profile.city && <Pill tone="mute">{displayCity(profile.city, f.locale)}</Pill>}
@@ -131,7 +134,7 @@ export function FreeAccount() {
 
       {tab === "basic" && <BasicTab />}
       {tab === "specs" && <SpecsTab />}
-      {tab === "legal" && <LegalTab verified={verified} />}
+      {tab === "legal" && <LegalTab />}
       {tab === "works" && <WorksTab />}
       {tab === "ratings" && <RatingsTab />}
       {tab === "files" && <FilesTab />}
@@ -378,7 +381,7 @@ function SpecsDialog({ onClose }: { onClose: () => void }) {
 
 // ---- Legal verification ----------------------------------------------------------------------------------------------------
 
-function LegalTab({ verified }: { verified: boolean }) {
+function LegalTab() {
   const f = useFree()
   const { t, profile, today, fmt } = f
   const storage = useStorage()
@@ -388,6 +391,20 @@ function LegalTab({ verified }: { verified: boolean }) {
   const [expiry, setExpiry] = useState<Record<string, string>>({})
   if (!profile) return null
   const facts = profileFacts(profile.raw)
+  const approval = approvalState(profile.raw)
+  const needed = missingApprovalDocs(profile.raw.legalDocuments)
+  const requestApproval = async () => {
+    setBusy("approval")
+    try {
+      await save({ verificationRequested: true, verificationRequestedAt: new Date().toISOString() })
+      toast({ title: t("apprSentT") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("errSave"), variant: "destructive" })
+    } finally {
+      setBusy(null)
+    }
+  }
   const upload = async (k: DocKey, file: File) => {
     if (!storage) return
     setBusy(k)
@@ -449,10 +466,22 @@ function LegalTab({ verified }: { verified: boolean }) {
         </div>
       </Panel>
       <Panel icon={BadgeCheck} title={t("alStateT")}>
-        {verified ? (
+        {approval === "approved" ? (
           <Callout tone="info"><b>{t("alVerified")}</b> — {t("alVerifiedX")}</Callout>
+        ) : approval === "pending" ? (
+          <Callout tone="info" title={t("apprPending")}>{t("apprPendingX")}</Callout>
+        ) : approval === "ready" ? (
+          <div className="space-y-3">
+            <Callout tone="warn" title={t("alNotVerified")}>{t("apprReadyX")}</Callout>
+            <Button type="button" className="w-full gap-1.5" onClick={() => void requestApproval()} disabled={busy === "approval"}>
+              {busy === "approval" ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <BadgeCheck size={14} aria-hidden="true" />}
+              {t("apprRequest")}
+            </Button>
+          </div>
         ) : (
-          <Callout tone="warn"><b>{t("alNotVerified")}</b> — {t("alNotVerifiedX")}</Callout>
+          <Callout tone="warn" title={t("alNotVerified")}>
+            {t("apprMissingX", { list: needed.map((k) => t(`doc_${k}`)).join(f.locale === "ar" ? "، " : ", ") })}
+          </Callout>
         )}
         <h4 className="mb-1.5 mt-4 text-sm font-bold">{t("alPerks")}</h4>
         <ul className="space-y-1.5 text-sm">

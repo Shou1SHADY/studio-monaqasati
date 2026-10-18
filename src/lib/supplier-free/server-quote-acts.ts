@@ -16,12 +16,15 @@ import { resolvePolicies } from "@/lib/procurement/policies"
 import type { ProcurementPolicies } from "@/lib/procurement/types"
 import { UNDER_REVIEW } from "@/lib/procurement/supplier"
 import { notifyNamed, permissionHolders } from "./server-notify"
+import { QUOTE_COUNTS, quoteCountId, riyadhMonth } from "@/lib/supplier-approval"
 import { daysBetween, namesSupplier, nextVersions, quoteBlocks, quoteShapeOf, replyByOf, requestReaches, versionOf, type QuoteValues } from "./quote-rules"
 
 export { OFFER_WITHDRAWN }
 const REDUCE = "مطلوب تخفيض"
 
 export type QuoteActCode =
+  | "not_approved"
+  | "quota"
   | "rfq_missing"
   | "rfq_closed"
   | "deadline"
@@ -78,6 +81,10 @@ export interface QuoteSupplier {
   field: { specs: string[]; cities: string[] }
   /** The VAT rate his company charges (15% with a VAT number, else 0), stored on every version (decision 9). */
   vatRate?: number
+  /** The platform admin approved his company (supplier-approval.ts). The route always says; false refuses a new quote. */
+  approved?: boolean
+  /** The free plan's monthly allowance when the admin set one — counted on `supplierQuoteCounts` with the quote. */
+  monthlyLimit?: number | null
 }
 
 type Rec = Record<string, unknown>
@@ -139,11 +146,17 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
 
   switch (act.action) {
     case "quote.new": {
+      // No quotation before the admin approves the company (onboarding, 18 Oct 2026).
+      if (s.approved === false) throw new QuoteActError("not_approved")
       const v = act.values as QuoteValues
       const ref = db.collection("offers").doc()
+      const countRef = s.monthlyLimit ? db.collection(QUOTE_COUNTS).doc(quoteCountId(s.orgId, riyadhMonth(now))) : null
       const { rfq, total } = await db.runTransaction(async (tx) => {
         const snap = await tx.get(rfqRef(act.rfqId))
         if (!snap.exists) throw new QuoteActError("rfq_missing")
+        // The free plan's monthly allowance, counted in the transaction that writes the quote — two at once cannot both pass.
+        const used = countRef ? Number((await tx.get(countRef)).data()?.count) || 0 : 0
+        if (countRef && s.monthlyLimit && used >= s.monthlyLimit) throw new QuoteActError("quota", String(s.monthlyLimit))
         // One live quote per company per request: a second one is an edit. Read INSIDE the transaction, which also
         // writes the request (its count) — two submits at once collide on it, and the retry sees the first quote.
         const mine = await tx.get(liveQuotesOf(db, act.rfqId, s.orgId))
@@ -186,6 +199,7 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
         tx.set(ref, data)
         tx.set(logRef(ref.id), logEntry("quote.new", { total: version.total, validUntil: v.valid, arrive: v.arrive || null }))
         tx.update(rfqRef(r.id), { offersCount: FieldValue.increment(1) })
+        if (countRef) tx.set(countRef, { orgId: s.orgId, month: riyadhMonth(now), count: used + 1, updatedAt: at }, { merge: true })
         return { rfq: r, total: version.total }
       })
       // The amount is named only when the round is not sealed — only the server can tell.

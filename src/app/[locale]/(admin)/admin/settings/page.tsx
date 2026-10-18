@@ -14,6 +14,7 @@ import { useFirestore, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { getCommissionRate, saveCommissionRate } from "@/lib/mdmak-procurement"
 import { cn } from "@/lib/utils"
+import { SupplierQuotaCard } from "@/components/admin/SupplierQuotaCard"
 
 export default function AdminSettingsPage() {
   const t = useTranslations("Portal.Admin.Settings")
@@ -147,6 +148,8 @@ export default function AdminSettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          <SupplierQuotaCard />
 
           <Card className="border-none shadow-sm">
             <CardHeader className="border-b">

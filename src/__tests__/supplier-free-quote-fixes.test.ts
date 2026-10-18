@@ -277,12 +277,13 @@ describe("the offers rules (NFR-08)", () => {
     expect(update).not.toMatch(/\(isSignedIn\(\) && resource\.data\.supplierId == request\.auth\.uid\)\s*\|\|/)
   })
 
-  it("a supplier's new offer is born under review on an open RFQ, carrying none of those keys", () => {
+  it("a supplier's new offer is written only by the server (onboarding: approval first); the buyer's branches stay", () => {
     const create = block.match(/allow create: if ([\s\S]*?);\n/)?.[1] || ""
-    expect(create).toContain("rd().get('status', '') == 'قيد المراجعة'")
-    expect(create).toContain("!rd().keys().hasAny(buyerOfferKeys())")
-    expect(create).toContain("rfqData(rd().rfqId).status == 'New'")
-    expect(create).not.toMatch(/\|\|\s*isSupplier\(\)\s*\|\|/)
+    // No branch lets a supplier create a quote from a browser — /api/supplier-free/act and /api/supplier/offers do,
+    // after checking his company's approval, the RFQ and the buyer's keys (supplier-offer-server.ts).
+    expect(create).not.toContain("isSupplier()")
+    expect(create).not.toContain("rd().supplierId == request.auth.uid")
+    expect(create.replace(/\/\/[^\n]*/g, "")).toMatch(/^isAdmin\(\)\s*\|\|\s*\(rd\(\)\.get\('directAward'/)
     // The direct-award and manual branches compare the incoming contractorOrgId (a broken `request.isContractorOrg()` never matched).
     expect(block).not.toContain("request.isContractorOrg()")
     expect(create.match(/rd\(\)\.contractorOrgId == getOrganizationId\(\)/g)).toHaveLength(2)

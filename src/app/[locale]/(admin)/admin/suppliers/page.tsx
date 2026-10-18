@@ -183,6 +183,19 @@ export default function AdminSuppliersPage() {
         isVerified: verify,
         verificationRequested: false
       })
+      // Approval is what lets a supplier quote (onboarding, 18 Oct 2026) — tell him. Best-effort: the approval stands.
+      if (verify) {
+        await addDoc(collection(firestore, "users", id, "notifications"), {
+          userId: id,
+          type: "supplier_approved",
+          i18n: { title: "pn_supplier_approved_title", message: "pn_supplier_approved", params: {} },
+          title: "اعتُمدت منشأتك",
+          message: "اعتمدت مدماك تِك منشأتك، ويمكنك الآن إرسال عروض الأسعار.",
+          link: "/supplier/rfqs",
+          createdAt: new Date().toISOString(),
+          read: false,
+        }).catch((err) => console.warn("approval notice failed:", err))
+      }
       setLocalSuppliers(prev =>
         prev.map(s => s.id === id
           ? { ...s, verified: verify, verificationRequested: false, status: verify ? t("status_active") : t("status_review") }

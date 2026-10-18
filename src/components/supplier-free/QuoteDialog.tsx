@@ -11,6 +11,7 @@ import { useStorage, useUser, useFirestore } from "@/firebase"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Callout } from "@/components/module-ui/Callout"
+import { Link } from "@/i18n/routing"
 import { useToast } from "@/hooks/use-toast"
 import { profilePapers } from "@/components/procurement/rfq/rfqOfferView"
 import { addDaysTo, r2 } from "@/lib/supplier-free/deal-logic"
@@ -27,6 +28,8 @@ const REFUSAL_KEY: Record<string, string> = {
   reply_closed: "errReplyClosed",
   already_quoted: "errAlreadyQuoted",
   not_reached: "errNotReached",
+  not_approved: "errNotApproved",
+  quota: "errQuota",
 }
 
 function initialValues(d: Deal, mode: QuoteMode, today: string): QuoteValues {
@@ -133,6 +136,8 @@ function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; 
     }
   }
 
+  // No quotation before the platform approves the company (onboarding) — said here, refused again by the server.
+  const notApproved = mode === "new" && !!f.profile && !f.profile.isVerified
   const titleKey = mode === "reduce" ? "ofReduceT" : mode === "edit" ? "ofEditT" : "ofNewT"
   const when = reduce ? t("ofReplyBy", { x: fmt.date(reduce.by), r: rel(reduce.by) }) : `${t("fDeadline")}: ${fmt.date(d.deadline)} (${rel(d.deadline)})`
   const input = "h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"  // the shared Input's look (16px on phones: no zoom on focus)
@@ -154,6 +159,14 @@ function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; 
           </DialogHeader>
 
           <div className="space-y-4 overflow-y-auto px-5 py-4">
+            {notApproved && (
+              <Callout tone="block" title={t("apprNeedT")}>
+                {t("apprNeedB")}{" "}
+                <Link href="/supplier/profile?tab=legal" className="font-semibold underline underline-offset-2">
+                  {t("apprGo")}
+                </Link>
+              </Callout>
+            )}
             {reduce && (
               <Callout tone="warn">
                 <b>{t("ofReduceBanner", { v: fmt.money(reduce.target), cur: fmt.money(L.offerTotal(d)), d: fmt.money(r2(L.offerTotal(d) - reduce.target)) })}</b>
@@ -343,7 +356,7 @@ function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; 
             <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
               {t("cancel")}
             </Button>
-            <Button type="submit" disabled={check.blocks.length > 0 || busy}>
+            <Button type="submit" disabled={check.blocks.length > 0 || busy || notApproved}>
               {busy ? <Loader2 size={15} className="me-1.5 animate-spin" aria-hidden="true" /> : <Send size={15} className="me-1.5" aria-hidden="true" />}
               {t(mode === "new" ? "btnSendOffer" : "btnSendVersion")}
             </Button>

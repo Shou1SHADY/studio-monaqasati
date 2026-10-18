@@ -61,10 +61,10 @@ describe("the demo's documents", () => {
       expect(r.city === "" || (SAUDI_CITIES as readonly string[]).includes(String(r.city))).toBe(true)
     }
   })
-  it("leave the supplier free, verified-email-ready and ~70% complete but not verified", () => {
+  it("leave the supplier free, ~70% complete, and approved (it has the CR and the tax certificate — onboarding)", () => {
     expect(db0.get(`companyPlans/${IDS.supplier}`)?.supplierPlan).toBe("free")
     const u = db0.get(`users/${IDS.supplier}`) as Rec
-    expect(u.isVerified).toBe(false)
+    expect(u.isVerified).toBe(true)
     expect(u.organizationRole).toBe("owner")
     expect(u.organizationId).toBe(IDS.supplier)
     expect(String(u.phone)).toMatch(/^05\d{8}$/)

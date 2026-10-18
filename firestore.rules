@@ -451,7 +451,7 @@ service cloud.firestore {
           // switching back to the primary company restores. Self-writes to them
           // are only allowed via the dedicated branches below.
           !changedKeys()
-            .hasAny(['organizationId', 'organizationRole', 'defaultGroupId', 'role', 'primaryRole', 'procurementCategories'])
+            .hasAny(['organizationId', 'organizationRole', 'defaultGroupId', 'role', 'primaryRole', 'procurementCategories', 'isVerified'])
           || (
             // Anchoring the account's original role when creating the first
             // secondary company — may only record the CURRENT effective primary
@@ -538,11 +538,14 @@ service cloud.firestore {
       allow list: if isSignedIn();
       // Supplier-company specializations/coverage follow the same admin-approval
       // gate as the primary supplier identity on users/{uid}.
+      // The company's approval (`isVerified`) is the platform admin's alone — never born approved, never self-approved.
       allow create: if isSignedIn() && request.resource.data.ownerUserId == request.auth.uid
+        && !rd().keys().hasAny(['isVerified'])
         && !(request.resource.data.get('role', '') == 'Supplier'
              && request.resource.data.keys().hasAny(['specializations', 'coverageCities']));
       allow update: if isAdmin()
         || (isSignedIn() && resource.data.ownerUserId == request.auth.uid
+            && !changedKeys().hasAny(['isVerified'])
             && !(resource.data.get('role', '') == 'Supplier'
                  && changedKeys()
                       .hasAny(['specializations', 'coverageCities'])));
@@ -755,15 +758,10 @@ service cloud.firestore {
       // 'list' (collection query): allow any signed-in user; the app's 'where' clause
       // (filtering by rfqId, organizationId, etc.) ensures data isolation.
       allow list: if isSignedIn();
-      // A supplier quotes only on an open RFQ, born under review, and never carrying a key the buying side owns
-      // (Supplier 1.0 NFR-08). The free supplier's quote acts run on the server (/api/supplier-free/act), which
-      // also checks the deadline and who the RFQ reaches; the full portal still writes here.
+      // A supplier's quote is written ONLY by the server, after the platform admin approved his company (onboarding,
+      // 18 Oct 2026): the free journey at /api/supplier-free/act, the full portal, the AI assistant and the mobile app
+      // at /api/supplier/offers — both check the RFQ is open and strip the buying side's keys (supplier-offer-server.ts).
       allow create: if isAdmin()
-        || (isSignedIn()
-            && (isSupplier() || rd().supplierId == request.auth.uid || createsInOrg())
-            && rd().get('status', '') == 'قيد المراجعة'
-            && !rd().keys().hasAny(buyerOfferKeys())
-            && rfqData(rd().rfqId).status == 'New')
         // Direct award: the CONTRACTOR creates the accepted offer on behalf of
         // the chosen supplier — only on their own RFQ, only born accepted, and
         // only with the same permission that accepting an offer requires.

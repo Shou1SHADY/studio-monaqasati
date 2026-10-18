@@ -39,7 +39,8 @@ import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { legacyAwareRole } from "@/hooks/usePermissions"
 import { useTranslations, useLocale } from 'next-intl'
 import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage, useCollection } from "@/firebase"
-import { collection, addDoc, doc, setDoc, updateDoc, increment, serverTimestamp } from "firebase/firestore"
+import { collection, addDoc, doc, setDoc, serverTimestamp } from "firebase/firestore"
+import { OfferSubmitError, submitSupplierOffer } from "@/lib/supplier-offer-client"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { REQUIRE_COMPLETE_PROFILE } from "@/lib/app-env"
 import { offerPricingFields, priceOffer, pricedProducts, pricingModeOf } from "@/lib/procurement/offer-pricing"
@@ -366,7 +367,9 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       const papers = profilePapers((profile as { legalDocuments?: Parameters<typeof profilePapers>[0] } | null)?.legalDocuments)
       if (papers.length) offerData.supplierPapers = papers
 
-      const offerRef = await addDoc(collection(firestore, "offers"), offerData);
+      // The server writes the quote, after checking the company is approved and the request still open (onboarding).
+      const idToken = await user.getIdToken()
+      const offerRef = { id: await submitSupplierOffer(idToken, selectedRfq.id, offerData) }
 
       // Tell the contractor. The SERVER writes the notification and the text:
       // only it can read the contractor's policy, and a sealed round must name
@@ -411,13 +414,6 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       } catch (err) {
         console.error("Failed to send offer notification:", err);
       }
-      try {
-        const rfqRef = doc(firestore, "rfqs", selectedRfq.id);
-        await updateDoc(rfqRef, { offersCount: increment(1) });
-      } catch (err) {
-        console.error("Failed to update offersCount:", err);
-      }
-
       toast({
         title: t("offer_submitted_title"),
         description: t("offer_submitted_desc", { price: Number(offerPrice).toLocaleString(locale === 'ar' ? 'ar-SA' : 'en-US') }),
@@ -426,7 +422,10 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       if (onSuccess) onSuccess()
     } catch (error) {
       console.error(error);
-      toast({ title: t("offer_error"), description: t("offer_submit_failed"), variant: "destructive" })
+      const code = error instanceof OfferSubmitError ? error.code : "failed"
+      const description =
+        code === "not_approved" ? t("offer_not_approved") : code === "quota" ? t("offer_quota_reached", { n: error instanceof OfferSubmitError ? error.detail || "" : "" }) : code === "rfq_closed" ? t("offer_rfq_closed") : t("offer_submit_failed")
+      toast({ title: t("offer_error"), description, variant: "destructive" })
     } finally {
       setIsSubmitting(false)
     }

@@ -23,6 +23,7 @@ import {
 import { useRagChat } from '@/hooks/useRagChat';
 import { ChatMessage } from './ChatMessage';
 import type { PendingAction, RagContext } from '@/lib/rag-types';
+import { OfferSubmitError, submitSupplierOffer } from '@/lib/supplier-offer-client';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -117,18 +118,13 @@ async function executeAction(
   action: PendingAction,
   firestore: ReturnType<typeof useFirestore>,
   userId: string,
+  idToken: () => Promise<string>,
 ): Promise<void> {
   const p = action.params;
   switch (action.type) {
     case 'submitOffer':
-      await addDoc(collection(firestore, 'offers'), {
-        rfqId: p.rfqId,
-        supplierId: userId,
-        price: Number(p.price) || 0,
-        notes: p.notes ?? '',
-        status: 'قيد المراجعة', // the stored literal every reader compares; the rules refuse any other on a supplier's new offer
-        createdAt: serverTimestamp(),
-      });
+      // The server writes it, after checking his company is approved and the request still open (onboarding).
+      await submitSupplierOffer(await idToken(), String(p.rfqId), { price: Number(p.price) || 0, notes: p.notes ?? '' });
       break;
     case 'createInquiry':
       await addDoc(collection(firestore, `rfqs/${p.rfqId}/inquiries`), {
@@ -152,6 +148,7 @@ async function executeAction(
 
 export function RagChatWidget({ userRole }: { userRole: 'Contractor' | 'Supplier' | 'Admin' }) {
   const t = useTranslations('RagChat');
+  const tOffer = useTranslations('Portal.Shared');
   const locale = useLocale() as 'ar' | 'en';
   const isRTL = locale === 'ar';
 
@@ -215,14 +212,14 @@ export function RagChatWidget({ userRole }: { userRole: 'Contractor' | 'Supplier
     if (!msg?.pendingAction || !user) return;
     setActionError(null);
     try {
-      await executeAction(msg.pendingAction, firestore, user.uid);
+      await executeAction(msg.pendingAction, firestore, user.uid, () => user.getIdToken());
       markActionExecuted(messageId);
       setContextCache(null); // Invalidate after write
     } catch (err) {
       console.error('[RagChat] Action error:', err);
-      setActionError(isRTL ? 'فشل تنفيذ الإجراء. يرجى المحاولة مرة أخرى.' : 'Action failed. Please try again.');
+      setActionError(err instanceof OfferSubmitError && err.code === 'not_approved' ? tOffer('offer_not_approved') : isRTL ? 'فشل تنفيذ الإجراء. يرجى المحاولة مرة أخرى.' : 'Action failed. Please try again.');
     }
-  }, [messages, user, firestore, markActionExecuted, isRTL]);
+  }, [messages, user, firestore, markActionExecuted, isRTL, tOffer]);
 
   const handleOpen = () => {
     setIsOpen(true);

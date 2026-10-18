@@ -30,6 +30,8 @@ export interface SupplierCompany {
   vatRate: number
   /** The company's specialties and coverage cities — what makes a public request his (RFQ-01). */
   field: { specs: string[]; cities: string[] }
+  /** Approved by the platform admin (the company's `isVerified`) — no quotation before it (supplier-approval.ts). */
+  approved: boolean
 }
 
 const text = (v: unknown): string => (typeof v === "string" || typeof v === "number" ? String(v).trim() : "")
@@ -64,5 +66,6 @@ export async function supplierCompanyOf(db: Firestore, uid: string, user: Rec): 
     hasVat,
     vatRate: vatRateOf(hasVat),
     field: { specs, cities },
+    approved: company.isVerified === true,
   }
 }

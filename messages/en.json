@@ -9015,7 +9015,12 @@
       "module_name_manufacturing": "Manufacturing",
       "module_name_crm": "CRM",
       "module_name_warehouses": "Inventory",
-      "module_name_payments": "Finance & Accounting"
+      "module_name_payments": "Finance & Accounting",
+      "offer_not_approved": "Your company is not approved yet. Upload the commercial registration and tax registration certificate in your profile and request approval — quotes can be sent once Mdmak Tech approves it.",
+      "offer_quota_reached": "You have used this month's {n} free quotes. Subscribe to send more.",
+      "offer_rfq_closed": "This request is no longer open for quotes.",
+      "pn_supplier_approved_title": "Your company is approved",
+      "pn_supplier_approved": "Mdmak Tech approved your company — you can now send quotes."
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -11502,7 +11507,18 @@
         "commission_save_success": "Commission rate saved",
         "commission_save_error": "Failed to save settings",
         "cancel": "Cancel",
-        "save_settings": "Save Settings"
+        "save_settings": "Save Settings",
+        "quota_title": "Free suppliers — quotes per month",
+        "quota_desc": "Limit how many quotes a supplier on the free plan can send in a month. Subscribed suppliers are never limited.",
+        "quota_switch": "Limit free suppliers",
+        "quota_limit_label": "Quotes per month",
+        "quota_unit": "quotes",
+        "quota_invalid": "A whole number from 1 to {max}",
+        "quota_on_note": "Counted per company per calendar month (Riyadh time). A supplier who reaches it is told to subscribe for more.",
+        "quota_off_note": "Off — free suppliers send as many quotes as they like.",
+        "quota_save": "Save",
+        "quota_saved": "Saved",
+        "quota_save_error": "Could not save — try again"
       },
       "Crm": {
         "page_title": "Client CRM",
@@ -25544,7 +25560,7 @@
     "doc_iban": "IBAN letter",
     "doc_conf": "Product conformity certificates",
     "docWhy_cr": "Contractors require it before award",
-    "docWhy_vat": "Reassures contractors your VAT number is valid — it does not block invoicing",
+    "docWhy_vat": "Required with the commercial registration for your company's approval",
     "docWhy_addr": "Appears on purchase orders",
     "docWhy_iban": "The contractor’s finance pays to it",
     "docWhy_conf": "Raises confidence in your materials",
@@ -26101,6 +26117,17 @@
     "nothingYet": "Nothing yet",
     "abVatHint": "Optional — leave it empty if you are not VAT-registered",
     "searchEmpty": "Type a request or order number, a contractor or a material",
-    "unreadDot": "Unread"
+    "unreadDot": "Unread",
+    "apprPending": "Waiting for approval",
+    "apprPendingX": "Mdmak Tech is reviewing your commercial registration and tax registration certificate. You will be notified when your company is approved; until then you cannot send quotes.",
+    "apprReadyX": "Both documents are uploaded. Ask Mdmak Tech to approve your company — you can send quotes once it is approved.",
+    "apprMissingX": "Upload {list}, then ask for approval. Every supplier needs Mdmak Tech's approval before sending quotes.",
+    "apprRequest": "Request approval",
+    "apprSentT": "Sent for approval — we will tell you when it is done",
+    "apprNeedT": "Your company is not approved yet",
+    "apprNeedB": "Every supplier uploads the commercial registration and the tax registration certificate and is approved by Mdmak Tech before sending quotes.",
+    "apprGo": "Go to documents",
+    "errNotApproved": "Your company is not approved yet — upload your documents and request approval",
+    "errQuota": "You have used this month's free quotes. Subscribe to send more."
   }
 }

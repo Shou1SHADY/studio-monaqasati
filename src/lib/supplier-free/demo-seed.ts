@@ -880,7 +880,8 @@ export function buildSupplierFreeDemo(ids: DemoIds, today: string, opts: BuildOp
     addr: FILE("العنوان-الوطني.pdf"),
   }
   const identity = { crNumber: "1010987654", taxNumber: "310987654300003", legalDocuments }
-  put(`users/${sup}`, profile("supplier", sup, sup, { city: "الرياض", specializations: [...DEMO_SPECS], coverageCities: [...DEMO_CITIES], nationalAddress: "الرياض، حي السلي، طريق الخرج، 7421", isVerified: false, ...identity }), "merge")
+  // Approved by the platform (onboarding, 18 Oct 2026): it has the CR and the tax certificate, and the demo quotes.
+  put(`users/${sup}`, profile("supplier", sup, sup, { city: "الرياض", specializations: [...DEMO_SPECS], coverageCities: [...DEMO_CITIES], nationalAddress: "الرياض، حي السلي، طريق الخرج، 7421", isVerified: true, ...identity }), "merge")
   put(`companyIdentity/${sup}`, identity, "merge")
   put(`companyPublicFacts/${sup}`, { hasVat: true, hasCr: true, crExpiry: D(300) }, "merge")
   // Explicitly free: `set-supplier-plans.ts --apply` never overwrites a plan that is set, so the demo stays free.
