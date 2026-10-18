@@ -74,3 +74,8 @@ export function docState(expiry: string | undefined, today: string): "valid" | "
   const n = Math.round((Date.parse(`${expiry.slice(0, 10)}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 864e5)
   return n < 0 ? "expired" : n <= 60 ? "soon" : "valid"
 }
+
+/** A Saudi IBAN as stored: spaces removed, upper case. */
+export const normalIban = (v: string): string => v.replace(/\s+/g, "").toUpperCase()
+/** SA followed by 22 digits. */
+export const ibanValid = (v: string): boolean => /^SA\d{22}$/.test(normalIban(v))

@@ -6,16 +6,17 @@
 // the sign-in mobile and the register are shown locked (ACC-05).
 
 import { useMemo, useState, type FormEvent, type ReactNode } from "react"
-import { collection, doc, query, updateDoc, where, type DocumentData, type UpdateData } from "firebase/firestore"
+import { collection, doc, query, setDoc, updateDoc, where, type DocumentData, type UpdateData } from "firebase/firestore"
 import { getAuth } from "firebase/auth"
 import { Award, BadgeCheck, Briefcase, Building2, Check, FileText, Folder, Globe, Hash, KeyRound, Loader2, Lock, MapPin, PenLine, Plus, Shield, ShieldAlert, Smartphone, Star, Tag, Upload, Wallet } from "lucide-react"
-import { useCollection, useFirestore, useMemoFirebase, useStorage, useUser } from "@/firebase"
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useStorage, useUser } from "@/firebase"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { useToast } from "@/hooks/use-toast"
 import { identityDocRef } from "@/lib/org-identity"
 import { mirrorCompanyIdentity } from "@/lib/company-identity-writes"
+import { COMPANY_IDENTITY, type CompanyIdentity } from "@/lib/company-identity"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
-import { DOC_KEYS, docState, profileChecks, profileFacts, profilePct, type DocKey } from "@/lib/supplier-free/profile"
+import { DOC_KEYS, docState, ibanValid, normalIban, profileChecks, profileFacts, profilePct, type DocKey } from "@/lib/supplier-free/profile"
 import { approvalState, missingApprovalDocs } from "@/lib/supplier-approval"
 import { uploadSupplierFile } from "@/lib/supplier-free/uploads"
 import { normalizeCr } from "@/lib/supplier-free/phone-auth"
@@ -194,12 +195,13 @@ function BasicTab() {
   const [city, setCity] = useState(String(raw.city || ""))
   const [addr, setAddr] = useState(String(raw.nationalAddress || raw.location || ""))
   const [about, setAbout] = useState(String(raw.description || ""))
+  const [nameEn, setNameEn] = useState(String(raw.companyNameEn || ""))
   if (!profile) return null
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setBusy(true)
     try {
-      await save({ taxNumber: tax.trim(), city, location: addr.trim(), nationalAddress: addr.trim(), description: about.trim() })
+      await save({ taxNumber: tax.trim(), city, location: addr.trim(), nationalAddress: addr.trim(), description: about.trim(), companyNameEn: nameEn.trim().slice(0, 160) })
       if (firestore && user && email.trim() !== profile.email) await updateDoc(doc(firestore, "users", user.uid), { email: email.trim() }).catch(() => undefined)
       toast({ title: t("tSaved") })
     } catch (err) {
@@ -210,77 +212,140 @@ function BasicTab() {
     }
   }
   return (
-    <form onSubmit={submit}>
-      <Panel icon={Building2} title={t("abContactT")} sub={t("abContactSub")}>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm font-semibold">
-            {t("fCo")} <span className="text-destructive">*</span>
-            <input className={`${input} mt-1`} value={profile.companyName} readOnly />
-            <span className="mt-1 block text-xs font-normal text-muted-foreground">{t("abNameHint")}</span>
+    <div className="space-y-4">
+      <form onSubmit={submit}>
+        <Panel icon={Building2} title={t("abContactT")} sub={t("abContactSub")}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm font-semibold">
+              {t("fCo")} <span className="text-destructive">*</span>
+              <input className={`${input} mt-1`} value={profile.companyName} readOnly />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">{t("abNameHint")}</span>
+            </label>
+            <label className="block text-sm font-semibold">
+              {t("fCoEn")}
+              <input className={`${input} mt-1`} dir="ltr" lang="en" value={nameEn} onChange={(e) => setNameEn(e.target.value)} maxLength={160} />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">{t("abNameEnHint")}</span>
+            </label>
+            <label className="block text-sm font-semibold">
+              {t("fCR")} <span className="text-destructive">*</span>
+              <input className={`${input} mt-1`} dir="ltr" value={String(raw.crNumber || "")} readOnly />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">{t("abCrHint")}</span>
+            </label>
+            <label className="block text-sm font-semibold">
+              {t("fMob")} <span className="text-destructive">*</span>
+              <input className={`${input} mt-1`} dir="ltr" value={profile.phone} readOnly />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">{t("abMobHint")}</span>
+            </label>
+            <label className="block text-sm font-semibold">
+              {t("fVAT")}
+              <input className={`${input} mt-1`} dir="ltr" inputMode="numeric" value={tax} onChange={(e) => setTax(e.target.value)} />
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">{t("abVatHint")}</span>
+            </label>
+            <label className="block text-sm font-semibold">
+              {t("fEmail")}
+              <input type="email" className={`${input} mt-1`} dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </label>
+            <label className="block text-sm font-semibold">
+              {t("fCity")} <span className="text-destructive">*</span>
+              <NativeSelect className={`${input} mt-1`} value={city} onChange={(e) => setCity(e.target.value)}>
+                <option value="" />
+                {SAUDI_CITIES.map((c) => (
+                  <option key={c} value={c}>
+                    {displayCity(c, f.locale)}
+                  </option>
+                ))}
+              </NativeSelect>
+            </label>
+          </div>
+          <label className="mt-4 block text-sm font-semibold">
+            {t("fAddress")} <span className="text-destructive">*</span>
+            <input className={`${input} mt-1`} value={addr} onChange={(e) => setAddr(e.target.value)} />
           </label>
-          <label className="block text-sm font-semibold">
-            {t("fCR")} <span className="text-destructive">*</span>
-            <input className={`${input} mt-1`} dir="ltr" value={String(raw.crNumber || "")} readOnly />
-            <span className="mt-1 block text-xs font-normal text-muted-foreground">{t("abCrHint")}</span>
+          <label className="mt-4 block text-sm font-semibold">
+            {t("abAbout")}
+            <textarea rows={3} placeholder={t("abAboutPh")} className={`${input} mt-1 h-auto py-2`} value={about} onChange={(e) => setAbout(e.target.value)} />
           </label>
-          <label className="block text-sm font-semibold">
-            {t("fMob")} <span className="text-destructive">*</span>
-            <input className={`${input} mt-1`} dir="ltr" value={profile.phone} readOnly />
-            <span className="mt-1 block text-xs font-normal text-muted-foreground">{t("abMobHint")}</span>
-          </label>
-          <label className="block text-sm font-semibold">
-            {t("fVAT")}
-            <input className={`${input} mt-1`} dir="ltr" inputMode="numeric" value={tax} onChange={(e) => setTax(e.target.value)} />
-            <span className="mt-1 block text-xs font-normal text-muted-foreground">{t("abVatHint")}</span>
-          </label>
-          <label className="block text-sm font-semibold">
-            {t("fEmail")}
-            <input type="email" className={`${input} mt-1`} dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </label>
-          <label className="block text-sm font-semibold">
-            {t("fCity")} <span className="text-destructive">*</span>
-            <NativeSelect className={`${input} mt-1`} value={city} onChange={(e) => setCity(e.target.value)}>
-              <option value="" />
-              {SAUDI_CITIES.map((c) => (
-                <option key={c} value={c}>
-                  {displayCity(c, f.locale)}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-        </div>
-        <label className="mt-4 block text-sm font-semibold">
-          {t("fAddress")} <span className="text-destructive">*</span>
-          <input className={`${input} mt-1`} value={addr} onChange={(e) => setAddr(e.target.value)} />
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <span className="text-xs text-muted-foreground">{t("abSaveHint")}</span>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              className="ms-auto"
+              onClick={() => {
+                setTax(String(raw.taxNumber || ""))
+                setEmail(String(raw.email || profile.email || ""))
+                setCity(String(raw.city || ""))
+                setAddr(String(raw.nationalAddress || raw.location || ""))
+                setAbout(String(raw.description || ""))
+                setNameEn(String(raw.companyNameEn || ""))
+              }}
+            >
+              {t("cancel")}
+            </Button>
+            <Button type="submit" disabled={busy}>
+              {busy ? <Loader2 size={15} className="me-1.5 animate-spin" aria-hidden="true" /> : <Check size={15} className="me-1.5" aria-hidden="true" />}
+              {t("saveChanges")}
+            </Button>
+          </div>
+        </Panel>
+      </form>
+      <BankPanel orgId={profile.orgId} />
+    </div>
+  )
+}
+
+/** The bank account contractors pay into. Bank details are sensitive (DEV-60): they are written ONLY to
+ * `companyIdentity/{orgId}` — readable by the owner, the admin and his counterparties, never by any signed-in user as
+ * the profile document is — and the IBAN letter in Documents remains the proof. */
+function BankPanel({ orgId }: { orgId: string }) {
+  const f = useFree()
+  const { t } = f
+  const firestore = useFirestore()
+  const { toast } = useToast()
+  const ref = useMemoFirebase(() => (firestore && orgId ? doc(firestore, COMPANY_IDENTITY, orgId) : null), [firestore, orgId])
+  const { data } = useDoc<CompanyIdentity>(ref)
+  const [iban, setIban] = useState<string | null>(null)
+  const [bank, setBank] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const ibanNow = iban ?? String(data?.iban || "")
+  const bankNow = bank ?? String(data?.bankName || "")
+  const bad = ibanNow.trim() !== "" && !ibanValid(ibanNow)
+  const saveBank = async () => {
+    if (!firestore || !ref || bad) return
+    setBusy(true)
+    try {
+      await setDoc(ref, { iban: ibanNow.trim() ? normalIban(ibanNow) : "", bankName: bankNow.trim().slice(0, 120), updatedAt: new Date().toISOString() }, { merge: true })
+      setIban(null)
+      setBank(null)
+      toast({ title: t("tSaved") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("errSave"), variant: "destructive" })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Panel icon={Wallet} title={t("bankT")} sub={t("bankSub")}>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block text-sm font-semibold">
+          {t("fIban")}
+          <input className={`${input} mt-1 font-mono`} dir="ltr" placeholder="SA00 0000 0000 0000 0000 0000" value={ibanNow} onChange={(e) => setIban(e.target.value)} aria-invalid={bad} />
+          {bad && <span className="mt-1 block text-xs font-normal text-destructive">{t("ibanBad")}</span>}
         </label>
-        <label className="mt-4 block text-sm font-semibold">
-          {t("abAbout")}
-          <textarea rows={3} placeholder={t("abAboutPh")} className={`${input} mt-1 h-auto py-2`} value={about} onChange={(e) => setAbout(e.target.value)} />
+        <label className="block text-sm font-semibold">
+          {t("fBankName")}
+          <input className={`${input} mt-1`} value={bankNow} onChange={(e) => setBank(e.target.value)} maxLength={120} />
         </label>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <span className="text-xs text-muted-foreground">{t("abSaveHint")}</span>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={busy}
-            className="ms-auto"
-            onClick={() => {
-              setTax(String(raw.taxNumber || ""))
-              setEmail(String(raw.email || profile.email || ""))
-              setCity(String(raw.city || ""))
-              setAddr(String(raw.nationalAddress || raw.location || ""))
-              setAbout(String(raw.description || ""))
-            }}
-          >
-            {t("cancel")}
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {busy ? <Loader2 size={15} className="me-1.5 animate-spin" aria-hidden="true" /> : <Check size={15} className="me-1.5" aria-hidden="true" />}
-            {t("saveChanges")}
-          </Button>
-        </div>
-      </Panel>
-    </form>
+      </div>
+      <div className="mt-4 flex justify-end">
+        <Button type="button" onClick={() => void saveBank()} disabled={busy || bad || (iban == null && bank == null)}>
+          {busy ? <Loader2 size={15} className="me-1.5 animate-spin" aria-hidden="true" /> : <Check size={15} className="me-1.5" aria-hidden="true" />}
+          {t("saveChanges")}
+        </Button>
+      </div>
+    </Panel>
   )
 }
 

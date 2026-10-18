@@ -150,3 +150,14 @@ describe("the rules keep the approval the admin's", () => {
     expect(create).not.toMatch(/isSupplier\(\)/)
   })
 })
+
+describe("the free account's bank account", () => {
+  // Imported here to keep one place for the account's small rules.
+  const { ibanValid, normalIban } = jest.requireActual<typeof import("@/lib/supplier-free/profile")>("@/lib/supplier-free/profile")
+  it("accepts a Saudi IBAN with or without spaces and stores it compact", () => {
+    expect(ibanValid("SA03 8000 0000 6080 1016 7519")).toBe(true)
+    expect(normalIban("sa03 8000 0000 6080 1016 7519")).toBe("SA0380000000608010167519")
+    expect(ibanValid("SA0380000000608010167")).toBe(false)
+    expect(ibanValid("AE070331234567890123456")).toBe(false)
+  })
+})

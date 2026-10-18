@@ -7,8 +7,9 @@
 
 import { useMemo, type ReactElement, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { collection, query, where } from "firebase/firestore"
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { collection, doc, query, where } from "firebase/firestore"
+import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
+import { COMPANY_IDENTITY, type CompanyIdentity } from "@/lib/company-identity"
 import { Button } from "@/components/ui/button"
 import { displayReceiptNumber } from "@/lib/procurement/format"
 import { invoiceFigures } from "@/lib/supplier-free/invoice-rules"
@@ -69,8 +70,13 @@ export function PoSupplierSection({
   const transfers = useMemo(() => [...(transfersData || [])].sort((a, b) => str(a.reportedAt).localeCompare(str(b.reportedAt))), [transfersData])
   const warranties = warrantiesData || []
   const decline = po.supplierDecline
+  // The account he is paid into, as the supplier keeps it (companyIdentity — counterparties may read it, his own team may not).
+  const firestore = useFirestore()
+  const bankRef = useMemoFirebase(() => (firestore && open && po.supplierOrgId && po.supplierOrgId !== "guest" ? doc(firestore, COMPANY_IDENTITY, po.supplierOrgId) : null), [firestore, open, po.supplierOrgId])
+  const { data: bankData } = useDoc<CompanyIdentity>(bankRef)
+  const iban = str(bankData?.iban)
 
-  if (!pending.length && !decline && !invoices.length && !transfers.length && !warranties.length) return null
+  if (!pending.length && !decline && !invoices.length && !transfers.length && !warranties.length && !iban) return null
 
   return (
     <Section title={t("supplier.title")}>
@@ -100,6 +106,15 @@ export function PoSupplierSection({
               </p>
             </div>
           ))}
+        </Block>
+      )}
+
+      {iban && (
+        <Block title={t("supplier.bank")}>
+          <p className="text-sm">
+            <span className="font-mono font-bold" dir="ltr">{iban}</span>
+            {str(bankData?.bankName) && <span className="text-muted-foreground" dir="auto"> · {str(bankData?.bankName)}</span>}
+          </p>
         </Block>
       )}
 
