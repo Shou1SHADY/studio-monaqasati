@@ -20,12 +20,18 @@ import { canRegisterWarranty } from "@/lib/supplier-free/warranty"
 import type { Deal, DealReceipt, DealReport } from "@/lib/supplier-free/types"
 import type { Free } from "./useFree"
 import { useActions } from "./ActionsProvider"
-import { Pill, actionBtn, docWord, termsText } from "./ui"
+import { buttonVariants } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Pill, actionBtn, docWord, stk, termsText } from "./ui"
 import { InstalmentPill } from "./Pills"
 
 const lblCls = "text-xs text-muted-foreground"
 const th = "px-3 py-2 text-start text-xs font-bold text-muted-foreground"
 const td = "px-3 py-2 text-sm tabular-nums"
+// Inner tables stack into labelled rows on a phone, as the lists do (NFR-03: no sideways scroll at 390px).
+const stkWrap = "rounded-lg border md:overflow-x-auto"
+const stkHead = "bg-muted/30 max-md:hidden"
+const stkRow = "border-t max-md:block max-md:px-3 max-md:py-2 max-md:first:border-t-0"
 
 function KV({ k, v }: { k: string; v: ReactNode }) {
   return (
@@ -93,9 +99,9 @@ export function SecRequest({ f, d }: { f: Free; d: Deal }) {
         <KV k={t("fChannel")} v={t(`ch_${d.channel}`)} />
         <KV k={t("fCat")} v={<span dir="auto">{displayCategory(d.cat, f.locale)}</span>} />
       </dl>
-      <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full">
-          <thead className="bg-muted/30">
+      <div className={stkWrap}>
+        <table className={stk.table}>
+          <thead className={stkHead}>
             <tr>
               <th className={th}>#</th>
               <th className={th}>{t("thItem")}</th>
@@ -103,18 +109,18 @@ export function SecRequest({ f, d }: { f: Free; d: Deal }) {
               <th className={th}>{t("thUnit")}</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className={stk.tbody}>
             {d.items.map((i, k) => (
-              <tr key={i.id} className="border-t">
-                <td className={`${td} text-muted-foreground`}>{k + 1}</td>
-                <td className="px-3 py-2 text-sm font-bold">
+              <tr key={i.id} className={stkRow}>
+                <td className={cn(td, "text-muted-foreground", stk.wide)}>{k + 1}</td>
+                <td className={cn("px-3 py-2 text-sm font-bold", stk.head)}>
                   <bdi>{i.name}</bdi>
                   {i.spec && <span className="block text-xs font-normal text-muted-foreground">{i.spec}</span>}
                 </td>
-                <td className={td} dir="ltr">
-                  {fmt.n(i.qty)}
+                <td className={cn(td, stk.cell)} data-l={t("thQty")}>
+                  <span dir="ltr">{fmt.n(i.qty)}</span>
                 </td>
-                <td className="px-3 text-sm">{i.unit}</td>
+                <td className={cn("px-3 text-sm", stk.cell)} data-l={t("thUnit")}>{i.unit}</td>
               </tr>
             ))}
           </tbody>
@@ -154,8 +160,8 @@ export function SecRequest({ f, d }: { f: Free; d: Deal }) {
             void ask()
           }}
         >
-          <input value={q} onChange={(e) => setQ(e.target.value)} maxLength={1000} placeholder={t("qaPh")} aria-label={t("qaPh")} className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-          <button disabled={sending || !q.trim()} className="h-9 rounded-lg border bg-card px-3 text-sm font-bold hover:bg-muted/50 disabled:opacity-50">
+          <Input value={q} onChange={(e) => setQ(e.target.value)} maxLength={1000} placeholder={t("qaPh")} aria-label={t("qaPh")} className="h-9 min-w-0 flex-1" />
+          <button disabled={sending || !q.trim()} className={buttonVariants({ variant: "outline", size: "sm" })}>
             {t("qaSend")}
           </button>
         </form>
@@ -201,9 +207,9 @@ export function SecOffer({ f, d }: { f: Free; d: Deal }) {
             {t("prTotalLbl")}: <b><Money>{fmt.money(tot)}</Money></b>
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full">
-              <thead className="bg-muted/30">
+          <div className={stkWrap}>
+            <table className={stk.table}>
+              <thead className={stkHead}>
                 <tr>
                   <th className={th}>{t("thItem")}</th>
                   <th className={th}>{t("thQty")}</th>
@@ -211,22 +217,22 @@ export function SecOffer({ f, d }: { f: Free; d: Deal }) {
                   <th className={th}>{t("thTotal")}</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={stk.tbody}>
                 {d.items.map((i) => {
                   const p = v.prices[i.id]
                   return (
-                    <tr key={i.id} className="border-t">
-                      <td className="px-3 py-2 text-sm font-bold">
+                    <tr key={i.id} className={stkRow}>
+                      <td className={cn("px-3 py-2 text-sm font-bold", stk.head)}>
                         <bdi>{i.name}</bdi>
                       </td>
-                      <td className={td} dir="ltr">
-                        {fmt.n(i.qty)} {i.unit}
+                      <td className={cn(td, stk.cell)} data-l={t("thQty")}>
+                        <span dir="ltr">{fmt.n(i.qty)} {i.unit}</span>
                       </td>
-                      <td className={td} dir="ltr">
-                        {p != null ? fmt.money(p) : <span className="text-muted-foreground">{t("notSupplied")}</span>}
+                      <td className={cn(td, stk.cell)} data-l={t("thUnitPrice")}>
+                        {p != null ? <span dir="ltr">{fmt.money(p)}</span> : <span className="text-muted-foreground">{t("notSupplied")}</span>}
                       </td>
-                      <td className={td} dir="ltr">
-                        {p != null ? fmt.money(r2(p * i.qty)) : "—"}
+                      <td className={cn(td, stk.cell)} data-l={t("thTotal")}>
+                        <span dir="ltr">{p != null ? fmt.money(r2(p * i.qty)) : "—"}</span>
                       </td>
                     </tr>
                   )
@@ -288,9 +294,9 @@ export function SecPo({ f, d }: { f: Free; d: Deal }) {
         <KV k={t("fRcv")} v={<bdi>{po.rcv || "—"}</bdi>} />
         <KV k={t("fTerms")} v={termsText(f, po.terms)} />
       </dl>
-      <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full">
-          <thead className="bg-muted/30">
+      <div className={stkWrap}>
+        <table className={stk.table}>
+          <thead className={stkHead}>
             <tr>
               <th className={th}>{t("thItem")}</th>
               <th className={th}>{t("thUnitPrice")}</th>
@@ -301,16 +307,16 @@ export function SecPo({ f, d }: { f: Free; d: Deal }) {
               <th className={th}>{t("thLeft")}</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className={stk.tbody}>
             {lines.map(({ l, s, i }) => (
-              <tr key={l.it} className="border-t">
-                <td className="px-3 py-2 text-sm font-bold"><bdi>{i?.name}</bdi></td>
-                <td className={td} dir="ltr">{l.price != null ? fmt.money(l.price) : "—"}</td>
-                <td className={td} dir="ltr">{fmt.n(s.ord)} {i?.unit}</td>
-                <td className={td} dir="ltr">{fmt.n(s.got)}</td>
-                {anyRej && <td className={cn(td, "text-destructive")} dir="ltr">{fmt.n(s.rej)}</td>}
-                {anyCan && <td className={td} dir="ltr">{fmt.n(s.can)}</td>}
-                <td className={cn(td, "font-bold")} dir="ltr">{fmt.n(s.left)}</td>
+              <tr key={l.it} className={stkRow}>
+                <td className={cn("px-3 py-2 text-sm font-bold", stk.head)}><bdi>{i?.name}</bdi></td>
+                <td className={cn(td, stk.cell)} data-l={t("thUnitPrice")}><span dir="ltr">{l.price != null ? fmt.money(l.price) : "—"}</span></td>
+                <td className={cn(td, stk.cell)} data-l={t("thOrdered")}><span dir="ltr">{fmt.n(s.ord)} {i?.unit}</span></td>
+                <td className={cn(td, stk.cell)} data-l={t("thGot")}><span dir="ltr">{fmt.n(s.got)}</span></td>
+                {anyRej && <td className={cn(td, "text-destructive", stk.cell)} data-l={t("thRej")}><span dir="ltr">{fmt.n(s.rej)}</span></td>}
+                {anyCan && <td className={cn(td, stk.cell)} data-l={t("thCan")}><span dir="ltr">{fmt.n(s.can)}</span></td>}
+                <td className={cn(td, "font-bold", stk.cell)} data-l={t("thLeft")}><span dir="ltr">{fmt.n(s.left)}</span></td>
               </tr>
             ))}
           </tbody>
@@ -464,18 +470,18 @@ export function SecPay({ f, d }: { f: Free; d: Deal }) {
                 <div className="flex justify-between"><dt className="text-muted-foreground">{t("sumVat")}</dt><dd className="font-bold"><Money>{fmt.money(r2(L.invGross(i) - i.amt))}</Money></dd></div>
                 <div className="flex justify-between border-t pt-1 text-base"><dt className="font-bold">{t("sumGross")}</dt><dd className="font-black"><Money>{fmt.money(L.invGross(i))}</Money></dd></div>
               </dl>
-              <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full">
-                  <thead className="bg-muted/30">
+              <div className={stkWrap}>
+                <table className={stk.table}>
+                  <thead className={stkHead}>
                     <tr><th className={th}>{t("thInstall")}</th><th className={th}>{t("thDue")}</th><th className={th}>{t("thAmount")}</th><th className={th}>{t("thState")}</th></tr>
                   </thead>
-                  <tbody>
+                  <tbody className={stk.tbody}>
                     {L.sched(d, i).map((x, k) => (
-                      <tr key={k} className="border-t">
-                        <td className={td} dir="ltr">{x.pct}%</td>
-                        <td className={td} dir="ltr">{fmt.date(x.due, true)}</td>
-                        <td className={cn(td, "font-bold")} dir="ltr">{fmt.money(x.amt)}</td>
-                        <td className="px-3 py-2"><InstalmentPill f={f} state={instState(x.amt, x.due)} due={x.due} rel={rel} /></td>
+                      <tr key={k} className={stkRow}>
+                        <td className={cn(td, stk.head)}><span dir="ltr">{x.pct}%</span></td>
+                        <td className={cn(td, stk.cell)} data-l={t("thDue")}><span dir="ltr">{fmt.date(x.due, true)}</span></td>
+                        <td className={cn(td, "font-bold", stk.cell)} data-l={t("thAmount")}><span dir="ltr">{fmt.money(x.amt)}</span></td>
+                        <td className={cn("px-3 py-2", stk.cell)} data-l={t("thState")}><InstalmentPill f={f} state={instState(x.amt, x.due)} due={x.due} rel={rel} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -648,8 +654,8 @@ export function SecMsgs({ f, d, focus }: { f: Free; d: Deal; focus: boolean }) {
               void send()
             }}
           >
-            <input value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder={t("msgPh", { c: c?.name || "" })} aria-label={t("secMsgs")} className="h-9 min-w-0 flex-1 rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-            <button disabled={sending || !text.trim()} className={actionBtn("primary", "md")}>
+            <Input value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder={t("msgPh", { c: c?.name || "" })} aria-label={t("secMsgs")} className="h-9 min-w-0 flex-1" />
+            <button disabled={sending || !text.trim()} className={buttonVariants({ size: "sm" })}>
               <Send size={14} aria-hidden="true" />
               {t("send")}
             </button>

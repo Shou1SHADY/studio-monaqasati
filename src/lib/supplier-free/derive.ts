@@ -308,6 +308,13 @@ export interface DeriveContext {
   today: string
 }
 
+/** A stored file's own name from its download address (the upload prefixes a time and an index). */
+export function fileNameOf(url: string): string {
+  const path = decodeURIComponent(url.split("?")[0].split("/o/")[1] || url.split("?")[0])
+  const base = path.split("/").pop() || "file"
+  return base.replace(/^\d+_\d+_/, "").replace(/^\d+[_-]/, "") || "file"
+}
+
 export function deriveWorld(raw: RawWorld): World {
   const { today, myOrgId } = raw
   const posById = new Map(raw.pos.map((p) => [p.id, p]))
@@ -465,6 +472,9 @@ export function deriveWorld(raw: RawWorld): World {
           note: str(r.receiptNote) || undefined,
         }
         if (Object.keys(why).length) rcp.why = why
+        // The receiver's attachments (photos, weighbridge ticket, certificate — ORD-12), openable from the receipt.
+        const urls = Array.isArray(r.attachmentUrls) ? (r.attachmentUrls as unknown[]).map(str).filter(Boolean) : []
+        if (urls.length) rcp.files = urls.map((url) => ({ n: fileNameOf(url), s: "", url }))
         deal.ship.push(rcp)
       }
       // A quantity kept at a discount and released: a receipt of its own, at the discounted price (decision 3).

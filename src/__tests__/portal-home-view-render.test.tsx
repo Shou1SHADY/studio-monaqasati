@@ -59,6 +59,12 @@ beforeEach(() => {
 })
 
 describe("the portal home", () => {
+  it("renders the page once the profile arrives after the loading skeleton (React #310)", () => {
+    const { rerender } = render(<PortalHomeView {...props({ profile: null })} />)
+    expect(() => rerender(<PortalHomeView {...props()} />)).not.toThrow()
+    expect(screen.getAllByText(/./).length).toBeGreaterThan(0)
+  })
+
   it("greets the member by first name with his group, and shows the live numbers", () => {
     render(<PortalHomeView {...props()} />)
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Mona")

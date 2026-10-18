@@ -14,7 +14,7 @@ import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { useToast } from "@/hooks/use-toast"
 import { answerInvitation, tellOwnerAboutRequest } from "@/lib/supplier-free/connections"
-import { FreePage, Pill, VerifiedMark, useQueryState } from "./ui"
+import { actionBtn, FreePage, Pill, VerifiedMark, useQueryState } from "./ui"
 import { cn } from "@/lib/utils"
 import { useFree } from "./useFree"
 
@@ -54,14 +54,13 @@ export function FreeConnections() {
       title={t("navConnections")}
       description={t("cSub")}
       action={
-        <Button onClick={() => setReqOpen(true)} className="bg-cta text-cta-foreground hover:bg-cta/90">
+        <Button onClick={() => setReqOpen(true)}>
           <Plus size={15} className="me-1.5" aria-hidden="true" />
           {t("btnConnReq")}
         </Button>
       }
     >
       <SegmentedNav
-        variant="track"
         ariaLabel={t("navConnections")}
         active={tab}
         onSelect={(id) => q.set({ tab: id === "active" ? "" : id })}
@@ -89,8 +88,8 @@ export function FreeConnections() {
                   </div>
                   <p className="text-sm"><b className="tabular-nums">{ds.length}</b> {t("cDeals")} · {open} {t("cOpen")} · {won} {t("cWon")}</p>
                   <div className="mt-auto flex flex-wrap gap-2">
-                    <Link href={`/supplier/offers?c=${id}` as never} className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-card px-3 text-xs font-bold hover:bg-muted/50"><MessageSquare size={13} aria-hidden="true" />{t("cSeeOffers")}</Link>
-                    {c.phone && <a href={`tel:${c.phone}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-card px-3 text-xs font-bold hover:bg-muted/50"><Phone size={13} aria-hidden="true" />{t("call")}</a>}
+                    <Link href={`/supplier/offers?c=${id}` as never} className={actionBtn("outline")}><MessageSquare size={13} aria-hidden="true" />{t("cSeeOffers")}</Link>
+                    {c.phone && <a href={`tel:${c.phone}`} className={actionBtn("outline")}><Phone size={13} aria-hidden="true" />{t("call")}</a>}
                   </div>
                 </article>
               )
@@ -117,7 +116,7 @@ export function FreeConnections() {
                   {iv.note && <p className="rounded-lg bg-card px-3 py-2 text-sm" dir="auto">{iv.note}</p>}
                   <p className="text-xs text-muted-foreground">{t("invWhat")}</p>
                   <div className="mt-auto flex gap-2">
-                    <Button size="sm" disabled={busy === iv.id} onClick={() => iv.id && void answer(iv.id, iv.c, "accepted")} className="bg-cta text-cta-foreground hover:bg-cta/90">
+                    <Button size="sm" disabled={busy === iv.id} onClick={() => iv.id && void answer(iv.id, iv.c, "accepted")}>
                       {busy === iv.id ? <Loader2 size={13} className="me-1 animate-spin" aria-hidden="true" /> : <Check size={13} className="me-1" aria-hidden="true" />}
                       {t("btnInvOk")}
                     </Button>
@@ -250,7 +249,7 @@ function RequestDialog({ onClose, onSent }: { onClose: () => void; onSent: (name
         )}
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>{t("cancel")}</Button>
-          <Button disabled={!pick || busy} onClick={() => void send()} className="bg-cta text-cta-foreground hover:bg-cta/90">{t("btnConnSend")}</Button>
+          <Button disabled={!pick || busy} onClick={() => void send()}>{t("btnConnSend")}</Button>
         </div>
       </DialogContent>
     </Dialog>

@@ -4,7 +4,7 @@
 // and the order's, who recorded it and when, the site, the arrival date, what arrived, what was accepted, what was not,
 // the receiver's note and the attachments. No signature, no printing, no driver and no supplier rows.
 
-import { Camera, Scale, ShieldCheck, Award } from "lucide-react"
+import { Award, Camera, Paperclip, Scale, ShieldCheck } from "lucide-react"
 import type { Deal, DealReceipt } from "@/lib/supplier-free/types"
 import type { Free } from "./useFree"
 import { docWord } from "./ui"
@@ -24,6 +24,7 @@ export function ReceiptDoc({ f, d, r }: { f: Free; d: Deal; r: DealReceipt }) {
     return { item, q, got, rej: q - got, why: r.why?.[k] }
   })
   const evidence = (r.chk || []).filter((k) => CHK[k])
+  const files = (r.files || []).filter((x) => !!x.url)
   return (
     <div className="overflow-hidden rounded-xl border bg-card">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b bg-muted/30 px-4 py-3">
@@ -92,7 +93,7 @@ export function ReceiptDoc({ f, d, r }: { f: Free; d: Deal; r: DealReceipt }) {
           <b>{t("grnNoteT")}</b> {r.note}
         </p>
       )}
-      {evidence.length > 0 && (
+      {(evidence.length > 0 || files.length > 0) && (
         <div className="flex flex-wrap items-center gap-2 border-t px-4 py-2.5 text-xs">
           <span className="font-bold text-muted-foreground">{t("grnEvidence")}</span>
           {evidence.map((k) => {
@@ -104,6 +105,19 @@ export function ReceiptDoc({ f, d, r }: { f: Free; d: Deal; r: DealReceipt }) {
               </span>
             )
           })}
+          {/* The receiver's files open from the receipt (ORD-12). */}
+          {files.map((file, i) => (
+            <a
+              key={`${file.url}-${i}`}
+              href={file.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex max-w-[16rem] items-center gap-1 rounded-md border bg-card px-2 py-0.5 font-semibold text-cta hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Paperclip size={12} className="shrink-0" aria-hidden="true" />
+              <bdi className="truncate">{file.n}</bdi>
+            </a>
+          ))}
         </div>
       )}
     </div>

@@ -390,6 +390,31 @@ describe("the free home, rendered", () => {
     expect(screen.getAllByRole("link").some((a) => a.getAttribute("href") === first)).toBe(true)
   })
 
+  it("'All tasks (N)' lists every task on the home, and 'Show fewer' folds them back (TDY-04)", () => {
+    const { container } = renderHome()
+    const W = createWorldLogic(TODAY, DEMO)
+    const n = W.allActs().length
+    expect(n).toBeGreaterThan(3)
+    const cards = () => [...container.querySelectorAll("h3")].length
+    const before = cards()
+    fireEvent.click(screen.getByRole("button", { name: `All tasks (${n})` }))
+    expect(cards()).toBe(before - 3 + n)
+    fireEvent.click(screen.getByRole("button", { name: "Show fewer" }))
+    expect(cards()).toBe(before)
+  })
+
+  it("shows the open requests closing soonest, counted as the Quote requests page counts them (TDY-05)", () => {
+    renderHome()
+    const W = createWorldLogic(TODAY, DEMO)
+    const open = W.opps({})
+    expect(open.length).toBeGreaterThan(0)
+    const section = screen.getByRole("region", { name: new RegExp(`Open requests\\s*${open.length}`) })
+    const links = [...section.querySelectorAll("a")].map((a) => a.getAttribute("href"))
+    for (const d of open.slice(0, 4)) expect(links).toContain(`/supplier/rfqs?deal=${d.id}`)
+    for (const d of open.slice(4)) expect(links).not.toContain(`/supplier/rfqs?deal=${d.id}`)
+    expect(screen.getByRole("link", { name: "All requests" })).toHaveAttribute("href", "/supplier/rfqs")
+  })
+
   it("a new account: nothing yet and a way to complete the profile, no figures", () => {
     renderHome(EMPTY)
     expect(screen.getAllByText("Nothing yet").length).toBeGreaterThan(0)

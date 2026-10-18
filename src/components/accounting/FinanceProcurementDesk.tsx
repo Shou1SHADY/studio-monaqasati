@@ -13,7 +13,7 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Banknote, ClipboardCheck, Loader2, Lock, PauseCircle, Send } from "lucide-react"
+import { Banknote, ClipboardCheck, FileText, Loader2, Lock, PauseCircle, Send } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { PoDrawer } from "@/components/procurement/PoDrawer"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
@@ -24,13 +24,14 @@ import type { PurchaseOrder } from "@/lib/procurement/types"
 import { advanceAmount, advanceState, asX } from "@/lib/procurement/po-extras"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { AccountingShell } from "./AccountingShell"
+import { SupplierInvoiceRows, useSupplierInvoiceRows } from "./SupplierInvoiceRows"
 
 export function FinanceProcurementDesk({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
   const tp = useTranslations("Portal.Procurement")
   const locale = useLocale()
   const world = useProcurementWorld()
-  const { orders, actor, policies, loading } = world
+  const { orders, deliveries, actor, policies, loading } = world
   const [now] = useState(() => new Date())
   const [openId, setOpenId] = useState<string | null>(null)
 
@@ -44,6 +45,9 @@ export function FinanceProcurementDesk({ portal }: { portal: CrmPortal }) {
   const liveHolds = (po: PurchaseOrder) => (asX(po).financeHolds || []).filter((h) => h.state !== "released")
   const held = useMemo(() => orders.filter((po) => liveHolds(po).length > 0).sort(byNewest), [orders])
   const heldCount = held.reduce((n, po) => n + liveHolds(po).length, 0)
+  // What free suppliers filed on our orders: matched with the order and our receipts, then scheduled (Supplier 1.0).
+  const supplierInvoices = useSupplierInvoiceRows(world.orgId, orders, deliveries)
+  const unpaidInvoices = supplierInvoices.rows.filter((r) => r.schedule.next).length
   const openOrder = orders.find((po) => po.id === openId) || null
   const mayApproveAny = actor.isOwner || actor.canApprove
 
@@ -96,6 +100,18 @@ export function FinanceProcurementDesk({ portal }: { portal: CrmPortal }) {
                     .map((h) => `${h.invoiceNo} — ${tp(`rfqpo.po.hold.reason.${h.reason}`)}${h.state === "decided" && h.decision ? ` — ${tp("enforce.hold_decided_note", { decision: tp(`rfqpo.po.hold.decision.${h.decision}`), by: h.decidedByName || "—" })}` : ""}`)
                     .join(" · ")
                 } t={t} />
+            )}
+          </Section>
+
+          <Section icon={FileText} title={t("fpd_inv_title")} sub={t("fpd_inv_sub")} count={unpaidInvoices}>
+            {supplierInvoices.loading ? (
+              <div className="flex justify-center p-6">
+                <Loader2 className="animate-spin text-muted-foreground" size={20} aria-hidden="true" />
+              </div>
+            ) : supplierInvoices.rows.length === 0 ? (
+              <Empty>{t("fpd_inv_empty")}</Empty>
+            ) : (
+              <SupplierInvoiceRows rows={supplierInvoices.rows} onOpen={setOpenId} />
             )}
           </Section>
 

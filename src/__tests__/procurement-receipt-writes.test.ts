@@ -196,6 +196,13 @@ describe("recordReceipt on an order", () => {
     expect(readDoc<{ last: number }>(`mfgCounters/${ORG}__GR__2026`)?.last).toBe(1)
   })
 
+  it("keeps the receiver's attachments beside any the notice carried (Supplier ORD-12)", async () => {
+    seedWorld()
+    seed(`deliveries/d1`, { ...delivery(), attachmentUrls: ["https://files/notice.pdf"] })
+    await recordReceipt(db, gate, { delivery: delivery(), po: po(), lines, receiverName: "سلمى", attachmentUrls: ["https://files/photo1.jpg", "https://files/ticket.pdf"], policies: DEFAULT_POLICIES }, { now: NOW, copy })
+    expect(delivery().attachmentUrls).toEqual(["https://files/notice.pdf", "https://files/photo1.jpg", "https://files/ticket.pdf"])
+  })
+
   it("the consequences, in order and with the right arguments: stock at the order's price, the books per delivery, Manufacturing's request, the preparer and Finance, the supplier", async () => {
     seedWorld()
     seed("workOrders/wo1", { organizationId: ORG, docNumber: "WO-2026/003", purchaseRequests: [{ id: "pr1", byId: "mgr", quantity: 10, unit: "طن", itemName: "حديد", state: "ordered" }] })

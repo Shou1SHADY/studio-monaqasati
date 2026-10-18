@@ -10,7 +10,14 @@ import { Button } from "@/components/ui/button"
 import { PortalHomeView } from "@/components/portal-home/PortalHomeView"
 import { useModuleComponents } from "@/hooks/useCompanyModules"
 import { freeHomeModel } from "./home-model"
+import { RequestCard } from "./RequestCard"
 import { useFree } from "./useFree"
+
+/** A request card on the home opens over the Quote requests page, as it does there. */
+const rfqsHref = (patch: Record<string, string | null>) => {
+  const qs = new URLSearchParams(Object.entries(patch).filter((e): e is [string, string] => !!e[1])).toString()
+  return `/supplier/rfqs${qs ? `?${qs}` : ""}`
+}
 
 export function FreeHome() {
   const f = useFree()
@@ -36,6 +43,28 @@ export function FreeHome() {
     </section>
   ) : null
 
+  // Open requests (TDY-05): the four closing soonest, counted as the Quote requests page counts them.
+  const open = f.ready ? f.L.opps({}) : []
+  const openSection =
+    open.length > 0 ? (
+      <section aria-labelledby="home-open-reqs" className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 id="home-open-reqs" className="flex items-center gap-2 text-sm font-black text-foreground">
+            {t("okOpen")}
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">{f.fmt.n(open.length)}</span>
+          </h2>
+          <Link href="/supplier/rfqs" className="rounded text-[12.5px] font-semibold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {t("seeAllOpps")}
+          </Link>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {open.slice(0, 4).map((d) => (
+            <RequestCard key={d.id} f={f} d={d} href={rfqsHref} />
+          ))}
+        </div>
+      </section>
+    ) : null
+
   return (
     <PortalHomeView
       profile={homeProfile}
@@ -49,6 +78,8 @@ export function FreeHome() {
       recent={[]}
       decisions={{ loading: !f.ready, items: m.decisions }}
       banner={banner}
+      allDecisions={{ all: t("secAll", { n: f.fmt.n(m.decisions.length) }), fewer: t("secFewer") }}
+      after={openSection}
     />
   )
 }

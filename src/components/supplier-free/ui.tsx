@@ -7,11 +7,16 @@
 
 import { useCallback, useEffect, useState, type ElementType, type ReactNode } from "react"
 import { useSearchParams } from "next/navigation"
-import { LayoutGrid, Rows3, ShieldCheck } from "lucide-react"
-import { Link, usePathname, useRouter } from "@/i18n/routing"
+import { useTranslations } from "next-intl"
+import { LayoutGrid, List, Search, ShieldCheck } from "lucide-react"
+import { usePathname, useRouter } from "@/i18n/routing"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
+import { ModuleHeader, type ModuleKpi, type ModuleTab } from "@/components/module-ui/ModuleHeader"
+import { usePortalFrame } from "@/components/layout/portal-frame-context"
+import { FREE_SUPPLIER_NAV } from "@/lib/company-modules"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import type { Deal } from "@/lib/supplier-free/types"
 import { useWorldReady } from "./FreeWorldProvider"
 import type { Free } from "./useFree"
@@ -22,47 +27,46 @@ export interface PageKpi {
   id: string
   icon: ElementType
   label: string
-  value: ReactNode
+  value: string | number
   unit?: string
-  sub?: ReactNode
+  sub?: string
   tone?: "warn" | "up" | "down" | "neutral"
   href?: string
 }
 
-const KPI_SUB: Record<NonNullable<PageKpi["tone"]>, string> = {
-  warn: "bg-warning/10 text-warning",
-  up: "bg-success/10 text-success",
-  down: "bg-destructive/10 text-destructive",
-  neutral: "bg-muted text-muted-foreground",
+/** A page figure as the module header shows it (the unit — the riyal sign — left of the figure). */
+function toModuleKpi(k: PageKpi): ModuleKpi {
+  return {
+    id: k.id,
+    icon: k.icon,
+    label: k.label,
+    value: String(k.value),
+    unit: k.unit,
+    note: k.sub,
+    tone: k.tone === "warn" ? "warn" : k.tone === "up" ? "good" : k.tone === "down" ? "bad" : "neutral",
+    href: k.href,
+  }
 }
 
-export function Kpi({ k }: { k: PageKpi }) {
-  const Icon = k.icon
-  const body = (
-    <>
-      <p className="flex items-center gap-1.5 text-[11px] font-semibold leading-snug text-muted-foreground sm:text-xs">
-        <Icon size={14} className="hidden shrink-0 text-module sm:block" aria-hidden="true" />
-        <span className="line-clamp-2">{k.label}</span>
-      </p>
-      <p className="mt-1.5 break-words text-base font-black leading-tight tabular-nums text-foreground sm:truncate sm:text-2xl" dir="ltr">
-        {k.unit && <bdi className="text-xs font-bold text-muted-foreground max-sm:block sm:me-1">{k.unit}</bdi>}
-        <bdi>{k.value}</bdi>
-      </p>
-      {k.sub && <p className={cn("mt-1.5 inline-block max-w-full rounded-md px-1.5 py-0.5 text-[10px] font-semibold sm:truncate sm:text-[11px]", KPI_SUB[k.tone ?? "neutral"])}>{k.sub}</p>}
-    </>
-  )
-  const cls = "block h-full rounded-xl border bg-card p-3 text-start transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:p-4"
-  return k.href ? (
-    <Link href={k.href as never} className={cls}>
-      {body}
-    </Link>
-  ) : (
-    <div className="h-full rounded-xl border bg-card p-3 sm:p-4">{body}</div>
-  )
+/** The sibling pages of the module this page belongs to, as the header's tab rail (every Mdmak module page has one),
+ * with the sidebar's counts. */
+function useModuleTabs(): { tabs: ModuleTab[]; active?: string } {
+  const pathname = usePathname()
+  const frame = usePortalFrame()
+  const t = useTranslations("Portal.Sidebar")
+  const nav = Object.values(FREE_SUPPLIER_NAV).find((items) => items?.some(([href]) => href === pathname))
+  if (!nav) return { tabs: [] }
+  const tabs = nav
+    .filter(([href]) => href !== "/supplier")
+    .map(([href, titleKey]): ModuleTab => {
+      const b = frame?.navBadges?.[href]
+      return { id: href, href, label: t(titleKey), count: typeof b?.n === "number" ? b.n : undefined, urgent: b?.tone === "red" }
+    })
+  return { tabs, active: pathname }
 }
 
 export function FreePage({
-  icon: Icon,
+  icon,
   title,
   description,
   action,
@@ -77,22 +81,19 @@ export function FreePage({
   children: ReactNode
 }) {
   const ready = useWorldReady()
+  const { tabs, active } = useModuleTabs()
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-start gap-3">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-module/10 text-module">
-              <Icon size={22} aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <h1 className="text-2xl font-black text-primary">{title}</h1>
-              {description && <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>}
-            </div>
-          </div>
-        </div>
-        {action && <div className="flex flex-wrap items-center gap-2">{action}</div>}
-      </div>
+      <ModuleHeader
+        icon={icon}
+        title={title}
+        description={description}
+        actions={action}
+        kpis={ready ? kpis?.map(toModuleKpi) : undefined}
+        tabs={tabs}
+        activeTab={active}
+        tabsLabel={title}
+      />
       {!ready ? (
         <div className="grid grid-cols-3 gap-2 sm:gap-3" role="status" aria-busy="true">
           {[0, 1, 2].map((i) => (
@@ -100,16 +101,7 @@ export function FreePage({
           ))}
         </div>
       ) : (
-        <>
-          {kpis && kpis.length > 0 && (
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
-              {kpis.map((k) => (
-                <Kpi key={k.id} k={k} />
-              ))}
-            </div>
-          )}
-          {children}
-        </>
+        children
       )}
     </div>
   )
@@ -119,11 +111,9 @@ export function FreePage({
  * the lists use, on a link or a plain button. */
 export function actionBtn(tone: "primary" | "outline" | "danger" = "primary", size: "sm" | "md" = "sm") {
   return cn(
-    buttonVariants({ variant: tone === "primary" ? "default" : "ghost", size: "sm" }),
-    size === "sm" ? "h-8 gap-1.5 px-3 text-xs font-bold" : "h-9 gap-1.5 px-3 text-sm font-bold",
-    tone === "primary" && "bg-cta text-cta-foreground hover:bg-cta/90 hover:shadow-none",
-    tone === "outline" && "border bg-card hover:bg-muted/50",
-    tone === "danger" && "border border-destructive/30 bg-card text-destructive hover:bg-destructive/5"
+    buttonVariants({ variant: tone === "primary" ? "default" : "outline", size: "sm" }),
+    size === "sm" && "h-8 gap-1.5 px-3 text-xs",
+    tone === "danger" && "border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
   )
 }
 
@@ -250,25 +240,44 @@ export const stk = {
 export function ViewToggle({ view, onChange, f }: { view: ViewMode; onChange: (v: ViewMode) => void; f: Free }) {
   const items: [ViewMode, ElementType, string][] = [
     ["cards", LayoutGrid, f.t("vCards")],
-    ["rows", Rows3, f.t("vRows")],
+    ["rows", List, f.t("vRows")],
   ]
   return (
-    <div role="group" aria-label={f.t("viewAs")} className="inline-flex rounded-lg border bg-card p-0.5">
+    <div role="group" aria-label={f.t("viewAs")} className="flex items-center rounded-xl border bg-card p-1">
       {items.map(([k, Icon, label]) => (
         <button
           key={k}
           type="button"
           aria-pressed={view === k}
+          aria-label={label}
+          title={label}
           onClick={() => onChange(k)}
           className={cn(
-            "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            view === k ? "bg-module text-module-foreground" : "text-muted-foreground hover:text-foreground"
+            "grid h-8 w-8 place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            view === k ? "bg-module/10 text-module" : "text-muted-foreground hover:text-foreground"
           )}
         >
-          <Icon size={14} aria-hidden="true" />
-          {label}
+          <Icon size={15} aria-hidden="true" />
         </button>
       ))}
+    </div>
+  )
+}
+
+/** The list's search box, as the portal's lists have it: filters while typing (a short pause, so the address does not
+ * stack an entry per letter). */
+export function SearchBox({ value, onSearch, placeholder }: { value: string; onSearch: (q: string) => void; placeholder: string }) {
+  const [text, setText] = useState(value)
+  useEffect(() => setText(value), [value])
+  useEffect(() => {
+    if (text === value) return
+    const id = window.setTimeout(() => onSearch(text.trim()), 250)
+    return () => window.clearTimeout(id)
+  }, [text])
+  return (
+    <div className="relative" role="search">
+      <Search className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} aria-hidden="true" />
+      <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} aria-label={placeholder} className="h-9 w-full rounded-xl bg-card ps-9 sm:w-60" />
     </div>
   )
 }
@@ -322,7 +331,7 @@ export function ShowMore({ f, shown, total, onMore }: { f: Free; shown: number; 
 
 /** A list header for a group: its label, its count from the WHOLE list, optionally its value. */
 export function GroupHead({ label, n, value, tone }: { label: string; n: number; value?: string; tone?: "r" | "a" | "b" | "m" | "g" }) {
-  const dot = tone === "r" ? "bg-destructive" : tone === "a" ? "bg-warning" : tone === "b" ? "bg-cta" : tone === "g" ? "bg-success" : "bg-muted-foreground/40"
+  const dot = tone === "r" ? "bg-destructive" : tone === "a" ? "bg-warning" : tone === "b" ? "bg-module" : tone === "g" ? "bg-success" : "bg-muted-foreground/40"
   return (
     <div className="mb-2 mt-5 flex items-center gap-2 first:mt-0">
       <span className={cn("h-2.5 w-2.5 rounded-full", dot)} aria-hidden="true" />

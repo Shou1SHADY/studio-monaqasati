@@ -326,7 +326,25 @@ describe("rows stack on a phone", () => {
     expect(cells[0].getAttribute("data-l")).toBeNull()
     expect(cells.slice(1).every((c) => !!c.getAttribute("data-l"))).toBe(true)
     expect(stk.cell).toContain("max-md:before:content-[attr(data-l)]")
-    expect(container.querySelector(".overflow-x-auto")).toBeNull()
+    // Nothing in the list scrolls sideways (the module header's tab rail is the portal's own and may).
+    expect(container.querySelector("table")?.closest(".overflow-x-auto") ?? null).toBeNull()
+  })
+  it("the deal drawer's tables stack too: no sideways scroll on a phone (NFR-03)", () => {
+    const { today, world } = protoWorld()
+    const withPo = world.deals.find((d) => d.po && d.offer)!
+    mockSearch = `deal=${withPo.id}`
+    mockFree = makeFree({ world, today })
+    render(<DealDrawer />)
+    const tables = [...document.querySelectorAll("table")]
+    expect(tables.length).toBeGreaterThan(0)
+    for (const table of tables) {
+      expect(table.className).toContain("max-md:block")
+      expect(table.closest(".overflow-x-auto")).toBeNull()
+      const row = table.querySelector("tbody tr") as HTMLTableRowElement
+      const cells = [...row.querySelectorAll("td")].filter((c) => !c.className.includes("max-md:hidden"))
+      expect(cells.slice(1).every((c) => !!c.getAttribute("data-l"))).toBe(true)
+    }
+    mockSearch = ""
   })
 })
 

@@ -3,7 +3,7 @@
  * `supplierDecline`, `deliveryReports`, `termsList`) and what every older document carries both read the same way.
  */
 
-import { deriveWorld, bareNumber, shortTitle, type RawWorld } from "@/lib/supplier-free/derive"
+import { deriveWorld, fileNameOf, bareNumber, shortTitle, type RawWorld } from "@/lib/supplier-free/derive"
 import { createWorldLogic } from "@/lib/supplier-free/world-logic"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 
@@ -217,6 +217,14 @@ describe("an order, its receipts, report, invoice and transfers", () => {
       expect(r.got).toEqual({ i1: 5940 })
       expect(r.why).toEqual({ i1: "مكسورة" })
     }
+  })
+
+  it("the receiver's attachments open from the supplier's receipt, by their own names (ORD-12)", () => {
+    const url = "https://firebasestorage.googleapis.com/v0/b/x/o/deliveries%2Freceipts%2Fd1%2F1760000000000_0_scale-ticket.pdf?alt=media&token=t"
+    const d = deriveWorld(raw({ deliveries: [{ ...(raw().deliveries[0] as Record<string, unknown>), attachmentUrls: [url] } as never] })).deals[0]
+    const r = d.ship[0]
+    expect(r.st === "ok" && r.files).toEqual([{ n: "scale-ticket.pdf", s: "", url }])
+    expect(fileNameOf("https://x/y/1760000000000_photo.jpg")).toBe("photo.jpg")
   })
 
   it("terms from before frozen terms come from the advance and the credit days", () => {

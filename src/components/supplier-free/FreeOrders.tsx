@@ -5,13 +5,13 @@
 // order (lines, reports, receipts, warranty) lives in its drawer.
 
 import { useMemo } from "react"
-import { AlertTriangle, Bell, Check, Clock, FileText, Search, Truck } from "lucide-react"
+import { AlertTriangle, Bell, Check, Clock, FileText, Truck } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { cn } from "@/lib/utils"
 import type { Deal } from "@/lib/supplier-free/types"
-import { actionBtn, FreePage, docWord, useQueryState, useRowGo, type PageKpi } from "./ui"
+import { actionBtn, SearchBox, FreePage, docWord, useQueryState, useRowGo, type PageKpi } from "./ui"
 import { leftText } from "./TaskCard"
 import { useActions } from "./ActionsProvider"
 import { useFree, type Free } from "./useFree"
@@ -126,7 +126,6 @@ export function FreeOrders() {
     <FreePage icon={FileText} title={t("navOrders")} description={t("poSub")} kpis={kpis}>
       <div className="flex flex-wrap items-center gap-3">
         <SegmentedNav
-          variant="track"
           ariaLabel={t("navOrders")}
           active={seg}
           onSelect={(id) => q.set({ seg: id === "all" ? "" : id })}
@@ -137,17 +136,7 @@ export function FreeOrders() {
             { id: "done", label: t("pwDone"), count: cnt("done") },
           ]}
         />
-        <form
-          role="search"
-          className="relative ms-auto"
-          onSubmit={(e) => {
-            e.preventDefault()
-            q.set({ q: String(new FormData(e.currentTarget).get("q") || "") })
-          }}
-        >
-          <Search size={14} className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <input name="q" defaultValue={search} key={search} placeholder={t("poSearchPh")} aria-label={t("poSearchPh")} className="h-9 w-64 rounded-lg border bg-card ps-8 pe-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-        </form>
+        <SearchBox value={search} onSearch={(v) => q.set({ q: v }, { replace: true })} placeholder={t("poSearchPh")} />
       </div>
       {!list.length ? (
         <EmptyState
@@ -155,7 +144,7 @@ export function FreeOrders() {
           title={t(search ? "listEmptyF" : (`poEmpty_${seg}` as "poEmpty_all"))}
           action={
             search ? (
-              <Link href={href({ q: "" }) as never} className="inline-flex h-9 items-center rounded-lg border bg-card px-3 text-sm font-bold">
+              <Link href={href({ q: "" }) as never} className={actionBtn("outline", "md")}>
                 {t("clearFilters")}
               </Link>
             ) : undefined

@@ -7,12 +7,11 @@
 import { useEffect } from "react"
 import { Building2, Check, Loader2, MapPin, MessageSquare, Phone, Search, Send, Truck, Wallet } from "lucide-react"
 import { Link } from "@/i18n/routing"
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
-import { cn } from "@/lib/utils"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { DealPill } from "./Pills"
 import { DealStats, NextBox, Tracker } from "./DealNext"
 import { SecMsgs, SecOffer, SecPay, SecPo, SecRequest, SecShip, SecWar } from "./DealSections"
-import { VerifiedMark, docWord, useQueryState } from "./ui"
+import { VerifiedMark, actionBtn, docWord, useQueryState } from "./ui"
 import { useFree } from "./useFree"
 
 const STAGE_ICON = { new: Search, offered: Send, deliver: Truck, collect: Wallet, done: Check } as const
@@ -31,7 +30,7 @@ export function DealDrawer() {
   const close = () => q.set({ deal: null, m: null, quote: null, mode: null })
   return (
     <Sheet open onOpenChange={(o) => !o && close()}>
-      <SheetContent side={f.isAr ? "left" : "right"} className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl" aria-describedby="deal-desc">
+      <SheetContent side={f.isAr ? "left" : "right"} dir={f.isAr ? "rtl" : "ltr"} className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl" aria-describedby="deal-desc">
         {d ? <Body f={f} d={d} href={q.href} focusMsgs={q.get("m") === "1"} /> : f.ready ? <NotFound f={f} /> : <Loading f={f} />}
         <SheetDescription id="deal-desc" className="sr-only">
           {d ? d.title : f.ready ? f.t("notFound") : f.t("loadingWorld")}
@@ -72,12 +71,12 @@ function Body({ f, d, href, focusMsgs }: { f: ReturnType<typeof useFree>; d: Non
   }, [focusMsgs])
   return (
     <>
-      <header className="flex items-start gap-3 border-b px-5 py-4 pe-12">
+      <SheetHeader className="flex-row items-start gap-3 space-y-0 border-b px-4 py-4 pe-12 text-start sm:px-6">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-module/10 text-module">
           <Icon size={19} aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
-          <SheetTitle className="text-base font-black leading-snug" dir="auto">
+          <SheetTitle className="text-lg font-black leading-relaxed text-primary" dir="auto">
             {d.title}
           </SheetTitle>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -99,20 +98,20 @@ function Body({ f, d, href, focusMsgs }: { f: ReturnType<typeof useFree>; d: Non
           </p>
           <div className="mt-2.5 flex flex-wrap gap-2">
             {showCall && c && (
-              <a href={`tel:${c.phone}`} className="inline-flex h-8 items-center gap-1.5 rounded-lg border bg-card px-3 text-xs font-bold hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <a href={`tel:${c.phone}`} className={actionBtn("outline")}>
                 <Phone size={13} aria-hidden="true" />
                 {t("call")}
               </a>
             )}
-            <Link href={href({ m: "1" }) as never} scroll={false} className={cn("inline-flex h-8 items-center gap-1.5 rounded-lg border bg-card px-3 text-xs font-bold hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}>
+            <Link href={href({ m: "1" }) as never} scroll={false} className={actionBtn("outline")}>
               <MessageSquare size={13} aria-hidden="true" />
               {t("secMsgs")}
-              {(d.chat?.unread || 0) > 0 && <span className="rounded-full bg-destructive px-1.5 text-[10px] text-white tabular-nums">{d.chat?.unread}</span>}
+              {(d.chat?.unread || 0) > 0 && <span className="min-w-5 rounded-full bg-destructive px-1.5 text-center text-[11px] leading-5 text-destructive-foreground tabular-nums">{d.chat?.unread}</span>}
             </Link>
           </div>
         </div>
-      </header>
-      <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+      </SheetHeader>
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-6">
         <Tracker f={f} d={d} />
         <NextBox f={f} d={d} href={href} />
         <DealStats f={f} d={d} />

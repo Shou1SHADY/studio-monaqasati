@@ -19,13 +19,14 @@ import { DOC_KEYS, docState, isVerified, profileChecks, profileFacts, profilePct
 import { uploadSupplierFile } from "@/lib/supplier-free/uploads"
 import { normalizeCr } from "@/lib/supplier-free/phone-auth"
 import { ERRORS as PHONE_ERRORS } from "./PhoneSignInDialog"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { Callout } from "@/components/module-ui/Callout"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { cn } from "@/lib/utils"
+import { Chip } from "@/components/module-ui/Chip"
 import { FreePage, Pill, docWord, useQueryState } from "./ui"
 import { bareNumber } from "@/lib/supplier-free/derive"
 import { deliveryReviews, type ReviewDoc } from "@/lib/supplier-free/reviews"
@@ -44,7 +45,7 @@ const TABS = [
 ] as const
 
 const DOC_ICON = { cr: FileText, vat: Hash, addr: MapPin, iban: Wallet, conf: Award } as const
-const input = "h-10 w-full rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:bg-muted/50 disabled:text-muted-foreground read-only:bg-muted/50"
+const input = "h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm read-only:bg-muted/50"  // the shared Input's look (16px on phones: no zoom on focus)
 
 function Panel({ icon: Icon, title, sub, right, children }: { icon: typeof Building2; title: string; sub?: string; right?: ReactNode; children: ReactNode }) {
   return (
@@ -110,7 +111,7 @@ export function FreeAccount() {
             <div className="rounded-lg border px-3 py-2">
               <dt className="text-[11px] text-muted-foreground">{t("statPct")}</dt>
               <dd className="text-lg font-black tabular-nums" dir="ltr">{pct}%</dd>
-              <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-muted"><span className="block h-full bg-cta" style={{ width: `${pct}%` }} /></span>
+              <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-muted"><span className="block h-full bg-module" style={{ width: `${pct}%` }} /></span>
             </div>
             <div className="rounded-lg border px-3 py-2">
               <dt className="text-[11px] text-muted-foreground">{t("statDone")}</dt>
@@ -122,7 +123,6 @@ export function FreeAccount() {
       </section>
 
       <SegmentedNav
-        variant="track"
         ariaLabel={t("navAccount")}
         active={tab}
         onSelect={(id) => q.set({ tab: id === "basic" ? "" : id })}
@@ -271,7 +271,7 @@ function BasicTab() {
           >
             {t("cancel")}
           </Button>
-          <Button type="submit" disabled={busy} className="bg-cta text-cta-foreground hover:bg-cta/90">
+          <Button type="submit" disabled={busy}>
             {busy ? <Loader2 size={15} className="me-1.5 animate-spin" aria-hidden="true" /> : <Check size={15} className="me-1.5" aria-hidden="true" />}
             {t("saveChanges")}
           </Button>
@@ -299,7 +299,7 @@ function SpecsTab() {
         <div className="flex flex-wrap gap-1.5">
           {profile.coverageCities.length ? profile.coverageCities.map((c) => <Pill key={c} tone="mute">{displayCity(c, f.locale)}</Pill>) : <span className="text-xs text-muted-foreground">—</span>}
         </div>
-        <Button type="button" size="sm" className="mt-4 bg-cta text-cta-foreground hover:bg-cta/90" onClick={() => setEdit(true)}>
+        <Button type="button" size="sm" className="mt-4" onClick={() => setEdit(true)}>
           <PenLine size={14} className="me-1.5" aria-hidden="true" />
           {t("pSpecsReq")}
         </Button>
@@ -340,7 +340,6 @@ function SpecsDialog({ onClose }: { onClose: () => void }) {
       setBusy(false)
     }
   }
-  const chip = (on: boolean) => cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", on ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:border-foreground/30 hover:text-foreground")
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
@@ -351,23 +350,23 @@ function SpecsDialog({ onClose }: { onClose: () => void }) {
         <h4 className="text-sm font-bold">{t("pSpecsL")}</h4>
         <div className="flex flex-wrap gap-1.5">
           {PREDEFINED_CATEGORIES.map((c) => (
-            <button key={c} type="button" aria-pressed={specs.includes(c)} onClick={() => toggle(specs, setSpecs, c)} className={chip(specs.includes(c))}>
+            <Chip key={c} selected={specs.includes(c)} onClick={() => toggle(specs, setSpecs, c)}>
               {displayCategory(c, f.locale)}
-            </button>
+            </Chip>
           ))}
         </div>
         <h4 className="mt-2 text-sm font-bold">{t("pCities")}</h4>
         <div className="flex flex-wrap gap-1.5">
           {SAUDI_CITIES.map((c) => (
-            <button key={c} type="button" aria-pressed={cities.includes(c)} onClick={() => toggle(cities, setCities, c)} className={chip(cities.includes(c))}>
+            <Chip key={c} selected={cities.includes(c)} onClick={() => toggle(cities, setCities, c)}>
               {displayCity(c, f.locale)}
-            </button>
+            </Chip>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-3 border-t pt-3">
           <p className="flex-1 text-xs font-semibold text-destructive">{block}</p>
           <Button variant="outline" onClick={onClose} disabled={busy}>{t("cancel")}</Button>
-          <Button onClick={() => void submit()} disabled={!!block || busy} className="bg-cta text-cta-foreground hover:bg-cta/90">
+          <Button onClick={() => void submit()} disabled={!!block || busy}>
             {busy && <Loader2 size={15} className="me-1.5 animate-spin" aria-hidden="true" />}
             {t("btnSpecsSend")}
           </Button>
@@ -438,7 +437,7 @@ function LegalTab({ verified }: { verified: boolean }) {
                 {exp && <p className="mt-1 text-xs text-muted-foreground">{t("docExp")}: {fmt.date(exp, true)}</p>}
                 <div className="mt-2 flex items-center gap-2">
                   <input id={`doc-${k}`} type="file" accept="application/pdf,image/*" className="sr-only" onChange={(e) => e.target.files?.[0] && void upload(k, e.target.files[0])} />
-                  <label htmlFor={`doc-${k}`} className={cn("inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-bold", has ? "border bg-card hover:bg-muted/50" : "bg-cta text-cta-foreground hover:bg-cta/90")}>
+                  <label htmlFor={`doc-${k}`} className={cn(buttonVariants({ variant: has ? "outline" : "default", size: "sm" }), "h-8 cursor-pointer gap-1.5 px-3 text-xs")}>
                     {busy === k ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Upload size={13} aria-hidden="true" />}
                     {has ? t("docUpdate") : t("upload")}
                   </label>
@@ -569,7 +568,7 @@ function EntryDialog({ kind, onClose, onSave }: { kind: "work" | "cert"; onClose
         <div className="flex items-center gap-3 border-t pt-3">
           <p className="flex-1 text-xs font-semibold text-destructive">{block}</p>
           <Button variant="outline" onClick={onClose}>{t("cancel")}</Button>
-          <Button disabled={!!block} onClick={() => onSave(v, file)} className="bg-cta text-cta-foreground hover:bg-cta/90">{t("save")}</Button>
+          <Button disabled={!!block} onClick={() => onSave(v, file)}>{t("save")}</Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -732,7 +731,7 @@ function SecurityTab() {
       </Panel>
       <Panel icon={KeyRound} title={t("asecSessT")}>
         <div className="flex items-center gap-3 text-sm">
-          <Globe size={18} className="text-cta" aria-hidden="true" />
+          <Globe size={18} className="text-module" aria-hidden="true" />
           <div className="flex-1"><b>{t("asecSess1")}</b><p className="text-xs text-muted-foreground">{t("asecSess1X")}</p></div>
           <Pill tone="ok" dot>{t("now")}</Pill>
         </div>

@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { displayCategory } from "@/lib/constants"
 import type { Deal } from "@/lib/supplier-free/types"
 import type { Free } from "./useFree"
+import { StatusPill } from "@/components/module-ui/StatusPill"
 import { actionBtn, DeadlinePill, Pill, VerifiedMark, dealPlace, stk, useRowGo } from "./ui"
 
 interface Props {
@@ -25,7 +26,7 @@ function Tags({ f, d }: { f: Free; d: Deal }) {
   return (
     <>
       {d.channel === "invite" && <Pill tone="violet">{f.t("inviteShort")}</Pill>}
-      {f.L.isNewReq(d) && <span className="rounded-full bg-cta px-2 py-0.5 text-[10px] font-black text-white">{f.t("newTag")}</span>}
+      {f.L.isNewReq(d) && <StatusPill tone="info">{f.t("newTag")}</StatusPill>}
     </>
   )
 }

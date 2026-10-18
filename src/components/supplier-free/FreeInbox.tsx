@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils"
 import { dayGroup, leadWithName, riyadhDayOf } from "@/lib/supplier-free/format"
 import type { Deal } from "@/lib/supplier-free/types"
 import { EmptyState } from "@/components/module-ui/EmptyState"
-import { FreePage, Pill, docWord, stk } from "./ui"
+import { actionBtn, FreePage, Pill, docWord, stk } from "./ui"
 import { DealPill } from "./Pills"
 import { useFree, type Free } from "./useFree"
 import { stripEmoji, useFreeNotifications, type FreeNotification } from "./useFreeNotifications"
@@ -128,7 +128,7 @@ export function FreeNotifications() {
       description={t("nSub", { n: f.fmt.n(total) })}
       action={
         unread.length > 0 ? (
-          <button type="button" onClick={() => void markAll()} className="inline-flex h-9 items-center gap-1.5 rounded-lg border bg-card px-3 text-sm font-bold hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button type="button" onClick={() => void markAll()} className={actionBtn("outline", "md")}>
             <Check size={15} aria-hidden="true" />
             {t("markAll")}
           </button>
@@ -161,7 +161,7 @@ export function FreeNotifications() {
                   <b className="block text-sm" dir="auto">{c.title}</b>
                   {c.message && <span className="block text-xs text-muted-foreground" dir="auto">{c.message}</span>}
                 </span>
-                {!n.read && <span className="h-2 w-2 shrink-0 rounded-full bg-cta" aria-label={t("unreadDot")} />}
+                {!n.read && <span className="h-2 w-2 shrink-0 rounded-full bg-destructive" aria-label={t("unreadDot")} />}
               </>
             )
             return (

@@ -116,11 +116,26 @@ function blocksOrThrow(rfq: Rec, v: QuoteValues, mode: "new" | "edit" | "reduce"
   if (check.blocks.length) throw new QuoteActError(check.blocks[0].code === "deadline" ? "deadline" : "blocked", check.blocks[0].code)
 }
 
+/** NFR-06: who did what to a quote, and when. One document per act under `offers/{id}/log`, written only here — no rule
+ * opens that path to a client, so an entry can be neither written nor changed from a browser (append-only by construction,
+ * and it costs the size-capped ruleset nothing). */
+export interface QuoteLogEntry {
+  at: string
+  byId: string
+  byName: string
+  orgId: string
+  action: "quote.new" | "quote.version" | "quote.final" | "quote.withdraw" | "quote.sample"
+  /** What changed — figures as stored on the quote (totals before VAT), dates as days. */
+  detail: Record<string, string | number | null>
+}
+
 export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct, now: Date = new Date()): Promise<Record<string, unknown>> {
   const at = now.toISOString()
   const today = riyadhDay(now)
   const rfqRef = (rfqId: string) => db.collection("rfqs").doc(rfqId)
   const offerRef = (offerId: string) => db.collection("offers").doc(offerId)
+  const logEntry = (action: QuoteLogEntry["action"], detail: QuoteLogEntry["detail"] = {}): QuoteLogEntry => ({ at, byId: s.uid, byName: s.name, orgId: s.orgId, action, detail })
+  const logRef = (offerId: string) => offerRef(offerId).collection("log").doc()
 
   switch (act.action) {
     case "quote.new": {
@@ -169,6 +184,7 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
         const skipped = shape.items.map((i, n) => (v.skip[i.id] ? n : -1)).filter((n) => n >= 0)
         if (skipped.length) data.skippedItems = skipped
         tx.set(ref, data)
+        tx.set(logRef(ref.id), logEntry("quote.new", { total: version.total, validUntil: v.valid, arrive: v.arrive || null }))
         tx.update(rfqRef(r.id), { offersCount: FieldValue.increment(1) })
         return { rfq: r, total: version.total }
       })
@@ -251,6 +267,7 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
         }
         if (act.mode === "reduce") patch.reductionReply = { at: today, kind: "lowered" }
         tx.update(offerRef(act.offerId), patch as UpdateData<DocumentData>)
+        tx.set(logRef(act.offerId), logEntry("quote.version", { mode: act.mode, version: n, total: version.total, from: Number.isFinite(prev) ? prev : null, validUntil: v.valid }))
         return r
       })
       await tellOwner(db, s, rfq, "sup_quote_version", { n }, act.offerId)
@@ -270,6 +287,7 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
         const by = replyByOf(offer)
         if (by && daysBetween(by, today) < 0) throw new QuoteActError("reply_closed")
         tx.update(offerRef(act.offerId), { status: UNDER_REVIEW, reductionReply: { at: today, kind: "final", note }, updatedAt: at })
+        tx.set(logRef(act.offerId), logEntry("quote.final", { note: note || null, total: Number(offer.price) || null }))
         return r
       })
       await tellOwner(db, s, rfq, "sup_quote_final", { note }, act.offerId)
@@ -288,6 +306,7 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
         // Only while submissions are open (WF-03): after the deadline the buttons are gone and so is the act.
         assertOpen(r, today)
         tx.update(offerRef(act.offerId), { status: OFFER_WITHDRAWN, withdrawnAt: at, withdrawnById: s.uid, withdrawnByName: s.name, updatedAt: at })
+        tx.set(logRef(act.offerId), logEntry("quote.withdraw", { from: status }))
         return r
       })
       await tellOwner(db, s, rfq, "sup_quote_withdrawn", {}, act.offerId)
@@ -309,6 +328,7 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
           sampleNote: act.note || null,
           sampleUpdatedAt: at,
         })
+        tx.set(logRef(act.offerId), logEntry("quote.sample", { sentAt: act.sentAt, receivedBy: act.receivedBy || null, note: act.note || null }))
         return withId(rSnap.data(), rSnap.id)
       })
       await tellOwner(db, s, rfq, "sup_sample_sent", { date: act.sentAt, by: act.receivedBy, note: act.note }, act.offerId)
@@ -326,7 +346,7 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
       await db
         .collection("supplierWorkspace")
         .doc(s.orgId)
-        .set({ organizationId: s.orgId, declined: { [act.rfqId]: { at: today, note: act.note, byId: s.uid } }, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+        .set({ organizationId: s.orgId, declined: { [act.rfqId]: { at: today, note: act.note, byId: s.uid, byName: s.name, atTime: at } }, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
       await tellOwner(db, s, rfq, "sup_invite_declined", { note: act.note })
       return {}
     }

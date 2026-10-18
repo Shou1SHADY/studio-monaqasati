@@ -11,10 +11,12 @@ import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { displayCategory } from "@/lib/constants"
 import { cn } from "@/lib/utils"
+import { Chip } from "@/components/module-ui/Chip"
 import { r2, type OfferSeg } from "@/lib/supplier-free/deal-logic"
 import { PAGE_SIZE, type OfferFilter } from "@/lib/supplier-free/world-logic"
 import type { Deal } from "@/lib/supplier-free/types"
-import { actionBtn, FreePage, GroupHead, Pill, ShowMore, ViewToggle, VerifiedMark, docWord, stk, useQueryState, useRowGo, useViewMode, type PageKpi } from "./ui"
+import { StatusPill } from "@/components/module-ui/StatusPill"
+import { actionBtn, SearchBox, FreePage, GroupHead, Pill, ShowMore, ViewToggle, VerifiedMark, docWord, stk, useQueryState, useRowGo, useViewMode, type PageKpi } from "./ui"
 import { OfferPill } from "./Pills"
 import { useActions } from "./ActionsProvider"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
@@ -90,7 +92,7 @@ function OfferCard({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, 
     <article {...go(href({ deal: d.id }))} className={cn("flex cursor-pointer flex-col gap-2 rounded-2xl border bg-card p-3.5 shadow-sm transition-shadow hover:shadow-md", edge)}>
       <div className="flex flex-wrap items-center gap-1.5">
         <OfferPill f={f} d={d} />
-        {L.isNewResult(d) && <span className="rounded-full bg-cta px-2 py-0.5 text-[10px] font-black text-white">{t("newTag")}</span>}
+        {L.isNewResult(d) && <StatusPill tone="info">{t("newTag")}</StatusPill>}
         <span className="flex-1" />
         {h.tone ? <Pill tone={h.tone} dot>{h.txt}</Pill> : <span className="text-[11px] text-muted-foreground">{h.txt}</span>}
       </div>
@@ -128,7 +130,7 @@ function OfferRow({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, s
         <Link href={href({ deal: d.id }) as never} scroll={false} className="block truncate text-sm font-bold hover:text-module" dir="auto">
           {d.title}
         </Link>
-        {L.isNewResult(d) && <span className="me-1 rounded-full bg-cta px-1.5 text-[10px] font-black text-white">{t("newTag")}</span>}
+        {L.isNewResult(d) && <StatusPill tone="info" className="me-1">{t("newTag")}</StatusPill>}
         <span className="text-xs text-muted-foreground">
           <bdi>{c?.name}</bdi> <VerifiedMark f={f} verified={!!c?.verified} /> · {docWord(f, "rfq", d.rfq)}
         </span>
@@ -202,7 +204,6 @@ export function FreeOffers() {
     { id: "won", icon: Award, label: t("osWon"), value: cnt("won"), sub: t("ofkWonSub"), tone: "up", href: href({ seg: "won" }) },
   ]
   const select = "h-9 rounded-lg border bg-card px-2.5 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-  const chip = (on: boolean) => cn("inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", on ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:border-foreground/30 hover:text-foreground")
   return (
     <FreePage
       icon={Send}
@@ -218,7 +219,6 @@ export function FreeOffers() {
     >
       <div className="flex flex-wrap items-center gap-3">
         <SegmentedNav
-          variant="track"
           ariaLabel={t("navOffers")}
           active={seg}
           onSelect={(id) => q.set({ seg: id === "all" ? "" : id })}
@@ -231,17 +231,7 @@ export function FreeOffers() {
           ]}
         />
         <div className="ms-auto flex flex-wrap items-center gap-2">
-          <form
-            role="search"
-            className="relative"
-            onSubmit={(e) => {
-              e.preventDefault()
-              q.set({ q: String(new FormData(e.currentTarget).get("q") || "") })
-            }}
-          >
-            <Search size={14} className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <input name="q" defaultValue={filter.q || ""} key={filter.q || ""} placeholder={t("offSearchPh")} aria-label={t("offSearchPh")} className="h-9 w-56 rounded-lg border bg-card ps-8 pe-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-          </form>
+          <SearchBox value={filter.q || ""} onSearch={(v) => q.set({ q: v }, { replace: true })} placeholder={t("offSearchPh")} />
           <NativeSelect aria-label={t("thContractor")} className={select} value={filter.c || ""} onChange={(e) => q.set({ c: e.target.value })}>
             <option value="">{t("allContractors")}</option>
             {cons.map((c) => (
@@ -259,13 +249,13 @@ export function FreeOffers() {
       </div>
       {catN.length > 1 && (
         <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("fCat")}>
-          <button type="button" aria-pressed={!filter.cat} onClick={() => q.set({ cat: "" })} className={chip(!filter.cat)}>
+          <Chip selected={!filter.cat} onClick={() => q.set({ cat: "" })}>
             {t("allCats")} <b className="tabular-nums">{pool.length}</b>
-          </button>
+          </Chip>
           {catN.map(([c, k]) => (
-            <button key={c} type="button" aria-pressed={filter.cat === c} onClick={() => q.set({ cat: filter.cat === c ? "" : c })} className={chip(filter.cat === c)}>
+            <Chip key={c} selected={filter.cat === c} onClick={() => q.set({ cat: filter.cat === c ? "" : c })}>
               {displayCategory(c, f.locale)} <b className="tabular-nums">{k}</b>
-            </button>
+            </Chip>
           ))}
         </div>
       )}
@@ -275,7 +265,7 @@ export function FreeOffers() {
           title={t(filtered ? "listEmptyF" : (`offEmpty_${seg}` as "offEmpty_all"))}
           action={
             filtered ? (
-              <Link href={href({ c: "", cat: "", q: "" }) as never} className="inline-flex h-9 items-center rounded-lg border bg-card px-3 text-sm font-bold">
+              <Link href={href({ c: "", cat: "", q: "" }) as never} className={actionBtn("outline", "md")}>
                 {t("clearFilters")}
               </Link>
             ) : undefined

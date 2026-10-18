@@ -5,14 +5,14 @@
 // money — the supplier uploads his own file and only CONFIRMS a transfer, never records a payment (B-07, B-08).
 
 import { useMemo } from "react"
-import { AlertTriangle, Bell, CalendarDays, Check, Clock, FileText, Search, Upload, Wallet } from "lucide-react"
+import { AlertTriangle, Bell, CalendarDays, Check, Clock, FileText, Upload, Wallet } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { cn } from "@/lib/utils"
 import { r2 } from "@/lib/supplier-free/deal-logic"
 import type { InvoiceRow } from "@/lib/supplier-free/world-logic"
-import { actionBtn, FreePage, GroupHead, docWord, useQueryState, useRowGo, type PageKpi } from "./ui"
+import { actionBtn, SearchBox, FreePage, GroupHead, docWord, useQueryState, useRowGo, type PageKpi } from "./ui"
 import { useActions } from "./ActionsProvider"
 import { useFree, type Free } from "./useFree"
 
@@ -133,7 +133,6 @@ export function FreeInvoices() {
     <FreePage icon={Wallet} title={t("navInvoices")} description={t("invSub")} kpis={kpis}>
       <div className="flex flex-wrap items-center gap-3">
         <SegmentedNav
-          variant="track"
           ariaLabel={t("navInvoices")}
           active={seg}
           onSelect={(id) => q.set({ seg: id === "all" ? "" : id })}
@@ -144,17 +143,7 @@ export function FreeInvoices() {
             { id: "paid", label: t("isPaid"), count: cnt("paid") },
           ]}
         />
-        <form
-          role="search"
-          className="relative ms-auto"
-          onSubmit={(e) => {
-            e.preventDefault()
-            q.set({ q: String(new FormData(e.currentTarget).get("q") || "") })
-          }}
-        >
-          <Search size={14} className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <input name="q" defaultValue={search} key={search} placeholder={t("invSearchPh")} aria-label={t("invSearchPh")} className="h-9 w-64 rounded-lg border bg-card ps-8 pe-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-        </form>
+        <SearchBox value={search} onSearch={(v) => q.set({ q: v }, { replace: true })} placeholder={t("invSearchPh")} />
       </div>
       {!list.length ? (
         <EmptyState
@@ -162,7 +151,7 @@ export function FreeInvoices() {
           title={t(search ? "listEmptyF" : (`invEmpty_${seg}` as "invEmpty_all"))}
           action={
             search ? (
-              <Link href={href({ q: "" }) as never} className="inline-flex h-9 items-center rounded-lg border bg-card px-3 text-sm font-bold">
+              <Link href={href({ q: "" }) as never} className={actionBtn("outline", "md")}>
                 {t("clearFilters")}
               </Link>
             ) : undefined
