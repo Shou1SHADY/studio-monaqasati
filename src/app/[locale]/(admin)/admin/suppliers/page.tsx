@@ -512,10 +512,10 @@ export default function AdminSuppliersPage() {
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    {isVisible("id") && <TableHead className="text-start hidden md:table-cell">{t("id")}</TableHead>}
+                    {isVisible("id") && <TableHead className="text-start hidden 2xl:table-cell">{t("id")}</TableHead>}
                     <TableHead className="text-start">{t("supplier_name")}</TableHead>
                     {isVisible("specialization") && <TableHead className="text-start hidden sm:table-cell">{t("specialization")}</TableHead>}
-                    {isVisible("documents") && <TableHead className="text-start hidden sm:table-cell">{t("documents")}</TableHead>}
+                    {isVisible("documents") && <TableHead className="text-start hidden xl:table-cell">{t("documents")}</TableHead>}
                     {isVisible("verification_req") && <TableHead className="text-start hidden sm:table-cell">{t("verification_req")}</TableHead>}
                     <TableHead className="text-start">{t("status")}</TableHead>
                     <TableHead className="text-end">{t("actions")}</TableHead>
@@ -524,7 +524,7 @@ export default function AdminSuppliersPage() {
                 <TableBody>
                   {filteredSuppliers.map((s) => (
                     <TableRow key={s.id} className="hover:bg-slate-50/50 transition-colors">
-                      {isVisible("id") && <TableCell className="font-mono text-xs hidden md:table-cell">{s.id.substring(0, 8)}</TableCell>}
+                      {isVisible("id") && <TableCell className="font-mono text-xs hidden 2xl:table-cell">{s.id.substring(0, 8)}</TableCell>}
                       <TableCell>
                         <div className="flex flex-col">
                           <span className="font-bold flex flex-wrap items-center gap-1.5">
@@ -540,7 +540,7 @@ export default function AdminSuppliersPage() {
                       </TableCell>
                       {isVisible("specialization") && <TableCell className="hidden sm:table-cell text-sm">{s.category}</TableCell>}
                       {isVisible("documents") && (
-                        <TableCell className="hidden sm:table-cell">
+                        <TableCell className="hidden xl:table-cell">
                           <div className="flex gap-1 flex-wrap">
                             {s.hasCr && <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">{t("cr_badge")}</Badge>}
                             {s.uploadedDocKeys.length > 0 && (
