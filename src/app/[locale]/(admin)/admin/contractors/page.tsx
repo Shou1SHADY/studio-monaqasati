@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CompanyModulesDialog } from "@/components/admin/CompanyModulesDialog"
+import { AccountRowActions } from "@/components/admin/AccountRowActions"
+import { companyOf } from "@/lib/admin-accounts"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -18,8 +20,6 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
-  Eye,
-  Layers,
   FileText,
   ExternalLink,
   AlertCircle,
@@ -385,34 +385,32 @@ export default function AdminContractorsPage() {
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead className="text-start hidden md:table-cell">{t("id")}</TableHead>
+                    <TableHead className="text-start hidden 2xl:table-cell">{t("id")}</TableHead>
                     <TableHead className="text-start">{t("company_name")}</TableHead>
-                    <TableHead className="text-start hidden sm:table-cell">{t("cr_number")}</TableHead>
                     <TableHead className="text-start hidden md:table-cell">{t("tenders_count")}</TableHead>
-                    <TableHead className="text-start hidden sm:table-cell">{t("documents")}</TableHead>
-                    <TableHead className="text-start hidden sm:table-cell">{t("verification")}</TableHead>
+                    <TableHead className="text-start hidden lg:table-cell">{t("documents")}</TableHead>
                     <TableHead className="text-start">{t("status")}</TableHead>
-                    <TableHead className="text-left">{t("actions")}</TableHead>
+                    <TableHead className="text-end">{t("actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((c) => (
-                    <TableRow key={c.id} className="hover:bg-slate-50/50 transition-colors">
-                      <TableCell className="font-mono text-xs hidden md:table-cell">{c.id.substring(0, 8)}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-bold">{c.name}</span>
-                          <span className="text-xs text-muted-foreground">{c.email}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground hidden sm:table-cell">
-                        {c.crNumber || "—"}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <Badge variant="secondary" className="font-bold">{c.rfqCount}</Badge>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell">
-                        <div className="flex gap-1 flex-wrap">
+                  {filtered.map((c) => {
+                    const company = companyOf(c, localContractors)
+                    return (
+                      <TableRow key={c.id} className="hover:bg-slate-50/50 transition-colors">
+                        <TableCell className="font-mono text-xs hidden 2xl:table-cell">{c.id.substring(0, 8)}</TableCell>
+                        <TableCell>
+                          <div className="flex min-w-0 flex-col">
+                            <span className="font-bold">{c.name}</span>
+                            <span className="text-xs text-muted-foreground" dir="ltr">{c.email}</span>
+                            {company.memberOf && <span className="text-xs text-muted-foreground">{t("member_of", { company: company.memberOf })}</span>}
+                            {c.crNumber && <span className="text-xs text-muted-foreground">{t("cr_number")}: <bdi>{c.crNumber}</bdi></span>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <Badge variant="secondary" className="font-bold">{c.rfqCount}</Badge>
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
                           {c.uploadedDocKeys.length > 0 ? (
                             <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">
                               {t("pdf_badge", { count: c.uploadedDocKeys.length })}
@@ -420,61 +418,30 @@ export default function AdminContractorsPage() {
                           ) : (
                             <span className="text-xs text-muted-foreground">{t("not_available")}</span>
                           )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell">
-                        {c.verified ? (
-                          <div className="flex items-center gap-1 text-success text-xs font-medium">
-                            <CheckCircle2 size={14} /> {t("verified_label")}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col items-start gap-1">
+                            {getStatusBadge(c.status)}
+                            {c.verified ? (
+                              <span className="flex items-center gap-1 text-success text-xs font-medium"><CheckCircle2 size={12} /> {t("verified_label")}</span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-muted-foreground text-xs font-medium"><XCircle size={12} /> {t("not_verified_label")}</span>
+                            )}
                           </div>
-                        ) : (
-                          <div className="flex items-center gap-1 text-muted-foreground text-xs font-medium">
-                            <XCircle size={14} /> {t("not_verified_label")}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>{getStatusBadge(c.status)}</TableCell>
-                      <TableCell className="text-left">
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => { setSelectedContractor(c); setShowDetailDialog(true) }}
-                            className="gap-1"
-                          >
-                            <Eye size={14} />
-                            {t("view")}
-                          </Button>
-                          {(c.organizationRole ?? "owner") === "owner" && (
-                            <Button variant="outline" size="sm" onClick={() => setModulesFor({ orgId: c.organizationId || c.id, name: c.name })} className="gap-1">
-                              <Layers size={14} />
-                              {tMod("button")}
-                            </Button>
-                          )}
-                          {c.verified ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleVerify(c.id, false)}
-                              className="text-destructive border-destructive/20 hover:bg-destructive/5"
-                            >
-                              {t("unverify")}
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              disabled={!c.hasAllRequiredDocs}
-                              onClick={() => handleVerify(c.id, true)}
-                              className="gap-1"
-                            >
-                              <CheckCircle2 size={14} />
-                              {t("verify")}
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                        <TableCell>
+                          <AccountRowActions
+                            labels={{ view: t("view"), components: tMod("button"), verify: t("verify"), unverify: t("unverify"), needsDocs: t("verify_needs_docs") }}
+                            verified={c.verified}
+                            canVerify={c.hasAllRequiredDocs}
+                            onView={() => { setSelectedContractor(c); setShowDetailDialog(true) }}
+                            onComponents={() => setModulesFor({ orgId: company.orgId, name: company.name })}
+                            onVerify={(verify) => handleVerify(c.id, verify)}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             )}

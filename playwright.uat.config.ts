@@ -20,6 +20,6 @@ export default defineConfig({
     { name: 'public', testMatch: /public\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
     { name: 'supplier', testMatch: /supplier-free\.spec\.ts/, use: { ...devices['Desktop Chrome'], storageState: stateFile('E2E_SUPPLIER_STATE') } },
     { name: 'contractor', testMatch: /contractor-finance-off\.spec\.ts/, use: { ...devices['Desktop Chrome'] } },
-    { name: 'admin', testMatch: /admin-finance\.spec\.ts/, use: { ...devices['Desktop Chrome'], storageState: stateFile('E2E_ADMIN_STATE') } },
+    { name: 'admin', testMatch: /admin-.*\.spec\.ts/, use: { ...devices['Desktop Chrome'], storageState: stateFile('E2E_ADMIN_STATE') } },
   ],
 })

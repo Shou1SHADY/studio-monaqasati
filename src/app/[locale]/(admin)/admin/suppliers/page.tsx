@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CompanyModulesDialog } from "@/components/admin/CompanyModulesDialog"
+import { AccountRowActions } from "@/components/admin/AccountRowActions"
+import { companyOf } from "@/lib/admin-accounts"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Separator } from "@/components/ui/separator"
@@ -18,8 +20,6 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
-  Eye,
-  Layers,
   FileText,
   Building,
   Award,
@@ -518,7 +518,7 @@ export default function AdminSuppliersPage() {
                     {isVisible("documents") && <TableHead className="text-start hidden sm:table-cell">{t("documents")}</TableHead>}
                     {isVisible("verification_req") && <TableHead className="text-start hidden sm:table-cell">{t("verification_req")}</TableHead>}
                     <TableHead className="text-start">{t("status")}</TableHead>
-                    <TableHead className="text-left">{t("actions")}</TableHead>
+                    <TableHead className="text-end">{t("actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -531,7 +531,11 @@ export default function AdminSuppliersPage() {
                             {s.name}
                             {s.international && <Badge variant="outline" className="border-cta/30 bg-cta/10 text-cta text-[11px] font-medium">{t("badge_international")}</Badge>}
                           </span>
-                          <span className="text-xs text-muted-foreground">{s.email}</span>
+                          <span className="text-xs text-muted-foreground" dir="ltr">{s.email}</span>
+                          {(() => {
+                            const owner = companyOf(s, localSuppliers).memberOf
+                            return owner ? <span className="text-xs text-muted-foreground">{t("member_of", { company: owner })}</span> : null
+                          })()}
                         </div>
                       </TableCell>
                       {isVisible("specialization") && <TableCell className="hidden sm:table-cell text-sm">{s.category}</TableCell>}
@@ -568,44 +572,15 @@ export default function AdminSuppliersPage() {
                         </TableCell>
                       )}
                       <TableCell>{getStatusBadge(s.status)}</TableCell>
-                      <TableCell className="text-left">
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => { setSelectedSupplier(s); setShowDetailDialog(true) }}
-                            className="gap-1"
-                          >
-                            <Eye size={14} />
-                            {t("view")}
-                          </Button>
-                          {(s.organizationRole ?? "owner") === "owner" && (
-                            <Button variant="outline" size="sm" onClick={() => setModulesFor({ orgId: s.organizationId || s.id, name: s.name })} className="gap-1">
-                              <Layers size={14} />
-                              {tMod("button")}
-                            </Button>
-                          )}
-                          {s.verified ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleVerify(s.id, false)}
-                              className="text-destructive border-destructive/20 hover:bg-destructive/5"
-                            >
-                              {t("unverify")}
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              onClick={() => handleVerify(s.id, true)}
-                              disabled={!s.hasAllRequiredDocs}
-                              className="gap-1"
-                            >
-                              <CheckCircle2 size={14} />
-                              {t("verify")}
-                            </Button>
-                          )}
-                        </div>
+                      <TableCell>
+                        <AccountRowActions
+                          labels={{ view: t("view"), components: tMod("button"), verify: t("verify"), unverify: t("unverify"), needsDocs: t("verify_needs_docs") }}
+                          verified={s.verified}
+                          canVerify={s.hasAllRequiredDocs}
+                          onView={() => { setSelectedSupplier(s); setShowDetailDialog(true) }}
+                          onComponents={() => { const company = companyOf(s, localSuppliers); setModulesFor({ orgId: company.orgId, name: company.name }) }}
+                          onVerify={(verify) => handleVerify(s.id, verify)}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
