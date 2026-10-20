@@ -50,7 +50,8 @@ export function autoForwardSkip(d: DeskDelivery, input: Omit<AutoForwardInput, "
   const warehouseId = d.landedWarehouseId || landingWarehouseId(d.projectId || po?.projectId, input.projects, input.orgId)
   const receiver = suggestedReceiver(input.receivers, warehouseId)
   if (!receiver) return { skip: "no_receiver" }
-  if (!phoneUsable(receiver.phone)) return { skip: "no_phone" }
+  // A member is reached in his own account (PUR-06); only someone with no account needs a mobile.
+  if (!receiver.userId && !phoneUsable(receiver.phone)) return { skip: "no_phone" }
   return { skip: null, due: { delivery: d, receiver, warehouseId, daysToDelivery: days } }
 }
 

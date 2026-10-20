@@ -21,6 +21,8 @@ export type WorkQueueItemType =
   | "rfq_closing_soon"
   | "rfq_no_offers"
   | "delivery_confirm"
+  // PUR-06: a delivery forwarded to ME to count — mine whatever my permissions.
+  | "delivery_to_count"
   | "project_waiting_approval"
   | "low_stock"
   | "team_invite_pending"
@@ -69,6 +71,7 @@ const TIER: Record<WorkQueueItemType, number> = {
   guarantee_expiring: 1,
   rfq_closing_soon: 2,
   delivery_confirm: 3,
+  delivery_to_count: 2,
   rfq_decision: 4,
   project_waiting_approval: 5,
   rfq_no_offers: 6,
@@ -154,6 +157,12 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
     )
   }, [firestore, organizationId])
   const { data: deliveries } = useCollection(deliveriesQuery)
+  // PUR-06: what was forwarded to ME to count — a member is told in his own tasks, not only by the bell.
+  const toCountQuery = useMemoFirebase(() => {
+    if (!firestore || !organizationId || !userId) return null
+    return query(collection(firestore, "deliveries"), where("contractorOrgId", "==", organizationId), where("forwardedTo.userId", "==", userId), where("status", "==", "pending_confirmation"))
+  }, [firestore, organizationId, userId])
+  const { data: toCount } = useCollection(toCountQuery)
 
   const warehousesQuery = useMemoFirebase(() => {
     if (!firestore || !organizationId) return null
@@ -363,6 +372,19 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       since: toMs(d.deliveryDate || d.createdAt) || undefined,
       actionUrl: forwardedTo ? `/contractor/goods-received?tab=incoming&delivery=${d.id}` : FORWARD_HREF(d.id),
       data: { rfqTitle: d.rfqTitle || "", supplierName: d.supplierName || "", forwardedTo },
+    })
+  })
+
+  ;(toCount || []).forEach((d: any) => {
+    if (d.receiverReport) return
+    items.push({
+      id: `delivery_to_count_${d.id}`,
+      type: "delivery_to_count",
+      tier: TIER.delivery_to_count,
+      sortMs: toMs(d.deliveryDate || d.createdAt),
+      since: toMs(d.forwardedTo?.at || d.deliveryDate || d.createdAt) || undefined,
+      actionUrl: `/contractor/receive/${d.id}`,
+      data: { supplierName: d.supplierName || "", byName: d.forwardedTo?.byName || "" },
     })
   })
 

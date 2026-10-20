@@ -2,8 +2,10 @@
 
 // The receiver's side of a forwarded delivery (22 Sep review). Whoever is
 // standing at the gate — with or without an account — counts what arrived,
-// marks what was rejected, signs, and confirms with a code texted to the
-// mobile Procurement named. The count is blind: the supplier's quantities are
+// marks what was rejected, attaches the proof (photos, the weighbridge ticket,
+// a certificate — PUR-06) and confirms: with a code texted to the mobile
+// Procurement named, or — the member it was forwarded to — with his own
+// sign-in. The confirmation IS the signature; no pad is drawn (question 3). The count is blind: the supplier's quantities are
 // deliberately not shown, so the receiver counts rather than agrees. Like the
 // office's form, a line left blank did not arrive (sent as 0), and part of a
 // count may be set aside for inspection with its reason.
@@ -12,12 +14,12 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
 import { displayPoNumber } from "@/lib/procurement/format"
-import { CheckCircle2, Loader2, PackageCheck, ShieldCheck, TriangleAlert } from "lucide-react"
+import { Camera, CheckCircle2, FileText, Loader2, PackageCheck, ShieldCheck, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { SignaturePad } from "@/components/SignaturePad"
+import { useUser } from "@/firebase"
 import { HOLD_REASON_CODES, REJECT_REASON_CODES } from "@/lib/procurement/po"
 import { cn } from "@/lib/utils"
 
@@ -31,6 +33,8 @@ interface LinkData {
   forwardedBy: string
   note?: string | null
   lines: Array<{ poLineId: string; name: string; unit: string }>
+  receiverUserId?: string | null
+  files?: Array<{ name: string; url: string; kind: "photo" | "ticket" | "cert" }>
 }
 
 interface Row {
@@ -62,7 +66,9 @@ export function ReceiveLinkContent() {
   const [rows, setRows] = useState<Record<string, Row>>({})
   const [receiverName, setReceiverName] = useState("")
   const [note, setNote] = useState("")
-  const [signature, setSignature] = useState<string | null>(null)
+  const [files, setFiles] = useState<NonNullable<LinkData["files"]>>([])
+  const [uploading, setUploading] = useState(false)
+  const { user } = useUser()
   const [challengeId, setChallengeId] = useState<string | null>(null)
   const [code, setCode] = useState("")
   const [testCode, setTestCode] = useState<string | null>(null)
@@ -83,6 +89,7 @@ export function ReceiveLinkContent() {
         const d = body.data as LinkData
         setData(d)
         setReceiverName(d.receiverName)
+        setFiles(d.files || [])
         setRows(Object.fromEntries(d.lines.map((l) => [l.poLineId, { counted: "", rejected: "", reason: "", held: "", holdReason: "", note: "" }])))
       })
       .catch(() => !cancelled && setLoadError("NETWORK"))
@@ -107,9 +114,36 @@ export function ReceiveLinkContent() {
     }
     if (!data.lines.some((l) => (toNum(rows[l.poLineId]?.counted ?? "") ?? 0) > 0)) return t("err_nothing_counted")
     if (receiverName.trim().length < 2) return t("err_name")
-    if (!signature) return t("err_signature")
     return null
-  }, [data, rows, receiverName, signature, t])
+  }, [data, rows, receiverName, t])
+
+  // The member the delivery was forwarded to, signed in as himself: his sign-in is the confirmation.
+  const byLogin = Boolean(data?.receiverUserId && user && user.uid === data.receiverUserId)
+
+  const upload = useCallback(
+    async (list: FileList | null, kind: "photo" | "ticket" | "cert") => {
+      if (!list?.length) return
+      setUploading(true)
+      setError(null)
+      try {
+        for (const f of Array.from(list)) {
+          const fd = new FormData()
+          fd.append("file", f)
+          fd.append("kind", kind)
+          const res = await fetch(`/api/receipt-links/${token}/files`, { method: "POST", body: fd })
+          const body = await res.json().catch(() => null)
+          if (!res.ok) {
+            setError(t(body?.code === "TOO_BIG" ? "err_file_big" : body?.code === "BAD_TYPE" ? "err_file_type" : body?.code === "TOO_MANY" ? "err_file_many" : "err_generic"))
+            break
+          }
+          setFiles((cur) => [...cur, body.data.file])
+        }
+      } finally {
+        setUploading(false)
+      }
+    },
+    [token, t]
+  )
 
   const sendCode = useCallback(async () => {
     setError(null)
@@ -133,19 +167,20 @@ export function ReceiveLinkContent() {
   }, [token, locale, t])
 
   const confirm = useCallback(async () => {
-    if (!data || !challengeId) return
+    if (!data || (!challengeId && !byLogin)) return
     setError(null)
     setBusy(true)
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (byLogin && user) headers.Authorization = `Bearer ${await user.getIdToken()}`
       const res = await fetch(`/api/receipt-links/${token}/sign`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
-          challengeId,
-          code: code.trim(),
+          ...(byLogin ? {} : { challengeId, code: code.trim() }),
           receiverName: receiverName.trim(),
           note: note.trim() || null,
-          signatureData: signature,
+          signatureData: null,
           lines: data.lines.map((l) => {
             const r = rows[l.poLineId]
             const rejected = toNum(r.rejected) ?? 0
@@ -177,7 +212,7 @@ export function ReceiveLinkContent() {
     } finally {
       setBusy(false)
     }
-  }, [data, challengeId, code, receiverName, note, signature, rows, token, t])
+  }, [data, challengeId, code, receiverName, note, rows, token, t, byLogin, user])
 
   if (loadError) {
     return (
@@ -320,10 +355,33 @@ export function ReceiveLinkContent() {
           <Label htmlFor="nt" className="text-xs">{t("note")}</Label>
           <Textarea id="nt" dir="auto" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
         </div>
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-foreground">{t("signature")}</p>
-          <SignaturePad value={signature} onChange={setSignature} clearLabel={t("signature_clear")} placeholderText={t("signature_placeholder")} height={120} />
+      </section>
+
+      {/* The proof at the gate (PUR-06): photos, the weighbridge ticket, a certificate. */}
+      <section className="space-y-2" aria-labelledby="files-h">
+        <h2 id="files-h" className="text-sm font-bold text-foreground">
+          {t("files_title")} <span className="text-xs font-normal text-muted-foreground">({t("optional")})</span>
+        </h2>
+        <div className="grid grid-cols-3 gap-2">
+          {(["photo", "ticket", "cert"] as const).map((k) => (
+            <label key={k} className={cn("flex min-h-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed p-2 text-center text-xs font-semibold text-muted-foreground hover:border-module/40 hover:text-foreground", uploading && "pointer-events-none opacity-60")}>
+              {k === "photo" ? <Camera size={18} aria-hidden="true" /> : <FileText size={18} aria-hidden="true" />}
+              {t(`file_${k}`)}
+              <input type="file" className="sr-only" accept={k === "photo" ? "image/*" : "image/*,application/pdf"} capture={k === "photo" ? "environment" : undefined} multiple={k === "photo"} onChange={(e) => void upload(e.target.files, k)} />
+            </label>
+          ))}
         </div>
+        {uploading && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 size={12} className="animate-spin" /> {t("uploading")}</p>}
+        {files.length > 0 && (
+          <ul className="space-y-1 text-xs">
+            {files.map((f) => (
+              <li key={f.url} className="flex items-center gap-2">
+                <CheckCircle2 size={12} className="text-success" aria-hidden="true" />
+                <a href={f.url} target="_blank" rel="noreferrer" className="truncate text-cta hover:underline">{t(`file_${f.kind}`)} · {f.name}</a>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="space-y-3 rounded-xl border bg-muted/30 p-4" aria-live="polite">
@@ -331,7 +389,16 @@ export function ReceiveLinkContent() {
           <ShieldCheck size={16} className="text-module" aria-hidden="true" />
           {t("verify_title")}
         </p>
-        {!challengeId ? (
+        {byLogin ? (
+          <>
+            <p className="text-xs text-muted-foreground">{t("verify_login", { name: user?.displayName || receiverName })}</p>
+            {problem && <p className="text-xs text-destructive">{problem}</p>}
+            <Button className="h-11 w-full" disabled={busy || Boolean(problem)} onClick={confirm}>
+              {busy ? <Loader2 className="animate-spin" size={16} aria-hidden="true" /> : null}
+              {t("confirm")}
+            </Button>
+          </>
+        ) : !challengeId ? (
           <>
             <p className="text-xs text-muted-foreground">{t("verify_body", { phone: data.phoneMasked })}</p>
             {problem && <p className="text-xs text-destructive">{problem}</p>}

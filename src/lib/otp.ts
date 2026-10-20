@@ -201,6 +201,7 @@ export async function verifyOtp(
 
 /** The last four digits, for "we sent a code to •••• 4521" — never the number. */
 export function maskPhone(e164: string): string {
-  const digits = e164.replace(/\D/g, "")
+  const digits = (e164 || "").replace(/\D/g, "")
+  if (!digits) return ""
   return `•••• ${digits.slice(-4)}`
 }

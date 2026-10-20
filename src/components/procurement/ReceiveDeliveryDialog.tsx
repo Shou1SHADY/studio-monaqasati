@@ -249,9 +249,11 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
     if (!firestore) return
     setSaving(true)
     try {
-      const attachmentUrls = await uploadFiles()
+      // What the receiver attached at the gate (PUR-06) is part of the receipt, beside the office's own files.
+      const fromGate = delivery?.receiverReport?.files || []
+      const attachmentUrls = [...(await uploadFiles()), ...fromGate.map((f) => f.url)]
       const checks = new Set(values.checklist as ReceiptCheck[])
-      if (files.some((f) => f.type.startsWith("image/"))) checks.add("photos")
+      if (files.some((f) => f.type.startsWith("image/")) || fromGate.some((f) => f.kind === "photo")) checks.add("photos")
       const common = {
         receiverName: values.receiverName,
         checklist: Array.from(checks),

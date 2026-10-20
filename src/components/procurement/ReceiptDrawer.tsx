@@ -52,6 +52,7 @@ import {
   type TrailNeed,
   type TrailState,
 } from "@/lib/procurement/receipt-desk"
+import { noticeWait } from "@/lib/procurement/receipt-desk"
 import { printGoodsReceipt, type ReceiptPrintCompany, type SupplierIdentity } from "@/lib/procurement/receipt-print"
 import type { PoLine, ProcActor, ProcurementPolicies, PurchaseOrder, ReceiptCheck, RejectDecision } from "@/lib/procurement/types"
 import { ProcWriteError, decideReject, ratePurchaseOrder, type RatingInput } from "@/lib/procurement/writes"
@@ -104,6 +105,9 @@ export interface ReceiptDrawerProps {
   /** The org's policies: who may record (buyerReceives) and how notices travel (noticeRouting). */
   policies?: ProcurementPolicies | null
   onRegularise?: (d: DeskDelivery) => void
+  /** PUR-06: forward (again) to the receiver, and remind him — the notice's two acts that are Procurement's. */
+  onForward?: (d: DeskDelivery) => void
+  onRemind?: (d: DeskDelivery) => void
   /** The need the order answers, for the trail's first step. */
   need?: TrailNeed | null
   /** The supplier's CR, VAT, city and phone for the printed receipt. */
@@ -116,7 +120,7 @@ const TRAIL_ICON: Record<TrailState, typeof CheckCircle2> = { ok: CheckCircle2, 
 const TRAIL_TONE: Record<TrailState, string> = { ok: "bg-success/10 text-success", bad: "bg-destructive/10 text-destructive", now: "bg-amber-100 text-amber-800" }
 
 export function ReceiptDrawer(props: ReceiptDrawerProps) {
-  const { delivery: d, po, deliveries, onOpenChange, actor, orgName, company, warehouseName, projectName, placeKind, now, onReceive, onRegularise, policies, need, supplier, ownerReadOnly = false } = props
+  const { delivery: d, po, deliveries, onOpenChange, actor, orgName, company, warehouseName, projectName, placeKind, now, onReceive, onRegularise, onForward, onRemind, policies, need, supplier, ownerReadOnly = false } = props
   const routing = operatingPolicies(policies).noticeRouting
   const t = useTranslations("Portal.ProcReceipts")
   const tp = useTranslations("Portal.Procurement")
@@ -141,7 +145,8 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
   const noticeText = noticeNo ? displayNoticeNumber(noticeNo, locale) : null
   const when = d.confirmedAt || d.deliveryDate || null
   const placeId = d.landedWarehouseId || (d as { warehouseId?: string | null }).warehouseId
-  const place = warehouseName(placeId) || null
+  // Where it is received: the store it lands in, else the order's own place (PUR-06 — never a bare «—»).
+  const place = warehouseName(placeId) || po?.projectName || null
   const project = projectName(d.projectId || po?.projectId) || null
   const kind = placeKind(d, po)
   const by = recordedBy(d, kind)
@@ -153,7 +158,9 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
   const rejects = lines.filter((l) => Number(l.rejected) > 0)
   const held = lines.filter((l) => Number(l.held) > 0)
   const shorts = lines.map((l) => ({ l, short: shortVsNotice(l) })).filter((x) => x.short > 0)
-  const attachments = (d.attachmentUrls || []) as string[]
+  // The office's files, and what the receiver attached at the gate (PUR-06) — «كما سجّلها المستلم».
+  const attachments = Array.from(new Set([...((d.attachmentUrls || []) as string[]), ...((d.receiverReport?.files || []).map((f) => f.url))]))
+  const wait = pending ? noticeWait(d, now) : null
   const checks = (d.checklist || []) as ReceiptCheck[]
   // Receiving is Inventory's and Projects' act: the owner who only reads Procurement never records here.
   const canAct = !ownerReadOnly && receiveRight(actor, policies) !== null
@@ -471,6 +478,23 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
             <Stat label={t("drawer.place")} value={place || (project ? t("drawer.projectCustody") : pending ? "—" : t("drawer.generalStock"))} sub={kind ? `${t(`dest.${kind}`)}${project ? ` · ${project}` : ""}` : project || undefined} />
             <Stat label={t("drawer.receiver")} value={pending ? d.forwardedTo?.name || "—" : receiverName} sub={pending ? undefined : moduleName} />
           </div>
+
+          {/* PUR-06: who we wait on, since when, and the two acts that are ours. */}
+          {wait && wait.kind !== "signed" && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/40 px-3 py-2.5 text-sm">
+              <span className="min-w-0 flex-1 font-semibold">{wait.kind === "to_forward" ? t("incoming.forwardNow") : t("incoming.waitingCount", { name: wait.name, days: wait.days })}</span>
+              {wait.kind === "with_receiver" && onRemind && (
+                <Button size="sm" variant="outline" onClick={() => onRemind(d)}>
+                  {t("incoming.remindReceiver")}
+                </Button>
+              )}
+              {onForward && (
+                <Button size="sm" variant={wait.kind === "to_forward" ? "default" : "outline"} onClick={() => onForward(d)}>
+                  {wait.kind === "to_forward" ? t("forward.button") : t("incoming.reforward")}
+                </Button>
+              )}
+            </div>
+          )}
 
           {pending && d.forwardedTo?.auto && !d.receiverReport && (
             <Callout tone="amber">

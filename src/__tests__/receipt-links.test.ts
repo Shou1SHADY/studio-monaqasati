@@ -114,7 +114,8 @@ describe("who the code goes to", () => {
 
   it("a member's number on file, unless Procurement supplies one", () => {
     expect(receiverFrom({ kind: "user", userId: "u1" }, { name: "Salman", phone: "0559876543" })).toMatchObject({ phone: "+966559876543", userId: "u1", name: "Salman" })
-    expect(receiverFrom({ kind: "user", userId: "u1" }, { name: "Salman" })).toBeNull()
+    // PUR-06: a member confirms with his own sign-in — no mobile is needed for him.
+    expect(receiverFrom({ kind: "user", userId: "u1" }, { name: "Salman" })).toMatchObject({ kind: "user", userId: "u1", phone: "" })
     expect(receiverFrom({ kind: "user", userId: "u1", phone: "0551112222" }, { name: "Salman" })).toMatchObject({ phone: "+966551112222" })
   })
 })

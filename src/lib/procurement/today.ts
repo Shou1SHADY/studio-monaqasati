@@ -437,9 +437,9 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
 
     if (st === "in_delivery" || st === "part_received") {
       const promise = daysFromNow(po.promisedDate, now)
-      if (poLate(po, now) && chases && mine(po)) {
+      if (poLate(po, now, w.receipts) && chases && mine(po)) {
         // T5e · late — the subtitle lists what is still owed.
-        add({ id: `late:${po.id}`, kind: "late", priority: 2, severity: "red", sortDays: promise ?? 0, titleKey: "task.late.title", titleParams: { ...base, days: daysLate(po, now) }, subKey: "task.late.sub", subParams: { lines: linesText(po) }, amount: money(actor, poOpenValue(po)), href: ORDER_HREF(po.id), actionKey: "actions.updateDate" })
+        add({ id: `late:${po.id}`, kind: "late", priority: 2, severity: "red", sortDays: promise ?? 0, titleKey: "task.late.title", titleParams: { ...base, days: daysLate(po, now, w.receipts) }, subKey: "task.late.sub", subParams: { lines: linesText(po) }, amount: money(actor, poOpenValue(po)), href: ORDER_HREF(po.id), actionKey: "actions.updateDate" })
       } else if (promise != null && promise >= 0 && promise <= 2 && chases && sees && mine(po)) {
         // T5h · a poor on-time record: confirm before his date, do not wait for the delay.
         const score = scoreOf(po)

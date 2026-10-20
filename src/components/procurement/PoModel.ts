@@ -24,6 +24,7 @@ import {
   receiptDay,
   receiptsOf,
   round2,
+  type NoticeFact,
 } from "@/lib/procurement/po"
 import type { PoLine, PoStatus, ProcActor, PurchaseOrder, ReceiptFact } from "@/lib/procurement/types"
 import { matchesSearch } from "@/lib/search-text"
@@ -215,11 +216,13 @@ export interface LineActions {
 
 /** «المورد عجز» is a verdict on the supplier: only once he is late or has
  * already delivered part of the line — never on a remainder still in time. */
-export function lineActions(po: PurchaseOrder, l: PoLine, actor: ProcActor, now: Date): LineActions {
+export function lineActions(po: PurchaseOrder, l: PoLine, actor: ProcActor, now: Date, ctx: { notices?: ReadonlyArray<NoticeFact>; inTransit?: number } = {}): LineActions {
   const decides = actorCanDecideLines(actor)
-  const failing = poLate(po, now) || (Number(l.accepted) || 0) > 0
+  const failing = poLate(po, now, ctx.notices) || (Number(l.accepted) || 0) > 0
+  // What a delivery notice says is on its way is not «المورد عجز» (PUR-07): only what is owed beyond it.
+  const beyondTransit = lineToArrive(l) - (ctx.inTransit || 0) > 0
   return {
-    cancelRemainder: decides && canCancelRemainder(po) && lineToArrive(l) > 0 && failing,
+    cancelRemainder: decides && canCancelRemainder(po) && lineToArrive(l) > 0 && beyondTransit && failing,
     decideReject: decides && po.status === "accepted" && (Number(l.rejected) || 0) > 0 && !l.rejectDecision,
   }
 }

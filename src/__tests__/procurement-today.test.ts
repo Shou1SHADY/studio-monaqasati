@@ -146,7 +146,8 @@ describe("T5h/T5i/T10 · confirm before the date · rejected at the gate · rate
       po({ id: "h2", promisedDate: "2026-08-01", lines: [line({ accepted: 100 })] }),
       po({ id: "h3", promisedDate: "2026-09-01", lines: [line({ accepted: 100 })] }),
     ]
-    const receipts = [receipt({ id: "x1", poId: "h1", confirmedAt: "2026-08-05T08:00:00Z" }), receipt({ id: "x2", poId: "h2", confirmedAt: "2026-08-05T08:00:00Z" }), receipt({ id: "x3", poId: "h3", confirmedAt: "2026-08-30T08:00:00Z" })]
+    // On time is judged by the day delivered — the notice's date (PUR-07), here the same as the receipt's.
+    const receipts = [receipt({ id: "x1", poId: "h1", confirmedAt: "2026-08-05T08:00:00Z", deliveryDate: "2026-08-05" }), receipt({ id: "x2", poId: "h2", confirmedAt: "2026-08-05T08:00:00Z", deliveryDate: "2026-08-05" }), receipt({ id: "x3", poId: "h3", confirmedAt: "2026-08-30T08:00:00Z", deliveryDate: "2026-08-30" })]
     const due = po({ id: "due", promisedDate: "2026-09-23" })
     const t = todayTasks(world({ orders: [...history, due], receipts }), MANAGER, NOW).filter((x) => x.kind === "confirm_before_date")
     expect(t).toHaveLength(1)
