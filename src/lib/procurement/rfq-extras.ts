@@ -73,17 +73,29 @@ export interface ReachSupplier {
   orgId: string
   memberIds?: string[]
   categories: string[]
+  /** The material tree's sub-categories he chose (PUR-04). */
+  subIds?: string[]
   record?: Pick<SupplierRecord, "verified" | "kind"> | null
 }
 
 const servesAny = (s: ReachSupplier, roots: string[], tree: Record<string, readonly string[]>): boolean =>
   s.categories.some((c) => roots.includes(categoryRoot(c, tree)))
 
-/** «يصل إلى n مورداً متخصصاً في …»: material suppliers of the RFQ's categories, less the unvouched. */
-export function publicReach<T extends ReachSupplier>(suppliers: T[], rfqCategories: string[], tree: Record<string, readonly string[]>): T[] {
+/** «يصل إلى n مورداً متخصصاً في …»: material suppliers of the RFQ's categories, less the unvouched.
+ * An RFQ written on the material tree passes its sub-category ids (`subIds`) and is matched on them
+ * alone (PUR-04); an older one on its category names. */
+export function publicReach<T extends ReachSupplier>(suppliers: T[], rfqCategories: string[], tree: Record<string, readonly string[]>, subIds?: string[]): T[] {
+  const vouched = (s: T) => (s.record?.kind || "mat") === "mat" && !isUnverified(s.record)
+  if (subIds && subIds.length) return suppliers.filter((s) => vouched(s) && (s.subIds || []).some((id) => subIds.includes(id)))
   const roots = [...new Set(rfqCategories.filter(Boolean).map((c) => categoryRoot(c, tree)))]
   if (!roots.length) return []
-  return suppliers.filter((s) => (s.record?.kind || "mat") === "mat" && !isUnverified(s.record) && servesAny(s, roots, tree))
+  return suppliers.filter((s) => vouched(s) && servesAny(s, roots, tree))
+}
+
+/** «حسب الفئة الفرعية: البلك الاسمنتي 2 · الاسمنت العادي 3 (5 دون تكرار)» — the review step's count. */
+export function reachBySub<T extends ReachSupplier>(suppliers: T[], subIds: string[]): { perSub: Array<{ subId: string; count: number }>; distinct: T[] } {
+  const reached = publicReach(suppliers, [], {}, subIds)
+  return { perSub: subIds.map((id) => ({ subId: id, count: reached.filter((s) => (s.subIds || []).includes(id)).length })), distinct: reached }
 }
 
 export interface PoolEntry {
@@ -99,7 +111,8 @@ export function extendPool(
   platform: Array<ReachSupplier & { name: string }>,
   rfqCategories: string[],
   invited: string[],
-  tree: Record<string, readonly string[]>
+  tree: Record<string, readonly string[]>,
+  subIds?: string[]
 ): PoolEntry[] {
   const taken = new Set(invited)
   const out: PoolEntry[] = []
@@ -108,7 +121,7 @@ export function extendPool(
     taken.add(o.orgId)
     out.push({ orgId: o.orgId, name: o.name, platform: false, favourite: o.isFavorite })
   }
-  for (const s of publicReach(platform, rfqCategories, tree)) {
+  for (const s of publicReach(platform, rfqCategories, tree, subIds)) {
     if (taken.has(s.orgId) || (s.memberIds || []).some((m) => taken.has(m))) continue
     taken.add(s.orgId)
     out.push({ orgId: s.orgId, name: s.name, platform: true, favourite: false })

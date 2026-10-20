@@ -1,6 +1,7 @@
 // The supplier's quote as rules (PRD OFR-01…05, WF-01…05) — pure, so the form shows them live, the server runs them
 // again before it writes (NFR-08), and a test pins them. Nothing here reads or writes a database.
 
+import { fieldCovers } from "@/lib/materials/reach"
 import { toAmount } from "@/lib/procurement/offer-pricing"
 import { VAT, addDaysTo, dayNum, r2, type DealLogic } from "./deal-logic"
 import type { Deal, DealItem } from "./types"
@@ -164,11 +165,12 @@ export function quoteShapeOf(rfq: Rec): QuoteShape {
 }
 
 /** Whether the request reaches this supplier: invited by name, or public in his specialties and cities (RFQ-01). */
-export function requestReaches(rfq: Rec, orgId: string, field: { specs: string[]; cities: string[] }): boolean {
+export function requestReaches(rfq: Rec, orgId: string, field: { specs: string[]; cities: string[]; subIds?: string[] }): boolean {
   const named = [rfq.allowedSupplierOrgIds, rfq.invitedSupplierOrgIds].some((l) => Array.isArray(l) && (l as string[]).includes(orgId))
   if (named) return true
   if (rfq.visibility === "private") return false
-  if (!field.specs.includes(str(rfq.category))) return false
+  // One RFQ may carry several sub-categories (PUR-03): any of them is his field.
+  if (!fieldCovers({ subIds: field.subIds || [], specs: field.specs }, rfq)) return false
   const city = str(rfq.city)
   // A request with no city is nationwide (as on the supplier's list).
   return !city || field.cities.includes(city)

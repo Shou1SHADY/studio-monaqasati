@@ -1,5 +1,6 @@
 "use client"
 
+import { fieldCovers, supplierSubIds } from "@/lib/materials/reach"
 import * as React from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { notificationCopy, notificationHref } from '@/lib/mfg-events'
@@ -80,7 +81,7 @@ function LegacySupplierNotificationsPage() {
 
   // Fetch new RFQs matching supplier's specializations
   const matchingRfqsQuery = useMemoFirebase(() => {
-    if (!profile?.specializations || !firestore) return null
+    if (!profile || !firestore) return null
     return query(
       collection(firestore, "rfqs"),
       where("status", "==", "New"),
@@ -172,7 +173,7 @@ function LegacySupplierNotificationsPage() {
         // Explicitly targeted (invited/connected contractor) bypasses the
         // specialization match — being invited is itself the relevance signal.
         const isTargeted = supplierOrgId && (rfq.allowedSupplierOrgIds || []).includes(supplierOrgId)
-        if (!isTargeted && !profile?.specializations?.includes(rfq.category)) return false
+        if (!isTargeted && !fieldCovers({ subIds: supplierSubIds(profile as Record<string, unknown> | null), specs: profile?.specializations || [] }, rfq)) return false
         if (rfq.deadline) {
           const deadline = new Date(rfq.deadline)
           const now = new Date()

@@ -89,11 +89,16 @@ async function buildContext(
 
     } else if (role === 'Supplier') {
       const specs = (profile.specializations as string[] | undefined) ?? [];
-      const rfqQ = specs.length > 0
-        ? query(collection(firestore, 'rfqs'), where('status', '==', 'New'), where('category', 'in', specs.slice(0, 10)), limit(25))
-        : query(collection(firestore, 'rfqs'), where('status', '==', 'New'), limit(20));
-      const rfqSnap = await getDocs(rfqQ);
-      ctx.rfqs = rfqSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // The tree's sub-categories first (PUR-04), then the older category names.
+      const subIds = ((profile.specialtyIds as string[] | undefined) ?? []).slice(0, 30);
+      const rfqQs = [
+        ...(subIds.length ? [query(collection(firestore, 'rfqs'), where('status', '==', 'New'), where('subCategoryIds', 'array-contains-any', subIds), limit(25))] : []),
+        ...(specs.length ? [query(collection(firestore, 'rfqs'), where('status', '==', 'New'), where('category', 'in', specs.slice(0, 10)), limit(25))] : []),
+      ];
+      const snaps = await Promise.all((rfqQs.length ? rfqQs : [query(collection(firestore, 'rfqs'), where('status', '==', 'New'), limit(20))]).map((q) => getDocs(q)));
+      const seen = new Map<string, Record<string, unknown>>();
+      for (const snap of snaps) for (const d of snap.docs) seen.set(d.id, { id: d.id, ...d.data() });
+      ctx.rfqs = [...seen.values()].slice(0, 25);
 
       const offersSnap = await getDocs(
         query(collection(firestore, 'offers'), where('supplierId', '==', userId), limit(25))

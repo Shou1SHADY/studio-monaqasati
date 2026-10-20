@@ -80,6 +80,8 @@ export interface PlatformSupplier {
   city: string | null
   coverageCities: string[]
   categories: string[]
+  /** The material tree's sub-categories he chose (PUR-04). */
+  subIds: string[]
   certificates: SupplierCertificate[]
   worksCount: number
   bio: string | null
@@ -178,6 +180,7 @@ export function useSupplierDirectory(orgId: string, favoriteIds: string[], offer
         city: str(pick("city")) || str(pick("location")),
         coverageCities: (pick("coverageCities") as string[] | undefined) || [],
         categories: (pick("specializations") as string[] | undefined) || [],
+        subIds: (pick("specialtyIds") as string[] | undefined) || [],
         certificates: (pick("certificates") as SupplierCertificate[] | undefined) || [],
         worksCount: ((pick("projects") as unknown[] | undefined) || []).length,
         bio: str(pick("description")),

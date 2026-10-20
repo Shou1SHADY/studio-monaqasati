@@ -29,7 +29,7 @@ export interface SupplierCompany {
   /** The VAT rate the company charges: 15% with a VAT number, else 0. */
   vatRate: number
   /** The company's specialties and coverage cities — what makes a public request his (RFQ-01). */
-  field: { specs: string[]; cities: string[] }
+  field: { specs: string[]; cities: string[]; subIds: string[] }
   /** Approved by the platform admin (the company's `isVerified`) — no quotation before it (supplier-approval.ts). */
   approved: boolean
 }
@@ -58,6 +58,8 @@ export async function supplierCompanyOf(db: Firestore, uid: string, user: Rec): 
   const companyName = text(company.companyName) || text(company.name) || text(user.companyName) || text(user.name)
   const specs = list(company.specializations).length ? list(company.specializations) : list(user.specializations)
   const cities = list(company.coverageCities).length ? list(company.coverageCities) : list(user.coverageCities)
+  // The material tree's sub-categories he chose (PUR-04) — what a request written on the tree reaches.
+  const subIds = list(company.specialtyIds).length ? list(company.specialtyIds) : list(user.specialtyIds)
   return {
     uid,
     name: text(user.name) || companyName,
@@ -65,7 +67,7 @@ export async function supplierCompanyOf(db: Firestore, uid: string, user: Rec): 
     company: companyName,
     hasVat,
     vatRate: vatRateOf(hasVat),
-    field: { specs, cities },
+    field: { specs, cities, subIds },
     approved: company.isVerified === true,
   }
 }

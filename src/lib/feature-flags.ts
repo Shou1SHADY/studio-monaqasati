@@ -34,7 +34,7 @@ export const RECEIPTS_COMING_SOON = true
  * rather than RFQs.
  *
  * Dimmed rather than deleted, so the feature is one boolean away from either
- * outcome. `upsertCatalogItems` in RfqForm deliberately KEEPS writing
+ * outcome. `upsertCatalogItems` in the RFQ editor deliberately KEEPS writing
  * `contractorCatalog` while this is on — the recurring-item history is what
  * makes the page worth anything on the day it ships, and it costs nothing to
  * accrue in the meantime.

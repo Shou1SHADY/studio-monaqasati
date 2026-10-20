@@ -298,9 +298,10 @@ describe("payment terms freeze (G-08)", () => {
   })
 
   it("the RFQ form writes the picker's rows only through that rule", () => {
-    const src = fs.readFileSync(path.join(__dirname, "../components/contractor/RfqForm.tsx"), "utf8")
+    // The rows editor (PUR-02) replaced the card form: its RFQ and its direct award's order.
+    const src = fs.readFileSync(path.join(__dirname, "../components/procurement/rfq-editor/RfqEditor.tsx"), "utf8")
     expect(src).not.toMatch(/DEFAULT_TERMS/)
-    expect(src.match(/paymentTermsList: rfqTermsToStore\(termRows, termsSet\)/g)).toHaveLength(3)
+    expect(src.match(/paymentTermsList: rfqTermsToStore\(values\.terms, values\.termsSet\)/g)).toHaveLength(2)
   })
 
   it("a retroactive order carries terms too", async () => {

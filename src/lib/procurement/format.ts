@@ -50,3 +50,10 @@ export function displayNoticeNumber(number: string | null | undefined, locale: s
 }
 
 export { displayDocNumber }
+
+/** «10 نوفمبر 2026» — a day as the procurement screens print it, Gregorian, Latin digits. */
+export function fmtDayLong(day: string | null | undefined, locale: string, withYear = true): string {
+  if (!day || !/^\d{4}-\d{2}-\d{2}/.test(day)) return "—"
+  const d = new Date(`${day.slice(0, 10)}T12:00:00Z`)
+  return d.toLocaleDateString(locale === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { day: "numeric", month: "long", ...(withYear ? { year: "numeric" } : {}), timeZone: "UTC" })
+}

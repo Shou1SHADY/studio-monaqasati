@@ -1,5 +1,6 @@
 "use client"
 
+import { categoryText, fieldCovers, rfqCategoryNames, supplierSubIds } from "@/lib/materials/reach"
 import { useState, useEffect, useRef, useMemo } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
@@ -39,7 +40,7 @@ import {
   ChevronDown,
   ChevronUp
 } from "lucide-react"
-import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
+import { SAUDI_CITIES, displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
@@ -130,15 +131,12 @@ function LegacyAvailableRfqsPage() {
       where("visibility", "==", "public")
     )
 
-    if (selectedCategory !== "all") {
-      q = query(q, where("category", "==", selectedCategory))
-    }
     if (selectedCity !== "all") {
       q = query(q, where("city", "==", selectedCity))
     }
 
     return q
-  }, [firestore, user, isUserLoading, selectedCategory, selectedCity])
+  }, [firestore, user, isUserLoading, selectedCity])
 
   const supplierOrgId = (profile as any)?.organizationId || user?.uid
 
@@ -167,6 +165,12 @@ function LegacyAvailableRfqsPage() {
   }, [allRfqs, privateRfqs])
 
   const archivedRfqIds: string[] = (profile as any)?.archivedRfqIds || []
+  // The categories the RFQs on the list actually carry — the tree's names and the older ones alike.
+  const categoryChoices = useMemo(() => {
+    const out = new Map<string, string>()
+    for (const r of allCombinedRfqs as Record<string, unknown>[]) for (const name of rfqCategoryNames(r)) if (!out.has(name)) out.set(name, categoryText(r, name, locale, displayCategory))
+    return [...out.entries()].map(([name, text]) => ({ name, text })).sort((a, b) => a.text.localeCompare(b.text, locale))
+  }, [allCombinedRfqs, locale])
 
   // Client-side filtering by specializations and sorting.
   // A supplier explicitly targeted via allowedSupplierOrgIds (invited/connected
@@ -176,8 +180,10 @@ function LegacyAvailableRfqsPage() {
     ? [...allCombinedRfqs]
         .filter((rfq: any) => {
           if (supplierOrgId && (rfq.allowedSupplierOrgIds || []).includes(supplierOrgId)) return true;
-          if (!profile?.specializations?.length) return false;
-          return profile.specializations.includes(rfq.category);
+          // An RFQ may carry several categories (PUR-03): the filter matches any of them, on the client.
+          if (selectedCategory !== "all" && !rfqCategoryNames(rfq).includes(selectedCategory)) return false;
+          // On the tree by sub-category id, before it by category name (PUR-04).
+          return fieldCovers({ subIds: supplierSubIds(profile as Record<string, unknown> | null), specs: profile?.specializations || [] }, rfq);
         })
         .sort((a: any, b: any) => {
           const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
@@ -344,8 +350,8 @@ function LegacyAvailableRfqsPage() {
                 </SelectTrigger>
                 <SelectContent className="max-h-72 overflow-y-auto">
                   <SelectItem value="all">{t("all_categories")}</SelectItem>
-                  {PREDEFINED_CATEGORIES.map(cat => (
-                    <SelectItem key={cat} value={cat}>{displayCategory(cat, locale)}</SelectItem>
+                  {categoryChoices.map(({ name, text }) => (
+                    <SelectItem key={name} value={name}>{text}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

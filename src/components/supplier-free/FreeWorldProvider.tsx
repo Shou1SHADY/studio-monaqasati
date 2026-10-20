@@ -5,6 +5,7 @@
 // deals are derived from them (`lib/supplier-free/derive.ts`).
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useFieldRfqs } from "@/hooks/useFieldRfqs"
 import { collection, doc, deleteField, query, setDoc, updateDoc, where, serverTimestamp, type DocumentData, type Firestore, type UpdateData } from "firebase/firestore"
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useChunkedDocs } from "@/hooks/useChunkedDocs"
@@ -25,6 +26,8 @@ export interface FreeProfile {
   email: string
   city: string
   specializations: string[]
+  /** The material tree's sub-categories he supplies (PUR-04). */
+  specialtyIds: string[]
   coverageCities: string[]
   isVerified: boolean
   raw: Record<string, unknown>
@@ -96,6 +99,7 @@ export function FreeWorldProvider({ children }: { children: ReactNode }) {
       email: String(p.email || user.email || ""),
       city: String(p.city || ""),
       specializations: list(p.specializations),
+      specialtyIds: list(p.specialtyIds),
       coverageCities: list(p.coverageCities),
       isVerified: !!p.isVerified,
       raw: p,
@@ -111,13 +115,12 @@ export function FreeWorldProvider({ children }: { children: ReactNode }) {
   const { data: pos, isLoading: posLoading } = useCollection<Omit<PurchaseOrder, "id">>(posQ)
 
   // ---- Requests: public ones in his field, those that name him, and those he quoted ----
-  const publicQ = useMemoFirebase(() => {
-    if (!firestore || !hasProfile) return null
-    const specs = specsKey ? specsKey.split("|") : []
-    if (!specs.length) return null
-    return query(collection(firestore, "rfqs"), where("status", "==", "New"), where("visibility", "==", "public"), where("category", "in", specs))
-  }, [firestore, hasProfile, specsKey])
-  const { data: publicRfqs, isLoading: publicLoading } = useCollection(publicQ)
+  // Written on the material tree (by sub-category id) or before it (by category name) — PUR-04.
+  const { rfqs: publicRfqs, isLoading: publicLoading } = useFieldRfqs({
+    enabled: hasProfile,
+    subIds: profile?.specialtyIds || [],
+    specs: specsKey ? specsKey.split("|") : [],
+  })
   const inviteQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "rfqs"), where("allowedSupplierOrgIds", "array-contains", orgId)) : null), [firestore, orgId])
   const { data: inviteRfqs, isLoading: inviteLoading } = useCollection(inviteQ)
   const invitedQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "rfqs"), where("invitedSupplierOrgIds", "array-contains", orgId)) : null), [firestore, orgId])

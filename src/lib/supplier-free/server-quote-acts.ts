@@ -78,7 +78,7 @@ export interface QuoteSupplier {
   orgId: string
   company: string
   /** His specialties and coverage cities — what makes a public request his (RFQ-01). */
-  field: { specs: string[]; cities: string[] }
+  field: { specs: string[]; cities: string[]; subIds?: string[] }
   /** The VAT rate his company charges (15% with a VAT number, else 0), stored on every version (decision 9). */
   vatRate?: number
   /** The platform admin approved his company (supplier-approval.ts). The route always says; false refuses a new quote. */
@@ -466,12 +466,14 @@ export async function supplierFieldOf(db: Firestore, user: Rec, orgId: string, u
   const list = (v: unknown) => (Array.isArray(v) ? (v.filter((x) => typeof x === "string") as string[]) : [])
   let specs = list(user.specializations)
   let cities = list(user.coverageCities)
+  let subIds = list(user.specialtyIds)
   if (orgId && orgId !== uid) {
     const org = (await db.collection("organizations").doc(orgId).get().catch(() => null))?.data() as Rec | undefined
     if (org && list(org.specializations).length) specs = list(org.specializations)
     if (org && list(org.coverageCities).length) cities = list(org.coverageCities)
+    if (org && list(org.specialtyIds).length) subIds = list(org.specialtyIds)
   }
-  return { specs, cities }
+  return { specs, cities, subIds }
 }
 
 export const isQuoteAct = (body: unknown): boolean => typeof (body as { action?: unknown } | null)?.action === "string" && String((body as { action: string }).action).startsWith("quote.")

@@ -7,7 +7,7 @@ import { usePathname } from "@/i18n/routing"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
 import Image from "next/image"
-import {
+import { FolderTree,
   LayoutDashboard,
   Package,
   Users,
@@ -67,6 +67,7 @@ const adminSections: NavSection[] = [
       { titleKey: "admin_contractors", href: "/admin/contractors", icon: Users },
       { titleKey: "admin_rfqs", href: "/admin/rfqs", icon: Package },
       { titleKey: "admin_procurement", href: "/admin/procurement", icon: Handshake },
+      { titleKey: "admin_materials", href: "/admin/materials", icon: FolderTree },
     ],
   },
   {

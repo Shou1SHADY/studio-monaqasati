@@ -12,7 +12,7 @@ import { DEFAULT_POLICIES, type PurchaseOrder, type ReceiptFact } from "@/lib/pr
 describe("operating policies", () => {
   it("an absent document gives the PRD's reference values, the old ones untouched", () => {
     const p = resolvePolicies(null)
-    expect(p).toEqual({ ...DEFAULT_POLICIES, noticeRouting: "procurement", buyerReceives: false, buyerSelfIssueLimit: 2000, replyWindowDays: 1 })
+    expect(p).toEqual({ ...DEFAULT_POLICIES, noticeRouting: "procurement", buyerReceives: false, buyerSelfIssueLimit: 2000, replyWindowDays: 1, ownerStepsBack: false })
     expect(operatingPolicies(DEFAULT_POLICIES)).toEqual(DEFAULT_OPERATING_POLICIES)
   })
 

@@ -19,6 +19,8 @@ export const IDENTITY_FIELD_KEYS = [
   "legalDocuments", "isVerified", "profileCompleted", "specializations",
   "coverageCities", "pendingSpecializations", "pendingCoverageCities",
   "projects", "companyFiles", "verificationRequested", "companyNameEn",
+  // The material tree's sub-categories the company supplies (PUR-04) — a company's own, never its owner's.
+  "specialtyIds",
 ] as const
 
 export function stripIdentityFields<T extends Record<string, unknown>>(obj: T): Partial<T> {

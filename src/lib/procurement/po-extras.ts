@@ -357,8 +357,9 @@ export interface PoActs {
   acts: boolean
 }
 
-export function poActs(po: Pick<PurchaseOrder, "preparedById">, actor: ProcActor): PoActs {
-  const ownerReadOnly = actor.isOwner && po.preparedById !== actor.uid
+export function poActs(po: Pick<PurchaseOrder, "preparedById">, actor: ProcActor, ownerStepsBack = false): PoActs {
+  // The owner acts on every order (Procurement 1.5, question 1) unless he chose to step back.
+  const ownerReadOnly = ownerStepsBack && actor.isOwner && po.preparedById !== actor.uid
   const buyer = !actor.isOwner && !actor.canApprove && actor.canPrepare
   const notMine = buyer && po.preparedById !== actor.uid
   return { ownerReadOnly, notMine, acts: !ownerReadOnly && !notMine }

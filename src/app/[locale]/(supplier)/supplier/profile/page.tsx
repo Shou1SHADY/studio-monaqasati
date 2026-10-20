@@ -69,6 +69,7 @@ import { useUser, useFirestore, useMemoFirebase, useCollection, useStorage } fro
 import { doc, updateDoc, deleteField, collection, query as firestoreQuery, orderBy, where } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
+import { SupplierSpecialtiesCard } from "@/components/materials/SupplierSpecialtiesCard"
 import { usePermissions } from "@/hooks/usePermissions"
 import { OwnerOnlyNotice } from "@/components/OwnerOnlyNotice"
 import { identityDocRef } from "@/lib/org-identity"
@@ -127,7 +128,8 @@ function LegacySupplierProfilePage() {
   const { toast } = useToast()
   const searchParams = useSearchParams()
   const showTour = searchParams.get('tour') === 'true'
-  const [activeTab, setActiveTab] = useState("basic")
+  // ?tab=specs opens the specialties (the home's «اختر تخصصاتك», PUR-04).
+  const [activeTab, setActiveTab] = useState(() => (searchParams.get("tab") === "specs" ? "specializations" : "basic"))
   const [tourActive, setTourActive] = useState(() => {
     if (showTour) return true
     if (typeof window === 'undefined') return false
@@ -172,6 +174,10 @@ function LegacySupplierProfilePage() {
 
   const { profile: userData, isLoading: isUserDataLoading, organizationId, isSecondary } = useResolvedProfile(isUserLoading ? null : user?.uid)
   const { isOrgOwner, isLoading: permsLoading } = usePermissions()
+  const treeSpecialtyIds = useMemo(() => {
+    const v = (userData as { specialtyIds?: unknown } | null)?.specialtyIds
+    return Array.isArray(v) ? (v.filter((x) => typeof x === "string") as string[]) : []
+  }, [userData])
   // Identity fields (name, phone, CR/tax numbers, specializations, legal
   // docs, portfolio...) live on organizations/{organizationId} for a
   // secondary company added via the company-switcher, and on users/{uid}
@@ -1190,7 +1196,13 @@ function LegacySupplierProfilePage() {
             </TabsContent>
 
           {/* SPECIALIZATIONS TAB */}
-          <TabsContent value="specializations" className="m-0 focus-visible:outline-none">
+          <TabsContent value="specializations" className="m-0 space-y-4 focus-visible:outline-none">
+            {/* PUR-04: the material tree's sub-categories — what a request written on the tree reaches him by. */}
+            <Card className="shadow-sm border-slate-200">
+              <CardContent className="pt-6">
+                <SupplierSpecialtiesCard current={treeSpecialtyIds} canEdit={isOrgOwner} />
+              </CardContent>
+            </Card>
             <Card className="shadow-sm border-slate-200">
               <CardHeader className="pb-4">
                 <CardTitle className="text-xl font-bold flex items-center gap-2">

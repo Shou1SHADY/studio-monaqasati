@@ -20,7 +20,8 @@ export interface TeamMemberFact {
 
 export interface ProcTeam {
   buyers: BuyerScope[]
-  /** Anyone besides the owner prepares, sources or approves orders. */
+  /** The owner reads rather than acts: someone besides him prepares, sources or approves orders AND he chose
+   * to step back (`ownerStepsBack`). Otherwise he holds every act (Procurement 1.5, question 1). */
   ownerHasTeam: boolean
   /** The viewer's categories when he is a buyer; null = all. */
   viewerCategories: string[] | null
@@ -31,12 +32,12 @@ export const cleanCategories = (v: unknown): string[] =>
 
 const sources = (m: Pick<TeamMemberFact, "can">) => m.can("offers.accept") || m.can("rfq.manage")
 
-export function procTeam(members: TeamMemberFact[], viewer: Pick<ProcActor, "isOwner" | "canApprove" | "canPrepare"> & { canSource?: boolean }, viewerCategoriesRaw: unknown): ProcTeam {
+export function procTeam(members: TeamMemberFact[], viewer: Pick<ProcActor, "isOwner" | "canApprove" | "canPrepare"> & { canSource?: boolean }, viewerCategoriesRaw: unknown, ownerStepsBack = false): ProcTeam {
   const staff = members.filter((m) => !m.isOwner && (sources(m) || m.can("po.approve")))
   const buyers = staff.filter((m) => sources(m) && !m.can("po.approve")).map((m) => ({ uid: m.id, name: m.name, categories: cleanCategories(m.procurementCategories) }))
   const isBuyer = !viewer.isOwner && !viewer.canApprove && (viewer.canPrepare || Boolean(viewer.canSource))
   const own = cleanCategories(viewerCategoriesRaw)
-  return { buyers, ownerHasTeam: staff.length > 0, viewerCategories: isBuyer && own.length ? own : null }
+  return { buyers, ownerHasTeam: ownerStepsBack && staff.length > 0, viewerCategories: isBuyer && own.length ? own : null }
 }
 
 /** Who may set a buyer's categories: the owner, or the procurement manager

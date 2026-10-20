@@ -189,8 +189,10 @@ describe("the buyer's categories (P-21/P-40) — who sets them, who they scope",
       { uid: "buyer", name: "Sara", categories: ["حديد ومعادن"] },
       { uid: "src", name: "Majed", categories: ["أسمنت وخرسانة"] },
     ])
-    expect(team.ownerHasTeam).toBe(true)
-    expect(procTeam(members.filter((m) => m.id === "owner" || m.id === "store"), OWNER, null).ownerHasTeam).toBe(false)
+    // Procurement 1.5, question 1: the owner holds every act — he reads only when he chose to step back.
+    expect(team.ownerHasTeam).toBe(false)
+    expect(procTeam(members, MANAGER, null, true).ownerHasTeam).toBe(true)
+    expect(procTeam(members.filter((m) => m.id === "owner" || m.id === "store"), OWNER, null, true).ownerHasTeam).toBe(false)
   })
 
   it("scopes the viewer only when he is a buyer (a sourcer counts), never a manager", () => {

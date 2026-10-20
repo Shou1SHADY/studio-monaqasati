@@ -1,5 +1,6 @@
 "use client"
 
+import { fieldCovers, supplierSubIds } from "@/lib/materials/reach"
 import * as React from "react"
 import { RoleSidebar } from "./role-sidebar"
 import { 
@@ -353,7 +354,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     
     // Filter RFQs by supplier's specializations and map to notification format
     const newRfqs = (supplierRfqs || [])
-      .filter((rfq: any) => profile?.specializations?.includes(rfq.category))
+      .filter((rfq: any) => fieldCovers({ subIds: supplierSubIds(profile as Record<string, unknown> | null), specs: profile?.specializations || [] }, rfq))
       .map((rfq: any) => ({ ...rfq, type: "new_rfq" }))
     
     const generic = (userNotifications || []).map((n: any) => ({ ...n, type: n.type || "generic", isSubcollection: true }))

@@ -347,7 +347,7 @@ export default function GoodsReceivedPage() {
             routing={routing}
             canReceive={canReceive}
             canFollow={canFollow}
-            followsPo={(po) => canFollow && (!po || poActs(po, actor).acts)}
+            followsPo={(po) => canFollow && (!po || poActs(po, actor, operatingPolicies(policies).ownerStepsBack).acts)}
             reminding={reminding}
             receivers={receivers}
             placeOf={(d, po) => (d ? d.landedWarehouseId || landingWarehouseId(d.projectId || po?.projectId, projects, orgId) : landingWarehouseId(po?.projectId, projects, orgId))}

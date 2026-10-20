@@ -196,14 +196,14 @@ describe("the buyer's self-issue (R-32)", () => {
 })
 
 describe("who acts on an order (R-26)", () => {
-  it("the owner reads somebody else's order; a buyer acts on his own only", async () => {
-    expect(() => assertActs({ preparedById: "buyer" }, owner)).toThrow("owner_read_only")
+  it("the owner acts on somebody else's order; a buyer acts on his own only", async () => {
+    // Procurement 1.5, question 1: the owner acts on an order somebody else prepared.
+    expect(() => assertActs({ preparedById: "buyer" }, owner)).not.toThrow()
     expect(() => assertActs({ preparedById: "other" }, buyer)).toThrow("not_your_order")
     expect(() => assertActs({ preparedById: "other" }, approver)).not.toThrow()
     seedOrder(order({ status: "approved" }))
-    await expect(sendPurchaseOrder(db, owner, "po1", "whatsapp")).rejects.toMatchObject({ code: "owner_read_only" })
     await expect(sendPurchaseOrder(db, actorOf({ uid: "b2" }), "po1", "whatsapp")).rejects.toMatchObject({ code: "not_your_order" })
-    await expect(sendPurchaseOrder(db, buyer, "po1", "whatsapp")).resolves.toMatchObject({ status: "sent" })
+    await expect(sendPurchaseOrder(db, owner, "po1", "whatsapp")).resolves.toMatchObject({ status: "sent", sentById: "owner-uid" })
   })
   it("the approver's own approval still sends it on the portal, whoever prepared it", async () => {
     seedOrder(order())
@@ -219,7 +219,8 @@ describe("cancelling a remainder and deciding a hold tell the others", () => {
     expect(kinds("sup-user").filter((k) => k === "po_remainder_cancelled")).toHaveLength(2)
     expect(kinds("fin")).toContain("po_remainder_cancelled")
     expect(kinds("store")).toContain("po_remainder_cancelled")
-    await expect(cancelRemainder(db, owner, "po1", { lineId: "l1", reason: "x" })).rejects.toMatchObject({ code: "owner_read_only" })
+    // The owner may act (question 1): what stops him here is the line already cancelled, not who he is.
+    await expect(cancelRemainder(db, owner, "po1", { lineId: "l1", reason: "x" })).rejects.toMatchObject({ code: "wrong_state" })
   })
   it("a price hold: the preparer's higher price waits for the order's approver, who settles it and Finance is told", async () => {
     const hold = { id: "h1", invoiceNo: "INV-9", amount: 100, reason: "price" as const, price: 110, text: "t", need: "n", at: "2026-09-10T00:00:00Z", byName: "F", state: "open" as const }

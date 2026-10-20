@@ -25,6 +25,9 @@ export interface OperatingPolicies {
   buyerSelfIssueLimit: number
   /** Inventory's stock check and the workshop's make-or-buy answer — then we proceed. */
   replyWindowDays: number
+  /** The owner holds every Procurement act (Procurement 1.5, question 1 — decided 20 Oct 2026). Set, he
+   * steps back once the company has procurement staff: he reads, and approves what is routed to him. OFF by default. */
+  ownerStepsBack: boolean
 }
 
 export const DEFAULT_OPERATING_POLICIES: OperatingPolicies = {
@@ -32,6 +35,7 @@ export const DEFAULT_OPERATING_POLICIES: OperatingPolicies = {
   buyerReceives: false,
   buyerSelfIssueLimit: 2_000,
   replyWindowDays: 1,
+  ownerStepsBack: false,
 }
 
 export type ResolvedPolicies = ProcurementPolicies & OperatingPolicies
@@ -73,6 +77,7 @@ export function resolvePolicies(raw: Partial<ResolvedPolicies> | null | undefine
   if (typeof raw.sealOffersUntilDeadline === "boolean") out.sealOffersUntilDeadline = raw.sealOffersUntilDeadline
   if (typeof raw.sendOnApproval === "boolean") out.sendOnApproval = raw.sendOnApproval
   if (typeof raw.buyerReceives === "boolean") out.buyerReceives = raw.buyerReceives
+  if (typeof raw.ownerStepsBack === "boolean") out.ownerStepsBack = raw.ownerStepsBack
   if (raw.noticeRouting && (NOTICE_ROUTINGS as readonly string[]).includes(raw.noticeRouting)) out.noticeRouting = raw.noticeRouting
   return out
 }
@@ -80,7 +85,7 @@ export function resolvePolicies(raw: Partial<ResolvedPolicies> | null | undefine
 /** The operating four from a policy set that may have been typed as the mirrored `ProcurementPolicies`. */
 export const operatingPolicies = (p: ProcurementPolicies | Partial<ResolvedPolicies> | null | undefined): OperatingPolicies => {
   const r = resolvePolicies(p as Partial<ResolvedPolicies> | null | undefined)
-  return { noticeRouting: r.noticeRouting, buyerReceives: r.buyerReceives, buyerSelfIssueLimit: r.buyerSelfIssueLimit, replyWindowDays: r.replyWindowDays }
+  return { noticeRouting: r.noticeRouting, buyerReceives: r.buyerReceives, buyerSelfIssueLimit: r.buyerSelfIssueLimit, replyWindowDays: r.replyWindowDays, ownerStepsBack: r.ownerStepsBack }
 }
 
 /** Who owns each policy — the module the chip names (prototype `ext()`). */
@@ -102,4 +107,5 @@ export const POLICY_OWNER: Record<keyof ResolvedPolicies, PolicyOwner> = {
   supplierAcceptanceDays: "gov",
   splitWindowDays: "gov",
   sendOnApproval: "gov",
+  ownerStepsBack: "gov",
 }
