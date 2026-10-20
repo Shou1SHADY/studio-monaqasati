@@ -4,7 +4,8 @@
  * would have gone out without a material the buyer had entered.
  */
 
-import { incompleteProducts, productComplete, productStarted } from "@/lib/rfq-products"
+import { incompleteProducts, productComplete, productStarted, startedProducts, unitOnPick } from "@/lib/rfq-products"
+import { effectivePricing } from "@/lib/procurement/rfq-form"
 
 const row = (over: Partial<Parameters<typeof productComplete>[0]> = {}) => ({ category: "حديد ومعادن", subCategory: "حديد تسليح", quantity: "10", unit: "طن", description: "", ...over })
 
@@ -37,5 +38,27 @@ describe("incompleteProducts — a started row must be finished or removed", () 
     const blank = { category: "", subCategory: "", quantity: "", unit: "", description: "" }
     expect(productStarted(blank)).toBe(false)
     expect(incompleteProducts([row(), blank])).toEqual([])
+  })
+})
+
+// Procurement 1.5 (PUR-02 item 6, PUR-03): a project asked for 200 bags; picking
+// the sub-category turned it into 200 tonnes. A blank third card turned per-line
+// pricing off and was then dropped at publish, leaving a lump sum nobody chose.
+describe("unitOnPick", () => {
+  it("keeps the unit that arrived with the line", () => {
+    expect(unitOnPick("كيس", "طن")).toBe("كيس")
+  })
+  it("fills an empty unit from the sub-category", () => {
+    expect(unitOnPick("", "طن")).toBe("طن")
+    expect(unitOnPick("  ", undefined)).toBe("  ")
+  })
+})
+
+describe("a blank row and the pricing mode", () => {
+  it("is ignored, so per-line pricing stays", () => {
+    const rows = [row(), row({ subCategory: "أسمنت مقاوم", quantity: "200", unit: "كيس" }), row({ category: "", subCategory: "", quantity: "", unit: "" })]
+    const priced = startedProducts(rows)
+    expect(priced).toHaveLength(2)
+    expect(effectivePricing("line", priced.length, priced.every((p) => Number(p.quantity) > 0), "public")).toBe("line")
   })
 })

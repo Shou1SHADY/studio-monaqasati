@@ -532,7 +532,8 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
     const supplier = r.supplierName || po?.supplierName || ""
     const number = r.poNumber || po?.docNumber || ""
     const lines = (r.lines || []).map((l) => `${l.name} ${l.noticeQuantity} ${l.unit}`).join(" · ")
-    const action = actor.canReceive && !ownerRO ? "actions.receive" : "actions.open"
+    // The button says what it opens (PUR-09 #6): these rows open the notice on the receipts desk, not the order.
+    const action = actor.canReceive && !ownerRO ? "actions.receive" : "actions.openNotice"
     // §5.2-3b: a notice nobody has forwarded is a delivery whose receiver does
     // not know it is coming. The daily job auto-forwards once the window lapses
     // (auto-forward.ts) where the register names a receiver; until it runs, or
@@ -582,7 +583,7 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
           subParams: { date: r.date, daysAgo: ago, note: r.note || "", hasNote: r.note ? 1 : 0, reminded: r.reminders.length },
           amount: null,
           href: RECEIVE_PO_HREF,
-          actionKey: actor.canReceive && !ownerRO ? "actions.receive" : "actions.open",
+          actionKey: actor.canReceive && !ownerRO ? "actions.receive" : "actions.openNotice",
         })
       }
     }
@@ -1028,6 +1029,7 @@ export const TODAY_KEYS = [
   "actions.openNeeds",
   "actions.answer",
   "actions.forward",
+  "actions.openNotice",
   "actions.openProject",
   "task.pm_supplier_return.title_nc",
   "task.pm_supplier_return.title_charged",

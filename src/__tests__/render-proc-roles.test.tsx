@@ -332,7 +332,8 @@ const SPECS: Record<string, ScreenSpec> = {
 // The rail: every role has Today, orders, receipts, suppliers, reports, boundaries; only sourcing roles see requests and RFQs.
 const RAIL: Record<string, Role[]> = { اليوم: ALL, "طلبات الشراء الواردة": OMB, "طلبات العروض": OMB, "أوامر الشراء": ALL, "سندات الاستلام": ALL, الموردون: ALL, التقارير: ALL, "الحدود والربط": ALL }
 const PROC_HEADED = new Set(["today", "requests", "rfqs", "orders", "orderA", "orderB", "receiptsIncoming", "receiptsLog", "receiptsNoPo", "suppliers", "reports", "settings"])
-const railLabels = () => Array.from(document.querySelectorAll("nav a")).map((a) => (a.textContent ?? "").trim().replace(/\d+$/, ""))
+// A tab is its label followed by its count chip («3 جديدة» — PUR-09 #7); the label is the first node.
+const railLabels = () => Array.from(document.querySelectorAll("nav a")).map((a) => (a.childNodes[0]?.textContent ?? "").trim())
 
 describe.each(ROLES)("as %s", (role) => {
   it.each(Object.keys(SCREENS))("%s renders, every key resolved, titles and gates as the prototype", async (name) => {

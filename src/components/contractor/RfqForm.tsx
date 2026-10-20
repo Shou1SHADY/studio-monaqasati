@@ -49,7 +49,7 @@ import { createRfqWithNumber, updateRfqNumbered } from "@/lib/procurement/rfq-wr
 import { rfqTermsToStore, termsRefusal } from "@/lib/procurement/terms-freeze"
 import { RfqTermsPicker, termRowsOf, type TermRow } from "@/components/procurement/rfq/RfqTermsPicker"
 import { toAmount, type PricingMode } from "@/lib/procurement/offer-pricing"
-import { incompleteProducts, productComplete } from "@/lib/rfq-products"
+import { incompleteProducts, productComplete, startedProducts } from "@/lib/rfq-products"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { collection, doc, getDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
 import { upsertCatalogItems } from "@/lib/catalog-utils"
@@ -192,10 +192,12 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   // while every material carries a quantity. Derived from what is typed right
   // now: emptying a quantity takes the choice away again, and the effect below
   // puts the RFQ back to a total rather than storing a mode nobody can honour.
-  const canPriceLines = products.some((p) => p.category || p.quantity.trim()) && products.every((p) => toAmount(p.quantity) > 0)
+  // A wholly blank row is ignored (PUR-03): it used to turn per-line pricing off and then vanish at publish.
+  const pricedRows = startedProducts(products)
+  const canPriceLines = pricedRows.length > 0 && pricedRows.every((p) => toAmount(p.quantity) > 0)
   // Derived, never forced into the state: a quantity typed later brings the
   // buyer's choice back instead of leaving the RFQ on a total nobody picked.
-  const storedPricing = effectivePricing(pricingMode, products.length, canPriceLines, visibilityMode)
+  const storedPricing = effectivePricing(pricingMode, pricedRows.length, canPriceLines, visibilityMode)
 
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const pdfInputRef = useRef<HTMLInputElement>(null)
@@ -1369,7 +1371,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                         setFormData({ ...formData, country: v, city: "", district: "" })
                         clearError("city")
                       }}
-                      options={COUNTRIES.map(c => ({ value: c.value, label: displayCountry(c.value, locale) }))}
+                      options={COUNTRIES.filter((c) => c.value === "SA").map(c => ({ value: c.value, label: displayCountry(c.value, locale) }))}
                       placeholder={t("newrfq_select_country")}
                       searchPlaceholder={t("newrfq_search_country")}
                       noResultsText={t("newrfq_no_results")}
@@ -1488,7 +1490,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                     Per line is what gives an order real unit prices — and so a price
                     history, a drift report and an estimate to route the next need on.
                     Offered only when every material has a quantity to multiply by. */}
-                {showsPricingChoice(products.length, visibilityMode) && (
+                {showsPricingChoice(pricedRows.length, visibilityMode) && (
                 <div className="p-5 rounded-2xl border bg-muted/40 border-border">
                   <p className="text-sm font-bold text-foreground mb-3">{t("newrfq_pricing_label")}</p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

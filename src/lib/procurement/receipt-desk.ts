@@ -77,6 +77,25 @@ export function forwardState(d: Pick<DeskDelivery, "forwardedTo" | "receiverRepo
   return "none"
 }
 
+/**
+ * What a pending notice waits on, said as a fact (PUR-06): nobody in Procurement
+ * confirms a receipt, so the offer card and the dashboard name the step instead —
+ * «وصلنا — حوّله للمستلم», or who it went to and since when he has not counted.
+ */
+export type NoticeWait =
+  | { kind: "to_forward" }
+  | { kind: "with_receiver"; name: string; days: number; auto: boolean; byLink: boolean }
+  | { kind: "signed" }
+
+export function noticeWait(d: Pick<DeskDelivery, "forwardedTo" | "receiverReport">, now: Date): NoticeWait {
+  if (d.receiverReport) return { kind: "signed" }
+  const fw = d.forwardedTo
+  if (!fw) return { kind: "to_forward" }
+  const at = Date.parse(fw.at || "")
+  const days = Number.isFinite(at) ? Math.max(0, Math.floor((now.getTime() - at) / 86400000)) : 0
+  return { kind: "with_receiver", name: fw.name, days, auto: Boolean(fw.auto), byLink: !fw.userId }
+}
+
 const num = (n: unknown) => (Number.isFinite(Number(n)) ? Number(n) : 0)
 
 /** A receipt with no order: manual, naming no order and no award. */

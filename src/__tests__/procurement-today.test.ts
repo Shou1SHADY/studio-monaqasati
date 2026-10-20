@@ -198,7 +198,7 @@ describe("T6/T8/T9/T11 · receipts and notices", () => {
       ["notice_late_date", "notice_late_date:n3"],
       ["arrived_today", "arrived:2026-09-22"],
     ])
-    expect(t[0]).toMatchObject({ priority: 1, severity: "red", subParams: { number: "PO-2026/014", date: "2026-09-20", daysAgo: 2 }, href: "/contractor/goods-received?tab=incoming&delivery=n2", actionKey: "actions.open" })
+    expect(t[0]).toMatchObject({ priority: 1, severity: "red", subParams: { number: "PO-2026/014", date: "2026-09-20", daysAgo: 2 }, href: "/contractor/goods-received?tab=incoming&delivery=n2", actionKey: "actions.openNotice" }) // PUR-09 #6: it opens the notice, so it says so
     expect(t[1]).toMatchObject({ priority: 1, severity: "amber", titleParams: { supplier: "Al-Hadid", days: 2 }, subParams: { promised: "2026-09-30" } })
     expect(t[2]).toMatchObject({ titleParams: { count: 2 }, subKey: "task.arrived_today.sub_flags", subParams: { list: "Al-Hadid GR-2026/031 · Al-Hadid GR-2026/032", rejects: 0, short: 0 }, href: "/contractor/goods-received?tab=log" })
     // The overdue and late-date rows are for those who see the order's money (the prototype's `see`).

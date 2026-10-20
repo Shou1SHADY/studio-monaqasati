@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { CATEGORIES_DATA, SUBCATEGORY_UNIT_MAP, displayCategory, displaySubcategory } from "@/lib/constants"
+import { unitOnPick } from "@/lib/rfq-products"
 import { Trash2, Plus, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -114,8 +115,7 @@ export function ProductRowEditor({ rows, onChange, locale, t, onFieldTouched, li
                 <SearchableSelect
                   value={row.subCategory}
                   onChange={(v) => {
-                    const autoUnit = SUBCATEGORY_UNIT_MAP[v]
-                    onChange(rows.map((r) => (r.id === row.id ? { ...r, subCategory: v, ...(autoUnit ? { unit: autoUnit } : {}) } : r)))
+                    onChange(rows.map((r) => (r.id === row.id ? { ...r, subCategory: v, unit: unitOnPick(r.unit, SUBCATEGORY_UNIT_MAP[v]) } : r)))
                     onFieldTouched?.(row.id, "subCategory")
                   }}
                   options={[

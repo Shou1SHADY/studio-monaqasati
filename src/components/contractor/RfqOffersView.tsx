@@ -24,7 +24,7 @@ import { Label } from "@/components/ui/label"
 import { ToastAction } from "@/components/ui/toast"
 import { useProcActor } from "@/hooks/useProcActor"
 import { resolvePolicies } from "@/lib/procurement/policies"
-import { offerRates, pricedProducts } from "@/lib/procurement/offer-pricing"
+import { offerRates, pricedProducts, toAmount } from "@/lib/procurement/offer-pricing"
 import { lastPaid } from "@/lib/procurement/prices"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type AwardReasonCode, type ProcurementPolicies, type PurchaseOrder, type ReceiptFact, type SupplierFacts } from "@/lib/procurement/types"
@@ -32,8 +32,9 @@ import { addDays, poBlocks, poStatus, poWarnings, supplierScore, todayOf } from 
 import { awardDisclosed } from "@/lib/procurement/supplier"
 import { createPurchaseOrderFromAward, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
 import { procLinks } from "@/lib/procurement/events"
+import { noticeWait } from "@/lib/procurement/receipt-desk"
+import { FORWARD_HREF } from "@/lib/procurement/today"
 import { displayPoNumber } from "@/lib/procurement/format"
-import { legacyLinesOf, recordReceipt } from "@/lib/procurement/receipt-writes"
 import {
   awardSupplierOrgId,
   competingOffers,
@@ -109,15 +110,10 @@ import {
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
-import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addDoc, deleteDoc, arrayRemove, serverTimestamp } from "firebase/firestore"
+import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addDoc, deleteDoc, arrayRemove } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
 import { logFinanceAudit } from "@/lib/finance-audit"
-import { receiveDelivery } from "@/lib/warehouse-transfer"
-import { onGoodsReceived } from "@/lib/accounting/hooks"
-import { markPurchaseArrived, type WorkOrderV2 } from "@/lib/manufacturing-writes"
-import { orderRef } from "@/lib/manufacturing-view"
-import { emitMfgEvent, mfgLinks } from "@/lib/mfg-events"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { GuestNotifyDialog, type GuestNotifyTarget } from "@/components/contractor/GuestNotifyDialog"
 import {
@@ -149,6 +145,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const t = useTranslations("Portal.Contractor")
   // Manufacturing events carry Portal.Shared keys (mfn_*) for their pushed text.
   const tShared = useTranslations("Portal.Shared")
+  const tRcpt = useTranslations("Portal.ProcReceipts")
   const locale = useLocale()
   const router = useRouter()
   const { on } = useModules()
@@ -189,9 +186,6 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const [cancelOpen, setCancelOpen] = useState(false)
   const [roundOpen, setRoundOpen] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
-  const [confirmDeliveryDoc, setConfirmDeliveryDoc] = useState<any | null>(null)
-  const [receiverName, setReceiverName] = useState("")
-  const [isConfirmingDelivery, setIsConfirmingDelivery] = useState(false)
   // Guest offers have no in-app inbox — every workflow step has to be pushed
   // out to the supplier on the channel the RFQ was originally shared on.
   const [guestNotify, setGuestNotify] = useState<GuestNotifyTarget | null>(null)
@@ -269,6 +263,8 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   // Project-scoped permission check (falls back to the default group for standalone RFQs)
   const { can } = usePermissions((rfq as { projectId?: string } | null)?.projectId || undefined)
   const canConfirmDelivery = can("deliveries.confirm")
+  // Who may forward a notice to its receiver — the same list the receipt-links route accepts.
+  const canForwardNotice = canConfirmDelivery || can("po.expedite") || can("offers.accept") || can("po.approve")
 
   const { data: offers, isLoading: isOffersLoading } = useCollection(offersQuery)
   const isLoading = isOffersLoading || isRfqLoading
@@ -406,191 +402,6 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
     if (!guaranteesByOfferId[g.offerId]) guaranteesByOfferId[g.offerId] = []
     guaranteesByOfferId[g.offerId].push(g)
   })
-
-  const handleConfirmDelivery = async () => {
-    if (!firestore || !user || !confirmDeliveryDoc || !receiverName.trim()) return
-    // PRD 3.0: a legacy delivery (no order) that names its items is confirmed
-    // through the receipts write — same effects (stock, books, Manufacturing,
-    // the supplier's `delivery_confirmed`), plus a GR number. A notice with
-    // no items (registered suppliers' notices carry none — impl-b §8.2) would
-    // be refused there as "nothing counted", so it keeps today's path below.
-    const offerOfConfirm = (offers || []).find((o: any) => o.id === confirmDeliveryDoc.offerId) as { poId?: string } | undefined
-    if (confirmDeliveryDoc.poId || offerOfConfirm?.poId) {
-      // The award has an order: the receipt is counted at the gate, never "confirmed whole" here.
-      setConfirmDeliveryDoc(null)
-      router.push(procLinks.receipt(confirmDeliveryDoc.id))
-      return
-    }
-    if (legacyLinesOf(confirmDeliveryDoc).length > 0) {
-      setIsConfirmingDelivery(true)
-      try {
-        const offerOfDelivery = (offers || []).find((o: any) => o.id === confirmDeliveryDoc.offerId) as { price?: string | number; totalBatchesPrice?: number } | undefined
-        const legacyNet = Math.max(0, Number(offerOfDelivery?.totalBatchesPrice ?? offerOfDelivery?.price) || 0)
-        const result = await recordReceipt(
-          firestore,
-          procActor,
-          {
-            delivery: confirmDeliveryDoc,
-            po: null,
-            receiverName: receiverName.trim(),
-            policies,
-            purchaseSource: (rfq as { purchaseSource?: { kind: string; workOrderId?: string; purchaseRequestId?: string } } | null)?.purchaseSource ?? null,
-            legacyNet: legacyNet > 0 ? legacyNet : null,
-            projectName: (project as { name?: string } | null)?.name || null,
-          },
-          { copy: tShared, locale: locale === "en" ? "en" : "ar", centralWarehouseCopy: { name: t("wh_central_name"), location: t("wh_central_location"), description: t("wh_central_desc") } }
-        )
-        toast(
-          result.stockLanded
-            ? { title: t("delivery_confirm_success"), description: t("delivery_receipt_link") }
-            : { title: t("delivery_confirm_success"), description: t("delivery_stock_not_landed"), variant: "destructive" }
-        )
-        setConfirmDeliveryDoc(null)
-        setReceiverName("")
-      } catch (err) {
-        console.error("receipt not recorded:", (err as { code?: string })?.code || err)
-        toast({ title: t("offers_toast_error"), variant: "destructive" })
-      } finally {
-        setIsConfirmingDelivery(false)
-      }
-      return
-    }
-    setIsConfirmingDelivery(true)
-    try {
-      await updateDoc(doc(firestore, "deliveries", confirmDeliveryDoc.id), {
-        status: "confirmed",
-        receivedByName: receiverName.trim(),
-        confirmedAt: serverTimestamp(),
-        confirmedByUserId: user.uid
-      })
-
-      // Goods receipt: confirming delivery is the moment stock actually enters a
-      // warehouse — the project's warehouse if this delivery is tied to one project,
-      // otherwise the org's central warehouse (created here if it doesn't exist yet,
-      // same deterministic id as useCentralWarehouse). Kept isolated from the delivery
-      // confirmation above, which already committed and must not be rolled back by this.
-      let stockLanded = true
-      const orgId = confirmDeliveryDoc.contractorOrgId as string | undefined
-      // What the delivery is worth: the awarded offer's price — quoted EXCLUDING
-      // VAT (the offer form says so). One offer, one delivery.
-      const offerOfDelivery = (offers || []).find((o: any) => o.id === confirmDeliveryDoc.offerId) as { price?: string | number; totalBatchesPrice?: number } | undefined
-      const deliveryNet = Math.max(0, Number(offerOfDelivery?.totalBatchesPrice ?? offerOfDelivery?.price) || 0)
-      try {
-        const rawItems = ((confirmDeliveryDoc.items || []) as { name?: string; quantity?: number; unitOfMeasure?: string; unit?: string }[])
-          .map((it) => ({ name: it.name || "", unit: it.unitOfMeasure || it.unit || "", quantity: Number(it.quantity) || 0 }))
-          .filter((it) => it.name && it.unit && it.quantity > 0)
-        // A unit cost only when it is exact: one line, one price. Splitting one
-        // total across lines in different units would invent prices.
-        const deliveryItems = rawItems.map((it) => ({ ...it, unitCost: rawItems.length === 1 && deliveryNet > 0 ? Math.round((deliveryNet / it.quantity) * 100) / 100 : null }))
-
-        if (orgId && deliveryItems.length > 0) {
-          let targetWarehouseId: string | null = null
-          if (confirmDeliveryDoc.projectId) {
-            const projectSnap = await getDoc(doc(firestore, "projects", confirmDeliveryDoc.projectId))
-            targetWarehouseId = (projectSnap.data() as { warehouseId?: string } | undefined)?.warehouseId || null
-          }
-          if (!targetWarehouseId) {
-            const centralRef = doc(firestore, "warehouses", `central_${orgId}`)
-            const centralSnap = await getDoc(centralRef)
-            if (!centralSnap.exists()) {
-              await setDoc(centralRef, {
-                name: t("wh_central_name"),
-                location: t("wh_central_location"),
-                description: t("wh_central_desc"),
-                organizationId: orgId,
-                isCentral: true,
-                projectId: null,
-                projectName: null,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-              })
-            }
-            targetWarehouseId = `central_${orgId}`
-          }
-          await receiveDelivery({ firestore, warehouseId: targetWarehouseId, items: deliveryItems, organizationId: orgId })
-        }
-      } catch (receiptErr) {
-        stockLanded = false
-        console.error("Goods receipt into warehouse failed:", receiptErr)
-      }
-
-      const actorName = profile?.name || user.email || ""
-      if (orgId && stockLanded) {
-        // The books: the company now holds the goods and owes the supplier.
-        onGoodsReceived(
-          firestore,
-          { organizationId: orgId, userId: user.uid, userName: actorName },
-          {
-            deliveryId: confirmDeliveryDoc.id,
-            net: deliveryNet,
-            supplierId: confirmDeliveryDoc.supplierOrgId && confirmDeliveryDoc.supplierOrgId !== "guest" ? confirmDeliveryDoc.supplierOrgId : null,
-            supplierName: confirmDeliveryDoc.supplierName || null,
-            rfqTitle: confirmDeliveryDoc.rfqTitle || null,
-            projectId: confirmDeliveryDoc.projectId || null,
-            projectName: (project as { name?: string } | null)?.name || null,
-          }
-        )
-      }
-
-      // This RFQ answered one of Manufacturing's purchase requests: the goods
-      // are in stock now, so the request is "arrived" and the workshop hears it
-      // — instead of the request staying "RFQ started" for ever.
-      const purchaseSource = (rfq as { purchaseSource?: { kind?: string; workOrderId?: string; purchaseRequestId?: string } } | null)?.purchaseSource
-      if (orgId && stockLanded && purchaseSource?.kind === "mfg_purchase" && purchaseSource.workOrderId && purchaseSource.purchaseRequestId) {
-        try {
-          await markPurchaseArrived(firestore, { orderId: purchaseSource.workOrderId, purchaseRequestId: purchaseSource.purchaseRequestId, actor: { id: user.uid, name: actorName } })
-          const woSnap = await getDoc(doc(firestore, "workOrders", purchaseSource.workOrderId))
-          const wo = woSnap.exists() ? ({ ...(woSnap.data() as WorkOrderV2), id: woSnap.id }) : null
-          const pr = wo?.purchaseRequests?.find((p) => p.id === purchaseSource.purchaseRequestId)
-          if (wo && pr) {
-            await emitMfgEvent(firestore, {
-              kind: "purchase_arrived",
-              copy: tShared,
-              organizationId: orgId,
-              actor: { id: user.uid, name: actorName },
-              to: [{ permission: "manufacturing.manage" }, { users: [pr.byId] }],
-              params: { ref: orderRef(wo), qty: String(pr.quantity), unit: pr.unit, item: pr.itemName, block: "" },
-              workOrderId: wo.id,
-              link: mfgLinks.order(wo.id),
-            })
-          }
-        } catch (linkErr) {
-          // Stock has landed either way; the request can still be closed from the inbox.
-          console.warn("purchase request not closed:", linkErr)
-        }
-      }
-
-      // Guest deliveries have no user doc to notify — the guest sees the
-      // confirmation on their offer page, and hears from us again when the
-      // supply is marked complete.
-      if (confirmDeliveryDoc.supplierId && !confirmDeliveryDoc.isGuestDelivery && confirmDeliveryDoc.supplierId !== "guest") {
-        await addDoc(collection(firestore, "users", confirmDeliveryDoc.supplierId, "notifications"), {
-          userId: confirmDeliveryDoc.supplierId,
-          organizationId: confirmDeliveryDoc.supplierOrgId || confirmDeliveryDoc.supplierId,
-          type: "delivery_confirmed",
-          i18n: { title: "pn_delivery_confirmed_title", message: "pn_delivery_confirmed", params: { rfq: confirmDeliveryDoc.rfqTitle || "" } },
-          title: "✅ تم تأكيد الاستلام",
-          message: `أكد المقاول استلام الشحنة لطلب عروض الأسعار: ${confirmDeliveryDoc.rfqTitle || ""}`,
-          offerId: confirmDeliveryDoc.offerId,
-          rfqId: confirmDeliveryDoc.rfqId,
-          createdAt: new Date().toISOString(),
-          read: false
-        })
-      }
-
-      toast(
-        stockLanded
-          ? { title: t("delivery_confirm_success"), description: t("delivery_receipt_link") }
-          : { title: t("delivery_confirm_success"), description: t("delivery_stock_not_landed"), variant: "destructive" }
-      )
-      setConfirmDeliveryDoc(null)
-      setReceiverName("")
-    } catch {
-      toast({ title: t("offers_toast_error"), variant: "destructive" })
-    } finally {
-      setIsConfirmingDelivery(false)
-    }
-  }
 
   // The award's second half (PRD 3.0 §5.1-5): a purchase order laid over the
   // accepted offer, born awaiting approval. Idempotent — an offer that already
@@ -1239,7 +1050,7 @@ ${t("offers_notif_reduction_note", { note })}`
                                     {offer.exclusion.note ? ` — ${offer.exclusion.note}` : ""}
                                   </p>
                                 )}
-                                {offer.submittedByUserName && (
+                                {offer.submittedByUserName && offer.submittedByUserName !== (offer.companyName || offer.supplierName) && (
                                   <p className="text-[11px] text-slate-500 mt-0.5 truncate">
                                     {t("offers_submitted_by", { name: offer.submittedByUserName })}
                                   </p>
@@ -1331,7 +1142,6 @@ ${t("offers_notif_reduction_note", { note })}`
                                   </div>
                                 ) : (
                                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                                    <p className="text-xs text-muted-foreground font-mono">{offer.supplierId?.substring(0, 10)}...</p>
                                     <GuestOfferProof offer={{ guestContact: null, guestPapers: offer.supplierPapers }} />
                                   </div>
                                 )}
@@ -1371,7 +1181,7 @@ ${t("offers_notif_reduction_note", { note })}`
                               "flex items-baseline gap-2 px-4 py-2.5 rounded-2xl border",
                               isBestOffer ? "bg-amber-50 border-amber-200/60" : "bg-primary/5 border-primary/10"
                             )}>
-                              <span className="text-xs text-muted-foreground me-0.5">{t("offers_proposed_price")}:</span>
+                              <span className="text-xs text-muted-foreground me-0.5">{t("offers_proposed_price")}</span>
                               {sealed ? (
                                 <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                                   <Lock size={13} aria-hidden="true" />
@@ -1380,7 +1190,7 @@ ${t("offers_notif_reduction_note", { note })}`
                               ) : showPrices ? (
                                 <>
                                   <span className={cn("font-black text-2xl tabular-nums", isBestOffer ? "text-amber-600" : "text-primary")}>
-                                    {offer.price}
+                                    <span dir="ltr">{toAmount(offer.price).toLocaleString("en-US")}</span>
                                   </span>
                                   <span className="text-sm font-medium text-muted-foreground">{t("offers_currency_sar")}</span>
                                 </>
@@ -1445,8 +1255,8 @@ ${t("offers_notif_reduction_note", { note })}`
                                     <div key={r.rfqProductIndex} className="flex items-center justify-between gap-2 p-2">
                                       <span className="min-w-0 truncate font-medium" dir="auto">{r.name}</span>
                                       <span className="shrink-0 tabular-nums text-slate-600" dir="ltr">
-                                        {tShared("offer_line_qty", { qty: r.quantity, unit: r.unit })} × {r.unitPrice.toLocaleString("en-US")}
-                                        <span className="ms-2 font-bold text-success">{(Math.round(r.quantity * r.unitPrice * 100) / 100).toLocaleString("en-US")} {t("offers_currency_sar")}</span>
+                                        {r.unitPrice.toLocaleString("en-US")} × {tShared("offer_line_qty", { qty: r.quantity, unit: r.unit })} ={" "}
+                                        <span className="font-bold text-success">{(Math.round(r.quantity * r.unitPrice * 100) / 100).toLocaleString("en-US")} {t("offers_currency_sar")}</span>
                                       </span>
                                     </div>
                                   ))}
@@ -1641,26 +1451,31 @@ ${t("offers_notif_reduction_note", { note })}`
                                 </p>
                               </div>
                             )}
-                            {deliveryByOfferId[offer.id] && deliveryByOfferId[offer.id].status === "pending_confirmation" && canConfirmDelivery && (
-                              deliveryByOfferId[offer.id].poId || offer.poId ? (
-                                // A delivery against an order is counted at the gate, line by line.
-                                <Button variant="success" asChild className="w-full gap-2 rounded-full transition-all text-xs" size="sm">
-                                  <Link href={procLinks.receipt(deliveryByOfferId[offer.id].id)}>
-                                    <CheckCircle2 size={14} />
-                                    {t("delivery_confirm_btn")}
-                                  </Link>
-                                </Button>
-                              ) : (
-                                <Button variant="success"
-                                  onClick={() => setConfirmDeliveryDoc(deliveryByOfferId[offer.id])}
-                                  className="w-full gap-2 rounded-full transition-all text-xs"
-                                  size="sm"
-                                >
-                                  <CheckCircle2 size={14} />
-                                  {t("delivery_confirm_btn")}
-                                </Button>
+                            {/* PUR-06: Procurement never confirms a receipt — the card says what the notice
+                                waits on and offers the step that is Procurement's: forward it, or forward again. */}
+                            {deliveryByOfferId[offer.id] && deliveryByOfferId[offer.id].status === "pending_confirmation" && (() => {
+                              const dl = deliveryByOfferId[offer.id]
+                              const wait = noticeWait(dl, new Date())
+                              return (
+                                <>
+                                  <p className="w-full text-xs font-semibold text-amber-800" dir="auto">
+                                    {wait.kind === "to_forward"
+                                      ? tRcpt("incoming.toForward")
+                                      : wait.kind === "signed"
+                                        ? tRcpt("incoming.signedWaiting")
+                                        : tRcpt("incoming.waitingCount", { name: wait.name, days: wait.days })}
+                                  </p>
+                                  {canForwardNotice && wait.kind !== "signed" && (
+                                    <Button variant={wait.kind === "to_forward" ? "default" : "outline"} asChild className="w-full gap-2 rounded-full text-xs" size="sm">
+                                      <Link href={FORWARD_HREF(dl.id)}>
+                                        <Send size={14} />
+                                        {wait.kind === "to_forward" ? tRcpt("incoming.forwardNow") : tRcpt("incoming.reforward")}
+                                      </Link>
+                                    </Button>
+                                  )}
+                                </>
                               )
-                            )}
+                            })()}
                             {deliveryByOfferId[offer.id] && deliveryByOfferId[offer.id].status === "confirmed" && (
                               <>
                                 <Badge className="w-full justify-center bg-success/10 text-success border-success/20 gap-1.5 py-1.5">
@@ -1976,45 +1791,6 @@ ${t("offers_notif_reduction_note", { note })}`
       </Dialog>
 
       {/* Confirm Delivery Dialog */}
-      <Dialog open={!!confirmDeliveryDoc} onOpenChange={(open) => { if (!open) { setConfirmDeliveryDoc(null); setReceiverName("") } }}>
-        <DialogContent className="sm:max-w-md" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
-          <DialogHeader className="text-start sm:text-start">
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 size={18} className="text-success" />
-              {t("delivery_confirm_title")}
-            </DialogTitle>
-            <DialogDescription>{t("delivery_confirm_desc")}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            {confirmDeliveryDoc && (
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
-                <p className="text-slate-600">{t("delivery_notice_driver")}: <span className="font-bold">{confirmDeliveryDoc.deliveryPersonName}</span></p>
-                <p className="text-slate-600" suppressHydrationWarning>{t("delivery_notice_date")}: <span className="font-bold">{fmtDate(confirmDeliveryDoc.deliveryDate, locale)}</span></p>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label>{t("delivery_receiver_label")} <span className="text-destructive">*</span></Label>
-              <Input
-                value={receiverName}
-                onChange={(e) => setReceiverName(e.target.value)}
-                placeholder={t("delivery_receiver_placeholder")}
-                disabled={isConfirmingDelivery}
-              />
-            </div>
-          </div>
-          <DialogFooter className={cn("flex flex-row gap-2 mt-2", locale === 'ar' ? "flex-row-reverse justify-start" : "justify-end")}>
-            <Button variant="outline" onClick={() => setConfirmDeliveryDoc(null)} disabled={isConfirmingDelivery}>{t("cancel")}</Button>
-            <Button variant="success"
-              onClick={handleConfirmDelivery}
-              disabled={isConfirmingDelivery || !receiverName.trim()}
-              className="gap-2"
-            >
-              {isConfirmingDelivery ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
-              {t("delivery_confirm_submit")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Review Dialog */}
       {reviewOffer && (

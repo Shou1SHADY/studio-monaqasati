@@ -22,6 +22,7 @@ import { Lock, Plus, Search, X } from "lucide-react"
 import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useProcurementShell } from "@/hooks/useProcurementShell"
+import { useAutoForwardTick } from "@/hooks/useAutoForwardTick"
 import { PROC_TABS, activeProcTab, visibleProcTabs } from "@/lib/procurement/shell"
 import { displayCategory } from "@/lib/constants"
 import { sarLtr } from "@/lib/riyal"
@@ -76,6 +77,8 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
     if (home) router.replace(home)
   }, [home, router])
   const shell = useProcurementShell()
+  // Lapsed delivery notices are forwarded when someone who could forward them opens a Procurement page (PUR-06).
+  useAutoForwardTick(!isLoading && shell.actor.canExpedite)
   const [serviceOpen, setServiceOpen] = useState(false)
   // The orders tab's own act (prototype poFree): whoever prepares orders, never the reading owner.
   const serviceOrder = active?.id === "orders" && !shell.ownerReadOnly && (shell.actor.isOwner || shell.actor.canPrepare)
@@ -107,15 +110,14 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-xs font-bold text-module">
-            {tShared("proc_module_name")} <span className="font-semibold text-muted-foreground">· {tShared("proc_module_sub")}</span>
-          </p>
+      {/* The title keeps its words whole (PUR-09 #2): when search, CSV and the actions do not
+          fit beside it they wrap onto a line of their own. The old module subtitle is gone (PUR-08). */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-[14rem] flex-1">
           <h1 className="text-2xl font-black text-foreground">{title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {searchTarget && (
             <Suspense fallback={null}>
               <ProcSearch targetHref={searchTarget.href} />
@@ -191,7 +193,7 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
                   >
                     {tShared(tab.railKey)}
                     {count !== undefined && count > 0 && (
-                      <span className={cn("min-w-5 rounded-full px-1.5 text-center text-[11px] tabular-nums leading-5", isActive ? "bg-module/10 text-module" : "bg-muted text-muted-foreground")}>{count}</span>
+                      <span className={cn("min-w-5 rounded-full px-1.5 text-center text-[11px] tabular-nums leading-5", isActive ? "bg-module/10 text-module" : "bg-muted text-muted-foreground")}>{tShared(`proc_tab_count_${tab.id}`, { count })}</span>
                     )}
                   </Link>
                 </li>
