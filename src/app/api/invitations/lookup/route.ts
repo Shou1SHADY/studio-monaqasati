@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAdminFirestore } from "@/lib/firebaseAdmin"
+import { invitationState } from "@/lib/procurement/invitations"
 
 // Public endpoint: resolves an invitation token to prefill the register page.
 // Tokens are 32 random bytes (hex) — unguessable, so no auth is required, and
@@ -31,6 +32,11 @@ export async function GET(req: NextRequest) {
     const validType = inv.type === "supplier_invite" || inv.type === "team_invite"
     if (!validType || inv.status !== "pending") {
       return errorResponse("This invitation is no longer valid", "INVITATION_NOT_PENDING", 410)
+    }
+    if (inv.type === "supplier_invite") {
+      // PUR-05: good for 30 days from when it was (last) sent; opening it is recorded once («فُتحت»).
+      if (invitationState(inv, new Date()) === "expired") return errorResponse("This invitation has expired", "INVITATION_EXPIRED", 410)
+      if (!inv.openedAt) await snap.docs[0].ref.update({ openedAt: new Date().toISOString() }).catch(() => undefined)
     }
 
     if (inv.type === "team_invite") {

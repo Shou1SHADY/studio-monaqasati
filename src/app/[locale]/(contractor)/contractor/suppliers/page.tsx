@@ -67,7 +67,7 @@ import { SupplierFileDrawer } from "@/components/procurement/SupplierFileDrawer"
 import { DirectoryDrawer } from "@/components/procurement/DirectoryDrawer"
 import { SupplierInvitations, type InvitationDoc } from "@/components/procurement/SupplierInvitations"
 import { SupplierConnectionRequests } from "@/components/procurement/SupplierConnectionRequests"
-import { InviteSupplierDialog } from "@/components/procurement/InviteSupplierDialog"
+import { InviteSupplierDialog, type InvitePrefill } from "@/components/procurement/InviteSupplierDialog"
 import { PriceAgreementsView } from "@/components/procurement/PriceAgreementsView"
 import { PriceHistoryView } from "@/components/procurement/PriceHistoryView"
 import { displayAgreementNumber } from "@/lib/procurement/format"
@@ -123,6 +123,7 @@ export default function SuppliersPage() {
   const { data: invitationDocs } = useCollection<Omit<InvitationDoc, "id">>(invitationsQ)
   const invitations = useMemo(() => ((invitationDocs || []) as InvitationDoc[]).filter((i) => i.type === "supplier_invite"), [invitationDocs])
   const pendingInvitations = invitations.filter((i) => i.status === "pending").length
+  const [invitePrefill, setInvitePrefill] = useState<InvitePrefill | null>(null)
 
   const mfgOn = useModules().on("manufacturing")
   const productsQ = useMemoFirebase(() => (firestore && orgId && actor.seesPrices && mfgOn ? query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", orgId)) : null), [firestore, orgId, actor.seesPrices, mfgOn])
@@ -249,7 +250,7 @@ export default function SuppliersPage() {
   }
 
   const segments = visibleSupplierSegments(actor.seesPrices)
-  const counts: Record<SupplierTabSegment, number | undefined> = { mine: mineRows.length, platform: suppliers.length, agreements: agreements.length, history: undefined }
+  const counts: Record<SupplierTabSegment, number | undefined> = { mine: mineRows.length, invitations: invitations.length, platform: suppliers.length, agreements: agreements.length, history: undefined }
   const spinner = (
     <div className="flex flex-col items-center justify-center p-20 text-muted-foreground">
       <Loader2 className="mb-4 animate-spin" size={32} aria-hidden="true" />
@@ -347,10 +348,23 @@ export default function SuppliersPage() {
           spinner
         ) : segment === "platform" ? (
           <SupplierDirectory suppliers={shownPlatform} onOpen={setDirId} />
+        ) : segment === "invitations" ? (
+          <SupplierInvitations
+            invitations={invitations}
+            canManage={canManage}
+            now={now}
+            onResend={(p) => {
+              setInvitePrefill(p)
+              setShowInvite(true)
+            }}
+            onOpenSupplier={(id) => {
+              pickSegment("mine")
+              openFile(id)
+            }}
+          />
         ) : (
           <div className="space-y-4">
             <SupplierConnectionRequests orgId={orgId} orgName={orgName} actor={actor} canManage={canManage} />
-            <SupplierInvitations invitations={invitations} canManage={canManage} orgName={orgName} now={now} />
             {shownMine.length === 0 ? (
               searchQuery ? (
                 <EmptyState icon={Search} title={tC("suppliers_no_search_results")} description={tC("suppliers_no_search_results_desc")} />
@@ -407,7 +421,18 @@ export default function SuppliersPage() {
           openFile(id)
         }}
       />
-      <InviteSupplierDialog open={showInvite} onOpenChange={setShowInvite} orgName={orgName} />
+      <InviteSupplierDialog
+        open={showInvite}
+        onOpenChange={(o) => {
+          setShowInvite(o)
+          if (!o) setInvitePrefill(null)
+        }}
+        orgName={orgName}
+        prefill={invitePrefill}
+        invitations={invitations}
+        platform={suppliers.map((s) => ({ orgId: s.orgId, name: s.name, phone: s.phone, email: s.email }))}
+        onAddExisting={(id) => setDirId(id)}
+      />
 
       <AlertDialog open={Boolean(removeTarget)} onOpenChange={(o) => !o && setRemoveTarget(null)}>
         <AlertDialogContent>

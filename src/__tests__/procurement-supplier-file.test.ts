@@ -293,8 +293,9 @@ describe("invitations (S-38, S-39)", () => {
 
 describe("price segments are for those who see prices (S-31)", () => {
   it("hides agreements and history from a viewer without prices", () => {
-    expect(visibleSupplierSegments(false)).toEqual(["mine", "platform"])
-    expect(visibleSupplierSegments(true)).toEqual(["mine", "platform", "agreements", "history"])
+    // PUR-05: «الدعوات» sits after «مورّدونا» for everyone who reads the suppliers.
+    expect(visibleSupplierSegments(false)).toEqual(["mine", "invitations", "platform"])
+    expect(visibleSupplierSegments(true)).toEqual(["mine", "invitations", "platform", "agreements", "history"])
   })
   it("guards ?segment=", () => {
     expect(segmentFromParam("agreements", false)).toBe("mine")

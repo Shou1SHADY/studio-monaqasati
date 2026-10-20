@@ -1,92 +1,143 @@
 "use client"
 
-// «ادعُ مورداً إلى منصة مدماك» (prototype FORMS.supInv). A supplier we deal
-// with who is not on the platform gets a join link in his company's name. The
-// channel decides which contact is required; either way the sender's own tool
-// opens with the ready text — his WhatsApp chat or his mail — and he sends it.
-// Until he joins, a guest RFQ link still reaches him — the invitation blocks no purchase.
+// «ادعُ مورداً إلى المنصة» (Procurement 1.5, PUR-05): a supplier we deal with who is not
+// on the platform gets a join link in our company's name — no RFQ, no price. Company ·
+// contact (optional) · mobile or e-mail · his specialties from the material tree
+// (optional) · the channel · a ready text he can edit. WhatsApp opens the sender's own
+// chat; e-mail and a text message are sent by the platform in the company's name. A number
+// invited before says so («دُعي في 12 أكتوبر — أعد الإرسال؟»), and one already on the
+// platform is offered to «مورّدونا» instead. To send a given RFQ to a supplier outside
+// the platform, that RFQ's guest link is the way — this is not it.
 
+import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Check, Loader2, Mail, MessageCircle } from "lucide-react"
+import { ChevronDown, Loader2, Mail, MessageCircle, Smartphone } from "lucide-react"
 import { useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Callout } from "@/components/module-ui/Callout"
+import { MaterialSubsPicker } from "@/components/materials/MaterialSubsPicker"
 import { cn } from "@/lib/utils"
-import { CATEGORIES_DATA, displayCategory } from "@/lib/constants"
-import { INVITE_CHANNELS, inviteErrors, inviteMessage, mailtoLink, waLink, type InviteChannel } from "@/lib/procurement/supplier-file"
-import { NativeSelect } from "@/components/module-ui/NativeSelect"
+import { waLink } from "@/lib/procurement/supplier-file"
+import { LINK_TOKEN, PLATFORM_INVITE_CHANNELS, channelFits, contactOf, duplicateOf, finalInviteText, type InvitationFacts, type PlatformInviteChannel } from "@/lib/procurement/invitations"
+import { fmtDayLong } from "@/lib/procurement/format"
 
-const EFFECTS = ["opens", "joins", "guest", "profile"] as const
+export interface InvitePrefill {
+  companyName?: string
+  contactName?: string
+  contact?: string
+  specialtyIds?: string[]
+}
 
-export function InviteSupplierDialog({ open, onOpenChange, orgName }: { open: boolean; onOpenChange: (open: boolean) => void; orgName: string }) {
+const ICON: Record<PlatformInviteChannel, typeof MessageCircle> = { wa: MessageCircle, email: Mail, sms: Smartphone }
+
+export function InviteSupplierDialog({
+  open,
+  onOpenChange,
+  orgName,
+  prefill,
+  invitations = [],
+  platform = [],
+  onAddExisting,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  orgName: string
+  prefill?: InvitePrefill | null
+  invitations?: Array<InvitationFacts & { id: string; phone?: string | null; email?: string | null }>
+  platform?: Array<{ orgId: string; name: string; phone?: string | null; email?: string | null }>
+  /** «موجود في المنصة — أضِفه إلى مورّدينا». */
+  onAddExisting?: (orgId: string) => void
+}) {
   const t = useTranslations("Portal.ProcSuppliers")
   const locale = useLocale()
   const { user } = useUser()
   const { toast } = useToast()
+  const { index } = useMaterialTree()
+  const [showSubs, setShowSubs] = useState(false)
+  // The link's place in the text, as the sender reads it; the server puts the link there.
+  const linkWord = t("inv2.link_word")
+  const ready = (name: string) => t("inv2.ready", { name: name.trim() ? ` ${name.trim()}` : "", company: orgName || "—", link: linkWord })
 
   const schema = z
     .object({
-      companyName: z.string().trim().max(200),
-      phone: z.string().trim().max(30),
-      email: z.string().trim().max(200),
-      category: z.string(),
-      channel: z.enum(INVITE_CHANNELS),
-      message: z.string().trim().max(1000),
+      companyName: z.string().trim().min(1, t("inv.err.name_missing")).max(200),
+      contactName: z.string().trim().max(120),
+      contact: z.string().trim().max(200),
+      specialtyIds: z.array(z.string()),
+      channel: z.enum(PLATFORM_INVITE_CHANNELS),
+      message: z.string().trim().min(1).max(1000),
     })
     .superRefine((v, ctx) => {
-      for (const code of inviteErrors(v)) {
-        const path = code === "name_missing" ? "companyName" : code.startsWith("phone") ? "phone" : "email"
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message: t(`inv.err.${code}`) })
-      }
+      const c = contactOf(v.contact)
+      if (!c.phone && !c.email) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["contact"], message: t("inv2.err_contact") })
+      else if (!channelFits(v.channel, c)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["channel"], message: t(v.channel === "email" ? "inv2.err_needs_email" : "inv2.err_needs_phone") })
     })
   type Values = z.infer<typeof schema>
-  const blank: Values = { companyName: "", phone: "", email: "", category: "", channel: "wa", message: "" }
-  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: blank })
-  const channel = form.watch("channel")
+  const blank = (p?: InvitePrefill | null): Values => ({
+    companyName: p?.companyName || "",
+    contactName: p?.contactName || "",
+    contact: p?.contact || "",
+    specialtyIds: p?.specialtyIds || [],
+    channel: p?.contact && contactOf(p.contact).email ? "email" : "wa",
+    message: ready(p?.contactName || ""),
+  })
+  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: blank(prefill) })
+  useEffect(() => {
+    if (open) form.reset(blank(prefill))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, prefill])
+  const [channel, contact, contactName, message] = useWatch({ control: form.control, name: ["channel", "contact", "contactName", "message"] })
+  const parsed = useMemo(() => contactOf(contact || ""), [contact])
+  const dup = useMemo(() => duplicateOf(parsed, invitations, platform), [parsed, invitations, platform])
+  // The greeting follows the contact's name until the sender edits the text himself.
+  useEffect(() => {
+    if (!form.formState.dirtyFields.message) form.setValue("message", ready(contactName || ""))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactName, orgName])
 
   const submit = form.handleSubmit(async (v) => {
     if (!user) return
-    // Opened now, inside the click: a window opened after the request returns
-    // is a popup the browser blocks.
+    const c = contactOf(v.contact)
+    // Opened now, inside the click: a window opened after the request returns is a popup the browser blocks.
     const chat = v.channel === "wa" ? window.open("", "_blank") : null
     try {
-      const idToken = await user.getIdToken()
+      const text = v.message.split(linkWord).join(LINK_TOKEN)
       const res = await fetch("/api/invitations/send", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` },
         body: JSON.stringify({
           type: "supplier_invite",
           companyName: v.companyName,
-          email: v.email || undefined,
-          phone: v.phone || undefined,
-          category: v.category || undefined,
-          message: v.message || undefined,
+          contactName: v.contactName || undefined,
+          email: c.email || undefined,
+          phone: c.phone || undefined,
+          specialtyIds: v.specialtyIds,
+          message: text,
+          fullText: true,
           channel: v.channel,
         }),
       })
-      const data = (await res.json().catch(() => null)) as { success?: boolean; message?: string; data?: { joinUrl?: string; emailSent?: boolean } } | null
-      if (!res.ok || !data?.success || !data.data?.joinUrl) throw new Error(data?.message || "invite_failed")
-      const body = inviteMessage(v.message, t("inv.sentence", { company: orgName, url: data.data.joinUrl }))
+      const data = (await res.json().catch(() => null)) as { success?: boolean; data?: { joinUrl?: string; delivered?: boolean } } | null
+      if (!res.ok || !data?.success || !data.data?.joinUrl) throw new Error("invite_failed")
       if (v.channel === "wa") {
-        const link = waLink(v.phone, body)
+        const link = waLink(c.phone || "", finalInviteText(text, data.data.joinUrl))
         if (chat) {
           chat.opener = null
           chat.location.href = link
         } else window.open(link, "_blank", "noopener,noreferrer")
         toast({ title: t("inv.toast_wa") })
       } else {
-        // The sender's own mail, like WhatsApp: the platform never sends in his name (supplier-file.ts).
-        window.location.href = mailtoLink(v.email, t("inv.subject"), body)
-        toast({ title: t("inv.toast_email") })
+        toast({ title: data.data.delivered ? t(v.channel === "email" ? "inv2.sent_email" : "inv2.sent_sms") : t("inv2.not_delivered"), variant: data.data.delivered ? "default" : "destructive" })
       }
-      form.reset(blank)
       onOpenChange(false)
     } catch {
       chat?.close()
@@ -94,32 +145,12 @@ export function InviteSupplierDialog({ open, onOpenChange, orgName }: { open: bo
     }
   })
 
-  const chip = (c: InviteChannel, active: boolean, onPick: () => void) => {
-    const Icon = c === "wa" ? MessageCircle : Mail
-    return (
-      <button
-        key={c}
-        type="button"
-        role="radio"
-        aria-checked={active}
-        onClick={onPick}
-        className={cn(
-          "flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          active ? "border-module bg-module/10 text-module" : "text-muted-foreground hover:text-foreground"
-        )}
-      >
-        <Icon size={15} aria-hidden="true" />
-        {t(`inv.channel_${c}`)}
-      </button>
-    )
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader className="text-start">
-          <DialogTitle>{t("inv.form_title")}</DialogTitle>
-          <DialogDescription>{t("inv.form_sub")}</DialogDescription>
+          <DialogTitle>{t("inv2.title")}</DialogTitle>
+          <DialogDescription>{t("inv2.sub")}</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={submit} className="space-y-4">
@@ -128,9 +159,9 @@ export function InviteSupplierDialog({ open, onOpenChange, orgName }: { open: bo
               name="companyName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t("inv.company")}</FormLabel>
+                  <FormLabel>{t("inv2.company")} *</FormLabel>
                   <FormControl>
-                    <Input placeholder={t("inv.company_ph")} dir="auto" {...field} />
+                    <Input dir="auto" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -139,47 +170,66 @@ export function InviteSupplierDialog({ open, onOpenChange, orgName }: { open: bo
             <div className="grid gap-4 sm:grid-cols-2">
               <FormField
                 control={form.control}
-                name="phone"
+                name="contactName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t("inv.phone")}</FormLabel>
+                    <FormLabel>
+                      {t("inv2.contact_name")} <span className="font-normal text-muted-foreground">({t("inv2.optional")})</span>
+                    </FormLabel>
                     <FormControl>
-                      <Input type="tel" dir="ltr" placeholder="05xxxxxxxx" {...field} />
+                      <Input dir="auto" {...field} />
                     </FormControl>
-                    <FormMessage />
                   </FormItem>
                 )}
               />
               <FormField
                 control={form.control}
-                name="email"
+                name="contact"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t("inv.email")}</FormLabel>
+                    <FormLabel>{t("inv2.contact")} *</FormLabel>
                     <FormControl>
-                      <Input type="email" dir="ltr" placeholder="name@company.com" {...field} />
+                      <Input dir="ltr" placeholder="05xxxxxxxx" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
+            {dup?.kind === "invited" && <Callout tone="info">{t("inv2.dup_invited", { date: dup.day ? fmtDayLong(dup.day, locale, false) : "—" })}</Callout>}
+            {dup?.kind === "registered" && (
+              <Callout tone="warn">
+                <span className="flex flex-wrap items-center gap-2">
+                  {t("inv2.dup_registered", { name: dup.name || "" })}
+                  {onAddExisting && dup.orgId && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        onAddExisting(dup.orgId as string)
+                        onOpenChange(false)
+                      }}
+                    >
+                      {t("inv2.add_existing")}
+                    </Button>
+                  )}
+                </span>
+              </Callout>
+            )}
             <FormField
               control={form.control}
-              name="category"
+              name="specialtyIds"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t("inv.supplies")}</FormLabel>
-                  <FormControl>
-                    <NativeSelect {...field} className="h-10 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                      <option value="">{t("inv.not_specified")}</option>
-                      {Object.keys(CATEGORIES_DATA).map((c) => (
-                        <option key={c} value={c}>
-                          {displayCategory(c, locale)}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  </FormControl>
+                  <button type="button" onClick={() => setShowSubs(!showSubs)} aria-expanded={showSubs} className="flex w-full items-center justify-between text-sm font-medium">
+                    <span>
+                      {t("inv2.specialties")} <span className="font-normal text-muted-foreground">({t("inv2.optional")})</span>
+                      {field.value.length > 0 && <span className="ms-2 rounded-full bg-module/10 px-2 text-xs text-module">{field.value.length}</span>}
+                    </span>
+                    <ChevronDown size={15} className={cn("transition-transform", showSubs && "rotate-180")} aria-hidden="true" />
+                  </button>
+                  {showSubs && <MaterialSubsPicker index={index} value={field.value} onChange={field.onChange} />}
                 </FormItem>
               )}
             />
@@ -188,11 +238,32 @@ export function InviteSupplierDialog({ open, onOpenChange, orgName }: { open: bo
               name="channel"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t("inv.how")}</FormLabel>
-                  <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("inv.how")}>
-                    {INVITE_CHANNELS.map((c) => chip(c, field.value === c, () => field.onChange(c)))}
+                  <FormLabel>{t("inv2.channel")}</FormLabel>
+                  <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("inv2.channel")}>
+                    {PLATFORM_INVITE_CHANNELS.map((c) => {
+                      const Icon = ICON[c]
+                      const fits = !contact || channelFits(c, parsed)
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          role="radio"
+                          aria-checked={field.value === c}
+                          disabled={!fits}
+                          onClick={() => field.onChange(c)}
+                          className={cn(
+                            "flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40",
+                            field.value === c ? "border-module bg-module/10 text-module" : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          <Icon size={15} aria-hidden="true" />
+                          {t(`inv2.ch_${c}`)}
+                        </button>
+                      )
+                    })}
                   </div>
-                  <p className="text-xs text-muted-foreground">{t("inv.how_hint")}</p>
+                  <p className="text-xs text-muted-foreground">{t(`inv2.ch_${field.value}_hint`)}</p>
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -201,28 +272,22 @@ export function InviteSupplierDialog({ open, onOpenChange, orgName }: { open: bo
               name="message"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t("inv.message")}</FormLabel>
+                  <FormLabel>{t("inv2.message")}</FormLabel>
                   <FormControl>
-                    <Textarea rows={2} placeholder={t("inv.message_ph")} dir="auto" {...field} />
+                    <Textarea rows={4} dir="auto" {...field} />
                   </FormControl>
+                  {!(message || "").includes(linkWord) && <p className="text-xs text-muted-foreground">{t("inv2.link_added")}</p>}
                 </FormItem>
               )}
             />
-            <ul className="space-y-1.5 rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
-              {EFFECTS.map((e) => (
-                <li key={e} className="flex gap-2">
-                  <Check size={14} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
-                  <span>{t(`inv.effect_${e}`)}</span>
-                </li>
-              ))}
-            </ul>
+            <p className="text-xs leading-relaxed text-muted-foreground">{t("inv2.not_rfq")}</p>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={form.formState.isSubmitting}>
                 {t("cancel")}
               </Button>
               <Button type="submit" disabled={form.formState.isSubmitting} className="gap-1.5">
                 {form.formState.isSubmitting && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
-                {channel === "wa" ? t("inv.submit_wa") : t("inv.submit_email")}
+                {dup?.kind === "invited" ? t("inv2.resend") : t(`inv2.send_${channel}`)}
               </Button>
             </DialogFooter>
           </form>
