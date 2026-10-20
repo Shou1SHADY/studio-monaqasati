@@ -73,6 +73,7 @@ import { PriceHistoryView } from "@/components/procurement/PriceHistoryView"
 import { displayAgreementNumber } from "@/lib/procurement/format"
 import { useInventoryCatalog } from "@/hooks/useInventoryCatalog"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
+import { supplierInvitationsQuery } from "@/lib/procurement/invite-query"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -119,7 +120,7 @@ export default function SuppliersPage() {
   const favoriteIds = useMemo(() => profile?.favoriteSuppliers || [], [profile?.favoriteSuppliers])
   const { suppliers, loading } = useSupplierDirectory(orgId, favoriteIds, offers)
 
-  const invitationsQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "invitations"), where("contractorOrgId", "==", orgId)) : null), [firestore, orgId])
+  const invitationsQ = useMemoFirebase(() => (firestore && orgId ? supplierInvitationsQuery(firestore, orgId) : null), [firestore, orgId])
   const { data: invitationDocs } = useCollection<Omit<InvitationDoc, "id">>(invitationsQ)
   const invitations = useMemo(() => ((invitationDocs || []) as InvitationDoc[]).filter((i) => i.type === "supplier_invite"), [invitationDocs])
   const pendingInvitations = invitations.filter((i) => i.status === "pending").length

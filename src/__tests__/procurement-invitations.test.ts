@@ -43,3 +43,26 @@ it("a number invited before, or a supplier already on the platform, is said befo
   expect(duplicateOf(contactOf("0550000000"), invs, [{ orgId: "s1", name: "مؤسسة الفهد", phone: "0550000000" }])).toMatchObject({ kind: "registered", orgId: "s1" })
   expect(duplicateOf(contactOf("0560000000"), invs, [])).toBeNull()
 })
+
+describe("the company's supplier-invitation list query", () => {
+  it("carries both constraints the list rule needs, so Firestore can prove every result is readable", () => {
+    const wheres: Array<[string, string, unknown]> = []
+    jest.isolateModules(() => {
+      jest.doMock("firebase/firestore", () => ({
+        collection: (_db: unknown, name: string) => ({ name }),
+        where: (field: string, op: string, value: unknown) => {
+          wheres.push([field, op, value])
+          return { field }
+        },
+        query: (...parts: unknown[]) => parts,
+      }))
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { supplierInvitationsQuery } = require("@/lib/procurement/invite-query") as typeof import("@/lib/procurement/invite-query")
+      supplierInvitationsQuery({} as never, "org1")
+    })
+    expect(wheres).toEqual([
+      ["contractorOrgId", "==", "org1"],
+      ["type", "==", "supplier_invite"],
+    ])
+  })
+})

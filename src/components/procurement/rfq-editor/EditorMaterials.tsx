@@ -302,7 +302,7 @@ export function EditorMaterials({
                   </NativeSelect>
                 </span>
               )}
-              {g.city && !g.district && (
+              {g.city && !g.siteId && (
                 <Input
                   value={g.district}
                   onChange={(e) => setGroup(g, { district: e.target.value })}

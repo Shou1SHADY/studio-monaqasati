@@ -67,6 +67,21 @@ describe("the RFQ editor (PUR-02/03)", () => {
     missingKeys.clear()
   })
 
+  it("a place typed by hand keeps its district box while the name is typed — the box does not vanish after the first letter", async () => {
+    setPathname("/contractor/rfqs/new")
+    render(<NewRfqPage />)
+    await flush()
+    const city = document.querySelector('select[aria-label="مدينة التسليم"]') as HTMLSelectElement | null
+    expect(city).not.toBeNull()
+    await act(async () => void fireEvent.change(city!, { target: { value: "الرياض" } }))
+    const box = () => document.querySelector('input[aria-label="الحي"]') as HTMLInputElement | null
+    expect(box()).not.toBeNull()
+    await act(async () => void fireEvent.change(box()!, { target: { value: "ح" } }))
+    expect(box()).not.toBeNull()
+    await act(async () => void fireEvent.change(box()!, { target: { value: "حي الياسمين" } }))
+    expect(box()?.value).toBe("حي الياسمين")
+  })
+
   it("takes the incoming request as one group with its number, the row as it arrived", async () => {
     setPathname("/contractor/rfqs/new", "requests=project:P1:01")
     const view = render(<NewRfqPage />)
