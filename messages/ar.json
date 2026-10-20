@@ -1454,7 +1454,9 @@
       "supplier_error_title": "حدث خطأ في لوحة المورد",
       "error_apology": "نعتذر عن هذا الخطأ. يرجى المحاولة مرة أخرى أو العودة للصفحة السابقة.",
       "retry": "إعادة المحاولة",
-      "back": "العودة"
+      "back": "العودة",
+      "load_failed": "لم تُحمَّل الصفحة — انقطع الاتصال أثناء التحميل. أعد التحميل.",
+      "reload": "أعد التحميل"
     },
     "Shared": {
       "phone_incomplete": "يجب أن يتكون رقم الجوال من {count} أرقام",
@@ -9020,7 +9022,15 @@
       "offer_quota_reached": "استنفدت عروض هذا الشهر المجانية ({n}). اشترك لإرسال المزيد.",
       "offer_rfq_closed": "لم يعد هذا الطلب مفتوحاً للعروض.",
       "pn_supplier_approved_title": "اعتُمدت منشأتك",
-      "pn_supplier_approved": "اعتمدت مدماك تِك منشأتك، ويمكنك الآن إرسال عروض الأسعار."
+      "pn_supplier_approved": "اعتمدت مدماك تِك منشأتك، ويمكنك الآن إرسال عروض الأسعار.",
+      "proc_tab_count_today": "{count}",
+      "proc_tab_count_requests": "{count} جديدة",
+      "proc_tab_count_rfqs": "{count} مفتوحة",
+      "proc_tab_count_orders": "{count} جارية",
+      "proc_tab_count_receipts": "{count} في الطريق",
+      "proc_tab_count_suppliers": "{count}",
+      "proc_tab_count_reports": "{count}",
+      "proc_tab_count_settings": "{count}"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",
@@ -9431,7 +9441,7 @@
       "queue_item_rfq_no_offers": "{rfqTitle} — بلا أي عرض منذ {days} يوماً",
       "queue_item_rfq_closing_soon": "{rfqTitle} — يُغلق خلال {hours} ساعة",
       "queue_item_rfq_deadline_passed": "{rfqTitle} — تجاوز موعد الإغلاق ولم يُرسَ بعد",
-      "queue_item_delivery_confirm": "توريد من {supplierName} بانتظار التأكيد",
+      "queue_item_delivery_confirm": "وصل إشعار تسليم من {supplierName} — بانتظار تحويلك للمستلم",
       "queue_item_low_stock": "{itemName} منخفض المخزون في {warehouseName}",
       "queue_item_guarantee_expiring": "خطاب ضمان «{itemName}» ينتهي خلال {days} يوم",
       "queue_item_guarantee_expired": "خطاب ضمان «{itemName}» منتهي منذ {days} يوم",
@@ -9487,7 +9497,7 @@
       "action_rfq_decision": "قارن العروض",
       "action_rfq_closing_soon": "افتح الطلب",
       "action_rfq_no_offers": "افتح الطلب",
-      "action_delivery_confirm": "أكّد الاستلام",
+      "action_delivery_confirm": "حوّله للمستلم",
       "action_project_waiting_approval": "افتح المشروع",
       "action_low_stock": "افتح المستودع",
       "action_team_invite_pending": "إدارة الفريق",
@@ -9788,7 +9798,7 @@
       "offers_best_by_date": "الأحدث تقديماً",
       "offers_best_by_duration": "أسرع تنفيذاً",
       "offers_registered_supplier": "مورد مسجل",
-      "offers_submitted_by": "  {name} : مقدم العرض",
+      "offers_submitted_by": "مقدّم العرض: {name}",
       "offers_visit_website": "زيارة الموقع الإلكتروني",
       "offers_proposed_price": "السعر المقترح:",
       "offers_delivery_frequency": "وتيرة التسليم:",
@@ -10941,7 +10951,9 @@
       "offers_exclusion_spec": "المواصفة غير مطابقة",
       "offers_exclusion_lead": "مدته لا تدرك الاحتياج",
       "offers_exclusion_documents": "بلا وثائق أو رقم ضريبي",
-      "rfqv_stage_direct": "إسناد مباشر"
+      "rfqv_stage_direct": "إسناد مباشر",
+      "queue_item_delivery_with_receiver": "شحنة {supplierName} عند {receiver} — بانتظار عدّه",
+      "action_delivery_open": "افتح الإشعار"
     },
     "Home": {
       "tile_in_subscription": "ما يضيفه الاشتراك",
@@ -12948,7 +12960,8 @@
         "openNeeds": "افتح الاحتياج",
         "answer": "أجب",
         "forward": "حوّل للمستلم",
-        "openProject": "افتح المشروع"
+        "openProject": "افتح المشروع",
+        "openNotice": "افتح الإشعار"
       },
       "task": {
         "approve": {
@@ -13623,7 +13636,7 @@
         "title": "حوّل الإشعار إلى المستلم",
         "desc": "إشعار المورد وصلنا — ونحن نختار من يستلمه ونرسل له رابط الاستلام برمز على جواله",
         "toMember": "عضو في الفريق",
-        "toPerson": "شخص بدون حساب",
+        "toPerson": "شخص بلا حساب",
         "member": "العضو",
         "pickMember": "اختر عضواً",
         "memberNoPhone": "لا يوجد رقم جوال لهذا العضو — أدخله لإرسال الرمز",
@@ -13650,7 +13663,7 @@
         "notePlaceholder": "مثلاً: تأكّد من شهادة المصنع قبل التفريغ",
         "noteLabel": "ملاحظة المشتريات",
         "effectLink": "يُفتح الرابط برمز لمرة واحدة يصل جواله — ولا يُعطى للسائق، ولا يقبل توقيعاً قبل إدخال الرمز",
-        "effectMember": "ويصله داخل وحدته أيضاً، وهو الأسرع والأأمن لمن له حساب",
+        "effectMember": "ويصله داخل وحدته أيضاً، وهو الأسرع والأكثر أماناً لمن له حساب",
         "effectTrail": "يُسجَّل في مسار المستند: من حوّل، ولمن، ومتى، وبأي رقم",
         "effectNoTimer": "إن تُرك الإشعار دون تحويل في المهلة حوّله النظام إلى المستلم المقترح ووسمه تلقائياً",
         "reachesIn": "يصله في {module}: قائمة «المتوقع وصوله» وتنبيه على جواله {phone}",
@@ -13708,7 +13721,11 @@
         "paper_mill": "شهادة المصنع",
         "paper_conf": "شهادة مطابقة",
         "autoForwarded": "حُوّل تلقائياً بعد المهلة",
-        "forwardedAuto": "تحويل تلقائي · {when}"
+        "forwardedAuto": "تحويل تلقائي · {when}",
+        "forwardNow": "وصلنا — حوّله للمستلم",
+        "waitingCount": "بانتظار عدّ {name} منذ {days, plural, =0 {اليوم} one {يوم واحد} two {يومين} few {# أيام} many {# يوماً} other {# يوم}}",
+        "reforward": "أعد التحويل",
+        "signedWaiting": "عدّه المستلم — بانتظار السند"
       },
       "log": {
         "colReceipt": "سند الاستلام",

@@ -33,7 +33,7 @@ export const queueItemPermissions = (can: (permission: PermissionId) => boolean)
   rfq_decision: can("offers.view") || can("rfq.manage"),
   rfq_closing_soon: can("rfq.manage") || can("rfq.create"),
   rfq_no_offers: can("rfq.manage") || can("rfq.create"),
-  delivery_confirm: can("deliveries.confirm"),
+  delivery_confirm: can("deliveries.confirm") || can("po.expedite") || can("offers.accept") || can("po.approve"),
   project_waiting_approval: can("projects.edit") || can("projects.publish"),
   low_stock: can("warehouses.manage"),
   team_invite_pending: can("team.manage"),
@@ -83,7 +83,9 @@ export function queueTitle(item: WorkQueueItem): { key: string; params: Record<s
     case "rfq_no_offers":
       return { key: "queue_item_rfq_no_offers", params: { rfqTitle, days: num(d.daysOpen) } }
     case "delivery_confirm":
-      return { key: "queue_item_delivery_confirm", params: { supplierName: text(d.supplierName) || { key: "queue_generic_supplier" } } }
+      return text(d.forwardedTo)
+        ? { key: "queue_item_delivery_with_receiver", params: { supplierName: text(d.supplierName) || { key: "queue_generic_supplier" }, receiver: text(d.forwardedTo) } }
+        : { key: "queue_item_delivery_confirm", params: { supplierName: text(d.supplierName) || { key: "queue_generic_supplier" } } }
     case "project_waiting_approval":
       return { key: "queue_item_project_waiting_approval", params: { name: text(d.projectName), status: { key: text(d.statusLabelKey) } } }
     case "low_stock":
@@ -104,6 +106,12 @@ export function queueTitle(item: WorkQueueItem): { key: string; params: Record<s
     case "po_approve":
       return { key: `queue_item_${item.type}`, params: { count: num(d.count) } }
   }
+}
+
+/** The card's button: forward a notice nobody was told of; open one already with its receiver. */
+export function queueActionKey(item: Pick<WorkQueueItem, "type" | "data">, byType: Record<WorkQueueItemType, string>): string {
+  if (item.type === "delivery_confirm" && text(item.data.forwardedTo)) return "action_delivery_open"
+  return byType[item.type]
 }
 
 export function taskTitle(task: Pick<QueueTask, "titleKey" | "params">, t: QueueTranslate): string {

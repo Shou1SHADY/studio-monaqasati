@@ -12,7 +12,7 @@ import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useModuleComponents, useModules } from "@/hooks/useCompanyModules"
 import type { PortalComponentId } from "@/lib/portal-components"
-import { QUEUE_ITEM_TILE, liveQueueItems, queueItemPermissions } from "@/lib/work-queue-tasks"
+import { QUEUE_ITEM_TILE, liveQueueItems, queueActionKey, queueItemPermissions } from "@/lib/work-queue-tasks"
 
 // Primary action label on each decision card, per item type.
 const ITEM_ACTION_KEY: Record<WorkQueueItemType, string> = {
@@ -94,7 +94,9 @@ function describePriorityItem(item: WorkQueueItem, t: ReturnType<typeof useTrans
     case "rfq_no_offers":
       return t("queue_item_rfq_no_offers", { rfqTitle: (item.data.rfqTitle as string) || t("rfq_not_set"), days: item.data.daysOpen as number })
     case "delivery_confirm":
-      return t("queue_item_delivery_confirm", { supplierName: (item.data.supplierName as string) || t("queue_generic_supplier") })
+      return item.data.forwardedTo
+        ? t("queue_item_delivery_with_receiver", { supplierName: (item.data.supplierName as string) || t("queue_generic_supplier"), receiver: item.data.forwardedTo as string })
+        : t("queue_item_delivery_confirm", { supplierName: (item.data.supplierName as string) || t("queue_generic_supplier") })
     case "project_waiting_approval":
       return t("queue_item_project_waiting_approval", { name: (item.data.projectName as string) || "", status: t(item.data.statusLabelKey as string) })
     case "low_stock":
@@ -210,7 +212,7 @@ export default function ContractorDashboard() {
     title: describePriorityItem(item, t),
     chip: cardChip(item, t),
     metrics: cardMetrics(item, t),
-    actionLabel: t(ITEM_ACTION_KEY[item.type]),
+    actionLabel: t(queueActionKey(item, ITEM_ACTION_KEY)),
     href: item.actionUrl,
   }))
 

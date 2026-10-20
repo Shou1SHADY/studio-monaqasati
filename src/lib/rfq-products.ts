@@ -32,3 +32,18 @@ export function productStarted(p: RfqProductDraft): boolean {
 export function incompleteProducts<T extends RfqProductDraft>(products: T[]): T[] {
   return products.filter((p) => productStarted(p) && !productComplete(p))
 }
+
+/**
+ * The unit after a sub-category is picked (PUR-02): the sub-category's default
+ * fills an EMPTY unit only. A unit that arrived with the line (a project's
+ * «200 كيس») is what the supplier quotes on — swapping it for the default
+ * («طن») turned 10 tonnes of cement into 200 without a word.
+ */
+export function unitOnPick(current: string, defaultUnit: string | undefined): string {
+  return current.trim() ? current : defaultUnit || current
+}
+
+/** The rows the RFQ is made of: a wholly blank row neither counts nor changes the pricing mode (PUR-03). */
+export function startedProducts<T extends RfqProductDraft>(products: T[]): T[] {
+  return products.filter(productStarted)
+}

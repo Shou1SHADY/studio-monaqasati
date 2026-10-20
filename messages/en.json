@@ -1454,7 +1454,9 @@
       "supplier_error_title": "An error occurred in the Supplier Dashboard",
       "error_apology": "We apologize for this error. Please try again or go back to the previous page.",
       "retry": "Retry",
-      "back": "Go Back"
+      "back": "Go Back",
+      "load_failed": "The page did not load — the connection dropped while loading. Reload it.",
+      "reload": "Reload"
     },
     "Shared": {
       "phone_incomplete": "Mobile number must be {count} digits",
@@ -9020,7 +9022,15 @@
       "offer_quota_reached": "You have used this month's {n} free quotes. Subscribe to send more.",
       "offer_rfq_closed": "This request is no longer open for quotes.",
       "pn_supplier_approved_title": "Your company is approved",
-      "pn_supplier_approved": "Mdmak Tech approved your company — you can now send quotes."
+      "pn_supplier_approved": "Mdmak Tech approved your company — you can now send quotes.",
+      "proc_tab_count_today": "{count}",
+      "proc_tab_count_requests": "{count} new",
+      "proc_tab_count_rfqs": "{count} open",
+      "proc_tab_count_orders": "{count} live",
+      "proc_tab_count_receipts": "{count} on the way",
+      "proc_tab_count_suppliers": "{count}",
+      "proc_tab_count_reports": "{count}",
+      "proc_tab_count_settings": "{count}"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -9431,7 +9441,7 @@
       "queue_item_rfq_no_offers": "{rfqTitle} — no offers in {days} days",
       "queue_item_rfq_closing_soon": "{rfqTitle} — closes in {hours}h",
       "queue_item_rfq_deadline_passed": "{rfqTitle} — deadline passed, not yet awarded",
-      "queue_item_delivery_confirm": "Delivery from {supplierName} awaiting confirmation",
+      "queue_item_delivery_confirm": "Delivery notice from {supplierName} — waiting for you to forward it",
       "queue_item_low_stock": "{itemName} is low on stock in {warehouseName}",
       "queue_item_guarantee_expiring": "Guarantee letter \"{itemName}\" expires in {days} day(s)",
       "queue_item_guarantee_expired": "Guarantee letter \"{itemName}\" expired {days} day(s) ago",
@@ -9487,7 +9497,7 @@
       "action_rfq_decision": "Compare offers",
       "action_rfq_closing_soon": "Open RFQ",
       "action_rfq_no_offers": "Open RFQ",
-      "action_delivery_confirm": "Confirm receipt",
+      "action_delivery_confirm": "Forward to receiver",
       "action_project_waiting_approval": "Open project",
       "action_low_stock": "Open warehouse",
       "action_team_invite_pending": "Manage team",
@@ -10941,7 +10951,9 @@
       "offers_exclusion_spec": "Spec does not match",
       "offers_exclusion_lead": "Lead time misses the need",
       "offers_exclusion_documents": "No documents / VAT no.",
-      "rfqv_stage_direct": "Direct award"
+      "rfqv_stage_direct": "Direct award",
+      "queue_item_delivery_with_receiver": "{supplierName}'s delivery is with {receiver} — waiting for the count",
+      "action_delivery_open": "Open the notice"
     },
     "Home": {
       "tile_in_subscription": "What a subscription adds",
@@ -12948,7 +12960,8 @@
         "openNeeds": "Open needs",
         "answer": "Answer",
         "forward": "Forward",
-        "openProject": "Open the project"
+        "openProject": "Open the project",
+        "openNotice": "Open the notice"
       },
       "task": {
         "approve": {
@@ -13708,7 +13721,11 @@
         "paper_mill": "mill certificate",
         "paper_conf": "conformity certificate",
         "autoForwarded": "Auto-forwarded after the window",
-        "forwardedAuto": "auto-forwarded · {when}"
+        "forwardedAuto": "auto-forwarded · {when}",
+        "forwardNow": "Arrived with us — forward it to the receiver",
+        "waitingCount": "Waiting for {name} to count it {days, plural, =0 {since today} one {for # day} other {for # days}}",
+        "reforward": "Forward again",
+        "signedWaiting": "Counted by the receiver — receipt pending"
       },
       "log": {
         "colReceipt": "Receipt",

@@ -64,6 +64,8 @@ const mockDb = {
 }
 
 jest.mock("@/lib/firebaseAdmin", () => ({ getAdminFirestore: () => mockDb }))
+const mockSend = jest.fn(async (_m: { to: string; body: string }) => ({ sent: true }))
+jest.mock("@/lib/sms", () => ({ ...jest.requireActual("@/lib/sms"), sendDirectMessage: (m: { to: string; body: string }) => mockSend(m) }))
 
 import { NextRequest } from "next/server"
 import { GET, POST } from "@/app/api/cron/forward-notices/route"
@@ -251,5 +253,17 @@ describe("what the job forwards", () => {
     seedReceiver("r1")
     await authed()
     expect(Array.from(store.keys()).filter((k) => k.includes("notifications"))).toHaveLength(0)
+  })
+
+  // PUR-06: the link was written and never sent — a store keeper with no account learned nothing.
+  it("sends the link to a receiver who has no account", async () => {
+    mockSend.mockClear()
+    seedNotice("n1")
+    seedReceiver("r1")
+    await authed()
+    expect(mockSend).toHaveBeenCalledTimes(1)
+    const [msg] = mockSend.mock.calls[0]
+    expect(msg.to).toBe("+966501234567")
+    expect(msg.body).toContain(`/receive/${links()[0].data().token}`)
   })
 })

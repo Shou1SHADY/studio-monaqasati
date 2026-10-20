@@ -1,7 +1,7 @@
 import type { WorkQueueItem, WorkQueueItemType } from "@/hooks/useWorkQueue"
 import type { Activity, ActivityGroups } from "@/lib/activities"
 import type { PermissionId } from "@/lib/permissions"
-import { QUEUE_ITEM_TILE, groupTasks, mergeRows, queueDueOn, queueItemPermissions, queueTasks, taskTitle, todoCounts, type QueueModules } from "@/lib/work-queue-tasks"
+import { QUEUE_ITEM_TILE, groupTasks, mergeRows, queueActionKey, queueDueOn, queueItemPermissions, queueTasks, queueTitle, taskTitle, todoCounts, type QueueModules } from "@/lib/work-queue-tasks"
 
 const TODAY = "2026-10-11"
 const at = (iso: string) => Date.parse(iso)
@@ -135,5 +135,24 @@ describe("the work queue as to-dos", () => {
     expect(todoCounts(groups, tasks)).toEqual({ overdue: 2, today: 1, planned: 2, due: 3 })
     const rows = mergeRows(groups.overdue, groupTasks(tasks).overdue)
     expect(rows.map((r) => (r.kind === "activity" ? r.activity.id : r.task.id))).toEqual(["queue:late", "a1"])
+  })
+})
+
+// PUR-06: the dashboard told the owner «أكّد الاستلام» and opened a panel with nothing to
+// confirm. A notice is forwarded by Procurement and counted by its receiver.
+describe("a supplier's delivery notice on the queue", () => {
+  const byType = { delivery_confirm: "action_delivery_confirm" } as Record<WorkQueueItemType, string>
+  it("asks to forward a notice nobody was told of", () => {
+    const it0 = item("delivery_confirm", { data: { supplierName: "Al Jouda" } })
+    expect(queueTitle(it0).key).toBe("queue_item_delivery_confirm")
+    expect(queueActionKey(it0, byType)).toBe("action_delivery_confirm")
+  })
+  it("names the receiver once forwarded, and only opens it", () => {
+    const it1 = item("delivery_confirm", { data: { supplierName: "Al Jouda", forwardedTo: "Salem" } })
+    expect(queueTitle(it1)).toEqual({ key: "queue_item_delivery_with_receiver", params: { supplierName: "Al Jouda", receiver: "Salem" } })
+    expect(queueActionKey(it1, byType)).toBe("action_delivery_open")
+  })
+  it("reaches whoever may forward, not only receivers", () => {
+    expect(queueItemPermissions((p) => p === "po.expedite").delivery_confirm).toBe(true)
   })
 })

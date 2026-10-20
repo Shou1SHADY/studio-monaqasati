@@ -20,6 +20,7 @@ import {
   displayCity, displayCategory, displaySubcategory, displayDistrict,
 } from "@/lib/constants"
 import { createMdmakRfq } from "@/lib/mdmak-contractor"
+import { unitOnPick } from "@/lib/rfq-products"
 
 interface Props {
   open: boolean
@@ -201,8 +202,7 @@ export function CreateMdmakRfqDialog({ open, onClose, onSuccess }: Props) {
                       value={product.subCategory}
                       onChange={v => {
                         updateProduct(product.id, "subCategory", v)
-                        const autoUnit = SUBCATEGORY_UNIT_MAP[v]
-                        if (autoUnit) updateProduct(product.id, "unit", autoUnit)
+                        updateProduct(product.id, "unit", unitOnPick(product.unit, SUBCATEGORY_UNIT_MAP[v]))
                       }}
                       options={product.category && CATEGORIES_DATA[product.category]
                         ? CATEGORIES_DATA[product.category].map(sub => ({ value: sub, label: displaySubcategory(sub, locale) }))

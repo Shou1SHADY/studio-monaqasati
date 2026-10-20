@@ -13,6 +13,7 @@ import { resolveProjectStatus, projectStatusLabelKey, type ProjectStatus } from 
 import { resolvePolicies } from "@/lib/procurement/policies"
 import { workQueueCounts } from "@/lib/procurement/shell"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type ProcurementPolicies, type PurchaseOrder } from "@/lib/procurement/types"
+import { FORWARD_HREF } from "@/lib/procurement/today"
 
 export type WorkQueueItemType =
   | "guarantee_expiring"
@@ -350,16 +351,18 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
     }
   })
 
-  // Deliveries needing confirmation.
+  // Supplier notices waiting on us (PUR-06): Procurement never confirms one — it forwards
+  // it to the receiver, or, once forwarded, waits for his count.
   ;(deliveries || []).forEach((d: any) => {
+    const forwardedTo = typeof d.forwardedTo?.name === "string" ? d.forwardedTo.name : ""
     items.push({
       id: `delivery_confirm_${d.id}`,
       type: "delivery_confirm",
       tier: TIER.delivery_confirm,
       sortMs: toMs(d.deliveryDate || d.createdAt),
       since: toMs(d.deliveryDate || d.createdAt) || undefined,
-      actionUrl: "/contractor/goods-received?tab=incoming",
-      data: { rfqTitle: d.rfqTitle || "", supplierName: d.supplierName || "" },
+      actionUrl: forwardedTo ? `/contractor/goods-received?tab=incoming&delivery=${d.id}` : FORWARD_HREF(d.id),
+      data: { rfqTitle: d.rfqTitle || "", supplierName: d.supplierName || "", forwardedTo },
     })
   })
 

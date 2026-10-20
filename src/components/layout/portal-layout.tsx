@@ -1001,7 +1001,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
             padding and a solid background. A full p-8 above it read as dead space
             between the quick-search bar and the greeting, so the top inset is
             trimmed there only — every other page keeps the standard breathing room. */}
-        <main className={cn("flex-1 p-6 md:p-8 overflow-y-auto min-w-0", isPortalHome && "pt-4 md:pt-4")}>
+        <main className={cn("flex-1 p-6 pb-28 md:p-8 md:pb-28 overflow-y-auto min-w-0", isPortalHome && "pt-4 md:pt-4")}>
           <div className="mx-auto max-w-7xl">
             {/* Every portal page except the two dashboard roots gets a way back up. */}
             <PortalBreadcrumbs />

@@ -75,23 +75,27 @@ export function useSupplierRecipientOptions(
   const linked = buildSupplierOptions(links, favoriteSupplierIds, fallbackName)
 
   const linkedIds = new Set(linked.map((o) => o.orgId))
+  // A link written without the supplier's name read «مورد مسجل» in the list while the
+  // same supplier showed his name elsewhere (PUR-09 #8): those are resolved by id too.
+  const namelessLinked = linked.filter((o) => o.name === fallbackName).map((o) => o.orgId)
   // Firestore's `in` caps at 30; a contractor with more unlinked favourites
   // than that sees the first 30 — and every connected supplier regardless.
   const unlinkedFavoriteIds = Array.from(
     new Set(favoriteSupplierIds.filter((id) => id && !linkedIds.has(id)))
   ).slice(0, 30)
+  const lookupIds = Array.from(new Set([...unlinkedFavoriteIds, ...namelessLinked])).slice(0, 30)
   // The ids (not the array identity) are the real dependency.
-  const unlinkedKey = unlinkedFavoriteIds.join(",")
+  const unlinkedKey = lookupIds.join(",")
 
   const favoriteUsersQuery = useMemoFirebase(() => {
-    if (!firestore || unlinkedFavoriteIds.length === 0) return null
-    return query(collection(firestore, "users"), where(documentId(), "in", unlinkedFavoriteIds))
+    if (!firestore || lookupIds.length === 0) return null
+    return query(collection(firestore, "users"), where(documentId(), "in", lookupIds))
   }, [firestore, unlinkedKey])
   const { data: favoriteUsers } = useCollection(favoriteUsersQuery)
 
   const favoriteOrgsQuery = useMemoFirebase(() => {
-    if (!firestore || unlinkedFavoriteIds.length === 0) return null
-    return query(collection(firestore, "organizations"), where(documentId(), "in", unlinkedFavoriteIds))
+    if (!firestore || lookupIds.length === 0) return null
+    return query(collection(firestore, "organizations"), where(documentId(), "in", lookupIds))
   }, [firestore, unlinkedKey])
   const { data: favoriteOrgs } = useCollection(favoriteOrgsQuery)
 
@@ -113,7 +117,8 @@ export function useSupplierRecipientOptions(
     isFavorite: true,
   }))
 
-  return [...linked, ...unlinked].sort(byFavoriteThenName)
+  const named = linked.map((o) => (o.name === fallbackName && nameById.get(o.orgId) ? { ...o, name: nameById.get(o.orgId) as string } : o))
+  return [...named, ...unlinked].sort(byFavoriteThenName)
 }
 
 /**
