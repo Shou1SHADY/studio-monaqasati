@@ -291,7 +291,8 @@ const SPECS: Record<string, ScreenSpec> = {
     acts: { "راجع واعتمد": OM, "قارن العروض": MB, "حوّل للمستلم": MBE },
   },
   requests: {
-    titles: ["طلبات الشراء الواردة", "يحتاج تصرفاً", "عند غيرنا", "في عروض", "في أوامر", "المادة ومصدر الاحتياج", "الاحتياج · آخر يوم للطلب", "المسار المحسوب", "حديد تسليح 16 مم"],
+    // PUR-01: one card per request, under the project's own number.
+    titles: ["طلبات الشراء الواردة", "جديدة", "مُجهَّزة", "في عروض", "في أوامر", "ط.م 01", "برج الواحة", "حديد تسليح 16 مم", "موعد الحاجة"],
     only: OMB,
   },
   rfqs: { titles: ["طلبات عروض الأسعار", "حديد وإسمنت — برج الواحة", "حديد الأسقف", "إسمنت المرحلة الثانية"], acts: { "مشاركة كرابط للزوار": M, "تعديل الموعد أو المدعوين": M }, only: OMB },
@@ -363,14 +364,16 @@ describe.each(ROLES)("as %s", (role) => {
 })
 
 describe("owner of a company with a procurement team reads, the team acts", () => {
-  it("the owner's needs desk says read-only and offers no selection; the buyer's does", async () => {
+  it("the owner who stepped back reads the incoming requests; the buyer publishes, prepares and selects them", async () => {
     let view = await openAs("owner", "requests")
     expect(text()).toContain("قراءة فقط — يتصرّف فريق المشتريات")
-    expect(text()).not.toContain("تحديد")
+    expect(buttons()).not.toContain("انشره")
+    expect(document.querySelector('[aria-label^="اختر ط.م"]')).toBeNull()
     view.unmount()
     view = await openAs("buyer", "requests")
     expect(text()).not.toContain("قراءة فقط — يتصرّف فريق المشتريات")
-    expect(text()).toContain("تحديد")
+    expect(buttons()).toEqual(expect.arrayContaining(["انشره", "جهّزه"]))
+    expect(document.querySelector('[aria-label="اختر ط.م 01"]')).not.toBeNull()
     view.unmount()
   })
 

@@ -236,6 +236,18 @@ function addedNeeds(base: Need, pr: ProjectRequestDoc): Need[] {
   return out
 }
 
+/**
+ * What reaches Procurement (PUR-01): a PM 1.0 request only once its project manager approved it
+ * technically. Pending, withdrawn or rejected before then, it is the project's business and never
+ * shows here (before 20 Oct 2026 a pending one was shown read-only, and a withdrawn one as «أُلغي»).
+ * A legacy request (no `pm`) travels as it always did.
+ */
+export const reachesProcurement = (pr: Pick<ProjectRequestDoc, "pm" | "status">): boolean => !pr.pm || pr.status === "approved"
+
+/** The request's own number, as the project wrote it: «MR 03» for a PM 1.0 request (shown «ط.م 03»,
+ * `displayNeedRef`), the older «PR-…» for a legacy one. One number in both modules. */
+export const projectRequestRef = (pr: Pick<ProjectRequestDoc, "id" | "pm">, legacyRef: (id: string) => string): string => (pr.pm ? `MR ${pr.id}` : legacyRef(pr.id))
+
 export function projectNeed(project: { id: string; name: string }, pr: ProjectRequestDoc, ref: string): Need {
   // A PM request is born awaiting the project manager's TECHNICAL approval
   // (REQ-02): until he approves, nothing of it is Procurement's to act on — it is

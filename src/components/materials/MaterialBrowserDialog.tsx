@@ -172,7 +172,10 @@ export function MaterialBrowserDialog({
                   {s.options.map((o) => {
                     const on = specs[s.ar]?.ar === o.ar
                     return (
-                      <Chip key={o.ar} selected={on} onClick={() =>
+                      <Chip
+                        key={o.ar}
+                        selected={on}
+                        onClick={() =>
                           setSpecs((cur) => {
                             const next = { ...cur }
                             if (on) delete next[s.ar]
@@ -219,8 +222,22 @@ export function MaterialBrowserDialog({
               )}
               {extra.map((x, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <Input value={x.name} onChange={(e) => setExtra((cur) => cur.map((y, j) => (j === i ? { ...y, name: e.target.value } : y)))} placeholder={t("free_spec_name")} aria-label={t("free_spec_name")} className="h-9" dir="auto" />
-                  <Input value={x.value} onChange={(e) => setExtra((cur) => cur.map((y, j) => (j === i ? { ...y, value: e.target.value } : y)))} placeholder={t("free_spec_value")} aria-label={t("free_spec_value")} className="h-9" dir="auto" />
+                  <Input
+                    value={x.name}
+                    onChange={(e) => setExtra((cur) => cur.map((y, j) => (j === i ? { ...y, name: e.target.value } : y)))}
+                    placeholder={t("free_spec_name")}
+                    aria-label={t("free_spec_name")}
+                    className="h-9"
+                    dir="auto"
+                  />
+                  <Input
+                    value={x.value}
+                    onChange={(e) => setExtra((cur) => cur.map((y, j) => (j === i ? { ...y, value: e.target.value } : y)))}
+                    placeholder={t("free_spec_value")}
+                    aria-label={t("free_spec_value")}
+                    className="h-9"
+                    dir="auto"
+                  />
                   <Button type="button" variant="ghost" size="icon" onClick={() => setExtra((cur) => cur.filter((_, j) => j !== i))} aria-label={t("remove")}>
                     <X size={14} />
                   </Button>
@@ -244,7 +261,7 @@ export function MaterialBrowserDialog({
                     onClick={() => open1(c)}
                     className={cn(
                       "flex min-h-14 w-full flex-col items-start justify-center gap-0.5 rounded-lg border px-3 py-2 text-start transition-colors hover:border-module/40 hover:bg-module/5",
-                      pickedSub && "border-module bg-module/10"
+                      pickedSub && "border-module bg-module/10",
                     )}
                   >
                     <span className="text-sm font-semibold">{label(c, locale)}</span>

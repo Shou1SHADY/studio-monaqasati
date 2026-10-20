@@ -25,6 +25,7 @@ import { pmCeiling, type PmContext } from "@/lib/pm/access"
 import { approveMaterialRequest, createMaterialRequest } from "@/lib/pm/supply-writes"
 import { todayDay } from "@/lib/pm/format"
 import NewRfqPage from "@/app/[locale]/(contractor)/contractor/rfqs/new/page"
+import RequestsPage from "@/app/[locale]/(contractor)/contractor/rfqs/requests/page"
 
 installDomShims()
 jest.setTimeout(60_000)
@@ -133,6 +134,25 @@ describe("the RFQ editor (PUR-02/03)", () => {
     expect(r).toMatchObject({ city: "الرياض", district: "حي الياسمين", pricingMode: "line", visibility: "public" })
     expect((r.products as Array<Record<string, unknown>>)[0]).toMatchObject({ quantity: 8, unitOfMeasure: "طن", deliveryDistrict: "حي الياسمين" })
     expect(text()).toContain("نُشر طلب العروض")
+    view.unmount()
+  })
+
+  it("the incoming list shows the request under its number, and «انشره» opens its panel on the request", async () => {
+    setPathname("/contractor/rfqs/requests", "")
+    let view = render(<RequestsPage />)
+    await flush()
+    expect(text()).toContain("ط.م 01")
+    expect(text()).toContain("أسمنت بورتلاندي عادي")
+    expect([...missingKeys]).toEqual([])
+    view.unmount()
+    setPathname("/contractor/rfqs/requests", "publish=project:P1:01")
+    view = render(<RequestsPage />)
+    await flush()
+    // The material came as words: step 1 «الطلب» asks for it on its row before publishing.
+    expect(text()).toContain("الطلب")
+    expect(text()).toContain("اختر المادة")
+    expect(text()).toContain("لنشر بعض المواد فقط")
+    expect([...missingKeys]).toEqual([])
     view.unmount()
   })
 })

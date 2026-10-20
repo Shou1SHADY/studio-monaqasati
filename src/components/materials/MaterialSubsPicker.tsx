@@ -24,7 +24,19 @@ function words(n: MaterialNode): string {
   return foldSearchText(out.join(" "))
 }
 
-export function MaterialSubsPicker({ index, value, onChange, disabled, className }: { index: MaterialIndex | null; value: string[]; onChange: (ids: string[]) => void; disabled?: boolean; className?: string }) {
+export function MaterialSubsPicker({
+  index,
+  value,
+  onChange,
+  disabled,
+  className,
+}: {
+  index: MaterialIndex | null
+  value: string[]
+  onChange: (ids: string[]) => void
+  disabled?: boolean
+  className?: string
+}) {
   const t = useTranslations("Portal.Materials")
   const locale = useLocale()
   const [q, setQ] = useState("")

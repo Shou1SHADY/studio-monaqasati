@@ -38,7 +38,11 @@ export function EditorReview({ model, fmtDay }: { model: ReviewModel; fmtDay: (d
   return (
     <div className="space-y-4">
       <p className="rounded-xl bg-module/10 px-4 py-3 text-sm font-semibold text-foreground">
-        {m.audience === "direct" ? t("rev_lead_direct", { count: m.lines, name: m.directName || "—" }) : m.pricing === "line" ? t("rev_lead_line", { count: m.lines }) : t("rev_lead_total", { count: m.lines })}
+        {m.audience === "direct"
+          ? t("rev_lead_direct", { count: m.lines, name: m.directName || "—" })
+          : m.pricing === "line"
+            ? t("rev_lead_line", { count: m.lines })
+            : t("rev_lead_total", { count: m.lines })}
       </p>
       <div className="rounded-xl border px-4">
         <KeyValueRow label={t("rev_materials")} value={t("rev_materials_v", { count: m.lines, subs: m.subs, groups: m.groups })} />
@@ -50,7 +54,9 @@ export function EditorReview({ model, fmtDay }: { model: ReviewModel; fmtDay: (d
         )}
         {m.audience === "private" && <KeyValueRow label={t("rev_reaches")} value={t("rev_private", { count: m.privateCount })} />}
         {m.audience === "direct" && <KeyValueRow label={t("rev_reaches")} value={m.directName || "—"} />}
-        {m.audience !== "direct" && m.deadline && <KeyValueRow label={t("deadline")} value={`${fmtDay(m.deadline)}${m.daysToDeadline != null ? ` · ${t("in_days", { count: m.daysToDeadline })}` : ""}`} />}
+        {m.audience !== "direct" && m.deadline && (
+          <KeyValueRow label={t("deadline")} value={`${fmtDay(m.deadline)}${m.daysToDeadline != null ? ` · ${t("in_days", { count: m.daysToDeadline })}` : ""}`} />
+        )}
         <KeyValueRow label={t("pricing")} value={m.audience === "direct" ? t("pricing_agreed") : m.pricing === "line" ? t("pricing_line") : t("pricing_total")} />
         <KeyValueRow label={t("rev_terms")} value={m.terms} />
         <KeyValueRow label={t("rev_delivery")} value={m.delivery} />

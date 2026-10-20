@@ -9034,7 +9034,37 @@
       "proc_tab_count_settings": "{count}",
       "pn_choose_specialties_title": "اختر تخصصاتك من شجرة المواد",
       "pn_choose_specialties": "طلبات العروض صارت تُكتب بشجرة مواد واحدة. اختر الفئات الفرعية التي تورّدها مرة واحدة لتصلك الطلبات العامة فيها.",
-      "supplier_fallback_name": "مورد على المنصة"
+      "supplier_fallback_name": "مورد على المنصة",
+      "rq_seg_new": "جديدة",
+      "rq_seg_prepared": "مُجهَّزة",
+      "rq_seg_elsewhere": "عند غيرنا",
+      "rq_seg_rfq": "في عروض",
+      "rq_seg_order": "في أوامر",
+      "rq_seg_done": "اكتملت",
+      "rq_seg_all": "الكل",
+      "rq_state_new": "جديد",
+      "rq_state_prepared": "مُجهَّز",
+      "rq_state_elsewhere": "عند وحدة أخرى",
+      "rq_state_partial": "جزء منه في عروض",
+      "rq_state_rfq": "في طلب عروض {rfq}",
+      "rq_state_order": "في أمر {po}",
+      "rq_state_done": "اكتمل",
+      "rq_state_failed": "تعذّر الشراء",
+      "rq_state_withdrawn": "سحبه المشروع",
+      "rq_by": "طلبه {name}",
+      "rq_need_by": "موعد الحاجة {date}",
+      "rq_publish": "انشره",
+      "rq_prepare": "جهّزه",
+      "rq_open_draft": "افتح المسودة",
+      "rq_open_rfq": "افتح طلب العروض",
+      "rq_open_po": "افتح الأمر",
+      "rq_select": "اختر {ref}",
+      "rq_sel": "{count, plural, one {طلب واحد} two {طلبان} few {# طلبات} many {# طلباً} other {# طلب}} · {lines, plural, one {مادة واحدة} two {مادتان} few {# مواد} many {# مادة} other {# مادة}}",
+      "rq_combine": "اجمعها في طلب عروض واحد",
+      "rq_panel": "الطلب الوارد",
+      "rq_empty": "لا طلبات هنا.",
+      "rq_empty_hint": "يصل هنا طلب المواد بعد أن يعتمده مدير المشروع فنياً، وما يطلبه التصنيع والمخزون.",
+      "rq_empty_hint_team": "يصلك هنا ما يطلبه فريقك، وما يطلبه التصنيع والمخزون."
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",
@@ -12996,7 +13026,8 @@
         "answer": "أجب",
         "forward": "حوّل للمستلم",
         "openProject": "افتح المشروع",
-        "openNotice": "افتح الإشعار"
+        "openNotice": "افتح الإشعار",
+        "publishRequest": "انشره"
       },
       "task": {
         "approve": {
@@ -13148,6 +13179,9 @@
         "pm_hire": {
           "title": "استئجار بدل {request} — {what} من {fromDay} إلى {toDay}",
           "sub": "{project} · {qty} {operator, select, 1 {بمشغّل} other {بلا مشغّل}} — لا يوجد في أسطولنا؛ بعقد زمني وتاريخ إرجاع"
+        },
+        "need_request": {
+          "title": "{ref} · {place}: {count, plural, two {مادتان} few {# مواد} many {# مادة} other {# مادة}} بانتظار الشراء"
         }
       },
       "wait": {
@@ -24940,7 +24974,11 @@
       "warranty": "يتطلب ضماناً",
       "warranty_on": "يتطلب هذا المنتج ضماناً",
       "warranty_off": "بلا ضمان",
-      "whatsapp": "واتساب"
+      "whatsapp": "واتساب",
+      "step_request": "الطلب",
+      "panel_sub": "{place} · {count, plural, one {مادة واحدة} two {مادتان} few {# مواد} many {# مادة} other {# مادة}}",
+      "panel_part_hint": "لنشر بعض المواد فقط: «جهّزه» واحذف ما لا تريد.",
+      "prepare": "جهّزه"
     }
   },
   "Auth": {

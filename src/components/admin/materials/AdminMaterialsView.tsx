@@ -147,7 +147,12 @@ export function AdminMaterialsView() {
       <button
         type="button"
         onClick={() => setSel({ rootId, id: n.id })}
-        className={cn("flex min-h-9 w-full items-center gap-2 rounded-md pe-2 text-start text-sm hover:bg-muted", DEPTH[depth] || "ps-12", sel?.id === n.id && "bg-module/10 font-semibold text-module", n.hidden && "text-muted-foreground line-through")}
+        className={cn(
+          "flex min-h-9 w-full items-center gap-2 rounded-md pe-2 text-start text-sm hover:bg-muted",
+          DEPTH[depth] || "ps-12",
+          sel?.id === n.id && "bg-module/10 font-semibold text-module",
+          n.hidden && "text-muted-foreground line-through",
+        )}
       >
         {label(n, locale)}
         {n.hidden && <EyeOff size={12} aria-hidden="true" />}
@@ -195,7 +200,10 @@ export function AdminMaterialsView() {
                       setOpenRoot(openRoot === d.id ? null : d.id)
                       setSel({ rootId: d.id, id: d.root.id })
                     }}
-                    className={cn("flex min-h-10 w-full items-center justify-between gap-2 rounded-md px-2 text-start text-sm font-bold hover:bg-muted", d.root.hidden && "text-muted-foreground line-through")}
+                    className={cn(
+                      "flex min-h-10 w-full items-center justify-between gap-2 rounded-md px-2 text-start text-sm font-bold hover:bg-muted",
+                      d.root.hidden && "text-muted-foreground line-through",
+                    )}
                   >
                     {label(d.root, locale)}
                     <ChevronDown size={14} className={cn("transition-transform", openRoot === d.id && "rotate-180")} aria-hidden="true" />
@@ -218,7 +226,13 @@ export function AdminMaterialsView() {
                   <Input value={draft.ar} onChange={(e) => setDraft((d) => ({ ...d, ar: e.target.value }))} aria-label={t("name_ar")} placeholder={t("name_ar")} dir="rtl" />
                   <Input value={draft.en} onChange={(e) => setDraft((d) => ({ ...d, en: e.target.value }))} aria-label={t("name_en")} placeholder={t("name_en")} dir="ltr" />
                 </div>
-                <Button size="sm" variant="outline" className="gap-1.5" disabled={!!busy || !draft.ar.trim() || (draft.ar === selNode.ar && draft.en === selNode.en)} onClick={() => edit((r) => renameNode(r, selNode.id, draft))}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={!!busy || !draft.ar.trim() || (draft.ar === selNode.ar && draft.en === selNode.en)}
+                  onClick={() => edit((r) => renameNode(r, selNode.id, draft))}
+                >
                   <Save size={14} /> {t("save_names")}
                 </Button>
               </fieldset>

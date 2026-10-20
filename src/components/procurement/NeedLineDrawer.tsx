@@ -5,6 +5,7 @@
 // where the quantity went, where it came from, the price we would pay, and
 // what happened to it. Every act is handed back to the desk that opened it.
 
+import { displayNeedRef } from "@/lib/procurement/format"
 import type { ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Boxes, ExternalLink, Factory, FileSignature, FolderKanban, PackageCheck, Scale, ShoppingCart, Undo2 } from "lucide-react"
@@ -164,7 +165,7 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, org
             <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-semibold">
               <SrcIcon size={11} aria-hidden="true" /> {t(`pri_from_${n.kind}`)}
             </span>
-            <span dir="auto">{n.refLabel}</span>
+            <span dir="auto">{displayNeedRef(n.refLabel, locale)}</span>
             <span dir="auto">· {n.projectName || n.context || t("nd_for_stock")}</span>
             <StatusPill tone={LINE_STATE_TONE[row.state]}>{t(`nd_state_${row.state}`)}</StatusPill>
           </SheetDescription>
@@ -213,7 +214,7 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, org
           </DrawerSection>
 
           <DrawerSection title={t("nd_where_from")}>
-            <KeyValueRow label={t("nd_source")} value={`${t(`pri_from_${n.kind}`)} · ${n.refLabel}`} />
+            <KeyValueRow label={t("nd_source")} value={`${t(`pri_from_${n.kind}`)} · ${displayNeedRef(n.refLabel, locale)}`} />
             {n.projectName && (
               <KeyValueRow
                 label={facts.item ? tp("p2c.need.project_item") : t("nd_project")}

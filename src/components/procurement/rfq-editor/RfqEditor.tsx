@@ -11,6 +11,7 @@
 // «يُحمَّل على مشروع» as the group's place, the warranty flag (row menu), private
 // recipients with their facts, the direct award with its order, the needs' back-links.
 
+import { displayNeedRef } from "@/lib/procurement/format"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
@@ -89,7 +90,20 @@ const plusDays = (day: string, n: number) => {
 }
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000)
 
-export function RfqEditor({ projectId }: { projectId?: string }) {
+export function RfqEditor({
+  projectId,
+  requestKeys,
+  variant = "page",
+  onClose,
+}: {
+  projectId?: string
+  /** The incoming request(s) the panel opens on (PUR-01 «انشره»). */
+  requestKeys?: string[]
+  /** `panel`: the incoming request's own panel — step 1 is the request as asked, no draft, «جهّزه» opens the editor. */
+  variant?: "page" | "panel"
+  onClose?: () => void
+}) {
+  const panel = variant === "panel"
   const t = useTranslations("Portal.ProcEditor")
   const tShared = useTranslations("Portal.Shared")
   const tr = useTranslations("Portal.Procurement.rfqextras")
@@ -118,12 +132,21 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
   const warehousesQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "warehouses"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
   const { data: warehouses } = useCollection(warehousesQ)
   const sites = useMemo(
-    () => deliverySites({ stored: storedSites((settingsDoc as Rec | null)?.deliverySites), warehouses: (warehouses || []) as Rec[] as Array<{ id: string; name?: string }>, projects: (projects || []) as Rec[] as Array<{ id: string; name?: string }>, pmOn }),
-    [settingsDoc, warehouses, projects, pmOn]
+    () =>
+      deliverySites({
+        stored: storedSites((settingsDoc as Rec | null)?.deliverySites),
+        warehouses: (warehouses || []) as Rec[] as Array<{ id: string; name?: string }>,
+        projects: (projects || []) as Rec[] as Array<{ id: string; name?: string }>,
+        pmOn,
+      }),
+    [settingsDoc, warehouses, projects, pmOn],
   )
   const projectName = (id: string) => ((projects || []) as Array<{ id: string; name?: string }>).find((p) => p.id === id)?.name || null
 
-  const linksQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "contractorSupplierLinks"), where("contractorOrgId", "==", orgId), where("status", "==", "active")) : null), [firestore, orgId])
+  const linksQ = useMemoFirebase(
+    () => (firestore && orgId ? query(collection(firestore, "contractorSupplierLinks"), where("contractorOrgId", "==", orgId), where("status", "==", "active")) : null),
+    [firestore, orgId],
+  )
   const { data: links } = useCollection(linksQ)
   const favoriteIds: string[] = ((profile as Rec | null)?.favoriteSuppliers as string[] | undefined) || []
   const recipientOptions = useSupplierRecipientOptions(links as Rec[] as Array<{ supplierOrgId?: string; supplierName?: string }>, favoriteIds, tShared("supplier_fallback_name"))
@@ -142,7 +165,15 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
     const now = new Date()
     for (const o of recipientOptions) {
       const block = sourcingOf(o.orgId)
-      out.set(o.orgId, { onTime: supplierScore(world.orders.filter((x) => x.supplierOrgId === o.orgId), world.deliveries, now).onTimePercent, crExpired: block === "cr_expired", block })
+      out.set(o.orgId, {
+        onTime: supplierScore(
+          world.orders.filter((x) => x.supplierOrgId === o.orgId),
+          world.deliveries,
+          now,
+        ).onTimePercent,
+        crExpired: block === "cr_expired",
+        block,
+      })
     }
     return out
   }, [recipientOptions, sourcingOf, world.orders, world.deliveries])
@@ -186,7 +217,6 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
   useEffect(() => {
     if (!projectId || editId) return
     setGroups((gs) => (gs.some((g) => g.projectId === projectId) ? gs : [newGroup({ projectId, siteId: projectSiteId(projectId), label: projectName(projectId) || "" })]))
-
   }, [projectId, editId])
   // A project group learns its city once the sites are read.
   useEffect(() => {
@@ -195,7 +225,7 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
         if (g.city || !g.siteId) return g
         const s = sites.find((x) => x.id === g.siteId)
         return s && (s.city || s.name !== g.label) ? { ...g, city: s.city || g.city, district: s.district || g.district, label: g.label || s.name } : g
-      })
+      }),
     )
   }, [sites])
 
@@ -240,15 +270,18 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
   const prefilled = useRef(false)
   useEffect(() => {
     if (prefilled.current || editId) return
-    const keys = (params.get("requests") || "").split("|").filter(Boolean)
+    const keys = requestKeys?.length ? requestKeys : (params.get("requests") || "").split("|").filter(Boolean)
     const sources = [params.get("source"), ...(params.get("sources") || "").split("|")].filter(Boolean) as string[]
     if (!keys.length && !sources.length) return
     if (!openNeeds.length) return
     const hits = openNeeds.filter((n) => keys.includes(n.key) || sources.some((s) => JSON.stringify(n.source) === JSON.stringify(parseNeedSource(s))))
     if (!hits.length) return
     prefilled.current = true
-    setGroups((gs) => addRequests(gs, hits.map((n) => incomingFromNeed(n, sites))))
-  }, [openNeeds, params, sites, editId])
+    const next = addRequests([newGroup()], hits.map((n) => incomingFromNeed(n, sites)))
+    setGroups((gs) => (panel ? next : addRequests(gs, hits.map((n) => incomingFromNeed(n, sites)))))
+    // «انشره» opens on the publishing step — unless a material still lacks its sub-category, or the place its city (PUR-01 p.4).
+    if (panel && !materialsProblems(next).length) setStep(2)
+  }, [openNeeds, params, sites, editId, requestKeys, panel])
   // ?items=[{name, quantity, unit}] (the workshop's shortfalls, the catalogue)
   useEffect(() => {
     const raw = params.get("items")
@@ -259,7 +292,13 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
       prefilled.current = true
       setGroups((gs) => {
         const first = gs[0] || newGroup()
-        const lines = items.map((it) => ({ ...blankLine(), name: String(it.name).slice(0, 200), quantity: it.quantity ? String(it.quantity) : "", unit: String(it.unit || "").slice(0, 40), unitFromSource: !!it.unit }))
+        const lines = items.map((it) => ({
+          ...blankLine(),
+          name: String(it.name).slice(0, 200),
+          quantity: it.quantity ? String(it.quantity) : "",
+          unit: String(it.unit || "").slice(0, 40),
+          unitFromSource: !!it.unit,
+        }))
         return [{ ...first, lines: [...first.lines.filter(lineStarted), ...lines] }, ...gs.slice(1)]
       })
     } catch {
@@ -272,7 +311,13 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
     const raw = params.get("catalog")
     if (!raw || editId || prefilled.current || !firestore) return
     prefilled.current = true
-    void Promise.all(raw.split(",").filter(Boolean).slice(0, 50).map((id) => getDoc(doc(firestore, "contractorCatalog", id))))
+    void Promise.all(
+      raw
+        .split(",")
+        .filter(Boolean)
+        .slice(0, 50)
+        .map((id) => getDoc(doc(firestore, "contractorCatalog", id))),
+    )
       .then((snaps) => {
         const lines = snaps
           .filter((s) => s.exists())
@@ -296,8 +341,19 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
   const linesDoc = useMemo(() => rfqLinesDoc(groups, locale, projectName), [groups, locale, projects])
   const reach = useMemo(() => reachBySub(platform, linesDoc.subCategoryIds), [platform, linesDoc.subCategoryIds])
   const favouriteReached = reach.distinct.find((s) => favoriteIds.includes(s.orgId))?.name || null
-  const selectedRecipients = invitableRecipients(recipientOptions.map((o) => o.orgId), values.recipients, sourcingOf)
-  const directPool = extendPool(recipientOptions.map((o) => ({ orgId: o.orgId, name: o.name, isFavorite: o.isFavorite })), platform, linesDoc.categories, [], {}, linesDoc.subCategoryIds)
+  const selectedRecipients = invitableRecipients(
+    recipientOptions.map((o) => o.orgId),
+    values.recipients,
+    sourcingOf,
+  )
+  const directPool = extendPool(
+    recipientOptions.map((o) => ({ orgId: o.orgId, name: o.name, isFavorite: o.isFavorite })),
+    platform,
+    linesDoc.categories,
+    [],
+    {},
+    linesDoc.subCategoryIds,
+  )
   const directLines = complete.map((r) => ({ key: r.line.key, name: r.line.name, quantity: toAmount(r.line.quantity), unit: r.line.unit }))
   const directTotal = directLines.reduce((s, l) => s + l.quantity * (Number(values.directPrices[l.key]) || 0), 0)
   const directOverCap = directTotal > world.policies.directPurchaseCap
@@ -323,8 +379,13 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
   // ── The document ─────────────────────────────────────────────────────────
   const rfqDoc = (status: "Draft" | "New" | "Awarded"): Rec => {
     const d = rfqLinesDoc(groups, locale, projectName, { draft: status === "Draft" })
-    const needSources = Array.from(new Map(d.products.filter((p) => "needSource" in p && p.needSource).map((p) => [JSON.stringify((p as { needSource: unknown }).needSource), (p as { needSource: unknown }).needSource])).values())
-    const needBy = d.products.map((p) => (p as { needBy?: string }).needBy).filter((x): x is string => !!x).sort()[0]
+    const needSources = Array.from(
+      new Map(d.products.filter((p) => "needSource" in p && p.needSource).map((p) => [JSON.stringify((p as { needSource: unknown }).needSource), (p as { needSource: unknown }).needSource])).values(),
+    )
+    const needBy = d.products
+      .map((p) => (p as { needBy?: string }).needBy)
+      .filter((x): x is string => !!x)
+      .sort()[0]
     const direct = values.audience === "direct"
     return {
       contractorId: user?.uid || "",
@@ -373,7 +434,7 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
     dirty.current = true
   }, [groups, values])
   useEffect(() => {
-    if (!firestore || !user || !orgId || editingLive || done || !loaded || values.audience === "direct") return
+    if (!firestore || !user || !orgId || panel || editingLive || done || !loaded || values.audience === "direct") return
     if (!numberedLines(groups).length || !dirty.current) return
     const timer = window.setTimeout(async () => {
       try {
@@ -391,7 +452,6 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
       }
     }, 1500)
     return () => window.clearTimeout(timer)
-
   }, [groups, values, firestore, user, orgId, draftId, editingLive, done, loaded])
 
   // ── Attachments ──────────────────────────────────────────────────────────
@@ -459,7 +519,12 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
     daysToDeadline: values.deadline ? daysBetween(todayDay(), values.deadline) : null,
     pricing: values.pricing,
     terms: values.termsSet ? values.terms.map((r) => t("terms_row", { pct: r.pct, days: r.days })).join(" + ") : t("terms_offer"),
-    delivery: place.multi ? t("delivery_each", { city: place.city ? displayCity(place.city, locale) : "—" }) : groups.filter((g) => g.lines.some(lineComplete)).map((g) => `${g.label || t("group_unnamed")} · ${siteLine(g, (c) => displayCity(c, locale))}`).join(" ؛ "),
+    delivery: place.multi
+      ? t("delivery_each", { city: place.city ? displayCity(place.city, locale) : "—" })
+      : groups
+          .filter((g) => g.lines.some(lineComplete))
+          .map((g) => `${g.label || t("group_unnamed")} · ${siteLine(g, (c) => displayCity(c, locale))}`)
+          .join(" ؛ "),
     noSpec: facts.noSpec,
     outside: facts.outside,
     unitDiffers: facts.unitDiffers,
@@ -495,13 +560,28 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
       if (projectId) await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayUnion(id) }).catch(() => undefined)
       // Materials typed outside the list reach the platform team (PUR-04).
       const outside = complete.filter((r) => r.line.material?.outside).map((r) => ({ name: r.line.name, subId: r.line.material!.subId }))
-      if (outside.length) void user.getIdToken().then((tok) => fetch("/api/materials/suggest", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` }, body: JSON.stringify({ items: outside }) })).catch(() => undefined)
+      if (outside.length)
+        void user
+          .getIdToken()
+          .then((tok) => fetch("/api/materials/suggest", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` }, body: JSON.stringify({ items: outside }) }))
+          .catch(() => undefined)
 
       let po: string | null = null
       if (direct) po = await directAward(id, number, data)
       else {
         void notifyFavoriteSuppliersOfPublish(user, [id])
-        upsertCatalogItems(firestore, user.uid, orgId, complete.map((r) => ({ category: r.line.material?.path[0]?.ar || r.line.legacy?.category || "", subCategory: (r.line.material?.path[1] || r.line.material?.path[0])?.ar || r.line.legacy?.subCategory || "", otherSubCategory: r.line.name, quantity: r.line.quantity, unit: r.line.unit }))).catch(() => undefined)
+        upsertCatalogItems(
+          firestore,
+          user.uid,
+          orgId,
+          complete.map((r) => ({
+            category: r.line.material?.path[0]?.ar || r.line.legacy?.category || "",
+            subCategory: (r.line.material?.path[1] || r.line.material?.path[0])?.ar || r.line.legacy?.subCategory || "",
+            otherSubCategory: r.line.name,
+            quantity: r.line.quantity,
+            unit: r.line.unit,
+          })),
+        ).catch(() => undefined)
       }
       const guestUrl = direct ? null : await guestLinkUrl(user, { id, status: "New" }).catch(() => null)
       setDone({ id, number, guestUrl, reached: values.audience === "private" ? selectedRecipients.length : reach.distinct.length, closesOn: direct ? null : fmtDay(values.deadline), direct, po })
@@ -565,12 +645,23 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
             purchaseSource: (data.purchaseSource as never) ?? null,
             paymentTermsList: rfqTermsToStore(values.terms, values.termsSet),
           },
-          offer: { id: offerRef.id, price, supplierId: supplierUserId, organizationId: supplierOrg, supplierName, directAward: true, companyName: supplierName, deliveryLocation: place.city, status: "مقبول", lines: offerLines },
+          offer: {
+            id: offerRef.id,
+            price,
+            supplierId: supplierUserId,
+            organizationId: supplierOrg,
+            supplierName,
+            directAward: true,
+            companyName: supplierName,
+            deliveryLocation: place.city,
+            status: "مقبول",
+            lines: offerLines,
+          },
           offers: [{ id: offerRef.id, price, supplierId: supplierUserId, organizationId: supplierOrg, supplierName, status: "مقبول" }],
           awardReason: values.directReason ? { code: "other", text: tp(`rfqpo.form.direct_reason_${values.directReason}`) } : null,
           policies: world.policies,
         },
-        { copy: tShared, locale: locale === "en" ? "en" : "ar", orgName: world.orgName || null }
+        { copy: tShared, locale: locale === "en" ? "en" : "ar", orgName: world.orgName || null },
       )
       return created.docNumber
     } catch (err) {
@@ -584,7 +675,11 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
   if (done) {
     return (
       <div className="py-6">
-        {done.direct && <Callout tone="info" className="mx-auto mb-4 max-w-xl">{done.po ? t("done_direct_po", { number: displayPoNumber(done.po, locale) }) : t("done_direct_no_po")}</Callout>}
+        {done.direct && (
+          <Callout tone="info" className="mx-auto mb-4 max-w-xl">
+            {done.po ? t("done_direct_po", { number: displayPoNumber(done.po, locale) }) : t("done_direct_no_po")}
+          </Callout>
+        )}
         <RfqPublishedPanel
           number={displayDocNumber(done.number, locale)}
           reached={done.reached}
@@ -593,28 +688,39 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
           title={title}
           openHref={`/contractor/rfqs/${done.id}`}
           direct={done.direct}
-          onNew={() => router.replace("/contractor/rfqs/new")}
+          onNew={() => (panel && onClose ? onClose() : router.replace("/contractor/rfqs/new"))}
         />
       </div>
     )
   }
 
-  const steps = [t("step_materials"), t("step_publish"), t("step_review")]
+  const steps = [panel ? t("step_request") : t("step_materials"), t("step_publish"), t("step_review")]
+  const prepareHref = `/contractor/rfqs/new?requests=${encodeURIComponent(groups.flatMap((g) => g.lines.map((l) => l.source?.key)).filter((k, i, a): k is string => !!k && a.indexOf(k) === i).join("|"))}`
+  const firstGroup = groups.find((g) => g.lines.some(lineStarted))
   return (
-    <div className="space-y-5 pb-24">
+    <div className={cn("space-y-5", panel ? "pb-4" : "pb-24")}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-[14rem] flex-1">
-          <h1 className="text-2xl font-black text-foreground">
-            {editingLive ? t("title_edit") : t("title_new")}{" "}
-            {!editingLive && (
-              <span className="align-middle text-xs font-semibold text-muted-foreground">{savedAt ? t("draft_saved") : t("draft")}</span>
-            )}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground" dir="auto">
-            {title || t("title_hint_empty")}
-          </p>
+          {panel ? (
+            <>
+              <h2 className="text-xl font-black text-foreground">{firstGroup?.requestRefs.map((r) => displayNeedRef(r, locale)).join(" · ") || t("title_new")}</h2>
+              <p className="mt-1 text-sm text-muted-foreground" dir="auto">
+                {t("panel_sub", { place: firstGroup?.label || "—", count: facts.lines || numberedLines(groups).length })}
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-black text-foreground">
+                {editingLive ? t("title_edit") : t("title_new")}{" "}
+                {!editingLive && <span className="align-middle text-xs font-semibold text-muted-foreground">{savedAt ? t("draft_saved") : t("draft")}</span>}
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground" dir="auto">
+                {title || t("title_hint_empty")}
+              </p>
+            </>
+          )}
         </div>
-        {step === 1 && (
+        {step === 1 && !panel && (
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" className="gap-2" disabled={!newRequests.length} onClick={() => setPickOpen(true)}>
               <Inbox size={15} /> {t("from_incoming", { count: newRequests.length })}
@@ -633,7 +739,10 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
           <Loader2 className="animate-spin text-module" />
         </div>
       ) : step === 1 ? (
-        <EditorMaterials groups={groups} onChange={setGroups} index={index} sites={sites} problems={problems} showProblems={showProblems} lockedProjectId={projectId} />
+        <>
+          <EditorMaterials groups={groups} onChange={setGroups} index={index} sites={sites} problems={problems} showProblems={showProblems} lockedProjectId={projectId} fixed={panel} />
+          {panel && <p className="text-xs text-muted-foreground">{t("panel_part_hint")}</p>}
+        </>
       ) : step === 2 ? (
         <EditorPublish
           values={values}
@@ -662,19 +771,22 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
       )}
 
       {/* The footer: what the RFQ is so far, and the step's one action (fixed on a phone). */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 py-3 backdrop-blur md:static md:z-auto md:rounded-xl md:border md:bg-card">
+      <div className={cn(panel ? "sticky bottom-0 rounded-xl border bg-card px-4 py-3" : "fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 py-3 backdrop-blur md:static md:z-auto md:rounded-xl md:border md:bg-card")}>
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3">
-          <p className="min-w-0 flex-1 text-xs text-muted-foreground">
-            {t("footer_sum", { lines: facts.lines, groups: facts.groups, subs: facts.subs, reach: reach.distinct.length })}
-          </p>
+          <p className="min-w-0 flex-1 text-xs text-muted-foreground">{t("footer_sum", { lines: facts.lines, groups: facts.groups, subs: facts.subs, reach: reach.distinct.length })}</p>
           {step > 1 && (
             <Button type="button" variant="outline" onClick={() => setStep((s) => (s - 1) as Step)} className="gap-1.5">
               {locale === "ar" ? <ArrowRight size={15} /> : <ArrowLeft size={15} />} {t("back")}
             </Button>
           )}
-          <Button type="button" variant="ghost" onClick={() => router.push(projectId && pmOn ? `/contractor/projects/${projectId}?tab=rfqs` : "/contractor/rfqs")}>
+          <Button type="button" variant="ghost" onClick={() => (panel && onClose ? onClose() : router.push(projectId && pmOn ? `/contractor/projects/${projectId}?tab=rfqs` : "/contractor/rfqs"))}>
             {t("cancel")}
           </Button>
+          {panel && step === 1 && (
+            <Button type="button" variant="outline" onClick={() => router.push(prepareHref)}>
+              {t("prepare")}
+            </Button>
+          )}
           {step < 3 ? (
             <Button type="button" onClick={next} className="gap-1.5">
               {step === 1 ? t("next_publish") : t("next_review")} {locale === "ar" ? <ArrowLeft size={15} /> : <ArrowRight size={15} />}
@@ -730,7 +842,7 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
                   <Checkbox checked={picked.includes(n.key)} onCheckedChange={(v) => setPicked((cur) => (v ? [...cur, n.key] : cur.filter((k) => k !== n.key)))} className="mt-0.5" />
                   <span className="min-w-0 space-y-0.5">
                     <b className="block text-sm">
-                      {n.refLabel} · {n.projectName || n.context}
+                      {displayNeedRef(n.refLabel, locale)} · {n.projectName || n.context}
                     </b>
                     <span className="block truncate text-xs text-muted-foreground">{n.lines.map((l) => `${l.name} ${l.quantity.toLocaleString("en-US")} ${l.unit}`).join(" · ")}</span>
                     {n.needBy && <span className="block text-xs text-muted-foreground">{t("need_by_short", { date: fmtDay(n.needBy.slice(0, 10)) })}</span>}
@@ -761,4 +873,3 @@ export function RfqEditor({ projectId }: { projectId?: string }) {
     </div>
   )
 }
-

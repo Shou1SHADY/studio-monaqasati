@@ -7,6 +7,7 @@
 // derived by `src/lib/procurement/today.ts` on every read — nothing here is
 // stored, and a member who may not see money is handed no amount to hide.
 
+import { displayNeedRef } from "@/lib/procurement/format"
 import type { ElementType, ReactNode } from "react"
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -58,6 +59,8 @@ type Params = Record<string, string | number>
 function presentParams(p: Params, locale: string, words: (key: string) => string): Params {
   const out: Params = { ...p }
   for (const k of ["number", "receipt", "invoice", "advance"]) if (typeof out[k] === "string") out[k] = displayDocNumber(out[k] as string, locale)
+  // A project's request reads as the project wrote it («ط.م 03», PUR-01).
+  if (typeof out.ref === "string") out.ref = displayNeedRef(out.ref as string, locale)
   for (const k of ["date", "promised", "ready", "fromDay", "toDay"]) if (typeof out[k] === "string" && out[k]) out[k] = fmtDay(out[k] as string, locale)
   if (typeof out.holdReason === "string") out.reason = words(`rfqpo.po.hold.reason.${out.holdReason}`)
   if (typeof out.holdOwner === "string") out.owner = words(`rfqpo.po.hold.owner.${out.holdOwner}`)

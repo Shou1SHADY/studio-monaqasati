@@ -57,3 +57,10 @@ export function fmtDayLong(day: string | null | undefined, locale: string, withY
   const d = new Date(`${day.slice(0, 10)}T12:00:00Z`)
   return d.toLocaleDateString(locale === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { day: "numeric", month: "long", ...(withYear ? { year: "numeric" } : {}), timeZone: "UTC" })
 }
+
+/** A request's number as the reader reads it: «MR 03» → «ط.م 03» in Arabic (PM's own words), the rest as it is. */
+export function displayNeedRef(ref: string | null | undefined, locale: string): string {
+  if (!ref) return ""
+  const m = /^MR (\d+)$/.exec(ref)
+  return m && locale === "ar" ? `ط.م ${m[1]}` : ref
+}

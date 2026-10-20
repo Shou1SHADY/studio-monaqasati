@@ -254,6 +254,8 @@ export const AGREEMENT_HREF = (id: string) => `/contractor/suppliers?segment=agr
 export const COMMITMENTS_HREF = "/contractor/rfqs/reports?report=commitments"
 export const NEEDS_HREF = "/contractor/rfqs/requests"
 export const NEED_LINE_HREF = (key: string) => `/contractor/rfqs/requests?line=${encodeURIComponent(key)}`
+/** The incoming request's own panel on its publishing step (PUR-01 «انشره»). */
+export const NEED_PUBLISH_HREF = (key: string) => `/contractor/rfqs/requests?publish=${encodeURIComponent(key)}`
 /** A project's page on one of its tabs. */
 export const PROJECT_HREF = (id: string, tab: string) => `/contractor/projects/${id}?tab=${tab}`
 
@@ -745,14 +747,41 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
         href: NEEDS_HREF,
         actionKey: "actions.openNeeds",
       })
+    // PUR-01: the REQUEST is the task, as the list shows it — «ط.م 03 · مجمع الياسمين: 3 مواد», opening its panel.
+    const requestTasks = (list: NeedRow[]) => {
+      const byNeed = new Map<string, NeedRow[]>()
+      for (const r of list.filter((x) => isActionState(x.state))) byNeed.set(r.needKey, [...(byNeed.get(r.needKey) || []), r])
+      for (const [key, rs] of byNeed) {
+        if (rs.length === 1) {
+          lineTask(rs[0])
+          continue
+        }
+        const ld = rs.map((r) => r.lastOrderIn).filter((x): x is number => x != null).sort((x, y) => x - y)[0] ?? null
+        const est = rs.every((r) => r.estimate != null) ? rs.reduce((sum, r) => sum + (r.estimate || 0), 0) : null
+        add({
+          id: `need:${key}`,
+          kind: "need_line",
+          priority: 2,
+          severity: ld == null ? "blue" : ld < 0 ? "red" : ld <= 2 ? "amber" : "blue",
+          sortDays: ld ?? 99,
+          titleKey: "task.need_request.title",
+          titleParams: { ref: rs[0].need.refLabel, place: rs[0].need.projectName || rs[0].need.context || "", count: rs.length },
+          subKey: "task.need_line.sub",
+          subParams: { ref: rs[0].need.refLabel, place: rs[0].need.projectName || rs[0].need.context || "", ...whenParams(ld) },
+          amount: money(actor, est),
+          href: NEED_PUBLISH_HREF(key),
+          actionKey: "actions.publishRequest",
+        })
+      }
+    }
     if (managerView) {
       const { rollups, uncovered } = buyerRollups(rows, desk.buyers)
       rollups.forEach(rollupTask)
       if (ownerRO) {
         const rest = rollupOf(uncovered)
         if (rest) rollupTask(rest)
-      } else uncovered.forEach(lineTask)
-    } else rows.filter((r) => isActionState(r.state)).forEach(lineTask)
+      } else requestTasks(uncovered)
+    } else requestTasks(rows)
   }
 
   return out.sort((a, b) => a.priority - b.priority || SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || a.sortDays - b.sortDays)
@@ -1030,6 +1059,8 @@ export const TODAY_KEYS = [
   "actions.answer",
   "actions.forward",
   "actions.openNotice",
+  "actions.publishRequest",
+  "task.need_request.title",
   "actions.openProject",
   "task.pm_supplier_return.title_nc",
   "task.pm_supplier_return.title_charged",
