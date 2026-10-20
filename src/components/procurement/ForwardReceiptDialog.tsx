@@ -1,24 +1,24 @@
 "use client"
 
-// Procurement forwards a delivery to whoever will receive it (22 Sep review,
-// prototype `fwd`): a team member, or a name and mobile number for someone
-// with no account. The review says what is coming, where, who receives at that
-// place and whose order it is; a note to the receiver rides on the link and is
-// shown there as "Note from Procurement". The server makes a single-use link
-// and texts the code to that mobile when the receiver asks for it; here,
-// Procurement copies the link or sends it by WhatsApp. Forwarding again
-// replaces the earlier link. Nothing forwards itself on a timer (S-14): the
-// product runs no scheduler, so the desk flags the notice instead.
+// «حوّل الإشعار إلى المستلم» (Procurement 1.5, PUR-06): two ways, as the receiver is.
+// · A TEAM MEMBER gets it in his own account — «مهامي» and his module — and confirms
+//   signed in, with no code. The place's receivers come first (from the register), then
+//   the rest of the team; the company itself is never listed as a member. Forwarding to
+//   whoever prepared the order flags the receipt (the owner excepted — a company of one).
+// · SOMEONE WITH NO ACCOUNT gets a link and a code to his mobile, good for 3 days;
+//   Procurement copies the link or sends it by WhatsApp.
+// Forwarding again replaces the earlier link. A note rides to the receiver.
 
 import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Check, Copy, Loader2, MessageCircle, Send } from "lucide-react"
+import { Check, ChevronDown, Copy, Loader2, MessageCircle, Send, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useUser } from "@/firebase"
+import { useToast } from "@/hooks/use-toast"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
 import { displayNoticeNumber, displayPoNumber } from "@/lib/procurement/format"
@@ -26,11 +26,16 @@ import type { DeskDelivery } from "@/lib/procurement/receipt-desk"
 import { receiversForPlace } from "@/lib/procurement/receivers"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import { cn } from "@/lib/utils"
-import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
-// The register first: a delivery goes to a PERSON AT A PLACE, and the register
-// knows both. The other two modes stay for whoever is not in it yet.
-type Mode = "register" | "user" | "person"
+type Mode = "member" | "person"
+
+interface MemberChoice {
+  userId: string
+  name: string
+  title: string
+  atPlace: boolean
+  preparedOrder: boolean
+}
 
 export function ForwardReceiptDialog({
   open,
@@ -49,9 +54,7 @@ export function ForwardReceiptDialog({
   orgId: string
   /** Our number for this notice (`noticeNumberOf`), when it has one. */
   noticeNumber?: string | null
-  /** Where this delivery would land (the project's warehouse, else the central
-   * one, as `resolveLandingWarehouse` decides), so the register offers the
-   * people named for that place first. */
+  /** Where this delivery would land, so the register offers the people named for that place first. */
   placeWarehouseId: string | null
   placeName: string
 }) {
@@ -60,18 +63,37 @@ export function ForwardReceiptDialog({
   const tp = useTranslations("Portal.Procurement")
   const locale = useLocale()
   const { user } = useUser()
+  const { toast } = useToast()
   const { orgMembers } = useOrgMembers(orgId)
   const { receivers } = useProcReceivers(orgId)
-  const deliveryId = delivery.id
   const supplierName = delivery.supplierName || po?.supplierName || ""
   const choices = receiversForPlace(receivers, placeWarehouseId)
-  const atPlace = choices.filter((c) => c.atThisPlace)
   const lines = (delivery.lines || []).map((l) => `${l.noticeQuantity} ${l.unit} ${l.name}`)
   const day = (delivery.deliveryDate || "").slice(0, 10)
 
-  const [mode, setMode] = useState<Mode>("register")
-  const [receiverId, setReceiverId] = useState("")
+  // Members: the place's receivers who have an account first, then everyone else on the team.
+  const memberName = (id: string, fallback: string) => {
+    const m = orgMembers.find((x) => x.id === id)
+    return (m?.name as string) || (m?.email as string) || fallback
+  }
+  const atPlaceMembers: MemberChoice[] = choices
+    .filter((c) => c.userId && c.atThisPlace)
+    .map((c) => ({ userId: c.userId as string, name: c.name || memberName(c.userId as string, ""), title: c.title, atPlace: true, preparedOrder: po?.preparedById === c.userId }))
+  const listed = new Set(atPlaceMembers.map((m) => m.userId))
+  const otherMembers: MemberChoice[] = orgMembers
+    .filter((m) => !listed.has(m.id))
+    .map((m) => {
+      const isOwner = m.id === orgId || m.organizationRole === "owner"
+      const own = (m.name as string) || (m.email as string) || ""
+      // The company is not a member: its owner is listed as the person he is.
+      return { userId: m.id, name: isOwner ? t("forward.ownerName", { name: own }) : own, title: choices.find((c) => c.userId === m.id)?.title || "", atPlace: false, preparedOrder: po?.preparedById === m.id }
+    })
+  const people = choices.filter((c) => !c.userId)
+
+  const [mode, setMode] = useState<Mode>("member")
   const [userId, setUserId] = useState("")
+  const [showOthers, setShowOthers] = useState(atPlaceMembers.length === 0)
+  const [personId, setPersonId] = useState("")
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [note, setNote] = useState("")
@@ -80,26 +102,19 @@ export function ForwardReceiptDialog({
   const [result, setResult] = useState<{ url: string; phoneMasked: string } | null>(null)
   const [copied, setCopied] = useState(false)
 
-  const member = orgMembers.find((m) => m.id === userId)
-  const memberPhone = (member?.phone as string | undefined) || ""
-  const chosen = choices.find((c) => c.id === receiverId)
-  // By link: someone with no account gets the link and a code; anyone with one is forwarded inside their module.
-  const byLink = mode === "person" || (mode === "register" && Boolean(chosen) && !chosen?.userId)
-  const inApp = mode === "register" && chosen?.userId ? chosen : mode === "user" && userId ? receivers.find((r) => r.userId === userId && r.active !== false) || null : null
-  const inAppPhone = inApp ? inApp.phone || memberPhone || phone.trim() : ""
-  const ready =
-    mode === "register"
-      ? Boolean(chosen)
-      : mode === "user"
-        ? Boolean(userId) && (Boolean(memberPhone) || phone.trim().length >= 5)
-        : name.trim().length >= 2 && phone.trim().length >= 5
+  const pickedMember = [...atPlaceMembers, ...otherMembers].find((m) => m.userId === userId) || null
+  const pickedPerson = people.find((p) => p.id === personId) || null
+  // The owner receiving his own order is a company of one, not an exception.
+  const selfFlag = pickedMember?.preparedOrder && pickedMember.userId !== orgId
+  const ready = mode === "member" ? Boolean(pickedMember) : Boolean(pickedPerson) || (name.trim().length >= 2 && phone.trim().length >= 5)
 
   const close = (o: boolean) => {
     if (!o) {
       setResult(null)
       setError(null)
       setCopied(false)
-      setReceiverId("")
+      setUserId("")
+      setPersonId("")
       setNote("")
     }
     onOpenChange(o)
@@ -110,25 +125,25 @@ export function ForwardReceiptDialog({
     setBusy(true)
     setError(null)
     try {
-      const idToken = await user.getIdToken()
-      // A register entry with an account forwards as that member; one without is
-      // a name and a mobile, which is what the link and its code are for.
       const receiver =
-        mode === "register" && chosen
-          ? chosen.userId
-            ? { kind: "user", userId: chosen.userId, phone: chosen.phone }
-            : { kind: "person", name: chosen.name, phone: chosen.phone }
-          : mode === "user"
-            ? { kind: "user", userId, ...(phone.trim() ? { phone: phone.trim() } : {}) }
+        mode === "member" && pickedMember
+          ? { kind: "user", userId: pickedMember.userId }
+          : pickedPerson
+            ? { kind: "person", name: pickedPerson.name, phone: pickedPerson.phone }
             : { kind: "person", name: name.trim(), phone: phone.trim() }
       const res = await fetch("/api/receipt-links", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ deliveryId, receiver, note: note.trim() || null }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` },
+        body: JSON.stringify({ deliveryId: delivery.id, receiver, note: note.trim() || null }),
       })
       const body = await res.json().catch(() => null)
       if (!res.ok) {
-        setError(body?.code === "NO_PHONE" ? t("forward.errNoPhone") : body?.code === "ALREADY_RECEIVED" ? t("forward.errReceived") : t("forward.errGeneric"))
+        setError(body?.code === "NO_PHONE" ? t("forward.errNoPhone") : body?.code === "ALREADY_RECEIVED" ? t("forward.errReceived") : body?.code === "NOT_A_MEMBER" ? t("forward.errNotMember") : t("forward.errGeneric"))
+        return
+      }
+      if (mode === "member" && pickedMember) {
+        toast({ title: t("forward.toMemberDone", { name: pickedMember.name }) })
+        close(false)
         return
       }
       setResult({ url: body.data.url, phoneMasked: body.data.phoneMasked })
@@ -144,14 +159,34 @@ export function ForwardReceiptDialog({
     await navigator.clipboard.writeText(result.url).catch(() => {})
     setCopied(true)
   }
-
-  // WhatsApp's own share screen: Procurement picks the contact there. The
-  // receiver's number is never put in the address.
+  // WhatsApp's own share screen: Procurement picks the contact there.
   const whatsappHref = result ? `https://wa.me/?text=${encodeURIComponent(t("forward.shareText", { supplier: supplierName, url: result.url }))}` : "#"
+
+  const memberRow = (m: MemberChoice) => (
+    <li key={m.userId}>
+      <button
+        type="button"
+        aria-pressed={userId === m.userId}
+        onClick={() => setUserId(m.userId)}
+        className={cn("w-full rounded-lg border p-2.5 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", userId === m.userId ? "border-module bg-module/5" : "border-border hover:bg-muted")}
+      >
+        <span className="flex flex-wrap items-baseline gap-x-2">
+          <b className="text-sm" dir="auto">
+            {m.name}
+          </b>
+          {m.title && <span className="text-xs text-muted-foreground" dir="auto">{m.title}</span>}
+        </span>
+        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+          {m.atPlace ? t("forward.atPlaceHasAccount", { place: placeName }) : t("forward.hasAccount")}
+          {m.preparedOrder && m.userId !== orgId && <span className="ms-1 font-semibold text-amber-700">· {t("forward.preparedIt")}</span>}
+        </span>
+      </button>
+    </li>
+  )
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+      <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-h-[90vh] max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("forward.title")}</DialogTitle>
           <DialogDescription>{t("forward.desc")}</DialogDescription>
@@ -184,7 +219,10 @@ export function ForwardReceiptDialog({
               <p className="text-sm font-bold" dir="auto">
                 {supplierName}
                 {noticeNumber ? (
-                  <span className="font-medium text-muted-foreground"> · <bdi>{displayNoticeNumber(noticeNumber, locale)}</bdi></span>
+                  <span className="font-medium text-muted-foreground">
+                    {" "}
+                    · <bdi>{displayNoticeNumber(noticeNumber, locale)}</bdi>
+                  </span>
                 ) : (
                   po && <span className="font-medium text-muted-foreground"> · {displayPoNumber(po.docNumber, locale)}</span>
                 )}
@@ -193,13 +231,10 @@ export function ForwardReceiptDialog({
                 {lines.join(" · ") || delivery.rfqTitle || "—"}
                 {day && <> — {t("forward.arrives", { date: day })}</>}
                 {delivery.deliveryWindow && <> {tp(`deliveryWindow.${delivery.deliveryWindow}` as "deliveryWindow.morning")}</>}
-                {delivery.deliveryPersonName && <> · {delivery.deliveryPersonName}</>}
               </p>
               <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                 <dt className="text-muted-foreground">{t("forward.place")}</dt>
-                <dd dir="auto">{placeName}</dd>
-                <dt className="text-muted-foreground">{t("forward.placeReceivers")}</dt>
-                <dd dir="auto">{atPlace.length ? atPlace.map((c) => `${c.name} — ${c.title}`).join("، ") : t("incoming.noReceiver")}</dd>
+                <dd dir="auto">{placeName || "—"}</dd>
                 {po && (
                   <>
                     <dt className="text-muted-foreground">{tp("doc.PO")}</dt>
@@ -208,117 +243,97 @@ export function ForwardReceiptDialog({
                 )}
               </dl>
             </div>
-            <div className="grid grid-cols-3 gap-1 rounded-lg border p-1" role="group" aria-label={t("forward.title")}>
-              {(["register", "user", "person"] as const).map((m) => (
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label={t("forward.title")}>
+              {(["member", "person"] as const).map((m) => (
                 <button
                   key={m}
                   type="button"
-                  aria-pressed={mode === m}
+                  role="radio"
+                  aria-checked={mode === m}
                   onClick={() => setMode(m)}
-                  className={cn(
-                    "min-h-9 rounded-md px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    mode === m ? "bg-module text-module-foreground" : "text-muted-foreground hover:bg-muted"
-                  )}
+                  className={cn("rounded-lg border p-2.5 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", mode === m ? "border-module bg-module/5" : "hover:bg-muted")}
                 >
-                  {m === "register" ? tRcv("forward.fromRegister") : m === "user" ? t("forward.toMember") : t("forward.toPerson")}
+                  <b className="block text-sm">{m === "member" ? t("forward.toMember") : t("forward.toPerson")}</b>
+                  <span className="text-[11px] text-muted-foreground">{m === "member" ? t("forward.memberHint") : t("forward.personHint")}</span>
                 </button>
               ))}
             </div>
 
-            {mode === "register" ? (
-              choices.length === 0 ? (
-                <p className="text-xs text-muted-foreground">{tRcv("forward.noRegister")}</p>
-              ) : (
-                <ul className="space-y-1.5">
-                  {choices.map((c) => (
-                    <li key={c.id}>
-                      <button
-                        type="button"
-                        aria-pressed={receiverId === c.id}
-                        onClick={() => setReceiverId(c.id)}
-                        className={cn(
-                          "w-full rounded-lg border p-2.5 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                          receiverId === c.id ? "border-module bg-module/5" : "border-border hover:bg-muted"
-                        )}
-                      >
-                        <span className="flex flex-wrap items-baseline justify-between gap-x-2">
-                          <b className="text-sm" dir="auto">{c.name}</b>
-                          <span className="text-xs tabular-nums text-muted-foreground" dir="ltr">{c.phone}</span>
-                        </span>
-                        <span className="mt-0.5 block text-[11px] text-muted-foreground" dir="auto">
-                          {c.title}
-                          {" · "}
-                          {c.atThisPlace ? tRcv("forward.atThisPlace") : tRcv("forward.elsewhere")}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )
-            ) : mode === "user" ? (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <Label htmlFor="fw-member" className="text-xs">{t("forward.member")}</Label>
-                  <NativeSelect
-                    id="fw-member"
-                    value={userId}
-                    onChange={(e) => setUserId(e.target.value)}
-                    className="h-10 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <option value="">{t("forward.pickMember")}</option>
-                    {orgMembers.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name || m.email || m.id}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </div>
-                {userId && !memberPhone && (
-                  <div className="space-y-1">
-                    <Label htmlFor="fw-mphone" className="text-xs">{t("forward.memberNoPhone")}</Label>
-                    <Input id="fw-mphone" inputMode="tel" dir="ltr" placeholder="05XXXXXXXX" className="h-10" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                  </div>
+            {mode === "member" ? (
+              <div className="space-y-2">
+                {atPlaceMembers.length > 0 && (
+                  <>
+                    <p className="text-xs font-semibold text-muted-foreground">{t("forward.placeReceiversOf", { place: placeName || "—" })}</p>
+                    <ul className="space-y-1.5">{atPlaceMembers.map(memberRow)}</ul>
+                  </>
+                )}
+                <button type="button" onClick={() => setShowOthers(!showOthers)} aria-expanded={showOthers} className="flex w-full items-center justify-between text-xs font-semibold text-muted-foreground">
+                  {t("forward.otherMembers")}
+                  <ChevronDown size={14} className={cn("transition-transform", showOthers && "rotate-180")} aria-hidden="true" />
+                </button>
+                {showOthers && <ul className="space-y-1.5">{otherMembers.map(memberRow)}</ul>}
+                {selfFlag && (
+                  <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    <TriangleAlert size={13} className="mt-0.5 shrink-0" aria-hidden="true" /> {t("forward.selfWarning")}
+                  </p>
                 )}
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="space-y-1">
-                  <Label htmlFor="fw-name" className="text-xs">{t("forward.name")}</Label>
-                  <Input id="fw-name" dir="auto" className="h-10" value={name} onChange={(e) => setName(e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="fw-phone" className="text-xs">{t("forward.phone")}</Label>
-                  <Input id="fw-phone" inputMode="tel" dir="ltr" placeholder="05XXXXXXXX" className="h-10" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                </div>
+                {people.length > 0 && (
+                  <ul className="space-y-1.5">
+                    {people.map((c) => (
+                      <li key={c.id}>
+                        <button
+                          type="button"
+                          aria-pressed={personId === c.id}
+                          onClick={() => setPersonId(personId === c.id ? "" : c.id)}
+                          className={cn("w-full rounded-lg border p-2.5 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", personId === c.id ? "border-module bg-module/5" : "border-border hover:bg-muted")}
+                        >
+                          <span className="flex flex-wrap items-baseline justify-between gap-x-2">
+                            <b className="text-sm" dir="auto">{c.name}</b>
+                            <span className="text-xs tabular-nums text-muted-foreground" dir="ltr">{c.phone}</span>
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-muted-foreground" dir="auto">
+                            {c.title} · {c.atThisPlace ? tRcv("forward.atThisPlace") : tRcv("forward.elsewhere")}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {!pickedPerson && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="fw-name" className="text-xs">{t("forward.name")}</Label>
+                      <Input id="fw-name" dir="auto" className="h-10" value={name} onChange={(e) => setName(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="fw-phone" className="text-xs">{t("forward.phone")}</Label>
+                      <Input id="fw-phone" inputMode="tel" dir="ltr" placeholder="05XXXXXXXX" className="h-10" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
-            {inApp && (
-              <p className="text-xs text-module" dir="auto">
-                {t("forward.reachesIn", { module: t(`module.${inApp.module}`), phone: inAppPhone })}
-              </p>
-            )}
+
             <div className="space-y-1">
               <Label htmlFor="fw-note" className="text-xs">{t("forward.noteToReceiver")}</Label>
               <Textarea id="fw-note" rows={2} maxLength={500} dir="auto" placeholder={t("forward.notePlaceholder")} value={note} onChange={(e) => setNote(e.target.value)} />
             </div>
-            <ul className="space-y-1 rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
-              {[byLink ? t("forward.effectLink") : t("forward.effectMember"), t("forward.effectTrail"), t("forward.effectNoTimer")].map((x) => (
-                <li key={x} className="flex gap-2">
-                  <span aria-hidden="true">•</span>
-                  <span>{x}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="text-xs text-muted-foreground">{t("forward.codeNote")}</p>
             {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
           </div>
         )}
 
         {!result && (
           <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => close(false)} disabled={busy}>
+              {t("forward.cancel")}
+            </Button>
             <Button type="button" className="gap-1.5" disabled={busy || !ready} onClick={submit}>
               {busy ? <Loader2 className="animate-spin" size={14} aria-hidden="true" /> : <Send size={14} aria-hidden="true" />}
-              {byLink ? t("forward.sendLink") : t("forward.forwardMember")}
+              {mode === "member" && pickedMember ? t("forward.toMemberNamed", { name: pickedMember.name }) : t("forward.sendLink")}
             </Button>
           </DialogFooter>
         )}

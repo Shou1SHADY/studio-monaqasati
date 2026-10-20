@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getAdminFirestore } from "@/lib/firebaseAdmin"
+import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { verifyOtp } from "@/lib/otp"
 import {
   RECEIPT_LINKS,
@@ -34,10 +34,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     const report = buildReport(parsed.data, await deliveryLines(db, delivery))
     if (!report.ok) return fail("The count is incomplete", report.error.toUpperCase(), 400, { poLineId: report.poLineId })
 
-    const verdict = await verifyOtp(db, parsed.data.challengeId, { purpose: "receipt_sign", subjectId: linkId }, parsed.data.code)
-    if (verdict === "wrong") return fail("Wrong code", "WRONG_CODE", 400)
-    if (verdict === "unavailable") return fail("The code could not be checked — try again", "CODE_UNCHECKED", 503)
-    if (verdict !== "ok") return fail("The code has expired — ask for a new one", "CODE_EXPIRED", 410)
+    // A member the delivery was forwarded to confirms with his own sign-in — no code (PUR-06);
+    // anyone else proves the named mobile with the texted code. Either is the signature (question 3).
+    let verifiedBy: ReceiverReport["verifiedBy"] = "sms_code"
+    const header = req.headers.get("authorization") || ""
+    const idToken = header.startsWith("Bearer ") ? header.slice(7) : null
+    const uid = idToken ? await getAdminAuth().verifyIdToken(idToken).then((d) => d.uid).catch(() => null) : null
+    if (uid && link.receiver.userId && uid === link.receiver.userId) verifiedBy = "login"
+    else {
+      if (!parsed.data.challengeId || !parsed.data.code) return fail("The code is needed", "CODE_NEEDED", 400)
+      const verdict = await verifyOtp(db, parsed.data.challengeId, { purpose: "receipt_sign", subjectId: linkId }, parsed.data.code)
+      if (verdict === "wrong") return fail("Wrong code", "WRONG_CODE", 400)
+      if (verdict === "unavailable") return fail("The code could not be checked — try again", "CODE_UNCHECKED", 503)
+      if (verdict !== "ok") return fail("The code has expired — ask for a new one", "CODE_EXPIRED", 410)
+    }
 
     const signedAt = new Date().toISOString()
     const receiverReport: ReceiverReport = {
@@ -49,7 +59,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       note: parsed.data.note?.trim() || null,
       signatureData: parsed.data.signatureData ?? null,
       signedAt,
-      verifiedBy: "sms_code",
+      verifiedBy,
+      files: (link.files || []).map((f) => ({ name: f.name, url: f.url, kind: f.kind })),
     }
 
     const linkRef = db.collection(RECEIPT_LINKS).doc(linkId)

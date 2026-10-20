@@ -11,6 +11,7 @@
 // a receipt itself unless it also holds the receiving permission.
 // `?tab=` names the segment, `?delivery=<id>` opens the drawer.
 
+import { getAuth } from "firebase/auth"
 import { usePrintProfile } from "@/hooks/usePrintProfile"
 import { printedNumber } from "@/lib/company-print-profile"
 import { useCallback, useEffect, useMemo, useState } from "react"
@@ -260,6 +261,20 @@ export default function GoodsReceivedPage() {
     setQuery({ tab: "log", delivery: r.deliveryId })
   }
 
+  /** «ذكّر المستلم» (PUR-06): the receiver it was forwarded to, reminded in his inbox or by a message. */
+  const remindReceiver = async (d: DeskDelivery) => {
+    const u = getAuth().currentUser
+    if (!u) return
+    try {
+      const res = await fetch("/api/receipt-links/remind", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await u.getIdToken()}` }, body: JSON.stringify({ deliveryId: d.id }) })
+      const body = (await res.json().catch(() => null)) as { code?: string } | null
+      if (res.ok) toast({ title: t("incoming.receiverReminded", { name: d.forwardedTo?.name || "" }) })
+      else toast({ title: t(body?.code === "TOO_SOON" ? "incoming.remindTooSoon" : body?.code === "LINK_CLOSED" ? "incoming.remindLinkClosed" : "incoming.remindFailed"), variant: "destructive" })
+    } catch {
+      toast({ title: t("incoming.remindFailed"), variant: "destructive" })
+    }
+  }
+
   const remind = async (po: PurchaseOrder) => {
     if (!firestore) return
     setReminding(po.id)
@@ -356,6 +371,7 @@ export default function GoodsReceivedPage() {
             onReceive={(d, po) => setReceiveTarget({ delivery: d, po })}
             onForward={setForwardTarget}
             onRemind={remind}
+            onRemindReceiver={(d) => void remindReceiver(d)}
             onOpen={(id) => setQuery({ delivery: id })}
           />
         ) : (
@@ -390,6 +406,8 @@ export default function GoodsReceivedPage() {
             now={now}
             onReceive={(d) => setReceiveTarget({ delivery: d, po: poOf(d) })}
             onRegularise={(d) => setRegulariseTarget(d)}
+            onForward={actor.isOwner || actor.canExpedite ? (d) => setForwardTarget(d) : undefined}
+            onRemind={actor.isOwner || actor.canExpedite ? (d) => void remindReceiver(d) : undefined}
             policies={policies}
             ownerReadOnly={ownerReadOnly}
           />
@@ -509,11 +527,12 @@ interface IncomingListProps {
   onReceive: (d: DeskDelivery | null, po: PurchaseOrder | null) => void
   onForward: (d: DeskDelivery) => void
   onRemind: (po: PurchaseOrder) => void
+  onRemindReceiver: (d: DeskDelivery) => void
   onOpen: (id: string) => void
 }
 
 function IncomingList(props: IncomingListProps) {
-  const { rows, all, locale, now, routing, canReceive, followsPo, reminding, receivers, placeOf, warehouseName, projectName, onReceive, onForward, onRemind, onOpen } = props
+  const { rows, all, locale, now, routing, canReceive, followsPo, reminding, receivers, placeOf, warehouseName, projectName, onReceive, onForward, onRemind, onRemindReceiver, onOpen } = props
   const t = useTranslations("Portal.ProcReceipts")
   const dayText = useDateText()
   const tp = useTranslations("Portal.Procurement")
@@ -656,6 +675,12 @@ function IncomingList(props: IncomingListProps) {
                           <ExternalLink size={12} aria-hidden="true" />
                           {t("incoming.openOrder")}
                         </Link>
+                      </Button>
+                    )}
+                    {followsPo(po) && notice && fwState === "forwarded" && (
+                      <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => onRemindReceiver(notice)}>
+                        <BellRing size={12} aria-hidden="true" />
+                        {t("incoming.remindReceiver")}
                       </Button>
                     )}
                     {followsPo(po) && notice && fwState !== "signed" && (

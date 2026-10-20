@@ -216,7 +216,7 @@ export function arrivingThisWeek(w: ProcWorld, now: Date, receiptHref: (id: stri
   for (const r of w.receipts) {
     if (r.status !== "pending_confirmation" || !r.deliveryDate) continue
     const d = daysFromNow(r.deliveryDate, now)
-    if (d == null || d > ARRIVING_WINDOW_DAYS) continue
+    if (d == null || d < 0 || d > ARRIVING_WINDOW_DAYS) continue
     const po = r.poId ? orderById.get(r.poId) : undefined
     const lines = (r.lines || []).length
       ? (r.lines || []).map((l) => `${l.name} ${l.noticeQuantity} ${l.unit}`).join(" · ")
@@ -336,7 +336,8 @@ export function arrivingWithinWeek(w: ProcWorld, now: Date, orderHref: (id: stri
     const notice = noticeOf.get(po.id)
     const date = notice?.deliveryDate ? dayOf(notice.deliveryDate) : po.promisedDate || ""
     const d = daysFromNow(date, now)
-    if (d == null || d > ARRIVING_WINDOW_DAYS) continue
+    // «يصل خلال 7 أيام» is what is DUE in the coming week (PUR-07); an overdue order is Today's «متأخر», counted once there.
+    if (d == null || d < 0 || d > ARRIVING_WINDOW_DAYS) continue
     out.push({ id: po.id, supplierName: po.supplierName, number: po.docNumber, date, inDays: d, lines: open.map((l) => `${l.name} ${lineOutstanding(l)} ${l.unit}`).join(" · "), href: orderHref(po.id) })
   }
   const listed = new Set(out.map((r) => r.id))

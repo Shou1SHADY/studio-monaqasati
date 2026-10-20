@@ -286,11 +286,11 @@ describe("SHELL-03 · the dashboard's two roll-ups", () => {
 })
 
 describe("SHELL-04 · arriving this week", () => {
-  it("lists pending notices dated inside seven days, the overdue first, with the notice's lines", () => {
-    const w = world({ orders: [po()], receipts: [receipt({ id: "soon", deliveryDate: day(6) }), receipt({ id: "far", deliveryDate: day(9) }), receipt({ id: "over", deliveryDate: day(-1), lines: [] }), receipt({ id: "done", status: "confirmed" })] })
+  it("lists pending notices dated inside the coming seven days, with the notice's lines — the overdue are Today's «متأخر» (PUR-07)", () => {
+    const w = world({ orders: [po()], receipts: [receipt({ id: "soon", deliveryDate: day(6) }), receipt({ id: "near", deliveryDate: day(0), lines: [] }), receipt({ id: "far", deliveryDate: day(9) }), receipt({ id: "over", deliveryDate: day(-1), lines: [] }), receipt({ id: "done", status: "confirmed" })] })
     const rows = arrivingThisWeek(w, NOW, RECEIPT_HREF)
-    expect(rows.map((r) => r.id)).toEqual(["over", "soon"])
-    expect(rows[0]).toMatchObject({ inDays: -1, lines: "Rebar 12 mm 100 t", number: "PO-2026/014", href: "/contractor/goods-received?tab=incoming&delivery=over" })
+    expect(rows.map((r) => r.id)).toEqual(["near", "soon"])
+    expect(rows[0]).toMatchObject({ inDays: 0, lines: "Rebar 12 mm 100 t", number: "PO-2026/014", href: "/contractor/goods-received?tab=incoming&delivery=near" })
     expect(rows[1].lines).toBe("Rebar 12 mm 40 t")
   })
 })

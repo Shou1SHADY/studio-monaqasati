@@ -18,14 +18,15 @@ import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type ProcurementPolicies } from 
 type Outcome = "forwarded" | "already" | "no_phone" | "failed"
 
 async function forwardOne(db: Firestore, orgId: string, due: DueNotice, now: number): Promise<{ outcome: Outcome; token?: string; receiver?: Receiver }> {
-  const phone = normalizePhoneE164(due.receiver.phone)
-  if (!phone) return { outcome: "no_phone" }
+  const phone = normalizePhoneE164(due.receiver.phone) || ""
+  if (!phone && !due.receiver.userId) return { outcome: "no_phone" }
 
   let userId: string | null = null
   if (due.receiver.userId) {
     const member = (await db.collection("users").doc(due.receiver.userId).get()).data() as { organizationId?: string } | undefined
     if (member && (member.organizationId || due.receiver.userId) === orgId) userId = due.receiver.userId
   }
+  if (!userId && !phone) return { outcome: "no_phone" }
   const receiver: Receiver = { kind: userId ? "user" : "person", userId, name: due.receiver.name, phone }
 
   const deliveryRef = db.collection("deliveries").doc(due.delivery.id)

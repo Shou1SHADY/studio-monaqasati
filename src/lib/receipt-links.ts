@@ -52,7 +52,21 @@ export interface ReceiptLink {
   signedAt?: string | null
   /** Procurement's note to the receiver, shown on the link as "Note from Procurement". */
   note?: string | null
+  /** What the receiver attached at the gate (PUR-06): photos of the shipment, the weighbridge ticket, a certificate. */
+  files?: ReceiverFile[]
 }
+
+export const RECEIVER_FILE_KINDS = ["photo", "ticket", "cert"] as const
+export type ReceiverFileKind = (typeof RECEIVER_FILE_KINDS)[number]
+export interface ReceiverFile {
+  name: string
+  url: string
+  path: string
+  kind: ReceiverFileKind
+  at: string
+}
+/** At most this many files on one receipt link. */
+export const MAX_RECEIVER_FILES = 10
 
 export interface ReceiverReportLine {
   poLineId: string
@@ -77,7 +91,9 @@ export interface ReceiverReport {
   note: string | null
   signatureData: string | null
   signedAt: string
-  verifiedBy: "sms_code"
+  /** The code texted to the named mobile (a link), or the member's own sign-in (PUR-06, question 3). */
+  verifiedBy: "sms_code" | "login"
+  files?: Array<Pick<ReceiverFile, "name" | "url" | "kind">>
 }
 
 // ---------------------------------------------------------------------------
@@ -94,8 +110,9 @@ export const createBody = z.object({
 })
 
 export const signBody = z.object({
-  challengeId: z.string().min(1).max(128),
-  code: z.string().regex(/^\d{6}$/),
+  // A member signed in as the receiver confirms with his login; anyone else with the texted code.
+  challengeId: z.string().min(1).max(128).optional(),
+  code: z.string().regex(/^\d{6}$/).optional(),
   receiverName: z.string().trim().min(2).max(120),
   lines: z
     .array(
@@ -225,8 +242,8 @@ export function receiverFrom(
     return phone ? { kind: "person", userId: null, name: input.name.trim(), phone } : null
   }
   if (!user) return null
-  const phone = normalizePhoneE164(input.phone || user.phone)
-  if (!phone) return null
+  // A member confirms with his own sign-in (PUR-06) — his mobile is only for a code if he opens the link elsewhere.
+  const phone = normalizePhoneE164(input.phone || user.phone) || ""
   return { kind: "user", userId: input.userId, name: user.name || user.email || "", phone }
 }
 

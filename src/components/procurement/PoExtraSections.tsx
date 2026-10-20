@@ -219,6 +219,7 @@ export function FinanceTrailSection({
   onRecordPayment,
   onHold,
   onRelease,
+  lead,
 }: {
   po: PurchaseOrderX
   actor: ProcActor
@@ -227,9 +228,12 @@ export function FinanceTrailSection({
   onDecide: (hold: PoFinanceHold) => void
   /** The order's approver answers a higher price someone else asked for. */
   onAnswerPrice: (hold: PoFinanceHold, accept: boolean) => void
-  onRecordPayment: () => void
+  /** Absent when the company has Finance (PUR-07): paying is Finance's, Procurement reads it here. */
+  onRecordPayment?: () => void
   onHold: () => void
   onRelease: (hold: PoFinanceHold) => void
+  /** The order's own figures (ex VAT, VAT, still open) — ONE «مسار المال», not two sections of that name. */
+  lead?: ReactNode
 }) {
   const t = useTranslations("Portal.Procurement")
   const locale = useLocale()
@@ -242,6 +246,7 @@ export function FinanceTrailSection({
   const advPaid = (po.financePayments || []).find((p) => p.kind === "adv")
   return (
     <Box title={t("rfqpo.po.money.title")}>
+      {lead}
       <Row label={t("rfqpo.po.money.commitment")} hint={po.approvedAt ? t("rfqpo.po.money.commitment_hint", { date: fmt(po.approvedAt) }) : t("rfqpo.po.money.commitment_pending")}>
         <Money value={commitment} />
       </Row>
@@ -376,9 +381,11 @@ export function FinanceTrailSection({
       })}
       {isFinance && po.approvedAt && po.status !== "cancelled" && (
         <div className="flex flex-wrap gap-2 border-t pt-3">
-          <Button size="sm" variant="outline" onClick={onRecordPayment}>
-            {t("rfqpo.po.fin.record_payment")}
-          </Button>
+          {onRecordPayment && (
+            <Button size="sm" variant="outline" onClick={onRecordPayment}>
+              {t("rfqpo.po.fin.record_payment")}
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={onHold}>
             {t("rfqpo.po.fin.hold_invoice")}
           </Button>

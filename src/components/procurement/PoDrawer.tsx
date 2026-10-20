@@ -12,12 +12,16 @@
 // and the write re-runs it again inside its transaction; a refusal comes back
 // as a `ProcWriteError` code and is shown as the sentence for that code.
 
+import { getAuth } from "firebase/auth"
+import { deliveryStep, type StepNotice } from "@/lib/procurement/next-step"
+import { FORWARD_HREF } from "@/lib/procurement/today"
+import { RecordNoticeDialog } from "@/components/procurement/RecordNoticeDialog"
 import { usePrintProfile } from "@/hooks/usePrintProfile"
 import { printedNumber } from "@/lib/company-print-profile"
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, CheckCircle2, Clock, FileText, Info, Printer, Star } from "lucide-react"
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock, FileText, Info, Printer, Star } from "lucide-react"
 import { collection, doc, query, where } from "firebase/firestore"
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
@@ -36,7 +40,7 @@ import { DocumentThread } from "@/components/documents/DocumentThread"
 import { useModules } from "@/hooks/useCompanyModules"
 import { procLinks } from "@/lib/procurement/events"
 import { displayDocNumber, displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
-import { approvalRefusal, canCancelRemainder, canRecordAcceptance, canSend, canUpdateDate, daysLate, isSelfApproval, lineToArrive, poBlocks, poStatus, poWarnings, receiptDay, receiptsOf, reminderCooldownUntil, todayOf, dayOf } from "@/lib/procurement/po"
+import { approvalRefusal, canCancelRemainder, canRecordAcceptance, canSend, canUpdateDate, isSelfApproval, lineToArrive, poBlocks, poStatus, poWarnings, receiptDay, receiptsOf, reminderCooldownUntil, todayOf, dayOf } from "@/lib/procurement/po"
 import { PRICE_AGREEMENTS, agreementState, type PriceAgreement } from "@/lib/procurement/prices"
 import { AGREEMENT_HREF } from "@/lib/procurement/today"
 import type { PoLine, PoLogEntry, PoSendChannel, PurchaseOrder, RejectDecision } from "@/lib/procurement/types"
@@ -150,16 +154,32 @@ function Callout({ tone, children, className }: { tone: Tone; children: ReactNod
   )
 }
 
-function Section({ title, badge, action, children }: { title: string; badge?: ReactNode; action?: ReactNode; children: ReactNode }) {
+/** A block of the order's drawer. The next step, the lines and the notices stay open; the rest is FOLDED
+ * until asked for (PUR-07 — the drawer had a dozen sections open at once). No letter-spacing: Arabic. */
+function Section({ title, badge, action, children, folded }: { title: string; badge?: ReactNode; action?: ReactNode; children: ReactNode; folded?: boolean }) {
+  const head = (
+    <>
+      <h3 className="flex items-center gap-2 text-xs font-black text-muted-foreground">
+        {title}
+        {badge}
+      </h3>
+      {action}
+    </>
+  )
+  if (folded) {
+    return (
+      <details className="group rounded-xl border bg-card">
+        <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+          {head}
+          <ChevronDown size={14} className="text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <div className="space-y-3 border-t px-3 py-3">{children}</div>
+      </details>
+    )
+  }
   return (
     <section className="rounded-xl border bg-card">
-      <header className="flex items-center justify-between gap-2 border-b px-3 py-2">
-        <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-muted-foreground">
-          {title}
-          {badge}
-        </h3>
-        {action}
-      </header>
+      <header className="flex items-center justify-between gap-2 border-b px-3 py-2">{head}</header>
       <div className="space-y-3 px-3 py-3">{children}</div>
     </section>
   )
@@ -210,6 +230,20 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const [busy, setBusy] = useState<string | null>(null)
   // «أعد الترسية» asks once before it reopens the award.
   const [reawardAsk, setReawardAsk] = useState(false)
+  // PUR-06/07: a guest supplier's notice recorded on his behalf.
+  const [noticeOpen, setNoticeOpen] = useState(false)
+  const remindReceiverOf = async (deliveryId: string, name: string) => {
+    const u = getAuth().currentUser
+    if (!u) return
+    setBusy("remind_receiver")
+    try {
+      const res = await fetch("/api/receipt-links/remind", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await u.getIdToken()}` }, body: JSON.stringify({ deliveryId }) })
+      const body = (await res.json().catch(() => null)) as { code?: string } | null
+      toast(res.ok ? { title: t("next2.receiver_reminded", { name }) } : { title: t(body?.code === "TOO_SOON" ? "next2.remind_too_soon" : "next2.remind_failed"), variant: "destructive" })
+    } finally {
+      setBusy(null)
+    }
+  }
   const perms = usePermissions()
   // Finance's acts; the owner acts as Finance here only on an order he may act on (not one a buyer prepared).
   const isFinance = perms.isOrgOwner ? !(po && poActs(po, actor, stepsBack).ownerReadOnly) : perms.can("invoices.manage") || perms.can("accounting.post")
@@ -307,6 +341,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const revision = poRevision(po)
   // Projects switched off for this company: no budget referral and no sample gate — nobody there could clear them.
   const pmOn = modules.on("project-management")
+  const financeOn = modules.on("payments")
   const overrun = pmOn && po.status === "awaiting_approval" ? budgetOverrun(po, boqItems, world.orders) : []
   const pmWait = pmOn && awaitsPmBudget(px)
   const pmAsk = pmOn && pmBudgetAsk(px, overrun)
@@ -545,36 +580,118 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
         )
       case "in_delivery":
       case "part_received": {
-        const late = daysLate(po, now)
+        // PUR-07: the step from the facts — who we wait on and since when; the supplier is never blamed
+        // for a notice he sent in time that waits for our count.
+        const step = deliveryStep(po, world.deliveries as StepNotice[], now)
+        const remindSupplierBtn = (label: string) =>
+          f &&
+          expediter && (
+            <>
+              <Button variant="outline" disabled={busy != null || remindUntil != null} onClick={() => run("remind", () => remindSupplier(f, actor, po.id, opts), po.supplierUserId ? "toast.reminded_portal" : "toast.reminded_offline")}>
+                {label}
+              </Button>
+              {remindUntil && <span className="text-[11px] text-muted-foreground">{t("next.remind_after", { time: remindUntil.toLocaleString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) })}</span>}
+            </>
+          )
+        const dateBtn = f && expediter && canUpdateDate(po) && (
+          <Button variant="outline" disabled={busy != null} onClick={() => setDialog({ kind: "date" })}>
+            {t("next.update_date")}
+          </Button>
+        )
+        const closeShortBtn = f && acts.acts && canCloseShort(po, actor) && (
+          <Button variant="ghost" disabled={busy != null} onClick={() => setDialog({ kind: "close_short" })}>
+            {t("next.close_short")}
+          </Button>
+        )
+        let body: ReactNode = null
+        let buttons: ReactNode = null
+        switch (step?.kind) {
+          case "notice_to_forward":
+            body = <Callout tone="amber">{t("next2.to_forward", { date: step.noticeDay ? fmt(step.noticeDay) : "—" })}</Callout>
+            buttons = expediter && (
+              <Button asChild>
+                <Link href={FORWARD_HREF(step.deliveryId)}>{t("next2.forward")}</Link>
+              </Button>
+            )
+            break
+          case "in_transit":
+            body = <Callout tone="blue">{t("next2.in_transit", { date: step.day ? fmt(step.day) : "—", name: step.receiver || "—" })}</Callout>
+            break
+          case "receiver_late":
+            body = (
+              <Callout tone="amber">
+                <b>{t("next2.receiver_late", { name: step.receiver || "—", days: step.days })}</b>{" "}
+                {t("next2.receiver_late_sub", { noticed: step.noticeDay ? fmt(step.noticeDay) : "—", forwarded: step.forwardedDay ? fmt(step.forwardedDay) : "—", how: step.byLink ? t("next2.by_link") : t("next2.in_app") })}
+              </Callout>
+            )
+            buttons = expediter && (
+              <>
+                <Button disabled={busy != null} onClick={() => void remindReceiverOf(step.deliveryId, step.receiver)}>
+                  {t("next2.remind_receiver")}
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href={FORWARD_HREF(step.deliveryId)}>{t("next2.reforward")}</Link>
+                </Button>
+              </>
+            )
+            break
+          case "counted":
+            body = <Callout tone="green">{t("next2.counted", { name: step.receiver || "—" })}</Callout>
+            buttons = (
+              <Button asChild>
+                <Link href={`/contractor/goods-received?tab=incoming&delivery=${step.deliveryId}`}>{t("next2.book_receipt")}</Link>
+              </Button>
+            )
+            break
+          case "part_received":
+            body = <Callout tone="blue">{t("next2.part", { received: step.received.toLocaleString("en-US"), ordered: step.ordered.toLocaleString("en-US"), left: step.left.toLocaleString("en-US"), unit: step.unit })}</Callout>
+            buttons = (
+              <>
+                {remindSupplierBtn(t("next2.remind_rest"))}
+                {closeShortBtn}
+              </>
+            )
+            break
+          case "rejected":
+            body = <Callout tone="red">{t("next2.rejected", { qty: step.qty.toLocaleString("en-US"), unit: step.unit })}</Callout>
+            break
+          case "guest_due":
+            body = <Callout tone="amber">{t("next2.guest_due")}</Callout>
+            buttons = (
+              <>
+                {f && expediter && (
+                  <Button disabled={busy != null} onClick={() => setNoticeOpen(true)}>
+                    {t("next2.record_notice")}
+                  </Button>
+                )}
+                {dateBtn}
+              </>
+            )
+            break
+          case "supplier_late":
+            body = <Callout tone="red">{t("next2.supplier_late", { days: step.days })}</Callout>
+            buttons = (
+              <>
+                {remindSupplierBtn(t("next.remind"))}
+                {dateBtn}
+              </>
+            )
+            break
+          case "supplier_due":
+            body = <Callout tone="blue">{t("next2.supplier_due", { date: fmt(step.day) })}</Callout>
+            break
+          default:
+            body = <Callout tone="amber">{t("next.no_date_body")}</Callout>
+            buttons = dateBtn
+        }
         return (
           <>
             {advance === "requested" && <Callout tone="amber">{tProc("rfqpo.po.advance_unpaid", { pct: Number(px.advancePercent) || 0 })}</Callout>}
-            {late > 0 ? (
-              <Callout tone="red">{t("next.late_body", { days: late })}</Callout>
-            ) : po.promisedDate ? (
-              <Callout tone="blue">{t("next.promised_body", { date: fmt(po.promisedDate) })}</Callout>
-            ) : (
-              <Callout tone="amber">{t("next.no_date_body")}</Callout>
-            )}
+            {body}
             <div className="flex flex-wrap items-center gap-2">
-              {f && expediter && canUpdateDate(po) && (
-                <Button variant={late > 0 ? "default" : "outline"} disabled={busy != null} onClick={() => setDialog({ kind: "date" })}>
-                  {t("next.update_date")}
-                </Button>
-              )}
-              {f && expediter && canUpdateDate(po) && (
-                <>
-                  <Button variant="outline" disabled={busy != null || remindUntil != null} onClick={() => run("remind", () => remindSupplier(f, actor, po.id, opts), po.supplierUserId ? "toast.reminded_portal" : "toast.reminded_offline")}>
-                    {t("next.remind")}
-                  </Button>
-                  {remindUntil && <span className="text-[11px] text-muted-foreground">{t("next.remind_after", { time: remindUntil.toLocaleString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) })}</span>}
-                </>
-              )}
-              {f && acts.acts && canCloseShort(po, actor) && (
-                <Button variant="ghost" disabled={busy != null} onClick={() => setDialog({ kind: "close_short" })}>
-                  {t("next.close_short")}
-                </Button>
-              )}
+              {buttons}
+              {step?.kind !== "part_received" && step?.kind !== "guest_due" && step?.kind !== "supplier_late" && step?.kind !== "notice_to_forward" && step?.kind !== "receiver_late" && dateBtn}
+              {step?.kind !== "part_received" && closeShortBtn}
               {cancelLink}
             </div>
           </>
@@ -749,19 +866,6 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             </Section>
 
             {actor.seesPrices && (
-              <Section title={t("sec.money")} badge={<Badge variant="outline" className="text-[10px] font-normal">{t("sec.money_badge")}</Badge>}>
-                <Row label={t("money.ex_vat")}>
-                  <Money value={money.exVat} />
-                </Row>
-                <Row label={t("money.vat", { rate: Math.round(po.vatRate * 100) })}>
-                  <Money value={money.vat} />
-                </Row>
-                <Row label={t("money.open")} hint={money.lumpSum ? t("money.open_lump_hint") : undefined}>
-                  <Money value={money.open} />
-                </Row>
-              </Section>
-            )}
-            {actor.seesPrices && (
               <FinanceTrailSection
                 po={px}
                 actor={actor}
@@ -769,8 +873,22 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 isFinance={isFinance}
                 onDecide={(hold) => setDialog({ kind: "decide_hold", hold })}
                 onAnswerPrice={(hold, accept) => f && void run("hold", () => answerHoldPrice(f, actor, po.id, { holdId: hold.id, accept }, opts), "toast.saved")}
-                onRecordPayment={() => setDialog({ kind: "pay" })}
+                // With Finance in the company, paying is Finance's own act (PUR-07): Procurement reads it, and only holds.
+                onRecordPayment={financeOn ? undefined : () => setDialog({ kind: "pay" })}
                 onHold={() => setDialog({ kind: "hold_invoice" })}
+                lead={
+                  <>
+                    <Row label={t("money.ex_vat")}>
+                      <Money value={money.exVat} />
+                    </Row>
+                    <Row label={t("money.vat", { rate: Math.round(po.vatRate * 100) })}>
+                      <Money value={money.vat} />
+                    </Row>
+                    <Row label={t("money.open")} hint={money.lumpSum ? t("money.open_lump_hint") : undefined}>
+                      <Money value={money.open} />
+                    </Row>
+                  </>
+                }
                 onRelease={(hold) => f && void run("release", () => releaseHold(f, actor, isFinance, po.id, hold.id), "toast.saved")}
               />
             )}
@@ -787,10 +905,10 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
 
             <Section title={t("sec.lines", { count: po.lines.length })}>
               {po.lines.map((l) => {
-                const la = acts.acts ? lineActions(po, l, actor, now) : { cancelRemainder: false, decideReject: false }
+                const transit = lineInTransit(po, l, world.deliveries)
+                const la = acts.acts ? lineActions(po, l, actor, now, { notices: world.deliveries, inTransit: transit }) : { cancelRemainder: false, decideReject: false }
                 const parts = lineParts(l)
                 const lx = l as PoLineX
-                const transit = lineInTransit(po, l, world.deliveries)
                 return (
                   <div key={l.id} className="space-y-2 border-b pb-3 last:border-b-0 last:pb-0">
                     <div className="flex items-start justify-between gap-3">
@@ -875,7 +993,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
 
             <OrderDeliveriesSections po={px} deliveries={world.deliveries} warehouses={warehouses} routing={operatingPolicies(policies).noticeRouting} now={now} />
 
-            <Section title={t("sec.award")}>
+            <Section title={t("sec.award")} folded>
               <Row label={t("award.basis")}>{tProc(`basis.${po.basis}`)}</Row>
               {po.basis === "rfq" && (
                 <>
@@ -932,7 +1050,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 ))}
             </Section>
 
-            <Section title={t("sec.documents")}>
+            <Section title={t("sec.documents")} folded>
               <div className="flex flex-wrap gap-2">
                 {canPrintOrder(po, actor) && (
                   <Button variant="outline" size="sm" className="gap-2" onClick={printOrder}>
@@ -988,7 +1106,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             <DocTrailSection po={px} deliveries={world.deliveries} receiptNumber={(n) => displayReceiptNumber(n, locale)} />
 
             {log.length > 0 && (
-              <Section title={t("sec.log")}>
+              <Section title={t("sec.log")} folded>
                 <ol className="space-y-2">
                   {log.map((e, i) => (
                     <li key={`${e.at}-${i}`} className="flex gap-2 text-sm">
@@ -1067,6 +1185,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             now={now}
             onSubmit={({ date }) => run("accept", () => recordSupplierAcceptance(f, actor, po.id, { promisedDate: date, by: "buyer" }, opts), "toast.accepted")}
           />
+          {noticeOpen && <RecordNoticeDialog po={po} open={noticeOpen} onOpenChange={setNoticeOpen} />}
           <SupplierDateDialog open={dialog?.kind === "date"} onOpenChange={(o) => !o && setDialog(null)} po={px} now={now} onSubmit={({ date, note }) => run("date", () => updatePromisedDate(f, actor, po.id, { date, note }, opts), "toast.date_updated")} />
           <DecideHoldDialog
             hold={dialog?.kind === "decide_hold" ? dialog.hold : null}

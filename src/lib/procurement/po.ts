@@ -159,25 +159,31 @@ const DELIVERING: ReadonlySet<PoStatus> = new Set(["in_delivery", "part_received
 const LIVE: ReadonlySet<PoStatus> = new Set(["approved", "sent", "in_delivery", "part_received"])
 
 /** Still owed by the supplier past the day he promised. */
-export function poLate(po: PurchaseOrder, now: Date): boolean {
-  return daysLate(po, now) > 0
+export function poLate(po: PurchaseOrder, now: Date, notices?: ReadonlyArray<NoticeFact>): boolean {
+  return daysLate(po, now, notices) > 0
 }
+
+/** A supplier's delivery notice as the lateness clock reads it (a `deliveries` document). */
+export type NoticeFact = Pick<ReceiptFact, "poId" | "status" | "deliveryDate"> & { closedByReceipt?: unknown }
 
 /** The supplier reported a delivery dated on or before the promised day and no receipt has answered it yet:
  * the clock stops until the contractor's receipt carries the real date (conflict 2, SUP-05 — the supplier's
  * screen reads the same rule, `isLate` in supplier-free/deal-logic). */
-export function deliveryReportedInTime(po: Pick<PurchaseOrder, "promisedDate" | "deliveryReports">): boolean {
+export function deliveryReportedInTime(po: Pick<PurchaseOrder, "promisedDate" | "deliveryReports"> & { id?: string }, notices?: ReadonlyArray<NoticeFact>): boolean {
   const promised = dayOf(po.promisedDate)
   if (!promised) return false
-  return (po.deliveryReports || []).some((r) => !r.closedAt && !!dayOf(r.date) && dayOf(r.date) <= promised)
+  if ((po.deliveryReports || []).some((r) => !r.closedAt && !!dayOf(r.date) && dayOf(r.date) <= promised)) return true
+  // A notice dated on or before his promise that waits for OUR count (Procurement 1.5, PUR-07): what we wait on
+  // is the receiver, not the supplier — the clock stops as it does for the free supplier's delivery report.
+  return Boolean(po.id) && (notices || []).some((n) => n.poId === po.id && n.status === "pending_confirmation" && !n.closedByReceipt && !!dayOf(n.deliveryDate) && dayOf(n.deliveryDate) <= promised)
 }
 
 /** Days past the promised date while goods are still owed; 0 otherwise — and 0 while a delivery the supplier
  * reported in time waits for its receipt. */
-export function daysLate(po: PurchaseOrder, now: Date): number {
+export function daysLate(po: PurchaseOrder, now: Date, notices?: ReadonlyArray<NoticeFact>): number {
   if (!DELIVERING.has(poStatus(po)) || !po.promisedDate) return 0
   if (!po.lines.some((l) => lineOutstanding(l) > 0)) return 0
-  if (deliveryReportedInTime(po)) return 0
+  if (deliveryReportedInTime(po, notices)) return 0
   const d = daysFromNow(po.promisedDate, now)
   return d == null || d >= 0 ? 0 : -d
 }
@@ -377,7 +383,9 @@ export interface PoFacts {
 
 export function poFacts(po: PurchaseOrder, receipts: ReceiptFact[]): PoFacts {
   const mine = receiptsOf(po, receipts)
-  const days = mine.map(receiptDay).filter(Boolean).sort()
+  // On time is judged by the day the supplier DELIVERED — his notice's date — not the day we booked the receipt
+  // (PUR-07: a notice dated in time that waited 25 days for our count is not his delay).
+  const days = mine.map((r) => dayOf(r.deliveryDate) || receiptDay(r)).filter(Boolean).sort()
   const last = days.length ? days[days.length - 1] : null
   const ordered = round2(po.lines.reduce((s, l) => s + num(l.quantity) - num(l.cancelled), 0))
   const accepted = round2(po.lines.reduce((s, l) => s + num(l.accepted), 0))
@@ -436,7 +444,7 @@ export function supplierScore(orders: PurchaseOrder[], receipts: ReceiptFact[], 
     n++
     const facts = poFacts(po, receipts)
     const promise = po.promisedDate ? daysFromNow(po.promisedDate, now) : null
-    const isLate = facts.lastReceiptDay != null ? facts.lateByDays > 0 : promise != null && promise < 0 ? !deliveryReportedInTime(po) : poLate(po, now)
+    const isLate = facts.lastReceiptDay != null ? facts.lateByDays > 0 : promise != null && promise < 0 ? !deliveryReportedInTime(po, receipts) : poLate(po, now, receipts)
     if (isLate) late++
     if (isLate || facts.lastReceiptDay != null || po.lines.some((l) => num(l.accepted) + num(l.rejected) > 0)) judged++
     for (const l of po.lines) {

@@ -67,7 +67,9 @@ export interface ReceiverReportFact {
   note: string | null
   signatureData: string | null
   signedAt: string
-  verifiedBy: "sms_code"
+  verifiedBy: "sms_code" | "login"
+  /** Photos, the weighbridge ticket, a certificate — attached at the gate (PUR-06). */
+  files?: Array<{ name: string; url: string; kind: "photo" | "ticket" | "cert" }>
 }
 
 /** Where a forwarded delivery stands on the desk. */

@@ -320,8 +320,9 @@ const SPECS: Record<string, ScreenSpec> = {
     titles: ["عند المورد — التوريد جارٍ", "الخطوة التالية", "إشعارات التسليم", "السجل"],
     priced: ["مسار المال"],
     // In time and nothing received yet: «المورد عجز» is not offered (prototype cxl: late or part-received only).
+    // Its supplier notified a delivery that sits with us: the step is to forward it (PUR-07), not to chase him.
     // Approved: the PO prints for whoever sees prices — never the expediter.
-    acts: { "ذكّر المورد": MBE, "حدّث موعد المورد": MBE, "المورد عجز — اسحب المتبقي وأعد طرحه": [], "أقفله ناقصاً": MB, "سجّل دفعة": [], "اطبع أمر الشراء": OMB },
+    acts: { "حوّل للمستلم": MBE, "ذكّر المورد": [], "المورد عجز — اسحب المتبقي وأعد طرحه": [], "أقفله ناقصاً": MB, "سجّل دفعة": [], "اطبع أمر الشراء": OMB },
   },
   // Receiving is Inventory's and Projects' act: the owner of a company with a procurement team only reads here.
   receiptsIncoming: { titles: ["سندات الاستلام", "في الطريق", "السندات", "بلا أمر شراء", "في الطريق — ما أشعر به الموردون وما حلّ موعده", "مؤسسة الإسمنت"], acts: { "سجّل الاستلام": [], "سجّل سند استلام يدوياً": MB } },

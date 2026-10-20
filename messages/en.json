@@ -9064,7 +9064,9 @@
       "rq_panel": "The incoming request",
       "rq_empty": "No requests here.",
       "rq_empty_hint": "A material request arrives here once its project manager approves it technically, with what the workshop and the stores ask for.",
-      "rq_empty_hint_team": "What your team asks for arrives here, with what the workshop and the stores ask for."
+      "rq_empty_hint_team": "What your team asks for arrives here, with what the workshop and the stores ask for.",
+      "pn_receipt_remind_title": "⏰ Reminder: a delivery waits for your count",
+      "pn_receipt_remind": "{name} reminds you of {supplier}'s delivery — open the link, count what arrived and confirm."
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -10987,7 +10989,9 @@
       "offers_exclusion_documents": "No documents / VAT no.",
       "rfqv_stage_direct": "Direct award",
       "queue_item_delivery_with_receiver": "{supplierName}'s delivery is with {receiver} — waiting for the count",
-      "action_delivery_open": "Open the notice"
+      "action_delivery_open": "Open the notice",
+      "queue_item_delivery_to_count": "{supplierName}'s delivery was forwarded to you — count it and confirm",
+      "action_delivery_to_count": "Count it"
     },
     "Home": {
       "tile_in_subscription": "What a subscription adds",
@@ -12577,12 +12581,12 @@
             "paid": "reference {ref} on {date}.",
             "sent_title": "Sent to Finance",
             "sent_value": "on approval — a commitment of",
-            "sent_body": "the first leg of the three-way match: Finance now waits for the receipt and the supplier’s invoice."
+            "sent_body": "The order is recorded in Finance, which waits for the goods receipt and then the supplier's invoice to pay."
           },
           "money": {
             "title": "The money trail — what reached Finance and what came back",
             "commitment": "Committed on the PO — incl. VAT",
-            "commitment_hint": "Reached Finance on approval ({date}) as an uninvoiced commitment — the first leg of the three-way match",
+            "commitment_hint": "Recorded in Finance on approval, {date}, as an uninvoiced commitment",
             "commitment_pending": "Not approved yet — nothing reaches Finance before approval",
             "advance": "Advance {pct}%",
             "advance_paid": "Paid {date} · {no} — recovered from its invoices",
@@ -13696,7 +13700,44 @@
       },
       "project_filter": "Project",
       "project_all": "All projects",
-      "more_lines": "+{count} more lines"
+      "more_lines": "+{count} more lines",
+      "next2": {
+        "to_forward": "The delivery notice ({date}) is with us — forward it to the receiver.",
+        "forward": "Forward to the receiver",
+        "in_transit": "On its way — arrives {date}, to {name}.",
+        "receiver_late": "Waiting for {name} to count it, for {days, plural, one {# day} other {# days}}.",
+        "receiver_late_sub": "The supplier notified delivery for {noticed}; the notice was forwarded on {forwarded} {how}.",
+        "by_link": "by link and code",
+        "in_app": "to their account",
+        "remind_receiver": "Remind the receiver",
+        "reforward": "Forward again",
+        "receiver_reminded": "{name} was reminded",
+        "remind_too_soon": "Reminded a short while ago — try again in a few hours",
+        "remind_failed": "The reminder was not sent — try again",
+        "counted": "{name} counted it at arrival — book the receipt.",
+        "book_receipt": "Book the receipt",
+        "part": "{received} of {ordered} {unit} received; {left} left.",
+        "remind_rest": "Remind the supplier of the rest",
+        "rejected": "{qty} {unit} rejected at receipt — your decision with the supplier is on the lines below: replace · discount · return.",
+        "guest_due": "Has the shipment arrived? The supplier is off the platform and cannot notify.",
+        "record_notice": "Record a delivery notice",
+        "supplier_late": "The supplier is {days, plural, one {# day} other {# days}} late and has not notified delivery.",
+        "supplier_due": "Waiting for the supplier — due {date}."
+      },
+      "notice": {
+        "title": "Record a delivery notice",
+        "desc": "“{supplier}” is off the platform: record what he told you of the shipment, then forward it to the receiver like any notice.",
+        "day": "Delivery day",
+        "lines": "What is coming",
+        "open": "{qty} {unit} left",
+        "qty_of": "Quantity of {name}",
+        "driver": "Driver (optional)",
+        "notes": "Note (optional)",
+        "submit": "Record it",
+        "cancel": "Cancel",
+        "saved": "Notice recorded — forward it to the receiver from Goods received",
+        "failed": "The notice was not recorded — check the quantities and the day"
+      }
     },
     "ProcReceipts": {
       "forward": {
@@ -13704,7 +13745,7 @@
         "again": "Forward again",
         "title": "Forward the notice to the receiver",
         "desc": "The supplier's notice reached us — we pick who receives it and send them the receiving link with a code to their phone",
-        "toMember": "Team member",
+        "toMember": "A team member",
         "toPerson": "Someone without an account",
         "member": "Member",
         "pickMember": "Choose a member",
@@ -13737,7 +13778,20 @@
         "effectNoTimer": "Left alone, a notice not forwarded within the window is forwarded by the system to the suggested receiver and tagged automatic",
         "reachesIn": "Reaches them in {module}: the “Expected” list and an alert on their phone {phone}",
         "sendLink": "Send the link & code",
-        "forwardMember": "Forward to receiver"
+        "forwardMember": "Forward to receiver",
+        "ownerName": "{name} (company owner)",
+        "memberHint": "Reaches them in My tasks and their module, no code",
+        "personHint": "A link and a code to their mobile, good for 3 days",
+        "placeReceiversOf": "Receivers at {place}",
+        "otherMembers": "Other team members",
+        "atPlaceHasAccount": "At {place} · has an account",
+        "hasAccount": "Has an account",
+        "preparedIt": "Prepared this order — the receipt is flagged if they receive",
+        "selfWarning": "Forwarding to whoever prepared the order flags the receipt “received by the order's preparer” in the exceptions report, unless it is the owner.",
+        "toMemberDone": "Forwarded to {name} — it reaches them in My tasks and their module",
+        "toMemberNamed": "Forward to {name}",
+        "errNotMember": "That person is not on your company's team",
+        "cancel": "Cancel"
       },
       "title": "Goods receipts",
       "subtitle": "Everything on the way and everything received — who recorded it and where it went. We follow up and read; whoever receives records it; what was bought off the platform, we issue its receipt here by hand.",
@@ -13794,7 +13848,12 @@
         "forwardNow": "Arrived with us — forward it to the receiver",
         "waitingCount": "Waiting for {name} to count it {days, plural, =0 {since today} one {for # day} other {for # days}}",
         "reforward": "Forward again",
-        "signedWaiting": "Counted by the receiver — receipt pending"
+        "signedWaiting": "Counted by the receiver — receipt pending",
+        "remindReceiver": "Remind the receiver",
+        "receiverReminded": "{name} was reminded",
+        "remindTooSoon": "Reminded a short while ago — try again in a few hours",
+        "remindLinkClosed": "His link has closed — forward it again",
+        "remindFailed": "The reminder was not sent — try again"
       },
       "log": {
         "colReceipt": "Receipt",
@@ -14207,7 +14266,12 @@
         "noticed_numbered": "Supplier notified the delivery {notice} for {day}",
         "forwarded_auto": "Auto-forwarded to {name} after the window"
       },
-      "received_by": "Received by"
+      "received_by": "Received by",
+      "mine": {
+        "notYours": "This delivery was not forwarded to you, or has been counted",
+        "notYoursHint": "Ask Procurement to forward it to you.",
+        "opening": "Opening the receipt…"
+      }
     },
     "ProcReports": {
       "page": {
@@ -25424,7 +25488,17 @@
     "blank_hint": "A line that did not arrive — leave it blank; it is recorded as zero.",
     "held": "Of which on hold",
     "hold_reason": "Why on hold?",
-    "err_hold_reason_needed": "Choose why “{name}” is on hold."
+    "err_hold_reason_needed": "Choose why “{name}” is on hold.",
+    "files_title": "Proof of receipt",
+    "optional": "optional",
+    "file_photo": "Shipment photos",
+    "file_ticket": "Weighbridge ticket",
+    "file_cert": "Certificate",
+    "uploading": "Uploading…",
+    "err_file_big": "The file is over 10 MB",
+    "err_file_type": "Images or PDF only",
+    "err_file_many": "Ten files at most",
+    "verify_login": "You are signed in ({name}) as the named receiver: your confirmation is your signature, no code needed."
   },
   "PmPortal": {
     "eyebrow": "Consultant portal",

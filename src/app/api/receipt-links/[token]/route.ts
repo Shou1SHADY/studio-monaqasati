@@ -20,14 +20,19 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
 
     const { link, delivery } = resolved
     const lines = await deliveryLines(db, delivery)
+    // The order's own title under its number (PUR-06: the notice's copy could differ from the order's).
+    const po = typeof delivery.poId === "string" && delivery.poId ? (await db.collection("purchaseOrders").doc(delivery.poId).get()).data() : null
     return NextResponse.json({
       success: true,
       data: {
         receiverName: link.receiver.name,
         phoneMasked: maskPhone(link.receiver.phone),
         supplierName: (delivery.supplierName as string) || "",
-        poNumber: (delivery.poNumber as string) || null,
-        rfqTitle: (delivery.rfqTitle as string) || "",
+        poNumber: (po?.docNumber as string) || (delivery.poNumber as string) || null,
+        rfqTitle: (po?.rfqTitle as string) || (delivery.rfqTitle as string) || "",
+        // The member it was forwarded to may confirm signed in, without a code.
+        receiverUserId: link.receiver.userId || null,
+        files: (link.files || []).map((f) => ({ name: f.name, url: f.url, kind: f.kind })),
         deliveryDate: (delivery.deliveryDate as string) || null,
         forwardedBy: link.createdByName,
         note: link.note || null,
