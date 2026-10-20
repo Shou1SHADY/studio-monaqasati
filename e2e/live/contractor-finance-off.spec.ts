@@ -74,7 +74,8 @@ test.describe('switching a contractor company Finance off and back on, end to en
       const page = await context.newPage()
       await page.goto('/admin/contractors')
       const company = process.env.E2E_TEST_COMPANY as string
-      const rows = page.locator('tbody tr').filter({ hasText: company })
+      // team members' rows carry "member of <company>", so the company's own row is the one without it
+      const rows = page.locator('tbody tr').filter({ hasText: company }).filter({ hasNotText: /عضو في فريق|Team member of/ })
       await expect(page.locator('tbody tr').first()).toBeVisible({ timeout: 45_000 })
       if ((await rows.count()) === 0) {
         await page.getByRole('textbox').first().fill(company)
