@@ -11,7 +11,7 @@ import { materialKey } from "./prices"
 import { lineNeed, rfqNeedSources, type NeedLinkedRfq } from "./rfq-view"
 import type { PurchaseOrder } from "./types"
 
-export type NeedKind = "mfg" | "project" | "stock"
+export type NeedKind = "mfg" | "project" | "stock" | "team"
 
 /** action = Purchasing's move · waiting = another module's · rfq / order = in
  * hand · done = arrived, sent back or refused. */
@@ -86,6 +86,9 @@ export interface Need {
   /** A project request's lines added after it was sourced — each its own need,
    * put on the desk by `returnedNeeds`. */
   added?: Need[]
+  /** A team request's delivery site («مواقع التسليم») and the place it names (PUR-10). */
+  siteId?: string | null
+  place?: { label: string; city: string; district: string } | null
 }
 
 const blank = { needBy: null, note: null, rfqId: null, rfqNumber: null, poId: null, poNumber: null, endNote: null, endKind: null, waitingOn: null, projectId: null, projectName: null, stock: null, mfgRequestId: null, decision: null }
@@ -529,6 +532,7 @@ export function needCounts(needs: Need[]): Record<NeedState | "all", number> {
 export function needSourceParam(s: Need["source"]): string {
   if (s.kind === "project_request") return `prj:${s.projectId}:${s.purchaseRequestId}${s.line == null ? "" : `:L${s.line}`}`
   if (s.kind === "stock_gap") return `stock:${s.warehouseId}:${s.itemId}`
+  if (s.kind === "team_request") return `team:${s.purchaseRequestId}`
   return `${s.workOrderId}:${s.purchaseRequestId}`
 }
 
@@ -537,6 +541,7 @@ export function parseNeedSource(raw: string | null | undefined): Need["source"] 
   if (parts[0] === "prj" && parts.length === 4 && parts[1] && parts[2] && /^L\d+$/.test(parts[3])) return { kind: "project_request", projectId: parts[1], purchaseRequestId: parts[2], line: Number(parts[3].slice(1)) }
   if (parts[0] === "prj" && parts.length === 3 && parts[1] && parts[2]) return { kind: "project_request", projectId: parts[1], purchaseRequestId: parts[2] }
   if (parts[0] === "stock" && parts.length === 3 && parts[1] && parts[2]) return { kind: "stock_gap", warehouseId: parts[1], itemId: parts[2] }
+  if (parts[0] === "team" && parts.length === 2 && parts[1]) return { kind: "team_request", purchaseRequestId: parts[1] }
   if (parts.length === 2 && parts[0] && parts[1]) return { kind: "mfg_purchase", workOrderId: parts[0], purchaseRequestId: parts[1] }
   return null
 }

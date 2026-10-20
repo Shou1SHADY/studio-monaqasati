@@ -366,16 +366,17 @@ export function groupsFromRfq(rfq: Record<string, unknown>): EditorGroup[] {
 /** An incoming request as the editor takes it: its place from the delivery sites (a project's
  * own site), its number as the project wrote it, each line as it arrived. */
 export function incomingFromNeed(need: Need, sites: DeliverySite[]): IncomingRequest {
-  const site = need.projectId ? sites.find((s) => s.id === projectSiteId(need.projectId as string) || s.projectId === need.projectId) || null : null
+  // A team request names its site (or a typed place); a project's request, its project's site.
+  const site = need.siteId ? sites.find((s) => s.id === need.siteId) || null : need.projectId ? sites.find((s) => s.id === projectSiteId(need.projectId as string) || s.projectId === need.projectId) || null : null
   return {
     key: need.key,
     ref: need.refLabel,
     source: need.source,
     projectId: need.projectId,
-    label: site?.name || need.projectName || need.context,
-    siteId: site?.id || (need.projectId ? projectSiteId(need.projectId) : null),
-    city: site?.city || "",
-    district: site?.district || "",
+    label: site?.name || need.place?.label || need.projectName || need.context,
+    siteId: site?.id || need.siteId || (need.projectId ? projectSiteId(need.projectId) : null),
+    city: site?.city || need.place?.city || "",
+    district: site?.district || need.place?.district || "",
     needBy: need.needBy ? need.needBy.slice(0, 10) : null,
     lines: need.lines.map((l) => ({ name: l.name, quantity: l.quantity, unit: l.unit, needBy: l.needBy ? l.needBy.slice(0, 10) : null, material: (l as { material?: MaterialPick | null }).material || null })),
   }

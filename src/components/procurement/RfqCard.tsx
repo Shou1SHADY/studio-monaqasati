@@ -63,7 +63,8 @@ export function RfqStagePill({ stage, sealed }: { stage: RfqStage; sealed: boole
 export function RfqNumber({ rfq }: { rfq: Pick<RfqRow, "id" | "rfqNumber"> }) {
   const locale = useLocale()
   return (
-    <span className="whitespace-nowrap rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground" dir="ltr">
+    // An RFQ numbered after it was raised keeps its first reference «#HIX5if» as a tooltip (PUR-09 #5) — it is searchable too.
+    <span className="whitespace-nowrap rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground" dir="ltr" title={rfq.rfqNumber ? `#${rfq.id.slice(0, 6)}` : undefined}>
       {rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : `#${rfq.id.slice(0, 6)}`}
     </span>
   )

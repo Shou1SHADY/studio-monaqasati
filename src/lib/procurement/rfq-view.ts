@@ -333,6 +333,8 @@ export type LineNeedSource =
   // the request already had an RFQ or an order): its own need on the desk.
   | { kind: "project_request"; projectId?: string; purchaseRequestId?: string; line?: number }
   | { kind: "stock_gap"; warehouseId?: string; itemId?: string }
+  // A team's «طلب مواد» in a company without Project Management (PUR-10).
+  | { kind: "team_request"; purchaseRequestId?: string }
 
 export interface NeedLinkedRfq {
   purchaseSource?: { kind: string; workOrderId?: string; purchaseRequestId?: string; projectId?: string; warehouseId?: string; itemId?: string } | null
@@ -341,7 +343,7 @@ export interface NeedLinkedRfq {
 }
 
 const asSource = (s: { kind: string; workOrderId?: string; purchaseRequestId?: string; projectId?: string; warehouseId?: string; itemId?: string } | null | undefined): LineNeedSource | null =>
-  s && (s.kind === "mfg_purchase" || s.kind === "project_request" || s.kind === "stock_gap") ? (s as LineNeedSource) : null
+  s && (s.kind === "mfg_purchase" || s.kind === "project_request" || s.kind === "stock_gap" || s.kind === "team_request") ? (s as LineNeedSource) : null
 
 /** The need a line answers: its own, else the RFQ's only one while no line names its own. */
 export function lineNeed(rfq: NeedLinkedRfq, index: number): { source: LineNeedSource; line: number } | null {
@@ -357,6 +359,7 @@ export function lineNeed(rfq: NeedLinkedRfq, index: number): { source: LineNeedS
 export function needKeyOfSource(s: LineNeedSource): string | null {
   if (s.kind === "project_request") return s.projectId && s.purchaseRequestId ? `project:${s.projectId}:${s.purchaseRequestId}${s.line == null ? "" : `:L${s.line}`}` : null
   if (s.kind === "stock_gap") return s.warehouseId && s.itemId ? `stock:${s.warehouseId}:${s.itemId}` : null
+  if (s.kind === "team_request") return s.purchaseRequestId ? `team:${s.purchaseRequestId}` : null
   return s.workOrderId && s.purchaseRequestId ? `mfg:${s.workOrderId}:${s.purchaseRequestId}` : null
 }
 

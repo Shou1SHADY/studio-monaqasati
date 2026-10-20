@@ -26,6 +26,7 @@ import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
 import { MANUFACTURING_REQUESTS, type ManufacturingRequest } from "@/lib/sales-orders"
 import { buildNeedRows, type BuyerScope, type MfgRequestFact, type NeedRow } from "@/lib/procurement/need-desk"
 import { procTeam } from "@/lib/procurement/team"
+import { TEAM_REQUESTS, teamNeed, type TeamLinkedRfq, type TeamRequestDoc } from "@/lib/procurement/team-requests"
 import { mfgNeed, needsForModules, projectNeed, projectRequestRef, reachesProcurement, returnedNeeds, sortNeeds, stockNeeds, type Need } from "@/lib/procurement/needs"
 
 export interface ProcurementNeeds {
@@ -75,6 +76,9 @@ export function useProcurementNeeds(world: ProcurementWorld): ProcurementNeeds {
   const stock = useOrgStock(warehouses, warehouses.length > 0)
   const { agreements, history } = useProcurementPrices(orgId || null)
   const projectRequests = useProjectPurchaseRequests(orgId || null, pmOn)
+  // Without Project Management the team asks for materials itself (PUR-10, question 4).
+  const teamQ = useMemoFirebase(() => (firestore && orgId && !pmOn ? query(collection(firestore, TEAM_REQUESTS), where("organizationId", "==", orgId)) : null), [firestore, orgId, pmOn])
+  const { data: teamData } = useCollection(teamQ)
   const { orgMembers } = useOrgMembers(orgId || null)
 
   const products = useMemo(() => ((productsData || []) as MfgProduct[]).filter((p) => !p.archived), [productsData])
@@ -99,12 +103,13 @@ export function useProcurementNeeds(world: ProcurementWorld): ProcurementNeeds {
       out.push(mfgNeed({ id: o.id, ref: orderRef(o), context, projectId: o.projectId ?? null, projectName: o.projectName ?? null }, request))
     })
     for (const { project, requests } of projectRequests.rows) for (const pr of requests.filter(reachesProcurement)) out.push(projectNeed(project, pr, projectRequestRef(pr, purchaseRequestRef)))
+    for (const tr of (teamData || []) as TeamRequestDoc[]) if (tr.status !== "withdrawn") out.push(teamNeed(tr, rfqs as TeamLinkedRfq[], orders))
     out.push(...returnedNeeds(out, orders))
     const names = new Map(warehouses.map((w) => [w.id, w.name || ""]))
     const stockRows = Array.from(stock.byWarehouse.entries()).flatMap(([warehouseId, rows]) => rows.filter((r) => !r.isManufactured).map((r) => ({ ...r, warehouseId, warehouseName: names.get(warehouseId) || "" })))
     out.push(...stockNeeds(stockRows, { rfqs, orders }))
     return sortNeeds(needsForModules(out, { projects: pmOn, workshop: mfgOn }).filter((n) => n.lines.length > 0))
-  }, [mfgByKey, projectRequests.rows, stock.byWarehouse, warehouses, rfqs, orders, pmOn, mfgOn])
+  }, [mfgByKey, projectRequests.rows, teamData, stock.byWarehouse, warehouses, rfqs, orders, pmOn, mfgOn])
 
   const onHand = useMemo(() => (name: string) => (stock.loading ? null : stock.byName.get(stockKey(name)) ?? null), [stock])
   const makeable = useMemo(() => {

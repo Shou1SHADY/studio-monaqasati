@@ -36,6 +36,10 @@ import { PURCHASE_ORDERS } from "@/lib/procurement/types"
 import { ChoiceChips, FormHint } from "./ContractBits"
 import { PmFilesField } from "./PmAttachments"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
+import { MaterialSearchInput } from "@/components/materials/MaterialSearchInput"
+import { MaterialBrowserDialog, type BrowserResult } from "@/components/materials/MaterialBrowserDialog"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { label as treeLabel, unitsOf, type MaterialHit } from "@/lib/materials/tree"
 
 export type SupplyItem = StoreItem & { division?: string; pmSample?: boolean | null; pmSub?: string | null; estCost?: number }
 
@@ -233,6 +237,41 @@ export function NewRequestDialog({
   )
 }
 
+/** A new material is picked the Procurement way (PUR-04, kept in PM by PUR-09 «ما يبقى»): searched in the
+ * material tree — its name and unit come with it — or browsed, or typed as is. */
+export function TreeMaterialField({ name, units, onChange }: { name: string; units: string[]; onChange: (p: Partial<LineState>) => void }) {
+  const t = useTranslations("Portal.PM")
+  const locale = useLocale()
+  const { index } = useMaterialTree()
+  const [browse, setBrowse] = useState<string | null>(null)
+  const take = (n: string, unit: string | null) => onChange(unit ? { name: n, unit, unitOther: !units.includes(unit) } : { name: n })
+  const fromHit = (hit: MaterialHit) => {
+    const specs = hit.preset.map((p) => treeLabel(p.value, locale)).join(" ")
+    const u = index ? unitsOf(index, hit.node.id)[0] : undefined
+    take([treeLabel(hit.node, locale), specs].filter(Boolean).join(" "), u ? treeLabel(u, locale) : null)
+  }
+  const fromBrowser = (r: BrowserResult) => {
+    const leaf = r.pick.path[r.pick.path.length - 1]
+    take(r.name || (leaf ? treeLabel(leaf, locale) : ""), r.unit ? treeLabel(r.unit, locale) : null)
+    setBrowse(null)
+  }
+  if (name)
+    return (
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        <Input aria-label={t("sup.form.mat_name")} dir="auto" className="h-9 min-w-0 flex-1" value={name} onChange={(e) => onChange({ name: e.target.value })} />
+        <Button type="button" size="sm" variant="ghost" className="h-9 shrink-0 text-xs" onClick={() => onChange({ name: "" })}>
+          {t("sup.form.mat_change")}
+        </Button>
+      </span>
+    )
+  return (
+    <>
+      <MaterialSearchInput index={index} onPick={fromHit} onBrowse={(q) => setBrowse(q)} onFreeText={(text) => take(text, null)} placeholder={t("sup.form.mat_name")} ariaLabel={t("sup.form.mat_name")} className="min-w-0 flex-1" />
+      <MaterialBrowserDialog open={browse != null} onOpenChange={(o) => !o && setBrowse(null)} index={index} initialQuery={browse || ""} onAdd={fromBrowser} />
+    </>
+  )
+}
+
 function LineEditor({
   line,
   items,
@@ -354,7 +393,7 @@ function LineEditor({
       )}
       {line.itemId && mat === NEW && (
         <div className="flex flex-wrap gap-2">
-          <Input aria-label={t("sup.form.mat_name")} dir="auto" className="h-9 min-w-0 flex-1" placeholder={t("sup.form.mat_name")} value={line.name} onChange={(e) => onChange({ name: e.target.value })} />
+          <TreeMaterialField name={line.name} units={units} onChange={onChange} />
           <NativeSelect
             aria-label={t("sup.form.unit")}
             className={`${SELECT} w-32`}

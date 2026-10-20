@@ -305,14 +305,13 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
     pendingOffersByRfq.set(o.rfqId, existing)
   })
   pendingOffersByRfq.forEach((v, rfqId) => {
-    const rfq = (rfqs || []).find((r: any) => r.id === rfqId) as { projectId?: string } | undefined
     items.push({
       id: `rfq_decision_${rfqId}`,
       type: "rfq_decision",
       tier: TIER.rfq_decision,
       sortMs: v.latestMs,
       since: v.earliestMs || undefined,
-      actionUrl: rfq?.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfqId}/offers` : `/contractor/rfqs/${rfqId}/offers`,
+      actionUrl: `/contractor/rfqs/${rfqId}/offers`,
       data: { rfqTitle: v.rfqTitle, offerCount: v.count },
     })
   })
@@ -329,7 +328,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
   // (a stalled RFQ has no offer to notify on; a closing deadline has no event).
   ;(rfqs || []).forEach((r: any) => {
     if (r.status !== "New") return
-    const rfqActionUrl = r.projectId ? `/contractor/projects/${r.projectId}/tenders/${r.id}/offers` : `/contractor/rfqs/${r.id}/offers`
+    const rfqActionUrl = `/contractor/rfqs/${r.id}/offers`
 
     const createdMs = toMs(r.createdAt)
     if (!offerCountByRfq.has(r.id) && createdMs && now - createdMs >= NO_OFFERS_GRACE_MS) {
@@ -622,7 +621,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       id: `rfq_${r.id}`,
       name: (r.title as string) || "",
       ms: toMs(r.updatedAt) || toMs(r.createdAt),
-      href: r.projectId ? `/contractor/projects/${r.projectId}/tenders/${r.id}/offers` : `/contractor/rfqs/${r.id}`,
+      href: `/contractor/rfqs/${r.id}/offers`,
     })),
   ]
     .filter((x) => x.name && x.ms > 0)

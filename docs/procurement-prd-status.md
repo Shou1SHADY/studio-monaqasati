@@ -151,12 +151,11 @@ Next: per-line award and lowest-price-per-line.
 | §6.4 | `forwardWindowDays` (1 day, the PRD's reference) — with a consumer, not a dead switch |
 | §5.2-3b | A pending notice now SAYS whether anyone has been told to receive it, and turns amber inside the forwarding window; the overdue row says "and nobody was ever told". One row per notice, not two |
 
-Not built, and why: **auto-forward**. The PRD forwards by itself once the window
-lapses. Nothing in this product runs on a schedule — no job, no cron, no queue —
-so an automatic forward would be a function nobody calls. The notice colouring
-above is the honest half of it; the flagged `auto_forward` exception waits for the
-same scheduler. Receiving centrally without forwarding at all stays perfectly
-valid, which is why none of this blocks anything.
+**Auto-forward — built 20 Oct 2026 (Procurement 1.5, PUR-06).** A notice nobody forwarded
+inside `forwardWindowDays` goes to the receiver the register names for its place
+(`src/lib/procurement/auto-forward-server.ts` `runAutoForward`, an SMS to a link receiver),
+from the daily cron and from `/api/procurement/auto-forward`, which the Procurement pages call
+on open (`useAutoForwardTick`). Before that date this section said it waited for a scheduler.
 
 Still absent from §6.4, each for the same reason — no consumer yet, and a switch
 that does nothing is worse than a missing one: the buyer self-issue limit (it also
@@ -195,3 +194,27 @@ The seeded team groups were NOT changed to match, by decision. Consequences:
 - A company whose only procurement staff is in `supply_chain` has nobody holding
   `offers.accept` to award, and its owner is read-only on RFQs. Give someone
   `offers.accept`, or change the group, on the team page.
+
+## Contractor Procurement Changes 1.5 (20 Oct 2026)
+
+The package `Contractor-Procurement-Changes-1.5` (PUR-01…PUR-10) and the owner's answers to its five
+questions (Q1 the owner holds every act by default, `ownerStepsBack` to step back · Q2 ONE RFQ across
+categories · Q3 no signature pad: the login or the SMS code is the signature · Q4 the team's «طلب مواد»
+without Project Management · Q5 no ledger without Finance). Commits on `main`, in order:
+
+| Commit | What |
+|---|---|
+| f81095b | Phase 1 fixes — the unit an incoming request sent is kept, a blank row never forces a lump sum, notice states, price formats, KSA cities only, auto-retry on a dropped connection, auto-forward (PUR-02 #6, PUR-03, PUR-06, PUR-09) |
+| 0f4aaa2 | Watad's material tree (`categories`, `public/data/material-tree.json`) as the one list; suppliers matched by sub-category id; Admin → Materials (PUR-04) |
+| 7fd8f73 | The RFQ editor in rows (`rfq-editor.ts`, `components/procurement/rfq-editor/`), one RFQ as written, delivery sites, the owner acts (PUR-02, PUR-03, Q1) |
+| 22bdbfe | «طلبات الشراء الواردة» as request cards — «ط.م 03», «انشره» / «جهّزه» (PUR-01) |
+| 2ae09bf | Inviting a supplier — its own dialog, «الدعوات» with derived states (PUR-05) |
+| 63c16ef | One way to receive and one receiver; the order's next step from the facts (PUR-06, PUR-07, Q3) |
+| 6524500 | One navigation with one name per page; Settings is what the customer sets (PUR-08) |
+| 7a1ca1c | The packages: without Finance «الدفع» (optional status, advance, invoice file to the accountant, «صدّر للمحاسبة»); without Projects the team's «طلب مواد» (`procTeamRequests`, server-written, progress read from RFQs/orders) (PUR-10) |
+| 0e90248 | One page per RFQ (`/contractor/rfqs/{id}/offers`; tender URLs redirect), the old «#…» reference kept; PM picks a new material from the tree (PUR-09 #5) |
+
+Open after 1.5: the team's «طلب مواد» is raised from Procurement's incoming page (a member with no
+Procurement permission has no entry point yet); the mobile app still confirms a legacy delivery with no
+order itself (orders already go to the website's desk); PUR-09 #9's «10 اا» was data typed in a request.
+
