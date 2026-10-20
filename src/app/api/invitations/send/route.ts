@@ -7,6 +7,10 @@ import { sendEmail, buildTeamInviteEmail } from "@/lib/email"
 import { resolveIdentityAdmin } from "@/lib/org-identity-admin"
 import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
 import { mayInviteSuppliers } from "@/lib/procurement/team"
+import { finalInviteText } from "@/lib/procurement/invitations"
+import { normalizePhoneE164, sendSms } from "@/lib/sms"
+
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string)
 
 const bodySchema = z
   .object({
@@ -23,7 +27,12 @@ const bodySchema = z
     phone: z.string().trim().max(30).optional(),
     category: z.string().trim().max(120).optional(),
     message: z.string().trim().max(1000).optional(),
-    channel: z.enum(["wa", "email"]).default("email"),
+    // PUR-05: WhatsApp opens the sender's own chat; e-mail and the text message are sent by the platform
+    // in the company's name. `message` is then the WHOLE ready text, with [[link]] where the link goes.
+    channel: z.enum(["wa", "email", "sms"]).default("email"),
+    contactName: z.string().trim().max(120).optional(),
+    specialtyIds: z.array(z.string().min(1).max(64)).max(60).optional(),
+    fullText: z.boolean().optional(),
     // supplier_invite from a guest's offer: what the buyer recorded of him, carried onto his record when he joins.
     guest: z
       .object({
@@ -39,7 +48,7 @@ const bodySchema = z
       return
     }
     if (!v.companyName) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["companyName"], message: "The company name is required" })
-    if (v.channel === "wa" && (v.phone || "").replace(/\D/g, "").length < 9) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["phone"], message: "A mobile number is required for WhatsApp" })
+    if ((v.channel === "wa" || v.channel === "sms") && (v.phone || "").replace(/\D/g, "").length < 9) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["phone"], message: "A mobile number is required for WhatsApp or a text message" })
     if (v.channel === "email" && !v.email) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["email"], message: "A valid email address is required" })
   })
 
@@ -67,7 +76,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return errorResponse(parsed.error.issues[0]?.message || "Invalid input", "INVALID_INPUT", 400)
     }
-    const { type, companyName, name, groupId, phone, category, message, channel, guest } = parsed.data
+    const { type, companyName, name, groupId, phone, category, message, channel, guest, contactName, specialtyIds, fullText } = parsed.data
     const email = parsed.data.email || ""
 
     if (email && decoded.email && email === decoded.email.toLowerCase()) {
@@ -259,17 +268,24 @@ export async function POST(req: NextRequest) {
     if (!existing.empty) {
       invitationRef = existing.docs[0].ref
       inviteToken = existing.docs[0].data().inviteToken
+      // Sent again: the 30 days start over (PUR-05 «أعد الإرسال»).
+      const renew: Record<string, unknown> = { renewedAt: new Date().toISOString() }
       if (!inviteToken) {
         inviteToken = randomBytes(32).toString("hex")
-        await invitationRef.update({ inviteToken })
+        renew.inviteToken = inviteToken
       }
+      if (specialtyIds?.length) renew.specialtyIds = specialtyIds
+      if (contactName) renew.contactName = contactName
+      await invitationRef.update(renew)
     } else {
       inviteToken = randomBytes(32).toString("hex")
       invitationRef = await db.collection("invitations").add({
         email: email || null,
         phone: phone || null,
         companyName: companyName || null,
+        contactName: contactName || null,
         category: category || null,
+        specialtyIds: specialtyIds || [],
         message: message || null,
         channel,
         guest: guest ?? null,
@@ -305,14 +321,25 @@ export async function POST(req: NextRequest) {
 
     const inviteUrl = isExistingUser ? `${baseUrl}/login` : `${baseUrl}/register?invite=${inviteToken}`
 
-    // WhatsApp or e-mail, the sender's own chat or mail opens with the link: the
-    // platform never sends a supplier invite in his name (supplier-file.ts).
+    // WhatsApp: the sender's own chat opens with the ready text. E-mail and a text message
+    // (PUR-05) are sent from here, in the company's name — the text is the sender's, the link ours.
+    let delivered = false
+    if (fullText && message && (channel === "email" || channel === "sms")) {
+      const text = finalInviteText(message, inviteUrl)
+      if (channel === "email" && email) {
+        const html = `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;font-size:15px;line-height:1.8;white-space:pre-wrap">${escapeHtml(text)}</div>`
+        delivered = (await sendEmail({ to: email, subject: `دعوة من ${contractorName || "مقاول"} إلى منصة مدماك تِك`, html })).sent
+      } else if (channel === "sms" && phone) {
+        const to = normalizePhoneE164(phone)
+        delivered = to ? (await sendSms({ to, body: text })).sent : false
+      }
+    }
     await invitationRef
-      .update({ sentChannel: channel, sentAt: FieldValue.serverTimestamp() })
+      .update({ sentChannel: channel, sentAt: FieldValue.serverTimestamp(), sentByPlatform: delivered })
       .catch((err) => console.error("Failed to record sentChannel:", err))
     return NextResponse.json({
       success: true,
-      data: { invitationId: invitationRef.id, emailSent: false, isExistingUser, joinUrl: inviteUrl },
+      data: { invitationId: invitationRef.id, emailSent: channel === "email" && delivered, delivered, isExistingUser, joinUrl: inviteUrl },
     })
   } catch (err) {
     console.error("Invitation send error:", err)

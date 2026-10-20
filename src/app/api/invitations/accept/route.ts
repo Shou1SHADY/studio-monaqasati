@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
+import { invitationState } from "@/lib/procurement/invitations"
 import { resolveIdentityAdmin } from "@/lib/org-identity-admin"
 import { SUPPLIER_RECORDS, invitedSupplierRecord, supplierRecordId } from "@/lib/procurement/supplier-file"
 
@@ -64,6 +65,9 @@ export async function POST(req: NextRequest) {
     const validType = inv.type === "supplier_invite" || inv.type === "team_invite"
     if (!validType || inv.status !== "pending") {
       return errorResponse("This invitation is no longer valid", "INVITATION_NOT_PENDING", 410)
+    }
+    if (inv.type === "supplier_invite" && invitationState(inv, new Date()) === "expired") {
+      return errorResponse("This invitation has expired", "INVITATION_EXPIRED", 410)
     }
 
     // --- Load the accepting user, creating their profile if this is their
@@ -204,6 +208,13 @@ export async function POST(req: NextRequest) {
     // switched into one, per src/lib/org-identity-admin.ts.
     const resolvedProfile = (await resolveIdentityAdmin(db, decoded.uid, profile)) as Record<string, unknown>
 
+    // The specialties the inviter named (from the material tree, PUR-05) become his until he chooses his own.
+    const invitedSubs = Array.isArray(inv.specialtyIds) ? (inv.specialtyIds as unknown[]).filter((x): x is string => typeof x === "string") : []
+    if (invitedSubs.length && !(Array.isArray(resolvedProfile.specialtyIds) && (resolvedProfile.specialtyIds as unknown[]).length)) {
+      const target = supplierOrgId !== decoded.uid ? db.collection("organizations").doc(supplierOrgId) : userRef
+      await target.set({ specialtyIds: invitedSubs, specialtyIdsUpdatedAt: new Date().toISOString() }, { merge: true }).catch((err) => console.error("invited specialties not applied:", err))
+    }
+
     // --- Create the link unless one is already active ---
     const linksSnap = await db
       .collection("contractorSupplierLinks")
@@ -248,6 +259,7 @@ export async function POST(req: NextRequest) {
 
     await invitationRef.update({
       status: "accepted",
+      acceptedSupplierOrgId: supplierOrgId,
       acceptedAt: FieldValue.serverTimestamp(),
       acceptedBy: decoded.uid,
       acceptedEmail: (profile.email as string) || decoded.email || null,

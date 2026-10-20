@@ -447,7 +447,7 @@ export const inviteMessage = (note: string | null | undefined, sentence: string)
 // The tab's segments — the two price segments are for those who see prices
 // ---------------------------------------------------------------------------
 
-export const SUPPLIER_SEGMENTS = ["mine", "platform", "agreements", "history"] as const
+export const SUPPLIER_SEGMENTS = ["mine", "invitations", "platform", "agreements", "history"] as const
 export type SupplierTabSegment = (typeof SUPPLIER_SEGMENTS)[number]
 
 export const PRICE_SEGMENTS: readonly SupplierTabSegment[] = ["agreements", "history"]
