@@ -31,10 +31,15 @@ const isoOf = (v: unknown): string | null => {
   return typeof ts.toDate === "function" ? ts.toDate().toISOString() : null
 }
 
-/** When it stops working: 30 days after it was sent (or sent again). */
+/** The day invitations started expiring (Procurement 1.5, PUR-05). One sent before it counts its 30 days from
+ * here, so the release does not end every older pending invitation at once. */
+export const INVITE_EXPIRY_SINCE = "2026-10-20T00:00:00.000Z"
+
+/** When it stops working: 30 days after it was sent (or sent again) — never counted from before expiry existed. */
 export function inviteExpiresAt(inv: InvitationFacts): string | null {
-  const from = inv.renewedAt || isoOf(inv.createdAt)
-  if (!from) return null
+  const sent = inv.renewedAt || isoOf(inv.createdAt)
+  if (!sent) return null
+  const from = sent < INVITE_EXPIRY_SINCE ? INVITE_EXPIRY_SINCE : sent
   const t = Date.parse(from)
   return Number.isFinite(t) ? new Date(t + INVITE_TTL_DAYS * 86_400_000).toISOString() : null
 }

@@ -10,9 +10,14 @@ describe("an invitation's state", () => {
     expect(invitationState({ status: "accepted", createdAt: "2026-09-01T09:00:00Z" }, NOW)).toBe("joined")
   })
   it("expires 30 days after it was sent — sending it again restarts the 30", () => {
-    expect(invitationState({ status: "pending", createdAt: "2026-09-15T09:00:00Z" }, NOW)).toBe("expired")
-    expect(invitationState({ status: "pending", createdAt: "2026-09-15T09:00:00Z", renewedAt: "2026-10-18T09:00:00Z" }, NOW)).toBe("sent")
-    expect(inviteExpiresAt({ createdAt: "2026-10-01T00:00:00.000Z" })).toBe("2026-10-31T00:00:00.000Z")
+    const later = new Date("2026-12-20T09:00:00Z")
+    expect(invitationState({ status: "pending", createdAt: "2026-11-01T09:00:00Z" }, later)).toBe("expired")
+    expect(invitationState({ status: "pending", createdAt: "2026-11-01T09:00:00Z", renewedAt: "2026-12-18T09:00:00Z" }, later)).toBe("sent")
+    expect(inviteExpiresAt({ createdAt: "2026-11-01T00:00:00.000Z" })).toBe("2026-12-01T00:00:00.000Z")
+  })
+  it("one sent before expiry existed counts its 30 days from the release, not from its own day (review of 20 Oct)", () => {
+    expect(invitationState({ status: "pending", createdAt: "2026-09-15T09:00:00Z" }, NOW)).toBe("sent")
+    expect(inviteExpiresAt({ createdAt: "2026-09-15T09:00:00Z" })).toBe("2026-11-19T00:00:00.000Z")
   })
 })
 

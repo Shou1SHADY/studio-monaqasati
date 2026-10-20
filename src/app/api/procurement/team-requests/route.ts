@@ -5,12 +5,12 @@ import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { callerOf } from "@/lib/receipt-links"
 import { projectsOn } from "@/lib/procurement/financeless-server"
 import { riyadhYear } from "@/lib/procurement/numbering"
-import { todayOf } from "@/lib/procurement/po"
+import { riyadhDay } from "@/lib/hr/format"
 import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
 import { PURCHASE_ORDERS, type PurchaseOrder } from "@/lib/procurement/types"
 import {
   TEAM_REQUESTS,
-  rfqNamesRequest,
+  holdsRequest,
   teamProgress,
   teamRequestRefusal,
   teamRequestState,
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
     if (data.action === "create") {
       if (await projectsOn(db, caller.orgId)) return fail("Materials are requested from the project", "PROJECTS_ON", 409)
       const input = { lines: data.lines.map((l) => ({ name: l.name, unit: l.unit, quantity: l.quantity, needBy: l.needBy ?? null, material: (l.material as TeamRequestDoc["lines"][number]["material"]) ?? null })), needBy: data.needBy, place: data.place }
-      const refusal = teamRequestRefusal(input, todayOf(now))
+      const refusal = teamRequestRefusal(input, riyadhDay(now))
       if (refusal) return fail("Check the request", `BAD_${refusal.toUpperCase()}`, 400)
       const year = riyadhYear(now)
       const counter = db.collection("mfgCounters").doc(`${caller.orgId}__${MAT_TYPE}__${year}`)
@@ -180,7 +180,7 @@ export async function POST(req: NextRequest) {
     if (data.action === "withdraw") {
       // Any RFQ naming it — a draft too: Procurement has prepared it, so it is no longer only his.
       const rfqs = (await db.collection("rfqs").where("organizationId", "==", caller.orgId).where("needSources", "array-contains", teamSource(doc.id)).get()).docs.map((d) => ({ id: d.id, ...d.data() }) as TeamLinkedRfq)
-      const refusal = withdrawRefusal(doc, uid, rfqs.some((r) => rfqNamesRequest(r, doc.id)))
+      const refusal = withdrawRefusal(doc, uid, rfqs.some((r) => holdsRequest(r, doc.id)))
       if (refusal) return fail("It cannot be withdrawn now", refusal.toUpperCase(), 409)
       await ref.update({ status: "withdrawn", withdrawnAt: at })
       return NextResponse.json({ success: true, data: {} })

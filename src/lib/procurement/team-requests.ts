@@ -54,6 +54,7 @@ export const teamSource = (id: string): TeamSource => ({ kind: TEAM_SOURCE_KIND,
 export interface TeamLinkedRfq {
   id: string
   status?: string | null
+  createdAt?: unknown
   rfqNumber?: string | null
   needSources?: unknown
   purchaseSource?: unknown
@@ -79,8 +80,14 @@ export interface TeamProgress {
 }
 
 /** What became of it: the newest published RFQ naming it, and the order awarded from that RFQ (or naming it). */
+const at = (v: unknown): string => (typeof v === "string" ? v : typeof (v as { toDate?: () => Date } | null)?.toDate === "function" ? (v as { toDate: () => Date }).toDate().toISOString() : "")
+
+/** An RFQ that still holds the request: published, not cancelled (a cancelled one hands it back). */
+export const holdsRequest = (r: TeamLinkedRfq, id: string): boolean => r.status !== "Cancelled" && rfqNamesRequest(r, id)
+
 export function teamProgress(id: string, rfqs: TeamLinkedRfq[], orders: PurchaseOrder[]): TeamProgress {
-  const published = rfqs.filter((r) => r.status !== "Draft" && rfqNamesRequest(r, id))
+  // The newest by creation, never by the order the query happened to return.
+  const published = rfqs.filter((r) => r.status !== "Draft" && holdsRequest(r, id)).sort((a, b) => at(a.createdAt).localeCompare(at(b.createdAt)))
   const rfq = published[published.length - 1] || null
   const po =
     orders.find((o) => o.status !== "cancelled" && names(o.purchaseSource, id)) ||

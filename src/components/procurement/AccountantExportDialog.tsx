@@ -82,6 +82,8 @@ export function AccountantExportDialog({ open, onOpenChange, orders, receipts }:
       a.download = filename
       a.click()
       URL.revokeObjectURL(url)
+    } catch {
+      toast({ title: tp("failed"), variant: "destructive" })
     } finally {
       setBusy(null)
     }
@@ -103,6 +105,8 @@ export function AccountantExportDialog({ open, onOpenChange, orders, receipts }:
         onOpenChange(false)
       } else if (body?.code === "NO_ACCOUNTANT") setNoAccountant(true)
       else toast({ title: tp("not_sent"), variant: "destructive" })
+    } catch {
+      toast({ title: tp("not_sent"), variant: "destructive" })
     } finally {
       setBusy(null)
     }

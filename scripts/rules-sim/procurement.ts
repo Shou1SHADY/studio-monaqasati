@@ -671,6 +671,9 @@ const { managerApprovalLimit: _m, buyerSelfIssueLimit: _b, directPurchaseCap: _d
 add("settings first save (create): manager, owner-only limits omitted as the client does", "ALLOW", { uid: MANAGER, method: "create", path: SP, after: noLimits })
 add("settings: manager changes managerApprovalLimit", "DENY", { ...sUpd(MANAGER, { managerApprovalLimit: 999999 }) })
 add("settings: manager changes buyerSelfIssueLimit", "DENY", { ...sUpd(MANAGER, { buyerSelfIssueLimit: 99999 }) })
+// Procurement 1.5 (Q1): only the owner steps back to reading — the approver may not make him read-only.
+add("settings: owner steps back (ownerStepsBack)", "ALLOW", { ...sUpd(OWNER, { ownerStepsBack: true }) })
+add("settings: manager sets ownerStepsBack", "DENY", { ...sUpd(MANAGER, { ownerStepsBack: true }) })
 add("settings: manager first save WITH the limits", "DENY", { uid: MANAGER, method: "create", path: SP, after: settings })
 add("settings: buyer (offers.accept)", "DENY", { ...sUpd(BUYER, { replyWindowDays: 3 }) })
 add("settings: expediter", "DENY", { ...sUpd(uidOf("expediter"), { replyWindowDays: 3 }) })

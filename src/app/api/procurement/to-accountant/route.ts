@@ -12,7 +12,7 @@ import type { InvoiceFile } from "@/lib/procurement/payment-mark"
 
 const body = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("invoice"), poId: z.string().min(1).max(128), url: z.string().url().max(2000), name: z.string().max(200) }),
-  z.object({ kind: z.literal("export"), filename: z.string().regex(/^[\w.؀-ۿ -]{1,120}\.(xlsx|csv)$/), content: z.string().max(12_000_000), period: z.string().max(80) }),
+  z.object({ kind: z.literal("export"), filename: z.string().regex(/^[\w.؀-ۿ -]{1,120}\.(xlsx|csv)$/), content: z.string().max(4_000_000), period: z.string().max(80) }),
 ])
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string)
@@ -43,6 +43,13 @@ export async function POST(req: NextRequest) {
       const po = (await ref.get()).data()
       if (!po || po.organizationId !== caller.orgId) return fail("Order not found", "NOT_FOUND", 404)
       const files = (po.invoiceFiles || []) as InvoiceFile[]
+      // Only a file of THIS order is sent under the platform's name: one uploaded on it, or the supplier's invoice
+      // from his portal for it — never an address the client made up.
+      const own = files.some((f) => f.url === data.url)
+      const fromPortal = own
+        ? false
+        : (await db.collection("supplierInvoices").where("buyerOrgId", "==", caller.orgId).where("poId", "==", data.poId).get()).docs.some((d) => (d.data().file as { url?: string } | undefined)?.url === data.url)
+      if (!own && !fromPortal) return fail("Not a file of this order", "NOT_THIS_ORDER", 400)
       const html = `<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;font-size:15px;line-height:1.8">فاتورة المورد «${esc(String(po.supplierName || ""))}» لأمر الشراء ${esc(String(po.docNumber || ""))}<br/><a href="${esc(data.url)}">${esc(data.name)}</a><br/><br/>أرسلها ${esc(caller.name)} من ${esc(String(company))} عبر منصة مدماك تِك.</div>`
       const sent = (await sendEmail({ to, subject: `فاتورة مورد — أمر الشراء ${po.docNumber || ""}`, html })).sent
       if (!sent) return fail("The e-mail could not be sent", "NOT_SENT", 502)

@@ -28,7 +28,7 @@ describe("the order on its way", () => {
     expect(deliveryStep(po({ isGuestSupplier: true, promisedDate: "2026-10-19" }), [], NOW)).toEqual({ kind: "guest_due", day: "2026-10-19" })
   })
   it("says what is left of a part received, and a reject waits for our decision", () => {
-    expect(deliveryStep(po({ lines: [{ id: "l1", name: "حديد", unit: "طن", quantity: 10, accepted: 6, rejected: 0, held: 0, cancelled: 0 }] as PurchaseOrder["lines"] }), [], NOW)).toEqual({ kind: "part_received", received: 6, ordered: 10, left: 4, unit: "طن" })
+    expect(deliveryStep(po({ lines: [{ id: "l1", name: "حديد", unit: "طن", quantity: 10, accepted: 6, rejected: 0, held: 0, cancelled: 0 }] as PurchaseOrder["lines"] }), [], NOW)).toEqual({ kind: "part_received", received: 6, ordered: 10, left: 4, unit: "طن", byLines: false, linesDone: 0, linesTotal: 1 })
     expect(deliveryStep(po({ lines: [{ id: "l1", name: "حديد", unit: "طن", quantity: 10, accepted: 5, rejected: 1, held: 0, cancelled: 0 }] as PurchaseOrder["lines"] }), [], NOW)).toMatchObject({ kind: "rejected", qty: 1 })
   })
 })

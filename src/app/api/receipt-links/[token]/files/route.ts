@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { UPLOAD_MAX_BYTES } from "@/lib/upload-fit"
 import { randomUUID } from "node:crypto"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminFirestore, getAdminStorage, getStorageBucketName } from "@/lib/firebaseAdmin"
@@ -9,7 +10,8 @@ import { MAX_RECEIVER_FILES, RECEIPT_LINKS, RECEIVER_FILE_KINDS, resolveReceiptL
 // the key, as for the count; the files land on the link and travel with the signed report.
 // Images and PDFs only, 10 MB each, ten at most.
 
-const MAX_BYTES = 10 * 1024 * 1024
+// Under Vercel's 4.5 MB request-body limit (prod); the browser shrinks a photo first (upload-fit.ts).
+const MAX_BYTES = UPLOAD_MAX_BYTES
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
@@ -26,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     const kind = String(form?.get("kind") || "photo") as ReceiverFileKind
     if (!(file instanceof File) || !(RECEIVER_FILE_KINDS as readonly string[]).includes(kind)) return fail("Choose a file", "BAD_REQUEST", 400)
     if (!(file.type.startsWith("image/") || file.type === "application/pdf")) return fail("Images or PDF only", "BAD_TYPE", 400)
-    if (file.size > MAX_BYTES) return fail("10 MB at most", "TOO_BIG", 400)
+    if (file.size > MAX_BYTES) return fail("4 MB at most", "TOO_BIG", 400)
 
     const at = new Date().toISOString()
     const safe = file.name.replace(/[^\w.؀-ۿ-]+/g, "_").slice(-80) || "file"

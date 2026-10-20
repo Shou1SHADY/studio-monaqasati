@@ -643,7 +643,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             )
             break
           case "part_received":
-            body = <Callout tone="blue">{t("next2.part", { received: step.received.toLocaleString("en-US"), ordered: step.ordered.toLocaleString("en-US"), left: step.left.toLocaleString("en-US"), unit: step.unit })}</Callout>
+            body = <Callout tone="blue">{step.byLines ? t("next2.part_lines", { done: step.linesDone, total: step.linesTotal }) : t("next2.part", { received: step.received.toLocaleString("en-US"), ordered: step.ordered.toLocaleString("en-US"), left: step.left.toLocaleString("en-US"), unit: step.unit })}</Callout>
             buttons = (
               <>
                 {remindSupplierBtn(t("next2.remind_rest"))}

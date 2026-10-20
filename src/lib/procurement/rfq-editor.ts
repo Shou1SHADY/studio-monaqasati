@@ -316,11 +316,12 @@ export function rfqLinesDoc(groups: EditorGroup[], locale: string, projectName: 
 }
 
 /** The RFQ-level place: one city when every group shares it, else the first group's (the lines carry their own). */
-export function rfqPlace(groups: EditorGroup[]): { city: string; district: string; multi: boolean } {
+export function rfqPlace(groups: EditorGroup[]): { city: string; district: string; multi: boolean; cities: string[] } {
   const used = groups.filter((g) => g.lines.some(lineComplete))
   const cities = [...new Set(used.map((g) => g.city).filter(Boolean))]
   const first = used[0]
-  return { city: first?.city || "", district: used.length === 1 ? first.district : "", multi: cities.length > 1 || used.length > 1 }
+  // `cities`: every city the RFQ delivers to — a supplier in ANY of them is reached, not only the first group's.
+  return { city: first?.city || "", district: used.length === 1 ? first.district : "", multi: cities.length > 1 || used.length > 1, cities }
 }
 
 /** The groups' own facts, kept on the RFQ so a draft or an edit reopens with its places and numbers. */
@@ -381,3 +382,22 @@ export function incomingFromNeed(need: Need, sites: DeliverySite[]): IncomingReq
     lines: need.lines.map((l) => ({ name: l.name, quantity: l.quantity, unit: l.unit, needBy: l.needBy ? l.needBy.slice(0, 10) : null, material: (l as { material?: MaterialPick | null }).material || null })),
   }
 }
+
+/**
+ * Who may reopen an RFQ in the editor (review of 20 Oct 2026): a draft, or a published RFQ no
+ * supplier has priced yet. Once an offer exists its lines are indexed by the RFQ's rows
+ * (`rfqProductIndex`), so rewriting them would point offers at the wrong materials; a closed,
+ * cancelled or awarded RFQ is never reopened by «احفظ التعديلات» (publishing writes status New).
+ */
+export function rfqEditRefusal(rfq: { status?: string | null; offersCount?: number | null }, offers: number): "closed" | "has_offers" | null {
+  if (rfq.status === "Draft") return null
+  if (rfq.status !== "New") return "closed"
+  return offers > 0 || Number(rfq.offersCount) > 0 ? "has_offers" : null
+}
+
+/** What an edit keeps from the RFQ as it was: its project and its author are not the editor's to change. */
+export function rfqIdentityOf(rfq: Record<string, unknown>): { projectId: string | null; contractorId: string | null; createdByUserId: string | null; createdByUserName: string | null } {
+  const s = (v: unknown) => (typeof v === "string" && v ? v : null)
+  return { projectId: s(rfq.projectId), contractorId: s(rfq.contractorId), createdByUserId: s(rfq.createdByUserId), createdByUserName: s(rfq.createdByUserName) }
+}
+

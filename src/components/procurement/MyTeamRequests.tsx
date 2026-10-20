@@ -10,6 +10,7 @@ import { useLocale, useTranslations } from "next-intl"
 import { getAuth } from "firebase/auth"
 import { ClipboardList, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useUser } from "@/firebase"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
@@ -27,13 +28,15 @@ export function MyTeamRequests({ refreshKey }: { refreshKey: number }) {
   const [rows, setRows] = useState<Mine[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
+  // The signed-in user may arrive after the first render: the list loads once he does, never spins forever.
+  const { user } = useUser()
   const load = useCallback(async () => {
-    const user = getAuth().currentUser
     if (!user) return
-    const res = await fetch("/api/procurement/team-requests", { headers: { Authorization: `Bearer ${await user.getIdToken()}` } }).catch(() => null)
+    const token = await user.getIdToken().catch(() => "")
+    const res = token ? await fetch("/api/procurement/team-requests", { headers: { Authorization: `Bearer ${token}` } }).catch(() => null) : null
     const body = res && res.ok ? ((await res.json().catch(() => null)) as { data?: { requests?: Mine[] } } | null) : null
     setRows(body?.data?.requests || [])
-  }, [])
+  }, [user])
   useEffect(() => {
     void load()
   }, [load, refreshKey])
@@ -48,6 +51,8 @@ export function MyTeamRequests({ refreshKey }: { refreshKey: number }) {
       if (res.ok) toast({ title: t("tr_withdrawn") })
       else toast({ title: body?.code === "IN_RFQ" ? t("tr_withdraw_in_rfq") : t("tr_failed"), variant: "destructive" })
       await load()
+    } catch {
+      toast({ title: t("tr_failed"), variant: "destructive" })
     } finally {
       setBusy(null)
     }

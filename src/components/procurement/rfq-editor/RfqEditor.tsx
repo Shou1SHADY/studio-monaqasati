@@ -15,7 +15,7 @@ import { displayNeedRef } from "@/lib/procurement/format"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
-import { addDoc, arrayUnion, collection, doc, getDoc, query, setDoc, updateDoc, where } from "firebase/firestore"
+import { addDoc, arrayUnion, collection, doc, getDoc, getDocs, limit, query, setDoc, updateDoc, where } from "firebase/firestore"
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage"
 import { ArrowLeft, ArrowRight, ClipboardPaste, Inbox, Loader2, Send } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useStorage, useUser } from "@/firebase"
@@ -57,6 +57,8 @@ import {
   addRequests,
   blankLine,
   groupsFromRfq,
+  rfqEditRefusal,
+  rfqIdentityOf,
   groupsMeta,
   incomingFromNeed,
   lineComplete,
@@ -202,6 +204,8 @@ export function RfqEditor({
   const [showProblems, setShowProblems] = useState(false)
   const [draftId, setDraftId] = useState<string | null>(null)
   const [editingLive, setEditingLive] = useState(false)
+  // An RFQ opened to edit keeps its project and its author (never the editor's, never null).
+  const identity = useRef<ReturnType<typeof rfqIdentityOf> | null>(null)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [publishing, setPublishing] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -245,6 +249,14 @@ export function RfqEditor({
         router.replace("/contractor/rfqs")
         return
       }
+      const offers = data.status === "New" ? (await getDocs(query(collection(firestore, "offers"), where("rfqId", "==", editId), limit(1))).catch(() => null))?.size ?? 1 : 0
+      const refusal = rfqEditRefusal(data as { status?: string; offersCount?: number }, offers)
+      if (refusal) {
+        toast({ title: t(refusal === "has_offers" ? "err_edit_has_offers" : "err_edit_closed"), variant: "destructive" })
+        router.replace(`/contractor/rfqs/${editId}/offers`)
+        return
+      }
+      identity.current = rfqIdentityOf(data)
       setGroups(groupsFromRfq(data))
       setTitleEdited(true)
       setValues((v) => ({
@@ -387,10 +399,11 @@ export function RfqEditor({
       .filter((x): x is string => !!x)
       .sort()[0]
     const direct = values.audience === "direct"
+    const kept = identity.current
     return {
-      contractorId: user?.uid || "",
+      contractorId: kept?.contractorId || user?.uid || "",
       organizationId: orgId,
-      projectId: projectId || null,
+      projectId: projectId || kept?.projectId || null,
       projectIds: Array.from(new Set(d.products.map((p) => (p as { projectId?: string }).projectId).filter(Boolean))),
       title: title || t("untitled"),
       ...d,
@@ -403,6 +416,7 @@ export function RfqEditor({
       city: place.city,
       district: place.district,
       multiPlace: place.multi,
+      cities: place.cities,
       deadline: direct ? null : values.deadline,
       estimatedBudget: !direct && values.budget ? toAmount(values.budget) : null,
       notes: values.notes,
@@ -417,8 +431,8 @@ export function RfqEditor({
       orderedFromMdmakDirect: false,
       requiresWarranty: d.products.some((p) => p.requiresWarranty),
       paymentTermsList: rfqTermsToStore(values.terms, values.termsSet),
-      createdByUserId: user?.uid || "",
-      createdByUserName: (profile as { name?: string } | null)?.name || user?.email || "",
+      createdByUserId: kept?.createdByUserId || user?.uid || "",
+      createdByUserName: kept?.createdByUserName || (profile as { name?: string } | null)?.name || user?.email || "",
       updatedAt: new Date().toISOString(),
     }
   }

@@ -41,7 +41,8 @@ export function storedSites(raw: unknown): DeliverySite[] {
       receiverId: text(x.receiverId) || null,
       projectId: text(x.projectId) || null,
       warehouseId: text(x.warehouseId) || null,
-      retired: x.retired === true || undefined,
+      // Never `retired: undefined`: the list is written back whole, and Firestore refuses undefined.
+      ...(x.retired === true ? { retired: true } : {}),
     }))
     .filter((s) => s.id && s.name)
 }
@@ -77,7 +78,10 @@ export const siteLine = (s: Pick<DeliverySite, "city" | "district">, cityText: (
   [s.city ? cityText(s.city) : "", s.district ? districtText(s.district) : ""].filter(Boolean).join(" — ")
 
 /** A stored site replaced or added (the settings page and the editor's «احفظ المدينة»). */
+/** Firestore refuses an undefined field (no `ignoreUndefinedProperties`): every site written goes through this. */
+const writable = (s: DeliverySite): DeliverySite => Object.fromEntries(Object.entries(s).filter(([, v]) => v !== undefined)) as DeliverySite
+
 export function upsertSite(list: DeliverySite[], site: DeliverySite): DeliverySite[] {
   const i = list.findIndex((s) => s.id === site.id)
-  return i >= 0 ? list.map((s, j) => (j === i ? site : s)) : [...list, site]
+  return (i >= 0 ? list.map((s, j) => (j === i ? site : s)) : [...list, site]).map(writable)
 }

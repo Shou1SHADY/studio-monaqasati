@@ -21,9 +21,11 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Chip } from "@/components/module-ui/Chip"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { sarLtr } from "@/lib/riyal"
+import { fitForUpload } from "@/lib/upload-fit"
 import { lineOutstanding, todayOf } from "@/lib/procurement/po"
 import { PAYMENT_STATES, paymentStateOf, type FinancelessPo, type InvoiceFile, type PaymentState } from "@/lib/procurement/payment-mark"
 import { fmtDayLong } from "@/lib/procurement/format"
+import { receiptProgress } from "@/lib/procurement/next-step"
 import { PROCUREMENT_SETTINGS, type ProcActor } from "@/lib/procurement/types"
 
 const TONE: Record<PaymentState, "mute" | "warn" | "ok"> = { unpaid: "mute", part: "warn", paid: "ok" }
@@ -54,8 +56,7 @@ export function FinancelessPaymentSection({ po, actor, orgId, Section }: { po: F
   const marksPayment = actor.isOwner || actor.canApprove
   const files = actor.isOwner || actor.canPrepare || actor.canApprove
   const total = Math.round(po.totalExVat * (1 + (po.vatRate || 0)) * 100) / 100
-  const ordered = po.lines.reduce((s, l) => s + (Number(l.quantity) || 0) - (Number(l.cancelled) || 0), 0)
-  const received = po.lines.reduce((s, l) => s + (Number(l.accepted) || 0), 0)
+  const progress = receiptProgress(po.lines)
   const done = po.lines.every((l) => lineOutstanding(l) <= 0)
   const advancePct = Number(po.advancePercent) || 0
   const money = (v: number) => sarLtr(v.toLocaleString("en-US", { maximumFractionDigits: 2 }))
@@ -82,10 +83,15 @@ export function FinancelessPaymentSection({ po, actor, orgId, Section }: { po: F
   }
 
   const upload = async (list: FileList | null) => {
-    const f = list?.[0]
-    if (!f) return
+    const picked = list?.[0]
+    if (!picked) return
     setBusy("upload")
     try {
+      const f = await fitForUpload(picked)
+      if (!f) {
+        toast({ title: t("pay.too_big"), variant: "destructive" })
+        return
+      }
       const fd = new FormData()
       fd.append("file", f)
       fd.append("poId", po.id)
@@ -105,8 +111,14 @@ export function FinancelessPaymentSection({ po, actor, orgId, Section }: { po: F
       const res = await fetch("/api/procurement/to-accountant", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` }, body: JSON.stringify({ kind: "invoice", poId: po.id, url, name }) })
       const body = (await res.json().catch(() => null)) as { code?: string; data?: { to?: string } } | null
       if (res.ok) toast({ title: t("pay.sent_to", { to: body?.data?.to || "" }) })
-      else if (body?.code === "NO_ACCOUNTANT") setAskEmail({ url, name })
+      // Setting the address is the owner's or the approver's (the settings rules); anyone else is told whom to ask.
+      else if (body?.code === "NO_ACCOUNTANT") {
+        if (actor.isOwner || actor.canApprove) setAskEmail({ url, name })
+        else toast({ title: t("pay.no_accountant_ask"), variant: "destructive" })
+      }
       else toast({ title: t("pay.not_sent"), variant: "destructive" })
+    } catch {
+      toast({ title: t("pay.not_sent"), variant: "destructive" })
     } finally {
       setBusy(null)
     }
@@ -114,7 +126,12 @@ export function FinancelessPaymentSection({ po, actor, orgId, Section }: { po: F
 
   const saveEmailAndSend = async () => {
     if (!firestore || !askEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return
-    await setDoc(doc(firestore, PROCUREMENT_SETTINGS, orgId), { organizationId: orgId, accountantEmail: email.trim().toLowerCase(), updatedAt: serverTimestamp() }, { merge: true })
+    try {
+      await setDoc(doc(firestore, PROCUREMENT_SETTINGS, orgId), { organizationId: orgId, accountantEmail: email.trim().toLowerCase(), updatedAt: serverTimestamp() }, { merge: true })
+    } catch {
+      toast({ title: t("pay.failed"), variant: "destructive" })
+      return
+    }
     const next = askEmail
     setAskEmail(null)
     await sendToAccountant(next.url, next.name)
@@ -153,7 +170,7 @@ export function FinancelessPaymentSection({ po, actor, orgId, Section }: { po: F
         )}
         <div className="flex justify-between gap-3">
           <dt className="text-muted-foreground">{t("pay.received")}</dt>
-          <dd className="font-semibold">{t(done ? "pay.received_done" : "pay.received_of", { received: received.toLocaleString("en-US"), ordered: ordered.toLocaleString("en-US"), unit: po.lines[0]?.unit || "" })}</dd>
+          <dd className="font-semibold">{done ? t("pay.received_done") : progress.byLines ? t("pay.received_lines", { done: progress.linesDone, total: progress.linesTotal }) : t("pay.received_of", { received: progress.received.toLocaleString("en-US"), ordered: progress.ordered.toLocaleString("en-US"), unit: progress.unit })}</dd>
         </div>
         {last && (
           <div className="flex justify-between gap-3">

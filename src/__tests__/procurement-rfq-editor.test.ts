@@ -96,7 +96,7 @@ describe("one RFQ, as written (PUR-03)", () => {
     expect(doc.products[1]).toMatchObject({ unitOfMeasure: "طن", deliveryCity: "الرياض", deliveryDistrict: "حي العليا", needBy: "2026-11-05", projectId: "p2" })
   })
   it("says the place once when it can, and what the review warns of", () => {
-    expect(rfqPlace(groups)).toEqual({ city: "الرياض", district: "", multi: true })
+    expect(rfqPlace(groups)).toEqual({ city: "الرياض", district: "", multi: true, cities: ["الرياض"] })
     const f = reviewFacts(groups, index)
     expect(f).toMatchObject({ lines: 2, subs: 2, groups: 2, earliestNeed: "2026-11-05" })
     expect(f.noSpec).toEqual(["أسمنت", "حديد 16"])
