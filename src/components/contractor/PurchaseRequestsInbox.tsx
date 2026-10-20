@@ -1,19 +1,20 @@
 "use client"
 
-// «طلبات الشراء الواردة» (PRD 3.0 §7.2; the prototype's vNeed): every need line
-// that reached Purchasing — a work order's shortfall, a project's request, a
-// stock gap — ONE ROW PER MATERIAL LINE, sorted by its last order day, each
-// with its computed path and one next step in its drawer. Lines are selected
-// and ordered together (an agreement order, a direct order, one RFQ); a
-// project request's lines travel as one, because its links are the request's.
+// «طلبات الشراء الواردة» (Procurement 1.5, PUR-01): the REQUEST, not the line — what a
+// project, the workshop or the stores sent as one request is one card, under the number it
+// was written with («ط.م 03 · مجمع الياسمين»), with its materials, its need-by date, its last
+// day to order, who asked and one state. On a new request: «انشره» opens its panel on the
+// publishing step (then the review, and «انشر» there only), «جهّزه» opens the editor on a
+// draft. Picking several offers «اجمعها في طلب عروض واحد». A line's own path and acts (an
+// agreement, a direct order, the workshop, «تعذّر الشراء») stay in its drawer («التفاصيل»).
 //
-// Nothing here RAISES a need. A buyer sees his categories; the owner, when he
-// has a team, reads. The derivation lives in `src/lib/procurement/need-desk.ts`.
+// Nothing here RAISES a need. A buyer sees his categories; the owner acts (question 1) unless
+// he stepped back. The lines' derivation lives in `need-desk.ts`, the cards in `incoming-requests.ts`.
 
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, CheckCircle2, FileSignature, Lightbulb, Loader2, Scale, ShoppingCart, X } from "lucide-react"
+import { AlertTriangle, CheckCircle2, FileSignature, Loader2, Scale, ShoppingCart, X } from "lucide-react"
 import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -31,8 +32,12 @@ import { matchesSearch } from "@/lib/search-text"
 import { declinePurchaseRequest, markPurchaseArrived, moveRequestToPurchase } from "@/lib/manufacturing-writes"
 import { orderRef } from "@/lib/manufacturing-view"
 import { emitMfgEvent, mfgLinks } from "@/lib/mfg-events"
-import { DESK_SEGMENTS, inBuyerScope, inSegment, isActionState, mergeHint, segmentCounts, selectionSummary, sortRows, type DeskSegment, type NeedRow } from "@/lib/procurement/need-desk"
-import { needSourceParam } from "@/lib/procurement/needs"
+import { inBuyerScope, selectionSummary, type NeedRow } from "@/lib/procurement/need-desk"
+import { REQUEST_SEGMENTS, inRequestSegment, requestCards, requestSegmentCounts, sortCards, type RequestCard, type RequestSegment } from "@/lib/procurement/incoming-requests"
+import { displayNeedRef } from "@/lib/procurement/format"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Checkbox } from "@/components/ui/checkbox"
+import { RfqEditor } from "@/components/procurement/rfq-editor/RfqEditor"
 import { recordNeedDecision } from "@/lib/procurement/need-decision-writes"
 import { todayOf } from "@/lib/procurement/po"
 import { ProcWriteError } from "@/lib/procurement/writes"
@@ -46,11 +51,11 @@ import { DirectOrderDialog } from "@/components/procurement/DirectOrderDialog"
 import { NeedLineDrawer } from "@/components/procurement/NeedLineDrawer"
 import { ProceedPurchaseDialog } from "@/components/procurement/ProceedPurchaseDialog"
 import { StatusPill } from "@/components/module-ui/StatusPill"
-import { LINE_STATE_TONE, PATH_ICON, PATH_TONE, fmtDay } from "@/components/procurement/need-bits"
+import { fmtDay } from "@/components/procurement/need-bits"
 
 type Confirm = { kind: "arrived" | "decline" | "buy" | "lapsed"; row: NeedRow }
 
-const isSeg = (v: string | null): v is DeskSegment => !!v && (DESK_SEGMENTS as string[]).includes(v)
+const isSeg = (v: string | null): v is RequestSegment => !!v && (REQUEST_SEGMENTS as string[]).includes(v)
 
 export function PurchaseRequestsInbox() {
   const t = useTranslations("Portal.Shared")
@@ -81,7 +86,8 @@ export function PurchaseRequestsInbox() {
 
   const search = searchParams.get("search") || ""
   const searching = search.trim().length > 0
-  const seg: DeskSegment = searching ? "all" : isSeg(searchParams.get("seg")) ? (searchParams.get("seg") as DeskSegment) : "act"
+  const seg: RequestSegment = searching ? "all" : isSeg(searchParams.get("seg")) ? (searchParams.get("seg") as RequestSegment) : "new"
+  const panelKey = searchParams.get("publish")
   const openLine = searchParams.get("line")
   const setQuery = (patch: Record<string, string | null>) => {
     const p = new URLSearchParams(searchParams.toString())
@@ -94,12 +100,12 @@ export function PurchaseRequestsInbox() {
   }
 
   const scoped = useMemo(() => desk.rows.filter((r) => inBuyerScope(r, desk.viewerCategories)), [desk.rows, desk.viewerCategories])
-  const counts = useMemo(() => segmentCounts(scoped), [scoped])
+  const cards = useMemo(() => requestCards(scoped, world.rfqs as Array<{ id: string; status?: string | null; needSources?: unknown; purchaseSource?: unknown }>), [scoped, world.rfqs])
+  const counts = useMemo(() => requestSegmentCounts(cards), [cards])
   const visible = useMemo(
-    () => sortRows(scoped.filter((r) => inSegment(r, seg) && matchesSearch(search, [r.name, r.need.refLabel, r.need.context, r.need.requestedBy, r.need.projectName, r.need.rfqNumber, r.need.poNumber, r.category])), seg),
-    [scoped, seg, search]
+    () => sortCards(cards.filter((c) => inRequestSegment(c, seg) && matchesSearch(search, [displayNeedRef(c.need.refLabel, locale), c.need.refLabel, c.need.context, c.need.requestedBy, c.need.projectName, c.need.rfqNumber, c.need.poNumber, ...c.rows.map((r) => r.name)]))),
+    [cards, seg, search, locale]
   )
-  const acting = seg === "act" && canAct
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   useEffect(() => setSelected(new Set()), [seg])
@@ -110,7 +116,6 @@ export function PurchaseRequestsInbox() {
       else next.add(needKey)
       return next
     })
-  const hint = acting ? mergeHint(visible, selected, { project: on("project-management") }) : null
   const summary = useMemo(() => selectionSummary(scoped, selected, { agreements, policies, now }), [scoped, selected, agreements, policies, now])
 
   const [ordering, setOrdering] = useState<{ rows: NeedRow[]; mode: "agreement" | "direct" } | null>(null)
@@ -122,12 +127,8 @@ export function PurchaseRequestsInbox() {
   const [error, setError] = useState<string | null>(null)
 
   const siblings = (row: NeedRow) => scoped.filter((r) => r.needKey === row.needKey && r.open > 0)
-  const rfqHref = (rows: NeedRow[]) => {
-    const needs = Array.from(new Map(rows.map((r) => [r.needKey, r.need])).values())
-    const items = rows.map((r) => ({ name: r.name, quantity: r.open, unit: r.unit }))
-    const sources = needs.map((n) => needSourceParam(n.source))
-    return `/contractor/rfqs/new?items=${encodeURIComponent(JSON.stringify(items))}&source=${encodeURIComponent(sources[0] || "")}${sources.length > 1 ? `&sources=${encodeURIComponent(sources.join("|"))}` : ""}`
-  }
+  /** «جهّزه» / «اجمعها في طلب عروض واحد»: the editor on these requests, each its own group (PUR-01, PUR-02). */
+  const editorHref = (keys: string[]) => `/contractor/rfqs/new?requests=${encodeURIComponent(Array.from(new Set(keys)).join("|"))}`
 
   const drawerRow = openLine ? desk.rows.find((r) => r.key === openLine) ?? null : null
   const mfgOf = (row: NeedRow) => (row.need.kind === "mfg" ? desk.mfgByKey.get(row.needKey) : undefined)
@@ -182,7 +183,7 @@ export function PurchaseRequestsInbox() {
       canRfq: canStartRfq,
       canOrder,
       seesPrices: procActor.seesPrices,
-      onRfq: (r: NeedRow) => router.push(rfqHref(siblings(r))),
+      onRfq: (r: NeedRow) => setQuery({ publish: r.needKey, line: null }),
       onOrder: (r: NeedRow, mode: "agreement" | "direct") => setOrdering({ rows: siblings(r), mode }),
       onProceed: (r: NeedRow) => setProceeding(desk.rows.filter((x) => x.needKey === r.needKey)),
       onAskWorkshop: (r: NeedRow) => setAsking(r),
@@ -198,7 +199,7 @@ export function PurchaseRequestsInbox() {
       <ProcurementHeader title={t("pri_title")} description={t("nd_desc")} />
 
       <div className="flex flex-wrap items-center gap-2">
-        <ProcChipGroup items={DESK_SEGMENTS.map((f) => ({ id: f, label: t(`nd_seg_${f}`), count: counts[f] }))} active={seg} onPick={(f) => setQuery({ seg: f, search: null })} label={t("pri_state")} dimmed={searching} />
+        <ProcChipGroup items={REQUEST_SEGMENTS.filter((f) => f !== "elsewhere" || counts.elsewhere > 0).map((f) => ({ id: f, label: t(`rq_seg_${f}`), count: counts[f] }))} active={seg} onPick={(f) => setQuery({ seg: f, search: null })} label={t("pri_state")} dimmed={searching} />
         {searching && (
           <span className="ms-auto inline-flex items-center gap-2 text-xs text-muted-foreground">
             {t("nd_results", { count: visible.length, term: search.trim() })}
@@ -210,147 +211,72 @@ export function PurchaseRequestsInbox() {
         {ownerRO && <span className="ms-auto text-xs font-semibold text-muted-foreground">{t("nd_owner_read")}</span>}
       </div>
 
-      {hint && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-module/20 bg-module/5 px-4 py-3 text-sm">
-          <Lightbulb size={15} className="shrink-0 text-module" aria-hidden="true" />
-          <span className="min-w-0 flex-1" dir="auto">
-            {t(hint.by === "category" ? "nd_merge_category" : "nd_merge_project", { count: hint.lines, label: hint.label })}
-          </span>
-          <Button size="sm" variant="outline" className="h-8 border-module/40 text-module" onClick={() => setSelected((prev) => new Set([...Array.from(prev), ...hint.needKeys]))}>
-            {t("nd_select_them")}
-          </Button>
+      {loading ? (
+        <div className="flex items-center justify-center rounded-2xl border bg-card p-16">
+          <Loader2 className="animate-spin text-muted-foreground" size={28} aria-hidden="true" />
         </div>
+      ) : visible.length === 0 ? (
+        <div className="rounded-2xl border bg-card p-12 text-center text-muted-foreground">
+          <ShoppingCart size={36} className="mx-auto mb-2 opacity-20" aria-hidden="true" />
+          <p className="text-sm">{searching ? t("so_search_none", { term: search.trim() }) : t("rq_empty")}</p>
+          <p className="mt-1 text-xs">{on("project-management") ? t("rq_empty_hint") : t("rq_empty_hint_team")}</p>
+        </div>
+      ) : (
+        <ul className="space-y-3">
+          {visible.map((c) => (
+            <RequestCardView
+              key={c.key}
+              card={c}
+              selectable={canStartRfq && c.selectable}
+              selected={selected.has(c.key)}
+              onToggle={() => toggle(c.key)}
+              canAct={canStartRfq}
+              onPublish={() => setQuery({ publish: c.key, line: null })}
+              prepareHref={editorHref([c.key])}
+              onDetails={() => setQuery({ line: c.rows[0].key })}
+            />
+          ))}
+        </ul>
       )}
 
-      <div className="overflow-hidden rounded-2xl border bg-card">
-        {loading ? (
-          <div className="flex items-center justify-center p-16">
-            <Loader2 className="animate-spin text-muted-foreground" size={28} aria-hidden="true" />
-          </div>
-        ) : visible.length === 0 ? (
-          <div className="p-12 text-center text-muted-foreground">
-            <ShoppingCart size={36} className="mx-auto mb-2 opacity-20" aria-hidden="true" />
-            <p className="text-sm">{searching ? t("so_search_none", { term: search.trim() }) : t("nd_empty")}</p>
-            <p className="mt-1 text-xs">{t("pri_empty_hint_all")}</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-sm">
-              <thead className="border-b text-xs text-muted-foreground">
-                <tr>
-                  {acting && (
-                    <th className="w-10 px-3 py-3">
-                      <span className="sr-only">{t("nd_select")}</span>
-                    </th>
-                  )}
-                  <th className="px-4 py-3 text-start font-semibold">{t("pri_col_material")}</th>
-                  <th className="px-4 py-3 text-end font-semibold">{t("pri_col_qty")}</th>
-                  <th className="px-4 py-3 text-start font-semibold">{t("nd_col_need")}</th>
-                  <th className="px-4 py-3 text-start font-semibold">{seg === "act" ? t("pri_col_route") : t("nd_col_where")}</th>
-                  <th className="px-4 py-3">
-                    <span className="sr-only">{t("pri_col_actions")}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {visible.map((r) => {
-                  const act = isActionState(r.state)
-                  const ld = r.lastOrderIn
-                  const PathIcon = r.path ? PATH_ICON[r.path] : null
-                  const on = selected.has(r.needKey)
-                  return (
-                    <tr key={r.key} className={cn("cursor-pointer align-middle transition-colors hover:bg-muted/30", on && "bg-module/5")} onClick={() => setQuery({ line: r.key })}>
-                      {acting && (
-                        <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={on}
-                            disabled={!r.selectable}
-                            onChange={() => toggle(r.needKey)}
-                            aria-label={t("nd_select_line", { name: r.name })}
-                            className="h-4 w-4 accent-module disabled:opacity-30"
-                          />
-                        </td>
-                      )}
-                      <td className="px-4 py-3">
-                        <p className="font-bold text-foreground" dir="auto">
-                          {r.name}
-                        </p>
-                        <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                          <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-semibold">{t(`pri_from_${r.need.kind}`)}</span>
-                          <span dir="auto">{r.need.refLabel}</span>
-                          <span dir="auto">· {r.need.projectName || r.need.context || t("nd_for_stock")}</span>
-                          {r.samplePending && <span className="font-semibold text-warning">· {t("nd_sample_pending")}</span>}
-                          {r.need.returnedFrom && <span className="font-semibold text-cta">· {t("nd_returned_from", { po: r.need.returnedFrom })}</span>}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-end">
-                        <b className="tabular-nums" dir="ltr">
-                          {fmtQty(act ? r.open : r.total)}
-                        </b>{" "}
-                        <span className="text-xs text-muted-foreground">{r.unit}</span>
-                        {act && r.open < r.total && <p className="text-[11px] text-muted-foreground">{t("nd_of_total", { total: fmtQty(r.total) })}</p>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="font-semibold">{r.needBy ? fmtDay(r.needBy, locale) : "—"}</p>
-                        {act && ld != null ? (
-                          <p className={cn("flex items-center gap-1 text-[11px] font-semibold", ld < 0 ? "text-destructive" : ld <= 2 ? "text-warning" : "text-muted-foreground")}>
-                            {ld < 0 && <AlertTriangle size={11} aria-hidden="true" />}
-                            {ld < 0 ? t("nd_last_day_passed", { days: -ld }) : t("nd_order_by", { date: fmtDay(r.lastOrderDay, locale), days: ld })}
-                          </p>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3">
-                        {act && r.state === "late" ? (
-                          <StatusPill tone="warn">{t("nd_state_late")}</StatusPill>
-                        ) : act && r.path && PathIcon ? (
-                          <StatusPill tone={PATH_TONE[r.path]}>
-                            <PathIcon size={12} aria-hidden="true" /> {t(`nd_path_${r.state === "mfgl" ? "rfq" : r.path}`)}
-                          </StatusPill>
-                        ) : (
-                          <StatusPill tone={LINE_STATE_TONE[r.state]}>{t(`nd_state_${r.state}`)}</StatusPill>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-end">
-                        <span className="inline-flex h-8 items-center rounded-lg border px-3 text-xs font-bold">{act && acting ? t("nd_open") : t("nd_details")}</span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {acting && summary.lines > 0 && (
+      {canAct && summary.lines > 0 && (
         <div className="fixed inset-x-4 bottom-4 z-30 mx-auto flex max-w-4xl flex-wrap items-center gap-2 rounded-2xl border bg-card px-4 py-3 shadow-lg" role="region" aria-label={t("nd_selection")}>
-          <b className="text-sm">{t("nd_sel_lines", { count: summary.lines })}</b>
+          <b className="text-sm">{t("rq_sel", { count: selected.size, lines: summary.lines })}</b>
           <span className="text-xs text-muted-foreground">{summary.value != null && procActor.seesPrices ? t("nd_sel_value", { value: money(summary.value) }) : t("nd_sel_no_estimate")}</span>
           <span className="ms-auto flex flex-wrap gap-2">
             <Button size="sm" variant="outline" className="h-8" onClick={() => setSelected(new Set())}>
               {t("nd_clear")}
             </Button>
             {canOrder && summary.agreement && (
-              <Button size="sm" className="h-8 gap-1.5 bg-module text-module-foreground hover:bg-module/90" onClick={() => setOrdering({ rows: summary.rows, mode: "agreement" })}>
+              <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setOrdering({ rows: summary.rows, mode: "agreement" })}>
                 <FileSignature size={13} aria-hidden="true" /> {t("dor_open_agreement")}
               </Button>
             )}
             {canOrder && summary.directOk && (
-              <Button size="sm" className="h-8 gap-1.5 bg-module text-module-foreground hover:bg-module/90" onClick={() => setOrdering({ rows: summary.rows, mode: "direct" })}>
+              <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setOrdering({ rows: summary.rows, mode: "direct" })}>
                 <ShoppingCart size={13} aria-hidden="true" /> {t("dor_open_direct")}
               </Button>
             )}
             {canStartRfq && (
-              <Button asChild size="sm" className="h-8 gap-1.5 bg-module text-module-foreground hover:bg-module/90">
-                <Link href={rfqHref(summary.rows)}>
-                  <Scale size={13} aria-hidden="true" /> {t("nd_combine_rfq")}
+              <Button asChild size="sm" className="h-8 gap-1.5">
+                <Link href={editorHref(Array.from(selected))}>
+                  <Scale size={13} aria-hidden="true" /> {selected.size > 1 ? t("rq_combine") : t("rq_prepare")}
                 </Link>
               </Button>
             )}
           </span>
         </div>
       )}
+
+      {/* «انشره»: the request's own panel — الطلب · النشر · المراجعة (PUR-01 p.3–4). */}
+      <Sheet open={!!panelKey} onOpenChange={(o) => !o && setQuery({ publish: null })}>
+        <SheetContent side={isRtl ? "left" : "right"} dir={isRtl ? "rtl" : "ltr"} className="w-full overflow-y-auto sm:max-w-4xl">
+          <SheetHeader className="sr-only">
+            <SheetTitle>{t("rq_panel")}</SheetTitle>
+          </SheetHeader>
+          {panelKey && <RfqEditor key={panelKey} variant="panel" requestKeys={[panelKey]} onClose={() => setQuery({ publish: null })} />}
+        </SheetContent>
+      </Sheet>
 
       {drawerRow && <NeedLineDrawer row={drawerRow} agreements={agreements} history={history} cap={policies.directPurchaseCap} today={today} acts={actsFor(drawerRow)} orgId={orgId || null} onClose={() => setQuery({ line: null })} />}
 
@@ -423,4 +349,111 @@ export function PurchaseRequestsInbox() {
       </Dialog>
     </div>
   )
+}
+
+function RequestCardView({
+  card: c,
+  selectable,
+  selected,
+  onToggle,
+  canAct,
+  onPublish,
+  prepareHref,
+  onDetails,
+}: {
+  card: RequestCard
+  selectable: boolean
+  selected: boolean
+  onToggle: () => void
+  canAct: boolean
+  onPublish: () => void
+  prepareHref: string
+  onDetails: () => void
+}) {
+  const t = useTranslations("Portal.Shared")
+  const locale = useLocale()
+  const n = c.need
+  const ref = displayNeedRef(n.refLabel, locale)
+  const place = n.projectName || n.context || t("nd_for_stock")
+  const ld = c.lastOrderIn
+  const live = c.state === "new" || c.state === "prepared" || c.state === "partial"
+  return (
+    <li className={cn("rounded-2xl border bg-card p-4 transition-colors", selected && "border-module/50 bg-module/5")}>
+      <div className="flex flex-wrap items-start gap-3">
+        {selectable && <Checkbox checked={selected} onCheckedChange={onToggle} aria-label={t("rq_select", { ref })} className="mt-1" />}
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <p className="flex flex-wrap items-center gap-2">
+            <b className="text-base" dir="auto">
+              {ref}
+            </b>
+            <span className="text-sm font-semibold text-foreground" dir="auto">
+              {place}
+            </span>
+            <StatusPill tone={RQ_TONE[c.state]}>{t(`rq_state_${c.state}`, { rfq: n.rfqNumber || "", po: n.poNumber || "" })}</StatusPill>
+            <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">{t(`pri_from_${n.kind}`)}</span>
+          </p>
+          {n.requestedBy && <p className="text-xs text-muted-foreground">{t("rq_by", { name: n.requestedBy })}</p>}
+          <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm" dir="auto">
+            {c.rows.map((r) => (
+              <span key={r.key}>
+                {r.name} <b className="tabular-nums" dir="ltr">{fmtQty(r.state === "open" || r.state === "late" ? r.open : r.total)}</b> <span className="text-xs text-muted-foreground">{r.unit}</span>
+                {r.samplePending && <span className="ms-1 text-[11px] font-semibold text-warning">· {t("nd_sample_pending")}</span>}
+              </span>
+            ))}
+          </p>
+          <p className="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
+            <span>{t("rq_need_by", { date: c.needBy ? fmtDay(c.needBy, locale) : "—" })}</span>
+            {live && ld != null && (
+              <span className={cn("inline-flex items-center gap-1 font-semibold", ld < 0 ? "text-destructive" : ld <= 2 ? "text-warning" : "")}>
+                {ld < 0 && <AlertTriangle size={11} aria-hidden="true" />}
+                {ld < 0 ? t("nd_last_day_passed", { days: -ld }) : t("nd_order_by", { date: fmtDay(c.lastOrderDay, locale), days: ld })}
+              </span>
+            )}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {canAct && c.state === "new" && (
+            <>
+              <Button size="sm" onClick={onPublish}>
+                {t("rq_publish")}
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href={prepareHref}>{t("rq_prepare")}</Link>
+              </Button>
+            </>
+          )}
+          {canAct && c.state === "prepared" && c.draftId && (
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/contractor/rfqs/new?edit=${c.draftId}`}>{t("rq_open_draft")}</Link>
+            </Button>
+          )}
+          {(c.state === "rfq" || c.state === "partial") && n.rfqId && (
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/contractor/rfqs/${n.rfqId}`}>{t("rq_open_rfq")}</Link>
+            </Button>
+          )}
+          {c.state === "order" && n.poId && (
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/contractor/rfqs/orders?po=${n.poId}`}>{t("rq_open_po")}</Link>
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" onClick={onDetails}>
+            {t("nd_details")}
+          </Button>
+        </div>
+      </div>
+    </li>
+  )
+}
+
+const RQ_TONE: Record<RequestCard["state"], "ok" | "warn" | "bad" | "info" | "mute" | "module" | "violet"> = {
+  new: "module",
+  prepared: "info",
+  elsewhere: "mute",
+  partial: "violet",
+  rfq: "violet",
+  order: "info",
+  done: "ok",
+  failed: "bad",
+  withdrawn: "mute",
 }

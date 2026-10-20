@@ -12,6 +12,7 @@
 // unvouched supplier said beside his name. A line whose sample is still with
 // the consultant may be PREPARED — the approval is what waits for it.
 
+import { displayNeedRef } from "@/lib/procurement/format"
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { CheckCircle2, FileSignature, Info, Loader2, ShoppingCart } from "lucide-react"
@@ -214,7 +215,7 @@ export function DirectOrderDialog({
                     <div className="min-w-0 flex-1 basis-40">
                       <p className="font-semibold" dir="auto">{l.name}</p>
                       <p className="text-[11px] text-muted-foreground" dir="auto">
-                        {r.need.refLabel} · {r.need.projectName || r.need.context || t("nd_for_stock")}
+                        {displayNeedRef(r.need.refLabel, locale)} · {r.need.projectName || r.need.context || t("nd_for_stock")}
                         {r.needBy ? ` · ${t("nd_need_short", { date: r.needBy })}` : ""}
                       </p>
                     </div>

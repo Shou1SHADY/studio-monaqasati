@@ -7,6 +7,7 @@
 // searches the tree; Enter moves to a new row. On a phone each row is a card in the same
 // order.
 
+import { displayNeedRef } from "@/lib/procurement/format"
 import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { CalendarClock, Copy, MapPin, MoreHorizontal, Plus, ShieldCheck, Trash2 } from "lucide-react"
@@ -49,6 +50,7 @@ export function EditorMaterials({
   problems,
   showProblems,
   lockedProjectId,
+  fixed,
 }: {
   groups: EditorGroup[]
   onChange: (groups: EditorGroup[]) => void
@@ -58,6 +60,9 @@ export function EditorMaterials({
   showProblems: boolean
   /** Opened from a project's page: its group's place is fixed. */
   lockedProjectId?: string | null
+  /** The incoming request's panel (PUR-01 step 1): what was asked, as it was asked — only a missing
+   * material is picked here; editing, removing or adding is «جهّزه»'s, in the editor. */
+  fixed?: boolean
 }) {
   const t = useTranslations("Portal.ProcEditor")
   const tm = useTranslations("Portal.Materials")
@@ -68,7 +73,11 @@ export function EditorMaterials({
 
   const fillFromHit = (groupKey: string, lineKey: string | null, hit: MaterialHit) => {
     if (!index) return
-    const pick = pickOf(index, hit.node.id, hit.preset.map((p) => ({ name: { ar: p.spec.ar, en: p.spec.en }, value: p.value })))
+    const pick = pickOf(
+      index,
+      hit.node.id,
+      hit.preset.map((p) => ({ name: { ar: p.spec.ar, en: p.spec.en }, value: p.value })),
+    )
     if (!pick) return
     const units = unitsOf(index, hit.node.id)
     place(groupKey, lineKey, pick, units.length === 1 ? units[0] : units[0] || null)
@@ -93,7 +102,9 @@ export function EditorMaterials({
 
   const setGroupSite = (g: EditorGroup, siteId: string) => {
     const s = sites.find((x) => x.id === siteId)
-    onChange(groups.map((x) => (x.key === g.key ? { ...x, siteId: s?.id || null, projectId: s?.projectId || null, label: s?.name || "", city: s?.city || x.city, district: s?.district || x.district } : x)))
+    onChange(
+      groups.map((x) => (x.key === g.key ? { ...x, siteId: s?.id || null, projectId: s?.projectId || null, label: s?.name || "", city: s?.city || x.city, district: s?.district || x.district } : x)),
+    )
   }
   const setGroup = (g: EditorGroup, patch: Partial<EditorGroup>) => onChange(groups.map((x) => (x.key === g.key ? { ...x, ...patch } : x)))
 
@@ -122,18 +133,47 @@ export function EditorMaterials({
 
   const materialCell = (g: EditorGroup, l: EditorLine, bad: boolean) => (
     <div className="min-w-0 space-y-0.5">
-      {l.material || l.legacy ? (
+      {(l.material || l.legacy) && fixed ? (
         <>
-          <Input value={l.name} onChange={(e) => onChange(updateLine(groups, g.key, l.key, { name: e.target.value }))} aria-label={t("col_material")} className="h-8 border-transparent px-1 font-semibold shadow-none hover:border-input focus-visible:border-input" dir="auto" />
-          <button type="button" onClick={() => setBrowse({ groupKey: g.key, lineKey: l.key, query: l.name, freeText: null })} className="block max-w-full truncate px-1 text-start text-[11px] text-muted-foreground hover:text-module">
+          <p className="px-1 text-sm font-semibold" dir="auto">
+            {l.name}
+          </p>
+          <p className="truncate px-1 text-[11px] text-muted-foreground">{l.material ? pathLabel(l.material.path, locale, !l.material.outside) : `${l.legacy?.category} › ${l.legacy?.subCategory}`}</p>
+        </>
+      ) : l.material || l.legacy ? (
+        <>
+          <Input
+            value={l.name}
+            onChange={(e) => onChange(updateLine(groups, g.key, l.key, { name: e.target.value }))}
+            aria-label={t("col_material")}
+            className="h-8 border-transparent px-1 font-semibold shadow-none hover:border-input focus-visible:border-input"
+            dir="auto"
+          />
+          <button
+            type="button"
+            onClick={() => setBrowse({ groupKey: g.key, lineKey: l.key, query: l.name, freeText: null })}
+            className="block max-w-full truncate px-1 text-start text-[11px] text-muted-foreground hover:text-module"
+          >
             {l.material ? pathLabel(l.material.path, locale, !l.material.outside) : `${l.legacy?.category} › ${l.legacy?.subCategory}`}
-            {l.material?.outside && <StatusPill tone="warn" className="ms-1.5 text-[10px]">{tm("outside_badge")}</StatusPill>}
+            {l.material?.outside && (
+              <StatusPill tone="warn" className="ms-1.5 text-[10px]">
+                {tm("outside_badge")}
+              </StatusPill>
+            )}
           </button>
         </>
       ) : (
         <>
-          <p className="px-1 text-sm font-semibold" dir="auto">{l.name}</p>
-          <Button type="button" size="sm" variant="outline" className={cn("h-7 text-xs", bad && "border-destructive text-destructive")} onClick={() => setBrowse({ groupKey: g.key, lineKey: l.key, query: l.name, freeText: null })}>
+          <p className="px-1 text-sm font-semibold" dir="auto">
+            {l.name}
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className={cn("h-7 text-xs", bad && "border-destructive text-destructive")}
+            onClick={() => setBrowse({ groupKey: g.key, lineKey: l.key, query: l.name, freeText: null })}
+          >
             {t("pick_material")}
           </Button>
         </>
@@ -141,26 +181,46 @@ export function EditorMaterials({
     </div>
   )
 
-  const qtyCell = (g: EditorGroup, l: EditorLine, bad: boolean) => (
-    <Input
-      inputMode="decimal"
-      value={l.quantity}
-      onChange={(e) => onChange(updateLine(groups, g.key, l.key, { quantity: e.target.value }))}
-      aria-label={t("col_quantity")}
-      aria-invalid={bad || undefined}
-      className={cn("h-9 w-24 text-end tabular-nums", bad && "border-destructive")}
-      dir="ltr"
-    />
-  )
+  const qtyCell = (g: EditorGroup, l: EditorLine, bad: boolean) =>
+    fixed ? (
+      <b className="block w-24 pt-2 text-end tabular-nums" dir="ltr">
+        {toAmount(l.quantity).toLocaleString("en-US")}
+      </b>
+    ) : (
+      <Input
+        inputMode="decimal"
+        value={l.quantity}
+        onChange={(e) => onChange(updateLine(groups, g.key, l.key, { quantity: e.target.value }))}
+        aria-label={t("col_quantity")}
+        aria-invalid={bad || undefined}
+        className={cn("h-9 w-24 text-end tabular-nums", bad && "border-destructive")}
+        dir="ltr"
+      />
+    )
 
   const unitCell = (g: EditorGroup, l: EditorLine, bad: boolean) => {
     const units = l.material && index && !l.material.outside ? unitsOf(index, l.material.nodeId) : []
     const note = unitNote(l, index)
-    const conv = note && index && l.material ? unitConversion(toAmount(l.quantity), l.unit, units[0], l.material.specs.map((s) => s.value)) : null
+    const conv =
+      note && index && l.material
+        ? unitConversion(
+            toAmount(l.quantity),
+            l.unit,
+            units[0],
+            l.material.specs.map((s) => s.value),
+          )
+        : null
     return (
       <div className="space-y-0.5">
-        {units.length > 1 && !l.unitFromSource ? (
-          <NativeSelect value={l.unit} onChange={(e) => onChange(updateLine(groups, g.key, l.key, { unit: e.target.value }))} aria-label={t("col_unit")} className={cn("h-9 w-24", bad && "border-destructive")}>
+        {fixed ? (
+          <span className="block px-1 pt-2 text-sm">{l.unit}</span>
+        ) : units.length > 1 && !l.unitFromSource ? (
+          <NativeSelect
+            value={l.unit}
+            onChange={(e) => onChange(updateLine(groups, g.key, l.key, { unit: e.target.value }))}
+            aria-label={t("col_unit")}
+            className={cn("h-9 w-24", bad && "border-destructive")}
+          >
             <option value="">—</option>
             {units.map((u) => (
               <option key={u.key} value={label(u, locale)}>
@@ -171,18 +231,27 @@ export function EditorMaterials({
         ) : units.length >= 1 && !l.unitFromSource ? (
           <span className="block px-1 text-sm">{l.unit || label(units[0], locale)}</span>
         ) : (
-          <Input value={l.unit} onChange={(e) => onChange(updateLine(groups, g.key, l.key, { unit: e.target.value }))} aria-label={t("col_unit")} className={cn("h-9 w-24", bad && "border-destructive")} dir="auto" />
+          <Input
+            value={l.unit}
+            onChange={(e) => onChange(updateLine(groups, g.key, l.key, { unit: e.target.value }))}
+            aria-label={t("col_unit")}
+            className={cn("h-9 w-24", bad && "border-destructive")}
+            dir="auto"
+          />
         )}
         {note && (
           <p className="max-w-[10rem] text-[10.5px] leading-snug text-amber-700">
-            {conv ? t("unit_conv", { qty: toAmount(l.quantity).toLocaleString("en-US"), unit: l.unit, per: conv.per, total: conv.quantity.toLocaleString("en-US"), target: label(conv.unit, locale) }) : t("unit_kept", { units: note.units.join(" · ") })}
+            {conv
+              ? t("unit_conv", { qty: toAmount(l.quantity).toLocaleString("en-US"), unit: l.unit, per: conv.per, total: conv.quantity.toLocaleString("en-US"), target: label(conv.unit, locale) })
+              : t("unit_kept", { units: note.units.join(" · ") })}
           </p>
         )}
       </div>
     )
   }
 
-  const problemText = (codes: string[], no: number | undefined) => (codes.length && no ? <p className="text-[11px] font-semibold text-destructive">{codes.map((c) => t(`err_${c}`, { no })).join(" · ")}</p> : null)
+  const problemText = (codes: string[], no: number | undefined) =>
+    codes.length && no ? <p className="text-[11px] font-semibold text-destructive">{codes.map((c) => t(`err_${c}`, { no })).join(" · ")}</p> : null
 
   return (
     <div className="space-y-5">
@@ -205,16 +274,18 @@ export function EditorMaterials({
           <section key={g.key} className="overflow-hidden rounded-xl border bg-card" aria-label={g.label || t("group_unnamed")}>
             <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b bg-muted/40 px-3 py-2.5">
               <MapPin size={15} className="shrink-0 text-module" aria-hidden="true" />
-              {locked || g.requestRefs.length ? (
+              {locked || fixed || g.requestRefs.length ? (
                 <b className="text-sm">{g.label || site?.name}</b>
               ) : (
                 <NativeSelect value={g.siteId || ""} onChange={(e) => setGroupSite(g, e.target.value)} aria-label={t("group_place")} className="h-9 min-w-[12rem] max-w-full text-sm font-semibold">
                   <option value="">{t("group_place_pick")}</option>
-                  {sites.filter((s) => !s.retired).map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
+                  {sites
+                    .filter((s) => !s.retired)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
                 </NativeSelect>
               )}
               {g.city ? (
@@ -232,20 +303,25 @@ export function EditorMaterials({
                 </span>
               )}
               {g.city && !g.district && (
-                <Input value={g.district} onChange={(e) => setGroup(g, { district: e.target.value })} placeholder={t("group_district")} aria-label={t("group_district")} className="h-8 w-36 text-xs" dir="auto" />
+                <Input
+                  value={g.district}
+                  onChange={(e) => setGroup(g, { district: e.target.value })}
+                  placeholder={t("group_district")}
+                  aria-label={t("group_district")}
+                  className="h-8 w-36 text-xs"
+                  dir="auto"
+                />
               )}
               {g.requestRefs.map((r) => (
                 <StatusPill key={r} tone="info" className="text-[11px]">
-                  {t("from_request", { ref: r })}
+                  {t("from_request", { ref: displayNeedRef(r, locale) })}
                 </StatusPill>
               ))}
               <label className="ms-auto flex items-center gap-1.5 text-xs text-muted-foreground">
                 {t("need_by")}
                 <Input type="date" value={g.needBy || ""} onChange={(e) => setGroup(g, { needBy: e.target.value || null })} className="h-8 w-36 text-xs" dir="ltr" />
               </label>
-              {groups.length > 1 && !lines.some(lineStarted) && (
-                <IconButton label={t("remove_group")} icon={Trash2} iconSize={14} onClick={() => onChange(removeGroup(groups, g.key))} />
-              )}
+              {groups.length > 1 && !lines.some(lineStarted) && <IconButton label={t("remove_group")} icon={Trash2} iconSize={14} onClick={() => onChange(removeGroup(groups, g.key))} />}
             </header>
             {placeBad && <p className="px-3 pt-2 text-[11px] font-semibold text-destructive">{t("err_no_place")}</p>}
 
@@ -260,25 +336,33 @@ export function EditorMaterials({
                       <span className="pt-2 text-xs tabular-nums text-muted-foreground">{no}</span>
                       {materialCell(g, l, codes.includes("material"))}
                       <div className="pt-1">
-                        {l.material ? <MaterialSpecCells index={index} pick={l.material} onChange={(m) => onChange(updateLine(groups, g.key, l.key, { material: m }))} /> : <span className="text-xs text-muted-foreground">—</span>}
+                        {l.material ? (
+                          <MaterialSpecCells index={index} pick={l.material} onChange={(m) => onChange(updateLine(groups, g.key, l.key, { material: m }))} />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                         {l.needBy != null && (
                           <label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                             {t("line_need_by")}
                             <Input type="date" value={l.needBy || ""} onChange={(e) => onChange(updateLine(groups, g.key, l.key, { needBy: e.target.value }))} className="h-7 w-36 text-xs" dir="ltr" />
                           </label>
                         )}
-                        {l.requiresWarranty && <StatusPill tone="info" className="mt-1.5 text-[10px]">{t("warranty")}</StatusPill>}
+                        {l.requiresWarranty && (
+                          <StatusPill tone="info" className="mt-1.5 text-[10px]">
+                            {t("warranty")}
+                          </StatusPill>
+                        )}
                       </div>
                       <div className="flex justify-end">{qtyCell(g, l, codes.includes("quantity"))}</div>
                       {unitCell(g, l, codes.includes("unit"))}
-                      {rowMenu(g, l)}
+                      {fixed ? <span /> : rowMenu(g, l)}
                     </div>
                     {/* Phone card: the row's order, stacked */}
                     <div className="space-y-2 md:hidden">
                       <div className="flex items-start gap-2">
                         <span className="pt-2 text-xs tabular-nums text-muted-foreground">{no}</span>
                         <div className="min-w-0 flex-1">{materialCell(g, l, codes.includes("material"))}</div>
-                        {rowMenu(g, l)}
+                        {!fixed && rowMenu(g, l)}
                       </div>
                       {l.material && <MaterialSpecCells index={index} pick={l.material} onChange={(m) => onChange(updateLine(groups, g.key, l.key, { material: m }))} />}
                       <div className="flex items-start gap-2">
@@ -290,21 +374,28 @@ export function EditorMaterials({
                   </li>
                 )
               })}
-              <li className="px-3 py-2.5">
-                <MaterialSearchInput
-                  index={index}
-                  onPick={(hit) => fillFromHit(g.key, null, hit)}
-                  onBrowse={(q) => setBrowse({ groupKey: g.key, lineKey: null, query: q, freeText: null })}
-                  onFreeText={(text) => setBrowse({ groupKey: g.key, lineKey: null, query: "", freeText: text })}
-                />
-              </li>
+              {!fixed && (
+                <li className="px-3 py-2.5">
+                  <MaterialSearchInput
+                    index={index}
+                    onPick={(hit) => fillFromHit(g.key, null, hit)}
+                    onBrowse={(q) => setBrowse({ groupKey: g.key, lineKey: null, query: q, freeText: null })}
+                    onFreeText={(text) => setBrowse({ groupKey: g.key, lineKey: null, query: "", freeText: text })}
+                  />
+                </li>
+              )}
             </ul>
           </section>
         )
       })}
 
-      {!lockedProjectId && (
-        <Button type="button" variant="outline" className="gap-2" onClick={() => onChange([...groups, { key: `g${Date.now().toString(36)}`, siteId: null, projectId: null, label: "", city: "", district: "", needBy: null, requestRefs: [], lines: [] }])}>
+      {!lockedProjectId && !fixed && (
+        <Button
+          type="button"
+          variant="outline"
+          className="gap-2"
+          onClick={() => onChange([...groups, { key: `g${Date.now().toString(36)}`, siteId: null, projectId: null, label: "", city: "", district: "", needBy: null, requestRefs: [], lines: [] }])}
+        >
           <Plus size={15} /> {t("add_group")}
         </Button>
       )}
@@ -325,4 +416,3 @@ export function EditorMaterials({
     </div>
   )
 }
-

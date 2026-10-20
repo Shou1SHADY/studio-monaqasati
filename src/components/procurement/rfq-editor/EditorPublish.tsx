@@ -119,7 +119,11 @@ export function EditorPublish({
           <div className="space-y-3 rounded-xl border p-3">
             <label className="block space-y-1 text-sm">
               <span className="font-semibold">{t("direct_supplier")}</span>
-              <NativeSelect value={values.directSupplierOrgId} onChange={(e) => onChange({ directSupplierOrgId: e.target.value })} className={cn("w-full", showProblems && !values.directSupplierOrgId && "border-destructive")}>
+              <NativeSelect
+                value={values.directSupplierOrgId}
+                onChange={(e) => onChange({ directSupplierOrgId: e.target.value })}
+                className={cn("w-full", showProblems && !values.directSupplierOrgId && "border-destructive")}
+              >
                 <option value="">{t("direct_pick")}</option>
                 {directPool.map((p) => (
                   <option key={p.orgId} value={p.orgId}>
@@ -136,9 +140,19 @@ export function EditorPublish({
                 return (
                   <label key={l.key} className="flex items-center justify-between gap-3 text-sm">
                     <span className="min-w-0 truncate" dir="auto">
-                      {l.name} <span className="text-xs text-muted-foreground">· {l.quantity.toLocaleString("en-US")} {l.unit}</span>
+                      {l.name}{" "}
+                      <span className="text-xs text-muted-foreground">
+                        · {l.quantity.toLocaleString("en-US")} {l.unit}
+                      </span>
                     </span>
-                    <Input inputMode="decimal" value={values.directPrices[l.key] || ""} onChange={(e) => onChange({ directPrices: { ...values.directPrices, [l.key]: e.target.value } })} aria-label={t("direct_price_of", { name: l.name })} className={cn("h-9 w-28 text-end tabular-nums", bad && "border-destructive")} dir="ltr" />
+                    <Input
+                      inputMode="decimal"
+                      value={values.directPrices[l.key] || ""}
+                      onChange={(e) => onChange({ directPrices: { ...values.directPrices, [l.key]: e.target.value } })}
+                      aria-label={t("direct_price_of", { name: l.name })}
+                      className={cn("h-9 w-28 text-end tabular-nums", bad && "border-destructive")}
+                      dir="ltr"
+                    />
                   </label>
                 )
               })}
@@ -146,7 +160,11 @@ export function EditorPublish({
             {directOverCap && (
               <label className="block space-y-1 text-sm">
                 <span className="font-semibold">{t("direct_reason")}</span>
-                <NativeSelect value={values.directReason} onChange={(e) => onChange({ directReason: e.target.value as PublishValues["directReason"] })} className={cn("w-full", showProblems && !values.directReason && "border-destructive")}>
+                <NativeSelect
+                  value={values.directReason}
+                  onChange={(e) => onChange({ directReason: e.target.value as PublishValues["directReason"] })}
+                  className={cn("w-full", showProblems && !values.directReason && "border-destructive")}
+                >
                   <option value="">{t("direct_reason_pick")}</option>
                   <option value="sole">{t("direct_reason_sole")}</option>
                   <option value="match">{t("direct_reason_match")}</option>

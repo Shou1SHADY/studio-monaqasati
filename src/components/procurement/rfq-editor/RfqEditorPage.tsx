@@ -47,9 +47,23 @@ export function RfqEditorPage({ projectId }: { projectId?: string }) {
       </div>
     )
   } else if (REQUIRE_COMPLETE_PROFILE && profile && !profile.profileCompleted) {
-    body = <Gate title={t("newrfq_profile_incomplete")} body={isMember ? tShared("company_incomplete_member") : t("newrfq_profile_incomplete_desc")} cta={isMember ? null : t("newrfq_go_to_profile")} href="/contractor/profile" />
+    body = (
+      <Gate
+        title={t("newrfq_profile_incomplete")}
+        body={isMember ? tShared("company_incomplete_member") : t("newrfq_profile_incomplete_desc")}
+        cta={isMember ? null : t("newrfq_go_to_profile")}
+        href="/contractor/profile"
+      />
+    )
   } else if (profile && !profile.isVerified) {
-    body = <Gate title={t("newrfq_verification_required")} body={isMember ? tShared("company_unverified_member") : t("newrfq_verification_required_desc")} cta={isMember ? null : t("newrfq_go_to_profile_verify")} href="/contractor/profile" />
+    body = (
+      <Gate
+        title={t("newrfq_verification_required")}
+        body={isMember ? tShared("company_unverified_member") : t("newrfq_verification_required_desc")}
+        cta={isMember ? null : t("newrfq_go_to_profile_verify")}
+        href="/contractor/profile"
+      />
+    )
   } else {
     body = <RfqEditor projectId={projectId} />
   }

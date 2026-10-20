@@ -51,7 +51,10 @@ export function MaterialSpecCells({ index, pick, onChange, readOnly }: { index: 
       <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
         {pick.specs.map((x) => (
           <span key={`${x.name.ar}-${x.value.ar}`}>
-            {label(x.name, locale)} <b className="font-semibold text-foreground" dir="auto">{label(x.value, locale)}</b>
+            {label(x.name, locale)}{" "}
+            <b className="font-semibold text-foreground" dir="auto">
+              {label(x.value, locale)}
+            </b>
           </span>
         ))}
         {pick.brand && <b className="font-semibold text-foreground">{label(pick.brand, locale)}</b>}
@@ -68,7 +71,9 @@ export function MaterialSpecCells({ index, pick, onChange, readOnly }: { index: 
           <DropdownMenu key={s.ar}>
             <DropdownMenuTrigger className={cellClass} aria-label={`${label(shortSpecName(s), locale)}: ${label(v.value, locale)}`}>
               <span className="text-muted-foreground">{label(shortSpecName(s), locale)}</span>
-              <b className="font-semibold" dir="auto">{label(v.value, locale)}</b>
+              <b className="font-semibold" dir="auto">
+                {label(v.value, locale)}
+              </b>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
               <DropdownMenuRadioGroup value={v.value.ar} onValueChange={(val) => setSpec(s, s.options.find((o) => o.ar === val) || null)}>
@@ -91,7 +96,9 @@ export function MaterialSpecCells({ index, pick, onChange, readOnly }: { index: 
         .map((x) => (
           <span key={`f-${x.name.ar}`} className={cn(cellClass, "pe-1")}>
             <span className="text-muted-foreground">{x.name.ar}</span>
-            <b className="font-semibold" dir="auto">{x.value.ar}</b>
+            <b className="font-semibold" dir="auto">
+              {x.value.ar}
+            </b>
             <button type="button" onClick={() => onChange({ ...pick, specs: pick.specs.filter((y) => y !== x) })} aria-label={t("remove")} className="rounded p-0.5 hover:bg-muted">
               <X size={12} />
             </button>

@@ -9034,7 +9034,37 @@
       "proc_tab_count_settings": "{count}",
       "pn_choose_specialties_title": "Choose your specialties from the material tree",
       "pn_choose_specialties": "RFQs are now written on one material tree. Choose the sub-categories you supply once, so the public requests in them reach you.",
-      "supplier_fallback_name": "Supplier on the platform"
+      "supplier_fallback_name": "Supplier on the platform",
+      "rq_seg_new": "New",
+      "rq_seg_prepared": "Prepared",
+      "rq_seg_elsewhere": "With others",
+      "rq_seg_rfq": "In RFQs",
+      "rq_seg_order": "In orders",
+      "rq_seg_done": "Done",
+      "rq_seg_all": "All",
+      "rq_state_new": "New",
+      "rq_state_prepared": "Prepared",
+      "rq_state_elsewhere": "With another module",
+      "rq_state_partial": "Partly in an RFQ",
+      "rq_state_rfq": "In RFQ {rfq}",
+      "rq_state_order": "In order {po}",
+      "rq_state_done": "Done",
+      "rq_state_failed": "Could not be bought",
+      "rq_state_withdrawn": "Withdrawn by the project",
+      "rq_by": "Requested by {name}",
+      "rq_need_by": "Needed by {date}",
+      "rq_publish": "Publish it",
+      "rq_prepare": "Prepare it",
+      "rq_open_draft": "Open the draft",
+      "rq_open_rfq": "Open the RFQ",
+      "rq_open_po": "Open the order",
+      "rq_select": "Select {ref}",
+      "rq_sel": "{count, plural, one {# request} other {# requests}} · {lines, plural, one {# material} other {# materials}}",
+      "rq_combine": "Combine them in one RFQ",
+      "rq_panel": "The incoming request",
+      "rq_empty": "No requests here.",
+      "rq_empty_hint": "A material request arrives here once its project manager approves it technically, with what the workshop and the stores ask for.",
+      "rq_empty_hint_team": "What your team asks for arrives here, with what the workshop and the stores ask for."
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -12992,7 +13022,8 @@
         "answer": "Answer",
         "forward": "Forward",
         "openProject": "Open the project",
-        "openNotice": "Open the notice"
+        "openNotice": "Open the notice",
+        "publishRequest": "Publish it"
       },
       "task": {
         "approve": {
@@ -13144,6 +13175,9 @@
         "pm_hire": {
           "title": "Hire in place of {request} — {what}, {fromDay} → {toDay}",
           "sub": "{project} · {qty} {operator, select, 1 {with operator} other {without operator}} — not in our fleet; a timed hire with a return date"
+        },
+        "need_request": {
+          "title": "{ref} · {place}: {count, plural, one {# material} other {# materials}} waiting to be bought"
         }
       },
       "wait": {
@@ -24936,7 +24970,11 @@
       "warranty": "Warranty required",
       "warranty_on": "This item requires a warranty",
       "warranty_off": "No warranty",
-      "whatsapp": "WhatsApp"
+      "whatsapp": "WhatsApp",
+      "step_request": "The request",
+      "panel_sub": "{place} · {count, plural, one {# material} other {# materials}}",
+      "panel_part_hint": "To publish only some of the materials: “Prepare it” and remove what you do not want.",
+      "prepare": "Prepare it"
     }
   },
   "Auth": {

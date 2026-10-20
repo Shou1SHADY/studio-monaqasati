@@ -26,7 +26,7 @@ import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
 import { MANUFACTURING_REQUESTS, type ManufacturingRequest } from "@/lib/sales-orders"
 import { buildNeedRows, type BuyerScope, type MfgRequestFact, type NeedRow } from "@/lib/procurement/need-desk"
 import { procTeam } from "@/lib/procurement/team"
-import { mfgNeed, needsForModules, projectNeed, returnedNeeds, sortNeeds, stockNeeds, type Need } from "@/lib/procurement/needs"
+import { mfgNeed, needsForModules, projectNeed, projectRequestRef, reachesProcurement, returnedNeeds, sortNeeds, stockNeeds, type Need } from "@/lib/procurement/needs"
 
 export interface ProcurementNeeds {
   loading: boolean
@@ -98,7 +98,7 @@ export function useProcurementNeeds(world: ProcurementWorld): ProcurementNeeds {
       const context = o.productName || (s === "project" ? o.projectName || "" : s === "client" ? o.source?.contactName || "" : "")
       out.push(mfgNeed({ id: o.id, ref: orderRef(o), context, projectId: o.projectId ?? null, projectName: o.projectName ?? null }, request))
     })
-    for (const { project, requests } of projectRequests.rows) for (const pr of requests) out.push(projectNeed(project, pr, purchaseRequestRef(pr.id)))
+    for (const { project, requests } of projectRequests.rows) for (const pr of requests.filter(reachesProcurement)) out.push(projectNeed(project, pr, projectRequestRef(pr, purchaseRequestRef)))
     out.push(...returnedNeeds(out, orders))
     const names = new Map(warehouses.map((w) => [w.id, w.name || ""]))
     const stockRows = Array.from(stock.byWarehouse.entries()).flatMap(([warehouseId, rows]) => rows.filter((r) => !r.isManufactured).map((r) => ({ ...r, warehouseId, warehouseName: names.get(warehouseId) || "" })))
