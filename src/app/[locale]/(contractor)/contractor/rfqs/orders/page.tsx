@@ -10,10 +10,12 @@ import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
 import { collection, query, where } from "firebase/firestore"
-import { ClipboardList, LayoutGrid, Loader2, Search, X } from "lucide-react"
+import { ClipboardList, FileSpreadsheet, LayoutGrid, Loader2, Search, X } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { PoDrawer } from "@/components/procurement/PoDrawer"
+import { AccountantExportDialog } from "@/components/procurement/AccountantExportDialog"
+import { Button } from "@/components/ui/button"
 import { HonestDateText, LineBar, Money, PoStatusPill } from "@/components/procurement/PoBits"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -72,6 +74,9 @@ export default function PurchaseOrdersPage() {
   const firestore = useFirestore()
   const { on } = useModules()
   const pmOn = on("project-management")
+  // Without Finance the books live in another system: «صدّر للمحاسبة» hands the accountant a file (PUR-10).
+  const exportsToAccountant = !on("payments") && actor.seesPrices && (actor.isOwner || actor.canPrepare || actor.canApprove)
+  const [exporting, setExporting] = useState(false)
   const projectsQ = useMemoFirebase(() => (firestore && world.orgId && pmOn ? query(collection(firestore, "projects"), where("organizationId", "==", world.orgId)) : null), [firestore, world.orgId, pmOn])
   const { data: projectDocs } = useCollection<{ name?: string }>(projectsQ)
   const projectNames = useMemo(() => new Map((projectDocs || []).map((p) => [p.id, p.name || ""])), [projectDocs])
@@ -131,6 +136,12 @@ export default function PurchaseOrdersPage() {
                 </button>
               )}
             </div>
+            {exportsToAccountant && (
+              <Button variant="outline" className="h-10 gap-1.5 rounded-xl" onClick={() => setExporting(true)}>
+                <FileSpreadsheet size={15} aria-hidden="true" />
+                {t("export.open")}
+              </Button>
+            )}
             {pmOn && (
             <Select value={project} onValueChange={setProject}>
               <SelectTrigger className="h-10 w-48 rounded-xl bg-card text-sm" aria-label={t("project_filter")}>
@@ -282,6 +293,7 @@ export default function PurchaseOrdersPage() {
 
         <PoDrawer po={openOrder} world={world} open={Boolean(openOrder)} onOpenChange={(o) => !o && show(null)} now={now} />
       </div>
+      {exportsToAccountant && <AccountantExportDialog open={exporting} onOpenChange={setExporting} orders={world.orders} receipts={world.deliveries} />}
     </PortalLayout>
   )
 }

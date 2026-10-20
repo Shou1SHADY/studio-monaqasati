@@ -2763,6 +2763,13 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // A team's «طلب مواد» in a company without Project Management (Procurement 1.5, PUR-10):
+    // written ONLY by the server (/api/procurement/team-requests — create, withdraw, decline);
+    // its progress is read from the RFQs and orders that name it, never written back here.
+    match /procTeamRequests/{requestId} {
+      allow get, list: if orgReadable();
+    }
+
     // The receiver register (PRD 3.0 §4 `RCVR`) — who receives goods and at which
     // warehouses. Read by any member (the forward dialog and the receiving desk
     // both list it); kept by whoever prepares or approves an order, so a store

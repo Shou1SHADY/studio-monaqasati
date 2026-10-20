@@ -70,7 +70,7 @@ import {
   type PoLineX,
   type PoTerms,
 } from "@/lib/procurement/po-extras"
-import { cancelRemainderWithFee, answerHoldPrice, decideHold, holdInvoice, logSentOutside, recordFinancePayment, referBudgetToProjects, releaseHold, selfIssuePurchaseOrder, type PoLogAction } from "@/lib/procurement/po-extra-writes"
+import { cancelRemainderWithFee, answerHoldPrice, decideHold, holdInvoice, logSentOutside, referBudgetToProjects, releaseHold, selfIssuePurchaseOrder, type PoLogAction } from "@/lib/procurement/po-extra-writes"
 import { operatingPolicies } from "@/lib/procurement/policies"
 import {
   ProcWriteError,
@@ -99,7 +99,6 @@ import {
   FinanceTrailSection,
   HoldInvoiceDialog,
   OrderDeliveriesSections,
-  RecordPaymentDialog,
   ScheduleSection,
   SupplierDateDialog,
   WarrantyCallout,
@@ -128,8 +127,9 @@ import {
 import { printPurchaseOrder, printReceiptStatement } from "./PoPrint"
 import { PoRateDialog } from "./PoRateDialog"
 import { PoSendDialog } from "./PoSendDialog"
+import { FinancelessPaymentSection } from "./FinancelessPaymentSection"
 import { PoSupplierSection } from "./PoSupplierSection"
-import { acceptSupplierWarranty, reportTransferToSupplier } from "@/lib/procurement/supplier-acts-writes"
+import { acceptSupplierWarranty } from "@/lib/procurement/supplier-acts-writes"
 import { reopenAwardAfterDecline, reopenAwardRefusal } from "@/lib/procurement/rfq-writes"
 import { PoReceiverLine } from "./PoReceiverLine"
 
@@ -209,7 +209,6 @@ type DialogState =
   | { kind: "cancel_order" }
   | { kind: "rate" }
   | { kind: "decide_hold"; hold: PoFinanceHold }
-  | { kind: "pay" }
   | { kind: "hold_invoice" }
 
 export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseOrder | null; world: ProcurementWorld; open: boolean; onOpenChange: (open: boolean) => void; now: Date }) {
@@ -700,7 +699,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
       case "received":
         return (
           <>
-            <Callout tone="green">{t("next.received_body")}</Callout>
+            <Callout tone="green">{t(financeOn ? "next.received_body" : "next.received_body_nofin")}</Callout>
             {po.rating && ratedBlock(po.rating)}
             <div className="flex flex-wrap items-center gap-2">
               {f && acts.acts && canRateNow(po, world.deliveries, actor) && (
@@ -865,7 +864,12 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               {nextStep()}
             </Section>
 
-            {actor.seesPrices && (
+            {actor.seesPrices && !financeOn && (
+              // Without Finance (PUR-10, Q5): no ledger here — an optional status, the advance, the invoice file to the accountant.
+              <FinancelessPaymentSection po={px} actor={actor} orgId={world.orgId || ""} Section={Section} />
+            )}
+
+            {actor.seesPrices && financeOn && (
               <FinanceTrailSection
                 po={px}
                 actor={actor}
@@ -874,7 +878,6 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 onDecide={(hold) => setDialog({ kind: "decide_hold", hold })}
                 onAnswerPrice={(hold, accept) => f && void run("hold", () => answerHoldPrice(f, actor, po.id, { holdId: hold.id, accept }, opts), "toast.saved")}
                 // With Finance in the company, paying is Finance's own act (PUR-07): Procurement reads it, and only holds.
-                onRecordPayment={financeOn ? undefined : () => setDialog({ kind: "pay" })}
                 onHold={() => setDialog({ kind: "hold_invoice" })}
                 lead={
                   <>
@@ -1194,27 +1197,6 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             onOpenChange={(o) => !o && setDialog(null)}
             onSubmit={({ decision, note, price }) => (dialog?.kind === "decide_hold" ? run("hold", () => decideHold(f, actor, po.id, { holdId: dialog.hold.id, decision, note, price }, opts), "toast.saved") : Promise.resolve(false))}
           />
-          <RecordPaymentDialog open={dialog?.kind === "pay"} onOpenChange={(o) => !o && setDialog(null)} po={px} now={now} onSubmit={(input) =>
-              run(
-                "pay",
-                async () => {
-                  const paid = await recordFinancePayment(f, actor, isFinance, po.id, input)
-                  // A registered supplier confirms the transfer from his side. The payment stands either way — but if
-                  // he was not told, Finance must know it (never a silent catch).
-                  if (po.supplierOrgId && po.supplierOrgId !== "guest") {
-                    try {
-                      const paymentNo = (paid.financePayments || []).at(-1)?.no || null
-                      await reportTransferToSupplier(f, actor, isFinance, po, { amount: input.amount, bank: input.bank || "", reference: input.reference, valueDate: input.valueDate, paymentNo })
-                    } catch (err) {
-                      console.error("transfer not reported to the supplier:", err)
-                      toast({ title: t("supplier.transfer_not_told"), description: t("supplier.transfer_not_told_desc"), variant: "destructive" })
-                    }
-                  }
-                  return paid
-                },
-                "toast.saved"
-              )
-            } />
           <HoldInvoiceDialog open={dialog?.kind === "hold_invoice"} lines={po.lines} onOpenChange={(o) => !o && setDialog(null)} onSubmit={(input) => run("hold_invoice", () => holdInvoice(f, actor, isFinance, po.id, input), "toast.saved")} />
           <RejectDecisionDialog
             open={dialog?.kind === "reject"}

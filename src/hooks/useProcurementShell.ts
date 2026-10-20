@@ -42,6 +42,7 @@ export function useProcTodayWorld(): ProcTodayWorld {
   const { on } = useModules()
   const pmOn = on("project-management")
   const mfgOn = on("manufacturing")
+  const financeOn = on("payments")
   const pmEvents = usePmBoundaryEvents(orgId, pmOn)
   const canSource = can("rfq.manage")
   const actor = useMemo<TodayActor>(() => ({ ...loaded.actor, canSource: loaded.actor.canPrepare || canSource }), [loaded.actor, canSource])
@@ -55,8 +56,8 @@ export function useProcTodayWorld(): ProcTodayWorld {
     const base = toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts })
     const raw = new Map(rfqs.map((r) => [r.id, r as typeof r & { rfqNumber?: string | null; closedEarly?: { at?: string | null } | null }]))
     const withRecord = base.rfqs.map((r) => ({ ...r, number: raw.get(r.id)?.rfqNumber ?? null, closedEarly: raw.get(r.id)?.closedEarly ?? null }))
-    return { ...base, rfqs: withRecord, agreements, history, supplierRecords, needDesk, rfqQueries, pmEvents, ownerHasTeam: needs.ownerHasTeam, budgetOverruns, readyDates, forwardFacts, sampleNos, projectsOn: pmOn, workshopOn: mfgOn }
-  }, [pmOn, mfgOn, orders, deliveries, rfqs, offers, policies, supplierFacts, agreements, history, supplierRecords, needDesk, rfqQueries, pmEvents, needs.ownerHasTeam, budgetOverruns, readyDates, forwardFacts, sampleNos])
+    return { ...base, rfqs: withRecord, agreements, history, supplierRecords, needDesk, rfqQueries, pmEvents, ownerHasTeam: needs.ownerHasTeam, budgetOverruns, readyDates, forwardFacts, sampleNos, projectsOn: pmOn, workshopOn: mfgOn, financeOn }
+  }, [pmOn, mfgOn, financeOn, orders, deliveries, rfqs, offers, policies, supplierFacts, agreements, history, supplierRecords, needDesk, rfqQueries, pmEvents, needs.ownerHasTeam, budgetOverruns, readyDates, forwardFacts, sampleNos])
   return { loaded, needs, world, actor, now }
 }
 

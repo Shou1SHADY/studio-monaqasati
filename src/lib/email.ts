@@ -5,13 +5,15 @@ type SendEmailInput = {
   to: string
   subject: string
   html: string
+  /** Files sent with it (Resend: base64 content) — the accounting export (PUR-10). */
+  attachments?: Array<{ filename: string; content: string }>
 }
 
 export function isEmailConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY)
 }
 
-export async function sendEmail({ to, subject, html }: SendEmailInput): Promise<{ sent: boolean; error?: string }> {
+export async function sendEmail({ to, subject, html, attachments }: SendEmailInput): Promise<{ sent: boolean; error?: string }> {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
     console.warn("RESEND_API_KEY not configured — email skipped.")
@@ -29,7 +31,7 @@ export async function sendEmail({ to, subject, html }: SendEmailInput): Promise<
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from, to: [to], subject, html }),
+      body: JSON.stringify({ from, to: [to], subject, html, ...(attachments?.length ? { attachments } : {}) }),
     })
 
     if (!res.ok) {

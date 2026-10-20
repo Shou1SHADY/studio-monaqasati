@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, CheckCircle2, FileSignature, Loader2, Scale, ShoppingCart, X } from "lucide-react"
+import { AlertTriangle, CheckCircle2, FileSignature, Loader2, PackagePlus, Scale, ShoppingCart, X } from "lucide-react"
 import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -51,9 +51,12 @@ import { DirectOrderDialog } from "@/components/procurement/DirectOrderDialog"
 import { NeedLineDrawer } from "@/components/procurement/NeedLineDrawer"
 import { ProceedPurchaseDialog } from "@/components/procurement/ProceedPurchaseDialog"
 import { StatusPill } from "@/components/module-ui/StatusPill"
+import { TeamRequestDialog } from "@/components/procurement/TeamRequestDialog"
+import { MyTeamRequests } from "@/components/procurement/MyTeamRequests"
+import { getAuth } from "firebase/auth"
 import { fmtDay } from "@/components/procurement/need-bits"
 
-type Confirm = { kind: "arrived" | "decline" | "buy" | "lapsed"; row: NeedRow }
+type Confirm = { kind: "arrived" | "decline" | "buy" | "lapsed" | "team_decline"; row: NeedRow }
 
 const isSeg = (v: string | null): v is RequestSegment => !!v && (REQUEST_SEGMENTS as string[]).includes(v)
 
@@ -87,6 +90,11 @@ export function PurchaseRequestsInbox() {
   const search = searchParams.get("search") || ""
   const searching = search.trim().length > 0
   const seg: RequestSegment = searching ? "all" : isSeg(searchParams.get("seg")) ? (searchParams.get("seg") as RequestSegment) : "new"
+  // Without Project Management the team asks for materials here (PUR-10, question 4): «طلب مواد» and «طلباتي».
+  const teamOn = !on("project-management")
+  const mine = teamOn && !searching && searchParams.get("seg") === "mine"
+  const [raising, setRaising] = useState(false)
+  const [mineKey, setMineKey] = useState(0)
   const panelKey = searchParams.get("publish")
   const openLine = searchParams.get("line")
   const setQuery = (patch: Record<string, string | null>) => {
@@ -139,7 +147,12 @@ export function PurchaseRequestsInbox() {
     setBusy(true)
     setError(null)
     try {
-      if (kind === "arrived" || kind === "decline") {
+      if (kind === "team_decline") {
+        const s = row.need.source
+        const res = await fetch("/api/procurement/team-requests", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${(await getAuth().currentUser?.getIdToken()) || ""}` }, body: JSON.stringify({ action: "decline", id: s.purchaseRequestId, reason: reason.trim() }) })
+        if (!res.ok) throw new Error(String(res.status))
+        toast({ title: t("pri_declined_saved") })
+      } else if (kind === "arrived" || kind === "decline") {
         const m = mfgOf(row)
         if (!m) return
         const { order: o, request: r, lotted } = m
@@ -196,10 +209,29 @@ export function PurchaseRequestsInbox() {
 
   return (
     <div className="space-y-6 pb-24" dir={isRtl ? "rtl" : "ltr"}>
-      <ProcurementHeader title={t("pri_title")} description={t("nd_desc")} />
+      <ProcurementHeader
+        title={t("pri_title")}
+        description={teamOn ? t("nd_desc_team") : t("nd_desc")}
+        action={
+          teamOn ? (
+            <Button className="gap-1.5" onClick={() => setRaising(true)}>
+              <PackagePlus size={15} aria-hidden="true" /> {t("tr_open")}
+            </Button>
+          ) : undefined
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-2">
-        <ProcChipGroup items={REQUEST_SEGMENTS.filter((f) => f !== "elsewhere" || counts.elsewhere > 0).map((f) => ({ id: f, label: t(`rq_seg_${f}`), count: counts[f] }))} active={seg} onPick={(f) => setQuery({ seg: f, search: null })} label={t("pri_state")} dimmed={searching} />
+        <ProcChipGroup<RequestSegment | "mine">
+          items={[
+            ...REQUEST_SEGMENTS.filter((f) => f !== "elsewhere" || counts.elsewhere > 0).map((f) => ({ id: f, label: t(`rq_seg_${f}`), count: counts[f] })),
+            ...(teamOn ? [{ id: "mine" as const, label: t("tr_mine") }] : []),
+          ]}
+          active={mine ? "mine" : seg}
+          onPick={(f) => setQuery({ seg: f, search: null })}
+          label={t("pri_state")}
+          dimmed={searching}
+        />
         {searching && (
           <span className="ms-auto inline-flex items-center gap-2 text-xs text-muted-foreground">
             {t("nd_results", { count: visible.length, term: search.trim() })}
@@ -211,7 +243,9 @@ export function PurchaseRequestsInbox() {
         {ownerRO && <span className="ms-auto text-xs font-semibold text-muted-foreground">{t("nd_owner_read")}</span>}
       </div>
 
-      {loading ? (
+      {mine ? (
+        <MyTeamRequests refreshKey={mineKey} />
+      ) : loading ? (
         <div className="flex items-center justify-center rounded-2xl border bg-card p-16">
           <Loader2 className="animate-spin text-muted-foreground" size={28} aria-hidden="true" />
         </div>
@@ -234,9 +268,22 @@ export function PurchaseRequestsInbox() {
               onPublish={() => setQuery({ publish: c.key, line: null })}
               prepareHref={editorHref([c.key])}
               onDetails={() => setQuery({ line: c.rows[0].key })}
+              onDecline={c.need.kind === "team" && canStartRfq && (c.state === "new" || c.state === "prepared") ? () => setConfirm({ kind: "team_decline", row: c.rows[0] }) : undefined}
             />
           ))}
         </ul>
+      )}
+
+      {teamOn && (
+        <TeamRequestDialog
+          open={raising}
+          onOpenChange={setRaising}
+          orgId={orgId || ""}
+          onSent={() => {
+            setMineKey((k) => k + 1)
+            setQuery({ seg: "mine", search: null })
+          }}
+        />
       )}
 
       {canAct && summary.lines > 0 && (
@@ -321,12 +368,12 @@ export function PurchaseRequestsInbox() {
                 <DialogDescription>
                   {confirm.kind === "arrived"
                     ? t("pri_arrived_desc", { qty: fmtQty(confirm.row.total), unit: confirm.row.unit, item: confirm.row.name })
-                    : confirm.kind === "decline"
-                      ? t("pri_decline_desc", { item: confirm.row.name, ref: confirm.row.need.refLabel })
+                    : confirm.kind === "decline" || confirm.kind === "team_decline"
+                      ? t("pri_decline_desc", { item: confirm.row.name, ref: displayNeedRef(confirm.row.need.refLabel, locale) })
                       : t(`nd_confirm_${confirm.kind}_desc`, { item: confirm.row.name })}
                 </DialogDescription>
               </DialogHeader>
-              {confirm.kind === "decline" && (
+              {(confirm.kind === "decline" || confirm.kind === "team_decline") && (
                 <div className="space-y-1.5">
                   <Label htmlFor="pri-reason">{t("pri_decline_reason")}</Label>
                   <Input id="pri-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("pri_decline_reason_ph")} dir="auto" />
@@ -338,7 +385,7 @@ export function PurchaseRequestsInbox() {
                 <Button variant="outline" onClick={() => setConfirm(null)} disabled={busy}>
                   {t("acc_cancel")}
                 </Button>
-                <Button onClick={runConfirm} disabled={busy || (confirm.kind === "decline" && !reason.trim())} className="gap-1.5">
+                <Button onClick={runConfirm} disabled={busy || ((confirm.kind === "decline" || confirm.kind === "team_decline") && reason.trim().length < 3)} className="gap-1.5">
                   {busy ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                   {t("pri_confirm")}
                 </Button>
@@ -360,6 +407,7 @@ function RequestCardView({
   onPublish,
   prepareHref,
   onDetails,
+  onDecline,
 }: {
   card: RequestCard
   selectable: boolean
@@ -369,6 +417,8 @@ function RequestCardView({
   onPublish: () => void
   prepareHref: string
   onDetails: () => void
+  /** A team's «طلب مواد» Procurement cannot buy: «تعذّر الشراء» with the reason its requester reads. */
+  onDecline?: () => void
 }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
@@ -435,6 +485,11 @@ function RequestCardView({
           {c.state === "order" && n.poId && (
             <Button asChild size="sm" variant="outline">
               <Link href={`/contractor/rfqs/orders?po=${n.poId}`}>{t("rq_open_po")}</Link>
+            </Button>
+          )}
+          {onDecline && (
+            <Button size="sm" variant="ghost" className="text-destructive" onClick={onDecline}>
+              {t("tr_decline")}
             </Button>
           )}
           <Button size="sm" variant="ghost" onClick={onDetails}>

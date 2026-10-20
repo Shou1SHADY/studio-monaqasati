@@ -14,6 +14,7 @@
 // / late / on the way — dates and quantities, never an amount. The owner gets
 // the approvals routed to him and a read-only view of the rest.
 
+import { awaitsAdvance, type FinancelessPo } from "./payment-mark"
 import {
   acceptedValue,
   addDays,
@@ -144,6 +145,9 @@ export interface ProcWorld {
   readyDates?: Record<string, string>
   /** By need row key: the number of the sample with the consultant (`sampleNo`). */
   sampleNos?: Record<string, string>
+  /** Finance is in the company's package (undefined = it is). Without it the owner's second tile is the orders
+   * whose supplier's clock waits for an advance not marked paid (PUR-10). */
+  financeOn?: boolean
   /** By delivery id: where a notice's goods land and who the register names to receive them there. */
   forwardFacts?: Record<string, { place: string | null; receiver: string | null }>
   /** Projects' boundary events Procurement reads (`pmEvents` SRET · NOPO · EQH). */
@@ -993,7 +997,10 @@ export function todayKpis(w: ProcWorld, actor: TodayActor, now: Date): ProcKpis 
     // what was received in full and not yet closed.
     const due = financeDue(w.orders)
     tiles.push({ id: "my_approval", labelKey: "kpi.my_approval.label", value: mineValue, unit: "money", noteKey: mine.length ? "kpi.my_approval.note_some" : "kpi.my_approval.note_none", noteParams: { count: mine.length }, tone: mine.length ? "warn" : "good", href: "/contractor/rfqs/orders?filter=awaiting_approval" })
-    tiles.push({ id: "finance_due", labelKey: "kpi.finance_due.label", value: due.total, unit: "money", noteKey: "kpi.finance_due.note_split", noteParams: { advances: due.advances, received: due.received }, tone: "neutral", href: COMMITMENTS_HREF })
+    if (w.financeOn === false) {
+      const waiting = w.orders.filter((po) => awaitsAdvance(po as FinancelessPo & { advancePercent?: number | null }))
+      tiles.push({ id: "awaiting_advance", labelKey: "kpi.awaiting_advance.label", value: waiting.length, unit: "count", noteKey: waiting.length ? "kpi.awaiting_advance.note_some" : "kpi.awaiting_advance.note_none", noteParams: {}, tone: waiting.length ? "warn" : "good", href: "/contractor/rfqs/orders?filter=live" })
+    } else tiles.push({ id: "finance_due", labelKey: "kpi.finance_due.label", value: due.total, unit: "money", noteKey: "kpi.finance_due.note_split", noteParams: { advances: due.advances, received: due.received }, tone: "neutral", href: COMMITMENTS_HREF })
     if (nk) tiles.push({ id: "overdue_lines", labelKey: "kpi.overdue_lines.label", value: nk.overdue, unit: "count", noteKey: nk.overdue ? "kpi.overdue_lines.note_some" : "kpi.overdue_lines.note_none", noteParams: { total: nk.need }, tone: nk.overdue ? "bad" : "good", href: `${NEEDS_HREF}?seg=act` })
     else tiles.push({ id: "late", labelKey: "kpi.late.label", value: lateOrders.length, unit: "count", noteKey: lateOrders.length ? "kpi.late.note_value" : "kpi.late.note_none", noteParams: { amount: lateValue }, tone: lateOrders.length ? "bad" : "good", href: "/contractor/rfqs/orders?filter=late" })
     return { kind, tiles }
@@ -1182,6 +1189,9 @@ export const TODAY_KEYS = [
   "wait.supplier_advance.sub",
   "wait.being_made.sub_ready",
   "kpi.finance_due.note_split",
+  "kpi.awaiting_advance.label",
+  "kpi.awaiting_advance.note_some",
+  "kpi.awaiting_advance.note_none",
   "kpi.lines",
   "kpi.with_suppliers.label",
   "kpi.with_suppliers.note",

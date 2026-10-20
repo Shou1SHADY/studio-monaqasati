@@ -8,7 +8,7 @@
 import { displayNeedRef } from "@/lib/procurement/format"
 import type { ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Boxes, ExternalLink, Factory, FileSignature, FolderKanban, PackageCheck, Scale, ShoppingCart, Undo2 } from "lucide-react"
+import { Boxes, ExternalLink, Factory, FileSignature, FolderKanban, PackageCheck, Scale, ShoppingCart, Undo2, Users } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -47,7 +47,7 @@ export interface NeedLineActs {
   onSendBack?: (row: NeedRow) => void
 }
 
-const SOURCE_ICON = { mfg: Factory, project: FolderKanban, stock: Boxes }
+const SOURCE_ICON = { mfg: Factory, project: FolderKanban, stock: Boxes, team: Users }
 
 export function NeedLineDrawer({ row, agreements, history, cap, today, acts, orgId, onClose }: { row: NeedRow; agreements: PriceAgreement[]; history: PriceHistoryEntry[]; cap: number; today: string; acts: NeedLineActs; orgId?: string | null; onClose: () => void }) {
   const t = useTranslations("Portal.Shared")
