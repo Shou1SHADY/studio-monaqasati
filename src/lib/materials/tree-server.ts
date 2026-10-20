@@ -3,7 +3,8 @@
 // only means a just-added sub-category is refused for a few minutes.
 
 import type { Firestore } from "firebase-admin/firestore"
-import shippedFile from "../../../public/data/material-tree.json"
+// Never import from public/ on the server — see scripts/build-material-tree.mjs (UAT lost every image).
+import shippedFile from "./shipped-tree.json"
 import { indexTree, type MaterialIndex } from "./tree"
 import { MATERIAL_TREE, type MaterialRootDoc, type MaterialTreeFile } from "./types"
 

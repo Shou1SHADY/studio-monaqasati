@@ -44,6 +44,10 @@ function node(n) {
 const out = { source: src.source, fetched: src.fetched, roots: src.tree.map(node) }
 mkdirSync(new URL("../public/data/", import.meta.url), { recursive: true })
 writeFileSync(new URL("../public/data/material-tree.json", import.meta.url), JSON.stringify(out))
+// The server's copy lives OUTSIDE public/: a server import of a public/ file makes Next's file tracing
+// pre-create public/ in the standalone output with that one file, and the App Hosting adapter then
+// skipped the rest — every logo, icon and image 404'd on UAT (20 Oct 2026).
+writeFileSync(new URL("../src/lib/materials/shipped-tree.json", import.meta.url), JSON.stringify(out))
 let count = 0
 const walk = (n) => { count++; n.children.forEach(walk) }
 out.roots.forEach(walk)
