@@ -238,8 +238,9 @@ describe("revision, transit, Projects' cancel (R-28, R-29)", () => {
 })
 
 describe("who may act (R-26) and the buyer's self-issue (R-32)", () => {
-  it("the owner reads somebody else's order; a buyer acts on his own only", () => {
-    expect(poActs(po(), actor({ uid: "o", isOwner: true }))).toMatchObject({ ownerReadOnly: true, acts: false })
+  it("the owner acts on every order unless he stepped back; a buyer acts on his own only", () => {
+    expect(poActs(po(), actor({ uid: "o", isOwner: true }))).toMatchObject({ ownerReadOnly: false, acts: true })
+    expect(poActs(po(), actor({ uid: "o", isOwner: true }), true)).toMatchObject({ ownerReadOnly: true, acts: false })
     expect(poActs(po({ preparedById: "o" }), actor({ uid: "o", isOwner: true })).acts).toBe(true)
     expect(poActs(po(), actor({ uid: "u3" }))).toMatchObject({ notMine: true, acts: false })
     expect(poActs(po(), actor({ uid: "u3", canPrepare: false }))).toMatchObject({ acts: true })

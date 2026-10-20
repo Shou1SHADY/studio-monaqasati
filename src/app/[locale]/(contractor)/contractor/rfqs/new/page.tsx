@@ -1,9 +1,8 @@
 "use client"
 
-import { RfqForm } from "@/components/contractor/RfqForm"
+import { RfqEditorPage } from "@/components/procurement/rfq-editor/RfqEditorPage"
 
-// Standalone RFQ creation — no project required. For a quick, non-competitive price request
-// (e.g. a small job needing just one material) where creating a full project is overkill.
-export default function NewStandaloneRfqPage() {
-  return <RfqForm />
+// «طلب عروض أسعار جديد» — the rows editor (Procurement 1.5, PUR-02/03): one RFQ as written.
+export default function NewRfqPage() {
+  return <RfqEditorPage />
 }

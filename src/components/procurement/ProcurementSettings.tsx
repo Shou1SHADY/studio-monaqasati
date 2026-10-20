@@ -42,8 +42,8 @@ import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 
 type Unit = "sar" | "percent" | "count" | "days"
-type NumericKey = Exclude<keyof ResolvedPolicies, "sealOffersUntilDeadline" | "sendOnApproval" | "buyerReceives" | "noticeRouting">
-type SwitchKey = "sealOffersUntilDeadline" | "buyerReceives" | "sendOnApproval"
+type NumericKey = Exclude<keyof ResolvedPolicies, "sealOffersUntilDeadline" | "sendOnApproval" | "buyerReceives" | "noticeRouting" | "ownerStepsBack">
+type SwitchKey = "sealOffersUntilDeadline" | "buyerReceives" | "sendOnApproval" | "ownerStepsBack"
 type Row = { kind: "number"; key: NumericKey; unit: Unit } | { kind: "switch"; key: SwitchKey } | { kind: "routing" }
 
 /** The prototype's order: what shapes a quote, then the receipt, then money, then the clocks. */
@@ -64,6 +64,8 @@ const ROWS: Row[] = [
   { kind: "number", key: "supplierAcceptanceDays", unit: "days" },
   { kind: "number", key: "splitWindowDays", unit: "days" },
   { kind: "switch", key: "sendOnApproval" },
+  // Procurement 1.5, question 1: the owner holds every act unless he steps back himself.
+  { kind: "switch", key: "ownerStepsBack" },
 ]
 
 const nonNegative = z.coerce.number().min(0)
@@ -84,6 +86,7 @@ const schema = z.object({
   sealOffersUntilDeadline: z.boolean(),
   sendOnApproval: z.boolean(),
   buyerReceives: z.boolean(),
+  ownerStepsBack: z.boolean(),
   noticeRouting: z.enum(NOTICE_ROUTINGS),
 })
 type FormValues = z.infer<typeof schema>
@@ -119,7 +122,7 @@ const NOT_BUILT_COUNT = 9
 const CONFLICTS: Party[] = ["inv", "mfg", "fin", "inv", "pm", "pm", "gov", "gov"]
 const LOG_SHOWN = 14
 
-const OWNER_ONLY_POLICIES = new Set<string>(["managerApprovalLimit", "buyerSelfIssueLimit", "directPurchaseCap", "overReceiptTolerancePercent"])
+const OWNER_ONLY_POLICIES = new Set<string>(["managerApprovalLimit", "buyerSelfIssueLimit", "directPurchaseCap", "overReceiptTolerancePercent", "ownerStepsBack"])
 
 export function ProcurementSettings() {
   const t = useTranslations("Portal.ProcSettings")

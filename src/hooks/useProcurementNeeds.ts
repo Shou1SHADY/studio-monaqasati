@@ -133,9 +133,10 @@ export function useProcurementNeeds(world: ProcurementWorld): ProcurementNeeds {
           isOwner: m.id === orgId || m.organizationRole === "owner",
         })),
         { ...actor, canSource },
-        (profile as Record<string, unknown> | null)?.procurementCategories
+        (profile as Record<string, unknown> | null)?.procurementCategories,
+        policies.ownerStepsBack
       ),
-    [orgMembers, groups, orgId, actor, canSource, profile]
+    [orgMembers, groups, orgId, actor, canSource, profile, policies.ownerStepsBack]
   )
   const viewerCategories = team.viewerCategories
 

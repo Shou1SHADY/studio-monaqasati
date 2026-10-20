@@ -128,6 +128,8 @@ const strip = <T extends Record<string, unknown>>(o: T) => Object.fromEntries(Ob
 async function buildWorld() {
   resetFakeDb()
   seed(`users/${ORG}`, { organizationId: ORG, organizationRole: "owner", name: NAME.owner, companyName: "شركة البناء المتقدم", email: "owner@test.sa" })
+  // The prototype's owner READS once there is a team — since Procurement 1.5 (question 1) that is his choice, not the default.
+  seed(`procurementSettings/${ORG}`, { organizationId: ORG, ownerStepsBack: true })
   for (const r of ["manager", "buyer", "expediter"] as const) {
     seed(`teamGroups/g_${r}`, { organizationId: ORG, name: r, key: null, permissions: [...PERMS[r], "projects.view"] })
     // The buyer buys Construction Materials — the manager's RFQ r2 is in his category, and must still not be his.

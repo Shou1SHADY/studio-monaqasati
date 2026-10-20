@@ -204,6 +204,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const modules = useModules()
   const remindUntil = po ? reminderCooldownUntil(po, now) : null
   const { actor, policies } = world
+  const stepsBack = operatingPolicies(policies).ownerStepsBack
   const { profile } = useResolvedProfile(actor.uid || null)
   const [dialog, setDialog] = useState<DialogState>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -211,7 +212,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const [reawardAsk, setReawardAsk] = useState(false)
   const perms = usePermissions()
   // Finance's acts; the owner acts as Finance here only on an order he may act on (not one a buyer prepared).
-  const isFinance = perms.isOrgOwner ? !(po && poActs(po, actor).ownerReadOnly) : perms.can("invoices.manage") || perms.can("accounting.post")
+  const isFinance = perms.isOrgOwner ? !(po && poActs(po, actor, stepsBack).ownerReadOnly) : perms.can("invoices.manage") || perms.can("accounting.post")
   // The resolved policy — the self-issue write re-reads it inside its transaction.
   const selfLimit = operatingPolicies(policies).buyerSelfIssueLimit
   const boqItems = useBoqGateItems(po ? asX(po) : null)
@@ -291,7 +292,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   // Today's «أرسِله للمورد» lands here with `act=send`: the send form opens once.
   const searchParams = useSearchParams()
   const sendAsked = useRef<string | null>(null)
-  const wantsSend = open && po?.status === "approved" && searchParams?.get("act") === "send" && Boolean(firestore) && actorCanExpedite(actor) && poActs(po, actor).acts && canSend(po)
+  const wantsSend = open && po?.status === "approved" && searchParams?.get("act") === "send" && Boolean(firestore) && actorCanExpedite(actor) && poActs(po, actor, stepsBack).acts && canSend(po)
   useEffect(() => {
     if (!wantsSend || !po || sendAsked.current === po.id) return
     sendAsked.current = po.id
@@ -302,7 +303,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const px = asX(po)
   const status = poStatus(po)
   const paidClosed = closedByPayment(asX(po))
-  const acts = poActs(po, actor)
+  const acts = poActs(po, actor, stepsBack)
   const revision = poRevision(po)
   // Projects switched off for this company: no budget referral and no sample gate — nobody there could clear them.
   const pmOn = modules.on("project-management")

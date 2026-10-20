@@ -161,8 +161,8 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
   const canPrepare = !ownerReadOnly && (actor.isOwner || actor.canPrepare || actor.canApprove)
   const manual = d.source === "manual"
   // The owner only reads an order a buyer prepared (poActs) — as the write refuses him.
-  const canDecide = (actor.isOwner || actor.canPrepare || actor.canApprove) && (!po || poActs(po as PurchaseOrder, actor).acts)
-  const rateable = Boolean(po) && canPrepare && canRate(po as PurchaseOrder, deliveries) && poActs(po as PurchaseOrder, actor).acts
+  const canDecide = (actor.isOwner || actor.canPrepare || actor.canApprove) && (!po || poActs(po as PurchaseOrder, actor, operatingPolicies(policies).ownerStepsBack).acts)
+  const rateable = Boolean(po) && canPrepare && canRate(po as PurchaseOrder, deliveries) && poActs(po as PurchaseOrder, actor, operatingPolicies(policies).ownerStepsBack).acts
   const opts = { copy: tShared as unknown as Translator, locale: locale as "ar" | "en", orgName }
 
   const dateText = (iso: string | null | undefined) => {
