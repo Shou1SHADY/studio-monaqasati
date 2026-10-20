@@ -96,9 +96,10 @@ describe("resolveNavTrail", () => {
       c.sections.flatMap((s) => s.items.filter((i) => i.children?.length))
     )
     // Only meaningful while the registry actually nests something.
-    if (withChildren.length === 0) return
-    const parent = withChildren[0]
-    const child = parent.children![0]
+    // A child reached by its own path (not a ?tab= deep link, which the pathname alone cannot pick).
+    const parent = withChildren.find((p) => p.children!.some((c) => !c.href.includes("?")))
+    if (!parent) return
+    const child = parent.children!.find((c) => !c.href.includes("?"))!
     const { crumbs } = contractorTrail(hrefPathname(child.href))
     const keys = crumbs.map((c) => c.titleKey)
     expect(keys).toContain(child.titleKey)

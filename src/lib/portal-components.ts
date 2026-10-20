@@ -208,20 +208,15 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_procurement",
         items: [
+          // Procurement 1.5 (PUR-08): ONE navigation with ONE name per page — this list IS the tab rail
+          // (`PROC_TABS`): the same pages, the same order, the same words. «طلب عروض جديد» is a button on the
+          // RFQs and Today pages, not a page of the menu; the material market stays out until it is ready.
           { titleKey: "contractor_proc_today", href: "/contractor/rfqs/today", icon: Sunrise, requiredAnyPermission: PROC_TAB_GATES.today },
-          {
-            titleKey: "contractor_rfqs",
-            href: "/contractor/rfqs",
-            icon: FileText,
-            requiredAnyPermission: PROC_TAB_GATES.rfqs,
-            children: [
-              { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: FilePlus, requiredAnyPermission: ["rfq.create", "offers.accept", "po.approve"] },
-              { titleKey: "contractor_purchase_requests", href: "/contractor/rfqs/requests", icon: Inbox, requiredAnyPermission: PROC_TAB_GATES.requests },
-            ],
-          },
+          { titleKey: "contractor_purchase_requests", href: "/contractor/rfqs/requests", icon: Inbox, requiredAnyPermission: PROC_TAB_GATES.requests },
+          { titleKey: "contractor_rfqs", href: "/contractor/rfqs", icon: FileText, requiredAnyPermission: PROC_TAB_GATES.rfqs },
           { titleKey: "contractor_purchase_orders", href: "/contractor/rfqs/orders", icon: ClipboardList, requiredAnyPermission: PROC_TAB_GATES.orders },
           { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck, requiredAnyPermission: PROC_TAB_GATES.receipts },
-          { titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket, requiredPermission: "rfq.manage", comingSoon: CATALOG_COMING_SOON },
+          ...(CATALOG_COMING_SOON ? [] : [{ titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket, requiredPermission: "rfq.manage" as const }]),
           { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Users, requiredAnyPermission: PROC_TAB_GATES.suppliers },
           { titleKey: "contractor_proc_reports", href: "/contractor/rfqs/reports", icon: BarChart3, requiredAnyPermission: PROC_TAB_GATES.reports },
           { titleKey: "contractor_proc_settings", href: "/contractor/rfqs/settings", icon: Settings2, requiredAnyPermission: PROC_TAB_GATES.settings },

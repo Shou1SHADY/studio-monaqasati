@@ -295,7 +295,7 @@ const SPECS: Record<string, ScreenSpec> = {
     titles: ["طلبات الشراء الواردة", "جديدة", "مُجهَّزة", "في عروض", "في أوامر", "ط.م 01", "برج الواحة", "حديد تسليح 16 مم", "موعد الحاجة"],
     only: OMB,
   },
-  rfqs: { titles: ["طلبات عروض الأسعار", "حديد وإسمنت — برج الواحة", "حديد الأسقف", "إسمنت المرحلة الثانية"], acts: { "مشاركة كرابط للزوار": M, "تعديل الموعد أو المدعوين": M }, only: OMB },
+  rfqs: { titles: ["طلبات العروض", "حديد وإسمنت — برج الواحة", "حديد الأسقف", "إسمنت المرحلة الثانية"], acts: { "مشاركة كرابط للزوار": M, "تعديل الموعد أو المدعوين": M }, only: OMB },
   rfqList: { titles: ["العروض المقدمة", "قائمة العروض", "مقارنة العروض", "الاستفسارات", "تفاصيل الطلب", "مصنع الحديد الوطني", "مؤسسة الإسمنت"], acts: { "طلب عينة": MB, استبعاد: MB, "ترسية وإرسال للمالية": B } },
   rfqCompare: {
     titles: ["المقارنة — اضغط خلية لترسية بندها", "البند", "الإجمالي لو أُرسي كاملاً", "حديد تسليح 12 مم"],
@@ -328,13 +328,14 @@ const SPECS: Record<string, ScreenSpec> = {
   receiptsIncoming: { titles: ["سندات الاستلام", "في الطريق", "السندات", "بلا أمر شراء", "في الطريق — ما أشعر به الموردون وما حلّ موعده", "مؤسسة الإسمنت"], acts: { "سجّل الاستلام": [], "سجّل سند استلام يدوياً": MB } },
   receiptsLog: { titles: ["سجل الاستلام", "سند الاستلام", "المورد وأمر الشراء", "ما قُبل", "أين استُلم وإلى أين ذهب", "محل مواد البناء"] },
   receiptsNoPo: { titles: ["بضاعة وصلت بلا أمر شراء", "لا سندات بلا أمر شراء"] },
-  suppliers: { titles: ["الموردون والأسعار", "مورّدونا", "دليل موردي المنصة"], priced: ["تاريخ الأسعار", "اتفاقيات الأسعار"], acts: { "ادعُ مورداً إلى المنصة": MB } },
+  suppliers: { titles: ["الموردون", "مورّدونا", "الدعوات", "دليل موردي المنصة"], priced: ["تاريخ الأسعار", "اتفاقيات الأسعار"], acts: { "ادعُ مورداً إلى المنصة": MB } },
   reports: { titles: ["التقارير", "أداء التوريد", "زمن الدورة والمنافسة", "الاستثناءات"], priced: ["المشتريات بحسب المشروع والجهة", "المشتريات بحسب المورد", "فرق السعر عن آخر شراء", "التزامات مفتوحة بحسب الاستحقاق"] },
-  settings: { titles: ["الحدود والربط", "مسار الشراء", "الربط مع الوحدات", "السياسات والأدوار", "من الحاجة إلى السداد — تسع خطوات، لكل خطوة مالك واحد", "سطر الاحتياج هو العمود الفقري", "ما تملكه الوحدة"] },
+  // PUR-08: only what the customer sets; the developers' pages moved to docs/procurement-boundaries.md.
+  settings: { titles: ["الإعدادات", "السياسات", "مواقع التسليم", "المستلمون", "الأدوار"] },
 }
 
 // The rail: every role has Today, orders, receipts, suppliers, reports, boundaries; only sourcing roles see requests and RFQs.
-const RAIL: Record<string, Role[]> = { اليوم: ALL, "طلبات الشراء الواردة": OMB, "طلبات العروض": OMB, "أوامر الشراء": ALL, "سندات الاستلام": ALL, الموردون: ALL, التقارير: ALL, "الحدود والربط": ALL }
+const RAIL: Record<string, Role[]> = { اليوم: ALL, "طلبات الشراء الواردة": OMB, "طلبات العروض": OMB, "أوامر الشراء": ALL, "سندات الاستلام": ALL, الموردون: ALL, التقارير: ALL, الإعدادات: ALL } // PUR-08: one name per page
 const PROC_HEADED = new Set(["today", "requests", "rfqs", "orders", "orderA", "orderB", "receiptsIncoming", "receiptsLog", "receiptsNoPo", "suppliers", "reports", "settings"])
 // A tab is its label followed by its count chip («3 جديدة» — PUR-09 #7); the label is the first node.
 const railLabels = () => Array.from(document.querySelectorAll("nav a")).map((a) => (a.childNodes[0]?.textContent ?? "").trim())
