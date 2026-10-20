@@ -57,8 +57,6 @@ import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 
 export default function ContractorRfqsPage() {
   const { on } = useModules()
-  // With Project Management off a project tender is an ordinary RFQ: it opens on the core pages.
-  const pmOn = on("project-management")
   const mfgOn = on("manufacturing")
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
@@ -344,7 +342,7 @@ const handleBatchPublish = async () => {
   const filteredRfqs = sortRfqs((allRfqs as any[]).filter((rfq: any) => {
     if (!searching && !inRfqSegment(rfq, segment)) return false
     if (!passesFilters(rfq, filters, now)) return false
-    if (searching && !matchesSearch(searchQuery, [rfq.title, rfq.rfqNumber, rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : null, rfq.category, rfq.subCategory, rfq.city, rfq.id, rfq.description, ...projectLabels(rfq), directSupplierOf(rfq), ...(offerers.get(rfq.id) || []), ...(Array.isArray(rfq.products) ? rfq.products.map((p: { name?: string; description?: string }) => p?.name || p?.description) : [])])) {
+    if (searching && !matchesSearch(searchQuery, [rfq.title, rfq.rfqNumber, rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : null, rfq.category, rfq.subCategory, rfq.city, rfq.id, `#${rfq.id.slice(0, 6)}`, rfq.description, ...projectLabels(rfq), directSupplierOf(rfq), ...(offerers.get(rfq.id) || []), ...(Array.isArray(rfq.products) ? rfq.products.map((p: { name?: string; description?: string }) => p?.name || p?.description) : [])])) {
       return false
     }
     return true
@@ -379,7 +377,7 @@ const handleBatchPublish = async () => {
 
   const canDelete = (rfq: any) => rfq.status === "Draft" && actsOn(rfq)
 
-  const glanceHref = glanceRfq ? (glanceRfq.projectId && pmOn ? `/contractor/projects/${glanceRfq.projectId}/tenders/${glanceRfq.id}/offers` : `/contractor/rfqs/${glanceRfq.id}/offers`) : ""
+  const glanceHref = glanceRfq ? (`/contractor/rfqs/${glanceRfq.id}/offers`) : ""
 
   return (
     <PortalLayout>
@@ -559,8 +557,8 @@ const handleBatchPublish = async () => {
         {!isLoading && filteredRfqs.length > 0 && viewMode === "grid" && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {shownRfqs.map((rfq: any) => {
-              const offersHref = rfq.projectId && pmOn ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers` : `/contractor/rfqs/${rfq.id}/offers`
-              const editHref = rfq.projectId && pmOn ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`
+              const offersHref = `/contractor/rfqs/${rfq.id}/offers`
+              const editHref = `/contractor/rfqs/new?edit=${rfq.id}`
               return (
                 <RfqCard
                   key={rfq.id}
@@ -605,7 +603,7 @@ const handleBatchPublish = async () => {
             seesPrices={procWorld.actor.seesPrices}
             selected={selectedRfqs}
             selectable={(rfq) => actsOn(rfq)}
-            hrefOf={(rfq) => (rfq.projectId && pmOn ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers` : `/contractor/rfqs/${rfq.id}/offers`)}
+            hrefOf={(rfq) => (`/contractor/rfqs/${rfq.id}/offers`)}
             onToggle={toggleSelectRfq}
             onToggleAll={selectAll}
             onGlance={(rfq) => setGlanceRfq(rfq as SheetRfq)}

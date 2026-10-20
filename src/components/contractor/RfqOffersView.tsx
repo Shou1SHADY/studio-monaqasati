@@ -736,7 +736,7 @@ ${t("offers_notif_reduction_note", { note })}`
     }
     if (firestore && acts) void logRfqDocument(firestore, writeActor, rfqId).catch((err) => console.warn("print not logged:", (err as { code?: string })?.code || err))
   }
-  const editHref = projectId && on("project-management") ? `/contractor/projects/${projectId}/tenders/new?edit=${rfqId}` : `/contractor/rfqs/new?edit=${rfqId}`
+  const editHref = `/contractor/rfqs/new?edit=${rfqId}`
   const deleteDraft = async () => {
     if (!firestore || !rfq || (rfq as { status?: string }).status !== "Draft") return
     setDeletingDraft(true)

@@ -1,7 +1,8 @@
-import { redirect } from "next/navigation"
+import { redirect } from "@/i18n/routing"
 
-export default async function TenderPage({ params }: { params: Promise<{ id: string; tenderId: string }> }) {
-  const { id, tenderId } = await params;
-  // Redirect to the offers sub-page which serves as the primary detail view for contractors
-  redirect(`/contractor/projects/${id}/tenders/${tenderId}/offers`)
+// One page per RFQ (Procurement 1.5, PUR-09 #5): a project's tender IS an RFQ and opens at
+// `/contractor/rfqs/{id}/offers`. This address stays so older links and bookmarks still resolve.
+export default async function TenderRedirect({ params }: { params: Promise<{ locale: string; tenderId: string }> }) {
+  const { locale, tenderId } = await params
+  redirect({ href: `/contractor/rfqs/${tenderId}/offers`, locale })
 }

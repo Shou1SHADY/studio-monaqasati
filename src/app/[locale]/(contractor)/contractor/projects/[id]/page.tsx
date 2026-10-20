@@ -3228,7 +3228,7 @@ export default function ProjectDetailPage() {
                               <div className="flex items-center justify-end gap-1">
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <Link href={`/contractor/projects/${projectId}/tenders/${r.id}/offers`}>
+                                    <Link href={`/contractor/rfqs/${r.id}/offers`}>
                                       <button type="button" className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
                                         <Eye size={14} />
                                       </button>
@@ -3238,7 +3238,7 @@ export default function ProjectDetailPage() {
                                 </Tooltip>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <Link href={`/contractor/projects/${projectId}/tenders/${r.id}/offers?tab=inquiries`}>
+                                    <Link href={`/contractor/rfqs/${r.id}/offers?tab=inquiries`}>
                                       <button type="button" className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
                                         <MessageCircle size={14} />
                                       </button>
@@ -3293,7 +3293,7 @@ export default function ProjectDetailPage() {
                                 {editable && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Link href={`/contractor/projects/${projectId}/tenders/new?edit=${r.id}`}>
+                                      <Link href={`/contractor/rfqs/new?edit=${r.id}`}>
                                         <button type="button" className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
                                           <Pencil size={14} />
                                         </button>
@@ -3366,13 +3366,13 @@ export default function ProjectDetailPage() {
                           </div>
                           <div className="space-y-2 pt-3 mt-1 border-t border-slate-100">
                             <div className="flex gap-2">
-                              <Link href={`/contractor/projects/${projectId}/tenders/${r.id}/offers`} className="flex-1">
+                              <Link href={`/contractor/rfqs/${r.id}/offers`} className="flex-1">
                                 <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs h-8">
                                   <Eye size={13} />
                                   {t("rfq_view_offers")}
                                 </Button>
                               </Link>
-                              <Link href={`/contractor/projects/${projectId}/tenders/${r.id}/offers?tab=inquiries`} className="flex-1">
+                              <Link href={`/contractor/rfqs/${r.id}/offers?tab=inquiries`} className="flex-1">
                                 <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs h-8">
                                   <MessageCircle size={13} />
                                   {t("rfq_inquiries")}
@@ -3409,7 +3409,7 @@ export default function ProjectDetailPage() {
                               <div className="flex gap-2">
                                 {/* Compact labels: the full "edit/delete RFQ" wording overflows
                                     the card and gets clipped — icons + card context carry the meaning */}
-                                <Link href={`/contractor/projects/${projectId}/tenders/new?edit=${r.id}`} className="flex-1 min-w-0">
+                                <Link href={`/contractor/rfqs/new?edit=${r.id}`} className="flex-1 min-w-0">
                                   <Button variant="ghost" size="sm" title={t("rfq_edit_tender")} className="w-full gap-1.5 text-xs h-8 text-slate-500 hover:text-slate-700 hover:bg-slate-100">
                                     <Pencil size={13} className="shrink-0" />
                                     <span className="truncate">{t("rfq_edit_short")}</span>

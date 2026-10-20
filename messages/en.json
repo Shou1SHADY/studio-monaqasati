@@ -18852,7 +18852,8 @@
           "ovh_left": "Site overhead budget left: {amount}.",
           "ovh_none": "No site overhead budget recorded on this project.",
           "main_stock": "{q} in the main stores — may be committed elsewhere; the store decides",
-          "main_none": "no stock in the main stores"
+          "main_none": "no stock in the main stores",
+          "mat_change": "Change"
         },
         "rcv": {
           "title": "Receive on the project",
