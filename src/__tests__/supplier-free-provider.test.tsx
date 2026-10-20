@@ -69,7 +69,7 @@ describe("FreeWorldProvider", () => {
     const publicQueries = new Set(queries.map((q) => q[0]).filter((q) => JSON.stringify(q).includes("visibility")))
     expect(publicQueries.size).toBe(1)
     const allQueries = new Set(queries.map((q) => q[0]))
-    expect(allQueries.size).toBe(new Set(queries.slice(0, 11).map((q) => q[0])).size)
+    expect(allQueries.size).toBe(new Set(queries.slice(0, 15).map((q) => q[0])).size) // one render: 11 queries + the 4 tree slots of useFieldRfqs (PUR-04)
     expect(latest).not.toBeNull()
     expect(latest!.ready).toBe(true)
     expect(latest!.profile?.orgId).toBe("sup1")

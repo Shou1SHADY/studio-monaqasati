@@ -94,7 +94,7 @@ describe("the company an act runs for is the ACTIVE one, never the caller's own 
       .seed("users/mem", { organizationId: "own", organizationRole: "member", role: "Supplier", name: "Sami" })
     const { POST } = await import("@/app/api/supplier-free/act/route")
     await POST(new Request("https://x.test/api", { method: "POST", headers: { authorization: "Bearer uid:mem" }, body: JSON.stringify({ action: "quote.withdraw", offerId: "o1" }) }))
-    expect(runQuoteAct).toHaveBeenCalledWith(adminDb, expect.objectContaining({ orgId: "own", company: "Al Noor", vatRate: 0, field: { specs: ["طوب وبلوك"], cities: ["الرياض"] } }), expect.anything())
+    expect(runQuoteAct).toHaveBeenCalledWith(adminDb, expect.objectContaining({ orgId: "own", company: "Al Noor", vatRate: 0, field: { specs: ["طوب وبلوك"], cities: ["الرياض"], subIds: [] } }), expect.anything())
   })
 })
 

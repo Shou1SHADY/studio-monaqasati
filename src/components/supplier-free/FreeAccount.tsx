@@ -8,7 +8,7 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react"
 import { collection, doc, query, setDoc, updateDoc, where, type DocumentData, type UpdateData } from "firebase/firestore"
 import { getAuth } from "firebase/auth"
-import { Award, BadgeCheck, Briefcase, Building2, Check, FileText, Folder, Globe, Hash, KeyRound, Loader2, Lock, MapPin, PenLine, Plus, Shield, ShieldAlert, Smartphone, Star, Tag, Upload, Wallet } from "lucide-react"
+import { Award, BadgeCheck, Briefcase, Building2, Check, FileText, Folder, FolderTree, Globe, Hash, KeyRound, Loader2, Lock, MapPin, PenLine, Plus, Shield, ShieldAlert, Smartphone, Star, Tag, Upload, Wallet } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useStorage, useUser } from "@/firebase"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { useToast } from "@/hooks/use-toast"
@@ -35,6 +35,8 @@ import { deliveryReviews, type ReviewDoc } from "@/lib/supplier-free/reviews"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { useFree } from "./useFree"
+import { useTranslations } from "next-intl"
+import { SupplierSpecialtiesCard } from "@/components/materials/SupplierSpecialtiesCard"
 
 const TABS = [
   ["basic", "atBasic"],
@@ -355,6 +357,7 @@ function SpecsTab() {
   const f = useFree()
   const { t, profile, L } = f
   const [edit, setEdit] = useState(false)
+  const tMat = useTranslations("Portal.Materials")
   if (!profile) return null
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -379,6 +382,15 @@ function SpecsTab() {
           <div className="rounded-lg border px-3 py-2"><dt className="text-[11px] text-muted-foreground">{t("otInvite")}</dt><dd className="text-lg font-black tabular-nums" dir="ltr">{L.opps({ tab: "invite" }).length}</dd></div>
         </dl>
       </Panel>
+      {/* PUR-04: the tree's sub-categories — what a request written on the tree reaches him by. */}
+      <div className="lg:col-span-2">
+        <Panel icon={FolderTree} title={tMat("specialties_title")}>
+          <SupplierSpecialtiesCard
+            current={profile.specialtyIds || []}
+            canEdit={profile.orgId === profile.uid || profile.raw.organizationRole === "owner" || !("organizationRole" in profile.raw)}
+          />
+        </Panel>
+      </div>
       {edit && <SpecsDialog onClose={() => setEdit(false)} />}
     </div>
   )

@@ -5,6 +5,7 @@
 // it adds — and "Needs your reply" as the day's decisions in the one working order (G-12), each opening its deal over
 // the page that owns it. A new account sees "nothing yet" and how to complete its profile, never zeros (TDY-07).
 
+import { SpecialtiesPrompt } from "@/components/materials/SpecialtiesPrompt"
 import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { PortalHomeView } from "@/components/portal-home/PortalHomeView"
@@ -77,7 +78,16 @@ export function FreeHome() {
       urgentTiles={m.urgentTiles}
       recent={[]}
       decisions={{ loading: !f.ready, items: m.decisions }}
-      banner={banner}
+      banner={
+        f.ready && profile && !(profile.specialtyIds || []).length ? (
+          <div className="space-y-3">
+            <SpecialtiesPrompt />
+            {banner}
+          </div>
+        ) : (
+          banner
+        )
+      }
       allDecisions={{ all: t("secAll", { n: f.fmt.n(m.decisions.length) }), fewer: t("secFewer") }}
       after={openSection}
     />

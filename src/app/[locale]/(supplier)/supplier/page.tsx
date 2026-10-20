@@ -7,6 +7,9 @@
 // acceptance. Browsing and answering RFQs lives in Sales → RFQs. A free
 // supplier lands on the same view, fed from his free world (FreeHome).
 
+import { SpecialtiesPrompt } from "@/components/materials/SpecialtiesPrompt"
+import { useFieldRfqs } from "@/hooks/useFieldRfqs"
+import { supplierSubIds } from "@/lib/materials/reach"
 import { useMemo } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
@@ -43,17 +46,18 @@ function LegacySupplierDashboard() {
     const list = (profile as { specializations?: unknown } | null)?.specializations
     return Array.isArray(list) ? (list.filter((s) => typeof s === "string") as string[]) : []
   }, [profile])
-  const specsKey = specializations.slice(0, 30).join("|")
 
-  // The RFQs open to this supplier — in his specializations when he named any.
-  const rfqsQuery = useMemoFirebase(() => {
-    if (!firestore || !user || !seesRfqs || !profile) return null
-    const specs = specsKey ? specsKey.split("|") : []
-    return specs.length > 0
-      ? query(collection(firestore, "rfqs"), where("status", "==", "New"), where("category", "in", specs))
-      : query(collection(firestore, "rfqs"), where("status", "==", "New"))
-  }, [firestore, user, seesRfqs, profile, specsKey])
-  const { data: rfqs } = useCollection(rfqsQuery)
+  // The RFQs open to this supplier — in his field when he named one (the tree's sub-categories or
+  // the older category names, PUR-04); every open one while he has named nothing.
+  const subIds = useMemo(() => supplierSubIds(profile as Record<string, unknown> | null), [profile])
+  const hasField = specializations.length > 0 || subIds.length > 0
+  const field = useFieldRfqs({ enabled: !!user && seesRfqs && !!profile && hasField, subIds, specs: specializations, publicOnly: false })
+  const allOpenQuery = useMemoFirebase(() => {
+    if (!firestore || !user || !seesRfqs || !profile || hasField) return null
+    return query(collection(firestore, "rfqs"), where("status", "==", "New"))
+  }, [firestore, user, seesRfqs, profile, hasField])
+  const { data: allOpen } = useCollection(allOpenQuery)
+  const rfqs = hasField ? field.rfqs : allOpen
 
   const offersQuery = useMemoFirebase(() => {
     if (!firestore || !myOrgId || !seesRfqs) return null
@@ -144,6 +148,7 @@ function LegacySupplierDashboard() {
         urgentTiles={urgentTiles}
         recent={recentOffers(offerList)}
         decisions={{ loading: !ordersReady, items: decisions }}
+        banner={profile && !subIds.length && can("offers.view") ? <SpecialtiesPrompt /> : null}
       />
     </PortalLayout>
   )
