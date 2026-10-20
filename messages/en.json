@@ -524,9 +524,9 @@
       "supplier_notifications": "Notifications",
       "supplier_profile": "Profile",
       "contractor_dashboard": "Dashboard",
-      "contractor_rfqs": "All RFQs",
+      "contractor_rfqs": "RFQs",
       "contractor_my_suppliers": "My Suppliers",
-      "contractor_browse_suppliers": "Supplier Directory",
+      "contractor_browse_suppliers": "Suppliers",
       "contractor_projects": "Projects",
       "contractor_chats": "My Chats",
       "contractor_team_chat": "Team Chat",
@@ -550,7 +550,7 @@
       "section_management": "Management",
       "section_monitoring": "Monitoring",
       "logout": "Logout",
-      "contractor_goods_received": "Goods Received",
+      "contractor_goods_received": "Goods receipts",
       "contractor_guarantees": "Guarantees",
       "contractor_new_project": "New Project",
       "contractor_new_rfq": "New RFQ",
@@ -673,7 +673,7 @@
       "contractor_proc_today": "Today",
       "contractor_purchase_orders": "Purchase orders",
       "contractor_proc_reports": "Reports",
-      "contractor_proc_settings": "Settings & boundaries",
+      "contractor_proc_settings": "Settings",
       "contractor_pm_inbox": "New projects",
       "contractor_pm_today": "Projects today",
       "fin_nav_projects_desk": "Project certificates",
@@ -8473,7 +8473,7 @@
       "proc_tab_receipts": "Goods receipts",
       "proc_tab_suppliers": "Suppliers",
       "proc_tab_reports": "Reports",
-      "proc_tab_settings": "Boundaries & links",
+      "proc_tab_settings": "Settings",
       "proc_module_name": "Procurement",
       "proc_module_sub": "Needs · Quotes · Purchase orders",
       "proc_search_ph": "Search: material · supplier · document…",
@@ -8481,7 +8481,7 @@
       "proc_authority_buyer": "All categories · prepares POs, never approves",
       "proc_authority_buyer_cats": "Own categories: {cats} · prepares POs, never approves",
       "proc_authority_expediter": "PO dates and quantities — no prices",
-      "nd_desc": "Every line that reached us from another module — sorted by last order day, not by arrival",
+      "nd_desc": "Every request from projects, the workshop and the stores under its own number, sorted by the last day to order",
       "nd_seg_act": "Needs action",
       "nd_seg_oth": "With others",
       "nd_seg_rfq": "In RFQs",
@@ -10930,7 +10930,7 @@
       "rfq_glance_status_accepted": "Accepted",
       "rfq_glance_status_rejected": "Rejected",
       "rfq_glance_status_review": "Under review",
-      "rfqv_title": "Requests for quotation",
+      "rfqv_title": "RFQs",
       "rfqv_desc": "Sent to suppliers — {sealed, select, 1 {prices sealed until closing} other {prices show as they arrive}}, awarded item by item",
       "rfqv_new": "Issue a new RFQ",
       "rfqv_stage_draft": "Draft",
@@ -13284,7 +13284,7 @@
       },
       "page": {
         "title": "Today",
-        "subtitle": "Needs are born in Projects and Manufacturing — we turn them into on-time supply",
+        "subtitle": "What waits for your decision today, and whom we wait on",
         "greeting": "Good morning {name}"
       },
       "showLess": "Show less",
@@ -13331,7 +13331,7 @@
         "bank": "Bank account (as the supplier keeps it)"
       },
       "title": "Purchase orders",
-      "desc": "An approved PO reaches Finance as a commitment and the receiver to receive against — the invoice and payment are Finance's",
+      "desc": "An approved order reaches the supplier and the receiver — invoice and payment are Finance's",
       "search_ph": "Search by PO number, supplier, RFQ or project",
       "search_clear": "Clear search",
       "segments_label": "Order segments",
@@ -13794,7 +13794,7 @@
         "cancel": "Cancel"
       },
       "title": "Goods receipts",
-      "subtitle": "Everything on the way and everything received — who recorded it and where it went. We follow up and read; whoever receives records it; what was bought off the platform, we issue its receipt here by hand.",
+      "subtitle": "What is on its way and what arrived — who recorded it and where it went",
       "searchPlaceholder": "Search by receipt, order, supplier or line…",
       "projectFilter": "Project",
       "allProjects": "All projects",
@@ -13825,7 +13825,7 @@
         "record": "Record the receipt",
         "recordNoNotice": "Arrived without notice — record it",
         "panelTitle": "On the way — notified by suppliers or due",
-        "panelSub": "The supplier's notice reaches us first; we forward it to the receiver with a link and a one-time code to their phone. If it is not forwarded within the window, the system forwards it and tags it — so the truck is never left standing. If its date is after the supplier's promise, we know of the delay before it happens.",
+        "panelSub": "A supplier's notice reaches us and we forward it to the receiver — automatically after the window.",
         "shipment": "shipment {n}",
         "shipmentOf": "shipment {n} of {m}",
         "forwardedTo": "forwarded to {name}",
@@ -14574,8 +14574,8 @@
     },
     "ProcSettings": {
       "page": {
-        "title": "Boundaries & links",
-        "subtitle": "What we own · what we read · what we send · and what we never do, even if asked"
+        "title": "Settings",
+        "subtitle": "What your team sets: policies · delivery sites · receivers · roles"
       },
       "saved": "Policies saved",
       "saveFailed": "Policies were not saved — try again",
@@ -14762,8 +14762,11 @@
       "segment": {
         "flow": "The purchase path",
         "link": "Links with modules",
-        "pol": "Policies & roles",
-        "gap": "Not built · conflicts · log"
+        "pol": "Policies",
+        "gap": "Not built · conflicts · log",
+        "sites": "Delivery sites",
+        "receivers": "Receivers",
+        "roles": "Roles"
       },
       "party": {
         "pm": "Projects",
@@ -14969,6 +14972,56 @@
         "fin_paid": "{kind, select, adv {Advance} part {Part payment} other {Invoice payment}} {no} on {doc}",
         "fin_held": "Finance held invoice {invoice} on {doc}",
         "hold_decided": "Our decision on held invoice {invoice} ({doc}) went to Finance"
+      },
+      "sites": {
+        "sub": "A site carries the city and district the supplier reads, and the receiver proposed for every delivery.",
+        "add": "Add a site",
+        "none": "No sites yet",
+        "none_hint": "Add your warehouses and work sites; with Project Management, project sites join by themselves.",
+        "col_site": "Site",
+        "col_city": "City and district",
+        "col_receiver": "Default receiver",
+        "col_open": "Open requests",
+        "edit": "Edit",
+        "kind_site": "Work site",
+        "kind_warehouse": "Warehouse",
+        "kind_project": "Project site",
+        "no_city": "No city — the supplier needs it",
+        "name": "Site name",
+        "city": "City",
+        "pick_city": "Pick the city",
+        "district": "District",
+        "address": "Address",
+        "receiver": "Default receiver",
+        "no_receiver": "No receiver",
+        "receiver_hint": "Proposed for every delivery here; a notice is forwarded to them automatically after the window.",
+        "saved": "Site saved",
+        "retire": "Take it off the lists",
+        "restore": "Put it back on the lists"
+      },
+      "roles2": {
+        "sub": "What each Procurement role does, as the screens and the server apply it.",
+        "what": "What they do",
+        "col_owner": "Company owner",
+        "col_manager": "Procurement manager",
+        "col_buyer": "Buyer",
+        "col_expediter": "Expediter",
+        "row_prices": "Sees prices and values",
+        "row_publish": "Publishes an RFQ, from incoming requests or new",
+        "row_award": "Awards and prepares the purchase order",
+        "row_approve": "Approves an order someone else prepared",
+        "row_expedite": "Follows dates up and forwards delivery notices",
+        "row_invite": "Invites a supplier and adds him to ours",
+        "row_mark_paid": "Marks payment (without Finance only)",
+        "row_raise_request": "Raises a material request (without Project Management only)",
+        "up_to": "Up to {limit}",
+        "foot_fin": "Roles are given on the team page. Receiving is not a Procurement act, nor paying while Finance is in the package.",
+        "foot_nofin": "Roles are given on the team page, and “raises a material request” to any member. Receiving is not a Procurement act."
+      },
+      "accountant": {
+        "label": "Accountant's e-mail",
+        "desc": "Supplier invoice files and “Export for accounting” go here — your accounting lives in your own system.",
+        "invalid": "Not a valid e-mail"
       }
     },
     "PM": {
@@ -24491,7 +24544,7 @@
         }
       },
       "page": {
-        "title": "Suppliers & prices",
+        "title": "Suppliers",
         "subtitle": "Supplier file, agreements and price history — rating is computed from its orders, not typed stars",
         "empty_desc": "Add one from the platform directory, or invite a supplier who is not on the platform yet."
       },

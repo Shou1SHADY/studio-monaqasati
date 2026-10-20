@@ -6,6 +6,7 @@
 // `useProcTodayWorld` is the one place the Today world is assembled, so the
 // header's counts and the Today screen can never read different worlds.
 
+import { requestCards } from "@/lib/procurement/incoming-requests"
 import { useMemo, useState } from "react"
 import { useModules } from "@/hooks/useCompanyModules"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -14,7 +15,7 @@ import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { useProcurementWorld, type ProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useRfqQueries } from "@/hooks/useRfqQueries"
-import { actionRows, inBuyerScope } from "@/lib/procurement/need-desk"
+import { inBuyerScope } from "@/lib/procurement/need-desk"
 import { isBuyer, rfqInScope } from "@/lib/procurement/rfq-view"
 import { useBudgetOverruns, useForwardFacts, useMfgReadyDates } from "@/hooks/useProcShellFacts"
 import { useSampleNumbers } from "@/hooks/useSampleNumbers"
@@ -80,7 +81,11 @@ export function useProcurementShell(): ProcurementShell {
   const { loading, orders, deliveries, rfqs, policies } = loaded
   const tasks = useMemo(() => todayTasks(world, actor, now), [world, actor, now])
   const kpis = useMemo(() => (loading ? null : todayKpis(world, actor, now)), [loading, world, actor, now])
-  const incomingRequests = useMemo(() => actionRows(needs.rows).filter((r) => inBuyerScope(r, needs.viewerCategories)).length, [needs.rows, needs.viewerCategories])
+  // The rail counts REQUESTS that are new (PUR-01/08: «2 جديدة»), not their lines — a request prepared into a draft is not new.
+  const incomingRequests = useMemo(
+    () => requestCards(needs.rows.filter((r) => inBuyerScope(r, needs.viewerCategories)), world.rfqs as Array<{ id: string; status?: string | null; needSources?: unknown; purchaseSource?: unknown }>).filter((c) => c.state === "new").length,
+    [needs.rows, needs.viewerCategories, world.rfqs]
+  )
   const counts = useMemo(() => {
     // The badge counts what the RFQ list shows: the list scopes a buyer by `isBuyer` (rfq-view), so the badge does too.
     const scope = { uid: actor.uid, isOwner: actor.isOwner, canApprove: actor.canApprove, canPrepare: actor.canPrepare }
