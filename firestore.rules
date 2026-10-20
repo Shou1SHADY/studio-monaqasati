@@ -2753,13 +2753,14 @@ service cloud.firestore {
     match /procurementSettings/{orgId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
       // The limits that bound the approver himself (his approval limit, the buyer's
-      // self-issue limit, the direct cap, Inventory's tolerance) are the owner's alone.
+      // self-issue limit, the direct cap, Inventory's tolerance) are the owner's alone — and so is
+      // `ownerStepsBack` (Procurement 1.5, Q1): only the owner may make himself read-only.
       allow create, update: if isOrgMember(orgId)
         && request.resource.data.get('organizationId', orgId) == orgId
         && (isOrgOwner()
             || (hasOrgPermission('po.approve')
                 && !request.resource.data.diff(resource == null ? {} : resource.data).affectedKeys()
-                      .hasAny(['managerApprovalLimit', 'buyerSelfIssueLimit', 'directPurchaseCap', 'overReceiptTolerancePercent'])));
+                      .hasAny(['managerApprovalLimit', 'buyerSelfIssueLimit', 'directPurchaseCap', 'overReceiptTolerancePercent', 'ownerStepsBack'])));
       allow delete: if isAdmin();
     }
 

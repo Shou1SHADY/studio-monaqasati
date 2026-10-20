@@ -4,7 +4,7 @@ import { useMemo } from "react"
 import { usePathname } from "next/navigation"
 import { doc } from "firebase/firestore"
 import { useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
-import { COMPANY_MODULES, applyModuleSwitches, moduleOffFor, offSet, supplierRegistry, type ModulePortal, type OptionalModule } from "@/lib/company-modules"
+import { COMPANY_MODULES, applyModuleSwitches, moduleOffFor, offSet, pathWithoutLocale, portalOfPath, supplierRegistry, type ModulePortal, type OptionalModule } from "@/lib/company-modules"
 import { CONTRACTOR_COMPONENTS, SUPPLIER_COMPONENTS, type PortalComponentDef } from "@/lib/portal-components"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { useSupplierPlanName } from "@/hooks/usePortalRegistry"
@@ -37,8 +37,8 @@ export function useModuleComponents(portal: ModulePortal | null): PortalComponen
  * address?". The portal comes from the address bar, so the same call works on both sides.
  */
 export function useModules(): { on: (id: OptionalModule) => boolean; off: ReadonlySet<OptionalModule>; loading: boolean; linkable: (href: string | null | undefined) => boolean } {
-  const pathname = usePathname() || ""
-  const portal: ModulePortal | null = pathname.startsWith("/contractor") ? "contractor" : pathname.startsWith("/supplier") ? "supplier" : null
+  const pathname = pathWithoutLocale(usePathname())
+  const portal: ModulePortal | null = portalOfPath(pathname)
   const { off, loading } = useCompanyModules(portal)
   const plan = useSupplierPlanName()
   const all = portal === "supplier" ? supplierRegistry(plan) : CONTRACTOR_COMPONENTS

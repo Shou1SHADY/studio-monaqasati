@@ -34,6 +34,15 @@ export type ModulePortal = "contractor" | "supplier"
 const CONTRACTOR_SWITCHES: readonly OptionalModule[] = ["project-management", "hr", "manufacturing"]
 const SUPPLIER_SWITCHES: readonly OptionalModule[] = ["crm", "warehouses", "payments", "hr", "manufacturing"]
 
+/** The portal an address belongs to — with or without its locale prefix (`/en/contractor/…` is the contractor's).
+ * Before 20 Oct 2026 the English addresses read as no portal, so every module counted as on in English. */
+export const pathWithoutLocale = (pathname: string | null | undefined): string => (pathname || "").replace(/^\/(ar|en)(?=\/|$)/, "") || "/"
+
+export function portalOfPath(pathname: string | null | undefined): ModulePortal | null {
+  const path = pathWithoutLocale(pathname)
+  return path.startsWith("/contractor") ? "contractor" : path.startsWith("/supplier") ? "supplier" : null
+}
+
 /** The switches a company of this portal has. */
 export const optionalFor = (portal: ModulePortal): readonly OptionalModule[] => (portal === "supplier" ? SUPPLIER_SWITCHES : CONTRACTOR_SWITCHES)
 

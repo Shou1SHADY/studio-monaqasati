@@ -171,9 +171,9 @@ export function requestReaches(rfq: Rec, orgId: string, field: { specs: string[]
   if (rfq.visibility === "private") return false
   // One RFQ may carry several sub-categories (PUR-03): any of them is his field.
   if (!fieldCovers({ subIds: field.subIds || [], specs: field.specs }, rfq)) return false
-  const city = str(rfq.city)
-  // A request with no city is nationwide (as on the supplier's list).
-  return !city || field.cities.includes(city)
+  // Every city it delivers to (an RFQ in several places, PUR-03), else its one city; none = nationwide.
+  const cities = Array.isArray(rfq.cities) && rfq.cities.length ? (rfq.cities as unknown[]).map(str).filter(Boolean) : [str(rfq.city)].filter(Boolean)
+  return !cities.length || cities.some((c) => field.cities.includes(c))
 }
 
 /** Whether an invitation names him (only an invitation can be declined). */

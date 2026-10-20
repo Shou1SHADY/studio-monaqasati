@@ -608,7 +608,8 @@ export default function ProjectDetailPage() {
   const { isVisible: isRfqColVisible, toggle: toggleRfqCol } = useTableColumns("project_rfqs", rfqColumns)
 
   const canEditOrDeleteTender = (rfq: any) => {
-    if (rfq.status === "Awarded") return false
+    // A cancelled or closed tender is never reopened by editing (the editor refuses it too — rfqEditRefusal).
+    if (rfq.status !== "Draft" && rfq.status !== "New") return false
     if (acceptedTenderRfqIds.has(rfq.id)) return false
     return true
   }

@@ -10,6 +10,7 @@
 // office's form, a line left blank did not arrive (sent as 0), and part of a
 // count may be set aside for inspection with its reason.
 
+import { fitForUpload } from "@/lib/upload-fit"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
@@ -126,7 +127,13 @@ export function ReceiveLinkContent() {
       setUploading(true)
       setError(null)
       try {
-        for (const f of Array.from(list)) {
+        for (const picked of Array.from(list)) {
+          // A phone photo is re-encoded to fit the host's request limit; a PDF over it is refused here.
+          const f = await fitForUpload(picked)
+          if (!f) {
+            setError(t("err_file_big"))
+            break
+          }
           const fd = new FormData()
           fd.append("file", f)
           fd.append("kind", kind)

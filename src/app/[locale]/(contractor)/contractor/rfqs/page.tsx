@@ -370,7 +370,7 @@ const handleBatchPublish = async () => {
       .filter((o) => o.n > 0 || key === "project" || key === "deadline" || filters[key] === o.value)
 
   const canEdit = (rfq: any) => {
-    if (rfq.status === "Awarded") return false
+    if (rfq.status !== "Draft" && rfq.status !== "New") return false
     if (acceptedRfqIds.has(rfq.id)) return false
     return true
   }

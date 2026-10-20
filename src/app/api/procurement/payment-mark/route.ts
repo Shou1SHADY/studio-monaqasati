@@ -6,7 +6,7 @@ import { callerOf } from "@/lib/receipt-links"
 import { PURCHASE_ORDERS, type PurchaseOrder } from "@/lib/procurement/types"
 import { PAYMENT_STATES, datedFromAdvance, paymentMarkRefusal, type PaymentMark } from "@/lib/procurement/payment-mark"
 import { financeOn, mayMarkPayment } from "@/lib/procurement/financeless-server"
-import { todayOf } from "@/lib/procurement/po"
+import { riyadhDay } from "@/lib/hr/format"
 
 // «علّم الدفع» (PUR-10, question 5): without Finance in the package, the order's optional payment
 // status — or its advance marked paid with the day — is recorded here, logged on the order. With
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     const po = snap.exists ? ({ id: snap.id, ...(snap.data() as Omit<PurchaseOrder, "id">) } as PurchaseOrder) : null
     if (!po || po.organizationId !== caller.orgId) return fail("Order not found", "NOT_FOUND", 404)
     if (!po.approvedAt || po.status === "cancelled") return fail("Only an approved order is paid", "WRONG_STATE", 409)
-    const refusal = paymentMarkRefusal({ state: parsed.data.state || "paid", day: parsed.data.day, amount: parsed.data.amount }, po, todayOf(new Date()))
+    const refusal = paymentMarkRefusal({ state: parsed.data.state || "paid", day: parsed.data.day, amount: parsed.data.amount }, po, riyadhDay(new Date()))
     if (refusal) return fail("Check the day or the amount", refusal === "day" ? "BAD_DAY" : "BAD_AMOUNT", 400)
     const at = new Date().toISOString()
     const entry = (action: string, params: Record<string, unknown>) => ({ action, at, byId: caller.uid, byName: caller.name, note: null, params })

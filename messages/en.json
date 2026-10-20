@@ -13769,7 +13769,8 @@
         "guest_due": "Has the shipment arrived? The supplier is off the platform and cannot notify.",
         "record_notice": "Record a delivery notice",
         "supplier_late": "The supplier is {days, plural, one {# day} other {# days}} late and has not notified delivery.",
-        "supplier_due": "Waiting for the supplier — due {date}."
+        "supplier_due": "Waiting for the supplier — due {date}.",
+        "part_lines": "{done} of {total} materials are complete; the rest is with the supplier."
       },
       "notice": {
         "title": "Record a delivery notice",
@@ -13822,7 +13823,10 @@
         "not_sent": "Could not send — try later",
         "ask_email": "Accountant's e-mail",
         "ask_email_hint": "Saved in Procurement's policies; invoices and exports go there from now on.",
-        "save_and_send": "Save and send"
+        "save_and_send": "Save and send",
+        "too_big": "The file is over 4 MB",
+        "no_accountant_ask": "No accountant e-mail yet — the owner or the procurement manager adds it in Procurement settings",
+        "received_lines": "{done} of {total} materials complete"
       },
       "export": {
         "open": "Export for accounting",
@@ -25275,7 +25279,9 @@
       "step_request": "The request",
       "panel_sub": "{place} · {count, plural, one {# material} other {# materials}}",
       "panel_part_hint": "To publish only some of the materials: “Prepare it” and remove what you do not want.",
-      "prepare": "Prepare it"
+      "prepare": "Prepare it",
+      "err_edit_has_offers": "It cannot be edited once offers have arrived — open it from its page",
+      "err_edit_closed": "This RFQ is closed or cancelled — editing does not reopen it"
     }
   },
   "Auth": {
@@ -25676,7 +25682,7 @@
     "file_ticket": "Weighbridge ticket",
     "file_cert": "Certificate",
     "uploading": "Uploading…",
-    "err_file_big": "The file is over 10 MB",
+    "err_file_big": "The file is over 4 MB — take it at a lower resolution or split it",
     "err_file_type": "Images or PDF only",
     "err_file_many": "Ten files at most",
     "verify_login": "You are signed in ({name}) as the named receiver: your confirmation is your signature, no code needed."

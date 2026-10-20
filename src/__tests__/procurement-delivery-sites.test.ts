@@ -20,3 +20,19 @@ describe("delivery sites (PUR-10)", () => {
     expect(upsertSite(stored, { ...stored[0], city: "الخبر" })[0].city).toBe("الخبر")
   })
 })
+
+// Review of 20 Oct 2026: the second save of any site failed — `retired: undefined` on every
+// live site, and Firestore refuses an undefined field.
+describe("what is written back has no undefined field", () => {
+  const hasUndefined = (o: object) => Object.values(o).some((v) => v === undefined)
+  it("a site read back carries no `retired: undefined`", () => {
+    const [site] = storedSites([{ id: "s1", kind: "site", name: "موقع", city: "الرياض", district: "", address: "" }])
+    expect("retired" in site).toBe(false)
+    expect(storedSites([{ id: "s2", kind: "site", name: "قديم", city: "الرياض", retired: true }])[0].retired).toBe(true)
+  })
+  it("upsertSite writes no undefined, whatever the site came with", () => {
+    const stored = storedSites([{ id: "s1", kind: "site", name: "موقع", city: "الرياض", district: "", address: "" }])
+    const next = upsertSite(stored, { id: "w1", kind: "warehouse", name: "المستودع", city: "الرياض", district: "", address: "", receiverId: null, retired: undefined })
+    expect(next.some(hasUndefined)).toBe(false)
+  })
+})

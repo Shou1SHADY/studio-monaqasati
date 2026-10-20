@@ -22,7 +22,7 @@ export type DeliveryStep =
   /** The receiver counted at the gate; the receipt is to be booked. Waits on: us. */
   | { kind: "counted"; deliveryId: string; receiver: string }
   /** Some of it arrived. Waits on: the supplier, for the rest. */
-  | { kind: "part_received"; received: number; ordered: number; left: number; unit: string }
+  | { kind: "part_received"; received: number; ordered: number; left: number; unit: string; byLines: boolean; linesDone: number; linesTotal: number }
   /** A rejected quantity waits for our decision with the supplier. Waits on: us. */
   | { kind: "rejected"; qty: number; unit: string; reason: string | null }
   /** A guest supplier's day came and he cannot notify on the platform. Waits on: us. */
@@ -70,13 +70,7 @@ export function deliveryStep(po: PurchaseOrder, notices: ReadonlyArray<StepNotic
   }
   const rejected = po.lines.filter((l) => num(l.rejected) > 0 && !l.rejectDecision)
   if (rejected.length) return { kind: "rejected", qty: rejected.reduce((s, l) => s + num(l.rejected), 0), unit: rejected[0].unit, reason: null }
-  if (st === "part_received") {
-    const open = po.lines.filter((l) => lineOutstanding(l) > 0)
-    const unit = open[0]?.unit || po.lines[0]?.unit || ""
-    const ordered = po.lines.reduce((s, l) => s + num(l.quantity) - num(l.cancelled), 0)
-    const received = po.lines.reduce((s, l) => s + num(l.accepted), 0)
-    return { kind: "part_received", received, ordered, left: Math.max(0, ordered - received), unit }
-  }
+  if (st === "part_received") return { kind: "part_received", ...receiptProgress(po.lines) }
   if (!po.promisedDate) return { kind: "no_date" }
   const d = daysFromNow(po.promisedDate, now)
   if (po.isGuestSupplier && d != null && d <= 0) return { kind: "guest_due", day: po.promisedDate }
@@ -87,3 +81,18 @@ export function deliveryStep(po: PurchaseOrder, notices: ReadonlyArray<StepNotic
 
 /** «بانتظار اعتماد … منذ يوم» / «لم يقبل المورد الأمر منذ يومين» — how long the order has waited on its current hands. */
 export const waitingSinceDays = (iso: string | null | undefined, now: Date): number => daysSince(iso, now)
+
+/**
+ * How much of an order arrived. Quantities are only added when every line counts in the same unit —
+ * «510 من 1000 طن» for steel and cement together would be false (review of 20 Oct 2026); otherwise
+ * it is told in materials: «اكتمل 2 من 3 مواد».
+ */
+export function receiptProgress(lines: Array<{ quantity: number; cancelled?: number; accepted?: number; unit: string; rejected?: number; held?: number }>): { received: number; ordered: number; left: number; unit: string; byLines: boolean; linesDone: number; linesTotal: number } {
+  const live = lines.filter((l) => num(l.quantity) - num(l.cancelled) > 0)
+  const units = new Set(live.map((l) => (l.unit || "").trim()))
+  const ordered = live.reduce((s, l) => s + num(l.quantity) - num(l.cancelled), 0)
+  const received = live.reduce((s, l) => s + num(l.accepted), 0)
+  const linesDone = live.filter((l) => lineOutstanding(l as Parameters<typeof lineOutstanding>[0]) <= 0).length
+  return { received, ordered, left: Math.max(0, ordered - received), unit: units.size === 1 ? [...units][0] : "", byLines: units.size > 1, linesDone, linesTotal: live.length }
+}
+

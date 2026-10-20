@@ -10,12 +10,13 @@ import { Loader2, PowerOff } from "lucide-react"
 import { usePathname } from "next/navigation"
 import { Link } from "@/i18n/routing"
 import { useCompanyModules } from "@/hooks/useCompanyModules"
-import { belongsToOptionalModule, offModuleOwning, type ModulePortal } from "@/lib/company-modules"
+import { belongsToOptionalModule, offModuleOwning, pathWithoutLocale, portalOfPath, type ModulePortal } from "@/lib/company-modules"
 import { usePortalRegistry } from "@/hooks/usePortalRegistry"
 
 export function ModuleGate({ children }: { children: ReactNode }) {
-  const pathname = usePathname() || ""
-  const portal: ModulePortal | null = pathname.startsWith("/contractor") ? "contractor" : pathname.startsWith("/supplier") ? "supplier" : null
+  // `/en/contractor/…` is the contractor's too — without the locale stripped, English pages were never gated.
+  const pathname = pathWithoutLocale(usePathname())
+  const portal: ModulePortal | null = portalOfPath(pathname)
   const { off, loading } = useCompanyModules(portal)
   // The registry as the company's plan shapes it (a free supplier's locked modules own no page here).
   const all = usePortalRegistry(portal)

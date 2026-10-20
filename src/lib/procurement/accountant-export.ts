@@ -4,7 +4,7 @@
 // links to the supplier invoices. An export, not a link: nothing here posts. Pure; the screen
 // writes the workbook.
 
-import { lineOutstanding } from "./po"
+import { riyadhDay } from "../hr/format"
 import { paymentStateOf, type FinancelessPo } from "./payment-mark"
 import type { ReceiptFact } from "./types"
 
@@ -14,7 +14,15 @@ export const RECEIPT_COLUMNS = ["number", "day", "order", "supplier", "material"
 
 export type Cell = string | number | null
 
-const day = (v: string | null | undefined) => (v ? String(v).slice(0, 10) : null)
+/** The Riyadh calendar day of a timestamp (an order approved at 01:00 Riyadh belongs to that day, not
+ * the UTC one before it); a bare `YYYY-MM-DD` is already a day. */
+const day = (v: string | null | undefined): string | null => {
+  if (!v) return null
+  const s = String(v)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  const t = Date.parse(s)
+  return Number.isFinite(t) ? riyadhDay(new Date(t)) : s.slice(0, 10)
+}
 const round2 = (n: number) => Math.round(n * 100) / 100
 const inPeriod = (d: string | null, from: string, to: string) => Boolean(d && d >= from && d <= to)
 
@@ -23,6 +31,17 @@ export interface AccountantExport {
   receipts: Cell[][]
   /** Invoice files of the exported orders — name and link. */
   invoices: Array<{ order: string; name: string; url: string }>
+}
+
+/** What was accepted, ex VAT: accepted × the line's price; a lump-sum order (no unit prices) by the share of
+ * its quantity accepted. Never the order's whole value just because nothing is left open — a remainder
+ * cancelled or closed short was not received. */
+export function receivedValue(po: Pick<FinancelessPo, "lines" | "totalExVat">): number {
+  const priced = po.lines.some((l) => Number(l.unitPrice) > 0)
+  if (priced) return round2(po.lines.reduce((s, l) => s + (Number(l.accepted) || 0) * (Number(l.unitPrice) || 0), 0))
+  const ordered = po.lines.reduce((s, l) => s + (Number(l.quantity) || 0), 0)
+  const accepted = po.lines.reduce((s, l) => s + (Number(l.accepted) || 0), 0)
+  return ordered > 0 ? round2((po.totalExVat * Math.min(accepted, ordered)) / ordered) : 0
 }
 
 /** Orders APPROVED in [from, to] (never a draft, a return or a cancelled one), and receipts CONFIRMED in it. */
@@ -42,9 +61,7 @@ export function accountantExport(
     const vat = round2(exVat * (po.vatRate || 0))
     const files = po.invoiceFiles || []
     for (const f of files) invoices.push({ order: po.docNumber, name: f.number || f.name, url: f.url })
-    const done = po.lines.every((l) => lineOutstanding(l) <= 0)
-    const received = round2(po.lines.reduce((s, l) => s + (Number(l.accepted) || 0) * (Number(l.unitPrice) || 0), 0))
-    return [po.docNumber, day(po.approvedAt), po.supplierName, po.supplierVatNumber || null, po.rfqTitle || null, exVat, vat, round2(exVat + vat), done ? round2(exVat) : received, stateLabel(paymentStateOf(po)), po.paymentMark?.state === "paid" ? po.paymentMark.day : null, files.map((f) => f.url).join(" ") || null] as Cell[]
+    return [po.docNumber, day(po.approvedAt), po.supplierName, po.supplierVatNumber || null, po.rfqTitle || null, exVat, vat, round2(exVat + vat), receivedValue(po), stateLabel(paymentStateOf(po)), po.paymentMark?.state === "paid" ? po.paymentMark.day : null, files.map((f) => f.url).join(" ") || null] as Cell[]
   })
   const byId = new Map(orders.map((po) => [po.id, po]))
   const receiptRows: Cell[][] = []

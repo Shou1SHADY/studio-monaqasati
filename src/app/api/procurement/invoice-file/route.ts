@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { UPLOAD_MAX_BYTES } from "@/lib/upload-fit"
 import { randomUUID } from "node:crypto"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore, getAdminStorage, getStorageBucketName } from "@/lib/firebaseAdmin"
@@ -10,7 +11,8 @@ import type { InvoiceFile } from "@/lib/procurement/payment-mark"
 // outside the platform. Whoever prepares or approves orders (or the owner) attaches it; PDF or
 // image, 10 MB at most.
 
-const MAX_BYTES = 10 * 1024 * 1024
+// Under Vercel's 4.5 MB request-body limit (prod); the browser shrinks a photo first (upload-fit.ts).
+const MAX_BYTES = UPLOAD_MAX_BYTES
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
 
 export async function POST(req: NextRequest) {
@@ -33,7 +35,7 @@ export async function POST(req: NextRequest) {
     const number = String(form?.get("number") || "").slice(0, 60)
     if (!(file instanceof File) || !poId) return fail("Choose a file", "BAD_REQUEST", 400)
     if (!(file.type === "application/pdf" || file.type.startsWith("image/"))) return fail("PDF or image only", "BAD_TYPE", 400)
-    if (file.size > MAX_BYTES) return fail("10 MB at most", "TOO_BIG", 400)
+    if (file.size > MAX_BYTES) return fail("4 MB at most", "TOO_BIG", 400)
     const ref = db.collection(PURCHASE_ORDERS).doc(poId)
     const po = (await ref.get()).data()
     if (!po || po.organizationId !== caller.orgId) return fail("Order not found", "NOT_FOUND", 404)
