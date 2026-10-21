@@ -2521,7 +2521,7 @@ service cloud.firestore {
             || (hasOrgPermission('po.approve')
                 && resource.data.get('preparedById', '') != request.auth.uid
                 && resource.data.get('approverKind', 'owner') == 'manager'
-                && resource.data.get('totalExVat', 0) <= poManagerLimit()
+                && resource.data.get('totalExVat', 0) * (1 + resource.data.get('vatRate', 0)) <= poManagerLimit()
                 && resource.data.get('basis', '') != 'retroactive'))
         && poPmBudgetClear();
     }
@@ -2752,15 +2752,15 @@ service cloud.firestore {
 
     match /procurementSettings/{orgId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
-      // The limits that bound the approver himself (his approval limit, the buyer's
-      // self-issue limit, the direct cap, Inventory's tolerance) are the owner's alone — and so is
-      // `ownerStepsBack` (Procurement 1.5, Q1): only the owner may make himself read-only.
+      // Procurement 2.0 (PRD §4 row 12): the policies are the owner's alone. Whoever approves
+      // orders (`po.approve`) keeps the delivery sites, and the accountant's e-mail asked at the
+      // first export — nothing else in the document.
       allow create, update: if isOrgMember(orgId)
         && request.resource.data.get('organizationId', orgId) == orgId
         && (isOrgOwner()
             || (hasOrgPermission('po.approve')
-                && !request.resource.data.diff(resource == null ? {} : resource.data).affectedKeys()
-                      .hasAny(['managerApprovalLimit', 'buyerSelfIssueLimit', 'directPurchaseCap', 'overReceiptTolerancePercent', 'ownerStepsBack'])));
+                && request.resource.data.diff(resource == null ? {} : resource.data).affectedKeys()
+                      .hasOnly(['organizationId', 'deliverySites', 'accountantEmail', 'updatedAt', 'updatedById'])));
       allow delete: if isAdmin();
     }
 
@@ -4200,15 +4200,16 @@ service cloud.firestore {
     // (`{orgId}__{key}`): project numbers are drawn per organisation, so two
     // companies both own PJ-2026/001, and under the key alone the second company's
     // event was an update of the first's — refused, with the whole transaction.
-    match /pmEvents/{eventId} {
-      allow get: if isSignedIn() && (resource == null || inOrg());
-      allow list: if inOrg();
-      allow create: if isSignedIn()
-        && request.resource.data.organizationId == getOrganizationId()
-        && request.resource.data.by == request.auth.uid
-        && request.resource.data.key is string
-        && eventId == request.resource.data.organizationId + '__' + request.resource.data.key.replace('/', '_');
-      allow update, delete: if false;
+    // Procurement 2.0 sends its 36 events the same way, into `procEvents` (same shape, same id rule).
+    match /{outbox}/{eventId} {
+      function isOutbox() { return outbox in ['pmEvents', 'procEvents']; }
+      allow get: if isOutbox() && isSignedIn() && (resource == null || inOrg());
+      allow list: if isOutbox() && inOrg();
+      allow create: if isOutbox()
+        && rd().organizationId == getOrganizationId()
+        && rd().by == request.auth.uid
+        && rd().key is string
+        && eventId == rd().organizationId + '__' + rd().key.replace('/', '_');
     }
 
     match /mfgCounters/{counterId} {

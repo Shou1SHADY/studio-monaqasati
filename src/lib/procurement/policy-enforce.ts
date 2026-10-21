@@ -10,16 +10,16 @@
 // - buyerReceives: a firm with no separate receiver lets whoever prepares
 //   orders record a receipt; every such receipt is flagged `selfReceived` and
 //   lands in the exceptions report. Never a silent permission.
-// - replyWindowDays: Inventory's stock check and the workshop's answer both
-//   fail OPEN after it — Procurement may proceed.
+// - inventoryReplyDays / workshopReplyDays: Inventory's stock check and the
+//   workshop's answer both fail OPEN after their window — Procurement may proceed.
 // - buyerSelfIssueLimit: read by `selfIssueRefusal` (./po-extras) from the
 //   resolved policy, re-read inside the self-issue transaction.
 
-import { operatingPolicies, type OperatingPolicies } from "./policies"
+import { operatingPolicies, resolvePolicies, type ResolvedPolicies } from "./policies"
 import { awaitsPmBudget, budgetOverrun, overrunTotal, samplePending, type BoqGateItem, type PurchaseOrderX } from "./po-extras"
 import type { ProcActor, ProcurementPolicies, PurchaseOrder } from "./types"
 
-type PolicySource = ProcurementPolicies | Partial<OperatingPolicies> | null | undefined
+type PolicySource = ProcurementPolicies | Partial<ResolvedPolicies> | null | undefined
 
 // ---------------------------------------------------------------------------
 // Delivery-notice routing
@@ -67,12 +67,17 @@ export function selfReceivedFlag(actor: Pick<ProcActor, "uid">, right: ReceiveRi
 // The reply window of Inventory and the workshop
 // ---------------------------------------------------------------------------
 
-export const replyWindowHours = (p: PolicySource): number => operatingPolicies(p).replyWindowDays * 24
+export type ReplyParty = "inventory" | "workshop"
+
+export const replyWindowHours = (p: PolicySource, who: ReplyParty = "inventory"): number => {
+  const r = resolvePolicies(p as Partial<ResolvedPolicies> | null | undefined)
+  return (who === "workshop" ? r.workshopReplyDays : r.inventoryReplyDays) * 24
+}
 
 /** Strictly past the window — the moment it ends is still theirs. */
-export function replyLapsed(sinceMs: number | null, now: Date, p: PolicySource): boolean {
+export function replyLapsed(sinceMs: number | null, now: Date, p: PolicySource, who: ReplyParty = "inventory"): boolean {
   if (sinceMs == null || !Number.isFinite(sinceMs)) return false
-  return now.getTime() - sinceMs > replyWindowHours(p) * 3_600_000
+  return now.getTime() - sinceMs > replyWindowHours(p, who) * 3_600_000
 }
 
 // ---------------------------------------------------------------------------

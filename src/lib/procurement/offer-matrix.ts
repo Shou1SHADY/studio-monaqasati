@@ -8,13 +8,13 @@
 // visible but is out of the running. Sealed offers show no figure at all.
 // A partial offer (it prices some of the materials) is never the lowest total: a
 // smaller sum over fewer lines is not a better price, so only its rows compete.
-// Pure: no I/O.
+//
+// Procurement 2.0: the numbers come from offer-calc.ts (pieces, effective price, VAT-free ranking, the 0.5 % tie
+// band), so every offer inside the band of the lowest is marked «lowest», not just the first. Pure: no I/O.
 
 import { competingOffers } from "./award"
-import { offerCoverage, offerRates, pricedProducts, type PricedRfq, type RatedOffer } from "./offer-pricing"
-import { offerPrice } from "./po"
-
-const round2 = (n: number) => Math.round(n * 100) / 100
+import { evaluateOffers, fromHalalas, lineOf, type EvalOptions, type PackInfo } from "./offer-calc"
+import { pricedProducts, type PricedRfq, type RatedOffer } from "./offer-pricing"
 
 export interface MatrixOffer extends RatedOffer {
   id: string
@@ -24,7 +24,7 @@ export interface MatrixOffer extends RatedOffer {
 
 export interface MatrixColumn {
   offerId: string
-  /** The offer's total, or null when it carries none. */
+  /** The offer's total (ex-VAT), or null when it carries none. */
   total: number | null
   rejected: boolean
   lowestTotal: boolean
@@ -34,6 +34,7 @@ export interface MatrixColumn {
 
 export interface MatrixCell {
   offerId: string
+  /** Per request unit; for a per-piece line the effective price (paid ÷ requested). */
   unitPrice: number | null
   lineTotal: number | null
   /** The rate was quoted line by line (not derived from a one-material total). */
@@ -41,6 +42,8 @@ export interface MatrixCell {
   lowest: boolean
   /** A partial offer that leaves this material out — «not covered», which is not the same as «total only». */
   notCovered: boolean
+  /** Priced by the piece: pieces, what you receive, the surplus. */
+  pack?: PackInfo
 }
 
 export interface MatrixRow {
@@ -58,43 +61,41 @@ export interface OfferMatrix {
   hasRates: boolean
 }
 
-export function offerMatrix(rfq: PricedRfq | null | undefined, offers: MatrixOffer[]): OfferMatrix {
+export function offerMatrix(rfq: PricedRfq | null | undefined, offers: MatrixOffer[], opts?: EvalOptions): OfferMatrix {
   const live = new Set(competingOffers(offers).map((o) => o.id))
-  const totals = offers.map((o) => offerPrice(o))
-  const coverage = offers.map((o) => offerCoverage(rfq, o))
-  const whole = (i: number) => !coverage[i].partial
-  const liveTotals = offers.map((o, i) => (live.has(o.id) && whole(i) ? totals[i] : null)).filter((n): n is number => n != null)
-  const minTotal = liveTotals.length ? Math.min(...liveTotals) : null
-  const columns: MatrixColumn[] = offers.map((o, i) => ({
+  const ev = evaluateOffers(rfq, offers.map((o) => ({ ...o, excluded: !live.has(o.id) })), opts)
+  const liveWhole = ev.offers.filter((o) => o.live && o.complete && o.netH != null)
+
+  const columns: MatrixColumn[] = ev.offers.map((o) => ({
     offerId: o.id,
-    total: totals[i],
-    rejected: !live.has(o.id),
-    lowestTotal: liveTotals.length > 1 && live.has(o.id) && whole(i) && totals[i] === minTotal,
-    partial: coverage[i].partial ? { covered: coverage[i].covered, of: coverage[i].of } : null,
+    total: o.netH == null ? null : fromHalalas(o.netH),
+    rejected: !o.live,
+    lowestTotal: liveWhole.length > 1 && o.live && o.complete && o.isLowestComplete,
+    partial: o.partial ? { covered: o.covered, of: o.of } : null,
   }))
 
-  const rates = offers.map((o) => new Map(offerRates(rfq, o).map((r) => [r.rfqProductIndex, r])))
   let hasRates = false
   const rows: MatrixRow[] = pricedProducts(rfq).map((p) => {
-    const raw = offers.map((o, i) => {
-      const r = rates[i].get(p.rfqProductIndex)
-      if (r) hasRates = true
-      return {
-        offerId: o.id,
-        unitPrice: r ? r.unitPrice : null,
-        lineTotal: r && p.quantity > 0 ? round2(r.unitPrice * p.quantity) : null,
-        quoted: Boolean(r?.quoted),
-        notCovered: !r && coverage[i].uncovered.includes(p.rfqProductIndex),
-      }
-    })
-    const liveRates = raw.filter((c) => live.has(c.offerId) && c.unitPrice != null).map((c) => c.unitPrice as number)
-    const min = liveRates.length ? Math.min(...liveRates) : null
+    const line = ev.lines.find((l) => l.rfqProductIndex === p.rfqProductIndex)
+    const priced = ev.offers.filter((o) => o.live && lineOf(o, p.rfqProductIndex)).length
     return {
       rfqProductIndex: p.rfqProductIndex,
       name: p.name,
       unit: p.unit,
       quantity: p.quantity,
-      cells: raw.map((c) => ({ ...c, lowest: min != null && live.has(c.offerId) && c.unitPrice === min && liveRates.length > 1 })),
+      cells: ev.offers.map((o) => {
+        const l = lineOf(o, p.rfqProductIndex)
+        if (l) hasRates = true
+        return {
+          offerId: o.id,
+          unitPrice: l ? fromHalalas(l.effH) : null,
+          lineTotal: l && p.quantity > 0 ? fromHalalas(l.totalH) : null,
+          quoted: Boolean(l?.quoted),
+          lowest: Boolean(l && o.live && priced > 1 && line?.lowestIds.includes(o.id)),
+          notCovered: !l && o.uncovered.includes(p.rfqProductIndex),
+          ...(l?.pack ? { pack: l.pack } : {}),
+        }
+      }),
     }
   })
   return { columns, rows, hasRates }

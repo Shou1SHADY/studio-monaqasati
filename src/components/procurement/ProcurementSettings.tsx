@@ -1,23 +1,16 @@
 "use client"
 
-// الحدود والربط — Procurement's boundary with every other module (PRD 3.0
-// §7.2, tab 8), in four segments: the purchase path (nine steps, one owner
-// each, and the two ideas the module stands on), the integration contract
-// (what reaches us, what we send, what happens when the other side is late),
-// the policies and the roles, and what we never do, what is not built yet,
-// where the modules disagree and what crossed the boundary lately.
+// Settings (Procurement 2.0 §6.4): the policies, the delivery sites, the receivers and the roles.
 //
-// The policies are the numbers the rules gate money with: a limit is a number
-// that blocks for real, and this form is its reflection. Each carries the chip
-// of the module that owns it. `resolvePolicies` sanitises before the write so a
-// blank or a negative never reaches the document. Saved as
-// `procurementSettings/{orgId}` by the owner or whoever approves orders; every
-// other member reads the same form, disabled.
+// A policy is a number or a switch the rules and the screens gate money and time with: this form is its reflection. Each row
+// carries the chip of the module that owns it and is named in the customer's words. `resolvePolicies` sanitises before the
+// write so a blank or a negative never reaches the document. The policies are the OWNER's alone (the rules say so too);
+// whoever approves orders keeps the delivery sites and the receivers, and every other member reads the same form, disabled.
 
 import type { ElementType, ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
-import { useForm } from "react-hook-form"
+import { useForm, type UseFormReturn } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { collection, doc, query, serverTimestamp, setDoc, where } from "firebase/firestore"
@@ -38,7 +31,7 @@ import { useModules } from "@/hooks/useCompanyModules"
 import { deliverySites, storedSites } from "@/lib/procurement/delivery-sites"
 import { openRequestsBySite } from "@/lib/procurement/site-counts"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
-import { ROLE_COLUMNS, roleRows } from "@/lib/procurement/roles-matrix"
+import { roleColumns, roleRows, type RoleCell, type RoleRowId } from "@/lib/procurement/roles-matrix"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
 import type { BoundaryParty } from "@/lib/procurement/boundary"
 import { DEFAULT_RESOLVED_POLICIES, NOTICE_ROUTINGS, POLICY_OWNER, resolvePolicies, type PolicyOwner, type ResolvedPolicies } from "@/lib/procurement/policies"
@@ -47,27 +40,37 @@ import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 
 type Unit = "sar" | "percent" | "count" | "days"
-type NumericKey = Exclude<keyof ResolvedPolicies, "sealOffersUntilDeadline" | "sendOnApproval" | "buyerReceives" | "noticeRouting" | "ownerStepsBack">
-type SwitchKey = "sealOffersUntilDeadline" | "buyerReceives" | "sendOnApproval" | "ownerStepsBack"
-type Row = { kind: "number"; key: NumericKey; unit: Unit } | { kind: "switch"; key: SwitchKey } | { kind: "routing" }
+type SwitchKey = "sealOffersUntilDeadline" | "buyerReceives" | "sendOnApproval" | "ownerStepsBack" | "advanceUnknownSupplierOwner"
+type NumericKey = Exclude<keyof ResolvedPolicies, SwitchKey | "noticeRouting">
+type PairId = "cycle" | "competition" | "direct"
+type Row =
+  | { kind: "number"; key: NumericKey; unit: Unit }
+  | { kind: "switch"; key: SwitchKey }
+  | { kind: "routing" }
+  | { kind: "pair"; id: PairId; keys: [NumericKey, NumericKey]; units: [Unit, Unit] }
+  | { kind: "fixed"; id: "awardBeforeDeadline"; owner: PolicyOwner }
 
-/** The prototype's order: what shapes a quote, then the receipt, then money, then the clocks. */
+/** The prototype's order (§6.4): what shapes a quote, the clocks of buying, the limits, then the receipt. */
 const ROWS: Row[] = [
   { kind: "switch", key: "sealOffersUntilDeadline" },
+  { kind: "fixed", id: "awardBeforeDeadline", owner: "gov" },
   { kind: "routing" },
   { kind: "number", key: "forwardWindowDays", unit: "days" },
   { kind: "switch", key: "buyerReceives" },
-  { kind: "number", key: "directPurchaseCap", unit: "sar" },
-  { kind: "number", key: "competitionThreshold", unit: "sar" },
-  { kind: "number", key: "minOffers", unit: "count" },
-  { kind: "number", key: "managerApprovalLimit", unit: "sar" },
-  { kind: "number", key: "buyerSelfIssueLimit", unit: "sar" },
-  { kind: "number", key: "replyWindowDays", unit: "days" },
-  { kind: "number", key: "overReceiptTolerancePercent", unit: "percent" },
-  { kind: "number", key: "rfqWindowDays", unit: "days" },
-  { kind: "number", key: "awardCycleDays", unit: "days" },
+  { kind: "number", key: "rfqDefaultDays", unit: "days" },
+  { kind: "pair", id: "cycle", keys: ["rfqWindowDays", "awardCycleDays"], units: ["days", "days"] },
+  { kind: "number", key: "supplyLeadDays", unit: "days" },
   { kind: "number", key: "supplierAcceptanceDays", unit: "days" },
-  { kind: "number", key: "splitWindowDays", unit: "days" },
+  { kind: "number", key: "escalateAfterDays", unit: "days" },
+  { kind: "number", key: "tieBandPct", unit: "percent" },
+  { kind: "pair", id: "competition", keys: ["competitionThreshold", "minOffers"], units: ["sar", "count"] },
+  { kind: "pair", id: "direct", keys: ["directPurchaseCap", "splitWindowDays"], units: ["sar", "days"] },
+  { kind: "number", key: "managerApprovalLimit", unit: "sar" },
+  { kind: "switch", key: "advanceUnknownSupplierOwner" },
+  { kind: "number", key: "buyerSelfIssueLimit", unit: "sar" },
+  { kind: "number", key: "inventoryReplyDays", unit: "days" },
+  { kind: "number", key: "overReceiptTolerancePercent", unit: "percent" },
+  { kind: "number", key: "workshopReplyDays", unit: "days" },
   { kind: "switch", key: "sendOnApproval" },
   // Procurement 1.5, question 1: the owner holds every act unless he steps back himself.
   { kind: "switch", key: "ownerStepsBack" },
@@ -88,10 +91,17 @@ const schema = z.object({
   splitWindowDays: days,
   forwardWindowDays: days,
   replyWindowDays: days,
+  inventoryReplyDays: days,
+  workshopReplyDays: days,
+  rfqDefaultDays: days,
+  supplyLeadDays: days,
+  escalateAfterDays: z.coerce.number().int().min(1),
+  tieBandPct: z.coerce.number().min(0).max(100),
   sealOffersUntilDeadline: z.boolean(),
   sendOnApproval: z.boolean(),
   buyerReceives: z.boolean(),
   ownerStepsBack: z.boolean(),
+  advanceUnknownSupplierOwner: z.boolean(),
   noticeRouting: z.enum(NOTICE_ROUTINGS),
 })
 type FormValues = z.infer<typeof schema>
@@ -112,9 +122,7 @@ const PARTY_TONE: Record<Party, string> = {
   gov: "bg-muted text-muted-foreground",
   me: "bg-module/10 text-module",
 }
-const OWNER_PARTY: Record<PolicyOwner, Party> = { gov: "gov", fin: "fin", inv: "inv" }
-
-const OWNER_ONLY_POLICIES = new Set<string>(["managerApprovalLimit", "buyerSelfIssueLimit", "directPurchaseCap", "overReceiptTolerancePercent", "ownerStepsBack"])
+const OWNER_PARTY: Record<PolicyOwner, Party> = { gov: "gov", fin: "fin", inv: "inv", mfg: "mfg" }
 
 export function ProcurementSettings() {
   const t = useTranslations("Portal.ProcSettings")
@@ -125,20 +133,22 @@ export function ProcurementSettings() {
   const procWorld = useProcurementWorld()
   const { actor, orgId, policies: worldPolicies, loading } = procWorld
   const policies = useMemo(() => resolvePolicies(worldPolicies), [worldPolicies])
-  const mayEdit = actor.isOwner || actor.canApprove
-  // The limits that bound the approver himself are the owner's alone (the rules say so too).
-  const lockedFor = (key: string) => !mayEdit || (OWNER_ONLY_POLICIES.has(key) && !actor.isOwner)
+  // The policies are the owner's alone; the delivery sites and the receivers are also the approver's (PRD §4, the rules say so too).
+  const mayEdit = actor.isOwner
+  const mayEditSites = actor.isOwner || actor.canApprove
   // The receiver register (§4 `RCVR`) lives here because it is a standing setting,
   // not a per-delivery decision. Signing for goods is not enough to keep it.
   const { receivers } = useProcReceivers(orgId)
   const warehousesQuery = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "warehouses"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
   const { data: warehouseDocs } = useCollection<{ name?: string }>(warehousesQuery)
-  const mayEditReceivers = actor.isOwner || actor.canPrepare || actor.canApprove
+  const mayEditReceivers = mayEditSites
   // What the package holds decides what the roles and the policies say (PUR-10).
   const { on } = useModules()
   const financeOn = on("payments")
   const pmOn = on("project-management")
-  const roleRowsNow = useMemo(() => roleRows({ financeOn, pmOn, ownerStepsBack: policies.ownerStepsBack }), [financeOn, pmOn, policies.ownerStepsBack])
+  const mfgOn = on("manufacturing")
+  const roleRowsNow = useMemo(() => roleRows({ financeOn, pmOn, mfgOn, ownerStepsBack: policies.ownerStepsBack }), [financeOn, pmOn, mfgOn, policies.ownerStepsBack])
+  const roleColumnsNow = useMemo(() => roleColumns({ pmOn }), [pmOn])
   // «مواقع التسليم»: the stored ones, the warehouses, and with Project Management the projects.
   const settingsRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, PROCUREMENT_SETTINGS, orgId) : null), [firestore, orgId])
   const { data: settingsDoc } = useDoc(settingsRef)
@@ -173,9 +183,7 @@ export function ProcurementSettings() {
     setSaving(true)
     try {
       const clean = resolvePolicies(values)
-      const written: Record<string, unknown> = { ...clean }
-      if (!actor.isOwner) OWNER_ONLY_POLICIES.forEach((k) => delete written[k])
-      await setDoc(doc(firestore, PROCUREMENT_SETTINGS, orgId), { ...written, organizationId: orgId, updatedAt: serverTimestamp(), updatedById: user.uid }, { merge: true })
+      await setDoc(doc(firestore, PROCUREMENT_SETTINGS, orgId), { ...clean, organizationId: orgId, updatedAt: serverTimestamp(), updatedById: user.uid }, { merge: true })
       form.reset(clean)
       toast({ title: t("saved") })
     } catch (err) {
@@ -194,7 +202,7 @@ export function ProcurementSettings() {
   const [accountant, setAccountant] = useState<string | null>(null)
   const accountantValue = accountant ?? storedAccountant
   const saveAccountant = async () => {
-    if (!firestore || !orgId || !mayEdit) return
+    if (!firestore || !orgId || !mayEditSites) return
     const v = accountantValue.trim().toLowerCase()
     if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
       toast({ title: t("accountant.invalid"), variant: "destructive" })
@@ -207,6 +215,14 @@ export function ProcurementSettings() {
     } catch {
       toast({ title: t("saveFailed"), variant: "destructive" })
     }
+  }
+
+  const rowVisible = (row: Row): boolean => {
+    if (row.kind === "fixed" || row.kind === "routing" || row.kind === "switch") return true
+    const keys: NumericKey[] = row.kind === "pair" ? row.keys : [row.key]
+    const units: Unit[] = row.kind === "pair" ? row.units : [row.unit]
+    if (units.includes("sar") && !actor.seesPrices) return false
+    return !keys.includes("workshopReplyDays") || mfgOn
   }
 
   return (
@@ -235,7 +251,17 @@ export function ProcurementSettings() {
                   <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="divide-y">
                       {/* Whoever never sees an amount (the expediter) never reads a riyal limit either. */}
-                      {ROWS.filter((row) => actor.seesPrices || row.kind !== "number" || row.unit !== "sar").map((row) => {
+                      {ROWS.filter((row) => rowVisible(row)).map((row) => {
+                        if (row.kind === "fixed")
+                          return (
+                            <div key={row.id} className="grid gap-1 px-4 py-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-bold text-foreground">{t(`policy.${row.id}.label`)}</p>
+                                <PartyChip party={OWNER_PARTY[row.owner]} label={t(`owner.${row.owner}`)} />
+                              </div>
+                              <p className="text-[11px] leading-relaxed text-muted-foreground">{t(`policy.${row.id}.desc`)}</p>
+                            </div>
+                          )
                         if (row.kind === "routing")
                           return (
                             <FormField
@@ -289,53 +315,46 @@ export function ProcurementSettings() {
                                     <FormDescription className="mt-1 text-[11px] leading-relaxed">{t(field.value ? `policy.${row.key}.descOn` : `policy.${row.key}.desc`)}</FormDescription>
                                   </div>
                                   <FormControl>
-                                    <Switch checked={field.value} onCheckedChange={field.onChange} disabled={lockedFor(row.key)} aria-label={t(`policy.${row.key}.label`)} />
+                                    <Switch checked={field.value} onCheckedChange={field.onChange} disabled={!mayEdit} aria-label={t(`policy.${row.key}.label`)} />
                                   </FormControl>
                                 </FormItem>
                               )}
                             />
                           )
+                        if (row.kind === "pair")
+                          return (
+                            <div key={row.id} className="grid gap-2 px-4 py-3 sm:grid-cols-[1fr_18rem] sm:items-start sm:gap-4">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-sm font-bold text-foreground">{t(`policy.${row.id}.label`)}</p>
+                                  {ownerChip(row.keys[0])}
+                                </div>
+                                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{t(`policy.${row.id}.desc`)}</p>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                {row.keys.map((key, i) => (
+                                  <NumberField key={key} form={form} name={key} unit={row.units[i]} label={t(`policy.${row.id}.${i === 0 ? "a" : "b"}`)} disabled={!mayEdit} placeholder={fmtRef(key, row.units[i])} unitLabel={t(`unit.${row.units[i]}`)} />
+                                ))}
+                              </div>
+                            </div>
+                          )
                         const { key, unit } = row
                         return (
-                          <FormField
-                            key={key}
-                            control={form.control}
-                            name={key}
-                            render={({ field }) => (
-                              <FormItem className="grid gap-1 px-4 py-3 sm:grid-cols-[1fr_11rem] sm:items-start sm:gap-4">
-                                <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <FormLabel className="text-sm font-bold text-foreground">{t(`policy.${key}.label`)}</FormLabel>
-                                    {ownerChip(key)}
-                                  </div>
-                                  <FormDescription className="mt-1 text-[11px] leading-relaxed">{t(`policy.${key}.desc`)}</FormDescription>
-                                </div>
-                                <div>
-                                  <FormControl>
-                                    <div className="relative">
-                                      <Input
-                                        {...field}
-                                        type="number"
-                                        inputMode="decimal"
-                                        min={0}
-                                        step={unit === "sar" ? 100 : 1}
-                                        disabled={lockedFor(key)}
-                                        placeholder={fmtRef(key, unit)}
-                                        className="h-10 pe-14 text-end tabular-nums"
-                                        dir="ltr"
-                                        value={field.value ?? ""}
-                                      />
-                                      <span className="pointer-events-none absolute inset-y-0 end-3 flex items-center text-[11px] font-semibold text-muted-foreground">{t(`unit.${unit}`)}</span>
-                                    </div>
-                                  </FormControl>
-                                  <p className="mt-1 text-[10px] text-muted-foreground" dir="auto">
-                                    {t("policies.reference", { value: fmtRef(key, unit) })}
-                                  </p>
-                                  <FormMessage className="text-[11px]" />
-                                </div>
-                              </FormItem>
-                            )}
-                          />
+                          <div key={key} className="grid gap-1 px-4 py-3 sm:grid-cols-[1fr_11rem] sm:items-start sm:gap-4">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-bold text-foreground">{t(`policy.${key}.label`)}</p>
+                                {ownerChip(key)}
+                              </div>
+                              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{t(`policy.${key}.desc`)}</p>
+                            </div>
+                            <div>
+                              <NumberField form={form} name={key} unit={unit} label={t(`policy.${key}.label`)} hideLabel disabled={!mayEdit} placeholder={fmtRef(key, unit)} unitLabel={t(`unit.${unit}`)} />
+                              <p className="mt-1 text-[10px] text-muted-foreground" dir="auto">
+                                {t("policies.reference", { value: fmtRef(key, unit) })}
+                              </p>
+                            </div>
+                          </div>
                         )
                       })}
                       {!financeOn && (
@@ -345,8 +364,8 @@ export function ProcurementSettings() {
                             <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{t("accountant.desc")}</p>
                           </div>
                           <div className="flex gap-2">
-                            <Input type="email" dir="ltr" value={accountantValue} onChange={(e) => setAccountant(e.target.value)} disabled={!mayEdit} aria-label={t("accountant.label")} placeholder="accountant@company.sa" className="h-10" />
-                            {mayEdit && accountant != null && accountant !== storedAccountant && (
+                            <Input type="email" dir="ltr" value={accountantValue} onChange={(e) => setAccountant(e.target.value)} disabled={!mayEditSites} aria-label={t("accountant.label")} placeholder="accountant@company.sa" className="h-10" />
+                            {mayEditSites && accountant != null && accountant !== storedAccountant && (
                               <Button type="button" size="sm" className="h-10" onClick={() => void saveAccountant()}>
                                 {t("save")}
                               </Button>
@@ -377,7 +396,7 @@ export function ProcurementSettings() {
           )}
 
 
-          {segment === "sites" && <DeliverySitesPanel orgId={orgId} stored={storedSiteList} sites={siteList} receivers={receivers} mayEdit={mayEdit} openRequests={(id) => openBySite[id] ?? 0} pmOn={pmOn} projects={(projectDocs || []) as Array<{ id: string; name?: string }>} />}
+          {segment === "sites" && <DeliverySitesPanel orgId={orgId} stored={storedSiteList} sites={siteList} receivers={receivers} mayEdit={mayEditSites} openRequests={(id) => openBySite[id] ?? 0} pmOn={pmOn} projects={(projectDocs || []) as Array<{ id: string; name?: string }>} />}
 
           {segment === "receivers" && (
             <Section title={tRcv("title")} subtitle={tRcv("subtitle")} icon={PackageCheck}>
@@ -402,7 +421,7 @@ export function ProcurementSettings() {
                       <th scope="col" className="px-3 py-3 text-start font-semibold">
                         {t("roles2.what")}
                       </th>
-                      {ROLE_COLUMNS.map((r) => (
+                      {roleColumnsNow.map((r) => (
                         <th key={r} scope="col" className="px-2 py-3 text-center align-bottom font-semibold text-foreground">
                           {t(`roles2.col_${r}`)}
                         </th>
@@ -414,16 +433,11 @@ export function ProcurementSettings() {
                       <tr key={row.id} className="border-t">
                         <th scope="row" className="px-3 py-2.5 text-start font-medium text-foreground">
                           {t(`roles2.row_${row.id}`)}
+                          {ROW_PILL[row.id] && <span className="ms-2 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">{t(`roles2.pill_${ROW_PILL[row.id]}`)}</span>}
                         </th>
-                        {ROLE_COLUMNS.map((r) => (
+                        {roleColumnsNow.map((r) => (
                           <td key={r} className="px-2 py-2.5 text-center">
-                            {row.cells[r] === "limit" && actor.seesPrices ? (
-                              <span className="text-xs font-semibold tabular-nums" dir="ltr">
-                                {t("roles2.up_to", { limit: policies.managerApprovalLimit.toLocaleString("en-US") })}
-                              </span>
-                            ) : (
-                              <Mark yes={row.cells[r] === true || row.cells[r] === "limit"} yesLabel={t("matrix.yes")} noLabel={t("matrix.no")} />
-                            )}
+                            <RoleMark cell={row.cells[r]} limit={actor.seesPrices ? policies.managerApprovalLimit : null} t={t} />
                           </td>
                         ))}
                       </tr>
@@ -432,14 +446,76 @@ export function ProcurementSettings() {
                 </table>
               </div>
               <p className="border-t px-4 py-2.5 text-[11px] leading-relaxed text-muted-foreground" dir="auto">
-                {t(financeOn ? "roles2.foot_fin" : "roles2.foot_nofin")}
-                {!pmOn && ` ${t("roles2.foot_raise")}`}
+                {t("roles2.foot")}
               </p>
             </Section>
           )}
         </>
       )}
     </div>
+  )
+}
+
+const ROW_PILL: Partial<Record<RoleRowId, "nofin" | "nopm" | "mfg">> = { mark_paid: "nofin", raise_request: "nopm", ask_workshop: "mfg" }
+
+function RoleMark({ cell, limit, t }: { cell: RoleCell; limit: number | null; t: (key: string, values?: Record<string, string | number>) => string }) {
+  if (cell === "limit" && limit != null)
+    return (
+      <span className="text-xs font-semibold tabular-nums" dir="ltr">
+        {t("roles2.up_to", { limit: limit.toLocaleString("en-US") })}
+      </span>
+    )
+  if (cell === "sites") return <span className="text-xs font-semibold">{t("roles2.cell_sites")}</span>
+  return <Mark yes={cell === true || cell === "limit"} yesLabel={t("matrix.yes")} noLabel={t("matrix.no")} />
+}
+
+function NumberField({
+  form,
+  name,
+  unit,
+  label,
+  hideLabel,
+  disabled,
+  placeholder,
+  unitLabel,
+}: {
+  form: UseFormReturn<FormValues>
+  name: NumericKey
+  unit: Unit
+  label: string
+  hideLabel?: boolean
+  disabled: boolean
+  placeholder: string
+  unitLabel: string
+}) {
+  return (
+    <FormField
+      control={form.control}
+      name={name}
+      render={({ field }) => (
+        <FormItem className="space-y-1">
+          <FormLabel className={cn("text-[11px] font-semibold text-muted-foreground", hideLabel && "sr-only")}>{label}</FormLabel>
+          <FormControl>
+            <div className="relative">
+              <Input
+                {...field}
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step={unit === "sar" ? 100 : unit === "percent" ? 0.1 : 1}
+                disabled={disabled}
+                placeholder={placeholder}
+                className="h-10 pe-14 text-end tabular-nums"
+                dir="ltr"
+                value={field.value ?? ""}
+              />
+              <span className="pointer-events-none absolute inset-y-0 end-3 flex items-center text-[11px] font-semibold text-muted-foreground">{unitLabel}</span>
+            </div>
+          </FormControl>
+          <FormMessage className="text-[11px]" />
+        </FormItem>
+      )}
+    />
   )
 }
 

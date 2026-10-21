@@ -22,7 +22,8 @@ import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { useSupplierDirectory } from "@/hooks/useSupplierDirectory"
-import { CATEGORIES_DATA } from "@/lib/constants"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { categoryTree, treeSupplier } from "@/lib/materials/category-tree"
 import { extendRfq } from "@/lib/procurement/rfq-extend-writes"
 import { extendPool, sourcingBlockOf } from "@/lib/procurement/rfq-extras"
 import { ProcWriteError } from "@/lib/procurement/writes"
@@ -36,6 +37,8 @@ export interface ExtendTarget {
   invited: string[]
   /** The RFQ's categories — the platform's suppliers of these join the pool. */
   categories?: string[]
+  /** The tree sub-categories the RFQ was written with; the pool is matched on them when it has any. */
+  subCategoryIds?: string[]
 }
 
 type Option = { orgId: string; name: string; isFavorite?: boolean }
@@ -90,10 +93,11 @@ function ExtendBody({ target, actor, options, orgId, onOpenChange }: { target: E
 
   const favourites = useMemo(() => options.filter((o) => o.isFavorite).map((o) => o.orgId), [options])
   const { suppliers } = useSupplierDirectory(orgId, favourites, NO_OFFERS)
+  const { index: treeIndex } = useMaterialTree()
   const directory = useMemo(() => new Map(suppliers.flatMap((s) => [s.orgId, ...s.memberIds].map((id) => [id, s] as const))), [suppliers])
   const pool = useMemo(
-    () => extendPool(options.map((o) => ({ orgId: o.orgId, name: o.name, isFavorite: Boolean(o.isFavorite) })), suppliers, target.categories || [], target.invited, CATEGORIES_DATA),
-    [options, suppliers, target]
+    () => extendPool(options.map((o) => ({ orgId: o.orgId, name: o.name, isFavorite: Boolean(o.isFavorite) })), suppliers.map((s) => treeSupplier(s, treeIndex)), target.categories || [], target.invited, categoryTree(treeIndex), target.subCategoryIds),
+    [options, suppliers, target, treeIndex]
   )
   const blockOf = (id: string) => {
     const s = directory.get(id)

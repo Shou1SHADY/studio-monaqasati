@@ -34,11 +34,21 @@ export async function drawProcDocNumber(
  * module's two-letter code (`RQ` is Sales' quote request). */
 export const RFQ_DOC_TYPE = "RFQ"
 
+/** The ONE sequence of requests that reach «طلبات الشراء الواردة» without a project number (Procurement 2.0 REQ-04): the team's
+ * «طلب مواد», an Inventory need line and a workshop ask all draw `MAT-2026/014` from `{orgId}__MAT__{year}` — shown «ط.م-2026/014».
+ * A project's request keeps the project's own «MR 03» (it repeats across projects, so its key is a global id, never the number).
+ * `MR` is Manufacturing's counter and never meets this one. */
+export const MATERIAL_REQUEST_DOC_TYPE = "MAT"
+
 /** The year of the Riyadh calendar day — at 1 AM on 1 January in Riyadh, UTC still says last year. */
 export const riyadhYear = (now: Date = new Date()): number => Number(riyadhDay(now).slice(0, 4))
 
 export async function drawRfqNumber(firestore: Firestore, tx: Transaction, organizationId: string, year = riyadhYear()): Promise<string> {
   return drawYearlyDocNumber(firestore, tx, organizationId, RFQ_DOC_TYPE, year)
+}
+
+export async function drawMaterialRequestNumber(firestore: Firestore, tx: Transaction, organizationId: string, year = riyadhYear()): Promise<string> {
+  return drawYearlyDocNumber(firestore, tx, organizationId, MATERIAL_REQUEST_DOC_TYPE, year)
 }
 
 /**

@@ -2,6 +2,8 @@
 // Builds public/data/material-tree.json from data/watad-catalog.json (Watad's public
 // /api/category, attached to Contractor-Procurement-Changes 1.5). The tree is taken as
 // it is (PUR-04) — only whitespace is collapsed. Every option is kept, in the source order.
+// This writes Watad's tree as the 1.5 shipped it; the Procurement 2.0 cleaning and the sale units go on top of it:
+// run `node scripts/apply-materials-2.0.mjs` right after, or the shipped files are the uncleaned list.
 // Run: node scripts/build-material-tree.mjs
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs"
 

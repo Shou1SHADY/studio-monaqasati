@@ -1,0 +1,11 @@
+﻿material_id,material_ar,material_en,sale_unit_ar,sale_unit_en,length_m,source
+118,مواسير التكييف,Copper Tubes,لفة 15 م,15 m roll,15,قائمة وحدات البيع / sale-unit list
+236,زوايا,Angles,قطعة 6 م,6 m bar,6,قائمة وحدات البيع / sale-unit list
+236,زوايا,Angles,قطعة 12 م,12 m bar,12,قائمة وحدات البيع / sale-unit list
+237,سلك شائك,Barbed Wire,لفة 25 م,25 m roll,25,قائمة وحدات البيع / sale-unit list
+237,سلك شائك,Barbed Wire,لفة 50 م,50 m roll,50,قائمة وحدات البيع / sale-unit list
+238,شبك اسوار,Chain Link Fence,لفة 25 م,25 m roll,25,قائمة وحدات البيع / sale-unit list
+255,سلك شد,Tension Wire,لفة 100 م,100 m roll,100,قائمة وحدات البيع / sale-unit list
+276,خشب الواح,Wood Timber,قطعة 3 م,3 meter piece,3,من مواصفة «الطول» / from the length spec
+276,خشب الواح,Wood Timber,قطعة 4 م,4 meter piece,4,من مواصفة «الطول» / from the length spec
+276,خشب الواح,Wood Timber,قطعة 6 م,6 meter piece,6,من مواصفة «الطول» / from the length spec

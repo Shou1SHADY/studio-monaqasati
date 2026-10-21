@@ -9,6 +9,7 @@
 import {
   acceptedValue,
   applyReceiptToLines,
+  approvalAmount,
   approvalRefusal,
   awardNeedsReason,
   canCancelRemainder,
@@ -168,11 +169,22 @@ describe("approval routing — the manager up to his limit, the owner above it",
     expect(requiredApprover(po({ basis: "direct", lines: [line({ quantity: 1, unitPrice: 3400 })] }), POL)).toBe("manager")
   })
 
-  it("retroactive → owner; a solo owner's own order → owner; the limit compares ex-VAT", () => {
+  it("retroactive → owner; a solo owner's own order → owner; the limit compares INCLUDING VAT (PRD §14, G-18)", () => {
     expect(requiredApprover(po({ basis: "retroactive", lines: [line({ quantity: 1, unitPrice: 10 })] }), POL)).toBe("owner")
     expect(requiredApprover(po({ lines: [line({ quantity: 1, unitPrice: 10 })] }), POL, true)).toBe("owner")
-    // 150,000 ex-VAT is exactly the limit: the manager's. With VAT it would be 172,500, but VAT does not count.
-    expect(requiredApprover(po({ lines: [line({ quantity: 1, unitPrice: 150000 })] }), POL)).toBe("manager")
+    // 130,000 ex-VAT is 149,500 with VAT: the manager's. 150,000 ex-VAT is 172,500 with VAT: the owner's.
+    expect(requiredApprover(po({ lines: [line({ quantity: 1, unitPrice: 130000 })] }), POL)).toBe("manager")
+    expect(requiredApprover(po({ lines: [line({ quantity: 1, unitPrice: 150000 })] }), POL)).toBe("owner")
+    // Exactly the limit with VAT (130,434.78 × 1.15) is still the manager's; a riyal more is not.
+    expect(requiredApprover(po({ lines: [line({ quantity: 1, unitPrice: 130434.78 })] }), POL)).toBe("manager")
+    expect(requiredApprover(po({ lines: [line({ quantity: 1, unitPrice: 130436 })] }), POL)).toBe("owner")
+  })
+
+  it("an order stored without a vatRate keeps the basis it was written under: ex-VAT", () => {
+    const old = po({ lines: [line({ quantity: 1, unitPrice: 150000 })] }) as unknown as Record<string, unknown>
+    delete old.vatRate
+    expect(requiredApprover(old as unknown as PurchaseOrder, POL)).toBe("manager")
+    expect(approvalAmount(old as unknown as PurchaseOrder)).toBe(150000)
   })
 })
 
@@ -186,7 +198,7 @@ describe("approvalRefusal — why THIS actor may not approve", () => {
     expect(approvalRefusal(waiting, actor({ uid: "buyer" }), POL)?.code).toBe("own_order")
     expect(approvalRefusal({ ...waiting, basis: "retroactive" }, actor(), POL)?.code).toBe("owner_only_retroactive")
     const big = approvalRefusal({ ...waiting, lines: [line({ quantity: 60, unitPrice: 2935 })] }, actor(), POL)
-    expect(big).toEqual({ code: "above_limit", params: { value: 176100, limit: 150000 } })
+    expect(big).toEqual({ code: "above_limit", params: { value: 202515, limit: 150000 } })
   })
 
   it("the owner approves anything awaiting — even his own order, which is flagged, not refused", () => {

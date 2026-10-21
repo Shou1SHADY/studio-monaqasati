@@ -121,7 +121,7 @@ describe("the RFQ editor (PUR-02/03)", () => {
     await act(async () => void fireEvent.change(box, { target: { value: "حديد 16" } }))
     await flush()
     const option = Array.from(document.querySelectorAll('[role="option"]')).find((o) => (o.textContent || "").includes("اسياخ حديد التسليح"))!
-    expect(option.textContent).toContain("16 mm")
+    expect(option.textContent).toContain("16 مم")
     await act(async () => void fireEvent.click(option))
     await flush()
     const qty = document.querySelector('input[aria-label="الكمية"]') as HTMLInputElement

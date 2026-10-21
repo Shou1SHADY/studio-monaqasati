@@ -6,12 +6,13 @@ import { canSendCodes, isSmsConfigured, isVerifyConfigured, sendSms, startVerifi
 import { resolveShareToken, isRfqDeadlinePassed } from "@/lib/rfq-share"
 import { GUEST_OTP_LINK_CAP_PER_HOUR, guestOtpRequired, guestOtpSubject, guestOtpSubjectRange } from "@/lib/procurement/guest-supplier"
 import { saudiMobileE164 } from "@/lib/supplier-free/phone-auth"
+import { consumeMobileRate } from "@/lib/links/rate"
 
 // Public endpoint: sends a one-time code to the mobile a guest supplier typed
 // on the RFQ's guest page (prototype «يُوثَّق برمز تحقق»). The offer route checks
 // it; the code is bound to this link and this number. One code a minute per
-// number, and a ceiling per link per hour, so a link cannot be turned into an
-// SMS gateway. UAT without an SMS route shows the code on screen.
+// number, a ceiling per link per hour and a ceiling per mobile across every
+// link, so neither a link nor a number can be turned into an SMS gateway. UAT without an SMS route shows the code on screen.
 
 const bodySchema = z.object({
   phone: z.string().trim().min(7).max(20),
@@ -44,6 +45,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     const recent = await db.collection(OTP_CHALLENGES).where("subjectId", ">=", from).where("subjectId", "<=", to).get()
     if (recent.docs.filter((d) => Number(d.data().createdAt) > hourAgo).length >= GUEST_OTP_LINK_CAP_PER_HOUR) {
       return fail("Too many codes were requested on this link — try again later", "LINK_OTP_LIMIT", 429)
+    }
+
+    const rate = await consumeMobileRate(db, "otp", phone)
+    if (!rate.ok) {
+      const res = fail(rate.code === "RATE_LIMITED" ? "Too many codes were requested for this number — try again later" : "Codes cannot be sent right now — try again later", rate.code, rate.status)
+      if (rate.code === "RATE_LIMITED") res.headers.set("Retry-After", String(rate.retryAfterSec))
+      return res
     }
 
     const input = { purpose: "guest_offer" as const, subjectId: guestOtpSubject(linkId, phone), phone }

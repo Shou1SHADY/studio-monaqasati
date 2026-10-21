@@ -7,8 +7,9 @@ import { termsListOf } from "@/lib/procurement/terms-freeze"
 
 // Public endpoint: resolves a share token to the RFQ's display data so a
 // guest supplier can review it without an account. Tokens are unguessable
-// 32-byte hex strings, so no auth is required. Only non-sensitive display
-// fields are returned — never internal budgets or contractor contact data.
+// (128 random bits), so no auth is required. Only non-sensitive display
+// fields are returned — never internal budgets, contractor contact data or the
+// site's exact pin: the visitor sees the city and the district only (LNK-01).
 // Answered queries go to every invitee (§5.1) — the question and the answer,
 // never who asked.
 
@@ -91,7 +92,6 @@ export async function GET(
           requiresWarranty: Boolean(rfq.requiresWarranty),
           shipmentMode: rfq.shipmentMode || null,
           pricingMode: rfq.pricingMode || null,
-          locationCoords: rfq.locationCoords || null,
           status: rfq.status,
         },
         contractorName,

@@ -137,9 +137,9 @@ describe("his tasks (مهامي)", () => {
 })
 
 describe("who can raise one", () => {
-  it("every Procurement role raises a material request without Project Management — the expediter too", () => {
+  it("the owner, the manager, the buyer and the requester raise a material request without Project Management — the expediter does not (PRD §4)", () => {
     const row = roleRows({ financeOn: true, pmOn: false, ownerStepsBack: false }).find((r) => r.id === "raise_request")
-    expect(row?.cells).toEqual({ owner: true, manager: true, buyer: true, expediter: true })
+    expect(row?.cells).toEqual({ owner: true, manager: true, buyer: true, expediter: false, requester: true })
   })
 
   it("the team-request server lets any member create — nothing in it asks for a Procurement permission", () => {

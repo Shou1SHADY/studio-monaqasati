@@ -58,11 +58,12 @@ import { cn } from "@/lib/utils"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { ColumnCustomizer } from "@/components/shared/ColumnCustomizer"
 import { useTableColumns, type TableColumnDef } from "@/hooks/useTableColumns"
-import { CATEGORIES_DATA, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
+import { SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { keyLabel, specialtyKeys } from "@/lib/materials/subs"
 import {
   filterSuppliersByStatus,
   filterSuppliersByCity,
-  filterSuppliersBySpecialization,
   searchSuppliers,
   type SupplierStatusFilter,
 } from "@/utils/supplier-filters"
@@ -82,6 +83,7 @@ export default function AdminSuppliersPage() {
   }
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+  const { index: treeIndex } = useMaterialTree()
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [limitCount, setLimitCount] = useState(20)
@@ -138,6 +140,7 @@ export default function AdminSuppliersPage() {
           taxNumber: s.taxNumber || "",
           category: s.specializations?.[0] || t("unspecified"),
           specializations: s.specializations || [],
+          specialtyIds: Array.isArray(s.specialtyIds) ? s.specialtyIds : [],
           coverageCities: s.coverageCities || [],
           pendingSpecializations: s.pendingSpecializations ?? null,
           pendingCoverageCities: s.pendingCoverageCities ?? null,
@@ -296,16 +299,15 @@ export default function AdminSuppliersPage() {
     }
   }
 
-  const filteredSuppliers = filterSuppliersBySpecialization(
-    filterSuppliersByCity(
-      filterSuppliersByStatus(
-        searchSuppliers(localSuppliers, searchQuery),
-        statusFilter
-      ),
-      cityFilter
+  const fieldKeysOf = (s: { specialtyIds?: string[]; specializations: string[] }) => specialtyKeys(treeIndex, s.specialtyIds || [], s.specializations)
+
+  const filteredSuppliers = filterSuppliersByCity(
+    filterSuppliersByStatus(
+      searchSuppliers(localSuppliers, searchQuery),
+      statusFilter
     ),
-    specializationFilter
-  ).filter((x: any) => originFilter === "all" || (originFilter === "international") === Boolean(x.international))
+    cityFilter
+  ).filter((x: any) => specializationFilter === "all" || fieldKeysOf(x).includes(specializationFilter)).filter((x: any) => originFilter === "all" || (originFilter === "international") === Boolean(x.international))
 
   const activeFilterCount = [statusFilter !== "all", cityFilter !== "all", specializationFilter !== "all", originFilter !== "all"].filter(Boolean).length
 
@@ -316,9 +318,7 @@ export default function AdminSuppliersPage() {
     setOriginFilter("all")
   }
 
-  const specializationOptions = Array.from(
-    new Set(localSuppliers.flatMap(s => s.specializations))
-  )
+  const specializationOptions = Array.from(new Set(localSuppliers.flatMap(fieldKeysOf)))
 
   const supplierColumns: TableColumnDef[] = [
     { id: "id", label: t("id") },
@@ -419,7 +419,7 @@ export default function AdminSuppliersPage() {
                   onChange={setSpecializationFilter}
                   options={[
                     { value: "all", label: t("filter_specialization_all") },
-                    ...specializationOptions.map(s => ({ value: s, label: displayCategory(s, locale) })),
+                    ...specializationOptions.map(s => ({ value: s, label: keyLabel(treeIndex, s, locale, displayCategory) })),
                   ]}
                   placeholder={t("filter_specialization_label")}
                   searchPlaceholder={t("filter_specialization_label")}

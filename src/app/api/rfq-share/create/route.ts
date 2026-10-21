@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
-import { randomBytes } from "crypto"
 import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { sendEmail, buildRfqShareEmail } from "@/lib/email"
 import { resolveIdentityAdmin } from "@/lib/org-identity-admin"
-import { PUBLIC_BASE_URL } from "@/lib/rfq-share"
+import { mintLinkToken } from "@/lib/links/hash"
+import { linkUrl } from "@/lib/links/url"
 import {
   MAX_GUEST_INVITES,
   deadlineEnd,
@@ -18,9 +18,13 @@ import {
 import { rfqLogEntry } from "@/lib/procurement/rfq-detail"
 
 // Creates (or reuses) a portable guest link for an RFQ. The link lets a
-// supplier view the RFQ and submit an offer WITHOUT registering. Links are
-// unguessable 32-byte hex tokens, valid until the RFQ's deadline (an extension
-// reopens them); an RFQ with no deadline falls back to a fixed 3 days.
+// supplier view the RFQ and submit an offer WITHOUT registering. A token is 22
+// random characters (128 bits) and only its hash is stored, so a link's token is
+// shown once, when it is minted: asking again for the same RFQ reuses the link
+// (its invitations, counters and expiry) and hands out a fresh token on it.
+// Links are valid until the RFQ's deadline (an extension reopens them); an RFQ
+// with no deadline falls back to a fixed 3 days. Only a public RFQ gets a link by
+// default: a private or direct-award one needs {explicit:true}, and who asked is kept.
 // Every share on a channel is kept on the link as «دعوات الزوار» (the link doc
 // is server-only — a guest's address never lands on the semi-public RFQ; the
 // RFQ keeps only the count and a log line naming the channel).
@@ -35,6 +39,7 @@ const bodySchema = z.object({
   // rest of the RFQ workflow (reduction, sample, award, ...) can reach the
   // guest supplier back on the same channel.
   channel: z.enum(["whatsapp", "email", "link"]).optional(),
+  explicit: z.boolean().optional(),
 })
 
 function errorResponse(message: string, code: string, status: number) {
@@ -61,7 +66,7 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return errorResponse("A valid RFQ id is required", "INVALID_INPUT", 400)
     }
-    const { rfqId, email, channel } = parsed.data
+    const { rfqId, email, channel, explicit } = parsed.data
     // Sending through the platform is itself an email share.
     const effectiveChannel = channel || (email ? "email" : null)
 
@@ -89,6 +94,13 @@ export async function POST(req: NextRequest) {
     if (rfq.status !== "New") {
       return errorResponse("Only published RFQs can be shared", "RFQ_NOT_PUBLISHED", 409)
     }
+    const notDefault = rfq.visibility === "private" || Boolean(rfq.directAward)
+    if (notDefault && !explicit) {
+      return errorResponse("A link is only opened by default for a public RFQ", "LINK_NOT_DEFAULT", 409)
+    }
+
+    if (notDefault) console.info(`RFQ share link opened explicitly for a ${rfq.directAward ? "direct-award" : "private"} RFQ`, { rfqId, uid: decoded.uid })
+    const optedInBy = { uid: decoded.uid, name: (senderBase.name as string) || "", at: new Date().toISOString() }
 
     // --- Reuse a still-valid link for this RFQ, otherwise mint a new one ---
     const now = Date.now()
@@ -110,22 +122,23 @@ export async function POST(req: NextRequest) {
     const found = existing.docs.find((d) => shareLinkState(d.data(), rfq, nowDate) !== "gone" && (d.data().expiresWith === "deadline") === byDeadline)
     if (found) {
       const data = found.data()
-      token = data.token as string
       expiresAt = shareLinkValidUntil(data, rfq)
       linkRef = found.ref
       invites = (data.invites as GuestInvite[] | undefined) || []
-      if (effectiveChannel) {
+      if (effectiveChannel || (notDefault && !data.explicitBy)) {
         await found.ref
-          .update({ channel: effectiveChannel, channelUpdatedAt: new Date().toISOString() })
+          .update({
+            ...(effectiveChannel ? { channel: effectiveChannel, channelUpdatedAt: new Date().toISOString() } : {}),
+            ...(notDefault && !data.explicitBy ? { explicitBy: optedInBy } : {}),
+          })
           .catch((err) => console.error("Failed to record share channel:", err))
       }
     }
 
-    if (!token) {
-      token = randomBytes(32).toString("hex")
+    if (!linkRef) {
       expiresAt = byDeadline ? deadlineEnd(rfq.deadline as string) : new Date(now + SHARE_LINK_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
       linkRef = await db.collection("rfqShareLinks").add({
-        token,
+        tokenHashes: [],
         rfqId,
         channel: effectiveChannel || "link",
         channelUpdatedAt: new Date().toISOString(),
@@ -139,16 +152,19 @@ export async function POST(req: NextRequest) {
         ...(byDeadline ? { expiresWith: "deadline" } : {}),
         expiresAt,
         invites: [],
+        ...(notDefault ? { explicitBy: optedInBy } : {}),
         createdAt: FieldValue.serverTimestamp(),
       })
     }
 
-    const shareUrl = `${PUBLIC_BASE_URL}/rfq/${token}`
+    // Recording a channel alone needs no link in hand; everything else gets a token to share.
+    if (!found || !effectiveChannel || email) token = await mintLinkToken(db, "rfq", linkRef.id)
+    const shareUrl = token ? linkUrl("rfq", token) : null
     const closed = shareLinkState({ expiresAt, expiresWith: byDeadline ? "deadline" : null }, rfq, nowDate) === "closed"
 
     // --- Optional: send the link by email through the platform ---
     let emailSent = false
-    if (email) {
+    if (email && shareUrl) {
       const contractorName = (sender.companyName as string) || (sender.name as string) || ""
       const { subject, html } = buildRfqShareEmail({
         contractorName,
@@ -180,7 +196,6 @@ export async function POST(req: NextRequest) {
       success: true,
       data: {
         url: shareUrl,
-        token,
         expiresAt,
         emailSent,
         closed,

@@ -8795,6 +8795,10 @@
       "team_group_hr_payroll": "Payroll officer",
       "team_group_hr_supervisor": "Workplace supervisor",
       "team_group_management": "Management",
+      "team_group_procurement_manager": "Procurement manager",
+      "team_group_procurement_officer": "Buyer",
+      "team_group_supply_follower": "Expediter",
+      "team_group_material_requester": "Requester",
       "pn_hr_letter_issued_title": "Your letter is issued",
       "pn_hr_letter_issued": "{letter} — {serial}",
       "pn_hr_letter_declined_title": "Your letter request was declined",
@@ -9165,6 +9169,7 @@
       "rfq_share_err_unauthenticated": "Your session has expired. Sign in again and retry.",
       "rfq_share_err_internal_error": "The server could not create the link. Please retry in a moment; if it keeps failing, contact the platform team.",
       "rfq_share_err_invalid_input": "The link request was not valid. Reload the page and try again.",
+      "rfq_share_err_link_not_default": "A guest link is opened by default only for a public request. This one is private or a direct award, so its link is not created unless you ask for it explicitly.",
       "rfq_share_retry": "Retry",
       "rfq_share_copy": "Copy link",
       "rfq_share_copied": "Link copied to clipboard",
@@ -12037,7 +12042,15 @@
         "save_failed": "Not saved — try again",
         "suggestions": "Materials outside the list",
         "no_suggestions": "Nobody has typed a material outside the list yet.",
-        "mentions": "{count, plural, one {once} other {# times}} · last {day}"
+        "mentions": "{count, plural, one {once} other {# times}} · last {day}",
+        "sale_units": "Sale units",
+        "sale_units_hint": "What the material is sold as, a bar or a roll: it is priced in them and compared in the unit asked for. Only the Mdmak team defines them.",
+        "sale_none": "This material has no sale unit.",
+        "sale_bar": "Bar",
+        "sale_roll": "Roll",
+        "sale_length": "Length in metres",
+        "sale_add": "Add a sale unit",
+        "sale_remove": "Remove the sale unit {name}"
       }
     },
     "Procurement": {
@@ -12168,6 +12181,7 @@
         "warranty_registered": "The supplier registered a warranty for {item} until {date}",
         "warranty_accepted": "{by} accepted the supplier's warranty for {item}",
         "supplier_rated": "The supplier rated working with us on this order: {stars} out of 5",
+        "message": "{by} wrote in the order conversation",
         "hold_decided": "{by} decided on held invoice {invoice}: {decision}",
         "finance_reminded": "{by} reminded Finance about the advance",
         "budget_referred": "{by} referred the budget overrun ({over}) to the project manager",
@@ -12419,7 +12433,15 @@
           "guest_invited": "{supplier} (guest) was sent a join link",
           "document_printed": "The request document was downloaded to send outside the platform",
           "guest_link_shared": "Guest link shared via {channel}",
-          "guest_link_emailed": "Guest invitation sent by {channel}"
+          "guest_link_emailed": "Guest invitation sent by {channel}",
+          "published": "RFQ published",
+          "reopened": "RFQ reopened: {reason}",
+          "shortlisted": "{supplier} shortlisted",
+          "unshortlisted": "{supplier} taken off the shortlist",
+          "offer_versioned": "{supplier} sent version {version} of the offer",
+          "price_confirmed": "{supplier} confirmed the price",
+          "award_reason": "Award reason recorded: {reason}",
+          "message": "A message was sent to {supplier}"
         },
         "invited": {
           "title": "Invited",
@@ -14840,6 +14862,92 @@
         "noRegister": "Nobody is in the register yet — settings is where it is kept."
       }
     },
+    "ProcPackage": {
+      "label": {
+        "full": "Full",
+        "base": "Base",
+        "plus": "Base + {names}"
+      },
+      "title": {
+        "alone": "Procurement alone (with Inventory)",
+        "with": "Procurement + {names}"
+      },
+      "chip": "Package: {label}",
+      "base": {
+        "core": {
+          "name": "Procurement",
+          "short": "Procurement",
+          "add1": "Incoming · RFQs · POs · receipts · suppliers · reports",
+          "add2": "Visitor link for off-platform suppliers, and inviting suppliers"
+        },
+        "inv": {
+          "name": "Inventory",
+          "short": "Inventory",
+          "add1": "Before buying, Inventory is asked about each material; what it issues is not bought",
+          "add2": "A “need line” arrives when an item drops below its safety level",
+          "add3": "Receipts at a main warehouse enter its stock"
+        }
+      },
+      "conn": {
+        "pm": {
+          "name": "Projects",
+          "short": "Projects",
+          "question": "Do they run projects with sites and BOQs, where engineers request materials?",
+          "add1": "Requests arrive from projects with their number and BOQ item, after technical approval",
+          "add2": "Project sites with city, district and receiver join delivery locations automatically",
+          "add3": "Each material’s status returns to the project: in RFQ · in PO · arrived",
+          "without1": "The team raises “Material requests” inside Procurement with the same material row",
+          "without2": "Delivery locations and receivers are added by hand in settings",
+          "on": "Open team requests continue as they are; new ones arrive from projects. Delivery locations matching a project are linked by name.",
+          "off": "Open project requests continue until closed; “Material request” appears for the team; project sites stay as plain delivery locations."
+        },
+        "fin": {
+          "name": "Finance",
+          "short": "Finance",
+          "question": "Do they want accounting and payment inside Mdmak? (“No” if they use another system)",
+          "add1": "An approved PO reaches Finance as a commitment; advances are requested from it",
+          "add2": "Payments come back from Finance; the PO closes when paid",
+          "add3": "The procurement manager’s approval limit is read from Finance",
+          "without1": "A “Payment” section in the PO with an optional status, and “Mark it paid” for advances",
+          "without2": "“Export for accounting” and the accountant’s email: one fixed-column file per period",
+          "without3": "The PO closes on full receipt",
+          "on": "Open approved POs are sent to Finance once, each with its key — no duplicates; payments already marked arrive as references.",
+          "off": "“Payment” and “Export for accounting” appear; POs waiting for Finance’s payment close on full receipt."
+        },
+        "mfg": {
+          "name": "Manufacturing",
+          "short": "Manufacturing",
+          "question": "Do they have a workshop or factory that makes some of what they buy?",
+          "add1": "Workshop material requests arrive from work orders with their numbers",
+          "add2": "“Ask the workshop”: make it instead of buying, with the reference purchase price",
+          "add3": "The workshop store is a delivery location with its receiver; status returns to the work order",
+          "without1": "No workshop source and no “Ask the workshop”; everything requested is bought",
+          "on": "The workshop store becomes a delivery location; “Ask the workshop” appears on marble, granite and stone from now on.",
+          "off": "Whatever the workshop was asked and didn’t answer returns to buying; open workshop requests continue as they are."
+        }
+      },
+      "preset": {
+        "base": "Base",
+        "contractor_no_accounting": "Contractor, no accounting",
+        "contractor": "Contractor",
+        "factory": "Factory",
+        "full": "Full"
+      },
+      "sub": {
+        "pill_base": "Base package",
+        "pill_in": "In subscription",
+        "pill_adds": "Adds if subscribed",
+        "not_subscribed": "Not subscribed — ",
+        "footer": "The Mdmak team opens the subscription from the admin portal by your needs; it is not switched here."
+      },
+      "line": {
+        "pm": "Requests from projects",
+        "team": "Team material requests",
+        "mfg": "plus workshop requests and “Ask the workshop”",
+        "fin": "payment from Finance",
+        "nofin": "payment outside Mdmak: export to the accountant"
+      }
+    },
     "ProcSettings": {
       "page": {
         "title": "Settings",
@@ -14857,51 +14965,27 @@
       },
       "policies": {
         "title": "Policies",
-        "subtitle": "A limit is a number that blocks for real — enforced on the server; this form is its reflection",
-        "readOnly": "Edited by the owner or whoever approves purchase orders",
+        "subtitle": "Each policy carries the name of the module that owns it",
+        "readOnly": "Policies are edited by the owner only",
         "reference": "Reference value: {value}",
         "enforced": "A blank or a negative falls back to the reference value on save"
       },
       "policy": {
         "managerApprovalLimit": {
-          "label": "Manager approval limit",
-          "desc": "The largest order (excl. VAT) a holder of the approve permission may approve; above it, the owner"
-        },
-        "directPurchaseCap": {
-          "label": "Direct-order cap without offers",
-          "desc": "Direct orders to one supplier inside the splitting window may not pass this without the owner"
-        },
-        "competitionThreshold": {
-          "label": "Competition threshold",
-          "desc": "Above this value, fewer than the minimum offers is short competition — shown to the approver and in Exceptions"
-        },
-        "minOffers": {
-          "label": "Minimum offers",
-          "desc": "How many offers count as enough competition above the threshold"
+          "label": "Procurement manager's approval limit",
+          "desc": "The largest order, including VAT, a holder of the approve permission may approve; above it, the owner"
         },
         "overReceiptTolerancePercent": {
-          "label": "Over-receipt tolerance",
+          "label": "Receipt tolerance",
           "desc": "What may be accepted above a line's open quantity before the receipt is stopped"
-        },
-        "rfqWindowDays": {
-          "label": "Typical RFQ window",
-          "desc": "Days from publishing an RFQ to its close — feeds the last order day"
-        },
-        "awardCycleDays": {
-          "label": "Award and approval cycle",
-          "desc": "Days from the offers' close to an approved order — after it, a closed RFQ with no award turns red"
         },
         "supplierAcceptanceDays": {
           "label": "Supplier acceptance window",
           "desc": "Days after sending before \"not accepted\" becomes a decision on the expediter's desk"
         },
-        "splitWindowDays": {
-          "label": "Order-splitting window",
-          "desc": "Days over which direct orders to one supplier are added up against the direct-order cap"
-        },
         "forwardWindowDays": {
-          "label": "Forwarding window before a delivery — then an automatic, tagged forward",
-          "desc": "Days before the delivery date at which a notice still with Procurement becomes a task to forward; once the window lapses the system forwards it to the suggested receiver and tags it"
+          "label": "Auto-forward to the receiver",
+          "desc": "A notice still with Procurement this many days before the delivery is forwarded automatically to the suggested receiver and tagged"
         },
         "sealOffersUntilDeadline": {
           "label": "Seal offer prices until the deadline",
@@ -14914,7 +14998,7 @@
           "descOn": "On: the moment an order is approved it reaches a supplier registered on the portal, sent in the approver's name. A guest supplier (no portal) still gets it by WhatsApp or e-mail — whoever may send is told."
         },
         "noticeRouting": {
-          "label": "Delivery-notice routing",
+          "label": "Delivery notice route",
           "desc": "Where a supplier's delivery notice lands first — with us, to forward to the receiver, or with both at once",
           "procurement": "To Procurement, then we forward",
           "both": "To both at once"
@@ -14928,9 +15012,56 @@
           "label": "Buyer self-issue limit (direct order)",
           "desc": "A direct order up to this value (excl. VAT) the buyer issues in his own name, with no second approval — summarised weekly to whoever approves"
         },
-        "replyWindowDays": {
-          "label": "Inventory & workshop reply window",
-          "desc": "Days for Inventory to confirm the stock check and the workshop to answer make-or-buy — then we proceed (it fails open)"
+        "inventoryReplyDays": {
+          "label": "Inventory reply window before buying",
+          "desc": "Days for Inventory to answer the stock check — then everything is bought without waiting"
+        },
+        "workshopReplyDays": {
+          "label": "Workshop reply window (make or buy)",
+          "desc": "Days for the workshop to answer — then the decision returns to you"
+        },
+        "rfqDefaultDays": {
+          "label": "Default offers deadline",
+          "desc": "A new RFQ's deadline is today plus this many days — the buyer may change it"
+        },
+        "supplyLeadDays": {
+          "label": "Last day to order",
+          "desc": "Need date − supplier lead time (the days here) − RFQ cycle − award and approval"
+        },
+        "escalateAfterDays": {
+          "label": "Escalate uncounted deliveries",
+          "desc": "Days after the delivery date before a delivery nobody counted goes to the project manager — or to the owner without Projects"
+        },
+        "tieBandPct": {
+          "label": "Ties in the comparison",
+          "desc": "An offer within this percent of the lowest counts as the lowest — no reason needed to award it"
+        },
+        "advanceUnknownSupplierOwner": {
+          "label": "Advance to a supplier with no record",
+          "desc": "Off: whoever approves the order may ask for the advance",
+          "descOn": "On: the owner approves it before it is asked for"
+        },
+        "awardBeforeDeadline": {
+          "label": "Award before the deadline",
+          "desc": "Allowed: it closes the RFQ early, and those who did not quote are told"
+        },
+        "cycle": {
+          "label": "RFQ cycle · award and approval",
+          "desc": "Days from publishing to the close of offers, and from the close to an approved order — they feed the last day to order",
+          "a": "RFQ cycle",
+          "b": "Award and approval"
+        },
+        "competition": {
+          "label": "Competition threshold",
+          "desc": "Above this value before VAT, an order needs this many live offers per item — otherwise a reason is tagged on the order",
+          "a": "Above (before VAT)",
+          "b": "Live offers per item"
+        },
+        "direct": {
+          "label": "Direct order cap · splitting window",
+          "desc": "Direct orders to one supplier inside the window may not pass the cap without the owner",
+          "a": "Cap without offers",
+          "b": "Window"
         },
         "ownerStepsBack": {
           "label": "The owner reads and approves only",
@@ -15046,9 +15177,10 @@
         "me": "Procurement"
       },
       "owner": {
-        "gov": "From Governance",
+        "gov": "From Settings & governance",
         "fin": "From Finance",
-        "inv": "From Inventory"
+        "inv": "From Inventory",
+        "mfg": "From Manufacturing"
       },
       "flow": {
         "title": "Need to payment — nine steps, one owner each",
@@ -15274,22 +15406,32 @@
       "roles2": {
         "sub": "What each Procurement role does, as the screens and the server apply it.",
         "what": "What they do",
-        "col_owner": "Company owner",
-        "col_manager": "Procurement manager",
+        "col_owner": "Owner",
+        "col_manager": "Proc. manager",
         "col_buyer": "Buyer",
         "col_expediter": "Expediter",
+        "col_requester": "Requester",
         "row_prices": "Sees prices and values",
-        "row_publish": "Publishes an RFQ, from incoming requests or new",
-        "row_award": "Awards and prepares the purchase order",
-        "row_approve": "Approves an order someone else prepared",
-        "row_expedite": "Follows dates up and forwards delivery notices",
-        "row_invite": "Invites a supplier and adds him to ours",
-        "row_mark_paid": "Marks payment (without Finance only)",
-        "row_raise_request": "Raises a material request (without Project Management only)",
+        "row_publish": "Publishes RFQs from incoming or new",
+        "row_compare": "Sees, compares, asks, requests better prices, excludes",
+        "row_award": "Awards and prepares orders",
+        "row_approve": "Approves orders prepared by others (only the owner approves his own)",
+        "row_approve_over": "Approves orders above the manager’s limit, or an advance to a supplier with no record",
+        "row_cancel": "Cancels and re-awards an order, cancels an RFQ, or closes a request as could not buy",
+        "row_escalate": "Escalates an uncounted delivery",
+        "row_expedite": "Talks to suppliers and forwards notices",
+        "row_manual_receipt": "Records a manual receipt",
+        "row_raise_request": "Raises material requests",
+        "row_settings": "Sets policies, locations and receivers",
+        "row_subscription": "Sees the subscription (read-only)",
+        "row_mark_paid": "Marks payment",
+        "row_ask_workshop": "Asks the workshop: make or buy",
+        "pill_nofin": "without Finance only",
+        "pill_nopm": "without Projects only",
+        "pill_mfg": "with Manufacturing",
         "up_to": "Up to {limit}",
-        "foot_fin": "Roles are given on the team page. Receiving is not a Procurement act, nor paying while Finance is in the package.",
-        "foot_nofin": "Roles are given on the team page. Receiving is not a Procurement act.",
-        "foot_raise": "Any team member raises a material request, from “Request materials” in his tasks, even with no Procurement permission."
+        "cell_sites": "Locations, receivers",
+        "foot": "The owner holds every procurement action by default and may restrict himself. In a small company one person may hold several roles. Receiving is not a procurement action: the receiver counts."
       },
       "accountant": {
         "label": "Accountant's e-mail",
@@ -25277,7 +25419,21 @@
       "equipment_open_pm": "Open the projects",
       "sub_pick": "Pick a sub-category",
       "sub_optional": "Material-tree category (optional)",
-      "sub_optional_hint": "Lets the item be found and filtered by the same list RFQs and suppliers use."
+      "sub_optional_hint": "Lets the item be found and filtered by the same list RFQs and suppliers use.",
+      "popular_title": "Most requested:",
+      "popular_browse": "Browse the tree",
+      "popular_rebar16": "Rebar 16",
+      "popular_rebar12": "Rebar 12",
+      "popular_opc": "OPC cement",
+      "popular_block20": "Hollow block 20",
+      "popular_c30": "Ready-mix C30",
+      "popular_plasterSand": "Plastering sand",
+      "options": "Options",
+      "options_for": "Options for {name}",
+      "options_back": "← Results",
+      "options_hint": "Pick only what matters — the supplier fills the rest.",
+      "options_quantity": "Quantity",
+      "options_add": "Add it"
     },
     "ProcEditor": {
       "add_group": "Another project or delivery site",
@@ -25315,8 +25471,8 @@
       "done_direct": "RFQ {number} awarded",
       "done_direct_po": "Purchase order {number} awaits approval.",
       "done_direct_no_po": "The purchase order was not raised — raise it from the accepted offer's card.",
-      "done_sub": "Reached {count, plural, =0 {no supplier yet} one {# supplier} other {# suppliers}}; offers close on {date}.",
-      "done_sub_nodate": "Reached {count, plural, =0 {no supplier yet} one {# supplier} other {# suppliers}}.",
+      "done_sub": "{count, plural, =0 {No matching supplier yet — share the visitor link below.} one {Reached # supplier.} other {Reached # suppliers.}} Offers close on {date}.",
+      "done_sub_nodate": "{count, plural, =0 {No matching supplier yet — share the visitor link below.} one {Reached # supplier.} other {Reached # suppliers.}}",
       "draft": "Draft",
       "draft_saved": "Draft · saved a moment ago",
       "email": "E-mail",
@@ -25327,7 +25483,7 @@
       "err_unit": "Enter the unit on row {no}",
       "err_no_lines": "Add at least one material",
       "err_no_place": "Pick this group's delivery city — the supplier reads it",
-      "err_deadline": "Pick a day after today",
+      "err_deadline": "The deadline has passed: pick today or later.",
       "err_recipients": "Pick at least one supplier",
       "err_direct_supplier": "Pick the supplier",
       "err_direct_prices": "Enter the agreed price of each material",
@@ -25420,9 +25576,14 @@
       "unit_conv": "{qty} {unit} × {per} kg = {total} {target} — for information",
       "unit_kept": "Unit as it arrived (the material's: {units})",
       "untitled": "Request for quotation",
-      "warranty": "Warranty required",
-      "warranty_on": "This item requires a warranty",
-      "warranty_off": "No warranty",
+      "warranty": "Warranty",
+      "warranty_switch": "Requires a warranty — switch on or off",
+      "warranty_duration": "Warranty period",
+      "warranty_6": "6 mo",
+      "warranty_12": "1 yr",
+      "warranty_24": "2 yr",
+      "warranty_36": "3 yr",
+      "warranty_60": "5 yr",
       "whatsapp": "WhatsApp",
       "step_request": "The request",
       "panel_sub": "{place} · {count, plural, one {# material} other {# materials}}",

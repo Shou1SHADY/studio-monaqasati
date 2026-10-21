@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Chip } from "@/components/module-ui/Chip"
+import { MaterialSpecChoices } from "./MaterialSpecChoices"
 import { cn } from "@/lib/utils"
 import { isHeavyEquipmentRental, otherEquipmentSub } from "@/lib/materials/equipment"
 import { brandsOf, isMaterial, label, pathLabel, pathOf, pickOf, searchMaterials, shortSpecName, specsOf, unitsOf, type MaterialIndex } from "@/lib/materials/tree"
@@ -166,32 +167,7 @@ export function MaterialBrowserDialog({
         ) : showsDetail && node ? (
           <div className="space-y-4">
             <p className="text-sm font-bold">{pathLabel(path, locale, true)}</p>
-            {specsOf(index, node.id).map((s) => (
-              <fieldset key={s.ar} className="space-y-2">
-                <legend className="text-xs font-semibold text-muted-foreground">{label(shortSpecName(s), locale)}</legend>
-                <div className="flex flex-wrap gap-1.5">
-                  {s.options.map((o, i) => {
-                    const on = specs[s.ar]?.ar === o.ar && specs[s.ar]?.en === o.en
-                    return (
-                      <Chip
-                        key={`${o.ar}|${o.en}|${i}`}
-                        selected={on}
-                        onClick={() =>
-                          setSpecs((cur) => {
-                            const next = { ...cur }
-                            if (on) delete next[s.ar]
-                            else next[s.ar] = o
-                            return next
-                          })
-                        }
-                      >
-                        <span dir="auto">{label(o, locale)}</span>
-                      </Chip>
-                    )
-                  })}
-                </div>
-              </fieldset>
-            ))}
+            <MaterialSpecChoices index={index} nodeId={node.id} value={specs} onChange={setSpecs} />
             <fieldset className="space-y-2">
               <legend className="text-xs font-semibold text-muted-foreground">{t("unit")}</legend>
               {units.length === 1 ? (

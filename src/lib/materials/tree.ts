@@ -6,7 +6,7 @@
 // units and brands of the levels above it, its own winning on a name clash.
 
 import { foldSearchText } from "@/lib/search-text"
-import type { MaterialNode, MaterialPick, MaterialSpec, MaterialText, MaterialUnit } from "./types"
+import type { MaterialNode, MaterialPick, MaterialSaleUnit, MaterialSpec, MaterialText, MaterialUnit } from "./types"
 
 export interface MaterialIndex {
   roots: MaterialNode[]
@@ -81,6 +81,21 @@ export function specsOf(index: MaterialIndex, id: string): MaterialSpec[] {
 export function unitsOf(index: MaterialIndex, id: string): MaterialUnit[] {
   for (const n of pathOf(index, id).reverse()) if (n.units.length) return n.units
   return []
+}
+
+const LENGTH_OPTION = /^\s*(\d+(?:\.\d+)?)\s*(?:م|m|meters?)\s*$/i
+
+/**
+ * The lengths a material is sold in: its own list (or the nearest above), else the options of a «الطول»
+ * spec when every one of them is «N م» (timber: 3 / 4 / 6 m). Empty for everything else.
+ */
+export function saleUnitsOf(index: MaterialIndex, id: string): MaterialSaleUnit[] {
+  for (const n of pathOf(index, id).reverse()) if (n.saleUnits?.length) return n.saleUnits
+  const length = specsOf(index, id).find((s) => foldSearchText(s.ar) === foldSearchText("الطول") || foldSearchText(s.en) === "length")
+  if (!length) return []
+  const metres = length.options.map((o) => Number((LENGTH_OPTION.exec(o.ar) || LENGTH_OPTION.exec(o.en))?.[1]))
+  if (!metres.length || metres.some((m) => !(m > 0))) return []
+  return metres.map((lengthM) => ({ ar: `قطعة ${lengthM} م`, en: `${lengthM} meter piece`, lengthM, from: "spec" as const }))
 }
 
 export function brandsOf(index: MaterialIndex, id: string): MaterialText[] {
@@ -204,7 +219,8 @@ export function pickOf(index: MaterialIndex, nodeId: string, specs: MaterialPick
   const path = pathOf(index, nodeId)
   const subId = subIdOf(index, nodeId)
   if (!path.length || !subId) return null
-  return { nodeId, subId, rootId: path[0].id, path: path.map((p) => ({ ar: p.ar, en: p.en })), specs, brand, outside }
+  const saleUnits = outside ? [] : saleUnitsOf(index, nodeId)
+  return { nodeId, subId, rootId: path[0].id, path: path.map((p) => ({ ar: p.ar, en: p.en })), specs, brand, outside, ...(saleUnits.length ? { saleUnits } : {}) }
 }
 
 /** «أسياخ حديد تسليح 16 مم» — the material and its chosen values, as a supplier reads the line. */

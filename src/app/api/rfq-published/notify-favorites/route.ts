@@ -4,7 +4,7 @@ import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { sendDirectMessage, normalizePhoneE164, isSmsConfigured } from "@/lib/sms"
 import { resolveIdentityAdmin } from "@/lib/org-identity-admin"
-import { PUBLIC_BASE_URL } from "@/lib/rfq-share"
+import { publicBaseUrl } from "@/lib/links/url"
 
 // Called (fire-and-forget) right after a contractor publishes RFQs. Every
 // supplier the contractor has FAVORITED gets a direct SMS about the new RFQ —
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
         `منصة مدماك: طلب عروض جديد «${(rfq.title as string) || ""}»` +
         (contractorName ? ` من ${contractorName}` : "") +
         (rfq.deadline ? `. آخر موعد للتقديم: ${rfq.deadline}` : "") +
-        `. قدّم عرضك: ${PUBLIC_BASE_URL}/supplier/rfqs`
+        `. قدّم عرضك: ${publicBaseUrl()}/supplier/rfqs`
 
       const sentIds: string[] = []
       for (const supplierId of recipients) {

@@ -23,77 +23,24 @@
 //   to multiply by cannot produce a total, and a total that is not the sum of
 //   its parts is the "number that lies" of §6.2.
 
+import { calcOffer, canPriceByLine, coverageOf, fromHalalas, lineCalc, pricedProducts, pricingModeOf, ratesReconcile, toAmount, type PackInfo, type PricedProduct, type PricedRfq, type RfqProductLike } from "./offer-calc"
 import { aboveLastPaid } from "./prices"
 
-const round2 = (n: number) => Math.round(n * 100) / 100
+// The arithmetic (pieces, line totals, effective prices, VAT, ties) lives in offer-calc.ts; this file keeps the
+// forms' vocabulary — rates as typed, faults, the fields an offer document stores — and calls into it.
+export { canPriceByLine, pricedProducts, pricingModeOf, toAmount }
+export type { PricedProduct, PricedRfq, RfqProductLike }
 
-/** Quantities and prices reach us as typed strings — "1,200", " 40 ", "٤٠". */
-export function toAmount(value: unknown): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0
-  const cleaned = String(value ?? "")
-    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
-    .replace(/[,\s]/g, "")
-  const n = Number(cleaned)
-  return Number.isFinite(n) ? n : 0
-}
+const round2 = (n: number) => Math.round(n * 100) / 100
 
 export const PRICING_MODES = ["total", "line"] as const
 export type PricingMode = (typeof PRICING_MODES)[number]
 
-export interface PricedRfq {
-  pricingMode?: string | null
-  shipmentMode?: string | null
-  products?: RfqProductLike[] | null
-}
-
-export interface RfqProductLike {
-  name?: string | null
-  quantity?: number | string | null
-  unitOfMeasure?: string | null
-  unit?: string | null
-}
-
-/** An RFQ published before this existed, or one that asked for a total, is a
- * total. Anything unrecognised is a total too — never a mode nobody chose. */
-export function pricingModeOf(rfq: PricedRfq | null | undefined): PricingMode {
-  return rfq?.pricingMode === "line" && canPriceByLine(rfq) ? "line" : "total"
-}
-
-/**
- * Whether this RFQ COULD be priced per line — what the RFQ form offers and what
- * `pricingModeOf` insists on before honouring the stored mode, so an RFQ whose
- * products were later emptied falls back to a total instead of asking for rates
- * that multiply by nothing.
- */
-export function canPriceByLine(rfq: PricedRfq | null | undefined): boolean {
-  if (!rfq) return false
-  if (rfq.shipmentMode === "multiple") return false
-  const products = (rfq.products || []).filter((p) => p && (p.name || "").trim())
-  if (!products.length) return false
-  return products.every((p) => toAmount(p.quantity) > 0)
-}
-
-/** The products a line-priced offer must cover, in the order the RFQ lists them
- * — the index IS the identity (`rfqProductIndex`), so the list is never re-sorted. */
-export interface PricedProduct {
-  rfqProductIndex: number
-  name: string
-  unit: string
-  quantity: number
-}
-
-export function pricedProducts(rfq: PricedRfq | null | undefined): PricedProduct[] {
-  return (rfq?.products || []).map((p, i) => ({
-    rfqProductIndex: i,
-    name: (p.name || "").trim(),
-    unit: (p.unitOfMeasure || p.unit || "").trim(),
-    quantity: toAmount(p.quantity),
-  }))
-}
-
 export interface OfferLinePrice {
   rfqProductIndex: number
   unitPrice: number
+  /** Request units in one piece, when the rate is per piece (CMP-01). Absent for a per-unit rate. */
+  packLen?: number
 }
 
 export interface OfferPricing {
@@ -122,13 +69,18 @@ export interface OfferPricing {
  * is neither priced nor marked stays `missing`, so a forgotten field is still
  * caught; one that is both is `conflicting`.
  */
-export function priceOffer(products: PricedProduct[], rates: Record<number, string | number | null | undefined>, skipped: readonly number[] = []): OfferPricing {
+export function priceOffer(
+  products: PricedProduct[],
+  rates: Record<number, string | number | null | undefined>,
+  skipped: readonly number[] = [],
+  packs: Record<number, number | string | null | undefined> = {}
+): OfferPricing {
   const flagged = new Set(skipped)
   const lines: OfferLinePrice[] = []
   const missing: number[] = []
   const left: number[] = []
   const conflicting: number[] = []
-  let total = 0
+  let totalH = 0
   for (const p of products) {
     const rate = round2(toAmount(rates[p.rfqProductIndex]))
     const flag = flagged.has(p.rfqProductIndex)
@@ -141,10 +93,11 @@ export function priceOffer(products: PricedProduct[], rates: Record<number, stri
       else missing.push(p.rfqProductIndex)
       continue
     }
-    lines.push({ rfqProductIndex: p.rfqProductIndex, unitPrice: rate })
-    total += rate * p.quantity
+    const calc = lineCalc(p.quantity, rate, packs[p.rfqProductIndex])
+    lines.push({ rfqProductIndex: p.rfqProductIndex, unitPrice: rate, ...(calc.pack ? { packLen: calc.pack.packLen } : {}) })
+    totalH += calc.totalH
   }
-  return { lines, total: round2(total), missing, skipped: left, conflicting, complete: missing.length === 0 && conflicting.length === 0 && lines.length > 0 }
+  return { lines, total: fromHalalas(totalH), missing, skipped: left, conflicting, complete: missing.length === 0 && conflicting.length === 0 && lines.length > 0 }
 }
 
 export type PricingFaultCode = "LINE_PRICES_INCOMPLETE" | "LINE_CONTRADICTORY" | "NO_LINE_PRICED"
@@ -188,8 +141,12 @@ export function guestOfferPrice(
   | { ok: false; code: PricingFaultCode } {
   if (pricingModeOf(rfq) !== "line") return { ok: true, total: postedTotal, price: String(postedTotal), lines: null }
   const rates: Record<number, number> = {}
-  for (const l of postedRates) rates[l.rfqProductIndex] = l.unitPrice
-  const pricing = priceOffer(pricedProducts(rfq), rates, postedSkipped)
+  const packs: Record<number, number | undefined> = {}
+  for (const l of postedRates) {
+    rates[l.rfqProductIndex] = l.unitPrice
+    packs[l.rfqProductIndex] = l.packLen
+  }
+  const pricing = priceOffer(pricedProducts(rfq), rates, postedSkipped, packs)
   const fault = pricingFault(pricing)
   if (fault) return { ok: false, code: fault.code }
   return { ok: true, total: pricing.total, price: String(pricing.total), lines: pricing.lines, ...(pricing.skipped.length ? { skippedItems: pricing.skipped } : {}) }
@@ -198,9 +155,13 @@ export function guestOfferPrice(
 export type RatedOffer = {
   price?: unknown
   totalBatchesPrice?: unknown
-  lines?: Array<{ rfqProductIndex?: number | null; unitPrice?: number | string | null }> | null
+  lines?: Array<{ rfqProductIndex?: number | null; unitPrice?: number | string | null; packLen?: number | string | null }> | null
   /** Product indexes the supplier said he does not supply — a partial offer. */
   skippedItems?: Array<number | null> | null
+  /** مبلغ إجمالي: one figure for the whole RFQ, no line prices. */
+  lump?: number | string | null
+  vatRegistered?: boolean | null
+  vatRate?: number | string | null
 }
 
 export interface OfferCoverage {
@@ -221,17 +182,7 @@ export interface OfferCoverage {
  * (a lump-sum revision) is still known to be partial.
  */
 export function offerCoverage(rfq: PricedRfq | null | undefined, offer: RatedOffer): OfferCoverage {
-  const products = pricedProducts(rfq)
-  const whole: OfferCoverage = { covered: products.length, of: products.length, partial: false, uncovered: [] }
-  if (products.length < 2 || pricingModeOf(rfq) !== "line") return whole
-  const quoted = new Set<number>()
-  for (const l of offer.lines || []) {
-    const i = Number(l.rfqProductIndex)
-    if (Number.isInteger(i) && i >= 0 && toAmount(l.unitPrice) > 0) quoted.add(i)
-  }
-  const flagged = new Set((offer.skippedItems || []).map(Number).filter((i) => Number.isInteger(i) && i >= 0))
-  const uncovered = products.filter((p) => (quoted.size ? !quoted.has(p.rfqProductIndex) : flagged.has(p.rfqProductIndex))).map((p) => p.rfqProductIndex)
-  return { covered: products.length - uncovered.length, of: products.length, partial: uncovered.length > 0, uncovered }
+  return coverageOf(rfq, offer)
 }
 
 /** «Covers N of M» from the offer alone (its rates and its marks), for a list that has not loaded the RFQ; null when it covers all. */
@@ -257,18 +208,7 @@ export const isPartialOffer = (offer: { skippedItems?: unknown }): boolean => Ar
  * The tolerance is a halala per line, for rounding.
  */
 export function quotedRatesReconcile(products: PricedProduct[], offer: RatedOffer): boolean {
-  if (!products.length) return true
-  const quoted = new Map<number, number>()
-  for (const l of offer.lines || []) {
-    const i = Number(l.rfqProductIndex)
-    const rate = toAmount(l.unitPrice)
-    if (Number.isInteger(i) && i >= 0 && rate > 0) quoted.set(i, rate)
-  }
-  if (!products.every((p) => quoted.has(p.rfqProductIndex))) return true
-  const total = toAmount(offer.totalBatchesPrice) > 0 ? toAmount(offer.totalBatchesPrice) : toAmount(offer.price)
-  if (total <= 0) return true
-  const sum = products.reduce((s, p) => s + (quoted.get(p.rfqProductIndex) as number) * p.quantity, 0)
-  return Math.abs(round2(sum) - round2(total)) <= 0.01 * products.length + 1e-9
+  return ratesReconcile(products, offer)
 }
 
 // ---------------------------------------------------------------------------
@@ -322,7 +262,9 @@ export function revisePrice(
     const before = new Set((offer.lines || []).map((l) => Number(l.rfqProductIndex)))
     const wasOut = new Set((offer.skippedItems || []).map(Number))
     const skipped = input.skipped ?? products.filter((p) => (wasOut.has(p.rfqProductIndex) || !before.has(p.rfqProductIndex)) && !(toAmount(rates[p.rfqProductIndex]) > 0)).map((p) => p.rfqProductIndex)
-    const pricing = priceOffer(products, rates, skipped)
+    const packs: Record<number, number | string | null | undefined> = {}
+    for (const l of offer.lines || []) packs[Number(l.rfqProductIndex)] = l.packLen
+    const pricing = priceOffer(products, rates, skipped, packs)
     const fault = pricingFault(pricing)
     if (fault) return { ok: false, code: fault.code }
     total = pricing.total
@@ -355,9 +297,13 @@ export function revisePrice(
 // ---------------------------------------------------------------------------
 
 export interface OfferRate extends PricedProduct {
+  /** Per request unit. For a per-piece line it is the EFFECTIVE price (paid ÷ requested), never the price per piece. */
   unitPrice: number
   /** True when the rate was quoted; false when it was divided out of a total. */
   quoted: boolean
+  /** Per-piece lines only: what the line costs, ex-VAT — rate × quantity is not the total there. */
+  lineTotal?: number
+  pack?: PackInfo
 }
 
 /**
@@ -375,23 +321,16 @@ export interface OfferRate extends PricedProduct {
  */
 export function offerRates(rfq: PricedRfq | null | undefined, offer: RatedOffer): OfferRate[] {
   const products = pricedProducts(rfq)
-  const quoted = new Map<number, number>()
-  // Stale rates (a total revised without them) are set aside: the total is the
-  // offer, and for a single material it still yields the one true rate below.
-  if (quotedRatesReconcile(products, offer)) {
-    for (const l of offer.lines || []) {
-      const i = Number(l.rfqProductIndex)
-      const rate = round2(toAmount(l.unitPrice))
-      if (Number.isInteger(i) && i >= 0 && rate > 0) quoted.set(i, rate)
+  const calc = calcOffer(rfq, offer)
+  return calc.lines.map((l) => {
+    const p = products[l.rfqProductIndex]
+    return {
+      ...p,
+      unitPrice: l.pack || !l.quoted ? fromHalalas(l.effH) : fromHalalas(l.rateH),
+      quoted: l.quoted,
+      ...(l.pack ? { lineTotal: fromHalalas(l.totalH), pack: l.pack } : {}),
     }
-  }
-  if (quoted.size) {
-    return products.filter((p) => quoted.has(p.rfqProductIndex)).map((p) => ({ ...p, unitPrice: quoted.get(p.rfqProductIndex) as number, quoted: true }))
-  }
-  const total = toAmount(offer.totalBatchesPrice) > 0 ? toAmount(offer.totalBatchesPrice) : toAmount(offer.price)
-  const only = products.length === 1 ? products[0] : null
-  if (!only || only.quantity <= 0 || total <= 0) return []
-  return [{ ...only, unitPrice: round2(total / only.quantity), quoted: false }]
+  })
 }
 
 export interface RateComparison extends OfferRate {

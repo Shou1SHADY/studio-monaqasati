@@ -73,7 +73,7 @@ describe("T5a/T5b · approvals — mine float to the top, everybody else's wait"
       ["approval_wait", "approval_wait:b"],
     ])
     expect(t[0]).toMatchObject({ priority: 0, severity: "amber", group: "po", amount: 3000, subKey: "task.approve.sub", subParams: { preparer: "Sara", ago: 12 }, href: "/contractor/rfqs/orders?po=s", actionKey: "actions.review" })
-    expect(t[1]).toMatchObject({ priority: 3, severity: "blue", subKey: "task.approval_wait.sub.above_limit", subParams: { value: 176100, limit: 150000 }, actionKey: "actions.view" })
+    expect(t[1]).toMatchObject({ priority: 3, severity: "blue", subKey: "task.approval_wait.sub.above_limit", subParams: { value: 202515, limit: 150000 }, actionKey: "actions.view" })
   })
 
   it("the owner may approve both — including one he prepared", () => {
@@ -106,7 +106,7 @@ describe("T5c–T5e · send, not accepted, late — the chasing tasks", () => {
       orders: [
         po({ id: "a", status: "approved", approvedAt: "2026-09-20T08:00:00Z" }),
         po({ id: "b", status: "sent", sentAt: "2026-09-20T08:00:00Z" }),
-        po({ id: "c", status: "sent", sentAt: "2026-09-21T08:00:00Z" }), // inside the window → a wait, not a task
+        po({ id: "c", status: "sent", sentAt: "2026-09-22T06:00:00Z" }), // inside the one-day window → a wait, not a task
         po({ id: "d", promisedDate: "2026-09-19", lines: [line({ accepted: 40 }), line({ id: "l2", name: "Mesh", unit: "pc", quantity: 10, accepted: 10 })] }),
       ],
     })
@@ -309,7 +309,7 @@ describe("KPIs — three per role", () => {
     // With the needs desk loaded, the first tile counts the lines still to source and those past their last order day.
     const row = (key: string, state: NeedRow["state"], lastOrderIn: number | null) => ({ key, state, lastOrderIn, category: null }) as NeedRow
     const k2 = todayKpis({ ...w, needDesk: { rows: [row("a", "open", -2), row("b", "late", 3), row("c", "rfq", null)], buyers: [], viewerCategories: null } }, MANAGER, NOW)
-    expect(k2.tiles[0]).toMatchObject({ id: "needs", value: 2, labelKey: "kpi.needs.label_requests", noteKey: "kpi.needs.note_overdue", noteParams: { count: 1 }, tone: "bad", href: "/contractor/rfqs/requests?seg=act" })
+    expect(k2.tiles[0]).toMatchObject({ id: "needs", value: 3, labelKey: "kpi.needs.label_requests", noteKey: "kpi.needs.note_overdue", noteParams: { count: 1 }, tone: "bad", href: "/contractor/rfqs/requests?seg=act" })
   })
 
   it("owner: awaiting my approval · what Finance will need · late orders", () => {

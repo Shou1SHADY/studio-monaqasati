@@ -58,7 +58,10 @@ describe("the incoming request on the editor", () => {
     const filled = lineFromPick(line, cement, "طن", "ar")
     expect(filled).toMatchObject({ name: "أسمنت بورتلاندي عادي", quantity: "200", unit: "كيس" })
     expect(filled.material?.subId).toBe(cement.subId)
-    expect(unitNote(filled, index)).toMatchObject({ kind: "differs" })
+    // 2.0 (R-27): cement is sold by the bag, so «كيس» is the material's own unit and nothing is said…
+    expect(unitNote(filled, index)).toBeNull()
+    // …while a unit the material does not have is still kept and flagged.
+    expect(unitNote({ ...filled, unit: "حبة" }, index)).toMatchObject({ kind: "differs", units: ["كيس", "طن"] })
   })
   it("refuses at step 1 on the row, naming what is missing — not at publish", () => {
     const p = materialsProblems(groups)

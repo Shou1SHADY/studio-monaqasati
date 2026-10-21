@@ -115,6 +115,7 @@ export interface PoLogEntry {
     | "warranty_registered"
     | "warranty_accepted"
     | "supplier_rated"
+    | "message"
   note?: string | null
   /** Free parameters for the rendered sentence (channel, date, quantity…). */
   params?: Record<string, string | number> | null
@@ -359,6 +360,20 @@ export interface ProcurementPolicies {
    * "Send". A guest supplier has no portal: his order waits for WhatsApp or
    * e-mail, and whoever may send it is told. ON by default. */
   sendOnApproval: boolean
+  /** The default offers deadline of a new RFQ: today + this many days (PRD §14). */
+  rfqDefaultDays: number
+  /** The supplier's lead time inside «آخر يوم للطلب»: need date − this − the RFQ cycle − the award cycle. */
+  supplyLeadDays: number
+  /** Within this percent of the lowest complete offer still counts as the lowest — no reason needed. */
+  tieBandPct: number
+  /** Days after a delivery notice before an uncounted delivery is escalated (the reminder goes at 2 whatever this is). */
+  escalateAfterDays: number
+  /** An advance to a supplier with no record on the platform needs the owner's approval before it is asked for. */
+  advanceUnknownSupplierOwner: boolean
+  /** Inventory's stock check before buying, then we proceed with the whole quantity. */
+  inventoryReplyDays: number
+  /** The workshop's make-or-buy answer, then the decision returns to Procurement. */
+  workshopReplyDays: number
 }
 
 export const DEFAULT_POLICIES: ProcurementPolicies = {
@@ -369,11 +384,18 @@ export const DEFAULT_POLICIES: ProcurementPolicies = {
   overReceiptTolerancePercent: 5,
   rfqWindowDays: 3,
   awardCycleDays: 2,
-  supplierAcceptanceDays: 2,
+  supplierAcceptanceDays: 1,
   splitWindowDays: 30,
   sealOffersUntilDeadline: true,
   forwardWindowDays: 1,
   sendOnApproval: true,
+  rfqDefaultDays: 3,
+  supplyLeadDays: 10,
+  tieBandPct: 0.5,
+  escalateAfterDays: 2,
+  advanceUnknownSupplierOwner: true,
+  inventoryReplyDays: 1,
+  workshopReplyDays: 1,
 }
 
 /** What an approval needs to know about the supplier — read from the

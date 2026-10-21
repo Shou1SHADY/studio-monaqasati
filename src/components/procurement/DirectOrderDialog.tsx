@@ -37,7 +37,8 @@ import { directSupplierOptions } from "@/lib/procurement/supplier-file"
 import { publicReach } from "@/lib/procurement/rfq-extras"
 import { useSupplierDirectory } from "@/hooks/useSupplierDirectory"
 import type { ProcOffer } from "@/hooks/useProcurementWorld"
-import { CATEGORIES_DATA } from "@/lib/constants"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { categoryTree, treeSupplier } from "@/lib/materials/category-tree"
 import type { ProcActor, ProcurementPolicies, PurchaseOrder } from "@/lib/procurement/types"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import { sarLtr } from "@/lib/riyal"
@@ -82,6 +83,7 @@ export function DirectOrderDialog({
   // The supplier file, never a name typed by hand (P-36): our records and past
   // suppliers, then the platform's of the lines' categories.
   const { suppliers: platformSuppliers } = useSupplierDirectory(orgId, NO_IDS, NO_OFFERS)
+  const { index: treeIndex } = useMaterialTree()
   const suppliers = useMemo(() => {
     const categories = rows.map((r) => r.category).filter((c): c is string => Boolean(c))
     return directSupplierOptions({
@@ -90,9 +92,9 @@ export function DirectOrderDialog({
       keyOf: (o) => (o.isGuestSupplier ? supplierKey(o) : o.supplierOrgId),
       categories,
       today,
-      platform: publicReach(platformSuppliers, categories, CATEGORIES_DATA),
+      platform: publicReach(platformSuppliers.map((s) => treeSupplier(s, treeIndex)), categories, categoryTree(treeIndex)),
     })
-  }, [orders, supplierRecords, rows, today, platformSuppliers])
+  }, [orders, supplierRecords, rows, today, platformSuppliers, treeIndex])
   const lastOf = (r: NeedRow) => lastPaid(history, r.name, r.unit)
   const [supplierPick, setSupplierPick] = useState(() => {
     const first = rows.map(lastOf).find(Boolean)

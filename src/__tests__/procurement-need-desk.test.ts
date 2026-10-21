@@ -74,13 +74,29 @@ describe("the path and the last order day", () => {
     expect(buildNeedRows([mfgNeed({ id: "w", ref: "WO-1", context: "" }, { id: "r", itemName: "Cement", unit: "bag", quantity: 1, needBy: null, note: null, by: "", at: "", state: "sent" })], facts({ makeable }))[0].path).toBe("rfq")
   })
 
-  it("need − lead − (RFQ window + award cycle) for an RFQ, − 1 day for an order; the lead from the last order that said so", () => {
-    expect(lastOrderDayOf("2026-10-10", 10, "rfq", DEFAULT_POLICIES)).toBe("2026-09-25")
-    expect(lastOrderDayOf("2026-10-10", 10, "agreement", DEFAULT_POLICIES)).toBe("2026-09-29")
-    expect(lastOrderDayOf(null, 10, "rfq", DEFAULT_POLICIES)).toBeNull()
+  it("need − lead (10) − RFQ cycle (3) − award and approval (2), the same for every path — the prototype's 6 Nov → 22 Oct", () => {
+    expect(lastOrderDayOf("2026-11-06", DEFAULT_POLICIES)).toBe("2026-10-22")
+    expect(lastOrderDayOf("2026-10-10", DEFAULT_POLICIES)).toBe("2026-09-25")
+    expect(lastOrderDayOf(null, DEFAULT_POLICIES)).toBeNull()
+    expect(lastOrderDayOf("2026-11-06", { ...DEFAULT_POLICIES, supplyLeadDays: 14, rfqWindowDays: 4, awardCycleDays: 1 })).toBe("2026-10-18")
+  })
+
+  it("an agreement or a direct order has the same last day as an RFQ, and the lead is the policy's — never the last order's", () => {
     const leadPo = { id: "o", createdAt: "2026-09-01", leadTimeDays: 3, lines: [{ name: "Sand", unit: "m3" }] } as unknown as PurchaseOrder
+    const one = projectNeed(project, pr({ items: [{ name: "Cement", quantity: 100, unit: "bag" }] }), "PR-1")
+    const [viaRfq] = buildNeedRows([one], facts({ orders: [leadPo] }))
+    const [viaAgreement] = buildNeedRows([one], facts({ agreements: [agreement], orders: [leadPo] }))
+    const [viaDirect] = buildNeedRows([one], facts({ history: [hist("Cement", "bag", 20)], orders: [leadPo] }))
+    expect(viaAgreement.path).toBe("agreement")
+    expect(viaDirect.path).toBe("direct")
+    for (const r of [viaRfq, viaAgreement, viaDirect]) expect(r).toMatchObject({ leadDays: 10, lastOrderDay: "2026-09-25", lastOrderIn: 3 })
     const rows = buildNeedRows([projectNeed(project, pr(), "PR-1")], facts({ orders: [leadPo] }))
-    expect(rows[1]).toMatchObject({ leadDays: 3, lastOrderDay: "2026-10-02", lastOrderIn: 10 })
+    expect(rows[1]).toMatchObject({ leadDays: 10, lastOrderDay: "2026-09-25" })
+  })
+
+  it("the lead time is a policy of the company: a longer one moves every line's last day", () => {
+    const rows = buildNeedRows([projectNeed(project, pr(), "PR-1")], facts({ policies: { ...DEFAULT_POLICIES, supplyLeadDays: 20 } }))
+    expect(rows[0]).toMatchObject({ leadDays: 20, lastOrderDay: "2026-09-15" })
   })
 
   it("estimates at the agreement price, else the last we paid; an agreement covering every line is the path", () => {
@@ -106,8 +122,18 @@ describe("the list", () => {
   it("counts the segments and sorts needs-action by the last order day", () => {
     expect(segmentCounts(rows)).toMatchObject({ act: 3, oth: 2, po: 2, all: 7 })
     expect(sortRows(rows.filter((r) => r.state === "open"), "act")[0].name).toBe("Steel")
-    // Three lines of two requests: the header counts requests (a request of several materials is one).
-    expect(needKpi(rows)).toEqual({ need: 2, overdue: 1 })
+    // 2.0 counts LINES: a (2) + b (1) to buy, c (2) still waiting for Inventory's reply — d is already in an order. The overdue ones are requests.
+    expect(needKpi(rows)).toEqual({ need: 5, overdue: 1 })
+  })
+
+  it("«احتياج بلا أمر شراء» counts a request of three materials as three lines, with the ones waiting for a reply and the ones in an RFQ, but not those in an order", () => {
+    const three = projectNeed(project, pr({ id: "t", items: [{ name: "A", quantity: 1, unit: "t" }, { name: "B", quantity: 1, unit: "t" }, { name: "C", quantity: 1, unit: "t" }], needBy: "2026-09-01" }), "PR-T")
+    const waiting = projectNeed(project, pr({ id: "w", status: "pending" }), "PR-W")
+    const inRfq = projectNeed(project, pr({ id: "r", rfqId: "q" }), "PR-R")
+    const inPo = projectNeed(project, pr({ id: "p", poId: "o" }), "PR-P")
+    expect(needKpi(buildNeedRows([three], facts()))).toEqual({ need: 3, overdue: 1 })
+    expect(needKpi(buildNeedRows([three, waiting, inRfq, inPo], facts()))).toEqual({ need: 3 + 2 + 2, overdue: 1 })
+    expect(needKpi(buildNeedRows([inPo], facts()))).toEqual({ need: 0, overdue: 0 })
   })
 
   it("a buyer sees his categories — and every line nobody categorised", () => {

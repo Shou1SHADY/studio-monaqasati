@@ -397,11 +397,11 @@ describe("Today — the rows the audit found missing", () => {
   })
 })
 
-describe("the needs desk reads the org's reply window (replyWindowDays)", () => {
+describe("the needs desk reads the org's reply windows (inventoryReplyDays, workshopReplyDays)", () => {
   const waiting = { state: "waiting", waitingOn: "warehouse", at: "2026-09-20T08:00:00Z" } as unknown as Need
   it("a stock check lapses after the policy's window, not a fixed day", () => {
     expect(needLineState(waiting, { now: NOW, mfgRequests: {}, policies: DEFAULT_POLICIES })).toBe("late")
-    const wide = { ...DEFAULT_POLICIES, replyWindowDays: 3 } as typeof DEFAULT_POLICIES
+    const wide = { ...DEFAULT_POLICIES, inventoryReplyDays: 3 } as typeof DEFAULT_POLICIES
     expect(needLineState(waiting, { now: NOW, mfgRequests: {}, policies: wide })).toBe("chk")
   })
 })

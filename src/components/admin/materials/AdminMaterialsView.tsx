@@ -22,9 +22,9 @@ import { Panel } from "@/components/module-ui/Panel"
 import { Callout } from "@/components/module-ui/Callout"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { cn } from "@/lib/utils"
-import { addChild, findIn, renameNode, setHidden, setUnits } from "@/lib/materials/admin-edit"
+import { addChild, findIn, renameNode, setHidden, setSaleUnits, setUnits } from "@/lib/materials/admin-edit"
 import { label, shortSpecName } from "@/lib/materials/tree"
-import { MATERIAL_SUGGESTIONS_DOC, MATERIAL_TREE, type MaterialNode, type MaterialRootDoc, type MaterialSuggestion, type MaterialTreeFile, type MaterialUnit } from "@/lib/materials/types"
+import { MATERIAL_SUGGESTIONS_DOC, MATERIAL_TREE, type MaterialNode, type MaterialRootDoc, type MaterialSaleUnit, type MaterialSuggestion, type MaterialTreeFile, type MaterialUnit } from "@/lib/materials/types"
 
 const UNITS: MaterialUnit[] = [
   { key: "pc", ar: "حبة", en: "piece" },
@@ -58,6 +58,7 @@ export function AdminMaterialsView() {
   const [busy, setBusy] = useState<string | null>(null)
   const [draft, setDraft] = useState({ ar: "", en: "" })
   const [child, setChild] = useState({ ar: "", en: "" })
+  const [sale, setSale] = useState<{ kind: "bar" | "roll"; length: string }>({ kind: "bar", length: "" })
 
   useEffect(() => {
     if (!firestore) return
@@ -250,6 +251,65 @@ export function AdminMaterialsView() {
                   })}
                 </div>
               </fieldset>
+
+              {selNode.level > 1 && (
+                <fieldset className="space-y-2">
+                  <legend className="text-xs font-semibold text-muted-foreground">{t("sale_units")}</legend>
+                  <p className="text-xs text-muted-foreground">{t("sale_units_hint")}</p>
+                  {selNode.saleUnits?.length ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selNode.saleUnits.map((u) => (
+                        <Chip
+                          key={`${u.ar}-${u.lengthM}`}
+                          selected
+                          disabled={!!busy}
+                          aria-label={t("sale_remove", { name: label(u, locale) })}
+                          onClick={() => edit((r) => setSaleUnits(r, selNode.id, (selNode.saleUnits || []).filter((x) => x !== u)))}
+                        >
+                          {label(u, locale)}
+                        </Chip>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">{t("sale_none")}</p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {(["bar", "roll"] as const).map((kind) => (
+                      <Chip key={kind} selected={sale.kind === kind} onClick={() => setSale((x) => ({ ...x, kind }))}>
+                        {t(kind === "bar" ? "sale_bar" : "sale_roll")}
+                      </Chip>
+                    ))}
+                    <Input
+                      type="number"
+                      min={0.5}
+                      step={0.5}
+                      value={sale.length}
+                      onChange={(e) => setSale((x) => ({ ...x, length: e.target.value }))}
+                      aria-label={t("sale_length")}
+                      placeholder={t("sale_length")}
+                      className="w-40"
+                      dir="ltr"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      disabled={!!busy || !(Number(sale.length) > 0)}
+                      onClick={() => {
+                        const lengthM = Number(sale.length)
+                        const unit: MaterialSaleUnit =
+                          sale.kind === "bar"
+                            ? { ar: `قطعة ${lengthM} م`, en: `${lengthM} m bar`, lengthM, from: "list" }
+                            : { ar: `لفة ${lengthM} م`, en: `${lengthM} m roll`, lengthM, from: "list" }
+                        edit((r) => setSaleUnits(r, selNode.id, [...(selNode.saleUnits || []).filter((x) => x.ar !== unit.ar), unit]))
+                        setSale((x) => ({ ...x, length: "" }))
+                      }}
+                    >
+                      <Plus size={14} /> {t("sale_add")}
+                    </Button>
+                  </div>
+                </fieldset>
+              )}
 
               {selNode.specs.length > 0 && (
                 <div className="space-y-1">

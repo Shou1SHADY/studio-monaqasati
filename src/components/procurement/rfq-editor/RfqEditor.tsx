@@ -408,7 +408,7 @@ export function RfqEditor({
   const directLines = complete.map((r) => ({ key: r.line.key, name: r.line.name, quantity: toAmount(r.line.quantity), unit: r.line.unit }))
   const directTotal = directLines.reduce((s, l) => s + l.quantity * (Number(values.directPrices[l.key]) || 0), 0)
   const directOverCap = directTotal > world.policies.directPurchaseCap
-  const firstDeadline = plusDays(todayDay(), 1)
+  const firstDeadline = todayDay()
   const facts = reviewFacts(groups, index)
   const place = rfqPlace(groups)
   const newRequests = openNeeds.filter((n) => !requestKeysIn(groups).has(n.key))

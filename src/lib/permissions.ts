@@ -146,7 +146,20 @@ export interface TeamGroup {
   updatedAt?: unknown
 }
 
-export type SeededGroupKey = "super_admin" | "finance" | "supply_chain" | "viewer" | "hr_manager" | "hr_gov" | "hr_payroll" | "hr_supervisor" | "management"
+export type SeededGroupKey =
+  | "super_admin"
+  | "finance"
+  | "supply_chain"
+  | "viewer"
+  | "hr_manager"
+  | "hr_gov"
+  | "hr_payroll"
+  | "hr_supervisor"
+  | "management"
+  | "procurement_manager"
+  | "procurement_officer"
+  | "supply_follower"
+  | "material_requester"
 
 /** The finance seed's permission sets as they were written over time — each one held `employees.manage`, so
  * every Finance member was an HR manager too (HR 1.0 RL-01, §3 #17). An organisation's seeded finance group
@@ -251,6 +264,35 @@ export const SEEDED_GROUPS: Array<{
     key: "management",
     name: "الإدارة",
     permissions: ["projects.view", "hr.management"],
+    isSystem: false,
+  },
+  // Procurement 2.0 (PRD §3–§4) — the four roles under the owner. Nobody here holds Finance's books or HR.
+  {
+    // The manager: publishes, awards, prepares and approves orders up to his limit (a limit read from Finance with the connector).
+    key: "procurement_manager",
+    name: "مدير المشتريات",
+    permissions: ["projects.view", "rfq.create", "rfq.manage", "offers.view", "offers.accept", "po.approve", "po.expedite", "suppliers.manage"],
+    isSystem: false,
+  },
+  {
+    // The officer does everything the manager does except approve an order — his own or anybody's.
+    key: "procurement_officer",
+    name: "مسؤول المشتريات",
+    permissions: ["projects.view", "rfq.create", "rfq.manage", "offers.view", "offers.accept", "po.expedite", "suppliers.manage"],
+    isSystem: false,
+  },
+  {
+    // The follower chases dates and forwards delivery notices and never sees a price: no `offers.view`, no `offers.accept`.
+    key: "supply_follower",
+    name: "متابع التوريد",
+    permissions: ["projects.view", "po.expedite"],
+    isSystem: false,
+  },
+  {
+    // The requester is not a permission: a member who can only ask for materials from his tasks («طلباتي»).
+    key: "material_requester",
+    name: "طالب مواد",
+    permissions: ["projects.view"],
     isSystem: false,
   },
 ]

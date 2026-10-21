@@ -280,8 +280,8 @@ describe("PERMISSION_IDS", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("SEEDED_GROUPS", () => {
-  it("defines exactly 9 seeded groups (four company groups, five HR roles — RL-01)", () => {
-    expect(SEEDED_GROUPS).toHaveLength(9)
+  it("defines exactly 13 seeded groups (four company groups, five HR roles — RL-01, four Procurement roles — PRD 2.0 §3)", () => {
+    expect(SEEDED_GROUPS).toHaveLength(13)
   })
 
   it("includes super_admin, finance, supply_chain, viewer groups", () => {

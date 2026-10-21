@@ -18,6 +18,7 @@ import { isV2Order, type WorkOrderV2 } from "@/lib/manufacturing-writes"
 import { orderRef } from "@/lib/manufacturing-view"
 import { purchaseRequestRef } from "@/lib/mfg-outside"
 import { mfgNeed, needsForModules, projectNeed, projectRequestRef, reachesProcurement, returnedNeeds, sortNeeds, stockNeeds, type Need } from "@/lib/procurement/needs"
+import { TEAM_REQUESTS, teamNeed, type TeamLinkedRfq, type TeamRequestDoc } from "@/lib/procurement/team-requests"
 
 export function useOpenNeeds(world: Pick<ProcurementWorld, "orgId" | "rfqs" | "orders">, enabled: boolean): Need[] {
   const firestore = useFirestore()
@@ -34,6 +35,8 @@ export function useOpenNeeds(world: Pick<ProcurementWorld, "orgId" | "rfqs" | "o
   const warehouses = useMemo(() => (warehousesData || []) as Array<{ id: string; name?: string }>, [warehousesData])
   const stock = useOrgStock(warehouses, warehouses.length > 0)
   const projectRequests = useProjectPurchaseRequests(orgId || null, pmOn)
+  const teamQ = useMemoFirebase(() => (firestore && orgId && !pmOn ? query(collection(firestore, TEAM_REQUESTS), where("organizationId", "==", orgId)) : null), [firestore, orgId, pmOn])
+  const { data: teamData } = useCollection(teamQ)
 
   return useMemo(() => {
     if (!enabled) return []
@@ -44,10 +47,11 @@ export function useOpenNeeds(world: Pick<ProcurementWorld, "orgId" | "rfqs" | "o
       for (const r of o.purchaseRequests || []) out.push(mfgNeed({ id: o.id, ref: orderRef(o), context: o.productName || p?.name || o.projectName || "", projectId: o.projectId ?? null, projectName: o.projectName ?? null }, r))
     }
     for (const { project, requests } of projectRequests.rows) for (const pr of requests.filter(reachesProcurement)) out.push(projectNeed(project, pr, projectRequestRef(pr, purchaseRequestRef)))
+    for (const tr of (teamData || []) as TeamRequestDoc[]) if (tr.status !== "withdrawn") out.push(teamNeed(tr, world.rfqs as TeamLinkedRfq[], world.orders))
     out.push(...returnedNeeds(out, world.orders))
     const names = new Map(warehouses.map((w) => [w.id, w.name || ""]))
     const rows = Array.from(stock.byWarehouse.entries()).flatMap(([warehouseId, items]) => items.filter((r) => !r.isManufactured).map((r) => ({ ...r, warehouseId, warehouseName: names.get(warehouseId) || "" })))
     out.push(...stockNeeds(rows, { rfqs: world.rfqs, orders: world.orders }))
     return sortNeeds(needsForModules(out, { projects: pmOn, workshop: mfgOn }).filter((n) => n.state === "action" && n.lines.length > 0))
-  }, [enabled, pmOn, mfgOn, ordersData, productsData, projectRequests.rows, stock.byWarehouse, warehouses, world.rfqs, world.orders])
+  }, [enabled, pmOn, mfgOn, ordersData, productsData, projectRequests.rows, teamData, stock.byWarehouse, warehouses, world.rfqs, world.orders])
 }

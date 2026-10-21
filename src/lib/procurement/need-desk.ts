@@ -29,9 +29,6 @@ export type NeedPath = NeedRoute | "mfg"
 export type DeskSegment = "act" | "oth" | "rfq" | "po" | "done" | "all"
 export const DESK_SEGMENTS: DeskSegment[] = ["act", "oth", "rfq", "po", "done", "all"]
 
-/** A material with no order history: the prototype's lead for an uncatalogued item. */
-export const DEFAULT_LEAD_DAYS = 10
-
 export interface MfgRequestFact {
   status: string
   /** ISO — when it was asked. */
@@ -88,11 +85,11 @@ const ageHours = (at: string | null | undefined, now: Date): number | null => {
   return Number.isFinite(t) ? (now.getTime() - t) / 3_600_000 : null
 }
 
-/** The state every line of one need shares. */
-/** Inventory's stock check and the workshop's reply both fail OPEN after the
- * org's reply window (the prototype's POL.sla, `replyWindowDays`). */
+/** The state every line of one need shares. Inventory's stock check and the workshop's reply both fail OPEN
+ * after their own window (`inventoryReplyDays`, `workshopReplyDays`). */
 export function needLineState(need: Need, facts: Pick<DeskFacts, "now" | "mfgRequests" | "policies">): LineState {
-  const window = replyWindowHours(facts.policies)
+  const stockWindow = replyWindowHours(facts.policies, "inventory")
+  const workshopWindow = replyWindowHours(facts.policies, "workshop")
   switch (need.state) {
     case "action":
       return "open"
@@ -111,31 +108,18 @@ export function needLineState(need: Need, facts: Pick<DeskFacts, "now" | "mfgReq
         if (mr.status === "rejected" || mr.status === "moved") return "open"
         if (mr.status !== "new") return "mfg"
         const age = ageHours(mr.at, facts.now)
-        return age != null && age >= window ? "mfgl" : "mfgw"
+        return age != null && age >= workshopWindow ? "mfgl" : "mfgw"
       }
       const age = ageHours(need.at, facts.now)
-      return age != null && age > window ? "late" : "chk"
+      return age != null && age > stockWindow ? "late" : "chk"
     }
   }
 }
 
-/** The supplier's lead for a material: what the last order that said so said, else the default. */
-export function leadDaysOf(orders: PurchaseOrder[], name: string, unit: string): number {
-  const key = materialKey(name, unit)
-  let best: { at: string; days: number } | null = null
-  for (const po of orders) {
-    const days = Number(po.leadTimeDays)
-    if (!(days > 0) || !po.lines.some((l) => materialKey(l.name, l.unit) === key)) continue
-    if (!best || po.createdAt > best.at) best = { at: po.createdAt, days }
-  }
-  return best ? best.days : DEFAULT_LEAD_DAYS
-}
-
-/** need − lead − (an RFQ's window and award cycle, or a day to place an order). */
-export function lastOrderDayOf(needBy: string | null, leadDays: number, path: NeedPath | null, policies: Pick<ProcurementPolicies, "rfqWindowDays" | "awardCycleDays">): string | null {
+/** The last day to order, the same for every path (PRD §9): need date − the supplier's lead time − the RFQ cycle − the award and approval cycle, all three read from the policies. */
+export function lastOrderDayOf(needBy: string | null, policies: Pick<ProcurementPolicies, "supplyLeadDays" | "rfqWindowDays" | "awardCycleDays">): string | null {
   if (!needBy) return null
-  const cycle = path === "rfq" ? policies.rfqWindowDays + policies.awardCycleDays : 1
-  return addDays(needBy, -(leadDays + cycle))
+  return addDays(needBy, -(policies.supplyLeadDays + policies.rfqWindowDays + policies.awardCycleDays))
 }
 
 /** A line's category: the source says so, else the latest order or RFQ that named the material. */
@@ -193,8 +177,8 @@ export function buildNeedRows(needs: Need[], facts: DeskFacts): NeedRow[] {
       const lineState: LineState = l.link ? (l.link.poId ? "po" : "rfq") : state
       const open = l.link ? 0 : openOf(need, index)
       const needBy = l.needBy || need.needBy
-      const leadDays = leadDaysOf(facts.orders, l.name, l.unit)
-      const lastOrderDay = isActionState(lineState) ? lastOrderDayOf(needBy, leadDays, p?.path ?? null, facts.policies) : null
+      const leadDays = facts.policies.supplyLeadDays
+      const lastOrderDay = isActionState(lineState) ? lastOrderDayOf(needBy, facts.policies) : null
       const unitEstimate = unitEstimateOf(l.name, l.unit, facts, today)
       const samplePending = Boolean(l.samplePending)
       out.push({
@@ -240,8 +224,8 @@ export const goesToWorkshop = (need: Need, makeable: (name: string) => boolean):
   need.kind === "project" && !need.mfgRequestId && need.decision?.kind !== "buy" && need.lines.some((l) => makeable(l.name))
 
 /** The earliest last day to order of a request's lines still to source (as an RFQ would take them); null without a need-by date. */
-export function needLastOrderDay(need: Need, facts: Pick<DeskFacts, "orders" | "policies">): string | null {
-  const days = need.lines.filter((l) => !l.link).map((l) => lastOrderDayOf(l.needBy || need.needBy, leadDaysOf(facts.orders, l.name, l.unit), "rfq", facts.policies)).filter((d): d is string => Boolean(d))
+export function needLastOrderDay(need: Need, facts: Pick<DeskFacts, "policies"> & Partial<Pick<DeskFacts, "orders">>): string | null {
+  const days = need.lines.filter((l) => !l.link).map((l) => lastOrderDayOf(l.needBy || need.needBy, facts.policies)).filter((d): d is string => Boolean(d))
   return days.length ? days.sort()[0] : null
 }
 
@@ -415,9 +399,12 @@ export function rollupOf(rows: NeedRow[]): BuyerRollup | null {
   return { buyer: null, count: rows.length, overdue: days.filter((d) => d < 0).length, nearest: days.length ? Math.min(...days) : null }
 }
 
-/** «احتياج بلا أمر شراء» and «فات آخر يوم لطلبها» — in REQUESTS, not lines: a request of three materials is one. */
+/** The states a line is "a need without a PO" in: still to be sourced, waiting for Inventory's or the workshop's reply, or in an RFQ that has not become an order. */
+const NEED_WITHOUT_PO: ReadonlySet<LineState> = new Set(["open", "late", "mfgl", "chk", "mfgw", "mfg", "rfq"])
+
+/** «احتياج بلا أمر شراء» counts LINES (a request of three materials is three), and «فات آخر يوم لطلبها» counts the requests whose lines to buy are past their last day to order. */
 export function needKpi(rows: NeedRow[]): { need: number; overdue: number } {
-  const requests = new Map<string, NeedRow[]>()
-  for (const r of actionRows(rows)) requests.set(r.needKey ?? r.key, [...(requests.get(r.needKey ?? r.key) || []), r])
-  return { need: requests.size, overdue: [...requests.values()].filter((list) => list.some((r) => r.lastOrderIn != null && r.lastOrderIn < 0)).length }
+  const need = rows.filter((r) => NEED_WITHOUT_PO.has(r.state)).length
+  const pastDue = new Set(actionRows(rows).filter((r) => r.lastOrderIn != null && r.lastOrderIn < 0).map((r) => r.needKey ?? r.key))
+  return { need, overdue: pastDue.size }
 }

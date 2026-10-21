@@ -40,10 +40,11 @@ import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useSupplierDirectory, type PlatformSupplier } from "@/hooks/useSupplierDirectory"
 import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { categoryTree, treeScope, treeSupplier } from "@/lib/materials/category-tree"
 import { keyLabel, subLabel } from "@/lib/materials/subs"
 import { directoryEntries, listedInDirectory } from "@/lib/procurement/directory-listing"
 import { matchesSearch } from "@/lib/search-text"
-import { CATEGORIES_DATA, displayCategory } from "@/lib/constants"
+import { displayCategory } from "@/lib/constants"
 import { MFG_PRODUCTS } from "@/lib/manufacturing-engine"
 import { poStatus, supplierScore, todayOf } from "@/lib/procurement/po"
 import {
@@ -173,7 +174,7 @@ export default function SuppliersPage() {
 
   const mineRows = useMemo<SupplierRow[]>(() => {
     const rows = suppliers
-      .filter((s) => s.isMine && supplierInScope(s, team.viewerCategories, CATEGORIES_DATA))
+      .filter((s) => s.isMine && supplierInScope(treeSupplier(s, treeIndex), treeScope(treeIndex, team.viewerCategories), categoryTree(treeIndex)))
       .map((s) => {
         const list = ordersOfSupplier(orders, s.orgId)
         return {
@@ -183,7 +184,7 @@ export default function SuppliersPage() {
         }
       })
     return [...rows.filter((r) => r.isFavorite), ...rows.filter((r) => !r.isFavorite)]
-  }, [suppliers, orders, deliveries, rfqs, offers, now, team.viewerCategories])
+  }, [suppliers, orders, deliveries, rfqs, offers, now, team.viewerCategories, treeIndex])
   const shownMine = mineRows.filter(
     (s) =>
       (!originFilter || (originFilter === "international") === s.international) &&

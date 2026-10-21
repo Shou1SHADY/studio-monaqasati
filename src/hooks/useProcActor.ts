@@ -9,9 +9,10 @@
 import { useMemo } from "react"
 import { useUser } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
+import { isRequesterOnly } from "@/lib/procurement/roles-matrix"
 import type { ProcActor } from "@/lib/procurement/types"
 
-export function useProcActor(projectId?: string): { actor: ProcActor; orgId: string; orgName: string; isLoading: boolean } {
+export function useProcActor(projectId?: string): { actor: ProcActor; orgId: string; orgName: string; isLoading: boolean; isRequester: boolean } {
   const { user, isUserLoading } = useUser()
   const { can, isOrgOwner, profile, isLoading } = usePermissions(projectId)
 
@@ -33,5 +34,7 @@ export function useProcActor(projectId?: string): { actor: ProcActor; orgId: str
     }
   }, [can, isOrgOwner, profile, user])
 
-  return { actor, orgId, orgName, isLoading: isUserLoading || isLoading }
+  const isRequester = useMemo(() => isRequesterOnly(can, isOrgOwner), [can, isOrgOwner])
+
+  return { actor, orgId, orgName, isLoading: isUserLoading || isLoading, isRequester }
 }

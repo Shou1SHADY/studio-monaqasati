@@ -3,11 +3,7 @@
 
 import { getAdminFirestore } from "@/lib/firebaseAdmin"
 import { deadlineEnd, shareLinkState } from "@/lib/procurement/guest-supplier"
-
-// Guest links are handed to suppliers outside the platform (Gmail, WhatsApp,
-// ...), so they must always point at the canonical production domain — never a
-// localhost/preview NEXT_PUBLIC_APP_URL.
-export const PUBLIC_BASE_URL = "https://www.mdmaktech.sa"
+import { findLinkByToken } from "@/lib/links/hash"
 
 export type ShareLinkResolution =
   | { ok: true; linkId: string; link: FirebaseFirestore.DocumentData; rfq: FirebaseFirestore.DocumentData; rfqId: string }
@@ -18,16 +14,11 @@ export type ShareLinkResolution =
 // once the deadline passes — an extension reopens it), an older link keeps its
 // fixed expiry. Submitting is the callers' call ("view only" vs "can submit").
 export async function resolveShareToken(token: string): Promise<ShareLinkResolution> {
-  if (!/^[a-f0-9]{64}$/.test(token)) {
-    return { ok: false, code: "INVALID_TOKEN", status: 400 }
-  }
-
   const db = getAdminFirestore()
-  const snap = await db.collection("rfqShareLinks").where("token", "==", token).limit(1).get()
-  if (snap.empty) return { ok: false, code: "NOT_FOUND", status: 404 }
+  const found = await findLinkByToken(db, "rfq", token)
+  if (!found.ok) return { ok: false, code: found.code, status: found.status }
 
-  const linkDoc = snap.docs[0]
-  const link = linkDoc.data()
+  const { link, linkId } = found
   if (link.revoked) return { ok: false, code: "LINK_REVOKED", status: 410 }
   if (link.expiresWith !== "deadline" && new Date(link.expiresAt as string).getTime() <= Date.now()) {
     return { ok: false, code: "LINK_EXPIRED", status: 410 }
@@ -37,7 +28,7 @@ export async function resolveShareToken(token: string): Promise<ShareLinkResolut
   if (!rfqSnap.exists) return { ok: false, code: "RFQ_NOT_FOUND", status: 404 }
   if (shareLinkState(link, rfqSnap.data() ?? null, new Date()) === "gone") return { ok: false, code: "LINK_EXPIRED", status: 410 }
 
-  return { ok: true, linkId: linkDoc.id, link, rfq: rfqSnap.data()!, rfqId: rfqSnap.id }
+  return { ok: true, linkId, link, rfq: rfqSnap.data()!, rfqId: rfqSnap.id }
 }
 
 /** Past the end of the deadline's day in Riyadh — not the server's day (UTC on Vercel). */

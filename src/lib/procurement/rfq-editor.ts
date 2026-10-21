@@ -19,6 +19,13 @@ import { toAmount } from "./offer-pricing"
 import type { Need, NeedSource } from "./needs"
 import { projectSiteId, type DeliverySite } from "./delivery-sites"
 
+/** The warranty a row can ask for, in months: 6 · 1 year · 2 · 3 · 5 years (CAT-05). */
+export const WARRANTY_MONTHS = [6, 12, 24, 36, 60] as const
+export type WarrantyMonths = (typeof WARRANTY_MONTHS)[number]
+export const DEFAULT_WARRANTY: WarrantyMonths = 12
+
+const asWarranty = (v: unknown): WarrantyMonths | null => (WARRANTY_MONTHS as readonly number[]).includes(Number(v)) ? (Number(v) as WarrantyMonths) : null
+
 export interface EditorLine {
   key: string
   /** The material as it arrived or was typed («بلوك أسمنتي مفرغ 20 سم») — never overwritten. */
@@ -30,6 +37,9 @@ export interface EditorLine {
   unitFromSource: boolean
   /** «موعد مختلف»: its own need-by date. */
   needBy?: string | null
+  /** Asked for with a duration (CAT-05); null/absent = no warranty. */
+  warrantyMonths?: WarrantyMonths | null
+  /** Set by a source that only knows "yes" (a BOQ item, an RFQ written before durations): read as a year by `warrantyOf`. */
   requiresWarranty?: boolean
   /** The incoming request (and its line) the row came from. `requestLine` is the line's place in the
    * request's own `lines`; `total` how many lines the request has and `linkedBefore` how many already
@@ -78,6 +88,12 @@ export function newGroup(over: Partial<EditorGroup> = {}): EditorGroup {
 // ---------------------------------------------------------------------------
 // Rows
 // ---------------------------------------------------------------------------
+
+/** The warranty a row asks for, in months, or null. */
+export const warrantyOf = (l: Pick<EditorLine, "warrantyMonths" | "requiresWarranty">): WarrantyMonths | null => l.warrantyMonths ?? (l.requiresWarranty ? DEFAULT_WARRANTY : null)
+
+/** The switch and the duration as one patch: both fields say the same thing after any change. */
+export const warrantyPatch = (months: WarrantyMonths | null): Pick<EditorLine, "warrantyMonths" | "requiresWarranty"> => ({ warrantyMonths: months, requiresWarranty: months != null })
 
 export const lineStarted = (l: EditorLine): boolean => productStarted({ category: l.material ? "x" : l.legacy?.category || "", quantity: l.quantity, unit: l.unit, description: l.name })
 
@@ -333,6 +349,7 @@ export function rfqLinesDoc(groups: EditorGroup[], locale: string, projectName: 
     const specText = m ? [...m.specs.map((s) => `${s.name.ar} ${s.value.ar}`), ...(m.brand ? [m.brand.ar] : [])].join(" · ") : ""
     const needBy = l.needBy || g.needBy || null
     const projectId = g.projectId || null
+    const warranty = warrantyOf(l)
     return {
       name: l.name.trim() || (m ? label(m.path[m.path.length - 1], locale) : subCategory),
       quantity: toAmount(l.quantity),
@@ -341,7 +358,9 @@ export function rfqLinesDoc(groups: EditorGroup[], locale: string, projectName: 
       category,
       subCategory,
       ...(m ? { material: m, materialPath: pathLabel(m.path, "ar", true) } : {}),
-      requiresWarranty: !!l.requiresWarranty,
+      requiresWarranty: warranty != null,
+      ...(warranty != null ? { warrantyMonths: warranty } : {}),
+      ...(m?.saleUnits?.length ? { saleUnits: m.saleUnits } : {}),
       ...(needBy ? { needBy } : {}),
       ...(projectId ? { projectId, projectName: projectName(projectId) || g.label || null } : {}),
       deliverySiteId: g.siteId,
@@ -394,7 +413,7 @@ export function groupsFromRfq(rfq: Record<string, unknown>): EditorGroup[] {
       unit: str(p.unitOfMeasure) || str(p.unit),
       unitFromSource: true,
       needBy: str(p.needBy) && str(p.needBy) !== g.needBy ? str(p.needBy) : null,
-      requiresWarranty: p.requiresWarranty === true,
+      ...warrantyPatch(asWarranty(p.warrantyMonths) ?? (p.requiresWarranty === true ? DEFAULT_WARRANTY : null)),
       source: ns ? { need: ns, line: Number(p.needLine) || 0, key: "" } : null,
       legacy: material || !str(p.category) ? null : { category: str(p.category), subCategory: str(p.subCategory) },
     })

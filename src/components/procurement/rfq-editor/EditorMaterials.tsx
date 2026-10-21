@@ -16,9 +16,11 @@ import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { IconButton } from "@/components/module-ui/IconButton"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
+import { Chip } from "@/components/module-ui/Chip"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { MaterialSearchInput } from "@/components/materials/MaterialSearchInput"
 import { MaterialSpecCells } from "@/components/materials/MaterialSpecCells"
+import type { OptionsResult } from "@/components/materials/MaterialOptionsPanel"
 import { MaterialBrowserDialog, type BrowserResult } from "@/components/materials/MaterialBrowserDialog"
 import { cn } from "@/lib/utils"
 import { SAUDI_CITIES, displayCity } from "@/lib/constants"
@@ -37,6 +39,10 @@ import {
   repeatLine,
   unitNote,
   updateLine,
+  warrantyOf,
+  warrantyPatch,
+  DEFAULT_WARRANTY,
+  WARRANTY_MONTHS,
   type EditorGroup,
   type EditorLine,
   type EditorProblem,
@@ -100,7 +106,7 @@ export function EditorMaterials({
     place(groupKey, lineKey, pick, units.length === 1 ? units[0] : units[0] || null)
   }
 
-  const place = (groupKey: string, lineKey: string | null, pick: BrowserResult["pick"], unit: MaterialUnit | null, name?: string, repeat = false) => {
+  const place = (groupKey: string, lineKey: string | null, pick: BrowserResult["pick"], unit: MaterialUnit | null, name?: string, repeat = false, quantity = "") => {
     const unitText = unit ? label(unit, locale) : ""
     if (lineKey) {
       const g = groups.find((x) => x.key === groupKey)
@@ -110,7 +116,7 @@ export function EditorMaterials({
       if (repeat) next = repeatLine(next, groupKey, lineKey)
       onChange(next)
     } else {
-      const fresh = lineFromPick({ ...blankLine(), name: name || "" }, pick, unitText, locale)
+      const fresh = lineFromPick({ ...blankLine(), name: name || "", quantity }, pick, unitText, locale)
       let next = addLine(groups, groupKey, fresh)
       if (repeat) next = repeatLine(next, groupKey, fresh.key)
       onChange(next)
@@ -136,9 +142,6 @@ export function EditorMaterials({
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onChange(updateLine(groups, g.key, l.key, { needBy: l.needBy ? null : g.needBy || "" }))}>
           <CalendarClock size={14} className="me-2" /> {l.needBy != null ? t("same_date") : t("other_date")}
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onChange(updateLine(groups, g.key, l.key, { requiresWarranty: !l.requiresWarranty }))}>
-          <ShieldCheck size={14} className="me-2" /> {l.requiresWarranty ? t("warranty_off") : t("warranty_on")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem className="text-destructive" onSelect={() => onChange(removeLine(groups, g.key, l.key))}>
@@ -279,6 +282,44 @@ export function EditorMaterials({
     )
   }
 
+  const warrantyCell = (g: EditorGroup, l: EditorLine) => {
+    const months = warrantyOf(l)
+    if (fixed) {
+      return months ? (
+        <StatusPill tone="ok" className="mt-1.5 gap-1 text-[10px]">
+          <ShieldCheck size={11} aria-hidden="true" /> {t("warranty")} · {t(`warranty_${months}`)}
+        </StatusPill>
+      ) : null
+    }
+    return (
+      <div className="mt-1.5 flex items-center gap-2">
+        <Chip
+          selected={months != null}
+          icon={ShieldCheck}
+          onClick={() => onChange(updateLine(groups, g.key, l.key, warrantyPatch(months != null ? null : DEFAULT_WARRANTY)))}
+          title={t("warranty_switch")}
+          aria-label={t("warranty_switch")}
+        >
+          {t("warranty")}
+        </Chip>
+        {months != null && (
+          <NativeSelect
+            value={String(months)}
+            onChange={(e) => onChange(updateLine(groups, g.key, l.key, warrantyPatch(Number(e.target.value) as (typeof WARRANTY_MONTHS)[number])))}
+            aria-label={t("warranty_duration")}
+            className="h-8 w-28 text-xs"
+          >
+            {WARRANTY_MONTHS.map((m) => (
+              <option key={m} value={m}>
+                {t(`warranty_${m}`)}
+              </option>
+            ))}
+          </NativeSelect>
+        )}
+      </div>
+    )
+  }
+
   const problemText = (codes: string[], no: number | undefined) =>
     codes.length && no ? <p className="text-[11px] font-semibold text-destructive">{codes.map((c) => t(`err_${c}`, { no })).join(" · ")}</p> : null
 
@@ -410,11 +451,7 @@ export function EditorMaterials({
                             <Input type="date" value={l.needBy || ""} onChange={(e) => onChange(updateLine(groups, g.key, l.key, { needBy: e.target.value }))} className="h-7 w-36 text-xs" dir="ltr" />
                           </label>
                         )}
-                        {l.requiresWarranty && (
-                          <StatusPill tone="info" className="mt-1.5 text-[10px]">
-                            {t("warranty")}
-                          </StatusPill>
-                        )}
+                        {warrantyCell(g, l)}
                       </div>
                       <div className="flex justify-end">{qtyCell(g, l, codes.includes("quantity"))}</div>
                       {unitCell(g, l, codes.includes("unit"))}
@@ -428,6 +465,7 @@ export function EditorMaterials({
                         {!fixed && rowMenu(g, l)}
                       </div>
                       {l.material && <MaterialSpecCells index={index} pick={l.material} onChange={(m) => onChange(updateLine(groups, g.key, l.key, { material: m }))} />}
+                      {warrantyCell(g, l)}
                       <div className="flex items-start gap-2">
                         {qtyCell(g, l, codes.includes("quantity"))}
                         {unitCell(g, l, codes.includes("unit"))}
@@ -443,6 +481,8 @@ export function EditorMaterials({
                     pmOn={pmOn}
                     index={index}
                     onPick={(hit) => fillFromHit(g.key, null, hit)}
+                    onQuick={(hit) => fillFromHit(g.key, null, hit)}
+                    onPickOptions={(r: OptionsResult) => place(g.key, null, r.pick, r.unit, undefined, false, r.quantity)}
                     onBrowse={(q) => setBrowse({ groupKey: g.key, lineKey: null, query: q, freeText: null })}
                     onFreeText={(text) => setBrowse({ groupKey: g.key, lineKey: null, query: "", freeText: text })}
                   />

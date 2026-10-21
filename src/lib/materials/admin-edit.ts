@@ -2,7 +2,7 @@
 // root; the page writes the root's document. Nodes are never deleted — a material that
 // documents already name is HIDDEN from the pickers, and those documents keep reading it.
 
-import type { MaterialNode, MaterialSuggestion, MaterialText, MaterialUnit } from "./types"
+import type { MaterialNode, MaterialSaleUnit, MaterialSuggestion, MaterialText, MaterialUnit } from "./types"
 
 const mapNode = (n: MaterialNode, id: string, f: (x: MaterialNode) => MaterialNode): MaterialNode =>
   n.id === id ? f(n) : { ...n, children: n.children.map((c) => mapNode(c, id, f)) }
@@ -20,6 +20,15 @@ export const setHidden = (root: MaterialNode, id: string, hidden: boolean): Mate
 
 export function setUnits(root: MaterialNode, id: string, units: MaterialUnit[]): MaterialNode {
   return mapNode(root, id, (n) => ({ ...n, units }))
+}
+
+export function setSaleUnits(root: MaterialNode, id: string, saleUnits: MaterialSaleUnit[]): MaterialNode {
+  return mapNode(root, id, (n) => {
+    const next = { ...n }
+    if (saleUnits.length) next.saleUnits = saleUnits
+    else delete next.saleUnits
+    return next
+  })
 }
 
 /** A new node under `parentId` — a level below it (never past the third). */

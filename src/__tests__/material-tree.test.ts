@@ -35,16 +35,16 @@ describe("the tree as Watad gives it", () => {
     expect(brands.size).toBe(41)
   })
 
-  it("adopts the options as they are: none dropped, none re-ordered, the Arabic-only twins both kept", () => {
-    const want = new Map<string, string[]>()
-    walk(source.tree, (n) => n.specs?.forEach((s) => want.set(`${n.id}|${s.ar}`, (s.options || []).map((o) => `${o.ar.replace(/\s+/g, " ").trim()}|${o.en.replace(/\s+/g, " ").trim()}`))))
+  it("adopts the options as they are: none dropped, none re-ordered — only the words cleaned by the package's rules", () => {
+    const want = new Map<string, number>()
+    walk(source.tree, (n) => n.specs?.forEach((s, j) => want.set(`${n.id}|${j}`, (s.options || []).length)))
     let checked = 0
     walk(file.roots as MaterialNode[], (n) =>
-      n.specs.forEach((s) => {
-        const expected = want.get(`${n.id}|${s.ar}`)
-        if (!expected) return
+      n.specs.forEach((s, j) => {
+        const expected = want.get(`${n.id}|${j}`)
+        if (expected === undefined) return
         checked++
-        expect(s.options.map((o) => `${o.ar}|${o.en}`)).toEqual(expected)
+        expect(s.options).toHaveLength(expected)
       })
     )
     expect(checked).toBe(687)

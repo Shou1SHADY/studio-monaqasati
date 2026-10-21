@@ -1,7 +1,7 @@
 // «طلب مواد» from the team — a company WITHOUT Project Management (Procurement 1.5, PUR-10,
 // question 4). Anyone on the team asks Procurement for materials: rows like the editor's, a
 // need-by date, a delivery site from «مواقع التسليم» (or a typed address), a note. It is
-// numbered «MR-2026/014» (shown «ط.م-2026/014») and reaches «طلبات الشراء الواردة» with no
+// numbered «MAT-2026/014» (shown «ط.م-2026/014») and reaches «طلبات الشراء الواردة» with no
 // technical approval, with «انشره» and «جهّزه» like any request (PUR-01).
 //
 // The document is written ONLY by the server (/api/procurement/team-requests): created, withdrawn
@@ -29,7 +29,7 @@ export interface TeamRequestLine {
 export interface TeamRequestDoc {
   id: string
   organizationId: string
-  /** `MR-2026/014` — drawn in the create transaction (`mfgCounters`, type MR). */
+  /** `MAT-2026/014` — drawn in the create transaction (`mfgCounters`, type MAT). */
   number: string
   lines: TeamRequestLine[]
   needBy: string

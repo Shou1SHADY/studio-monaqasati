@@ -7,7 +7,7 @@ import { answeredQueries, mergeGuestPapers, type GuestPaper, type InquiryDoc } f
 // Public endpoint: resolves a guest offer token to everything the supplier
 // needs to follow their offer through the workflow — current status, what the
 // contractor asked for, and which actions are open to them right now. Tokens
-// are unguessable 32-byte hex strings, so no auth is required; only the guest's
+// are unguessable (128 random bits), so no auth is required; only the guest's
 // own offer data and non-sensitive RFQ display fields are returned.
 
 function errorResponse(message: string, code: string, status: number) {

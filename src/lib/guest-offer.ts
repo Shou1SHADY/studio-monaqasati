@@ -3,23 +3,22 @@
 // confirm a sample, send a delivery notice) without ever creating an account.
 // Never import this file in client components.
 
-import { randomBytes } from "crypto"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
-import { PUBLIC_BASE_URL } from "@/lib/rfq-share"
+import { findLinkByToken, mintLinkToken } from "@/lib/links/hash"
+import { linkUrl } from "@/lib/links/url"
 import { normalizeGuestChannel, type GuestOfferChannel } from "@/utils/guest-offer-workflow"
 import { supplierOfferStatus } from "@/lib/procurement/supplier"
 import { PURCHASE_ORDERS, type PurchaseOrder } from "@/lib/procurement/types"
 
 // Guest links outlive the 3-day RFQ share link: the negotiation (reduction →
 // sample → award → delivery) routinely runs for weeks after the offer lands.
+// The 60 days start when the link is made and are never extended by use.
 export const GUEST_OFFER_LINK_TTL_DAYS = 60
 
 const COLLECTION = "guestOfferLinks"
 
-export function guestOfferUrl(token: string): string {
-  return `${PUBLIC_BASE_URL}/offer/${token}`
-}
+export const guestOfferUrl = (token: string): string => linkUrl("offer", token)
 
 function ttlFromNow(): string {
   return new Date(Date.now() + GUEST_OFFER_LINK_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
@@ -51,13 +50,11 @@ export async function createGuestOfferLink(
   input: CreateGuestOfferLinkInput
 ): Promise<GuestOfferLinkInfo> {
   const db = getAdminFirestore()
-  const token = randomBytes(32).toString("hex")
   const channel = normalizeGuestChannel(input.channel)
   const email = input.email || null
   const phone = input.phone || null
 
   const ref = await db.collection(COLLECTION).add({
-    token,
     offerId: input.offerId,
     rfqId: input.rfqId,
     rfqTitle: input.rfqTitle || "",
@@ -69,16 +66,18 @@ export async function createGuestOfferLink(
     phone,
     revoked: false,
     expiresAt: ttlFromNow(),
+    tokenHashes: [],
     createdAt: FieldValue.serverTimestamp(),
   })
+  const token = await mintLinkToken(db, "offer", ref.id)
 
   return { token, linkId: ref.id, url: guestOfferUrl(token), channel, email, phone }
 }
 
 /**
  * Returns the live link for a guest offer, minting one for offers submitted
- * before this flow existed. Also refreshes the expiry, so an offer that is
- * still moving never loses its link mid-negotiation.
+ * before this flow existed. Only hashes are stored, so each call hands out a
+ * fresh token on the same link; the link's expiry is never moved by this.
  */
 export async function ensureGuestOfferLink(
   offerId: string,
@@ -94,14 +93,15 @@ export async function ensureGuestOfferLink(
 
   const guestContact = (offer.guestContact || {}) as { email?: string; phone?: string }
 
-  if (!snap.empty) {
-    const linkDoc = snap.docs[0]
+  const live = snap.docs.find((d) => new Date(d.data().expiresAt as string).getTime() > Date.now())
+  if (live) {
+    const linkDoc = live
     const link = linkDoc.data()
-    await linkDoc.ref.update({ expiresAt: ttlFromNow() }).catch(() => {})
+    const token = await mintLinkToken(db, "offer", linkDoc.id)
     return {
-      token: link.token as string,
+      token,
       linkId: linkDoc.id,
-      url: guestOfferUrl(link.token as string),
+      url: guestOfferUrl(token),
       channel: normalizeGuestChannel(link.channel),
       email: (link.email as string) || guestContact.email || null,
       phone: (link.phone as string) || guestContact.phone || null,
@@ -148,16 +148,11 @@ export type GuestOfferResolution =
 
 /** Resolves a guest offer token to its link + offer + RFQ documents. */
 export async function resolveGuestOfferToken(token: string): Promise<GuestOfferResolution> {
-  if (!/^[a-f0-9]{64}$/.test(token)) {
-    return { ok: false, code: "INVALID_TOKEN", status: 400 }
-  }
-
   const db = getAdminFirestore()
-  const snap = await db.collection(COLLECTION).where("token", "==", token).limit(1).get()
-  if (snap.empty) return { ok: false, code: "NOT_FOUND", status: 404 }
+  const found = await findLinkByToken(db, "offer", token)
+  if (!found.ok) return { ok: false, code: found.code, status: found.status }
 
-  const linkDoc = snap.docs[0]
-  const link = linkDoc.data()
+  const { link, linkId } = found
   if (link.revoked) return { ok: false, code: "LINK_REVOKED", status: 410 }
   if (new Date(link.expiresAt as string).getTime() <= Date.now()) {
     return { ok: false, code: "LINK_EXPIRED", status: 410 }
@@ -173,7 +168,7 @@ export async function resolveGuestOfferToken(token: string): Promise<GuestOfferR
     rfq = rfqSnap.exists ? rfqSnap.data()! : null
   }
 
-  return { ok: true, linkId: linkDoc.id, link, offerId: offerSnap.id, offer, rfq }
+  return { ok: true, linkId, link, offerId: offerSnap.id, offer, rfq }
 }
 
 /** Records that the contractor pushed an event out on a given channel. */
@@ -190,7 +185,6 @@ export async function recordGuestNotification(
       lastEvent: event,
       lastEventChannel: channel,
       lastNotifiedAt: new Date().toISOString(),
-      expiresAt: ttlFromNow(),
     })
     .catch((err) => console.error("Failed to record guest notification:", err))
 }

@@ -18,6 +18,8 @@ import { verifyOtp } from "@/lib/otp"
 import { riyadhDay } from "@/lib/hr/format"
 import { guestValidityDefault, saudiMobileE164 } from "@/lib/supplier-free/phone-auth"
 import { canSendCodes } from "@/lib/sms"
+import { consumeMobileRate } from "@/lib/links/rate"
+import { openLinkSession } from "@/lib/links/session"
 import {
   GUEST_PAPER_KINDS,
   guestOtpRequired,
@@ -185,6 +187,13 @@ export async function POST(
     }
 
     const db = getAdminFirestore()
+
+    const rate = await consumeMobileRate(db, "write", phoneE164)
+    if (!rate.ok) {
+      const res = errorResponse(rate.code === "RATE_LIMITED" ? "Too many submissions from this number — try again later" : "Offers cannot be received right now — try again later", rate.code, rate.status)
+      if (rate.code === "RATE_LIMITED") res.headers.set("Retry-After", String(rate.retryAfterSec))
+      return res
+    }
 
     // One offer per mobile per RFQ — the mobile is the one thing every visitor gives, so a resent form
     // never floods the contractor with duplicates.
@@ -399,7 +408,16 @@ export async function POST(
         .catch((err) => console.error("Failed to create guest-offer notification:", err))
     }
 
-    return NextResponse.json({ success: true, data: { offerId: offerRef.id, offerUrl } })
+    // The verified code buys a short session on this link, so the visitor does not need a second code for what follows.
+    let session: { secret: string; expiresAt: string } | null = null
+    if (otp?.success) {
+      session = await openLinkSession(db, { kind: "rfq", linkId, phone: phoneE164 }).catch((err) => {
+        console.error("Failed to open the visitor session:", err)
+        return null
+      })
+    }
+
+    return NextResponse.json({ success: true, data: { offerId: offerRef.id, offerUrl, ...(session ? { session } : {}) } })
   } catch (err) {
     console.error("RFQ share guest offer error:", err)
     return errorResponse("Failed to submit the offer", "INTERNAL_ERROR", 500)

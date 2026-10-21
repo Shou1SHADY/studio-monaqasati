@@ -24,7 +24,9 @@ const strip = (s: string) => s.replace(/\/\/[^\n]*/g, "")
 /** A `match /<name>/{…}` block at the given indent, to its closing brace. */
 function block(name: string, indent = 4): string {
   const pad = " ".repeat(indent)
-  const start = rules.search(new RegExp(`\\n${pad}match /${name}/\\{`))
+  // pmEvents and procEvents (Procurement 2.0) share ONE outbox rule: `match /{outbox}/{eventId}` for the two collections.
+  const matched = name === "pmEvents" ? "\\{outbox\\}" : name
+  const start = rules.search(new RegExp(`\\n${pad}match /${matched}/\\{`))
   expect(start).toBeGreaterThan(-1)
   const rest = rules.slice(start + 1)
   const end = rest.search(new RegExp(`\\n${pad}\\}\\n`))
@@ -77,7 +79,8 @@ describe("a company's projects, handover files and events are listed only by tha
 describe("an event's id carries its organisation", () => {
   it("the rule builds the id exactly as the writers do", () => {
     const [create] = allow(block("pmEvents"), "create")
-    expect(create).toMatch(/eventId == request\.resource\.data\.organizationId \+ '__' \+ request\.resource\.data\.key\.replace\('\/', '_'\)/)
+    expect(create).toMatch(/eventId == rd\(\)\.organizationId \+ '__' \+ rd\(\)\.key\.replace\('\/', '_'\)/)
+    expect(create).toMatch(/isOutbox\(\)/)
     // The id under the key alone (what builds before 1 Oct 2026 sent) is no longer accepted.
     expect(create.match(/eventId ==/g)).toHaveLength(1)
     expect(pmEventDocId("orgA", "prj:IPC:PJ-2026/001:01")).toBe("orgA__prj:IPC:PJ-2026_001:01")
@@ -85,7 +88,9 @@ describe("an event's id carries its organisation", () => {
   })
 
   it("an event is never rewritten or removed", () => {
-    expect(strip(block("pmEvents"))).toMatch(/allow update, delete: if false;/)
+    // No allow for update or delete exists: the default is refusal, and a second send of a key is an update.
+    expect(allow(block("pmEvents"), "update")).toEqual([])
+    expect(allow(block("pmEvents"), "delete")).toEqual([])
   })
 })
 

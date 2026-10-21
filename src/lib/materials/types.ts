@@ -34,6 +34,13 @@ export interface MaterialUnit extends MaterialText {
   key: string
 }
 
+/** What a bar or a roll of the material is sold as («قطعة 6 م», «لفة 25 م»): priced per piece, compared in the unit asked for. */
+export interface MaterialSaleUnit extends MaterialText {
+  lengthM: number
+  /** Named in the sale-unit list, or read from the «الطول» spec's options. */
+  from: "list" | "spec"
+}
+
 export interface MaterialSpec extends MaterialText {
   mandatory: boolean
   options: MaterialText[]
@@ -47,6 +54,7 @@ export interface MaterialNode extends MaterialText {
   brands: MaterialText[]
   keywords: string[]
   installation: boolean
+  saleUnits?: MaterialSaleUnit[]
   /** Taken off the pickers by the platform team; existing documents keep reading it. */
   hidden?: boolean
   children: MaterialNode[]
@@ -63,6 +71,7 @@ export interface MaterialRootDoc {
 export interface MaterialTreeFile {
   source: string
   fetched: string
+  package?: string
   roots: MaterialNode[]
 }
 
@@ -82,6 +91,8 @@ export interface MaterialPick {
   /** Chosen spec values by spec name (Arabic), plus free ones. */
   specs: Array<{ name: MaterialText; value: MaterialText; free?: boolean }>
   brand?: MaterialText | null
+  /** The lengths the material is sold in at the time of the pick, when it has any (priced per piece, compared in the unit asked for). */
+  saleUnits?: MaterialSaleUnit[]
   /** Typed by the user — not in the list. */
   outside?: boolean
 }
