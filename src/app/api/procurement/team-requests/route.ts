@@ -1,39 +1,29 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { callerOf } from "@/lib/receipt-links"
 import { projectsOn } from "@/lib/procurement/financeless-server"
-import { riyadhYear } from "@/lib/procurement/numbering"
 import { riyadhDay } from "@/lib/hr/format"
 import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
-import {
-  TEAM_REQUESTS,
-  holdsRequest,
-  teamProgress,
-  teamRequestRefusal,
-  teamRequestState,
-  teamSource,
-  withdrawRefusal,
-  type TeamLinkedRfq,
-  type TeamRequestDoc,
-} from "@/lib/procurement/team-requests"
-import { notifyTeamRequestMoves, orgWorld } from "@/lib/procurement/team-request-notify-server"
-import { formatYearlyDocNumber } from "@/lib/sales-numbering"
+import { teamRequestRefusal, type TeamRequestDoc } from "@/lib/procurement/team-requests"
+import { createTeamRequest, myRequests, notifyMoved, resolveRequestedFor, smsText, withdrawIncoming, type Committed } from "@/lib/procurement/incoming-server"
+import { sendSms } from "@/lib/sms"
 
-// «طلب مواد» from the team (Procurement 1.5, PUR-10, question 4) — a company WITHOUT Project
-// Management. The document is written here only: any member raises it, its requester withdraws
-// it before it is in an RFQ, Procurement declines it with a reason. Its progress is read from
-// the RFQs and orders that name it (`teamProgress`) — GET returns the caller's own, with it.
+// «طلب مواد» from the team — a company WITHOUT Project Management (Procurement 2.0, REQ-01..04). The request is the stored
+// `procIncoming` document (`src: "team"`), written here only: any member raises it for himself; whoever sources (a buyer) raises it
+// ON BEHALF of a member or of a receiver who has no account, who then reads its progress on his phone; its requester withdraws it
+// before it is in an RFQ. «تعذّر الشراء» is Procurement's act on the incoming request (/api/procurement/incoming, action `fail`).
+// GET returns the caller's own requests with where each stands — the quantities and the dates, never a price or a supplier.
 
-const MAT_TYPE = "MAT"
 const line = z.object({
   name: z.string().trim().min(1).max(200),
   unit: z.string().trim().min(1).max(40),
   quantity: z.number().positive().max(1e9),
   needBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   material: z.record(z.unknown()).nullable().optional(),
+  warrantyMonths: z.number().int().positive().max(120).nullable().optional(),
 })
+const forWhom = z.discriminatedUnion("kind", [z.object({ kind: z.literal("self") }), z.object({ kind: z.literal("member"), id: z.string().min(1).max(128) }), z.object({ kind: z.literal("receiver"), id: z.string().min(1).max(128) })])
 const body = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("create"),
@@ -42,9 +32,9 @@ const body = z.discriminatedUnion("action", [
     siteId: z.string().max(120).nullable().optional(),
     place: z.object({ label: z.string().trim().max(200), city: z.string().trim().max(80), district: z.string().trim().max(120) }),
     note: z.string().trim().max(1000).nullable().optional(),
+    requestedFor: forWhom.optional(),
   }),
-  z.object({ action: z.literal("withdraw"), id: z.string().min(1).max(128) }),
-  z.object({ action: z.literal("decline"), id: z.string().min(1).max(128), reason: z.string().trim().min(3).max(500) }),
+  z.object({ action: z.literal("withdraw"), id: z.string().min(1).max(300) }),
 ])
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
 
@@ -88,7 +78,7 @@ async function tellProcurement(db: FirebaseFirestore.Firestore, orgId: string, f
           createdAt: at,
           read: false,
         })
-        .catch((err) => console.warn("team request notice failed:", err?.code || err))
+        .catch((err: { code?: string }) => console.warn("team request notice failed:", err?.code || err))
     )
   )
 }
@@ -100,18 +90,7 @@ export async function GET(req: NextRequest) {
     const db = getAdminFirestore()
     const caller = await callerOf(db, uid)
     if (!caller) return fail("Sign in first", "UNAUTHENTICATED", 401)
-    const mine = await db.collection(TEAM_REQUESTS).where("organizationId", "==", caller.orgId).where("requestedById", "==", uid).get()
-    const docs = mine.docs.map((d) => ({ id: d.id, ...d.data() }) as TeamRequestDoc)
-    if (!docs.length) return NextResponse.json({ success: true, data: { requests: [] } })
-    const world = await orgWorld(db, caller.orgId)
-    await notifyTeamRequestMoves(db, docs, world).catch((e) => console.error("team request moves:", e))
-    const requests = docs
-      .map((r) => {
-        const progress = teamProgress(r.id, world.rfqs, world.orders)
-        // The requester reads what became of his request — never the order's prices.
-        return { ...r, state: teamRequestState(r, progress), rfqNumber: progress.rfq?.number ?? null, poNumber: progress.po?.docNumber ?? null, promisedDate: progress.po?.promisedDate ?? null, preparedByName: progress.po?.preparedByName ?? null }
-      })
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    const requests = await myRequests(db, caller.orgId, uid)
     return NextResponse.json({ success: true, data: { requests } })
   } catch (error) {
     console.error("team requests (mine):", error)
@@ -130,77 +109,36 @@ export async function POST(req: NextRequest) {
     if (!caller) return fail("Sign in first", "UNAUTHENTICATED", 401)
     const data = parsed.data
     const now = new Date()
-    const at = now.toISOString()
+    const by = { uid, name: caller.name }
 
     if (data.action === "create") {
       if (await projectsOn(db, caller.orgId)) return fail("Materials are requested from the project", "PROJECTS_ON", 409)
       const input = { lines: data.lines.map((l) => ({ name: l.name, unit: l.unit, quantity: l.quantity, needBy: l.needBy ?? null, material: (l.material as TeamRequestDoc["lines"][number]["material"]) ?? null })), needBy: data.needBy, place: data.place }
       const refusal = teamRequestRefusal(input, riyadhDay(now))
       if (refusal) return fail("Check the request", `BAD_${refusal.toUpperCase()}`, 400)
-      const year = riyadhYear(now)
-      const counter = db.collection("mfgCounters").doc(`${caller.orgId}__${MAT_TYPE}__${year}`)
-      const ref = db.collection(TEAM_REQUESTS).doc()
-      const number = await db.runTransaction(async (tx) => {
-        const snap = await tx.get(counter)
-        const seq = (snap.exists ? Number(snap.data()?.last) || 0 : 0) + 1
-        tx.set(counter, { organizationId: caller.orgId, type: MAT_TYPE, year, last: seq, updatedAt: FieldValue.serverTimestamp() })
-        const n = formatYearlyDocNumber(MAT_TYPE, year, seq)
-        const doc: Omit<TeamRequestDoc, "id"> = {
-          organizationId: caller.orgId,
-          number: n,
-          lines: input.lines,
-          needBy: data.needBy,
-          siteId: data.siteId ?? null,
-          place: data.place,
-          note: data.note || null,
-          requestedById: uid,
-          requestedByName: caller.name,
-          createdAt: at,
-          status: "open",
-        }
-        tx.create(ref, doc)
-        return n
-      })
-      await tellProcurement(db, caller.orgId, uid, { number, byName: caller.name }).catch((e) => console.error("team request notice:", e))
-      return NextResponse.json({ success: true, data: { id: ref.id, number } })
+      const onBehalf = data.requestedFor && data.requestedFor.kind !== "self" && data.requestedFor.id !== uid
+      if (onBehalf && !(caller.can("offers.accept") || caller.can("rfq.manage") || caller.can("po.approve"))) return fail("Asking on behalf of someone is Procurement's", "FORBIDDEN", 403)
+      const requestedFor = await resolveRequestedFor(db, caller.orgId, by, onBehalf ? data.requestedFor : { kind: "self" })
+      if (!requestedFor) return fail("That person is not in this company", "BAD_REQUESTED_FOR", 400)
+      if (requestedFor.kind === "receiver" && !requestedFor.phone) return fail("A receiver without an account needs a mobile number", "NO_PHONE", 400)
+      const doc = await createTeamRequest(db, caller.orgId, by, {
+        lines: data.lines.map((l) => ({ name: l.name, unit: l.unit, quantity: l.quantity, needBy: l.needBy ?? null, material: (l.material as TeamRequestDoc["lines"][number]["material"]) ?? null, warrantyMonths: l.warrantyMonths ?? null })),
+        needBy: data.needBy,
+        siteId: data.siteId ?? null,
+        place: data.place,
+        note: data.note || null,
+        requestedFor,
+      }, now)
+      await tellProcurement(db, caller.orgId, uid, { number: doc.no, byName: caller.name }).catch((e) => console.error("team request notice:", e))
+      if (requestedFor.kind === "receiver" && requestedFor.phone) await sendSms({ to: requestedFor.phone, body: smsText("received", { no: doc.no }) }).catch((e) => console.error("team request sms:", e))
+      return NextResponse.json({ success: true, data: { id: doc.mrKey, number: doc.no } })
     }
 
-    const ref = db.collection(TEAM_REQUESTS).doc(data.id)
-    const snap = await ref.get()
-    const doc = snap.exists ? ({ id: snap.id, ...snap.data() } as TeamRequestDoc) : null
-    if (!doc || doc.organizationId !== caller.orgId) return fail("Request not found", "NOT_FOUND", 404)
-
-    if (data.action === "withdraw") {
-      // Any RFQ naming it — a draft too: Procurement has prepared it, so it is no longer only his.
-      const rfqs = (await db.collection("rfqs").where("organizationId", "==", caller.orgId).where("needSources", "array-contains", teamSource(doc.id)).get()).docs.map((d) => ({ id: d.id, ...d.data() }) as TeamLinkedRfq)
-      const refusal = withdrawRefusal(doc, uid, rfqs.some((r) => holdsRequest(r, doc.id)))
-      if (refusal) return fail("It cannot be withdrawn now", refusal.toUpperCase(), 409)
-      await ref.update({ status: "withdrawn", withdrawnAt: at })
-      return NextResponse.json({ success: true, data: {} })
-    }
-
-    // Declined by Procurement — «تعذّر الشراء» with the reason the requester reads.
-    if (!(caller.can("offers.accept") || caller.can("rfq.manage") || caller.can("po.approve"))) return fail("Declining is Procurement's", "FORBIDDEN", 403)
-    if (doc.status !== "open") return fail("It is closed", "CLOSED", 409)
-    const world = await orgWorld(db, caller.orgId)
-    if (teamProgress(doc.id, world.rfqs, world.orders).po) return fail("It is already in an order", "IN_ORDER", 409)
-    await ref.update({ status: "declined", declinedAt: at, declinedByName: caller.name, declinedReason: data.reason })
-    await db
-      .collection("users")
-      .doc(doc.requestedById)
-      .collection("notifications")
-      .add({
-        userId: doc.requestedById,
-        organizationId: caller.orgId,
-        type: "team_request_declined",
-        i18n: { title: "pn_team_request_declined_title", message: "pn_team_request_declined", params: { number: doc.number, reason: data.reason, name: caller.name } },
-        title: "تعذّر شراء طلب المواد",
-        message: `${doc.number} — ${caller.name}: ${data.reason}`,
-        link: "/contractor/rfqs/requests?seg=mine",
-        createdAt: at,
-        read: false,
-      })
-      .catch((e) => console.error("decline notice:", e))
+    const mrKey = data.id.includes(":") ? data.id : `team:${data.id}`
+    const res: Committed | string = await withdrawIncoming(db, caller.orgId, by, { mrKey })
+    if (res === "not_found") return fail("Request not found", "NOT_FOUND", 404)
+    if (typeof res === "string") return fail("It cannot be withdrawn now", res.toUpperCase(), res === "not_yours" ? 403 : 409)
+    await notifyMoved(db, res).catch(() => undefined)
     return NextResponse.json({ success: true, data: {} })
   } catch (error) {
     console.error("team request:", error)

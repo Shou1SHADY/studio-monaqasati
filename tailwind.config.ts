@@ -77,6 +77,53 @@ export default {
           DEFAULT: '#0D9488',
           foreground: '#FFFFFF',
         },
+        // One colour per ROLE in Procurement's guide and the RFQ page's path (FLW-03): the same person keeps the same
+        // colour on every screen. Three tones each — the solid, the soft background and the ink on it (globals.css).
+        'role-requester': {
+          DEFAULT: 'hsl(var(--role-requester) / <alpha-value>)',
+          light: 'hsl(var(--role-requester-light) / <alpha-value>)',
+          ink: 'hsl(var(--role-requester-ink) / <alpha-value>)',
+        },
+        'role-buyer': {
+          DEFAULT: 'hsl(var(--role-buyer) / <alpha-value>)',
+          light: 'hsl(var(--role-buyer-light) / <alpha-value>)',
+          ink: 'hsl(var(--role-buyer-ink) / <alpha-value>)',
+        },
+        'role-approver': {
+          DEFAULT: 'hsl(var(--role-approver) / <alpha-value>)',
+          light: 'hsl(var(--role-approver-light) / <alpha-value>)',
+          ink: 'hsl(var(--role-approver-ink) / <alpha-value>)',
+        },
+        'role-supplier': {
+          DEFAULT: 'hsl(var(--role-supplier) / <alpha-value>)',
+          light: 'hsl(var(--role-supplier-light) / <alpha-value>)',
+          ink: 'hsl(var(--role-supplier-ink) / <alpha-value>)',
+        },
+        'role-receiver': {
+          DEFAULT: 'hsl(var(--role-receiver) / <alpha-value>)',
+          light: 'hsl(var(--role-receiver-light) / <alpha-value>)',
+          ink: 'hsl(var(--role-receiver-ink) / <alpha-value>)',
+        },
+        'role-finance': {
+          DEFAULT: 'hsl(var(--role-finance) / <alpha-value>)',
+          light: 'hsl(var(--role-finance-light) / <alpha-value>)',
+          ink: 'hsl(var(--role-finance-ink) / <alpha-value>)',
+        },
+        'role-pm': {
+          DEFAULT: 'hsl(var(--role-pm) / <alpha-value>)',
+          light: 'hsl(var(--role-pm-light) / <alpha-value>)',
+          ink: 'hsl(var(--role-pm-ink) / <alpha-value>)',
+        },
+        'role-storekeeper': {
+          DEFAULT: 'hsl(var(--role-storekeeper) / <alpha-value>)',
+          light: 'hsl(var(--role-storekeeper-light) / <alpha-value>)',
+          ink: 'hsl(var(--role-storekeeper-ink) / <alpha-value>)',
+        },
+        'role-workshop': {
+          DEFAULT: 'hsl(var(--role-workshop) / <alpha-value>)',
+          light: 'hsl(var(--role-workshop-light) / <alpha-value>)',
+          ink: 'hsl(var(--role-workshop-ink) / <alpha-value>)',
+        },
         // The ACTIVE module's own colour. `--module` is set by data-accent on the
         // portal frame (globals.css), so `bg-module/10 text-module` inside any
         // screen is that module's colour without per-screen wiring. `on-dark`

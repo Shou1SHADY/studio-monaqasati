@@ -35,7 +35,7 @@ export interface RfqEarlyClose {
   originalDeadline: string | null
 }
 
-export const RFQ_LOG_ACTIONS = ["awarded", "award_reopened", "closed_early", "cancelled", "offer_excluded", "query_answered", "reduction_round", "offer_recorded", "guest_registered", "guest_invited", "extended", "document_printed", "guest_link_shared", "guest_link_emailed", "published", "reopened", "shortlisted", "unshortlisted", "offer_versioned", "price_confirmed", "award_reason", "message"] as const
+export const RFQ_LOG_ACTIONS = ["awarded", "award_reopened", "closed_early", "cancelled", "offer_excluded", "query_answered", "reduction_round", "offer_recorded", "guest_registered", "guest_invited", "extended", "document_printed", "guest_link_shared", "guest_link_emailed", "published", "reopened", "shortlisted", "unshortlisted", "offer_versioned", "price_confirmed", "award_reason", "message", "offer_restored", "bafo_asked", "reval_asked"] as const
 export type RfqLogAction = (typeof RFQ_LOG_ACTIONS)[number]
 
 export interface RfqLogEntry {
@@ -122,12 +122,14 @@ export function invitedRows(rfq: { allowedSupplierOrgIds?: string[] | null; invi
 }
 
 export interface InquiryLike {
+  /** `our_question`: a clarification WE asked of one supplier — it waits on his answer, not on ours. */
+  kind?: string | null
   reply?: string | null
   userId?: string | null
   organizationId?: string | null
 }
 
-export const unansweredCount = (inquiries: InquiryLike[] | null | undefined): number => (inquiries || []).filter((q) => !(q.reply || "").trim()).length
+export const unansweredCount = (inquiries: InquiryLike[] | null | undefined): number => (inquiries || []).filter((q) => q.kind !== "our_question" && !(q.reply || "").trim()).length
 
 /**
  * Who hears an answer (§5.1: «الجواب يصل كل المدعوّين — لا أفضلية بمعلومة لمورد

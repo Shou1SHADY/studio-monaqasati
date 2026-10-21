@@ -46,6 +46,7 @@ function hint(f: Free, d: Deal): { txt: string; tone?: "bad" | "warn" | "mute" }
   }
   if (!o) return { txt: "" }
   if (s === "reduce" && o.reduce) return { txt: t("ocReplyBy", { x: fmt.date(o.reduce.by) }), tone: urg(o.reduce.by) }
+  if (s === "review" && o.reval) return { txt: t("ocRevalAsk"), tone: "warn" }
   if (s === "sample" && o.sample) return { txt: t("ocSampleBy", { x: fmt.date(o.sample.by) }), tone: urg(o.sample.by) }
   if (s === "sampleSent" && o.sample) return { txt: t("ocSampleOn", { x: fmt.date(o.sample.sentAt) }) }
   if (s === "review") return { txt: L.daysTo(d.deadline) >= 0 ? t("ocOpenTill", { x: fmt.date(d.deadline) }) : t("ocClosedAgo", { r: rel(d.deadline) }) }
@@ -113,7 +114,7 @@ function OfferCard({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, 
       </p>
       <p className="text-sm">
         <b className="tabular-nums" dir="ltr">{fmt.money(L.offerTotal(d))}</b>{" "}
-        {L.offerSt(d) === "reduce" && o.reduce ? <span className="rounded bg-warning/10 px-1.5 py-0.5 text-xs font-bold text-warning">{t("ocAsk", { v: fmt.money(o.reduce.target) })}</span> : <span className="text-xs text-muted-foreground">{t("beforeVat")}{ver}</span>}
+        {L.offerSt(d) === "reduce" && o.reduce ? <span className="rounded bg-warning/10 px-1.5 py-0.5 text-xs font-bold text-warning">{o.reduce.target > 0 ? t("ocAsk", { v: fmt.money(o.reduce.target) }) : t("ocAskBetter")}</span> : <span className="text-xs text-muted-foreground">{t("beforeVat")}{ver}</span>}
       </p>
       <div className="mt-auto flex items-center gap-2 pt-1">
         <span className="me-auto text-[11px] text-muted-foreground">{foot}</span>
@@ -147,7 +148,7 @@ function OfferRow({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, s
       <td className={cn("px-3 text-sm", stk.cell)} data-l={t("thOfferVal")}>
         <span>
           <b className="tabular-nums" dir="ltr">{fmt.money(L.offerTotal(d))}</b>
-          <span className="block text-xs text-muted-foreground">{L.offerSt(d) === "reduce" && o.reduce ? t("ocAsk", { v: fmt.money(o.reduce.target) }) : t("beforeVat")}</span>
+          <span className="block text-xs text-muted-foreground">{L.offerSt(d) === "reduce" && o.reduce ? (o.reduce.target > 0 ? t("ocAsk", { v: fmt.money(o.reduce.target) }) : t("ocAskBetter")) : t("beforeVat")}</span>
           {coverageOf(d, v) && <span className="block text-xs font-semibold text-warning">{t("partialOffer", coverageOf(d, v) as { n: number; of: number })}</span>}
         </span>
       </td>

@@ -2,11 +2,17 @@
 // again before it writes (NFR-08), and a test pins them. Nothing here reads or writes a database.
 
 import { fieldCovers } from "@/lib/materials/reach"
+import { MAX_UNIT_PRICE } from "@/lib/procurement/input-limits"
+import { lineCalc, type PackInfo } from "@/lib/procurement/offer-calc"
+import { bafoReplyBy } from "@/lib/procurement/offer-decisions"
 import { toAmount } from "@/lib/procurement/offer-pricing"
-import { VAT, addDaysTo, dayNum, r2, type DealLogic } from "./deal-logic"
+import { legacyVersionOf, nextVersions, saleUnitsOf, warrantyAskedOf, type QuoteProduct, type StoredVersion, type VersionLine } from "@/lib/procurement/offer-versions"
+import { VAT, dayNum, r2, type DealLogic } from "./deal-logic"
 import type { Deal, DealItem } from "./types"
 
-export type QuoteMode = "new" | "edit" | "reduce"
+export { legacyVersionOf, nextVersions, type StoredVersion }
+
+export type QuoteMode = "new" | "edit" | "reduce" | "reval"
 
 export interface QuoteValues {
   /** Unit price typed per item id (`i1`…). */
@@ -17,9 +23,15 @@ export interface QuoteValues {
   arrive: string
   valid: string
   note: string
+  /** The sale unit priced per item id, as its length in request units (`"6"`); absent or empty = priced per request unit. */
+  packs?: Record<string, string>
+  /** The warranty he offers per item id, in months (`"24"`); `"0"` = «بلا ضمان»; empty = not chosen yet. */
+  warranty?: Record<string, string>
+  /** «للطلب كاملاً فقط»: he sells it all or nothing. */
+  whole?: boolean
 }
 
-export type QuoteBlock = "total" | "zero" | "unmarked" | "oneItem" | "deadline" | "valid"
+export type QuoteBlock = "total" | "zero" | "unmarked" | "oneItem" | "deadline" | "valid" | "big" | "warranty" | "pack" | "arrive"
 
 export interface QuoteCheck {
   blocks: { code: QuoteBlock; item?: string }[]
@@ -28,6 +40,8 @@ export interface QuoteCheck {
   gross: number
   /** Net per item id, for the live line totals. */
   lines: Record<string, number | null>
+  /** The pieces behind a line priced by the sale unit: «30 قطعة = 180 م». */
+  packs: Record<string, PackInfo | null>
 }
 
 /** What of a request a quote is checked against. */
@@ -41,15 +55,18 @@ export const daysBetween = (iso: string, from: string): number => Math.round((da
 export function quoteBlocks(deal: QuoteShape, v: QuoteValues, mode: QuoteMode, L: Pick<DealLogic, "daysTo">, vatRate: number = VAT): QuoteCheck {
   const blocks: QuoteCheck["blocks"] = []
   const lines: Record<string, number | null> = {}
+  const packs: Record<string, PackInfo | null> = {}
   let net = 0
   if (deal.pricing === "total") {
     const t = toAmount(v.total)
     net = t
     if (!(t > 0)) blocks.push({ code: "total" })
+    else if (t > MAX_UNIT_PRICE) blocks.push({ code: "big" })
   } else {
     let priced = 0
     const unmarked: string[] = []
     for (const i of deal.items) {
+      packs[i.id] = null
       if (v.skip[i.id]) {
         lines[i.id] = null
         continue
@@ -66,47 +83,68 @@ export function quoteBlocks(deal: QuoteShape, v: QuoteValues, mode: QuoteMode, L
         lines[i.id] = null
         continue
       }
+      if (p > MAX_UNIT_PRICE) {
+        blocks.push({ code: "big", item: i.name })
+        lines[i.id] = null
+        continue
+      }
       priced += 1
-      lines[i.id] = r2(p * i.qty)
-      net += p * i.qty
+      const packRaw = String(v.packs?.[i.id] ?? "").trim()
+      if (packRaw !== "" && toAmount(packRaw) > 0 && packLenOf(i, v) == null) blocks.push({ code: "pack", item: i.name })
+      const calc = lineCalc(i.qty, p, packLenOf(i, v))
+      packs[i.id] = calc.pack
+      lines[i.id] = r2(calc.totalH / 100)
+      net += calc.totalH / 100
+      const months = String(v.warranty?.[i.id] ?? "").trim()
+      const stated = months === "" ? !i.warranty : Number.isInteger(Number(months)) && Number(months) >= 0 && Number(months) <= 120
+      if (!stated) blocks.push({ code: "warranty", item: i.name })
     }
     // An item is priced or marked «not supplied» (PUR-03): a blank one is a forgotten field, named so he can fix it.
     if (!priced) blocks.push({ code: "oneItem" })
     else for (const name of unmarked) blocks.push({ code: "unmarked", item: name })
   }
-  // A reply to a price cut runs on its own clock (reply-by), never on the expired submission deadline.
-  if (mode !== "reduce" && deal.deadline && L.daysTo(deal.deadline) < 0) blocks.push({ code: "deadline" })
+  // A reply to a price cut runs on its own clock (reply-by), never on the expired submission deadline; so does the answer
+  // to «confirm your price», which only asks for a new validity.
+  if (mode !== "reduce" && mode !== "reval" && deal.deadline && L.daysTo(deal.deadline) < 0) blocks.push({ code: "deadline" })
   if (!v.valid) blocks.push({ code: "valid" })
+  if (v.arrive && L.daysTo(v.arrive) > 365) blocks.push({ code: "arrive" })
   net = r2(net)
-  return { blocks, net, vat: r2(net * vatRate), gross: r2(net * (1 + vatRate)), lines }
+  return { blocks, net, vat: r2(net * vatRate), gross: r2(net * (1 + vatRate)), lines, packs }
 }
 
-export interface StoredVersion {
-  n: number
-  at: string
-  arrive: string | null
-  valid: string
-  note: string
-  fileUrl: string | null
-  total: number
-  lines?: { rfqProductIndex: number; unitPrice: number }[]
-  /** The VAT rate this version was quoted with (0.15 or 0) — its gross is its own, never re-read from today's flag. */
-  vatRate?: number
+/** The sale unit chosen for an item, if it is one the request offers. */
+export function packLenOf(item: DealItem, v: Pick<QuoteValues, "packs">): number | undefined {
+  const len = toAmount(v.packs?.[item.id])
+  return len > 0 && (item.packs || []).some((p) => p.len === len) ? len : undefined
 }
 
-/** The stored version a form becomes (`n` is set by `nextVersions`). */
+/** The stored version a form becomes (`n` is set by `nextVersions`). Totals go through offer-calc, so a line priced by the
+ * sale unit is pieces × price; the server runs this again and never believes the browser's figures. */
 export function versionOf(deal: QuoteShape, v: QuoteValues, today: string, fileUrl?: string | null, vatRate?: number): StoredVersion {
   const out: StoredVersion = { n: 1, at: today, arrive: v.arrive || null, valid: v.valid, note: v.note.trim().slice(0, 1000), fileUrl: fileUrl || null, total: 0 }
   if (vatRate != null) out.vatRate = vatRate
+  if (v.whole) out.whole = true
   if (deal.pricing === "total") out.total = r2(toAmount(v.total))
   else {
-    const lines: { rfqProductIndex: number; unitPrice: number }[] = []
+    const lines: VersionLine[] = []
+    let totalH = 0
     deal.items.forEach((i, n) => {
       const rate = r2(toAmount(v.prices[i.id]))
-      if (!v.skip[i.id] && rate > 0) lines.push({ rfqProductIndex: n, unitPrice: rate })
+      if (v.skip[i.id] || !(rate > 0)) return
+      const pack = packLenOf(i, v)
+      const calc = lineCalc(i.qty, rate, pack)
+      totalH += calc.totalH
+      const unit = pack != null ? (i.packs || []).find((p) => p.len === pack) : undefined
+      const months = String(v.warranty?.[i.id] ?? "").trim()
+      lines.push({
+        rfqProductIndex: n,
+        unitPrice: rate,
+        ...(pack != null ? { packLen: pack, ...(unit?.name ? { packKey: unit.name } : {}) } : {}),
+        ...(months !== "" && Number.isInteger(Number(months)) ? { warrantyMonths: Number(months) } : {}),
+      })
     })
     out.lines = lines
-    out.total = r2(lines.reduce((s, l) => s + l.unitPrice * deal.items[l.rfqProductIndex].qty, 0))
+    out.total = r2(totalH / 100)
   }
   return out
 }
@@ -115,36 +153,9 @@ type Rec = Record<string, unknown>
 const str = (v: unknown): string => (typeof v === "string" ? v : v == null ? "" : String(v))
 const day = (v: unknown): string => (typeof v === "string" ? v.slice(0, 10) : "")
 
-/** A quote from before `versions` as its first version — so the first edit keeps it instead of losing it (OFR-03). */
-export function legacyVersionOf(offer: Rec): StoredVersion {
-  const batches = Array.isArray(offer.deliveryBatches) ? (offer.deliveryBatches as Rec[]) : []
-  const lines = Array.isArray(offer.lines) ? (offer.lines as Rec[]).map((l) => ({ rfqProductIndex: Number(l.rfqProductIndex) || 0, unitPrice: toAmount(l.unitPrice) })) : []
-  const v: StoredVersion = {
-    n: 1,
-    at: day(offer.createdAt) || day(offer.updatedAt),
-    arrive: day(batches[0]?.deliveryDate) || null,
-    valid: day(offer.validUntil),
-    note: str(offer.supplierNote),
-    fileUrl: str(offer.offerPdfUrl) || null,
-    total: r2(toAmount(offer.price)),
-  }
-  if (lines.length) v.lines = lines
-  return v
-}
-
-/** The versions after this one: the stored ones (or the legacy quote as v1), then the new one, each with its own `n`. */
-export function nextVersions(offer: Rec, next: StoredVersion): StoredVersion[] {
-  const stored = Array.isArray(offer.versions) && offer.versions.length ? (offer.versions as StoredVersion[]) : [legacyVersionOf(offer)]
-  const used = stored.reduce((m, x, i) => Math.max(m, Number(x?.n) || i + 1), 0)
-  return [...stored.map((x, i) => ({ ...x, n: Number(x?.n) || i + 1 })), { ...next, n: used + 1 }]
-}
-
 /** The day a cut must be answered by: the contractor's own date, else three days from when it was asked. */
 export function replyByOf(offer: Rec): string {
-  const by = day(offer.reductionBy)
-  if (by) return by
-  const at = day(offer.reductionAt) || day(offer.decidedAt)
-  return at ? addDaysTo(at, 3) : ""
+  return bafoReplyBy(offer as Parameters<typeof bafoReplyBy>[0])
 }
 
 /** The request's items as the supplier prices them (`i1`, `i2`…). */
@@ -154,13 +165,19 @@ export function rfqItems(rfq: Rec): DealItem[] {
     const n = Number(String(v ?? "").replace(/[,\s]/g, ""))
     return Number.isFinite(n) ? n : 0
   }
-  return products.map((p, i) => ({
-    id: `i${i + 1}`,
-    name: str(p.name).trim() || str(p.description).trim(),
-    unit: str(p.unitOfMeasure || p.unit),
-    qty: numOf(p.quantity),
-    spec: str(p.description) !== str(p.name) ? str(p.description) : "",
-  }))
+  return products.map((p, i) => {
+    const packs = saleUnitsOf(p as QuoteProduct).map((u) => ({ len: u.lengthM, name: u.name }))
+    const warranty = warrantyAskedOf(p as QuoteProduct)
+    return {
+      id: `i${i + 1}`,
+      name: str(p.name).trim() || str(p.description).trim(),
+      unit: str(p.unitOfMeasure || p.unit),
+      qty: numOf(p.quantity),
+      spec: str(p.description) !== str(p.name) ? str(p.description) : "",
+      ...(packs.length ? { packs } : {}),
+      ...(warranty != null ? { warranty } : {}),
+    }
+  })
 }
 
 /** What the server checks a quote against, read from the request itself. */

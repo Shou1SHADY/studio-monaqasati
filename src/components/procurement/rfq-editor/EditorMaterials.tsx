@@ -8,7 +8,7 @@
 // order.
 
 import { displayNeedRef } from "@/lib/procurement/format"
-import { useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { CalendarClock, Copy, MapPin, MoreHorizontal, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
@@ -22,6 +22,10 @@ import { MaterialSearchInput } from "@/components/materials/MaterialSearchInput"
 import { MaterialSpecCells } from "@/components/materials/MaterialSpecCells"
 import type { OptionsResult } from "@/components/materials/MaterialOptionsPanel"
 import { MaterialBrowserDialog, type BrowserResult } from "@/components/materials/MaterialBrowserDialog"
+import { LocationChips } from "@/components/procurement/location/LocationChips"
+import { NewLocationDialog } from "@/components/procurement/location/NewLocationDialog"
+import { DeliveryOptionsRow } from "@/components/procurement/location/DeliveryOptionsRow"
+import { useProcActor } from "@/hooks/useProcActor"
 import { cn } from "@/lib/utils"
 import { SAUDI_CITIES, displayCity } from "@/lib/constants"
 import { label, pathLabel, pickOf, unitConversion, unitsOf, type MaterialHit, type MaterialIndex } from "@/lib/materials/tree"
@@ -80,6 +84,8 @@ export function EditorMaterials({
   const t = useTranslations("Portal.ProcEditor")
   const tm = useTranslations("Portal.Materials")
   const locale = useLocale()
+  const { actor, orgId } = useProcActor()
+  const maySetSites = actor.isOwner || actor.canApprove
   const [browse, setBrowse] = useState<{ groupKey: string; lineKey: string | null; query: string; freeText: string | null } | null>(null)
   // The groups whose city and district are open for change (a place typed by hand stays open while it is typed).
   const [placeOpen, setPlaceOpen] = useState<Set<string>>(() => new Set())
@@ -123,12 +129,18 @@ export function EditorMaterials({
     }
   }
 
-  const setGroupSite = (g: EditorGroup, siteId: string) => {
-    const s = sites.find((x) => x.id === siteId)
+  // A place added from «+ موقع جديد» is pickable at once, before the settings document reaches this screen.
+  const [added, setAdded] = useState<DeliverySite[]>([])
+  const [newFor, setNewFor] = useState<string | null>(null)
+  const latest = useRef(groups)
+  latest.current = groups
+  const allSites = useMemo(() => [...sites, ...added.filter((a) => !sites.some((s) => s.id === a.id))], [sites, added])
+  const pickSite = (groupKey: string, s: DeliverySite) =>
     onChange(
-      groups.map((x) => (x.key === g.key ? { ...x, siteId: s?.id || null, projectId: s?.projectId || null, label: s?.name || "", city: s?.city || x.city, district: s?.district || x.district } : x)),
+      latest.current.map((x) =>
+        x.key === groupKey ? { ...x, siteId: s.id, projectId: s.projectId || null, label: s.name, city: s.city || x.city, district: s.city ? s.district : x.district } : x,
+      ),
     )
-  }
   const setGroup = (g: EditorGroup, patch: Partial<EditorGroup>) => onChange(groups.map((x) => (x.key === g.key ? { ...x, ...patch } : x)))
 
   const rowMenu = (g: EditorGroup, l: EditorLine) => (
@@ -338,7 +350,7 @@ export function EditorMaterials({
       {groups.map((g) => {
         const lines = g.lines
         const placeBad = showProblems && problems.some((p) => p.groupKey === g.key && p.code === "no_place")
-        const site = g.siteId ? sites.find((s) => s.id === g.siteId) : null
+        const site = g.siteId ? allSites.find((s) => s.id === g.siteId) : null
         const locked = !!lockedProjectId && g.projectId === lockedProjectId
         return (
           <section key={g.key} className="overflow-hidden rounded-xl border bg-card" aria-label={g.label || t("group_unnamed")}>
@@ -347,16 +359,15 @@ export function EditorMaterials({
               {locked || fixed || g.requestRefs.length ? (
                 <b className="text-sm">{g.label || site?.name}</b>
               ) : (
-                <NativeSelect value={g.siteId || ""} onChange={(e) => setGroupSite(g, e.target.value)} aria-label={t("group_place")} className="h-9 min-w-[12rem] max-w-full text-sm font-semibold">
-                  <option value="">{t("group_place_pick")}</option>
-                  {sites
-                    .filter((s) => !s.retired)
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                </NativeSelect>
+                <LocationChips
+                  sites={allSites}
+                  selectedId={g.siteId}
+                  usedByOtherGroups={groups.filter((x) => x.key !== g.key && x.siteId).map((x) => x.siteId as string)}
+                  onPick={(s) => pickSite(g.key, s)}
+                  onNew={maySetSites ? () => setNewFor(g.key) : undefined}
+                  label={t("group_place")}
+                  className="min-w-0 flex-1 basis-64"
+                />
               )}
               {g.city && !placeOpen.has(g.key) ? (
                 <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
@@ -408,6 +419,7 @@ export function EditorMaterials({
               )}
               {groups.length > 1 && !lines.some(lineStarted) && <IconButton label={t("remove_group")} icon={Trash2} iconSize={14} onClick={() => onChange(removeGroup(groups, g.key))} />}
             </header>
+            {!fixed && <DeliveryOptionsRow value={g.delivery} onChange={(delivery) => setGroup(g, { delivery })} />}
             {fixed &&
               (g.facts || []).map((f) => {
                 const left = f.lastOrderDay ? daysBetween(today, f.lastOrderDay) : null
@@ -503,6 +515,17 @@ export function EditorMaterials({
           <Plus size={15} /> {t("add_group")}
         </Button>
       )}
+
+      <NewLocationDialog
+        open={!!newFor}
+        onOpenChange={(o) => !o && setNewFor(null)}
+        orgId={orgId}
+        onAdded={(site) => {
+          setAdded((prev) => [...prev.filter((p) => p.id !== site.id), site])
+          if (newFor) pickSite(newFor, site)
+          setNewFor(null)
+        }}
+      />
 
       <MaterialBrowserDialog
         open={!!browse}

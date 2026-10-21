@@ -1,9 +1,9 @@
 "use client"
 
-// «طلب مواد» from the team — a company WITHOUT Project Management (Procurement 1.5, PUR-10,
-// question 4): the editor's own material rows (PUR-02), then the delivery site from «مواقع التسليم»
-// (or a typed address), the need-by date and a note. It reaches «طلبات الشراء الواردة» with no
-// technical approval, and its state comes back to the requester. Written by the server.
+// «طلب مواد» from the team — a company WITHOUT Project Management (Procurement 2.0, REQ-02/03): the editor's own material
+// rows, then the delivery site from «مواقع التسليم» (or a typed address), the need-by date and a note. «طلبه»: whoever sources
+// raises it on behalf of a member or of a receiver who has no account — his status then reaches his phone. It reaches «طلبات
+// الشراء الواردة» with no technical approval, and its state comes back to whoever it is for. Written by the server.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -13,6 +13,10 @@ import { Loader2, Send } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { useOrgMembers } from "@/hooks/useOrgMembers"
+import { usePermissions } from "@/hooks/usePermissions"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
+import { PROCUREMENT_RECEIVERS, phoneUsable, type ProcReceiver } from "@/lib/procurement/receivers"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -41,6 +45,21 @@ export function TeamRequestDialog({ open, onOpenChange, orgId, onSent }: { open:
   const { data: warehouses } = useCollection(warehousesQ)
   const sites = useMemo(() => deliverySites({ stored: storedSites((settingsDoc as Rec | null)?.deliverySites), warehouses: (warehouses || []) as Array<{ id: string; name?: string }>, projects: [], pmOn: false }), [settingsDoc, warehouses])
 
+  // «طلبه»: only whoever sources may raise a request for somebody else (the server refuses anyone else).
+  const { can } = usePermissions()
+  const mayAsk = can("offers.accept") || can("rfq.manage") || can("po.approve")
+  const { orgMembers } = useOrgMembers(open && mayAsk ? orgId : null)
+  const receiversQ = useMemoFirebase(() => (firestore && orgId && open && mayAsk ? query(collection(firestore, PROCUREMENT_RECEIVERS), where("organizationId", "==", orgId)) : null), [firestore, orgId, open, mayAsk])
+  const { data: receiversData } = useCollection(receiversQ)
+  const people = useMemo(() => {
+    const accounts = new Map(orgMembers.map((m) => [m.id, (m.name as string) || (m.email as string) || m.id]))
+    const receivers = ((receiversData || []) as ProcReceiver[]).filter((r) => r.active !== false).map((r) => ({ value: r.userId ? `member:${r.userId}` : `receiver:${r.id}`, name: r.name, hasAccount: Boolean(r.userId), usable: Boolean(r.userId) || phoneUsable(r.phone) }))
+    const members = Array.from(accounts, ([id, name]) => ({ value: `member:${id}`, name, hasAccount: true, usable: true }))
+    const seen = new Set(members.map((m) => m.value))
+    return [...members, ...receivers.filter((r) => !seen.has(r.value))].sort((a, b) => a.name.localeCompare(b.name))
+  }, [orgMembers, receiversData])
+  const [forWhom, setForWhom] = useState("self")
+
   const [groups, setGroups] = useState<EditorGroup[]>(() => [newGroup({ lines: [blankLine()] })])
   const [note, setNote] = useState("")
   const [tried, setTried] = useState(false)
@@ -53,6 +72,7 @@ export function TeamRequestDialog({ open, onOpenChange, orgId, onSent }: { open:
 
   const reset = () => {
     setGroups([newGroup({ lines: [blankLine()] })])
+    setForWhom("self")
     setNote("")
     setTried(false)
     setError(null)
@@ -75,6 +95,7 @@ export function TeamRequestDialog({ open, onOpenChange, orgId, onSent }: { open:
           siteId: g.siteId,
           place: { label: g.label.trim(), city: g.city, district: g.district },
           note: note.trim() || null,
+          requestedFor: forWhom === "self" ? { kind: "self" } : { kind: forWhom.startsWith("receiver:") ? "receiver" : "member", id: forWhom.slice(forWhom.indexOf(":") + 1) },
         }),
       })
       const body = (await res.json().catch(() => null)) as { data?: { number?: string } } | null
@@ -101,6 +122,22 @@ export function TeamRequestDialog({ open, onOpenChange, orgId, onSent }: { open:
           <DialogDescription>{t("tr_desc")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          {mayAsk && (
+            <div className="space-y-1">
+              <Label htmlFor="tr-for" className="text-xs">
+                {t("tr_for")}
+              </Label>
+              <NativeSelect id="tr-for" value={forWhom} onChange={(e) => setForWhom(e.target.value)}>
+                <option value="self">{t("tr_for_self")}</option>
+                {people.map((p) => (
+                  <option key={p.value} value={p.value} disabled={!p.usable}>
+                    {p.hasAccount ? p.name : `${p.name} — ${t("tr_for_none")}`}
+                  </option>
+                ))}
+              </NativeSelect>
+              <p className="text-[11px] text-muted-foreground">{t("tr_for_hint")}</p>
+            </div>
+          )}
           <EditorMaterials groups={groups} onChange={setGroups} index={index} sites={sites} problems={problems} showProblems={tried} />
           {!g.siteId && (
             <div className="space-y-1">

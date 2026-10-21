@@ -11,6 +11,7 @@ import { poStatus } from "./po"
 import { materialKey } from "./prices"
 import { requestChanges, wholeWithdrawal, type ProjectChange } from "./project-change"
 import { lineNeed, rfqNeedSources, type NeedLinkedRfq } from "./rfq-view"
+import type { LineKind, IncomingDoc } from "./incoming-state"
 import type { PurchaseOrder } from "./types"
 
 export type NeedKind = "mfg" | "project" | "stock" | "team"
@@ -44,8 +45,17 @@ export interface NeedLine {
   material?: MaterialPick | null
   /** A PM 1.0 request's line: its index in the request's `lines` (where its own link is written). */
   requestLine?: number
-  /** Its own RFQ / order, when part of the request was published without the rest. */
+  /** Its own RFQ / order, when part of the request was published without the rest. A line of a stored request (`procIncoming`)
+   * that must not be published again — in hand, waiting for a reply, covered, closed — carries one (its ids null when it is not in
+   * an RFQ or an order): the editor and the route skip a linked line. */
   link?: NeedLineLink
+  /** A stored request's line: the place it is in (G-13), what was asked, and who it waits on. */
+  lineKind?: LineKind
+  asked?: number
+  heldBy?: "stock" | "workshop" | null
+  /** What the stores give and the workshop makes, of the quantity asked. */
+  give?: number
+  make?: number
 }
 
 /** What Procurement decided on a project's request without the other module's
@@ -111,6 +121,8 @@ export interface Need {
   withdrawal?: { on: string | null; byName: string | null } | null
   /** What the project withdrew or changed on it after it reached us (PUR-01 p.5). */
   projectChanges?: ProjectChange[]
+  /** The stored request (`procIncoming`) this need is read from; absent on a stock gap, which stays computed. */
+  incoming?: IncomingDoc
 }
 
 const blank = { needBy: null, note: null, rfqId: null, rfqNumber: null, poId: null, poNumber: null, endNote: null, endKind: null, waitingOn: null, projectId: null, projectName: null, stock: null, mfgRequestId: null, decision: null }
@@ -397,24 +409,6 @@ export function returnedNeeds(needs: Need[], orders: PurchaseOrder[]): Need[] {
     out.push({ ...n, key: `${n.key}:returned:${po.id}`, state: "action", lines, rfqId: null, rfqNumber: null, poId: null, poNumber: null, returnedFrom: po.docNumber })
   }
   return out
-}
-
-/** Which optional modules this company has on. Without Projects there is no project request; without
- * Manufacturing there is no workshop shortfall and nobody to route a request to. Both default to on. */
-export interface NeedModules {
-  projects: boolean
-  workshop: boolean
-}
-
-export const ALL_NEED_MODULES: NeedModules = { projects: true, workshop: true }
-
-/** The needs a company with some modules off still has. A project request already routed to the
- * workshop that is now off comes back to Purchasing: the workshop will never answer it. */
-export function needsForModules(needs: Need[], modules: NeedModules = ALL_NEED_MODULES): Need[] {
-  if (modules.projects && modules.workshop) return needs
-  return needs
-    .filter((n) => (modules.projects || n.kind !== "project") && (modules.workshop || n.kind !== "mfg"))
-    .map((n) => (!modules.workshop && n.waitingOn === "workshop" ? { ...n, state: "action" as const, waitingOn: null, mfgRequestId: null } : n))
 }
 
 // ── The award: which order answers a project's request ─────────────────────

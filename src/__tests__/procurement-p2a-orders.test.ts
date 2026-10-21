@@ -87,10 +87,11 @@ describe("#8 #13 — a project per line, and the filter over the lines", () => {
     const orders = [po({ id: "a", projectId: "pA", rfqId: null }), po({ id: "b", projectId: "pB", rfqId: null, status: "awaiting_approval" }), po({ id: "c", rfqId: null })]
     const keys = new Map(orders.map((o) => [o.id, poProjectKeys(o, [])]))
     const only = (f: string) => orders.filter((o) => inProjectFilter(keys.get(o.id) || [], f))
-    expect(segmentCounts(only("pA"), NOW).all).toBe(1)
-    expect(segmentCounts(only("pB"), NOW).awaiting_approval).toBe(1)
-    expect(segmentCounts(only(GENERAL_STOCK), NOW).all).toBe(1)
-    expect(segmentCounts(only("all"), NOW).all).toBe(3)
+    const ctx = { notices: [], financeOn: false, acceptanceDays: 1, now: NOW }
+    expect(segmentCounts(only("pA"), ctx).all).toBe(1)
+    expect(segmentCounts(only("pB"), ctx).act).toBe(1)
+    expect(segmentCounts(only(GENERAL_STOCK), ctx).all).toBe(1)
+    expect(segmentCounts(only("all"), ctx).all).toBe(3)
   })
 
   it("#14 the list shows a line net of what was cancelled", () => {

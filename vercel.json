@@ -2,6 +2,7 @@
   "crons": [
     { "path": "/api/cron/forward-notices", "schedule": "0 4 * * *" },
     { "path": "/api/cron/offer-expiry", "schedule": "0 5 * * *" },
-    { "path": "/api/cron/receipt-window", "schedule": "30 5 * * *" }
+    { "path": "/api/cron/receipt-window", "schedule": "30 5 * * *" },
+    { "path": "/api/cron/incoming-sync", "schedule": "0 6 * * *" }
   ]
 }

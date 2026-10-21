@@ -23,8 +23,8 @@ export function useRfqQueries(rfqIds: string[]): RfqQueryFact[] {
           setByRfq((prev) => ({
             ...prev,
             [rfqId]: snap.docs.map((d) => {
-              const v = d.data() as { question?: string; reply?: string | null }
-              return { id: d.id, rfqId, question: v.question || "", answered: Boolean((v.reply || "").trim()) }
+              const v = d.data() as { question?: string; reply?: string | null; kind?: string | null }
+              return { id: d.id, rfqId, question: v.question || "", answered: v.kind === "our_question" || Boolean((v.reply || "").trim()) }
             }),
           })),
         (err) => console.warn("rfq inquiries read failed:", rfqId, err.code)

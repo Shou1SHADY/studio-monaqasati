@@ -246,15 +246,6 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
     }
   }
 
-  const offersQuery = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    return query(
-      collection(firestore, "offers"),
-      where("rfqId", "==", rfqId),
-      orderBy("createdAt", "desc")
-    )
-  }, [firestore, user, isUserLoading, rfqId])
-
   const rfqDocRef = useMemoFirebase(() => {
     if (!firestore || !rfqId) return null
     return doc(firestore, "rfqs", rfqId)
@@ -267,14 +258,19 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   // Who may forward a notice to its receiver — the same list the receipt-links route accepts.
   const canForwardNotice = canConfirmDelivery || can("po.expedite") || can("offers.accept") || can("po.approve")
 
-  const { data: offers, isLoading: isOffersLoading } = useCollection(offersQuery)
-  const isLoading = isOffersLoading || isRfqLoading
-
   // The purchase order laid over the award (PRD 3.0): who prepares it, the
   // org's policies, and the facts about the supplier an approval will check.
   const tRfqd = useTranslations("Portal.Procurement.rfqd")
   const tThread = useTranslations("Portal.Thread")
   const { actor: procActor, orgId: procOrgId, orgName: procOrgName } = useProcActor((rfq as { projectId?: string } | null)?.projectId || undefined)
+  const buyerOrgId = (rfq as { organizationId?: string } | null)?.organizationId || procOrgId
+  const offersQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore || !buyerOrgId) return null
+    return query(collection(firestore, "offers"), where("rfqId", "==", rfqId), where("contractorOrgId", "==", buyerOrgId))
+  }, [firestore, user, isUserLoading, rfqId, buyerOrgId])
+  const { data: offersRaw, isLoading: isOffersLoading } = useCollection(offersQuery)
+  const offers = useMemo(() => (offersRaw ? [...offersRaw].sort((a: { createdAt?: { seconds?: number } }, b: { createdAt?: { seconds?: number } }) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)) : offersRaw), [offersRaw])
+  const isLoading = isOffersLoading || isRfqLoading
   // One gate for running this RFQ (rfq-access.ts): the manager runs every RFQ,
   // a buyer his own, the owner only while the org has no procurement staff.
   // An Admin decides on RFQs Mdmak posted as a contractor (no team to grant him).
@@ -363,9 +359,9 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const { data: project } = useDoc(projectDocRef)
 
   const projectOffersQuery = useMemoFirebase(() => {
-    if (!firestore || !projectId || !on("project-management")) return null
-    return query(collection(firestore, "offers"), where("projectId", "==", projectId))
-  }, [firestore, projectId, on])
+    if (!firestore || !projectId || !procOrgId || !on("project-management")) return null
+    return query(collection(firestore, "offers"), where("projectId", "==", projectId), where("contractorOrgId", "==", procOrgId))
+  }, [firestore, projectId, procOrgId, on])
   const { data: projectOffers } = useCollection(projectOffersQuery)
 
   const awardBudget = (() => {

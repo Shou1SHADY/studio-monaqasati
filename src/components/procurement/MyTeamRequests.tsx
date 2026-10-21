@@ -1,28 +1,53 @@
 "use client"
 
-// «طلباتي» — the team member's own «طلب مواد» and what became of each (Procurement 1.5, PUR-10):
-// أُرسل · في عروض · في أمر · في الطريق · استُلم · تعذّر الشراء (with the reason) · سحبته. Read from the
-// server (/api/procurement/team-requests), which reads the RFQs and orders a member may not read
-// himself — and never their prices. «اسحبه» while nobody has put it in an RFQ.
+// «طلباتي» — the member's own material requests and where each stands (Procurement 2.0, REQ-01): four steps — عند المشتريات ·
+// في عروض · في أمر · وصلت — and one line saying what that means now. Never a price, never a supplier: those stay with Procurement.
+// A request raised for him by a buyer is here too. Read from the server (/api/procurement/team-requests), which reads the RFQs and
+// orders a member may not read himself. «اسحبه» while nobody has put it in an RFQ.
 
 import { useCallback, useEffect, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { getAuth } from "firebase/auth"
-import { ClipboardList, Loader2 } from "lucide-react"
+import { Check, ClipboardList, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useUser } from "@/firebase"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/module-ui/EmptyState"
-import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
-import { displayNeedRef, displayPoNumber, fmtDayLong } from "@/lib/procurement/format"
-import type { TeamRequestDoc, TeamRequestState } from "@/lib/procurement/team-requests"
+import { StatusPill } from "@/components/module-ui/StatusPill"
+import { cn } from "@/lib/utils"
+import { displayNeedRef, fmtDayLong } from "@/lib/procurement/format"
+import { REQUESTER_STEPS, type MyRequest, type RequesterStep } from "@/lib/procurement/incoming-state"
+import { siteLine } from "@/lib/procurement/delivery-sites"
+import { displayCity } from "@/lib/constants"
 
-type Mine = TeamRequestDoc & { state: TeamRequestState; rfqNumber: string | null; poNumber: string | null; promisedDate: string | null; preparedByName: string | null }
+type Mine = MyRequest
 
-const TONE: Record<TeamRequestState, PillTone> = { sent: "module", rfq: "violet", order: "info", on_way: "info", received: "ok", declined: "bad", withdrawn: "mute" }
+const STEP_INDEX: Record<RequesterStep, number> = { placed: 0, rfq: 1, order: 2, arrived: 3, failed: -1, withdrawn: -1 }
+
+export function StepBar({ step, label }: { step: RequesterStep; label: (s: (typeof REQUESTER_STEPS)[number]) => string }) {
+  const at = STEP_INDEX[step]
+  const ended = at < 0
+  return (
+    <ol className="flex items-center gap-1" aria-label={label("placed")}>
+      {REQUESTER_STEPS.map((s, i) => {
+        const done = !ended && i < at
+        const now = !ended && i === at
+        return (
+          <li key={s} className="flex min-w-0 flex-1 flex-col gap-1" aria-current={now ? "step" : undefined}>
+            <span className={cn("h-1.5 rounded-full", done || now ? "bg-module" : "bg-muted")} />
+            <span className={cn("flex items-center gap-1 truncate text-[11px] font-semibold", now ? "text-module" : done ? "text-foreground" : "text-muted-foreground")}>
+              {done && <Check size={11} aria-hidden="true" />}
+              {label(s)}
+            </span>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
 
 export function MyTeamRequests({ refreshKey }: { refreshKey: number }) {
-  const t = useTranslations("Portal.Shared")
+  const t = useTranslations("Portal.ProcMyRequests")
   const locale = useLocale()
   const { toast } = useToast()
   const [rows, setRows] = useState<Mine[] | null>(null)
@@ -42,17 +67,17 @@ export function MyTeamRequests({ refreshKey }: { refreshKey: number }) {
   }, [load, refreshKey])
 
   const withdraw = async (r: Mine) => {
-    const user = getAuth().currentUser
-    if (!user || !window.confirm(t("tr_withdraw_confirm", { number: displayNeedRef(r.number, locale) }))) return
+    const current = getAuth().currentUser
+    if (!current || !window.confirm(t("withdraw_confirm", { number: displayNeedRef(r.no, locale) }))) return
     setBusy(r.id)
     try {
-      const res = await fetch("/api/procurement/team-requests", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` }, body: JSON.stringify({ action: "withdraw", id: r.id }) })
+      const res = await fetch("/api/procurement/team-requests", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await current.getIdToken()}` }, body: JSON.stringify({ action: "withdraw", id: r.mrKey }) })
       const body = (await res.json().catch(() => null)) as { code?: string } | null
-      if (res.ok) toast({ title: t("tr_withdrawn") })
-      else toast({ title: body?.code === "IN_RFQ" ? t("tr_withdraw_in_rfq") : t("tr_failed"), variant: "destructive" })
+      if (res.ok) toast({ title: t("withdrawn") })
+      else toast({ title: body?.code === "IN_RFQ" ? t("withdraw_in_rfq") : t("failed"), variant: "destructive" })
       await load()
     } catch {
-      toast({ title: t("tr_failed"), variant: "destructive" })
+      toast({ title: t("failed"), variant: "destructive" })
     } finally {
       setBusy(null)
     }
@@ -61,48 +86,60 @@ export function MyTeamRequests({ refreshKey }: { refreshKey: number }) {
   if (rows == null)
     return (
       <div className="flex items-center justify-center rounded-2xl border bg-card p-12">
-        <Loader2 className="animate-spin text-muted-foreground" size={24} aria-label={t("tr_loading")} />
+        <Loader2 className="animate-spin text-muted-foreground" size={24} aria-label={t("loading")} />
       </div>
     )
-  if (!rows.length) return <EmptyState icon={ClipboardList} title={t("tr_mine_none")} description={t("tr_mine_none_hint")} />
+  if (!rows.length) return <EmptyState icon={ClipboardList} title={t("none")} description={t("none_hint")} />
 
+  const label = (s: (typeof REQUESTER_STEPS)[number]) => t(`step_${s}`)
   return (
     <ul className="space-y-3">
       {rows.map((r) => (
-        <li key={r.id} className="rounded-2xl border bg-card p-4">
+        <li key={r.id} className="space-y-3 rounded-2xl border bg-card p-4">
           <div className="flex flex-wrap items-start gap-3">
             <div className="min-w-0 flex-1 space-y-1.5">
               <p className="flex flex-wrap items-center gap-2">
                 <b className="text-base" dir="auto">
-                  {displayNeedRef(r.number, locale)}
+                  {displayNeedRef(r.no, locale)}
                 </b>
                 <span className="text-sm font-semibold" dir="auto">
                   {r.place.label}
+                  {siteLine(r.place, (c) => displayCity(c, locale)) ? ` — ${siteLine(r.place, (c) => displayCity(c, locale))}` : ""}
                 </span>
-                <StatusPill tone={TONE[r.state]}>{t(`tr_state_${r.state}`)}</StatusPill>
+                {r.step === "failed" && <StatusPill tone="bad">{t("step_failed")}</StatusPill>}
+                {r.step === "withdrawn" && <StatusPill tone="mute">{t("step_withdrawn")}</StatusPill>}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("sent_on", { date: fmtDayLong(r.createdAt.slice(0, 10), locale, false), needBy: fmtDayLong(r.needBy, locale, false) })}
+                {r.requestedBy && r.requestedFor.name && r.requestedBy !== r.requestedFor.name ? ` · ${t("raised_for", { who: r.requestedFor.name, by: r.requestedBy })}` : ""}
               </p>
               <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm" dir="auto">
                 {r.lines.map((l, i) => (
                   <span key={i}>
-                    {l.name} <b className="tabular-nums" dir="ltr">{l.quantity.toLocaleString("en-US")}</b> <span className="text-xs text-muted-foreground">{l.unit}</span>
+                    {l.name} <b className="tabular-nums" dir="ltr">{l.qty.toLocaleString("en-US")}</b> <span className="text-xs text-muted-foreground">{l.unit}</span>
                   </span>
                 ))}
               </p>
-              <p className="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
-                <span>{t("rq_need_by", { date: fmtDayLong(r.needBy, locale, false) })}</span>
-                {r.rfqNumber && <span>{t("tr_in_rfq", { number: r.rfqNumber })}</span>}
-                {r.poNumber && <span>{t("tr_in_po", { number: displayPoNumber(r.poNumber, locale) })}</span>}
-                {r.promisedDate && (r.state === "order" || r.state === "on_way") && <span>{t("tr_promised", { date: fmtDayLong(r.promisedDate, locale, false) })}</span>}
-              </p>
-              {r.state === "declined" && r.declinedReason && <p className="text-xs font-semibold text-destructive">{t("tr_declined_why", { name: r.declinedByName || "", reason: r.declinedReason })}</p>}
             </div>
-            {r.state === "sent" && (
+            {r.withdrawable && (
               <Button size="sm" variant="outline" disabled={busy === r.id} onClick={() => void withdraw(r)} className="gap-1.5">
                 {busy === r.id && <Loader2 size={13} className="animate-spin" />}
-                {t("tr_withdraw")}
+                {t("withdraw")}
               </Button>
             )}
           </div>
+          <StepBar step={r.step} label={label} />
+          <p className={cn("text-xs font-semibold", r.step === "failed" ? "text-destructive" : "text-muted-foreground")} dir="auto">
+            {r.step === "failed"
+              ? r.failed?.alt
+                ? t("line_failed_alt", { why: r.failed.why, alt: r.failed.alt })
+                : t("line_failed", { why: r.failed?.why || "—" })
+              : r.step === "withdrawn"
+                ? t("line_withdrawn")
+                : r.step === "order" && r.promisedDate
+                  ? t("line_order_date", { date: fmtDayLong(r.promisedDate, locale, false) })
+                  : t(`line_${r.step}`)}
+          </p>
         </li>
       ))}
     </ul>

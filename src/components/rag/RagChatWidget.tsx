@@ -11,10 +11,8 @@ import {
   collection,
   query,
   where,
-  addDoc,
   updateDoc,
   doc,
-  serverTimestamp,
   arrayUnion,
   getDocs,
   limit,
@@ -24,6 +22,7 @@ import { useRagChat } from '@/hooks/useRagChat';
 import { ChatMessage } from './ChatMessage';
 import type { PendingAction, RagContext } from '@/lib/rag-types';
 import { OfferSubmitError, submitSupplierOffer } from '@/lib/supplier-offer-client';
+import { askQuestion } from '@/lib/supplier-free/act-client';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -69,7 +68,7 @@ async function buildContext(
       if (ctx.rfqs.length > 0) {
         const rfqIds = ctx.rfqs.slice(0, 10).map(r => r.id as string);
         const offersSnap = await getDocs(
-          query(collection(firestore, 'offers'), where('rfqId', 'in', rfqIds), limit(30))
+          query(collection(firestore, 'offers'), where('contractorOrgId', '==', orgId ?? userId), where('rfqId', 'in', rfqIds), limit(30))
         );
         ctx.offers = offersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       }
@@ -132,12 +131,8 @@ async function executeAction(
       await submitSupplierOffer(await idToken(), String(p.rfqId), { price: Number(p.price) || 0, notes: p.notes ?? '' });
       break;
     case 'createInquiry':
-      await addDoc(collection(firestore, `rfqs/${p.rfqId}/inquiries`), {
-        question: p.question,
-        userId,
-        supplierId: userId,
-        createdAt: serverTimestamp(),
-      });
+      // The server writes the question and tells the buying side; a browser has no write path to `inquiries`.
+      await askQuestion(String(p.rfqId), String(p.question ?? ''));
       break;
     case 'favoriteSupplier':
       await updateDoc(doc(firestore, 'users', userId), {

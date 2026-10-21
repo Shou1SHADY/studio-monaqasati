@@ -58,6 +58,34 @@
     /* Procurement's identity (Procurement PRD 3.0 prototype, --mod #0D9488). */
     --teal: 175 84% 32%;
     --teal-foreground: 0 0% 100%;
+    /* One colour per ROLE (Procurement 2.0 guide, FLW-03 — the prototype's --rc / --rb / --rt): solid, soft background, ink. */
+    --role-requester: 198 90% 40%;
+    --role-requester-light: 201 71% 95%;
+    --role-requester-ink: 199 92% 33%;
+    --role-buyer: 175 84% 32%;
+    --role-buyer-light: 171 56% 93%;
+    --role-buyer-ink: 175 84% 26%;
+    --role-approver: 249 76% 62%;
+    --role-approver-light: 251 76% 96%;
+    --role-approver-ink: 249 76% 52%;
+    --role-supplier: 37 90% 38%;
+    --role-supplier-light: 39 88% 94%;
+    --role-supplier-ink: 37 90% 31%;
+    --role-receiver: 149 83% 34%;
+    --role-receiver-light: 148 52% 93%;
+    --role-receiver-ink: 149 83% 27%;
+    --role-finance: 218 44% 33%;
+    --role-finance-light: 220 48% 94%;
+    --role-finance-ink: 218 44% 28%;
+    --role-pm: 347 77% 50%;
+    --role-pm-light: 344 83% 95%;
+    --role-pm-ink: 347 77% 42%;
+    --role-storekeeper: 215 19% 35%;
+    --role-storekeeper-light: 210 31% 95%;
+    --role-storekeeper-ink: 215 19% 30%;
+    --role-workshop: 262 83% 58%;
+    --role-workshop-light: 270 58% 97%;
+    --role-workshop-ink: 262 83% 48%;
     /* The active module's colour — see `module` in tailwind.config.ts. Defaults
        to the brand navy; the portal frame sets data-accent from the module
        registry (portal-components.ts) and the rules below pick the colour. */
@@ -106,6 +134,24 @@
     --border: 217 33% 17%;
     --input: 217 33% 17%;
     --ring: 212.7 26.8% 83.9%;
+    --role-requester-light: 199 45% 18%;
+    --role-requester-ink: 199 80% 70%;
+    --role-buyer-light: 173 40% 16%;
+    --role-buyer-ink: 173 60% 62%;
+    --role-approver-light: 249 35% 22%;
+    --role-approver-ink: 249 90% 80%;
+    --role-supplier-light: 38 50% 17%;
+    --role-supplier-ink: 38 85% 62%;
+    --role-receiver-light: 149 40% 16%;
+    --role-receiver-ink: 149 55% 62%;
+    --role-finance-light: 220 32% 21%;
+    --role-finance-ink: 218 60% 76%;
+    --role-pm-light: 346 40% 21%;
+    --role-pm-ink: 346 90% 76%;
+    --role-storekeeper-light: 215 22% 20%;
+    --role-storekeeper-ink: 215 25% 72%;
+    --role-workshop-light: 264 35% 22%;
+    --role-workshop-ink: 264 85% 78%;
   }
 }
 

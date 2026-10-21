@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils"
 import { withSarSign } from "@/lib/riyal"
 import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { poStatus, receiptDay, todayOf } from "@/lib/procurement/po"
+import { buyerMarkReference } from "@/lib/procurement/payment-mark"
 import type { NoticeRouting } from "@/lib/procurement/policies"
 import { destKind, recordedBy } from "@/lib/procurement/receipt-desk"
 import {
@@ -255,7 +256,8 @@ export function FinanceTrailSection({
   const locale = useLocale()
   const fmt = useDateText()
   const money = moneyTrail(po)
-  const adv = advanceState(po)
+  const adv = advanceState(po, true)
+  const reference = buyerMarkReference(po)
   const paid = paidTotal(po)
   const commitment = money.commitment
   const pctOf = (v: number) => (commitment > 0 ? `${Math.round((v / commitment) * 100)}%` : "0%")
@@ -280,6 +282,13 @@ export function FinanceTrailSection({
       <Row label={t("rfqpo.po.money.paid")} hint={t("rfqpo.po.money.paid_hint", { pct: pctOf(paid), left: withSarSign(Math.max(0, Math.round((commitment - paid) * 100) / 100).toLocaleString("en-US"), locale) })}>
         <Money value={paid} />
       </Row>
+      {reference && (
+        <p className="text-[11px] text-muted-foreground">
+          {reference.kind === "advance"
+            ? t("rfqpo.po.money.buyer_mark_advance", { date: fmt(reference.day) })
+            : t("rfqpo.po.money.buyer_mark", { name: reference.byName || "—", state: t(`rfqpo.po.money.mark_state.${reference.state || "unpaid"}`), date: fmt(reference.day) })}
+        </p>
+      )}
       {(po.financePayments || []).length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("rfqpo.po.money.no_payments")}</p>
       ) : (

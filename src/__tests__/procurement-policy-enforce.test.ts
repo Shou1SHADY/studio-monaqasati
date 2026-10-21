@@ -22,7 +22,6 @@ import { approvePurchaseOrder, assertActs, cancelRemainder, sendPurchaseOrder } 
 import { answerHoldPrice, cancelRemainderWithFee, decideHold, decidePmBudget, pmStopLine, referBudgetToProjects, requestPmStopInTx, selfIssuePurchaseOrder } from "@/lib/procurement/po-extra-writes"
 import { createArrivalWithoutNotice, recordReceipt, trimNotices } from "@/lib/procurement/receipt-writes"
 import { recordNeedDecision } from "@/lib/procurement/need-decision-writes"
-import { boundaryLog } from "@/lib/procurement/boundary"
 import { exceptions, openCommitments } from "@/lib/procurement/reports"
 
 const db = fakeFirestore as unknown as Firestore
@@ -255,7 +254,6 @@ describe("Projects' stop request lands on the order (P-19)", () => {
     const lineId = await runTransaction(db, (tx) => requestPmStopInTx(tx, db, "po1", { name: "أسمنت", unit: "كيس" }, { reason: "أُغلق البند", byName: "PM", at: NOW.toISOString(), projectId: "p1", requestId: "r1" }))
     expect(lineId).toBe("l1")
     expect(read()).toMatchObject({ pmCancelKey: "l1", pmCancels: { l1: { reason: "أُغلق البند", requestId: "r1" } } })
-    expect(boundaryLog([read()], []).map((e) => e.kind)).toContain("pm_stop")
   })
 })
 

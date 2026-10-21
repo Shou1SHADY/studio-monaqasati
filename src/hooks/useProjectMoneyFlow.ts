@@ -60,6 +60,7 @@ export function useProjectMoneyFlow(projectId: string | undefined | null) {
   useEffect(() => {
     if (!firestore || !projectRfqs) return
     const rfqIds = projectRfqs.map((r: any) => r.id)
+    const buyerOrgId = (projectRfqs[0] as { organizationId?: string } | undefined)?.organizationId
     if (rfqIds.length === 0) {
       setCommitted(0)
       setReceived(0)
@@ -80,7 +81,7 @@ export function useProjectMoneyFlow(projectId: string | undefined | null) {
       let committedSum = 0
       let receivedSum = 0
       for (const c of chunks) {
-        const snap = await getDocs(query(collection(firestore, "offers"), where("rfqId", "in", c), where("status", "==", "مقبول")))
+        const snap = await getDocs(query(collection(firestore, "offers"), where("rfqId", "in", c), where("contractorOrgId", "==", buyerOrgId || ""), where("status", "==", "مقبول")))
         snap.forEach((o) => {
           const data = o.data() as { rfqId?: string; price?: string }
           const price = parseFloat(data.price || "0") || 0

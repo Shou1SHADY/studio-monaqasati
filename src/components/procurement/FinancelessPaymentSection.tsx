@@ -161,6 +161,7 @@ export function FinancelessPaymentSection({ po, actor, orgId, Section, advanceAs
     ) : null
   return (
     <Section title={t("pay.title")}>
+      <p className="text-[11px] text-muted-foreground">{t("pay.sub")}</p>
       <div className="flex flex-wrap items-center gap-2">
         {PAYMENT_STATES.map((s) => (
           <StatusPill key={s} tone={paymentStateOf(po) === s ? TONE[s] : "mute"} className={paymentStateOf(po) === s ? "" : "opacity-40"}>

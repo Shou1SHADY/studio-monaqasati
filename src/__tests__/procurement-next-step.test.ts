@@ -18,7 +18,7 @@ describe("the order on its way", () => {
     // …and the lateness clock agrees on every screen that is handed the notices: the supplier is not late while the notice waits for our count.
     expect(daysLate(po(), NOW, [n])).toBe(0)
     expect(honestDate(po(), NOW, [n])).toMatchObject({ kind: "promised", daysLate: 0 })
-    expect(inSegment(po(), "late", NOW, [n])).toBe(false)
+    expect(inSegment(po(), "late", { notices: [n], financeOn: false, acceptanceDays: 1, now: NOW })).toBe(false)
   })
   it("a notice with us asks to forward it; one whose day is ahead is on its way", () => {
     expect(deliveryStep(po(), [notice()], NOW)?.kind).toBe("notice_to_forward")

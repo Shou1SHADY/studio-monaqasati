@@ -43,10 +43,10 @@ const req = (over: Partial<TeamRequestDoc> = {}): TeamRequestDoc => ({
 const order = (over: Partial<PurchaseOrder> = {}): PurchaseOrder =>
   ({ id: "po1", organizationId: "org", docNumber: "PO-2026/021", status: "accepted", rfqId: "r1", lines: [{ id: "l1", name: "بلك", unit: "حبة", quantity: 2000, unitPrice: 4, accepted: 0, rejected: 0, held: 0, cancelled: 0 }], ...over }) as PurchaseOrder
 
-describe("the number reads «ط.م-2026/014» in Arabic, MAT-2026/014 stored", () => {
+describe("the number reads «ط.م-2026/014» in Arabic and MR-2026/014 in English (Procurement 2.0, REQ-04), MAT-2026/014 stored", () => {
   it("display", () => {
     expect(displayNeedRef("MAT-2026/014", "ar")).toBe("ط.م-2026/014")
-    expect(displayNeedRef("MAT-2026/014", "en")).toBe("MAT-2026/014")
+    expect(displayNeedRef("MAT-2026/014", "en")).toBe("MR-2026/014")
     // The project's own number still reads as before.
     expect(displayNeedRef("MR 03", "ar")).toBe("ط.م 03")
   })

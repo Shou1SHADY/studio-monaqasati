@@ -4,7 +4,8 @@
 // numbered «MAT-2026/014» (shown «ط.م-2026/014») and reaches «طلبات الشراء الواردة» with no
 // technical approval, with «انشره» and «جهّزه» like any request (PUR-01).
 //
-// The document is written ONLY by the server (/api/procurement/team-requests): created, withdrawn
+// Procurement 2.0: a new request lives in `procIncoming` (`./incoming-state`); this collection is the LEGACY one, read by the
+// server only to move what it holds across (`migrateLegacyTeam`). The document is written ONLY by the server (/api/procurement/team-requests): created, withdrawn
 // by its requester before it is in an RFQ, declined by Procurement with a reason. Its progress —
 // in offers · in an order · on the way · received — is never written back: it is READ from the
 // RFQs and orders that name it (`needSources` / the RFQ's award), so no rule lets a client touch
@@ -40,7 +41,8 @@ export interface TeamRequestDoc {
   requestedById: string
   requestedByName: string
   createdAt: string
-  status: "open" | "withdrawn" | "declined"
+  /** `migrated`: moved into `procIncoming` (Procurement 2.0) and never read again. */
+  status: "open" | "withdrawn" | "declined" | "migrated"
   withdrawnAt?: string | null
   declinedAt?: string | null
   declinedByName?: string | null

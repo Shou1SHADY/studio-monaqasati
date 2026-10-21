@@ -99,7 +99,7 @@ describe("free journey — quote.new", () => {
 
 // ---- The full portal, the AI assistant and the mobile app --------------------------------------------------------------
 
-const COMPANY = { uid: "su", name: "Sami", orgId: "sup", company: "Al Noor", approved: true }
+const COMPANY = { uid: "su", name: "Sami", orgId: "sup", company: "Al Noor", approved: true, hasVat: true, field: { specs: ["طوب وبلوك"], cities: ["الرياض"], subIds: [] as string[] } }
 
 describe("/api/supplier/offers — createSupplierOffer", () => {
   it("writes the quote in HIS company's name, born under review, with the RFQ's own parties", async () => {
@@ -109,7 +109,11 @@ describe("/api/supplier/offers — createSupplierOffer", () => {
     const { id } = await createSupplierOffer(db as never, COMPANY, "r1", body, { now: NOW })
     const saved = db.get(`offers/${id}`) as Doc
     expect(saved).toMatchObject({ supplierId: "su", organizationId: "sup", status: "قيد المراجعة", contractorOrgId: "con", contractorId: "con", rfqTitle: "Blocks", projectId: "p1", price: "400" })
-    for (const k of BUYER_OFFER_KEYS) expect(saved).not.toHaveProperty(k)
+    // Nothing the body claimed for the buying side survives; `versions` and `rev` are the server's own — the quote is born as V1.
+    for (const k of BUYER_OFFER_KEYS.filter((k) => k !== "versions" && k !== "rev")) expect(saved).not.toHaveProperty(k)
+    expect(saved.rev).toBe(1)
+    expect(saved.versions).toHaveLength(1)
+    expect(saved.versions).toEqual([expect.objectContaining({ n: 1, total: 400, by: "supplier" })])
     expect(db.get("rfqs/r1")?.offersCount).toBe(1)
   })
   it("refuses an unapproved company, a closed or missing request, and a full month", async () => {

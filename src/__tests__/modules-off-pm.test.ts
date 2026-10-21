@@ -4,7 +4,11 @@
  * HR's workplace types. Everything defaults to on.
  */
 
-import { ALL_NEED_MODULES, mfgNeed, needsForModules, projectNeed, stockNeeds, type Need, type ProjectRequestDoc } from "@/lib/procurement/needs"
+import * as needsModule from "@/lib/procurement/needs"
+import { stockNeeds } from "@/lib/procurement/needs"
+import { fromMfgRequest, fromPmRequest } from "@/lib/procurement/incoming-ingest"
+import { incomingNeeds, toLinkWorld } from "@/lib/procurement/incoming-need"
+import { replyClockOf } from "@/lib/procurement/incoming-state"
 import { mergeHint, type NeedRow } from "@/lib/procurement/need-desk"
 import { todayTasks, todayWaits, type ProcWorld, type TodayActor, type PmBoundaryFact } from "@/lib/procurement/today"
 import { DEFAULT_POLICIES, type PurchaseOrder } from "@/lib/procurement/types"
@@ -14,35 +18,27 @@ import type { PurchaseRequestRecord } from "@/lib/manufacturing-engine"
 import type { OptionalModule } from "@/lib/company-modules"
 
 const req = (over: Partial<PurchaseRequestRecord> = {}): PurchaseRequestRecord => ({ id: "r1", itemName: "Epoxy", unit: "can", quantity: 4, needBy: "2026-10-01", note: null, by: "Workshop", at: "2026-09-20T08:00:00.000Z", state: "sent", ...over })
-const pr = (over: Partial<ProjectRequestDoc> = {}): ProjectRequestDoc => ({ id: "pr1", title: "Level 2", items: [{ name: "Rebar", quantity: "3", unit: "t" }], status: "approved", ...over })
+const pr = { id: "pr1", pm: true, title: "Level 2", status: "approved", needBy: "2026-11-01", requestedByUserId: "u1", requestedByUserName: "Ali", lines: [{ itemId: null, code: null, key: "k", name: "Rebar", unit: "t", qty: 3 }] } as unknown as Parameters<typeof fromPmRequest>[2]
 
-const workshopNeed = mfgNeed({ id: "wo1", ref: "WO-2026/004", context: "Marble" }, req())
-const projectOnly = projectNeed({ id: "p1", name: "Villas" }, pr(), "PR-1")
-const routed = projectNeed({ id: "p1", name: "Villas" }, pr({ id: "pr2", mfgRequestId: "m1" }), "PR-2")
+// A company that closes Projects or Manufacturing AFTER its requests exist keeps them: they continue by their own state (NFR-08, B-13).
+const clock = replyClockOf(new Date("2026-09-29T09:00:00Z"), { inventoryReplyDays: 1, workshopReplyDays: 1 })
+const stored = [fromMfgRequest("org", { id: "wo1", ref: "WO-2026/004", context: "Marble" }, req(), { number: "MAT-2026/001", seq: 1 }), fromPmRequest("org", { id: "p1", name: "Villas" }, pr)]
 const stock = stockNeeds([{ id: "i1", warehouseId: "w1", warehouseName: "Main", name: "Cement", unit: "bag", quantity: 2, minStockLevel: 10 }], { rfqs: [], orders: [] })
-const all: Need[] = [workshopNeed, projectOnly, routed, ...stock]
 
-describe("the needs desk with modules off", () => {
-  it("keeps everything while both are on", () => {
-    expect(needsForModules(all).map((n) => n.key)).toEqual(all.map((n) => n.key))
-    expect(needsForModules(all, ALL_NEED_MODULES)).toBe(all)
+describe("the needs desk with modules off (NFR-08: a closed connector hides no open request)", () => {
+  it("the read-time module filter is gone", () => {
+    expect((needsModule as Record<string, unknown>).needsForModules).toBeUndefined()
+    expect((needsModule as Record<string, unknown>).ALL_NEED_MODULES).toBeUndefined()
   })
 
-  it("drops the project kind (and its requests) when Projects is off", () => {
-    const kept = needsForModules(all, { projects: false, workshop: true })
-    expect(kept.map((n) => n.kind).sort()).toEqual(["mfg", "stock"])
+  it("a project's request and a workshop's shortfall read as needs whatever the package says — the desk is not told the switches", () => {
+    const needs = incomingNeeds(stored, toLinkWorld([], []), clock)
+    expect(needs.map((n) => n.kind).sort()).toEqual(["mfg", "project"])
+    expect(needs.every((n) => n.state === "action")).toBe(true)
   })
 
-  it("drops the workshop kind when Manufacturing is off, and takes a request waiting on the workshop back to Purchasing", () => {
-    expect(routed).toMatchObject({ state: "waiting", waitingOn: "workshop", mfgRequestId: "m1" })
-    const kept = needsForModules(all, { projects: true, workshop: false })
-    expect(kept.some((n) => n.kind === "mfg")).toBe(false)
-    expect(kept.find((n) => n.key === routed.key)).toMatchObject({ state: "action", waitingOn: null, mfgRequestId: null })
-    expect(kept.find((n) => n.key === projectOnly.key)?.state).toBe("action")
-  })
-
-  it("leaves only stock gaps when both are off", () => {
-    expect(needsForModules(all, { projects: false, workshop: false }).map((n) => n.kind)).toEqual(["stock"])
+  it("the stock gap stays computed beside them", () => {
+    expect(stock.map((n) => n.kind)).toEqual(["stock"])
   })
 })
 

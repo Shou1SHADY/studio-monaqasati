@@ -21,6 +21,8 @@ import { awardLinkPatch, rfqProjectRequests, type AwardedOrder, type AwardedRfq,
 import { rfqLogEntry, type RfqLogEntry } from "./rfq-detail"
 import { PRICE_HISTORY, historyRowsForApproval, materialKey } from "./prices"
 import { pricedProducts, quotedRatesReconcile } from "./offer-pricing"
+import { vatRateOf } from "./offer-calc"
+import { orderSiteKey } from "./po-state"
 import {
   acceptedValue,
   applyReceiptToLines,
@@ -44,6 +46,7 @@ import {
   releaseHeld as releaseHeldLines,
   requiredApprover,
   round2,
+  supplierKey,
   type BlockContext,
 } from "./po"
 import { orderTermsOf } from "./offer-terms"
@@ -59,6 +62,7 @@ import {
   type PoLogEntry,
   type PoRating,
   type PoSendChannel,
+  type PoSite,
   type ProcActor,
   type ProcurementPolicies,
   type PurchaseOrder,
@@ -253,6 +257,9 @@ export interface AwardOfferLike {
   awardedTotal?: number | null
   poId?: string | null
   poNumber?: string | null
+  /** A supplier who is not VAT-registered quotes without VAT: his order carries none (R-18). */
+  vatRegistered?: boolean | null
+  vatRate?: number | string | null
   /** The offer's commercial terms (offer-terms.ts) — carried onto the order. */
   advancePercent?: number | string | null
   creditDays?: number | string | null
@@ -358,7 +365,9 @@ export function draftPurchaseOrder(actor: ProcActor, input: CreateFromAwardInput
     ...frozenTermsOf(offer, rfq),
     lines,
     totalExVat,
-    vatRate: 0.15,
+    vatRate: vatRateOf(offer),
+    ...(vatRateOf(offer) === 0 ? { noVat: true } : {}),
+    ver: 1,
     paymentTerms: offer.paymentTerms ?? null,
     ...orderDeliveryFields(offer, rfq),
     leadTimeDays: offerLeadTimeDays(offer),
@@ -483,8 +492,10 @@ export async function createPurchaseOrderFromAward(
 export interface AwardGroupInput {
   offer: AwardOfferLike
   /** The picked lines with the unit price the order carries: the quoted rate,
-   * or the breakdown's in total pricing. Empty on an RFQ without products. */
-  lines: Array<{ rfqProductIndex: number; unitPrice: number | null }>
+   * or the breakdown's in total pricing. Empty on an RFQ without products. A piece line names its pack: the order then counts pieces. */
+  lines: Array<{ rfqProductIndex: number; unitPrice: number | null; pack?: { len: number; name: { ar: string; en: string }; base: string } | null }>
+  /** The delivery site this order is for — one order per supplier × site (G-05). */
+  site?: PoSite | null
   total: number
   /** «مطلوب التسليم قبل», `YYYY-MM-DD`. */
   requestedDeliveryDate: string | null
@@ -527,11 +538,14 @@ export function draftSplitOrder(actor: ProcActor, input: AwardRfqInput, group: A
   const lines: PoLine[] = products.length
     ? group.lines.map((l) => {
         const p = products[l.rfqProductIndex] || {}
+        const need = Math.max(0, num(p.quantity))
+        const baseUnit = (p.unitOfMeasure || p.unit || "").trim()
+        const pack = l.pack && l.pack.len > 0 ? l.pack : null
         return {
           id: `l${l.rfqProductIndex + 1}`,
           name: (p.name || "").trim(),
-          unit: (p.unitOfMeasure || p.unit || "").trim(),
-          quantity: Math.max(0, num(p.quantity)),
+          unit: pack ? pack.name.ar : baseUnit,
+          quantity: pack ? Math.ceil(need / pack.len - 1e-9) : need,
           unitPrice: l.unitPrice == null ? null : round2(l.unitPrice),
           accepted: 0,
           rejected: 0,
@@ -539,6 +553,7 @@ export function draftSplitOrder(actor: ProcActor, input: AwardRfqInput, group: A
           cancelled: 0,
           boqItemId: p.boqItemId ?? null,
           rfqProductIndex: l.rfqProductIndex,
+          ...(pack ? { pk: pack.len, need, base: pack.base || baseUnit, packName: pack.name } : {}),
         }
       })
     : buildPoLines(rfq, group.offer)
@@ -560,7 +575,10 @@ export function draftSplitOrder(actor: ProcActor, input: AwardRfqInput, group: A
     ...supplierOfOffer(group.offer),
     lines,
     totalExVat,
-    vatRate: 0.15,
+    vatRate: vatRateOf(group.offer),
+    ...(vatRateOf(group.offer) === 0 ? { noVat: true } : {}),
+    ver: 1,
+    ...(group.site ? { site: group.site, siteKey: orderSiteKey(supplierKey({ ...supplierOfOffer(group.offer) }), group.site.id) } : {}),
     paymentTerms: group.offer.paymentTerms ?? null,
     ...orderDeliveryFields(group.offer, rfq),
     leadTimeDays: offerLeadTimeDays(group.offer),

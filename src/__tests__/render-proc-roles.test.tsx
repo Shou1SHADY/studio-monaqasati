@@ -36,6 +36,9 @@ import { approvePurchaseOrder, createPurchaseOrderFromAward, recordSupplierAccep
 import { pmCeiling, type PmContext } from "@/lib/pm/access"
 import { approveMaterialRequest, createMaterialRequest } from "@/lib/pm/supply-writes"
 import { todayDay } from "@/lib/pm/format"
+import { fromPmRequest } from "@/lib/procurement/incoming-ingest"
+import { incomingDocId } from "@/lib/procurement/incoming-state"
+import type { ProjectRequestDoc } from "@/lib/procurement/needs"
 import TodayPage from "@/app/[locale]/(contractor)/contractor/rfqs/today/page"
 import RequestsPage from "@/app/[locale]/(contractor)/contractor/rfqs/requests/page"
 import RfqsPage from "@/app/[locale]/(contractor)/contractor/rfqs/page"
@@ -189,6 +192,12 @@ async function buildWorld() {
   const pmCtx = (r: "owner"): PmContext => ({ ceiling: pmCeiling({ owner: r === "owner", permissions: [] }), seat: null, archived: false })
   await attempt("material request", () => createMaterialRequest(db, pmCtx("owner"), "P1", { uid: ORG, name: NAME.owner }, { title: "حديد للأعمدة", needBy: d(6), notes: null, lines: [{ itemId: "b1", name: "حديد تسليح 16 مم", unit: "طن", qty: 25 }] }))
   await attempt("approve request", () => approveMaterialRequest(db, pmCtx("owner"), "P1", { uid: ORG, name: NAME.owner }, "01"))
+  // Procurement 2.0: the desk reads the STORED request — what the sync brings in once the project manager has approved.
+  const approved = readDoc<Record<string, unknown>>("projects/P1/purchaseRequests/01")
+  if (approved) {
+    const stored = fromPmRequest(ORG, { id: "P1", name: "برج الواحة" }, { ...approved, id: "01" } as unknown as ProjectRequestDoc & Record<string, unknown>)
+    seed(`procIncoming/${incomingDocId(ORG, stored.mrKey)}`, stored as unknown as Record<string, unknown>)
+  }
   return { poA, poB }
 }
 
@@ -306,14 +315,14 @@ const SPECS: Record<string, ScreenSpec> = {
   rfqDetails: { titles: ["تفاصيل الطلب", "المنتجات المطلوبة"], acts: { "ألغِ الطلب": MB, "سجّل عرضاً وصل خارج المنصة": MB, "تعديل الموعد أو المدعوين": [] } },
   rfqOther: { titles: ["رابط الزوار — لموردين خارج المنصة", "العروض المقدمة"], acts: { "مشاركة كرابط للزوار": M } },
   orders: {
-    titles: ["أوامر الشراء", "بانتظار اعتماد أو قرار", "عند الموردين", "متأخرة", "مستلمة ومقفلة", "كل الأوامر", "الأمر والمورد", "البنود", "موعد المورد", "القيمة قبل الضريبة", "الحالة", "مؤسسة الإسمنت"],
+    titles: ["أوامر الشراء", "يحتاج تصرّفنا", "ننتظر غيرنا", "متأخرة", "مكتملة", "الكل", "الأمر", "المورد", "الموقع", "القيمة", "الخطوة التالية", "من ننتظر", "مؤسسة الإسمنت"],
     acts: { "أمر مباشر لخدمة أو مقطوعية": B },
   },
   orderA: {
-    titles: ["بانتظار الاعتماد", "الخطوة التالية", "وقائع الترسية", "المستندات", "مسار المستند — ومن يملك كل خطوة", "السجل", "مصنع الحديد الوطني"],
+    titles: ["بانتظار الاعتماد", "الخطوة التالية", "وقائع الترسية", "المستندات", "المستند ومن يملك كل خطوة", "السجل", "مصنع الحديد الوطني"],
     priced: ["مسار المال"],
     // Not approved yet: no «أمر الشراء PDF» for anyone (prototype dPo `apprD!=null`).
-    acts: { "اعتمد الأمر": OM, "أعِده لمُعِدّه": OM, "ألغِ الأمر": MB, "اطبع أمر الشراء": [] },
+    acts: { "اعتمده": OM, "أعِده لمُعِدّه": OM, "ألغِ الأمر": MB, "اطبع أمر الشراء": [] },
   },
   // orderB was prepared by a buyer: the owner only reads it (poActs), Finance's acts included.
   orderB: {

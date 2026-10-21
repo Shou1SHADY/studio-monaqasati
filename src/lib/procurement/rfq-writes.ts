@@ -123,7 +123,7 @@ export async function cancelRfq(
   })
   // Every quote on it closes with no award, with the reason (OFR-07) — told after the write, best-effort.
   try {
-    const snap = await getDocs(query(collection(firestore, "offers"), where("rfqId", "==", rfqId)))
+    const snap = await getDocs(query(collection(firestore, "offers"), where("rfqId", "==", rfqId), where("contractorOrgId", "==", cancelled.organizationId || "")))
     const offers = snap.docs.map((d) => ({ ...(d.data() as Omit<OutcomeOffer, "id">), id: d.id })).filter(awaitsOutcome)
     await emitRfqOutcomes(firestore, actor, offers, {
       organizationId: cancelled.organizationId || cancelled.contractorId || "",

@@ -2,13 +2,16 @@
 // with the city and district the supplier reads, an address, and the receiver proposed for
 // every delivery there. In every package: with Project Management a project's site joins
 // the list by itself (its city filled once here); without it, a site is just a place, not
-// a project with certificates and budgets. Kept in `procurementSettings/{orgId}.deliverySites`
-// (owner or approver — the settings document's own rule). Pure.
+// a project with certificates and budgets. Kept in `procurementSettings/{orgId}.deliverySites`,
+// written by `/api/procurement/delivery-sites` (the owner or whoever approves orders). Pure.
 
 import { CITIES_EN, SAUDI_CITIES } from "../constants"
 import { foldSearchText } from "../search-text"
+import { readDeliveryOptions } from "./delivery-options"
+import { normaliseMapUrl } from "./delivery-site-input"
 
-export type DeliverySiteKind = "site" | "warehouse" | "project"
+/** `workshop`: the workshop's own warehouse, a place only a company with Manufacturing in its package has. */
+export type DeliverySiteKind = "site" | "warehouse" | "project" | "workshop"
 
 export interface DeliverySite {
   id: string
@@ -21,6 +24,8 @@ export interface DeliverySite {
   receiverId: string | null
   projectId?: string | null
   warehouseId?: string | null
+  /** An https map link the supplier opens (SET-02); absent when none was given. */
+  mapUrl?: string | null
   /** Taken off the pickers; documents that name it keep reading it. */
   retired?: boolean
 }
@@ -64,7 +69,7 @@ export function storedSites(raw: unknown): DeliverySite[] {
     .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
     .map((x) => ({
       id: text(x.id),
-      kind: (["site", "warehouse", "project"].includes(text(x.kind)) ? text(x.kind) : "site") as DeliverySiteKind,
+      kind: (["site", "warehouse", "project", "workshop"].includes(text(x.kind)) ? text(x.kind) : "site") as DeliverySiteKind,
       name: text(x.name),
       city: text(x.city),
       district: text(x.district),
@@ -73,6 +78,7 @@ export function storedSites(raw: unknown): DeliverySite[] {
       projectId: text(x.projectId) || null,
       warehouseId: text(x.warehouseId) || null,
       // Never `retired: undefined`: the list is written back whole, and Firestore refuses undefined.
+      ...(normaliseMapUrl(x.mapUrl) ? { mapUrl: normaliseMapUrl(x.mapUrl) } : {}),
       ...(x.retired === true ? { retired: true } : {}),
     }))
     .filter((s) => s.id && s.name)
@@ -80,12 +86,14 @@ export function storedSites(raw: unknown): DeliverySite[] {
 
 /** Every place a delivery can go: the stored ones, then the company's warehouses and (with
  * Project Management) its projects not stored yet — those carry the city and district read from the
- * project's own location (`placeFromText`), for the buyer to confirm. */
+ * project's own location (`placeFromText`), for the buyer to confirm. The workshop's warehouse is a
+ * place only with Manufacturing in the package: `mfgOn: false` leaves it out (absent = not asked). */
 export function deliverySites(input: {
   stored: DeliverySite[]
   warehouses: Array<{ id: string; name?: string; location?: string | null; projectId?: string | null }>
   projects: Array<{ id: string; name?: string; location?: string | null; status?: string | null }>
   pmOn: boolean
+  mfgOn?: boolean
 }): DeliverySite[] {
   const out = [...input.stored]
   const has = (id: string) => out.some((s) => s.id === id)
@@ -102,7 +110,29 @@ export function deliverySites(input: {
   }
   return out
     .filter((s) => input.pmOn || s.kind !== "project")
+    .filter((s) => input.mfgOn !== false || s.kind !== "workshop")
     .sort((a, b) => Number(!!a.retired) - Number(!!b.retired) || a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name, "ar"))
+}
+
+/** A place typed in by hand (a work site, a warehouse or the workshop's), not one read from a project or a warehouse record:
+ * its name is the buyer's to write and the place can be retired. */
+export const manualSite = (s: Pick<DeliverySite, "kind" | "warehouseId" | "projectId">): boolean =>
+  s.kind === "site" || s.kind === "workshop" || (s.kind === "warehouse" && !s.warehouseId)
+
+/**
+ * The editor's location chips (ED-03): a chip per place a delivery can go, the chosen one first, a place already used by
+ * ANOTHER group of the same request disabled (a request names a place once). A retired place is shown only while it is the
+ * chosen one.
+ */
+export function siteChips(
+  sites: DeliverySite[],
+  opts: { usedByOtherGroups?: Iterable<string>; selectedId?: string | null } = {},
+): Array<{ site: DeliverySite; selected: boolean; disabled: boolean }> {
+  const used = new Set(opts.usedByOtherGroups || [])
+  const chips = sites
+    .filter((s) => !s.retired || s.id === opts.selectedId)
+    .map((site) => ({ site, selected: site.id === opts.selectedId, disabled: used.has(site.id) && site.id !== opts.selectedId }))
+  return chips.sort((a, b) => Number(b.selected) - Number(a.selected))
 }
 
 /** «الرياض — حي الياسمين» — as the supplier reads the place. */
@@ -117,11 +147,13 @@ export const siteLine = (s: Pick<DeliverySite, "city" | "district">, cityText: (
  */
 export function orderDeliveryFields(
   offer: { deliveryLocation?: string | null; deliveryDistrict?: string | null },
-  rfq: { city?: string | null; district?: string | null }
-): { deliveryLocation: string | null; deliveryDistrict: string | null } {
+  rfq: { city?: string | null; district?: string | null; deliveryOptions?: unknown }
+): { deliveryLocation: string | null; deliveryDistrict: string | null; deliveryOptions?: ReturnType<typeof readDeliveryOptions> } {
   const city = text(offer.deliveryLocation) || text(rfq.city)
   const district = text(offer.deliveryDistrict) || (city && city === text(rfq.city) ? text(rfq.district) : "")
-  return { deliveryLocation: city || null, deliveryDistrict: district || null }
+  // The buyer's delivery options (ED-04) travel with the order; absent when the RFQ set none.
+  const options = readDeliveryOptions(rfq.deliveryOptions)
+  return { deliveryLocation: city || null, deliveryDistrict: district || null, ...(Object.keys(options).length ? { deliveryOptions: options } : {}) }
 }
 
 /** A work site linked to a project (with Project Management in the package); null for any other. */

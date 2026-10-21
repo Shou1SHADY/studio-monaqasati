@@ -32,7 +32,7 @@ import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Tras
 import { Textarea } from "@/components/ui/textarea"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, doc, getDoc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore"
-import { callAct } from "@/lib/supplier-free/act-client"
+import { ActRefused, callAct } from "@/lib/supplier-free/act-client"
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { useRouter } from "@/i18n/routing"
@@ -299,42 +299,43 @@ function LegacySupplierOffersPage() {
   const revisedTotal = revision?.ok ? revision.total : null
 
   const handleUpdatePrice = async () => {
-    if (!firestore || !updatePriceOffer || !revision?.ok) return;
-    const newPrice = revision.fields.price
-    setIsUpdatingPrice(true);
+    if (!updatePriceOffer || !revision?.ok) return
+    setIsUpdatingPrice(true)
     try {
-      await updateDoc(doc(firestore, "offers", updatePriceOffer.id), {
-        ...revision.fields,
-        status: "قيد المراجعة",
-        updatedAt: new Date().toISOString()
-      });
-
-      // Notify the contractor that the supplier submitted a new lower price
-      if (updatePriceOffer.contractorId) {
-        await addDoc(collection(firestore, "users", updatePriceOffer.contractorId, "notifications"), {
-          userId: updatePriceOffer.contractorId,
-          organizationId: updatePriceOffer.contractorOrgId || updatePriceOffer.contractorId,
-          type: "price_updated",
-          i18n: { title: "pn_price_updated_title", message: "pn_price_updated", params: { rfq: updatePriceOffer.rfqTitle || "", price: String(newPrice) } },
-          title: "💰 قام المورد بتحديث سعر عرضه",
-          message: `تم تحديث السعر لطلب عروض الأسعار: ${updatePriceOffer.rfqTitle || ""}. السعر الجديد: ${newPrice} ر.س`,
-          offerId: updatePriceOffer.id,
-          rfqId: updatePriceOffer.rfqId,
-          rfqTitle: updatePriceOffer.rfqTitle || "",
-          createdAt: new Date().toISOString(),
-          read: false
-        });
+      // The server makes it the offer's next version (the first stays), re-checks that a better price is the same or a
+      // lower one, answers the buyer's request and tells him — the same act the free journey uses (G-15).
+      const lines = (updatePriceOffer.lines || []) as Array<{ rfqProductIndex: number; packLen?: number; warrantyMonths?: number | null }>
+      const prices: Record<string, string> = {}
+      const skip: Record<string, boolean> = {}
+      const packs: Record<string, string> = {}
+      const warranty: Record<string, string> = {}
+      for (const p of updateProducts || []) {
+        const id = `i${p.rfqProductIndex + 1}`
+        prices[id] = newRates[p.rfqProductIndex] ?? ""
+        skip[id] = !!newSkips[p.rfqProductIndex]
       }
-
-      toast({ title: t("price_updated"), description: t("price_updated_desc") });
-      setUpdatePriceOffer(null);
-      setNewPrice("");
-      setUpdateProducts(null);
-      setNewRates({});
-    } catch {
-      toast({ title: t("error_title"), description: t("price_update_failed"), variant: "destructive" });
+      for (const l of lines) {
+        const id = `i${Number(l.rfqProductIndex) + 1}`
+        if (l.packLen) packs[id] = String(l.packLen)
+        if (l.warrantyMonths != null) warranty[id] = String(l.warrantyMonths)
+      }
+      const batches = (updatePriceOffer.deliveryBatches || []) as Array<{ deliveryDate?: string }>
+      const valid = String(updatePriceOffer.validUntil || "").slice(0, 10) || new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10)
+      await callAct({
+        action: "quote.version",
+        offerId: updatePriceOffer.id,
+        mode: "reduce",
+        values: { prices, skip, total: updateProducts ? "" : String(newPrice), arrive: String(batches[0]?.deliveryDate || "").slice(0, 10), valid, note: updatePriceOffer.supplierNote || "", packs, warranty, whole: updatePriceOffer.whole === true },
+      })
+      toast({ title: t("price_updated"), description: t("price_updated_desc") })
+      setUpdatePriceOffer(null)
+      setNewPrice("")
+      setUpdateProducts(null)
+      setNewRates({})
+    } catch (err) {
+      toast({ title: t("error_title"), description: err instanceof ActRefused && err.code === "price_higher" ? t("price_update_higher") : t("price_update_failed"), variant: "destructive" })
     } finally {
-      setIsUpdatingPrice(false);
+      setIsUpdatingPrice(false)
     }
   }
 

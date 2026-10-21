@@ -229,10 +229,10 @@ describe("rfq_outcome — told to each supplier", () => {
   beforeEach(() => {
     resetFakeDb()
     seed("rfqs/r1", { organizationId: ORG, contractorId: "buyer", createdByUserId: "buyer", title: "بلوك", rfqNumber: "RFQ-2026/031", status: "New", products: [{ name: "بلوك", quantity: 100, unitOfMeasure: "حبة" }], log: [] })
-    seed("offers/o1", { rfqId: "r1", supplierId: "s1", organizationId: "s1", status: "قيد المراجعة", price: "300" })
-    seed("offers/o2", { rfqId: "r1", supplierId: "s2", organizationId: "s2", status: "قيد المراجعة", price: "320" })
-    seed("offers/o3", { rfqId: "r1", supplierId: "guest", isGuestOffer: true, status: "قيد المراجعة", price: "330" })
-    seed("offers/o4", { rfqId: "r1", supplierId: "s4", organizationId: "s4", status: "مسحوب", withdrawnAt: "2026-10-10T00:00:00.000Z", price: "250" })
+    seed("offers/o1", { rfqId: "r1", contractorOrgId: ORG, supplierId: "s1", organizationId: "s1", status: "قيد المراجعة", price: "300" })
+    seed("offers/o2", { rfqId: "r1", contractorOrgId: ORG, supplierId: "s2", organizationId: "s2", status: "قيد المراجعة", price: "320" })
+    seed("offers/o3", { rfqId: "r1", contractorOrgId: ORG, supplierId: "guest", isGuestOffer: true, status: "قيد المراجعة", price: "330" })
+    seed("offers/o4", { rfqId: "r1", contractorOrgId: ORG, supplierId: "s4", organizationId: "s4", status: "مسحوب", withdrawnAt: "2026-10-10T00:00:00.000Z", price: "250" })
   })
 
   it("at the award: the others hear «awarded to another» with the reason, the contractor named first and the number bare; the winner hears with his order", async () => {

@@ -18,6 +18,7 @@ import type { MaterialPick } from "@/lib/materials/types"
 import { toAmount } from "./offer-pricing"
 import type { Need, NeedSource } from "./needs"
 import { projectSiteId, type DeliverySite } from "./delivery-sites"
+import { cleanDelivery, type DeliveryOptions } from "./delivery-options"
 
 /** The warranty a row can ask for, in months: 6 · 1 year · 2 · 3 · 5 years (CAT-05). */
 export const WARRANTY_MONTHS = [6, 12, 24, 36, 60] as const
@@ -73,6 +74,8 @@ export interface EditorGroup {
   requestRefs: string[]
   /** Read from the incoming request(s); never stored on the RFQ. */
   facts?: RequestFact[]
+  /** «التسليم» (ED-04): who unloads, the time of day, a note to reach the site — all optional. */
+  delivery?: DeliveryOptions
   lines: EditorLine[]
 }
 
@@ -383,14 +386,40 @@ export function rfqPlace(groups: EditorGroup[]): { city: string; district: strin
 
 /** The groups' own facts, kept on the RFQ so a draft or an edit reopens with its places and numbers. */
 export const groupsMeta = (groups: EditorGroup[]) =>
-  groups.filter((g) => g.lines.some(lineStarted)).map((g) => ({ key: g.key, siteId: g.siteId, projectId: g.projectId, label: g.label, city: g.city, district: g.district, needBy: g.needBy, requestRefs: g.requestRefs }))
+  groups
+    .filter((g) => g.lines.some(lineStarted))
+    .map((g) => ({
+      key: g.key,
+      siteId: g.siteId,
+      projectId: g.projectId,
+      label: g.label,
+      city: g.city,
+      district: g.district,
+      needBy: g.needBy,
+      requestRefs: g.requestRefs,
+      ...(cleanDelivery(g.delivery) ? { delivery: cleanDelivery(g.delivery) } : {}),
+    }))
+
+/**
+ * The delivery options of the groups that carry rows, by place (ED-04): `rfq.deliveryOptions[siteId]`, a group with no
+ * stored place keyed by its own key. Always an object — an edit that clears the options overwrites the old ones.
+ */
+export function deliveryOptionsOf(groups: EditorGroup[]): Record<string, NonNullable<ReturnType<typeof cleanDelivery>>> {
+  const out: Record<string, NonNullable<ReturnType<typeof cleanDelivery>>> = {}
+  for (const g of groups) {
+    if (!g.lines.some(lineStarted)) continue
+    const clean = cleanDelivery(g.delivery)
+    if (clean) out[g.siteId || g.key] = clean
+  }
+  return out
+}
 
 /** An RFQ back on the editor: its groups from `editorGroups`, its rows from the products (older ones by their words). */
 export function groupsFromRfq(rfq: Record<string, unknown>): EditorGroup[] {
   const products = Array.isArray(rfq.products) ? (rfq.products as Array<Record<string, unknown>>) : []
   const metas = Array.isArray(rfq.editorGroups) ? (rfq.editorGroups as Array<Partial<EditorGroup>>) : []
   const str = (v: unknown) => (typeof v === "string" ? v : "")
-  const groups: EditorGroup[] = metas.map((m) => newGroup({ ...m, key: str(m.key) || newKey("g"), requestRefs: Array.isArray(m.requestRefs) ? m.requestRefs : [], lines: [] }))
+  const groups: EditorGroup[] = metas.map((m) => newGroup({ ...m, key: str(m.key) || newKey("g"), requestRefs: Array.isArray(m.requestRefs) ? m.requestRefs : [], delivery: cleanDelivery(m.delivery) ?? undefined, lines: [] }))
   const groupFor = (p: Record<string, unknown>): EditorGroup => {
     const site = str(p.deliverySiteId)
     const project = str(p.projectId)

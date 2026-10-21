@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Link } from "@/i18n/routing"
 import { usePathname } from "@/i18n/routing"
 import { useSearchParams } from "next/navigation"
@@ -19,6 +19,7 @@ import { FolderTree,
   LogOut,
   ChevronDown,
   Inbox,
+  Layers,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -27,6 +28,8 @@ import { usePortalRegistry, useSupplierPlanName } from "@/hooks/usePortalRegistr
 import { usePortalFrame } from "@/components/layout/portal-frame-context"
 import { supplierCommunicationSection } from "@/lib/company-modules"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useProcurementNavBadgeFeed } from "@/hooks/useProcurementNavBadges"
+import { BnplSoonDialog } from "@/components/procurement/BnplSoonDialog"
 import type { PermissionId } from "@/lib/permissions"
 import {
   Sidebar,
@@ -65,6 +68,7 @@ const adminSections: NavSection[] = [
       { titleKey: "admin_crm", href: "/admin/crm", icon: Handshake },
       { titleKey: "admin_suppliers", href: "/admin/suppliers", icon: Users },
       { titleKey: "admin_contractors", href: "/admin/contractors", icon: Users },
+      { titleKey: "admin_pipeline", href: "/admin/pipeline", icon: Layers },
       { titleKey: "admin_rfqs", href: "/admin/rfqs", icon: Package },
       { titleKey: "admin_procurement", href: "/admin/procurement", icon: Handshake },
       { titleKey: "admin_materials", href: "/admin/materials", icon: FolderTree },
@@ -129,6 +133,7 @@ function NavItemRenderer({ item, pathname, search, t, can, badge }: { item: NavI
   const isParentActive = hrefIsActive(item.href, pathname, search) && !isChildActive
 
   const [expanded, setExpanded] = useState(isChildActive || isParentActive)
+  const [soonOpen, setSoonOpen] = useState(false)
   if (!itemIsVisible(item, can)) return null
 
   const handleToggle = (e: React.MouseEvent) => {
@@ -199,21 +204,36 @@ function NavItemRenderer({ item, pathname, search, t, can, badge }: { item: NavI
   // but renders as plain text — no Link, no hover, not focusable — so there is
   // nothing to click and nothing for a keyboard or screen reader to land on.
   if (item.comingSoon) {
+    const soonRow = (
+      <>
+        <item.icon className="h-4 w-4 shrink-0" />
+        <span className="text-sm font-medium truncate">{t(item.titleKey)}</span>
+        <span className="ms-auto shrink-0 rounded-full bg-sidebar-accent/60 px-1.5 py-0.5 text-[10px] font-semibold text-sidebar-foreground/60">
+          {t("coming_soon")}
+        </span>
+      </>
+    )
     return (
       <SidebarMenuItem>
         {/* px-2, not px-3: SidebarMenuButton's base padding is p-2, so a wider
             inset here left the dimmed row's icon 4px out of line with every
             other item in the list. */}
-        <div
-          aria-disabled="true"
-          className="flex items-center gap-3 h-10 px-2 rounded-md text-sidebar-foreground/40 cursor-not-allowed select-none"
-        >
-          <item.icon className="h-4 w-4 shrink-0" />
-          <span className="text-sm font-medium truncate">{t(item.titleKey)}</span>
-          <span className="ms-auto shrink-0 rounded-full bg-sidebar-accent/60 px-1.5 py-0.5 text-[10px] font-semibold text-sidebar-foreground/60">
-            {t("coming_soon")}
-          </span>
-        </div>
+        {item.soonModal === "bnpl" ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setSoonOpen(true)}
+              className="flex w-full items-center gap-3 h-10 px-2 rounded-md text-start text-sidebar-foreground/60 hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {soonRow}
+            </button>
+            <BnplSoonDialog open={soonOpen} onOpenChange={setSoonOpen} />
+          </>
+        ) : (
+          <div aria-disabled="true" className="flex items-center gap-3 h-10 px-2 rounded-md text-sidebar-foreground/40 cursor-not-allowed select-none">
+            {soonRow}
+          </div>
+        )}
       </SidebarMenuItem>
     )
   }
@@ -264,7 +284,9 @@ export function RoleSidebar() {
   // The supplier registry as the company's plan shapes it, and what the plan adds to the frame (its counts).
   const plan = useSupplierPlanName()
   const supplierComponents = usePortalRegistry("supplier")
-  const navBadges = usePortalFrame()?.navBadges
+  const frameBadges = usePortalFrame()?.navBadges
+  const procBadges = useProcurementNavBadgeFeed()
+  const navBadges = useMemo(() => ({ ...procBadges, ...frameBadges }), [procBadges, frameBadges])
   // The path decides the module, but the company's own copy of it (switched-off entries left out) is what renders.
   const ownCopy = (active: PortalComponentDef) => modules.find((m) => m.id === active.id) ?? visibleComponents(modules, can)[0] ?? active
 

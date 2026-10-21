@@ -13,6 +13,7 @@ import { useSupplierQuestions } from "@/hooks/useSupplierQuestions"
 import { Callout } from "@/components/module-ui/Callout"
 import { displayCategory } from "@/lib/constants"
 import { cn } from "@/lib/utils"
+import { lineCalc } from "@/lib/procurement/offer-calc"
 import { r2 } from "@/lib/supplier-free/deal-logic"
 import { riyadhDayOf } from "@/lib/supplier-free/format"
 import { sendDealMessage } from "@/lib/supplier-free/money-writes"
@@ -187,7 +188,7 @@ export function SecOffer({ f, d }: { f: Free; d: Deal }) {
       <div className="space-y-3 py-2">
         {o.reduce && (
           <Callout tone="warn">
-            <b>{t("reduceAsked", { v: fmt.money(o.reduce.target), x: fmt.date(o.reduce.at) })}</b>
+            <b>{o.reduce.target > 0 ? t("reduceAsked", { v: fmt.money(o.reduce.target), x: fmt.date(o.reduce.at) }) : t("reduceAskedBetter", { x: fmt.date(o.reduce.at) })}</b>
             {o.reduce.note && <span> «{o.reduce.note}»</span>}
             {o.reduce.reply && (
               <span className="mt-1 block">
@@ -220,6 +221,9 @@ export function SecOffer({ f, d }: { f: Free; d: Deal }) {
               <tbody className={stk.tbody}>
                 {d.items.map((i) => {
                   const p = v.prices[i.id]
+                  const calc = p != null ? lineCalc(i.qty, p, v.packs?.[i.id]) : null
+                  const packName = calc?.pack ? (i.packs || []).find((u) => u.len === calc.pack?.packLen)?.name || "" : ""
+                  const months = v.warranty?.[i.id]
                   return (
                     <tr key={i.id} className={stkRow}>
                       <td className={cn("px-3 py-2 text-sm font-bold", stk.head)}>
@@ -230,9 +234,15 @@ export function SecOffer({ f, d }: { f: Free; d: Deal }) {
                       </td>
                       <td className={cn(td, stk.cell)} data-l={t("thUnitPrice")}>
                         {p != null ? <span dir="ltr">{fmt.money(p)}</span> : <span className="text-muted-foreground">{t("notSupplied")}</span>}
+                        {calc?.pack && (
+                          <small className="block text-xs text-muted-foreground">
+                            {t("qPackLine", { pcs: fmt.n(calc.pack.pcs), name: packName, received: fmt.n(calc.pack.received), unit: i.unit })}
+                          </small>
+                        )}
+                        {months != null && <small className="block text-xs text-muted-foreground">{months === 0 ? t("qWarrantyNone") : t("qWarrantyOffered", { months })}</small>}
                       </td>
                       <td className={cn(td, stk.cell)} data-l={t("thTotal")}>
-                        <span dir="ltr">{p != null ? fmt.money(r2(p * i.qty)) : "—"}</span>
+                        <span dir="ltr">{calc ? fmt.money(r2(calc.totalH / 100)) : "—"}</span>
                       </td>
                     </tr>
                   )

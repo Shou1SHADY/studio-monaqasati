@@ -6,9 +6,12 @@
 // value when the sender may see it, the lines, and the one ask — and THEN
 // the dispatch is recorded with the sender's name and the channel. The
 // phone or e-mail typed here is kept on our supplier record for next time
-// (a guest's lives on his own offer).
+// (a guest's lives on his own offer). An off-platform supplier is sent the
+// ORDER LINK (he accepts, reports delivery and replies from it): the dispatch
+// is recorded by the server first, which answers with the link, and then the
+// message opens in the buyer's own WhatsApp or mail from his device.
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { useModules } from "@/hooks/useCompanyModules"
 import { useForm } from "react-hook-form"
@@ -26,11 +29,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { lineOutstanding, PO_SEND_CHANNELS } from "@/lib/procurement/po"
+import { lineUnitName } from "@/lib/procurement/po-state"
 import { SUPPLIER_RECORDS, supplierRecordId } from "@/lib/procurement/supplier-file"
 import type { PoSendChannel, PurchaseOrder } from "@/lib/procurement/types"
 import type { SendContact } from "@/lib/procurement/writes"
 import { buildSendMessage, isEmail, mailtoUrl, moneyTrail, whatsappUrl } from "./PoModel"
-import type { Submit } from "./PoActionDialogs"
 import { Money, useDateText } from "./PoBits"
 
 /** The site the buyer is using — UAT links stay on UAT. */
@@ -49,7 +52,8 @@ export function PoSendDialog({
   po: PurchaseOrder | null
   orgName: string
   seesPrices: boolean
-  onSubmit: Submit<{ channel: PoSendChannel; contact: SendContact }>
+  /** Records the dispatch (the server); `link` is the order link of an off-platform supplier once it exists. */
+  onSubmit: (value: { channel: PoSendChannel; contact: SendContact }) => Promise<{ ok: boolean; link?: string | null }>
 }) {
   const t = useTranslations("Portal.ProcOrders")
   const tProc = useTranslations("Portal.Procurement")
@@ -117,18 +121,25 @@ export function PoSendDialog({
 
   const channel = form.watch("channel")
   const note = form.watch("note")
-  const message = useMemo(() => {
-    if (!po) return ""
-    return buildSendMessage({
-      locale,
-      number: po.docNumber,
-      orgName,
-      commitment: seesPrices ? moneyTrail(po).commitment : null,
-      lines: po.lines.filter((l) => lineOutstanding(l) > 0).map((l) => ({ name: l.name, quantity: lineOutstanding(l), unit: l.unit })),
-      portalUrl: registered ? `${portalOrigin()}/supplier/orders?po=${po.id}` : null,
-      note,
-    })
-  }, [po, locale, orgName, seesPrices, registered, note])
+  const messageWith = useCallback(
+    (orderLinkUrl: string | null) => {
+      if (!po) return ""
+      return buildSendMessage({
+        locale,
+        number: po.docNumber,
+        orgName,
+        commitment: seesPrices ? moneyTrail(po).commitment : null,
+        lines: po.lines.filter((l) => lineOutstanding(l) > 0).map((l) => ({ name: l.name, quantity: lineOutstanding(l), unit: lineUnitName(l, locale) })),
+        portalUrl: registered ? `${portalOrigin()}/supplier/orders?po=${po.id}` : null,
+        orderLinkUrl,
+        note,
+      })
+    },
+    [po, locale, orgName, seesPrices, registered, note]
+  )
+  // The preview names the link as it will be made; the message that opens carries the real one.
+  const linkPlaceholder = t("send.link_placeholder")
+  const message = useMemo(() => messageWith(registered ? null : linkPlaceholder), [messageWith, registered, linkPlaceholder])
 
   const [copied, setCopied] = useState(false)
   const copy = async () => {
@@ -180,9 +191,18 @@ export function PoSendDialog({
             className="space-y-4"
             onSubmit={form.handleSubmit(async (v) => {
               const subject = t("send.subject", { number: po.docNumber })
-              if (v.channel === "whatsapp") window.open(whatsappUrl(v.phone || "", message), "_blank", "noopener,noreferrer")
-              if (v.channel === "email") window.open(mailtoUrl(v.email || "", subject, message), "_blank")
-              if (await onSubmit({ channel: v.channel, contact: { phone: v.phone || null, email: v.email || null } })) onOpenChange(false)
+              // Opened now, filled when the server has recorded the dispatch: the browser allows a window only on the press itself.
+              const win = v.channel === "portal" ? null : window.open("about:blank", "_blank")
+              const result = await onSubmit({ channel: v.channel, contact: { phone: v.phone || null, email: v.email || null } })
+              if (!result.ok) {
+                win?.close()
+                return
+              }
+              if (win) {
+                const text = messageWith(result.link ?? null)
+                win.location.href = v.channel === "whatsapp" ? whatsappUrl(v.phone || "", text) : mailtoUrl(v.email || "", subject, text)
+              }
+              onOpenChange(false)
             })}
           >
             <FormField

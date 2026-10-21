@@ -17,6 +17,10 @@ export interface DealItem {
   unit: string
   qty: number
   spec: string
+  /** The lengths the material is sold in (`قطعة 6 م`): priced per piece, compared in the unit asked for. */
+  packs?: { len: number; name: string }[]
+  /** The warranty the request asks for on this line, in months. */
+  warranty?: number
 }
 
 export interface DealFile {
@@ -42,12 +46,20 @@ export interface QuoteVersion {
   file?: string | null
   /** The VAT rate this version was quoted with (0.15 or 0); absent on a version stored before the rate was. */
   vat?: number
+  /** Item id → the sale unit it was priced by (its length in request units); absent = per request unit. */
+  packs?: Record<string, number>
+  /** Item id → the warranty offered in months (0 = none). */
+  warranty?: Record<string, number>
+  /** «للطلب كاملاً فقط». */
+  whole?: boolean
 }
 
 export interface DealOffer {
   status: OfferStatus
   v: QuoteVersion[]
   reduce?: { at: string; target: number; by: string; note: string; reply?: { at: string; kind: "lowered" | "final"; note?: string } }
+  /** The buyer asked him to confirm his price («اطلب تأكيد السعر»): answered with a new validity. */
+  reval?: { at: string; note: string }
   sample?: { at: string; what: string; place: string; by: string; sentAt?: string; receivedBy?: string; note?: string }
   out?: { at: string; why?: OutcomeWhy }
   wonAt?: string

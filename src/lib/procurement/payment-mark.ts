@@ -69,6 +69,21 @@ export function datedFromAdvance(advancePaidDay: string | null | undefined, lead
   return addDays(advancePaidDay, Number(leadDays))
 }
 
+/** With Finance in the package, a mark the buyer made before it came is a REFERENCE for Finance (PO-07): shown, named, never «paid», never closing the order. */
+export interface BuyerMarkReference {
+  kind: "payment" | "advance"
+  state: PaymentState | null
+  day: string
+  byName: string | null
+}
+
+export function buyerMarkReference(po: FinancelessFields): BuyerMarkReference | null {
+  const mark = po.paymentMark
+  if (mark) return { kind: "payment", state: mark.state, day: mark.day, byName: mark.byName || null }
+  if (po.advancePaidDay) return { kind: "advance", state: null, day: po.advancePaidDay, byName: null }
+  return null
+}
+
 /** «بانتظار دفعة مقدّمة» — orders whose supplier's clock waits for an advance not marked paid. */
 export const awaitsAdvance = (po: FinancelessPo & { advancePercent?: number | null }): boolean =>
   (po.status === "approved" || po.status === "sent" || po.status === "accepted") && Number(po.advancePercent) > 0 && !po.advancePaidDay

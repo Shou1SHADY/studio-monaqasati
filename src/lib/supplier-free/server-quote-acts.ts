@@ -9,15 +9,19 @@
 import { FieldValue, type DocumentData, type Firestore, type UpdateData } from "firebase-admin/firestore"
 import { z } from "zod"
 import { riyadhDay } from "@/lib/hr/format"
-import { revisePrice, pricedProducts } from "@/lib/procurement/offer-pricing"
 import { OFFER_WITHDRAWN, isWithdrawnOffer, offersSealed } from "@/lib/procurement/award"
+import { rfqOfferKey } from "@/lib/procurement/event-keys"
 import { newOfferNotice, newOfferNoticeId } from "@/lib/procurement/offer-announce"
+import { bafoOpen, bafoReplyKind, bafoReplyRefusal, revalOpen, type OfferBafo, type OfferReval } from "@/lib/procurement/offer-decisions"
+import { currentVersionOf, nextVersions, offerRev, quotingGate, totalFields, type StoredVersion } from "@/lib/procurement/offer-versions"
 import { resolvePolicies } from "@/lib/procurement/policies"
+import { rfqKeyPart, sendProcEvent } from "@/lib/procurement/proc-event-server"
+import { rfqLogEntry, type RfqLogEntry } from "@/lib/procurement/rfq-detail"
 import type { ProcurementPolicies } from "@/lib/procurement/types"
 import { UNDER_REVIEW } from "@/lib/procurement/supplier"
 import { notifyNamed, permissionHolders } from "./server-notify"
 import { QUOTE_COUNTS, quoteCountId, riyadhMonth } from "@/lib/supplier-approval"
-import { daysBetween, namesSupplier, nextVersions, quoteBlocks, quoteShapeOf, replyByOf, requestReaches, versionOf, type QuoteValues } from "./quote-rules"
+import { daysBetween, namesSupplier, quoteBlocks, quoteShapeOf, replyByOf, requestReaches, versionOf, type QuoteValues } from "./quote-rules"
 
 export { OFFER_WITHDRAWN }
 const REDUCE = "مطلوب تخفيض"
@@ -36,6 +40,8 @@ export type QuoteActCode =
   | "wrong_state"
   | "blocked"
   | "date_future"
+  | "price_higher"
+  | "not_asked"
   | "invalid"
 
 export class QuoteActError extends Error {
@@ -57,18 +63,22 @@ const values = z.object({
   arrive: z.union([day, z.literal("")]).default(""),
   valid: z.union([day, z.literal("")]).default(""),
   note: z.string().max(1000).default(""),
+  packs: z.record(z.string().max(32)).default({}),
+  warranty: z.record(z.string().max(8)).default({}),
+  whole: z.boolean().default(false),
 })
 const file = z.string().url().max(2000).nullable().optional()
 const papers = z.array(z.object({ kind: z.string().max(40), url: z.string().url().max(2000), name: z.string().max(200).optional() })).max(10).optional()
 
 export const quoteActSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("quote.new"), rfqId: id, values, fileUrl: file, papers }),
-  z.object({ action: z.literal("quote.version"), offerId: id, mode: z.enum(["edit", "reduce"]), values, fileUrl: file }),
+  z.object({ action: z.literal("quote.version"), offerId: id, mode: z.enum(["edit", "reduce", "reval"]), values, fileUrl: file }),
   z.object({ action: z.literal("quote.final"), offerId: id, note: z.string().trim().max(500).default("") }),
   z.object({ action: z.literal("quote.withdraw"), offerId: id }),
   z.object({ action: z.literal("quote.sample"), offerId: id, sentAt: day, receivedBy: z.string().trim().max(120).default(""), note: z.string().trim().max(500).default("") }),
   z.object({ action: z.literal("quote.decline"), rfqId: id, note: z.string().trim().max(500).default("") }),
   z.object({ action: z.literal("quote.ask"), rfqId: id, question: z.string().trim().min(1).max(1000) }),
+  z.object({ action: z.literal("quote.answer"), inquiryId: id, rfqId: id, answer: z.string().trim().min(1).max(1000) }),
 ])
 export type QuoteAct = z.infer<typeof quoteActSchema>
 
@@ -91,11 +101,23 @@ type Rec = Record<string, unknown>
 const withId = (data: unknown, id: string): Rec & { id: string } => ({ ...((data || {}) as Rec), id })
 const str =(v: unknown): string => (typeof v === "string" ? v : v == null ? "" : String(v))
 
+/** His arrival date as a duration in days (1 to 365, NFR-07), or none. */
+function leadDaysOf(arrive: string, today: string): number | null {
+  if (!arrive) return null
+  const days = daysBetween(arrive, today)
+  return days >= 1 && days <= 365 ? days : null
+}
+
+/** The request as the offer carries it, marked answered — an offer cut the old way (by status) gets the record now. */
+function answeredBafo(offer: Rec, answered: NonNullable<OfferBafo["answered"]>): OfferBafo {
+  const stored = offer.bafo as OfferBafo | undefined
+  return { at: stored?.at || str(offer.reductionAt) || answered.at, byId: stored?.byId || str(offer.decidedByUserId), byName: stored?.byName || str(offer.decidedByUserName), replyBy: stored?.replyBy || str(offer.reductionBy), note: stored?.note ?? (str(offer.reductionNote) || null), round: 1, answered }
+}
+
 /** The request is still taking quotes: open, and its deadline (a day) not yet past in Riyadh. */
 function assertOpen(rfq: Rec, today: string) {
-  if (str(rfq.status) !== "New") throw new QuoteActError("rfq_closed")
-  const deadline = str(rfq.deadline).slice(0, 10)
-  if (deadline && daysBetween(deadline, today) < 0) throw new QuoteActError("deadline")
+  const gate = quotingGate(rfq, today)
+  if (gate) throw new QuoteActError(gate)
 }
 
 function assertOwn(offer: Rec | undefined, s: QuoteSupplier): Rec {
@@ -118,7 +140,7 @@ const tellOwner = (db: Firestore, s: QuoteSupplier, rfq: Rec & { id: string }, k
     return 0
   })
 
-function blocksOrThrow(rfq: Rec, v: QuoteValues, mode: "new" | "edit" | "reduce", today: string) {
+function blocksOrThrow(rfq: Rec, v: QuoteValues, mode: "new" | "edit" | "reduce" | "reval", today: string) {
   const check = quoteBlocks(quoteShapeOf(rfq), v, mode, { daysTo: (iso, from) => daysBetween(iso, from ?? today) })
   if (check.blocks.length) throw new QuoteActError(check.blocks[0].code === "deadline" ? "deadline" : "blocked", check.blocks[0].code)
 }
@@ -166,7 +188,8 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
         if (!requestReaches(r, s.orgId, s.field)) throw new QuoteActError("not_reached")
         blocksOrThrow(r, v, "new", today)
         const shape = quoteShapeOf(r)
-        const version = versionOf(shape, v, today, act.fileUrl, s.vatRate)
+        const lead = leadDaysOf(v.arrive, today)
+        const version: StoredVersion = { ...versionOf(shape, v, today, act.fileUrl, s.vatRate), by: "supplier", ...(lead != null ? { leadDays: lead } : {}) }
         const price = String(version.total)
         const location = str(r.deliveryLocation) || str(r.district) || str(r.city)
         const data: Rec = {
@@ -187,6 +210,11 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
           validUntil: v.valid,
           status: UNDER_REVIEW,
           versions: [version],
+          rev: 1,
+          whole: Boolean(v.whole),
+          vatRegistered: s.vatRate == null ? true : s.vatRate > 0,
+          vatRate: s.vatRate == null ? 0.15 : s.vatRate,
+          ...(lead != null ? { leadDays: lead } : {}),
           createdAt: at,
           updatedAt: at,
         }
@@ -202,6 +230,7 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
         if (countRef) tx.set(countRef, { orgId: s.orgId, month: riyadhMonth(now), count: used + 1, updatedAt: at }, { merge: true })
         return { rfq: r, total: version.total }
       })
+      await sendProcEvent(db, { id: "rfq_offer", key: rfqOfferKey(rfqKeyPart(rfq, rfq.id), s.orgId, 1), organizationId: str(rfq.organizationId) || str(rfq.contractorId), by: s.uid, at, refs: { rfq: rfqKeyPart(rfq, rfq.id), offer: ref.id }, payload: { version: 1 } })
       // The amount is named only when the round is not sealed — only the server can tell.
       const contractorId = str(rfq.contractorId)
       if (contractorId) {
@@ -230,35 +259,36 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
         if (!rSnap.exists) throw new QuoteActError("rfq_missing")
         const r = withId(rSnap.data(), rSnap.id)
         if (offer.poId || offer.withdrawnAt) throw new QuoteActError("wrong_state")
+        // The buyer's decisions are not in the status (G-15): an offer he shortlisted, excluded or asked a better price of
+        // is still «under review» here, and its owner may keep editing it — the decisions stay where they are.
         const status = str(offer.status)
+        if (status !== UNDER_REVIEW && status !== REDUCE) throw new QuoteActError("wrong_state")
         if (act.mode === "reduce") {
-          if (status !== REDUCE) throw new QuoteActError("wrong_state")
+          if (!bafoOpen(offer)) throw new QuoteActError("wrong_state")
           if (str(r.status) !== "New") throw new QuoteActError("rfq_closed")
           const by = replyByOf(offer)
           if (by && daysBetween(by, today) < 0) throw new QuoteActError("reply_closed")
+        } else if (act.mode === "reval") {
+          if (!revalOpen(offer)) throw new QuoteActError("not_asked")
+          if (str(r.status) !== "New") throw new QuoteActError("rfq_closed")
         } else {
-          if (status !== UNDER_REVIEW && status !== REDUCE) throw new QuoteActError("wrong_state")
           assertOpen(r, today)
         }
         blocksOrThrow(r, v, act.mode, today)
+        if (act.mode === "reval" && v.valid < today) throw new QuoteActError("blocked", "valid")
         const shape = quoteShapeOf(r)
-        const version = versionOf(shape, v, today, act.fileUrl, s.vatRate)
-        const rates: Record<number, string> = {}
-        shape.items.forEach((i, k) => {
-          if (!v.skip[i.id] && String(v.prices[i.id] ?? "").trim() !== "") rates[k] = v.prices[i.id]
-        })
+        const lead = leadDaysOf(v.arrive, today)
+        const previous = currentVersionOf(offer)
+        const version: StoredVersion = { ...versionOf(shape, v, today, act.fileUrl, s.vatRate), by: "supplier", ...(lead != null ? { leadDays: lead } : {}) }
+        if (act.mode === "reduce") {
+          // One round, one direction (RFQ-11): the reply is a lower price or the same one, never a higher.
+          if (bafoReplyRefusal(previous.total, version.total)) throw new QuoteActError("price_higher")
+          version.bafoReply = bafoReplyKind(previous.total, version.total)
+        }
+        if (act.mode === "reval") version.reval = true
         const skippedNow = shape.items.map((i, k) => (v.skip[i.id] ? k : -1)).filter((k) => k >= 0)
-        // The same revision every contractor-side reader expects: price, rates and batches that agree.
-        const current = { price: offer.price as string, lines: (offer.lines as never) || [], deliveryBatches: (offer.deliveryBatches as never) || [], totalBatchesPrice: offer.totalBatchesPrice as never }
-        const byRates = revisePrice(
-          current,
-          shape.pricing === "item" ? pricedProducts({ pricingMode: str(r.pricingMode), shipmentMode: str(r.shipmentMode), products: (r.products as never) || [] }) : null,
-          { total: String(version.total), rates: shape.pricing === "item" ? rates : undefined, skipped: shape.pricing === "item" ? skippedNow : undefined }
-        )
-        // A version that leaves an item out cannot be revised rate by rate (LINE_PRICES_INCOMPLETE): revise it on its
-        // total, so the batches and `totalBatchesPrice` — which the award reads first — never keep the old figures.
-        const rev = byRates.ok ? byRates : revisePrice(current, null, { total: String(version.total) })
-        const fields: Rec = rev.ok ? { ...rev.fields } : {}
+        // The same fields every contractor-side reader expects: price, rates and batches that agree.
+        const fields: Rec = { ...totalFields(offer, version.total) }
         if (shape.pricing === "item" && version.lines) fields.lines = version.lines
         if (shape.pricing === "item" && (skippedNow.length || (Array.isArray(offer.skippedItems) && offer.skippedItems.length))) fields.skippedItems = skippedNow
         const versions = nextVersions(offer, version)
@@ -272,6 +302,11 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
           validUntil: v.valid,
           status: UNDER_REVIEW,
           versions,
+          rev: n,
+          whole: Boolean(v.whole),
+          vatRegistered: s.vatRate == null ? offer.vatRegistered !== false : s.vatRate > 0,
+          vatRate: s.vatRate == null ? (typeof offer.vatRate === "number" ? offer.vatRate : 0.15) : s.vatRate,
+          ...(lead != null ? { leadDays: lead } : {}),
           priceHistory: history,
           updatedAt: at,
           supplierNote: v.note.trim().slice(0, 1000),
@@ -281,12 +316,18 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
           const batches = (fields.deliveryBatches as Rec[] | undefined) || (offer.deliveryBatches as Rec[] | undefined) || []
           patch.deliveryBatches = batches.length ? batches.map((b, i) => (i === 0 ? { ...b, deliveryDate: v.arrive } : b)) : [{ location: str(r.city), deliveryDate: v.arrive, price: String(version.total), quantity: "" }]
         }
-        if (act.mode === "reduce") patch.reductionReply = { at: today, kind: "lowered" }
+        if (act.mode === "reduce") {
+          patch.reductionReply = { at: today, kind: "lowered" }
+          patch.bafo = answeredBafo(offer, { at: today, n, kind: version.bafoReply || "lowered", note: null })
+        }
+        if (act.mode === "reval") patch.reval = { ...(offer.reval as OfferReval), answered: { at: today, n } }
         tx.update(offerRef(act.offerId), patch as UpdateData<DocumentData>)
         tx.set(logRef(act.offerId), logEntry("quote.version", { mode: act.mode, version: n, total: version.total, from: Number.isFinite(prev) ? prev : null, validUntil: v.valid }))
+        tx.update(rfqRef(r.id), { log: [...((Array.isArray(r.log) ? r.log : []) as RfqLogEntry[]), rfqLogEntry({ uid: s.uid, name: s.name }, act.mode === "reval" ? "price_confirmed" : "offer_versioned", at, { params: { supplier: s.company, version: n } })] })
         return r
       })
       await tellOwner(db, s, rfq, "sup_quote_version", { n }, act.offerId)
+      await sendProcEvent(db, { id: "rfq_offer", key: rfqOfferKey(rfqKeyPart(rfq, rfq.id), s.orgId, n), organizationId: str(rfq.organizationId) || str(rfq.contractorId), by: s.uid, at, refs: { rfq: rfqKeyPart(rfq, rfq.id), offer: act.offerId }, payload: { version: n, mode: act.mode } })
       return { n }
     }
 
@@ -298,11 +339,11 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
         const rSnap = await tx.get(rfqRef(str(offer.rfqId)))
         if (!rSnap.exists) throw new QuoteActError("rfq_missing")
         const r = withId(rSnap.data(), rSnap.id)
-        if (str(offer.status) !== REDUCE || offer.poId) throw new QuoteActError("wrong_state")
+        if (!bafoOpen(offer) || offer.poId || offer.withdrawnAt) throw new QuoteActError("wrong_state")
         if (str(r.status) !== "New") throw new QuoteActError("rfq_closed")
         const by = replyByOf(offer)
         if (by && daysBetween(by, today) < 0) throw new QuoteActError("reply_closed")
-        tx.update(offerRef(act.offerId), { status: UNDER_REVIEW, reductionReply: { at: today, kind: "final", note }, updatedAt: at })
+        tx.update(offerRef(act.offerId), { status: UNDER_REVIEW, reductionReply: { at: today, kind: "final", note }, bafo: answeredBafo(offer, { at: today, n: offerRev(offer), kind: "kept", note: note || null }), updatedAt: at })
         tx.set(logRef(act.offerId), logEntry("quote.final", { note: note || null, total: Number(offer.price) || null }))
         return r
       })
@@ -377,6 +418,7 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
       const question = act.question.trim().slice(0, 1000)
       const ref = rfqRef(rfq.id).collection("inquiries").doc()
       await ref.set({
+        kind: "ask",
         question,
         supplierId: s.uid,
         userId: s.uid,
@@ -390,6 +432,26 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
       })
       await tellAboutQuestion(db, s, rfq, ref.id, question, at)
       return { id: ref.id }
+    }
+    case "quote.answer": {
+      // The answer to a clarification the buyer asked on HIS offer («اطلب توضيحاً»): it goes back to the buyer on that
+      // question, and to nobody else — a question about one offer is not served to the other suppliers.
+      const inqRef = rfqRef(act.rfqId).collection("inquiries").doc(act.inquiryId)
+      const asked = await db.runTransaction(async (tx) => {
+        const rSnap = await tx.get(rfqRef(act.rfqId))
+        const iSnap = await tx.get(inqRef)
+        if (!rSnap.exists || !iSnap.exists) throw new QuoteActError("rfq_missing")
+        const q = iSnap.data() as Rec
+        const to = (q.to || {}) as Rec
+        if (q.kind !== "our_question" || str(to.orgId) !== s.orgId) throw new QuoteActError("not_yours")
+        if (str(q.reply).trim()) throw new QuoteActError("wrong_state")
+        const status = str((rSnap.data() as Rec).status)
+        if (status === "Cancelled") throw new QuoteActError("rfq_closed")
+        tx.update(inqRef, { reply: act.answer, repliedAt: at, repliedBy: s.uid, repliedByUserName: s.name, answer: { text: act.answer, all: false, at, byId: s.uid, byName: s.name } })
+        return { rfq: withId(rSnap.data(), rSnap.id), by: str(q.userId) }
+      })
+      await tellAboutAnswer(db, s, asked.rfq, asked.by, act.inquiryId, act.answer, at)
+      return {}
     }
     default:
       throw new QuoteActError("invalid")
@@ -410,6 +472,9 @@ export interface SupplierQuestion {
   createdAt: string | null
   /** Asked by his own company; the others' are shown without who asked. */
   mine: boolean
+  /** A clarification the buyer asked on his offer, waiting for his answer. */
+  fromBuyer?: boolean
+  offerId?: string | null
 }
 
 /** The questions on a request as a supplier may read them (decision 10): his company's own with their state, and the
@@ -422,8 +487,12 @@ export async function questionsFor(db: Firestore, orgId: string, rfqId: string):
   const rows = await ref.collection("inquiries").get()
   return rows.docs
     .map((d): Rec & { id: string } => ({ ...(d.data() as Rec), id: d.id }))
-    .map((q) => ({ id: q.id, question: str(q.question), reply: str(q.reply).trim() || null, repliedAt: str(q.repliedAt) || null, createdAt: str(q.createdAt) || null, mine: str(q.organizationId) === orgId }))
-    .filter((q) => q.mine || !!q.reply)
+    .filter((q) => q.kind !== "our_question" || str((q.to as Rec | undefined)?.orgId) === orgId)
+    .map((q) => {
+      const fromBuyer = q.kind === "our_question"
+      return { id: q.id, question: str(q.question), reply: str(q.reply).trim() || null, repliedAt: str(q.repliedAt) || null, createdAt: str(q.createdAt) || null, mine: !fromBuyer && str(q.organizationId) === orgId, ...(fromBuyer ? { fromBuyer: true, offerId: str((q.to as Rec).offerId) || null } : {}) }
+    })
+    .filter((q) => q.mine || q.fromBuyer || !!q.reply)
     .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
 }
 
@@ -460,6 +529,41 @@ async function tellAboutQuestion(db: Firestore, s: QuoteSupplier, rfq: Rec & { i
     )
   } catch (err) {
     console.warn("question notice failed:", (err as { code?: string })?.code || err)
+  }
+}
+
+/** The buyer who asked hears the supplier's answer: he and the request's owner. */
+async function tellAboutAnswer(db: Firestore, s: QuoteSupplier, rfq: Rec & { id: string }, asker: string, inquiryId: string, answer: string, at: string): Promise<void> {
+  try {
+    const orgId = str(rfq.organizationId) || str(rfq.contractorId)
+    const to = [...new Set([asker, str(rfq.contractorId)].filter((u) => !!u && u !== s.uid))]
+    const rfqName = str(rfq.rfqNumber) || str(rfq.title)
+    const text = answer.length > 120 ? `${answer.slice(0, 120)}…` : answer
+    await Promise.all(
+      to.map((uid) =>
+        db
+          .collection("users")
+          .doc(uid)
+          .collection("notifications")
+          .doc(`rfq_clarify_answer__${inquiryId}`)
+          .set({
+            userId: uid,
+            organizationId: orgId,
+            type: "rfq_clarify_answer",
+            title: `ردّ ${s.company} على توضيحك في ${rfqName}`,
+            message: text,
+            i18n: { title: "pn_rfq_clarify_answer_title", message: "pn_rfq_clarify_answer", params: { supplier: s.company, rfq: rfqName, answer: text } },
+            link: `/contractor/rfqs/${rfq.id}/offers?tab=inquiries`,
+            rfqId: rfq.id,
+            actorId: s.uid,
+            actorName: s.name,
+            read: false,
+            createdAt: at,
+          })
+      )
+    )
+  } catch (err) {
+    console.warn("answer notice failed:", (err as { code?: string })?.code || err)
   }
 }
 

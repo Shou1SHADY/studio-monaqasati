@@ -5,7 +5,12 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { CompanyModulesDialog } from "@/components/admin/CompanyModulesDialog"
+import { NewContractorDialog } from "@/components/admin/packages/NewContractorDialog"
+import { PackageChips } from "@/components/admin/packages/PackageIcons"
+import { PackageKpis } from "@/components/admin/packages/PackageKpis"
+import { PackageVersionCell } from "@/components/admin/packages/PackageVersionCell"
+import { FULL_COMPANY_PACKAGE, useCompanyPackages } from "@/hooks/useCompanyPackages"
+import { useRouter } from "@/i18n/routing"
 import { AccountRowActions } from "@/components/admin/AccountRowActions"
 import { companyOf } from "@/lib/admin-accounts"
 import { Input } from "@/components/ui/input"
@@ -24,6 +29,7 @@ import {
   ExternalLink,
   AlertCircle,
   Award,
+  Plus,
   Trash2
 } from "lucide-react"
 import {
@@ -68,7 +74,10 @@ const DOC_LABELS: Record<string, string> = {
 
 export default function AdminContractorsPage() {
   const t = useTranslations("Portal.Admin.Contractors")
-  const tMod = useTranslations("Portal.AdminModules")
+  const tPkg = useTranslations("Portal.AdminPackages")
+  const tProc = useTranslations("Portal.ProcPackage")
+  const router = useRouter()
+  const { byOrg } = useCompanyPackages()
   const locale = useLocale()
   const docLabels: Record<string, string> = {
     cr: t("doc_cr"),
@@ -80,7 +89,7 @@ export default function AdminContractorsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [limitCount, setLimitCount] = useState(20)
   const [selectedContractor, setSelectedContractor] = useState<any>(null)
-  const [modulesFor, setModulesFor] = useState<{ orgId: string; name: string } | null>(null)
+  const [newOpen, setNewOpen] = useState(false)
   const [showDetailDialog, setShowDetailDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -226,6 +235,8 @@ export default function AdminContractorsPage() {
     cityFilter
   )
 
+  const companyPackages = Array.from(new Set(localContractors.map((c) => companyOf(c, localContractors).orgId))).map((orgId) => byOrg.get(orgId) ?? FULL_COMPANY_PACKAGE)
+
   const activeFilterCount = [statusFilter !== "all", cityFilter !== "all"].filter(Boolean).length
 
   const clearFilters = () => {
@@ -239,10 +250,14 @@ export default function AdminContractorsPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-black text-foreground font-headline">{t("page_title")}</h1>
-            <p className="text-muted-foreground mt-1">{t("page_subtitle")}</p>
+            <h1 className="text-3xl font-black text-foreground font-headline">{tPkg("page.title")}</h1>
+            <p className="text-muted-foreground mt-1">{tPkg("page.subtitle")}</p>
           </div>
           <div className="flex gap-2">
+            <Button onClick={() => setNewOpen(true)} className="gap-2 shrink-0">
+              <Plus size={18} aria-hidden="true" />
+              {tPkg("page.new")}
+            </Button>
             <div className="relative w-full sm:w-64">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -329,6 +344,8 @@ export default function AdminContractorsPage() {
           </Card>
         )}
 
+        <PackageKpis companies={companyPackages} />
+
         {/* Stats — real data */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="border-none shadow-sm bg-blue-50/50">
@@ -387,6 +404,8 @@ export default function AdminContractorsPage() {
                   <TableRow>
                     <TableHead className="text-start hidden 2xl:table-cell">{t("id")}</TableHead>
                     <TableHead className="text-start">{t("company_name")}</TableHead>
+                    <TableHead className="text-start hidden lg:table-cell">{tPkg("list.package")}</TableHead>
+                    <TableHead className="text-start hidden md:table-cell">{tPkg("list.version")}</TableHead>
                     <TableHead className="text-start hidden md:table-cell">{t("tenders_count")}</TableHead>
                     <TableHead className="text-start hidden lg:table-cell">{t("documents")}</TableHead>
                     <TableHead className="text-start">{t("status")}</TableHead>
@@ -406,6 +425,15 @@ export default function AdminContractorsPage() {
                             {company.memberOf && <span className="text-xs text-muted-foreground">{t("member_of", { company: company.memberOf })}</span>}
                             {c.crNumber && <span className="text-xs text-muted-foreground">{t("cr_number")}: <bdi>{c.crNumber}</bdi></span>}
                           </div>
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell">
+                          <PackageChips
+                            pkg={(byOrg.get(company.orgId) ?? FULL_COMPANY_PACKAGE).pkg}
+                            labels={{ core: tProc("base.core.short"), inv: tProc("base.inv.short"), pm: tProc("conn.pm.short"), fin: tProc("conn.fin.short"), mfg: tProc("conn.mfg.short") }}
+                          />
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <PackageVersionCell company={byOrg.get(company.orgId) ?? FULL_COMPANY_PACKAGE} />
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
                           <Badge variant="secondary" className="font-bold">{c.rfqCount}</Badge>
@@ -431,11 +459,11 @@ export default function AdminContractorsPage() {
                         </TableCell>
                         <TableCell>
                           <AccountRowActions
-                            labels={{ view: t("view"), components: tMod("button"), verify: t("verify"), unverify: t("unverify"), needsDocs: t("verify_needs_docs") }}
+                            labels={{ view: t("view"), components: tPkg("list.open"), verify: t("verify"), unverify: t("unverify"), needsDocs: t("verify_needs_docs") }}
                             verified={c.verified}
                             canVerify={c.hasAllRequiredDocs}
                             onView={() => { setSelectedContractor(c); setShowDetailDialog(true) }}
-                            onComponents={() => setModulesFor({ orgId: company.orgId, name: company.name })}
+                            onComponents={() => router.push(`/admin/contractors/${company.orgId}`)}
                             onVerify={(verify) => handleVerify(c.id, verify)}
                           />
                         </TableCell>
@@ -456,7 +484,7 @@ export default function AdminContractorsPage() {
         </Card>
 
         {/* Detail Dialog */}
-        {modulesFor && <CompanyModulesDialog orgId={modulesFor.orgId} companyName={modulesFor.name} portal="contractor" onClose={() => setModulesFor(null)} />}
+        <NewContractorDialog open={newOpen} onOpenChange={setNewOpen} />
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
             <DialogHeader>

@@ -8,7 +8,7 @@ import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { findLinkByToken, mintLinkToken } from "@/lib/links/hash"
 import { linkUrl } from "@/lib/links/url"
 import { normalizeGuestChannel, type GuestOfferChannel } from "@/utils/guest-offer-workflow"
-import { supplierOfferStatus } from "@/lib/procurement/supplier"
+import { supplierOfferStatus, type AwardFacts } from "@/lib/procurement/supplier"
 import { PURCHASE_ORDERS, type PurchaseOrder } from "@/lib/procurement/types"
 
 // Guest links outlive the 3-day RFQ share link: the negotiation (reduction →
@@ -305,12 +305,13 @@ export async function notifyContractor(params: {
  */
 export async function guestVisibleStatus(
   db: FirebaseFirestore.Firestore,
-  offer: { status?: unknown; poId?: unknown; awaitingOrderApproval?: unknown }
+  offer: { status?: unknown; poId?: unknown; awaitingOrderApproval?: unknown; bafo?: unknown; reductionBy?: unknown; reductionAt?: unknown }
 ): Promise<string> {
   const facts = {
     status: typeof offer.status === "string" ? offer.status : "",
     poId: typeof offer.poId === "string" ? offer.poId : null,
     awaitingOrderApproval: offer.awaitingOrderApproval === true,
+    bafo: (offer.bafo as AwardFacts["bafo"]) ?? null,
   }
   const orders = new Map<string, PurchaseOrder>()
   if (facts.poId) {

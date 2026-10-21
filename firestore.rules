@@ -393,7 +393,7 @@ service cloud.firestore {
     // An offer's keys only the buying side writes — the award, the exclusion, the price cut, the sample request,
     // the outcome, a withdrawal (the server's) — so a supplier never sets them on his own offer (Supplier 1.0 NFR-08).
     function buyerOfferKeys() {
-      return ['outcome', 'poId', 'poNumber', 'awardedLines', 'awardedTotal', 'awardReason', 'awaitingOrderApproval', 'decidedAt', 'decidedByUserId', 'exclusion', 'targetPrice', 'reductionAt', 'reductionBy', 'reductionNote', 'reductionTargets', 'reductionRound', 'sampleWhat', 'samplePlace', 'sampleBy', 'sampleRequestedAt', 'breakdown', 'requestedDeliveryDate', 'withdrawnAt', 'versions', 'directAward', 'isManualOffer', 'contractorRated'];
+      return ['outcome', 'poId', 'poNumber', 'awardedLines', 'awardedTotal', 'awardReason', 'awaitingOrderApproval', 'decidedAt', 'decidedByUserId', 'exclusion', 'targetPrice', 'reductionAt', 'reductionBy', 'reductionNote', 'reductionTargets', 'reductionRound', 'sampleWhat', 'samplePlace', 'sampleBy', 'sampleRequestedAt', 'breakdown', 'requestedDeliveryDate', 'withdrawnAt', 'versions', 'directAward', 'isManualOffer', 'contractorRated', 'rev', 'bafo', 'reval'];
     }
 
     // Runs RFQs (rfq-access.ts runsRfqs): the manager, a buyer, supply chain.
@@ -738,16 +738,17 @@ service cloud.firestore {
       match /inquiries/{inquiryId} {
         function rfqOrg() { return rfqData(rfqId).organizationId == getOrganizationId(); }
         allow read: if isSignedIn() && (resource.data.get('organizationId', '') == getOrganizationId() || rfqOrg() || isAdmin());
-        allow create: if isSignedIn();
-        allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || rfqOrg()) || isAdmin();
-        allow delete: if isAdmin()
-          || (isSignedIn() && resource.data.userId == request.auth.uid);
+        allow create: if false;
+        allow update: if isSignedIn() && rfqOrg() || isAdmin();
+        allow delete: if isAdmin();
       }
     }
 
     match /offers/{offerId} {
-      // 'get' (single document): check the resource fields for ownership
-      allow get: if isSignedIn() && (
+      // One rule for a document and for a query (G-06): an offer is read by its supplier (his company) and by the buying
+      // company — never by another supplier. A query is allowed only when it is PROVABLE from its own filters, so every list
+      // names its side: `where organizationId == mine` (supplier) or `where contractorOrgId == mine` (buyer).
+      allow read: if isSignedIn() && (
         resource == null ||
         resource.data.supplierId == request.auth.uid ||
         resource.data.contractorId == request.auth.uid ||
@@ -755,9 +756,6 @@ service cloud.firestore {
         isContractorOrg() ||
         isAdmin()
       );
-      // 'list' (collection query): allow any signed-in user; the app's 'where' clause
-      // (filtering by rfqId, organizationId, etc.) ensures data isolation.
-      allow list: if isSignedIn();
       // A supplier's quote is written ONLY by the server, after the platform admin approved his company (onboarding,
       // 18 Oct 2026): the free journey at /api/supplier-free/act, the full portal, the AI assistant and the mobile app
       // at /api/supplier/offers — both check the RFQ is open and strip the buying side's keys (supplier-offer-server.ts).
@@ -777,19 +775,13 @@ service cloud.firestore {
             && rfqData(rd().rfqId).organizationId == getOrganizationId()
             && rfqData(rd().rfqId).status == 'New'
             && actsOnRfq(rfqData(rd().rfqId)));
-      // The supplier (or his company) updates his own offer — never a key the buying side owns, never who it
-      // belongs to; while under review or a price cut its status may only return to «قيد المراجعة», and once
-      // decided (accepted, rejected, withdrawn…) neither its status nor its price moves. Contractor-side
-      // updates (accept / reject / reduction / sample requests) require the offers.accept permission.
+      // The supplier (or his company) keeps only what is his to keep on his own offer (archiving, the sample's state).
+      // His PRICE, his lines, his validity, his status — everything a quote is — change only through the server's
+      // version acts (G-15), which keep every version and never touch the buyer's decisions; and never a key the buying
+      // side owns, never who it belongs to. Contractor-side updates (accept / sample requests) require offers.accept.
       allow update: if isAdmin()
         || ((resource.data.supplierId == request.auth.uid || ownsDoc())
-            && !changedKeys().hasAny(buyerOfferKeys().concat(['supplierId', 'organizationId', 'rfqId', 'contractorId', 'contractorOrgId']))
-            // Status and price move only while under review or a price cut, back to «قيد المراجعة» at most, and only
-            // while the RFQ is open — after it closes the price is the server act's (the cut reply's own clock).
-            && (!changedKeys().hasAny(['status', 'price', 'lines', 'deliveryBatches', 'totalBatchesPrice', 'validUntil'])
-                || (resource.data.get('status', '') in ['قيد المراجعة', 'مطلوب تخفيض']
-                    && (!changedKeys().hasAny(['status']) || rd().status == 'قيد المراجعة')
-                    && rfqData(resource.data.rfqId).status == 'New')))
+            && !changedKeys().hasAny(buyerOfferKeys().concat(['supplierId', 'organizationId', 'rfqId', 'contractorId', 'contractorOrgId', 'status', 'price', 'lines', 'deliveryBatches', 'totalBatchesPrice', 'validUntil', 'skippedItems', 'whole', 'vatRegistered', 'vatRate', 'lump', 'leadDays'])))
         // Any member of the buying company marks an offer read (the bell) — those two fields only.
         || (resource.data.get('contractorOrgId', null) == getOrganizationId()
             && changedKeys().hasOnly(['contractorReadAt', 'contractorUnread']))
@@ -804,6 +796,13 @@ service cloud.firestore {
             && hasOfferDecisionPermission(resource.data));
       // A quote is never deleted by its supplier: withdrawing marks it (server act quote.withdraw) and the buyer keeps it.
       allow delete: if isAdmin();
+    }
+
+    // The buyer's decisions about an offer — shortlist, exclusion and why — are the buying company's private record and
+    // are written ONLY by /api/procurement/offers/decide (G-15): a supplier's edit can never reach them.
+    match /offerDecisions/{offerId} {
+      allow read: if ownsDoc() || isAdmin();
+      allow write: if false;
     }
 
     match /notification_queue/{queueEntryId} {
@@ -2768,6 +2767,15 @@ service cloud.firestore {
     // written ONLY by the server (/api/procurement/team-requests — create, withdraw, decline);
     // its progress is read from the RFQs and orders that name it, never written back here.
     match /procTeamRequests/{requestId} {
+      allow get, list: if orgReadable();
+    }
+
+    // «الطلب الوارد» (Procurement 2.0, WP-S2-03): the stored incoming request — a team's «طلب مواد», a project's approved
+    // request, a workshop shortfall — one document per request, its LINES each in one place. Written ONLY by the server
+    // (/api/procurement/incoming, /api/procurement/team-requests, the daily /api/cron/incoming-sync): no client write.
+    // `procTeamRequests` above is the legacy collection: the server moves what it holds across, then marks it `migrated`.
+    // It stays readable until the lead has run `scripts/backfill-proc-incoming.ts` on prod and no client still reads it.
+    match /procIncoming/{incomingId} {
       allow get, list: if orgReadable();
     }
 

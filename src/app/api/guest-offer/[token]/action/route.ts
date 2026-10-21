@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "crypto"
 import { z } from "zod"
-import { FieldValue } from "firebase-admin/firestore"
+import { FieldValue, type DocumentData, type UpdateData } from "firebase-admin/firestore"
 import { getAdminFirestore, getAdminStorage, getStorageBucketName } from "@/lib/firebaseAdmin"
 import { guestVisibleStatus, resolveGuestOfferToken, notifyContractor } from "@/lib/guest-offer"
+import { riyadhDay } from "@/lib/hr/format"
+import { unitPriceSchema } from "@/lib/procurement/input-limits"
+import { rfqOfferKey } from "@/lib/procurement/event-keys"
+import { bafoOpen, bafoReplyBy, bafoReplyKind, bafoReplyRefusal, type OfferBafo } from "@/lib/procurement/offer-decisions"
 import { pricedProducts, revisePrice, type PricedRfq } from "@/lib/procurement/offer-pricing"
+import { currentVersionOf, nextVersions, type StoredVersion } from "@/lib/procurement/offer-versions"
+import { rfqKeyPart, sendProcEvent } from "@/lib/procurement/proc-event-server"
+import { rfqLogEntry, type RfqLogEntry } from "@/lib/procurement/rfq-detail"
 import { noticeAudience } from "@/lib/procurement/policy-enforce"
 import {
   isGuestActionAllowed,
@@ -22,7 +29,7 @@ import {
 const MAX_PDF_BYTES = 10 * 1024 * 1024
 
 const revisePriceSchema = z.object({
-  price: z.coerce.number().positive().finite(),
+  price: unitPriceSchema,
   note: z.string().trim().max(1000).optional().or(z.literal("")),
   // A per-material offer is revised per material: {"0": 2929, "1": 175}.
   rates: z
@@ -136,6 +143,7 @@ export async function POST(
     const contractorId = (offer.contractorId as string) || null
     const contractorOrgId = (offer.contractorOrgId as string) || contractorId
     const supplierName = (offer.companyName as string) || (offer.supplierName as string) || "المورد"
+    const offerRfqId = String(offer.rfqId || "_")
 
     // --- Revised price after a reduction request ---
     if (action === "revise_price") {
@@ -163,23 +171,68 @@ export async function POST(
         offerPdfUrl = await uploadGuestPdf(pdf)
       }
 
-      const update: Record<string, unknown> = {
-        ...revision.fields,
-        // Back into the contractor's queue, exactly like a registered
-        // supplier's price update.
-        status: OFFER_STATUS.pending,
-        updatedAt: nowIso,
-        revisedAt: nowIso,
-        readAt: null,
-        guestReplyNote: note || null,
-        priceHistory: FieldValue.arrayUnion({
-          price: previousPrice,
-          replacedAt: nowIso,
+      // The reply to «اطلب سعراً أفضل» (RFQ-11): one round, a lower price or the same, by the day he was given — his own
+      // clock, so it answers even after the round closed — and it is the offer's NEXT VERSION; the first stays in the record
+      // and the buyer's decisions about it are not touched (G-15).
+      const today = riyadhDay()
+      let n = 2
+      const reply = await db.runTransaction(async (tx) => {
+        const oSnap = await tx.get(offerRef)
+        const fresh = (oSnap.data() || {}) as Record<string, unknown>
+        const rSnap = await tx.get(db.collection("rfqs").doc(offerRfqId))
+        const rfqNow = (rSnap.data() || {}) as Record<string, unknown>
+        if (!bafoOpen(fresh)) return { refused: "ACTION_NOT_ALLOWED" as const }
+        if (String(rfqNow.status) !== "New") return { refused: "RFQ_CLOSED" as const }
+        const by = bafoReplyBy(fresh)
+        if (by && by < today) return { refused: "REPLY_CLOSED" as const }
+        const previous = currentVersionOf(fresh)
+        if (bafoReplyRefusal(previous.total, price)) return { refused: "PRICE_HIGHER" as const }
+        const version: StoredVersion = {
+          n: 1,
+          at: today,
+          arrive: previous.arrive,
+          valid: previous.valid,
+          note: note || "",
+          fileUrl: offerPdfUrl || previous.fileUrl,
+          total: price,
+          ...(Array.isArray(revision.fields.lines) ? { lines: revision.fields.lines.length ? (revision.fields.lines as StoredVersion["lines"]) : undefined } : previous.lines ? { lines: previous.lines } : {}),
+          ...(typeof previous.vatRate === "number" ? { vatRate: previous.vatRate } : {}),
           by: "guest",
-        }),
+          bafoReply: bafoReplyKind(previous.total, price),
+        }
+        const versions = nextVersions(fresh, version)
+        n = versions.length
+        const stored = fresh.bafo as OfferBafo | undefined
+        const update: Record<string, unknown> = {
+          ...revision.fields,
+          // Back into the contractor's queue, exactly like a registered supplier's price update.
+          status: OFFER_STATUS.pending,
+          versions,
+          rev: n,
+          bafo: { at: stored?.at || String(fresh.reductionAt || nowIso), byId: stored?.byId || "", byName: stored?.byName || "", replyBy: stored?.replyBy || String(fresh.reductionBy || ""), note: stored?.note ?? null, round: 1, answered: { at: today, n, kind: version.bafoReply, note: note || null } },
+          updatedAt: nowIso,
+          revisedAt: nowIso,
+          readAt: null,
+          guestReplyNote: note || null,
+          priceHistory: FieldValue.arrayUnion({
+            price: previousPrice,
+            replacedAt: nowIso,
+            by: "guest",
+          }),
+        }
+        if (offerPdfUrl) update.offerPdfUrl = offerPdfUrl
+        tx.update(offerRef, update as UpdateData<DocumentData>)
+        tx.update(db.collection("rfqs").doc(offerRfqId), { log: [...((Array.isArray(rfqNow.log) ? rfqNow.log : []) as RfqLogEntry[]), rfqLogEntry({ uid: "guest", name: supplierName }, "offer_versioned", nowIso, { params: { supplier: supplierName, version: n } })] })
+        return { refused: null, rfq: rfqNow }
+      })
+      if (reply.refused) {
+        const status = reply.refused === "ACTION_NOT_ALLOWED" || reply.refused === "RFQ_CLOSED" || reply.refused === "REPLY_CLOSED" ? 409 : 400
+        return errorResponse(reply.refused === "PRICE_HIGHER" ? "A better price is the same price or a lower one" : "This request can no longer be answered", reply.refused, status)
       }
-      if (offerPdfUrl) update.offerPdfUrl = offerPdfUrl
-      await offerRef.update(update)
+      if (reply.rfq) {
+        const no = rfqKeyPart(reply.rfq, offerRfqId)
+        await sendProcEvent(db, { id: "rfq_offer", key: rfqOfferKey(no, offerId, n), organizationId: String(reply.rfq.organizationId || reply.rfq.contractorId || ""), by: "guest", at: nowIso, refs: { rfq: no, offer: offerId }, payload: { version: n, mode: "reduce" } })
+      }
 
       await notifyContractor({
         contractorId,

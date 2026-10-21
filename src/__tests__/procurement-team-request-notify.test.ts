@@ -142,9 +142,11 @@ describe("who can raise one", () => {
     expect(row?.cells).toEqual({ owner: true, manager: true, buyer: true, expediter: false, requester: true })
   })
 
-  it("the team-request server lets any member create — nothing in it asks for a Procurement permission", () => {
+  it("the team-request server lets any member create for himself — a Procurement permission is asked only to raise one ON BEHALF of somebody (REQ-03)", () => {
     const source = readFileSync(join(process.cwd(), "src/app/api/procurement/team-requests/route.ts"), "utf8")
-    const create = source.slice(source.indexOf('if (data.action === "create")'), source.indexOf('const ref = db.collection(TEAM_REQUESTS).doc(data.id)'))
-    expect(create).not.toMatch(/caller\.can\(/)
+    const create = source.slice(source.indexOf('if (data.action === "create")'), source.indexOf("const mrKey = data.id"))
+    const asks = create.split(/\r?\n/).filter((line) => /caller\.can\(/.test(line))
+    expect(asks).toHaveLength(1)
+    expect(asks[0]).toContain("onBehalf &&")
   })
 })

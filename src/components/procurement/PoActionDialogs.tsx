@@ -388,3 +388,142 @@ export function RejectDecisionDialog({
     </Dialog>
   )
 }
+
+// ---------------------------------------------------------------------------
+// «ألغِ {no}» — a reason from the list, and what happens to its materials (WF-25)
+// ---------------------------------------------------------------------------
+
+const CANCEL_WHY_IDS = ["nacc", "dec", "chg", "need", "other"] as const
+const CANCEL_THEN_IDS = ["reaward", "back", "none"] as const
+export type CancelWhyId = (typeof CANCEL_WHY_IDS)[number]
+export type CancelThenId = (typeof CANCEL_THEN_IDS)[number]
+export interface CancelOrderValue {
+  why: CancelWhyId
+  note: string
+  then: CancelThenId
+}
+
+export function CancelOrderDialog({
+  open,
+  onOpenChange,
+  number,
+  rfqNumber,
+  canReaward,
+  canBack,
+  canNone,
+  defaultWhy,
+  onSubmit,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  number: string
+  rfqNumber: string
+  /** The RFQ is still there to go back to «يُقارن» without his offer. */
+  canReaward: boolean
+  /** The order's items came from requests: they return to «الواردة» for a new RFQ. */
+  canBack: boolean
+  /** An order that serves no request: it is cancelled alone. */
+  canNone: boolean
+  defaultWhy: CancelWhyId | null
+  onSubmit: Submit<CancelOrderValue>
+}) {
+  const t = useTranslations("Portal.ProcOrders")
+  const options = CANCEL_THEN_IDS.filter((c) => (c === "reaward" ? canReaward : c === "back" ? canBack : canNone))
+  const schema = z
+    .object({ why: z.enum(CANCEL_WHY_IDS), note: z.string().trim().optional(), then: z.enum(CANCEL_THEN_IDS) })
+    .superRefine((v, ctx) => {
+      if (v.why === "other" && (v.note || "").trim().length < 4) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["note"], message: t("cancel_order.other_required") })
+    })
+  type Values = z.infer<typeof schema>
+  const initial = (): Partial<Values> => ({ why: defaultWhy ?? undefined, note: "", then: options.length === 1 ? options[0] : undefined })
+  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: initial() })
+  useEffect(() => {
+    if (open) form.reset(initial())
+  }, [open])
+  const why = form.watch("why")
+  const then = form.watch("then")
+  const card = (id: CancelThenId) => (
+    <button
+      key={id}
+      type="button"
+      role="radio"
+      aria-checked={then === id}
+      onClick={() => form.setValue("then", id, { shouldValidate: true })}
+      className={cn(
+        "flex w-full flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        then === id ? "border-module bg-module/10" : "hover:border-border"
+      )}
+    >
+      <span className="text-sm font-bold">{t(`cancel_order.then.${id}`, { rfq: rfqNumber })}</span>
+      <span className="text-xs text-muted-foreground">{t(`cancel_order.then_hint.${id}`)}</span>
+    </button>
+  )
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader className="text-start">
+          <DialogTitle>{t("cancel_order.title_no", { no: number })}</DialogTitle>
+          <DialogDescription>{t("cancel_order.sub")}</DialogDescription>
+        </DialogHeader>
+        <Form {...form}>
+          <form
+            className="space-y-4"
+            onSubmit={form.handleSubmit(async (v) => {
+              if (await onSubmit({ why: v.why, note: (v.note || "").trim(), then: v.then })) onOpenChange(false)
+            })}
+          >
+            <div className="space-y-2">
+              <p className="text-sm font-bold">{t("cancel_order.why_label")}</p>
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("cancel_order.why_label")}>
+                {CANCEL_WHY_IDS.map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={why === id}
+                    onClick={() => form.setValue("why", id, { shouldValidate: true })}
+                    className={cn(
+                      "min-h-9 rounded-full border px-3 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      why === id ? "border-module bg-module/10 text-module" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {t(`cancel_order.why.${id}`)}
+                  </button>
+                ))}
+              </div>
+              {why === "other" && (
+                <FormField
+                  control={form.control}
+                  name="note"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Input placeholder={t("cancel_order.other_ph")} dir="auto" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-bold">{t("cancel_order.then_label")}</p>
+              <div className="space-y-2" role="radiogroup" aria-label={t("cancel_order.then_label")}>
+                {options.map(card)}
+              </div>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                {t("cancel_order.back")}
+              </Button>
+              <Button type="submit" variant="destructive" disabled={!why || !then || form.formState.isSubmitting} className="gap-2">
+                {form.formState.isSubmitting && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
+                {t("cancel_order.submit")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}

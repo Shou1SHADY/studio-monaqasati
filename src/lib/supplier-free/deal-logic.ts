@@ -14,6 +14,7 @@
 //  - an invoice is raised per receipt, never above what the contractor accepted
 //    (decision 1, G-07), and its instalments come from the terms frozen on the order (G-08).
 
+import { lineCalc } from "@/lib/procurement/offer-calc"
 import type { Deal, DealInvoice, DealOffer, DealPo, DealReceipt, DealReport, PaymentTerm, PoLineFact, QuoteVersion } from "./types"
 
 export const VAT = 0.15
@@ -117,7 +118,7 @@ export function createDealLogic(today: string, vatRate: number = VAT) {
   function offerTotal(d: Deal, v: QuoteVersion | null = curV(d)): number {
     if (!v) return 0
     if (d.pricing === "total") return r2(v.total || 0)
-    return r2(d.items.reduce((s, i) => s + (v.prices[i.id] != null ? (v.prices[i.id] as number) * i.qty : 0), 0))
+    return r2(d.items.reduce((s, i) => s + (v.prices[i.id] != null ? lineCalc(i.qty, v.prices[i.id] as number, v.packs?.[i.id]).totalH / 100 : 0), 0))
   }
   /** The VAT rate a quote version carried (stored with it); one from before the rate was stored reads today's. */
   const quoteVatRate = (d: Deal, v: QuoteVersion | null = curV(d)): number => (v && v.vat != null ? v.vat : vatRate)

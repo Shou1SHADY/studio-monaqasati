@@ -61,6 +61,7 @@ import { approveMaterialRequest, decideChange, withdrawMaterialRequest, type Sup
 import { lastPaid } from "@/lib/procurement/prices"
 import { cn } from "@/lib/utils"
 import { CheckLine } from "./ContractBits"
+import { ProcLineProvider, useProcLine } from "./ProcLineFacts"
 import { PlantRequestsPanel } from "./PlantRequestsPanel"
 import { ChangeOnClientDialog, NewRequestDialog, qty, ReceiveDialog, RejectRequestDialog, StopLineDialog, useLocaleDir, useProjectOrderFacts, useSupplyRun, type SupplyItem } from "./SupplyDialogs"
 
@@ -164,7 +165,7 @@ export function SupplyRequestsPanel({
   )
 
   return (
-    <>
+    <ProcLineProvider projectId={projectId} orgId={orgId}>
       {withStore ? (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           {requestsPanel}
@@ -231,7 +232,7 @@ export function SupplyRequestsPanel({
       {lineDialog?.kind === "stop" && <StopLineDialog projectId={projectId} access={access} actor={actor} request={lineDialog.request} index={lineDialog.index} onClose={() => setLineDialog(null)} />}
       {lineDialog?.kind === "own" && <ChangeOnClientDialog projectId={projectId} access={access} actor={actor} request={lineDialog.request} index={lineDialog.index} onClose={() => setLineDialog(null)} />}
       {rejecting && <RejectRequestDialog projectId={projectId} access={access} actor={actor} request={rejecting} onClose={() => setRejecting(null)} />}
-    </>
+    </ProcLineProvider>
   )
 }
 
@@ -262,7 +263,7 @@ const needText = (t: ReturnType<typeof useTranslations>, needBy: string | null |
 
 function PhaseSegs({ r, l }: { r: PmMaterialRequest; l: ReqLine }) {
   const t = useTranslations("Portal.PM")
-  const p = linePhase(r, l)
+  const p = linePhase(r, l, useProcLine(r.id, r.lines.indexOf(l)))
   const got = lineGot(l)
   if (p === "held") return <Seg tone="w">{t("sup.chg.pill")}</Seg>
   if (p === "refused") return <Seg tone="cx">{t("sup.chg.rejected")}</Seg>
@@ -295,8 +296,8 @@ function PhaseSegs({ r, l }: { r: PmMaterialRequest; l: ReqLine }) {
 function SplitSegs({ r, l }: { r: PmMaterialRequest; l: ReqLine }) {
   const t = useTranslations("Portal.PM")
   const split = lineSplit(l)
-  const p = linePhase(r, l)
-  if (!split || p === "prop" || p === "held" || p === "refused" || p === "cx") return null
+  const p = linePhase(r, l, useProcLine(r.id, r.lines.indexOf(l)))
+  if (!split || p === "prop" || p === "held" || p === "refused" || p === "cx" || p === "fail") return null
   return (
     <>
       {split.store > 0 && (
@@ -313,7 +314,7 @@ function SplitSegs({ r, l }: { r: PmMaterialRequest; l: ReqLine }) {
   )
 }
 
-const phaseIcon = (r: PmMaterialRequest, l: ReqLine, p: LinePhase) => (p === "mfg" ? Factory : p === "ask" ? Link2 : lineLink(r, l).poId ? ShoppingCart : ArrowLeftRight)
+const phaseIcon = (r: PmMaterialRequest, l: ReqLine, p: LinePhase) => (p === "fail" ? AlertTriangle : p === "mfg" ? Factory : p === "ask" ? Link2 : lineLink(r, l).poId ? ShoppingCart : ArrowLeftRight)
 
 function ChangeTag({ l }: { l: ReqLine }) {
   const t = useTranslations("Portal.PM")
@@ -647,7 +648,8 @@ function DrawerLine({
   const prop = r.status === "pending"
   const store = world.stores.find((s) => s.key === l.key)
   const rate = store && l.itemId ? store.rates[l.itemId] : undefined
-  const phase = linePhase(r, l)
+  const proc = useProcLine(r.id, index)
+  const phase = linePhase(r, l, proc)
   const got = lineGot(l)
   const out = lineOut(l)
   const need = prop && l.itemId ? lineNeed({ key: l.key, stores: world.stores, items, requests: world.requests, except: r.id }) : null
@@ -779,6 +781,7 @@ function DrawerLine({
             </b>{" "}
             {prop ? t("sup.ph.prop") : t(`sup.ph.${phase}`)}
             {by.poNumber && !prop ? ` · ${by.poNumber}` : ""}
+            {phase === "fail" && proc?.fail ? ` · ${proc.fail.alt ? t("sup.fail_why_alt", { why: proc.fail.why, alt: proc.fail.alt }) : t("sup.fail_why", { why: proc.fail.why })}` : ""}
             {(l.receipts || []).length > 0 && ` · ${(l.receipts || []).map((x) => `${t("sup.grn", { no: x.grn })} ${qty(x.q)}${x.rej ? ` (${t("sup.rej_s", { q: qty(x.rej) })})` : ""}`).join(" · ")}`}
           </span>
           {prop ? (

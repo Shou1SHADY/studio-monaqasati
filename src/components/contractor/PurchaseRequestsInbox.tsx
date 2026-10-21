@@ -1,20 +1,24 @@
 "use client"
 
-// «طلبات الشراء الواردة» (Procurement 1.5, PUR-01): the REQUEST, not the line — what a
-// project, the workshop or the stores sent as one request is one card, under the number it
-// was written with («ط.م 03 · مجمع الياسمين»), with its materials, its need-by date, its last
-// day to order, who asked and one state. On a new request: «انشره» opens its panel on the
-// publishing step (then the review, and «انشر» there only), «جهّزه» opens the editor on a
-// draft. Picking several offers «اجمعها في طلب عروض واحد». A line's own path and acts (an
-// agreement, a direct order, the workshop, «تعذّر الشراء») stay in its drawer («التفاصيل»).
+// «طلبات الشراء الواردة» (Procurement 2.0, INC-01..11): the REQUEST, not the line — what a
+// project, the team, the workshop or the stores sent as one request is one card, under the number it
+// was written with («ط.م 03 · مجمع الياسمين»), with who asked, who approved, where it goes, its
+// materials, its need-by date, its last day to order and one state — read from the STORED request
+// (`procIncoming`), whose lines are each in one place. The segments are قادمة · جديدة · مُجهَّزة · في عروض ·
+// في أوامر · اكتملت · انتهت; what is left to buy of a partly handled request stays in «جديدة» under «الباقي منه».
+// On a new request: «انشره» opens its panel on the publishing step (then the review, and «انشر» there
+// only), «جهّزه» opens the editor on a draft, «تعذّر الشراء» closes what is left to buy with the reason its
+// requester reads. Picking several offers «اجمعها في طلب عروض واحد». A line's own path and acts (an
+// agreement, a direct order, the workshop) stay in its drawer («التفاصيل»).
 //
-// Nothing here RAISES a need. A buyer sees his categories; the owner acts (question 1) unless
-// he stepped back. The lines' derivation lives in `need-desk.ts`, the cards in `incoming-requests.ts`.
+// Nothing here RAISES a need except «طلب مواد» of a company without Project Management. A buyer sees his
+// categories; the owner acts (question 1) unless he stepped back. The lines' derivation lives in
+// `need-desk.ts`, the cards in `incoming-requests.ts`, the request's rules in `incoming-state.ts`.
 
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, CheckCircle2, FileSignature, Loader2, PackagePlus, Scale, ShoppingCart, X } from "lucide-react"
+import { AlertTriangle, CheckCircle2, FileSignature, Hourglass, Loader2, PackagePlus, Scale, ShoppingCart, X } from "lucide-react"
 import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,7 +38,7 @@ import { orderRef } from "@/lib/manufacturing-view"
 import { emitMfgEvent, mfgLinks } from "@/lib/mfg-events"
 import { inBuyerScope, selectionSummary, type NeedRow } from "@/lib/procurement/need-desk"
 import { REQUEST_SEGMENTS, inRequestSegment, requestCards, requestSegmentCounts, sortCards, type RequestCard, type RequestSegment } from "@/lib/procurement/incoming-requests"
-import { displayNeedRef } from "@/lib/procurement/format"
+import { displayNeedRef, displayPoNumber } from "@/lib/procurement/format"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RfqEditor } from "@/components/procurement/rfq-editor/RfqEditor"
@@ -52,16 +56,18 @@ import { NeedLineDrawer } from "@/components/procurement/NeedLineDrawer"
 import { ProceedPurchaseDialog } from "@/components/procurement/ProceedPurchaseDialog"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { TeamRequestDialog } from "@/components/procurement/TeamRequestDialog"
-import { MyTeamRequests } from "@/components/procurement/MyTeamRequests"
-import { getAuth } from "firebase/auth"
+import { ReqFailDialog } from "@/components/procurement/ReqFailDialog"
 import { fmtDay } from "@/components/procurement/need-bits"
+import { siteLine } from "@/lib/procurement/delivery-sites"
+import { displayCity } from "@/lib/constants"
 
-type Confirm = { kind: "arrived" | "decline" | "buy" | "lapsed" | "team_decline"; row: NeedRow }
+type Confirm = { kind: "arrived" | "decline" | "buy" | "lapsed"; row: NeedRow }
 
 const isSeg = (v: string | null): v is RequestSegment => !!v && (REQUEST_SEGMENTS as string[]).includes(v)
 
-/** The states whose request still has lines to publish: its panel is the request; the others open the line's own drawer. */
+/** The states whose request may still have lines to publish: its panel is the request; the others open the line's own drawer. */
 const PANEL_STATES: RequestCard["state"][] = ["new", "prepared", "partial"]
+const hasPanel = (c: RequestCard) => c.buyLines > 0 && PANEL_STATES.includes(c.state)
 
 export function PurchaseRequestsInbox() {
   const t = useTranslations("Portal.Shared")
@@ -93,11 +99,10 @@ export function PurchaseRequestsInbox() {
   const search = searchParams.get("search") || ""
   const searching = search.trim().length > 0
   const seg: RequestSegment = searching ? "all" : isSeg(searchParams.get("seg")) ? (searchParams.get("seg") as RequestSegment) : "new"
-  // Without Project Management the team asks for materials here (PUR-10, question 4): «طلب مواد» and «طلباتي».
+  // Without Project Management the team asks for materials here (PUR-10, question 4): «طلب مواد».
   const teamOn = !on("project-management")
-  const mine = teamOn && !searching && searchParams.get("seg") === "mine"
   const [raising, setRaising] = useState(false)
-  const [mineKey, setMineKey] = useState(0)
+  const [failing, setFailing] = useState<RequestCard | null>(null)
   const panelKey = searchParams.get("publish")
   // «انشره» opens the panel on the publishing step; a press on the row (or «التفاصيل») on the request itself.
   const panelStep: 1 | 2 = searchParams.get("step") === "1" ? 1 : 2
@@ -152,12 +157,7 @@ export function PurchaseRequestsInbox() {
     setBusy(true)
     setError(null)
     try {
-      if (kind === "team_decline") {
-        const s = row.need.source
-        const res = await fetch("/api/procurement/team-requests", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${(await getAuth().currentUser?.getIdToken()) || ""}` }, body: JSON.stringify({ action: "decline", id: s.purchaseRequestId, reason: reason.trim() }) })
-        if (!res.ok) throw new Error(String(res.status))
-        toast({ title: t("pri_declined_saved") })
-      } else if (kind === "arrived" || kind === "decline") {
+      if (kind === "arrived" || kind === "decline") {
         const m = mfgOf(row)
         if (!m) return
         const { order: o, request: r, lotted } = m
@@ -227,12 +227,9 @@ export function PurchaseRequestsInbox() {
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <ProcChipGroup<RequestSegment | "mine">
-          items={[
-            ...REQUEST_SEGMENTS.filter((f) => f !== "elsewhere" || counts.elsewhere > 0).map((f) => ({ id: f, label: t(`rq_seg_${f}`), count: counts[f] })),
-            ...(teamOn ? [{ id: "mine" as const, label: t("tr_mine") }] : []),
-          ]}
-          active={mine ? "mine" : seg}
+        <ProcChipGroup<RequestSegment>
+          items={REQUEST_SEGMENTS.map((f) => ({ id: f, label: t(`rq_seg_${f}`), count: counts[f] }))}
+          active={seg}
           onPick={(f) => setQuery({ seg: f, search: null })}
           label={t("pri_state")}
           dimmed={searching}
@@ -248,8 +245,12 @@ export function PurchaseRequestsInbox() {
         {ownerRO && <span className="ms-auto text-xs font-semibold text-muted-foreground">{t("nd_owner_read")}</span>}
       </div>
 
-      {mine ? (
-        <MyTeamRequests refreshKey={mineKey} />
+      {seg === "upcoming" && !searching ? (
+        <div className="rounded-2xl border bg-card p-8 text-center text-muted-foreground">
+          <Hourglass size={32} className="mx-auto mb-2 opacity-30" aria-hidden="true" />
+          <p className="text-sm font-semibold text-foreground">{t("rq_upcoming_title")}</p>
+          <p className="mx-auto mt-1 max-w-xl text-xs">{t("rq_upcoming_hint")}</p>
+        </div>
       ) : loading ? (
         <div className="flex items-center justify-center rounded-2xl border bg-card p-16">
           <Loader2 className="animate-spin text-muted-foreground" size={28} aria-hidden="true" />
@@ -272,9 +273,10 @@ export function PurchaseRequestsInbox() {
               canAct={canStartRfq}
               onPublish={() => setQuery({ publish: c.key, step: null, line: null })}
               prepareHref={editorHref([c.key])}
-              onDetails={() => (PANEL_STATES.includes(c.state) ? setQuery({ publish: c.key, step: "1", line: null }) : setQuery({ line: c.rows[0].key }))}
+              onDetails={() => (hasPanel(c) ? setQuery({ publish: c.key, step: "1", line: null }) : setQuery({ line: c.rows[0].key }))}
               onLine={(rowKey) => setQuery({ line: rowKey })}
-              onDecline={c.need.kind === "team" && canStartRfq && (c.state === "new" || c.state === "prepared") ? () => setConfirm({ kind: "team_decline", row: c.rows[0] }) : undefined}
+              onFail={c.need.incoming && canStartRfq && c.buyLines > 0 ? () => setFailing(c) : undefined}
+              rfqCloses={(id) => (world.rfqs.find((r) => r.id === id)?.deadline as string | null | undefined) ?? null}
             />
           ))}
         </ul>
@@ -285,12 +287,11 @@ export function PurchaseRequestsInbox() {
           open={raising}
           onOpenChange={setRaising}
           orgId={orgId || ""}
-          onSent={() => {
-            setMineKey((k) => k + 1)
-            setQuery({ seg: "mine", search: null })
-          }}
+          onSent={() => setQuery({ seg: "new", search: null })}
         />
       )}
+
+      <ReqFailDialog card={failing} onClose={() => setFailing(null)} />
 
       {canAct && summary.lines > 0 && (
         <div className="fixed inset-x-4 bottom-4 z-30 mx-auto flex max-w-4xl flex-wrap items-center gap-2 rounded-2xl border bg-card px-4 py-3 shadow-lg max-md:pe-20" role="region" aria-label={t("nd_selection")}>
@@ -374,12 +375,12 @@ export function PurchaseRequestsInbox() {
                 <DialogDescription>
                   {confirm.kind === "arrived"
                     ? t("pri_arrived_desc", { qty: fmtQty(confirm.row.total), unit: confirm.row.unit, item: confirm.row.name })
-                    : confirm.kind === "decline" || confirm.kind === "team_decline"
+                    : confirm.kind === "decline"
                       ? t("pri_decline_desc", { item: confirm.row.name, ref: displayNeedRef(confirm.row.need.refLabel, locale) })
                       : t(`nd_confirm_${confirm.kind}_desc`, { item: confirm.row.name })}
                 </DialogDescription>
               </DialogHeader>
-              {(confirm.kind === "decline" || confirm.kind === "team_decline") && (
+              {confirm.kind === "decline" && (
                 <div className="space-y-1.5">
                   <Label htmlFor="pri-reason">{t("pri_decline_reason")}</Label>
                   <Input id="pri-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("pri_decline_reason_ph")} dir="auto" />
@@ -391,7 +392,7 @@ export function PurchaseRequestsInbox() {
                 <Button variant="outline" onClick={() => setConfirm(null)} disabled={busy}>
                   {t("acc_cancel")}
                 </Button>
-                <Button onClick={runConfirm} disabled={busy || ((confirm.kind === "decline" || confirm.kind === "team_decline") && reason.trim().length < 3)} className="gap-1.5">
+                <Button onClick={runConfirm} disabled={busy || (confirm.kind === "decline" && reason.trim().length < 3)} className="gap-1.5">
                   {busy ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                   {t("pri_confirm")}
                 </Button>
@@ -414,7 +415,8 @@ function RequestCardView({
   prepareHref,
   onDetails,
   onLine,
-  onDecline,
+  onFail,
+  rfqCloses,
 }: {
   card: RequestCard
   selectable: boolean
@@ -426,18 +428,38 @@ function RequestCardView({
   onDetails: () => void
   /** A press on a material opens that line's own drawer (its path and acts). */
   onLine: (rowKey: string) => void
-  /** A team's «طلب مواد» Procurement cannot buy: «تعذّر الشراء» with the reason its requester reads. */
-  onDecline?: () => void
+  /** «تعذّر الشراء»: closes what is left to buy, with the reason and the alternative its requester reads. */
+  onFail?: () => void
+  rfqCloses: (rfqId: string) => string | null
 }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const n = c.need
+  const doc = n.incoming
   const ref = displayNeedRef(n.refLabel, locale)
   const place = n.projectName || n.context || t("nd_for_stock")
   const ld = c.lastOrderIn
-  const live = c.state === "new" || c.state === "prepared" || c.state === "partial"
-  const rfqLink = n.rfqId ? { id: n.rfqId, number: n.rfqNumber } : c.rfqs[0] ?? null
+  const live = c.buyLines > 0 && (c.state === "new" || c.state === "prepared" || c.state === "partial")
+  const rfqLink = c.rfqs[0] ?? (n.rfqId ? { id: n.rfqId, number: n.rfqNumber } : null)
+  const poLink = c.orders[0] ?? (n.poId ? { id: n.poId, number: n.poNumber } : null)
   const inHand = c.state === "rfq" || c.state === "partial" || c.state === "order"
+  const where = doc ? siteLine(doc.place, (c) => displayCity(c, locale)) : ""
+  const closes = rfqLink ? rfqCloses(rfqLink.id) : null
+  const meta = [
+    n.requestedBy ? t("rq_by", { name: n.requestedBy }) : "",
+    n.approved?.name || n.approved?.on ? t("rq_approved", { date: n.approved.on ? fmtDay(n.approved.on, locale) : "—" }) : "",
+    doc?.workOrderNo ? t("rq_wo", { no: doc.workOrderNo }) : "",
+    where ? t("rq_place", { place: where }) : "",
+  ].filter(Boolean)
+  const lineNote = (r: NeedRow): string | null => {
+    const own = doc?.lines[r.index]
+    if (r.state === "chk") return t("bef_wait_stock")
+    if (r.state === "mfgw") return t("bef_wait_mfg")
+    if (r.state === "stk") return t("bef_covered")
+    if (r.state === "cx") return own?.fail ? t("bef_failed") : t("bef_gone")
+    if (own && (own.mk?.st === "make" || own.mk?.st === "part")) return t("bef_make")
+    return null
+  }
   return (
     <li
       className={cn("cursor-pointer rounded-2xl border bg-card p-4 transition-colors hover:border-module/40", selected && "border-module/50 bg-module/5")}
@@ -456,23 +478,50 @@ function RequestCardView({
             <span className="text-sm font-semibold text-foreground" dir="auto">
               {place}
             </span>
-            <StatusPill tone={RQ_TONE[c.state]}>{t(`rq_state_${c.state}`, { rfq: n.rfqNumber || c.rfqs.map((r) => r.number).filter(Boolean).join(" · "), po: n.poNumber || "" })}</StatusPill>
+            <StatusPill tone={RQ_TONE[c.state]}>{t(`rq_state_${c.state}`)}</StatusPill>
+            {c.remainder && <StatusPill tone="violet">{t("rq_remainder")}</StatusPill>}
             <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">{t(`pri_from_${n.kind}`)}</span>
           </p>
-          {n.requestedBy && <p className="text-xs text-muted-foreground">{t("rq_by", { name: n.requestedBy })}</p>}
+          {meta.length > 0 && (
+            <p className="text-xs text-muted-foreground" dir="auto">
+              {meta.join(" · ")}
+            </p>
+          )}
           <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm" dir="auto">
-            {c.rows.map((r) => (
-              <span key={r.key}>
-                <button type="button" onClick={() => onLine(r.key)} className="rounded text-start hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={t("rq_line_open", { name: r.name })}>
-                  {r.name}
-                </button>{" "}
-                <b className="tabular-nums" dir="ltr">{fmtQty(r.state === "open" || r.state === "late" ? r.open : r.total)}</b> <span className="text-xs text-muted-foreground">{r.unit}</span>
-                {r.link && <span className="ms-1 text-[11px] font-semibold text-muted-foreground">· {t(r.link.poId ? "rq_line_in_po" : "rq_line_in_rfq", { ref: r.link.poId ? r.link.poNumber || "" : r.link.rfqNumber || "" })}</span>}
-                {r.samplePending && <span className="ms-1 text-[11px] font-semibold text-warning">· {t("nd_sample_pending")}</span>}
-              </span>
-            ))}
+            {c.rows.map((r) => {
+              const note = lineNote(r)
+              const reduced = r.state === "open" && r.total > r.open + 0.005
+              return (
+                <span key={r.key}>
+                  <button type="button" onClick={() => onLine(r.key)} className="rounded text-start hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={t("rq_line_open", { name: r.name })}>
+                    {r.name}
+                  </button>{" "}
+                  <b className="tabular-nums" dir="ltr">{fmtQty(r.state === "open" ? r.open : r.total)}</b>
+                  {reduced && <s className="ms-1 text-xs tabular-nums text-muted-foreground" dir="ltr">{fmtQty(r.total)}</s>}{" "}
+                  <span className="text-xs text-muted-foreground">{r.unit}</span>
+                  {r.link && <span className="ms-1 text-[11px] font-semibold text-muted-foreground">· {t(r.link.poId ? "rq_line_in_po" : "rq_line_in_rfq", { ref: r.link.poId ? r.link.poNumber || "" : r.link.rfqNumber || "" })}</span>}
+                  {note && <span className="ms-1 text-[11px] font-semibold text-warning">· {note}</span>}
+                  {r.samplePending && <span className="ms-1 text-[11px] font-semibold text-warning">· {t("nd_sample_pending")}</span>}
+                </span>
+              )
+            })}
           </p>
+          {c.state === "rfq" && rfqLink && (
+            <p className="text-xs font-semibold text-module" dir="auto">
+              {t("rq_line_rfq", { rfq: rfqLink.number || "—", date: closes ? fmtDay(closes, locale) : "—" })}
+            </p>
+          )}
+          {c.state === "order" && poLink && (
+            <p className="text-xs font-semibold text-module" dir="ltr">
+              {displayPoNumber(poLink.number || "", locale)}
+            </p>
+          )}
           {c.state === "withdrawn" && <p className="text-xs font-semibold text-muted-foreground">{t("rq_withdrawn_by", { name: c.withdrawal?.byName || "—", date: c.withdrawal?.on ? fmtDay(c.withdrawal.on, locale) : "—" })}</p>}
+          {c.failed && (
+            <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs font-semibold text-destructive" dir="auto">
+              {c.failed.alt ? t("rq_failed_block", { why: c.failed.why, alt: c.failed.alt }) : t("rq_failed_block_noalt", { why: c.failed.why })}
+            </p>
+          )}
           {c.changes.map((ch) => (
             <p key={ch.kind} className="text-xs font-semibold text-warning" dir="auto">
               {t(ch.kind === "withdrawn" ? "pchg_withdrawn" : "pchg_changed")} · {t("pchg_by", { name: ch.byName || "—", date: ch.on ? fmtDay(ch.on, locale) : "—" })}
@@ -484,15 +533,15 @@ function RequestCardView({
           <p className="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
             <span>{t("rq_need_by", { date: c.needBy ? fmtDay(c.needBy, locale) : "—" })}</span>
             {live && ld != null && (
-              <span className={cn("inline-flex items-center gap-1 font-semibold", ld < 0 ? "text-destructive" : ld <= 2 ? "text-warning" : "")}>
+              <span className={cn("inline-flex items-center gap-1 font-semibold", ld <= 2 ? "text-destructive" : ld <= 7 ? "text-warning" : "")}>
                 {ld < 0 && <AlertTriangle size={11} aria-hidden="true" />}
-                {ld < 0 ? t("nd_last_day_passed", { days: -ld }) : t("nd_order_by", { date: fmtDay(c.lastOrderDay, locale), days: ld })}
+                {ld < 0 ? t("nd_last_day_passed", { days: -ld }) : t("rq_last_day", { date: fmtDay(c.lastOrderDay, locale), days: ld })}
               </span>
             )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {canAct && (c.state === "new" || c.state === "partial") && (
+          {canAct && c.buyLines > 0 && (c.state === "new" || c.state === "partial") && (
             <>
               <Button size="sm" onClick={onPublish}>
                 {t("rq_publish")}
@@ -512,14 +561,14 @@ function RequestCardView({
               <Link href={`/contractor/rfqs/${rfqLink.id}`}>{t("rq_open_rfq")}</Link>
             </Button>
           )}
-          {c.state === "order" && n.poId && (
+          {(c.state === "order" || c.state === "partial") && poLink?.id && (
             <Button asChild size="sm" variant="outline">
-              <Link href={`/contractor/rfqs/orders?po=${n.poId}`}>{t("rq_open_po")}</Link>
+              <Link href={`/contractor/rfqs/orders?po=${poLink.id}`}>{t("rq_open_po")}</Link>
             </Button>
           )}
-          {onDecline && (
-            <Button size="sm" variant="ghost" className="text-destructive" onClick={onDecline}>
-              {t("tr_decline")}
+          {onFail && (
+            <Button size="sm" variant="ghost" className="text-destructive" onClick={onFail}>
+              {t("rq_fail")}
             </Button>
           )}
           <Button size="sm" variant="ghost" onClick={onDetails}>
@@ -534,7 +583,6 @@ function RequestCardView({
 const RQ_TONE: Record<RequestCard["state"], "ok" | "warn" | "bad" | "info" | "mute" | "module" | "violet"> = {
   new: "module",
   prepared: "info",
-  elsewhere: "mute",
   partial: "violet",
   rfq: "violet",
   order: "info",

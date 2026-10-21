@@ -19,7 +19,10 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { act, fireEvent, render } from "@testing-library/react"
 import type { Firestore } from "firebase/firestore"
-import { fakeFirestore, listCollection, resetFakeDb, seed } from "@/test-utils/fake-firestore"
+import { fakeFirestore, listCollection, readDoc, resetFakeDb, seed } from "@/test-utils/fake-firestore"
+import { fromPmRequest } from "@/lib/procurement/incoming-ingest"
+import { incomingDocId } from "@/lib/procurement/incoming-state"
+import type { ProjectRequestDoc } from "@/lib/procurement/needs"
 import { installDomShims, missingKeys, pushed, setPathname, setSignedIn } from "@/test-utils/render-world"
 import { pmCeiling, type PmContext } from "@/lib/pm/access"
 import { approveMaterialRequest, createMaterialRequest } from "@/lib/pm/supply-writes"
@@ -57,6 +60,12 @@ async function world() {
   const ctx: PmContext = { ceiling: pmCeiling({ owner: true, permissions: [] }), seat: null, archived: false }
   await createMaterialRequest(db, ctx, "P1", { uid: ORG, name: "م. فهد" }, { title: "بلوك وأسمنت", needBy: d(20), notes: null, lines: [{ itemId: "b1", name: "أسمنت بورتلاندي عادي", unit: "كيس", qty: 200 }] })
   await approveMaterialRequest(db, ctx, "P1", { uid: ORG, name: "م. فهد" }, "01")
+  // Procurement 2.0: the desk reads the STORED request — what the sync brings in once the project manager has approved.
+  const approved = readDoc<Record<string, unknown>>("projects/P1/purchaseRequests/01")
+  if (approved) {
+    const stored = fromPmRequest(ORG, { id: "P1", name: "مجمع الياسمين" }, { ...approved, id: "01" } as unknown as ProjectRequestDoc & Record<string, unknown>, {}, { siteId: "prj_P1", label: "مجمع الياسمين", city: "الرياض", district: "حي الياسمين" })
+    seed(`procIncoming/${incomingDocId(ORG, stored.mrKey)}`, stored as unknown as Record<string, unknown>)
+  }
 }
 
 const text = () => document.body.textContent ?? ""
@@ -126,8 +135,7 @@ describe("the RFQ editor (PUR-02/03)", () => {
     await flush()
     const qty = document.querySelector('input[aria-label="الكمية"]') as HTMLInputElement
     await act(async () => void fireEvent.change(qty, { target: { value: "8" } }))
-    const place = document.querySelector('select[aria-label="المشروع أو موقع التسليم"]') as HTMLSelectElement
-    await act(async () => void fireEvent.change(place, { target: { value: "prj_P1" } }))
+    await act(async () => void fireEvent.click(Array.from(document.querySelectorAll('[role="group"][aria-label="المشروع أو موقع التسليم"] button')).find((b) => (b.textContent || "").includes("مجمع الياسمين"))!))
     await flush()
     const press = async (label: string) => {
       const b = Array.from(document.querySelectorAll("button")).find((x) => (x.textContent || "").trim().startsWith(label))!
@@ -243,7 +251,7 @@ describe("the RFQ editor (PUR-02/03)", () => {
     await act(async () => void fireEvent.click(option))
     await flush()
     await act(async () => void fireEvent.change(document.querySelector('input[aria-label="الكمية"]') as HTMLInputElement, { target: { value: "8" } }))
-    await act(async () => void fireEvent.change(document.querySelector('select[aria-label="المشروع أو موقع التسليم"]') as HTMLSelectElement, { target: { value: "prj_P1" } }))
+    await act(async () => void fireEvent.click(Array.from(document.querySelectorAll('[role="group"][aria-label="المشروع أو موقع التسليم"] button')).find((b) => (b.textContent || "").includes("مجمع الياسمين"))!))
     await flush()
     const press = async (label: string) => {
       const b = Array.from(document.querySelectorAll("button")).find((x) => (x.textContent || "").trim().startsWith(label))!

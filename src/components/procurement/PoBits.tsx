@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { poLate, poStatus, type NoticeFact } from "@/lib/procurement/po"
 import { asX, closedByPayment } from "@/lib/procurement/po-extras"
-import type { PoLine, PoStatus, PurchaseOrder } from "@/lib/procurement/types"
+import { poTags, poVer, type PoNextStep, type PoWho } from "@/lib/procurement/po-state"
+import type { PoLine, PoStatus, ProcurementPolicies, PurchaseOrder } from "@/lib/procurement/types"
 import { sarLtr } from "@/lib/riyal"
 import { figure, honestDate, lineParts, moneyFigure, percentOf, quantityText, type HonestDate } from "./PoModel"
 
@@ -37,6 +38,7 @@ export function PoStatusPill({ po, now, notices, className }: { po: PurchaseOrde
     <span className={cn("inline-flex flex-wrap items-center gap-1", className)}>
       <Badge className={cn("border-none text-[11px] font-bold", PILL[status])}>{tProc(`status.${key}` as "status.closed")}</Badge>
       {late && <Badge className="border-none bg-destructive/10 text-[11px] font-bold text-destructive">{tProc("deliveryState.late", { days: daysLateOf(po, now, notices) })}</Badge>}
+      {po.status === "sent" && po.supplierDecline && <Badge className="border-none bg-destructive/10 text-[11px] font-bold text-destructive">{t("supplier.declined")}</Badge>}
       {po.status === "awaiting_approval" && po.returnedReason && <Badge className="border-none bg-destructive/10 text-[11px] font-bold text-destructive">{t("pill_returned")}</Badge>}
     </span>
   )
@@ -144,4 +146,62 @@ export function LineBar({ line, inTransit = 0, className }: { line: PoLine; inTr
       </p>
     </div>
   )
+}
+
+// ---------------------------------------------------------------------------
+// «من ننتظر», the header tags and the next-step sentence (Procurement 2.0)
+// ---------------------------------------------------------------------------
+
+const WHO_STYLE: Record<PoWho, string> = {
+  sup: "bg-cta/10 text-cta",
+  us: "bg-warning/10 text-warning",
+  rcv: "bg-module/10 text-module",
+  fin: "bg-success/10 text-success",
+  app: "bg-warning/10 text-warning",
+  inv: "bg-module/10 text-module",
+  mfg: "bg-module/10 text-module",
+  none: "bg-muted text-muted-foreground",
+}
+
+/** Who the order waits on: المورد · نحن · المستلم · المالية · المعتمِد · المخزون · الورشة · —. */
+export function WhoTag({ who, className }: { who: PoWho; className?: string }) {
+  const t = useTranslations("Portal.ProcOrders")
+  return <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold", WHO_STYLE[who], className)}>{t(`who.${who}`)}</span>
+}
+
+/** The header pills: the version, how the order was won, and what it carries. */
+export function PoTags({ po, policies, className }: { po: PurchaseOrder; policies: Pick<ProcurementPolicies, "directPurchaseCap" | "minOffers">; className?: string }) {
+  const t = useTranslations("Portal.ProcOrders")
+  const tProc = useTranslations("Portal.Procurement")
+  const ver = poVer(po)
+  const tags = poTags(po, policies)
+  if (ver <= 1 && tags.length === 0) return null
+  const why = (x: { why: string | null; whyCode: string | null }) => x.why || (x.whyCode ? tProc(`awardReason.${x.whyCode}` as "awardReason.other") : "—")
+  return (
+    <span className={cn("flex flex-wrap gap-1.5", className)}>
+      {ver > 1 && <Badge className="border-none bg-cta/10 text-[11px] font-bold text-cta">{tProc("rfqpo.po.revision", { n: ver })}</Badge>}
+      {tags.map((tag) => (
+        <Badge key={tag.id} className={cn("border-none text-[11px] font-bold", tag.id === "lump" || tag.id === "noVat" ? "bg-muted text-muted-foreground" : "bg-warning/10 text-warning")}>
+          {tag.id === "notLowest" && t("tag.not_lowest", { why: why(tag) })}
+          {tag.id === "lowComp" && t("tag.low_comp", { n: tag.n ?? 0, of: tag.of ?? 3, why: why(tag) })}
+          {tag.id === "directOver" && t("tag.direct_over", { why: why(tag) })}
+          {tag.id === "lump" && t("tag.lump")}
+          {tag.id === "noVat" && t("tag.no_vat")}
+        </Badge>
+      ))}
+    </span>
+  )
+}
+
+/** The sentence of the next step, in the reader's language — the rows of the list and the drawer's new states read it. */
+export function useStepSentence() {
+  const t = useTranslations("Portal.ProcOrders")
+  const fmt = useDateText()
+  return (step: PoNextStep): string => {
+    const { state, params } = step
+    const key = state.k === "adv" ? (state.who === "app" ? "adv_owner" : state.who === "fin" ? "adv_fin" : "adv_us") : state.k
+    const date = typeof params.date === "string" && params.date ? fmt(params.date) : "—"
+    const reason = typeof params.reason === "string" && ["stock", "price", "date", "other"].includes(params.reason) ? t(`supplier.reason_${params.reason}` as "supplier.reason_other") : String(params.reason ?? "")
+    return t(`step.${key}` as "step.appr", { ...params, date, reason, name: String(params.name || "—") })
+  }
 }

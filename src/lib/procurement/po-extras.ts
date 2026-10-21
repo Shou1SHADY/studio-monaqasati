@@ -190,15 +190,20 @@ const pct = (v: unknown) => {
   return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0
 }
 
-export type AdvanceState = "none" | "pending" | "requested" | "paid"
+export type AdvanceState = "none" | "pending" | "owner" | "requested" | "paid"
 
-/** No advance · agreed but not approved yet · with Finance (approval IS the
- * request) · paid. The supplier's lead time starts when it is paid. */
-export function advanceState(po: PurchaseOrderX): AdvanceState {
+/** An advance to a supplier with no supply record waits for the owner before anyone asks Finance for it (PO-14). */
+export const advanceNeedsOwner = (po: Pick<PurchaseOrder, "advanceOwner">): boolean => Boolean(po.advanceOwner?.required) && !po.advanceOwner?.approvedAt
+
+/** No advance · agreed but not approved yet · waiting for the owner (a supplier with no record) · with Finance (approval IS the
+ * request) · paid. The supplier's lead time starts when it is paid. With Finance in the company, the buyer's own mark of the
+ * day paid is a reference and never counts as paid (PO-07) — pass `financeOn`. */
+export function advanceState(po: PurchaseOrderX, financeOn?: boolean): AdvanceState {
   if (!pct(po.advancePercent)) return "none"
-  if ((po.financePayments || []).some((p) => p.kind === "adv") || po.advancePaidDay) return "paid"
+  if ((po.financePayments || []).some((p) => p.kind === "adv") || (po.advancePaidDay && financeOn !== true)) return "paid"
   if (po.status === "cancelled") return "none"
-  return po.approvedAt ? "requested" : "pending"
+  if (!po.approvedAt) return "pending"
+  return advanceNeedsOwner(po) ? "owner" : "requested"
 }
 
 export const advanceAmount = (po: PurchaseOrderX): number => round2((poCommitment(po) * pct(po.advancePercent)) / 100)
@@ -290,7 +295,7 @@ export function docTrail(po: PurchaseOrderX, deliveries: Array<ReceiptFact & { p
     },
     { key: "accepted", at: po.supplierAcceptedAt || null, who: [], state: po.supplierAcceptedAt ? "ok" : st === "sent" ? "now" : "todo", flags: po.acceptanceRecordedBy ? [`by:${po.acceptanceRecordedBy}`] : [] },
   ]
-  const adv = advanceState(po)
+  const adv = advanceState(po, financeOn)
   if (adv !== "none") {
     const paid = (po.financePayments || []).find((p) => p.kind === "adv")
     steps.push({ key: "advance", at: paid ? paid.valueDate : po.advancePaidDay || null, who: financeOn ? [paid ? paid.no : advanceNumber(po)] : [], state: adv === "paid" ? "ok" : adv === "requested" ? "now" : "todo", flags: [] })

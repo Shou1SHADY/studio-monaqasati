@@ -6,11 +6,12 @@ import { monthlyLimitFor } from "@/lib/supplier-approval-server"
 import { supplierCompanyOf } from "@/lib/supplier-free/supplier-company"
 
 // A supplier's quotation from the full portal, the AI assistant or the mobile app — written here, after the company's
-// approval and the request's state are checked (supplier-offer-server.ts). The rules no longer take it from a browser.
+// approval and the request's state — open, in time, reaching him — are checked (supplier-offer-server.ts, G-07). The rules no longer
+// take it from a browser.
 
 const fail = (message: string, code: string, status: number, detail?: string) => NextResponse.json({ error: true, message, code, detail: detail ?? null }, { status })
 
-const STATUS: Record<string, number> = { not_approved: 403, quota: 429, rfq_missing: 404, rfq_closed: 409, too_large: 413 }
+const STATUS: Record<string, number> = { not_approved: 403, quota: 429, rfq_missing: 404, rfq_closed: 409, deadline: 409, not_reached: 403, already_quoted: 409, too_large: 413 }
 
 const schema = z.object({ rfqId: z.string().trim().min(1).max(200), offer: z.record(z.unknown()) })
 

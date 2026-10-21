@@ -15,7 +15,7 @@ import { workQueueCounts } from "@/lib/procurement/shell"
 import type { NoticeFact } from "@/lib/procurement/po"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type ProcurementPolicies, type PurchaseOrder } from "@/lib/procurement/types"
 import { FORWARD_HREF } from "@/lib/procurement/today"
-import { TEAM_REQUESTS } from "@/lib/procurement/team-requests"
+import { PROC_INCOMING } from "@/lib/procurement/incoming-state"
 
 export type WorkQueueItemType =
   | "guarantee_expiring"
@@ -171,7 +171,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
   // PUR-10: my own «طلب مواد» still open — the server writes `notifiedState` when it tells me it moved.
   const myRequestsQuery = useMemoFirebase(() => {
     if (!firestore || !organizationId || !userId) return null
-    return query(collection(firestore, TEAM_REQUESTS), where("organizationId", "==", organizationId), where("requestedById", "==", userId), where("status", "==", "open"))
+    return query(collection(firestore, PROC_INCOMING), where("organizationId", "==", organizationId), where("requestedById", "==", userId), where("status", "==", "open"))
   }, [firestore, organizationId, userId])
   const { data: myRequests } = useCollection(myRequestsQuery)
 
@@ -408,7 +408,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       sortMs: toMs(r.needBy || r.createdAt),
       since: toMs(r.stateAt || r.createdAt) || undefined,
       actionUrl: "/contractor/rfqs/my-requests",
-      data: { number: r.number || "", state },
+      data: { number: r.no || r.number || "", state },
     })
   })
 

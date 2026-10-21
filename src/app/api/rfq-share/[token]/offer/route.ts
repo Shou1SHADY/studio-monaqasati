@@ -3,7 +3,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "crypto"
 import { z } from "zod"
 import { parseOfferTerms } from "@/lib/procurement/offer-terms"
-import { faultNames, guestOfferPrice, priceOffer, pricedProducts, pricingFault, type PricedRfq } from "@/lib/procurement/offer-pricing"
+import { faultNames, pricedProducts } from "@/lib/procurement/offer-pricing"
+import { buildQuote, leadDaysFrom, leadDaysRefusal, versionFromQuote, type QuoteRfq } from "@/lib/procurement/offer-versions"
+import { rfqOfferKey } from "@/lib/procurement/event-keys"
+import { rfqKeyPart, sendProcEvent } from "@/lib/procurement/proc-event-server"
+import { unitPriceSchema } from "@/lib/procurement/input-limits"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminFirestore, getAdminStorage, getStorageBucketName } from "@/lib/firebaseAdmin"
 import { resolveShareToken, isRfqDeadlinePassed } from "@/lib/rfq-share"
@@ -50,7 +54,15 @@ const MAX_OFFERS_PER_LINK = 100
  * arrive as one JSON field because the rest of the form is flat strings; the
  * TOTAL is computed from them below and a posted total is ignored. */
 const linesSchema = z
-  .array(z.object({ rfqProductIndex: z.coerce.number().int().min(0).max(999), unitPrice: z.coerce.number().positive().finite() }))
+  .array(
+    z.object({
+      rfqProductIndex: z.coerce.number().int().min(0).max(999),
+      unitPrice: unitPriceSchema,
+      // The sale unit he priced by («قطعة 6 م»), as its length in request units, and the warranty he offers on the line.
+      packLen: z.coerce.number().positive().finite().max(1000).optional(),
+      warrantyMonths: z.coerce.number().int().min(0).max(120).optional(),
+    })
+  )
   .max(200)
 
 /** The materials he says he does not supply (PUR-03): a line is priced or marked here, never blank. */
@@ -67,7 +79,7 @@ const fieldsSchema = z.object({
     .trim()
     .max(20)
     .refine((v) => saudiMobileE164(v) != null, "Invalid Saudi mobile"),
-  price: z.coerce.number().positive().finite(),
+  price: unitPriceSchema,
   deliveryLocation: z.string().trim().max(300).optional().or(z.literal("")),
   deliveryDate: z
     .string()
@@ -133,12 +145,14 @@ export async function POST(
       "creditDays",
       "challengeId",
       "code",
+      "whole",
+      "vatRegistered",
     ]) {
       const v = form.get(key)
       if (typeof v === "string") raw[key] = v
     }
     const ratesField = form.get("lines")
-    let postedRates: Array<{ rfqProductIndex: number; unitPrice: number }> = []
+    let postedRates: Array<{ rfqProductIndex: number; unitPrice: number; packLen?: number; warrantyMonths?: number }> = []
     if (typeof ratesField === "string" && ratesField.trim()) {
       let decoded: unknown = null
       try {
@@ -267,18 +281,21 @@ export async function POST(
 
     const nowIso = new Date().toISOString()
 
-    // A line-priced RFQ is quoted per material and its total is OURS to compute
-    // (`guestOfferPrice`): an endpoint that believed a posted figure would let a
-    // guest name any total it liked beside its rates.
-    const quoted = guestOfferPrice(rfq as PricedRfq, postedRates, data.price, postedSkipped)
-    if (!quoted.ok) {
-      const rates: Record<number, number> = {}
-      for (const l of postedRates) rates[l.rfqProductIndex] = l.unitPrice
-      const products = pricedProducts(rfq as PricedRfq)
-      const named = faultNames(products, pricingFault(priceOffer(products, rates, postedSkipped))?.indexes ?? [])
-      return errorResponse(`Give a price for every material you supply, and mark the rest as not supplied${named ? `: ${named}` : ""}`, quoted.code, 400)
+    // A line-priced RFQ is quoted per material — by the request unit or by a sale unit the line offers — and its total is
+    // OURS to compute (`buildQuote`, through offer-calc): an endpoint that believed a posted figure would let a guest name any
+    // total it liked beside its rates. «غير مسجّل ضريبياً» and «للطلب كاملاً فقط» are his to say.
+    const built = buildQuote(rfq as QuoteRfq, { lines: postedRates, skipped: postedSkipped, total: data.price, whole: raw.whole === "true" }, { registered: raw.vatRegistered !== "false" })
+    if (!built.ok) {
+      const named = faultNames(pricedProducts(rfq as QuoteRfq), built.refusal.indexes)
+      return errorResponse(`${built.refusal.code === "line_prices_incomplete" || built.refusal.code === "line_contradictory" || built.refusal.code === "no_line_priced" ? "Give a price for every material you supply, and mark the rest as not supplied" : "Please review the prices you entered"}${named ? `: ${named}` : ""}`, built.refusal.code.toUpperCase(), 400)
     }
-    const { total, price: priceStr, lines: pricedLines, skippedItems } = quoted
+    const quote = built.quote
+    const total = quote.total
+    const priceStr = String(total)
+    const pricedLines = quote.mode === "line" ? quote.lines : null
+    const skippedItems = quote.skipped.length ? quote.skipped : null
+    const lead = leadDaysFrom(data.executionDuration, data.executionDurationUnit)
+    if (leadDaysRefusal(lead)) return errorResponse("The duration is a whole number of days from 1 to 365", "INVALID_DURATION", 400)
     const offerData: Record<string, unknown> = {
       supplierId: "guest",
       organizationId: "guest",
@@ -295,6 +312,11 @@ export async function POST(
       price: priceStr,
       ...(pricedLines ? { lines: pricedLines } : {}),
       ...(skippedItems ? { skippedItems } : {}),
+      ...(quote.lump != null ? { lump: quote.lump } : {}),
+      whole: quote.whole,
+      vatRegistered: quote.vatRegistered,
+      vatRate: quote.vatRate,
+      ...(lead != null ? { leadDays: lead } : {}),
       deliveryLocation: data.deliveryLocation || "",
       deliveryBatches: [
         {
@@ -331,6 +353,9 @@ export async function POST(
       offerData.executionDurationUnit = data.executionDurationUnit || "أيام"
     }
     if (offerPdfUrl) offerData.offerPdfUrl = offerPdfUrl
+    // Born as version 1: every later edit, from any door, is the next one and keeps this (G-15).
+    offerData.versions = [versionFromQuote(quote, { at: riyadhDay(), arrive: data.deliveryDate || null, valid: String(offerData.validUntil || ""), note: data.message || "", fileUrl: offerPdfUrl, leadDays: lead, by: "guest", n: 1 })]
+    offerData.rev = 1
 
     await offerRef.set(offerData)
 
@@ -381,6 +406,8 @@ export async function POST(
       .doc(rfqId)
       .update({ offersCount: FieldValue.increment(1) })
       .catch((err) => console.error("Failed to bump offersCount:", err))
+
+    await sendProcEvent(db, { id: "rfq_offer", key: rfqOfferKey(rfqKeyPart(rfq, rfqId), offerRef.id, 1), organizationId: (rfq.organizationId as string) || (rfq.contractorId as string) || "", by: "guest", at: nowIso, refs: { rfq: rfqKeyPart(rfq, rfqId), offer: offerRef.id }, payload: { version: 1, channel: "link" } })
 
     if (rfq.contractorId) {
       // A sealed round names no amount, from a guest as from anyone.

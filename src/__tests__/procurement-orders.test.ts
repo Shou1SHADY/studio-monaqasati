@@ -68,6 +68,7 @@ const po = (over: Partial<PurchaseOrder> = {}): PurchaseOrder => ({
 const actor = (over: Partial<ProcActor> = {}): ProcActor => ({ uid: "u1", name: "سعد", isOwner: false, canApprove: false, canPrepare: true, canExpedite: true, canReceive: false, seesPrices: true, ...over })
 
 const display = (n: string) => n.replace("PO", "ط.ش")
+const CTX = { notices: [], financeOn: false, acceptanceDays: 1, now: NOW }
 
 describe("segments", () => {
   const awaiting = po({ id: "a", status: "awaiting_approval", approvedAt: null, promisedDate: null })
@@ -78,27 +79,30 @@ describe("segments", () => {
   const cancelled = po({ id: "f", status: "cancelled" })
   const all = [awaiting, approved, late, received, closed, cancelled]
 
-  it("routes every state to its segment; late is a subset of live", () => {
-    expect(inSegment(awaiting, "awaiting_approval", NOW)).toBe(true)
-    expect(inSegment(approved, "live", NOW)).toBe(true)
-    expect(inSegment(late, "live", NOW)).toBe(true)
-    expect(inSegment(late, "late", NOW)).toBe(true)
-    expect(inSegment(approved, "late", NOW)).toBe(false)
-    expect(inSegment(received, "received", NOW)).toBe(true)
-    expect(inSegment(received, "live", NOW)).toBe(false)
-    expect(inSegment(closed, "received", NOW)).toBe(true)
-    expect(inSegment(cancelled, "received", NOW)).toBe(true)
+  it("routes every state to ONE segment: the move is ours, theirs, late, or the order is over (R-25)", () => {
+    expect(inSegment(awaiting, "act", CTX)).toBe(true)
+    expect(inSegment(approved, "act", CTX)).toBe(true)
+    expect(inSegment(late, "late", CTX)).toBe(true)
+    expect(inSegment(late, "wait", CTX)).toBe(false)
+    expect(inSegment(po({ id: "w" }), "wait", CTX)).toBe(true)
+    expect(inSegment(approved, "late", CTX)).toBe(false)
+    expect(inSegment(received, "done", CTX)).toBe(true)
+    expect(inSegment(closed, "done", CTX)).toBe(true)
+    expect(inSegment(cancelled, "done", CTX)).toBe(true)
+    expect(inSegment(received, "all", CTX)).toBe(true)
   })
 
-  it("counts", () => {
-    expect(segmentCounts(all, NOW)).toEqual({ awaiting_approval: 1, live: 2, late: 1, received: 3, all: 6 })
+  it("counts: the first four add up to the fifth", () => {
+    const counts = segmentCounts(all, CTX)
+    expect(counts).toEqual({ act: 2, wait: 0, late: 1, done: 3, all: 6 })
+    expect(counts.act + counts.wait + counts.late + counts.done).toBe(counts.all)
   })
 
   it("a search spans every segment and folds Arabic", () => {
-    expect(visibleOrders(all, "live", "افق", NOW, display).map((o) => o.id)).toHaveLength(6)
-    expect(visibleOrders(all, "live", "ط.ش-2026", NOW, display)).toHaveLength(6)
-    expect(visibleOrders(all, "live", "لا شيء", NOW, display)).toHaveLength(0)
-    expect(visibleOrders(all, "late", "", NOW, display).map((o) => o.id)).toEqual(["c"])
+    expect(visibleOrders(all, "act", "افق", CTX, display).map((o) => o.id)).toHaveLength(6)
+    expect(visibleOrders(all, "act", "ط.ش-2026", CTX, display)).toHaveLength(6)
+    expect(visibleOrders(all, "act", "لا شيء", CTX, display)).toHaveLength(0)
+    expect(visibleOrders(all, "late", "", CTX, display).map((o) => o.id)).toEqual(["c"])
   })
 
   it("sorts by the supplier's date, undated last", () => {

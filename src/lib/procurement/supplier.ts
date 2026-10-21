@@ -7,6 +7,7 @@
 // the guest API all read that shape) with the order's optional fields laid
 // over it. Nothing here writes; the page does, and the tests read this.
 
+import { statusForSupplier, type DecidableOffer } from "./offer-decisions"
 import { daysLate, dayOf, lineOutstanding, lineToArrive, poStatus, todayOf } from "./po"
 import { noticeLinesFromPo } from "./receipts"
 import { QUALITY_PAPERS, type DeliveryLine, type PoLine, type PoStatus, type PurchaseOrder, type QualityPaper } from "./types"
@@ -51,7 +52,7 @@ export const UNDER_REVIEW = "قيد المراجعة"
  * reached him — derived, never stored. "Under review" would have waited forever. */
 export const CLOSED_UNAWARDED = "مغلق"
 
-export interface AwardFacts {
+export interface AwardFacts extends Pick<DecidableOffer, "bafo" | "exclusion" | "reductionBy" | "reductionAt" | "reductionNote" | "reductionRound" | "decidedAt"> {
   status?: string | null
   poId?: string | null
   /** Written with the award since 22 Sep: the award is internal until its
@@ -91,7 +92,8 @@ export function supplierOfferStatus<T extends AwardFacts>(offer: T, ordersById: 
     const po = offer.poId ? ordersById.get(offer.poId) : undefined
     return po?.status === "cancelled" ? CLOSED_UNAWARDED : UNDER_REVIEW
   }
-  return status
+  // A buyer's exclusion is not told to the supplier, and a better-price request reads as the reduction request he answers.
+  return statusForSupplier(offer)
 }
 
 /** An offer list with each status replaced by what the supplier may see. */

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { EMPTY_OFFER_TERMS, OfferTermsFields, type OfferTermsValue } from "@/components/procurement/OfferTermsFields"
 import { parseOfferTerms } from "@/lib/procurement/offer-terms"
 import { useRouter } from "@/i18n/routing"
@@ -45,6 +46,8 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage
 import { REQUIRE_COMPLETE_PROFILE } from "@/lib/app-env"
 import { faultNames, offerPricingFields, priceOffer, pricedProducts, pricingFault, pricingModeOf } from "@/lib/procurement/offer-pricing"
 import { newOfferNotice, newOfferNoticeId } from "@/lib/procurement/offer-announce"
+import { fromHalalas, lineCalc } from "@/lib/procurement/offer-calc"
+import { saleUnitsOf, warrantyAskedOf, type QuoteProduct } from "@/lib/procurement/offer-versions"
 
 interface DeliveryBatch {
   id: string
@@ -103,6 +106,11 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
   const [lineRates, setLineRates] = useState<Record<number, string>>({})
   // A line he does not supply is marked, not left blank: blank is a forgotten field and is refused (PUR-03).
   const [lineSkips, setLineSkips] = useState<Record<number, boolean>>({})
+  // The sale unit a line is priced by (its length in request units; empty = per request unit) and the warranty he offers
+  // on a line that asks for one (months; «0» = no warranty). «للطلب كاملاً فقط»: all of it or nothing.
+  const [linePacks, setLinePacks] = useState<Record<number, string>>({})
+  const [lineWarranty, setLineWarranty] = useState<Record<number, string>>({})
+  const [whole, setWhole] = useState(false)
   const [deliveryBatches, setDeliveryBatches] = useState<DeliveryBatch[]>([
     { id: "1", deliveryDate: new Date().toISOString().split('T')[0], price: "", location: "" }
   ])
@@ -110,7 +118,18 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
   const isMultiShipment = selectedRfq?.shipmentMode === "multiple"
   const byLine = pricingModeOf(selectedRfq) === "line"
   const lineProducts = byLine ? pricedProducts(selectedRfq) : []
-  const linePricing = priceOffer(lineProducts, lineRates, lineProducts.filter((p) => lineSkips[p.rfqProductIndex]).map((p) => p.rfqProductIndex))
+  const rawProducts = (Array.isArray(selectedRfq?.products) ? selectedRfq.products : []) as QuoteProduct[]
+  const packOf = (i: number): number | undefined => {
+    const len = Number(linePacks[i])
+    return len > 0 && saleUnitsOf(rawProducts[i]).some((u) => u.lengthM === len) ? len : undefined
+  }
+  const linePricing = priceOffer(
+    lineProducts,
+    lineRates,
+    lineProducts.filter((p) => lineSkips[p.rfqProductIndex]).map((p) => p.rfqProductIndex),
+    Object.fromEntries(lineProducts.map((p) => [p.rfqProductIndex, packOf(p.rfqProductIndex)]))
+  )
+  const warrantyMissing = byLine ? linePricing.lines.filter((l) => warrantyAskedOf(rawProducts[l.rfqProductIndex]) != null && !(lineWarranty[l.rfqProductIndex] ?? "").trim()).map((l) => l.rfqProductIndex) : []
   const lineFault = pricingFault(linePricing)
   const lineFaultText = (fault: NonNullable<typeof lineFault>) =>
     fault.code === "NO_LINE_PRICED" ? t("offer_line_none_priced") : t(fault.code === "LINE_CONTRADICTORY" ? "offer_line_contradictory" : "offer_line_prices_incomplete", { names: faultNames(lineProducts, fault.indexes) })
@@ -162,6 +181,9 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
     setShowSaveTemplateInput(false)
     setNewTemplateName("")
     setSupplierWebsite(profile?.website || "")
+    setLinePacks({})
+    setLineWarranty({})
+    setWhole(false)
     setIsSubmitting(false)
     if (offerPdfInputRef.current) offerPdfInputRef.current.value = ""
   }
@@ -302,6 +324,11 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       return;
     }
 
+    if (warrantyMissing.length) {
+      toast({ title: t("offer_incomplete_data"), description: t("offer_warranty_choose", { names: faultNames(lineProducts, warrantyMissing) }), variant: "destructive" });
+      return;
+    }
+
     if (isMultiShipment) {
       const incomplete = deliveryBatches.some((b) => !b.location || !b.deliveryDate || !b.price || !(parseFloat(b.quantity || "0") > 0))
       if (incomplete) {
@@ -356,10 +383,11 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       // existing reader has always used, so nothing downstream needs to know.
       if (byLine) {
         const fields = offerPricingFields(linePricing)
-        offerData.lines = fields.lines
+        offerData.lines = fields.lines.map((l) => (lineWarranty[l.rfqProductIndex] !== undefined && lineWarranty[l.rfqProductIndex] !== "" ? { ...l, warrantyMonths: Number(lineWarranty[l.rfqProductIndex]) } : l))
         offerData.price = fields.price
         if (fields.skippedItems) offerData.skippedItems = fields.skippedItems
       }
+      if (whole) offerData.whole = true
 
       if (executionDuration) {
         offerData.executionDuration = executionDuration;
@@ -434,8 +462,14 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
           ? t("offer_not_approved")
           : code === "quota"
             ? t("offer_quota_reached", { n: error instanceof OfferSubmitError ? error.detail || "" : "" })
-            : code === "rfq_closed"
-              ? t("offer_rfq_closed")
+            : code === "rfq_closed" || code === "deadline"
+              ? t(code === "deadline" ? "offer_deadline_passed" : "offer_rfq_closed")
+              : code === "not_reached"
+              ? t("offer_not_reached")
+              : code === "already_quoted"
+              ? t("offer_already_quoted")
+              : code === "price_invalid" || code === "price_too_big" || code === "pack_not_offered" || code === "warranty_invalid" || code === "duration_invalid"
+              ? t(`offer_${code}`)
               : code === "line_prices_incomplete" || code === "line_contradictory"
                 ? t(code === "line_contradictory" ? "offer_line_contradictory" : "offer_line_prices_incomplete", { names: faultNames(lineProducts, (error instanceof OfferSubmitError ? error.detail || "" : "").split(",").filter(Boolean).map(Number)) })
                 : code === "no_line_priced"
@@ -628,45 +662,97 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                   {lineProducts.map((prod) => {
                     const rate = lineRates[prod.rfqProductIndex] ?? ""
                     const notSupplied = !!lineSkips[prod.rfqProductIndex]
-                    const subtotal = (Number(rate) || 0) * prod.quantity
+                    const units = saleUnitsOf(rawProducts[prod.rfqProductIndex])
+                    const asked = warrantyAskedOf(rawProducts[prod.rfqProductIndex])
+                    const pack = packOf(prod.rfqProductIndex)
+                    const calc = Number(rate) > 0 ? lineCalc(prod.quantity, Number(rate), pack) : null
+                    const subtotal = calc ? fromHalalas(calc.totalH) : 0
+                    const warrantyOptions = asked == null ? [] : [...new Set([asked, 12, 6, 0].filter((m) => m <= asked))].sort((x, y) => y - x)
                     return (
-                      <div key={prod.rfqProductIndex} className="flex flex-wrap items-center gap-2 p-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-bold" dir="auto">{prod.name}</p>
-                          <p className="text-[11px] text-muted-foreground">
-                            {t("offer_line_qty", { qty: prod.quantity, unit: prod.unit })}
+                      <div key={prod.rfqProductIndex} className="space-y-2 p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-bold" dir="auto">{prod.name}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {t("offer_line_qty", { qty: prod.quantity, unit: prod.unit })}
+                            </p>
+                          </div>
+                          <div className="relative w-32">
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              min="0"
+                              dir="ltr"
+                              aria-label={t("offer_line_rate_for", { name: prod.name })}
+                              value={rate}
+                              disabled={notSupplied}
+                              onChange={(e) => setLineRates({ ...lineRates, [prod.rfqProductIndex]: e.target.value })}
+                              className="w-full h-10 ps-3 pe-10 rounded-lg border-2 border-input bg-white text-sm font-bold text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-40"
+                              placeholder="0"
+                            />
+                            <span className="absolute end-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">{t("offer_sar")}</span>
+                          </div>
+                          <span className="w-24 text-end text-xs font-bold tabular-nums text-muted-foreground" dir="ltr">
+                            {subtotal > 0 ? Math.round(subtotal * 100) / 100 : "—"}
+                          </span>
+                          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                            <input
+                              type="checkbox"
+                              checked={notSupplied}
+                              onChange={(e) => {
+                                setLineSkips({ ...lineSkips, [prod.rfqProductIndex]: e.target.checked })
+                                if (e.target.checked) setLineRates({ ...lineRates, [prod.rfqProductIndex]: "" })
+                              }}
+                              className="h-4 w-4"
+                            />
+                            {t("offer_line_not_supplied")}
+                          </label>
+                        </div>
+                        {!notSupplied && units.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                            <label htmlFor={"pack-" + prod.rfqProductIndex} className="font-semibold text-muted-foreground">{t("offer_pack_label")}</label>
+                            <NativeSelect
+                              id={"pack-" + prod.rfqProductIndex}
+                              value={linePacks[prod.rfqProductIndex] ?? ""}
+                              onChange={(e) => setLinePacks({ ...linePacks, [prod.rfqProductIndex]: e.target.value })}
+                              className="h-8 rounded-md px-2 text-xs"
+                            >
+                              <option value="">{t("offer_pack_per_unit", { unit: prod.unit })}</option>
+                              {units.map((u) => (
+                                <option key={u.lengthM} value={String(u.lengthM)}>
+                                  {t("offer_pack_per_piece", { name: u.name })}
+                                </option>
+                              ))}
+                            </NativeSelect>
+                          </div>
+                        )}
+                        {!notSupplied && calc?.pack && (
+                          <p className="rounded-lg bg-sky-50 px-2.5 py-1.5 text-[11px] font-semibold text-sky-900" aria-live="polite">
+                            {t("offer_pack_live", { pcs: calc.pack.pcs, name: units.find((u) => u.lengthM === calc.pack?.packLen)?.name || "", received: calc.pack.received, unit: prod.unit, total: subtotal.toLocaleString(locale === "ar" ? "ar-SA" : "en-US"), sar: t("offer_sar") })}
+                            {calc.pack.extra > 0 ? " · " + t("offer_pack_extra", { extra: calc.pack.extra, unit: prod.unit }) : ""}
                           </p>
-                        </div>
-                        <div className="relative w-32">
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            min="0"
-                            dir="ltr"
-                            aria-label={t("offer_line_rate_for", { name: prod.name })}
-                            value={rate}
-                            disabled={notSupplied}
-                            onChange={(e) => setLineRates({ ...lineRates, [prod.rfqProductIndex]: e.target.value })}
-                            className="w-full h-10 ps-3 pe-10 rounded-lg border-2 border-input bg-white text-sm font-bold text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-40"
-                            placeholder="0"
-                          />
-                          <span className="absolute end-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">{t("offer_sar")}</span>
-                        </div>
-                        <span className="w-24 text-end text-xs font-bold tabular-nums text-muted-foreground" dir="ltr">
-                          {subtotal > 0 ? Math.round(subtotal * 100) / 100 : "\u2014"}
-                        </span>
-                        <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                          <input
-                            type="checkbox"
-                            checked={notSupplied}
-                            onChange={(e) => {
-                              setLineSkips({ ...lineSkips, [prod.rfqProductIndex]: e.target.checked })
-                              if (e.target.checked) setLineRates({ ...lineRates, [prod.rfqProductIndex]: "" })
-                            }}
-                            className="h-4 w-4"
-                          />
-                          {t("offer_line_not_supplied")}
-                        </label>
+                        )}
+                        {!notSupplied && asked != null && (
+                          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                            <label htmlFor={"warranty-" + prod.rfqProductIndex} className="inline-flex items-center gap-1 font-semibold text-muted-foreground">
+                              <ShieldCheck size={11} aria-hidden="true" />
+                              {t("offer_warranty_label", { months: asked })}
+                            </label>
+                            <NativeSelect
+                              id={"warranty-" + prod.rfqProductIndex}
+                              value={lineWarranty[prod.rfqProductIndex] ?? ""}
+                              onChange={(e) => setLineWarranty({ ...lineWarranty, [prod.rfqProductIndex]: e.target.value })}
+                              className="h-8 rounded-md px-2 text-xs"
+                            >
+                              <option value="">{t("offer_warranty_choose_option")}</option>
+                              {warrantyOptions.map((m) => (
+                                <option key={m} value={String(m)}>
+                                  {m === 0 ? t("offer_warranty_none") : [6, 12, 24, 36, 60].includes(m) ? t(`offer_warranty_m${m}` as "offer_warranty_m6") : t("offer_warranty_option", { months: m })}
+                                </option>
+                              ))}
+                            </NativeSelect>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -685,6 +771,14 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                 )}
               </div>
             )}
+
+            <label className="flex items-start gap-2 rounded-xl border bg-slate-50/60 px-3 py-2.5 text-xs">
+              <input type="checkbox" checked={whole} onChange={(e) => setWhole(e.target.checked)} className="mt-0.5 h-4 w-4" />
+              <span>
+                <b className="block text-sm">{t("offer_whole_only")}</b>
+                <span className="text-muted-foreground">{t("offer_whole_only_hint")}</span>
+              </span>
+            </label>
 
             {isMultiShipment ? (
               /* Multiple shipments — each batch splits the RFQ's own required quantity, never a whole-order total */

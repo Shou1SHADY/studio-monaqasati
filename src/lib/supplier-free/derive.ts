@@ -9,6 +9,7 @@
 
 import { awardDisclosed, supplierSegmentOf } from "@/lib/procurement/supplier"
 import { isWithdrawnOffer } from "@/lib/procurement/award"
+import { bafoOpen, revalOpen } from "@/lib/procurement/offer-decisions"
 import { termsListOf } from "@/lib/procurement/terms-freeze"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import { addDaysTo, createDealLogic, dayNum } from "./deal-logic"
@@ -120,9 +121,6 @@ export function bareNumber(n: unknown): string {
 /** The number the supplier reads on a receipt: `GR-2026/031` → `2026/031`. */
 export const receiptNumber = bareNumber
 
-/** The contractor's exclusion reasons (R-41, and the older set still stored) as the supplier reads them. */
-const EXCLUSION_TO_WHY: Record<string, OutcomeWhy> = { price: "price", terms: "price", lead: "time", spec: "spec", incomplete: "incomplete", documents: "docs", not_qualified: "docs", other: "other" }
-
 /** Why a request was cancelled (R-12) → the no-award reason the supplier reads. */
 const CANCEL_TO_WHY: Record<string, OutcomeWhy> = { need: "need", spec: "spec", reissue: "reissue" }
 
@@ -150,7 +148,14 @@ function versionsOf(offer: Rec, items: DealItem[], pricing: "item" | "total"): Q
     const prices: Record<string, number | null> = {}
     const lines = Array.isArray(x.lines) ? (x.lines as Rec[]) : []
     if (pricing === "item") for (const it of items) prices[it.id] = null
-    for (const l of lines) prices[`i${numOf(l.rfqProductIndex) + 1}`] = numOf(l.unitPrice)
+    const packs: Record<string, number> = {}
+    const warranty: Record<string, number> = {}
+    for (const l of lines) {
+      const id = `i${numOf(l.rfqProductIndex) + 1}`
+      prices[id] = numOf(l.unitPrice)
+      if (numOf(l.packLen) > 0) packs[id] = numOf(l.packLen)
+      if (l.warrantyMonths != null && Number.isFinite(Number(l.warrantyMonths))) warranty[id] = Number(l.warrantyMonths)
+    }
     const v: QuoteVersion = {
       at: dayOf(x.at),
       prices,
@@ -161,6 +166,9 @@ function versionsOf(offer: Rec, items: DealItem[], pricing: "item" | "total"): Q
     }
     if (pricing === "total" || !lines.length) v.total = numOf(x.total ?? x.price)
     if (typeof x.vatRate === "number" && Number.isFinite(x.vatRate)) v.vat = x.vatRate
+    if (Object.keys(packs).length) v.packs = packs
+    if (Object.keys(warranty).length) v.warranty = warranty
+    if (x.whole === true) v.whole = true
     return v
   }
   if (raw && raw.length) return raw.map(toVersion)
@@ -192,11 +200,6 @@ function outcomeOf(offer: Rec, rfq: Rec, hasOwnPo: boolean, disclosed: boolean, 
     if (k === "won" || k === "lost" || k === "noaward") return { st: k, at: dayOf(out.at), why: (str(out.why) || undefined) as OutcomeWhy | undefined }
   }
   const status = str(offer.status)
-  if (status === "مرفوض") {
-    const ex = offer.exclusion as Rec | undefined
-    const why = ex ? EXCLUSION_TO_WHY[str(ex.code)] : undefined
-    return { st: "lost", at: dayOf(ex?.at) || dayOf(offer.decidedAt) || dayOf(offer.updatedAt), why }
-  }
   if (hasOwnPo && disclosed) return { st: "won", at: dayOf(offer.decidedAt) || dayOf(offer.updatedAt) }
   // HIS quote was chosen: its order is with the buyer's approval, so it waits — never "awarded to another" (OFR-07).
   if (status === "مقبول" || status === "تم التسليم" || offer.poId) {
@@ -217,10 +220,10 @@ function outcomeOf(offer: Rec, rfq: Rec, hasOwnPo: boolean, disclosed: boolean, 
 
 function offerOf(offer: Rec, rfq: Rec, items: DealItem[], pricing: "item" | "total", hasOwnPo: boolean, disclosed: boolean, today: string, posById: ReadonlyMap<string, PurchaseOrder>): DealOffer {
   const v = versionsOf(offer, items, pricing)
-  const status = str(offer.status)
   const out = outcomeOf(offer, rfq, hasOwnPo, disclosed, posById)
   const o: DealOffer = { status: "review", v }
-  const hasReduce = status === "مطلوب تخفيض"
+  const hasReduce = bafoOpen(offer as never)
+  const hasReval = revalOpen(offer as never)
   const sample = str(offer.sampleStatus)
 
   if (isWithdrawnOffer(offer as { status?: string; withdrawnAt?: unknown })) {
@@ -236,14 +239,20 @@ function offerOf(offer: Rec, rfq: Rec, items: DealItem[], pricing: "item" | "tot
     return o
   }
   if (hasReduce) {
-    const at = dayOf(offer.reductionAt) || dayOf(offer.decidedAt) || dayOf(offer.updatedAt) || today
+    const asked = offer.bafo as Rec | undefined
+    const at = dayOf(asked?.at) || dayOf(offer.reductionAt) || dayOf(offer.decidedAt) || dayOf(offer.updatedAt) || today
     o.status = "reduce"
     o.reduce = {
       at,
       target: numOf(offer.targetPrice) || targetOfLines(offer, items),
-      by: dayOf(offer.reductionBy) || addDaysTo(at, 3),
-      note: str(offer.reductionNote),
+      by: dayOf(asked?.replyBy) || dayOf(offer.reductionBy) || addDaysTo(at, 3),
+      note: str(asked?.note) || str(offer.reductionNote),
     }
+    return o
+  }
+  if (hasReval) {
+    const asked = offer.reval as Rec
+    o.reval = { at: dayOf(asked.at) || today, note: str(asked.note) }
     return o
   }
   if (sample === "مطلوبة") {

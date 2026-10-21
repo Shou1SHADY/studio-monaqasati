@@ -17,7 +17,6 @@ import {
   lineToArrive,
   poCommitment,
   poLate,
-  poLive,
   poOpenValue,
   poStatus,
   poValue,
@@ -28,39 +27,37 @@ import {
 } from "@/lib/procurement/po"
 import type { PoLine, PoStatus, ProcActor, PurchaseOrder, ReceiptFact } from "@/lib/procurement/types"
 import { waitingSinceDays } from "@/lib/procurement/next-step"
+import { poSeg, type PoStateCtx } from "@/lib/procurement/po-state"
 import { matchesSearch } from "@/lib/search-text"
 
 // ---------------------------------------------------------------------------
 // Segments
 // ---------------------------------------------------------------------------
 
-export const PO_SEGMENTS = ["awaiting_approval", "live", "late", "received", "all"] as const
+/** يحتاج تصرّفنا · ننتظر غيرنا · متأخرة · مكتملة · الكل — one partition (R-25): every order sits in exactly one of the first four. */
+export const PO_SEGMENTS = ["act", "wait", "late", "done", "all"] as const
 export type PoSegment = (typeof PO_SEGMENTS)[number]
-export const DEFAULT_SEGMENT: PoSegment = "live"
+export const DEFAULT_SEGMENT: PoSegment = "act"
 
 export const isPoSegment = (v: string | null | undefined): v is PoSegment => PO_SEGMENTS.includes(v as PoSegment)
 
-const DONE: ReadonlySet<PoStatus> = new Set(["received", "closed", "cancelled"])
+/** The names of the segments before 2.0 — Today's tiles and the bell still link with them. */
+const LEGACY_SEGMENT: Record<string, PoSegment> = { awaiting_approval: "act", live: "wait", received: "done" }
 
-/** Does this order sit in the segment? "Late" is a subset of "live". */
-export function inSegment(po: PurchaseOrder, segment: PoSegment, now: Date, notices?: ReadonlyArray<NoticeFact>): boolean {
-  switch (segment) {
-    case "all":
-      return true
-    case "awaiting_approval":
-      return po.status === "awaiting_approval"
-    case "live":
-      return poLive(po)
-    case "late":
-      return poLate(po, now, notices)
-    case "received":
-      return DONE.has(poStatus(po))
-  }
+/** The segment an address asks for, in the new names or the old ones; null for anything else. */
+export const segmentOf = (v: string | null | undefined): PoSegment | null => (isPoSegment(v) ? v : v && LEGACY_SEGMENT[v] ? LEGACY_SEGMENT[v] : null)
+
+/** Does this order sit in the segment? */
+export function inSegment(po: PurchaseOrder, segment: PoSegment, ctx: PoStateCtx): boolean {
+  return segment === "all" || poSeg(po, ctx) === segment
 }
 
-export function segmentCounts(orders: PurchaseOrder[], now: Date, notices?: ReadonlyArray<NoticeFact>): Record<PoSegment, number> {
-  const out = { awaiting_approval: 0, live: 0, late: 0, received: 0, all: 0 }
-  for (const po of orders) for (const s of PO_SEGMENTS) if (inSegment(po, s, now, notices)) out[s]++
+export function segmentCounts(orders: PurchaseOrder[], ctx: PoStateCtx): Record<PoSegment, number> {
+  const out = { act: 0, wait: 0, late: 0, done: 0, all: 0 }
+  for (const po of orders) {
+    out.all++
+    out[poSeg(po, ctx)]++
+  }
   return out
 }
 
@@ -81,9 +78,9 @@ export function sortOrders(orders: PurchaseOrder[]): PurchaseOrder[] {
 
 /** The rows a segment shows. A search spans every segment — whoever arrives
  * with a number from a notification does not know which segment it sits in. */
-export function visibleOrders(orders: PurchaseOrder[], segment: PoSegment, search: string, now: Date, displayNumber: (n: string) => string, notices?: ReadonlyArray<NoticeFact>): PurchaseOrder[] {
+export function visibleOrders(orders: PurchaseOrder[], segment: PoSegment, search: string, ctx: PoStateCtx, displayNumber: (n: string) => string): PurchaseOrder[] {
   const searching = search.trim().length > 0
-  return sortOrders(orders.filter((po) => (searching ? matchesSearch(search, poSearchFields(po, displayNumber(po.docNumber))) : inSegment(po, segment, now, notices))))
+  return sortOrders(orders.filter((po) => (searching ? matchesSearch(search, poSearchFields(po, displayNumber(po.docNumber))) : inSegment(po, segment, ctx))))
 }
 
 // ---------------------------------------------------------------------------
@@ -264,6 +261,8 @@ export interface SendMessageInput {
   lines: Array<{ name: string; quantity: number; unit: string }>
   /** The supplier's portal link, when he is registered. */
   portalUrl?: string | null
+  /** The order link of an off-platform supplier — he accepts, reports delivery and replies from it. */
+  orderLinkUrl?: string | null
   note?: string | null
 }
 
@@ -272,6 +271,7 @@ const AR = {
   value: (v: string) => ` بقيمة ${v} شاملاً الضريبة`,
   lines: "البنود:",
   link: (u: string) => `نسخة الأمر في بوابتك: ${u}`,
+  orderLink: (u: string) => `رابط الأمر — اقبله وأبلغ بالتسليم منه: ${u}`,
   ask: "نرجو تأكيد القبول وموعد التوريد.",
 }
 const EN = {
@@ -279,6 +279,7 @@ const EN = {
   value: (v: string) => ` — ${v} incl. VAT`,
   lines: "Lines:",
   link: (u: string) => `The order in your portal: ${u}`,
+  orderLink: (u: string) => `The order link — accept it and report delivery from it: ${u}`,
   ask: "Please confirm acceptance and the delivery date.",
 }
 
@@ -296,6 +297,7 @@ export function buildSendMessage(input: SendMessageInput): string {
     for (const l of input.lines) parts.push(`• ${l.name} — ${quantityText(l.quantity, l.unit)}`)
   }
   if (input.portalUrl) parts.push(c.link(input.portalUrl))
+  if (input.orderLinkUrl) parts.push(c.orderLink(input.orderLinkUrl))
   parts.push(c.ask)
   return parts.join("\n")
 }

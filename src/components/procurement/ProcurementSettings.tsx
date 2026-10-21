@@ -27,13 +27,13 @@ import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { ReceiverRegister } from "@/components/procurement/ReceiverRegister"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { DeliverySitesPanel } from "@/components/procurement/DeliverySitesPanel"
+import { SubscriptionPanel } from "@/components/procurement/SubscriptionPanel"
 import { useModules } from "@/hooks/useCompanyModules"
 import { deliverySites, storedSites } from "@/lib/procurement/delivery-sites"
 import { openRequestsBySite } from "@/lib/procurement/site-counts"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { roleColumns, roleRows, type RoleCell, type RoleRowId } from "@/lib/procurement/roles-matrix"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
-import type { BoundaryParty } from "@/lib/procurement/boundary"
 import { DEFAULT_RESOLVED_POLICIES, NOTICE_ROUTINGS, POLICY_OWNER, resolvePolicies, type PolicyOwner, type ResolvedPolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_SETTINGS } from "@/lib/procurement/types"
 import { sarLtr } from "@/lib/riyal"
@@ -109,10 +109,10 @@ type FormValues = z.infer<typeof schema>
 // Procurement 1.5 (PUR-08): only what the customer sets — in his words, no programme keys. The developers'
 // pages (the purchase path, «الفكرتان», the links with other modules, «لم يُبنَ · التعارضات · السجل») moved to
 // the team's documents (docs/procurement-boundaries.md).
-type Segment = "pol" | "sites" | "receivers" | "roles"
-const SEGMENTS: Segment[] = ["pol", "sites", "receivers", "roles"]
+type Segment = "pol" | "sites" | "receivers" | "roles" | "sub"
+const SEGMENTS: Segment[] = ["pol", "sites", "receivers", "roles", "sub"]
 
-type Party = BoundaryParty | "me" | "gov"
+type Party = "pm" | "mfg" | "inv" | "fin" | "sup" | "me" | "gov"
 const PARTY_TONE: Record<Party, string> = {
   pm: "bg-pm/10 text-pm",
   mfg: "bg-warning/10 text-warning",
@@ -156,8 +156,8 @@ export function ProcurementSettings() {
   const { data: projectDocs } = useCollection<{ name?: string; location?: string | null }>(projectsQuery)
   const storedSiteList = useMemo(() => storedSites((settingsDoc as { deliverySites?: unknown } | null)?.deliverySites), [settingsDoc])
   const siteList = useMemo(
-    () => deliverySites({ stored: storedSiteList, warehouses: (warehouseDocs || []) as Array<{ id: string; name?: string; projectId?: string | null }>, projects: (projectDocs || []) as Array<{ id: string; name?: string; location?: string | null }>, pmOn }),
-    [storedSiteList, warehouseDocs, projectDocs, pmOn]
+    () => deliverySites({ stored: storedSiteList, warehouses: (warehouseDocs || []) as Array<{ id: string; name?: string; projectId?: string | null }>, projects: (projectDocs || []) as Array<{ id: string; name?: string; location?: string | null }>, pmOn, mfgOn }),
+    [storedSiteList, warehouseDocs, projectDocs, pmOn, mfgOn]
   )
   // The requests still open at each site: the team's «طلب مواد» naming it, or its project's (PUR-10).
   const { needs } = useProcurementNeeds(procWorld)
@@ -235,7 +235,7 @@ export function ProcurementSettings() {
         </div>
       ) : (
         <>
-          <ProcChipGroup items={SEGMENTS.map((id) => ({ id, label: t(`segment.${id}`) }))} active={segment} onPick={setSegment} label={t("page.title")} />
+          <ProcChipGroup items={SEGMENTS.filter((id) => id !== "sub" || mayEditSites).map((id) => ({ id, label: t(`segment.${id}`) }))} active={segment} onPick={setSegment} label={t("page.title")} />
 
           {/* ── 3 · Policies & roles ── */}
           {segment === "pol" && (
@@ -396,7 +396,9 @@ export function ProcurementSettings() {
           )}
 
 
-          {segment === "sites" && <DeliverySitesPanel orgId={orgId} stored={storedSiteList} sites={siteList} receivers={receivers} mayEdit={mayEditSites} openRequests={(id) => openBySite[id] ?? 0} pmOn={pmOn} projects={(projectDocs || []) as Array<{ id: string; name?: string }>} />}
+          {segment === "sites" && <DeliverySitesPanel stored={storedSiteList} sites={siteList} receivers={receivers} mayEdit={mayEditSites} openRequests={(id) => openBySite[id] ?? 0} pmOn={pmOn} mfgOn={mfgOn} projects={(projectDocs || []) as Array<{ id: string; name?: string }>} />}
+
+          {segment === "sub" && mayEditSites && <SubscriptionPanel />}
 
           {segment === "receivers" && (
             <Section title={tRcv("title")} subtitle={tRcv("subtitle")} icon={PackageCheck}>

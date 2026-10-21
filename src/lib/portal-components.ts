@@ -110,6 +110,8 @@ export interface NavItem {
    * Driven by a flag in `@/lib/feature-flags`, never hardcoded here, so one
    * switch covers the nav entry, the routes and the inbound links. */
   comingSoon?: boolean
+  /** A not-yet-released entry that still opens a "what is coming" dialog instead of doing nothing (Procurement's pay-later). */
+  soonModal?: "bnpl"
 }
 
 export interface NavSection {
@@ -216,11 +218,17 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "contractor_rfqs", href: "/contractor/rfqs", icon: FileText, requiredAnyPermission: PROC_TAB_GATES.rfqs },
           { titleKey: "contractor_purchase_orders", href: "/contractor/rfqs/orders", icon: ClipboardList, requiredAnyPermission: PROC_TAB_GATES.orders },
           { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck, requiredAnyPermission: PROC_TAB_GATES.receipts },
-          ...(CATALOG_COMING_SOON ? [] : [{ titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket, requiredPermission: "rfq.manage" as const }]),
           { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Users, requiredAnyPermission: PROC_TAB_GATES.suppliers },
           { titleKey: "contractor_proc_reports", href: "/contractor/rfqs/reports", icon: BarChart3, requiredAnyPermission: PROC_TAB_GATES.reports },
           { titleKey: "contractor_proc_settings", href: "/contractor/rfqs/settings", icon: Settings2, requiredAnyPermission: PROC_TAB_GATES.settings },
+          // Procurement 2.0 (NAV-02): the two unreleased entries sit after the eight pages, dimmed and tagged «قريباً».
+          { titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket, requiredPermission: "rfq.manage", comingSoon: CATALOG_COMING_SOON },
+          { titleKey: "contractor_bnpl", href: "/contractor/rfqs/orders?soon=bnpl", icon: HandCoins, requiredAnyPermission: PROC_TAB_GATES.orders, comingSoon: true, soonModal: "bnpl" },
         ],
+      },
+      {
+        labelKey: "section_guide",
+        items: [{ titleKey: "contractor_proc_guide", href: "/contractor/rfqs/guide", icon: BookOpen, requiredAnyPermission: PROC_TAB_GATES.today }],
       },
     ],
   },

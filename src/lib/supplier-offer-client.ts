@@ -2,7 +2,24 @@
 // server, which checks the company's approval and the request (supplier-offer-server.ts). The rules no longer take it
 // from a browser.
 
-export type OfferSubmitCode = "not_approved" | "quota" | "rfq_missing" | "rfq_closed" | "too_large" | "line_prices_incomplete" | "line_contradictory" | "no_line_priced" | "failed"
+export type OfferSubmitCode =
+  | "not_approved"
+  | "quota"
+  | "rfq_missing"
+  | "rfq_closed"
+  | "deadline"
+  | "not_reached"
+  | "already_quoted"
+  | "too_large"
+  | "line_prices_incomplete"
+  | "line_contradictory"
+  | "no_line_priced"
+  | "price_invalid"
+  | "price_too_big"
+  | "pack_not_offered"
+  | "warranty_invalid"
+  | "duration_invalid"
+  | "failed"
 
 export class OfferSubmitError extends Error {
   constructor(
@@ -14,7 +31,7 @@ export class OfferSubmitError extends Error {
   }
 }
 
-const KNOWN = new Set<OfferSubmitCode>(["not_approved", "quota", "rfq_missing", "rfq_closed", "too_large", "line_prices_incomplete", "line_contradictory", "no_line_priced"])
+const KNOWN = new Set<OfferSubmitCode>(["not_approved", "quota", "rfq_missing", "rfq_closed", "deadline", "not_reached", "already_quoted", "too_large", "line_prices_incomplete", "line_contradictory", "no_line_priced", "price_invalid", "price_too_big", "pack_not_offered", "warranty_invalid", "duration_invalid"])
 
 /** Sends the quote; resolves to the new offer's id, or throws an `OfferSubmitError` naming why it was refused. */
 export async function submitSupplierOffer(idToken: string, rfqId: string, offer: Record<string, unknown>): Promise<string> {

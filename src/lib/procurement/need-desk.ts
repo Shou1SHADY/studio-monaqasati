@@ -12,7 +12,7 @@
 import { addDays, daysBetween, round2, todayOf } from "./po"
 import { agreementFor, lastPaid, materialKey, type PriceAgreement, type PriceHistoryEntry } from "./prices"
 import { needRoute, type NeedRoute, type RouteResult } from "./route"
-import type { Need, NeedLineLink } from "./needs"
+import type { Need, NeedLine, NeedLineLink } from "./needs"
 import { sampleNo } from "@/lib/pm/sample"
 import { replyWindowHours } from "./policy-enforce"
 import type { ProcurementPolicies, PurchaseOrder } from "./types"
@@ -166,21 +166,28 @@ function openOf(need: Need, i: number): number {
   return Math.max(0, round2(q - (Number(need.decision.cover?.[i]) || 0)))
 }
 
+const KIND_STATE: Record<NonNullable<NeedLine["lineKind"]>, LineState> = { buy: "open", wait: "chk", rfq: "rfq", po: "po", done: "done", fail: "cx", gone: "cx", covered: "stk" }
+
+/** The state of a line of a STORED request: its own place (G-13), not its request's. Waiting for the workshop reads «بانتظار ردّ الورشة». */
+const entityLineState = (l: NeedLine): LineState => (l.lineKind === "wait" && l.heldBy === "workshop" ? "mfgw" : KIND_STATE[l.lineKind as NonNullable<NeedLine["lineKind"]>])
+
 export function buildNeedRows(needs: Need[], facts: DeskFacts): NeedRow[] {
   const today = todayOf(facts.now)
   const out: NeedRow[] = []
   for (const need of needs) {
-    const state = needLineState(need, facts)
+    const stored = Boolean(need.incoming)
+    const state: LineState = stored ? (need.lines.some((l) => l.lineKind === "buy") ? "open" : "done") : needLineState(need, facts)
     const p = needPathOf(need, state, facts)
     need.lines.forEach((l, index) => {
       // A part of the request published without the rest is in hand on its own.
-      const lineState: LineState = l.link ? (l.link.poId ? "po" : "rfq") : state
-      const open = l.link ? 0 : openOf(need, index)
+      const lineState: LineState = stored && l.lineKind ? entityLineState(l) : l.link ? (l.link.poId ? "po" : "rfq") : state
+      const open = stored ? (l.lineKind === "buy" ? l.quantity : 0) : l.link ? 0 : openOf(need, index)
       const needBy = l.needBy || need.needBy
       const leadDays = facts.policies.supplyLeadDays
       const lastOrderDay = isActionState(lineState) ? lastOrderDayOf(needBy, facts.policies) : null
       const unitEstimate = unitEstimateOf(l.name, l.unit, facts, today)
       const samplePending = Boolean(l.samplePending)
+      const inHand = lineState === "rfq" || lineState === "po"
       out.push({
         key: `${need.key}#${index}`,
         needKey: need.key,
@@ -188,11 +195,11 @@ export function buildNeedRows(needs: Need[], facts: DeskFacts): NeedRow[] {
         index,
         name: l.name,
         unit: l.unit,
-        total: l.quantity,
+        total: l.asked ?? l.quantity,
         open,
         state: lineState,
-        path: l.link ? null : p?.path ?? null,
-        route: l.link ? null : p?.route ?? null,
+        path: stored ? (lineState === "open" ? p?.path ?? null : null) : l.link ? null : p?.path ?? null,
+        route: stored ? (lineState === "open" ? p?.route ?? null : null) : l.link ? null : p?.route ?? null,
         needBy,
         leadDays,
         lastOrderDay,
@@ -204,7 +211,7 @@ export function buildNeedRows(needs: Need[], facts: DeskFacts): NeedRow[] {
         itemId: l.itemId ?? null,
         onHand: need.kind === "stock" ? need.stock?.onHand ?? null : facts.onHand(l.name),
         selectable: (lineState === "open" || lineState === "mfgl") && p?.path !== "mfg" && p?.path !== "stock",
-        link: l.link ?? null,
+        link: stored ? (inHand ? l.link ?? null : null) : l.link ?? null,
       })
     })
   }

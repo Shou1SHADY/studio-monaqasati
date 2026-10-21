@@ -36,7 +36,7 @@ if (target !== "prod" && target !== "uat") {
 // Only the chosen target's credentials are loaded — never both.
 require("dotenv").config({ path: target === "uat" ? ".env.uat" : ".env.local" })
 
-const source = fs.readFileSync(RULES_FILE, "utf8")
+const source = fs.readFileSync(RULES_FILE, "utf8").replace(/\r\n/g, "\n")
 const base = "https://firebaserules.googleapis.com/v1"
 
 // Ask gcloud for the token rather than probing for the binary: `command -v` is a

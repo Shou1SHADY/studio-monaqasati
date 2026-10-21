@@ -149,9 +149,10 @@ describe("F6 · one lateness number", () => {
   it("a notice in time that waits for our count is nobody's lateness", () => {
     expect(honestDate(order, NOW)).toMatchObject({ kind: "promised", daysLate: 25 })
     expect(honestDate(order, NOW, waiting)).toMatchObject({ kind: "promised", daysLate: 0 })
-    expect(inSegment(order, "late", NOW)).toBe(true)
-    expect(inSegment(order, "late", NOW, waiting)).toBe(false)
-    expect(segmentCounts([order], NOW, waiting).late).toBe(0)
+    const ctx = (notices: typeof waiting) => ({ notices: notices as never, financeOn: true, acceptanceDays: 1, now: NOW })
+    expect(inSegment(order, "late", ctx([]))).toBe(true)
+    expect(inSegment(order, "late", ctx(waiting))).toBe(false)
+    expect(segmentCounts([order], ctx(waiting)).late).toBe(0)
   })
 
   it("Today, the reports and the dashboard count read the same", () => {

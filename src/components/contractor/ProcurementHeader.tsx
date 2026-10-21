@@ -22,6 +22,7 @@ import { Lock, Plus, Search, X } from "lucide-react"
 import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useProcurementShell } from "@/hooks/useProcurementShell"
+import { useProcurementNavBadges } from "@/hooks/useProcurementNavBadges"
 import { useAutoForwardTick } from "@/hooks/useAutoForwardTick"
 import { PROC_TABS, activeProcTab, visibleProcTabs } from "@/lib/procurement/shell"
 import { displayCategory } from "@/lib/constants"
@@ -77,6 +78,7 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
     if (home) router.replace(home)
   }, [home, router])
   const shell = useProcurementShell()
+  useProcurementNavBadges(shell)
   // Lapsed delivery notices are forwarded when someone who could forward them opens a Procurement page (PUR-06).
   useAutoForwardTick(!isLoading && shell.actor.canExpedite)
   const [serviceOpen, setServiceOpen] = useState(false)
@@ -175,7 +177,7 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
       )}
 
       {tabs.length > 1 && (
-        <nav aria-label={tShared("proc_nav_label")}>
+        <nav aria-label={tShared("proc_nav_label")} className="sticky top-14 z-40 bg-background" data-testid="proc-rail">
           <ul className="-mx-4 flex items-center gap-1 overflow-x-auto border-b px-4 [scrollbar-width:thin] sm:mx-0 sm:px-0">
             {tabs.map((tab) => {
               const isActive = tab === active

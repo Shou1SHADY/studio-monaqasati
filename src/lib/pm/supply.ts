@@ -298,8 +298,14 @@ export function changeOptions(input: { line: ReqLine; voStatus: string | null; e
 /** Where one line stands. prop expected (awaiting approval) · held a change
  * awaiting the manager · refused the change was rejected · ask with Procurement ·
  * rfq with Procurement, an RFQ is out · mfg routed to our workshop · po an order is
- * with the supplier · part part received · done received · cx cancelled. */
-export type LinePhase = "prop" | "held" | "refused" | "ask" | "rfq" | "mfg" | "po" | "part" | "done" | "cx"
+ * with the supplier · part part received · done received · cx cancelled · fail Procurement
+ * could not buy it (with the reason it wrote). */
+export type LinePhase = "prop" | "held" | "refused" | "ask" | "rfq" | "mfg" | "po" | "part" | "done" | "cx" | "fail"
+
+/** What Procurement says of a line in its stored request (`procIncoming`, Procurement 2.0): «تعذّر الشراء» with the reason and the alternative. */
+export interface ProcLineFact {
+  fail?: { why: string; alt: string } | null
+}
 
 type Linked = Pick<PmMaterialRequest, "rfqId" | "poId" | "mfgRequestId"> & Partial<Pick<PmMaterialRequest, "rfqNumber" | "poNumber" | "lines" | "lineLinks">>
 type Phased = Pick<PmMaterialRequest, "status" | "withdrawn"> & Linked
@@ -317,7 +323,7 @@ export function lineLink(r: Linked, l: ReqLine): Required<LineLink> & { mfgReque
   return { rfqId: rfq.rfqId ?? null, rfqNumber: rfq.rfqNumber ?? null, poId: po.poId ?? null, poNumber: po.poNumber ?? null, mfgRequestId: r.mfgRequestId ?? null }
 }
 
-export function linePhase(r: Phased, l: ReqLine): LinePhase {
+export function linePhase(r: Phased, l: ReqLine, proc?: ProcLineFact | null): LinePhase {
   if (refused(l)) return "refused"
   if (r.status === "pending") return "prop"
   if (r.status === "rejected") return "cx"
@@ -326,6 +332,7 @@ export function linePhase(r: Phased, l: ReqLine): LinePhase {
   if (l.cl) return l.cl.t === "cancel" ? "cx" : "done"
   if (got >= l.qty - 0.005) return "done"
   if (got > 0) return "part"
+  if (proc?.fail) return "fail"
   const by = lineLink(r, l)
   if (by.poId) return "po"
   if (by.mfgRequestId) return "mfg"

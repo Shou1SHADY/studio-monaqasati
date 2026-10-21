@@ -14,7 +14,7 @@ import { pmCeiling, type PmContext } from "@/lib/pm/access"
 import { todayDay } from "@/lib/pm/format"
 import { approveMaterialRequest, createMaterialRequest, stopLine, withdrawMaterialRequest } from "@/lib/pm/supply-writes"
 import { buildNeedRows, inSegment, type DeskFacts } from "@/lib/procurement/need-desk"
-import { inRequestSegment, requestCards, requestState } from "@/lib/procurement/incoming-requests"
+import { inRequestSegment, requestCards } from "@/lib/procurement/incoming-requests"
 import { linkNeed } from "@/lib/procurement/needs-writes"
 import { projectNeed, reachesProcurement, type ProjectRequestDoc } from "@/lib/procurement/needs"
 import { projectRequestsOf, requestChanges, wholeWithdrawal } from "@/lib/procurement/project-change"
@@ -62,7 +62,7 @@ describe("what reaches Procurement", () => {
 })
 
 describe("withdrawn after it reached Procurement, before anything was bought", () => {
-  it("moves to «انتهت» as «سحبه المشروع» with the day and the name of who withdrew it", async () => {
+  it("moves to «انتهت» (Procurement 2.0: its own segment, no longer «اكتملت») as «سحبه المشروع» with the day and the name of who withdrew it", async () => {
     await requested()
     expect(cards()[0].state).toBe("new")
     for (const i of [0, 1, 2]) await stopLine(db, ctx, "P1", boss, "01", i, "need", null)
@@ -72,7 +72,8 @@ describe("withdrawn after it reached Procurement, before anything was bought", (
     const [card] = cards()
     expect(card.state).toBe("withdrawn")
     expect(card.withdrawal).toEqual({ on: todayDay(), byName: "م. خالد" })
-    expect(inRequestSegment(card, "done")).toBe(true)
+    expect(inRequestSegment(card, "ended")).toBe(true)
+    expect(inRequestSegment(card, "done")).toBe(false)
     expect(inRequestSegment(card, "new")).toBe(false)
     expect(buildNeedRows([n], facts).every((r) => inSegment(r, "done"))).toBe(true)
   })
@@ -134,6 +135,6 @@ describe("a legacy request the requester withdrew", () => {
   it("reads as withdrawn, with the day and the name — not as refused", () => {
     const n = projectNeed(project, { id: "9", status: "rejected", withdrawn: true, decidedByUserName: "م. سعد", decidedAt: "2026-10-05T09:00:00.000Z", items: [{ name: "حديد", quantity: 3, unit: "طن" }] }, "PR-9")
     expect(n).toMatchObject({ state: "done", endKind: "withdrawn", withdrawal: { on: "2026-10-05", byName: "م. سعد" } })
-    expect(requestState(buildNeedRows([n], facts), null)).toBe("withdrawn")
+    expect(requestCards(buildNeedRows([n], facts), [])[0].state).toBe("withdrawn")
   })
 })

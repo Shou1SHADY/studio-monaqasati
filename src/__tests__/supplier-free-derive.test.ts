@@ -160,10 +160,10 @@ describe("a quote", () => {
     expect(smp.offer?.sample?.by).toBe("2026-10-14")
   })
 
-  it("every quote ends in a result: rejected, awarded to another, or closed with no award", () => {
-    const lost = deriveWorld(base({ offers: [offer({ status: "مرفوض", exclusion: { code: "price", at: "2026-10-12T00:00:00.000Z" } })] })).deals[0]
-    expect(lost.offer?.status).toBe("lost")
-    expect(lost.offer?.out?.why).toBe("price")
+  it("a quote ends in a result: awarded to another, or closed with no award — a buyer's exclusion is not one (G-15)", () => {
+    const excluded = deriveWorld(base({ offers: [offer({ status: "مرفوض", exclusion: { code: "price", at: "2026-10-12T00:00:00.000Z" } })] })).deals[0]
+    expect(excluded.offer?.status).toBe("review")
+    expect(excluded.offer?.out).toBeUndefined()
     const other = deriveWorld(base({ rfqs: [rfq({ status: "Awarded", awardedAt: "2026-10-12T00:00:00.000Z" })], offers: [offer()] })).deals[0]
     expect(other.offer?.status).toBe("lost")
     const none = deriveWorld(base({ rfqs: [rfq({ status: "Cancelled" })], offers: [offer()] })).deals[0]

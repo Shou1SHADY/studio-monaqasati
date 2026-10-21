@@ -96,11 +96,16 @@ export class FakeAdminDb {
   }
 
   collection(col: string): FakeCollection {
-    const query = (filters: [string, unknown][], max: number | null): FakeQuery => ({
-      where: (f, _op, v) => query([...filters, [f, v]], max),
+    const matches = (d: Doc, [f, op, v]: [string, string, unknown]): boolean => {
+      if (op === "array-contains") return Array.isArray(d[f]) && (d[f] as unknown[]).includes(v)
+      if (op === "in") return Array.isArray(v) && v.includes(d[f])
+      return d[f] === v
+    }
+    const query = (filters: [string, string, unknown][], max: number | null): FakeQuery => ({
+      where: (f, op, v) => query([...filters, [f, op, v]], max),
       limit: (n) => query(filters, n),
       get: async () => {
-        const rows = this.list(col).filter((d) => filters.every(([f, v]) => d[f] === v))
+        const rows = this.list(col).filter((d) => filters.every((fl) => matches(d, fl)))
         const docs = (max == null ? rows : rows.slice(0, max)).map((d) => {
           const ref = this.doc(`${col}/${d.id}`)
           return { exists: true, id: d.id, data: () => this.docs.get(`${col}/${d.id}`), ref }

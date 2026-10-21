@@ -93,10 +93,14 @@ export function nextStep(f: Free, d: Deal, href: (p: Record<string, string | nul
       return {
         tone: "amber",
         icon: AlertTriangle,
-        title: t("nxReduceT", { v: fmt.money(o.reduce.target), cur: fmt.money(L.offerTotal(d)), d: fmt.money(r2(L.offerTotal(d) - o.reduce.target)) }),
+        title: o.reduce.target > 0 ? t("nxReduceT", { v: fmt.money(o.reduce.target), cur: fmt.money(L.offerTotal(d)), d: fmt.money(r2(L.offerTotal(d) - o.reduce.target)) }) : t("nxBetterT", { cur: fmt.money(L.offerTotal(d)) }),
         text: t("nxReduceX", { x: fmt.date(o.reduce.by), r: rel(o.reduce.by) }),
         btns,
       }
+    }
+    if (o.reval) {
+      btns.push({ label: t("btnConfirmPrice"), href: quote("reval") })
+      return { tone: "amber", icon: AlertTriangle, title: t("nxRevalT"), text: o.reval.note || t("nxRevalX"), btns }
     }
     if (o.status === "sample" && o.sample) {
       btns.push({ label: t("btnSampleSent"), kind: "sample-sent" })

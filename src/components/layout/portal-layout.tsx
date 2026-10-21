@@ -27,6 +27,7 @@ import { usePortalFrame } from "@/components/layout/portal-frame-context"
 import { useModules } from "@/hooks/useCompanyModules"
 import { usePortalRegistry } from "@/hooks/usePortalRegistry"
 import { PortalBreadcrumbs } from "@/components/layout/portal-breadcrumbs"
+import { PackageChip } from "@/components/procurement/PackageChip"
 import { useUser, useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase"
 import { useLocale, useTranslations } from "next-intl"
 import { doc, collection, query, where, orderBy, limit, updateDoc } from "firebase/firestore"
@@ -712,6 +713,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className={cn("flex items-center gap-2 md:gap-3", locale === 'ar' ? 'mr-auto' : 'ml-auto')}>
+            <PackageChip pathname={pathname} />
             <AppSwitcher />
             <LanguageSwitcher />
             {(isSupplier || isContractor) && !frame?.hideActivityBell && <ActivityBell portal={isSupplier ? "supplier" : "contractor"} />}

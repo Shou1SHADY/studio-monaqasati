@@ -39,7 +39,7 @@ export function taskView(f: Free, a: Task, href: (p: Record<string, string | nul
     case "aInviteRfq":
       return { title: t("aInviteRfq"), facts: [...base, [t("thItems"), f.pl("pl_item", d.items.length)]], action: { label: t("btnOffer"), href: href({ quote: d.id, mode: "new" }) } }
     case "aReduce":
-      return { title: t("aReduce", { v: fmt.money(o?.reduce?.target || 0) }), facts: [...base, [t("dsOffer"), fmt.money(L.offerTotal(d))]], action: { label: t("btnReply"), href: href({ deal: d.id }) } }
+      return { title: o?.reduce?.target ? t("aReduce", { v: fmt.money(o.reduce.target) }) : t("aReduceBetter"), facts: [...base, [t("dsOffer"), fmt.money(L.offerTotal(d))]], action: { label: t("btnReply"), href: href({ deal: d.id }) } }
     case "aSample":
       return { title: t("aSample", { w: o?.sample?.what || "" }), facts: [...base, [t("fSite"), o?.sample?.place || "—"]], action: { label: t("btnSampleShort"), kind: "sample-sent" } }
     case "aAcceptPO":

@@ -1,6 +1,7 @@
 /**
  * Procurement 2.0, WP-S2-00 — three faults of 1.5 on the demand side, each rendered or read for real:
- * «انشره/جهّزه» on a team's «طلب مواد» opened an empty editor (useOpenNeeds never read the team's requests),
+ * «انشره/جهّزه» on a team's «طلب مواد» opened an empty editor (useOpenNeeds never read the team's requests —
+ * since WP-S2-03 it reads the stored request, `procIncoming`),
  * the success panel said «وصل إلى لا أحد من الموردين بعد», and a deadline of TODAY was refused (R-32).
  */
 
@@ -22,6 +23,8 @@ import { installDomShims, missingKeys, setPathname, setSignedIn } from "@/test-u
 import { useOpenNeeds } from "@/hooks/useOpenNeeds"
 import { RfqPublishedPanel } from "@/components/procurement/rfq-editor/RfqPublishedPanel"
 import type { TeamRequestDoc } from "@/lib/procurement/team-requests"
+import { fromTeamLegacy } from "@/lib/procurement/incoming-ingest"
+import { incomingDocId } from "@/lib/procurement/incoming-state"
 import NewRfqPage from "@/app/[locale]/(contractor)/contractor/rfqs/new/page"
 
 installDomShims()
@@ -64,7 +67,7 @@ beforeEach(() => {
   seed(`users/${ORG}`, { organizationId: ORG, organizationRole: "owner", name: "المالك", companyName: "شركة البنيان", email: "o@test.sa", isVerified: true, profileCompleted: true })
   seed(`companyModules/${ORG}`, { organizationId: ORG, off: ["project-management"] })
   seed(`procurementSettings/${ORG}`, { organizationId: ORG, deliverySites: [{ id: "prj_P1", kind: "project", name: "مجمع الياسمين", city: "الرياض", district: "حي الياسمين", address: "", receiverId: null, projectId: "P1" }] })
-  seed(`procTeamRequests/T1`, teamRequest as unknown as Record<string, unknown>)
+  seed(`procIncoming/${incomingDocId(ORG, "team:T1")}`, fromTeamLegacy(teamRequest) as unknown as Record<string, unknown>)
   setSignedIn(ORG)
   setPathname("/contractor/rfqs/requests", "")
   missingKeys.clear()
@@ -79,7 +82,7 @@ describe("«انشره/جهّزه» on a team's «طلب مواد» (INC-04)", (
   })
 
   it("a withdrawn request is not offered", async () => {
-    seed(`procTeamRequests/T1`, { ...teamRequest, status: "withdrawn" } as unknown as Record<string, unknown>)
+    seed(`procIncoming/${incomingDocId(ORG, "team:T1")}`, fromTeamLegacy({ ...teamRequest, status: "withdrawn" }) as unknown as Record<string, unknown>)
     const { result } = renderHook(() => useOpenNeeds({ orgId: ORG, rfqs: [], orders: [] }, true))
     await flush()
     expect(result.current).toEqual([])
@@ -134,7 +137,7 @@ describe("the deadline (R-32)", () => {
     await act(async () => void fireEvent.click(Array.from(document.querySelectorAll('[role="option"]')).find((o) => (o.textContent || "").includes("اسياخ حديد التسليح"))!))
     await flush()
     await act(async () => void fireEvent.change(document.querySelector('input[aria-label="الكمية"]')!, { target: { value: "8" } }))
-    await act(async () => void fireEvent.change(document.querySelector('select[aria-label="المشروع أو موقع التسليم"]')!, { target: { value: "prj_P1" } }))
+    await act(async () => void fireEvent.click(Array.from(document.querySelectorAll('[role="group"][aria-label="المشروع أو موقع التسليم"] button')).find((b) => (b.textContent || "").includes("مجمع الياسمين"))!))
     await flush()
     await act(async () => void fireEvent.click(button("التالي: النشر")!))
     await flush()

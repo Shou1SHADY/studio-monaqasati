@@ -21,9 +21,10 @@ import { materialKey, PRICE_HISTORY } from "./prices"
 import { approvalGateBlocks } from "./policy-enforce"
 import { readModulesOff } from "../company-modules-reads"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type PoLogEntry, type ProcActor, type PurchaseOrder } from "./types"
+import { advanceOwnerRequired, supplierHasRecord } from "./po-state"
 import { afterApproval, assertActs, ProcWriteError, readGateItems, type WriteOpts } from "./writes"
 
-export type PoLogAction = PoLogEntry["action"] | "finance_reminded" | "hold_decided" | "hold_price_asked" | "hold_price_accepted" | "hold_price_refused" | "budget_referred" | "budget_decided" | "stop_requested"
+export type PoLogAction = PoLogEntry["action"] | "version_accepted" | "advance_owner_approved" | "finance_reminded" | "hold_decided" | "hold_price_asked" | "hold_price_accepted" | "hold_price_refused" | "budget_referred" | "budget_decided" | "stop_requested"
 export type PoLogEntryX = Omit<PoLogEntry, "action"> & { action: PoLogAction }
 
 const entry = (actor: Pick<ProcActor, "uid" | "name">, action: PoLogAction, at: string, extra?: { note?: string | null; params?: PoLogEntry["params"] }): PoLogEntryX => ({
@@ -116,8 +117,10 @@ export async function selfIssuePurchaseOrder(firestore: Firestore, actor: ProcAc
     if (refusal === "blocked") throw gates.length ? new ProcWriteError(gates[0].code, gates[0].params) : new ProcWriteError("blocked")
     if (refusal === "not_awaiting" || refusal === "returned" || refusal === "retroactive" || refusal === "not_direct") throw new ProcWriteError("wrong_state")
     if (refusal) throw new ProcWriteError("no_permission")
+    // An advance to a supplier with no supply record waits for the owner here too (PO-14).
+    const needsOwner = advanceOwnerRequired(po, policies, supplierHasRecord(po, input.blocks?.otherOrders ?? [])) && (Number(po.advancePercent) || 0) > 0
     return commit(tx, ref, po, {
-      patch: { status: "approved", approvedById: actor.uid, approvedByName: actor.name, approvedAt: at, selfIssued: true },
+      patch: { status: "approved", approvedById: actor.uid, approvedByName: actor.name, approvedAt: at, selfIssued: true, ...(needsOwner ? { advanceOwner: { required: true, approvedAt: null } } : {}) },
       log: entry(actor, "approved", at, { params: { selfIssued: 1, limit: policies.buyerSelfIssueLimit } }),
     })
   })

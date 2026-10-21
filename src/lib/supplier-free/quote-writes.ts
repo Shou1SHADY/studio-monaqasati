@@ -12,7 +12,7 @@ import type { SupplierSide } from "./events"
 import type { QuoteMode, QuoteValues } from "./quote-rules"
 import type { Deal } from "./types"
 
-export { quoteBlocks, versionOf, type QuoteBlock, type QuoteCheck, type QuoteMode, type QuoteValues } from "./quote-rules"
+export { quoteBlocks, versionOf, packLenOf, type QuoteBlock, type QuoteCheck, type QuoteMode, type QuoteValues } from "./quote-rules"
 
 /** A refusal from the server, by its code (`deadline`, `rfq_closed`, `reply_closed`, `already_quoted`…). */
 export class QuoteRefused extends Error {

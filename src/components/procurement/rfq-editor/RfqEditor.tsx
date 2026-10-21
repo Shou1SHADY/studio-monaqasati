@@ -63,6 +63,7 @@ import {
   rfqEditRefusal,
   rfqIdentityOf,
   groupsMeta,
+  deliveryOptionsOf,
   incomingFromNeed,
   lineComplete,
   lineStarted,
@@ -127,6 +128,7 @@ export function RfqEditor({
   const { profile } = useResolvedProfile(isUserLoading ? null : user?.uid)
   const { on } = useModules()
   const pmOn = on("project-management")
+  const mfgOn = on("manufacturing")
   const world = useProcurementWorld()
   const orgId = world.orgId || (profile as { organizationId?: string } | null)?.organizationId || user?.uid || ""
   const { index } = useMaterialTree()
@@ -147,8 +149,9 @@ export function RfqEditor({
         warehouses: (warehouses || []) as Rec[] as Array<{ id: string; name?: string }>,
         projects: (projects || []) as Rec[] as Array<{ id: string; name?: string }>,
         pmOn,
+        mfgOn,
       }),
-    [settingsDoc, warehouses, projects, pmOn],
+    [settingsDoc, warehouses, projects, pmOn, mfgOn],
   )
   const projectName = (id: string) => ((projects || []) as Array<{ id: string; name?: string }>).find((p) => p.id === id)?.name || null
 
@@ -261,7 +264,7 @@ export function RfqEditor({
         router.replace("/contractor/rfqs")
         return
       }
-      const offers = data.status === "New" ? (await getDocs(query(collection(firestore, "offers"), where("rfqId", "==", editId), limit(1))).catch(() => null))?.size ?? 1 : 0
+      const offers = data.status === "New" ? (await getDocs(query(collection(firestore, "offers"), where("rfqId", "==", editId), where("contractorOrgId", "==", orgId), limit(1))).catch(() => null))?.size ?? 1 : 0
       const refusal = rfqEditRefusal(data as { status?: string; offersCount?: number }, offers)
       if (refusal) {
         toast({ title: t(refusal === "has_offers" ? "err_edit_has_offers" : "err_edit_closed"), variant: "destructive" })
@@ -461,6 +464,7 @@ export function RfqEditor({
       title: title || t("untitled"),
       ...d,
       editorGroups: groupsMeta(groups),
+      deliveryOptions: deliveryOptionsOf(groups),
       materialTree: true,
       ...(needBy ? { needBy } : {}),
       ...(needSources.length ? { needSources } : {}),

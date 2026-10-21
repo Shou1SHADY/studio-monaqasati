@@ -4,6 +4,7 @@ import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { sendEmail, buildAccountCreatedEmail } from "@/lib/email"
 import { COMPANY_MODULES, SALES_ONLY_OFF } from "@/lib/company-modules"
+import { offFor } from "@/lib/procurement/package"
 import { serverMaterialTree } from "@/lib/materials/tree-server"
 
 // Admin-only account creation. This is the sole way a Contractor/Supplier
@@ -24,6 +25,8 @@ const bodySchema = z
     leadCollection: z.enum(["demoRequests", "onboardingRequests"]).optional(),
     /** A supplier that only sells starts with CRM, Inventory, Finance, HR and Manufacturing switched off. */
     salesOnly: z.boolean().optional(),
+    /** A contractor starts with the base package (Procurement + Inventory) and the connectors named here (PRD ADM). */
+    connectors: z.object({ pm: z.boolean().optional(), fin: z.boolean().optional(), mfg: z.boolean().optional() }).optional(),
   })
   .refine((data) => data.role !== "Supplier" || (data.specialtyIds && data.specialtyIds.length > 0), {
     message: "At least one specialization is required for supplier accounts",
@@ -121,6 +124,17 @@ export async function POST(req: NextRequest) {
         .doc(uid)
         .set({ organizationId: uid, off: [...SALES_ONLY_OFF], updatedById: decoded.uid, updatedByName: sender.name || sender.email || "", updatedAt: FieldValue.serverTimestamp() })
         .catch((err) => console.error("Failed to switch the new supplier to sales-only:", err))
+    }
+
+    // --- A contractor starts on the base package; the connectors the admin opened stay on (non-fatal: the admin can set them later) ---
+    if (role === "Contractor") {
+      const c = parsed.data.connectors
+      const off = offFor({ pm: Boolean(c?.pm), fin: Boolean(c?.fin), mfg: Boolean(c?.mfg) }, [])
+      await db
+        .collection(COMPANY_MODULES)
+        .doc(uid)
+        .set({ organizationId: uid, off, updatedById: decoded.uid, updatedByName: sender.name || sender.email || "", updatedAt: FieldValue.serverTimestamp() })
+        .catch((err) => console.error("Failed to set the new contractor's package:", err))
     }
 
     // --- Email the new user a password-set link ---

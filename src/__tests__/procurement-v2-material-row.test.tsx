@@ -185,7 +185,7 @@ describe("the warranty is a switch with a duration (CAT-05)", () => {
     expect(qtys).toHaveLength(4)
     await act(async () => void fireEvent.change(qtys[0], { target: { value: "8" } }))
     await act(async () => void fireEvent.change(qtys[2], { target: { value: "100" } }))
-    await act(async () => void fireEvent.change(document.querySelector('select[aria-label="المشروع أو موقع التسليم"]')!, { target: { value: "prj_P1" } }))
+    await act(async () => void fireEvent.click(Array.from(document.querySelectorAll('[role="group"][aria-label="المشروع أو موقع التسليم"] button')).find((b) => (b.textContent || "").includes("مجمع الياسمين"))!))
     await flush()
     await click(button("التالي: النشر"))
     const date = document.querySelector('input[type="date"]') as HTMLInputElement

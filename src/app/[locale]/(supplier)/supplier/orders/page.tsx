@@ -41,6 +41,8 @@ import { PURCHASE_ORDERS, QUALITY_PAPERS, type PoStatus, type PurchaseOrder, typ
 import { ProcWriteError } from "@/lib/procurement/writes"
 import { acceptOrder, SupplierPoError } from "@/lib/supplier-free/po-writes"
 import { noticeAudience } from "@/lib/procurement/policy-enforce"
+import { pendingVersion } from "@/lib/procurement/po-state"
+import { PoRouteError, poAct } from "@/lib/procurement/po-client"
 import {
   DELIVERY_WINDOWS,
   SUPPLIER_SEGMENTS,
@@ -743,9 +745,26 @@ const PoOrderCard = forwardRef<HTMLDivElement, PoOrderCardProps>(function PoOrde
   const late = supplierLateDays(po, now)
   const lines = po.lines.map(supplierLineView)
   const lump = isLumpSum(po)
-  const canAccept = supplierCanAccept(po)
+  // He declined and the buyer has not decided yet: the order stays on his list, red, with nothing for him to press (Procurement 2.0, PO-13).
+  const declined = Boolean(po.supplierDecline) && po.status === "sent"
+  const canAccept = supplierCanAccept(po) && !declined
   const canNotify = supplierCanNotify(po)
   const canRate = offer?.status === "تم التسليم" && !offer.supplierRated
+  // A change after sending (a new date, closing short) is a version he accepts.
+  const pendingV = pendingVersion(po)
+  const { toast } = useToast()
+  const [acceptingVersion, setAcceptingVersion] = useState(false)
+  const acceptVersion = async (n: number) => {
+    setAcceptingVersion(true)
+    try {
+      await poAct("accept-version", { poId: po.id, version: n })
+      toast({ title: t("po_version_accepted_toast", { n }) })
+    } catch (err) {
+      toast({ title: err instanceof PoRouteError ? tp(`err_${err.reason}` as "err_wrong_state", err.params) : t("error_title"), variant: "destructive" })
+    } finally {
+      setAcceptingVersion(false)
+    }
+  }
 
   return (
     <div ref={ref} className={cn("rounded-lg border bg-background transition-shadow", highlighted ? "border-module shadow-md ring-2 ring-module/30" : "border-border")}>
@@ -798,6 +817,15 @@ const PoOrderCard = forwardRef<HTMLDivElement, PoOrderCardProps>(function PoOrde
         </div>
       </div>
 
+      {declined && <p className="border-t bg-destructive/10 px-4 py-2 text-sm font-bold text-destructive">{t("po_declined_waiting")}</p>}
+      {pendingV && (
+        <div className="flex flex-wrap items-center gap-2 border-t bg-warning/10 px-4 py-2 text-sm">
+          <span className="min-w-0 flex-1">{t("po_version_pending", { n: pendingV.n })}</span>
+          <Button size="sm" disabled={acceptingVersion} onClick={() => void acceptVersion(pendingV.n)}>
+            {t("po_version_accept", { n: pendingV.n })}
+          </Button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2 border-t px-4 py-3">
         {canAccept && (
           <Button size="sm" className="gap-1.5" onClick={onAccept}>

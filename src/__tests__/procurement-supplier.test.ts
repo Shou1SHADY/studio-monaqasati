@@ -350,9 +350,19 @@ describe("the award, as the supplier may know it", () => {
   })
 
   it("never touches a status that is not an award", () => {
-    for (const status of ["مرفوض", "مطلوب تخفيض", "قيد المراجعة", "تم التسليم"]) {
+    for (const status of ["مطلوب تخفيض", "قيد المراجعة", "تم التسليم"]) {
       expect(supplierOfferStatus({ status, poId: "po1", awaitingOrderApproval: true }, orders())).toBe(status)
     }
+  })
+
+  it("never tells a supplier he was excluded: an offer excluded the old way (G-15) reads «under review»", () => {
+    expect(supplierOfferStatus({ status: "مرفوض" }, orders())).toBe(UNDER_REVIEW)
+  })
+
+  it("an open «better price» request reads as the reduction request the supplier's screens answer; an answered one does not", () => {
+    const asked = { at: "2026-10-13", byId: "u", byName: "n", replyBy: "2026-10-16", note: null, round: 1 as const }
+    expect(supplierOfferStatus({ status: UNDER_REVIEW, bafo: { ...asked, answered: null } }, orders())).toBe("مطلوب تخفيض")
+    expect(supplierOfferStatus({ status: UNDER_REVIEW, bafo: { ...asked, answered: { at: "2026-10-14", n: 2, kind: "lowered" } } }, orders())).toBe(UNDER_REVIEW)
   })
 
   it("rewrites a list without disturbing anything else on each offer", () => {
@@ -361,9 +371,10 @@ describe("the award, as the supplier may know it", () => {
       { id: "b", status: "مرفوض", price: 1200 },
     ]
     const seen = asSupplierSees(offers, orders(po({ status: "awaiting_approval", sentAt: null })))
-    expect(seen.map((o) => o.status)).toEqual([UNDER_REVIEW, "مرفوض"])
+    expect(seen.map((o) => o.status)).toEqual([UNDER_REVIEW, UNDER_REVIEW])
     expect(seen[0].price).toBe(900)
-    expect(seen[1]).toBe(offers[1])
+    expect(seen[1].price).toBe(1200)
+    expect(offers[1].status).toBe("مرفوض")
     expect(offers[0].status).toBe(AWARDED)
   })
 })

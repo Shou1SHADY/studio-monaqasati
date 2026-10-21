@@ -528,8 +528,11 @@
       "contractor_my_suppliers": "My Suppliers",
       "contractor_browse_suppliers": "Suppliers",
       "contractor_projects": "Projects",
-      "contractor_chats": "My Chats",
-      "contractor_team_chat": "Team Chat",
+      "contractor_chats": "My chats",
+      "contractor_team_chat": "Team chat",
+      "contractor_proc_guide": "How Procurement works",
+      "section_guide": "Guide",
+      "contractor_bnpl": "Buy now, pay later",
       "contractor_team": "Team Management",
       "contractor_companies": "My Companies",
       "contractor_notifications": "Notifications",
@@ -537,7 +540,8 @@
       "admin_home": "Home",
       "admin_leads": "Leads",
       "admin_suppliers": "Suppliers",
-      "admin_contractors": "Contractors",
+      "admin_contractors": "Contractors & packages",
+      "admin_pipeline": "Pipeline & contract",
       "admin_rfqs": "All RFQs",
       "admin_procurement": "Mdmak Procurement",
       "admin_notifications": "Notifications Log",
@@ -550,11 +554,11 @@
       "section_management": "Management",
       "section_monitoring": "Monitoring",
       "logout": "Logout",
-      "contractor_goods_received": "Goods receipts",
+      "contractor_goods_received": "Receipts",
       "contractor_guarantees": "Guarantees",
       "contractor_new_project": "New Project",
       "contractor_new_rfq": "New RFQ",
-      "contractor_catalog": "Materials Catalog",
+      "contractor_catalog": "Materials market",
       "contractor_employees": "Employees & Salaries",
       "contractor_invoices": "Invoices",
       "contractor_warehouses": "Warehouses",
@@ -669,7 +673,7 @@
       "fin_nav_sales_desk": "Sales desk",
       "fin_nav_hr_desk": "HR desk",
       "fin_nav_procurement_desk": "Purchase order approvals",
-      "contractor_purchase_requests": "Incoming purchase requests",
+      "contractor_purchase_requests": "Incoming requests",
       "contractor_proc_today": "Today",
       "contractor_purchase_orders": "Purchase orders",
       "contractor_proc_reports": "Reports",
@@ -876,6 +880,7 @@
       "price_updated": "Updated",
       "price_updated_desc": "Price updated and offer resent to contractor.",
       "price_update_failed": "Failed to update price, please try again.",
+      "price_update_higher": "A better price is the same price or a lower one — never a higher one.",
       "sample_confirmed_title": "Sample Confirmed",
       "sample_confirmed_desc": "The contractor has been notified that the sample was sent.",
       "sample_sent_notif_title": "📦 Sample Sent by Supplier",
@@ -1390,6 +1395,10 @@
       "po_lump_sum": "A lump-sum order — no prices per line.",
       "po_payment_terms": "Payment terms",
       "po_cancelled_reason": "Order cancelled: {reason}",
+      "po_declined_waiting": "You declined this order — waiting for the buyer's decision",
+      "po_version_pending": "The buyer changed the order (version {n}) — accept it so your commitment stays clear",
+      "po_version_accept": "Accept version {n}",
+      "po_version_accepted_toast": "You accepted version {n} of the order",
       "po_closed_short_reason": "Closed before completion: {reason}",
       "po_accept_btn": "Accept the order",
       "po_notify_btn": "Send a delivery notice",
@@ -8387,7 +8396,7 @@
       "pri_col_material": "Material & source",
       "pri_col_qty": "Quantity",
       "pri_col_route": "Computed route",
-      "pri_from_mfg": "From Manufacturing",
+      "pri_from_mfg": "Manufacturing",
       "pri_on_hand": "On hand {qty}",
       "pri_need_today": "Needed today",
       "pri_need_in": "{count, plural, one {In # day} other {In # days}}",
@@ -8401,8 +8410,8 @@
       "pri_state_waiting": "Waiting on others",
       "pri_state_order": "In orders",
       "pri_state_done": "Ended",
-      "pri_from_project": "From Project Management",
-      "pri_from_stock": "From Inventory",
+      "pri_from_project": "Project Management",
+      "pri_from_stock": "Inventory",
       "pri_more_lines": "{count, plural, one {+ # more material} other {+ # more materials}}",
       "pri_stock_min": "On hand {qty} · minimum {min}",
       "pri_in_rfq": "In RFQ {ref}",
@@ -8477,10 +8486,10 @@
       "pn_rfq_answer_all_title": "An answer on a request for quotations",
       "pn_rfq_answer_all": "An answer was published on “{rfq}”: {reply}",
       "proc_tab_today": "Today",
-      "proc_tab_requests": "Incoming purchase requests",
+      "proc_tab_requests": "Incoming requests",
       "proc_tab_rfqs": "RFQs",
       "proc_tab_orders": "Purchase orders",
-      "proc_tab_receipts": "Goods receipts",
+      "proc_tab_receipts": "Receipts",
       "proc_tab_suppliers": "Suppliers",
       "proc_tab_reports": "Reports",
       "proc_tab_settings": "Settings",
@@ -9039,6 +9048,39 @@
       "offer_not_approved": "Your company is not approved yet. Upload the commercial registration and tax registration certificate in your profile and request approval — quotes can be sent once Mdmak Tech approves it.",
       "offer_quota_reached": "You have used this month's {n} free quotes. Subscribe to send more.",
       "offer_rfq_closed": "This request is no longer open for quotes.",
+      "offer_deadline_passed": "The deadline for quotes on this request has passed.",
+      "offer_not_reached": "This request does not reach your company.",
+      "offer_already_quoted": "Your company already has a quote on this request — edit it from your offers; the earlier version is kept.",
+      "offer_price_invalid": "The price must be a number above zero.",
+      "offer_price_too_big": "The price is above the allowed limit — check the number.",
+      "offer_pack_not_offered": "The sale unit you chose is not one of this item's units.",
+      "offer_warranty_invalid": "The warranty period is not valid.",
+      "offer_duration_invalid": "The lead time is a whole number of days from 1 to 365.",
+      "offer_pack_label": "Price per",
+      "offer_pack_per_unit": "Request unit ({unit})",
+      "offer_pack_per_piece": "{name} (price per piece)",
+      "offer_pack_live": "{pcs} × {name} = {received} {unit} · {total} {sar}",
+      "offer_pack_extra": "{extra} {unit} extra, which you are paid for",
+      "offer_warranty_label": "{months, plural, one {A warranty of 1 month} other {A warranty of # months}} is asked — choose what you give",
+      "offer_warranty_choose_option": "Choose the warranty",
+      "offer_warranty_none": "No warranty",
+      "offer_warranty_m6": "I give 6 months",
+      "offer_warranty_m12": "I give 1 year only",
+      "offer_warranty_m24": "I give 2 years",
+      "offer_warranty_m36": "I give 3 years",
+      "offer_warranty_m60": "I give 5 years",
+      "offer_warranty_option": "I give {months} months",
+      "offer_warranty_choose": "Choose the warranty you give for: {names}",
+      "offer_whole_only": "Whole request only",
+      "offer_whole_only_hint": "I do not sell some items without the others: award me the whole request or none of it.",
+      "pn_rfq_bafo_title": "A better price was asked of you",
+      "pn_rfq_bafo": "The buyer asks for a better price on your offer in «{rfq}» — answer by {date}. {note}",
+      "pn_rfq_reval_title": "You were asked to confirm your price",
+      "pn_rfq_reval": "Your offer in «{rfq}» has expired — confirm your price with a new validity to be considered for the award.",
+      "pn_rfq_clarify_title": "A clarification was asked on your offer",
+      "pn_rfq_clarify": "The buyer asks about your offer in «{rfq}»: {question}",
+      "pn_rfq_clarify_answer_title": "The supplier answered your clarification",
+      "pn_rfq_clarify_answer": "{supplier} answered your question in «{rfq}»: {answer}",
       "pn_supplier_approved_title": "Your company is approved",
       "pn_supplier_approved": "Mdmak Tech approved your company — you can now send quotes.",
       "proc_tab_count_today": "{count}",
@@ -9054,20 +9096,52 @@
       "supplier_fallback_name": "Supplier on the platform",
       "rq_seg_new": "New",
       "rq_seg_prepared": "Prepared",
-      "rq_seg_elsewhere": "With others",
-      "rq_seg_rfq": "In RFQs",
-      "rq_seg_order": "In orders",
-      "rq_seg_done": "Done",
+      "rq_seg_upcoming": "Upcoming",
+      "rq_seg_rfq": "In RFQ",
+      "rq_seg_order": "In POs",
+      "rq_seg_done": "Completed",
+      "rq_seg_ended": "Ended",
       "rq_seg_all": "All",
       "rq_state_new": "New",
       "rq_state_prepared": "Prepared",
-      "rq_state_elsewhere": "With another module",
-      "rq_state_partial": "Partly in an RFQ",
-      "rq_state_rfq": "In RFQ {rfq}",
-      "rq_state_order": "In order {po}",
-      "rq_state_done": "Done",
-      "rq_state_failed": "Could not be bought",
-      "rq_state_withdrawn": "Withdrawn by the project",
+      "rq_state_partial": "Partly in RFQ or PO",
+      "rq_state_rfq": "In RFQ",
+      "rq_state_order": "In PO",
+      "rq_state_done": "Completed",
+      "rq_state_failed": "Could not buy",
+      "rq_state_withdrawn": "Withdrawn by project",
+      "rq_remainder": "The remainder",
+      "rq_approved": "Approved by the project manager {date}",
+      "rq_place": "Delivery site: {place}",
+      "rq_wo": "Work order {no}",
+      "rq_last_day": "Last day to order {date} · {days, plural, =0 {today} =1 {tomorrow} other {in # days}}",
+      "rq_line_rfq": "{rfq} · closes {date}",
+      "rq_fail": "Could not buy",
+      "rq_failed_block": "Could not buy: {why}. Suggested alternative: {alt}. The requester was told.",
+      "rq_failed_block_noalt": "Could not buy: {why}. The requester was told.",
+      "rq_upcoming_title": "“Upcoming” is for preparing, not buying",
+      "rq_upcoming_hint": "No request is published before its technical approval. From here you learn what is coming, so you can combine the similar and follow prices early. Nothing is upcoming now.",
+      "bef_wait_stock": "Awaiting Inventory",
+      "bef_wait_mfg": "Awaiting the workshop",
+      "bef_covered": "Inventory issues it",
+      "bef_make": "The workshop makes part",
+      "bef_failed": "Could not be bought",
+      "bef_gone": "Withdrawn by the project",
+      "rf_title": "Could not buy",
+      "rf_desc": "{count, plural, one {# item} other {# items}} of {ref} close as “could not buy”, and the requester gets the reason and the alternative.",
+      "rf_why_nooff": "No offers by the deadline",
+      "rf_why_price": "Prices far above budget",
+      "rf_why_avail": "Not available on the market",
+      "rf_why_other": "Other",
+      "rf_other_ph": "Write the reason",
+      "rf_alt": "Suggested alternative",
+      "rf_alt_opt": "optional",
+      "rf_alt_ph": "e.g. an equivalent from a supplier in Al-Kharj",
+      "rf_go": "Close as “could not buy”",
+      "rf_back": "Back",
+      "rf_done": "Closed as “could not buy”; {name} got the reason and the alternative.",
+      "rf_failed": "Could not save — try again",
+      "rf_nothing": "Nothing left to buy in this request",
       "rq_withdrawn_by": "Withdrawn by {name} · {date}",
       "rq_line_open": "Details of {name}",
       "rq_line_in_rfq": "in RFQ {ref}",
@@ -9091,15 +9165,20 @@
       "rq_panel": "The incoming request",
       "rq_empty": "No requests here.",
       "rq_empty_hint": "A material request arrives here once its project manager approves it technically, with what the workshop and the stores ask for.",
-      "rq_empty_hint_team": "What your team asks for arrives here, with what the workshop and the stores ask for.",
+      "rq_empty_hint_team": "“Material request” above raises one that arrives here.",
       "pn_receipt_remind_title": "⏰ Reminder: a delivery waits for your count",
       "pn_receipt_remind": "{name} reminds you of {supplier}'s delivery — open it from your tasks, count what arrived and confirm by signing in.",
       "nd_desc_team": "What your team asks for, and what Manufacturing and Inventory ask for, under its number, by the last day to order",
-      "pri_from_team": "From the team",
+      "pri_from_team": "Team",
       "nd_confirm_team_decline_title": "Cannot be bought",
       "tr_open": "Request materials",
       "tr_title": "Material request",
-      "tr_desc": "It goes to Procurement, and its state comes back to you in «My requests».",
+      "tr_desc": "It reaches Procurement, and its status reaches whoever it is for.",
+      "tr_open_new": "New material request",
+      "tr_for": "Requested by",
+      "tr_for_self": "Me",
+      "tr_for_none": "no account",
+      "tr_for_hint": "Raise it on behalf of someone with no account; his status reaches his phone as a text message.",
       "tr_address": "Address",
       "tr_address_ph": "Type the address if it is not in the list",
       "tr_address_hint": "Pick a site of «Delivery sites» at the head of the materials, or type the address here.",
@@ -9133,6 +9212,8 @@
       "pn_team_request_title": "New material request",
       "pn_team_request": "{name} sent material request {number} to Procurement.",
       "pn_team_request_declined_title": "Material request cannot be bought",
+      "pn_team_request_failed_title": "Material request cannot be bought",
+      "pn_team_request_failed": "{number} — {name}: {reason}. Suggested alternative: {alt}",
       "pn_team_request_declined": "{number} — {name}: {reason}",
       "pn_team_request_rfq_title": "Material request {number} is in an RFQ",
       "pn_team_request_rfq": "Your request was published in RFQ {ref}.",
@@ -9212,7 +9293,7 @@
       "guest_msg_supply_completed": "The supply for your offer on the RFQ \"{title}\" is confirmed as complete. Thank you for working with us. Details:",
       "guest_msg_target_price": "Target price: {price} {currency}",
       "guest_msg_note": "Note: {note}",
-      "offers_guest_badge": "Via share link",
+      "offers_guest_badge": "Off-platform · visitor link",
       "rfq_edit_short": "Edit",
       "rfq_delete_short": "Delete",
       "optional": "Optional",
@@ -10001,10 +10082,10 @@
       "offers_currency_sar": "SAR",
       "offers_supplier_whatsapp": "Supplier WhatsApp",
       "offers_status_review": "Under Review 🕐",
-      "offers_status_accepted": "Accepted ✅",
-      "offers_status_rejected": "Rejected ❌",
+      "offers_status_accepted": "Awarded",
+      "offers_status_rejected": "Excluded",
       "offers_status_completed": "Completed & Delivered 📦✅",
-      "offers_status_reduction": "Price Reduction Requested 📉",
+      "offers_status_reduction": "Better price asked",
       "offers_status_withdrawn": "Withdrawn by the supplier",
       "offers_status_order_declined": "The supplier declined the order",
       "offers_toast_accepted_title": "✅ Award sent to Finance",
@@ -11085,6 +11166,9 @@
       "offers_exclusion_spec": "Spec does not match",
       "offers_exclusion_lead": "Lead time misses the need",
       "offers_exclusion_documents": "No documents / VAT no.",
+      "offers_exclusion_warranty": "Warranty below what was asked",
+      "offers_exclusion_validity": "Validity too short",
+      "offers_exclusion_order_cancelled": "His order was cancelled, so he is left out of the re-award",
       "rfqv_stage_direct": "Direct award",
       "queue_item_delivery_with_receiver": "{supplierName}'s delivery is with {receiver} — waiting for the count",
       "action_delivery_open": "Open the notice",
@@ -12182,6 +12266,8 @@
         "warranty_accepted": "{by} accepted the supplier's warranty for {item}",
         "supplier_rated": "The supplier rated working with us on this order: {stars} out of 5",
         "message": "{by} wrote in the order conversation",
+        "version_accepted": "{by} accepted version {ver} of the order",
+        "advance_owner_approved": "{by} approved the advance to a supplier with no supply record",
         "hold_decided": "{by} decided on held invoice {invoice}: {decision}",
         "finance_reminded": "{by} reminded Finance about the advance",
         "budget_referred": "{by} referred the budget overrun ({over}) to the project manager",
@@ -12235,6 +12321,11 @@
       "err_order_missing": "The purchase order was not found — it may have been deleted, or it is not yours to read",
       "err_offer_missing": "The offer this order is built on was not found",
       "err_no_permission": "This action is not your permission",
+      "err_no_portal": "This supplier has no portal on the platform — send the order with its link on WhatsApp or by e-mail",
+      "err_advance_not_waiting": "No advance on this order is waiting for the owner",
+      "err_version_missing": "No version of this order is waiting to be accepted",
+      "err_items_pending": "This order's items came from a request: re-award them or return them to Incoming, do not leave them",
+      "err_no_rfq": "This order has no RFQ to re-award",
       "err_wrong_state": "The order's state changed — this action is no longer possible. The order was reloaded",
       "err_own_order": "The preparer cannot approve the PO",
       "err_owner_only": "A retroactive PO is approved by the owner only",
@@ -12268,6 +12359,22 @@
       "err_agreement_line_missing": "The agreement does not cover {item}",
       "err_not_no_po": "This receipt is no longer waiting for an order — it was already tied or sent as an expense",
       "err_no_matching_order": "That order has no open line for every item of this receipt",
+      "offerLabel": {
+        "awarded": "Awarded",
+        "excluded": "Excluded",
+        "shortlisted": "Shortlisted",
+        "shortlist": "Shortlist",
+        "bafo_asked": "Better price asked — by {date}",
+        "bafo_lowered": "Lowered his price",
+        "reval_asked": "Price confirmation asked",
+        "new_today": "New today",
+        "updated": "Updated",
+        "version": "Version {version}",
+        "differs_terms": "Differs from your payment terms",
+        "whole_only": "Whole request only",
+        "unregistered": "Not VAT-registered — no VAT",
+        "expired": "Price expired — ask to confirm"
+      },
       "rfqd": {
         "tab_details": "Request details",
         "excl_vat": "excl. VAT",
@@ -12441,7 +12548,10 @@
           "offer_versioned": "{supplier} sent version {version} of the offer",
           "price_confirmed": "{supplier} confirmed the price",
           "award_reason": "Award reason recorded: {reason}",
-          "message": "A message was sent to {supplier}"
+          "message": "A message was sent to {supplier}",
+          "offer_restored": "{supplier}'s offer is back in the comparison",
+          "bafo_asked": "A better price was asked of {supplier} — he answers by {date}",
+          "reval_asked": "{supplier} was asked to confirm his price"
         },
         "invited": {
           "title": "Invited",
@@ -12687,13 +12797,13 @@
           "replace_by": "replacement by {date}",
           "pm_cancel": "Projects closed the material ({reason}) and asks to stop the rest — {by}",
           "pm_cancel_confirm": "Confirm cancellation with the supplier",
-          "revision": "rev {n}",
+          "revision": "Version {n}",
           "fee_logged": "charge SAR {fee}",
           "row_held": "invoice held by Finance",
           "row_advance": "advance with Finance",
           "row_advance_nofin": "advance not marked paid",
           "trail": {
-            "title": "Document trail — and who owns each step",
+            "title": "Document and who owns each step",
             "prepared": "Prepared",
             "approved": "Approved",
             "finance": "Reached Finance (commitment) & Inventory (arrival)",
@@ -12721,7 +12831,7 @@
             "sent_body": "The order is recorded in Finance, which waits for the goods receipt and then the supplier's invoice to pay."
           },
           "money": {
-            "title": "The money trail — what reached Finance and what came back",
+            "title": "Money trail — read-only from Finance",
             "commitment": "Committed on the PO — incl. VAT",
             "commitment_hint": "Recorded in Finance on approval, {date}, as an uninvoiced commitment",
             "commitment_pending": "Not approved yet — nothing reaches Finance before approval",
@@ -12734,6 +12844,13 @@
             "paid": "Paid",
             "paid_hint": "{pct} of the PO · {left} left",
             "no_payments": "No payments yet — each one reaches us with its bank reference",
+            "buyer_mark": "A payment mark {name} logged before Finance ({state}, {date}) — a reference for Finance; it does not close the order",
+            "buyer_mark_advance": "An advance mark logged before Finance ({date}) — a reference for Finance; it does not close the order",
+            "mark_state": {
+              "unpaid": "Not paid",
+              "part": "Part paid",
+              "paid": "Paid"
+            },
             "footer": "Not shown here: the invoice itself, the supplier ledger, bank balances or journal entries — those are Finance’s. We never pay or approve a payment: we send the order and the decision and read back what concerns our PO."
           },
           "pay": {
@@ -13495,37 +13612,107 @@
       "segments_label": "Order segments",
       "loading": "Loading",
       "seg": {
-        "awaiting_approval": "Awaiting approval / decision",
-        "live": "With suppliers",
+        "act": "Needs us",
+        "wait": "Waiting on others",
         "late": "Late",
-        "received": "Received & closed",
-        "all": "All orders"
+        "done": "Complete",
+        "all": "All"
       },
       "empty": {
-        "awaiting_approval": "No orders awaiting approval",
-        "live": "No orders with suppliers right now",
+        "act": "No orders need us right now",
+        "wait": "No orders waiting on others right now",
         "late": "No late orders — every supplier is on time",
-        "received": "No received or closed orders yet",
+        "done": "No complete orders yet",
         "all": "No purchase orders yet"
       },
       "empty_hint": {
-        "awaiting_approval": "An order appears here the moment an offer is awarded, waiting for its approver",
-        "live": "An order lands here once approved and stays until the last line arrives",
+        "act": "An order appears here when the move is ours: an approval, sending it, forwarding a notice or a decision on a rejected quantity",
+        "wait": "The order is with the supplier, the receiver or Finance until they move",
         "late": "Lateness counts from the date the supplier committed to — not ours",
-        "received": "An order arrives here when delivery is complete or it is closed",
+        "done": "An order arrives here when delivery is complete, or it is closed or cancelled",
         "all": "Awarding an offer creates the purchase order automatically"
       },
       "empty_search": "No order matches \"{term}\"",
       "empty_search_hint": "The search spans every segment — try the PO number or the supplier's name",
       "col": {
         "number": "Order",
-        "supplier": "Supplier & request",
+        "order": "Order",
+        "supplier": "Supplier",
+        "location": "Location",
+        "next": "Next step",
+        "who": "Waiting on",
         "status": "Status",
-        "value": "Value excl. VAT",
+        "value": "Value",
         "date": "Supplier date",
         "order_supplier": "Order & supplier",
         "lines": "Lines",
         "supplier_date": "Supplier date"
+      },
+      "who": {
+        "sup": "Supplier",
+        "us": "Us",
+        "rcv": "Receiver",
+        "fin": "Finance",
+        "app": "Approver",
+        "inv": "Inventory",
+        "mfg": "Workshop",
+        "none": "—"
+      },
+      "supplier_tag": {
+        "off": "Off-platform",
+        "unverified": "Unverified"
+      },
+      "basis_incl": "incl. VAT",
+      "basis_no_vat": "no VAT",
+      "tag": {
+        "not_lowest": "Not lowest: {why}",
+        "low_comp": "Low competition ({n} of {of}): {why}",
+        "direct_over": "Direct award above the cap: {why}",
+        "lump": "Lump sum",
+        "no_vat": "Supplier not VAT-registered — no VAT"
+      },
+      "step": {
+        "appr": "Waiting for the order's approval {days, plural, =0 {— reached them today} one {for a day} other {for # days}}",
+        "ret": "Returned to its preparer: {reason} — waiting for them to edit and resubmit",
+        "send": "Approved — send it to the supplier",
+        "sent": "Sent, waiting for the supplier to accept",
+        "nacc": "The supplier has not accepted for {days, plural, one {a day} other {# days}}",
+        "dec": "The supplier declined the order: {reason}",
+        "adv_owner": "An advance ({percent}%) to a supplier with no supply record: the owner approves it before it is requested",
+        "adv_fin": "The supplier's date starts from the advance ({percent}%), requested from Finance",
+        "adv_us": "The supplier's date starts from the advance ({percent}%), not marked paid",
+        "rej": "Part of it was rejected at receipt — your decision with the supplier",
+        "fwd": "Delivery notice arrived ({date}) — forward it to the receiver",
+        "transit": "In transit — arrives {date} to {name}",
+        "count": "Waiting for {name} to count",
+        "book": "{name} counted it — record the receipt",
+        "part": "Received {received} of {ordered} {unit}, {left} left",
+        "offp": "Did the shipment arrive? The supplier is off-platform — due {date}",
+        "late": "The supplier is {days, plural, one {a day} other {# days}} late and has not notified delivery",
+        "wait": "Waiting for the supplier — due {date}",
+        "unpaid": "Fully received, waiting for Finance to pay",
+        "done": "Complete",
+        "cancel": "Order cancelled"
+      },
+      "chat": {
+        "title": "Talking to the supplier",
+        "channel_portal": "On the platform — he replies from his portal",
+        "channel_link": "Off-platform — reaches him on WhatsApp with the order link; he replies there",
+        "older": "{count} older…",
+        "empty": "Nothing has happened on this order yet",
+        "messaging_soon": "Messaging inside the order is coming; until then comments and attachments stay in «Order comments» below.",
+        "full": "Full conversation",
+        "call": "Call"
+      },
+      "bnpl": {
+        "row": "Pay this PO later in instalments",
+        "soon": "Soon",
+        "title": "Pay later — soon",
+        "body": "Paying a purchase order later, in instalments, is being prepared. When it is ready this row appears on every unpaid order; nothing happens now.",
+        "close": "OK"
+      },
+      "version": {
+        "pending": "Version {n} of the order is waiting for the supplier to accept it"
       },
       "pill_returned": "Returned to preparer",
       "date": {
@@ -13546,13 +13733,15 @@
         "not_shipped": "Not shipped"
       },
       "head": {
-        "prepared": "Prepared by {by} · {date}"
+        "prepared": "Prepared by {by} · {date}",
+        "off_platform": "off-platform"
       },
       "sec": {
         "next_step": "Next step",
         "money": "The money trail",
         "money_badge": "What Finance reads",
         "lines": "Lines ({count})",
+        "lines_total": "SAR {total} incl. VAT",
         "award": "Award facts",
         "documents": "Documents",
         "log": "Log"
@@ -13565,7 +13754,7 @@
         "flag_short_competition": "Short competition: {count, plural, =0 {no offers} one {only # offer} other {only # offers}} on this purchase",
         "flag_non_lowest": "Awarded above the lowest price — reason: {reason}",
         "flag_no_official_quote": "Awarded with no stamped official quote — check what was typed in by hand",
-        "approve": "Approve the order",
+        "approve": "Approve",
         "approve_blocked": "Cannot be approved while a fact blocks it",
         "return": "Return to preparer",
         "awaiting_approver": "Awaiting {approver}'s approval {days, plural, =0 {— it reached them today} one {for a day} other {for # days}}",
@@ -13575,7 +13764,7 @@
         "cancel_order": "Cancel the order",
         "approved_body": "Approved by {by} on {date} and with Finance as a commitment — back to you to send it to {supplier}. The acceptance clock and the delivery date start from the send.",
         "approved_body_nofin": "Approved by {by} on {date} — back to you to send it to {supplier}. The acceptance clock and the delivery date start from the send.",
-        "send": "Send it to the supplier",
+        "send": "Send",
         "sent_body": "Sent via {channel} on {date}. The honest date starts with the supplier's acceptance: record it with the delivery date he committed to — not the one we hope for.",
         "record_acceptance": "Record supplier acceptance & date",
         "remind": "Remind the supplier",
@@ -13592,6 +13781,10 @@
         "closed_short_body": "Closed short — {reason}",
         "cancelled_body": "The order was cancelled — {reason}",
         "declined_title": "The supplier declined the order",
+        "dec_detail": "{date} — re-award to the next offer or return the items to Incoming",
+        "reaward_or_return": "Re-award or return the items",
+        "approve_advance": "Approve the advance",
+        "advance_owner_wait": "Waiting for the owner: he approves the advance before it is requested from Finance",
         "reaward_body": "The request is still awarded to him. Reopen the award to pick another quote: the other quotes return to «awaiting a decision», and his leaves the comparison.",
         "reaward": "Re-award",
         "reaward_confirm": "Confirm reopening the award",
@@ -13619,6 +13812,7 @@
         "reject_decided": "Decision on the rejects: {decision}",
         "cancelled_reason": "{qty} {unit} cancelled with the supplier — {reason}",
         "decide_reject": "Decide on the rejects ({qty} {unit})",
+        "piece_total": "= {total} {base} (needed {need})",
         "cancel_remainder": "Supplier failed — pull the rest & re-source",
         "none": "No lines on this order"
       },
@@ -13660,6 +13854,30 @@
       },
       "cancel_order": {
         "title": "Cancel the purchase order",
+        "title_no": "Cancel {no}",
+        "sub": "The supplier is told, and a “cancelled” version goes to Finance and Inventory. The items are never left hanging.",
+        "why_label": "Reason",
+        "why": {
+          "nacc": "He did not accept in time",
+          "dec": "The supplier declined",
+          "chg": "Asked for a change we refuse",
+          "need": "No longer needed",
+          "other": "Other"
+        },
+        "other_ph": "Write the reason",
+        "other_required": "Write the reason (4 characters at least)",
+        "then_label": "And its items?",
+        "then": {
+          "reaward": "Re-award them from {rfq}’s offers",
+          "back": "Return them to Incoming",
+          "none": "Nothing now"
+        },
+        "then_hint": {
+          "reaward": "The request goes back to Comparing without his offer; you pick the next.",
+          "back": "Their requests return to Incoming for a new RFQ.",
+          "none": "An order with no incoming request: it is cancelled alone."
+        },
+        "back": "Back",
         "desc": "Before anything arrived. What was received is never cancelled — cancel the remainder line by line, or close the order short",
         "label": "Reason",
         "submit": "Cancel the order",
@@ -13740,6 +13958,7 @@
         "copied": "Copied — send it with your own tool",
         "copied_short": "Copied",
         "subject": "Purchase order {number}",
+        "link_placeholder": "(the order link is made when you send)",
         "effect": "We log the send with your name and time; the supplier's acceptance clock starts here. The system never messages on your behalf.",
         "submit_portal": "Send to their portal",
         "submit_whatsapp": "Send on WhatsApp",
@@ -13799,6 +14018,7 @@
         "cancelled": "Order cancelled",
         "rated": "Rating saved to the supplier file",
         "approved_sent": "Approved and sent — it is in the supplier's portal, awaiting his acceptance and date",
+        "advance_approved": "Advance approved — and requested from Finance",
         "saved": "Saved"
       },
       "print": {
@@ -13917,6 +14137,7 @@
       },
       "pay": {
         "title": "Payment",
+        "sub": "Accounting is in the company's system",
         "state_unpaid": "Not paid",
         "state_part": "Part paid",
         "state_paid": "Paid",
@@ -14862,6 +15083,52 @@
         "noRegister": "Nobody is in the register yet — settings is where it is kept."
       }
     },
+    "ProcSubscription": {
+      "title": "Subscription",
+      "sub": "Your package now: {title}. View only."
+    },
+    "ProcMyRequests": {
+      "title": "My requests",
+      "desc": "Ask for what your site needs, and follow it until it arrives. Prices and suppliers stay with Procurement.",
+      "role_line": "Your role: materials requester",
+      "how_label": "How to ask",
+      "how_pick_t": "Pick the material and quantity",
+      "how_pick_d": "From the same list, or “Most requested” in one press",
+      "how_place_t": "Site and date",
+      "how_place_d": "The delivery site in one press, and the date you need it",
+      "how_send_t": "Send and follow",
+      "how_send_d": "It reaches Procurement, and you follow its status here until it arrives",
+      "flow_title": "How does my request go after I send it?",
+      "step_placed": "With Procurement",
+      "step_rfq": "In RFQ",
+      "step_order": "In PO",
+      "step_arrived": "Arrived",
+      "step_failed": "Could not buy",
+      "step_withdrawn": "Withdrawn",
+      "flow_placed": "It reached Procurement and is not published yet",
+      "flow_rfq": "Procurement published it so suppliers can price it",
+      "flow_order": "The offers were awarded and the purchase order issued",
+      "flow_arrived": "The materials arrived and their receipt was recorded",
+      "line_placed": "With Procurement — not published yet",
+      "line_rfq": "In RFQ — suppliers are pricing it",
+      "line_order": "In a purchase order — with the supplier",
+      "line_order_date": "In a purchase order — supplier’s date {date}",
+      "line_arrived": "The materials arrived and their receipt was recorded",
+      "line_failed": "Could not buy: {why}",
+      "line_failed_alt": "Could not buy: {why}. Suggested alternative: {alt}",
+      "line_withdrawn": "You withdrew this request",
+      "sent_on": "Sent {date} · needed before {needBy}",
+      "raised_for": "For {who} · raised by {by}",
+      "withdraw": "Withdraw",
+      "withdraw_confirm": "Withdraw material request {number}? Procurement will no longer see it.",
+      "withdrawn": "Request withdrawn",
+      "withdraw_in_rfq": "Procurement has put it in an RFQ — it cannot be withdrawn now",
+      "failed": "Could not send — try again",
+      "loading": "Loading",
+      "none": "You have not sent a material request yet",
+      "none_hint": "“New material request” at the top sends one to Procurement, and you follow its status here.",
+      "footer": "Where do the team’s requests come from without Project Management? Anyone with an account in the “materials requester” role raises them here, the buyer raises them on behalf of someone with no account, and the storekeeper sends a need line from Inventory. All of them reach the incoming purchase requests the same way."
+    },
     "ProcPackage": {
       "label": {
         "full": "Full",
@@ -15096,85 +15363,12 @@
           "desc": "Records the goods receipt at the gate: the count, the rejects, what is held for inspection — never prepares an order"
         }
       },
-      "seg": {
-        "path": "Purchase path",
-        "policies": "Policies",
-        "roles": "Roles & receivers",
-        "boundaries": "Links with modules"
-      },
-      "path": {
-        "title": "From need to payment — nine steps, one owner each",
-        "owned": "Highlighted: ours",
-        "owner": {
-          "projects": "Projects",
-          "inventory": "Inventory",
-          "manufacturing": "Manufacturing",
-          "procurement": "Procurement",
-          "finance": "Finance"
-        },
-        "step1": {
-          "title": "Need",
-          "desc": "A material request from a project, a workshop shortfall or a stock gap",
-          "rule": "No need is lost"
-        },
-        "step2": {
-          "title": "Stock check",
-          "desc": "Inventory reserves what it holds before anything is bought",
-          "rule": "Nothing bought that we hold"
-        },
-        "step3": {
-          "title": "Make or buy",
-          "desc": "The workshop answers first whether it makes the item",
-          "rule": "One day to answer"
-        },
-        "step4": {
-          "title": "Route",
-          "desc": "Stock, then a live agreement, then direct under the ceiling, else an RFQ",
-          "rule": "Computed, not chosen"
-        },
-        "step5": {
-          "title": "Offers & award",
-          "desc": "Invited suppliers price it; offers stay sealed until the deadline",
-          "rule": "A non-lowest award carries its reason"
-        },
-        "step6": {
-          "title": "Purchase order",
-          "desc": "Prepared by one hand, approved by another, then sent",
-          "rule": "Nobody approves their own order"
-        },
-        "step7": {
-          "title": "Finance",
-          "desc": "The approved order is a commitment; an advance goes through Finance",
-          "rule": "No payment without an order"
-        },
-        "step8": {
-          "title": "Delivery & receipt",
-          "desc": "The store counts blind and records what arrived, rejected or held",
-          "rule": "No receipt unrecorded"
-        },
-        "step9": {
-          "title": "Invoice & payment",
-          "desc": "Finance matches the invoice to the order and the receipt, then pays",
-          "rule": "A price gap needs a decision"
-        }
-      },
       "segment": {
-        "flow": "The purchase path",
-        "link": "Links with modules",
         "pol": "Policies",
-        "gap": "Not built · conflicts · log",
         "sites": "Delivery sites",
         "receivers": "Receivers",
-        "roles": "Roles"
-      },
-      "party": {
-        "pm": "Projects",
-        "mfg": "Manufacturing",
-        "inv": "Inventory",
-        "fin": "Finance",
-        "sup": "Supplier",
-        "gov": "Governance",
-        "me": "Procurement"
+        "roles": "Roles",
+        "sub": "Subscription"
       },
       "owner": {
         "gov": "From Settings & governance",
@@ -15182,196 +15376,13 @@
         "inv": "From Inventory",
         "mfg": "From Manufacturing"
       },
-      "flow": {
-        "title": "Need to payment — nine steps, one owner each",
-        "sub": "Tinted steps are ours",
-        "step1": {
-          "title": "1 · The need",
-          "desc": "An approved material request from a project · a workshop shortfall on a work order · a stock gap",
-          "rule": "We never create the need — it reaches us"
-        },
-        "step2": {
-          "title": "2 · Stock check",
-          "desc": "Computed on arrival and confirmed by Inventory: what we hold free is issued, not bought",
-          "rule": "One day — then we proceed"
-        },
-        "step3": {
-          "title": "3 · Make or buy",
-          "desc": "What our workshop makes, we ask it first — it accepts in full, in part, or declines with a reason",
-          "rule": "One day — then we buy"
-        },
-        "step4": {
-          "title": "4 · The path",
-          "desc": "Live agreement → an order at its price · under the cap → a direct order · otherwise → an RFQ",
-          "rule": "Computed, not chosen"
-        },
-        "step5": {
-          "title": "5 · Quotes & award",
-          "desc": "Our suppliers · platform suppliers · a guest link with no registration — sealed until close, awarded line by line",
-          "rule": "A non-lowest award carries its reason"
-        },
-        "step6": {
-          "title": "6 · Purchase order",
-          "desc": "Prepared by one, approved by another within his limit — then sent, with the supplier's acceptance and date recorded",
-          "rule": "Pending sample, expired CR or no VAT number = no approval"
-        },
-        "step7": {
-          "title": "7 · Finance",
-          "desc": "The approved order reaches Finance as a commitment and the first leg of the match — it pays any advance the supplier asked for",
-          "rule": "We never pay nor record a payment"
-        },
-        "step8": {
-          "title": "8 · Delivery & receipt",
-          "desc": "We follow the supplier's date — Inventory receives in the store or directly on site and records the quantity and the rejects",
-          "rule": "We never record a receipt"
-        },
-        "step9": {
-          "title": "9 · Invoice & payment",
-          "desc": "Finance matches the invoice to our order and Inventory's receipt, and pays — its payment closes the order. A price variance comes back to us as a decision",
-          "rule": "The price variance is our call"
-        }
-      },
-      "ideas": {
-        "title": "The two ideas",
-        "backbone": {
-          "title": "The need line is the backbone",
-          "body": "No RFQ or PO is typed from scratch: both are built from lines that reached us. And every quantity lives in one place: from stock + made + awaiting purchase + in offers + on an order + cancelled = what was asked for."
-        },
-        "lastDay": {
-          "title": "Last order day",
-          "body": "Need date − lead time − the RFQ cycle. We sort the work by it, because the line that arrived yesterday may be more urgent than one that arrived a week ago."
-        }
-      },
-      "owns": {
-        "title": "What the module owns",
-        "body": "The supplier master, price agreements and price history · the path decision and the make-or-buy decision · the RFQ, the recorded offer, the comparison, the award and its reason · the purchase order, its approval, its revisions and the cancellation of its remainder · following the supplier's date · the decision on rejects and on a price variance · the reference price Manufacturing reads."
-      },
-      "link": {
-        "title": "The integration contract — what reaches us and what we send",
-        "sub": "We request and read state — never act for another module",
-        "col": {
-          "party": "Party",
-          "in": "We receive",
-          "out": "We send",
-          "late": "If late or missing"
-        },
-        "pm": {
-          "in": "The approved material request (its purchase part) with item, quantity, date and destination · the item's sample status · the item's remaining budget · the site receipt (counted, rejected with reason) · \"stop what has not arrived\" when the material is closed",
-          "out": "Each part's state: offers → made → PO → part arrived → received · the PO number and price as a commitment on the item · the supplier's date and its updates · confirmation that the remainder is cancelled",
-          "keys": "prj:MR:[no.]:proc · prj:MRC:[no.]:[line]",
-          "late": "Sample not approved: we collect offers but issue no order · budget overrun undecided: the order waits \"on the budget decision\""
-        },
-        "mfg": {
-          "in": "A purchase request for a work order's shortfall (material, quantity, \"needed before\") · the workshop's make-or-buy answer · a request to claim from a supplier for waste or a quality report on a block",
-          "out": "A project need we decided to make, with its material request and item · the reference purchase price of each product · the arrival date of the requested material",
-          "keys": "proc:MK:[request]:[line] · mfg:PRQ:[work order]:[material]",
-          "late": "No answer within a day: we go on to buy, and their request closes \"moved to purchase\""
-        },
-        "inv": {
-          "in": "The stock check (what is issued and what is left to buy) · a shortfall at issue · a gap before the need · the receipt: counted, accepted, rejected with reason, held for inspection and its result · a receipt with no PO",
-          "out": "The approved PO with its lines, supplier, date and destination (\"on its way to you\") · date updates · cancelling the remainder",
-          "keys": "inv:GRN:[receipt no.] · proc:PO:[PO no.]",
-          "late": "No stock-check confirmation within a day: we proceed on what was computed · a receipt more than 5% over the order: Inventory refuses it and asks us to amend the order"
-        },
-        "fin": {
-          "in": "A notice of every payment on our order: the voucher · which invoice · net, VAT and advance recovery · value date · bank reference and the last four digits of the supplier's account · who approved it · the transfer copy — and its share of the order · every payment hold with its coded reason · approval limits and the direct-order cap",
-          "out": "The approved PO: recorded in Finance as a commitment not yet invoiced · a request for a supplier advance · our decision on a price variance (a revised order or a refusal) · the supplier master, VAT number and payment terms",
-          "keys": "proc:PO:[PO no.] · proc:ADV:[request no.] · proc:FRJ:[hold no.] · fin:PAY:[voucher] · fin:REJ:[hold no.]",
-          "late": "An order that never reached Finance: its invoice is held \"no PO\" · an advance not paid: the supplier's lead time has not started and the honest date slips"
-        },
-        "sup": {
-          "in": "An offer (from his platform account · from the guest link with no registration · or recorded by the buyer) · a query · acceptance of the order and its date · a delivery notice per shipment: lines, quantities, date, driver and paper note number",
-          "out": "The RFQ and its link · the answer to a query, to every invitee · a reduction request with a target price · the PO with its link, place and receiver · the receipt result: accepted, rejected with reason, outstanding (what he may invoice)",
-          "keys": "Guest-link token per RFQ · sup:ASN:[notice no.]",
-          "late": "The system does not message the supplier beyond the portal and the order: it copies the text and the link, your own tool sends it, and we log that it was sent"
-        },
-        "note": "Sales and CRM never deal with Procurement directly. HR only refers temporary-labour contracts to us — not built yet."
-      },
       "polPanel": {
         "title": "Policies",
-        "sub": "Each policy names the module that owns it",
-        "smallFirm": {
-          "q": "A small firm with no procurement manager?",
-          "a": "The owner approves, and the buyer issues what is under his limit in his own name — the owner sees it in the exceptions report."
-        },
-        "noInventory": {
-          "q": "No Inventory module?",
-          "a": "The stock check is skipped and the site receiver confirms the arrival (Inventory's minimum is never switched off)."
-        },
-        "noWorkshop": {
-          "q": "No workshop?",
-          "a": "The make-or-buy question never appears."
-        },
-        "enforced": "A limit blocks for real — enforced on the server; the screen is its reflection."
+        "sub": "Each policy names the module that owns it"
       },
       "matrix": {
-        "capability": "Capability",
-        "price": "See prices & values",
-        "src": "Source needs: offers · order · ask the workshop",
-        "appr": "Approve another's PO",
-        "exp": "Expedite, record sent & accepted",
-        "sup": "Supplier file & agreements",
-        "never": "Receive · pay · create a need",
         "yes": "Allowed",
         "no": "Not allowed"
-      },
-      "folds": {
-        "never": "Never ours, even if asked",
-        "notBuilt": "Not built yet — declared, not hidden",
-        "conflicts": "Conflicts with existing modules",
-        "log": "Boundary log"
-      },
-      "never": {
-        "item1": "Recording receipts and their report — whoever receives does: Inventory for its stores, Projects for its sites",
-        "item2": "The invoice, the match, the payment and the supplier ledger — Finance",
-        "item3": "Creating the need or changing its quantity — its owner in Projects or Manufacturing",
-        "item4": "The subcontract and its certificates — Projects",
-        "item5": "Approving a sample — the consultant, through Projects (we only ask the supplier for it)",
-        "item6": "Site petty cash under the cap — Projects and Finance (ours is a direct order with no offers, never cash)",
-        "item7": "The item card, its code and unit — Inventory",
-        "item8": "Messaging suppliers by WhatsApp or e-mail from inside the system"
-      },
-      "notBuilt": {
-        "item1": "An \"urgent buy\" on a phoned approval documented within 24 hours — instead of finding out after the pour",
-        "item2": "A delegate approver when the limit-holder is away",
-        "item3": "A second sealed round after the prices are opened",
-        "item4": "A cumulative direct-order cap (material × supplier × project × 30 days) — today there is the per-supplier split window",
-        "item5": "Returning materials to a supplier after acceptance — with a debit note in Finance",
-        "item6": "Temporary-labour supply contracts (Ajeer) referred by HR",
-        "item7": "Timed equipment rental (daily / monthly) and its extension",
-        "item8": "Importing supplier offers from Excel",
-        "item9": "Supplier pre-qualification by documents and criteria before inviting him"
-      },
-      "conflict": {
-        "item1": "Inventory calls our document a \"purchase request\" (ش-…); Finance and Projects call it a purchase order (ط.ش-…). We adopt the latter: the request is what reaches us, the order is what we issue.",
-        "item2": "Manufacturing reads «ط.ش» as a purchase request that precedes it — we have no intermediate document: the need line carries the material request number itself.",
-        "item3": "Finance expects the receipt number «ا.س-…» and Inventory numbers it «إد-…». We read it in Finance's form.",
-        "item4": "Supplier returns: Inventory sends a debit note to Finance, and Finance expects it from us. Correct: Inventory moves the stock, we agree with the supplier, Finance issues the note.",
-        "item5": "Projects says Procurement registers an uncatalogued item, yet the item card is Inventory's. Here: it is bought as free text for direct supply, and if it enters a store Inventory registers it at receipt.",
-        "item6": "Supplier names differ between Projects, Inventory and Finance. The supplier master here is the reference.",
-        "item7": "«ط.ع» is a customer's inbound request in Sales and a labour request in HR — so our outbound RFQ to suppliers is numbered «ع.ش».",
-        "item8": "Procurement's chip is violet in two modules and teal in three. Every module now takes its own colour from the registry."
-      },
-      "blog": {
-        "empty": "Nothing has crossed the boundary yet",
-        "more": "{count, plural, one {# more event} other {# more events}}",
-        "dir": {
-          "in": "in",
-          "out": "out"
-        },
-        "po_approved": "PO approved {doc}",
-        "po_sent": "PO {doc} sent to {supplier}",
-        "supplier_accepted": "{supplier} accepted {doc} — date {date}",
-        "date_updated": "New date from {supplier} on {doc}: {date}",
-        "remainder_cancelled": "Remainder cancelled on {doc} — {qty} {unit} {line}",
-        "receipt": "Receipt {grn} on {doc}",
-        "receipt_no_po": "Receipt {grn} with no PO",
-        "notice": "Delivery notice from {supplier} on {doc} — for {date}",
-        "pm_budget": "{by} {decision, select, accepted {accepted the budget overrun} other {asked to renegotiate}} on {doc}",
-        "pm_stop": "Projects asked to stop the rest of {line} on {doc} — {by}",
-        "fin_paid": "{kind, select, adv {Advance} part {Part payment} other {Invoice payment}} {no} on {doc}",
-        "fin_held": "Finance held invoice {invoice} on {doc}",
-        "hold_decided": "Our decision on held invoice {invoice} ({doc}) went to Finance"
       },
       "sites": {
         "sub": "A site carries the city and district the supplier reads, and the receiver proposed for every delivery.",
@@ -15401,7 +15412,15 @@
         "receiver_hint": "Proposed for every delivery here; a notice is forwarded to them automatically after the window.",
         "saved": "Site saved",
         "retire": "Take it off the lists",
-        "restore": "Put it back on the lists"
+        "restore": "Put it back on the lists",
+        "kind": "Type",
+        "kind_workshop": "Workshop warehouse",
+        "map_url": "Map link",
+        "optional": "optional",
+        "map_hint": "The supplier opens it to reach the site: an https link from Google Maps or any map.",
+        "map_open": "Map",
+        "err_map": "The map link is not valid: it must be an https address.",
+        "err_forbidden": "Setting the delivery sites is for the owner or whoever approves orders."
       },
       "roles2": {
         "sub": "What each Procurement role does, as the screens and the server apply it.",
@@ -18963,7 +18982,8 @@
           "po": "PO issued — with the supplier",
           "part": "Part received — the rest with the supplier",
           "done": "Received on the project",
-          "cx": "Cancelled"
+          "cx": "Cancelled",
+          "fail": "Could not buy — the project decides"
         },
         "ph_s": {
           "prop": "expected",
@@ -18975,8 +18995,11 @@
           "po": "PO",
           "part": "{q} in",
           "done": "received",
-          "cx": "cancelled"
+          "cx": "cancelled",
+          "fail": "could not buy"
         },
+        "fail_why": "Reason: {why}",
+        "fail_why_alt": "Reason: {why} — suggested alternative: {alt}",
         "cl": {
           "full": "Fully delivered",
           "short": "Rest stopped",
@@ -25337,8 +25360,292 @@
       "open_file": "Open the file",
       "go_to_record": "Go to the record"
     },
+    "AdminPackages": {
+      "page": {
+        "title": "Contractors and packages",
+        "subtitle": "Each contractor has the base package (Procurement + Inventory); open the connectors they need.",
+        "new": "New contractor"
+      },
+      "kpi": {
+        "subscribers": "Subscribers",
+        "full": "On the full package",
+        "no_fin": "Without Finance — accountant export",
+        "mismatch": "Said “yes” but not opened"
+      },
+      "list": {
+        "package": "Package",
+        "version": "Procurement version",
+        "open": "Open",
+        "said_yes": "Said yes to {names}",
+        "join": " and "
+      },
+      "new": {
+        "title": "New contractor",
+        "desc": "Starts on the base package; then open what they need.",
+        "name": "Company name",
+        "email": "Email",
+        "phone": "Mobile",
+        "connectors": "Connectors opened from the start",
+        "note": "Registration and verification stay in Contractors as today; this is the package only.",
+        "create": "Create and set the package",
+        "cancel": "Cancel",
+        "created": "Account created",
+        "created_desc": "The contractor received a link to set a password. Set their package now.",
+        "email_in_use": "This email belongs to another account",
+        "failed": "Could not create the account"
+      },
+      "detail": {
+        "back": "Contractors and packages",
+        "since": "since {date}",
+        "not_found": "We could not find this contractor",
+        "needs": {
+          "title": "Their needs",
+          "sub": "Answers suggest; you decide",
+          "suggests": "Suggests: {name}",
+          "yes": "Yes",
+          "no": "No"
+        },
+        "pkg": {
+          "title": "Their package",
+          "base": "Base package: Procurement + Inventory",
+          "base_desc": "Always on — every connector plugs into it.",
+          "shortcuts": "Shortcuts:",
+          "provisional": "Shortcut names are provisional, pending the commercial-names decision."
+        },
+        "card": {
+          "suggested": "Suggested by needs",
+          "opens": "Opens in Procurement",
+          "closed": "Closed — and without it",
+          "warn_closed": "They said “yes” to this need but it is closed.",
+          "warn_open": "Open although they said “no” — confirm they need it."
+        },
+        "hr": {
+          "title": "HR",
+          "desc": "Outside Procurement 2.0; its switch stays as it was, and it stops with Finance."
+        },
+        "pipeline": {
+          "title": "Procurement pipeline for this contractor",
+          "sub": "Colored = open; dotted = closed, with its core fallback"
+        },
+        "change": {
+          "title": "What changes on save",
+          "opens": "Opens: {name}",
+          "closes": "Closes: {name}",
+          "checking": "Counting what the change does to their records…",
+          "failed": "Could not work out the impact. Nothing is saved before you read it.",
+          "retry": "Try again",
+          "ack": "I read what changes and agree to save"
+        },
+        "bar": {
+          "saved": "The package is saved as is.",
+          "unsaved": "{count, plural, one {# unsaved change} other {# unsaved changes}}",
+          "undo": "Undo",
+          "save": "Save package",
+          "saving": "Saving…"
+        },
+        "toast": {
+          "saved": "Saved {name}: {label}. The switches live on the server; screens and events follow.",
+          "failed": "Could not save the package. Try again.",
+          "ack_required": "This change touches the company's records — read “What changes” and acknowledge."
+        }
+      },
+      "impact": {
+        "n": {
+          "request": "{count, plural, =0 {no requests} one {# request} other {# requests}}",
+          "order": "{count, plural, =0 {no orders} one {# order} other {# orders}}",
+          "ask": "{count, plural, =0 {no questions} one {# question} other {# questions}}",
+          "reply": "{count, plural, =0 {no replies} one {# reply} other {# replies}}",
+          "site": "{count, plural, =0 {no delivery locations} one {# delivery location} other {# delivery locations}}"
+        },
+        "sentence": {
+          "pm_on": "{requests} from the team continue in Incoming until closed; new ones come from Projects.",
+          "pm_on_sites": "And {sites} named like a project will be linked to it.",
+          "pm_off": "{requests} from projects continue as they are until closed ({inflight} of them in RFQs or orders); their status reaches the requester in My requests.",
+          "fin_on": "{orders} with a buyer payment mark reach Finance as a reference; closed orders stay closed.",
+          "fin_off": "{orders} awaiting Finance close on full receipt; {advances} with a requested advance are marked by hand.",
+          "mfg_on": "The workshop is asked from now on about marble, granite and stone; what was published does not change.",
+          "mfg_off": "{asks} to the workshop with no reply return to the buyer to buy; {replies} with a live work order stand and are not bought."
+        },
+        "hr_dependent": "Closing {finance} also closes {hr} for this company, because salaries are paid from Finance.",
+        "capped": "The company has more than {cap} projects; project requests are counted on the first {cap} only.",
+        "quiet": "No open records are affected by this change."
+      }
+    },
+    "AdminPipeline": {
+      "title": "Pipeline and contract",
+      "sub": "For the tech team: what each connector opens at each stage, the events with keys, and each connector’s fallback.",
+      "try": "Try a package",
+      "closed": "closed",
+      "without_it": "Without it:",
+      "rules": "The eight rules",
+      "contract": "Integration contract",
+      "events": "{count, plural, one {# event} other {# events}}",
+      "filter_all": "All",
+      "col": {
+        "module": "Module",
+        "dir": "Direction",
+        "event": "Event",
+        "key": "Key",
+        "carries": "Carries",
+        "late": "If late or missing",
+        "without": "If not subscribed"
+      },
+      "dir_in": "← into Procurement",
+      "dir_out": "→ from Procurement",
+      "new": "New",
+      "matrix": {
+        "title": "The eight cases — test matrix",
+        "sub": "Inventory is in all of them — it is in the base package",
+        "col": {
+          "state": "Case",
+          "sources": "Request sources",
+          "check": "Before buying",
+          "locations": "Delivery locations",
+          "payment": "Payment & close"
+        }
+      }
+    },
+    "ProcGuide": {
+      "strip": {
+        "label": "Guide",
+        "title": "How Procurement works — from request to closing",
+        "back": "Back to Procurement"
+      },
+      "head": {
+        "title": "How Procurement works",
+        "desc": "Who requests, who buys, who receives — and where each sees their work. Roles keep the same colours across the page."
+      },
+      "pkg": {
+        "label": "Package",
+        "base": "Base: Procurement + Inventory",
+        "caption": "Preview only — the subscription is set in the admin portal.",
+        "preview": "Preview only.",
+        "mine": "Back to my package"
+      },
+      "role": {
+        "req": "Requester",
+        "buy": "Buyer",
+        "app": "Approver",
+        "sup": "Supplier",
+        "rcv": "Receiver",
+        "fin": "Finance",
+        "pm": "Project manager",
+        "inv": "Storekeeper",
+        "mfg": "Workshop"
+      },
+      "h2": {
+        "sources": "Where do requests come from?",
+        "path": "The path: eight stations"
+      },
+      "source": {
+        "team": {
+          "title": "The team — “My requests”",
+          "body": "A “Requester” account invited by the owner. Raises requests from his phone and sees only his requests and their status — no prices, no suppliers."
+        },
+        "pm": {
+          "title": "Projects",
+          "body": "A material request from the project item, approved by the project manager; it arrives with its number, item and site, and is followed from the project."
+        },
+        "buy": {
+          "title": "The buyer on someone’s behalf",
+          "body": "For someone without an account — a guard, a subcontractor, a phone call. Pick “requested by”; the status reaches him by text message."
+        },
+        "inv": {
+          "title": "Inventory — need line",
+          "body": "When an item hits its minimum the storekeeper sends a need line; Inventory is also asked before every purchase: what is in stock?"
+        },
+        "mfg": {
+          "title": "Manufacturing — work-order materials",
+          "body": "The workshop sends what work orders need, and is asked before buying: make it or buy it?"
+        }
+      },
+      "station": {
+        "request": {
+          "name": "Request",
+          "what_pm": "Requested from the project item in Projects and approved by the project manager; it reaches Procurement with its number, item and site.",
+          "what_team": "A site engineer or storekeeper with a “Requester” account raises a material request from his phone: the material from the same list (search and “most requested”), the quantity, the delivery site and the need date. For someone without an account the buyer raises it on his behalf."
+        },
+        "incoming": {
+          "name": "Incoming",
+          "what": "It lands in Incoming with its number and source, ordered by the last day to order (need date minus lead time and the RFQ cycle)."
+        },
+        "publish": {
+          "name": "Publishing",
+          "what": "Publish it alone, or prepare it with other requests in one draft. Two steps: who receives it (public · private · direct) and the deadline. It is named from its materials and site, reaches matching suppliers, and carries a link for off-platform ones."
+        },
+        "offers": {
+          "name": "Offers",
+          "what": "Suppliers price from their portal, or from the link without an account — per unit or per piece, with their warranty. Offers show the moment they arrive: compare, ask, request a better price, and award whenever you like."
+        },
+        "award": {
+          "name": "Award and order",
+          "what": "Lowest per item or all to one supplier; anything not lowest carries its reason. One PO per supplier; above the approval limit ({limit}) the owner approves, then it is sent."
+        },
+        "supply": {
+          "name": "Supply",
+          "what": "The supplier accepts the order and reports “delivered” with a date and note. Communication is in the order chat; off-platform suppliers get WhatsApp with the order link."
+        },
+        "receive": {
+          "name": "Receiving",
+          "what": "The delivery notice goes to the site receiver (storekeeper or site engineer), who counts and accepts or rejects in the goods receipt. Procurement follows; it does not count."
+        },
+        "close": {
+          "name": "Closing and payment",
+          "what_fin": "Invoice, three-way match and payment sit with Finance; Procurement only decides “hold an invoice”.",
+          "what_nofin": "The order closes on what was accepted. Payment status is optional; the supplier invoice is attached; exports go to the accountant."
+        }
+      },
+      "more": {
+        "need_line": "Inventory (in the base): a need line when an item hits its minimum.",
+        "mfg_sends": "Manufacturing: the workshop sends work-order materials.",
+        "inv_asked": "Inventory is asked before buying: it issues what is in stock; only the rest is published.",
+        "mfg_asked": "And the workshop is asked: make it or buy it?",
+        "fin": "Finance: it receives the commitment; advances are requested from it.",
+        "bnpl": "Pay-later will be chosen here at launch.",
+        "stock": "What is received at a warehouse enters its stock automatically; what is received at a work site is charged to it."
+      },
+      "sees": {
+        "with_proc": "With Procurement",
+        "in_rfq": "In an RFQ",
+        "in_po": "In a PO",
+        "in_po_arriving": "In a PO — arriving on its date",
+        "arrived": "Arrived",
+        "complete": "Complete"
+      },
+      "sees_requester": "The requester sees",
+      "sees_pm": "The project manager sees",
+      "preview_only_request": "Preview only: in your subscription requests come from Projects, so the preview creates none.",
+      "btn": {
+        "open_mine": "Open “My requests”",
+        "on_behalf": "Raise one on his behalf",
+        "incoming": "Incoming",
+        "new_rfq": "New RFQ",
+        "open_rfqs": "RFQs",
+        "compare": "Compare and award",
+        "chats": "My chats",
+        "receipts": "Receipts",
+        "orders": "Purchase orders"
+      },
+      "link": {
+        "incoming": "How Procurement works",
+        "mine": "What happens to my request after I send it?"
+      },
+      "note": "What never changes between packages: the same material row everywhere, the request number follows it to closing, the supplier reports delivery but never counts, and only the receiver counts."
+    },
+    "ProcSoon": {
+      "title": "Buy now, pay later — coming soon",
+      "sub": "Buy now and pay later, inside the purchase order itself.",
+      "choose_title": "You choose it at the award",
+      "choose_body": "Once you know the supplier and the amount: “Pay later through Mdmak” in the award review, or on an order not yet paid.",
+      "paid_title": "The supplier is paid in full",
+      "paid_body": "An approved financing partner pays the supplier on time, so his terms do not change.",
+      "instalments_title": "The company pays in instalments",
+      "instalments_body": "Within a credit limit approved for the company in advance, with a repayment schedule shown on the order.",
+      "where": "“Soon” now appears in the award review (where the decision is made), the order drawer, the payment terms when publishing (so suppliers know they are paid in full), and the sidebar.",
+      "close": "Close"
+    },
     "AdminModules": {
-      "button": "Components",
+      "button":"Components",
       "title": "The company's components",
       "note": "Switching a component off hides it from the company's menu, tiles and pages for every member of its team. Its data is kept, and switching it back on restores it as it was. All other components are core and always on.",
       "save": "Save",
@@ -25505,6 +25812,40 @@
       "group_place": "Project or delivery site",
       "group_place_pick": "Pick the project or delivery site",
       "group_unnamed": "Delivery place",
+      "loc_label": "Delivery location",
+      "loc_new": "New location",
+      "loc_in_other": "In another group of this request",
+      "newloc_title": "New delivery location",
+      "newloc_sub": "Suppliers see the city and district only — not the site name or full address.",
+      "newloc_name": "Location name",
+      "newloc_name_ph": "e.g. Al-Narjis villa",
+      "newloc_kind": "Location type",
+      "newloc_kind_site": "Work site",
+      "newloc_kind_warehouse": "Warehouse",
+      "newloc_city": "City",
+      "newloc_district": "District",
+      "newloc_district_ph": "e.g. Al-Narjis",
+      "newloc_receiver": "Proposed receiver",
+      "newloc_receiver_later": "Set later",
+      "newloc_map": "Map link",
+      "newloc_optional": "optional",
+      "newloc_go": "Add and pick it",
+      "newloc_cancel": "Cancel",
+      "newloc_added": "“{name}” was added to delivery locations and picked.",
+      "newloc_err_name": "Write the location name.",
+      "newloc_err_city": "Pick the city.",
+      "newloc_err_map": "The map link is not valid: it must be an https address.",
+      "newloc_err_save": "The location could not be saved — try again.",
+      "newloc_err_forbidden": "Adding delivery locations is for the owner or whoever approves orders.",
+      "deliv_label": "Delivery",
+      "deliv_optional": "optional",
+      "deliv_unload_supplier": "Supplier unloads",
+      "deliv_unload_us": "We unload",
+      "deliv_slot_am": "Morning",
+      "deliv_slot_pm": "Evening",
+      "deliv_slot_any": "Any time",
+      "deliv_note": "Access note",
+      "deliv_note_ph": "Access note — e.g. north gate; the road takes a 12 m truck",
       "guest_link": "Guest link — for a supplier outside the platform",
       "guest_hint": "The supplier sees the RFQ and quotes without an account; the link closes with the deadline. To bring a supplier onto the platform itself: “Invite a supplier to the platform” in Suppliers.",
       "in_days": "{count, plural, =0 {today} one {in # day} other {in # days}}",
@@ -26345,6 +26686,42 @@
     "qaSend": "Send question",
     "secOffer": "Your quote",
     "notSupplied": "Not supplied",
+    "ofPackLbl": "Price per",
+    "ofPackPerUnit": "Request unit ({unit})",
+    "ofPackPerPiece": "{name} (price per piece)",
+    "ofPackLive": "{pcs} × {name} = {received} {unit} · {total}",
+    "ofPackExtra": "{extra} {unit} extra, which is paid for",
+    "ofWarrantyLbl": "{months, plural, one {A warranty of 1 month} other {A warranty of # months}} is asked — choose what you give",
+    "ofWarrantyPick": "Choose the warranty",
+    "ofWarrantyNone": "No warranty",
+    "ofWarrantyM6": "I give 6 months",
+    "ofWarrantyM12": "I give 1 year only",
+    "ofWarrantyM24": "I give 2 years",
+    "ofWarrantyM36": "I give 3 years",
+    "ofWarrantyM60": "I give 5 years",
+    "ofWarrantyOpt": "I give {months} months",
+    "ofWhole": "Whole request only",
+    "ofWholeHint": "I do not sell some items without the others: award me the whole request or none of it.",
+    "blkBig": "The price is above the allowed limit — check the number",
+    "blkWarranty": "Choose the warranty you give for: {i}",
+    "blkPack": "The sale unit is not accepted for: {i}",
+    "blkArrive": "The arrival date is too far — 365 days at most",
+    "ofRevalT": "Confirm your price",
+    "ofRevalBanner": "The buyer asks you to confirm your price: choose a new validity starting today; your price stays or you change it.",
+    "ofBetterBanner": "The buyer asked for a better price — your current offer is {cur} before VAT.",
+    "errPriceHigher": "A better price is the same price or a lower one — never a higher one.",
+    "errNotAsked": "You were not asked to confirm your price.",
+    "qPackLine": "{pcs} × {name} = {received} {unit}",
+    "qWarrantyOffered": "{months, plural, one {Warranty of 1 month} other {Warranty of # months}}",
+    "qWarrantyNone": "No warranty",
+    "nxBetterT": "The buyer asked for a better price — your offer now stands at {cur} before VAT",
+    "nxRevalT": "The buyer asks you to confirm your price",
+    "nxRevalX": "Your offer has expired — confirm your price with a new validity to be considered for the award.",
+    "btnConfirmPrice": "Confirm the price",
+    "ocRevalAsk": "Asks to confirm the price",
+    "ocAskBetter": "Asks for a better price",
+    "aReduceBetter": "The buyer asks you for a better price",
+    "reduceAskedBetter": "The buyer asked for a better price on {x}",
     "prTotalLbl": "Total price before VAT",
     "sumNet": "Before VAT",
     "sumVat": "VAT 15%",

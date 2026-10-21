@@ -16,10 +16,10 @@ import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { PoDrawer } from "@/components/procurement/PoDrawer"
 import { AccountantExportDialog } from "@/components/procurement/AccountantExportDialog"
 import { Button } from "@/components/ui/button"
-import { HonestDateText, LineBar, Money, PoStatusPill } from "@/components/procurement/PoBits"
+import { Money, PoStatusPill, PoTags, WhoTag, useStepSentence } from "@/components/procurement/PoBits"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { DEFAULT_SEGMENT, PO_SEGMENTS, isPoSegment, segmentCounts, visibleOrders, type PoSegment } from "@/components/procurement/PoModel"
+import { DEFAULT_SEGMENT, PO_SEGMENTS, segmentCounts, segmentOf, visibleOrders, type PoSegment } from "@/components/procurement/PoModel"
 import { Input } from "@/components/ui/input"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useModules } from "@/hooks/useCompanyModules"
@@ -27,8 +27,10 @@ import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { NO_SITE, inSiteFilter, orderSiteIds } from "@/lib/procurement/site-counts"
 import { useDeliverySiteList } from "@/hooks/useDeliverySiteList"
-import { poValue } from "@/lib/procurement/po"
-import { advanceState, asX, inProjectFilter, netQuantity, openHolds, poProjectKeys, poRevision } from "@/lib/procurement/po-extras"
+import { poCommitment } from "@/lib/procurement/po"
+import { advanceState, asX, inProjectFilter, netQuantity, openHolds, poProjectKeys } from "@/lib/procurement/po-extras"
+import { lineUnitName, poNextStep, poSiteOf, type PoStateCtx } from "@/lib/procurement/po-state"
+import type { StepNotice } from "@/lib/procurement/next-step"
 import { GENERAL_STOCK, WORKSHOP, poInScope } from "@/lib/procurement/rfq-view"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import { cn } from "@/lib/utils"
@@ -59,7 +61,7 @@ export default function PurchaseOrdersPage() {
   const [now] = useState(() => new Date())
 
   const filterParam = searchParams?.get("filter")
-  const [segment, setSegment] = useState<PoSegment>(() => (isPoSegment(filterParam) ? filterParam : DEFAULT_SEGMENT))
+  const [segment, setSegment] = useState<PoSegment>(() => segmentOf(filterParam) ?? DEFAULT_SEGMENT)
   // The header's search sends the expediter here with `?search=` (P-09).
   const [search, setSearch] = useState(() => searchParams?.get("search") ?? "")
   const searching = search.trim().length > 0
@@ -104,8 +106,11 @@ export default function PurchaseOrdersPage() {
   )
 
   const notices = world.deliveries
-  const counts = useMemo(() => segmentCounts(inProject, now, notices), [inProject, now, notices])
-  const shown = useMemo(() => visibleOrders(inProject, segment, search, now, (n) => displayPoNumber(n, locale), notices), [inProject, segment, search, now, locale, notices])
+  const financeOn = on("payments")
+  const stateCtx = useMemo<PoStateCtx>(() => ({ notices: notices as StepNotice[], financeOn, acceptanceDays: world.policies.supplierAcceptanceDays, now }), [notices, financeOn, world.policies.supplierAcceptanceDays, now])
+  const stepText = useStepSentence()
+  const counts = useMemo(() => segmentCounts(inProject, stateCtx), [inProject, stateCtx])
+  const shown = useMemo(() => visibleOrders(inProject, segment, search, stateCtx, (n) => displayPoNumber(n, locale)), [inProject, segment, search, stateCtx, locale])
 
   // `?po=<id>` opens the drawer; opening and closing keep the address in step,
   // so a refresh lands on the same order and a copied link opens it.
@@ -118,6 +123,15 @@ export default function PurchaseOrdersPage() {
   const show = (id: string | null) => {
     setOpenId(id)
     replaceParams((p) => (id ? p.set("po", id) : p.delete("po")))
+  }
+
+  const supplierSub = (po: PurchaseOrder): string => {
+    if (po.isGuestSupplier) return t("supplier_tag.off")
+    return world.supplierFacts.get(po.supplierOrgId)?.verified === false ? t("supplier_tag.unverified") : ""
+  }
+  const siteText = (po: PurchaseOrder): string => {
+    const site = poSiteOf(po)
+    return site ? [site.name, site.district].filter(Boolean).join(" — ") : "—"
   }
 
   return (
@@ -209,116 +223,115 @@ export default function PurchaseOrdersPage() {
           </div>
         ) : (
           <>
-            {/* Desktop: the table */}
+            {/* Desktop: the table — order · supplier · location · value · next step · who we wait on (the prototype's columns) */}
             <div className="hidden overflow-hidden rounded-2xl border bg-card shadow-sm md:block">
               <table className="w-full text-sm">
                 <thead className="border-b text-xs text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3 text-start font-semibold">{t("col.order_supplier")}</th>
-                    <th className="px-4 py-3 text-start font-semibold">{t("col.lines")}</th>
-                    <th className="px-4 py-3 text-start font-semibold">{t("col.supplier_date")}</th>
+                    <th className="px-4 py-3 text-start font-semibold">{t("col.order")}</th>
+                    <th className="px-4 py-3 text-start font-semibold">{t("col.supplier")}</th>
+                    <th className="px-4 py-3 text-start font-semibold">{t("col.location")}</th>
                     <th className="px-4 py-3 text-start font-semibold">{t("col.value")}</th>
-                    <th className="px-4 py-3 text-start font-semibold">{t("col.status")}</th>
+                    <th className="px-4 py-3 text-start font-semibold">{t("col.next")}</th>
+                    <th className="px-4 py-3 text-start font-semibold">{t("col.who")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {shown.map((po) => (
-                    <tr
-                      key={po.id}
-                      tabIndex={0}
-                      role="button"
-                      onClick={() => show(po.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault()
-                          show(po.id)
-                        }
-                      }}
-                      className="cursor-pointer transition-colors hover:bg-muted/30 focus-visible:bg-muted/40 focus-visible:outline-none"
-                    >
-                      <td className="px-4 py-3 align-top">
-                        <span dir="ltr" className="font-black tabular-nums">
-                          {displayPoNumber(po.docNumber, locale)}
-                        </span>
-                        {poRevision(po) > 1 && <span className="ms-1.5 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{tp("rfqpo.po.revision", { n: poRevision(po) })}</span>}
-                        <p className="text-xs text-muted-foreground" dir="auto">
-                          {po.supplierName}
-                          {po.preparedByName ? ` · ${po.preparedByName}` : ""}
-                        </p>
-                        <ProjectChips keys={keysOf(po)} label={projectLabel} />
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        <ul className="space-y-1.5">
-                          {po.lines.slice(0, 3).map((l) => (
-                            <li key={l.id} className="max-w-[34ch]">
-                              <p className="truncate" dir="auto">
-                                {l.name} <span className="tabular-nums" dir="ltr">{netQuantity(l).toLocaleString("en-US")}</span> {l.unit}
-                              </p>
-                              {l.accepted > 0 && <LineBar line={l} className="mt-1" />}
-                            </li>
-                          ))}
-                          {po.lines.length > 3 && <li className="text-[11px] text-muted-foreground">{t("more_lines", { count: po.lines.length - 3 })}</li>}
-                        </ul>
-                      </td>
-                      <td className="px-4 py-3 align-top text-xs">
-                        <HonestDateText po={po} now={now} notices={notices} />
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        <Money value={poValue(po)} masked={!actor.seesPrices} className="font-bold" />
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        <PoStatusPill po={po} now={now} notices={notices} />
-                        <RowNotes po={po} />
-                      </td>
-                    </tr>
-                  ))}
+                  {shown.map((po) => {
+                    const next = poNextStep(po, stateCtx)
+                    return (
+                      <tr
+                        key={po.id}
+                        tabIndex={0}
+                        role="button"
+                        onClick={() => show(po.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault()
+                            show(po.id)
+                          }
+                        }}
+                        className="cursor-pointer transition-colors hover:bg-muted/30 focus-visible:bg-muted/40 focus-visible:outline-none"
+                      >
+                        <td className="px-4 py-3 align-top">
+                          <span dir="ltr" className="font-black tabular-nums">
+                            {displayPoNumber(po.docNumber, locale)}
+                          </span>
+                          <PoTags po={po} policies={world.policies} className="mt-1" />
+                          <ProjectChips keys={keysOf(po)} label={projectLabel} />
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          <p className="font-bold" dir="auto">
+                            {po.supplierName}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">{supplierSub(po)}</p>
+                        </td>
+                        <td className="px-4 py-3 align-top text-xs text-muted-foreground" dir="auto">
+                          {siteText(po)}
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          <ValueCell po={po} masked={!actor.seesPrices} />
+                        </td>
+                        <td className="max-w-[340px] px-4 py-3 align-top text-xs">
+                          <p className="leading-relaxed" dir="auto">
+                            {stepText(next)}
+                          </p>
+                          <PoStatusPill po={po} now={now} notices={notices} className="mt-1" />
+                          <RowNotes po={po} />
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          <WhoTag who={next.state.who} />
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
 
             {/* Mobile: cards */}
             <ul className="space-y-2 md:hidden">
-              {shown.map((po) => (
-                <li key={po.id}>
-                  <button
-                    type="button"
-                    onClick={() => show(po.id)}
-                    className="w-full rounded-xl border bg-card p-3 text-start transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="flex flex-wrap items-center gap-1.5">
+              {shown.map((po) => {
+                const next = poNextStep(po, stateCtx)
+                return (
+                  <li key={po.id}>
+                    <button
+                      type="button"
+                      onClick={() => show(po.id)}
+                      className="w-full rounded-xl border bg-card p-3 text-start transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <div className="flex items-start justify-between gap-2">
                         <span dir="ltr" className="font-bold tabular-nums">
                           {displayPoNumber(po.docNumber, locale)}
                         </span>
-                        {poRevision(po) > 1 && <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{tp("rfqpo.po.revision", { n: poRevision(po) })}</span>}
-                      </span>
-                      <Money value={poValue(po)} masked={!actor.seesPrices} className="font-bold" />
-                    </div>
-                    <p className="mt-1 font-bold" dir="auto">
-                      {po.supplierName}
-                    </p>
-                    {po.rfqTitle && (
-                      <p className="truncate text-xs text-muted-foreground" dir="auto">
-                        {po.rfqTitle}
+                        <WhoTag who={next.state.who} />
+                      </div>
+                      <p className="mt-1 font-bold" dir="auto">
+                        {po.supplierName}
                       </p>
-                    )}
-                    <ProjectChips keys={keysOf(po)} label={projectLabel} />
-                    <ul className="mt-2 space-y-0.5 text-xs">
-                      {po.lines.slice(0, 3).map((l) => (
-                        <li key={l.id} className="truncate" dir="auto">
-                          {l.name} <span className="tabular-nums" dir="ltr">{netQuantity(l).toLocaleString("en-US")}</span> {l.unit}
-                        </li>
-                      ))}
-                      {po.lines.length > 3 && <li className="text-[11px] text-muted-foreground">{t("more_lines", { count: po.lines.length - 3 })}</li>}
-                    </ul>
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <PoStatusPill po={po} now={now} notices={notices} />
-                      <HonestDateText po={po} now={now} notices={notices} />
-                    </div>
-                    <RowNotes po={po} />
-                  </button>
-                </li>
-              ))}
+                      <p className="text-[11px] text-muted-foreground">{[supplierSub(po), siteText(po)].filter(Boolean).join(" · ")}</p>
+                      <PoTags po={po} policies={world.policies} className="mt-1" />
+                      <ProjectChips keys={keysOf(po)} label={projectLabel} />
+                      <ul className="mt-2 space-y-0.5 text-xs">
+                        {po.lines.slice(0, 3).map((l) => (
+                          <li key={l.id} className="truncate" dir="auto">
+                            {l.name} <span className="tabular-nums" dir="ltr">{netQuantity(l).toLocaleString("en-US")}</span> {lineUnitName(l, locale as "ar" | "en")}
+                          </li>
+                        ))}
+                        {po.lines.length > 3 && <li className="text-[11px] text-muted-foreground">{t("more_lines", { count: po.lines.length - 3 })}</li>}
+                      </ul>
+                      <p className="mt-2 text-xs leading-relaxed" dir="auto">
+                        {stepText(next)}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <PoStatusPill po={po} now={now} notices={notices} />
+                        <ValueCell po={po} masked={!actor.seesPrices} />
+                      </div>
+                      <RowNotes po={po} />
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           </>
         )}
@@ -361,5 +374,16 @@ function RowNotes({ po }: { po: PurchaseOrder }) {
       {advanceState(px) === "requested" && <p className="mt-1 text-[11px] text-muted-foreground">{tp(financeOn ? "rfqpo.po.row_advance" : "rfqpo.po.row_advance_nofin")}</p>}
       {px.pmBudget?.state === "pending" && <p className="mt-1 text-[11px] text-warning">{tp("rfqpo.po.row_budget")}</p>}
     </>
+  )
+}
+
+/** The order's value INCLUDING VAT (G-18: every figure names its basis), or without it for a supplier who is not registered. */
+function ValueCell({ po, masked }: { po: PurchaseOrder; masked: boolean }) {
+  const t = useTranslations("Portal.ProcOrders")
+  return (
+    <span className="flex flex-col">
+      <Money value={poCommitment(po)} masked={masked} className="font-bold" />
+      {!masked && <span className="text-[11px] text-muted-foreground">{t(Number(po.vatRate) > 0 ? "basis_incl" : "basis_no_vat")}</span>}
+    </span>
   )
 }

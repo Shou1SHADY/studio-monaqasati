@@ -4,13 +4,12 @@
 // warehouses and work sites, each with the city and district the supplier reads, an
 // address, and the receiver proposed for every delivery there. With Project Management
 // a project's site joins the list by itself; its city is filled once here. Kept on the
-// settings document (`deliverySites`), the owner's or the approver's to edit.
+// settings document (`deliverySites`) and written by `/api/procurement/delivery-sites`, the
+// owner's or the approver's to edit. A site may carry a map link the supplier opens (SET-02).
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { doc, serverTimestamp, setDoc } from "firebase/firestore"
-import { Loader2, MapPin, Plus } from "lucide-react"
-import { useFirestore } from "@/firebase"
+import { ExternalLink, Loader2, MapPin, Plus } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,23 +19,23 @@ import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { SAUDI_CITIES, displayCity } from "@/lib/constants"
-import { PROCUREMENT_SETTINGS } from "@/lib/procurement/types"
-import { linkedProjectId, siteLine, upsertSite, type DeliverySite } from "@/lib/procurement/delivery-sites"
+import { normaliseMapUrl } from "@/lib/procurement/delivery-site-input"
+import { linkedProjectId, manualSite, siteLine, type DeliverySite, type DeliverySiteKind } from "@/lib/procurement/delivery-sites"
 import type { ProcReceiver } from "@/lib/procurement/receivers"
+import { saveDeliverySite } from "@/components/procurement/location/saveDeliverySite"
 
 const newSiteId = () => `site_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
 
 export function DeliverySitesPanel({
-  orgId,
   stored,
   sites,
   receivers,
   mayEdit,
   openRequests,
   pmOn = false,
+  mfgOn = false,
   projects = [],
 }: {
-  orgId: string
   /** What the settings document holds. */
   stored: DeliverySite[]
   /** Every site — the stored ones, the warehouses and the projects (`deliverySites`). */
@@ -47,29 +46,53 @@ export function DeliverySitesPanel({
   openRequests: (siteId: string) => number
   /** Project Management is in the package: a work site can be linked to a project. */
   pmOn?: boolean
+  /** Manufacturing is in the package: the workshop's warehouse is a kind of place. */
+  mfgOn?: boolean
   projects?: Array<{ id: string; name?: string }>
 }) {
   const t = useTranslations("Portal.ProcSettings")
   const locale = useLocale()
-  const firestore = useFirestore()
   const { toast } = useToast()
   const [editing, setEditing] = useState<DeliverySite | null>(null)
+  const [mapText, setMapText] = useState("")
+  const [mapBad, setMapBad] = useState(false)
   const [saving, setSaving] = useState(false)
   const receiverName = useMemo(() => new Map(receivers.map((r) => [r.id, r.name])), [receivers])
   const projectName = useMemo(() => new Map(projects.map((p) => [p.id, p.name || p.id])), [projects])
 
+  const open = (site: DeliverySite | null) => {
+    setEditing(site)
+    setMapText(site?.mapUrl || "")
+    setMapBad(false)
+  }
+
   const save = async (site: DeliverySite) => {
-    if (!firestore || !orgId) return
-    setSaving(true)
-    try {
-      await setDoc(doc(firestore, PROCUREMENT_SETTINGS, orgId), { organizationId: orgId, deliverySites: upsertSite(stored, site), updatedAt: serverTimestamp() }, { merge: true })
-      toast({ title: t("sites.saved") })
-      setEditing(null)
-    } catch {
-      toast({ title: t("saveFailed"), variant: "destructive" })
-    } finally {
-      setSaving(false)
+    if (mapText.trim() && !normaliseMapUrl(mapText)) {
+      setMapBad(true)
+      return
     }
+    setSaving(true)
+    const result = await saveDeliverySite({
+      id: site.id,
+      kind: site.kind,
+      name: site.name,
+      city: site.city,
+      district: site.district,
+      address: site.address,
+      receiverId: site.receiverId,
+      projectId: site.projectId || null,
+      warehouseId: site.warehouseId || null,
+      mapUrl: mapText.trim() ? normaliseMapUrl(mapText) : null,
+      ...(site.retired ? { retired: true } : {}),
+    })
+    setSaving(false)
+    if ("error" in result) {
+      if (result.error === "BAD_MAP_URL") setMapBad(true)
+      else toast({ title: t(result.error === "FORBIDDEN" ? "sites.err_forbidden" : "saveFailed"), variant: "destructive" })
+      return
+    }
+    toast({ title: t("sites.saved") })
+    setEditing(null)
   }
 
   return (
@@ -77,7 +100,7 @@ export function DeliverySitesPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">{t("sites.sub")}</p>
         {mayEdit && (
-          <Button size="sm" className="gap-1.5" onClick={() => setEditing({ id: newSiteId(), kind: "site", name: "", city: "", district: "", address: "", receiverId: null })}>
+          <Button size="sm" className="gap-1.5" onClick={() => open({ id: newSiteId(), kind: "site", name: "", city: "", district: "", address: "", receiverId: null })}>
             <Plus size={14} /> {t("sites.add")}
           </Button>
         )}
@@ -108,6 +131,15 @@ export function DeliverySitesPanel({
                     <span className="text-xs text-muted-foreground">
                       {t(`sites.kind_${s.kind}`)}
                       {pmOn && linkedProjectId(s) && <> · {t("sites.linked_to", { project: projectName.get(linkedProjectId(s) as string) || "—" })}</>}
+                      {s.mapUrl && (
+                        <>
+                          {" · "}
+                          <a href={s.mapUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-module hover:underline">
+                            {t("sites.map_open")}
+                            <ExternalLink size={11} aria-hidden="true" />
+                          </a>
+                        </>
+                      )}
                     </span>
                   </td>
                   <td className="px-4 py-3">{s.city ? siteLine(s, (c) => displayCity(c, locale)) : <StatusPill tone="warn">{t("sites.no_city")}</StatusPill>}</td>
@@ -115,7 +147,7 @@ export function DeliverySitesPanel({
                   <td className="px-4 py-3 text-end tabular-nums">{openRequests(s.id)}</td>
                   <td className="px-4 py-3 text-end">
                     {mayEdit && (
-                      <Button size="sm" variant="ghost" onClick={() => setEditing(s)}>
+                      <Button size="sm" variant="ghost" onClick={() => open(s)}>
                         {t("sites.edit")}
                       </Button>
                     )}
@@ -134,10 +166,22 @@ export function DeliverySitesPanel({
           </DialogHeader>
           {editing && (
             <div className="space-y-3">
-              {editing.kind === "site" && (
+              {manualSite(editing) && (
                 <div className="space-y-1">
                   <Label htmlFor="ds-name" className="text-xs">{t("sites.name")}</Label>
                   <Input id="ds-name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} dir="auto" />
+                </div>
+              )}
+              {manualSite(editing) && !stored.some((s) => s.id === editing.id) && (
+                <div className="space-y-1">
+                  <Label htmlFor="ds-kind" className="text-xs">{t("sites.kind")}</Label>
+                  <NativeSelect id="ds-kind" value={editing.kind} onChange={(e) => setEditing({ ...editing, kind: e.target.value as DeliverySiteKind })} className="w-full">
+                    {(mfgOn ? (["site", "warehouse", "workshop"] as const) : (["site", "warehouse"] as const)).map((k) => (
+                      <option key={k} value={k}>
+                        {t(`sites.kind_${k}`)}
+                      </option>
+                    ))}
+                  </NativeSelect>
                 </div>
               )}
               <div className="grid gap-3 sm:grid-cols-2">
@@ -160,6 +204,28 @@ export function DeliverySitesPanel({
               <div className="space-y-1">
                 <Label htmlFor="ds-address" className="text-xs">{t("sites.address")}</Label>
                 <Input id="ds-address" value={editing.address} onChange={(e) => setEditing({ ...editing, address: e.target.value })} dir="auto" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="ds-map" className="text-xs">
+                  {t("sites.map_url")} <span className="font-normal text-muted-foreground">{t("sites.optional")}</span>
+                </Label>
+                <Input
+                  id="ds-map"
+                  value={mapText}
+                  onChange={(e) => {
+                    setMapText(e.target.value)
+                    setMapBad(false)
+                  }}
+                  placeholder="maps.app.goo.gl/…"
+                  dir="ltr"
+                  aria-invalid={mapBad || undefined}
+                />
+                {mapBad && (
+                  <p className="text-[11px] font-semibold text-destructive" role="alert">
+                    {t("sites.err_map")}
+                  </p>
+                )}
+                <p className="text-[11px] text-muted-foreground">{t("sites.map_hint")}</p>
               </div>
               {pmOn && editing.kind === "site" && (
                 <div className="space-y-1">
@@ -192,7 +258,7 @@ export function DeliverySitesPanel({
             </div>
           )}
           <DialogFooter className="gap-2">
-            {editing && stored.some((s) => s.id === editing.id) && editing.kind === "site" && (
+            {editing && stored.some((s) => s.id === editing.id) && manualSite(editing) && (
               <Button variant="ghost" className="me-auto text-destructive" disabled={saving} onClick={() => void save({ ...editing, retired: !editing.retired })}>
                 {editing.retired ? t("sites.restore") : t("sites.retire")}
               </Button>

@@ -63,10 +63,10 @@ export function fmtDayLong(day: string | null | undefined, locale: string, withY
   return d.toLocaleDateString(locale === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { day: "numeric", month: "long", ...(withYear ? { year: "numeric" } : {}), timeZone: "UTC" })
 }
 
-/** A request's number as the reader reads it: «MR 03» → «ط.م 03» in Arabic (PM's own words), the rest as it is. */
+/** A request's number as the reader reads it: «MR 03» → «ط.م 03» in Arabic (PM's own words), `MAT-2026/014` → «ط.م-2026/014» in Arabic and `MR-2026/014` in English (the stored counter stays `MAT`: `MR` is Manufacturing's). */
 export function displayNeedRef(ref: string | null | undefined, locale: string): string {
   if (!ref) return ""
-  if (locale !== "ar") return ref
+  if (locale !== "ar") return ref.replace(/^MAT-(\d{4}\/\d+)$/, "MR-$1")
   const m = /^MR (\d+)$/.exec(ref)
   if (m) return `ط.م ${m[1]}`
   // A team's «طلب مواد» without Project Management (PUR-10): `MAT-2026/014` → «ط.م-2026/014».

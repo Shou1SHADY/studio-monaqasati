@@ -11,6 +11,7 @@
 import { factsFromProfile, type CompanyPublicFacts } from "@/lib/company-public-facts"
 import { isVerified as documentsVerify, profileFacts, type DocKey, type ProfileDoc } from "@/lib/supplier-free/profile"
 import { z } from "zod"
+import type { DecisionMap } from "./offer-decisions"
 import { AWARD_REASON_CODES, awardNeedsReason, dayOf, isShortCompetition, lowestOffer, offerPrice, poBlocks, poWarnings, todayOf, type OfferLike, type PoBlock, type PoWarning } from "./po"
 import type { AwardReasonCode, ProcurementPolicies, PurchaseOrder, SupplierFacts } from "./types"
 
@@ -65,9 +66,10 @@ export const OFFER_ORDER_DECLINED = "اعتذر عن الأمر"
 /** Withdrawn by its supplier — by status, or the mark an earlier free-journey withdrawal left alone. */
 export const isWithdrawnOffer = (o: { status?: string | null; withdrawnAt?: unknown }): boolean => o.status === OFFER_WITHDRAWN || Boolean(o.withdrawnAt)
 
-/** Offers still in the running: everything not rejected, not withdrawn and not a declined order, whatever else it is. */
-export function competingOffers<T extends { status?: string | null }>(offers: T[]): T[] {
-  return offers.filter((o) => o.status !== OFFER_REJECTED && o.status !== OFFER_ORDER_DECLINED && !isWithdrawnOffer(o as { status?: string | null; withdrawnAt?: unknown }))
+/** Offers still in the running: everything not excluded, not withdrawn and not a declined order, whatever else it is. The buyer's
+ * exclusions live in the decisions record (`offerDecisions`); an offer excluded the old way (status `مرفوض`) still counts as out. */
+export function competingOffers<T extends { id?: string; status?: string | null }>(offers: T[], decisions?: DecisionMap | null): T[] {
+  return offers.filter((o) => o.status !== OFFER_REJECTED && o.status !== OFFER_ORDER_DECLINED && !isWithdrawnOffer(o as { status?: string | null; withdrawnAt?: unknown }) && !(o.id && decisions?.[o.id]?.exclusion))
 }
 
 // ---------------------------------------------------------------------------

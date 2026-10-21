@@ -56,7 +56,7 @@ export function RfqOffersSheet({ rfq, offersHref, open, onOpenChange }: { rfq: S
   const firestore = useFirestore()
   const { actor, orgId } = useProcActor(rfq?.projectId || undefined)
 
-  const offersQuery = useMemoFirebase(() => (firestore && rfq?.id && open ? query(collection(firestore, "offers"), where("rfqId", "==", rfq.id)) : null), [firestore, rfq?.id, open])
+  const offersQuery = useMemoFirebase(() => (firestore && rfq?.id && orgId && open ? query(collection(firestore, "offers"), where("rfqId", "==", rfq.id), where("contractorOrgId", "==", orgId)) : null), [firestore, rfq?.id, orgId, open])
   const { data, isLoading } = useCollection(offersQuery)
   const policiesRef = useMemoFirebase(() => (firestore && orgId && open ? doc(firestore, PROCUREMENT_SETTINGS, orgId) : null), [firestore, orgId, open])
   const { data: policiesDoc } = useDoc(policiesRef)

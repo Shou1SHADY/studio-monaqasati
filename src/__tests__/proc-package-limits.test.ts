@@ -79,12 +79,12 @@ describe("the log's new actions have their words in both languages", () => {
 })
 
 describe("one sequence for the requests that reach Incoming without a project number (REQ-04)", () => {
-  it("is MAT, stored Latin and shown «ط.م-2026/014»; a project's own request keeps «ط.م 03»", () => {
+  it("is MAT, stored Latin and shown «ط.م-2026/014» (English MR-2026/014, as the prototype's); a project's own request keeps «ط.م 03»", () => {
     expect(MATERIAL_REQUEST_DOC_TYPE).toBe("MAT")
     const stored = formatYearlyDocNumber(MATERIAL_REQUEST_DOC_TYPE, 2026, 14)
     expect(stored).toBe("MAT-2026/014")
     expect(displayNeedRef(stored, "ar")).toBe("ط.م-2026/014")
-    expect(displayNeedRef(stored, "en")).toBe("MAT-2026/014")
+    expect(displayNeedRef(stored, "en")).toBe("MR-2026/014")
     expect(displayNeedRef("MR 03", "ar")).toBe("ط.م 03")
   })
 

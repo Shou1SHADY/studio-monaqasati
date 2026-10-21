@@ -237,9 +237,10 @@ describe("questions on a request (decision 10, RFQ-04)", () => {
 // ---- 3, 4. The rules ---------------------------------------------------------------------------------------------
 
 describe("the rules", () => {
-  it("a supplier's own price write needs an open RFQ (the legacy cut reply still passes while it is New)", () => {
+  it("a supplier's own write never moves a quote: price, lines, validity and status are the server's version acts' alone", () => {
     const offers = block("match /offers/{offerId} {")
-    expect(offers).toContain("&& rfqData(resource.data.rfqId).status == 'New')))")
+    expect(offers).toContain("'status', 'price', 'lines', 'deliveryBatches', 'totalBatchesPrice', 'validUntil'")
+    expect(offers).not.toContain("&& rfqData(resource.data.rfqId).status == 'New')))")
   })
 
   it("a supplier never creates an active link — only a pending request in his own name", () => {
