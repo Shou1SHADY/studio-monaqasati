@@ -43,6 +43,9 @@ import { foldSearchText } from "@/lib/search-text"
 import { INVENTORY_UNIT_CODES, formatUnit, isKnownUnitCode, unitMessageKey } from "@/lib/inventory-units"
 import { DEFAULT_ITEM_TYPE, composeItemTypeOptions, resolveItemTypeId, type CustomItemType, type ItemTypeOption } from "@/lib/inventory-types"
 import { useInventoryItemTypes } from "@/hooks/useInventoryItemTypes"
+import { SubCategorySelect } from "@/components/materials/SubCategorySelect"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { subLabel } from "@/lib/materials/subs"
 import { valueStock } from "@/lib/inventory-valuation"
 
 type InventoryItem = {
@@ -69,6 +72,8 @@ type InventoryItem = {
   lot?: string | null
   /** A usable remnant received back from manufacturing. */
   remnant?: boolean | null
+  /** The material tree's sub-category (PUR-04) — optional, so the item is found by the list RFQs and suppliers read. */
+  materialSubId?: string | null
 }
 
 type WarehouseDoc = {
@@ -116,7 +121,10 @@ function ItemDialog({
   const firestore = useFirestore()
   const { toast } = useToast()
   const tShared = useTranslations("Portal.Shared")
+  const tMat = useTranslations("Portal.Materials")
+  const { index: treeIndex } = useMaterialTree()
   const [isSaving, setIsSaving] = useState(false)
+  const [materialSubId, setMaterialSubId] = useState(item?.materialSubId ?? "")
   const [name, setName] = useState(item?.name ?? "")
   const [sku, setSku] = useState(item?.sku ?? "")
   const [lot, setLot] = useState(item?.lot ?? "")
@@ -136,6 +144,7 @@ function ItemDialog({
 
   const reset = () => {
     setName(item?.name ?? "")
+    setMaterialSubId(item?.materialSubId ?? "")
     setSku(item?.sku ?? "")
     setLot(item?.lot ?? "")
     setQuantity(item?.quantity?.toString() ?? "0")
@@ -193,6 +202,8 @@ function ItemDialog({
         unitCost: unitCost.trim() ? Math.max(0, parseFloat(unitCost) || 0) : null,
         minStockLevel: minStockLevel ? Math.max(0, parseFloat(minStockLevel) || 0) : null,
         typeId,
+        materialSubId: materialSubId || null,
+        materialSubPath: materialSubId ? subLabel(treeIndex, materialSubId, "ar") || null : null,
         trackingMode: isUnitTracked ? "unit" : null,
         organizationId: orgId,
         warehouseId,
@@ -251,6 +262,11 @@ function ItemDialog({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="item-material-sub">{tMat("sub_optional")}</Label>
+              <SubCategorySelect id="item-material-sub" value={materialSubId} onChange={setMaterialSubId} />
+              <p className="text-[11px] text-muted-foreground">{tMat("sub_optional_hint")}</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="item-sku">{t("inv_item_sku")}</Label>

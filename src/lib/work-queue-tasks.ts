@@ -12,6 +12,7 @@ export const QUEUE_ITEM_TILE: Record<WorkQueueItemType, PortalComponentId> = {
   rfq_no_offers: "procurement",
   delivery_confirm: "procurement",
   delivery_to_count: "procurement",
+  team_request_mine: "procurement",
   project_waiting_approval: "project-management",
   low_stock: "warehouses",
   team_invite_pending: "users",
@@ -37,6 +38,8 @@ export const queueItemPermissions = (can: (permission: PermissionId) => boolean)
   delivery_confirm: can("deliveries.confirm") || can("po.expedite") || can("offers.accept") || can("po.approve"),
   // Forwarded to this very person: his to count, whatever his permissions.
   delivery_to_count: true,
+  // His own request: whatever his permissions.
+  team_request_mine: true,
   project_waiting_approval: can("projects.edit") || can("projects.publish"),
   low_stock: can("warehouses.manage"),
   team_invite_pending: can("team.manage"),
@@ -91,6 +94,8 @@ export function queueTitle(item: WorkQueueItem): { key: string; params: Record<s
         : { key: "queue_item_delivery_confirm", params: { supplierName: text(d.supplierName) || { key: "queue_generic_supplier" } } }
     case "delivery_to_count":
       return { key: "queue_item_delivery_to_count", params: { supplierName: text(d.supplierName) || { key: "queue_generic_supplier" }, by: text(d.byName) } }
+    case "team_request_mine":
+      return { key: "queue_item_team_request_mine", params: { number: text(d.number), state: { key: `queue_team_state_${text(d.state) || "sent"}` } } }
     case "project_waiting_approval":
       return { key: "queue_item_project_waiting_approval", params: { name: text(d.projectName), status: { key: text(d.statusLabelKey) } } }
     case "low_stock":

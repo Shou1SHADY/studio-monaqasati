@@ -247,18 +247,20 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
         shape.items.forEach((i, k) => {
           if (!v.skip[i.id] && String(v.prices[i.id] ?? "").trim() !== "") rates[k] = v.prices[i.id]
         })
+        const skippedNow = shape.items.map((i, k) => (v.skip[i.id] ? k : -1)).filter((k) => k >= 0)
         // The same revision every contractor-side reader expects: price, rates and batches that agree.
         const current = { price: offer.price as string, lines: (offer.lines as never) || [], deliveryBatches: (offer.deliveryBatches as never) || [], totalBatchesPrice: offer.totalBatchesPrice as never }
         const byRates = revisePrice(
           current,
           shape.pricing === "item" ? pricedProducts({ pricingMode: str(r.pricingMode), shipmentMode: str(r.shipmentMode), products: (r.products as never) || [] }) : null,
-          { total: String(version.total), rates: shape.pricing === "item" ? rates : undefined }
+          { total: String(version.total), rates: shape.pricing === "item" ? rates : undefined, skipped: shape.pricing === "item" ? skippedNow : undefined }
         )
         // A version that leaves an item out cannot be revised rate by rate (LINE_PRICES_INCOMPLETE): revise it on its
         // total, so the batches and `totalBatchesPrice` — which the award reads first — never keep the old figures.
         const rev = byRates.ok ? byRates : revisePrice(current, null, { total: String(version.total) })
         const fields: Rec = rev.ok ? { ...rev.fields } : {}
         if (shape.pricing === "item" && version.lines) fields.lines = version.lines
+        if (shape.pricing === "item" && (skippedNow.length || (Array.isArray(offer.skippedItems) && offer.skippedItems.length))) fields.skippedItems = skippedNow
         const versions = nextVersions(offer, version)
         n = versions.length
         const prev = Number(offer.price)

@@ -17,13 +17,13 @@ const bodySchema = z
     email: z.string().trim().toLowerCase().email(),
     phone: z.string().trim().max(30).optional(),
     role: z.enum(["Contractor", "Supplier"]),
-    specializations: z.array(z.string().trim().min(1)).optional(),
+    specialtyIds: z.array(z.string().trim().min(1).max(64)).max(120).optional(),
     leadId: z.string().trim().min(1).optional(),
     leadCollection: z.enum(["demoRequests", "onboardingRequests"]).optional(),
   })
-  .refine((data) => data.role !== "Supplier" || (data.specializations && data.specializations.length > 0), {
+  .refine((data) => data.role !== "Supplier" || (data.specialtyIds && data.specialtyIds.length > 0), {
     message: "At least one specialization is required for supplier accounts",
-    path: ["specializations"],
+    path: ["specialtyIds"],
   })
   .refine((data) => !data.leadId || !!data.leadCollection, {
     message: "leadCollection is required when leadId is provided",
@@ -46,7 +46,7 @@ describe("admin create-account schema", () => {
       name: "مورد الاختبار",
       email: "supplier@example.com",
       role: "Supplier",
-      specializations: ["حديد ومعادن"],
+      specialtyIds: ["5d1c0a52-2f6e-4a5b-9a54-0c3f6e0e7a11"],
     })
     expect(result.success).toBe(true)
   })
@@ -56,7 +56,7 @@ describe("admin create-account schema", () => {
       name: "مورد الاختبار",
       email: "supplier@example.com",
       role: "Supplier",
-      specializations: [],
+      specialtyIds: [],
     })
     expect(result.success).toBe(false)
   })

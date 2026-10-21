@@ -8,14 +8,14 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react"
 import { collection, doc, query, setDoc, updateDoc, where, type DocumentData, type UpdateData } from "firebase/firestore"
 import { getAuth } from "firebase/auth"
-import { Award, BadgeCheck, Briefcase, Building2, Check, FileText, Folder, FolderTree, Globe, Hash, KeyRound, Loader2, Lock, MapPin, PenLine, Plus, Shield, ShieldAlert, Smartphone, Star, Tag, Upload, Wallet } from "lucide-react"
+import { Award, BadgeCheck, Briefcase, Building2, Check, FileText, Folder, Globe, Hash, KeyRound, Loader2, Lock, MapPin, PenLine, Plus, Shield, ShieldAlert, Smartphone, Star, Tag, Upload, Wallet } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useStorage, useUser } from "@/firebase"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { useToast } from "@/hooks/use-toast"
 import { identityDocRef } from "@/lib/org-identity"
 import { mirrorCompanyIdentity } from "@/lib/company-identity-writes"
 import { COMPANY_IDENTITY, type CompanyIdentity } from "@/lib/company-identity"
-import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
+import { SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
 import { DOC_KEYS, docState, ibanValid, normalIban, profileChecks, profileFacts, profilePct, type DocKey } from "@/lib/supplier-free/profile"
 import { approvalState, missingApprovalDocs } from "@/lib/supplier-approval"
 import { uploadSupplierFile } from "@/lib/supplier-free/uploads"
@@ -35,8 +35,9 @@ import { deliveryReviews, type ReviewDoc } from "@/lib/supplier-free/reviews"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { useFree } from "./useFree"
-import { useTranslations } from "next-intl"
-import { SupplierSpecialtiesCard } from "@/components/materials/SupplierSpecialtiesCard"
+import { MaterialSubsPicker } from "@/components/materials/MaterialSubsPicker"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { keyLabel, specialtyKeys } from "@/lib/materials/subs"
 
 const TABS = [
   ["basic", "atBasic"],
@@ -357,14 +358,15 @@ function SpecsTab() {
   const f = useFree()
   const { t, profile, L } = f
   const [edit, setEdit] = useState(false)
-  const tMat = useTranslations("Portal.Materials")
+  const { index } = useMaterialTree()
   if (!profile) return null
+  const specKeys = specialtyKeys(index, profile.specialtyIds || [], profile.specializations)
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Panel icon={Tag} title={t("asSpecsT")} sub={t("asSpecsSub")}>
         <h4 className="mb-1.5 text-sm font-bold">{t("pSpecsL")}</h4>
         <div className="flex flex-wrap gap-1.5">
-          {profile.specializations.length ? profile.specializations.map((c) => <Pill key={c} tone="module">{displayCategory(c, f.locale)}</Pill>) : <span className="text-xs text-muted-foreground">—</span>}
+          {specKeys.length ? specKeys.map((c) => <Pill key={c} tone="module">{keyLabel(index, c, f.locale, displayCategory)}</Pill>) : <span className="text-xs text-muted-foreground">—</span>}
         </div>
         <h4 className="mb-1.5 mt-4 text-sm font-bold">{t("pCities")}</h4>
         <div className="flex flex-wrap gap-1.5">
@@ -382,15 +384,6 @@ function SpecsTab() {
           <div className="rounded-lg border px-3 py-2"><dt className="text-[11px] text-muted-foreground">{t("otInvite")}</dt><dd className="text-lg font-black tabular-nums" dir="ltr">{L.opps({ tab: "invite" }).length}</dd></div>
         </dl>
       </Panel>
-      {/* PUR-04: the tree's sub-categories — what a request written on the tree reaches him by. */}
-      <div className="lg:col-span-2">
-        <Panel icon={FolderTree} title={tMat("specialties_title")}>
-          <SupplierSpecialtiesCard
-            current={profile.specialtyIds || []}
-            canEdit={profile.orgId === profile.uid || profile.raw.organizationRole === "owner" || !("organizationRole" in profile.raw)}
-          />
-        </Panel>
-      </div>
       {edit && <SpecsDialog onClose={() => setEdit(false)} />}
     </div>
   )
@@ -400,7 +393,8 @@ function SpecsDialog({ onClose }: { onClose: () => void }) {
   const f = useFree()
   const { t, profile } = f
   const { toast } = useToast()
-  const [specs, setSpecs] = useState<string[]>(profile?.specializations || [])
+  const { index } = useMaterialTree()
+  const [specs, setSpecs] = useState<string[]>(profile?.specialtyIds || [])
   const [cities, setCities] = useState<string[]>(profile?.coverageCities || [])
   const [busy, setBusy] = useState(false)
   const toggle = (list: string[], set: (v: string[]) => void, v: string) => set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v])
@@ -409,7 +403,7 @@ function SpecsDialog({ onClose }: { onClose: () => void }) {
     setBusy(true)
     try {
       const token = await getAuth().currentUser?.getIdToken()
-      const res = await fetch("/api/supplier-free/specialties", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ specializations: specs, coverageCities: cities }) })
+      const res = await fetch("/api/supplier-free/specialties", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ subIds: specs, coverageCities: cities }) })
       if (!res.ok) throw new Error(String(res.status))
       toast({ title: t("tSpecs") })
       onClose()
@@ -428,13 +422,7 @@ function SpecsDialog({ onClose }: { onClose: () => void }) {
           <DialogDescription>{t("mSpecsSub")}</DialogDescription>
         </DialogHeader>
         <h4 className="text-sm font-bold">{t("pSpecsL")}</h4>
-        <div className="flex flex-wrap gap-1.5">
-          {PREDEFINED_CATEGORIES.map((c) => (
-            <Chip key={c} selected={specs.includes(c)} onClick={() => toggle(specs, setSpecs, c)}>
-              {displayCategory(c, f.locale)}
-            </Chip>
-          ))}
-        </div>
+        <MaterialSubsPicker index={index} value={specs} onChange={setSpecs} disabled={busy} />
         <h4 className="mt-2 text-sm font-bold">{t("pCities")}</h4>
         <div className="flex flex-wrap gap-1.5">
           {SAUDI_CITIES.map((c) => (

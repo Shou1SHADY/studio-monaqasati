@@ -21,7 +21,7 @@ import { displayCity } from "@/lib/constants"
 import { procLinks } from "@/lib/procurement/events"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { pricedProducts, pricingModeOf } from "@/lib/procurement/offer-pricing"
-import { poValue } from "@/lib/procurement/po"
+import { poValue, type NoticeFact } from "@/lib/procurement/po"
 import { invitedRows, rfqLog, type InviteOfferLike, type RfqLogEntry } from "@/lib/procurement/rfq-detail"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import type { RfqView } from "./rfqOfferView"
@@ -60,7 +60,9 @@ export function RfqDetailsPanel({
   extendLabel,
   onPrint,
   projectName,
+  notices,
 }: {
+  notices?: ReadonlyArray<NoticeFact>
   rfq: RfqView
   orders: PurchaseOrder[]
   showPrices: boolean
@@ -114,7 +116,7 @@ export function RfqDetailsPanel({
                   </span>
                   <span className="flex items-center gap-2">
                     {showPrices && <Money value={poValue(po)} className="text-xs font-bold" />}
-                    <PoStatusPill po={po} now={now} />
+                    <PoStatusPill po={po} now={now} notices={notices} />
                   </span>
                 </Link>
               </li>

@@ -14,6 +14,7 @@
 // held for it. Received quantities come from the project-side receipt, which is
 // the project's own act. Pure.
 
+import type { MaterialPick } from "@/lib/materials/types"
 import type { PmAttachment } from "./attachments"
 import { sampleStateOf } from "./sample"
 import { itemProgress, materialKeyOf, r2, r3, ratedOn, storeBalance, type PmStoreLine, type StoreItem } from "./store"
@@ -94,6 +95,8 @@ export interface ReqLine {
   name: string
   unit: string
   qty: number
+  /** The material tree's node and spec cells it was picked with (PUR-04) — an incoming line arrives with its category. */
+  material?: MaterialPick | null
   /** Built the material list of an item that had none (not a change). */
   first?: boolean
   chg?: ReqChange | null
@@ -120,6 +123,7 @@ export interface ProcurementItem {
   unit: string
   itemId?: string
   samplePending?: boolean
+  material?: MaterialPick
 }
 
 export type ReqStatus = "pending" | "approved" | "rejected"
@@ -301,14 +305,16 @@ type Linked = Pick<PmMaterialRequest, "rfqId" | "poId" | "mfgRequestId"> & Parti
 type Phased = Pick<PmMaterialRequest, "status" | "withdrawn"> & Linked
 
 /** Who is bringing a line — `l` being one of `r.lines`: its own RFQ and order when
- * it has them, else the request's. A line added after the request was sourced has
+ * it has them (a part of the request published without the rest has its own RFQ),
+ * else the request's. A line added after the request was sourced has
  * only its own: the order already out was never raised for it. */
 export function lineLink(r: Linked, l: ReqLine): Required<LineLink> & { mfgRequestId: string | null } {
   const i = r.lines ? r.lines.indexOf(l) : -1
   const own = (i >= 0 ? r.lineLinks?.[String(i)] : null) ?? null
   if (l.late) return { rfqId: own?.rfqId ?? null, rfqNumber: own?.rfqNumber ?? null, poId: own?.poId ?? null, poNumber: own?.poNumber ?? null, mfgRequestId: null }
   const po = own?.poId ? own : r
-  return { rfqId: r.rfqId ?? null, rfqNumber: r.rfqNumber ?? null, poId: po.poId ?? null, poNumber: po.poNumber ?? null, mfgRequestId: r.mfgRequestId ?? null }
+  const rfq = own?.rfqId ? own : r
+  return { rfqId: rfq.rfqId ?? null, rfqNumber: rfq.rfqNumber ?? null, poId: po.poId ?? null, poNumber: po.poNumber ?? null, mfgRequestId: r.mfgRequestId ?? null }
 }
 
 export function linePhase(r: Phased, l: ReqLine): LinePhase {
@@ -360,7 +366,7 @@ export const receivable = (r: Phased, l: ReqLine, order?: OrderFact) => receivab
 export function procurementItems(r: Pick<PmMaterialRequest, "lines">, samplePending?: ReadonlySet<string>): ProcurementItem[] {
   return r.lines
     .filter((l) => !held(l) && !refused(l) && !l.late)
-    .map((l) => ({ name: l.name, unit: l.unit, quantity: l.cl ? lineGot(l) : l.qty, ...(l.itemId ? { itemId: l.itemId } : {}), ...(l.itemId && samplePending?.has(l.itemId) ? { samplePending: true } : {}) }))
+    .map((l) => ({ name: l.name, unit: l.unit, quantity: l.cl ? lineGot(l) : l.qty, ...(l.itemId ? { itemId: l.itemId } : {}), ...(l.itemId && samplePending?.has(l.itemId) ? { samplePending: true } : {}), ...(l.material ? { material: l.material } : {}) }))
     .filter((i) => i.quantity > 0)
 }
 
@@ -412,6 +418,7 @@ export interface LineDraft {
   unit: string
   qty: number
   why?: string | null
+  material?: MaterialPick | null
 }
 
 /** An item's materials: every store line with a rate entry on it. */
@@ -442,7 +449,7 @@ export function requestBlocks(input: { archived: boolean; lines: LineDraft[]; ne
 export function buildLines(stores: Array<Pick<PmStoreLine, "key" | "name" | "unit" | "rates">>, items: Array<Pick<StoreItem, "id" | "code">>, drafts: LineDraft[]): ReqLine[] {
   return drafts.map((d) => {
     const kind = lineKind(stores, d)
-    const base: ReqLine = { itemId: d.itemId, code: d.itemId ? items.find((i) => i.id === d.itemId)?.code ?? null : null, key: materialKeyOf(d.name, d.unit), name: d.name.trim(), unit: d.unit.trim(), qty: d.qty, receipts: [] }
+    const base: ReqLine = { itemId: d.itemId, code: d.itemId ? items.find((i) => i.id === d.itemId)?.code ?? null : null, key: materialKeyOf(d.name, d.unit), name: d.name.trim(), unit: d.unit.trim(), qty: d.qty, receipts: [], ...(d.material ? { material: d.material } : {}) }
     if (kind === "change") return { ...base, chg: { st: "wait", why: d.why?.trim() || null } }
     if (kind === "first") return { ...base, first: true }
     return base

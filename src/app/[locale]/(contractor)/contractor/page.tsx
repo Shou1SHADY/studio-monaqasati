@@ -22,6 +22,7 @@ const ITEM_ACTION_KEY: Record<WorkQueueItemType, string> = {
   rfq_no_offers: "action_rfq_no_offers",
   delivery_confirm: "action_delivery_confirm",
   delivery_to_count: "action_delivery_to_count",
+  team_request_mine: "action_team_request_mine",
   project_waiting_approval: "action_project_waiting_approval",
   low_stock: "action_low_stock",
   team_invite_pending: "action_team_invite_pending",
@@ -100,6 +101,8 @@ function describePriorityItem(item: WorkQueueItem, t: ReturnType<typeof useTrans
         : t("queue_item_delivery_confirm", { supplierName: (item.data.supplierName as string) || t("queue_generic_supplier") })
     case "delivery_to_count":
       return t("queue_item_delivery_to_count", { supplierName: (item.data.supplierName as string) || t("queue_generic_supplier"), by: (item.data.byName as string) || "" })
+    case "team_request_mine":
+      return t("queue_item_team_request_mine", { number: (item.data.number as string) || "", state: t(`queue_team_state_${(item.data.state as string) || "sent"}`) })
     case "project_waiting_approval":
       return t("queue_item_project_waiting_approval", { name: (item.data.projectName as string) || "", status: t(item.data.statusLabelKey as string) })
     case "low_stock":

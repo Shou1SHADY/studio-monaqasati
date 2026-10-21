@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "crypto"
 import { z } from "zod"
 import { parseOfferTerms } from "@/lib/procurement/offer-terms"
-import { guestOfferPrice, type PricedRfq } from "@/lib/procurement/offer-pricing"
+import { faultNames, guestOfferPrice, priceOffer, pricedProducts, pricingFault, type PricedRfq } from "@/lib/procurement/offer-pricing"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminFirestore, getAdminStorage, getStorageBucketName } from "@/lib/firebaseAdmin"
 import { resolveShareToken, isRfqDeadlinePassed } from "@/lib/rfq-share"
@@ -50,6 +50,9 @@ const MAX_OFFERS_PER_LINK = 100
 const linesSchema = z
   .array(z.object({ rfqProductIndex: z.coerce.number().int().min(0).max(999), unitPrice: z.coerce.number().positive().finite() }))
   .max(200)
+
+/** The materials he says he does not supply (PUR-03): a line is priced or marked here, never blank. */
+const skippedSchema = z.array(z.coerce.number().int().min(0).max(999)).max(200)
 
 // Three things are required of a visitor (LNK-01, B-12): the prices, the company name and a Saudi mobile
 // (05XXXXXXXX or +9665XXXXXXXX, stored as E.164). The contact name and the e-mail are his to give or not.
@@ -144,6 +147,19 @@ export async function POST(
       const parsedRates = linesSchema.safeParse(decoded)
       if (!parsedRates.success) return errorResponse("Please review the prices you entered", "INVALID_INPUT", 400)
       postedRates = parsedRates.data
+    }
+    const skippedField = form.get("skipped")
+    let postedSkipped: number[] = []
+    if (typeof skippedField === "string" && skippedField.trim()) {
+      let decoded: unknown = null
+      try {
+        decoded = JSON.parse(skippedField)
+      } catch {
+        return errorResponse("Invalid form submission", "INVALID_INPUT", 400)
+      }
+      const parsedSkipped = skippedSchema.safeParse(decoded)
+      if (!parsedSkipped.success) return errorResponse("Please review the prices you entered", "INVALID_INPUT", 400)
+      postedSkipped = parsedSkipped.data
     }
 
     const parsed = fieldsSchema.safeParse(raw)
@@ -245,11 +261,15 @@ export async function POST(
     // A line-priced RFQ is quoted per material and its total is OURS to compute
     // (`guestOfferPrice`): an endpoint that believed a posted figure would let a
     // guest name any total it liked beside its rates.
-    const quoted = guestOfferPrice(rfq as PricedRfq, postedRates, data.price)
+    const quoted = guestOfferPrice(rfq as PricedRfq, postedRates, data.price, postedSkipped)
     if (!quoted.ok) {
-      return errorResponse("Give a price for every material on this request", quoted.code, 400)
+      const rates: Record<number, number> = {}
+      for (const l of postedRates) rates[l.rfqProductIndex] = l.unitPrice
+      const products = pricedProducts(rfq as PricedRfq)
+      const named = faultNames(products, pricingFault(priceOffer(products, rates, postedSkipped))?.indexes ?? [])
+      return errorResponse(`Give a price for every material you supply, and mark the rest as not supplied${named ? `: ${named}` : ""}`, quoted.code, 400)
     }
-    const { total, price: priceStr, lines: pricedLines } = quoted
+    const { total, price: priceStr, lines: pricedLines, skippedItems } = quoted
     const offerData: Record<string, unknown> = {
       supplierId: "guest",
       organizationId: "guest",
@@ -265,6 +285,7 @@ export async function POST(
       contractorOrgId: rfq.organizationId || rfq.contractorId || null,
       price: priceStr,
       ...(pricedLines ? { lines: pricedLines } : {}),
+      ...(skippedItems ? { skippedItems } : {}),
       deliveryLocation: data.deliveryLocation || "",
       deliveryBatches: [
         {

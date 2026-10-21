@@ -2,18 +2,17 @@
 
 import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Building2, Check, ChevronDown, Loader2, Search, ShoppingCart, UserPlus, X } from "lucide-react"
+import { Building2, Loader2, ShoppingCart, UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { LeadKind, LeadSource } from "@/lib/admin-crm"
-import { PREDEFINED_CATEGORIES, displayCategory } from "@/lib/constants"
-import { matchesSearch } from "@/lib/search-text"
+import { MaterialSubsPicker } from "@/components/materials/MaterialSubsPicker"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
 import { cn } from "@/lib/utils"
 
 /** The lead an account is being created for — enough to prefill the form and to mark the lead converted. */
@@ -60,21 +59,18 @@ export function CreateAccountDialog({
 
 function AccountForm({ lead, onClose, onCreated }: { lead: AccountLead; onClose: () => void; onCreated?: (uid: string) => void }) {
   const t = useTranslations("Portal.Admin.Leads")
-  const locale = useLocale()
   const { user } = useUser()
   const { toast } = useToast()
   const [role, setRole] = useState<Role>(lead.kind === "supplier" ? "Supplier" : "Contractor")
   const [name, setName] = useState(lead.company || lead.name)
   const [email, setEmail] = useState(lead.email)
   const [phone, setPhone] = useState(lead.phone.replace(/\D/g, ""))
+  const { index } = useMaterialTree()
   const [specs, setSpecs] = useState<string[]>([])
   // Most suppliers only sell (11 Oct 2026): the account starts with Order Management, Sales and Governance only.
   const [salesOnly, setSalesOnly] = useState(true)
-  const [specOpen, setSpecOpen] = useState(false)
-  const [specSearch, setSpecSearch] = useState("")
   const [busy, setBusy] = useState(false)
 
-  const toggleSpec = (spec: string) => setSpecs((s) => (s.includes(spec) ? s.filter((x) => x !== spec) : [...s, spec]))
   const ready = name.trim() !== "" && email.trim() !== "" && (role === "Contractor" || specs.length > 0)
 
   const submit = async () => {
@@ -90,7 +86,7 @@ function AccountForm({ lead, onClose, onCreated }: { lead: AccountLead; onClose:
           email,
           phone,
           role,
-          specializations: role === "Supplier" ? specs : undefined,
+          specialtyIds: role === "Supplier" ? specs : undefined,
           salesOnly: role === "Supplier" ? salesOnly : undefined,
           leadId: lead.id,
           leadCollection: lead.source === "onboarding" ? "onboardingRequests" : "demoRequests",
@@ -116,7 +112,6 @@ function AccountForm({ lead, onClose, onCreated }: { lead: AccountLead; onClose:
     { value: "Contractor", icon: Building2, label: t("contractor") },
     { value: "Supplier", icon: ShoppingCart, label: t("supplier") },
   ]
-  const shown = PREDEFINED_CATEGORIES.filter((cat) => !specSearch.trim() || matchesSearch(specSearch, [displayCategory(cat, locale), cat]))
 
   return (
     <>
@@ -173,65 +168,7 @@ function AccountForm({ lead, onClose, onCreated }: { lead: AccountLead; onClose:
         {role === "Supplier" && (
           <div className="space-y-2">
             <Label className="font-bold">{t("specializations")}</Label>
-            <Popover
-              open={specOpen}
-              onOpenChange={(o) => {
-                setSpecOpen(o)
-                if (!o) setSpecSearch("")
-              }}
-            >
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className={cn(
-                    "flex h-11 w-full items-center justify-between rounded-md border bg-background px-3 text-start text-sm transition-colors",
-                    "hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                    specs.length ? "border-primary/40 text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  <span className="truncate">{specs.length ? t("selected_specializations", { count: specs.length }) : t("select_specializations")}</span>
-                  <ChevronDown size={16} className={cn("shrink-0 transition-transform", specOpen && "rotate-180")} aria-hidden="true" />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
-                <div className="relative p-2">
-                  <Search size={14} className="absolute start-4 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                  <Input autoFocus value={specSearch} onChange={(e) => setSpecSearch(e.target.value)} placeholder={t("search_specializations")} aria-label={t("search_specializations")} className="h-9 ps-8 text-sm" />
-                </div>
-                <div className="max-h-56 divide-y overflow-y-auto border-t">
-                  {shown.map((cat) => {
-                    const on = specs.includes(cat)
-                    return (
-                      <button
-                        key={cat}
-                        type="button"
-                        role="checkbox"
-                        aria-checked={on}
-                        onClick={() => toggleSpec(cat)}
-                        className={cn("flex w-full items-center gap-3 px-4 py-2.5 text-start text-sm transition-colors hover:bg-primary/5 focus-visible:bg-primary/5 focus-visible:outline-none", on && "bg-primary/5")}
-                      >
-                        <span className={cn("grid h-4 w-4 shrink-0 place-items-center rounded border-2", on ? "border-primary bg-primary text-primary-foreground" : "border-input bg-background")}>
-                          {on && <Check size={10} strokeWidth={3} aria-hidden="true" />}
-                        </span>
-                        <span className={on ? "font-bold text-primary" : undefined}>{displayCategory(cat, locale)}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </PopoverContent>
-            </Popover>
-            {specs.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {specs.map((spec) => (
-                  <span key={spec} className="inline-flex items-center gap-1 rounded-full bg-primary/10 py-1 pe-1 ps-2.5 text-xs font-bold text-primary">
-                    {displayCategory(spec, locale)}
-                    <button type="button" aria-label={t("remove_specialization", { name: displayCategory(spec, locale) })} onClick={() => toggleSpec(spec)} className="grid h-5 w-5 place-items-center rounded-full transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                      <X size={12} aria-hidden="true" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
+            <MaterialSubsPicker index={index} value={specs} onChange={setSpecs} disabled={busy} />
           </div>
         )}
       </div>

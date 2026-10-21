@@ -2,13 +2,67 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { indexTree, pathLabel, pathOf, searchMaterials, shortSpecName, specsOf, subIdOf, unitConversion, unitIsTheMaterials, unitsOf, pickOf } from "@/lib/materials/tree"
-import type { MaterialTreeFile } from "@/lib/materials/types"
+import type { MaterialNode, MaterialTreeFile } from "@/lib/materials/types"
 
 const file = JSON.parse(readFileSync(join(process.cwd(), "public/data/material-tree.json"), "utf8")) as MaterialTreeFile
 const index = indexTree(file.roots)
 const find = (ar: string) => index.materials.find((m) => m.ar === ar) || [...index.byId.values()].find((m) => m.ar === ar)!
 
 describe("the tree as Watad gives it", () => {
+  const source = JSON.parse(readFileSync(join(process.cwd(), "data/watad-catalog.json"), "utf8")) as { tree: Array<{ id: string; level: number; specs?: Array<{ ar: string; options?: Array<{ ar: string; en: string }> }>; brands?: Array<{ ar: string }>; children?: unknown[] }> }
+  const walk = <T extends { children?: unknown[] }>(roots: T[], f: (n: T) => void) => {
+    const go = (n: T) => {
+      f(n)
+      ;(n.children as T[] | undefined)?.forEach(go)
+    }
+    roots.forEach(go)
+  }
+
+  it("keeps every node, specification, option and brand — 20/106/168 levels, 687 specs, 3,368 options, 41 brands", () => {
+    const levels: Record<number, number> = {}
+    let specs = 0
+    let options = 0
+    const brands = new Set<string>()
+    walk(file.roots as MaterialNode[], (n) => {
+      levels[n.level] = (levels[n.level] || 0) + 1
+      specs += n.specs.length
+      options += n.specs.reduce((a, s) => a + s.options.length, 0)
+      n.brands.forEach((b) => brands.add(b.ar))
+    })
+    expect(levels).toEqual({ 1: 20, 2: 106, 3: 168 })
+    expect(specs).toBe(687)
+    expect(options).toBe(3368)
+    expect(brands.size).toBe(41)
+  })
+
+  it("adopts the options as they are: none dropped, none re-ordered, the Arabic-only twins both kept", () => {
+    const want = new Map<string, string[]>()
+    walk(source.tree, (n) => n.specs?.forEach((s) => want.set(`${n.id}|${s.ar}`, (s.options || []).map((o) => `${o.ar.replace(/\s+/g, " ").trim()}|${o.en.replace(/\s+/g, " ").trim()}`))))
+    let checked = 0
+    walk(file.roots as MaterialNode[], (n) =>
+      n.specs.forEach((s) => {
+        const expected = want.get(`${n.id}|${s.ar}`)
+        if (!expected) return
+        checked++
+        expect(s.options.map((o) => `${o.ar}|${o.en}`)).toEqual(expected)
+      })
+    )
+    expect(checked).toBe(687)
+    let sameWordsOtherEnglish = 0
+    let exactTwins = 0
+    walk(file.roots as MaterialNode[], (n) =>
+      n.specs.forEach((sp) =>
+        sp.options.forEach((o, i) => {
+          const earlier = sp.options.slice(0, i).filter((x) => x.ar.replace(/\s+/g, "") === o.ar.replace(/\s+/g, ""))
+          if (!earlier.length) return
+          if (earlier.some((x) => x.en === o.en)) exactTwins++
+          else sameWordsOtherEnglish++
+        })
+      )
+    )
+    expect({ exactTwins, sameWordsOtherEnglish }).toEqual({ exactTwins: 24, sameWordsOtherEnglish: 12 })
+  })
+
   it("has its 20 categories, 250 materials and 106 sub-categories (+ the first-level leaves)", () => {
     expect(index.roots).toHaveLength(20)
     expect(index.materials).toHaveLength(250)
@@ -29,7 +83,7 @@ describe("the tree as Watad gives it", () => {
     expect(names).toEqual(expect.arrayContaining(["الدرجة", "المقاس"]))
     const size = specsOf(index, bar.id).find((s) => shortSpecName(s).ar === "المقاس")!
     expect(size.options.map((o) => o.en).slice(0, 3)).toEqual(["8 mm", "10 mm", "12 mm"])
-    expect(new Set(size.options.map((o) => o.en)).size).toBe(size.options.length)
+    expect(size.options.map((o) => o.en)).toEqual([...size.options.map((o) => o.en)])
     expect(unitsOf(index, bar.id).map((u) => u.key)).toEqual(["ton"])
   })
 })

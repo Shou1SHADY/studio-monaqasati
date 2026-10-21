@@ -470,6 +470,8 @@ export interface OfferLike {
   id?: string
   price?: string | number | null
   status?: string | null
+  /** Materials the supplier does not supply: such an offer's total is not comparable with a full one's. */
+  skippedItems?: unknown
 }
 
 const OFFER_REJECTED = "مرفوض"
@@ -484,10 +486,13 @@ export function offerPrice(o: OfferLike): number | null {
 
 const competing = (offers: OfferLike[]) => offers.filter((o) => o.status !== OFFER_REJECTED && offerPrice(o) != null)
 
-/** The lowest priced offer still in the running (the earliest wins a tie). */
+/** The lowest priced offer still in the running (the earliest wins a tie). A partial offer's smaller sum over fewer
+ * materials is no lower price: only when every competing offer is partial do they compete among themselves. */
 export function lowestOffer<T extends OfferLike>(offers: T[]): T | null {
   let best: T | null = null
-  for (const o of competing(offers) as T[]) {
+  const live = competing(offers) as T[]
+  const whole = live.filter((o) => !(Array.isArray(o.skippedItems) && o.skippedItems.length > 0))
+  for (const o of whole.length ? whole : live) {
     if (best == null || (offerPrice(o) as number) < (offerPrice(best) as number)) best = o
   }
   return best

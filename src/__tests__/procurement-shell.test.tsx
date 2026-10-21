@@ -412,6 +412,19 @@ describe("SHELL-06 · Today renders over a fake world", () => {
     expect(screen.queryByText(/PO-2026\/001/)).not.toBeInTheDocument()
   })
 
+  it("the head carries the RFQs page's «new RFQ» button for whoever runs RFQs — and none for an expediter (PUR-02)", () => {
+    mockLocale = "en"
+    mockWorld = loaded(busyWorld())
+    const hasNew = (c: HTMLElement) => Array.from(c.querySelectorAll("a")).some((a) => a.getAttribute("href") === "/contractor/rfqs/new" && /new RFQ/i.test(a.textContent || ""))
+    const first = render(<ProcurementToday />)
+    expect(hasNew(first.container)).toBe(true)
+    first.unmount()
+    mockCan = (p) => p === "po.expedite"
+    mockWorld = loaded({ ...busyWorld(), actor: EXPEDITER })
+    const second = render(<ProcurementToday />)
+    expect(hasNew(second.container)).toBe(false)
+  })
+
   it("an expediter sees no amount and no money tile", () => {
     mockLocale = "en"
     mockWorld = loaded({ ...busyWorld(), actor: EXPEDITER })

@@ -1370,6 +1370,11 @@
       "po_value": "Order value (excl. VAT)",
       "po_sent_on": "Sent on {date}",
       "po_promised": "Your committed date",
+      "po_payment_mark": "Payment status: {state} · {date}",
+      "po_pay_unpaid": "Not paid",
+      "po_pay_part": "Part paid",
+      "po_pay_paid": "Paid",
+      "po_advance_paid": "Advance paid {date}",
       "po_no_promise": "Not set yet",
       "po_show_lines": "Details ({count, plural, =0 {no lines} one {# line} other {# lines}})",
       "po_hide_lines": "Hide details",
@@ -1679,7 +1684,12 @@
       "offer_shipment_remaining_qty": "Remaining Quantity",
       "offer_shipment_price_auto_note": "Calculated automatically from the sum of shipment prices",
       "offer_line_prices_title": "Your price per material",
-      "offer_line_prices_incomplete": "Give a price for every material — a partial quote cannot be compared line by line",
+      "offer_line_prices_incomplete": "Price every material you supply and tick \"Not supplied\" on the rest: {names}",
+      "offer_line_contradictory": "A material has both a price and \"Not supplied\" — keep one: {names}",
+      "offer_line_none_priced": "Price at least one material",
+      "offer_line_not_supplied": "Not supplied",
+      "offer_line_partial": "Partial offer — covers {count} of {of}",
+      "offer_line_partial_note": "Materials you do not supply are left out of your total; the buyer may award them to another supplier.",
       "offer_line_price_auto_note": "Added up from your prices per material",
       "offer_line_qty": "{qty} {unit}",
       "offer_line_rate_for": "Unit price for {name}",
@@ -8109,9 +8119,9 @@
       "pn_rfq_question_title": "A question from {supplier} on {rfq}",
       "pn_rfq_question": "{question} — answer it on the RFQ's queries.",
       "pn_delivery_notice_title": "New delivery notice",
-      "pn_delivery_notice": "The supplier sent a delivery notice for the RFQ: {rfq} — confirm receipt when it arrives.",
+      "pn_delivery_notice": "A delivery notice arrived from the supplier for the RFQ: {rfq} — it is forwarded to the receiver.",
       "pn_receipt_forwarded_title": "📦 A receipt forwarded to you",
-      "pn_receipt_forwarded": "{name} forwarded you a delivery from {supplier} — open the link, count what arrived and sign.",
+      "pn_receipt_forwarded": "{name} forwarded you a delivery from {supplier} — open it from your tasks, count what arrived and confirm by signing in.",
       "pn_receipt_signed_title": "✅ The receiver signed for a delivery",
       "pn_receipt_signed": "{name} signed for the delivery from {supplier} — review it and book the receipt.",
       "pn_price_updated_title": "The supplier updated their price",
@@ -8614,6 +8624,7 @@
       "dor_effect_owner": "Above the manager’s limit or prepared by an approver — the owner approves",
       "dor_effect_manager": "Goes to the procurement manager — the preparer cannot approve",
       "dor_effect_after": "Once approved it reaches Finance (commitment), Inventory (“on the way”) and the requester (status “PO”)",
+      "dor_effect_after_nofin": "Once approved it comes back to you to send to the supplier, reaches Inventory (“on the way”) and the requester (status “PO”)",
       "dor_prepare": "Prepare PO",
       "sec_wwp_title": "Weekly plan & look-ahead",
       "sec_wwp_desc": "3-week readiness · weekly plan · percent plan complete",
@@ -8763,7 +8774,7 @@
       "pn_receipt_auto_forwarded_title": "📦 A receipt auto-forwarded to you",
       "pn_crm_offer_expired_title": "An offer lapsed with no answer",
       "pn_crm_offer_expired": "Offer {offer} on deal {number} · {title} passed its validity with no answer from the client — extend it with Sales, ask for a revised version, postpone or close.",
-      "pn_receipt_auto_forwarded": "The system forwarded you a delivery from {supplier} that Procurement had not forwarded in time — open the link, count what arrived and sign.",
+      "pn_receipt_auto_forwarded": "The system forwarded you a delivery from {supplier} that Procurement had not forwarded in time — open it from your tasks, count what arrived and confirm by signing in.",
       "team_invite_outdated": "This is an old invitation that is no longer valid — ask the company owner to send it again.",
       "owner_only_title": "Available to the account owner only",
       "owner_only_desc": "Company details such as the commercial registration and tax number are seen and edited by the account owner only.",
@@ -8981,6 +8992,8 @@
       "pn_po_payment_later": "{supplier} confirmed that a transfer of {amount} (reference {ref}) arrived later.",
       "pn_po_payment_reminder_title": "Payment reminder — {number}",
       "pn_po_payment_reminder": "{supplier} reminds you of a payment of {amount} that was due on {date}.",
+      "pn_po_advance_reminder_title": "Advance payment reminder — {number}",
+      "pn_po_advance_reminder": "{actor} reminds you of the {percent}% advance ({amount}) to {supplier} on purchase order {number}: the supplier's date starts from when it is paid.",
       "pn_po_warranty_registered_title": "A warranty awaits your acceptance — {number}",
       "pn_po_warranty_registered": "{supplier} registered a warranty for {item} valid until {until}. Accept it from the order's drawer.",
       "pn_po_supplier_rated_title": "{supplier} rated you",
@@ -9051,6 +9064,16 @@
       "rq_state_done": "Done",
       "rq_state_failed": "Could not be bought",
       "rq_state_withdrawn": "Withdrawn by the project",
+      "rq_withdrawn_by": "Withdrawn by {name} · {date}",
+      "rq_line_open": "Details of {name}",
+      "rq_line_in_rfq": "in RFQ {ref}",
+      "rq_line_in_po": "in order {ref}",
+      "pchg_withdrawn": "Withdrawn by the project",
+      "pchg_changed": "Changed by the project",
+      "pchg_by": "{name} · {date}",
+      "pchg_line_withdrawn": "{name} ({qty} {unit})",
+      "pchg_line_changed": "{name}: {was} → {now} {unit}",
+      "pchg_decide": "Purchasing decides: cancel, adjust with the supplier, or keep.",
       "rq_by": "Requested by {name}",
       "rq_need_by": "Needed by {date}",
       "rq_publish": "Publish it",
@@ -9066,7 +9089,7 @@
       "rq_empty_hint": "A material request arrives here once its project manager approves it technically, with what the workshop and the stores ask for.",
       "rq_empty_hint_team": "What your team asks for arrives here, with what the workshop and the stores ask for.",
       "pn_receipt_remind_title": "⏰ Reminder: a delivery waits for your count",
-      "pn_receipt_remind": "{name} reminds you of {supplier}'s delivery — open the link, count what arrived and confirm.",
+      "pn_receipt_remind": "{name} reminds you of {supplier}'s delivery — open it from your tasks, count what arrived and confirm by signing in.",
       "nd_desc_team": "What your team asks for, and what Manufacturing and Inventory ask for, under its number, by the last day to order",
       "pri_from_team": "From the team",
       "nd_confirm_team_decline_title": "Cannot be bought",
@@ -9106,7 +9129,29 @@
       "pn_team_request_title": "New material request",
       "pn_team_request": "{name} sent material request {number} to Procurement.",
       "pn_team_request_declined_title": "Material request cannot be bought",
-      "pn_team_request_declined": "{number} — {name}: {reason}"
+      "pn_team_request_declined": "{number} — {name}: {reason}",
+      "pn_team_request_rfq_title": "Material request {number} is in an RFQ",
+      "pn_team_request_rfq": "Your request was published in RFQ {ref}.",
+      "pn_team_request_order_title": "Material request {number} is in an order",
+      "pn_team_request_order": "Your request is now in purchase order {ref}.",
+      "pn_team_request_on_way_title": "Material request {number} is on the way",
+      "pn_team_request_on_way": "Delivery of your request has started — purchase order {ref}.",
+      "pn_team_request_received_title": "Material request {number} was received",
+      "pn_team_request_received": "The materials of your request were received — purchase order {ref}.",
+      "tr_page_title": "Material requests",
+      "tr_page_desc": "What you asked Procurement for, and where each request stands. Its status also reaches your tasks and notifications.",
+      "tr_pm_on_title": "Materials are requested from the project",
+      "tr_pm_on_desc": "Your company has Project Management, where the material request is the way. Open your project and raise it there.",
+      "tr_pm_on_cta": "Open projects",
+      "pn_team_joined_title": "You joined the team",
+      "pn_team_joined": "You are now a member of the {org} team. See your permissions on the team page.",
+      "pn_team_invite_accepted_title": "Team invitation accepted",
+      "pn_team_invite_accepted": "{name} joined your team.",
+      "pn_supplier_connected_title": "Connected",
+      "pn_supplier_connected": "Your account is now linked to {contractor}. Complete your profile to start receiving RFQs.",
+      "pn_supplier_invite_accepted_title": "Supplier invitation accepted",
+      "pn_supplier_invite_accepted": "{name} accepted your invitation and joined your suppliers as “not verified” until they complete their record and VAT number.",
+      "nd_desc_team_stock": "What your team asks for, and what Inventory asks for, under its number, by the last day to order"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -9611,7 +9656,7 @@
       "delivery_confirm_desc": "Enter the name of the team member who received the shipment",
       "delivery_receiver_label": "Receiver (Team Member)",
       "delivery_receiver_placeholder": "Name of the person who received it",
-      "delivery_confirm_submit": "Confirm Receipt",
+      "delivery_confirm_submit": "Record the receipt",
       "delivery_confirmed_badge": "Receipt Confirmed",
       "delivery_view_receipt": "View Receipt",
       "delivery_confirm_success": "Receipt confirmed successfully",
@@ -9645,6 +9690,12 @@
       "receipt_sig_empty": "No signature",
       "rfq_tender_list": "RFQ List",
       "rfq_batch_publish": "Publish Selected ({count})",
+      "rfq_review_publish": "Review and publish",
+      "rfq_review_one_by_one": "A draft is published from its review step: open them one at a time",
+      "boq_prepare_rfq": "Prepare the RFQ",
+      "boq_prepare_summary": "One RFQ is prepared from the {count} selected items and opened for review before it is published",
+      "boq_prepare_title_many": "{project} — {count} sections",
+      "boq_prepare_done": "The RFQ is ready — review it, then publish",
       "rfq_search_placeholder": "Search RFQs...",
       "rfq_project_filter": "Project",
       "rfq_all_projects": "All Projects",
@@ -10961,6 +11012,8 @@
       "rfq_glance_material": "Material",
       "rfq_glance_mdmak": "Mdmak Tech",
       "rfq_glance_total_only": "Total only",
+      "rfq_glance_not_covered": "Not covered",
+      "rfq_glance_partial": "Partial offer — covers {count} of {of}",
       "rfq_glance_total": "Offer total",
       "rfq_glance_lowest": "Lowest",
       "rfq_glance_duration": "Delivery / duration",
@@ -11031,7 +11084,13 @@
       "queue_item_delivery_with_receiver": "{supplierName}'s delivery is with {receiver} — waiting for the count",
       "action_delivery_open": "Open the notice",
       "queue_item_delivery_to_count": "{supplierName}'s delivery was forwarded to you — count it and confirm",
-      "action_delivery_to_count": "Count it"
+      "action_delivery_to_count": "Count it",
+      "queue_item_team_request_mine": "Materials request {number} — {state}",
+      "action_team_request_mine": "Open my requests",
+      "queue_team_state_sent": "Sent to Procurement",
+      "queue_team_state_rfq": "In an RFQ",
+      "queue_team_state_order": "In a purchase order",
+      "queue_team_state_on_way": "On the way"
     },
     "Home": {
       "tile_in_subscription": "What a subscription adds",
@@ -11400,6 +11459,8 @@
         "mdmak_rfq_title_label": "Request title",
         "mdmak_rfq_title_placeholder": "e.g. Supply of 500 tons of rebar",
         "mdmak_rfq_category_label": "Main category",
+        "mdmak_rfq_material_label": "Material",
+        "mdmak_rfq_material_change": "Change",
         "mdmak_rfq_subcategory_label": "Subcategory",
         "mdmak_rfq_quantity_label": "Quantity",
         "mdmak_rfq_unit_label": "Unit of measure",
@@ -12108,6 +12169,7 @@
         "warranty_accepted": "{by} accepted the supplier's warranty for {item}",
         "supplier_rated": "The supplier rated working with us on this order: {stars} out of 5",
         "hold_decided": "{by} decided on held invoice {invoice}: {decision}",
+        "finance_reminded": "{by} reminded Finance about the advance",
         "budget_referred": "{by} referred the budget overrun ({over}) to the project manager",
         "budget_decided": "{by} (Projects): {decision}",
         "stop_requested": "{by} (Projects) asked to stop what has not arrived",
@@ -12174,6 +12236,8 @@
       "err_already_cancelled": "The order is already cancelled",
       "err_has_receipts": "Something arrived on this order — it cannot be cancelled whole; cancel the remainder per line or close it short",
       "err_reminded_recently": "The supplier was reminded in the last 24 hours — the next reminder can go a day after",
+      "err_finance_on": "Finance is in your company's package: the order closes when it is paid there, and payments are recorded there",
+      "err_finance_off": "Finance is not in your company's package — no payments or invoice holds are recorded here",
       "err_supplier_missing": "Pick the supplier this agreement is with",
       "err_no_lines": "Add at least one material with its agreed price",
       "err_bad_receiver": "A receiver needs a name, what they are called, and a mobile the code can reach",
@@ -12265,6 +12329,7 @@
           "unpicked": "Lines not awarded ({count}) return to “Needs” to be sourced again.",
           "effect_prepared": "{count, plural, one {One PO is} other {# POs are}} prepared in your name for approval — nobody approves a PO they prepared.",
           "effect_after": "Once approved: Finance takes the PO as a commitment and pays per its terms; Inventory awaits arrival.",
+          "effect_after_nofin": "Once approved: the order comes back to you to send to the supplier; Inventory awaits arrival.",
           "submit": "Award & prepare",
           "done": "Awarded — {count, plural, one {PO} other {POs}} {numbers} prepared for approval",
           "err_nothing": "Pick at least one line",
@@ -12443,6 +12508,7 @@
       "err_nothing_picked": "Pick at least one line to award",
       "err_breakdown_mismatch": "The breakdown does not equal the total",
       "err_offer_taken": "An offer was excluded or awarded meanwhile — refresh and pick again",
+      "err_line_not_covered": "A picked material is not covered by this offer — the supplier marked it as not supplied. Refresh and pick again",
       "err_not_declined": "The supplier did not decline this order — its award cannot be reopened",
       "err_rfq_not_awarded": "The request is no longer awarded — refresh the page",
       "err_award_split_live": "Another order from the same award is still running — the request cannot be reopened as a whole",
@@ -12464,6 +12530,7 @@
           "general_stock": "General — for stock",
           "workshop": "Workshop",
           "project_unknown": "Project",
+          "site_unknown": "Unnamed site",
           "deadline_soon": "Ends within 3 days",
           "deadline_later": "More than 3 days left",
           "deadline_past": "Deadline passed — to award",
@@ -12549,7 +12616,6 @@
           "pdf_many": "Drawings & technical specs — several files allowed",
           "deadline_misses": "After {date} the nearest product misses its last order day",
           "sealed_until": "Prices stay sealed until then",
-          "budget_hint": "Internal — not shown to suppliers; a published ceiling pulls prices up",
           "terms_label": "Payment terms",
           "terms_hint": "Suppliers see them before quoting; they are frozen on the order at the award",
           "terms_pct": "Share %",
@@ -12581,7 +12647,9 @@
           "self_issue_hint": "Within your own limit (SAR {limit}): you may issue it yourself — it is logged as self-issued.",
           "self_issue": "Issue it myself",
           "sent_outside": "Sent outside the system — log it",
-          "advance_unpaid": "The {pct}% advance is not paid yet — the supplier’s lead time starts when it is.",
+          "advance_unpaid": "The {pct}% advance is not marked paid yet — the supplier’s date starts from when it is paid.",
+          "advance_unpaid_fin": "The supplier’s date starts from the {pct}% advance, which Finance was asked for {days, plural, =0 {today} one {a day ago} other {# days ago}}.",
+          "remind_finance": "Remind Finance",
           "owner_reads": "You read this order; {by} and the procurement team act on it.",
           "not_mine": "Prepared by {by} — only the one who prepared it follows it up.",
           "terms": "Payment terms",
@@ -12601,6 +12669,7 @@
           "fee_logged": "charge SAR {fee}",
           "row_held": "invoice held by Finance",
           "row_advance": "advance with Finance",
+          "row_advance_nofin": "advance not marked paid",
           "trail": {
             "title": "Document trail — and who owns each step",
             "prepared": "Prepared",
@@ -12609,6 +12678,7 @@
             "sent": "Sent to supplier",
             "accepted": "Accepted by supplier",
             "advance": "Advance {pct}% — Finance",
+            "advance_nofin": "Advance {pct}% — marked paid here",
             "notice": "Delivery notice — from the supplier",
             "receipt": "Receipt — recorded by the receiver (Inventory or site)",
             "invoice": "Invoice, match & payment — Finance",
@@ -12795,6 +12865,7 @@
             "effect_pm": "The PO is reduced; Projects reads “cancelled” — what was received stays on the item",
             "effect_needs": "The PO is reduced and the rest returns to “Needs” to source elsewhere",
             "effect_revision": "Finance and Inventory get a revised PO under the same number",
+            "effect_revision_nofin": "Inventory gets a revised PO under the same number",
             "submit": "Confirm"
           },
           "row_budget": "Awaiting the project's budget decision",
@@ -12808,7 +12879,9 @@
           "rated": "Rated",
           "rejected_at_receipt": "The receiver rejected {qty} {unit} at receipt",
           "accept_advance_effect": "Finance holds the {pct}% advance request — the supplier's lead time starts once it is paid",
+          "accept_advance_effect_nofin": "The {pct}% advance — you mark it paid here, and the supplier's date starts from that day",
           "send_approved_by": "Approved by {name} on {date} and with Finance as a commitment. Sending it to the supplier is our step.",
+          "send_approved_by_nofin": "Approved by {name} on {date}. Sending it to the supplier is our step.",
           "notices": {
             "title": "Delivery notices",
             "none_yet": "No shipment notified yet — the notice reaches us and the receiver before the truck leaves."
@@ -12953,7 +13026,8 @@
         "sourcing": {
           "unverified": "Not verified yet — not invited until verified",
           "no_vat": "No VAT number",
-          "cr_expired": "CR expired"
+          "cr_expired": "CR expired",
+          "tag_unverified": "Unverified"
         },
         "card": {
           "otp_verified": "(verified by code)",
@@ -12995,6 +13069,7 @@
         },
         "award": {
           "finance_pays": "Finance pays before delivery",
+          "finance_pays_nofin": "Paid before delivery",
           "no_order_yet": "No PO before its record is complete (VAT number and verification) — the order waits"
         }
       },
@@ -13076,6 +13151,7 @@
         "forward": "Forward",
         "openProject": "Open the project",
         "openNotice": "Open the notice",
+        "closeOrder": "Close the order",
         "publishRequest": "Publish it"
       },
       "task": {
@@ -13084,7 +13160,7 @@
           "sub": "Prepared by {preparer} {ago, plural, =0 {today} one {yesterday} other {# days ago}}"
         },
         "approval_wait": {
-          "title": "{number} awaiting {approver, select, owner {the owner's} other {the manager's}} approval",
+          "title": "{number} awaiting {approver, select, owner {the owner's} other {the manager's}} approval {days, plural, =0 {— reached them today} one {for a day} other {for # days}}",
           "sub": {
             "own_order": "{supplier} · you prepared it — the preparer never approves · nothing to do until it is approved",
             "above_limit": "{supplier} · {value, number} is above the manager's limit ({limit, number}) · nothing to do until the owner approves",
@@ -13094,6 +13170,7 @@
         },
         "send": {
           "title": "{number} approved and with Finance — not yet sent to {supplier}",
+          "title_nofin": "{number} approved — not yet sent to {supplier}",
           "sub": "Back with you to send: portal, WhatsApp or email — the acceptance clock and the delivery date start then"
         },
         "not_accepted": {
@@ -13132,6 +13209,14 @@
         "delivery_reported": {
           "title": "{supplier} reported delivering {number} — record the receipt",
           "sub": "Delivered {date} ({daysAgo, plural, =0 {today} one {yesterday} other {# days ago}}){hasNote, select, 1 { — {note}} other {}}{reminded, plural, =0 {} one { · reminded once} other { · reminded # times}}"
+        },
+        "close_received": {
+          "title": "{number} is fully received — close the order",
+          "sub": "{supplier} · no Finance in your package closes it by payment; the payment status never holds it"
+        },
+        "advance_unpaid": {
+          "title": "The {percent}% advance is not marked paid — {number}",
+          "sub": "{supplier} · the supplier's date starts from the day it is paid"
         },
         "rate": {
           "title": "Rate {supplier} on {number}",
@@ -13188,7 +13273,7 @@
           "title": "Forward {supplier}’s delivery notice to the receiver{overdue, select, 1 { — its date has passed} other {{hasDate, select, 1 { — arrives {inDays, plural, =0 {today} =1 {tomorrow} other {in # days}}} other {}}}}",
           "sub": "{number} · {lines}",
           "sub_place": "{number} · {lines}{hasPlace, select, 1 { · to {place}} other {}}",
-          "sub_place_rcv": "{number} · {lines}{hasPlace, select, 1 { · to {place}} other {}}{hasReceiver, select, 1 { · suggested: {receiver}} other {}}"
+          "sub_place_rcv": "{number} · {lines}{hasPlace, select, 1 { · to {place}} other {}}{hasReceiver, select, 1 { · suggested: {receiver}} other {{noReceiver, select, 1 { · no receiver for this site — forward it} other {}}}}"
         },
         "finance_hold": {
           "proc": {
@@ -13326,6 +13411,7 @@
           "note_none": "of {total} — all within time"
         },
         "lines": "{count, plural, one {line} other {lines}}",
+        "requests": "{count, plural, one {request} other {requests}}",
         "awaiting_advance": {
           "label": "Awaiting an advance",
           "note_some": "The supplier's date starts once it is marked paid",
@@ -13421,9 +13507,9 @@
       },
       "pill_returned": "Returned to preparer",
       "date": {
-        "with_approver": "With {approver} for approval — no date yet",
+        "with_approver": "With {approver} for approval {days, plural, =0 {— reached them today} one {for a day} other {for # days}} — no date yet",
         "not_sent": "Not sent yet — no date",
-        "no_acceptance": "No acceptance yet — no date",
+        "no_acceptance": "No acceptance yet{days, plural, =0 {} one { (a day)} other { (# days)}} — no date",
         "no_date": "Accepted without a date",
         "closed": "Closed {date}"
       },
@@ -13460,9 +13546,13 @@
         "approve": "Approve the order",
         "approve_blocked": "Cannot be approved while a fact blocks it",
         "return": "Return to preparer",
-        "awaiting_approver": "Awaiting {approver}'s approval",
+        "awaiting_approver": "Awaiting {approver}'s approval {days, plural, =0 {— it reached them today} one {for a day} other {for # days}}",
+        "remind_approver": "Remind the approver",
+        "approver_reminded": "Approver reminded",
+        "sent_since": "The supplier has not accepted the order for {days, plural, one {a day} other {# days}}.",
         "cancel_order": "Cancel the order",
         "approved_body": "Approved by {by} on {date} and with Finance as a commitment — back to you to send it to {supplier}. The acceptance clock and the delivery date start from the send.",
+        "approved_body_nofin": "Approved by {by} on {date} — back to you to send it to {supplier}. The acceptance clock and the delivery date start from the send.",
         "send": "Send it to the supplier",
         "sent_body": "Sent via {channel} on {date}. The honest date starts with the supplier's acceptance: record it with the delivery date he committed to — not the one we hope for.",
         "record_acceptance": "Record supplier acceptance & date",
@@ -13490,14 +13580,12 @@
         "flag_agreement": "Placed on price agreement {number} — its prices were already competed",
         "flag_direct": "Direct purchase without competition — {reason}",
         "closed_paid_body": "Closed by Finance on payment — paid in full",
-        "received_body_nofin": "Everything was received — the order is closed. The payment status is optional and never holds it — rate the supplier now that the story is whole."
+        "received_body_nofin": "Everything was received — close the order. The payment status is optional and never holds it back — rate the supplier now that the story is whole."
       },
       "money": {
         "ex_vat": "Order value excl. VAT",
         "vat": "VAT {rate}%",
         "commitment": "Committed on the PO — incl. VAT",
-        "commitment_hint_approved": "Reached Finance on approval {date} as an uninvoiced commitment — the first leg of the three-way match",
-        "commitment_hint_pending": "Not approved yet — nothing reaches Finance before approval",
         "accepted": "Accepted on the receipts — excl. VAT",
         "accepted_hint": "The ceiling of what the supplier may invoice today — rejects and held goods are outside it",
         "accepted_unknown": "Unknown until delivery is complete — a lump-sum order with no unit prices",
@@ -13553,14 +13641,16 @@
         "desc": "Before anything arrived. What was received is never cancelled — cancel the remainder line by line, or close the order short",
         "label": "Reason",
         "submit": "Cancel the order",
-        "effect": "The preparer is told, the supplier if the order had reached him, Finance if it was a commitment"
+        "effect": "The preparer is told, the supplier if the order had reached him, Finance if it was a commitment",
+        "effect_nofin": "The preparer is told, and the supplier if the order had reached him"
       },
       "close_short": {
         "title": "Close the order short",
         "desc": "Delivery is incomplete and will not complete — the order closes with what arrived, and shows in the Exceptions report with its reason",
         "label": "Why close before it is complete?",
         "submit": "Close short",
-        "effect": "The commitment drops to what was accepted, and Finance reads that no invoice follows"
+        "effect": "The commitment drops to what was accepted, and Finance reads that no invoice follows",
+        "effect_nofin": "The order drops to what was accepted, and no further delivery is expected"
       },
       "cancel_line": {
         "title": "Cancel the remainder with the supplier",
@@ -13594,9 +13684,12 @@
         "question": "What was agreed with the supplier?",
         "effect_replace": "The quantity stays owed on the order until the replacement arrives",
         "effect_discount": "We keep the goods and they count as accepted — Finance settles the reduced price",
+        "effect_discount_nofin": "We keep the goods and they count as accepted — the reduced price is agreed with the supplier",
         "effect_reduce": "The order shrinks by it and it will not be replaced",
         "effect_always": "Inventory returns the rejects to the supplier; Finance pays only what was accepted",
+        "effect_always_nofin": "Inventory returns the rejects to the supplier",
         "note": "Note for the supplier and Finance",
+        "note_nofin": "Note for the supplier",
         "note_ph": "e.g. the replacement before the end of the week",
         "note_discount": "The reduced price and what was agreed",
         "note_discount_ph": "e.g. 40 instead of 50 per unit — accepted technically by the need's owner",
@@ -13610,6 +13703,7 @@
       "send": {
         "title": "Send the purchase order to the supplier",
         "desc": "Approved and with Finance as a commitment — now it must reach {supplier} to be accepted and dated",
+        "desc_nofin": "Approved — now it must reach {supplier} to be accepted and dated",
         "channel": "How does it reach them?",
         "hint_registered": "A platform supplier gets it in their portal and accepts it there — the fastest way",
         "hint_guest": "This supplier is off-platform: a ready message opens and you send it with your own tool",
@@ -13665,6 +13759,9 @@
         "failed": "Not saved — try again",
         "popup_blocked": "The browser blocked the print window — allow pop-ups for this site",
         "approved": "Approved — now with Finance as a commitment",
+        "approved_nofin": "Order approved",
+        "approver_reminded": "Approver reminded",
+        "finance_reminded": "Finance reminded about the advance",
         "returned": "Returned to the preparer",
         "resubmitted": "Resubmitted for approval",
         "reaward_done": "Award reopened — pick another quote",
@@ -13751,6 +13848,9 @@
       },
       "project_filter": "Project",
       "project_all": "All projects",
+      "site_filter": "Delivery site",
+      "site_all": "All delivery sites",
+      "site_none": "No site",
       "more_lines": "+{count} more lines",
       "next2": {
         "to_forward": "The delivery notice ({date}) is with us — forward it to the receiver.",
@@ -13769,7 +13869,10 @@
         "book_receipt": "Book the receipt",
         "part": "{received} of {ordered} {unit} received; {left} left.",
         "remind_rest": "Remind the supplier of the rest",
-        "rejected": "{qty} {unit} rejected at receipt — your decision with the supplier is on the lines below: replace · discount · return.",
+        "rejected": "{qty} {unit} rejected at receipt — your decision with the supplier:",
+          "ask_replace": "Ask for a replacement",
+          "ask_discount": "Ask for a discount",
+          "ask_reduce": "Send it back",
         "guest_due": "Has the shipment arrived? The supplier is off the platform and cannot notify.",
         "record_notice": "Record a delivery notice",
         "supplier_late": "The supplier is {days, plural, one {# day} other {# days}} late and has not notified delivery.",
@@ -13800,6 +13903,9 @@
         "advance_paid": "Paid {date}",
         "advance_unpaid": "Not marked yet — the supplier's date does not start before it",
         "mark_advance": "Mark the advance paid",
+        "mark_advance_short": "Mark it paid",
+        "transfer_file": "Copy of the transfer (optional)",
+        "transfer_copy": "Transfer copy",
         "received": "Receipt",
         "received_done": "Complete",
         "received_of": "{received} of {ordered} {unit}",
@@ -13986,6 +14092,10 @@
         "signedWaiting": "Counted by the receiver — receipt pending",
         "remindReceiver": "Remind the receiver",
         "receiverReminded": "{name} was reminded",
+        "forwardStale": "Forward everything overdue ({n})",
+        "staleHint": "{n} notices are long past their date and their place has a receiver in the register — the system does not forward them on its own.",
+        "staleForwarded": "{n} overdue notices forwarded",
+        "staleFailed": "The overdue notices were not forwarded — try again",
         "remindTooSoon": "Reminded a short while ago — try again in a few hours",
         "remindLinkClosed": "His link has closed — forward it again",
         "remindFailed": "The reminder was not sent — try again"
@@ -14124,6 +14234,7 @@
         "popupBlocked": "The browser blocked the print window — allow pop-ups",
         "noPoCallout": "A receipt with no purchase order — not payable before it is regularised by a retroactive order or sent as a cash expense; it appears in the exceptions report.",
         "expenseCallout": "Sent to Finance as a cash expense: it has no purchase order, Finance books its invoice as an expense — and the receipt stays the proof of what arrived.",
+        "expenseCallout_nofin": "Recorded as a cash expense: it has no purchase order — and the receipt stays the proof of what arrived.",
         "selfCallout": "Received by the order's preparer — no separate receiver in this company. Not blocked, but it appears in the exceptions report by name for the owner to see.",
         "supplier": "From supplier",
         "asWritten": "As written by the receiver",
@@ -14402,6 +14513,7 @@
         "forwarded_auto": "Auto-forwarded to {name} after the window"
       },
       "received_by": "Received by",
+      "received_by_suggested": "Suggested receiver",
       "mine": {
         "notYours": "This delivery was not forwarded to you, or has been counted",
         "notYoursHint": "Ask Procurement to forward it to you.",
@@ -14429,6 +14541,7 @@
       "exceptionsTotal": "{count, plural, one {# exception} other {# exceptions}}",
       "report": {
         "project": "Spend by project & requester",
+        "project_site": "Spend by delivery site",
         "supplier": "Spend by supplier",
         "delivery": "Delivery performance",
         "drift": "Price drift vs last buy",
@@ -14449,6 +14562,7 @@
       },
       "cols": {
         "requester": "Requester",
+        "site": "Delivery site",
         "orders": "Orders",
         "lines": "Lines",
         "ordered": "Ordered",
@@ -14497,6 +14611,8 @@
       },
       "notes": {
         "project": "This is commitment, not cost: the actual cost of an item is read from Finance's ledger after the invoice.",
+        "project_nofin": "This is commitment, not cost: the actual cost is in your accounting system after the invoice.",
+        "commitments_nofin": "Due = the supplier's date or the receipt date + payment terms. An advance is due now until it is marked paid on the order. \"Received\" counts the accepted only, and the optional payment status is not counted in it.",
         "supplier": "Share of the period's order value, excluding VAT. One supplier above {percent}% is a concentration worth a ready alternative. On-time is computed from receipts across all of the supplier's orders.",
         "delivery": "Receipts are recorded by Inventory; we measure the supplier by them. An order is judged by its last receipt against the supplier's recorded date.",
         "drift": "Impact = (this PO's price − the last price we paid for the same material in the same unit) × quantity. Positive is not always wrong — steel and copper move — but it deserves to be seen.",
@@ -14535,10 +14651,12 @@
       },
       "print": "Print",
       "commitNotCost": "The value here is a commitment, not a cost: the actual cost of a line is read from Finance's books after the invoice.",
+      "commitNotCost_nofin": "The value here is a commitment, not a cost: the actual cost is in your accounting system after the invoice.",
       "requester": {
         "workshop": "Workshop (material shortfalls)",
         "inventory": "Inventory (stock gaps)",
-        "buyers": "Lines added by buyers"
+        "buyers": "Lines added by buyers",
+        "site": "Delivery site"
       },
       "commitReceivedUnknown": "{count, plural, one {# lump-sum order} other {# lump-sum orders}} with goods accepted but no line prices — the received value is not estimated and stays out.",
       "part": {
@@ -14680,6 +14798,15 @@
         "inventory": "Inventory",
         "projects": "Projects"
       },
+      "role": {
+        "warehouse_keeper": "Store keeper",
+        "site_engineer": "Site engineer",
+        "site_supervisor": "Site supervisor",
+        "project_manager": "Project manager",
+        "procurement_officer": "Procurement officer",
+        "logistics_coordinator": "Supply coordinator",
+        "foreman": "Site foreman"
+      },
       "dialog": {
         "addTitle": "Add a receiver",
         "editTitle": "Edit this receiver",
@@ -14687,6 +14814,10 @@
         "name": "Name",
         "title": "What they are called",
         "titlePlaceholder": "Central store keeper · Al-Narjes site engineer",
+        "role": "Role",
+        "rolePlaceholder": "Pick a role",
+        "legacyRole": "Previously recorded as: {title}. Pick the role from the list to save.",
+        "phoneInvalid": "A Saudi mobile: 05xxxxxxxx or +9665xxxxxxxx",
         "phone": "Mobile",
         "module": "Their module",
         "places": "Places they receive at",
@@ -14696,7 +14827,9 @@
         "save": "Save"
       },
       "err": {
-        "bad_receiver": "A receiver needs a name, what they are called, and a mobile the code can reach",
+        "bad_receiver": "A receiver needs a name, a role from the list, and a Saudi mobile the code can reach",
+        "duplicate": "\"{name}\" is already in the register with this mobile — edit them instead of adding twice",
+        "duplicateRetired": "\"{name}\" is already registered with this mobile and is retired — bring them back instead of adding twice",
         "no_permission": "This action is not your permission",
         "generic": "It was not saved. Try again"
       },
@@ -15010,7 +15143,7 @@
         },
         "fin": {
           "in": "A notice of every payment on our order: the voucher · which invoice · net, VAT and advance recovery · value date · bank reference and the last four digits of the supplier's account · who approved it · the transfer copy — and its share of the order · every payment hold with its coded reason · approval limits and the direct-order cap",
-          "out": "The approved PO: the first leg of the three-way match and a commitment not yet invoiced · a request for a supplier advance · our decision on a price variance (a revised order or a refusal) · the supplier master, VAT number and payment terms",
+          "out": "The approved PO: recorded in Finance as a commitment not yet invoiced · a request for a supplier advance · our decision on a price variance (a revised order or a refusal) · the supplier master, VAT number and payment terms",
           "keys": "proc:PO:[PO no.] · proc:ADV:[request no.] · proc:FRJ:[hold no.] · fin:PAY:[voucher] · fin:REJ:[hold no.]",
           "late": "An order that never reached Finance: its invoice is held \"no PO\" · an advance not paid: the supplier's lead time has not started and the honest date slips"
         },
@@ -15129,6 +15262,10 @@
         "address": "Address",
         "receiver": "Default receiver",
         "no_receiver": "No receiver",
+        "project": "Project",
+        "no_project": "General site — no project",
+        "project_hint": "Link the work site to a Project Management project, or leave it a general site.",
+        "linked_to": "Linked to project {project}",
         "receiver_hint": "Proposed for every delivery here; a notice is forwarded to them automatically after the window.",
         "saved": "Site saved",
         "retire": "Take it off the lists",
@@ -15151,7 +15288,8 @@
         "row_raise_request": "Raises a material request (without Project Management only)",
         "up_to": "Up to {limit}",
         "foot_fin": "Roles are given on the team page. Receiving is not a Procurement act, nor paying while Finance is in the package.",
-        "foot_nofin": "Roles are given on the team page, and “raises a material request” to any member. Receiving is not a Procurement act."
+        "foot_nofin": "Roles are given on the team page. Receiving is not a Procurement act.",
+        "foot_raise": "Any team member raises a material request, from “Request materials” in his tasks, even with no Procurement permission."
       },
       "accountant": {
         "label": "Accountant's e-mail",
@@ -25133,7 +25271,13 @@
       "specialties_owner_only": "The company owner edits the specialties.",
       "prompt_title": "Choose your specialties from the material tree",
       "prompt_body": "RFQs are now written on one material tree. Choose the sub-categories you supply once, so the public requests in them reach you. Until then, only requests sent to you by name and RFQ links reach you.",
-      "prompt_cta": "Choose specialties"
+      "prompt_cta": "Choose specialties",
+      "equipment_note": "Heavy-equipment rental is not a material. Keep it as typed under “Equipment › Other equipment”.",
+      "equipment_note_pm": "Heavy-equipment rental is not a material. Ask for it from the equipment desk in Project Management.",
+      "equipment_open_pm": "Open the projects",
+      "sub_pick": "Pick a sub-category",
+      "sub_optional": "Material-tree category (optional)",
+      "sub_optional_hint": "Lets the item be found and filtered by the same list RFQs and suppliers use."
     },
     "ProcEditor": {
       "add_group": "Another project or delivery site",
@@ -25283,6 +25427,15 @@
       "step_request": "The request",
       "panel_sub": "{place} · {count, plural, one {# material} other {# materials}}",
       "panel_part_hint": "To publish only some of the materials: “Prepare it” and remove what you do not want.",
+      "col_boq": "BOQ item",
+      "edit_place": "Change the city and district",
+      "place_done": "Done",
+      "panel_requested_by": "Requested by {name}",
+      "panel_approved_by": "Approved by {name} · {date}",
+      "panel_approved_on": "Approved {date}",
+      "panel_last_day": "Last day to order {date} · {days, plural, =0 {today} one {in # day} other {in # days}}",
+      "panel_last_day_passed": "Last day to order ({date}) passed {days, plural, one {# day} other {# days}} ago",
+      "panel_last_day_none": "Last day to order —",
       "prepare": "Prepare it",
       "err_edit_has_offers": "It cannot be edited once offers have arrived — open it from its page",
       "err_edit_closed": "This RFQ is closed or cancelled — editing does not reopen it"
@@ -25460,7 +25613,12 @@
     "optional_mark": "(optional)",
     "invalid_price": "Enter a valid price",
     "line_prices_title": "Your price per material",
-    "line_prices_incomplete": "Give a price for every material — a partial quote cannot be compared line by line",
+    "line_prices_incomplete": "Price every material you supply and tick \"Not supplied\" on the rest: {names}",
+    "line_contradictory": "A material has both a price and \"Not supplied\" — keep one: {names}",
+    "line_none_priced": "Price at least one material",
+    "line_not_supplied": "Not supplied",
+    "line_partial": "Partial offer — covers {count} of {of}",
+    "line_partial_note": "Materials you do not supply are left out of your total; the buyer may award them to another supplier.",
     "line_price_auto_note": "Added up from your prices per material",
     "price_label": "Total price excl. VAT",
     "sar": "SAR",
@@ -26051,6 +26209,11 @@
     "fCommit": "Your committed date",
     "notAccepted": "Not accepted yet",
     "fSite": "Delivery site",
+    "fPayMark": "Payment status",
+    "fAdvancePaid": "Advance paid",
+    "payMark_unpaid": "Not paid",
+    "payMark_part": "Part paid",
+    "payMark_paid": "Paid",
     "fRcv": "Receiver on site",
     "beforeVat": "before VAT",
     "secShip": "Delivery",
@@ -26102,6 +26265,8 @@
     "blkTotal": "Enter the total price",
     "blkZero": "The price of “{i}” must be above zero",
     "blkOneItem": "Price at least one item",
+    "blkUnmarked": "Price “{i}” or mark it “Not supplied”",
+    "partialOffer": "Partial offer — covers {n} of {of}",
     "blkDeadline": "The submission deadline has passed",
     "blkValid": "Set the quote validity date",
     "errRfqClosed": "This request no longer takes quotes",

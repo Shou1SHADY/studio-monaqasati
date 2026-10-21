@@ -11,13 +11,16 @@ import { displayNeedRef } from "@/lib/procurement/format"
 import type { ElementType, ReactNode } from "react"
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Clock, Hourglass, Info, Loader2, Truck } from "lucide-react"
+import { AlertTriangle, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Clock, Hourglass, Info, Loader2, Send, Truck } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
+import { Button } from "@/components/ui/button"
+import { usePermissions } from "@/hooks/usePermissions"
 import { useProcTodayWorld } from "@/hooks/useProcurementShell"
 import { ORDER_HREF, RECEIPT_HREF, TASK_GROUPS, todayTasks, todayWaits, type Task, type TaskGroup, type TaskSeverity, type Wait } from "@/lib/procurement/today"
 import { displayDocNumber } from "@/lib/procurement/format"
 import { arrivingWithinWeek } from "@/lib/procurement/shell"
+import { runsRfqs } from "@/lib/procurement/rfq-access"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 
@@ -71,12 +74,17 @@ function presentParams(p: Params, locale: string, words: (key: string) => string
 export function ProcurementToday() {
   const t = useTranslations("Portal.ProcToday")
   const tProc = useTranslations("Portal.Procurement")
+  const tCon = useTranslations("Portal.Contractor")
   const locale = useLocale()
+  const { can } = usePermissions()
   const isRtl = locale === "ar"
   const Chevron = isRtl ? ChevronLeft : ChevronRight
   // One world and one clock per visit, shared with the header's counts.
-  const { loaded, world, actor, now } = useProcTodayWorld()
+  const { loaded, world, actor, now, needs } = useProcTodayWorld()
   const { loading } = loaded
+  // The same gate as the RFQs page's «طرح طلب عروض أسعار جديد» (rfq-access.ts): whoever runs RFQs, the owner only without staff.
+  const runner = { ...loaded.actor, managesRfqs: can("rfq.manage") || can("rfq.create"), ownerHasTeam: loaded.actor.isOwner && needs.ownerHasTeam }
+  const canCreate = runsRfqs(runner) && (can("rfq.create") || can("projects.publish") || can("offers.accept") || can("po.approve"))
   const tasks = useMemo(() => todayTasks(world, actor, now), [world, actor, now])
   const waits = useMemo(() => todayWaits(world, actor, now), [world, actor, now])
   const arriving = useMemo(() => arrivingWithinWeek(world, now, ORDER_HREF, RECEIPT_HREF), [world, now])
@@ -109,7 +117,20 @@ export function ProcurementToday() {
 
   return (
     <div className="space-y-6">
-      <ProcurementHeader title={firstName ? t("page.greeting", { name: firstName }) : t("page.title")} description={t("page.subtitle")} />
+      <ProcurementHeader
+        title={firstName ? t("page.greeting", { name: firstName }) : t("page.title")}
+        description={t("page.subtitle")}
+        action={
+          canCreate ? (
+            <Button asChild className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90">
+              <Link href="/contractor/rfqs/new">
+                <Send size={16} aria-hidden="true" />
+                {tCon("rfqv_new")}
+              </Link>
+            </Button>
+          ) : undefined
+        }
+      />
 
       {loading ? (
         <div className="flex items-center justify-center p-16">

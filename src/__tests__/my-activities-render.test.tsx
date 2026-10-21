@@ -13,7 +13,8 @@ jest.mock("next-intl", () => ({
   useLocale: () => "en",
   useTranslations: () => (key: string, params?: Record<string, unknown>) => (params ? `${key}|${Object.values(params).join(",")}` : key),
 }))
-jest.mock("@/i18n/routing", () => ({ Link: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a> }))
+jest.mock("@/components/procurement/RaiseMaterialRequest", () => ({ RaiseMaterialRequest: () => null }))
+jest.mock("@/i18n/routing", () => ({ useRouter: () => ({ push: jest.fn() }), Link: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a> }))
 jest.mock("@/firebase", () => ({ useFirestore: () => ({}), useUser: () => ({ user: { uid: "u1", displayName: "Mona", email: "m@x.sa" } }) }))
 jest.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: jest.fn() }) }))
 jest.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ isOrgOwner: false }) }))

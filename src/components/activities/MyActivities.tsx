@@ -17,6 +17,8 @@ import { Input } from "@/components/ui/input"
 import { Chip } from "@/components/module-ui/Chip"
 import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { ActivityFormDialog } from "@/components/activities/ActivityFormDialog"
+import { RaiseMaterialRequest } from "@/components/procurement/RaiseMaterialRequest"
+import { useRouter } from "@/i18n/routing"
 import { ActivityRow, TYPE_ICON } from "@/components/activities/ActivityRow"
 import { QueueTaskRow } from "@/components/activities/QueueTaskRow"
 import { useUser } from "@/firebase"
@@ -55,6 +57,7 @@ export function MyActivities({ portal }: { portal: ActivityPortal }) {
   const { isOrgOwner } = usePermissions()
   const { loading, activities } = useMyActivities(organizationId || null, user?.uid)
   const { tasks } = useQueueTasks(organizationId || null, user?.uid, portal)
+  const router = useRouter()
   const [adding, setAdding] = useState(false)
   const [scope, setScope] = useState<Scope>("mine")
   const [view, setView] = useState<View>("list")
@@ -182,6 +185,7 @@ export function MyActivities({ portal }: { portal: ActivityPortal }) {
               <ViewButton active={view === "list"} onClick={() => chooseView("list")} icon={List} label={t("view_list")} />
               <ViewButton active={view === "kanban"} onClick={() => chooseView("kanban")} icon={LayoutGrid} label={t("view_kanban")} />
             </div>
+            {portal === "contractor" && <RaiseMaterialRequest orgId={organizationId || ""} onSent={() => router.push("/contractor/rfqs/my-requests")} />}
             <Button onClick={() => setAdding(true)}>
               <Plus size={16} className="me-1.5" aria-hidden="true" />
               {t("add")}

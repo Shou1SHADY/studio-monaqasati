@@ -144,14 +144,16 @@ export function SupplierRecipientsPicker({
   id?: string
   className?: string
   /** Per supplier: his on-time share (null = no record), an expired CR — no order will be approved for him —
-   * and why he may not be invited at all (`supplierSourcingBlock`): such a row is greyed and cannot be ticked. */
-  facts?: Map<string, { onTime: number | null; crExpired: boolean; block?: SourcingBlock | null }>
+   * and why he may not be invited at all (`supplierSourcingBlock`): such a row is greyed and cannot be ticked.
+   * `unverified`: one who joined through our invitation — he may be picked, with his «غير موثّق» tag (PUR-05),
+   * but «حدّد الكل» does not tick him for us. */
+  facts?: Map<string, { onTime: number | null; crExpired: boolean; block?: SourcingBlock | null; unverified?: boolean }>
 }) {
   const t = useTranslations("Portal.Contractor")
   const tp = useTranslations("Portal.Procurement")
   if (options.length === 0) return null
 
-  const invitable = options.filter((o) => !facts?.get(o.orgId)?.block).map((o) => o.orgId)
+  const invitable = options.filter((o) => !facts?.get(o.orgId)?.block && !facts?.get(o.orgId)?.unverified).map((o) => o.orgId)
   const allSelected = invitable.length > 0 && invitable.every((id) => selected.includes(id))
   const toggle = (orgId: string) =>
     onChange(selected.includes(orgId) ? selected.filter((s) => s !== orgId) : [...selected, orgId])
@@ -203,6 +205,7 @@ export function SupplierRecipientsPicker({
                     ) : (
                       facts.get(option.orgId)?.crExpired && <span className="text-destructive"> · {tp("rfqpo.form.cr_expired")}</span>
                     )}
+                    {!block && facts.get(option.orgId)?.unverified && <span className="font-semibold text-warning"> · {tp("rfqextras.sourcing.tag_unverified")}</span>}
                   </span>
                 )}
               </span>

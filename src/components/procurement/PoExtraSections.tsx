@@ -14,7 +14,7 @@ import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { collection } from "firebase/firestore"
-import { AlertTriangle, CheckCircle2, Clock, Loader2, Paperclip } from "lucide-react"
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock, Loader2, Paperclip } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -22,6 +22,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useModules } from "@/hooks/useCompanyModules"
 import { cn } from "@/lib/utils"
 import { withSarSign } from "@/lib/riyal"
 import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
@@ -84,7 +85,19 @@ export function XCallout({ tone, children }: { tone: Tone; children: ReactNode }
   )
 }
 
-function Box({ title, children }: { title: string; children: ReactNode }) {
+/** The order's next step, lines and notices stay open; the rest is FOLDED until asked for (PUR-07). */
+function Box({ title, children, folded, open }: { title: string; children: ReactNode; folded?: boolean; open?: boolean }) {
+  if (folded) {
+    return (
+      <details open={open} className="group rounded-xl border bg-card">
+        <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+          <h3 className="text-xs font-black text-muted-foreground">{title}</h3>
+          <ChevronDown size={14} className="text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <div className="space-y-3 border-t px-3 py-3">{children}</div>
+      </details>
+    )
+  }
   return (
     <section className="rounded-xl border bg-card">
       <header className="border-b px-3 py-2">
@@ -99,11 +112,11 @@ function Box({ title, children }: { title: string; children: ReactNode }) {
 // The document trail (R-20)
 // ---------------------------------------------------------------------------
 
-export function DocTrailSection({ po, deliveries, receiptNumber }: { po: PurchaseOrderX; deliveries: ReceiptFact[]; receiptNumber: (n: string) => string }) {
+export function DocTrailSection({ po, deliveries, receiptNumber, financeOn = true }: { po: PurchaseOrderX; deliveries: ReceiptFact[]; receiptNumber: (n: string) => string; financeOn?: boolean }) {
   const t = useTranslations("Portal.Procurement")
   const tProc = t
   const fmt = useDateText()
-  const steps = useMemo(() => docTrail(po, deliveries), [po, deliveries])
+  const steps = useMemo(() => docTrail(po, deliveries, financeOn), [po, deliveries, financeOn])
   const who = (s: TrailStep): string[] => {
     const out = s.key === "receipt" ? s.who.map(receiptNumber) : [...s.who]
     for (const f of s.flags) {
@@ -118,7 +131,7 @@ export function DocTrailSection({ po, deliveries, receiptNumber }: { po: Purchas
     return out
   }
   return (
-    <Box title={t("rfqpo.po.trail.title")}>
+    <Box title={t("rfqpo.po.trail.title")} folded>
       <ol className="space-y-2">
         {steps.map((s) => (
           <li key={s.key} className="flex gap-2 text-sm">
@@ -135,7 +148,7 @@ export function DocTrailSection({ po, deliveries, receiptNumber }: { po: Purchas
               {s.state === "ok" ? <CheckCircle2 size={12} /> : s.state === "bad" ? <AlertTriangle size={12} /> : <Clock size={12} />}
             </span>
             <div className="min-w-0">
-              <p className={cn("font-semibold", s.state === "todo" && "text-muted-foreground")}>{t(`rfqpo.po.trail.${s.key}`, { pct: Number(po.advancePercent) || 0 })}</p>
+              <p className={cn("font-semibold", s.state === "todo" && "text-muted-foreground")}>{t(`rfqpo.po.trail.${s.key === "advance" && !financeOn ? "advance_nofin" : s.key}`, { pct: Number(po.advancePercent) || 0 })}</p>
               <p className="text-[11px] text-muted-foreground">
                 {s.at ? fmt(s.at) : t("rfqpo.po.trail.not_yet")}
                 {who(s).length ? ` · ${who(s).join(" · ")}` : ""}
@@ -220,11 +233,14 @@ export function FinanceTrailSection({
   onHold,
   onRelease,
   lead,
+  canHold = isFinance,
 }: {
   po: PurchaseOrderX
   actor: ProcActor
   canDecide: boolean
   isFinance: boolean
+  /** «أوقف صرف فاتورة» is a PROCUREMENT decision (PUR-07): the owner and the order's approvers hold too, Finance included. */
+  canHold?: boolean
   onDecide: (hold: PoFinanceHold) => void
   /** The order's approver answers a higher price someone else asked for. */
   onAnswerPrice: (hold: PoFinanceHold, accept: boolean) => void
@@ -245,7 +261,7 @@ export function FinanceTrailSection({
   const pctOf = (v: number) => (commitment > 0 ? `${Math.round((v / commitment) * 100)}%` : "0%")
   const advPaid = (po.financePayments || []).find((p) => p.kind === "adv")
   return (
-    <Box title={t("rfqpo.po.money.title")}>
+    <Box title={t("rfqpo.po.money.title")} folded open={openHolds(po).length > 0}>
       {lead}
       <Row label={t("rfqpo.po.money.commitment")} hint={po.approvedAt ? t("rfqpo.po.money.commitment_hint", { date: fmt(po.approvedAt) }) : t("rfqpo.po.money.commitment_pending")}>
         <Money value={commitment} />
@@ -379,16 +395,18 @@ export function FinanceTrailSection({
           </div>
         )
       })}
-      {isFinance && po.approvedAt && po.status !== "cancelled" && (
+      {(isFinance || canHold) && po.approvedAt && po.status !== "cancelled" && (
         <div className="flex flex-wrap gap-2 border-t pt-3">
-          {onRecordPayment && (
+          {isFinance && onRecordPayment && (
             <Button size="sm" variant="outline" onClick={onRecordPayment}>
               {t("rfqpo.po.fin.record_payment")}
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={onHold}>
-            {t("rfqpo.po.fin.hold_invoice")}
-          </Button>
+          {canHold && (
+            <Button size="sm" variant="outline" onClick={onHold}>
+              {t("rfqpo.po.fin.hold_invoice")}
+            </Button>
+          )}
         </div>
       )}
       <p className="text-[11px] leading-relaxed text-muted-foreground">{t("rfqpo.po.money.footer")}</p>
@@ -408,7 +426,7 @@ export function ScheduleSection({ po, schedule, deliveries }: { po: PurchaseOrde
   const states = scheduleStates(schedule, po, deliveries, today)
   if (!schedule.length && !po.callOff) return null
   return (
-    <Box title={t("rfqpo.po.schedule.title")}>
+    <Box title={t("rfqpo.po.schedule.title")} folded>
       {po.callOff && !schedule.length ? (
         <p className="text-sm text-muted-foreground">{t("rfqpo.po.schedule.calloff")}</p>
       ) : (
@@ -598,7 +616,11 @@ export function OrderDeliveriesSections({
       {(notices.length > 0 || st === "in_delivery" || st === "part_received") && (
         <Box title={t("rfqpo.po.notices.title")}>{notices.length ? noticeRows : <p className="text-sm text-muted-foreground">{t("rfqpo.po.notices.none_yet")}</p>}</Box>
       )}
-      {receipts.length > 0 && <Box title={t("rfqpo.po.receipts.title")}>{receiptRows}</Box>}
+      {receipts.length > 0 && (
+        <Box title={t("rfqpo.po.receipts.title")} folded>
+          {receiptRows}
+        </Box>
+      )}
     </>
   )
 }
@@ -755,6 +777,7 @@ export function CancelWithFeeDialog({
   onSubmit: Submit<{ reason: string; fee: number | null }>
 }) {
   const t = useTranslations("Portal.Procurement")
+  const financeOn = useModules().on("payments")
   const schema = z.object({ reason: z.string().trim().min(1, t("rfqpo.reason_required")), fee: z.string().optional() })
   const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema), defaultValues: { reason: "", fee: "" } })
   useEffect(() => {
@@ -800,7 +823,7 @@ export function CancelWithFeeDialog({
           )}
           <ul className="space-y-1 rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
             <li>• {fromProjects ? t("rfqpo.po.cxl.effect_pm") : t("rfqpo.po.cxl.effect_needs")}</li>
-            <li>• {t("rfqpo.po.cxl.effect_revision")}</li>
+            <li>• {t(financeOn ? "rfqpo.po.cxl.effect_revision" : "rfqpo.po.cxl.effect_revision_nofin")}</li>
           </ul>
           <Foot onCancel={() => onOpenChange(false)} submitting={form.formState.isSubmitting} label={t("rfqpo.po.cxl.submit")} destructive />
         </form>

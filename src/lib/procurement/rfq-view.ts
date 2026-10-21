@@ -150,6 +150,8 @@ export interface RfqListLike extends RfqLike {
   id: string
   projectId?: string | null
   category?: string | null
+  /** The material tree's sub-categories it was written with (PUR-04). */
+  subCategoryIds?: string[] | null
   city?: string | null
   createdByUserId?: string | null
   contractorId?: string | null
@@ -199,7 +201,7 @@ export type RfqFilterKey = keyof RfqFilters
 
 function passes(rfq: RfqListLike, key: RfqFilterKey, value: string, now: Date): boolean {
   if (key === "project") return rfqProjectKeys(rfq).includes(value)
-  if (key === "category") return rfqCategories(rfq).includes(value)
+  if (key === "category") return rfqCategories(rfq).includes(value) || (Array.isArray(rfq.subCategoryIds) && rfq.subCategoryIds.includes(value))
   if (key === "city") return (rfq.city || "") === value
   return matchesDeadline(rfq, value as DeadlineFilter, now)
 }
@@ -303,11 +305,6 @@ export function bulkDeleteSplit<T extends BulkRfqLike>(rows: T[]): { drafts: T[]
     toCancel: rows.filter((r) => r.status === "New"),
     skipped: rows.filter((r) => r.status !== "Draft" && r.status !== "New"),
   }
-}
-
-export function bulkPublishPatch(rfq: BulkRfqLike, at: string): { status: "New"; visibility: "public" | "private"; publishedAt: string } | null {
-  if (rfq.status !== "Draft") return null
-  return { status: "New", visibility: rfq.visibility === "private" ? "private" : "public", publishedAt: at }
 }
 
 /** The companies that offered on each RFQ — a search for a supplier finds the RFQs he quoted on. */

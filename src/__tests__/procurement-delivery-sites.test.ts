@@ -1,4 +1,4 @@
-import { deliverySites, projectSiteId, siteLine, storedSites, upsertSite } from "@/lib/procurement/delivery-sites"
+import { deliverySites, linkedProjectId, orderDeliveryFields, projectSiteId, siteLine, storedSites, upsertSite } from "@/lib/procurement/delivery-sites"
 
 describe("delivery sites (PUR-10)", () => {
   const stored = storedSites([{ id: "s1", kind: "site", name: "موقع الدمام", city: "الدمام", district: "الشاطئ", address: "", receiverId: "r1" }, { bad: true }])
@@ -9,7 +9,7 @@ describe("delivery sites (PUR-10)", () => {
   it("adds the warehouses, and with Project Management the projects, once", () => {
     const all = deliverySites({ stored, warehouses: [{ id: "w1", name: "المستودع المركزي" }, { id: "w2", name: "مخزن المشروع", projectId: "p1" }], projects: [{ id: "p1", name: "مجمع الياسمين", location: "الرياض" }], pmOn: true })
     expect(all.map((s) => s.id).sort()).toEqual(["prj_p1", "s1", "wh_w1"])
-    expect(all.find((s) => s.id === projectSiteId("p1"))).toMatchObject({ kind: "project", city: "", address: "الرياض" })
+    expect(all.find((s) => s.id === projectSiteId("p1"))).toMatchObject({ kind: "project", city: "الرياض", district: "", address: "الرياض" })
   })
   it("shows no project without Project Management", () => {
     const all = deliverySites({ stored: [...stored, { id: "prj_p1", kind: "project", name: "x", city: "", district: "", address: "", receiverId: null, projectId: "p1" }], warehouses: [], projects: [{ id: "p1" }], pmOn: false })
@@ -34,5 +34,44 @@ describe("what is written back has no undefined field", () => {
     const stored = storedSites([{ id: "s1", kind: "site", name: "موقع", city: "الرياض", district: "", address: "" }])
     const next = upsertSite(stored, { id: "w1", kind: "warehouse", name: "المستودع", city: "الرياض", district: "", address: "", receiverId: null, retired: undefined })
     expect(next.some(hasUndefined)).toBe(false)
+  })
+})
+
+describe("a work site linked to a project (PUR-10)", () => {
+  const linked = storedSites([{ id: "s1", kind: "site", name: "مجمع الياسمين — 5 فلل", city: "الرياض", district: "الياسمين", address: "", projectId: "p1" }])
+
+  it("keeps the project it is linked to when read back", () => {
+    expect(linked[0].projectId).toBe("p1")
+    expect(linkedProjectId(linked[0])).toBe("p1")
+    expect(linkedProjectId({ kind: "warehouse", projectId: "p1" })).toBeNull()
+    expect(linkedProjectId({ kind: "site", projectId: null })).toBeNull()
+  })
+
+  it("is the project's site: the project does not join the list a second time", () => {
+    const all = deliverySites({ stored: linked, warehouses: [], projects: [{ id: "p1", name: "مجمع الياسمين" }, { id: "p2", name: "برج العليا" }], pmOn: true })
+    expect(all.map((s) => s.id).sort()).toEqual(["prj_p2", "s1"])
+  })
+
+  it("survives a save", () => {
+    expect(upsertSite([], { ...linked[0], city: "جدة" })[0]).toMatchObject({ projectId: "p1", city: "جدة" })
+  })
+})
+
+describe("the order keeps the district as well as the city (PUR-10)", () => {
+  it("takes the offer's place, and the RFQ's district while the city is the RFQ's", () => {
+    expect(orderDeliveryFields({}, { city: "الرياض", district: "الياسمين" })).toEqual({ deliveryLocation: "الرياض", deliveryDistrict: "الياسمين" })
+    expect(orderDeliveryFields({ deliveryLocation: "الرياض" }, { city: "الرياض", district: "الياسمين" })).toEqual({ deliveryLocation: "الرياض", deliveryDistrict: "الياسمين" })
+  })
+
+  it("never lends the RFQ's district to another city", () => {
+    expect(orderDeliveryFields({ deliveryLocation: "جدة" }, { city: "الرياض", district: "الياسمين" })).toEqual({ deliveryLocation: "جدة", deliveryDistrict: null })
+  })
+
+  it("the offer's own district wins", () => {
+    expect(orderDeliveryFields({ deliveryLocation: "جدة", deliveryDistrict: "الروضة" }, { city: "الرياض", district: "الياسمين" })).toEqual({ deliveryLocation: "جدة", deliveryDistrict: "الروضة" })
+  })
+
+  it("is null where nothing is known", () => {
+    expect(orderDeliveryFields({}, {})).toEqual({ deliveryLocation: null, deliveryDistrict: null })
   })
 })

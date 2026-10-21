@@ -207,7 +207,7 @@ describe("what the job forwards", () => {
   it("leaves a notice still inside the window, one with no receiver to send it to, and a signed-off delivery", async () => {
     seedNotice("far", { deliveryDate: "2026-09-30" })
     seedNotice("done", { status: "confirmed" })
-    seedNotice("old", { deliveryDate: "2026-08-01" })
+    seedNotice("old", { deliveryDate: "2026-06-01" })
     const noReceiver = await (await authed()).json()
     expect(noReceiver.data.forwarded).toBe(0)
     expect(links()).toHaveLength(0)
@@ -231,7 +231,20 @@ describe("what the job forwards", () => {
     expect(delivery("b1").forwardedTo).toMatchObject({ name: "Bandar", auto: true })
   })
 
-  it("notifies a receiver who is a member, with the link and i18n keys", async () => {
+  it("forwards a notice of any age when the place has exactly one receiver — and leaves it when a stand-in is all there is", async () => {
+    seedNotice("ancient", { deliveryDate: "2026-01-05" })
+    seedReceiver("relief", { warehouseIds: [] })
+    expect((await (await authed()).json()).data.forwarded).toBe(0)
+    expect(delivery("ancient").forwardedTo).toBeUndefined()
+
+    store.delete("procurementReceivers/relief")
+    seedReceiver("sole", { name: "Sole keeper", warehouseIds: ["central_org1"] })
+    expect((await (await authed()).json()).data.forwarded).toBe(1)
+    expect(delivery("ancient").forwardedTo).toMatchObject({ name: "Sole keeper", auto: true })
+  })
+
+  it("notifies a receiver who is a member in his own account — no link or code goes to him", async () => {
+    mockSend.mockClear()
     seedNotice("n1")
     seedReceiver("r1", { userId: "u1" })
     store.set("users/u1", { organizationId: ORG })
@@ -244,8 +257,11 @@ describe("what the job forwards", () => {
       deliveryId: "n1",
       i18n: { title: "pn_receipt_auto_forwarded_title", message: "pn_receipt_auto_forwarded", params: { supplier: "Al Rajhi" } },
     })
-    expect(String(note[0].data().link)).toBe(`/receive/${links()[0].data().token}`)
+    expect(note[0].data().link).toBe("/contractor/receive/n1")
+    expect(JSON.stringify(note[0].data())).not.toContain(String(links()[0].data().token))
+    expect(links()[0].data()).toMatchObject({ viaAccount: true, receiver: { kind: "user", userId: "u1" } })
     expect(delivery("n1").forwardedTo).toMatchObject({ userId: "u1", auto: true })
+    expect(mockSend).not.toHaveBeenCalled()
   })
 
   it("writes no notification for a receiver who has no account", async () => {
@@ -265,5 +281,6 @@ describe("what the job forwards", () => {
     const [msg] = mockSend.mock.calls[0]
     expect(msg.to).toBe("+966501234567")
     expect(msg.body).toContain(`/receive/${links()[0].data().token}`)
+    expect(links()[0].data().viaAccount).toBeUndefined()
   })
 })

@@ -1,31 +1,14 @@
 #!/usr/bin/env node
 // Builds public/data/material-tree.json from data/watad-catalog.json (Watad's public
 // /api/category, attached to Contractor-Procurement-Changes 1.5). The tree is taken as
-// it is (PUR-04) — only whitespace is collapsed, duplicate options dropped, and options
-// that are all "<number> <unit>" sorted by number. Run: node scripts/build-material-tree.mjs
+// it is (PUR-04) — only whitespace is collapsed. Every option is kept, in the source order.
+// Run: node scripts/build-material-tree.mjs
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs"
 
 const src = JSON.parse(readFileSync(new URL("../data/watad-catalog.json", import.meta.url), "utf8"))
 const clean = (s) => String(s ?? "").replace(/\s+/g, " ").trim()
 const text = (o) => ({ ar: clean(o.ar), en: clean(o.en) || clean(o.ar) })
-const leadNum = (s) => {
-  const m = /^(\d+(?:\.\d+)?)/.exec(s)
-  return m ? Number(m[1]) : null
-}
-
-function options(list) {
-  const seen = new Set()
-  const out = []
-  for (const o of list || []) {
-    const t = text(o)
-    const k = t.ar.replace(/\s+/g, "")
-    if (!t.ar || seen.has(k)) continue
-    seen.add(k)
-    out.push(t)
-  }
-  if (out.length > 1 && out.every((o) => leadNum(o.ar) != null)) out.sort((a, b) => leadNum(a.ar) - leadNum(b.ar))
-  return out
-}
+const options = (list) => (list || []).map(text).filter((o) => o.ar)
 
 function node(n) {
   return {

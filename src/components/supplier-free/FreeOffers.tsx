@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils"
 import { Chip } from "@/components/module-ui/Chip"
 import { r2, type OfferSeg } from "@/lib/supplier-free/deal-logic"
 import { PAGE_SIZE, type OfferFilter } from "@/lib/supplier-free/world-logic"
-import type { Deal } from "@/lib/supplier-free/types"
+import type { Deal, QuoteVersion } from "@/lib/supplier-free/types"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { actionBtn, SearchBox, FreePage, GroupHead, Pill, ShowMore, ViewToggle, VerifiedMark, docWord, stk, useQueryState, useRowGo, useViewMode, type PageKpi } from "./ui"
 import { OfferPill } from "./Pills"
@@ -28,6 +28,13 @@ const GROUPS: { k: string; seg: OfferSeg; tone: "a" | "b" | "g" | "m"; sum: bool
   { k: "osWon", seg: "won", tone: "g", sum: true },
   { k: "osLost", seg: "lost", tone: "m", sum: false },
 ]
+
+/** «Covers N of M» when the quote leaves some of the request's items unpriced. */
+function coverageOf(d: Deal, v: QuoteVersion | null): { n: number; of: number } | null {
+  if (d.pricing !== "item" || !v || d.items.length < 2) return null
+  const n = d.items.filter((i) => v.prices[i.id] != null).length
+  return n > 0 && n < d.items.length ? { n, of: d.items.length } : null
+}
 
 function hint(f: Free, d: Deal): { txt: string; tone?: "bad" | "warn" | "mute" } {
   const { t, fmt, L, rel } = f
@@ -85,6 +92,7 @@ function OfferCard({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, 
   const h = hint(f, d)
   const v = L.curV(d)
   if (!o) return null
+  const part = coverageOf(d, v)
   const ver = o.v.length > 1 ? ` · ${t("ocVer", { n: o.v.length })}` : ""
   const foot = L.offerSt(d) === "sample" && o.sample ? t("ocSampleWhat", { w: o.sample.what }) : (g === "reply" || g === "wait") && v ? t("ocValidTill", { x: fmt.date(v.valid) }) : why(f, d)
   const edge = g === "reply" ? "border-s-4 border-s-warning" : g === "won" ? "border-s-4 border-s-success" : g === "lost" ? "border-s-4 border-s-muted-foreground/40" : ""
@@ -93,6 +101,7 @@ function OfferCard({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, 
       <div className="flex flex-wrap items-center gap-1.5">
         <OfferPill f={f} d={d} />
         {L.isNewResult(d) && <StatusPill tone="info">{t("newTag")}</StatusPill>}
+        {part && <StatusPill tone="warn">{t("partialOffer", part)}</StatusPill>}
         <span className="flex-1" />
         {h.tone ? <Pill tone={h.tone} dot>{h.txt}</Pill> : <span className="text-[11px] text-muted-foreground">{h.txt}</span>}
       </div>
@@ -139,6 +148,7 @@ function OfferRow({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, s
         <span>
           <b className="tabular-nums" dir="ltr">{fmt.money(L.offerTotal(d))}</b>
           <span className="block text-xs text-muted-foreground">{L.offerSt(d) === "reduce" && o.reduce ? t("ocAsk", { v: fmt.money(o.reduce.target) }) : t("beforeVat")}</span>
+          {coverageOf(d, v) && <span className="block text-xs font-semibold text-warning">{t("partialOffer", coverageOf(d, v) as { n: number; of: number })}</span>}
         </span>
       </td>
       <td className="hidden whitespace-nowrap px-3 text-xs lg:table-cell">

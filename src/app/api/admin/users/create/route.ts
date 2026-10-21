@@ -4,6 +4,7 @@ import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { sendEmail, buildAccountCreatedEmail } from "@/lib/email"
 import { COMPANY_MODULES, SALES_ONLY_OFF } from "@/lib/company-modules"
+import { serverMaterialTree } from "@/lib/materials/tree-server"
 
 // Admin-only account creation. This is the sole way a Contractor/Supplier
 // account can come into existence now that public self-registration has
@@ -17,15 +18,16 @@ const bodySchema = z
     email: z.string().trim().toLowerCase().email(),
     phone: z.string().trim().max(30).optional(),
     role: z.enum(["Contractor", "Supplier"]),
-    specializations: z.array(z.string().trim().min(1)).optional(),
+    /** A supplier's specialties: sub-categories of the material tree (PUR-04), by id. */
+    specialtyIds: z.array(z.string().trim().min(1).max(64)).max(120).optional(),
     leadId: z.string().trim().min(1).optional(),
     leadCollection: z.enum(["demoRequests", "onboardingRequests"]).optional(),
     /** A supplier that only sells starts with CRM, Inventory, Finance, HR and Manufacturing switched off. */
     salesOnly: z.boolean().optional(),
   })
-  .refine((data) => data.role !== "Supplier" || (data.specializations && data.specializations.length > 0), {
+  .refine((data) => data.role !== "Supplier" || (data.specialtyIds && data.specialtyIds.length > 0), {
     message: "At least one specialization is required for supplier accounts",
-    path: ["specializations"],
+    path: ["specialtyIds"],
   })
   .refine((data) => !data.leadId || !!data.leadCollection, {
     message: "leadCollection is required when leadId is provided",
@@ -63,7 +65,12 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return errorResponse(parsed.error.issues[0]?.message || "Invalid input", "INVALID_INPUT", 400)
     }
-    const { name, email, phone, role, specializations, leadId, leadCollection } = parsed.data
+    const { name, email, phone, role, leadId, leadCollection } = parsed.data
+    const specialtyIds = role === "Supplier" ? [...new Set(parsed.data.specialtyIds)] : []
+    if (specialtyIds.length) {
+      const known = new Set((await serverMaterialTree(db)).subs.map((x) => x.id))
+      if (specialtyIds.some((id) => !known.has(id))) return errorResponse("Unknown specialization", "INVALID_INPUT", 400)
+    }
 
     // --- Create the Auth account (no password — the user sets their own) ---
     const adminAuth = getAdminAuth()
@@ -89,7 +96,8 @@ export async function POST(req: NextRequest) {
         role,
         organizationId: uid,
         organizationRole: "owner",
-        specializations: role === "Supplier" ? specializations : [],
+        specializations: [],
+        specialtyIds,
         providers: ["password"],
         isVerified: true,
         profileCompleted: false,

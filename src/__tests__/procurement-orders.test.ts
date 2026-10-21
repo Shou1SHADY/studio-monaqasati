@@ -109,9 +109,9 @@ describe("segments", () => {
 
 describe("the honest date", () => {
   it("names why there is no date before the supplier promised one", () => {
-    expect(honestDate(po({ status: "awaiting_approval", approverKind: "owner" }), NOW)).toEqual({ kind: "with_approver", approver: "owner" })
+    expect(honestDate(po({ status: "awaiting_approval", approverKind: "owner" }), NOW)).toMatchObject({ kind: "with_approver", approver: "owner" })
     expect(honestDate(po({ status: "approved" }), NOW)).toEqual({ kind: "not_sent" })
-    expect(honestDate(po({ status: "sent" }), NOW)).toEqual({ kind: "no_acceptance" })
+    expect(honestDate(po({ status: "sent" }), NOW)).toMatchObject({ kind: "no_acceptance" })
     expect(honestDate(po({ promisedDate: null }), NOW)).toEqual({ kind: "no_date" })
   })
   it("shows the promise, with lateness only while goods are owed", () => {

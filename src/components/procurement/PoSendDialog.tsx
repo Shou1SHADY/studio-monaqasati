@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
+import { useModules } from "@/hooks/useCompanyModules"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -52,6 +53,7 @@ export function PoSendDialog({
 }) {
   const t = useTranslations("Portal.ProcOrders")
   const tProc = useTranslations("Portal.Procurement")
+  const financeOn = useModules().on("payments")
   const locale = useLocale() as "ar" | "en"
   const firestore = useFirestore()
   const { toast } = useToast()
@@ -148,7 +150,7 @@ export function PoSendDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader className="text-start">
           <DialogTitle>{t("send.title")}</DialogTitle>
-          <DialogDescription>{t("send.desc", { supplier: po.supplierName })}</DialogDescription>
+          <DialogDescription>{t(financeOn ? "send.desc" : "send.desc_nofin", { supplier: po.supplierName })}</DialogDescription>
         </DialogHeader>
         <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
           <p className="font-bold" dir="auto">
@@ -170,7 +172,7 @@ export function PoSendDialog({
         {po.approvedAt && (
           <p className="flex gap-2 rounded-lg border border-success/30 bg-success/5 px-3 py-2 text-xs leading-relaxed text-foreground/90">
             <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
-            {tProc("rfqpo.po.send_approved_by", { name: po.approvedByName || po.preparedByName, date: fmt(po.approvedAt) })}
+            {tProc(financeOn ? "rfqpo.po.send_approved_by" : "rfqpo.po.send_approved_by_nofin", { name: po.approvedByName || po.preparedByName, date: fmt(po.approvedAt) })}
           </p>
         )}
         <Form {...form}>

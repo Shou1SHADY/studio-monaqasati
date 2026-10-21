@@ -25,6 +25,8 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useModules } from "@/hooks/useCompanyModules"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { displayPoNumber } from "@/lib/procurement/format"
+import { NO_SITE, inSiteFilter, orderSiteIds } from "@/lib/procurement/site-counts"
+import { useDeliverySiteList } from "@/hooks/useDeliverySiteList"
 import { poValue } from "@/lib/procurement/po"
 import { advanceState, asX, inProjectFilter, netQuantity, openHolds, poProjectKeys, poRevision } from "@/lib/procurement/po-extras"
 import { GENERAL_STOCK, WORKSHOP, poInScope } from "@/lib/procurement/rfq-view"
@@ -81,18 +83,29 @@ export default function PurchaseOrdersPage() {
   const { data: projectDocs } = useCollection<{ name?: string }>(projectsQ)
   const projectNames = useMemo(() => new Map((projectDocs || []).map((p) => [p.id, p.name || ""])), [projectDocs])
   const keysById = useMemo(() => new Map(orders.map((o) => [o.id, poProjectKeys(o, world.rfqs as Array<{ id: string; products?: Array<{ projectId?: string | null }> | null }>)])), [orders, world.rfqs])
-  const keysOf = (o: PurchaseOrder) => keysById.get(o.id) || []
+  const keysOf = (o: PurchaseOrder) => (pmOn ? keysById.get(o.id) || [] : siteIdsById.get(o.id) || [])
   const projectLabel = (key: string): string => {
+    if (!pmOn) return siteLabel(key)
     if (key === GENERAL_STOCK) return tp("rfqpo.list.general_stock")
     if (key === WORKSHOP) return tp("rfqpo.list.workshop")
     return projectNames.get(key) || orders.find((o) => o.projectId === key)?.projectName || tp("rfqpo.list.project_unknown")
   }
   const [project, setProject] = useState("all")
   const projectOptions = useMemo(() => Array.from(new Set(Array.from(keysById.values()).flat().filter((k) => k !== GENERAL_STOCK && k !== WORKSHOP))), [keysById])
-  const inProject = useMemo(() => orders.filter((o) => inProjectFilter(keysById.get(o.id) || [], project)), [orders, keysById, project])
+  // Without Project Management the list answers to the delivery site instead of the project (PUR-10).
+  const { sites: siteList } = useDeliverySiteList(world.orgId, pmOn, !pmOn)
+  const siteIdsById = useMemo(() => new Map(orders.map((o) => [o.id, orderSiteIds(o, world.rfqs as Array<{ id: string; products?: Array<{ deliverySiteId?: string | null }> | null }>)])), [orders, world.rfqs])
+  const siteOptions = useMemo(() => Array.from(new Set(Array.from(siteIdsById.values()).flat())), [siteIdsById])
+  const siteLabel = (id: string) => siteList.find((x) => x.id === id)?.name || tp("rfqpo.list.site_unknown")
+  const [site, setSite] = useState("all")
+  const inProject = useMemo(
+    () => orders.filter((o) => (pmOn ? inProjectFilter(keysById.get(o.id) || [], project) : inSiteFilter(siteIdsById.get(o.id) || [], site))),
+    [orders, keysById, project, pmOn, siteIdsById, site]
+  )
 
-  const counts = useMemo(() => segmentCounts(inProject, now), [inProject, now])
-  const shown = useMemo(() => visibleOrders(inProject, segment, search, now, (n) => displayPoNumber(n, locale)), [inProject, segment, search, now, locale])
+  const notices = world.deliveries
+  const counts = useMemo(() => segmentCounts(inProject, now, notices), [inProject, now, notices])
+  const shown = useMemo(() => visibleOrders(inProject, segment, search, now, (n) => displayPoNumber(n, locale), notices), [inProject, segment, search, now, locale, notices])
 
   // `?po=<id>` opens the drawer; opening and closing keep the address in step,
   // so a refresh lands on the same order and a copied link opens it.
@@ -141,6 +154,25 @@ export default function PurchaseOrdersPage() {
                 <FileSpreadsheet size={15} aria-hidden="true" />
                 {t("export.open")}
               </Button>
+            )}
+            {!pmOn && (siteOptions.length > 0 || site !== "all") && (
+              <Select value={site} onValueChange={setSite}>
+                <SelectTrigger className="h-10 w-48 rounded-xl bg-card text-sm" aria-label={t("site_filter")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("site_all")}</SelectItem>
+                  {siteOptions
+                    .map((id) => ({ id, name: siteLabel(id) }))
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((x) => (
+                      <SelectItem key={x.id} value={x.id}>
+                        {x.name}
+                      </SelectItem>
+                    ))}
+                  <SelectItem value={NO_SITE}>{t("site_none")}</SelectItem>
+                </SelectContent>
+              </Select>
             )}
             {pmOn && (
             <Select value={project} onValueChange={setProject}>
@@ -229,13 +261,13 @@ export default function PurchaseOrdersPage() {
                         </ul>
                       </td>
                       <td className="px-4 py-3 align-top text-xs">
-                        <HonestDateText po={po} now={now} />
+                        <HonestDateText po={po} now={now} notices={notices} />
                       </td>
                       <td className="px-4 py-3 align-top">
                         <Money value={poValue(po)} masked={!actor.seesPrices} className="font-bold" />
                       </td>
                       <td className="px-4 py-3 align-top">
-                        <PoStatusPill po={po} now={now} />
+                        <PoStatusPill po={po} now={now} notices={notices} />
                         <RowNotes po={po} />
                       </td>
                     </tr>
@@ -280,8 +312,8 @@ export default function PurchaseOrdersPage() {
                       {po.lines.length > 3 && <li className="text-[11px] text-muted-foreground">{t("more_lines", { count: po.lines.length - 3 })}</li>}
                     </ul>
                     <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <PoStatusPill po={po} now={now} />
-                      <HonestDateText po={po} now={now} />
+                      <PoStatusPill po={po} now={now} notices={notices} />
+                      <HonestDateText po={po} now={now} notices={notices} />
                     </div>
                     <RowNotes po={po} />
                   </button>
@@ -321,11 +353,12 @@ function ProjectChips({ keys, label }: { keys: string[]; label: (key: string) =>
 /** Held invoice, unpaid advance, budget referred to Projects — the prototype's row notes, on both layouts. */
 function RowNotes({ po }: { po: PurchaseOrder }) {
   const tp = useTranslations("Portal.Procurement")
+  const financeOn = useModules().on("payments")
   const px = asX(po)
   return (
     <>
-      {openHolds(px).length > 0 && <p className="mt-1 text-[11px] text-destructive">{tp("rfqpo.po.row_held")}</p>}
-      {advanceState(px) === "requested" && <p className="mt-1 text-[11px] text-muted-foreground">{tp("rfqpo.po.row_advance")}</p>}
+      {financeOn && openHolds(px).length > 0 && <p className="mt-1 text-[11px] text-destructive">{tp("rfqpo.po.row_held")}</p>}
+      {advanceState(px) === "requested" && <p className="mt-1 text-[11px] text-muted-foreground">{tp(financeOn ? "rfqpo.po.row_advance" : "rfqpo.po.row_advance_nofin")}</p>}
       {px.pmBudget?.state === "pending" && <p className="mt-1 text-[11px] text-warning">{tp("rfqpo.po.row_budget")}</p>}
     </>
   )

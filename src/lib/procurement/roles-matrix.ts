@@ -1,8 +1,10 @@
 // Settings → «الأدوار» (Procurement 1.5, PUR-08): what each Procurement role does, in the
 // customer's words, as the screens and the server apply it. The owner holds every act unless
 // he stepped back (question 1). What follows the package shows by it: «يعلّم الدفع» only
-// without Finance, «يرفع طلب مواد» only without Project Management. Receiving is not a
-// Procurement act, nor paying while Finance is in the company. Pure.
+// without Finance, «يرفع طلب مواد» only without Project Management — and then every column
+// holds it, the expediter's included: any member raises one from his tasks or «طلباتي»
+// (`/contractor/rfqs/my-requests`), whatever tabs he can open. Receiving is not a Procurement
+// act, nor paying while Finance is in the company. Pure.
 
 export const ROLE_COLUMNS = ["owner", "manager", "buyer", "expediter"] as const
 export type RoleColumn = (typeof ROLE_COLUMNS)[number]

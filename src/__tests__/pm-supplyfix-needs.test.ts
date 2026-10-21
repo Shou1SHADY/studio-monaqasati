@@ -75,19 +75,19 @@ describe("Inventory's reply is read per request line", () => {
 
   it("A issued in full, B unanswered: B's 50 is still to buy", () => {
     const n = projectNeed(project, doc([onA({ k: "issue", q: 100, kept: 0, on: "2026-09-21" }), onB()]), "PR-01")
-    expect(n.lines).toEqual([{ name: "Cement", unit: "bag", quantity: 50, itemId: "B" }])
+    expect(n.lines).toEqual([{ name: "Cement", unit: "bag", quantity: 50, itemId: "B", requestLine: 1 }])
   })
 
   it("A issued in full, B kept 30: 30 is bought — not 60", () => {
     const n = projectNeed(project, doc([onA({ k: "issue", q: 100, kept: 0, on: "2026-09-21" }), onB({ k: "issue", q: 20, kept: 30, on: "2026-09-21" })]), "PR-01")
-    expect(n.lines).toEqual([{ name: "Cement", unit: "bag", quantity: 30, itemId: "B" }])
+    expect(n.lines).toEqual([{ name: "Cement", unit: "bag", quantity: 30, itemId: "B", requestLine: 1 }])
     expect(n.lines.reduce((a, l) => a + l.quantity, 0)).toBe(30)
   })
 
   it("a refused change in between does not shift the reply onto its neighbour", () => {
     const lines = [line({ itemId: "A", qty: 10, chg: { st: "no" } }), onA({ k: "issue", q: 100, kept: 0, on: "2026-09-21" }), line({ itemId: "A", qty: 25 })]
     const n = projectNeed(project, doc(lines), "PR-01")
-    expect(n.lines).toEqual([{ name: "Cement", unit: "bag", quantity: 25, itemId: "A" }])
+    expect(n.lines).toEqual([{ name: "Cement", unit: "bag", quantity: 25, itemId: "A", requestLine: 2 }])
   })
 })
 

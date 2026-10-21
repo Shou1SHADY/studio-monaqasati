@@ -45,6 +45,8 @@ export interface ReceiptLink {
   organizationId: string
   receiver: Receiver
   status: LinkStatus
+  /** The receiver is a member: the link is only the receipt's session, opened from his own task and signed with his sign-in. Nothing is sent to anyone. */
+  viaAccount?: boolean
   createdById: string
   createdByName: string
   createdAt: string

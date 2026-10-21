@@ -25,6 +25,8 @@ import { cn } from "@/lib/utils"
 import { brandsOf, label, shortSpecName, specsOf, type MaterialIndex } from "@/lib/materials/tree"
 import type { MaterialPick, MaterialSpec, MaterialText } from "@/lib/materials/types"
 
+const optionKey = (o: MaterialText) => `${o.ar}|${o.en}`
+
 const cellClass =
   "inline-flex min-h-8 items-center gap-1 rounded-md border bg-background px-2 text-xs transition-colors hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
@@ -76,9 +78,9 @@ export function MaterialSpecCells({ index, pick, onChange, readOnly }: { index: 
               </b>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
-              <DropdownMenuRadioGroup value={v.value.ar} onValueChange={(val) => setSpec(s, s.options.find((o) => o.ar === val) || null)}>
-                {s.options.map((o) => (
-                  <DropdownMenuRadioItem key={o.ar} value={o.ar}>
+              <DropdownMenuRadioGroup value={optionKey(v.value)} onValueChange={(val) => setSpec(s, s.options.find((o) => optionKey(o) === val) || null)}>
+                {s.options.map((o, i) => (
+                  <DropdownMenuRadioItem key={`${optionKey(o)}-${i}`} value={optionKey(o)}>
                     <span dir="auto">{label(o, locale)}</span>
                   </DropdownMenuRadioItem>
                 ))}
@@ -121,8 +123,8 @@ export function MaterialSpecCells({ index, pick, onChange, readOnly }: { index: 
           {unchosen.map((s) => (
             <div key={s.ar}>
               <DropdownMenuLabel className="text-xs">{label(shortSpecName(s), locale)}</DropdownMenuLabel>
-              {s.options.slice(0, 14).map((o) => (
-                <DropdownMenuItem key={o.ar} onSelect={() => setSpec(s, o)}>
+              {s.options.slice(0, 14).map((o, i) => (
+                <DropdownMenuItem key={`${optionKey(o)}-${i}`} onSelect={() => setSpec(s, o)}>
                   <span dir="auto">{label(o, locale)}</span>
                 </DropdownMenuItem>
               ))}

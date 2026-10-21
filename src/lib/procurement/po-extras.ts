@@ -152,6 +152,8 @@ export interface PoExtras {
   noticeCopyTo?: string[] | null
   /** Closed by Finance's payment write (prototype `POST.closed`), not by Procurement. */
   closedByPayment?: boolean | null
+  /** Without Finance (PUR-10): the day the advance was marked paid — the supplier's date counts from it. */
+  advancePaidDay?: string | null
 }
 
 /** Referred by Procurement (`pending`, with the overrun), answered by the project's manager. */
@@ -194,7 +196,7 @@ export type AdvanceState = "none" | "pending" | "requested" | "paid"
  * request) · paid. The supplier's lead time starts when it is paid. */
 export function advanceState(po: PurchaseOrderX): AdvanceState {
   if (!pct(po.advancePercent)) return "none"
-  if ((po.financePayments || []).some((p) => p.kind === "adv")) return "paid"
+  if ((po.financePayments || []).some((p) => p.kind === "adv") || po.advancePaidDay) return "paid"
   if (po.status === "cancelled") return "none"
   return po.approvedAt ? "requested" : "pending"
 }
@@ -265,7 +267,9 @@ export interface TrailStep {
   flags: string[]
 }
 
-export function docTrail(po: PurchaseOrderX, deliveries: Array<ReceiptFact & { poId?: string | null }>): TrailStep[] {
+/** `financeOn` false (PUR-10): no Finance step, no Finance advance owner and no Finance invoice step —
+ * the company's accounting is elsewhere, and the trail names only what happens here. */
+export function docTrail(po: PurchaseOrderX, deliveries: Array<ReceiptFact & { poId?: string | null }>, financeOn = true): TrailStep[] {
   const st = poStatus(po)
   const mine = deliveries.filter((d) => d.poId === po.id)
   const notices = mine.filter((d) => d.status === "pending_confirmation")
@@ -276,7 +280,7 @@ export function docTrail(po: PurchaseOrderX, deliveries: Array<ReceiptFact & { p
   const steps: TrailStep[] = [
     { key: "prepared", at: po.createdAt || null, who: [po.preparedByName], state: "ok", flags: [] },
     { key: "approved", at: po.approvedAt || null, who: po.approvedByName ? [po.approvedByName] : [], state: approved ? "ok" : waiting ? "now" : "todo", flags: po.selfIssued ? ["self_issued"] : [] },
-    { key: "finance", at: po.approvedAt || null, who: [], state: approved ? "ok" : "todo", flags: [] },
+    ...(financeOn ? [{ key: "finance", at: po.approvedAt || null, who: [], state: approved ? "ok" : "todo", flags: [] } satisfies TrailStep] : []),
     {
       key: "sent",
       at: po.sentAt || null,
@@ -289,7 +293,7 @@ export function docTrail(po: PurchaseOrderX, deliveries: Array<ReceiptFact & { p
   const adv = advanceState(po)
   if (adv !== "none") {
     const paid = (po.financePayments || []).find((p) => p.kind === "adv")
-    steps.push({ key: "advance", at: paid ? paid.valueDate : null, who: [paid ? paid.no : advanceNumber(po)], state: adv === "paid" ? "ok" : adv === "requested" ? "now" : "todo", flags: [] })
+    steps.push({ key: "advance", at: paid ? paid.valueDate : po.advancePaidDay || null, who: financeOn ? [paid ? paid.no : advanceNumber(po)] : [], state: adv === "paid" ? "ok" : adv === "requested" ? "now" : "todo", flags: [] })
   }
   const live = st === "in_delivery" || st === "part_received"
   steps.push({
@@ -306,6 +310,7 @@ export function docTrail(po: PurchaseOrderX, deliveries: Array<ReceiptFact & { p
     state: st === "received" || st === "closed" ? "ok" : st === "part_received" ? "now" : "todo",
     flags: [],
   })
+  if (!financeOn) return steps
   const holds = openHolds(po)
   const lastPay = paymentsNewestFirst(po).find((p) => p.kind !== "adv")
   steps.push({

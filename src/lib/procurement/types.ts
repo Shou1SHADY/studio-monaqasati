@@ -197,6 +197,7 @@ export interface PurchaseOrder {
   vatRate: number // 0.15
   paymentTerms?: string | null
   deliveryLocation?: string | null
+  deliveryDistrict?: string | null
   /** What the offer said about lead time, in days, when it said anything. */
   leadTimeDays?: number | null
 

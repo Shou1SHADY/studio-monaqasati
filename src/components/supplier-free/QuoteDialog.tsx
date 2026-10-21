@@ -93,7 +93,7 @@ function Form({ f, d, mode, onClose, onDone }: { f: ReturnType<typeof useFree>; 
   const terms = d.terms || d.po?.terms
   const reduce = mode === "reduce" && d.offer?.reduce ? d.offer.reduce : null
 
-  const blockText = (b: (typeof check.blocks)[number]) => (b.code === "zero" ? t("blkZero", { i: b.item || "" }) : t(`blk${b.code[0].toUpperCase()}${b.code.slice(1)}` as "blkTotal"))
+  const blockText = (b: (typeof check.blocks)[number]) => (b.code === "zero" || b.code === "unmarked" ? t(b.code === "zero" ? "blkZero" : "blkUnmarked", { i: b.item || "" }) : t(`blk${b.code[0].toUpperCase()}${b.code.slice(1)}` as "blkTotal"))
   const set = (patch: Partial<QuoteValues>) => setV((x) => ({ ...x, ...patch }))
 
   const submit = async (e: FormEvent) => {

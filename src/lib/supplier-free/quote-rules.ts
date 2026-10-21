@@ -19,7 +19,7 @@ export interface QuoteValues {
   note: string
 }
 
-export type QuoteBlock = "total" | "zero" | "oneItem" | "deadline" | "valid"
+export type QuoteBlock = "total" | "zero" | "unmarked" | "oneItem" | "deadline" | "valid"
 
 export interface QuoteCheck {
   blocks: { code: QuoteBlock; item?: string }[]
@@ -48,6 +48,7 @@ export function quoteBlocks(deal: QuoteShape, v: QuoteValues, mode: QuoteMode, L
     if (!(t > 0)) blocks.push({ code: "total" })
   } else {
     let priced = 0
+    const unmarked: string[] = []
     for (const i of deal.items) {
       if (v.skip[i.id]) {
         lines[i.id] = null
@@ -57,6 +58,7 @@ export function quoteBlocks(deal: QuoteShape, v: QuoteValues, mode: QuoteMode, L
       const p = toAmount(raw)
       if (raw === "") {
         lines[i.id] = null
+        unmarked.push(i.name)
         continue
       }
       if (p <= 0) {
@@ -68,7 +70,9 @@ export function quoteBlocks(deal: QuoteShape, v: QuoteValues, mode: QuoteMode, L
       lines[i.id] = r2(p * i.qty)
       net += p * i.qty
     }
+    // An item is priced or marked «not supplied» (PUR-03): a blank one is a forgotten field, named so he can fix it.
     if (!priced) blocks.push({ code: "oneItem" })
+    else for (const name of unmarked) blocks.push({ code: "unmarked", item: name })
   }
   // A reply to a price cut runs on its own clock (reply-by), never on the expired submission deadline.
   if (mode !== "reduce" && deal.deadline && L.daysTo(deal.deadline) < 0) blocks.push({ code: "deadline" })

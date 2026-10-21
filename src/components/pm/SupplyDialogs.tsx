@@ -39,7 +39,8 @@ import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { MaterialSearchInput } from "@/components/materials/MaterialSearchInput"
 import { MaterialBrowserDialog, type BrowserResult } from "@/components/materials/MaterialBrowserDialog"
 import { useMaterialTree } from "@/hooks/useMaterialTree"
-import { label as treeLabel, unitsOf, type MaterialHit } from "@/lib/materials/tree"
+import { label as treeLabel, pickOf, unitsOf, type MaterialHit } from "@/lib/materials/tree"
+import type { MaterialPick } from "@/lib/materials/types"
 
 export type SupplyItem = StoreItem & { division?: string; pmSample?: boolean | null; pmSub?: string | null; estCost?: number }
 
@@ -86,7 +87,7 @@ export function useProjectOrderFacts(projectId: string, orgId: string | null | u
 
 // ── A new request ────────────────────────────────────────────────────────────
 
-type LineState = { itemId: string; mat: string; name: string; unit: string; unitOther?: boolean; q: string; why: string }
+type LineState = { itemId: string; mat: string; name: string; unit: string; unitOther?: boolean; material?: MaterialPick | null; q: string; why: string }
 const GEN = "_gen"
 const NEW = "__new"
 /** A general line's pick from the Inventory catalogue (`cat:` + material key). */
@@ -144,7 +145,7 @@ export function NewRequestDialog({
     const name = picked ? picked.name : l.name.trim()
     const unit = picked ? picked.unit : l.unit.trim()
     if (!name || !unit || !(q > 0)) return null
-    return { itemId: l.itemId === GEN ? null : l.itemId, name, unit, qty: q, why: l.why }
+    return { itemId: l.itemId === GEN ? null : l.itemId, name, unit, qty: q, why: l.why, ...(!picked && l.material ? { material: l.material } : {}) }
   }
   const drafts = lines.map(resolve)
   const ok = drafts.some(Boolean) && needBy >= today
@@ -243,31 +244,32 @@ export function TreeMaterialField({ name, units, onChange }: { name: string; uni
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const { index } = useMaterialTree()
-  const [browse, setBrowse] = useState<string | null>(null)
-  const take = (n: string, unit: string | null) => onChange(unit ? { name: n, unit, unitOther: !units.includes(unit) } : { name: n })
+  const [browse, setBrowse] = useState<{ query: string; freeText: string | null } | null>(null)
+  const take = (n: string, unit: string | null, material: MaterialPick | null) => onChange(unit ? { name: n, unit, unitOther: !units.includes(unit), material } : { name: n, material })
   const fromHit = (hit: MaterialHit) => {
     const specs = hit.preset.map((p) => treeLabel(p.value, locale)).join(" ")
     const u = index ? unitsOf(index, hit.node.id)[0] : undefined
-    take([treeLabel(hit.node, locale), specs].filter(Boolean).join(" "), u ? treeLabel(u, locale) : null)
+    const material = index ? pickOf(index, hit.node.id, hit.preset.map((p) => ({ name: { ar: p.spec.ar, en: p.spec.en }, value: p.value }))) : null
+    take([treeLabel(hit.node, locale), specs].filter(Boolean).join(" "), u ? treeLabel(u, locale) : null, material)
   }
   const fromBrowser = (r: BrowserResult) => {
     const leaf = r.pick.path[r.pick.path.length - 1]
-    take(r.name || (leaf ? treeLabel(leaf, locale) : ""), r.unit ? treeLabel(r.unit, locale) : null)
+    take(r.name || (leaf ? treeLabel(leaf, locale) : ""), r.unit ? treeLabel(r.unit, locale) : null, r.pick)
     setBrowse(null)
   }
   if (name)
     return (
       <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <Input aria-label={t("sup.form.mat_name")} dir="auto" className="h-9 min-w-0 flex-1" value={name} onChange={(e) => onChange({ name: e.target.value })} />
-        <Button type="button" size="sm" variant="ghost" className="h-9 shrink-0 text-xs" onClick={() => onChange({ name: "" })}>
+        <Button type="button" size="sm" variant="ghost" className="h-9 shrink-0 text-xs" onClick={() => onChange({ name: "", material: null })}>
           {t("sup.form.mat_change")}
         </Button>
       </span>
     )
   return (
     <>
-      <MaterialSearchInput index={index} onPick={fromHit} onBrowse={(q) => setBrowse(q)} onFreeText={(text) => take(text, null)} placeholder={t("sup.form.mat_name")} ariaLabel={t("sup.form.mat_name")} className="min-w-0 flex-1" />
-      <MaterialBrowserDialog open={browse != null} onOpenChange={(o) => !o && setBrowse(null)} index={index} initialQuery={browse || ""} onAdd={fromBrowser} />
+      <MaterialSearchInput index={index} onPick={fromHit} onBrowse={(q) => setBrowse({ query: q, freeText: null })} onFreeText={(text) => setBrowse({ query: "", freeText: text })} placeholder={t("sup.form.mat_name")} ariaLabel={t("sup.form.mat_name")} className="min-w-0 flex-1" pmOn />
+      <MaterialBrowserDialog open={browse != null} onOpenChange={(o) => !o && setBrowse(null)} index={index} initialQuery={browse?.query || ""} freeText={browse?.freeText ?? null} onAdd={fromBrowser} />
     </>
   )
 }
@@ -328,7 +330,7 @@ function LineEditor({
   return (
     <div className="space-y-2 rounded-lg border p-3">
       <div className="flex items-center gap-2">
-        <NativeSelect aria-label={t("sup.form.which_item")} className={SELECT} value={line.itemId} onChange={(e) => onChange({ itemId: e.target.value, mat: "", name: "", unit: "", unitOther: false })}>
+        <NativeSelect aria-label={t("sup.form.which_item")} className={SELECT} value={line.itemId} onChange={(e) => onChange({ itemId: e.target.value, mat: "", name: "", unit: "", unitOther: false, material: null })}>
           <option value="">{t("sup.form.which_item")}</option>
           {divisions.map((d) => (
             <optgroup key={d || "_"} label={d || t("sup.general_items")}>

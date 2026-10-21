@@ -36,6 +36,7 @@ import { DocumentThread } from "@/components/documents/DocumentThread"
 import { procLinks } from "@/lib/procurement/events"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { isLumpSum, poStatus, poValue } from "@/lib/procurement/po"
+import type { FinancelessPo } from "@/lib/procurement/payment-mark"
 import { PURCHASE_ORDERS, QUALITY_PAPERS, type PoStatus, type PurchaseOrder, type QualityPaper } from "@/lib/procurement/types"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import { acceptOrder, SupplierPoError } from "@/lib/supplier-free/po-writes"
@@ -792,6 +793,8 @@ const PoOrderCard = forwardRef<HTMLDivElement, PoOrderCardProps>(function PoOrde
           <p className="text-xs text-muted-foreground">
             {t("po_promised")}: <span className="font-bold text-foreground">{po.promisedDate ? dayText(po.promisedDate) : t("po_no_promise")}</span>
           </p>
+          {(po as FinancelessPo).paymentMark && <p className="text-xs text-muted-foreground">{t("po_payment_mark", { state: t(`po_pay_${(po as FinancelessPo).paymentMark!.state}`), date: dayText((po as FinancelessPo).paymentMark!.day) })}</p>}
+          {(po as FinancelessPo).advancePaidDay && <p className="text-xs text-muted-foreground">{t("po_advance_paid", { date: dayText((po as FinancelessPo).advancePaidDay as string) })}</p>}
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import {
   autoForwardSkip,
   isAutoForwarded,
   selectDueNotices,
+  selectStaleNotices,
   type AutoForwardInput,
 } from "@/lib/procurement/auto-forward"
 import { incomingPill, receiptLog, receiptTrail, type DeskDelivery, type IncomingRow } from "@/lib/procurement/receipt-desk"
@@ -70,9 +71,37 @@ describe("which notices the job forwards", () => {
     expect(why(notice({ id: "n1", deliveryDate: "2026-09-26" }), { policies: { ...DEFAULT_POLICIES, forwardWindowDays: 3 } })).toBe("in_window")
   })
 
-  it(`leaves a notice more than ${AUTO_FORWARD_MAX_OVERDUE_DAYS} days overdue to a person — a first run must not text about last quarter's truck`, () => {
-    expect(why(notice({ id: "n1", deliveryDate: "2026-09-15" }))).toBeNull()
-    expect(why(notice({ id: "n1", deliveryDate: "2026-09-14" }))).toBe("too_old")
+  it("takes a notice three weeks overdue — a human no longer has to carry it", () => {
+    expect(why(notice({ id: "n1", deliveryDate: "2026-09-01" }))).toBeNull()
+  })
+
+  it(`leaves a notice more than ${AUTO_FORWARD_MAX_OVERDUE_DAYS} days overdue to a person when several could receive it — a first run must not text about last year's truck`, () => {
+    const two = [receiver({ id: "r1", warehouseIds: [`central_${ORG}`] }), receiver({ id: "r2", name: "Other", warehouseIds: [`central_${ORG}`] })]
+    expect(why(notice({ id: "n1", deliveryDate: "2026-07-24" }), { receivers: two })).toBeNull()
+    expect(why(notice({ id: "n1", deliveryDate: "2026-07-23" }), { receivers: two })).toBe("too_old")
+  })
+
+  it("takes any age when the place has exactly one receiver — nobody else could be the right person", () => {
+    const sole = [receiver({ id: "r1", warehouseIds: [`central_${ORG}`] })]
+    expect(why(notice({ id: "n1", deliveryDate: "2026-01-05" }), { receivers: sole })).toBeNull()
+  })
+
+  it("a stand-in for everywhere is not the place's receiver, so the age limit still holds", () => {
+    expect(why(notice({ id: "n1", deliveryDate: "2026-01-05" }), { receivers: [receiver({ id: "r1", warehouseIds: [] })] })).toBe("too_old")
+  })
+
+  it("the bulk action takes what the limit leaves, and names only those", () => {
+    const relief = [receiver({ id: "r1", warehouseIds: [] })]
+    const deliveries = [notice({ id: "old", deliveryDate: "2026-01-05" }), notice({ id: "recent", deliveryDate: "2026-09-20" })]
+    expect(selectDueNotices(input({ deliveries, receivers: relief })).map((d) => d.delivery.id)).toEqual(["recent"])
+    expect(selectDueNotices(input({ deliveries, receivers: relief }), { ignoreAge: true }).map((d) => d.delivery.id)).toEqual(["old", "recent"])
+    expect(selectStaleNotices(input({ deliveries, receivers: relief })).map((d) => d.delivery.id)).toEqual(["old"])
+  })
+
+  it("the bulk action still leaves a notice with no receiver, told, or without a date alone", () => {
+    const relief = [receiver({ id: "r1", warehouseIds: [] })]
+    expect(selectStaleNotices(input({ deliveries: [notice({ id: "n1", deliveryDate: "2026-01-05" })], receivers: [] }))).toEqual([])
+    expect(selectStaleNotices(input({ deliveries: [notice({ id: "n1", deliveryDate: null })], receivers: relief }))).toEqual([])
   })
 
   it("never touches a notice already forwarded, signed, or closed by a receipt", () => {

@@ -45,7 +45,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
-import { offerPricingFields, priceOffer, pricedProducts, pricingModeOf } from "@/lib/procurement/offer-pricing"
+import { faultNames, offerPricingFields, priceOffer, pricedProducts, pricingFault, pricingModeOf } from "@/lib/procurement/offer-pricing"
 import { deadlineEnd, type AnsweredQuery } from "@/lib/procurement/guest-supplier"
 import { GuestAnsweredQueries } from "@/components/procurement/guest/GuestAnsweredQueries"
 import { GuestOtpField, type GuestOtpValue } from "@/components/procurement/guest/GuestOtpField"
@@ -148,6 +148,7 @@ export function PublicRfqContent() {
   // A rate per material, when the buyer asked to be quoted that way; the total
   // is their sum. Keyed by the product's index in the RFQ, its identity.
   const [lineRates, setLineRates] = useState<Record<number, string>>({})
+  const [lineSkips, setLineSkips] = useState<Record<number, boolean>>({})
   const pdfInputRef = useRef<HTMLInputElement>(null)
 
   const {
@@ -221,8 +222,8 @@ export function PublicRfqContent() {
   }
 
   const onSubmit = async (values: OfferFormValues) => {
-    if (byLine && !linePricing.complete) {
-      toast({ title: t("invalid_price"), description: t("line_prices_incomplete"), variant: "destructive" })
+    if (byLine && lineFault) {
+      toast({ title: t("invalid_price"), description: lineFaultText(lineFault), variant: "destructive" })
       return
     }
     if (lookup?.otpRequired && !otp) {
@@ -248,6 +249,7 @@ export function PublicRfqContent() {
       if (byLine) {
         const fields = offerPricingFields(linePricing)
         form.set("lines", JSON.stringify(fields.lines))
+        if (fields.skippedItems) form.set("skipped", JSON.stringify(fields.skippedItems))
         form.set("price", fields.price)
       } else {
         form.set("price", String(values.price))
@@ -306,7 +308,10 @@ export function PublicRfqContent() {
 
   const byLine = pricingModeOf(rfq) === "line"
   const lineProducts = byLine ? pricedProducts(rfq) : []
-  const linePricing = priceOffer(lineProducts, lineRates)
+  const linePricing = priceOffer(lineProducts, lineRates, lineProducts.filter((p) => lineSkips[p.rfqProductIndex]).map((p) => p.rfqProductIndex))
+  const lineFault = pricingFault(linePricing)
+  const lineFaultText = (fault: NonNullable<typeof lineFault>) =>
+    fault.code === "NO_LINE_PRICED" ? t("line_none_priced") : t(fault.code === "LINE_CONTRADICTORY" ? "line_contradictory" : "line_prices_incomplete", { names: faultNames(lineProducts, fault.indexes) })
 
 
   return (
@@ -765,6 +770,7 @@ export function PublicRfqContent() {
                         <div className="rounded-xl border divide-y overflow-hidden bg-white">
                           {lineProducts.map((prod) => {
                             const rate = lineRates[prod.rfqProductIndex] ?? ""
+                            const notSupplied = !!lineSkips[prod.rfqProductIndex]
                             const subtotal = (Number(rate) || 0) * prod.quantity
                             return (
                               <div key={prod.rfqProductIndex} className="flex flex-wrap items-center gap-2 p-3">
@@ -781,8 +787,9 @@ export function PublicRfqContent() {
                                     dir="ltr"
                                     aria-label={`${t("price_label")} — ${prod.name}`}
                                     value={rate}
+                                    disabled={notSupplied}
                                     onChange={(e) => setLineRates({ ...lineRates, [prod.rfqProductIndex]: e.target.value })}
-                                    className="w-full h-10 ps-3 pe-10 rounded-lg border-2 border-input bg-white text-sm font-bold text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                                    className="w-full h-10 ps-3 pe-10 rounded-lg border-2 border-input bg-white text-sm font-bold text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-40"
                                     placeholder="0"
                                   />
                                   <span className="absolute end-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">{t("sar")}</span>
@@ -790,14 +797,32 @@ export function PublicRfqContent() {
                                 <span className="w-24 text-end text-xs font-bold tabular-nums text-muted-foreground" dir="ltr">
                                   {subtotal > 0 ? Math.round(subtotal * 100) / 100 : "\u2014"}
                                 </span>
+                                <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                  <input
+                                    type="checkbox"
+                                    checked={notSupplied}
+                                    onChange={(e) => {
+                                      setLineSkips({ ...lineSkips, [prod.rfqProductIndex]: e.target.checked })
+                                      if (e.target.checked) setLineRates({ ...lineRates, [prod.rfqProductIndex]: "" })
+                                    }}
+                                    className="h-4 w-4"
+                                  />
+                                  {t("line_not_supplied")}
+                                </label>
                               </div>
                             )
                           })}
                         </div>
-                        {!linePricing.complete && (
+                        {lineFault && (lineFault.code !== "NO_LINE_PRICED" || Object.values(lineSkips).some(Boolean)) && (
                           <p className="text-[11px] text-amber-700 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 w-fit">
                             <AlertCircle size={11} className="shrink-0" />
-                            {t("line_prices_incomplete")}
+                            {lineFaultText(lineFault)}
+                          </p>
+                        )}
+                        {!lineFault && linePricing.skipped.length > 0 && (
+                          <p className="text-[11px] text-sky-800 flex items-center gap-1.5 bg-sky-50 px-2.5 py-1.5 rounded-lg border border-sky-200 w-fit">
+                            <AlertCircle size={11} className="shrink-0" />
+                            <b>{t("line_partial", { count: linePricing.lines.length, of: lineProducts.length })}</b> — {t("line_partial_note")}
                           </p>
                         )}
                       </div>

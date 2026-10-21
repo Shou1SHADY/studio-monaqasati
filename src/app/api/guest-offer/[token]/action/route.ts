@@ -39,6 +39,19 @@ const revisePriceSchema = z.object({
         return z.NEVER
       }
     }),
+  // The materials he does not supply: [1, 3]. Absent = the offer's own previous marks still left blank.
+  skipped: z
+    .string()
+    .optional()
+    .transform((v, ctx) => {
+      if (!v) return undefined
+      try {
+        return z.array(z.coerce.number().int().min(0).max(999)).max(200).parse(JSON.parse(v))
+      } catch {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "skipped must be a list of indexes" })
+        return z.NEVER
+      }
+    }),
 })
 
 const sampleSentSchema = z.object({
@@ -126,14 +139,14 @@ export async function POST(
 
     // --- Revised price after a reduction request ---
     if (action === "revise_price") {
-      const parsed = revisePriceSchema.safeParse(formValues(form, ["price", "note", "rates"]))
+      const parsed = revisePriceSchema.safeParse(formValues(form, ["price", "note", "rates", "skipped"]))
       if (!parsed.success) return errorResponse("Please enter a valid price", "INVALID_INPUT", 400)
       const { note } = parsed.data
       // The same rule as the portal: rates and total move together, and a
       // posted total never overrides what the rates add up to.
-      const revision = revisePrice(offer as Parameters<typeof revisePrice>[0], pricedProducts(rfq as PricedRfq | null), { total: parsed.data.price, rates: parsed.data.rates })
+      const revision = revisePrice(offer as Parameters<typeof revisePrice>[0], pricedProducts(rfq as PricedRfq | null), { total: parsed.data.price, rates: parsed.data.rates, skipped: parsed.data.skipped })
       if (!revision.ok) {
-        return errorResponse(revision.code === "LINE_PRICES_INCOMPLETE" ? "Give a price for every material" : "Please enter a valid price", revision.code, 400)
+        return errorResponse(revision.code === "INVALID_PRICE" ? "Please enter a valid price" : "Give a price for every material you supply, and mark the rest as not supplied", revision.code, 400)
       }
       const price = revision.total
 

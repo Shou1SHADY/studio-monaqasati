@@ -80,6 +80,7 @@ import {
   type ReceiptRow,
   type ReceiptSegment,
 } from "@/lib/procurement/receipt-desk"
+import { selectStaleNotices } from "@/lib/procurement/auto-forward"
 import type { ProcReceiver } from "@/lib/procurement/receivers"
 import { type PurchaseSource, type RecordReceiptResult } from "@/lib/procurement/receipt-writes"
 import type { PurchaseOrder } from "@/lib/procurement/types"
@@ -136,6 +137,7 @@ export default function GoodsReceivedPage() {
   const [regulariseTarget, setRegulariseTarget] = useState<DeskDelivery | null>(null)
   const [forwardTarget, setForwardTarget] = useState<DeskDelivery | null>(null)
   const [reminding, setReminding] = useState<string | null>(null)
+  const [forwardingStale, setForwardingStale] = useState(false)
 
   const warehousesQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "warehouses"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
   const projectsQ = useMemoFirebase(() => (firestore && orgId && pmOn ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [firestore, orgId, pmOn])
@@ -221,6 +223,30 @@ export default function GoodsReceivedPage() {
   // Follow-up (forward, remind) is the expediter's; a manual receipt and its
   // regularisation are Procurement's — buyer or manager (S-12, S-13).
   const canFollow = actor.isOwner || actor.canExpedite
+  const stale = useMemo(
+    () =>
+      canFollow
+        ? selectStaleNotices({ orgId, deliveries: desk, policies, receivers, projects, orders: orders.map((o) => ({ id: o.id, projectId: o.projectId ?? null })), now }).length
+        : 0,
+    [canFollow, orgId, desk, policies, receivers, projects, orders, now]
+  )
+
+  /** «حوّل المتأخر كله»: what the daily job leaves to a person because it is old — one press, the same receivers. */
+  const forwardStale = async () => {
+    const u = getAuth().currentUser
+    if (!u) return
+    setForwardingStale(true)
+    try {
+      const res = await fetch("/api/procurement/auto-forward", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await u.getIdToken()}` }, body: JSON.stringify({ overdue: true }) })
+      const body = (await res.json().catch(() => null)) as { data?: { forwarded?: number } } | null
+      if (res.ok) toast({ title: t("incoming.staleForwarded", { n: body?.data?.forwarded ?? 0 }) })
+      else toast({ title: t("incoming.staleFailed"), variant: "destructive" })
+    } catch {
+      toast({ title: t("incoming.staleFailed"), variant: "destructive" })
+    } finally {
+      setForwardingStale(false)
+    }
+  }
   const canPrepare = actor.isOwner || actor.canPrepare || actor.canApprove
 
   const exportCsv = () => {
@@ -372,6 +398,9 @@ export default function GoodsReceivedPage() {
             onForward={setForwardTarget}
             onRemind={remind}
             onRemindReceiver={(d) => void remindReceiver(d)}
+            stale={stale}
+            forwardingStale={forwardingStale}
+            onForwardStale={() => void forwardStale()}
             onOpen={(id) => setQuery({ delivery: id })}
           />
         ) : (
@@ -528,11 +557,15 @@ interface IncomingListProps {
   onForward: (d: DeskDelivery) => void
   onRemind: (po: PurchaseOrder) => void
   onRemindReceiver: (d: DeskDelivery) => void
+  /** Notices too old for the daily job whose place has a receiver to tell. */
+  stale: number
+  forwardingStale: boolean
+  onForwardStale: () => void
   onOpen: (id: string) => void
 }
 
 function IncomingList(props: IncomingListProps) {
-  const { rows, all, locale, now, routing, canReceive, followsPo, reminding, receivers, placeOf, warehouseName, projectName, onReceive, onForward, onRemind, onRemindReceiver, onOpen } = props
+  const { rows, all, locale, now, routing, canReceive, followsPo, reminding, receivers, placeOf, warehouseName, projectName, onReceive, onForward, onRemind, onRemindReceiver, stale, forwardingStale, onForwardStale, onOpen } = props
   const t = useTranslations("Portal.ProcReceipts")
   const dayText = useDateText()
   const tp = useTranslations("Portal.Procurement")
@@ -547,6 +580,15 @@ function IncomingList(props: IncomingListProps) {
           <Badge className="border-none bg-module/10 text-[11px] font-bold tabular-nums text-module">{rows.length}</Badge>
         </h2>
         <p className="text-xs leading-relaxed text-muted-foreground">{routing === "both" ? t("incoming.panelSubBoth") : t("incoming.panelSub")}</p>
+        {stale > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+            <p className="text-xs text-amber-800">{t("incoming.staleHint", { n: stale })}</p>
+            <Button type="button" size="sm" variant="outline" className="gap-1.5" disabled={forwardingStale} onClick={onForwardStale}>
+              {forwardingStale ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Forward size={13} aria-hidden="true" />}
+              {t("incoming.forwardStale", { n: stale })}
+            </Button>
+          </div>
+        )}
       </header>
       {!rows.length ? (
         <Empty text={t("empty.incoming")} />

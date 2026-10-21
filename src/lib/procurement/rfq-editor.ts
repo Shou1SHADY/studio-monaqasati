@@ -31,10 +31,23 @@ export interface EditorLine {
   /** «موعد مختلف»: its own need-by date. */
   needBy?: string | null
   requiresWarranty?: boolean
-  /** The incoming request (and its line) the row came from. */
-  source?: { need: NeedSource; line: number; key: string } | null
+  /** The incoming request (and its line) the row came from. `requestLine` is the line's place in the
+   * request's own `lines`; `total` how many lines the request has and `linkedBefore` how many already
+   * went into another RFQ — what tells a whole request from a part of one when it is published. */
+  source?: { need: NeedSource; line: number; key: string; requestLine?: number | null; total?: number; linkedBefore?: number } | null
+  /** The project's BOQ item the incoming row is for. */
+  boqItemId?: string | null
   /** A line of an RFQ written before the tree, being edited: its old words stand. */
   legacy?: { category: string; subCategory: string } | null
+}
+
+/** What the panel's first step says of a request: who asked, who approved and when, and its last day to order. */
+export interface RequestFact {
+  ref: string
+  requestedBy: string
+  approvedBy: string
+  approvedOn: string
+  lastOrderDay: string | null
 }
 
 export interface EditorGroup {
@@ -48,6 +61,8 @@ export interface EditorGroup {
   needBy: string | null
   /** «من ط.م 03» — the incoming request(s) the group came from. */
   requestRefs: string[]
+  /** Read from the incoming request(s); never stored on the RFQ. */
+  facts?: RequestFact[]
   lines: EditorLine[]
 }
 
@@ -171,7 +186,11 @@ export interface IncomingRequest {
   city: string
   district: string
   needBy: string | null
-  lines: Array<{ name: string; quantity: number; unit: string; needBy?: string | null; material?: MaterialPick | null }>
+  /** The request's whole count of lines, and how many already went into an RFQ of their own. */
+  total?: number
+  linkedBefore?: number
+  fact?: RequestFact
+  lines: Array<{ name: string; quantity: number; unit: string; needBy?: string | null; material?: MaterialPick | null; index?: number; requestLine?: number | null; itemId?: string | null }>
 }
 
 /** Each picked request lands as its own group — its project or site, its date and its number;
@@ -187,18 +206,20 @@ export function addRequests(groups: EditorGroup[], requests: IncomingRequest[]):
       unit: l.unit,
       unitFromSource: true,
       needBy: l.needBy && l.needBy !== r.needBy ? l.needBy : null,
-      source: { need: r.source, line: i, key: r.key },
+      source: { need: r.source, line: l.index ?? i, key: r.key, requestLine: l.requestLine ?? null, total: r.total, linkedBefore: r.linkedBefore },
+      boqItemId: l.itemId ?? null,
     }))
     const same = out.find((g) => (r.siteId && g.siteId === r.siteId) || (r.projectId && g.projectId === r.projectId))
     if (same) {
       out = mapGroup(out, same.key, (g) => ({
         ...g,
         requestRefs: g.requestRefs.includes(r.ref) ? g.requestRefs : [...g.requestRefs, r.ref],
+        facts: r.fact ? [...(g.facts || []).filter((f) => f.ref !== r.ref), r.fact] : g.facts,
         needBy: [g.needBy, r.needBy].filter((d): d is string => !!d).sort()[0] || null,
         lines: [...g.lines.filter(lineStarted), ...lines],
       }))
     } else {
-      out = [...out, newGroup({ siteId: r.siteId, projectId: r.projectId, label: r.label, city: r.city, district: r.district, needBy: r.needBy, requestRefs: [r.ref], lines })]
+      out = [...out, newGroup({ siteId: r.siteId, projectId: r.projectId, label: r.label, city: r.city, district: r.district, needBy: r.needBy, requestRefs: [r.ref], ...(r.fact ? { facts: [r.fact] } : {}), lines })]
     }
   }
   return out.length ? out : [newGroup()]
@@ -284,8 +305,25 @@ export function reviewFacts(groups: EditorGroup[], index: MaterialIndex | null):
   }
 }
 
+/**
+ * The requests this RFQ takes only a part of (a row dropped after «جهّزه», or some lines already in
+ * another RFQ): each of those is linked line by line, so the rest stays on the incoming page as new
+ * (PUR-01: «جزء منه في عروض»). A request taken whole is linked as one. Only a PM request's line knows
+ * its place in the request (`requestLine`), and a line sourced apart is already per line.
+ */
+export function partialRequestKeys(groups: EditorGroup[]): Set<string> {
+  const taken = new Map<string, { count: number; total: number; linkedBefore: number }>()
+  for (const { line } of numberedLines(groups)) {
+    const s = line.source
+    if (!lineComplete(line) || !s || s.requestLine == null || s.need.kind !== "project_request" || (s.need as NeedSource).line != null) continue
+    const cur = taken.get(s.key) || { count: 0, total: s.total ?? 0, linkedBefore: s.linkedBefore ?? 0 }
+    taken.set(s.key, { ...cur, count: cur.count + 1 })
+  }
+  return new Set([...taken].filter(([, v]) => v.linkedBefore > 0 || v.count < v.total).map(([k]) => k))
+}
+
 /** The products and the material fields of the ONE RFQ (PUR-03): every line, in order, with its place. */
-export function rfqLinesDoc(groups: EditorGroup[], locale: string, projectName: (id: string) => string | null, opts: { draft?: boolean } = {}) {
+export function rfqLinesDoc(groups: EditorGroup[], locale: string, projectName: (id: string) => string | null, opts: { draft?: boolean; perLine?: Set<string> } = {}) {
   // A draft keeps what was begun, finished or not («المسودة تُحفظ وحدها»); a published RFQ only finished rows.
   const rows = numberedLines(groups).filter((r) => opts.draft || lineComplete(r.line))
   const products = rows.map(({ group: g, line: l }) => {
@@ -309,7 +347,7 @@ export function rfqLinesDoc(groups: EditorGroup[], locale: string, projectName: 
       deliverySiteId: g.siteId,
       deliveryCity: g.city,
       deliveryDistrict: g.district,
-      ...(l.source ? { needSource: l.source.need, needLine: l.source.line } : {}),
+      ...(l.source ? { needSource: opts.perLine?.has(l.source.key) && l.source.requestLine != null ? { ...l.source.need, line: l.source.requestLine } : l.source.need, needLine: l.source.line } : {}),
     }
   })
   return { products, ...rfqMaterialFields(rows.map((r) => ({ material: r.line.material, category: r.line.legacy?.category, subCategory: r.line.legacy?.subCategory }))) }
@@ -358,15 +396,16 @@ export function groupsFromRfq(rfq: Record<string, unknown>): EditorGroup[] {
       needBy: str(p.needBy) && str(p.needBy) !== g.needBy ? str(p.needBy) : null,
       requiresWarranty: p.requiresWarranty === true,
       source: ns ? { need: ns, line: Number(p.needLine) || 0, key: "" } : null,
-      legacy: material ? null : { category: str(p.category), subCategory: str(p.subCategory) },
+      legacy: material || !str(p.category) ? null : { category: str(p.category), subCategory: str(p.subCategory) },
     })
   }
   return groups.length ? groups : [newGroup()]
 }
 
 /** An incoming request as the editor takes it: its place from the delivery sites (a project's
- * own site), its number as the project wrote it, each line as it arrived. */
-export function incomingFromNeed(need: Need, sites: DeliverySite[]): IncomingRequest {
+ * own site), its number as the project wrote it, each line as it arrived. A line that already went
+ * into an RFQ of its own is not taken again. */
+export function incomingFromNeed(need: Need, sites: DeliverySite[], lastOrderDay: string | null = null): IncomingRequest {
   // A team request names its site (or a typed place); a project's request, its project's site.
   const site = need.siteId ? sites.find((s) => s.id === need.siteId) || null : need.projectId ? sites.find((s) => s.id === projectSiteId(need.projectId as string) || s.projectId === need.projectId) || null : null
   return {
@@ -379,7 +418,12 @@ export function incomingFromNeed(need: Need, sites: DeliverySite[]): IncomingReq
     city: site?.city || need.place?.city || "",
     district: site?.district || need.place?.district || "",
     needBy: need.needBy ? need.needBy.slice(0, 10) : null,
-    lines: need.lines.map((l) => ({ name: l.name, quantity: l.quantity, unit: l.unit, needBy: l.needBy ? l.needBy.slice(0, 10) : null, material: (l as { material?: MaterialPick | null }).material || null })),
+    total: need.lines.length,
+    linkedBefore: need.lines.filter((l) => l.link).length,
+    fact: { ref: need.refLabel, requestedBy: need.requestedBy, approvedBy: need.approved?.name || "", approvedOn: need.approved?.on || "", lastOrderDay },
+    lines: need.lines.flatMap((l, index) =>
+      l.link ? [] : [{ name: l.name, quantity: l.quantity, unit: l.unit, needBy: l.needBy ? l.needBy.slice(0, 10) : null, material: l.material || null, index, requestLine: l.requestLine ?? null, itemId: l.itemId ?? null }]
+    ),
   }
 }
 

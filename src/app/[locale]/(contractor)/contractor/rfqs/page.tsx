@@ -12,7 +12,7 @@ import { RfqTable } from "@/components/procurement/RfqTable"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { offersSealed } from "@/lib/procurement/award"
-import { DEADLINE_FILTERS, GENERAL_STOCK, RFQ_SEGMENTS, WORKSHOP, bulkDeleteSplit, bulkPublishPatch, estimateAtLastPrice, inRfqSegment, lineProjectNames, offerersByRfq, optionCount, passesFilters, isBuyer, rfqCategories, rfqInScope, rfqNeedSources, rfqPage, rfqProjectKeys, segmentCounts, sortRfqs, type DeadlineFilter, type NeedLinkedRfq, type RfqFilterKey, type RfqFilters, type RfqSegment } from "@/lib/procurement/rfq-view"
+import { DEADLINE_FILTERS, GENERAL_STOCK, RFQ_SEGMENTS, WORKSHOP, bulkDeleteSplit, estimateAtLastPrice, inRfqSegment, lineProjectNames, offerersByRfq, optionCount, passesFilters, isBuyer, rfqCategories, rfqInScope, rfqNeedSources, rfqPage, rfqProjectKeys, segmentCounts, sortRfqs, type DeadlineFilter, type NeedLinkedRfq, type RfqFilterKey, type RfqFilters, type RfqSegment } from "@/lib/procurement/rfq-view"
 import { actsOnRfq, ownerReadsRfqs, runsRfqs } from "@/lib/procurement/rfq-access"
 import { materialInScope } from "@/lib/procurement/need-desk"
 import { useRfqRunner } from "@/hooks/useRfqRunner"
@@ -22,7 +22,7 @@ import { guestLinkUrl } from "@/components/procurement/rfq/guestLinkUrl"
 import { logRfqDocument } from "@/lib/procurement/rfq-writes"
 import { unlinkNeedsFromRfq } from "@/lib/procurement/needs-writes"
 import { useSupplierRecipientOptions } from "@/components/contractor/SupplierRecipientsPicker"
-import { displayDocNumber } from "@/lib/procurement/format"
+import { displayDocNumber, rfqDisplayNumber } from "@/lib/procurement/format"
 import { cn } from "@/lib/utils"
 import { matchesSearch } from "@/lib/search-text"
 import { Button } from "@/components/ui/button"
@@ -46,12 +46,14 @@ import { Link } from "@/i18n/routing"
 import { useFirestore, useUser, useMemoFirebase, useCollection } from "@/firebase"
 import { collection, query, where, doc, updateDoc, deleteDoc, arrayRemove } from "firebase/firestore"
 import { releaseBoqDrawsForRfq } from "@/lib/boq-draws"
-import { notifyFavoriteSuppliersOfPublish } from "@/lib/notify-favorites"
+import { rfqReviewHref } from "@/lib/procurement/rfq-routes"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { subOptions } from "@/lib/materials/subs"
+import { rfqSubIds } from "@/lib/materials/reach"
 import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
+import { SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
 import type { RfqRow } from "@/components/procurement/RfqCard"
-import { getIncompletePublishFields } from "@/utils/publish-gate"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 
@@ -63,7 +65,6 @@ export default function ContractorRfqsPage() {
   const searching = searchQuery.trim().length > 0
   const [segment, setSegment] = useState<RfqSegment>("all")
   const [selectedRfqs, setSelectedRfqs] = useState<string[]>([])
-  const [isPublishing, setIsPublishing] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
@@ -108,57 +109,6 @@ export default function ContractorRfqsPage() {
   useEffect(() => {
     setSearchQuery(searchParams.get("search") || "")
   }, [searchParams])
-
-const handleBatchPublish = async () => {
-    if (isPublishing || !firestore || selectedRfqs.length === 0) return;
-
-    // Gate: profile must have mandatory fields filled before publishing
-    const missingFields = getIncompletePublishFields(profile, locale)
-    if (missingFields.length > 0) {
-      toast({
-        title: t("rfqs_profile_incomplete_title"),
-        description: t("rfqs_profile_incomplete_desc", { fields: missingFields.join(locale === "ar" ? "، " : ", ") }),
-        variant: "destructive",
-      })
-      return
-    }
-
-    const candidates = filteredRfqs.filter((rfq: any) => selectedRfqs.includes(rfq.id) && actsOn(rfq));
-    const eligible = candidates.filter((rfq: any) => rfq.status === "Draft");
-    const skipped = selectedRfqs.length - eligible.length;
-    if (eligible.length === 0) {
-      toast({ title: t("rfq_bulk_publish_none_eligible"), variant: "destructive" });
-      return
-    }
-
-    setIsPublishing(true);
-    let published = 0;
-    const failedIds: string[] = [];
-    const publicIds: string[] = [];
-    for (const rfq of eligible) {
-      // A private draft stays private: publishing never widens its audience.
-      const patch = bulkPublishPatch(rfq, new Date().toISOString())
-      if (!patch) continue
-      try {
-        await updateDoc(doc(firestore, "rfqs", rfq.id), patch);
-        published++;
-        if (patch.visibility === "public") publicIds.push(rfq.id)
-      } catch (error) {
-        console.error(error)
-        failedIds.push(rfq.id)
-      }
-    }
-    toast({
-      title: t("rfq_batch_publish_title"),
-      description: t("rfq_bulk_publish_result", { published, skipped })
-        + (failedIds.length > 0 ? t("rfq_bulk_publish_failed_suffix", { failed: failedIds.length }) : ""),
-      variant: failedIds.length > 0 ? "destructive" : undefined,
-    });
-    void notifyFavoriteSuppliersOfPublish(user, publicIds)
-    // Keep failed items selected so the user can retry; drop everything else.
-    setSelectedRfqs(failedIds);
-    setIsPublishing(false);
-  };
 
   const toggleSelectRfq = (id: string) => {
     setSelectedRfqs(prev =>
@@ -315,7 +265,7 @@ const handleBatchPublish = async () => {
   const print = usePrintProfile()
   const printOne = async (rfq: RfqRow) => {
     const p = (profile || {}) as { companyName?: string; name?: string; taxNumber?: string; crNumber?: string }
-    const number = rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : `#${rfq.id.slice(0, 6)}`
+    const number = rfqDisplayNumber(rfq, locale)
     const model = rfqPrintModel(rfq as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procWorld.orgName || p.name || "", vat: printedNumber(p.taxNumber, print.taxNumber), cr: printedNumber(p.crNumber, print.crNumber) }, number, displayCity(rfq.city || "", locale), procWorld.policies)
     const link = actsOn(rfq) ? guestLinkUrl(user, rfq) : Promise.resolve(null)
     if (!(await printRfqWithLink(model, locale, (k, params) => tp(`rfqpo.print.${k}`, params), link))) {
@@ -348,6 +298,9 @@ const handleBatchPublish = async () => {
     return true
   }))
   const { shown: shownRfqs, hasMore } = rfqPage(filteredRfqs, pages)
+  // A draft is published from the editor's review step alone, never from a list (PUR-03).
+  const selectedDrafts = filteredRfqs.filter((r: any) => selectedRfqs.includes(r.id) && r.status === "Draft" && actsOn(r))
+  const { index: treeIndex } = useMaterialTree()
 
   const projectKeys = Array.from(new Set(allRfqs.flatMap((r) => rfqProjectKeys(r))))
   const filterOptions: Record<RfqFilterKey, Array<{ value: string; label: string }>> = {
@@ -357,7 +310,10 @@ const handleBatchPublish = async () => {
       { value: WORKSHOP, label: tp("rfqpo.list.workshop") },
       ...projectKeys.filter((k) => k !== GENERAL_STOCK && k !== WORKSHOP && !projectOptions.some((o: { value: string }) => o.value === k)).map((k) => ({ value: k, label: labelOfKey(k, allRfqs.map((r) => lineProjectNames(r).get(k)).find(Boolean)) })),
     ],
-    category: Array.from(new Set([...PREDEFINED_CATEGORIES, ...allRfqs.flatMap((r) => rfqCategories(r))])).map((c) => ({ value: c, label: displayCategory(c, locale) })),
+    category: [
+      ...subOptions(treeIndex, locale).map((o) => ({ value: o.value, label: o.label })),
+      ...Array.from(new Set(allRfqs.filter((r) => !rfqSubIds(r as unknown as Record<string, unknown>).length).flatMap((r) => rfqCategories(r)))).map((c) => ({ value: c, label: displayCategory(c, locale) })),
+    ],
     city: Array.from(new Set([...SAUDI_CITIES, ...allRfqs.map((r) => r.city || "").filter(Boolean)])).map((c) => ({ value: c, label: displayCity(c, locale) })),
     deadline: DEADLINE_FILTERS.map((d: DeadlineFilter) => ({ value: d, label: tp(`rfqpo.list.deadline_${d}`) })),
   }
@@ -498,12 +454,15 @@ const handleBatchPublish = async () => {
         {/* Bulk actions — the list view carries the selection. */}
         {selectedRfqs.length > 0 && runs && (
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-module/30 bg-module/5 px-3 py-2">
-            {filteredRfqs.some((r: any) => selectedRfqs.includes(r.id) && r.status === "Draft") && (
-              <Button onClick={handleBatchPublish} disabled={isPublishing} size="sm" className="gap-2 rounded-lg bg-module text-module-foreground hover:bg-module/90">
-                {isPublishing ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
-                {t("rfq_batch_publish", { count: selectedRfqs.length })}
+            {selectedDrafts.length === 1 && (
+              <Button asChild size="sm" className="gap-2 rounded-lg bg-module text-module-foreground hover:bg-module/90">
+                <Link href={rfqReviewHref(selectedDrafts[0].id)}>
+                  <Send size={14} aria-hidden="true" />
+                  {t("rfq_review_publish")}
+                </Link>
               </Button>
             )}
+            {selectedDrafts.length > 1 && <span className="text-xs font-semibold text-muted-foreground">{t("rfq_review_one_by_one")}</span>}
             <Button onClick={() => setShowBulkDeleteDialog(true)} disabled={isBulkDeleting} variant="outline" size="sm" className="gap-2 rounded-lg border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive">
               <Trash2 size={14} />
               {t("rfq_delete_selected", { count: selectedRfqs.length })}

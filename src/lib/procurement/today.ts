@@ -27,6 +27,7 @@ import {
   lowestOffer,
   offerPrice,
   poBlocks,
+  poFacts,
   poLate,
   poOpenValue,
   poStatus,
@@ -213,6 +214,8 @@ export type TaskKind =
   | "cancel_remainder" // Projects stopped a material still owed on an order
   | "notice_forward" // a supplier's notice nobody has passed to the receiver
   | "finance_hold" // Finance held a supplier's invoice — the next move is ours, the receiver's or the supplier's
+  | "close_received" // without Finance: a fully received order is closed here (PUR-10)
+  | "advance_unpaid" // without Finance: the supplier's clock waits for the advance to be marked paid (PUR-10)
   | "pm_supplier_return" // a project sends a material back to its supplier: claim the credit note
   | "pm_cash_inbound" // a project took a material in for cash, with no order: regularise it
   | "pm_hire" // a project's plant cannot come from our fleet: hire it for the dates asked
@@ -300,6 +303,8 @@ const GROUP_OF: Record<TaskKind, TaskGroup> = {
   cancel_remainder: "po",
   notice_forward: "delivery",
   finance_hold: "po",
+  close_received: "po",
+  advance_unpaid: "po",
   pm_supplier_return: "delivery",
   pm_cash_inbound: "delivery",
   pm_hire: "need",
@@ -368,6 +373,8 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
   const mine = (po: PurchaseOrder | undefined) => !buyerOnly || !po || po.preparedById === actor.uid
   const chases = actor.canExpedite && !ownerRO
   const look = (key: string) => (ownerRO ? "actions.view" : key)
+  const financeOn = w.financeOn !== false
+  const closes = actor.isOwner || actor.canApprove
 
   const ordersBySupplier = new Map<string, PurchaseOrder[]>()
   for (const po of w.orders) {
@@ -412,7 +419,7 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
           severity: "blue",
           sortDays: created,
           titleKey: "task.approval_wait.title",
-          titleParams: { ...base, approver: po.approverKind },
+          titleParams: { ...base, approver: po.approverKind, days: Math.max(0, -created) },
           subKey: po.preparedById === actor.uid ? REFUSAL_SUB.own_order : REFUSAL_SUB[refusal.code],
           subParams: { ...base, ...refusal.params },
           amount: money(actor, value),
@@ -426,7 +433,7 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
     if (st === "approved" && chases && mine(po)) {
       // T5c · approved, with Finance as a commitment, and the supplier has not heard.
       const approved = daysFromNow(dayOf(po.approvedAt), now) ?? created
-      add({ id: `send:${po.id}`, kind: "send", priority: 1, severity: "amber", sortDays: approved, titleKey: "task.send.title", titleParams: base, subKey: "task.send.sub", subParams: {}, amount: money(actor, value), href: SEND_HREF(po.id), actionKey: "actions.send" })
+      add({ id: `send:${po.id}`, kind: "send", priority: 1, severity: "amber", sortDays: approved, titleKey: financeOn ? "task.send.title" : "task.send.title_nofin", titleParams: base, subKey: "task.send.sub", subParams: {}, amount: money(actor, value), href: SEND_HREF(po.id), actionKey: "actions.send" })
       continue
     }
 
@@ -490,7 +497,18 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
       add({ id: `rate:${po.id}`, kind: "rate", priority: 3, severity: "blue", sortDays: 0, titleKey: "task.rate.title", titleParams: base, subKey: "task.rate.sub", subParams: {}, amount: null, href: ORDER_HREF(po.id), actionKey: "actions.rate" })
     }
 
-    if (sees && mine(po)) {
+    if (!financeOn && closes && mine(po) && st === "received") {
+      // Without Finance nobody's payment closes a fully received order: closing it is ours, and the payment status never stops it.
+      add({ id: `close:${po.id}`, kind: "close_received", priority: 2, severity: "blue", sortDays: daysFromNow(poFacts(po, w.receipts).lastReceiptDay, now) ?? 0, titleKey: "task.close_received.title", titleParams: base, subKey: "task.close_received.sub", subParams: {}, amount: money(actor, value), href: ORDER_HREF(po.id), actionKey: look("actions.closeOrder") })
+    }
+
+    if (!financeOn && closes && mine(po) && po.status !== "closed" && advanceState(asX(po)) === "requested") {
+      // Without Finance the advance is marked paid here, and the supplier's date counts from that day.
+      const approved = daysFromNow(dayOf(po.approvedAt), now) ?? created
+      add({ id: `advance:${po.id}`, kind: "advance_unpaid", priority: 2, severity: "amber", sortDays: approved, titleKey: "task.advance_unpaid.title", titleParams: { ...base, percent: Number(asX(po).advancePercent) || 0 }, subKey: "task.advance_unpaid.sub", subParams: {}, amount: money(actor, advanceAmount(asX(po))), href: ORDER_HREF(po.id), actionKey: look("actions.open") })
+    }
+
+    if (sees && mine(po) && financeOn) {
       // Finance held a supplier's invoice (prototype FREJ): whose move it is decides the row.
       for (const h of openHolds(asX(po))) {
         const owner = holdOwnerOf(h.reason)
@@ -556,7 +574,7 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
       const fwd = w.forwardFacts?.[r.id]
       const place = fwd?.place || po?.projectName || ""
       const receiver = fwd?.receiver || ""
-      add({ id: `notice_forward:${r.id}`, kind: "notice_forward", priority: due ? 0 : 2, severity: d != null && d <= 0 ? "red" : due ? "amber" : "blue", sortDays: d ?? 9, titleKey: "task.notice_forward.title", titleParams: { supplier, inDays: d ?? 0, hasDate: d == null ? 0 : 1, overdue: d != null && d < 0 ? 1 : 0 }, subKey: "task.notice_forward.sub_place_rcv", subParams: { number, lines, place, hasPlace: place ? 1 : 0, receiver, hasReceiver: receiver ? 1 : 0 }, amount: null, href: FORWARD_HREF(r.id), actionKey: "actions.forward" })
+      add({ id: `notice_forward:${r.id}`, kind: "notice_forward", priority: due ? 0 : 2, severity: d != null && d <= 0 ? "red" : due ? "amber" : "blue", sortDays: d ?? 9, titleKey: "task.notice_forward.title", titleParams: { supplier, inDays: d ?? 0, hasDate: d == null ? 0 : 1, overdue: d != null && d < 0 ? 1 : 0 }, subKey: "task.notice_forward.sub_place_rcv", subParams: { number, lines, place, hasPlace: place ? 1 : 0, receiver, hasReceiver: receiver ? 1 : 0, noReceiver: fwd && !receiver ? 1 : 0 }, amount: null, href: FORWARD_HREF(r.id), actionKey: "actions.forward" })
     } else if (!sees) {
       continue
     } else if (d != null && d < 0) {
@@ -887,6 +905,7 @@ export function todayWaits(w: ProcWorld, actor: TodayActor, now: Date): Wait[] {
   const out: Wait[] = []
   const pmOn = w.projectsOn !== false
   const workshopOn = w.workshopOn !== false
+  const financeOn = w.financeOn !== false
   for (const po of w.orders) {
     const st = poStatus(po)
     const base = { number: po.docNumber, supplier: po.supplierName }
@@ -896,11 +915,11 @@ export function todayWaits(w: ProcWorld, actor: TodayActor, now: Date): Wait[] {
       const over = w.budgetOverruns?.[po.id] ?? null
       out.push({ id: `w_budget:${po.id}`, kind: "pm_budget", module: "projects", titleKey: "wait.pm_budget.title", titleParams: base, subKey: "wait.pm_budget.sub", subParams: { over: actor.seesPrices && over != null ? over : 0, hasOver: actor.seesPrices && over != null && over > 0 ? 1 : 0 }, href: ORDER_HREF(po.id) })
     }
-    if (advanceState(x) === "requested") {
+    if (financeOn && advanceState(x) === "requested") {
       // Approval asked Finance for the advance; the supplier's lead time starts when it is paid.
       out.push({ id: `w_adv:${po.id}`, kind: "supplier_advance", module: "finance", titleKey: "wait.supplier_advance.title", titleParams: { ...base, percent: Number(x.advancePercent) || 0 }, subKey: "wait.supplier_advance.sub", subParams: { advance: advanceNumber(po) }, href: ORDER_HREF(po.id) })
     }
-    for (const h of openHolds(x)) {
+    for (const h of financeOn ? openHolds(x) : []) {
       const owner = holdOwnerOf(h.reason)
       if (owner !== "fin" && owner !== "rcv") continue
       // Finance's own hold (a duplicate, the cash position) or the receiver's missing receipt.
@@ -913,7 +932,7 @@ export function todayWaits(w: ProcWorld, actor: TodayActor, now: Date): Wait[] {
         out.push({ id: `w_accept:${po.id}`, kind: "supplier_acceptance", module: "supplier", titleKey: "wait.supplier_acceptance.title", titleParams: base, subKey: "wait.supplier_acceptance.sub", subParams: { ago: sent == null ? 0 : -sent }, href: ORDER_HREF(po.id) })
       }
     }
-    if (st === "received" && !openHolds(x).length) {
+    if (financeOn && st === "received" && !openHolds(x).length) {
       // W10 · fully received: invoice, match and payment are Finance's.
       out.push({ id: `w_pay:${po.id}`, kind: "finance_payment", module: "finance", titleKey: "wait.finance_payment.title", titleParams: base, subKey: "wait.finance_payment.sub", subParams: {}, href: ORDER_HREF(po.id) })
     }
@@ -973,7 +992,7 @@ export interface ProcKpis {
 export function todayKpis(w: ProcWorld, actor: TodayActor, now: Date): ProcKpis {
   const kind = actorKind(actor, w.ownerHasTeam)
   const live = w.orders.filter((po) => ["approved", "sent", "in_delivery", "part_received"].includes(poStatus(po)))
-  const lateOrders = live.filter((po) => poLate(po, now))
+  const lateOrders = live.filter((po) => poLate(po, now, w.receipts))
   const lateValue = round2(lateOrders.reduce((s, po) => s + poOpenValue(po), 0))
   const tiles: KpiTile[] = []
 
@@ -1197,4 +1216,10 @@ export const TODAY_KEYS = [
   "kpi.with_suppliers.note",
   "kpi.sent_not_accepted.label",
   "kpi.sent_not_accepted.note",
+  "task.send.title_nofin",
+  "task.close_received.title",
+  "task.close_received.sub",
+  "task.advance_unpaid.title",
+  "task.advance_unpaid.sub",
+  "actions.closeOrder",
 ] as const

@@ -7,7 +7,7 @@
 import { actsOnRfq, awardsOnRfq, closesRfqEarly, hasProcurementStaff, isRfqBuyer, ownerReadsRfqs, rfqMine, runsRfqs, type RfqRunner } from "@/lib/procurement/rfq-access"
 import { canCloseEarly, canRunRfq } from "@/lib/procurement/rfq-detail"
 import { extendRefusal } from "@/lib/procurement/rfq-extend-writes"
-import { bulkDeleteSplit, bulkPublishPatch, rfqFiles, rfqPage, rfqPageTab, rfqStage, segmentCounts, sortRfqs, type RfqListLike } from "@/lib/procurement/rfq-view"
+import { bulkDeleteSplit, rfqFiles, rfqPage, rfqPageTab, rfqStage, segmentCounts, sortRfqs, type RfqListLike } from "@/lib/procurement/rfq-view"
 import { bestOfferIds, coversAllLines, guestAwardRefusal, type OrderableOffer } from "@/lib/procurement/rfq-award"
 import { DEFAULT_RFQ_PRICING, asksForOffers, effectivePricing, firstDeadline, isSaudiVat, showsPricingChoice, step3Refusals } from "@/lib/procurement/rfq-form"
 import type { TeamGroup } from "@/lib/permissions"
@@ -126,12 +126,6 @@ describe("the RFQ list (rfq-view)", () => {
     expect(split.drafts.map((r) => r.id)).toEqual(["d"])
     expect(split.toCancel.map((r) => r.id)).toEqual(["n"])
     expect(split.skipped.map((r) => r.id)).toEqual(["a"])
-  })
-
-  it("bulk publish keeps a private draft private", () => {
-    expect(bulkPublishPatch({ id: "p", status: "Draft", visibility: "private" }, "2026-09-28T09:00:00Z")).toEqual({ status: "New", visibility: "private", publishedAt: "2026-09-28T09:00:00Z" })
-    expect(bulkPublishPatch({ id: "q", status: "Draft" }, "x")?.visibility).toBe("public")
-    expect(bulkPublishPatch({ id: "r", status: "New", visibility: "private" }, "x")).toBeNull()
   })
 
   it("the card's «الاستفسارات» deep link opens the queries tab", () => {

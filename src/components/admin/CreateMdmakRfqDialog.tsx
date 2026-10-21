@@ -15,9 +15,14 @@ import { Loader2, Handshake, Plus, Trash2, Paperclip, X, AlertCircle } from "luc
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
+import { MaterialSearchInput } from "@/components/materials/MaterialSearchInput"
+import { MaterialBrowserDialog, type BrowserResult } from "@/components/materials/MaterialBrowserDialog"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { label as treeLabel, pathLabel, pickOf, unitsOf, type MaterialHit } from "@/lib/materials/tree"
+import type { MaterialPick } from "@/lib/materials/types"
 import {
-  CATEGORIES_DATA, SUBCATEGORY_UNIT_MAP, SAUDI_CITIES, CITIES_DISTRICTS,
-  displayCity, displayCategory, displaySubcategory, displayDistrict,
+  SAUDI_CITIES, CITIES_DISTRICTS,
+  displayCity, displayDistrict,
 } from "@/lib/constants"
 import { createMdmakRfq } from "@/lib/mdmak-contractor"
 import { unitOnPick } from "@/lib/rfq-products"
@@ -30,16 +35,18 @@ interface Props {
 
 interface ProductRow {
   id: string
-  category: string
-  subCategory: string
+  material: MaterialPick | null
+  name: string
   quantity: string
   unit: string
   description: string
 }
 
 function emptyProduct(): ProductRow {
-  return { id: Date.now().toString() + Math.random().toString(36).slice(2), category: "", subCategory: "", quantity: "", unit: "", description: "" }
+  return { id: Date.now().toString() + Math.random().toString(36).slice(2), material: null, name: "", quantity: "", unit: "", description: "" }
 }
+
+const specText = (m: MaterialPick) => [...m.specs.map((s) => `${s.name.ar} ${s.value.ar}`), ...(m.brand ? [m.brand.ar] : [])].join(" · ")
 
 export function CreateMdmakRfqDialog({ open, onClose, onSuccess }: Props) {
   const t = useTranslations("Portal.Admin.Rfqs")
@@ -48,6 +55,8 @@ export function CreateMdmakRfqDialog({ open, onClose, onSuccess }: Props) {
   const { user } = useUser()
   const storage = useStorage()
   const { toast } = useToast()
+  const { index: tree } = useMaterialTree()
+  const [browse, setBrowse] = useState<{ rowId: string; query: string; freeText: string | null } | null>(null)
 
   const [title, setTitle] = useState("")
   const [products, setProducts] = useState<ProductRow[]>([emptyProduct()])
@@ -89,7 +98,7 @@ export function CreateMdmakRfqDialog({ open, onClose, onSuccess }: Props) {
   const handlePublish = async () => {
     setError("")
 
-    const validProducts = products.filter(p => p.category && p.subCategory && p.quantity.trim() && p.unit.trim())
+    const validProducts = products.filter(p => p.material && p.quantity.trim() && p.unit.trim())
 
     if (!title.trim()) return setError(t("mdmak_rfq_val_title"))
     if (validProducts.length === 0) return setError(t("mdmak_rfq_val_product"))
@@ -110,14 +119,19 @@ export function CreateMdmakRfqDialog({ open, onClose, onSuccess }: Props) {
 
       const { rfqId } = await createMdmakRfq(firestore, user.uid, {
         title: title.trim(),
-        products: validProducts.map(p => ({
-          name: p.subCategory,
-          quantity: Number(p.quantity),
-          unitOfMeasure: p.unit,
-          description: p.description,
-          category: p.category,
-          subCategory: p.subCategory,
-        })),
+        products: validProducts.map(p => {
+          const m = p.material as MaterialPick
+          return {
+            name: p.name || treeLabel(m.path[m.path.length - 1], "ar"),
+            quantity: Number(p.quantity),
+            unitOfMeasure: p.unit,
+            description: [specText(m), p.description].filter(Boolean).join(" · "),
+            category: m.path[0]?.ar || "",
+            subCategory: (m.path[1] || m.path[0])?.ar || "",
+            material: m,
+            materialPath: pathLabel(m.path, "ar", true),
+          }
+        }),
         city,
         district,
         deadline,
@@ -180,40 +194,33 @@ export function CreateMdmakRfqDialog({ open, onClose, onSuccess }: Props) {
                     </Button>
                   )}
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-muted-foreground">{t("mdmak_rfq_category_label")}</Label>
-                    <SearchableSelect
-                      value={product.category}
-                      onChange={v => {
-                        if (v !== product.category) updateProduct(product.id, "subCategory", "")
-                        updateProduct(product.id, "category", v)
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-muted-foreground">{t("mdmak_rfq_material_label")}</Label>
+                  {product.material ? (
+                    <div className="flex items-center justify-between gap-2 rounded-xl border bg-background px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold" dir="auto">{product.name || treeLabel(product.material.path[product.material.path.length - 1], locale)}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">{pathLabel(product.material.path, locale, !product.material.outside)}</p>
+                        {product.material.specs.length > 0 && <p className="truncate text-[11px] text-muted-foreground" dir="auto">{specText(product.material)}</p>}
+                      </div>
+                      <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" onClick={() => setProducts(prev => prev.map(p => p.id === product.id ? { ...p, material: null, name: "" } : p))}>
+                        {t("mdmak_rfq_material_change")}
+                      </Button>
+                    </div>
+                  ) : (
+                    <MaterialSearchInput
+                      index={tree}
+                      onPick={(hit: MaterialHit) => {
+                        if (!tree) return
+                        const m = pickOf(tree, hit.node.id, hit.preset.map(p => ({ name: { ar: p.spec.ar, en: p.spec.en }, value: p.value })))
+                        if (!m) return
+                        const unit = unitsOf(tree, hit.node.id)[0]
+                        setProducts(prev => prev.map(p => p.id === product.id ? { ...p, material: m, name: treeLabel(hit.node, locale), unit: unitOnPick(p.unit, unit ? treeLabel(unit, locale) : undefined) } : p))
                       }}
-                      options={Object.keys(CATEGORIES_DATA).map(cat => ({ value: cat, label: displayCategory(cat, locale) }))}
-                      placeholder={t("mdmak_rfq_select_category")}
-                      searchPlaceholder={t("mdmak_rfq_select_category")}
-                      noResultsText={t("mdmak_rfq_select_category")}
-                      size="sm"
+                      onBrowse={(q) => setBrowse({ rowId: product.id, query: q, freeText: null })}
+                      onFreeText={(text) => setBrowse({ rowId: product.id, query: "", freeText: text })}
                     />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-muted-foreground">{t("mdmak_rfq_subcategory_label")}</Label>
-                    <SearchableSelect
-                      value={product.subCategory}
-                      onChange={v => {
-                        updateProduct(product.id, "subCategory", v)
-                        updateProduct(product.id, "unit", unitOnPick(product.unit, SUBCATEGORY_UNIT_MAP[v]))
-                      }}
-                      options={product.category && CATEGORIES_DATA[product.category]
-                        ? CATEGORIES_DATA[product.category].map(sub => ({ value: sub, label: displaySubcategory(sub, locale) }))
-                        : []}
-                      placeholder={t("mdmak_rfq_select_subcategory")}
-                      searchPlaceholder={t("mdmak_rfq_select_subcategory")}
-                      noResultsText={t("mdmak_rfq_select_subcategory")}
-                      disabled={!product.category}
-                      size="sm"
-                    />
-                  </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -344,6 +351,20 @@ export function CreateMdmakRfqDialog({ open, onClose, onSuccess }: Props) {
           </Button>
         </DialogFooter>
       </DialogContent>
+      <MaterialBrowserDialog
+        open={browse !== null}
+        onOpenChange={(o) => !o && setBrowse(null)}
+        index={tree}
+        initialQuery={browse?.query ?? ""}
+        freeText={browse?.freeText ?? null}
+        onAdd={(r: BrowserResult) => {
+          const rowId = browse?.rowId
+          setBrowse(null)
+          if (!rowId) return
+          const leaf = r.pick.path[r.pick.path.length - 1]
+          setProducts(prev => prev.map(p => p.id === rowId ? { ...p, material: r.pick, name: r.name || (leaf ? treeLabel(leaf, locale) : ""), unit: unitOnPick(p.unit, r.unit ? treeLabel(r.unit, locale) : undefined) } : p))
+        }}
+      />
     </Dialog>
   )
 }

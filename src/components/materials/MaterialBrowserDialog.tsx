@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Chip } from "@/components/module-ui/Chip"
 import { cn } from "@/lib/utils"
+import { isHeavyEquipmentRental, otherEquipmentSub } from "@/lib/materials/equipment"
 import { brandsOf, isMaterial, label, pathLabel, pathOf, pickOf, searchMaterials, shortSpecName, specsOf, unitsOf, type MaterialIndex } from "@/lib/materials/tree"
 import type { MaterialNode, MaterialPick, MaterialText, MaterialUnit } from "@/lib/materials/types"
 
@@ -59,13 +60,13 @@ export function MaterialBrowserDialog({
   useEffect(() => {
     if (!open) return
     setQ(initialQuery)
-    setAt(null)
+    setAt(freeText && isHeavyEquipmentRental(freeText) ? otherEquipmentSub(index)?.id ?? null : null)
     setSpecs({})
     setUnitKey(null)
     setBrand(null)
     setExtra([])
     setOutside(freeText ?? null)
-  }, [open, initialQuery, freeText])
+  }, [open, initialQuery, freeText, index])
 
   const node = at && index ? index.byId.get(at) || null : null
   const path = node && index ? pathOf(index, node.id) : []
@@ -169,11 +170,11 @@ export function MaterialBrowserDialog({
               <fieldset key={s.ar} className="space-y-2">
                 <legend className="text-xs font-semibold text-muted-foreground">{label(shortSpecName(s), locale)}</legend>
                 <div className="flex flex-wrap gap-1.5">
-                  {s.options.map((o) => {
-                    const on = specs[s.ar]?.ar === o.ar
+                  {s.options.map((o, i) => {
+                    const on = specs[s.ar]?.ar === o.ar && specs[s.ar]?.en === o.en
                     return (
                       <Chip
-                        key={o.ar}
+                        key={`${o.ar}|${o.en}|${i}`}
                         selected={on}
                         onClick={() =>
                           setSpecs((cur) => {

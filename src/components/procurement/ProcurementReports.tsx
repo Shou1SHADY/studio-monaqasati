@@ -24,6 +24,9 @@ import { Link, useRouter } from "@/i18n/routing"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { useModules } from "@/hooks/useCompanyModules"
+import { useDeliverySiteList } from "@/hooks/useDeliverySiteList"
+import { orderSiteIds } from "@/lib/procurement/site-counts"
+import type { PurchaseOrder } from "@/lib/procurement/types"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { useProcurementWorld, type ProcOffer, type ProcRfq } from "@/hooks/useProcurementWorld"
 import { displayDocNumber } from "@/lib/procurement/format"
@@ -131,7 +134,22 @@ export function ProcurementReports() {
   const periodFiltered = report !== "commitments"
 
   // Every report is computed lazily — only the one on screen.
-  const project = useMemo(() => (report === "project" ? spendByProject(world, period) : null), [report, world, period])
+  const financeOn = on("payments")
+  // Without Project Management the project report groups by delivery site (PUR-10).
+  const { sites: siteList } = useDeliverySiteList(loaded.orgId, pmOn, !pmOn && report === "project")
+  const siteBy = useMemo(
+    () =>
+      pmOn
+        ? undefined
+        : {
+            site: (po: PurchaseOrder) => {
+              const id = orderSiteIds(po, rfqs as Array<{ id: string; products?: Array<{ deliverySiteId?: string | null }> | null }>)[0]
+              return id ? { id, name: siteList.find((x) => x.id === id)?.name || tProc("rfqpo.list.site_unknown") } : null
+            },
+          },
+    [pmOn, rfqs, siteList, tProc]
+  )
+  const project = useMemo(() => (report === "project" ? spendByProject(world, period, siteBy) : null), [report, world, period, siteBy])
   const supplier = useMemo(() => (report === "supplier" ? spendBySupplier(world, period, now) : null), [report, world, period, now])
   const delivery = useMemo(() => (report === "delivery" ? deliveryPerformance(world, period, now) : null), [report, world, period, now])
   const drift = useMemo(() => (report === "drift" ? priceDrift(world, period) : null), [report, world, period])
@@ -140,7 +158,10 @@ export function ProcurementReports() {
   const commit = useMemo(() => (report === "commitments" ? openCommitments(world, now) : null), [report, world, now])
 
   const docNo = (n: string) => displayDocNumber(n, locale)
+  const requesterHead = t(pmOn ? "cols.requester" : "cols.site")
+  const reportLabel = (id: ReportId) => t(id === "project" && !pmOn ? "report.project_site" : `report.${id}`)
   const requester = (r: ProjectSpendRow) => {
+    if (r.kind === "site") return r.projectName || t("requester.site")
     if (r.kind !== "project") return t(`requester.${r.kind}`)
     const no = r.projectId ? projectNo.get(r.projectId) : ""
     const name = r.projectName || r.projectId || ""
@@ -157,7 +178,7 @@ export function ProcurementReports() {
     let head: string[] = []
     let rows: Array<Array<string | number | null | undefined>> = []
     if (project) {
-      head = [t("cols.requester"), t("cols.orders"), t("cols.lines"), t("cols.ordered"), t("cols.received"), t("cols.open")]
+      head = [requesterHead, t("cols.orders"), t("cols.lines"), t("cols.ordered"), t("cols.received"), t("cols.open")]
       rows = project.rows.map((r) => [requester(r), r.orders, r.lines, r.ordered, r.receivedUnknown ? null : r.received, r.open])
       rows.push([t("total"), project.totals.orders, project.totals.lines, project.totals.ordered, project.totals.received, project.totals.open])
     } else if (supplier) {
@@ -206,7 +227,7 @@ export function ProcurementReports() {
       {/* ── Which report, and over which days ── */}
       <div className="flex flex-col gap-3 print:hidden xl:flex-row xl:items-center xl:justify-between">
         <div className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:thin] sm:mx-0 sm:px-0">
-          <ProcChipGroup items={reports.map((id) => ({ id, label: t(`report.${id}`) }))} active={report} onPick={setReport} label={t("page.title")} />
+          <ProcChipGroup items={reports.map((id) => ({ id, label: reportLabel(id) }))} active={report} onPick={setReport} label={t("page.title")} />
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           {periodFiltered && (
@@ -245,14 +266,14 @@ export function ProcurementReports() {
           <Loader2 className="animate-spin text-muted-foreground" size={28} aria-hidden="true" />
         </div>
       ) : (
-        <Panel title={t(`report.${report}`)} sub={periodFiltered ? periodLabel : t("period.notApplied")}>
+        <Panel title={reportLabel(report)} sub={periodFiltered ? periodLabel : t("period.notApplied")}>
           {/* 1 · Spend by project and requester */}
           {project && (
             <>
               {project.rows.length === 0 ? (
                 <Empty>{t("empty")}</Empty>
               ) : (
-                <Table head={[t("cols.requester"), t("cols.orders"), t("cols.lines"), t("cols.ordered"), t("cols.received"), t("cols.open")]}>
+                <Table head={[requesterHead, t("cols.orders"), t("cols.lines"), t("cols.ordered"), t("cols.received"), t("cols.open")]}>
                   {project.rows.map((r) => (
                     <tr key={r.key} className="border-t">
                       <Td>
@@ -275,7 +296,7 @@ export function ProcurementReports() {
                 </Table>
               )}
               {project.rows.some((r) => r.receivedUnknown) && <Note>* {t("cols.receivedUnknownNote")}</Note>}
-              <Note>{t("notes.project")}</Note>
+              <Note>{t(financeOn ? "notes.project" : "notes.project_nofin")}</Note>
             </>
           )}
 
@@ -502,7 +523,7 @@ export function ProcurementReports() {
                 </Table>
               )}
               {commit.receivedUnknown > 0 && <Note>{t("commitReceivedUnknown", { count: commit.receivedUnknown })}</Note>}
-              <Note>{t("notes.commitments")}</Note>
+              <Note>{t(financeOn ? "notes.commitments" : "notes.commitments_nofin")}</Note>
               <Note>{t("notes.commitmentsTerms")}</Note>
             </>
           )}
@@ -515,7 +536,7 @@ export function ProcurementReports() {
       {sees && report !== "project" && (
         <p className="flex items-start gap-2 rounded-2xl border border-cta/20 bg-cta/5 px-4 py-3 text-sm text-cta">
           <Info size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-          {t("commitNotCost")}
+          {t(financeOn ? "commitNotCost" : "commitNotCost_nofin")}
         </p>
       )}
     </div>

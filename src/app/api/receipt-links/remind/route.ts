@@ -55,9 +55,9 @@ export async function POST(req: NextRequest) {
           type: "receipt_forwarded",
           i18n: { title: "pn_receipt_remind_title", message: "pn_receipt_remind", params: { supplier, name: caller.name } },
           title: "⏰ تذكير: استلام بانتظار عدّك",
-          message: `يذكّرك ${caller.name} باستلام توريد ${supplier || "المورد"} — افتح الرابط وعدّ ما وصل وأكّد.`,
+          message: `يذكّرك ${caller.name} باستلام توريد ${supplier || "المورد"} — افتحه من مهامك وعدّ ما وصل وأكّده بدخولك.`,
           deliveryId: parsed.data.deliveryId,
-          link: `/receive/${link.token}`,
+          link: `/contractor/receive/${parsed.data.deliveryId}`,
           createdAt: at,
           read: false,
         })

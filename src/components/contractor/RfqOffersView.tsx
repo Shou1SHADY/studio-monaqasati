@@ -5,6 +5,7 @@ import { usePrintProfile } from "@/hooks/usePrintProfile"
 import { printedNumber } from "@/lib/company-print-profile"
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useRouter } from "@/i18n/routing"
+import { ProjectChangedFlag } from "@/components/procurement/ProjectChangedFlag"
 import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
 import { PortalLayout } from "@/components/layout/portal-layout"
@@ -28,7 +29,7 @@ import { offerRates, pricedProducts, toAmount } from "@/lib/procurement/offer-pr
 import { lastPaid } from "@/lib/procurement/prices"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type AwardReasonCode, type ProcurementPolicies, type PurchaseOrder, type ReceiptFact, type SupplierFacts } from "@/lib/procurement/types"
-import { addDays, poBlocks, poStatus, poWarnings, supplierScore, todayOf } from "@/lib/procurement/po"
+import { addDays, poBlocks, poStatus, poWarnings, supplierScore, todayOf, type NoticeFact } from "@/lib/procurement/po"
 import { awardDisclosed } from "@/lib/procurement/supplier"
 import { createPurchaseOrderFromAward, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
 import { procLinks } from "@/lib/procurement/events"
@@ -838,6 +839,7 @@ ${t("offers_notif_reduction_note", { note })}`
                   </p>
                 )}
                 <p className="text-white/50 text-sm">{t("offers_page_desc")}</p>
+                <ProjectChangedFlag from={rfq} className="pt-2" />
               </div>
 
               {!isLoading && (
@@ -1071,7 +1073,7 @@ ${t("offers_notif_reduction_note", { note })}`
                                   ) : (
                                     <StatusPill tone="warn" className="text-[10px]">{tRfqd("list.no_official_quote")}</StatusPill>
                                   )}
-                                  {partial && showPrices && <StatusPill tone="warn" className="text-[10px]">{tRfqd("list.partial", { count: quotedLines, of: productCount })}</StatusPill>}
+                                  {partial && <StatusPill tone="warn" className="text-[10px]">{tRfqd("list.partial", { count: quotedLines, of: productCount })}</StatusPill>}
                                   <OfferTermsChips offer={offer} now={new Date()} />
                                   {offer.status === "مقبول" && awardedLines && productCount > 0 && awardedLines.length < productCount && (
                                     <StatusPill tone="ok" className="text-[10px]">{tRfqd("list.awarded_lines", { count: awardedLines.length, of: productCount })}</StatusPill>
@@ -1617,6 +1619,7 @@ ${t("offers_notif_reduction_note", { note })}`
               <RfqDetailsPanel
                 rfq={rfqView}
                 orders={rfqOrders}
+                notices={(deliveries || []) as NoticeFact[]}
                 showPrices={seesPrices}
                 canCancel={acts && canCancelRfq(rfqView)}
                 onCancel={() => setCancelOpen(true)}

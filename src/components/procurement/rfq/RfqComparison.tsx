@@ -126,6 +126,7 @@ export function RfqComparison({
   const mode = awardMode(rfq)
   const products = pricedProducts(rfq)
   const rates = ratesByOffer(rfq, live)
+  const coveredBy = (o: RfqOfferView) => rates.get(o.id)?.size ?? 0
   const best = bestPerLine(rfq, live)
   const summary = awardSummary(rfq, live, picks)
   const totals = live.map((o) => offerTotal(o))
@@ -167,6 +168,9 @@ export function RfqComparison({
                         {name(o)}
                       </span>
                       {o.isGuestOffer && <small className="block text-violet">{t("cmp.guest")}</small>}
+                      {mode === "lines" && products.length > 1 && coveredBy(o) > 0 && coveredBy(o) < products.length && (
+                        <small className="block font-semibold text-warning">{t("list.partial", { count: coveredBy(o), of: products.length })}</small>
+                      )}
                       <small className={cn("block", o.offerPdfUrl ? "text-success" : "text-warning")}>{o.offerPdfUrl ? t("cmp.quote_attached") : t("cmp.no_quote")}</small>
                       <small className="block text-muted-foreground">
                         {basisText(o)}
@@ -264,10 +268,18 @@ export function RfqComparison({
                       </td>
                     )
                   }
-                  const complete = products.every((p) => rates.get(o.id)?.has(p.rfqProductIndex))
+                  const covered = products.filter((p) => rates.get(o.id)?.has(p.rfqProductIndex)).length
+                  const complete = covered === products.length
                   return (
                     <td key={o.id} className="px-3 py-2.5 font-black">
-                      {complete ? <Money value={total} masked={!showPrices} /> : <span className="text-xs font-semibold text-muted-foreground">{t("cmp.partial")}</span>}
+                      {complete ? (
+                        <Money value={total} masked={!showPrices} />
+                      ) : (
+                        <>
+                          <Money value={covered > 0 ? total : null} masked={!showPrices || covered === 0} />
+                          <span className="block text-[11px] font-semibold text-warning">{covered > 0 ? t("list.partial", { count: covered, of: products.length }) : t("cmp.partial")}</span>
+                        </>
+                      )}
                     </td>
                   )
                 })}

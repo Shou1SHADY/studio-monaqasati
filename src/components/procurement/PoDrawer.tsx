@@ -13,7 +13,7 @@
 // as a `ProcWriteError` code and is shown as the sentence for that code.
 
 import { getAuth } from "firebase/auth"
-import { deliveryStep, type StepNotice } from "@/lib/procurement/next-step"
+import { deliveryStep, waitingSinceDays, type StepNotice } from "@/lib/procurement/next-step"
 import { FORWARD_HREF } from "@/lib/procurement/today"
 import { RecordNoticeDialog } from "@/components/procurement/RecordNoticeDialog"
 import { usePrintProfile } from "@/hooks/usePrintProfile"
@@ -70,13 +70,14 @@ import {
   type PoLineX,
   type PoTerms,
 } from "@/lib/procurement/po-extras"
-import { cancelRemainderWithFee, answerHoldPrice, decideHold, holdInvoice, logSentOutside, referBudgetToProjects, releaseHold, selfIssuePurchaseOrder, type PoLogAction } from "@/lib/procurement/po-extra-writes"
+import { cancelRemainderWithFee, answerHoldPrice, decideHold, holdInvoice, logSentOutside, referBudgetToProjects, releaseHold, remindApprovers, remindFinanceAboutAdvance, selfIssuePurchaseOrder, type PoLogAction } from "@/lib/procurement/po-extra-writes"
 import { operatingPolicies } from "@/lib/procurement/policies"
 import {
   ProcWriteError,
   approvePurchaseOrder,
   cancelPurchaseOrder,
   closePurchaseOrder,
+  closeReceivedPurchaseOrder,
   decideReject,
   ratePurchaseOrder,
   recordSupplierAcceptance,
@@ -185,6 +186,9 @@ function Section({ title, badge, action, children, folded }: { title: string; ba
   )
 }
 
+/** The money and supplier boxes folded, handed to components that take a `Section` (PUR-07). */
+const FoldedSection = (p: { title: string; children: ReactNode }) => <Section {...p} folded />
+
 function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3 text-sm">
@@ -204,7 +208,7 @@ type DialogState =
   | { kind: "accept" }
   | { kind: "date" }
   | { kind: "cancel_line"; line: PoLine }
-  | { kind: "reject"; line: PoLine }
+  | { kind: "reject"; line: PoLine; decision?: RejectDecision }
   | { kind: "close_short" }
   | { kind: "cancel_order" }
   | { kind: "rate" }
@@ -231,6 +235,10 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const [reawardAsk, setReawardAsk] = useState(false)
   // PUR-06/07: a guest supplier's notice recorded on his behalf.
   const [noticeOpen, setNoticeOpen] = useState(false)
+  // «ذكّر المعتمِد» is a notice only (nothing is logged on an order awaiting approval): once per order, per session.
+  const [approverReminded, setApproverReminded] = useState<string | null>(null)
+  // «علّمها مدفوعة» in the next step opens the payment section's own form.
+  const [advanceAsk, setAdvanceAsk] = useState(0)
   const remindReceiverOf = async (deliveryId: string, name: string) => {
     const u = getAuth().currentUser
     if (!u) return
@@ -246,6 +254,8 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const perms = usePermissions()
   // Finance's acts; the owner acts as Finance here only on an order he may act on (not one a buyer prepared).
   const isFinance = perms.isOrgOwner ? !(po && poActs(po, actor, stepsBack).ownerReadOnly) : perms.can("invoices.manage") || perms.can("accounting.post")
+  // «أوقف صرف فاتورة» is a Procurement decision (PUR-07): the owner and the order's approvers hold; Finance too.
+  const canHoldInvoice = isFinance || (Boolean(po) && !poActs(po as PurchaseOrder, actor, stepsBack).ownerReadOnly && (actor.isOwner || actor.canApprove))
   // The resolved policy — the self-issue write re-reads it inside its transaction.
   const selfLimit = operatingPolicies(policies).buyerSelfIssueLimit
   const boqItems = useBoqGateItems(po ? asX(po) : null)
@@ -388,6 +398,13 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
     </div>
   )
 
+  // How long the order has waited on its current hands (PUR-07): with the approver since it was prepared (or last resubmitted), with the supplier since it was sent.
+  const approvalSince = [...(po.log || [])].reverse().find((e) => e.action === "resubmitted")?.at || po.createdAt
+  const waitingApprovalDays = waitingSinceDays(approvalSince, now)
+  const waitingAcceptanceDays = waitingSinceDays(po.sentAt, now)
+  const advanceDays = waitingSinceDays(po.approvedAt, now)
+  const closesReceived = !financeOn && (actor.isOwner || actor.canApprove) && acts.acts
+
   // ── Next step ──────────────────────────────────────────────────────────
   const nextStep = (): ReactNode => {
     const expediter = actorCanExpedite(actor) && acts.acts
@@ -488,7 +505,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             {f && selfIssue && (
               <div className="space-y-2">
                 <Callout tone="blue">{tProc("rfqpo.po.self_issue_hint", { limit: selfLimit.toLocaleString("en-US") })}</Callout>
-                <Button disabled={busy != null} onClick={() => run("self", () => selfIssuePurchaseOrder(f, actor, po.id, { blocks: { supplier: world.supplierFacts.get(po.supplierOrgId) ?? null, otherOrders: world.orders } }, opts), "toast.approved")}>
+                <Button disabled={busy != null} onClick={() => run("self", () => selfIssuePurchaseOrder(f, actor, po.id, { blocks: { supplier: world.supplierFacts.get(po.supplierOrgId) ?? null, otherOrders: world.orders } }, opts), financeOn ? "toast.approved" : "toast.approved_nofin")}>
                   {tProc("rfqpo.po.self_issue")}
                 </Button>
               </div>
@@ -505,7 +522,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                         "approve",
                         () => approvePurchaseOrder(f, actor, po.id, { policies, blocks: { supplier: world.supplierFacts.get(po.supplierOrgId) ?? null, otherOrders: world.orders } }, opts),
                         // Sent on the portal at approval (policy sendOnApproval) — or waiting to be sent.
-                        (out) => ((out as PurchaseOrder | undefined)?.status === "sent" ? "toast.approved_sent" : "toast.approved")
+                        (out) => ((out as PurchaseOrder | undefined)?.status === "sent" ? "toast.approved_sent" : financeOn ? "toast.approved" : "toast.approved_nofin")
                       )
                     }
                   >
@@ -520,9 +537,28 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             ) : (
               <>
                 <Callout tone="blue">
-                  {t("next.awaiting_approver", { approver: approvers.length ? approvers.join(tProc("rfqpo.po.approver_or")) : tProc(`approver.${po.approverKind}`) })}
+                  {t("next.awaiting_approver", { approver: approvers.length ? approvers.join(tProc("rfqpo.po.approver_or")) : tProc(`approver.${po.approverKind}`), days: waitingApprovalDays })}
                   {refusal && actor.canApprove && refusal.code !== "not_awaiting" ? ` — ${tProc(`refusal.${refusal.code}`, refusal.params)}` : ""}
                 </Callout>
+                {f && (actor.isOwner || actor.canPrepare || actor.canApprove) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy != null || approverReminded === po.id}
+                    onClick={() =>
+                      void run(
+                        "remind_approver",
+                        async () => {
+                          await remindApprovers(f, actor, po.id, opts)
+                          setApproverReminded(po.id)
+                        },
+                        "toast.approver_reminded"
+                      )
+                    }
+                  >
+                    {t(approverReminded === po.id ? "next.approver_reminded" : "next.remind_approver")}
+                  </Button>
+                )}
                 {f && actorCanReturn(actor) && refusal?.code === "own_order" && (
                   <Button variant="outline" size="sm" disabled={busy != null} onClick={() => setDialog({ kind: "return" })}>
                     {t("next.return")}
@@ -538,7 +574,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
         return (
           <>
             <Callout tone="green">
-              {t("next.approved_body", { by: po.approvedByName || "—", date: fmt(po.approvedAt), supplier: po.supplierName })}
+              {t(financeOn ? "next.approved_body" : "next.approved_body_nofin", { by: po.approvedByName || "—", date: fmt(po.approvedAt), supplier: po.supplierName })}
             </Callout>
             <div className="flex flex-wrap items-center gap-2">
               {f && expediter && canSend(po) && (
@@ -558,7 +594,10 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
       case "sent":
         return (
           <>
-            <Callout tone="blue">{t("next.sent_body", { channel: po.sentChannel ? tProc(`channel.${po.sentChannel}`) : "—", date: fmt(po.sentAt) })}</Callout>
+            <Callout tone="blue">
+              {t("next.sent_body", { channel: po.sentChannel ? tProc(`channel.${po.sentChannel}`) : "—", date: fmt(po.sentAt) })}
+              {waitingAcceptanceDays > 0 && <b className="ms-1">{t("next.sent_since", { days: waitingAcceptanceDays })}</b>}
+            </Callout>
             <div className="flex flex-wrap items-center gap-2">
               {f && expediter && canRecordAcceptance(po) && (
                 <Button disabled={busy != null} onClick={() => setDialog({ kind: "accept" })}>
@@ -651,9 +690,22 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               </>
             )
             break
-          case "rejected":
+          case "rejected": {
             body = <Callout tone="red">{t("next2.rejected", { qty: step.qty.toLocaleString("en-US"), unit: step.unit })}</Callout>
+            const rejectedLine = po.lines.find((l) => l.id === step.lineId)
+            // The three answers of the form, one press away (PUR-07): replace · discount · send it back (reduce the order).
+            buttons =
+              f && rejectedLine && acts.acts && actorCanDecideLines(actor) ? (
+                <>
+                  {(["replace", "discount", "reduce"] as const).map((d) => (
+                    <Button key={d} variant={d === "replace" ? "default" : "outline"} disabled={busy != null} onClick={() => setDialog({ kind: "reject", line: rejectedLine, decision: d })}>
+                      {t(`next2.ask_${d}`)}
+                    </Button>
+                  ))}
+                </>
+              ) : null
             break
+          }
           case "guest_due":
             body = <Callout tone="amber">{t("next2.guest_due")}</Callout>
             buttons = (
@@ -685,7 +737,21 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
         }
         return (
           <>
-            {advance === "requested" && <Callout tone="amber">{tProc("rfqpo.po.advance_unpaid", { pct: Number(px.advancePercent) || 0 })}</Callout>}
+            {advance === "requested" && (
+              <>
+                <Callout tone="amber">{financeOn ? tProc("rfqpo.po.advance_unpaid_fin", { pct: Number(px.advancePercent) || 0, days: advanceDays }) : tProc("rfqpo.po.advance_unpaid", { pct: Number(px.advancePercent) || 0 })}</Callout>
+                {f && expediter && financeOn && (
+                  <Button variant="outline" size="sm" disabled={busy != null} onClick={() => void run("remind_finance", () => remindFinanceAboutAdvance(f, actor, po.id, opts), "toast.finance_reminded")}>
+                    {tProc("rfqpo.po.remind_finance")}
+                  </Button>
+                )}
+                {actor.seesPrices && !financeOn && (actor.isOwner || actor.canApprove) && (
+                  <Button variant="outline" size="sm" disabled={busy != null} onClick={() => setAdvanceAsk((n) => n + 1)}>
+                    {t("pay.mark_advance_short")}
+                  </Button>
+                )}
+              </>
+            )}
             {body}
             <div className="flex flex-wrap items-center gap-2">
               {buttons}
@@ -702,6 +768,11 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             <Callout tone="green">{t(financeOn ? "next.received_body" : "next.received_body_nofin")}</Callout>
             {po.rating && ratedBlock(po.rating)}
             <div className="flex flex-wrap items-center gap-2">
+              {f && closesReceived && (
+                <Button disabled={busy != null} onClick={() => void run("close_received", () => closeReceivedPurchaseOrder(f, actor, po.id, opts), "toast.closed")}>
+                  {t("next.close")}
+                </Button>
+              )}
               {f && acts.acts && canRateNow(po, world.deliveries, actor) && (
                 <Button variant="outline" className="gap-2" disabled={busy != null} onClick={() => setDialog({ kind: "rate" })}>
                   <Star size={15} aria-hidden="true" />
@@ -835,7 +906,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                       {tProc("rfqpo.po.revision", { n: revision })}
                     </Badge>
                   )}
-                  <PoStatusPill po={po} now={now} />
+                  <PoStatusPill po={po} now={now} notices={world.deliveries} />
                   <Badge variant="outline" className="text-[11px] font-normal">
                     {tProc(`basis.${po.basis}`)}
                   </Badge>
@@ -857,7 +928,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
           </SheetHeader>
 
           <div className="space-y-4 px-4 py-4 sm:px-6">
-            <FinanceBannerCallout po={px} seesPrices={actor.seesPrices} />
+            {financeOn && <FinanceBannerCallout po={px} seesPrices={actor.seesPrices} />}
             <Section title={t("sec.next_step")}>
               {acts.ownerReadOnly && status !== "awaiting_approval" && status !== "closed" && !paidClosed && status !== "cancelled" && <Callout tone="blue">{tProc("rfqpo.po.owner_reads", { by: po.preparedByName })}</Callout>}
               {acts.notMine && <Callout tone="blue">{tProc("rfqpo.po.not_mine", { by: po.preparedByName })}</Callout>}
@@ -866,7 +937,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
 
             {actor.seesPrices && !financeOn && (
               // Without Finance (PUR-10, Q5): no ledger here — an optional status, the advance, the invoice file to the accountant.
-              <FinancelessPaymentSection po={px} actor={actor} orgId={world.orgId || ""} Section={Section} />
+              <FinancelessPaymentSection po={px} actor={actor} orgId={world.orgId || ""} Section={FoldedSection} advanceAsk={advanceAsk} />
             )}
 
             {actor.seesPrices && financeOn && (
@@ -875,6 +946,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 actor={actor}
                 canDecide={acts.acts && actorCanDecideLines(actor)}
                 isFinance={isFinance}
+                canHold={canHoldInvoice}
                 onDecide={(hold) => setDialog({ kind: "decide_hold", hold })}
                 onAnswerPrice={(hold, accept) => f && void run("hold", () => answerHoldPrice(f, actor, po.id, { holdId: hold.id, accept }, opts), "toast.saved")}
                 // With Finance in the company, paying is Finance's own act (PUR-07): Procurement reads it, and only holds.
@@ -900,7 +972,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               po={po}
               orgId={world.orgId}
               open={open}
-              Section={Section}
+              Section={FoldedSection}
               busy={busy === "warranty"}
               canAcceptWarranty={actor.isOwner || actor.canPrepare || actor.canApprove}
               onAcceptWarranty={(w) => f && void run("warranty", () => acceptSupplierWarranty(f, actor, po, w), "supplier.toast_warranty")}
@@ -932,7 +1004,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                         .filter(Boolean)
                         .join(" · ")}
                     </p>
-                    <PoReceiverLine organizationId={po.organizationId} projectId={po.projectId} />
+                    <PoReceiverLine organizationId={po.organizationId} projectId={po.projectId} poId={po.id} notices={world.deliveries} />
                     <LineBar line={l} inTransit={transit} />
                     {lx.rejectReplaceBy && <p className="text-[11px] text-muted-foreground">{tProc("rfqpo.po.replace_by", { date: fmt(lx.rejectReplaceBy) })}</p>}
                     {(lx as RejectTermsLine).rejectDiscountState === "wait" && (
@@ -1080,7 +1152,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                   {advance === "requested" && !po.lines.some((l) => l.accepted > 0) ? (
                     <span className="text-warning">{tProc("enforce.date_suspended")}</span>
                   ) : (
-                    <HonestDateText po={po} now={now} />
+                    <HonestDateText po={po} now={now} notices={world.deliveries} />
                   )}
                 </dd>
                 {terms && (
@@ -1106,7 +1178,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               </dl>
             </Section>
 
-            <DocTrailSection po={px} deliveries={world.deliveries} receiptNumber={(n) => displayReceiptNumber(n, locale)} />
+            <DocTrailSection po={px} deliveries={world.deliveries} receiptNumber={(n) => displayReceiptNumber(n, locale)} financeOn={financeOn} />
 
             {log.length > 0 && (
               <Section title={t("sec.log")} folded>
@@ -1155,7 +1227,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             label={t("cancel_order.label")}
             submitLabel={t("cancel_order.submit")}
             destructive
-            effects={[t("cancel_order.effect")]}
+            effects={[t(financeOn ? "cancel_order.effect" : "cancel_order.effect_nofin")]}
             onSubmit={(reason) => run("cancel", () => cancelPurchaseOrder(f, actor, po.id, reason, opts), "toast.cancelled")}
           />
           <ReasonDialog
@@ -1165,7 +1237,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             description={t("close_short.desc")}
             label={t("close_short.label")}
             submitLabel={t("close_short.submit")}
-            effects={[t("close_short.effect")]}
+            effects={[t(financeOn ? "close_short.effect" : "close_short.effect_nofin")]}
             onSubmit={(reason) => run("close", () => closePurchaseOrder(f, actor, po.id, { reason }, opts), "toast.closed")}
           />
           <CancelWithFeeDialog
@@ -1184,7 +1256,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             dateLabel={t("accept.date")}
             submitLabel={t("accept.submit")}
             defaultDate={po.promisedDate || dayOf(po.requestedDeliveryDate) || null}
-            effects={[t("accept.effect"), ...(advance === "requested" || advance === "pending" ? [tProc("rfqpo.po.accept_advance_effect", { pct: Number(px.advancePercent) || 0 })] : [])]}
+            effects={[t("accept.effect"), ...(advance === "requested" || advance === "pending" ? [tProc(financeOn ? "rfqpo.po.accept_advance_effect" : "rfqpo.po.accept_advance_effect_nofin", { pct: Number(px.advancePercent) || 0 })] : [])]}
             now={now}
             onSubmit={({ date }) => run("accept", () => recordSupplierAcceptance(f, actor, po.id, { promisedDate: date, by: "buyer" }, opts), "toast.accepted")}
           />
@@ -1202,6 +1274,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             open={dialog?.kind === "reject"}
             onOpenChange={(o) => !o && setDialog(null)}
             line={dialog?.kind === "reject" ? dialog.line : null}
+            initialDecision={dialog?.kind === "reject" ? dialog.decision : undefined}
             onSubmit={({ decision, note, replaceBy, discountPrice }) => (dialog?.kind === "reject" ? run("reject", () => decideReject(f, actor, po.id, { lineId: dialog.line.id, decision, note, replaceBy, discountPrice }, opts), "toast.reject_decided") : Promise.resolve(false))}
           />
           <PoSendDialog

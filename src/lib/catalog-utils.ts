@@ -8,6 +8,8 @@ export interface CatalogItem {
   name: string
   category: string
   subCategory: string
+  /** The material tree's sub-category (PUR-04), when the line was written on the tree. */
+  subCategoryId?: string | null
   unit: string
   usageCount: number
   lastQuantity: number
@@ -19,6 +21,7 @@ interface ValidProduct {
   category: string
   subCategory: string
   otherSubCategory?: string
+  subCategoryId?: string | null
   quantity: string
   unit: string
 }
@@ -58,6 +61,7 @@ export async function upsertCatalogItems(
         name,
         category: p.category,
         subCategory: subCat,
+        ...(p.subCategoryId ? { subCategoryId: p.subCategoryId } : {}),
         unit: p.unit,
         usageCount: 1,
         lastQuantity: Number(p.quantity),

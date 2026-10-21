@@ -181,8 +181,9 @@ const nameKey = (name: string, unit: string) => materialKey(name, unit)
 // shortfall, Inventory's stock gap), and what a buyer added himself apart.
 // ---------------------------------------------------------------------------
 
-export type RequesterKind = "project" | "workshop" | "inventory" | "buyers"
-export const REQUESTER_KINDS: readonly RequesterKind[] = ["project", "workshop", "inventory", "buyers"]
+/** `site`: a delivery site, when the company has no Project Management (PUR-10) — the row's `projectName` is its name. */
+export type RequesterKind = "project" | "workshop" | "inventory" | "buyers" | "site"
+export const REQUESTER_KINDS: readonly RequesterKind[] = ["project", "workshop", "inventory", "buyers", "site"]
 
 export function requesterOf(po: Pick<PurchaseOrder, "projectId" | "purchaseSource">): { key: string; kind: RequesterKind; projectId: string | null } {
   const projectId = po.projectId || po.purchaseSource?.projectId || null
@@ -212,12 +213,14 @@ export interface ProjectSpendReport {
   totals: { orders: number; lines: number; ordered: number; received: number; open: number }
 }
 
-export function spendByProject(w: ProcWorld, period?: Period | null): ProjectSpendReport {
+/** `site`: the order's delivery site when it names one — without Project Management the report groups by it instead of by project (PUR-10). */
+export function spendByProject(w: ProcWorld, period?: Period | null, opts?: { site?: (po: PurchaseOrder) => { id: string; name: string } | null }): ProjectSpendReport {
   const by = new Map<string, ProjectSpendRow>()
   for (const po of committedOrders(w, period)) {
-    const who = requesterOf(po)
+    const site = opts?.site?.(po) ?? null
+    const who = site ? { key: `site:${site.id}`, kind: "site" as RequesterKind, projectId: null } : requesterOf(po)
     const key = who.key
-    const row = by.get(key) || { key, kind: who.kind, projectId: who.projectId, projectName: who.kind === "project" ? po.projectName || "" : "", orders: 0, lines: 0, ordered: 0, received: 0, receivedUnknown: false, open: 0 }
+    const row = by.get(key) || { key, kind: who.kind, projectId: who.projectId, projectName: site ? site.name : who.kind === "project" ? po.projectName || "" : "", orders: 0, lines: 0, ordered: 0, received: 0, receivedUnknown: false, open: 0 }
     const accepted = acceptedValue(po)
     row.orders++
     row.lines += po.lines.length
@@ -329,12 +332,12 @@ export function deliveryPerformance(w: ProcWorld, period: Period | null | undefi
       gap = daysBetween(po.promisedDate, facts.lastReceiptDay)
       state = gap > 0 ? "late" : "on_time"
     } else if (po.promisedDate) {
-      const d = daysLate(po, now)
+      const d = daysLate(po, now, w.receipts)
       gap = d > 0 ? d : null
       state = d > 0 ? "late" : "on_time_so_far"
     }
     // Projects asked to stop the rest and Procurement has not decided: not the supplier's lateness.
-    if (!(daysLate(po, now) > 0) && po.lines.some((l) => pmCancelOpen(asX(po), l))) {
+    if (!(daysLate(po, now, w.receipts) > 0) && po.lines.some((l) => pmCancelOpen(asX(po), l))) {
       gap = null
       state = "cancel_pending"
     }

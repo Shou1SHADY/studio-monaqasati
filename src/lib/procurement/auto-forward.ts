@@ -8,12 +8,14 @@
 import { daysFromNow } from "./po"
 import { noticeTold } from "./policy-enforce"
 import { landingWarehouseId, suggestedReceiver, type DeskDelivery } from "./receipt-desk"
-import { forwardUrgency, phoneUsable, type ProcReceiver } from "./receivers"
+import { forwardUrgency, phoneUsable, soleReceiverFor, type ProcReceiver } from "./receivers"
 import type { ProcurementPolicies } from "./types"
 
-/** A notice whose day passed longer ago than this is left to a person: the first run
- * after switching the job on must not text a store keeper about last quarter's truck. */
-export const AUTO_FORWARD_MAX_OVERDUE_DAYS = 7
+/** A notice whose day passed longer ago than this is left to a person (the bulk
+ * «forward everything overdue» button takes it): the first run after switching the job
+ * on must not text a store keeper about last quarter's truck. It does not apply where
+ * the place has exactly one receiver — nobody else could be the right person. */
+export const AUTO_FORWARD_MAX_OVERDUE_DAYS = 60
 
 /** Written as `createdById` / `byName` on the link: nobody in the office pressed the button. */
 export const AUTO_FORWARD_ACTOR = { id: "system:auto-forward", name: "Mdmak Tech" } as const
@@ -38,16 +40,25 @@ export interface DueNotice {
 /** Why a pending notice is NOT forwarded now — null when it is due. */
 export type AutoForwardSkip = "not_pending" | "told" | "no_notice" | "no_date" | "in_window" | "too_old" | "no_receiver" | "no_phone"
 
-export function autoForwardSkip(d: DeskDelivery, input: Omit<AutoForwardInput, "deliveries">): { skip: AutoForwardSkip } | { skip: null; due: DueNotice } {
+export interface AutoForwardOptions {
+  /** The manual bulk action: a person asked, so the age limit no longer protects anyone. */
+  ignoreAge?: boolean
+}
+
+export function autoForwardSkip(
+  d: DeskDelivery,
+  input: Omit<AutoForwardInput, "deliveries">,
+  opts: AutoForwardOptions = {}
+): { skip: AutoForwardSkip } | { skip: null; due: DueNotice } {
   if (d.status !== "pending_confirmation" || d.closedByReceipt) return { skip: "not_pending" }
   if (noticeTold(d, input.policies)) return { skip: "told" }
   if (d.noNotice || d.source === "manual") return { skip: "no_notice" }
   const days = daysFromNow(d.deliveryDate, input.now)
   if (days == null) return { skip: "no_date" }
   if (forwardUrgency(days, input.policies?.forwardWindowDays ?? 1) === "none") return { skip: "in_window" }
-  if (days < -AUTO_FORWARD_MAX_OVERDUE_DAYS) return { skip: "too_old" }
   const po = d.poId ? input.orders.find((o) => o.id === d.poId) : undefined
   const warehouseId = d.landedWarehouseId || landingWarehouseId(d.projectId || po?.projectId, input.projects, input.orgId)
+  if (days < -AUTO_FORWARD_MAX_OVERDUE_DAYS && !opts.ignoreAge && !soleReceiverFor(input.receivers, warehouseId)) return { skip: "too_old" }
   const receiver = suggestedReceiver(input.receivers, warehouseId)
   if (!receiver) return { skip: "no_receiver" }
   // A member is reached in his own account (PUR-06); only someone with no account needs a mobile.
@@ -56,13 +67,18 @@ export function autoForwardSkip(d: DeskDelivery, input: Omit<AutoForwardInput, "
 }
 
 /** The notices to forward now, oldest delivery day first. A notice with no resolvable receiver stays untouched. */
-export function selectDueNotices(input: AutoForwardInput): DueNotice[] {
+export function selectDueNotices(input: AutoForwardInput, opts: AutoForwardOptions = {}): DueNotice[] {
   const out: DueNotice[] = []
   for (const d of input.deliveries) {
-    const r = autoForwardSkip(d, input)
+    const r = autoForwardSkip(d, input, opts)
     if (r.skip === null) out.push(r.due)
   }
   return out.sort((a, b) => a.daysToDelivery - b.daysToDelivery || a.delivery.id.localeCompare(b.delivery.id))
+}
+
+/** The notices only the bulk button takes: overdue past the limit, yet with a receiver who can be told. */
+export function selectStaleNotices(input: AutoForwardInput): DueNotice[] {
+  return selectDueNotices(input, { ignoreAge: true }).filter((n) => autoForwardSkip(n.delivery, input).skip === "too_old")
 }
 
 /** Is a forward made by the job, not by a person? */

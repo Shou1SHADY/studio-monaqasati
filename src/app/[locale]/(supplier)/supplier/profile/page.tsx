@@ -43,7 +43,7 @@ import {
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { sendEmailVerification } from "firebase/auth"
-import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
+import { SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog"
 import {
   DropdownMenu,
@@ -70,6 +70,8 @@ import { doc, updateDoc, deleteField, collection, query as firestoreQuery, order
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { SupplierSpecialtiesCard } from "@/components/materials/SupplierSpecialtiesCard"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { subOptions } from "@/lib/materials/subs"
 import { usePermissions } from "@/hooks/usePermissions"
 import { OwnerOnlyNotice } from "@/components/OwnerOnlyNotice"
 import { identityDocRef } from "@/lib/org-identity"
@@ -174,6 +176,7 @@ function LegacySupplierProfilePage() {
 
   const { profile: userData, isLoading: isUserDataLoading, organizationId, isSecondary } = useResolvedProfile(isUserLoading ? null : user?.uid)
   const { isOrgOwner, isLoading: permsLoading } = usePermissions()
+  const { index: treeIndex } = useMaterialTree()
   const treeSpecialtyIds = useMemo(() => {
     const v = (userData as { specialtyIds?: unknown } | null)?.specialtyIds
     return Array.isArray(v) ? (v.filter((x) => typeof x === "string") as string[]) : []
@@ -433,22 +436,23 @@ function LegacySupplierProfilePage() {
 
     setIsGenerating(true)
     try {
+      const subs = subOptions(treeIndex, "ar")
+      const token = await user?.getIdToken()
+      if (!subs.length || !token) throw new Error("tree not ready")
       const result = await suggestSupplierSpecializations({
         businessDescription: profile.description,
-        predefinedCategories: PREDEFINED_CATEGORIES
+        predefinedCategories: subs.map((o) => o.label)
       })
-      
-      const newSpecs = Array.from(new Set([...profile.specializations, ...result.suggestedCategories]))
-      setProfile(prev => ({ ...prev, specializations: newSpecs }))
-      
-      // Auto-save to firestore
-      if (user && firestore && identityWriteRef) {
-        try {
-          await saveIdentity(pendingSpecsPayload(newSpecs))
-        } catch (err) {
-          console.error("Auto-save failed:", err)
-        }
-      }
+
+      const picked = subs.filter((o) => result.suggestedCategories.includes(o.label)).map((o) => o.value)
+      const merged = Array.from(new Set([...treeSpecialtyIds, ...picked]))
+      if (!merged.length) throw new Error("nothing suggested")
+      const res = await fetch("/api/supplier/specialties", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ subIds: merged }),
+      })
+      if (!res.ok) throw new Error(String(res.status))
 
       toast({
         title: t("ai_success"),
@@ -481,23 +485,6 @@ function LegacySupplierProfilePage() {
     }
   }
 
-  const addSpec = async (spec: string) => {
-    if (!profile.specializations.includes(spec)) {
-      const updatedSpecs = [...profile.specializations, spec]
-      setProfile(prev => ({
-        ...prev,
-        specializations: updatedSpecs
-      }))
-
-      if (user && firestore && identityWriteRef) {
-        try {
-          await saveIdentity(pendingSpecsPayload(updatedSpecs))
-        } catch (err) {
-          console.error("Auto-save failed:", err)
-        }
-      }
-    }
-  }
 
   const addCertificate = async () => {
     if (!newCert.name || !newCert.issuer) {
@@ -799,7 +786,7 @@ function LegacySupplierProfilePage() {
     profile.location,
     profile.crNumber,
     profile.taxNumber,
-    profile.specializations.length > 0,
+    profile.specializations.length > 0 || treeSpecialtyIds.length > 0,
     profile.legalDocuments.cr.url,
     profile.legalDocuments.vat.url,
     profile.projects.length > 0
@@ -1223,7 +1210,7 @@ function LegacySupplierProfilePage() {
                     </div>
                     <Button 
                       onClick={handleAiSuggest}
-                      disabled={isGenerating || !profile.description}
+                      disabled={isGenerating || !profile.description || !isOrgOwner || !treeIndex}
                       className="gap-2 bg-white text-primary border-primary/20 hover:bg-primary hover:text-white transition-all shadow-sm"
                       variant="outline"
                     >
@@ -1233,6 +1220,7 @@ function LegacySupplierProfilePage() {
                   </div>
                 </div>
 
+                {profile.specializations.length > 0 && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -1243,40 +1231,21 @@ function LegacySupplierProfilePage() {
                         </Badge>
                       )}
                     </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm" className="rounded-full h-9 border-dashed px-4">
-                          <Plus size={16} className="me-2" />
-                          {t("add_manually")}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-56 max-h-72 overflow-y-auto" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
-                        {PREDEFINED_CATEGORIES.filter(c => !profile.specializations.includes(c)).map(cat => (
-                          <DropdownMenuItem key={cat} onClick={() => addSpec(cat)} className="cursor-pointer">
-                            {displayCategory(cat, locale)}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
                   </div>
                   <p className="text-xs text-muted-foreground">{t("specs_approval_note")}</p>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {profile.specializations.length > 0 ? profile.specializations.map(spec => (
+                    {profile.specializations.map(spec => (
                       <div key={spec} className="p-4 bg-white rounded-xl border border-slate-100 flex items-center justify-between hover:border-primary/30 transition-all shadow-sm group">
                         <span className="font-medium text-slate-700">{displayCategory(spec, locale)}</span>
-                        <button onClick={() => removeSpec(spec)} className="text-slate-300 hover:text-destructive transition-colors">
+                        <button onClick={() => removeSpec(spec)} aria-label={displayCategory(spec, locale)} className="text-slate-300 hover:text-destructive transition-colors">
                           <X size={18} />
                         </button>
                       </div>
-                    )) : (
-                      <div className="col-span-full py-12 flex flex-col items-center justify-center text-muted-foreground bg-slate-50 rounded-2xl border border-dashed">
-                        <Zap size={32} className="opacity-20 mb-2" />
-                        <p>{t("no_specializations")}</p>
-                      </div>
-                    )}
+                    ))}
                   </div>
                 </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

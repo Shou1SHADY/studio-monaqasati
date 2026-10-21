@@ -6,10 +6,11 @@ import { getAdminAuth, getAdminFirestore, getAdminStorage, getStorageBucketName 
 import { callerOf } from "@/lib/receipt-links"
 import { PURCHASE_ORDERS } from "@/lib/procurement/types"
 import type { InvoiceFile } from "@/lib/procurement/payment-mark"
+import { financeOn } from "@/lib/procurement/financeless-server"
 
 // The supplier's invoice as a FILE on the order (PUR-10): uploaded by the buyer when it came
 // outside the platform. Whoever prepares or approves orders (or the owner) attaches it; PDF or
-// image, 10 MB at most.
+// image, 4 MB at most. Only a company without Finance keeps invoices as files: with Finance the accountant is inside.
 
 // Under Vercel's 4.5 MB request-body limit (prod); the browser shrinks a photo first (upload-fit.ts).
 const MAX_BYTES = UPLOAD_MAX_BYTES
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
     const db = getAdminFirestore()
     const caller = await callerOf(db, uid)
     if (!caller || !(caller.can("offers.accept") || caller.can("po.approve"))) return fail("Not yours to attach", "FORBIDDEN", 403)
+    if (await financeOn(db, caller.orgId)) return fail("Finance receives the invoices of this company", "FINANCE_ON", 409)
     const form = await req.formData().catch(() => null)
     const file = form?.get("file")
     const poId = String(form?.get("poId") || "")

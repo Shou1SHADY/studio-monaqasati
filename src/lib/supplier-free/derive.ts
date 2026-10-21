@@ -303,6 +303,15 @@ function declineOf(po: Rec): DealPo["decl"] | undefined {
   return { at: dayOf(d.at), why: (str(d.reason) || "other") as NonNullable<DealPo["decl"]>["why"], note: str(d.note) || undefined }
 }
 
+/** The payment status a buyer without Finance marked on the order, and the day the advance was marked paid — the supplier reads both (PUR-10). */
+export function payMarkOf(po: Rec): { pay?: NonNullable<DealPo["pay"]> } {
+  const mark = po.paymentMark as Rec | undefined
+  const state = str(mark?.state)
+  const advanceDay = dayOf(str(po.advancePaidDay))
+  if (!(state === "unpaid" || state === "part" || state === "paid") && !advanceDay) return {}
+  return { pay: { state: state === "part" || state === "paid" ? state : "unpaid", day: dayOf(str(mark?.day)), ...(advanceDay ? { advanceDay } : {}) } }
+}
+
 export interface DeriveContext {
   myOrgId: string
   today: string
@@ -437,6 +446,7 @@ export function deriveWorld(raw: RawWorld): World {
         lump: lump ? p.totalExVat : null,
         cancelNote: str((p.lines.find((l) => l.cancelReason) || {}).cancelReason) || undefined,
         decl: dec,
+        ...payMarkOf(p),
       }
       if (dec || (p.status === "cancelled" && dec)) deal.closed = { k: "declined", at: dec?.at || today }
       else if (p.status === "cancelled") deal.closed = { k: "cancelled", at: dayOf(p.closedAt) || today }

@@ -21,12 +21,30 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { cn } from "@/lib/utils"
 import { useFirestore } from "@/firebase"
 import { addReceiver, setReceiverActive, updateReceiver } from "@/lib/procurement/receiver-writes"
-import { RECEIVER_MODULES, phoneUsable, receiverProblems, receiverRows, type ProcReceiver, type ReceiverInput, type ReceiverModule } from "@/lib/procurement/receivers"
+import {
+  RECEIVER_MODULES,
+  RECEIVER_ROLES,
+  findDuplicateReceiver,
+  isReceiverRole,
+  normalizeSaudiMobile,
+  parseReceiverInput,
+  phoneUsable,
+  receiverRoleTitle,
+  receiverRows,
+  type ProcReceiver,
+  type ReceiverInput,
+  type ReceiverModule,
+  type ReceiverRole,
+} from "@/lib/procurement/receivers"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import type { ProcActor } from "@/lib/procurement/types"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
-const blank = (): ReceiverInput => ({ name: "", title: "", module: "inventory", phone: "", userId: null, warehouseIds: [] })
+interface ReceiverForm extends Omit<ReceiverInput, "role" | "title"> {
+  role: ReceiverRole | ""
+}
+
+const blank = (): ReceiverForm => ({ name: "", role: "", module: "inventory", phone: "", userId: null, warehouseIds: [] })
 
 export function ReceiverRegister({
   receivers,
@@ -44,30 +62,34 @@ export function ReceiverRegister({
   const t = useTranslations("Portal.ProcReceivers")
   const firestore = useFirestore()
   const [editing, setEditing] = useState<ProcReceiver | null | undefined>(undefined)
-  const [form, setForm] = useState<ReceiverInput>(blank())
+  const [form, setForm] = useState<ReceiverForm>(blank())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const rows = useMemo(() => receiverRows(receivers), [receivers])
   const nameOf = (id: string) => warehouses.find((w) => w.id === id)?.name || id
-  const problems = receiverProblems(form)
+  const asInput = (): Partial<ReceiverInput> => ({ ...form, role: isReceiverRole(form.role) ? form.role : undefined, title: isReceiverRole(form.role) ? receiverRoleTitle(form.role) : "" })
+  const parsed = parseReceiverInput(asInput())
+  const failing = parsed.ok ? [] : parsed.fields
+  const twin = findDuplicateReceiver(receivers, form, editing?.id)
+  const phoneTyped = form.phone.trim().length > 0
 
   const open = (r: ProcReceiver | null) => {
     setEditing(r)
-    setForm(r ? { name: r.name, title: r.title, module: r.module, phone: r.phone, userId: r.userId || null, warehouseIds: r.warehouseIds || [] } : blank())
+    setForm(r ? { name: r.name, role: r.role ?? "", module: r.module, phone: normalizeSaudiMobile(r.phone) || r.phone, userId: r.userId || null, warehouseIds: r.warehouseIds || [] } : blank())
     setError(null)
   }
 
   const submit = async () => {
-    if (!firestore || problems.length) return
+    if (!firestore || !parsed.ok || twin) return
     setBusy(true)
     setError(null)
     try {
-      if (editing) await updateReceiver(firestore, actor, editing.id, form)
-      else await addReceiver(firestore, actor, orgId, form)
+      if (editing) await updateReceiver(firestore, actor, editing.id, parsed.data, receivers)
+      else await addReceiver(firestore, actor, orgId, parsed.data, { register: receivers })
       setEditing(undefined)
     } catch (err) {
-      setError(err instanceof ProcWriteError ? t(`err.${err.code}`) : t("err.generic"))
+      setError(err instanceof ProcWriteError ? (err.params.fields === "duplicate" ? t("err.duplicate", { name: String(err.params.name) }) : t(`err.${err.code}`)) : t("err.generic"))
     } finally {
       setBusy(false)
     }
@@ -153,13 +175,38 @@ export function ReceiverRegister({
               <Input id="rcv-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="rcv-title">{t("dialog.title")}</Label>
-              <Input id="rcv-title" placeholder={t("dialog.titlePlaceholder")} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+              <Label htmlFor="rcv-role">{t("dialog.role")}</Label>
+              <NativeSelect
+                id="rcv-role"
+                value={form.role}
+                onChange={(e) => setForm({ ...form, role: e.target.value as ReceiverRole | "" })}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">{t("dialog.rolePlaceholder")}</option>
+                {RECEIVER_ROLES.map((role) => (
+                  <option key={role} value={role}>
+                    {t(`role.${role}`)}
+                  </option>
+                ))}
+              </NativeSelect>
+              {editing && !editing.role && editing.title && (
+                <p className="text-[11px] text-muted-foreground">{t("dialog.legacyRole", { title: editing.title })}</p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="rcv-phone">{t("dialog.phone")}</Label>
-                <Input id="rcv-phone" inputMode="tel" dir="ltr" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                <Input
+                  id="rcv-phone"
+                  inputMode="tel"
+                  dir="ltr"
+                  placeholder="05xxxxxxxx"
+                  aria-invalid={phoneTyped && failing.includes("phone")}
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  onBlur={() => setForm((f) => ({ ...f, phone: normalizeSaudiMobile(f.phone) || f.phone }))}
+                />
+                {phoneTyped && failing.includes("phone") && <p className="text-[11px] font-bold text-destructive">{t("dialog.phoneInvalid")}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="rcv-module">{t("dialog.module")}</Label>
@@ -203,6 +250,9 @@ export function ReceiverRegister({
               <p className="text-[11px] text-muted-foreground">{form.warehouseIds.length ? t("dialog.placesPicked") : t("dialog.placesNone")}</p>
             </div>
 
+            {twin && (
+              <p className="text-sm font-bold text-destructive">{t(twin.active === false ? "err.duplicateRetired" : "err.duplicate", { name: twin.name })}</p>
+            )}
             {error && <p className="text-sm font-bold text-destructive">{error}</p>}
           </div>
 
@@ -210,7 +260,7 @@ export function ReceiverRegister({
             <Button variant="outline" onClick={() => setEditing(undefined)} disabled={busy}>
               {t("dialog.cancel")}
             </Button>
-            <Button onClick={submit} disabled={problems.length > 0 || busy}>
+            <Button onClick={submit} disabled={!parsed.ok || Boolean(twin) || busy}>
               {busy && <Loader2 className="me-1.5 animate-spin" size={14} />}
               {t("dialog.save")}
             </Button>

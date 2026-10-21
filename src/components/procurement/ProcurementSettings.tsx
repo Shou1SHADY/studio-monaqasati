@@ -36,6 +36,8 @@ import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { DeliverySitesPanel } from "@/components/procurement/DeliverySitesPanel"
 import { useModules } from "@/hooks/useCompanyModules"
 import { deliverySites, storedSites } from "@/lib/procurement/delivery-sites"
+import { openRequestsBySite } from "@/lib/procurement/site-counts"
+import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { ROLE_COLUMNS, roleRows } from "@/lib/procurement/roles-matrix"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
 import type { BoundaryParty } from "@/lib/procurement/boundary"
@@ -120,7 +122,8 @@ export function ProcurementSettings() {
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
-  const { actor, orgId, policies: worldPolicies, loading } = useProcurementWorld()
+  const procWorld = useProcurementWorld()
+  const { actor, orgId, policies: worldPolicies, loading } = procWorld
   const policies = useMemo(() => resolvePolicies(worldPolicies), [worldPolicies])
   const mayEdit = actor.isOwner || actor.canApprove
   // The limits that bound the approver himself are the owner's alone (the rules say so too).
@@ -146,6 +149,9 @@ export function ProcurementSettings() {
     () => deliverySites({ stored: storedSiteList, warehouses: (warehouseDocs || []) as Array<{ id: string; name?: string; projectId?: string | null }>, projects: (projectDocs || []) as Array<{ id: string; name?: string; location?: string | null }>, pmOn }),
     [storedSiteList, warehouseDocs, projectDocs, pmOn]
   )
+  // The requests still open at each site: the team's «طلب مواد» naming it, or its project's (PUR-10).
+  const { needs } = useProcurementNeeds(procWorld)
+  const openBySite = useMemo(() => openRequestsBySite(needs, siteList), [needs, siteList])
   const [saving, setSaving] = useState(false)
   const [segment, setSegment] = useState<Segment>("pol")
 
@@ -371,7 +377,7 @@ export function ProcurementSettings() {
           )}
 
 
-          {segment === "sites" && <DeliverySitesPanel orgId={orgId} stored={storedSiteList} sites={siteList} receivers={receivers} mayEdit={mayEdit} openRequests={() => 0} />}
+          {segment === "sites" && <DeliverySitesPanel orgId={orgId} stored={storedSiteList} sites={siteList} receivers={receivers} mayEdit={mayEdit} openRequests={(id) => openBySite[id] ?? 0} pmOn={pmOn} projects={(projectDocs || []) as Array<{ id: string; name?: string }>} />}
 
           {segment === "receivers" && (
             <Section title={tRcv("title")} subtitle={tRcv("subtitle")} icon={PackageCheck}>
@@ -427,6 +433,7 @@ export function ProcurementSettings() {
               </div>
               <p className="border-t px-4 py-2.5 text-[11px] leading-relaxed text-muted-foreground" dir="auto">
                 {t(financeOn ? "roles2.foot_fin" : "roles2.foot_nofin")}
+                {!pmOn && ` ${t("roles2.foot_raise")}`}
               </p>
             </Section>
           )}

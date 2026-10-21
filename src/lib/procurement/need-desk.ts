@@ -12,7 +12,7 @@
 import { addDays, daysBetween, round2, todayOf } from "./po"
 import { agreementFor, lastPaid, materialKey, type PriceAgreement, type PriceHistoryEntry } from "./prices"
 import { needRoute, type NeedRoute, type RouteResult } from "./route"
-import type { Need } from "./needs"
+import type { Need, NeedLineLink } from "./needs"
 import { sampleNo } from "@/lib/pm/sample"
 import { replyWindowHours } from "./policy-enforce"
 import type { ProcurementPolicies, PurchaseOrder } from "./types"
@@ -79,6 +79,8 @@ export interface NeedRow {
   /** Our cover in stock, as the stores read now (null = not stocked). */
   onHand: number | null
   selectable: boolean
+  /** Its own RFQ / order, when part of the request was published without the rest. */
+  link: NeedLineLink | null
 }
 
 const ageHours = (at: string | null | undefined, now: Date): number | null => {
@@ -165,7 +167,7 @@ export function needPathOf(need: Need, state: LineState, facts: DeskFacts): { pa
   if (need.kind === "project" && !need.mfgRequestId && need.decision?.kind !== "buy" && need.lines.some((l) => facts.makeable(l.name))) return { path: "mfg", route: null }
   const proceeded = need.decision?.kind === "proceed_short" || need.decision?.kind === "proceed_full"
   const route = needRoute({
-    lines: need.lines.map((l, i) => ({ ...l, quantity: openOf(need, i), onHand: need.kind === "stock" || proceeded ? null : facts.onHand(l.name) })),
+    lines: need.lines.flatMap((l, i) => (l.link ? [] : [{ ...l, quantity: openOf(need, i), onHand: need.kind === "stock" || proceeded ? null : facts.onHand(l.name) }])),
     agreements: facts.agreements,
     history: facts.history,
     directCap: facts.policies.directPurchaseCap,
@@ -187,10 +189,12 @@ export function buildNeedRows(needs: Need[], facts: DeskFacts): NeedRow[] {
     const state = needLineState(need, facts)
     const p = needPathOf(need, state, facts)
     need.lines.forEach((l, index) => {
-      const open = openOf(need, index)
+      // A part of the request published without the rest is in hand on its own.
+      const lineState: LineState = l.link ? (l.link.poId ? "po" : "rfq") : state
+      const open = l.link ? 0 : openOf(need, index)
       const needBy = l.needBy || need.needBy
       const leadDays = leadDaysOf(facts.orders, l.name, l.unit)
-      const lastOrderDay = isActionState(state) ? lastOrderDayOf(needBy, leadDays, p?.path ?? null, facts.policies) : null
+      const lastOrderDay = isActionState(lineState) ? lastOrderDayOf(needBy, leadDays, p?.path ?? null, facts.policies) : null
       const unitEstimate = unitEstimateOf(l.name, l.unit, facts, today)
       const samplePending = Boolean(l.samplePending)
       out.push({
@@ -202,9 +206,9 @@ export function buildNeedRows(needs: Need[], facts: DeskFacts): NeedRow[] {
         unit: l.unit,
         total: l.quantity,
         open,
-        state,
-        path: p?.path ?? null,
-        route: p?.route ?? null,
+        state: lineState,
+        path: l.link ? null : p?.path ?? null,
+        route: l.link ? null : p?.route ?? null,
         needBy,
         leadDays,
         lastOrderDay,
@@ -215,7 +219,8 @@ export function buildNeedRows(needs: Need[], facts: DeskFacts): NeedRow[] {
         samplePending,
         itemId: l.itemId ?? null,
         onHand: need.kind === "stock" ? need.stock?.onHand ?? null : facts.onHand(l.name),
-        selectable: (state === "open" || state === "mfgl") && p?.path !== "mfg" && p?.path !== "stock",
+        selectable: (lineState === "open" || lineState === "mfgl") && p?.path !== "mfg" && p?.path !== "stock",
+        link: l.link ?? null,
       })
     })
   }
@@ -233,6 +238,12 @@ export const FORM_NEED_CHOICES = 8
 /** A project need our workshop makes and nobody has asked it yet — its path is the workshop, not an RFQ. */
 export const goesToWorkshop = (need: Need, makeable: (name: string) => boolean): boolean =>
   need.kind === "project" && !need.mfgRequestId && need.decision?.kind !== "buy" && need.lines.some((l) => makeable(l.name))
+
+/** The earliest last day to order of a request's lines still to source (as an RFQ would take them); null without a need-by date. */
+export function needLastOrderDay(need: Need, facts: Pick<DeskFacts, "orders" | "policies">): string | null {
+  const days = need.lines.filter((l) => !l.link).map((l) => lastOrderDayOf(l.needBy || need.needBy, leadDaysOf(facts.orders, l.name, l.unit), "rfq", facts.policies)).filter((d): d is string => Boolean(d))
+  return days.length ? days.sort()[0] : null
+}
 
 export function formNeedChoices(
   needs: Need[],
@@ -252,8 +263,7 @@ export function formNeedChoices(
     .filter((n) => !opts.exclude(n) && !goesToWorkshop(n, opts.makeable))
     .map((n) => {
       const cats = Array.from(new Set(n.lines.map((l) => categoryOf(l.name, l.unit, l.category, opts.facts)).filter((c): c is string => Boolean(c))))
-      const days = n.lines.map((l) => lastOrderDayOf(l.needBy || n.needBy, leadDaysOf(opts.facts.orders, l.name, l.unit), "rfq", opts.facts.policies)).filter((d): d is string => Boolean(d))
-      return { n, cats, last: days.length ? days.sort()[0] : far }
+      return { n, cats, last: needLastOrderDay(n, opts.facts) ?? far }
     })
     .filter(({ cats }) => !cats.length || !opts.categories.length || cats.some((c) => opts.categories.includes(c)))
     .filter(({ cats }) => !cats.length || !opts.buyerCategories?.length || cats.some((c) => (opts.buyerCategories as string[]).includes(c)))
@@ -405,8 +415,9 @@ export function rollupOf(rows: NeedRow[]): BuyerRollup | null {
   return { buyer: null, count: rows.length, overdue: days.filter((d) => d < 0).length, nearest: days.length ? Math.min(...days) : null }
 }
 
-/** «احتياج بلا أمر شراء» and «فات آخر يوم لطلبها». */
+/** «احتياج بلا أمر شراء» and «فات آخر يوم لطلبها» — in REQUESTS, not lines: a request of three materials is one. */
 export function needKpi(rows: NeedRow[]): { need: number; overdue: number } {
-  const act = actionRows(rows)
-  return { need: act.length, overdue: act.filter((r) => r.lastOrderIn != null && r.lastOrderIn < 0).length }
+  const requests = new Map<string, NeedRow[]>()
+  for (const r of actionRows(rows)) requests.set(r.needKey ?? r.key, [...(requests.get(r.needKey ?? r.key) || []), r])
+  return { need: requests.size, overdue: [...requests.values()].filter((list) => list.some((r) => r.lastOrderIn != null && r.lastOrderIn < 0)).length }
 }

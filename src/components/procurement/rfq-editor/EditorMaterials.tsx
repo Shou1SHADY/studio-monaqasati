@@ -10,7 +10,7 @@
 import { displayNeedRef } from "@/lib/procurement/format"
 import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { CalendarClock, Copy, MapPin, MoreHorizontal, Plus, ShieldCheck, Trash2 } from "lucide-react"
+import { CalendarClock, Copy, MapPin, MoreHorizontal, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -24,6 +24,8 @@ import { cn } from "@/lib/utils"
 import { SAUDI_CITIES, displayCity } from "@/lib/constants"
 import { label, pathLabel, pickOf, unitConversion, unitsOf, type MaterialHit, type MaterialIndex } from "@/lib/materials/tree"
 import { siteLine, type DeliverySite } from "@/lib/procurement/delivery-sites"
+import { fmtDayLong } from "@/lib/procurement/format"
+import { daysBetween } from "@/lib/procurement/po"
 import {
   addLine,
   blankLine,
@@ -51,6 +53,8 @@ export function EditorMaterials({
   showProblems,
   lockedProjectId,
   fixed,
+  boq,
+  pmOn,
 }: {
   groups: EditorGroup[]
   onChange: (groups: EditorGroup[]) => void
@@ -63,11 +67,24 @@ export function EditorMaterials({
   /** The incoming request's panel (PUR-01 step 1): what was asked, as it was asked — only a missing
    * material is picked here; editing, removing or adding is «جهّزه»'s, in the editor. */
   fixed?: boolean
+  /** The BOQ item of each incoming row, by `projectId/itemId` («04-01-01 · بناء بلوك 20 سم»). */
+  boq?: Record<string, string>
+  pmOn?: boolean
 }) {
   const t = useTranslations("Portal.ProcEditor")
   const tm = useTranslations("Portal.Materials")
   const locale = useLocale()
   const [browse, setBrowse] = useState<{ groupKey: string; lineKey: string | null; query: string; freeText: string | null } | null>(null)
+  // The groups whose city and district are open for change (a place typed by hand stays open while it is typed).
+  const [placeOpen, setPlaceOpen] = useState<Set<string>>(() => new Set())
+  const setPlace = (key: string, open: boolean) =>
+    setPlaceOpen((prev) => {
+      const next = new Set(prev)
+      if (open) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)
   const numbers = new Map(numberedLines(groups).map((r) => [r.line.key, r.no]))
   const rowProblems = (lineKey: string) => (showProblems ? problems.filter((p) => p.lineKey === lineKey).map((p) => p.code) : [])
 
@@ -131,6 +148,8 @@ export function EditorMaterials({
     </DropdownMenu>
   )
 
+  const boqOf = (g: EditorGroup, l: EditorLine) => (g.projectId && l.boqItemId ? boq?.[`${g.projectId}/${l.boqItemId}`] || "" : "")
+
   const materialCell = (g: EditorGroup, l: EditorLine, bad: boolean) => (
     <div className="min-w-0 space-y-0.5">
       {(l.material || l.legacy) && fixed ? (
@@ -139,6 +158,11 @@ export function EditorMaterials({
             {l.name}
           </p>
           <p className="truncate px-1 text-[11px] text-muted-foreground">{l.material ? pathLabel(l.material.path, locale, !l.material.outside) : `${l.legacy?.category} › ${l.legacy?.subCategory}`}</p>
+          {boqOf(g, l) && (
+            <p className="truncate px-1 text-[11px] text-muted-foreground" dir="auto">
+              {t("col_boq")}: {boqOf(g, l)}
+            </p>
+          )}
         </>
       ) : l.material || l.legacy ? (
         <>
@@ -167,6 +191,11 @@ export function EditorMaterials({
           <p className="px-1 text-sm font-semibold" dir="auto">
             {l.name}
           </p>
+          {fixed && boqOf(g, l) && (
+            <p className="truncate px-1 text-[11px] text-muted-foreground" dir="auto">
+              {t("col_boq")}: {boqOf(g, l)}
+            </p>
+          )}
           <Button
             type="button"
             size="sm"
@@ -288,41 +317,75 @@ export function EditorMaterials({
                     ))}
                 </NativeSelect>
               )}
-              {g.city ? (
-                <span className="text-xs text-muted-foreground">{siteLine(g, (c) => displayCity(c, locale))}</span>
+              {g.city && !placeOpen.has(g.key) ? (
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  {siteLine(g, (c) => displayCity(c, locale))}
+                  <IconButton label={t("edit_place")} icon={Pencil} iconSize={12} className="h-7 w-7 md:h-7 md:w-7" onClick={() => setPlace(g.key, true)} />
+                </span>
               ) : (
                 <span className="flex flex-wrap items-center gap-1.5">
-                  <NativeSelect value="" onChange={(e) => setGroup(g, { city: e.target.value })} aria-label={t("group_city")} className={cn("h-8 text-xs", placeBad && "border-destructive")}>
+                  <NativeSelect
+                    value={g.city}
+                    onChange={(e) => {
+                      setGroup(g, { city: e.target.value })
+                      if (e.target.value) setPlace(g.key, true)
+                    }}
+                    aria-label={t("group_city")}
+                    className={cn("h-8 text-xs", placeBad && "border-destructive")}
+                  >
                     <option value="">{t("group_city_pick")}</option>
-                    {SAUDI_CITIES.map((c) => (
+                    {(g.city && !SAUDI_CITIES.includes(g.city) ? [g.city, ...SAUDI_CITIES] : SAUDI_CITIES).map((c) => (
                       <option key={c} value={c}>
                         {displayCity(c, locale)}
                       </option>
                     ))}
                   </NativeSelect>
+                  {g.city && (
+                    <>
+                      <Input value={g.district} onChange={(e) => setGroup(g, { district: e.target.value })} placeholder={t("group_district")} aria-label={t("group_district")} className="h-8 w-36 text-xs" dir="auto" />
+                      <Button type="button" size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setPlace(g.key, false)}>
+                        {t("place_done")}
+                      </Button>
+                    </>
+                  )}
                 </span>
-              )}
-              {g.city && !g.siteId && (
-                <Input
-                  value={g.district}
-                  onChange={(e) => setGroup(g, { district: e.target.value })}
-                  placeholder={t("group_district")}
-                  aria-label={t("group_district")}
-                  className="h-8 w-36 text-xs"
-                  dir="auto"
-                />
               )}
               {g.requestRefs.map((r) => (
                 <StatusPill key={r} tone="info" className="text-[11px]">
                   {t("from_request", { ref: displayNeedRef(r, locale) })}
                 </StatusPill>
               ))}
-              <label className="ms-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-                {t("need_by")}
-                <Input type="date" value={g.needBy || ""} onChange={(e) => setGroup(g, { needBy: e.target.value || null })} className="h-8 w-36 text-xs" dir="ltr" />
-              </label>
+              {fixed && g.requestRefs.length ? (
+                <span className="ms-auto text-xs text-muted-foreground">
+                  {t("need_by")} <b className="text-foreground">{g.needBy ? fmtDayLong(g.needBy, locale) : "—"}</b>
+                </span>
+              ) : (
+                <label className="ms-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {t("need_by")}
+                  <Input type="date" value={g.needBy || ""} onChange={(e) => setGroup(g, { needBy: e.target.value || null })} className="h-8 w-36 text-xs" dir="ltr" />
+                </label>
+              )}
               {groups.length > 1 && !lines.some(lineStarted) && <IconButton label={t("remove_group")} icon={Trash2} iconSize={14} onClick={() => onChange(removeGroup(groups, g.key))} />}
             </header>
+            {fixed &&
+              (g.facts || []).map((f) => {
+                const left = f.lastOrderDay ? daysBetween(today, f.lastOrderDay) : null
+                return (
+                  <p key={f.ref} className="flex flex-wrap gap-x-4 gap-y-1 border-b px-3 py-2 text-xs text-muted-foreground">
+                    {f.requestedBy && <span>{t("panel_requested_by", { name: f.requestedBy })}</span>}
+                    {(f.approvedBy || f.approvedOn) && (
+                      <span>{f.approvedBy ? t("panel_approved_by", { name: f.approvedBy, date: f.approvedOn ? fmtDayLong(f.approvedOn, locale, false) : "—" }) : t("panel_approved_on", { date: fmtDayLong(f.approvedOn, locale, false) })}</span>
+                    )}
+                    <span className={cn("font-semibold", left != null && left < 0 && "text-destructive")}>
+                      {f.lastOrderDay
+                        ? left != null && left < 0
+                          ? t("panel_last_day_passed", { date: fmtDayLong(f.lastOrderDay, locale, false), days: -left })
+                          : t("panel_last_day", { date: fmtDayLong(f.lastOrderDay, locale, false), days: left ?? 0 })
+                        : t("panel_last_day_none")}
+                    </span>
+                  </p>
+                )
+              })}
             {placeBad && <p className="px-3 pt-2 text-[11px] font-semibold text-destructive">{t("err_no_place")}</p>}
 
             <ul className="divide-y">
@@ -377,6 +440,7 @@ export function EditorMaterials({
               {!fixed && (
                 <li className="px-3 py-2.5">
                   <MaterialSearchInput
+                    pmOn={pmOn}
                     index={index}
                     onPick={(hit) => fillFromHit(g.key, null, hit)}
                     onBrowse={(q) => setBrowse({ groupKey: g.key, lineKey: null, query: q, freeText: null })}

@@ -12,8 +12,10 @@ import { collection, doc, query, where, getDocs } from "firebase/firestore"
 import { resolveProjectStatus, projectStatusLabelKey, type ProjectStatus } from "@/lib/project-status"
 import { resolvePolicies } from "@/lib/procurement/policies"
 import { workQueueCounts } from "@/lib/procurement/shell"
+import type { NoticeFact } from "@/lib/procurement/po"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type ProcurementPolicies, type PurchaseOrder } from "@/lib/procurement/types"
 import { FORWARD_HREF } from "@/lib/procurement/today"
+import { TEAM_REQUESTS } from "@/lib/procurement/team-requests"
 
 export type WorkQueueItemType =
   | "guarantee_expiring"
@@ -23,6 +25,8 @@ export type WorkQueueItemType =
   | "delivery_confirm"
   // PUR-06: a delivery forwarded to ME to count — mine whatever my permissions.
   | "delivery_to_count"
+  // PUR-10: MY «طلب مواد» and where it stands (read from the state the server last told me).
+  | "team_request_mine"
   | "project_waiting_approval"
   | "low_stock"
   | "team_invite_pending"
@@ -72,6 +76,7 @@ const TIER: Record<WorkQueueItemType, number> = {
   rfq_closing_soon: 2,
   delivery_confirm: 3,
   delivery_to_count: 2,
+  team_request_mine: 6,
   rfq_decision: 4,
   project_waiting_approval: 5,
   rfq_no_offers: 6,
@@ -163,6 +168,12 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
     return query(collection(firestore, "deliveries"), where("contractorOrgId", "==", organizationId), where("forwardedTo.userId", "==", userId), where("status", "==", "pending_confirmation"))
   }, [firestore, organizationId, userId])
   const { data: toCount } = useCollection(toCountQuery)
+  // PUR-10: my own «طلب مواد» still open — the server writes `notifiedState` when it tells me it moved.
+  const myRequestsQuery = useMemoFirebase(() => {
+    if (!firestore || !organizationId || !userId) return null
+    return query(collection(firestore, TEAM_REQUESTS), where("organizationId", "==", organizationId), where("requestedById", "==", userId), where("status", "==", "open"))
+  }, [firestore, organizationId, userId])
+  const { data: myRequests } = useCollection(myRequestsQuery)
 
   const warehousesQuery = useMemoFirebase(() => {
     if (!firestore || !organizationId) return null
@@ -387,6 +398,20 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
     })
   })
 
+  ;(myRequests || []).forEach((r: any) => {
+    const state = typeof r.notifiedState === "string" ? r.notifiedState : "sent"
+    if (state === "received") return
+    items.push({
+      id: `team_request_mine_${r.id}`,
+      type: "team_request_mine",
+      tier: TIER.team_request_mine,
+      sortMs: toMs(r.needBy || r.createdAt),
+      since: toMs(r.stateAt || r.createdAt) || undefined,
+      actionUrl: "/contractor/rfqs/my-requests",
+      data: { number: r.number || "", state },
+    })
+  })
+
   // Projects stalled in a status that needs an explicit decision.
   ;(projects || []).forEach((p: any) => {
     const status = resolveProjectStatus(p.status)
@@ -571,7 +596,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
   const liveOrders2 = ((purchaseOrders || []) as PurchaseOrder[]).filter((o) => o.status !== "closed" && o.status !== "cancelled").map((o) => ({ ...o, lines: o.lines || [], log: o.log || [] }))
   if (liveOrders2.length) {
     const policies = resolvePolicies(procSettings as Partial<ProcurementPolicies> | null)
-    const counts = workQueueCounts(liveOrders2, policies, { uid: userId || "", isOwner: !!options.isOrgOwner }, new Date(now))
+    const counts = workQueueCounts(liveOrders2, policies, { uid: userId || "", isOwner: !!options.isOrgOwner }, new Date(now), (deliveries || []) as NoticeFact[])
     if (counts.approve) {
       const waiting = liveOrders2.filter((o) => o.status === "awaiting_approval")
       items.push({

@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
       organizationId: caller.orgId,
       receiver,
       status: "open",
+      ...(receiver.userId ? { viaAccount: true } : {}),
       createdById: caller.uid,
       createdByName: caller.name,
       createdAt: new Date(now).toISOString(),
@@ -94,12 +95,12 @@ export async function POST(req: NextRequest) {
     })
     await batch.commit()
 
-    // This environment's own address: a UAT link must open UAT, whose
-    // database is the one that holds this delivery.
+    // A team member is told in his own account and opens the receipt from his task, with no
+    // link or code (PUR-06); a person without an account is sent the link by Procurement, by
+    // WhatsApp or however they like. This environment's own address: a UAT link must open
+    // UAT, whose database is the one that holds this delivery.
     const url = `${SITE_URL}/receive/${token}`
 
-    // A team member also finds it in their notifications; a person without an
-    // account is sent the link by Procurement, by WhatsApp or however they like.
     if (receiver.userId) {
       await db
         .collection("users")
@@ -115,16 +116,17 @@ export async function POST(req: NextRequest) {
             params: { name: caller.name, supplier: (delivery.supplierName as string) || "" },
           },
           title: "📦 استلام مُحوَّل إليك",
-          message: `حوّل إليك ${caller.name} استلام توريد من ${(delivery.supplierName as string) || "المورد"} — افتح الرابط وعدّ ما وصل ووقّع.`,
+          message: `حوّل إليك ${caller.name} استلام توريد من ${(delivery.supplierName as string) || "المورد"} — افتحه من مهامك وعدّ ما وصل وأكّده بدخولك.`,
           deliveryId: parsed.data.deliveryId,
-          link: `/receive/${token}`,
+          link: `/contractor/receive/${parsed.data.deliveryId}`,
           createdAt: new Date(now).toISOString(),
           read: false,
         })
         .catch((err) => console.warn("receipt forward notification failed:", err?.code || err))
+      return NextResponse.json({ success: true, data: { url: null, expiresAt: link.expiresAt, phoneMasked: null, viaAccount: true } })
     }
 
-    return NextResponse.json({ success: true, data: { url, expiresAt: link.expiresAt, phoneMasked: maskPhone(receiver.phone) } })
+    return NextResponse.json({ success: true, data: { url, expiresAt: link.expiresAt, phoneMasked: maskPhone(receiver.phone), viaAccount: false } })
   } catch (error) {
     console.error("Receipt link create error:", error)
     return fail("Internal server error", "INTERNAL", 500)

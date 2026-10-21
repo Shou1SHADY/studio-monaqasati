@@ -37,7 +37,7 @@ import { useToast } from "@/hooks/use-toast"
 import { displayCity } from "@/lib/constants"
 import { OFFER_STATUS, SAMPLE_STATUS } from "@/utils/guest-offer-workflow"
 import { CLOSED_UNAWARDED } from "@/lib/procurement/supplier"
-import { priceOffer, pricedProducts } from "@/lib/procurement/offer-pricing"
+import { faultNames, offerPricingFields, priceOffer, pricedProducts, pricingFault } from "@/lib/procurement/offer-pricing"
 import type { AnsweredQuery } from "@/lib/procurement/guest-supplier"
 import { GuestAnsweredQueries } from "@/components/procurement/guest/GuestAnsweredQueries"
 import { JoinFreeButton } from "@/components/supplier-free/JoinFreeButton"
@@ -130,6 +130,7 @@ export function GuestOfferContent() {
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const pdfInputRef = useRef<HTMLInputElement>(null)
   const [rates, setRates] = useState<Record<number, string>>({})
+  const [skips, setSkips] = useState<Record<number, boolean>>({})
 
   const priceForm = useForm<PriceFormValues>({ resolver: zodResolver(priceSchema), defaultValues: { note: "" } })
   const sampleForm = useForm<SampleFormValues>({ resolver: zodResolver(sampleSchema), defaultValues: { note: "" } })
@@ -149,6 +150,8 @@ export function GuestOfferContent() {
       const loaded = json.data as GuestOfferData
       setData(loaded)
       setRates(Object.fromEntries((loaded.offer.lines || []).map((l) => [l.rfqProductIndex, String(l.unitPrice ?? "")])))
+      const quoted = new Set((loaded.offer.lines || []).map((l) => l.rfqProductIndex))
+      setSkips(quoted.size ? Object.fromEntries(pricedProducts(loaded.rfq).filter((p) => !quoted.has(p.rfqProductIndex)).map((p) => [p.rfqProductIndex, true])) : {})
       setErrorCode(null)
     } catch {
       setErrorCode("NETWORK")
@@ -217,14 +220,18 @@ export function GuestOfferContent() {
   // is their sum — the server recomputes it and ignores a posted figure.
   const lineProducts = data && (data.offer.lines || []).length ? pricedProducts(data.rfq) : []
   const byLine = lineProducts.length > 0
-  const linePricing = byLine ? priceOffer(lineProducts, rates) : null
+  const linePricing = byLine ? priceOffer(lineProducts, rates, lineProducts.filter((p) => skips[p.rfqProductIndex]).map((p) => p.rfqProductIndex)) : null
+  const lineFault = linePricing ? pricingFault(linePricing) : null
+  const lineFaultText = (fault: NonNullable<typeof lineFault>) =>
+    fault.code === "NO_LINE_PRICED" ? ts("offer_line_none_priced") : ts(fault.code === "LINE_CONTRADICTORY" ? "offer_line_contradictory" : "offer_line_prices_incomplete", { names: faultNames(lineProducts, fault.indexes) })
   const onRevisePriceByLine = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!linePricing?.complete) {
-      toast({ title: t("error_title"), description: ts("offer_line_prices_incomplete"), variant: "destructive" })
+    if (!linePricing || lineFault) {
+      toast({ title: t("error_title"), description: lineFault ? lineFaultText(lineFault) : ts("offer_line_none_priced"), variant: "destructive" })
       return
     }
-    void submitAction("revise_price", { price: String(linePricing.total), rates: JSON.stringify(rates), note: priceForm.getValues("note") || "" }, pdfFile)
+    const fields = offerPricingFields(linePricing)
+    void submitAction("revise_price", { price: fields.price, rates: JSON.stringify(rates), skipped: JSON.stringify(fields.skippedItems ?? []), note: priceForm.getValues("note") || "" }, pdfFile)
   }
 
   const onSampleSent = (values: SampleFormValues) =>
@@ -490,8 +497,21 @@ export function GuestOfferContent() {
                                 className="h-10 w-28 rounded-lg border-slate-200"
                                 aria-label={ts("offer_line_rate_for", { name: prod.name })}
                                 value={rates[prod.rfqProductIndex] ?? ""}
+                                disabled={!!skips[prod.rfqProductIndex]}
                                 onChange={(e) => setRates({ ...rates, [prod.rfqProductIndex]: e.target.value })}
                               />
+                              <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                <input
+                                  type="checkbox"
+                                  checked={!!skips[prod.rfqProductIndex]}
+                                  onChange={(e) => {
+                                    setSkips({ ...skips, [prod.rfqProductIndex]: e.target.checked })
+                                    if (e.target.checked) setRates({ ...rates, [prod.rfqProductIndex]: "" })
+                                  }}
+                                  className="h-4 w-4"
+                                />
+                                {ts("offer_line_not_supplied")}
+                              </label>
                             </div>
                           ))}
                         </div>
@@ -499,6 +519,13 @@ export function GuestOfferContent() {
                           <span className="text-muted-foreground">{ts("offer_line_price_auto_note")}</span>
                           <span className="font-bold tabular-nums" dir="ltr">{linePricing.total} {t("sar")}</span>
                         </div>
+                        {lineFault ? (
+                          <p className="text-[11px] text-amber-700">{lineFaultText(lineFault)}</p>
+                        ) : linePricing.skipped.length > 0 ? (
+                          <p className="text-[11px] text-sky-800">
+                            <b>{ts("offer_line_partial", { count: linePricing.lines.length, of: lineProducts.length })}</b> — {ts("offer_line_partial_note")}
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
                     <div className={cn("space-y-1.5", byLine && "hidden")}>

@@ -10,6 +10,7 @@
 
 import { FieldValue, type Firestore } from "firebase-admin/firestore"
 import { UNDER_REVIEW } from "@/lib/procurement/supplier"
+import { priceOffer, pricedProducts, pricingFault, pricingModeOf, toAmount, type PricedRfq } from "@/lib/procurement/offer-pricing"
 import { QUOTE_COUNTS, quoteCountId, riyadhMonth } from "@/lib/supplier-approval"
 import type { SupplierCompany } from "@/lib/supplier-free/supplier-company"
 
@@ -24,7 +25,7 @@ export const BUYER_OFFER_KEYS = [
 /** Set by the server from its own reads — a body's value is dropped. */
 const SERVER_KEYS = ["supplierId", "organizationId", "supplierOrgId", "submittedByUserId", "submittedByUserName", "rfqId", "rfqTitle", "projectId", "contractorId", "contractorOrgId", "status", "createdAt", "updatedAt", "isFromMdmak", "recordedById"] as const
 
-export type OfferRefusal = "not_approved" | "quota" | "rfq_missing" | "rfq_closed" | "too_large"
+export type OfferRefusal = "not_approved" | "quota" | "rfq_missing" | "rfq_closed" | "too_large" | "line_prices_incomplete" | "line_contradictory" | "no_line_priced"
 
 export class SupplierOfferError extends Error {
   constructor(
@@ -47,6 +48,36 @@ export function supplierOfferFields(body: Rec): Rec {
   const out: Rec = { ...body }
   for (const k of [...BUYER_OFFER_KEYS, ...SERVER_KEYS]) delete out[k]
   return out
+}
+
+const FAULT_CODE = { LINE_PRICES_INCOMPLETE: "line_prices_incomplete", LINE_CONTRADICTORY: "line_contradictory", NO_LINE_PRICED: "no_line_priced" } as const
+
+/**
+ * A per-material quote is checked and totalled HERE, never believed (Procurement 1.5, PUR-03): each line is priced or
+ * marked «not supplied» (`skippedItems`), at least one is priced, none is both, and `price` is Σ rate × quantity.
+ * A total-priced request has no partial offers, so a stray `skippedItems` is dropped. A body with no `lines` is a
+ * lump sum (the assistant, an older app) and is left exactly as it came.
+ */
+export function normalizeOfferPricing(rfq: PricedRfq, fields: Rec): Rec {
+  const rest: Rec = { ...fields }
+  delete rest.skippedItems
+  if (pricingModeOf(rfq) !== "line") return rest
+  if (!Array.isArray(fields.lines) || !fields.lines.length) return rest
+  const rates: Record<number, number> = {}
+  for (const l of fields.lines as Rec[]) rates[Number(l.rfqProductIndex)] = toAmount(l.unitPrice)
+  const skipped = Array.isArray(fields.skippedItems) ? (fields.skippedItems as unknown[]).map(Number).filter((i) => Number.isInteger(i) && i >= 0) : []
+  const pricing = priceOffer(pricedProducts(rfq), rates, skipped)
+  const fault = pricingFault(pricing)
+  if (fault) throw new SupplierOfferError(FAULT_CODE[fault.code], fault.indexes.join(","))
+  const price = String(pricing.total)
+  const batches = Array.isArray(rest.deliveryBatches) ? (rest.deliveryBatches as Rec[]) : null
+  return {
+    ...rest,
+    lines: pricing.lines,
+    price,
+    ...(batches?.length === 1 ? { deliveryBatches: [{ ...batches[0], price }] } : {}),
+    ...(pricing.skipped.length ? { skippedItems: pricing.skipped } : {}),
+  }
 }
 
 export async function createSupplierOffer(
@@ -73,8 +104,9 @@ export async function createSupplierOffer(
     if (countRef && limit && used >= limit) throw new SupplierOfferError("quota", String(limit))
     const rfq = snap.data() as Rec
     if (str(rfq.status) !== "New") throw new SupplierOfferError("rfq_closed")
+    const priced = normalizeOfferPricing(rfq as PricedRfq, fields)
     tx.set(ref, {
-      ...fields,
+      ...priced,
       supplierId: s.uid,
       organizationId: s.orgId,
       supplierName: str(fields.supplierName) || s.company || "—",

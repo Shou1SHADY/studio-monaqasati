@@ -12,10 +12,10 @@
 // `budget_referred`, `budget_decided`, `stop_requested`) are typed locally:
 // `PoLogEntry` is mirrored into the mobile app.
 
-import { doc, runTransaction, serverTimestamp, setDoc, type DocumentReference, type Firestore, type Transaction } from "firebase/firestore"
+import { doc, getDoc, runTransaction, serverTimestamp, setDoc, type DocumentReference, type Firestore, type Transaction } from "firebase/firestore"
 import { emitProcEvent, sarText } from "./events"
 import { canCancelRemainder, lineToArrive, poBlocks, round2, type BlockContext } from "./po"
-import { acceptsHoldPrice, closesOnPayment, HOLD_DECISIONS, HOLD_OWNER, holdVariance, type HoldPricePending, budgetOverrun, overrunTotal, pmBudgetAsk, selfIssueRefusal, type HoldReason, type PaymentKind, type PmCancel, type PoFinanceHold, type PoFinancePayment, type PurchaseOrderX } from "./po-extras"
+import { acceptsHoldPrice, advanceAmount, advanceState, closesOnPayment, HOLD_DECISIONS, HOLD_OWNER, holdVariance, type HoldPricePending, budgetOverrun, overrunTotal, pmBudgetAsk, selfIssueRefusal, type HoldReason, type PaymentKind, type PmCancel, type PoFinanceHold, type PoFinancePayment, type PurchaseOrderX } from "./po-extras"
 import { resolvePolicies, type ResolvedPolicies } from "./policies"
 import { materialKey, PRICE_HISTORY } from "./prices"
 import { approvalGateBlocks } from "./policy-enforce"
@@ -23,7 +23,7 @@ import { readModulesOff } from "../company-modules-reads"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type PoLogEntry, type ProcActor, type PurchaseOrder } from "./types"
 import { afterApproval, assertActs, ProcWriteError, readGateItems, type WriteOpts } from "./writes"
 
-export type PoLogAction = PoLogEntry["action"] | "hold_decided" | "hold_price_asked" | "hold_price_accepted" | "hold_price_refused" | "budget_referred" | "budget_decided" | "stop_requested"
+export type PoLogAction = PoLogEntry["action"] | "finance_reminded" | "hold_decided" | "hold_price_asked" | "hold_price_accepted" | "hold_price_refused" | "budget_referred" | "budget_decided" | "stop_requested"
 export type PoLogEntryX = Omit<PoLogEntry, "action"> & { action: PoLogAction }
 
 const entry = (actor: Pick<ProcActor, "uid" | "name">, action: PoLogAction, at: string, extra?: { note?: string | null; params?: PoLogEntry["params"] }): PoLogEntryX => ({
@@ -53,6 +53,16 @@ async function apply(firestore: Firestore, poId: string, fn: (po: PurchaseOrderX
   const ref = doc(firestore, PURCHASE_ORDERS, poId) as DocumentReference
   return runTransaction(firestore, async (tx) => {
     const po = await readOrder(tx, ref)
+    return commit(tx, ref, po, fn(po))
+  })
+}
+
+/** Finance's side of an order (PUR-10): refused inside the transaction when the company has no Finance, so a stale screen cannot write a ledger that does not exist. */
+async function applyWithFinance(firestore: Firestore, poId: string, fn: (po: PurchaseOrderX) => Step): Promise<PurchaseOrderX> {
+  const ref = doc(firestore, PURCHASE_ORDERS, poId) as DocumentReference
+  return runTransaction(firestore, async (tx) => {
+    const po = await readOrder(tx, ref)
+    if ((await readModulesOff(tx, firestore, po.organizationId)).has("payments")) throw new ProcWriteError("finance_off")
     return commit(tx, ref, po, fn(po))
   })
 }
@@ -183,7 +193,7 @@ export function paymentRefusal(po: Pick<PurchaseOrder, "status" | "approvedAt">,
 export async function recordFinancePayment(firestore: Firestore, actor: ProcActor, isFinance: boolean, poId: string, input: PaymentInput, now = new Date()): Promise<PurchaseOrderX> {
   if (!isFinance) throw new ProcWriteError("no_permission")
   const at = now.toISOString()
-  return apply(firestore, poId, (po) => {
+  return applyWithFinance(firestore, poId, (po) => {
     const refusal = paymentRefusal(po, input)
     if (refusal) throw new ProcWriteError(refusal)
     if (input.kind === "adv" && (po.financePayments || []).some((p) => p.kind === "adv")) throw new ProcWriteError("wrong_state")
@@ -225,12 +235,13 @@ export interface HoldInput {
   lineId?: string | null
 }
 
+/** «أوقف صرف فاتورة» is a PROCUREMENT decision (PUR-07): the owner and the order's approvers hold, and Finance too. */
 export async function holdInvoice(firestore: Firestore, actor: ProcActor, isFinance: boolean, poId: string, input: HoldInput, now = new Date()): Promise<PurchaseOrderX> {
-  if (!isFinance) throw new ProcWriteError("no_permission")
+  if (!isFinance && !actor.isOwner && !actor.canApprove) throw new ProcWriteError("no_permission")
   if (!input.invoiceNo.trim() || !input.text.trim() || !(Number(input.amount) > 0) || !(input.reason in HOLD_OWNER)) throw new ProcWriteError("reason_required")
   if (input.reason === "price" && !(Number(input.price) > 0)) throw new ProcWriteError("reason_required")
   const at = now.toISOString()
-  return apply(firestore, poId, (po) => {
+  return applyWithFinance(firestore, poId, (po) => {
     if (!po.approvedAt) throw new ProcWriteError("wrong_state")
     const hold: PoFinanceHold = {
       id: `h${(po.financeHolds || []).length + 1}`,
@@ -251,11 +262,59 @@ export async function holdInvoice(firestore: Firestore, actor: ProcActor, isFina
 export async function releaseHold(firestore: Firestore, actor: ProcActor, isFinance: boolean, poId: string, holdId: string, now = new Date()): Promise<PurchaseOrderX> {
   if (!isFinance) throw new ProcWriteError("no_permission")
   const at = now.toISOString()
-  return apply(firestore, poId, (po) => {
+  return applyWithFinance(firestore, poId, (po) => {
     const hold = (po.financeHolds || []).find((h) => h.id === holdId)
     if (!hold || hold.state === "released") throw new ProcWriteError("wrong_state")
     return { patch: { financeHolds: (po.financeHolds || []).map((h) => (h.id === holdId ? { ...h, state: "released", decidedAt: h.decidedAt ?? at } : h)) } }
   })
+}
+
+/** «ذكّر المعتمِد»: the approvers are asked again — a notice only. The order's rules allow no write on an order awaiting
+ * approval except its own steps, so nothing is logged on it; the screen keeps the button quiet once pressed. */
+export async function remindApprovers(firestore: Firestore, actor: ProcActor, poId: string, opts?: WriteOpts | Date): Promise<void> {
+  const o = optsOf(opts)
+  if (!actor.isOwner && !actor.canPrepare && !actor.canApprove) throw new ProcWriteError("no_permission")
+  const snap = await getDoc(doc(firestore, PURCHASE_ORDERS, poId))
+  if (!snap.exists()) throw new ProcWriteError("order_missing")
+  const po = { ...(snap.data() as Omit<PurchaseOrder, "id">), id: snap.id } as PurchaseOrder
+  if (po.status !== "awaiting_approval" || po.returnedReason) throw new ProcWriteError("wrong_state")
+  await emitProcEvent(firestore, actor, {
+    kind: "po_awaiting_approval",
+    organizationId: po.organizationId,
+    to: [po.approverKind === "owner" ? { owner: true } : { permission: "po.approve" }],
+    params: { number: po.docNumber, supplier: po.supplierName, amount: sarText(po.totalExVat, o.locale), rfq: po.rfqTitle },
+    poId: po.id,
+    rfqId: po.rfqId,
+    offerId: po.offerId,
+    copy: o.copy,
+  })
+}
+
+/** «ذكّر المالية»: the advance the supplier's date waits for has been with Finance for days (Finance in the package). Logged
+ * on the order, once a day. */
+export async function remindFinanceAboutAdvance(firestore: Firestore, actor: ProcActor, poId: string, opts?: WriteOpts | Date): Promise<PurchaseOrderX> {
+  const o = optsOf(opts)
+  if (!expedites(actor)) throw new ProcWriteError("no_permission")
+  const now = o.now ?? new Date()
+  const at = now.toISOString()
+  const po = await applyWithFinance(firestore, poId, (po) => {
+    assertActs(po, actor)
+    if (advanceState(po) !== "requested") throw new ProcWriteError("wrong_state")
+    const last = [...(po.log || [])].reverse().find((e) => (e.action as string) === "finance_reminded")
+    if (last && now.getTime() - Date.parse(last.at) < 24 * 3600 * 1000) throw new ProcWriteError("reminded_recently")
+    return { patch: {}, log: entry(actor, "finance_reminded", at) }
+  })
+  await emitProcEvent(firestore, actor, {
+    kind: "po_advance_reminder",
+    organizationId: po.organizationId,
+    to: [{ permission: "invoices.manage" }],
+    params: { number: po.docNumber, supplier: po.supplierName, amount: sarText(advanceAmount(po), o.locale), percent: Number(po.advancePercent) || 0 },
+    poId: po.id,
+    rfqId: po.rfqId,
+    offerId: po.offerId,
+    copy: o.copy,
+  })
+  return po
 }
 
 /** «قرّر وأبلغ المالية»: Procurement's answer to a hold it owns (or the supplier's,

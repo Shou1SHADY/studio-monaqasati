@@ -89,7 +89,7 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
     id: k.id,
     label: tToday(k.labelKey),
     value: k.unit === "money" ? compact(k.value) : k.value.toLocaleString("en-US"),
-    unit: k.unit === "lines" ? tToday("kpi.lines", { count: k.value }) : undefined,
+    unit: (k.unit as string) === "lines" || (k.unit as string) === "requests" ? tToday("kpi.requests", { count: k.value }) : undefined,
     note: tToday(k.noteKey, k.noteParams),
     tone: k.tone,
     href: k.href,

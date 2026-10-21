@@ -24,7 +24,7 @@ export type DeliveryStep =
   /** Some of it arrived. Waits on: the supplier, for the rest. */
   | { kind: "part_received"; received: number; ordered: number; left: number; unit: string; byLines: boolean; linesDone: number; linesTotal: number }
   /** A rejected quantity waits for our decision with the supplier. Waits on: us. */
-  | { kind: "rejected"; qty: number; unit: string; reason: string | null }
+  | { kind: "rejected"; qty: number; unit: string; reason: string | null; lineId: string }
   /** A guest supplier's day came and he cannot notify on the platform. Waits on: us. */
   | { kind: "guest_due"; day: string }
   /** No notice past his own promise. Waits on: the supplier. */
@@ -69,7 +69,7 @@ export function deliveryStep(po: PurchaseOrder, notices: ReadonlyArray<StepNotic
     return { kind: "in_transit", deliveryId: n.id, day, receiver: n.forwardedTo.name || "" }
   }
   const rejected = po.lines.filter((l) => num(l.rejected) > 0 && !l.rejectDecision)
-  if (rejected.length) return { kind: "rejected", qty: rejected.reduce((s, l) => s + num(l.rejected), 0), unit: rejected[0].unit, reason: null }
+  if (rejected.length) return { kind: "rejected", qty: rejected.reduce((s, l) => s + num(l.rejected), 0), unit: rejected[0].unit, reason: null, lineId: rejected[0].id }
   if (st === "part_received") return { kind: "part_received", ...receiptProgress(po.lines) }
   if (!po.promisedDate) return { kind: "no_date" }
   const d = daysFromNow(po.promisedDate, now)

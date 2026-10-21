@@ -301,6 +301,8 @@ export function SecPo({ f, d }: { f: Free; d: Deal }) {
         <KV k={t("fSite")} v={<bdi>{po.site || "—"}</bdi>} />
         <KV k={t("fRcv")} v={<bdi>{po.rcv || "—"}</bdi>} />
         <KV k={t("fTerms")} v={termsText(f, po.terms)} />
+        {po.pay?.day ? <KV k={t("fPayMark")} v={`${t(`payMark_${po.pay.state}`)} · ${fmt.date(po.pay.day, true)}`} /> : null}
+        {po.pay?.advanceDay ? <KV k={t("fAdvancePaid")} v={fmt.date(po.pay.advanceDay, true)} /> : null}
       </dl>
       <div className={stkWrap}>
         <table className={stk.table}>

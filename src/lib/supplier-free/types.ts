@@ -91,6 +91,8 @@ export interface DealPo {
   lump?: number | null
   cancelNote?: string
   decl?: { at: string; why: DeclineReason; note?: string }
+  /** What a buyer without Finance marked on the order (PUR-10): optional, and it never stops the order closing. */
+  pay?: { state: "unpaid" | "part" | "paid"; day: string; advanceDay?: string }
 }
 
 export type DeclineReason = "stock" | "price" | "date" | "other"

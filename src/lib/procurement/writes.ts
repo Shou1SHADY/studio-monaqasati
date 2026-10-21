@@ -16,6 +16,7 @@ import { approvalGateBlocks, gateItemIds, noticeReachesReceiver } from "./policy
 import { readModulesOff } from "../company-modules-reads"
 import { poActs, type BoqGateItem, type PurchaseOrderX } from "./po-extras"
 import { drawProcDocNumber, drawProcDocNumbers } from "./numbering"
+import { orderDeliveryFields } from "./delivery-sites"
 import { awardLinkPatch, rfqProjectRequests, type AwardedOrder, type AwardedRfq, type ProjectRequestDoc, type ServedRequest } from "./needs"
 import { rfqLogEntry, type RfqLogEntry } from "./rfq-detail"
 import { PRICE_HISTORY, historyRowsForApproval, materialKey } from "./prices"
@@ -32,6 +33,7 @@ import {
   canUpdateDate,
   reminderCooldownUntil,
   closeIsShort,
+  isReceived,
   isShortCompetition,
   lineToArrive,
   lowestOffer,
@@ -128,6 +130,10 @@ export type ProcWriteErrorCode =
   | "not_your_rfq"
   | "guest_unregistered"
   | "nothing_to_refer"
+  // Finance's side of the package (PUR-10): who records the money, and who closes a received order.
+  | "finance_on"
+  | "finance_off"
+  | "line_not_covered"
 
 export class ProcWriteError extends Error {
   constructor(
@@ -210,6 +216,7 @@ export interface RfqLike {
   projectName?: string | null
   category?: string | null
   city?: string | null
+  district?: string | null
   directAward?: boolean | null
   products?: Array<{ name?: string | null; quantity?: number | string | null; unitOfMeasure?: string | null; unit?: string | null; boqItemId?: string | null }> | null
   purchaseSource?: { kind: string; workOrderId?: string; purchaseRequestId?: string } | null
@@ -234,10 +241,16 @@ export interface AwardOfferLike {
   directAward?: boolean | null
   offerPdfUrl?: string | null
   deliveryLocation?: string | null
+  deliveryDistrict?: string | null
   paymentTerms?: string | null
   executionDuration?: string | number | null
   executionDurationUnit?: string | null
   lines?: Array<{ rfqProductIndex?: number | null; unitPrice?: number | string | null }> | null
+  /** Materials the supplier does not supply (a partial offer) — never on his order. */
+  skippedItems?: number[] | null
+  /** The lines (and their value) a split award gave him; absent on an award of the whole offer. */
+  awardedLines?: number[] | null
+  awardedTotal?: number | null
   poId?: string | null
   poNumber?: string | null
   /** The offer's commercial terms (offer-terms.ts) — carried onto the order. */
@@ -272,7 +285,7 @@ export function offerLeadTimeDays(offer: Pick<AwardOfferLike, "executionDuration
  * with no products (legacy) becomes one line of quantity 1 at the total —
  * a lot priced as a lot, not a number invented per unit.
  */
-export function buildPoLines(rfq: Pick<RfqLike, "products" | "title">, offer: Pick<AwardOfferLike, "lines" | "price" | "totalBatchesPrice">): PoLine[] {
+export function buildPoLines(rfq: Pick<RfqLike, "products" | "title">, offer: Pick<AwardOfferLike, "lines" | "price" | "totalBatchesPrice" | "skippedItems" | "awardedLines">): PoLine[] {
   const products = (rfq.products || []).filter((p) => p && (p.name || "").trim())
   if (!products.length) {
     return [{ id: "l1", name: (rfq.title || "").trim() || "—", unit: "", quantity: 1, unitPrice: offerTotalExVat(offer), accepted: 0, rejected: 0, held: 0, cancelled: 0, boqItemId: null, rfqProductIndex: null }]
@@ -285,8 +298,13 @@ export function buildPoLines(rfq: Pick<RfqLike, "products" | "title">, offer: Pi
   // Rates that no longer add up to the offer (a total revised on its own) stay
   // off the order: it keeps the offer's real total lump-sum instead of putting
   // the pre-reduction figure in front of Finance and into price history.
-  const every = products.every((_, i) => priced.has(i)) && quotedRatesReconcile(pricedProducts(rfq), offer)
-  return products.map((p, i) => ({
+  // Only the lines this offer was given: a split award's own, else all but the ones a partial offer leaves out. A line
+  // that went to another supplier, or that he does not supply, never appears on his order.
+  const left = new Set((offer.skippedItems || []).map(Number))
+  const won = Array.isArray(offer.awardedLines) ? new Set(offer.awardedLines.map(Number)) : null
+  const mine = (i: number) => (won ? won.has(i) : !left.has(i))
+  const every = products.every((_, i) => !mine(i) || priced.has(i)) && quotedRatesReconcile(pricedProducts(rfq), offer)
+  return products.flatMap((p, i) => (mine(i) ? [{
     id: `l${i + 1}`,
     name: (p.name || "").trim(),
     unit: (p.unitOfMeasure || p.unit || "").trim(),
@@ -298,7 +316,7 @@ export function buildPoLines(rfq: Pick<RfqLike, "products" | "title">, offer: Pi
     cancelled: 0,
     boqItemId: p.boqItemId ?? null,
     rfqProductIndex: i,
-  }))
+  }] : []))
 }
 
 /** The supplier as the award knew him; a guest has no org and no user. */
@@ -322,7 +340,7 @@ export interface CreateFromAwardInput {
 export function draftPurchaseOrder(actor: ProcActor, input: CreateFromAwardInput, now = new Date()): Omit<PurchaseOrder, "id" | "docNumber"> {
   const { rfq, offer, offers, policies } = input
   const lines = buildPoLines(rfq, offer)
-  const totalExVat = offerTotalExVat(offer)
+  const totalExVat = Array.isArray(offer.awardedLines) && offer.awardedTotal != null ? round2(num(offer.awardedTotal)) : offerTotalExVat(offer)
   const lowest = lowestOffer(offers)
   const base: Omit<PurchaseOrder, "id" | "docNumber" | "approverKind"> = {
     organizationId: rfq.organizationId || rfq.contractorId || "",
@@ -342,7 +360,7 @@ export function draftPurchaseOrder(actor: ProcActor, input: CreateFromAwardInput
     totalExVat,
     vatRate: 0.15,
     paymentTerms: offer.paymentTerms ?? null,
-    deliveryLocation: offer.deliveryLocation || rfq.city || null,
+    ...orderDeliveryFields(offer, rfq),
     leadTimeDays: offerLeadTimeDays(offer),
     offersCount: offers.length,
     lowestOfferTotal: lowest ? offerPrice(lowest) : null,
@@ -544,7 +562,7 @@ export function draftSplitOrder(actor: ProcActor, input: AwardRfqInput, group: A
     totalExVat,
     vatRate: 0.15,
     paymentTerms: group.offer.paymentTerms ?? null,
-    deliveryLocation: group.offer.deliveryLocation || rfq.city || null,
+    ...orderDeliveryFields(group.offer, rfq),
     leadTimeDays: offerLeadTimeDays(group.offer),
     offersCount: offers.length,
     lowestOfferTotal: group.lowestForLines,
@@ -605,11 +623,14 @@ export async function awardRfq(
     if (rfqData.status !== "New") throw new ProcWriteError("rfq_not_open")
     // A buyer awards only the RFQs he raised; the manager and the owner award any.
     if (!actor.isOwner && !actor.canApprove && (rfqData.createdByUserId || rfqData.contractorId || "") !== actor.uid) throw new ProcWriteError("not_your_rfq")
-    for (const ref of offerRefs) {
+    for (const [k, ref] of offerRefs.entries()) {
       const snap = await tx.get(ref)
       if (!snap.exists()) throw new ProcWriteError("offer_missing")
-      const o = snap.data() as { status?: string; poId?: string; withdrawnAt?: string }
+      const o = snap.data() as { status?: string; poId?: string; withdrawnAt?: string; skippedItems?: unknown }
       if (o.poId || o.status === "مرفوض" || o.status === "مقبول" || isWithdrawnOffer(o)) throw new ProcWriteError("offer_taken")
+      // A partial offer is awarded only the lines it covers (PUR-03): the others he marked «not supplied».
+      const out = Array.isArray(o.skippedItems) ? o.skippedItems.map(Number) : []
+      if (input.groups[k].lines.some((l) => out.includes(l.rfqProductIndex))) throw new ProcWriteError("line_not_covered")
     }
     // The quotes left out are re-read too: one withdrawn or decided meanwhile is not told it lost.
     const losers: string[] = []
@@ -1341,6 +1362,38 @@ export async function closePurchaseOrder(firestore: Firestore, actor: ProcActor,
     organizationId: po.organizationId,
     to: [{ users: [po.preparedById] }, { permission: "invoices.manage" }],
     params: { number: po.docNumber, outcome: "@pn_po_closed_short_flag", reason: po.closeReason || "" },
+    poId: po.id,
+    rfqId: po.rfqId,
+    offerId: po.offerId,
+    copy: opts.copy,
+  })
+  return po
+}
+
+/** Without Finance (PUR-10): a fully received order is closed HERE — there is no payment to close it, and the
+ * optional payment status never stops it. With Finance the payment closes it (`recordFinancePayment`). The owner and
+ * whoever approves orders; the rules let `poDecider` move accepted → closed. */
+export async function closeReceivedPurchaseOrder(firestore: Firestore, actor: ProcActor, poId: string, opts: WriteOpts = {}): Promise<PurchaseOrder> {
+  if (!actor.isOwner && !actor.canApprove) throw new ProcWriteError("no_permission")
+  const at = (opts.now ?? new Date()).toISOString()
+  const ref = orderRef(firestore, poId)
+  const po = await runTransaction(firestore, async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new ProcWriteError("order_missing")
+    const current = { ...(snap.data() as Omit<PurchaseOrder, "id">), id: snap.id } as PurchaseOrder
+    if (!(await readModulesOff(tx, firestore, current.organizationId)).has("payments")) throw new ProcWriteError("finance_on")
+    assertActs(current, actor)
+    if (current.status !== "accepted" || !isReceived(current)) throw new ProcWriteError("wrong_state")
+    const patch = { status: "closed" as const, closedAt: at, closedShort: false }
+    const next: PurchaseOrder = { ...current, ...patch, log: [...(current.log || []), entry(actor, "closed", at, { params: { complete: 1 } })] }
+    tx.update(ref, { ...patch, log: next.log, updatedAt: serverTimestamp() })
+    return next
+  })
+  await emitProcEvent(firestore, actor, {
+    kind: "po_closed",
+    organizationId: po.organizationId,
+    to: [{ users: [po.preparedById] }],
+    params: { number: po.docNumber, outcome: "@pn_po_closed_complete", reason: "" },
     poId: po.id,
     rfqId: po.rfqId,
     offerId: po.offerId,

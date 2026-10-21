@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
+import { useModules } from "@/hooks/useCompanyModules"
 import { FileCheck, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -21,7 +22,7 @@ import { Money } from "@/components/procurement/PoBits"
 import { moneyFigure } from "@/components/procurement/PoModel"
 import { useFirestore } from "@/firebase"
 import { competingOffers, parseAwardReason } from "@/lib/procurement/award"
-import { pricedProducts } from "@/lib/procurement/offer-pricing"
+import { offerCoverage, pricedProducts } from "@/lib/procurement/offer-pricing"
 import { AWARD_REASON_CODES, addDays, todayOf, type PoBlock, type PoWarning } from "@/lib/procurement/po"
 import { awardSummary, checkBreakdown, guestAwardRefusal, lowestForLines, offerTotal, type Picks } from "@/lib/procurement/rfq-award"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -80,6 +81,7 @@ export function RfqAwardDialog({
   const tProc = useTranslations("Portal.Procurement")
   const tShared = useTranslations("Portal.Shared")
   const tr = useTranslations("Portal.Procurement.rfqextras")
+  const financeOn = useModules().on("payments")
   const locale = useLocale()
   const firestore = useFirestore()
   const termsText = useTermsText()
@@ -275,10 +277,12 @@ export function RfqAwardDialog({
             summary.groups.map((g) => {
               const o = byId.get(g.offerId) as RfqOfferView
               const terms = termsText(o)
+              const cover = offerCoverage(rfq, o)
               return (
                 <section key={g.offerId} className="space-y-2 rounded-xl border p-3" aria-label={name(o)}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <b dir="auto">{name(o)}</b>
+                    {cover.partial && <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-bold text-warning">{t("list.partial", { count: cover.covered, of: cover.of })}</span>}
                     {o.isGuestOffer && <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-bold text-destructive">{t("award.guest_pill")}</span>}
                     {!o.isGuestOffer && sourcingFor?.(o) && (
                       <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-bold text-warning">{tr(`sourcing.${sourcingFor(o)}`)}</span>
@@ -301,7 +305,7 @@ export function RfqAwardDialog({
                     <dt className="text-muted-foreground">{t("award.value_payment")}</dt>
                     <dd>
                       <Money value={g.total} className="font-bold" /> · {terms || t("award.terms_as_offer")}
-                      {paidBeforeDelivery(o) && <span className="text-warning"> — {tr("award.finance_pays")}</span>}
+                      {paidBeforeDelivery(o) && <span className="text-warning"> — {tr(financeOn ? "award.finance_pays" : "award.finance_pays_nofin")}</span>}
                     </dd>
                     <dt className="self-center text-muted-foreground">
                       <Label htmlFor={`award-date-${g.offerId}`}>{t("award.deliver_by")}</Label>
@@ -429,7 +433,7 @@ export function RfqAwardDialog({
 
           <ul className="space-y-1 rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
             <li>{t("award.effect_prepared", { count: summary.groups.length })}</li>
-            <li>{t("award.effect_after")}</li>
+            <li>{t(financeOn ? "award.effect_after" : "award.effect_after_nofin")}</li>
           </ul>
 
           {error && <Callout tone="block">{error}</Callout>}

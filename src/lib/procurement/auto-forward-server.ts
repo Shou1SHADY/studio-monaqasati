@@ -2,7 +2,7 @@ import type { Firestore } from "firebase-admin/firestore"
 import { SITE_URL } from "@/lib/app-env"
 import { LINK_TTL_MS, RECEIPT_LINKS, maskPhone, newToken, type ReceiptLink, type Receiver } from "@/lib/receipt-links"
 import { normalizePhoneE164, sendDirectMessage } from "@/lib/sms"
-import { AUTO_FORWARD_ACTOR, autoForwardSkip, selectDueNotices, type DueNotice } from "@/lib/procurement/auto-forward"
+import { AUTO_FORWARD_ACTOR, autoForwardSkip, selectDueNotices, type AutoForwardOptions, type DueNotice } from "@/lib/procurement/auto-forward"
 import { resolvePolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_RECEIVERS, type ProcReceiver } from "@/lib/procurement/receivers"
 import type { DeskDelivery } from "@/lib/procurement/receipt-desk"
@@ -39,6 +39,7 @@ async function forwardOne(db: Firestore, orgId: string, due: DueNotice, now: num
     organizationId: orgId,
     receiver,
     status: "open",
+    ...(userId ? { viaAccount: true } : {}),
     createdById: AUTO_FORWARD_ACTOR.id,
     createdByName: AUTO_FORWARD_ACTOR.name,
     createdAt: at,
@@ -73,6 +74,7 @@ async function forwardOne(db: Firestore, orgId: string, due: DueNotice, now: num
 async function tellReceiver(db: Firestore, orgId: string, due: DueNotice, receiver: Receiver, token: string, now: number) {
   const supplier = due.delivery.supplierName || ""
   // Someone with no account learns of it only by a message: the link is useless unsent (PUR-06).
+  // A member is told in his own account, and the task opens the receipt: no link or code goes to him.
   if (!receiver.userId) {
     const body = `مدماك تِك: وصلك استلام توريد من ${supplier || "المورد"}. افتح الرابط عند وصول الشحنة، وعدّ ما وصل وأكّد بالرمز: ${SITE_URL}/receive/${token}`
     await sendDirectMessage({ to: receiver.phone, body }).catch((err: unknown) => console.warn("auto-forward message failed:", err))
@@ -88,9 +90,9 @@ async function tellReceiver(db: Firestore, orgId: string, due: DueNotice, receiv
       type: "receipt_forwarded",
       i18n: { title: "pn_receipt_auto_forwarded_title", message: "pn_receipt_auto_forwarded", params: { supplier } },
       title: "📦 استلام مُحوَّل إليك تلقائياً",
-      message: `حوّل النظام إليك تلقائياً استلام توريد من ${supplier || "المورد"} لم تحوّله المشتريات في المهلة — افتح الرابط وعدّ ما وصل ووقّع.`,
+      message: `حوّل النظام إليك تلقائياً استلام توريد من ${supplier || "المورد"} لم تحوّله المشتريات في المهلة — افتحه من مهامك وعدّ ما وصل وأكّده بدخولك.`,
       deliveryId: due.delivery.id,
-      link: `/receive/${token}`,
+      link: `/contractor/receive/${due.delivery.id}`,
       createdAt: new Date(now).toISOString(),
       read: false,
     })
@@ -100,7 +102,7 @@ async function tellReceiver(db: Firestore, orgId: string, due: DueNotice, receiv
 export interface AutoForwardTotals { orgs: number; pending: number; forwarded: number; skipped: number; failed: number }
 
 /** Forwards every due notice — of one company when `orgId` is given, else of all. */
-export async function runAutoForward(db: Firestore, nowMs: number, onlyOrgId?: string): Promise<AutoForwardTotals> {
+export async function runAutoForward(db: Firestore, nowMs: number, onlyOrgId?: string, opts: AutoForwardOptions = {}): Promise<AutoForwardTotals> {
   const now = new Date(nowMs)
   const base = db.collection("deliveries").where("status", "==", "pending_confirmation")
   const pending = await (onlyOrgId ? base.where("contractorOrgId", "==", onlyOrgId) : base).get()
@@ -129,8 +131,8 @@ export async function runAutoForward(db: Firestore, nowMs: number, onlyOrgId?: s
       )
 
       const input = { orgId, policies, receivers, projects, orders, now }
-      const due = selectDueNotices({ ...input, deliveries })
-      totals.skipped += deliveries.filter((d) => autoForwardSkip(d, input).skip !== null).length
+      const due = selectDueNotices({ ...input, deliveries }, opts)
+      totals.skipped += deliveries.filter((d) => autoForwardSkip(d, input, opts).skip !== null).length
       for (const item of due) {
         try {
           const res = await forwardOne(db, orgId, item, nowMs)

@@ -7,7 +7,6 @@ import { projectsOn } from "@/lib/procurement/financeless-server"
 import { riyadhYear } from "@/lib/procurement/numbering"
 import { riyadhDay } from "@/lib/hr/format"
 import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
-import { PURCHASE_ORDERS, type PurchaseOrder } from "@/lib/procurement/types"
 import {
   TEAM_REQUESTS,
   holdsRequest,
@@ -19,6 +18,7 @@ import {
   type TeamLinkedRfq,
   type TeamRequestDoc,
 } from "@/lib/procurement/team-requests"
+import { notifyTeamRequestMoves, orgWorld } from "@/lib/procurement/team-request-notify-server"
 import { formatYearlyDocNumber } from "@/lib/sales-numbering"
 
 // «طلب مواد» from the team (Procurement 1.5, PUR-10, question 4) — a company WITHOUT Project
@@ -93,14 +93,6 @@ async function tellProcurement(db: FirebaseFirestore.Firestore, orgId: string, f
   )
 }
 
-async function orgWorld(db: FirebaseFirestore.Firestore, orgId: string) {
-  const [rfqs, orders] = await Promise.all([db.collection("rfqs").where("organizationId", "==", orgId).get(), db.collection(PURCHASE_ORDERS).where("organizationId", "==", orgId).get()])
-  return {
-    rfqs: rfqs.docs.map((d) => ({ id: d.id, ...d.data() }) as TeamLinkedRfq),
-    orders: orders.docs.map((d) => ({ id: d.id, ...d.data() }) as PurchaseOrder),
-  }
-}
-
 export async function GET(req: NextRequest) {
   const uid = await uidOf(req)
   if (!uid) return fail("Sign in first", "UNAUTHENTICATED", 401)
@@ -112,6 +104,7 @@ export async function GET(req: NextRequest) {
     const docs = mine.docs.map((d) => ({ id: d.id, ...d.data() }) as TeamRequestDoc)
     if (!docs.length) return NextResponse.json({ success: true, data: { requests: [] } })
     const world = await orgWorld(db, caller.orgId)
+    await notifyTeamRequestMoves(db, docs, world).catch((e) => console.error("team request moves:", e))
     const requests = docs
       .map((r) => {
         const progress = teamProgress(r.id, world.rfqs, world.orders)

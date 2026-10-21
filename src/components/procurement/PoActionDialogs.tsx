@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import { useModules } from "@/hooks/useCompanyModules"
 import { REJECT_DECISIONS, todayOf } from "@/lib/procurement/po"
 import type { PoLine, RejectDecision } from "@/lib/procurement/types"
 import { figure } from "./PoModel"
@@ -245,16 +246,20 @@ export function RejectDecisionDialog({
   onOpenChange,
   line,
   now,
+  initialDecision = "replace",
   onSubmit,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   line: PoLine | null
   now?: Date
+  /** The next step's three buttons open the form on the answer they name. */
+  initialDecision?: RejectDecision
   onSubmit: Submit<RejectDecisionValue>
 }) {
   const t = useTranslations("Portal.ProcOrders")
   const tProc = useTranslations("Portal.Procurement")
+  const financeOn = useModules().on("payments")
   const today = todayOf(now ?? new Date())
   const schema = z
     .object({
@@ -268,10 +273,10 @@ export function RejectDecisionDialog({
       if (v.decision === "discount" && !(Number(v.discountPrice) > 0)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["discountPrice"], message: t("reject.discount_required") })
     })
   type Values = z.infer<typeof schema>
-  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { decision: "replace", note: "", replaceBy: "", discountPrice: "" } })
+  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { decision: initialDecision, note: "", replaceBy: "", discountPrice: "" } })
   useEffect(() => {
-    if (open) form.reset({ decision: "replace", note: "", replaceBy: "", discountPrice: "" })
-  }, [open, form])
+    if (open) form.reset({ decision: initialDecision, note: "", replaceBy: "", discountPrice: "" })
+  }, [open, form, initialDecision])
   const decision = useWatch({ control: form.control, name: "decision" })
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -311,7 +316,7 @@ export function RejectDecisionDialog({
                             <RadioGroupItem value={d} className="mt-0.5" />
                             <span>
                               <span className="block font-bold">{tProc(`rejectDecision.${d}`)}</span>
-                              <span className="block text-xs text-muted-foreground">{t(`reject.effect_${d}`)}</span>
+                              <span className="block text-xs text-muted-foreground">{t(!financeOn && d === "discount" ? "reject.effect_discount_nofin" : `reject.effect_${d}`)}</span>
                             </span>
                           </label>
                         ))}
@@ -358,7 +363,7 @@ export function RejectDecisionDialog({
                 name="note"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t("reject.note")}</FormLabel>
+                    <FormLabel>{t(financeOn ? "reject.note" : "reject.note_nofin")}</FormLabel>
                     <FormControl>
                       <Input placeholder={t("reject.note_ph")} dir="auto" {...field} />
                     </FormControl>
@@ -366,7 +371,7 @@ export function RejectDecisionDialog({
                   </FormItem>
                 )}
               />
-              <Effects items={[t(`reject.effect_${decision}`), t("reject.effect_always")]} />
+              <Effects items={[t(!financeOn && decision === "discount" ? "reject.effect_discount_nofin" : `reject.effect_${decision}`), t(financeOn ? "reject.effect_always" : "reject.effect_always_nofin")]} />
               <DialogFooter className="gap-2 sm:gap-2">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                   {t("form.cancel")}

@@ -20,7 +20,7 @@ import { join } from "node:path"
 import { act, fireEvent, render } from "@testing-library/react"
 import type { Firestore } from "firebase/firestore"
 import { fakeFirestore, listCollection, resetFakeDb, seed } from "@/test-utils/fake-firestore"
-import { installDomShims, missingKeys, setPathname, setSignedIn } from "@/test-utils/render-world"
+import { installDomShims, missingKeys, pushed, setPathname, setSignedIn } from "@/test-utils/render-world"
 import { pmCeiling, type PmContext } from "@/lib/pm/access"
 import { approveMaterialRequest, createMaterialRequest } from "@/lib/pm/supply-writes"
 import { todayDay } from "@/lib/pm/format"
@@ -52,6 +52,7 @@ async function world() {
   seed(`projects/P1`, { organizationId: ORG, contractorId: ORG, name: "مجمع الياسمين", status: "in_progress", projectManagerId: ORG, enabledSections: ["procure"], pm: { no: "PJ-2026/001", lifecycle: "live", startOn: d(-30), durationDays: 200 } })
   seed(`projects/P1/boqItems/b1`, { itemNo: "09-01-01", descriptionAr: "لياسة داخلية", unit: "م²", quantity: 5000, unitPrice: 40, executedQuantity: 0 })
   seed(`procurementSettings/${ORG}`, { organizationId: ORG, deliverySites: [{ id: "prj_P1", kind: "project", name: "مجمع الياسمين", city: "الرياض", district: "حي الياسمين", address: "", receiverId: null, projectId: "P1" }] })
+  seed("invitations/inv1", { type: "supplier_invite", contractorOrgId: ORG, companyName: "مؤسسة الفهد", phone: "+966550000000", status: "pending", createdAt: "2026-10-12T09:00:00.000Z" })
   const db = fakeFirestore as unknown as Firestore
   const ctx: PmContext = { ceiling: pmCeiling({ owner: true, permissions: [] }), seat: null, archived: false }
   await createMaterialRequest(db, ctx, "P1", { uid: ORG, name: "م. فهد" }, { title: "بلوك وأسمنت", needBy: d(20), notes: null, lines: [{ itemId: "b1", name: "أسمنت بورتلاندي عادي", unit: "كيس", qty: 200 }] })
@@ -167,6 +168,97 @@ describe("the RFQ editor (PUR-02/03)", () => {
     expect(text()).toContain("الطلب")
     expect(text()).toContain("اختر المادة")
     expect(text()).toContain("لنشر بعض المواد فقط")
+    expect([...missingKeys]).toEqual([])
+    view.unmount()
+  })
+  it("the panel opens on the request colouring the uncategorised row from the start, and says who asked, who approved, the last day and the BOQ item", async () => {
+    setPathname("/contractor/rfqs/requests", "publish=project:P1:01")
+    const view = render(<RequestsPage />)
+    await flush()
+    // No «التالي» was pressed: the row lacking its material already says so.
+    expect(text()).toContain("اختر المادة أو فئتها الفرعية في الصف 1")
+    expect(Array.from(document.querySelectorAll("li")).some((x) => x.classList.contains("bg-destructive/5"))).toBe(true)
+    expect(text()).toContain("طلبه م. فهد")
+    expect(text()).toContain("اعتمده م. فهد")
+    expect(text()).toContain("آخر يوم للطلب")
+    expect(text()).toContain("09-01-01 · لياسة داخلية")
+    // The need-by date of a request from a project is information, not a field.
+    expect(document.querySelector('input[type="date"]')).toBeNull()
+    expect([...missingKeys]).toEqual([])
+    view.unmount()
+  })
+
+  it("pressing the request's row opens its panel on the request; «انشره» opens the publishing step; «التفاصيل» is the panel too", async () => {
+    setPathname("/contractor/rfqs/requests", "")
+    const view = render(<RequestsPage />)
+    await flush()
+    const li = Array.from(document.querySelectorAll("li")).find((x) => (x.textContent || "").includes("ط.م 01"))!
+    pushed.length = 0
+    await act(async () => void fireEvent.click(li))
+    expect(pushed.at(-1)).toContain("publish=project%3AP1%3A01")
+    expect(pushed.at(-1)).toContain("step=1")
+    const press = async (label: string) => {
+      pushed.length = 0
+      const b = Array.from(li.querySelectorAll("button")).find((x) => (x.textContent || "").trim() === label)!
+      expect(b).toBeDefined()
+      await act(async () => void fireEvent.click(b))
+    }
+    await press("انشره")
+    expect(pushed.at(-1)).toContain("publish=project%3AP1%3A01")
+    expect(pushed.at(-1)).not.toContain("step=")
+    await press("التفاصيل")
+    expect(pushed.at(-1)).toContain("step=1")
+    view.unmount()
+  })
+
+  it("the group's city and district are filled from the project and can be changed from the header", async () => {
+    setPathname("/contractor/rfqs/new", "requests=project:P1:01")
+    const view = render(<NewRfqPage />)
+    await flush()
+    expect(text()).toContain("الرياض — حي الياسمين")
+    const edit = document.querySelector('button[aria-label="تعديل المدينة والحي"]') as HTMLButtonElement | null
+    expect(edit).not.toBeNull()
+    await act(async () => void fireEvent.click(edit!))
+    const city = document.querySelector('select[aria-label="مدينة التسليم"]') as HTMLSelectElement
+    expect(city.value).toBe("الرياض")
+    await act(async () => void fireEvent.change(city, { target: { value: "جدة" } }))
+    const district = document.querySelector('input[aria-label="الحي"]') as HTMLInputElement
+    expect(district.value).toBe("حي الياسمين")
+    await act(async () => void fireEvent.change(district, { target: { value: "الروضة" } }))
+    const done = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent || "").trim() === "تم")!
+    await act(async () => void fireEvent.click(done))
+    expect(text()).toContain("جدة — الروضة")
+    expect([...missingKeys]).toEqual([])
+    view.unmount()
+  })
+
+  it("«لا تجد مورّدك؟» opens the invitation window with the duplicate hint: a number invited before reads «دُعي في …»", async () => {
+    setPathname("/contractor/rfqs/new", "")
+    const view = render(<NewRfqPage />)
+    await flush()
+    const box = document.querySelector('input[role="combobox"]') as HTMLInputElement
+    await act(async () => void fireEvent.change(box, { target: { value: "حديد 16" } }))
+    await flush()
+    const option = Array.from(document.querySelectorAll('[role="option"]')).find((o) => (o.textContent || "").includes("اسياخ حديد التسليح"))!
+    await act(async () => void fireEvent.click(option))
+    await flush()
+    await act(async () => void fireEvent.change(document.querySelector('input[aria-label="الكمية"]') as HTMLInputElement, { target: { value: "8" } }))
+    await act(async () => void fireEvent.change(document.querySelector('select[aria-label="المشروع أو موقع التسليم"]') as HTMLSelectElement, { target: { value: "prj_P1" } }))
+    await flush()
+    const press = async (label: string) => {
+      const b = Array.from(document.querySelectorAll("button")).find((x) => (x.textContent || "").trim().startsWith(label))!
+      expect(b).toBeDefined()
+      await act(async () => void fireEvent.click(b))
+      await flush()
+    }
+    await press("التالي: النشر")
+    await press("خاص")
+    await press("لا تجد مورّدك؟")
+    const contact = document.querySelector('[role="dialog"] input[placeholder="05xxxxxxxx"]') as HTMLInputElement
+    expect(contact).not.toBeNull()
+    await act(async () => void fireEvent.change(contact, { target: { value: "0550000000" } }))
+    await flush()
+    expect(text()).toContain("دُعي في 12 أكتوبر")
     expect([...missingKeys]).toEqual([])
     view.unmount()
   })

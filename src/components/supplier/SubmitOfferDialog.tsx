@@ -43,7 +43,7 @@ import { collection, addDoc, doc, setDoc, serverTimestamp } from "firebase/fires
 import { OfferSubmitError, submitSupplierOffer } from "@/lib/supplier-offer-client"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { REQUIRE_COMPLETE_PROFILE } from "@/lib/app-env"
-import { offerPricingFields, priceOffer, pricedProducts, pricingModeOf } from "@/lib/procurement/offer-pricing"
+import { faultNames, offerPricingFields, priceOffer, pricedProducts, pricingFault, pricingModeOf } from "@/lib/procurement/offer-pricing"
 import { newOfferNotice, newOfferNoticeId } from "@/lib/procurement/offer-announce"
 
 interface DeliveryBatch {
@@ -101,6 +101,8 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
   // offer's total is derived from its batches. Keyed by the product's index in
   // the RFQ, which is its identity (`rfqProductIndex`).
   const [lineRates, setLineRates] = useState<Record<number, string>>({})
+  // A line he does not supply is marked, not left blank: blank is a forgotten field and is refused (PUR-03).
+  const [lineSkips, setLineSkips] = useState<Record<number, boolean>>({})
   const [deliveryBatches, setDeliveryBatches] = useState<DeliveryBatch[]>([
     { id: "1", deliveryDate: new Date().toISOString().split('T')[0], price: "", location: "" }
   ])
@@ -108,7 +110,10 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
   const isMultiShipment = selectedRfq?.shipmentMode === "multiple"
   const byLine = pricingModeOf(selectedRfq) === "line"
   const lineProducts = byLine ? pricedProducts(selectedRfq) : []
-  const linePricing = priceOffer(lineProducts, lineRates)
+  const linePricing = priceOffer(lineProducts, lineRates, lineProducts.filter((p) => lineSkips[p.rfqProductIndex]).map((p) => p.rfqProductIndex))
+  const lineFault = pricingFault(linePricing)
+  const lineFaultText = (fault: NonNullable<typeof lineFault>) =>
+    fault.code === "NO_LINE_PRICED" ? t("offer_line_none_priced") : t(fault.code === "LINE_CONTRADICTORY" ? "offer_line_contradictory" : "offer_line_prices_incomplete", { names: faultNames(lineProducts, fault.indexes) })
   const requiredQuantity = getRfqRequiredQuantity(selectedRfq)
   const unitLabel = getRfqUnitLabel(selectedRfq)
   const allocatedQuantity = deliveryBatches.reduce((sum, b) => sum + (parseFloat(b.quantity || "0") || 0), 0)
@@ -290,10 +295,10 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       return;
     }
 
-    if (byLine && !linePricing.complete) {
-      // Half a breakdown is not one: `buildPoLines` keeps no unit price unless
-      // every line has one, so a partial quote would silently go out lump-sum.
-      toast({ title: t("offer_incomplete_data"), description: t("offer_line_prices_incomplete"), variant: "destructive" });
+    if (byLine && lineFault) {
+      // Every line is priced or marked «not supplied»: a blank one is a forgotten field, and half a breakdown would
+      // silently go out lump-sum (`buildPoLines` keeps no unit price unless every line has one).
+      toast({ title: t("offer_incomplete_data"), description: lineFaultText(lineFault), variant: "destructive" });
       return;
     }
 
@@ -353,6 +358,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
         const fields = offerPricingFields(linePricing)
         offerData.lines = fields.lines
         offerData.price = fields.price
+        if (fields.skippedItems) offerData.skippedItems = fields.skippedItems
       }
 
       if (executionDuration) {
@@ -424,7 +430,17 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       console.error(error);
       const code = error instanceof OfferSubmitError ? error.code : "failed"
       const description =
-        code === "not_approved" ? t("offer_not_approved") : code === "quota" ? t("offer_quota_reached", { n: error instanceof OfferSubmitError ? error.detail || "" : "" }) : code === "rfq_closed" ? t("offer_rfq_closed") : t("offer_submit_failed")
+        code === "not_approved"
+          ? t("offer_not_approved")
+          : code === "quota"
+            ? t("offer_quota_reached", { n: error instanceof OfferSubmitError ? error.detail || "" : "" })
+            : code === "rfq_closed"
+              ? t("offer_rfq_closed")
+              : code === "line_prices_incomplete" || code === "line_contradictory"
+                ? t(code === "line_contradictory" ? "offer_line_contradictory" : "offer_line_prices_incomplete", { names: faultNames(lineProducts, (error instanceof OfferSubmitError ? error.detail || "" : "").split(",").filter(Boolean).map(Number)) })
+                : code === "no_line_priced"
+                  ? t("offer_line_none_priced")
+                  : t("offer_submit_failed")
       toast({ title: t("offer_error"), description, variant: "destructive" })
     } finally {
       setIsSubmitting(false)
@@ -611,6 +627,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                 <div className="rounded-xl border divide-y overflow-hidden">
                   {lineProducts.map((prod) => {
                     const rate = lineRates[prod.rfqProductIndex] ?? ""
+                    const notSupplied = !!lineSkips[prod.rfqProductIndex]
                     const subtotal = (Number(rate) || 0) * prod.quantity
                     return (
                       <div key={prod.rfqProductIndex} className="flex flex-wrap items-center gap-2 p-3">
@@ -628,8 +645,9 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                             dir="ltr"
                             aria-label={t("offer_line_rate_for", { name: prod.name })}
                             value={rate}
+                            disabled={notSupplied}
                             onChange={(e) => setLineRates({ ...lineRates, [prod.rfqProductIndex]: e.target.value })}
-                            className="w-full h-10 ps-3 pe-10 rounded-lg border-2 border-input bg-white text-sm font-bold text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                            className="w-full h-10 ps-3 pe-10 rounded-lg border-2 border-input bg-white text-sm font-bold text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-40"
                             placeholder="0"
                           />
                           <span className="absolute end-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">{t("offer_sar")}</span>
@@ -637,14 +655,32 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                         <span className="w-24 text-end text-xs font-bold tabular-nums text-muted-foreground" dir="ltr">
                           {subtotal > 0 ? Math.round(subtotal * 100) / 100 : "\u2014"}
                         </span>
+                        <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={notSupplied}
+                            onChange={(e) => {
+                              setLineSkips({ ...lineSkips, [prod.rfqProductIndex]: e.target.checked })
+                              if (e.target.checked) setLineRates({ ...lineRates, [prod.rfqProductIndex]: "" })
+                            }}
+                            className="h-4 w-4"
+                          />
+                          {t("offer_line_not_supplied")}
+                        </label>
                       </div>
                     )
                   })}
                 </div>
-                {!linePricing.complete && (
+                {lineFault && (lineFault.code !== "NO_LINE_PRICED" || Object.values(lineSkips).some(Boolean)) && (
                   <p className="text-[11px] text-amber-700 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 w-fit">
                     <AlertCircle size={11} className="shrink-0" />
-                    {t("offer_line_prices_incomplete")}
+                    {lineFaultText(lineFault)}
+                  </p>
+                )}
+                {!lineFault && linePricing.skipped.length > 0 && (
+                  <p className="text-[11px] text-sky-800 flex items-center gap-1.5 bg-sky-50 px-2.5 py-1.5 rounded-lg border border-sky-200 w-fit">
+                    <AlertCircle size={11} className="shrink-0" />
+                    <b>{t("offer_line_partial", { count: linePricing.lines.length, of: lineProducts.length })}</b> — {t("offer_line_partial_note")}
                   </p>
                 )}
               </div>

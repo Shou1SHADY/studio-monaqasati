@@ -34,22 +34,25 @@ describe("PM's new material comes from the tree", () => {
     render(<TreeMaterialField name="" units={["طن", "حبة"]} onChange={onChange} />)
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "اسياخ حديد" } })
     fireEvent.click(screen.getAllByRole("option")[0])
-    const patch = onChange.mock.calls[0][0] as { name: string; unit?: string; unitOther?: boolean }
+    const patch = onChange.mock.calls[0][0] as { name: string; unit?: string; unitOther?: boolean; material?: { nodeId: string; subId: string; path: Array<{ ar: string }> } }
     expect(patch.name).toContain("اسياخ حديد التسليح")
+    expect(patch.material?.path.map((p) => p.ar)).toEqual(["الحديد", "حديد التسليح", "اسياخ حديد التسليح"])
+    expect(mockIndex.byId.get(patch.material!.subId)?.ar).toBe("حديد التسليح")
     expect(patch.unit).toBeTruthy()
     expect(patch.unitOther).toBe(!["طن", "حبة"].includes(patch.unit as string))
   })
-  it("words kept as they are stay a free-text name", () => {
+  it("words kept as they are still name a sub-category: the tree's browser asks for it, then the line carries the pick", () => {
     const onChange = jest.fn()
     render(<TreeMaterialField name="" units={["طن"]} onChange={onChange} />)
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "مادة خاصة جداً" } })
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" })
-    expect(onChange).toHaveBeenCalledWith({ name: "مادة خاصة جداً" })
+    expect(onChange).not.toHaveBeenCalled()
+    expect(screen.getByText("مادة خارج القائمة")).toBeTruthy()
   })
   it("once picked the name is shown, and «غيّرها» clears it for a new search", () => {
     const onChange = jest.fn()
     render(<TreeMaterialField name="اسياخ حديد التسليح" units={["طن"]} onChange={onChange} />)
     fireEvent.click(screen.getByRole("button", { name: "غيّرها" }))
-    expect(onChange).toHaveBeenCalledWith({ name: "" })
+    expect(onChange).toHaveBeenCalledWith({ name: "", material: null })
   })
 })

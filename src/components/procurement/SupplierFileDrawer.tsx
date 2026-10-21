@@ -23,7 +23,7 @@ import { StatusPill } from "@/components/module-ui/StatusPill"
 import { cn } from "@/lib/utils"
 import { displayCategory, displayCity } from "@/lib/constants"
 import { displayAgreementNumber, displayPoNumber } from "@/lib/procurement/format"
-import { poValue, todayOf, type SupplierScore } from "@/lib/procurement/po"
+import { poValue, todayOf, type NoticeFact, type SupplierScore } from "@/lib/procurement/po"
 import { agreementsOfSupplier, type PriceAgreement } from "@/lib/procurement/prices"
 import {
   SUPPLIER_FILE_ORDERS,
@@ -86,7 +86,9 @@ export function SupplierFileDrawer({
   onToggleFavorite,
   onRemove,
   onOpenAgreement,
+  notices,
 }: {
+  notices?: ReadonlyArray<NoticeFact>
   supplier: PlatformSupplier | null
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -381,7 +383,7 @@ export function SupplierFileDrawer({
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
                       <Money value={poValue(po)} masked={!actor.seesPrices} className="text-xs font-bold" />
-                      <PoStatusPill po={po} now={now} />
+                      <PoStatusPill po={po} now={now} notices={notices} />
                     </span>
                   </Link>
                 ))

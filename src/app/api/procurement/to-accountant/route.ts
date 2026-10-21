@@ -5,6 +5,7 @@ import { callerOf } from "@/lib/receipt-links"
 import { sendEmail } from "@/lib/email"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS } from "@/lib/procurement/types"
 import type { InvoiceFile } from "@/lib/procurement/payment-mark"
+import { financeOn } from "@/lib/procurement/financeless-server"
 
 // «أرسلها للمحاسب» / «أرسله إلى المحاسب» (PUR-10): without Finance, the company's accounting lives
 // in its own system — the supplier's invoice file, or the period's export, goes to the
@@ -33,6 +34,7 @@ export async function POST(req: NextRequest) {
     const db = getAdminFirestore()
     const caller = await callerOf(db, uid)
     if (!caller || !(caller.can("offers.accept") || caller.can("po.approve"))) return fail("Not yours to send", "FORBIDDEN", 403)
+    if (await financeOn(db, caller.orgId)) return fail("Finance receives the invoices of this company", "FINANCE_ON", 409)
     const settings = (await db.collection(PROCUREMENT_SETTINGS).doc(caller.orgId).get()).data()
     const to = typeof settings?.accountantEmail === "string" ? settings.accountantEmail : ""
     if (!to) return fail("Set the accountant's e-mail first", "NO_ACCOUNTANT", 409)

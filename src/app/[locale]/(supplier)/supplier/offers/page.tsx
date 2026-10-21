@@ -39,7 +39,7 @@ import { useRouter } from "@/i18n/routing"
 import { Link } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 import { displayPoNumber } from "@/lib/procurement/format"
-import { priceOffer, pricedProducts, revisePrice, type PricedProduct } from "@/lib/procurement/offer-pricing"
+import { faultNames, ownCoverage, priceOffer, pricedProducts, pricingFault, revisePrice, type PricedProduct } from "@/lib/procurement/offer-pricing"
 import { CLOSED_UNAWARDED, asSupplierSees, legacyItemsFromRfq, type RfqProductLike } from "@/lib/procurement/supplier"
 import { useSupplierOrdersById } from "@/hooks/useSupplierOrdersById"
 import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
@@ -69,6 +69,7 @@ function LegacySupplierOffersPage() {
   // a lump-sum offer (or products that could not be read), revised by its total.
   const [updateProducts, setUpdateProducts] = useState<PricedProduct[] | null>(null)
   const [newRates, setNewRates] = useState<Record<number, string>>({})
+  const [newSkips, setNewSkips] = useState<Record<number, boolean>>({})
   const [confirmSampleOffer, setConfirmSampleOffer] = useState<any | null>(null)
   const [archivingId, setArchivingId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
@@ -276,6 +277,7 @@ function LegacySupplierOffersPage() {
     setNewPrice(offer.price || "")
     setUpdateProducts(null)
     setNewRates({})
+    setNewSkips({})
     if (!firestore || !offer.rfqId || !(offer.lines || []).length) return
     try {
       const snap = await getDoc(doc(firestore, "rfqs", offer.rfqId))
@@ -283,13 +285,17 @@ function LegacySupplierOffersPage() {
       if (!products.length) return
       setUpdateProducts(products)
       setNewRates(Object.fromEntries((offer.lines as Array<{ rfqProductIndex: number; unitPrice: number }>).map((l) => [l.rfqProductIndex, String(l.unitPrice ?? "")])))
+      const quoted = new Set((offer.lines as Array<{ rfqProductIndex: number }>).map((l) => l.rfqProductIndex))
+      setNewSkips(Object.fromEntries(products.filter((p) => !quoted.has(p.rfqProductIndex)).map((p) => [p.rfqProductIndex, true])))
     } catch {
       /* products unreadable: revised by total, and revisePrice drops the stale rates */
     }
   }
 
-  const updatePricing = updateProducts ? priceOffer(updateProducts, newRates) : null
-  const revision = updatePriceOffer ? revisePrice(updatePriceOffer, updateProducts, { total: newPrice, rates: newRates }) : null
+  const updateSkipped = (updateProducts || []).filter((p) => newSkips[p.rfqProductIndex]).map((p) => p.rfqProductIndex)
+  const updatePricing = updateProducts ? priceOffer(updateProducts, newRates, updateSkipped) : null
+  const updateFault = updatePricing ? pricingFault(updatePricing) : null
+  const revision = updatePriceOffer ? revisePrice(updatePriceOffer, updateProducts, { total: newPrice, rates: newRates, skipped: updateProducts ? updateSkipped : undefined }) : null
   const revisedTotal = revision?.ok ? revision.total : null
 
   const handleUpdatePrice = async () => {
@@ -473,6 +479,11 @@ function LegacySupplierOffersPage() {
                       <TableCell className={locale === 'ar' ? 'text-right' : 'text-left'}>
                         <div className="flex flex-col gap-1 items-start">
                           {getStatusBadge(offer.status || "قيد المراجعة")}
+                          {ownCoverage(offer) && (
+                            <Badge variant="outline" className="text-[10px] border-sky-200 bg-sky-50 text-sky-800">
+                              {ts("offer_line_partial", { count: ownCoverage(offer)?.covered ?? 0, of: ownCoverage(offer)?.of ?? 0 })}
+                            </Badge>
+                          )}
                           {offer.sampleStatus && (
                             <Badge variant="outline" className={`text-[10px] ${
                               offer.sampleStatus === "مطلوبة" ? "border-blue-200 bg-blue-50 text-blue-700" :
@@ -695,7 +706,14 @@ function LegacySupplierOffersPage() {
             <div className="space-y-4 py-2">
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
                 <span className="text-muted-foreground text-sm">{t("offer_status_label")}</span>
-                {getStatusBadge(viewOffer.status || "قيد المراجعة")}
+                <span className="flex flex-col items-end gap-1">
+                  {getStatusBadge(viewOffer.status || "قيد المراجعة")}
+                  {ownCoverage(viewOffer) && (
+                    <Badge variant="outline" className="text-[10px] border-sky-200 bg-sky-50 text-sky-800">
+                      {ts("offer_line_partial", { count: ownCoverage(viewOffer)?.covered ?? 0, of: ownCoverage(viewOffer)?.of ?? 0 })}
+                    </Badge>
+                  )}
+                </span>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-primary/5 rounded-lg space-y-1">
@@ -810,8 +828,21 @@ function LegacySupplierOffersPage() {
                         className="w-28"
                         aria-label={ts("offer_line_rate_for", { name: prod.name })}
                         value={newRates[prod.rfqProductIndex] ?? ""}
+                        disabled={!!newSkips[prod.rfqProductIndex]}
                         onChange={(e) => setNewRates({ ...newRates, [prod.rfqProductIndex]: e.target.value })}
                       />
+                      <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={!!newSkips[prod.rfqProductIndex]}
+                          onChange={(e) => {
+                            setNewSkips({ ...newSkips, [prod.rfqProductIndex]: e.target.checked })
+                            if (e.target.checked) setNewRates({ ...newRates, [prod.rfqProductIndex]: "" })
+                          }}
+                          className="h-4 w-4"
+                        />
+                        {ts("offer_line_not_supplied")}
+                      </label>
                     </div>
                   ))}
                 </div>
@@ -819,7 +850,15 @@ function LegacySupplierOffersPage() {
                   <span className="text-muted-foreground">{ts("offer_line_price_auto_note")}</span>
                   <span className="font-bold tabular-nums" dir="ltr">{updatePricing.total} {t("sar")}</span>
                 </div>
-                {!updatePricing.complete && <p className="text-[11px] text-amber-700">{ts("offer_line_prices_incomplete")}</p>}
+                {updateFault ? (
+                  <p className="text-[11px] text-amber-700">
+                    {updateFault.code === "NO_LINE_PRICED" ? ts("offer_line_none_priced") : ts(updateFault.code === "LINE_CONTRADICTORY" ? "offer_line_contradictory" : "offer_line_prices_incomplete", { names: faultNames(updateProducts || [], updateFault.indexes) })}
+                  </p>
+                ) : updatePricing.skipped.length > 0 ? (
+                  <p className="text-[11px] text-sky-800">
+                    <b>{ts("offer_line_partial", { count: updatePricing.lines.length, of: (updateProducts || []).length })}</b> — {ts("offer_line_partial_note")}
+                  </p>
+                ) : null}
               </div>
             ) : (
               <div className="space-y-2">

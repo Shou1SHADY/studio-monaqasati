@@ -106,7 +106,8 @@ describe("the list", () => {
   it("counts the segments and sorts needs-action by the last order day", () => {
     expect(segmentCounts(rows)).toMatchObject({ act: 3, oth: 2, po: 2, all: 7 })
     expect(sortRows(rows.filter((r) => r.state === "open"), "act")[0].name).toBe("Steel")
-    expect(needKpi(rows)).toEqual({ need: 3, overdue: 1 })
+    // Three lines of two requests: the header counts requests (a request of several materials is one).
+    expect(needKpi(rows)).toEqual({ need: 2, overdue: 1 })
   })
 
   it("a buyer sees his categories — and every line nobody categorised", () => {

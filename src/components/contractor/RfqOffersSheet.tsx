@@ -137,6 +137,11 @@ export function RfqOffersSheet({ rfq, offersHref, open, onOpenChange }: { rfq: S
                         </span>
                         <span className="mt-1 flex flex-wrap items-center gap-1">
                           {statusBadge(o)}
+                          {matrix.columns.find((c) => c.offerId === o.id)?.partial && (
+                            <Badge className="border-none bg-warning/10 text-[10px] text-warning">
+                              {t("rfq_glance_partial", { count: matrix.columns.find((c) => c.offerId === o.id)?.partial?.covered ?? 0, of: matrix.columns.find((c) => c.offerId === o.id)?.partial?.of ?? 0 })}
+                            </Badge>
+                          )}
                           {o.isFromMdmak && <Badge className="border-none bg-accent/15 text-[10px] text-primary">{t("rfq_glance_mdmak")}</Badge>}
                         </span>
                       </th>
@@ -158,7 +163,7 @@ export function RfqOffersSheet({ rfq, offersHref, open, onOpenChange }: { rfq: S
                         {r.cells.map((c) => (
                           <td key={c.offerId} className={cn("px-3 py-2 align-top", c.lowest && "bg-success/10")}>
                             {c.unitPrice === null ? (
-                              <span className="text-xs text-muted-foreground">{t("rfq_glance_total_only")}</span>
+                              <span className="text-xs text-muted-foreground">{c.notCovered ? t("rfq_glance_not_covered") : t("rfq_glance_total_only")}</span>
                             ) : (
                               <>
                                 <Money value={c.unitPrice} className={cn("block font-bold", c.lowest && "text-success")} />

@@ -23,6 +23,8 @@ export interface ProfileFacts {
   nationalAddress?: string
   location?: string
   specializations?: string[]
+  /** The material tree's sub-categories he chose (PUR-04) — they stand for the specialties. */
+  specialtyIds?: string[]
   coverageCities?: string[]
   legalDocuments?: Partial<Record<DocKey, ProfileDoc>>
   certificates?: { name?: string; url?: string }[]
@@ -41,6 +43,7 @@ export function profileFacts(raw: Rec): ProfileFacts {
     crNumber: text(raw.crNumber),
     nationalAddress: text(raw.nationalAddress) || text(raw.location),
     specializations: list(raw.specializations),
+    specialtyIds: list(raw.specialtyIds),
     coverageCities: list(raw.coverageCities),
     legalDocuments: docs,
     certificates: Array.isArray(raw.certificates) ? (raw.certificates as { name?: string; url?: string }[]) : [],
@@ -55,7 +58,7 @@ const hasDoc = (f: ProfileFacts, k: DocKey): boolean => {
 export function profileChecks(f: ProfileFacts): { k: string; ok: boolean }[] {
   return [
     { k: "basic", ok: !!((f.companyName || f.name) && f.phone && f.crNumber && f.nationalAddress) },
-    { k: "specs", ok: !!((f.specializations || []).length && (f.coverageCities || []).length) },
+    { k: "specs", ok: !!(((f.specialtyIds || []).length || (f.specializations || []).length) && (f.coverageCities || []).length) },
     ...DOC_KEYS.map((k) => ({ k, ok: hasDoc(f, k) })),
   ]
 }

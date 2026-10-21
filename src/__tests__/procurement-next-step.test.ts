@@ -1,6 +1,7 @@
 // PUR-07: the next step from the facts — the supplier is not blamed for our count.
 import { STEP_WAITS_ON, deliveryStep, type StepNotice } from "@/lib/procurement/next-step"
 import { daysLate } from "@/lib/procurement/po"
+import { honestDate, inSegment } from "@/components/procurement/PoModel"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 
 const NOW = new Date("2026-10-19T09:00:00Z")
@@ -14,9 +15,10 @@ describe("the order on its way", () => {
     const s = deliveryStep(po(), [n], NOW)
     expect(s).toEqual({ kind: "receiver_late", deliveryId: "d1", receiver: "سالم القحطاني", days: 25, noticeDay: "2026-09-24", forwardedDay: "2026-09-23", byLink: true })
     expect(STEP_WAITS_ON[s!.kind]).toBe("receiver")
-    // …and the lateness clock agrees: the supplier is not late while the notice waits for our count.
+    // …and the lateness clock agrees on every screen that is handed the notices: the supplier is not late while the notice waits for our count.
     expect(daysLate(po(), NOW, [n])).toBe(0)
-    expect(daysLate(po(), NOW)).toBe(25)
+    expect(honestDate(po(), NOW, [n])).toMatchObject({ kind: "promised", daysLate: 0 })
+    expect(inSegment(po(), "late", NOW, [n])).toBe(false)
   })
   it("a notice with us asks to forward it; one whose day is ahead is on its way", () => {
     expect(deliveryStep(po(), [notice()], NOW)?.kind).toBe("notice_to_forward")

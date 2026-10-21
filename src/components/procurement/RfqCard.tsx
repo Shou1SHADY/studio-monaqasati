@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Link } from "@/i18n/routing"
 import { useRfqInquiryCounts } from "@/hooks/useRfqInquiryCounts"
 import { displayCategory, displayCity } from "@/lib/constants"
-import { displayDocNumber } from "@/lib/procurement/format"
+import { rfqDisplayNumber } from "@/lib/procurement/format"
 import { deadlineTag, productCount, rfqCategories, rfqStage, STAGE_TONE, type RfqListLike, type RfqStage } from "@/lib/procurement/rfq-view"
 import { cn } from "@/lib/utils"
 
@@ -64,8 +64,8 @@ export function RfqNumber({ rfq }: { rfq: Pick<RfqRow, "id" | "rfqNumber"> }) {
   const locale = useLocale()
   return (
     // An RFQ numbered after it was raised keeps its first reference «#HIX5if» as a tooltip (PUR-09 #5) — it is searchable too.
-    <span className="whitespace-nowrap rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground" dir="ltr" title={rfq.rfqNumber ? `#${rfq.id.slice(0, 6)}` : undefined}>
-      {rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : `#${rfq.id.slice(0, 6)}`}
+    <span className="whitespace-nowrap rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground" dir="ltr" >
+      {rfqDisplayNumber(rfq, locale)}
     </span>
   )
 }

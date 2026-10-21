@@ -6,7 +6,7 @@
 
 import { PERMISSION_SECTIONS, type PermissionId } from "../permissions"
 import { PROC_TAB_GATES, type ProcTabId } from "./tab-gates"
-import { approvalRefusal, daysFromNow, poLate, poStatus, dayOf, lineOutstanding } from "./po"
+import { approvalRefusal, daysFromNow, poLate, poStatus, dayOf, lineOutstanding, type NoticeFact } from "./po"
 import type { OfferFact, ProcWorld, RfqFact } from "./today"
 import type { ProcurementPolicies, PurchaseOrder, ReceiptFact, SupplierFacts } from "./types"
 
@@ -170,7 +170,7 @@ export interface WorkQueueCounts {
 
 /** The dashboard card holder is assumed to hold `po.approve` — the page gates
  * the card by permission; this only applies the data conditions. */
-export function workQueueCounts(orders: PurchaseOrder[], policies: ProcurementPolicies, viewer: QueueViewer, now: Date): WorkQueueCounts {
+export function workQueueCounts(orders: PurchaseOrder[], policies: ProcurementPolicies, viewer: QueueViewer, now: Date, notices?: ReadonlyArray<NoticeFact>): WorkQueueCounts {
   const actor = { uid: viewer.uid, name: "", isOwner: viewer.isOwner, canApprove: true, canPrepare: true, canExpedite: true, canReceive: false, seesPrices: true }
   let approve = 0
   let late = 0
@@ -186,7 +186,7 @@ export function workQueueCounts(orders: PurchaseOrder[], policies: ProcurementPo
     else if (st === "sent") {
       const sent = daysFromNow(dayOf(po.sentAt), now)
       if (sent != null && -sent >= policies.supplierAcceptanceDays) notAccepted++
-    } else if ((st === "in_delivery" || st === "part_received") && poLate(po, now)) late++
+    } else if ((st === "in_delivery" || st === "part_received") && poLate(po, now, notices)) late++
   }
   return { approve, attention: { late, notAccepted, notSent, total: late + notAccepted + notSent } }
 }

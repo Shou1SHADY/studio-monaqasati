@@ -7,6 +7,7 @@
 
 import type { NeedRow } from "./need-desk"
 import type { Need } from "./needs"
+import type { ProjectChange } from "./project-change"
 
 export type RequestState = "new" | "prepared" | "elsewhere" | "partial" | "rfq" | "order" | "done" | "failed" | "withdrawn"
 export type RequestSegment = "new" | "prepared" | "elsewhere" | "rfq" | "order" | "done" | "all"
@@ -23,8 +24,14 @@ export interface RequestCard {
   needBy: string | null
   /** The draft RFQ it was prepared into. */
   draftId: string | null
-  /** May it be picked with others into one RFQ (new or prepared, and every line selectable). */
+  /** May it be picked with others into one RFQ (new, prepared or partly in an RFQ, with a line still to publish). */
   selectable: boolean
+  /** The RFQs its lines went into when only part of it was published (a whole one is on `need`). */
+  rfqs: Array<{ id: string; number: string | null }>
+  /** The project took it back after it reached us and before anything was bought: the day and who. */
+  withdrawal: { on: string | null; byName: string | null } | null
+  /** What the project withdrew or changed on it after it reached us. */
+  changes: ProjectChange[]
 }
 
 export interface DraftFact {
@@ -49,6 +56,7 @@ export function draftFor(need: Pick<Need, "source">, rfqs: DraftFact[]): string 
 export function requestState(rows: NeedRow[], draftId: string | null): RequestState {
   const st = rows.map((r) => r.state)
   const need = rows[0]?.need
+  if (need?.endKind === "withdrawn") return "withdrawn"
   if (need?.endKind === "refused" || (st.length && st.every((s) => s === "cx"))) return "failed"
   if (st.length && st.every((s) => s === "done" || s === "stk")) return "done"
   const open = st.some((s) => s === "open" || s === "late" || s === "mfgl")
@@ -83,7 +91,10 @@ export function requestCards(rows: NeedRow[], rfqs: DraftFact[]): RequestCard[] 
       lastOrderIn: soonest?.lastOrderIn ?? null,
       needBy,
       draftId,
-      selectable: (state === "new" || state === "prepared") && list.some((r) => r.selectable),
+      selectable: (state === "new" || state === "prepared" || state === "partial") && list.some((r) => r.selectable),
+      rfqs: Array.from(new Map(list.flatMap((r) => (r.link?.rfqId ? [[r.link.rfqId, { id: r.link.rfqId, number: r.link.rfqNumber }] as const] : []))).values()),
+      withdrawal: need.withdrawal ?? null,
+      changes: need.projectChanges ?? [],
     })
   }
   return out

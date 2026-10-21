@@ -60,6 +60,9 @@ type Confirm = { kind: "arrived" | "decline" | "buy" | "lapsed" | "team_decline"
 
 const isSeg = (v: string | null): v is RequestSegment => !!v && (REQUEST_SEGMENTS as string[]).includes(v)
 
+/** The states whose request still has lines to publish: its panel is the request; the others open the line's own drawer. */
+const PANEL_STATES: RequestCard["state"][] = ["new", "prepared", "partial"]
+
 export function PurchaseRequestsInbox() {
   const t = useTranslations("Portal.Shared")
   const tProc = useTranslations("Portal.Procurement")
@@ -96,6 +99,8 @@ export function PurchaseRequestsInbox() {
   const [raising, setRaising] = useState(false)
   const [mineKey, setMineKey] = useState(0)
   const panelKey = searchParams.get("publish")
+  // «انشره» opens the panel on the publishing step; a press on the row (or «التفاصيل») on the request itself.
+  const panelStep: 1 | 2 = searchParams.get("step") === "1" ? 1 : 2
   const openLine = searchParams.get("line")
   const setQuery = (patch: Record<string, string | null>) => {
     const p = new URLSearchParams(searchParams.toString())
@@ -211,7 +216,7 @@ export function PurchaseRequestsInbox() {
     <div className="space-y-6 pb-24" dir={isRtl ? "rtl" : "ltr"}>
       <ProcurementHeader
         title={t("pri_title")}
-        description={teamOn ? t("nd_desc_team") : t("nd_desc")}
+        description={teamOn ? t(on("manufacturing") ? "nd_desc_team" : "nd_desc_team_stock") : t("nd_desc")}
         action={
           teamOn ? (
             <Button className="gap-1.5" onClick={() => setRaising(true)}>
@@ -265,9 +270,10 @@ export function PurchaseRequestsInbox() {
               selected={selected.has(c.key)}
               onToggle={() => toggle(c.key)}
               canAct={canStartRfq}
-              onPublish={() => setQuery({ publish: c.key, line: null })}
+              onPublish={() => setQuery({ publish: c.key, step: null, line: null })}
               prepareHref={editorHref([c.key])}
-              onDetails={() => setQuery({ line: c.rows[0].key })}
+              onDetails={() => (PANEL_STATES.includes(c.state) ? setQuery({ publish: c.key, step: "1", line: null }) : setQuery({ line: c.rows[0].key }))}
+              onLine={(rowKey) => setQuery({ line: rowKey })}
               onDecline={c.need.kind === "team" && canStartRfq && (c.state === "new" || c.state === "prepared") ? () => setConfirm({ kind: "team_decline", row: c.rows[0] }) : undefined}
             />
           ))}
@@ -287,7 +293,7 @@ export function PurchaseRequestsInbox() {
       )}
 
       {canAct && summary.lines > 0 && (
-        <div className="fixed inset-x-4 bottom-4 z-30 mx-auto flex max-w-4xl flex-wrap items-center gap-2 rounded-2xl border bg-card px-4 py-3 shadow-lg" role="region" aria-label={t("nd_selection")}>
+        <div className="fixed inset-x-4 bottom-4 z-30 mx-auto flex max-w-4xl flex-wrap items-center gap-2 rounded-2xl border bg-card px-4 py-3 shadow-lg max-md:pe-20" role="region" aria-label={t("nd_selection")}>
           <b className="text-sm">{t("rq_sel", { count: selected.size, lines: summary.lines })}</b>
           <span className="text-xs text-muted-foreground">{summary.value != null && procActor.seesPrices ? t("nd_sel_value", { value: money(summary.value) }) : t("nd_sel_no_estimate")}</span>
           <span className="ms-auto flex flex-wrap gap-2">
@@ -316,12 +322,12 @@ export function PurchaseRequestsInbox() {
       )}
 
       {/* «انشره»: the request's own panel — الطلب · النشر · المراجعة (PUR-01 p.3–4). */}
-      <Sheet open={!!panelKey} onOpenChange={(o) => !o && setQuery({ publish: null })}>
+      <Sheet open={!!panelKey} onOpenChange={(o) => !o && setQuery({ publish: null, step: null })}>
         <SheetContent side={isRtl ? "left" : "right"} dir={isRtl ? "rtl" : "ltr"} className="w-full overflow-y-auto sm:max-w-4xl">
           <SheetHeader className="sr-only">
             <SheetTitle>{t("rq_panel")}</SheetTitle>
           </SheetHeader>
-          {panelKey && <RfqEditor key={panelKey} variant="panel" requestKeys={[panelKey]} onClose={() => setQuery({ publish: null })} />}
+          {panelKey && <RfqEditor key={`${panelKey}:${panelStep}`} variant="panel" requestKeys={[panelKey]} startStep={panelStep} onClose={() => setQuery({ publish: null, step: null })} />}
         </SheetContent>
       </Sheet>
 
@@ -407,6 +413,7 @@ function RequestCardView({
   onPublish,
   prepareHref,
   onDetails,
+  onLine,
   onDecline,
 }: {
   card: RequestCard
@@ -417,6 +424,8 @@ function RequestCardView({
   onPublish: () => void
   prepareHref: string
   onDetails: () => void
+  /** A press on a material opens that line's own drawer (its path and acts). */
+  onLine: (rowKey: string) => void
   /** A team's «طلب مواد» Procurement cannot buy: «تعذّر الشراء» with the reason its requester reads. */
   onDecline?: () => void
 }) {
@@ -427,8 +436,16 @@ function RequestCardView({
   const place = n.projectName || n.context || t("nd_for_stock")
   const ld = c.lastOrderIn
   const live = c.state === "new" || c.state === "prepared" || c.state === "partial"
+  const rfqLink = n.rfqId ? { id: n.rfqId, number: n.rfqNumber } : c.rfqs[0] ?? null
+  const inHand = c.state === "rfq" || c.state === "partial" || c.state === "order"
   return (
-    <li className={cn("rounded-2xl border bg-card p-4 transition-colors", selected && "border-module/50 bg-module/5")}>
+    <li
+      className={cn("cursor-pointer rounded-2xl border bg-card p-4 transition-colors hover:border-module/40", selected && "border-module/50 bg-module/5")}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("button, a, input, label, [role='checkbox']")) return
+        onDetails()
+      }}
+    >
       <div className="flex flex-wrap items-start gap-3">
         {selectable && <Checkbox checked={selected} onCheckedChange={onToggle} aria-label={t("rq_select", { ref })} className="mt-1" />}
         <div className="min-w-0 flex-1 space-y-1.5">
@@ -439,18 +456,31 @@ function RequestCardView({
             <span className="text-sm font-semibold text-foreground" dir="auto">
               {place}
             </span>
-            <StatusPill tone={RQ_TONE[c.state]}>{t(`rq_state_${c.state}`, { rfq: n.rfqNumber || "", po: n.poNumber || "" })}</StatusPill>
+            <StatusPill tone={RQ_TONE[c.state]}>{t(`rq_state_${c.state}`, { rfq: n.rfqNumber || c.rfqs.map((r) => r.number).filter(Boolean).join(" · "), po: n.poNumber || "" })}</StatusPill>
             <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">{t(`pri_from_${n.kind}`)}</span>
           </p>
           {n.requestedBy && <p className="text-xs text-muted-foreground">{t("rq_by", { name: n.requestedBy })}</p>}
           <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm" dir="auto">
             {c.rows.map((r) => (
               <span key={r.key}>
-                {r.name} <b className="tabular-nums" dir="ltr">{fmtQty(r.state === "open" || r.state === "late" ? r.open : r.total)}</b> <span className="text-xs text-muted-foreground">{r.unit}</span>
+                <button type="button" onClick={() => onLine(r.key)} className="rounded text-start hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={t("rq_line_open", { name: r.name })}>
+                  {r.name}
+                </button>{" "}
+                <b className="tabular-nums" dir="ltr">{fmtQty(r.state === "open" || r.state === "late" ? r.open : r.total)}</b> <span className="text-xs text-muted-foreground">{r.unit}</span>
+                {r.link && <span className="ms-1 text-[11px] font-semibold text-muted-foreground">· {t(r.link.poId ? "rq_line_in_po" : "rq_line_in_rfq", { ref: r.link.poId ? r.link.poNumber || "" : r.link.rfqNumber || "" })}</span>}
                 {r.samplePending && <span className="ms-1 text-[11px] font-semibold text-warning">· {t("nd_sample_pending")}</span>}
               </span>
             ))}
           </p>
+          {c.state === "withdrawn" && <p className="text-xs font-semibold text-muted-foreground">{t("rq_withdrawn_by", { name: c.withdrawal?.byName || "—", date: c.withdrawal?.on ? fmtDay(c.withdrawal.on, locale) : "—" })}</p>}
+          {c.changes.map((ch) => (
+            <p key={ch.kind} className="text-xs font-semibold text-warning" dir="auto">
+              {t(ch.kind === "withdrawn" ? "pchg_withdrawn" : "pchg_changed")} · {t("pchg_by", { name: ch.byName || "—", date: ch.on ? fmtDay(ch.on, locale) : "—" })}
+              {": "}
+              {ch.lines.map((l) => (ch.kind === "withdrawn" ? t("pchg_line_withdrawn", { name: l.name, qty: fmtQty(l.was), unit: l.unit }) : t("pchg_line_changed", { name: l.name, was: fmtQty(l.was), now: fmtQty(l.now), unit: l.unit }))).join(" ؛ ")}
+              {inHand && ` — ${t("pchg_decide")}`}
+            </p>
+          ))}
           <p className="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
             <span>{t("rq_need_by", { date: c.needBy ? fmtDay(c.needBy, locale) : "—" })}</span>
             {live && ld != null && (
@@ -462,7 +492,7 @@ function RequestCardView({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {canAct && c.state === "new" && (
+          {canAct && (c.state === "new" || c.state === "partial") && (
             <>
               <Button size="sm" onClick={onPublish}>
                 {t("rq_publish")}
@@ -477,9 +507,9 @@ function RequestCardView({
               <Link href={`/contractor/rfqs/new?edit=${c.draftId}`}>{t("rq_open_draft")}</Link>
             </Button>
           )}
-          {(c.state === "rfq" || c.state === "partial") && n.rfqId && (
+          {(c.state === "rfq" || c.state === "partial") && rfqLink && (
             <Button asChild size="sm" variant="outline">
-              <Link href={`/contractor/rfqs/${n.rfqId}`}>{t("rq_open_rfq")}</Link>
+              <Link href={`/contractor/rfqs/${rfqLink.id}`}>{t("rq_open_rfq")}</Link>
             </Button>
           )}
           {c.state === "order" && n.poId && (

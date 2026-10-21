@@ -7,7 +7,7 @@
 import { useLocale, useTranslations } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { poLate, poStatus } from "@/lib/procurement/po"
+import { poLate, poStatus, type NoticeFact } from "@/lib/procurement/po"
 import { asX, closedByPayment } from "@/lib/procurement/po-extras"
 import type { PoLine, PoStatus, PurchaseOrder } from "@/lib/procurement/types"
 import { sarLtr } from "@/lib/riyal"
@@ -25,25 +25,26 @@ const PILL: Record<PoStatus, string> = {
   cancelled: "bg-muted text-muted-foreground",
 }
 
-export function PoStatusPill({ po, now, className }: { po: PurchaseOrder; now: Date; className?: string }) {
+/** `notices` = the order's delivery notices: a notice in time that waits for OUR count is not the supplier's delay (PUR-07). */
+export function PoStatusPill({ po, now, notices, className }: { po: PurchaseOrder; now: Date; notices?: ReadonlyArray<NoticeFact>; className?: string }) {
   const tProc = useTranslations("Portal.Procurement")
   const t = useTranslations("Portal.ProcOrders")
   const paid = closedByPayment(asX(po))
   const status = paid ? "closed" : poStatus(po)
   const key = paid ? "closed_paid" : status === "closed" && po.closedShort ? "closed_short" : status
-  const late = poLate(po, now)
+  const late = poLate(po, now, notices)
   return (
     <span className={cn("inline-flex flex-wrap items-center gap-1", className)}>
       <Badge className={cn("border-none text-[11px] font-bold", PILL[status])}>{tProc(`status.${key}` as "status.closed")}</Badge>
-      {late && <Badge className="border-none bg-destructive/10 text-[11px] font-bold text-destructive">{tProc("deliveryState.late", { days: daysLateOf(po, now) })}</Badge>}
+      {late && <Badge className="border-none bg-destructive/10 text-[11px] font-bold text-destructive">{tProc("deliveryState.late", { days: daysLateOf(po, now, notices) })}</Badge>}
       {po.status === "awaiting_approval" && po.returnedReason && <Badge className="border-none bg-destructive/10 text-[11px] font-bold text-destructive">{t("pill_returned")}</Badge>}
     </span>
   )
 }
 
-function daysLateOf(po: PurchaseOrder, now: Date): number {
+function daysLateOf(po: PurchaseOrder, now: Date, notices?: ReadonlyArray<NoticeFact>): number {
   // The pill only needs the number the domain already computed.
-  const d = honestDate(po, now)
+  const d = honestDate(po, now, notices)
   return d.kind === "promised" ? d.daysLate : 0
 }
 
@@ -68,18 +69,18 @@ export function useDateText() {
 }
 
 /** The sentence the date column shows. */
-export function HonestDateText({ po, now, className }: { po: PurchaseOrder; now: Date; className?: string }) {
+export function HonestDateText({ po, now, notices, className }: { po: PurchaseOrder; now: Date; notices?: ReadonlyArray<NoticeFact>; className?: string }) {
   const t = useTranslations("Portal.ProcOrders")
   const tProc = useTranslations("Portal.Procurement")
   const fmt = useDateText()
-  const d: HonestDate = honestDate(po, now)
+  const d: HonestDate = honestDate(po, now, notices)
   switch (d.kind) {
     case "with_approver":
-      return <span className={cn("text-muted-foreground", className)}>{t("date.with_approver", { approver: tProc(`approver.${d.approver}`) })}</span>
+      return <span className={cn("text-muted-foreground", className)}>{t("date.with_approver", { approver: tProc(`approver.${d.approver}`), days: d.days })}</span>
     case "not_sent":
       return <span className={cn("text-muted-foreground", className)}>{t("date.not_sent")}</span>
     case "no_acceptance":
-      return <span className={cn("text-muted-foreground", className)}>{t("date.no_acceptance")}</span>
+      return <span className={cn("text-muted-foreground", className)}>{t("date.no_acceptance", { days: d.days })}</span>
     case "no_date":
       return <span className={cn("text-muted-foreground", className)}>{t("date.no_date")}</span>
     case "promised":

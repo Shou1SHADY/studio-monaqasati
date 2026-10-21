@@ -40,6 +40,9 @@ import { guestLinkUrl } from "@/components/procurement/rfq/guestLinkUrl"
 import { displayCity } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { reachBySub, extendPool, invitableRecipients, sourcingBlockOf } from "@/lib/procurement/rfq-extras"
+import { type InvitationDoc } from "@/components/procurement/SupplierInvitations"
+import { needLastOrderDay } from "@/lib/procurement/need-desk"
+import { supplierInvitationsQuery } from "@/lib/procurement/invite-query"
 import { profileVatMark, type SourcingBlock } from "@/lib/procurement/supplier-file"
 import { createRfqWithNumber, updateRfqNumbered } from "@/lib/procurement/rfq-writes"
 import { createPurchaseOrderFromAward } from "@/lib/procurement/writes"
@@ -68,6 +71,7 @@ import {
   newGroup,
   numberedLines,
   parsePaste,
+  partialRequestKeys,
   requestKeysIn,
   reviewFacts,
   rfqLinesDoc,
@@ -96,6 +100,7 @@ export function RfqEditor({
   projectId,
   requestKeys,
   variant = "page",
+  startStep = 2,
   onClose,
 }: {
   projectId?: string
@@ -103,6 +108,8 @@ export function RfqEditor({
   requestKeys?: string[]
   /** `panel`: the incoming request's own panel — step 1 is the request as asked, no draft, «جهّزه» opens the editor. */
   variant?: "page" | "panel"
+  /** The panel opens on the publishing step («انشره») or on the request itself (a press on its row). */
+  startStep?: 1 | 2
   onClose?: () => void
 }) {
   const panel = variant === "panel"
@@ -163,7 +170,7 @@ export function RfqEditor({
     }
   }, [platform, world.supplierRecords])
   const recipientFacts = useMemo(() => {
-    const out = new Map<string, { onTime: number | null; crExpired: boolean; block: SourcingBlock | null }>()
+    const out = new Map<string, { onTime: number | null; crExpired: boolean; block: SourcingBlock | null; unverified: boolean }>()
     const now = new Date()
     for (const o of recipientOptions) {
       const block = sourcingOf(o.orgId)
@@ -174,13 +181,18 @@ export function RfqEditor({
           now,
         ).onTimePercent,
         crExpired: block === "cr_expired",
-        block,
+        block: block === "unverified" ? null : block,
+        unverified: block === "unverified",
       })
     }
     return out
   }, [recipientOptions, sourcingOf, world.orders, world.deliveries])
 
   const openNeeds = useOpenNeeds(world, true)
+  const invitationsQ = useMemoFirebase(() => (firestore && orgId && !isUserLoading ? supplierInvitationsQuery(firestore, orgId) : null), [firestore, orgId, isUserLoading])
+  const { data: invitationDocs } = useCollection<Omit<InvitationDoc, "id">>(invitationsQ)
+  const invitations = useMemo(() => ((invitationDocs || []) as InvitationDoc[]).filter((i) => i.type === "supplier_invite"), [invitationDocs])
+  const lastOrderOf = useMemo(() => (n: Need) => needLastOrderDay(n, { orders: world.orders, policies: world.policies }), [world.orders, world.policies])
 
   // ── The editor's state ───────────────────────────────────────────────────
   const [step, setStep] = useState<Step>(1)
@@ -289,11 +301,16 @@ export function RfqEditor({
     const hits = openNeeds.filter((n) => keys.includes(n.key) || sources.some((s) => JSON.stringify(n.source) === JSON.stringify(parseNeedSource(s))))
     if (!hits.length) return
     prefilled.current = true
-    const next = addRequests([newGroup()], hits.map((n) => incomingFromNeed(n, sites)))
-    setGroups((gs) => (panel ? next : addRequests(gs, hits.map((n) => incomingFromNeed(n, sites)))))
-    // «انشره» opens on the publishing step — unless a material still lacks its sub-category, or the place its city (PUR-01 p.4).
-    if (panel && !materialsProblems(next).length) setStep(2)
-  }, [openNeeds, params, sites, editId, requestKeys, panel])
+    const next = addRequests([newGroup()], hits.map((n) => incomingFromNeed(n, sites, lastOrderOf(n))))
+    setGroups((gs) => (panel ? next : addRequests(gs, hits.map((n) => incomingFromNeed(n, sites, lastOrderOf(n))))))
+    // «انشره» opens on the publishing step — unless a material still lacks its sub-category, or the place its city:
+    // then on the request, the lacking row coloured from the start (PUR-01 p.4). A press on the row opens the request itself.
+    if (panel) {
+      const lacking = materialsProblems(next).length > 0
+      setShowProblems(lacking)
+      if (!lacking) setStep(startStep)
+    }
+  }, [openNeeds, params, sites, editId, requestKeys, panel, startStep, lastOrderOf])
   // ?items=[{name, quantity, unit}] (the workshop's shortfalls, the catalogue)
   useEffect(() => {
     const raw = params.get("items")
@@ -341,6 +358,22 @@ export function RfqEditor({
       .catch(() => undefined)
   }, [params, editId, firestore])
 
+  // The BOQ item of each row of an incoming request, read once for the panel's first step (PUR-01 p.3).
+  const [boq, setBoq] = useState<Record<string, string>>({})
+  const boqWanted = useMemo(() => (panel ? Array.from(new Set(groups.flatMap((g) => (g.projectId ? g.lines.flatMap((l) => (l.boqItemId ? [`${g.projectId}/${l.boqItemId}`] : [])) : [])))) : []), [groups, panel])
+  useEffect(() => {
+    const todo = boqWanted.filter((k) => !(k in boq))
+    if (!firestore || !todo.length) return
+    void Promise.all(
+      todo.map(async (k) => {
+        const [pid, iid] = k.split("/")
+        const snap = await getDoc(doc(firestore, "projects", pid, "boqItems", iid)).catch(() => null)
+        const d = snap?.data() as { itemNo?: string | number | null; code?: string | null; description?: string | null; descriptionAr?: string | null } | undefined
+        return [k, [String(d?.itemNo ?? d?.code ?? "").trim(), String(d?.description ?? d?.descriptionAr ?? "").trim()].filter(Boolean).join(" · ")] as const
+      }),
+    ).then((entries) => setBoq((prev) => ({ ...prev, ...Object.fromEntries(entries) })))
+  }, [boqWanted, boq, firestore])
+
   // ── Derived ──────────────────────────────────────────────────────────────
   const problems = materialsProblems(groups)
   const complete = numberedLines(groups).filter((r) => lineComplete(r.line))
@@ -353,10 +386,16 @@ export function RfqEditor({
   const linesDoc = useMemo(() => rfqLinesDoc(groups, locale, projectName), [groups, locale, projects])
   const reach = useMemo(() => reachBySub(platform, linesDoc.subCategoryIds), [platform, linesDoc.subCategoryIds])
   const favouriteReached = reach.distinct.find((s) => favoriteIds.includes(s.orgId))?.name || null
+  // An unverified supplier — one who joined through our invitation — may be picked in «خاص» (PUR-05), with his tag;
+  // he is never ticked for us, and an expired CR still blocks him.
+  const privateBlockOf = (id: string): SourcingBlock | null => {
+    const block = sourcingOf(id)
+    return block === "unverified" ? null : block
+  }
   const selectedRecipients = invitableRecipients(
     recipientOptions.map((o) => o.orgId),
     values.recipients,
-    sourcingOf,
+    values.recipients === null ? sourcingOf : privateBlockOf,
   )
   const directPool = extendPool(
     recipientOptions.map((o) => ({ orgId: o.orgId, name: o.name, isFavorite: o.isFavorite })),
@@ -388,9 +427,23 @@ export function RfqEditor({
     return out
   }
 
+  // A draft opened to be published (?step=review) lands on the review; an unfinished one shows what lacks.
+  const reviewOpened = useRef(false)
+  useEffect(() => {
+    if (reviewOpened.current || !editId || !loaded || params.get("step") !== "review") return
+    reviewOpened.current = true
+    if (problems.length) {
+      setShowProblems(true)
+      setStep(1)
+    } else if (publishProblems().length) {
+      setShowProblems(true)
+      setStep(2)
+    } else setStep(3)
+  })
+
   // ── The document ─────────────────────────────────────────────────────────
   const rfqDoc = (status: "Draft" | "New" | "Awarded"): Rec => {
-    const d = rfqLinesDoc(groups, locale, projectName, { draft: status === "Draft" })
+    const d = rfqLinesDoc(groups, locale, projectName, { draft: status === "Draft", perLine: status === "Draft" ? undefined : partialRequestKeys(groups) })
     const needSources = Array.from(
       new Map(d.products.filter((p) => "needSource" in p && p.needSource).map((p) => [JSON.stringify((p as { needSource: unknown }).needSource), (p as { needSource: unknown }).needSource])).values(),
     )
@@ -594,6 +647,7 @@ export function RfqEditor({
             otherSubCategory: r.line.name,
             quantity: r.line.quantity,
             unit: r.line.unit,
+            subCategoryId: r.line.material?.subId,
           })),
         ).catch(() => undefined)
       }
@@ -633,6 +687,7 @@ export function RfqEditor({
       price,
       lines: offerLines,
       deliveryLocation: place.city,
+      deliveryDistrict: place.district || null,
       deliveryBatches: [{ location: place.city, deliveryDate: (data.needBy as string) || "", price, quantity: "" }],
       status: "مقبول",
       awaitingOrderApproval: true,
@@ -668,6 +723,7 @@ export function RfqEditor({
             directAward: true,
             companyName: supplierName,
             deliveryLocation: place.city,
+            deliveryDistrict: place.district || null,
             status: "مقبول",
             lines: offerLines,
           },
@@ -754,7 +810,7 @@ export function RfqEditor({
         </div>
       ) : step === 1 ? (
         <>
-          <EditorMaterials groups={groups} onChange={setGroups} index={index} sites={sites} problems={problems} showProblems={showProblems} lockedProjectId={projectId} fixed={panel} />
+          <EditorMaterials groups={groups} onChange={setGroups} index={index} sites={sites} problems={problems} showProblems={showProblems} lockedProjectId={projectId} fixed={panel} boq={boq} pmOn={pmOn} />
           {panel && <p className="text-xs text-muted-foreground">{t("panel_part_hint")}</p>}
         </>
       ) : step === 2 ? (
@@ -785,7 +841,7 @@ export function RfqEditor({
       )}
 
       {/* The footer: what the RFQ is so far, and the step's one action (fixed on a phone). */}
-      <div className={cn(panel ? "sticky bottom-0 rounded-xl border bg-card px-4 py-3" : "fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 py-3 backdrop-blur md:static md:z-auto md:rounded-xl md:border md:bg-card")}>
+      <div className={cn(panel ? "sticky bottom-0 rounded-xl border bg-card px-4 py-3 max-md:pe-20" : "fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 py-3 backdrop-blur max-md:pe-20 md:static md:z-auto md:rounded-xl md:border md:bg-card")}>
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3">
           <p className="min-w-0 flex-1 text-xs text-muted-foreground">{t("footer_sum", { lines: facts.lines, groups: facts.groups, subs: facts.subs, reach: reach.distinct.length })}</p>
           {step > 1 && (
@@ -814,7 +870,14 @@ export function RfqEditor({
         </div>
       </div>
 
-      <InviteSupplierDialog open={inviteOpen} onOpenChange={setInviteOpen} orgName={world.orgName} />
+      <InviteSupplierDialog
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        orgName={world.orgName}
+        invitations={invitations}
+        platform={platform.map((s) => ({ orgId: s.orgId, name: s.name, phone: s.phone, email: s.email }))}
+        onAddExisting={() => router.push("/contractor/suppliers?segment=platform")}
+      />
 
       <Dialog open={pasteOpen} onOpenChange={setPasteOpen}>
         <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-w-lg">
@@ -858,7 +921,7 @@ export function RfqEditor({
                     <b className="block text-sm">
                       {displayNeedRef(n.refLabel, locale)} · {n.projectName || n.context}
                     </b>
-                    <span className="block truncate text-xs text-muted-foreground">{n.lines.map((l) => `${l.name} ${l.quantity.toLocaleString("en-US")} ${l.unit}`).join(" · ")}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{n.lines.filter((l) => !l.link).map((l) => `${l.name} ${l.quantity.toLocaleString("en-US")} ${l.unit}`).join(" · ")}</span>
                     {n.needBy && <span className="block text-xs text-muted-foreground">{t("need_by_short", { date: fmtDay(n.needBy.slice(0, 10)) })}</span>}
                   </span>
                 </label>
@@ -870,7 +933,7 @@ export function RfqEditor({
               type="button"
               disabled={!picked.length}
               onClick={() => {
-                const reqs = openNeeds.filter((n) => picked.includes(n.key)).map((n) => incomingFromNeed(n, sites))
+                const reqs = openNeeds.filter((n) => picked.includes(n.key)).map((n) => incomingFromNeed(n, sites, lastOrderOf(n)))
                 setGroups((gs) => addRequests(gs, reqs))
                 setPicked([])
                 setPickOpen(false)

@@ -228,6 +228,7 @@ export function manualOfferDoc(input: ManualOfferInput, products: Array<{ rfqPro
   const qty = new Map(products.map((p) => [p.rfqProductIndex, p.quantity]))
   const total = input.rates ? Math.round(rates.reduce((s, r) => s + r.unitPrice * (qty.get(r.rfqProductIndex) || 0), 0) * 100) / 100 : Math.round((input.total || 0) * 100) / 100
   const guest = input.supplier.orgId == null
+  const left = input.rates ? products.map((p) => p.rfqProductIndex).filter((i) => !rates.some((r) => r.rfqProductIndex === i)) : []
   return {
     supplierId: guest ? "guest" : input.supplier.orgId,
     organizationId: guest ? "guest" : input.supplier.orgId,
@@ -247,6 +248,7 @@ export function manualOfferDoc(input: ManualOfferInput, products: Array<{ rfqPro
     contractorOrgId: input.rfq.organizationId || input.rfq.contractorId || null,
     price: String(total),
     ...(input.rates ? { lines: rates } : {}),
+    ...(rates.length && left.length ? { skippedItems: left } : {}),
     ...(input.leadDays ? { executionDuration: String(input.leadDays), executionDurationUnit: "أيام" } : {}),
     validUntil: input.validUntil || null,
     priceBasis: input.priceBasis,

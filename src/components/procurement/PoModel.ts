@@ -27,6 +27,7 @@ import {
   type NoticeFact,
 } from "@/lib/procurement/po"
 import type { PoLine, PoStatus, ProcActor, PurchaseOrder, ReceiptFact } from "@/lib/procurement/types"
+import { waitingSinceDays } from "@/lib/procurement/next-step"
 import { matchesSearch } from "@/lib/search-text"
 
 // ---------------------------------------------------------------------------
@@ -42,7 +43,7 @@ export const isPoSegment = (v: string | null | undefined): v is PoSegment => PO_
 const DONE: ReadonlySet<PoStatus> = new Set(["received", "closed", "cancelled"])
 
 /** Does this order sit in the segment? "Late" is a subset of "live". */
-export function inSegment(po: PurchaseOrder, segment: PoSegment, now: Date): boolean {
+export function inSegment(po: PurchaseOrder, segment: PoSegment, now: Date, notices?: ReadonlyArray<NoticeFact>): boolean {
   switch (segment) {
     case "all":
       return true
@@ -51,15 +52,15 @@ export function inSegment(po: PurchaseOrder, segment: PoSegment, now: Date): boo
     case "live":
       return poLive(po)
     case "late":
-      return poLate(po, now)
+      return poLate(po, now, notices)
     case "received":
       return DONE.has(poStatus(po))
   }
 }
 
-export function segmentCounts(orders: PurchaseOrder[], now: Date): Record<PoSegment, number> {
+export function segmentCounts(orders: PurchaseOrder[], now: Date, notices?: ReadonlyArray<NoticeFact>): Record<PoSegment, number> {
   const out = { awaiting_approval: 0, live: 0, late: 0, received: 0, all: 0 }
-  for (const po of orders) for (const s of PO_SEGMENTS) if (inSegment(po, s, now)) out[s]++
+  for (const po of orders) for (const s of PO_SEGMENTS) if (inSegment(po, s, now, notices)) out[s]++
   return out
 }
 
@@ -80,9 +81,9 @@ export function sortOrders(orders: PurchaseOrder[]): PurchaseOrder[] {
 
 /** The rows a segment shows. A search spans every segment — whoever arrives
  * with a number from a notification does not know which segment it sits in. */
-export function visibleOrders(orders: PurchaseOrder[], segment: PoSegment, search: string, now: Date, displayNumber: (n: string) => string): PurchaseOrder[] {
+export function visibleOrders(orders: PurchaseOrder[], segment: PoSegment, search: string, now: Date, displayNumber: (n: string) => string, notices?: ReadonlyArray<NoticeFact>): PurchaseOrder[] {
   const searching = search.trim().length > 0
-  return sortOrders(orders.filter((po) => (searching ? matchesSearch(search, poSearchFields(po, displayNumber(po.docNumber))) : inSegment(po, segment, now))))
+  return sortOrders(orders.filter((po) => (searching ? matchesSearch(search, poSearchFields(po, displayNumber(po.docNumber))) : inSegment(po, segment, now, notices))))
 }
 
 // ---------------------------------------------------------------------------
@@ -90,9 +91,9 @@ export function visibleOrders(orders: PurchaseOrder[], segment: PoSegment, searc
 // ---------------------------------------------------------------------------
 
 export type HonestDate =
-  | { kind: "with_approver"; approver: "manager" | "owner" }
+  | { kind: "with_approver"; approver: "manager" | "owner"; days: number }
   | { kind: "not_sent" }
-  | { kind: "no_acceptance" }
+  | { kind: "no_acceptance"; days: number }
   | { kind: "no_date" }
   | { kind: "promised"; date: string; daysLate: number }
   | { kind: "closed"; date: string | null }
@@ -100,16 +101,16 @@ export type HonestDate =
 
 /** What the "date" column may honestly say: a promise once the supplier made
  * one, otherwise WHY there is none — never a wish dressed as a date. */
-export function honestDate(po: PurchaseOrder, now: Date): HonestDate {
+export function honestDate(po: PurchaseOrder, now: Date, notices?: ReadonlyArray<NoticeFact>): HonestDate {
   switch (po.status) {
     case "awaiting_approval":
-      return { kind: "with_approver", approver: po.approverKind }
+      return { kind: "with_approver", approver: po.approverKind, days: waitingSinceDays(po.createdAt, now) }
     case "approved":
       return { kind: "not_sent" }
     case "sent":
-      return { kind: "no_acceptance" }
+      return { kind: "no_acceptance", days: waitingSinceDays(po.sentAt, now) }
     case "accepted":
-      return po.promisedDate ? { kind: "promised", date: po.promisedDate, daysLate: daysLate(po, now) } : { kind: "no_date" }
+      return po.promisedDate ? { kind: "promised", date: po.promisedDate, daysLate: daysLate(po, now, notices) } : { kind: "no_date" }
     case "closed":
       return { kind: "closed", date: dayOf(po.closedAt) || null }
     case "cancelled":

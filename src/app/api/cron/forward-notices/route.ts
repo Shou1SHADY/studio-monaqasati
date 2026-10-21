@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { getAdminFirestore } from "@/lib/firebaseAdmin"
 import { runAutoForward } from "@/lib/procurement/auto-forward-server"
+import { syncTeamRequests } from "@/lib/procurement/team-request-notify-server"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -10,7 +11,8 @@ export const maxDuration = 60
 // forwarded when `forwardWindowDays` lapses goes to the register's suggested
 // receiver, tagged `auto`. Vercel Cron calls this daily with
 // `Authorization: Bearer $CRON_SECRET`. The work is `runAutoForward`, which a
-// Procurement page also asks for on demand (/api/procurement/auto-forward).
+// Procurement page also asks for on demand (/api/procurement/auto-forward). The same pass tells
+// each requester whose «طلب مواد» moved since he was last told (`syncTeamRequests`).
 
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
 
@@ -28,7 +30,9 @@ async function run(req: NextRequest) {
   if (!process.env.CRON_SECRET) return fail("Cron is not configured", "NOT_CONFIGURED", 401)
   if (!authorised(req)) return fail("Unauthorised", "UNAUTHORISED", 401)
   try {
-    const totals = await runAutoForward(getAdminFirestore(), Date.now())
+    const db = getAdminFirestore()
+    const totals = await runAutoForward(db, Date.now())
+    await syncTeamRequests(db).catch((error) => console.error("Team request sync error:", error))
     return NextResponse.json({ success: true, data: totals })
   } catch (error) {
     console.error("Auto-forward cron error:", error)

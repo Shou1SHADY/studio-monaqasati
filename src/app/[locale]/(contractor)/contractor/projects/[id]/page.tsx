@@ -158,7 +158,6 @@ import {
 } from "@tanstack/react-table"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { CATEGORIES_DATA, PREDEFINED_CATEGORIES, displayCategory, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayDistrict } from "@/lib/constants"
-import { getIncompletePublishFields } from "@/utils/publish-gate"
 import { ProjectTeamSection } from "@/components/project-team"
 import { useModules } from "@/hooks/useCompanyModules"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -176,6 +175,9 @@ import { MoneyFlowViz } from "@/components/contractor/MoneyFlowViz"
 import { WarehouseInventoryPanel } from "@/components/contractor/WarehouseInventoryPanel"
 import { recordWasteConsumption } from "@/lib/waste-writes"
 import { notifyFavoriteSuppliersOfPublish } from "@/lib/notify-favorites"
+import { boqDraftDoc } from "@/lib/procurement/boq-to-editor"
+import { rfqReviewHref } from "@/lib/procurement/rfq-routes"
+import { reloadMaterialTree, useMaterialTree } from "@/hooks/useMaterialTree"
 import { applyDraw, boqRemaining, releaseAllDraws, releaseBoqDrawsForRfq, type BoqDraw } from "@/lib/boq-draws"
 import { WasteRecordDialog } from "@/components/inventory/WasteRecordDialog"
 import { WasteLedger } from "@/components/contractor/WasteLedger"
@@ -431,6 +433,7 @@ export default function ProjectDetailPage() {
   // "everything that is left" — the common case, so nobody types anything.
   const [publishQtys, setPublishQtys] = useState<Record<string, string>>({})
   const [isPublishing, setIsPublishing] = useState(false)
+  const { index: treeIndex } = useMaterialTree()
 
   useEffect(() => {
     if (!lastAddedItemId) return
@@ -566,7 +569,6 @@ export default function ProjectDetailPage() {
     )
   }, [firestore, user, profile])
   const { data: connectedTenderLinks } = useCollection(connectedTenderLinksQuery)
-  const connectedSupplierOrgIds: string[] = (connectedTenderLinks || []).map((l: any) => l.supplierOrgId)
   // Same list, same order as the RFQ form's picker — connected suppliers plus
   // favourites that never got a link record, favourites first.
   const supplierOptions = useSupplierRecipientOptions(
@@ -587,9 +589,7 @@ export default function ProjectDetailPage() {
 
   const [tenderDeleteTarget, setTenderDeleteTarget] = useState<{ id: string; title?: string } | null>(null)
   const [isDeletingTender, setIsDeletingTender] = useState(false)
-  const [publishingTenderId, setPublishingTenderId] = useState<string | null>(null)
   const [selectedTenderIds, setSelectedTenderIds] = useState<string[]>([])
-  const [isBulkPublishingTenders, setIsBulkPublishingTenders] = useState(false)
   const [isBulkDeletingTenders, setIsBulkDeletingTenders] = useState(false)
   const [showBulkTenderDeleteDialog, setShowBulkTenderDeleteDialog] = useState(false)
   const [tenderViewMode, setTenderViewMode] = useState<"grid" | "list">("grid")
@@ -629,25 +629,6 @@ export default function ProjectDetailPage() {
     return <Badge className="bg-blue-50 text-blue-600 border-none font-bold">{t("rfq_badge_open")}</Badge>
   }
 
-  /**
-   * What publishing writes. Deliberately re-uses the tender's OWN visibility
-   * and recipient list: those were chosen on the form that created it, and a
-   * publish button is not the place to silently re-decide them. A public
-   * tender still records the connected suppliers, who see published tenders
-   * regardless of specialisation; a private one that carries no list of its
-   * own predates the picker, so it keeps meaning "everyone connected".
-   */
-  const publishFields = (rfq: any) => {
-    const isPrivate = rfq?.visibility === "private"
-    const saved: string[] = Array.isArray(rfq?.allowedSupplierOrgIds) ? rfq.allowedSupplierOrgIds : []
-    return {
-      status: "New",
-      visibility: isPrivate ? "private" : "public",
-      allowedSupplierOrgIds: isPrivate ? (saved.length > 0 ? saved : allRecipientIds) : connectedSupplierOrgIds,
-      publishedAt: new Date().toISOString(),
-    }
-  }
-
   /** Opens the republish dialog on the audience the tender already has, so
    *  reopening an unanswered private tender keeps its suppliers unless the
    *  contractor changes them. */
@@ -656,34 +637,6 @@ export default function ProjectDetailPage() {
     const saved: string[] = Array.isArray(tender?.allowedSupplierOrgIds) ? tender.allowedSupplierOrgIds : []
     setRepublishVisibility(tender?.visibility === "private" ? "private" : "public")
     setRepublishRecipients(saved.length > 0 ? saved : allRecipientIds)
-  }
-
-  const handlePublishTender = async (rfqId: string) => {
-    if (!firestore) return
-    const missingFields = getIncompletePublishFields(profile, locale)
-    if (missingFields.length > 0) {
-      toast({
-        title: locale === "ar" ? "الملف الشخصي غير مكتمل" : "Incomplete Profile",
-        description: (locale === "ar" ? "يرجى إكمال الحقول التالية أولاً: " : "Please complete the following fields first: ") + missingFields.join("، "),
-        variant: "destructive",
-      })
-      return
-    }
-    setPublishingTenderId(rfqId)
-    try {
-      // Publish it as it was written. Forcing "public" here threw away a
-      // draft's private audience — a tender addressed to two chosen suppliers
-      // went out to the whole market on a button that only said "publish".
-      const draft = ((linkedRfqs as any[]) || []).find((r) => r.id === rfqId)
-      await updateDoc(doc(firestore, "rfqs", rfqId), publishFields(draft))
-      void notifyFavoriteSuppliersOfPublish(user, [rfqId])
-      toast({ title: t("rfq_batch_publish_title") })
-    } catch (err) {
-      console.error(err)
-      toast({ title: t("rfq_batch_publish_error"), variant: "destructive" })
-    } finally {
-      setPublishingTenderId(null)
-    }
   }
 
   const handleRepublishTender = async () => {
@@ -743,47 +696,6 @@ export default function ProjectDetailPage() {
   const toggleSelectAllTenders = () => {
     const allIds = filteredLinkedRfqs.map((r) => r.id)
     setSelectedTenderIds((prev) => (prev.length === allIds.length ? [] : allIds))
-  }
-
-  const handleBulkPublishTenders = async () => {
-    if (isBulkPublishingTenders || !firestore) return
-    const missingFields = getIncompletePublishFields(profile, locale)
-    if (missingFields.length > 0) {
-      toast({
-        title: locale === "ar" ? "الملف الشخصي غير مكتمل" : "Incomplete Profile",
-        description: (locale === "ar" ? "يرجى إكمال الحقول التالية أولاً: " : "Please complete the following fields first: ") + missingFields.join("، "),
-        variant: "destructive",
-      })
-      return
-    }
-    const candidates = ((linkedRfqs as any[]) || []).filter((r) => selectedTenderIds.includes(r.id))
-    const eligible = candidates.filter((r) => canEditOrDeleteTender(r) && r.status === "Draft")
-    const skipped = candidates.length - eligible.length
-    if (eligible.length === 0) {
-      toast({ title: t("rfq_bulk_publish_none_eligible"), variant: "destructive" })
-      return
-    }
-    setIsBulkPublishingTenders(true)
-    let published = 0
-    const failedIds: string[] = []
-    for (const r of eligible) {
-      try {
-        await updateDoc(doc(firestore, "rfqs", r.id), publishFields(r))
-        published++
-      } catch (err) {
-        console.error(err)
-        failedIds.push(r.id)
-      }
-    }
-    toast({
-      title: t("rfq_batch_publish_title"),
-      description: t("rfq_bulk_publish_result", { published, skipped })
-        + (failedIds.length > 0 ? t("rfq_bulk_publish_failed_suffix", { failed: failedIds.length }) : ""),
-      variant: failedIds.length > 0 ? "destructive" : undefined,
-    })
-    void notifyFavoriteSuppliersOfPublish(user, eligible.map((r) => r.id).filter((id) => !failedIds.includes(id)))
-    setSelectedTenderIds(failedIds)
-    setIsBulkPublishingTenders(false)
   }
 
   const handleBulkDeleteTenders = async () => {
@@ -1416,8 +1328,9 @@ export default function ProjectDetailPage() {
     })
   }, [boqItems])
 
-  // Publish: save first (so newly-added/moved rows get real Firestore ids), then create one RFQ
-  // per section that has at least one selected item, locking only the items actually included.
+  // Prepare, never publish (PUR-03): save first (so newly-added/moved rows get real Firestore ids), then turn the
+  // selected lines into ONE draft in the editor's shape — a line the material tree recognises with its sub-category,
+  // the rest uncategorised for the editor to colour — record the draws, and open the editor on its review step.
   const handlePublish = async () => {
     if (!firestore || !user || !projectId || !publishDeadline) return
     if (!publishCity) return
@@ -1456,70 +1369,57 @@ export default function ProjectDetailPage() {
         toast({ title: t("boq_select_at_least_one"), variant: "destructive" })
         return
       }
+      const selectedItems = groupsToPublish.flatMap((g) => itemsByGroup.get(g.id) || [])
 
       const projectName = typedProject?.name || ""
-      let created = 0
+      const tree = treeIndex ?? (await reloadMaterialTree(firestore).catch(() => null))
+      const now = new Date().toISOString()
+      const data = boqDraftDoc({
+        items: selectedItems.map((item) => ({
+          id: item.id,
+          itemNo: item.itemNo,
+          descriptionAr: item.descriptionAr,
+          descriptionEn: item.descriptionEn,
+          unit: item.unit,
+          quantity: item.quantity,
+          draw: drawFor(item),
+          requiresWarranty: item.requiresWarranty,
+        })),
+        index: tree,
+        projectId,
+        projectName,
+        title: groupsToPublish.length === 1 ? groupsToPublish[0].titleAr : t("boq_prepare_title_many", { project: projectName, count: groupsToPublish.length }),
+        city: publishCity,
+        district: publishDistrict,
+        deadline: publishDeadline,
+        shipmentMode: publishShipmentMode,
+        locale,
+        identity: {
+          contractorId: user.uid,
+          organizationId: (profile as { organizationId?: string } | null)?.organizationId || user.uid,
+          createdByUserId: user.uid,
+          createdByUserName: (profile as { name?: string } | null)?.name || user.email || "عضو الفريق",
+          createdAt: now,
+        },
+      })
+      let rfqId: string | null = null
       try {
-        for (const group of groupsToPublish) {
-          const selectedItems = itemsByGroup.get(group.id) || []
-          const rfqData = {
-            contractorId: user.uid,
-            organizationId: (profile as { organizationId?: string } | null)?.organizationId || user.uid,
-            projectId,
-            title: group.titleAr,
-            category: group.categoryAr,
-            subCategory: "",
-            products: selectedItems.map((item) => ({
-              name: item.descriptionAr || item.descriptionEn,
-              nameEn: item.descriptionEn,
-              // The drawn quantity, not the line's total — the BOQ stays the
-              // reference and this request is one phase of it.
-              quantity: drawFor(item),
-              unitOfMeasure: item.unit,
-              description: item.descriptionAr ? `${item.descriptionAr}\n${item.descriptionEn}` : item.descriptionEn,
-              category: item.suggestedCategory || group.categoryAr,
-              subCategory: item.suggestedSubCategory || "",
-              boqItemNo: item.itemNo,
-              boqItemId: item.id,
-              boqTotalQuantity: Number(item.quantity) || 0,
-              requiresWarranty: !!item.requiresWarranty,
-            })),
-            quantity: String(selectedItems.reduce((s, i) => s + drawFor(i), 0)),
-            notes: selectedItems.map((i) => i.descriptionAr || i.descriptionEn).join("\n"),
-            deadline: publishDeadline,
-            city: publishCity,
-            district: publishDistrict || publishCity,
-            country: "SA",
-            isInternational: false,
-            shipmentMode: publishShipmentMode,
-            pdfUrl: null,
-            pdfStoragePath: null,
-            status: "Draft",
-            visibility: "public",
-            requiresWarranty: selectedItems.some((item) => item.requiresWarranty),
-            boqProjectName: projectName,
-            createdByUserId: user.uid,
-            createdByUserName: (profile as { name?: string } | null)?.name || user.email || "عضو الفريق",
-            createdAt: new Date().toISOString(),
-          }
-          const newRfqRef = await createRfqWithNumber(firestore, rfqData)
-          created++
-          await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayUnion(newRfqRef.id) })
+        const created = await createRfqWithNumber(firestore, data as Record<string, unknown> & { organizationId: string })
+        rfqId = created.id
+        await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayUnion(created.id) })
 
-          // Record the draw on each line. The line locks only if nothing is
-          // left — a phased request leaves it open for the next phase.
-          const drawAt = new Date().toISOString()
-          const lockBatch = writeBatch(firestore)
-          selectedItems.forEach((item) => {
-            lockBatch.update(
-              doc(firestore, "projects", projectId, "boqItems", item.id),
-              applyDraw(item, { rfqId: newRfqRef.id, quantity: drawFor(item), at: drawAt, rfqTitle: group.titleAr })
-            )
-          })
-          await lockBatch.commit()
-        }
+        // Record the draw on each line. The line locks only if nothing is
+        // left — a phased request leaves it open for the next phase.
+        const lockBatch = writeBatch(firestore)
+        selectedItems.forEach((item) => {
+          lockBatch.update(
+            doc(firestore, "projects", projectId, "boqItems", item.id),
+            applyDraw(item, { rfqId: created.id, quantity: drawFor(item), at: now, rfqTitle: String(data.title) })
+          )
+        })
+        await lockBatch.commit()
 
-        toast({ title: t("boq_success_title"), description: t("boq_success_desc", { count: created }) })
+        toast({ title: t("boq_prepare_done") })
         setIsPublishDialogOpen(false)
         setDeselectedIds(new Set())
         setPublishQtys({})
@@ -1527,21 +1427,14 @@ export default function ProjectDetailPage() {
         setPublishCity("")
         setPublishDistrict("")
         setPublishDeadline("")
-        await fetchBoqItems()
-        handleTabChange("rfqs")
+        router.push(rfqReviewHref(created.id))
       } catch (err) {
-        console.error("Publish error:", err)
-        if (created > 0) {
-          toast({
-            title: t("boq_create_partial_error"),
-            description: t("boq_create_partial_error_desc", { count: created, total: groupsToPublish.length }),
-            variant: "destructive",
-          })
+        console.error("Prepare RFQ error:", err)
+        toast({ title: t("boq_create_error"), variant: "destructive" })
+        if (rfqId) {
           setIsPublishDialogOpen(false)
           await fetchBoqItems()
           handleTabChange("rfqs")
-        } else {
-          toast({ title: t("boq_create_error"), variant: "destructive" })
         }
       }
     } finally {
@@ -3156,15 +3049,6 @@ export default function ProjectDetailPage() {
                   </div>
                   {selectedTenderIds.length > 0 && (
                     <>
-                      <Button variant="success"
-                        size="sm"
-                        onClick={handleBulkPublishTenders}
-                        disabled={isBulkPublishingTenders}
-                        className="gap-1.5 h-8 text-xs"
-                      >
-                        {isBulkPublishingTenders ? <Loader2 className="animate-spin" size={13} /> : <Send size={13} />}
-                        {t("rfq_batch_publish", { count: selectedTenderIds.length })}
-                      </Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -3279,16 +3163,15 @@ export default function ProjectDetailPage() {
                                 {editable && r.status === "Draft" && can("projects.publish") && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <button
-                                        type="button"
-                                        onClick={() => handlePublishTender(r.id)}
-                                        disabled={publishingTenderId === r.id}
+                                      <Link
+                                        href={rfqReviewHref(r.id)}
+                                        aria-label={t("rfq_review_publish")}
                                         className="h-7 w-7 rounded-lg flex items-center justify-center text-success hover:bg-success/10 transition-colors"
                                       >
-                                        {publishingTenderId === r.id ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
-                                      </button>
+                                        <Send size={14} />
+                                      </Link>
                                     </TooltipTrigger>
-                                    <TooltipContent>{t("newrfq_publish_now")}</TooltipContent>
+                                    <TooltipContent>{t("rfq_review_publish")}</TooltipContent>
                                   </Tooltip>
                                 )}
                                 {editable && (
@@ -3381,14 +3264,11 @@ export default function ProjectDetailPage() {
                               </Link>
                             </div>
                             {editable && r.status === "Draft" && (
-                              <Button variant="success"
-                                size="sm"
-                                className="w-full gap-1.5 text-xs h-8"
-                                disabled={publishingTenderId === r.id}
-                                onClick={() => handlePublishTender(r.id)}
-                              >
-                                {publishingTenderId === r.id ? <Loader2 className="animate-spin" size={13} /> : <Send size={13} />}
-                                {t("newrfq_publish_now")}
+                              <Button asChild variant="success" size="sm" className="w-full gap-1.5 text-xs h-8">
+                                <Link href={rfqReviewHref(r.id)}>
+                                  <Send size={13} />
+                                  {t("rfq_review_publish")}
+                                </Link>
                               </Button>
                             )}
                             {can("rfq.manage") && editable && isTenderExpired(r) && (
@@ -3956,9 +3836,7 @@ export default function ProjectDetailPage() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
-              {isRtl
-                ? `${publishableGroupIds.size} طلب عروض أسعار سيُنشأ من ${totalSelectedForPublish} بند محدد`
-                : `${publishableGroupIds.size} RFQs will be created from ${totalSelectedForPublish} selected items`}
+              {t("boq_prepare_summary", { count: totalSelectedForPublish })}
             </p>
           </div>
           <DialogFooter>
@@ -3972,7 +3850,7 @@ export default function ProjectDetailPage() {
               className="gap-2"
             >
               {isPublishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-              {t("newrfq_publish_now")}
+              {t("boq_prepare_rfq")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -21,7 +21,7 @@ import { StatusPill } from "@/components/module-ui/StatusPill"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { SAUDI_CITIES, displayCity } from "@/lib/constants"
 import { PROCUREMENT_SETTINGS } from "@/lib/procurement/types"
-import { siteLine, upsertSite, type DeliverySite } from "@/lib/procurement/delivery-sites"
+import { linkedProjectId, siteLine, upsertSite, type DeliverySite } from "@/lib/procurement/delivery-sites"
 import type { ProcReceiver } from "@/lib/procurement/receivers"
 
 const newSiteId = () => `site_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
@@ -33,6 +33,8 @@ export function DeliverySitesPanel({
   receivers,
   mayEdit,
   openRequests,
+  pmOn = false,
+  projects = [],
 }: {
   orgId: string
   /** What the settings document holds. */
@@ -43,6 +45,9 @@ export function DeliverySitesPanel({
   mayEdit: boolean
   /** Open incoming requests per site id. */
   openRequests: (siteId: string) => number
+  /** Project Management is in the package: a work site can be linked to a project. */
+  pmOn?: boolean
+  projects?: Array<{ id: string; name?: string }>
 }) {
   const t = useTranslations("Portal.ProcSettings")
   const locale = useLocale()
@@ -51,6 +56,7 @@ export function DeliverySitesPanel({
   const [editing, setEditing] = useState<DeliverySite | null>(null)
   const [saving, setSaving] = useState(false)
   const receiverName = useMemo(() => new Map(receivers.map((r) => [r.id, r.name])), [receivers])
+  const projectName = useMemo(() => new Map(projects.map((p) => [p.id, p.name || p.id])), [projects])
 
   const save = async (site: DeliverySite) => {
     if (!firestore || !orgId) return
@@ -99,7 +105,10 @@ export function DeliverySitesPanel({
                     <b className="block" dir="auto">
                       {s.name}
                     </b>
-                    <span className="text-xs text-muted-foreground">{t(`sites.kind_${s.kind}`)}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t(`sites.kind_${s.kind}`)}
+                      {pmOn && linkedProjectId(s) && <> · {t("sites.linked_to", { project: projectName.get(linkedProjectId(s) as string) || "—" })}</>}
+                    </span>
                   </td>
                   <td className="px-4 py-3">{s.city ? siteLine(s, (c) => displayCity(c, locale)) : <StatusPill tone="warn">{t("sites.no_city")}</StatusPill>}</td>
                   <td className="px-4 py-3">{s.receiverId ? receiverName.get(s.receiverId) || "—" : <span className="text-muted-foreground">—</span>}</td>
@@ -152,6 +161,20 @@ export function DeliverySitesPanel({
                 <Label htmlFor="ds-address" className="text-xs">{t("sites.address")}</Label>
                 <Input id="ds-address" value={editing.address} onChange={(e) => setEditing({ ...editing, address: e.target.value })} dir="auto" />
               </div>
+              {pmOn && editing.kind === "site" && (
+                <div className="space-y-1">
+                  <Label htmlFor="ds-project" className="text-xs">{t("sites.project")}</Label>
+                  <NativeSelect id="ds-project" value={editing.projectId || ""} onChange={(e) => setEditing({ ...editing, projectId: e.target.value || null })} className="w-full">
+                    <option value="">{t("sites.no_project")}</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name || p.id}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                  <p className="text-[11px] text-muted-foreground">{t("sites.project_hint")}</p>
+                </div>
+              )}
               <div className="space-y-1">
                 <Label htmlFor="ds-rcv" className="text-xs">{t("sites.receiver")}</Label>
                 <NativeSelect id="ds-rcv" value={editing.receiverId || ""} onChange={(e) => setEditing({ ...editing, receiverId: e.target.value || null })} className="w-full">

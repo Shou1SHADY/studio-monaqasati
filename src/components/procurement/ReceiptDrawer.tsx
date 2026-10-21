@@ -20,6 +20,7 @@ import { useLocale, useTranslations } from "next-intl"
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Clock, ExternalLink, FileText, Info, Printer, ShieldAlert, Star, Truck } from "lucide-react"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { useModules } from "@/hooks/useCompanyModules"
 import { Link } from "@/i18n/routing"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -132,6 +133,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
   const isRtl = locale === "ar"
   const firestore = useFirestore()
   const { toast } = useToast()
+  const financeOn = useModules().on("payments")
   const [rejectLine, setRejectLine] = useState<PoLine | null>(null)
   const [rateOpen, setRateOpen] = useState(false)
 
@@ -285,7 +287,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
             </SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-5">
-            <Callout tone={expensed ? "blue" : "red"}>{expensed ? t("drawer.expenseCallout") : t("drawer.noPoCallout")}</Callout>
+            <Callout tone={expensed ? "blue" : "red"}>{expensed ? t(financeOn ? "drawer.expenseCallout" : "drawer.expenseCallout_nofin") : t("drawer.noPoCallout")}</Callout>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={print} className="gap-1.5">
                 <Printer size={15} aria-hidden="true" />
@@ -347,7 +349,8 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
     )
   }
 
-  const trail = po && !pending ? receiptTrail(d, po, routing, { need, noticeNumber: noticeNo }) : []
+  // Without Finance the material's trail ends where it went: the money is another system's (PUR-10).
+  const trail = po && !pending ? receiptTrail(d, po, routing, { need, noticeNumber: noticeNo }).filter((s) => financeOn || s.key !== "finance") : []
   const windowText = (w: string | number | undefined) => (w && tp.has(`deliveryWindow.${w}`) ? tp(`deliveryWindow.${w}` as "deliveryWindow.morning") : "")
   const trailText = (key: string, variant: string, params: Record<string, string | number>): string => {
     switch (key) {

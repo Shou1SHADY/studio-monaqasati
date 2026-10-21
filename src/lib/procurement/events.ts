@@ -61,6 +61,7 @@ export type ProcEventKind =
   | "po_payment_missing" // → preparer + Finance: a transfer was reported missing
   | "po_payment_later" // → preparer + Finance: a missing transfer arrived
   | "po_payment_reminder" // → preparer + Finance: the supplier's payment reminder
+  | "po_advance_reminder" // → Finance: Procurement reminds it of the advance the supplier's date waits for
   | "po_warranty_registered" // → preparer + owner: a warranty to accept
   | "po_supplier_rated" // → preparer + owner: the supplier rated the contractor after full payment
   | "sup_connection_requested" // → the owner: a supplier asked for a connection
@@ -117,6 +118,7 @@ export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "po_payment_missing",
   "po_payment_later",
   "po_payment_reminder",
+  "po_advance_reminder",
   "po_warranty_registered",
   "po_supplier_rated",
   "sup_connection_requested",
@@ -352,6 +354,10 @@ export const PROC_EVENT_COPY_AR: Record<ProcEventKind, { title: string; message:
   po_payment_reminder: {
     title: "تذكير بالدفعة — {number}",
     message: "يذكّرك {supplier} بدفعة {amount} كانت مستحقة في {date}.",
+  },
+  po_advance_reminder: {
+    title: "تذكير بالدفعة المقدّمة — {number}",
+    message: "يذكّرك {actor} بالدفعة المقدّمة {percent}% ({amount}) للمورد {supplier} على أمر الشراء {number}: موعد المورد يبدأ من دفعها.",
   },
   po_warranty_registered: {
     title: "ضمان بانتظار قبولك — {number}",

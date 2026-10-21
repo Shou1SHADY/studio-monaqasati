@@ -15,6 +15,8 @@ import { EmptyState } from "@/components/module-ui/EmptyState"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { cn } from "@/lib/utils"
 import { displayCategory, displayCity } from "@/lib/constants"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { keyLabel } from "@/lib/materials/subs"
 import { directoryCounts, directoryFiltered, filterDirectory, type DirectoryFilter } from "@/lib/procurement/supplier-file"
 import type { PlatformSupplier } from "@/hooks/useSupplierDirectory"
 import { Stars } from "./SupplierFileDrawer"
@@ -25,9 +27,11 @@ const SELECT = "h-10 rounded-lg border bg-background px-3 text-sm focus-visible:
 export function SupplierDirectory({ suppliers, onOpen }: { suppliers: PlatformSupplier[]; onOpen: (orgId: string) => void }) {
   const t = useTranslations("Portal.ProcSuppliers")
   const locale = useLocale()
+  const { index } = useMaterialTree()
+  const categoryName = useMemo(() => (c: string) => keyLabel(index, c, locale, displayCategory), [index, locale])
   const [f, setF] = useState<DirectoryFilter>({ q: "", category: "", city: "" })
   const counts = useMemo(() => directoryCounts(suppliers), [suppliers])
-  const rows = useMemo(() => filterDirectory(suppliers, f, (c) => displayCategory(c, locale)), [suppliers, f, locale])
+  const rows = useMemo(() => filterDirectory(suppliers, f, categoryName), [suppliers, f, categoryName])
   const yearOf = (day: string | null) => (day ? day.slice(0, 4) : "—")
 
   return (
@@ -42,7 +46,7 @@ export function SupplierDirectory({ suppliers, onOpen }: { suppliers: PlatformSu
           <option value="">{t("dir.all_categories")}</option>
           {counts.categories.map(([c, n]) => (
             <option key={c} value={c}>
-              {`${displayCategory(c, locale)} · ${n}`}
+              {`${keyLabel(index, c, locale, displayCategory, true)} · ${n}`}
             </option>
           ))}
         </NativeSelect>
@@ -96,7 +100,7 @@ export function SupplierDirectory({ suppliers, onOpen }: { suppliers: PlatformSu
                       {s.categories.length ? (
                         s.categories.map((c) => (
                           <StatusPill key={c} tone="mute">
-                            {displayCategory(c, locale)}
+                            {categoryName(c)}
                           </StatusPill>
                         ))
                       ) : (

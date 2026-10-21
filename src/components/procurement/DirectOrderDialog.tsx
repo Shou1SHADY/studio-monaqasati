@@ -15,6 +15,7 @@
 import { displayNeedRef } from "@/lib/procurement/format"
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
+import { useModules } from "@/hooks/useCompanyModules"
 import { CheckCircle2, FileSignature, Info, Loader2, ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -71,6 +72,7 @@ export function DirectOrderDialog({
 }) {
   const t = useTranslations("Portal.Shared")
   const tProc = useTranslations("Portal.Procurement")
+  const financeOn = useModules().on("payments")
   const locale = useLocale()
   const firestore = useFirestore()
   const router = useRouter()
@@ -320,7 +322,7 @@ export function DirectOrderDialog({
               </li>
               <li className="flex gap-1.5">
                 <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
-                <span>{t("dor_effect_after")}</span>
+                <span>{t(financeOn ? "dor_effect_after" : "dor_effect_after_nofin")}</span>
               </li>
             </ul>
           </div>

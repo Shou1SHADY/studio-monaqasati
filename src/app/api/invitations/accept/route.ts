@@ -163,6 +163,7 @@ export async function POST(req: NextRequest) {
         .doc(decoded.uid)
         .collection("notifications")
         .add({
+          i18n: { title: "pn_team_joined_title", message: "pn_team_joined", params: { org: (inv.organizationName as string) || "" } },
           title: "انضممت إلى الفريق",
           message: `أصبحت الآن عضواً في فريق ${(inv.organizationName as string) || ""}. يمكنك الاطلاع على صلاحياتك من صفحة إدارة الفريق.`,
           type: "invitation",
@@ -177,6 +178,7 @@ export async function POST(req: NextRequest) {
           .doc(inv.invitedBy as string)
           .collection("notifications")
           .add({
+            i18n: { title: "pn_team_invite_accepted_title", message: "pn_team_invite_accepted", params: { name: acceptedName } },
             title: "تم قبول دعوة الفريق",
             message: `${acceptedName} انضم إلى فريقك.`,
             type: "team_invite_accepted",
@@ -275,6 +277,7 @@ export async function POST(req: NextRequest) {
       .doc(decoded.uid)
       .collection("notifications")
       .add({
+        i18n: { title: "pn_supplier_connected_title", message: "pn_supplier_connected", params: { contractor: (inv.contractorName as string) || "" } },
         title: "تم الربط بنجاح",
         message: `تم ربط حسابك بـ ${(inv.contractorName as string) || "المقاول"}. أكمل بيانات ملفك الشخصي لتبدأ باستقبال طلبات عروض الأسعار.`,
         type: "supplier_connected",
@@ -288,8 +291,9 @@ export async function POST(req: NextRequest) {
         .doc(inv.invitedBy as string)
         .collection("notifications")
         .add({
+          i18n: { title: "pn_supplier_invite_accepted_title", message: "pn_supplier_invite_accepted", params: { name: acceptedSupplierName } },
           title: "تم قبول دعوة المورد",
-          message: `${acceptedSupplierName} قبل دعوتك وانضم إلى دليل مورّديك.`,
+          message: `${acceptedSupplierName} قبل دعوتك وانضم إلى مورّدينا بحالة «غير موثّق» حتى يكمل سجله ورقمه الضريبي.`,
           type: "supplier_invite_accepted",
           createdAt: new Date().toISOString(),
           read: false,

@@ -7,11 +7,11 @@
 // company's accounting lives in its own system. The status never stops the order closing,
 // and the supplier reads it on his order.
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { getAuth } from "firebase/auth"
 import { collection, doc, query, serverTimestamp, setDoc, where } from "firebase/firestore"
-import { Download, Loader2, Mail, Upload } from "lucide-react"
+import { Download, Loader2, Mail, Paperclip, Upload } from "lucide-react"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
@@ -30,7 +30,7 @@ import { PROCUREMENT_SETTINGS, type ProcActor } from "@/lib/procurement/types"
 
 const TONE: Record<PaymentState, "mute" | "warn" | "ok"> = { unpaid: "mute", part: "warn", paid: "ok" }
 
-export function FinancelessPaymentSection({ po, actor, orgId, Section }: { po: FinancelessPo & { advancePercent?: number | null }; actor: ProcActor; orgId: string; Section: (p: { title: string; children: React.ReactNode }) => React.ReactElement }) {
+export function FinancelessPaymentSection({ po, actor, orgId, Section, advanceAsk = 0 }: { po: FinancelessPo & { advancePercent?: number | null }; actor: ProcActor; orgId: string; Section: (p: { title: string; children: React.ReactNode }) => React.ReactElement; advanceAsk?: number }) {
   const t = useTranslations("Portal.ProcOrders")
   const locale = useLocale()
   const firestore = useFirestore()
@@ -40,6 +40,7 @@ export function FinancelessPaymentSection({ po, actor, orgId, Section }: { po: F
   const [day, setDay] = useState(() => todayOf(new Date()))
   const [amount, setAmount] = useState("")
   const [reference, setReference] = useState("")
+  const [transfer, setTransfer] = useState<File | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [askEmail, setAskEmail] = useState<null | { url: string; name: string }>(null)
   const [email, setEmail] = useState("")
@@ -62,19 +63,32 @@ export function FinancelessPaymentSection({ po, actor, orgId, Section }: { po: F
   const money = (v: number) => sarLtr(v.toLocaleString("en-US", { maximumFractionDigits: 2 }))
   const token = async () => (await getAuth().currentUser?.getIdToken()) || ""
 
+  // «علّمها مدفوعة» in the order's next step opens this form on the advance.
+  const handledAsk = useRef(advanceAsk)
+  useEffect(() => {
+    if (advanceAsk === handledAsk.current) return
+    handledAsk.current = advanceAsk
+    if (marksPayment && !po.advancePaidDay) setMarking("advance")
+  }, [advanceAsk, marksPayment, po.advancePaidDay])
+
   const submitMark = async () => {
     setBusy("mark")
     try {
-      const res = await fetch("/api/procurement/payment-mark", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` },
-        body: JSON.stringify({ poId: po.id, kind: marking, state: marking === "status" ? state : undefined, day, amount: amount ? Number(amount.replace(/,/g, "")) : null, reference: reference || null }),
-      })
+      const fd = new FormData()
+      fd.append("poId", po.id)
+      fd.append("kind", marking || "status")
+      if (marking === "status") fd.append("state", state)
+      fd.append("day", day)
+      if (marking === "status" && amount) fd.append("amount", String(Number(amount.replace(/,/g, ""))))
+      if (reference) fd.append("reference", reference)
+      if (transfer) fd.append("file", transfer)
+      const res = await fetch("/api/procurement/payment-mark", { method: "POST", headers: { Authorization: `Bearer ${await token()}` }, body: fd })
       if (!res.ok) throw new Error(String(res.status))
       toast({ title: t("pay.saved") })
       setMarking(null)
       setAmount("")
       setReference("")
+      setTransfer(null)
     } catch {
       toast({ title: t("pay.failed"), variant: "destructive" })
     } finally {
@@ -138,6 +152,13 @@ export function FinancelessPaymentSection({ po, actor, orgId, Section }: { po: F
   }
 
   const last = po.paymentMark
+  const copyLink = (file: { name: string; url: string } | null | undefined) =>
+    file?.url ? (
+      <a href={file.url} target="_blank" rel="noopener noreferrer" className="ms-2 inline-flex items-center gap-1 font-semibold text-module underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <Paperclip size={12} aria-hidden="true" />
+        {t("pay.transfer_copy")}
+      </a>
+    ) : null
   return (
     <Section title={t("pay.title")}>
       <div className="flex flex-wrap items-center gap-2">
@@ -157,7 +178,10 @@ export function FinancelessPaymentSection({ po, actor, orgId, Section }: { po: F
             <dt className="text-muted-foreground">{t("pay.advance", { pct: advancePct })}</dt>
             <dd className="font-semibold">
               {po.advancePaidDay ? (
-                t("pay.advance_paid", { date: fmtDayLong(po.advancePaidDay, locale, false) })
+                <>
+                  {t("pay.advance_paid", { date: fmtDayLong(po.advancePaidDay, locale, false) })}
+                  {copyLink(po.advanceFile)}
+                </>
               ) : marksPayment ? (
                 <Button size="sm" variant="outline" onClick={() => setMarking("advance")}>
                   {t("pay.mark_advance")}
@@ -178,6 +202,7 @@ export function FinancelessPaymentSection({ po, actor, orgId, Section }: { po: F
             <dd className="text-end">
               {t(`pay.state_${last.state}`)} · {fmtDayLong(last.day, locale, false)}
               {last.reference ? ` · ${t("pay.ref", { ref: last.reference })}` : ""} · {last.byName}
+              {copyLink(last.file)}
             </dd>
           </div>
         )}
@@ -255,9 +280,13 @@ export function FinancelessPaymentSection({ po, actor, orgId, Section }: { po: F
                 </div>
               </div>
             )}
+            <div className="space-y-1">
+              <Label htmlFor="pm-file" className="text-xs">{t("pay.transfer_file")}</Label>
+              <Input id="pm-file" type="file" accept="application/pdf,image/*" onChange={(e) => setTransfer(e.target.files?.[0] || null)} />
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setMarking(null)} disabled={busy === "mark"}>
+            <Button variant="outline" onClick={() => { setMarking(null); setTransfer(null) }} disabled={busy === "mark"}>
               {t("pay.cancel")}
             </Button>
             <Button onClick={() => void submitMark()} disabled={busy === "mark" || !day} className="gap-1.5">

@@ -14,7 +14,7 @@ import { Link } from "@/i18n/routing"
 import { DeadlineText, OffersTag, RfqStagePill, type RfqRow } from "@/components/procurement/RfqCard"
 import { useRfqInquiryCounts } from "@/hooks/useRfqInquiryCounts"
 import { displayCity } from "@/lib/constants"
-import { displayDocNumber } from "@/lib/procurement/format"
+import { rfqDisplayNumber } from "@/lib/procurement/format"
 import { productCount, rfqStage } from "@/lib/procurement/rfq-view"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
@@ -91,7 +91,7 @@ export function RfqTable({
             const stage = rfqStage(rfq, now, sealed)
             const isSelected = selected.includes(rfq.id)
             const meta = [
-              rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : `#${rfq.id.slice(0, 6)}`,
+              rfqDisplayNumber(rfq, locale),
               rfq.city ? `${displayCity(rfq.city, locale)}${rfq.district ? ` — ${displayCity(rfq.district, locale)}` : ""}` : null,
               t("rfqv_products", { count: productCount(rfq) }),
               rfq.createdByUserName || null,

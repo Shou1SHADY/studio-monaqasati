@@ -39,6 +39,9 @@ import { useProcTeam } from "@/hooks/useProcTeam"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useSupplierDirectory, type PlatformSupplier } from "@/hooks/useSupplierDirectory"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { keyLabel, subLabel } from "@/lib/materials/subs"
+import { directoryEntries, listedInDirectory } from "@/lib/procurement/directory-listing"
 import { matchesSearch } from "@/lib/search-text"
 import { CATEGORIES_DATA, displayCategory } from "@/lib/constants"
 import { MFG_PRODUCTS } from "@/lib/manufacturing-engine"
@@ -119,6 +122,7 @@ export default function SuppliersPage() {
   const { data: profile } = useDoc<{ favoriteSuppliers?: string[] }>(userDocRef)
   const favoriteIds = useMemo(() => profile?.favoriteSuppliers || [], [profile?.favoriteSuppliers])
   const { suppliers, loading } = useSupplierDirectory(orgId, favoriteIds, offers)
+  const { index: treeIndex } = useMaterialTree()
 
   const invitationsQ = useMemoFirebase(() => (firestore && orgId ? supplierInvitationsQuery(firestore, orgId) : null), [firestore, orgId])
   const { data: invitationDocs } = useCollection<Omit<InvitationDoc, "id">>(invitationsQ)
@@ -183,10 +187,12 @@ export default function SuppliersPage() {
   const shownMine = mineRows.filter(
     (s) =>
       (!originFilter || (originFilter === "international") === s.international) &&
-      matchesSearch(searchQuery, [s.name, s.city, ...s.categories, ...s.categories.map((c) => displayCategory(c, locale))])
+      matchesSearch(searchQuery, [s.name, s.city, ...s.categories, ...s.categories.map((c) => displayCategory(c, locale)), ...s.subIds.map((id) => subLabel(treeIndex, id, locale))])
   )
   // One search box across the four segments (S-45): the query stays when the segment changes.
-  const shownPlatform = useMemo(() => filterDirectory(suppliers, { q: searchQuery, category: "", city: "", origin: originFilter }, (c) => displayCategory(c, locale)), [suppliers, searchQuery, originFilter, locale])
+  // A supplier a buyer invited is his «مورّدونا» at once, but is listed here only once the platform verifies him (PUR-05).
+  const directory = useMemo(() => directoryEntries(treeIndex, listedInDirectory(suppliers)), [suppliers, treeIndex])
+  const shownPlatform = useMemo(() => filterDirectory(directory, { q: searchQuery, category: "", city: "", origin: originFilter }, (c) => keyLabel(treeIndex, c, locale, displayCategory)), [directory, searchQuery, originFilter, locale, treeIndex])
   const shownAgreements = useMemo(
     () => agreements.filter((a) => matchesSearch(searchQuery, [a.docNumber, displayAgreementNumber(a.docNumber, locale), a.supplierName, ...(a.lines || []).map((l) => l.name)])),
     [agreements, searchQuery, locale]
@@ -251,7 +257,7 @@ export default function SuppliersPage() {
   }
 
   const segments = visibleSupplierSegments(actor.seesPrices)
-  const counts: Record<SupplierTabSegment, number | undefined> = { mine: mineRows.length, invitations: invitations.length, platform: suppliers.length, agreements: agreements.length, history: undefined }
+  const counts: Record<SupplierTabSegment, number | undefined> = { mine: mineRows.length, invitations: invitations.length, platform: directory.length, agreements: agreements.length, history: undefined }
   const spinner = (
     <div className="flex flex-col items-center justify-center p-20 text-muted-foreground">
       <Loader2 className="mb-4 animate-spin" size={32} aria-hidden="true" />
@@ -395,6 +401,7 @@ export default function SuppliersPage() {
         supplier={fileSupplier}
         open={Boolean(fileSupplier)}
         onOpenChange={(o) => !o && openFile(null)}
+        notices={deliveries}
         score={fileRow?.score || null}
         invited={fileInvited}
         orders={orders}

@@ -12,12 +12,21 @@ import type { PurchaseOrder } from "./types"
 export const PAYMENT_STATES = ["unpaid", "part", "paid"] as const
 export type PaymentState = (typeof PAYMENT_STATES)[number]
 
+/** A copy of the bank transfer, attached when the payment was marked (optional). */
+export interface TransferFile {
+  name: string
+  url: string
+  path?: string | null
+}
+
 export interface PaymentMark {
   state: PaymentState
   /** `YYYY-MM-DD` — the day it was paid (or marked). */
   day: string
   amount?: number | null
   reference?: string | null
+  /** The transfer's picture, when the payer attached one. */
+  file?: TransferFile | null
   byName: string
   at: string
 }
@@ -38,6 +47,7 @@ export interface FinancelessFields {
   paymentMarks?: PaymentMark[]
   /** The advance the offer asked for, marked paid on this day. */
   advancePaidDay?: string | null
+  advanceFile?: TransferFile | null
   invoiceFiles?: InvoiceFile[]
 }
 

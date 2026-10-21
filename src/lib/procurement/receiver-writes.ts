@@ -7,7 +7,7 @@
 
 import { addDoc, collection, doc, serverTimestamp, updateDoc, type Firestore } from "firebase/firestore"
 import { ProcWriteError } from "./writes"
-import { PROCUREMENT_RECEIVERS, cleanReceiver, receiverProblems, type ReceiverInput } from "./receivers"
+import { PROCUREMENT_RECEIVERS, findDuplicateReceiver, parseReceiverInput, type ProcReceiver, type ReceiverInput } from "./receivers"
 import type { ProcActor } from "./types"
 
 /** The register is Procurement's: whoever prepares or approves an order keeps
@@ -15,11 +15,13 @@ import type { ProcActor } from "./types"
  * should not be able to add himself to another site. */
 const mayWrite = (actor: ProcActor): boolean => Boolean(actor.isOwner || actor.canPrepare || actor.canApprove)
 
-function guard(actor: ProcActor, input: ReceiverInput): ReceiverInput {
+function guard(actor: ProcActor, input: ReceiverInput, register: ProcReceiver[], exceptId?: string): ReceiverInput {
   if (!mayWrite(actor)) throw new ProcWriteError("no_permission")
-  const problems = receiverProblems(input)
-  if (problems.length) throw new ProcWriteError("bad_receiver", { fields: problems.join(",") })
-  return cleanReceiver(input)
+  const parsed = parseReceiverInput(input)
+  if (!parsed.ok) throw new ProcWriteError("bad_receiver", { fields: parsed.fields.join(",") })
+  const twin = findDuplicateReceiver(register, parsed.data, exceptId)
+  if (twin) throw new ProcWriteError("bad_receiver", { fields: "duplicate", name: twin.name, retired: twin.active === false ? 1 : 0 })
+  return parsed.data
 }
 
 export async function addReceiver(
@@ -27,9 +29,9 @@ export async function addReceiver(
   actor: ProcActor,
   organizationId: string,
   input: ReceiverInput,
-  opts: { now?: Date } = {}
+  opts: { now?: Date; register?: ProcReceiver[] } = {}
 ): Promise<string> {
-  const clean = guard(actor, input)
+  const clean = guard(actor, input, opts.register ?? [])
   const ref = await addDoc(collection(firestore, PROCUREMENT_RECEIVERS), {
     ...clean,
     organizationId,
@@ -41,8 +43,14 @@ export async function addReceiver(
   return ref.id
 }
 
-export async function updateReceiver(firestore: Firestore, actor: ProcActor, receiverId: string, input: ReceiverInput): Promise<void> {
-  const clean = guard(actor, input)
+export async function updateReceiver(
+  firestore: Firestore,
+  actor: ProcActor,
+  receiverId: string,
+  input: ReceiverInput,
+  register: ProcReceiver[] = []
+): Promise<void> {
+  const clean = guard(actor, input, register, receiverId)
   await updateDoc(doc(firestore, PROCUREMENT_RECEIVERS, receiverId), { ...clean, updatedAt: serverTimestamp() })
 }
 

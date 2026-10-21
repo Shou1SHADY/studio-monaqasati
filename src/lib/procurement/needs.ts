@@ -5,9 +5,11 @@
 // all three, what state the need is in. Pure.
 
 import { foldSearchText } from "../search-text"
+import type { MaterialPick } from "../materials/types"
 import type { PurchaseRequestRecord } from "../manufacturing-engine"
 import { poStatus } from "./po"
 import { materialKey } from "./prices"
+import { requestChanges, wholeWithdrawal, type ProjectChange } from "./project-change"
 import { lineNeed, rfqNeedSources, type NeedLinkedRfq } from "./rfq-view"
 import type { PurchaseOrder } from "./types"
 
@@ -17,6 +19,14 @@ export type NeedKind = "mfg" | "project" | "stock" | "team"
  * hand · done = arrived, sent back or refused. */
 export type NeedState = "action" | "waiting" | "rfq" | "order" | "done"
 export const NEED_STATES: NeedState[] = ["action", "waiting", "rfq", "order", "done"]
+
+/** The RFQ and order a single line of a project request went into, when it was sourced apart from the rest. */
+export interface NeedLineLink {
+  rfqId: string | null
+  rfqNumber: string | null
+  poId: string | null
+  poNumber: string | null
+}
 
 export interface NeedLine {
   name: string
@@ -30,6 +40,12 @@ export interface NeedLine {
   itemId?: string
   /** Its own need-by date, when it differs from the request's. */
   needBy?: string
+  /** The material as picked from the tree (a project request's line): arrives with its category. */
+  material?: MaterialPick | null
+  /** A PM 1.0 request's line: its index in the request's `lines` (where its own link is written). */
+  requestLine?: number
+  /** Its own RFQ / order, when part of the request was published without the rest. */
+  link?: NeedLineLink
 }
 
 /** What Procurement decided on a project's request without the other module's
@@ -69,7 +85,7 @@ export interface Need {
   /** Why it ended: the reason it was sent back, or who received it. */
   endNote: string | null
   /** How it ended: arrived, sent back to the workshop, refused by the warehouse. */
-  endKind: "arrived" | "sent_back" | "refused" | null
+  endKind: "arrived" | "sent_back" | "refused" | "withdrawn" | null
   waitingOn: "warehouse" | "workshop" | "project" | null
   projectId: string | null
   projectName: string | null
@@ -89,6 +105,12 @@ export interface Need {
   /** A team request's delivery site («مواقع التسليم») and the place it names (PUR-10). */
   siteId?: string | null
   place?: { label: string; city: string; district: string } | null
+  /** Who approved a project's request technically, and the day. */
+  approved?: { name: string; on: string } | null
+  /** The project withdrew it after it reached us and before anything was bought: who and the day. */
+  withdrawal?: { on: string | null; byName: string | null } | null
+  /** What the project withdrew or changed on it after it reached us (PUR-01 p.5). */
+  projectChanges?: ProjectChange[]
 }
 
 const blank = { needBy: null, note: null, rfqId: null, rfqNumber: null, poId: null, poNumber: null, endNote: null, endKind: null, waitingOn: null, projectId: null, projectName: null, stock: null, mfgRequestId: null, decision: null }
@@ -135,7 +157,8 @@ export interface ProjectRequestLine {
   /** Inventory's reply: what it issued from stock is not bought. */
   inv?: { k?: string; q?: number | null; kept?: number | null } | null
   chg?: { st?: string | null } | null
-  cl?: { t?: string | null } | null
+  /** Closed by the project or the receiver: how, the day, who, and why (`chg` a rejected change). */
+  cl?: { t?: string | null; on?: string | null; byName?: string | null; why?: string | null } | null
   /** Project receipts; `src` says which portion one arrived against (`stk` the store's issue). */
   receipts?: Array<{ q?: number | null; src?: string | null }> | null
   /** Added after the request was sourced: bought on its own. */
@@ -147,7 +170,7 @@ export interface ProjectRequestDoc {
   /** A PM 1.0 request: born `pending` = awaiting the project manager's technical approval. */
   pm?: boolean
   title?: string
-  items?: Array<{ name?: string; quantity?: string | number; unit?: string; category?: string | null; samplePending?: boolean | null; needBy?: string | null; itemId?: string | null }>
+  items?: Array<{ name?: string; quantity?: string | number; unit?: string; category?: string | null; samplePending?: boolean | null; needBy?: string | null; itemId?: string | null; material?: MaterialPick | null }>
   /** Optional until Projects' requests carry one (PM 1.0 E-26). */
   needBy?: string | null
   procDecision?: ProcDecision | null
@@ -161,6 +184,11 @@ export interface ProjectRequestDoc {
   poId?: string | null
   poNumber?: string | null
   decidedByUserName?: string | null
+  approvedByName?: string | null
+  approvedOn?: string | null
+  /** Taken back by whoever asked, before approval (`status` is then `rejected`). */
+  withdrawn?: boolean
+  decidedAt?: unknown
   /** A PM 1.0 request's own lines — Inventory's reply on each says what it issued from stock. */
   lines?: ProjectRequestLine[]
   /** A line's own RFQ and order, by its index in `lines`. */
@@ -181,17 +209,17 @@ function toSource(l: ProjectRequestLine): number {
   return Math.round((sum("buy") + Math.max(0, sum(null) - Math.max(0, issued - sum("stk")))) * 1000) / 1000
 }
 
-/** The request line behind each of `items`, by index. `items` is written from the
+/** The request line behind each of `items`, by index, with its place in `lines`. `items` is written from the
  * lines in order (pm/supply.ts `procurementItems`: not a change still held or
  * refused, not one added after sourcing, nothing for a line closed with nothing
  * in) — the same walk reads them back, so two lines of one material on two BOQ
  * items each keep their own reply from Inventory. */
-function linesOfItems(pr: ProjectRequestDoc): Array<ProjectRequestLine | null> {
-  const lines = (pr.lines || []).filter((l) => l.chg?.st !== "wait" && l.chg?.st !== "no" && !l.late && !(l.cl && !(received(l) > 0)))
+function linesOfItems(pr: ProjectRequestDoc): Array<{ line: ProjectRequestLine; index: number } | null> {
+  const lines = (pr.lines || []).map((line, index) => ({ line, index })).filter(({ line: l }) => l.chg?.st !== "wait" && l.chg?.st !== "no" && !l.late && !(l.cl && !(received(l) > 0)))
   let at = 0
   return (pr.items || []).map((i) => {
     const want = materialKey(i.name, i.unit)
-    const hit = lines.findIndex((l, k) => k >= at && materialKey(l.name, l.unit) === want && (!i.itemId || l.itemId === i.itemId))
+    const hit = lines.findIndex(({ line: l }, k) => k >= at && materialKey(l.name, l.unit) === want && (!i.itemId || l.itemId === i.itemId))
     if (hit < 0) return null
     at = hit + 1
     return lines[hit]
@@ -234,6 +262,8 @@ function addedNeeds(base: Need, pr: ProjectRequestDoc): Need[] {
       source: { ...base.source, line: index },
       mfgRequestId: null,
       decision: null,
+      withdrawal: null,
+      projectChanges: requestChanges(pr, index),
     })
   })
   return out
@@ -252,42 +282,59 @@ export const reachesProcurement = (pr: Pick<ProjectRequestDoc, "pm" | "status">)
 export const projectRequestRef = (pr: Pick<ProjectRequestDoc, "id" | "pm">, legacyRef: (id: string) => string): string => (pr.pm ? `MR ${pr.id}` : legacyRef(pr.id))
 
 export function projectNeed(project: { id: string; name: string }, pr: ProjectRequestDoc, ref: string): Need {
-  // A PM request is born awaiting the project manager's TECHNICAL approval
-  // (REQ-02): until he approves, nothing of it is Procurement's to act on — it is
-  // not a request the warehouse is slow to answer, and nobody proceeds on it. It
-  // is SHOWN (read-only, "waiting for the project", never selectable) so Procurement
-  // sees what is coming; before 6 Oct 2026 it was hidden until approval.
+  // A PM request is born awaiting the project manager's TECHNICAL approval (REQ-02) and reaches
+  // Procurement only once approved (`reachesProcurement`): until then it is the project's business.
   const unapproved = Boolean(pr.pm) && pr.status === "pending"
   const behind = linesOfItems(pr)
-  const lines = (pr.items || [])
+  const requestLevel = Boolean(pr.rfqId || pr.poId)
+  const itemLines = (pr.items || [])
     .map((i, k) => {
       const own = behind[k]
-      const l: NeedLine = { name: (i.name || "").trim(), unit: (i.unit || "").trim(), quantity: own?.inv?.k === "issue" ? toSource(own) : Number(i.quantity) || 0 }
+      const l: NeedLine = { name: (i.name || "").trim(), unit: (i.unit || "").trim(), quantity: own?.line.inv?.k === "issue" ? toSource(own.line) : Number(i.quantity) || 0 }
       if (i.category) l.category = i.category
       if (i.samplePending) l.samplePending = true
       if (i.itemId) l.itemId = i.itemId
+      if (i.material) l.material = i.material
       if (i.needBy) l.needBy = i.needBy.slice(0, 10)
+      if (pr.pm && own) {
+        l.requestLine = own.index
+        const link = requestLevel ? null : pr.lineLinks?.[String(own.index)]
+        if (link && (link.rfqId || link.poId)) l.link = { rfqId: link.rfqId ?? null, rfqNumber: link.rfqNumber ?? null, poId: link.poId ?? null, poNumber: link.poNumber ?? null }
+      }
       return l
     })
     .filter((l) => l.name && l.quantity > 0)
+  // The project withdrew every line after approval: nothing is left in `items`, so the request is read back from its lines.
+  const gone = wholeWithdrawal(pr)
+  const inHand = requestLevel || Boolean(pr.mfgRequestId) || Object.entries(pr.lineLinks || {}).some(([i, v]) => !pr.lines?.[Number(i)]?.late && Boolean(v?.rfqId || v?.poId))
+  const withdrawnEarly = Boolean(gone) && !inHand
+  const lines: NeedLine[] = gone
+    ? (pr.lines || []).flatMap((l, index) => (l.late || l.chg?.st === "wait" || l.chg?.st === "no" || !(l.name || "").trim() || !(Number(l.qty) > 0) ? [] : [{ name: (l.name || "").trim(), unit: (l.unit || "").trim(), quantity: Number(l.qty) || 0, ...(l.itemId ? { itemId: l.itemId } : {}), requestLine: index }]))
+    : itemLines
+  const allLinked = lines.length > 0 && lines.every((l) => l.link)
+  const firstLink = lines.find((l) => l.link)?.link ?? null
   const decision = pr.procDecision ?? null
   const proceeded = decision?.kind === "proceed_short" || decision?.kind === "proceed_full"
   let state: NeedState = "action"
   let waitingOn: Need["waitingOn"] = null
-  if (pr.status === "rejected") state = "done"
+  if (withdrawnEarly) state = "done"
+  else if (pr.status === "rejected") state = "done"
   else if (unapproved) {
     state = "waiting"
     waitingOn = "project"
-  }
-  else if (pr.status !== "approved" && !(proceeded && pr.status === "pending")) {
+  } else if (pr.status !== "approved" && !(proceeded && pr.status === "pending")) {
     state = "waiting"
     waitingOn = "warehouse"
   } else if (pr.poId) state = "order"
   else if (pr.rfqId) state = "rfq"
+  else if (allLinked) state = lines.every((l) => l.link?.poId) ? "order" : "rfq"
   else if (pr.mfgRequestId && decision?.kind !== "buy") {
     state = "waiting"
     waitingOn = "workshop"
   }
+  const legacyWithdrawn = pr.status === "rejected" && Boolean(pr.withdrawn)
+  const withdrawal = withdrawnEarly ? gone : legacyWithdrawn ? { on: iso(pr.decidedAt).slice(0, 10) || null, byName: pr.decidedByUserName ?? null } : null
+  const changes = withdrawnEarly ? [] : requestChanges(pr)
   const need: Need = {
     ...blank,
     key: `project:${project.id}:${pr.id}`,
@@ -300,12 +347,12 @@ export function projectNeed(project: { id: string; name: string }, pr: ProjectRe
     refLabel: ref,
     context: pr.title ? `${project.name} · ${pr.title}` : project.name,
     note: pr.notes || null,
-    rfqId: pr.rfqId ?? null,
-    rfqNumber: pr.rfqNumber ?? null,
-    poId: pr.poId ?? null,
-    poNumber: pr.poNumber ?? null,
-    endNote: pr.status === "rejected" ? pr.decidedByUserName ?? null : null,
-    endKind: pr.status === "rejected" ? "refused" : null,
+    rfqId: pr.rfqId ?? (allLinked ? firstLink?.rfqId ?? null : null),
+    rfqNumber: pr.rfqNumber ?? (allLinked ? firstLink?.rfqNumber ?? null : null),
+    poId: pr.poId ?? (allLinked ? firstLink?.poId ?? null : null),
+    poNumber: pr.poNumber ?? (allLinked ? firstLink?.poNumber ?? null : null),
+    endNote: withdrawal ? withdrawal.byName : pr.status === "rejected" ? pr.decidedByUserName ?? null : null,
+    endKind: withdrawal ? "withdrawn" : pr.status === "rejected" ? "refused" : null,
     waitingOn,
     projectId: project.id,
     projectName: project.name,
@@ -313,6 +360,9 @@ export function projectNeed(project: { id: string; name: string }, pr: ProjectRe
     ownerId: project.id,
     mfgRequestId: pr.mfgRequestId ?? null,
     decision,
+    approved: pr.pm && pr.status === "approved" ? { name: pr.approvedByName || pr.decidedByUserName || "", on: pr.approvedOn || "" } : null,
+    withdrawal,
+    ...(changes.length ? { projectChanges: changes } : {}),
   }
   const added = addedNeeds(need, pr)
   return added.length ? { ...need, added } : need
