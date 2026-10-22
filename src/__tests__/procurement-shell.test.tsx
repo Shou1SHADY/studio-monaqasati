@@ -149,7 +149,7 @@ jest.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ isLoading:
 
 // The header derives its numbers itself (useProcurementShell) over the same
 // mocked world; its one direct read (the workshop's purchase requests) is empty here.
-jest.mock("@/firebase", () => ({ useFirestore: () => null, useMemoFirebase: (f: () => unknown) => f(), useCollection: () => ({ data: null, isLoading: false }), useDoc: () => ({ data: null, isLoading: false }) }))
+jest.mock("@/firebase", () => ({ useUser: () => ({ user: { uid: "u1" } }), useFirestore: () => null, useMemoFirebase: (f: () => unknown) => f(), useCollection: () => ({ data: null, isLoading: false }), useDoc: () => ({ data: null, isLoading: false }) }))
 
 let mockWorld: ProcurementWorld
 jest.mock("@/hooks/useProcurementWorld", () => ({ useProcurementWorld: () => mockWorld }))
@@ -233,8 +233,8 @@ describe("SHELL-01 · the tab rail is gated like the sidebar", () => {
     expect(visibleProcTabs(canOf("rfq.manage")).map((t) => t.id)).toEqual(["today", "requests", "rfqs"])
   })
 
-  it("nobody outside Procurement sees a tab", () => {
-    expect(visibleProcTabs(canOf("projects.view"))).toEqual([])
+  it("nobody outside Procurement sees a tab but the requester's «طلباتي»", () => {
+    expect(visibleProcTabs(canOf("projects.view")).map((t) => t.id)).toEqual(["mine"])
   })
 
   it("the longest matching prefix lights up — /rfqs/requests is not /rfqs", () => {

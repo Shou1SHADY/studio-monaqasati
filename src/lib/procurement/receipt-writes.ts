@@ -818,8 +818,13 @@ async function readPendingNotices(tx: Transaction, firestore: Firestore, ids: st
 export function trimNotices(notices: Array<{ lines: DeliveryLine[] }>, received: DeliveryLine[]): Array<{ lines: DeliveryLine[]; closed: boolean; changed: boolean }> {
   const left = new Map<string, number>()
   for (const l of received) left.set(l.poLineId, round2((left.get(l.poLineId) || 0) + Math.max(0, num(l.counted))))
+  let countedAny = received.some((l) => num(l.counted) > 0)
   return notices.map((n) => {
     let changed = false
+    if (countedAny && n.lines.every((l) => !(num(l.noticeQuantity) > 0))) {
+      countedAny = false
+      return { lines: n.lines, changed: true, closed: true }
+    }
     const lines = n.lines.map((l) => {
       const take = Math.min(left.get(l.poLineId) || 0, Math.max(0, num(l.noticeQuantity)))
       if (!(take > 0)) return l

@@ -13,6 +13,8 @@ jest.mock("next/navigation", () => jest.requireActual("@/test-utils/render-world
 jest.mock("@/ai/genkit", () => jest.requireActual("@/test-utils/render-world").aiMock)
 jest.mock("@/components/layout/portal-layout", () => jest.requireActual("@/test-utils/render-world").portalLayoutMock)
 jest.mock("firebase/auth", () => ({ getAuth: () => ({ currentUser: { getIdToken: async () => "id-token" } }) }))
+const mockPublish = jest.fn()
+jest.mock("@/lib/procurement/rfq-lifecycle-client", () => ({ ...jest.requireActual("@/lib/procurement/rfq-lifecycle-client"), publishRfqCall: (input: unknown) => mockPublish(input) }))
 
 import React from "react"
 import { readFileSync } from "node:fs"
@@ -74,6 +76,7 @@ async function addIronRow() {
 }
 
 const publish = async () => {
+  mockPublish.mockImplementation(async (input: { deadline: string }) => ({ id: "R9", number: "RFQ-2026/009", guestUrl: null, reached: 0, closesOn: input.deadline, direct: false, dirOver: false, directEst: null, linkedRequests: 0, edited: false }))
   await press("التالي: النشر")
   await press("التالي: المراجعة")
   await press("انشر")
@@ -165,7 +168,7 @@ describe("the editor's delivery place and options (ED-02/03/04)", () => {
     expect(text()).toContain("الخرج — حي السلي")
 
     await publish()
-    const rfqs = listCollection<Record<string, unknown>>("rfqs").filter((r) => r.status === "New")
+    const rfqs = mockPublish.mock.calls.map((c) => ({ ...(c[0] as { doc: Record<string, unknown> }).doc, title: (c[0] as { title: string }).title } as Record<string, unknown>))
     expect(rfqs).toHaveLength(1)
     expect(String(rfqs[0].title)).toContain("مستودع الخرج")
     expect(rfqs[0]).toMatchObject({ city: "الخرج", district: "حي السلي" })
@@ -208,7 +211,7 @@ describe("the editor's delivery place and options (ED-02/03/04)", () => {
     await act(async () => void fireEvent.change(note, { target: { value: "البوابة الشمالية، والطريق يتسع لشاحنة 12 م" } }))
 
     await publish()
-    const rfq = listCollection<Record<string, unknown>>("rfqs").find((r) => r.status === "New")!
+    const rfq = (mockPublish.mock.calls.at(-1)![0] as { doc: Record<string, unknown> }).doc
     expect(rfq.deliveryOptions).toEqual({ prj_P1: { unload: "supplier", slot: "am", note: "البوابة الشمالية، والطريق يتسع لشاحنة 12 م" } })
     expect((rfq.editorGroups as Array<Record<string, unknown>>)[0].delivery).toEqual(rfq.deliveryOptions && (rfq.deliveryOptions as Record<string, unknown>).prj_P1)
     expect([...missingKeys]).toEqual([])
@@ -221,7 +224,7 @@ describe("the editor's delivery place and options (ED-02/03/04)", () => {
     await addIronRow()
     await click(chip(chipsOf(), "مجمع الياسمين"))
     await publish()
-    const rfq = listCollection<Record<string, unknown>>("rfqs").find((r) => r.status === "New")!
+    const rfq = (mockPublish.mock.calls.at(-1)![0] as { doc: Record<string, unknown> }).doc
     expect(rfq.deliveryOptions).toEqual({})
     view.unmount()
   })

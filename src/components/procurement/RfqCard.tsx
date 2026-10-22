@@ -10,7 +10,7 @@
 
 import type { ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Building2, CalendarDays, Eye, FileText, Info, LayoutGrid, Link2, Lock, MessageCircleQuestion, Package, Printer, Send, ShieldCheck, Trash2, User } from "lucide-react"
+import { Building2, CalendarDays, Eye, FileText, Info, LayoutGrid, Link2, MessageCircleQuestion, Package, Printer, Send, ShieldCheck, Trash2, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Link } from "@/i18n/routing"
 import { useRfqInquiryCounts } from "@/hooks/useRfqInquiryCounts"
@@ -49,13 +49,13 @@ export type RfqRow = RfqListLike & {
   invitedSupplierOrgIds?: string[] | null
 }
 
-export function RfqStagePill({ stage, sealed }: { stage: RfqStage; sealed: boolean }) {
+export function RfqStagePill({ stage }: { stage: RfqStage }) {
   const t = useTranslations("Portal.Contractor")
   const tp = useTranslations("Portal.Procurement")
   return (
     <span className={cn("inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold", PILL[STAGE_TONE[stage]])}>
       <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
-      {stage === "cancelled" ? tp("rfqpo.list.stage_cancelled") : t(stage === "open" && sealed ? "rfqv_stage_open_sealed" : `rfqv_stage_${stage}`)}
+      {stage === "cancelled" ? tp("rfqpo.list.stage_cancelled") : t(`rfqv_stage_${stage}`)}
     </span>
   )
 }
@@ -86,15 +86,14 @@ export function Tag({ icon: Icon, tone = "mute", children }: { icon?: typeof Lay
   )
 }
 
-/** The offers pill: the supplier of a direct award, else the count (locked while sealed). */
-export function OffersTag({ rfq, sealed, directSupplier }: { rfq: RfqRow; sealed: boolean; directSupplier: string | null }) {
+/** The offers pill: the supplier of a direct award, else the count. */
+export function OffersTag({ rfq, directSupplier }: { rfq: RfqRow; directSupplier: string | null }) {
   const t = useTranslations("Portal.Contractor")
   const offers = rfq.offersCount ?? 0
   if (rfq.directAward) return <Tag tone="ok">{directSupplier || t("rfqv_stage_awarded")}</Tag>
   return (
     <Tag icon={FileText} tone={offers > 0 ? "ok" : "mute"}>
       {t("rfqv_offers", { count: offers })}
-      {sealed && offers > 0 && <Lock size={11} aria-label={t("rfqv_sealed")} />}
     </Tag>
   )
 }
@@ -129,7 +128,6 @@ export interface RfqCardProps {
   rfq: RfqRow
   /** One chip per place the lines are charged to (`rfqProjectKeys`). */
   projectLabels: string[]
-  sealed: boolean
   now: Date
   offersHref: string
   editHref: string
@@ -148,17 +146,16 @@ export function RfqCard(p: RfqCardProps) {
   const tp = useTranslations("Portal.Procurement")
   const locale = useLocale()
   const { rfq } = p
-  const stage = rfqStage(rfq, p.now, p.sealed)
+  const stage = rfqStage(rfq, p.now)
   const tag = deadlineTag(rfq, p.now)
-  const offers = rfq.offersCount ?? 0
   const queries = useRfqInquiryCounts(stage === "draft" ? null : rfq.id)
-  const extendable = p.canManage && rfq.status === "New" && !rfq.directAward && (p.sealed || offers === 0)
+  const extendable = p.canManage && rfq.status === "New" && !rfq.directAward
 
   return (
     <article className={cn("flex flex-col rounded-2xl border border-t-[3px] bg-card shadow-sm transition-shadow hover:shadow-md", STAGE_EDGE[stage])}>
       <div className="flex flex-1 flex-col gap-3 p-4">
         <div className="flex items-center justify-between gap-2">
-          <RfqStagePill stage={stage} sealed={p.sealed} />
+          <RfqStagePill stage={stage} />
           <RfqNumber rfq={rfq} />
         </div>
 
@@ -183,7 +180,7 @@ export function RfqCard(p: RfqCardProps) {
           <Tag icon={Package}>{t("rfqv_products", { count: productCount(rfq) })}</Tag>
           {stage !== "draft" && (
             <button type="button" onClick={p.onGlance} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <OffersTag rfq={rfq} sealed={p.sealed} directSupplier={p.directSupplier} />
+              <OffersTag rfq={rfq} directSupplier={p.directSupplier} />
             </button>
           )}
           <UnansweredTag count={queries.unanswered} />

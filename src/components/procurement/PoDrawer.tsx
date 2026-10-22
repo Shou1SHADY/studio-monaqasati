@@ -976,7 +976,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
 
             {po.sentAt && po.status !== "cancelled" && (
               <Section title={t("chat.title")}>
-                <PoChatBody registered={!po.isGuestSupplier && Boolean(po.supplierUserId)} events={chatEvents} phone={supplierPhone} />
+                <PoChatBody registered={!po.isGuestSupplier && Boolean(po.supplierUserId)} events={chatEvents} phone={supplierPhone} po={po} receipts={world.deliveries} />
               </Section>
             )}
 

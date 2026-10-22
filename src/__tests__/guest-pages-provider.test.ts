@@ -12,7 +12,14 @@ describe("pages that open the phone sign-in sit under a Firebase provider", () =
 
   it("finds the guest RFQ and guest offer pages", () => {
     const names = users.map((f) => path.relative(APP, f).replace(/\\/g, "/"))
-    expect(names).toEqual(expect.arrayContaining(["rfq/[token]/PublicRfqContent.tsx", "offer/[token]/GuestOfferContent.tsx"]))
+    expect(names).toEqual(expect.arrayContaining(["offer/[token]/GuestOfferContent.tsx"]))
+  })
+
+  it("the visitor's RFQ page opens the sign-in through the registration card, under the RFQ layout's provider", () => {
+    const page = read(path.join(APP, "rfq/[token]/PublicRfqContent.tsx"))
+    expect(page).toMatch(/PromoCard/)
+    expect(read(path.join(process.cwd(), "src/components/procurement/guest/PromoCard.tsx"))).toMatch(/JoinFreeButton/)
+    expect(read(path.join(APP, "rfq/layout.tsx"))).toMatch(/FirebaseClientProvider/)
   })
 
   it.each(users.map((f) => [path.relative(APP, f).replace(/\\/g, "/"), f]))("%s has a layout above it that mounts FirebaseClientProvider", (_name, file) => {

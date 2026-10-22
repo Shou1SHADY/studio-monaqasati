@@ -2,17 +2,19 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { getAdminFirestore } from "@/lib/firebaseAdmin"
 import { OTP_CHALLENGES, issueOtp, issueRemoteOtp, maskPhone } from "@/lib/otp"
-import { canSendCodes, isSmsConfigured, isVerifyConfigured, sendSms, startVerification } from "@/lib/sms"
-import { resolveShareToken, isRfqDeadlinePassed } from "@/lib/rfq-share"
-import { GUEST_OTP_LINK_CAP_PER_HOUR, guestOtpRequired, guestOtpSubject, guestOtpSubjectRange } from "@/lib/procurement/guest-supplier"
+import { isSmsConfigured, isVerifyConfigured, sendSms, startVerification } from "@/lib/sms"
+import { resolveShareToken } from "@/lib/rfq-share"
+import { GUEST_OTP_LINK_CAP_PER_HOUR, guestOtpSubject, guestOtpSubjectRange } from "@/lib/procurement/guest-supplier"
 import { saudiMobileE164 } from "@/lib/supplier-free/phone-auth"
 import { consumeMobileRate } from "@/lib/links/rate"
+import { codesPossible, testingEnvironment } from "@/lib/procurement/visitor-http"
 
 // Public endpoint: sends a one-time code to the mobile a guest supplier typed
 // on the RFQ's guest page (prototype «يُوثَّق برمز تحقق»). The offer route checks
 // it; the code is bound to this link and this number. One code a minute per
 // number, a ceiling per link per hour and a ceiling per mobile across every
-// link, so neither a link nor a number can be turned into an SMS gateway. UAT without an SMS route shows the code on screen.
+// link, so neither a link nor a number can be turned into an SMS gateway. A closed request still gives a code: a visitor
+// who quoted comes back for his result. Without an SMS route the send is refused (R-05) — only a test environment shows the code.
 
 const bodySchema = z.object({
   phone: z.string().trim().min(7).max(20),
@@ -20,8 +22,6 @@ const bodySchema = z.object({
 })
 
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
-
-const isUat = () => process.env.NEXT_PUBLIC_APP_ENV === "uat" || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID === "mdmaktech-uat"
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   try {
@@ -32,12 +32,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     if (!phone) return fail("Enter a valid mobile number", "INVALID_PHONE", 400)
     const locale = parsed.data.locale === "en" ? "en" : "ar"
 
-    if (!guestOtpRequired(canSendCodes(), isUat())) return NextResponse.json({ success: true, data: { required: false } })
+    if (!codesPossible()) return fail("Codes cannot be sent right now", "CODE_UNAVAILABLE", 503)
 
     const resolution = await resolveShareToken(token)
     if (!resolution.ok) return fail("This link is invalid or has expired", resolution.code, resolution.status)
-    const { linkId, rfq } = resolution
-    if (rfq.status !== "New" || isRfqDeadlinePassed(rfq)) return fail("This RFQ is no longer accepting offers", "RFQ_CLOSED", 409)
+    const { linkId } = resolution
 
     const db = getAdminFirestore()
     const [from, to] = guestOtpSubjectRange(linkId)
@@ -70,7 +69,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       // UAT has no SMS gateway: hand the tester the code. Never in production.
       return NextResponse.json({
         success: true,
-        data: { required: true, challengeId: issued.challengeId, phoneMasked: maskPhone(phone), sent: false, testCode: isUat() ? issued.code : undefined },
+        data: { required: true, challengeId: issued.challengeId, phoneMasked: maskPhone(phone), sent: false, testCode: testingEnvironment() ? issued.code : undefined },
       })
     }
     const text =

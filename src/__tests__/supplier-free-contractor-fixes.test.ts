@@ -22,10 +22,11 @@ import { deadlineEnd } from "@/lib/procurement/guest-supplier"
 import { daysLate, poBlocks, poLate, poWarnings } from "@/lib/procurement/po"
 import { incomingRows } from "@/lib/procurement/receipt-desk"
 import { rfqOutcomeEvent } from "@/lib/procurement/rfq-outcome"
-import { cancelRfq, createRfqWithNumber, reopenAwardRefusal } from "@/lib/procurement/rfq-writes"
+import { createRfqWithNumber, reopenAwardRefusal } from "@/lib/procurement/rfq-writes"
 import { frozenTermsOf, rfqTermsToStore } from "@/lib/procurement/terms-freeze"
 import { DEFAULT_POLICIES, type ProcActor, type PurchaseOrder } from "@/lib/procurement/types"
-import { awardRfq, retroactivePurchaseOrder, type AwardOfferLike } from "@/lib/procurement/writes"
+import { retroactivePurchaseOrder, type AwardOfferLike } from "@/lib/procurement/writes"
+import { awardRfq } from "@/test-utils/legacy-award-writes"
 import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
 import { isRfqDeadlinePassed } from "@/lib/rfq-share"
 import { createDealLogic } from "@/lib/supplier-free/deal-logic"
@@ -261,16 +262,6 @@ describe("rfq_outcome — told to each supplier", () => {
     expect(rfqOutcomeEvent({ id: "g", supplierId: "guest", isGuestOffer: true }, { organizationId: ORG, rfqId: "r1", contractor: "آفاق", result: "lost" })).toBeNull()
   })
 
-  it("at the cancellation: every live quote closes with no award, with the cancellation's reason", async () => {
-    const a = { ...actor(), managesRfqs: true, ownerHasTeam: false } as RfqWriteActor
-    await cancelRfq(db, a, "r1", "need", NOW, { orgName: "آفاق فنية" })
-    for (const uid of ["s1", "s2"]) {
-      const [n] = notes(uid)
-      expect(n.i18n.params).toMatchObject({ contractor: "آفاق فنية", rfq: "2026/031", result: "@pn_rfq_outcome_noaward", reason: "@pn_rfq_outcome_why_need" })
-    }
-    expect(notes("s4")).toHaveLength(0)
-  })
-
   it("its copy is the same in the Arabic table and the messages, and every reason has words in both languages", () => {
     const S = (l: typeof ar) => (l as unknown as { Portal: { Shared: Record<string, string> } }).Portal.Shared
     expect(S(ar).pn_rfq_outcome_title).toBe(PROC_EVENT_COPY_AR.rfq_outcome.title)
@@ -301,7 +292,7 @@ describe("payment terms freeze (G-08)", () => {
     // The rows editor (PUR-02) replaced the card form: its RFQ and its direct award's order.
     const src = fs.readFileSync(path.join(__dirname, "../components/procurement/rfq-editor/RfqEditor.tsx"), "utf8")
     expect(src).not.toMatch(/DEFAULT_TERMS/)
-    expect(src.match(/paymentTermsList: rfqTermsToStore\(values\.terms, values\.termsSet\)/g)).toHaveLength(2)
+    expect(src.match(/rfqTermsToStore\(values\.terms, values\.termsSet\)/g)).toHaveLength(2)
   })
 
   it("a retroactive order carries terms too", async () => {

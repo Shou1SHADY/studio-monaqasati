@@ -282,9 +282,11 @@ describe("the offers rules (NFR-08)", () => {
     // after checking his company's approval, the RFQ and the buyer's keys (supplier-offer-server.ts).
     expect(create).not.toContain("isSupplier()")
     expect(create).not.toContain("rd().supplierId == request.auth.uid")
-    expect(create.replace(/\/\/[^\n]*/g, "")).toMatch(/^isAdmin\(\)\s*\|\|\s*\(rd\(\)\.get\('directAward'/)
-    // The direct-award and manual branches compare the incoming contractorOrgId (a broken `request.isContractorOrg()` never matched).
+    expect(create.replace(/\/\/[^\n]*/g, "")).toMatch(/^isAdmin\(\)\s*\|\|\s*\(rd\(\)\.get\('isManualOffer'/)
+    // A direct award is an open private RFQ now: no accepted offer is born from a browser.
+    expect(create).not.toContain("directAward")
+    // The manual branch compares the incoming contractorOrgId (a broken `request.isContractorOrg()` never matched).
     expect(block).not.toContain("request.isContractorOrg()")
-    expect(create.match(/rd\(\)\.contractorOrgId == getOrganizationId\(\)/g)).toHaveLength(2)
+    expect(create.match(/rd\(\)\.contractorOrgId == getOrganizationId\(\)/g)).toHaveLength(1)
   })
 })

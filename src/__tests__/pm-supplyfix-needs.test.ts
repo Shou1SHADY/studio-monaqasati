@@ -12,19 +12,16 @@ import { fakeFirestore, listCollection, readDoc, resetFakeDb, seed } from "@/tes
 import type { Firestore } from "firebase/firestore"
 import { materialKeyOf } from "@/lib/pm/store"
 import { procurementItems, type ReqLine } from "@/lib/pm/supply"
-import { recordNeedDecision } from "@/lib/procurement/need-decision-writes"
 import { projectNeed, type ProjectRequestDoc } from "@/lib/procurement/needs"
 import { inSegment, needLineState } from "@/lib/procurement/need-desk"
 import { resolvePolicies } from "@/lib/procurement/policies"
 import { decideProjectRequest, fileProjectRequest } from "@/lib/procurement/project-request-writes"
-import type { ProcActor } from "@/lib/procurement/types"
 
 const db = fakeFirestore as unknown as Firestore
 const project = { id: "p1", name: "Villas" }
 const cement = materialKeyOf("Cement", "bag")
 const line = (over: Partial<ReqLine> = {}): ReqLine => ({ itemId: "A", code: "04-01", key: cement, name: "Cement", unit: "bag", qty: 100, receipts: [], ...over })
 const doc = (lines: ReqLine[], over: Partial<ProjectRequestDoc> = {}): ProjectRequestDoc => ({ id: "01", pm: true, status: "approved", title: "Cement", lines, items: procurementItems({ lines }), createdAt: "2026-09-20T08:00:00.000Z", ...over })
-const buyer: ProcActor = { uid: "buyer", name: "Badr", isOwner: false, canApprove: false, canPrepare: true, canExpedite: true, canReceive: false, seesPrices: true }
 
 describe("a PM request the manager has not approved (REQ-02)", () => {
   it("is shown to Procurement read-only, as waiting for the project manager — never its to act on, however old (6 Oct 2026)", () => {
@@ -44,28 +41,6 @@ describe("a PM request the manager has not approved (REQ-02)", () => {
     expect(projectNeed(project, doc([line()]), "PR-01")).toMatchObject({ state: "action", lines: [{ name: "Cement", quantity: 100 }] })
     const legacy = projectNeed(project, { id: "x", status: "pending", items: [{ name: "Nails", quantity: 3, unit: "kg" }] }, "PR-x")
     expect(legacy).toMatchObject({ state: "waiting", waitingOn: "warehouse", lines: [{ name: "Nails", quantity: 3 }] })
-  })
-
-  describe("recordNeedDecision", () => {
-    const R = "projects/p1/purchaseRequests/01"
-    const now = new Date("2026-09-30T08:00:00.000Z")
-    beforeEach(() => {
-      resetFakeDb()
-      seed("projects/p1", { organizationId: "org", name: "Villas" })
-    })
-
-    it("refuses to proceed with buying on a pending PM request, with its own code", async () => {
-      seed(R, { pm: true, status: "pending", lines: [line()], items: [{ name: "Cement", quantity: 100, unit: "bag" }], createdAt: "2026-09-20T08:00:00.000Z" })
-      await expect(recordNeedDecision(db, buyer, { projectId: "p1", requestId: "01", kind: "proceed_full" }, { now })).rejects.toMatchObject({ code: "need_awaits_pm" })
-      await expect(recordNeedDecision(db, buyer, { projectId: "p1", requestId: "01", kind: "proceed_short", cover: [40] }, { now })).rejects.toMatchObject({ code: "need_awaits_pm" })
-      expect(readDoc<{ procDecision?: unknown }>(R)?.procDecision).toBeUndefined()
-    })
-
-    it("still proceeds on a legacy request the warehouse did not answer in time", async () => {
-      seed(R, { status: "pending", items: [{ name: "Nails", quantity: 3, unit: "kg" }], createdAt: "2026-09-20T08:00:00.000Z" })
-      await recordNeedDecision(db, buyer, { projectId: "p1", requestId: "01", kind: "proceed_full" }, { now })
-      expect(readDoc<{ procDecision?: { kind: string } }>(R)?.procDecision?.kind).toBe("proceed_full")
-    })
   })
 })
 

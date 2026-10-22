@@ -27,6 +27,8 @@ import { useToast } from "@/hooks/use-toast"
 import { INV_WHY, issuedQty, onHandOf, replyBlocks, replyRows, type InvWhy, type ReplyKind, type ReplyRow, type StockRow } from "@/lib/inventory/project-supply"
 import { InvDeskError, replyOnRequestLine } from "@/lib/inventory/project-supply-writes"
 import { pmDate } from "@/lib/pm/format"
+import { incomingAct } from "@/lib/procurement/incoming-client"
+import { pmMrKey } from "@/lib/procurement/incoming-state"
 import { reqNo } from "@/lib/pm/supply"
 import { cn } from "@/lib/utils"
 
@@ -147,6 +149,16 @@ function ReplyDialog({ orgId, row, initialKind, allowed, onClose }: { orgId: str
         warehouseName: gave > 0 ? mains.find((w) => w.id === warehouseId)?.name ?? null : null,
         onHand,
         note: note || null,
+      })
+      const tied = kind !== "issue" && why === "linked"
+      void incomingAct({
+        action: "stock-reply",
+        mrKey: pmMrKey(row.projectId, row.requestId),
+        line: row.index + 1,
+        kind: kind === "issue" ? "issue" : kind === "part" ? "part" : tied ? "tied" : "none",
+        give: kind === "part" ? qn : null,
+        warehouseId: gave > 0 ? warehouseId : null,
+        why: kind === "issue" || !why ? null : t(`rep.why.${why}`),
       })
       toast({ title: t(`rep.saved.${kind}`, { material: row.line.name }) })
       onClose()

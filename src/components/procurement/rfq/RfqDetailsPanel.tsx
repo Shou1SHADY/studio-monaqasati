@@ -8,7 +8,7 @@
 
 import { useLocale, useTranslations } from "next-intl"
 import { doc } from "firebase/firestore"
-import { Ban, CalendarClock, ClipboardList, File, FileText, History, Package, Plus, Send, Trash2, Users } from "lucide-react"
+import { ClipboardList, File, FileText, History, Package, Plus, Send, Trash2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Callout } from "@/components/module-ui/Callout"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
@@ -25,7 +25,7 @@ import { poValue, type NoticeFact } from "@/lib/procurement/po"
 import { invitedRows, rfqLog, type InviteOfferLike, type RfqLogEntry } from "@/lib/procurement/rfq-detail"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import type { RfqView } from "./rfqOfferView"
-import { useLineFor } from "./RfqComparison"
+import { useLineFor } from "./rfqOfferText"
 import { lineNeed, needKeyOfSource, rfqFiles } from "@/lib/procurement/rfq-view"
 import { NEED_LINE_HREF } from "@/lib/procurement/today"
 import { guestLinkLine } from "@/lib/procurement/rfq-extras"
@@ -53,11 +53,7 @@ export function RfqDetailsPanel({
   rfq,
   orders,
   showPrices,
-  canCancel,
-  onCancel,
   onRecordOffer,
-  onExtend,
-  extendLabel,
   onPrint,
   projectName,
   notices,
@@ -66,13 +62,8 @@ export function RfqDetailsPanel({
   rfq: RfqView
   orders: PurchaseOrder[]
   showPrices: boolean
-  canCancel: boolean
-  onCancel: () => void
   /** «سجّل عرضاً وصل خارج المنصة» — while the RFQ is open, for whoever runs it. */
   onRecordOffer?: (() => void) | null
-  /** «تعديل الموعد أو المدعوّين» / «إعادة نشر…» — while nobody has seen a price. */
-  onExtend?: (() => void) | null
-  extendLabel?: string
   /** The RFQ as a document to send outside the platform (PDF). */
   onPrint?: (() => void) | null
   /** Who the lines are for — the prototype's «for» under each product. */
@@ -196,7 +187,7 @@ export function RfqDetailsPanel({
         )}
       </Panel>
 
-      {(canCancel || onRecordOffer || onExtend || onPrint) && (
+      {(onRecordOffer || onPrint) && (
         <div className="flex flex-wrap gap-2">
           {onRecordOffer && (
             <Button variant="outline" size="sm" className="gap-2" onClick={onRecordOffer}>
@@ -204,23 +195,11 @@ export function RfqDetailsPanel({
               {t("manual.button")}
             </Button>
           )}
-          {onExtend && (
-            <Button variant="outline" size="sm" className="gap-2" onClick={onExtend}>
-              <CalendarClock size={14} aria-hidden="true" />
-              {extendLabel}
-            </Button>
-          )}
           {onPrint && (
             <Button variant="outline" size="sm" className="gap-2" onClick={onPrint}>
               <FileText size={14} aria-hidden="true" />
               {tx("details.pdf")}
             </Button>
-          )}
-          {canCancel && (
-          <Button variant="outline" size="sm" className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={onCancel}>
-            <Ban size={14} aria-hidden="true" />
-            {t("cancel.button")}
-          </Button>
           )}
         </div>
       )}

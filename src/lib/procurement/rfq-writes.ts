@@ -1,36 +1,20 @@
 // An RFQ's own acts beside the award (PRD 3.0 §5.1, the prototype's RFQ page):
-// close early and unseal, cancel, exclude an offer with its reason, answer a
+// exclude an offer with its reason, answer a
 // supplier's query to every invitee, the one reduction round, and an offer
 // that arrived off the platform. Each is ONE transaction that re-reads the
 // RFQ, re-runs the rule from `./rfq-detail` and appends to the RFQ's `log` —
 // a stale screen is refused, never half-applied. Notifications ride after the
 // write, best-effort, carrying i18n keys so each reader sees his own language.
 
-import { addDoc, collection, doc, getDocs, query, runTransaction, serverTimestamp, where, type DocumentData, type Firestore, type UpdateData } from "firebase/firestore"
+import { addDoc, collection, doc, runTransaction, serverTimestamp, type DocumentData, type Firestore, type UpdateData } from "firebase/firestore"
 import type { Translator } from "../mfg-events"
 import { buildExclusion } from "./award"
 import { drawRfqNumber, riyadhYear } from "./numbering"
 import { todayOf } from "./po"
-import {
-  canCancelRfq,
-  canCloseEarly,
-  canRunRfq,
-  earlyCloseFields,
-  isRfqCancelCode,
-  manualOfferDoc,
-  manualOfferRefusal,
-  rfqLogEntry,
-  RFQ_CANCELLED,
-  type ManualOfferInput,
-  type ReductionRound,
-  type RfqCancelCode,
-  type RfqEarlyClose,
-  type RfqLogEntry,
-} from "./rfq-detail"
+import { canRunRfq, manualOfferDoc, manualOfferRefusal, rfqLogEntry, type ManualOfferInput, type ReductionRound, type RfqEarlyClose, type RfqLogEntry } from "./rfq-detail"
 import { rfqMine, type RfqWriteActor } from "./rfq-access"
 import { ActRefused, callAct } from "@/lib/supplier-free/act-client"
 import type { ReopenAwardRefusal } from "./reopen-award"
-import { awaitsOutcome, emitRfqOutcomes, type OutcomeOffer } from "./rfq-outcome"
 import { ProcWriteError } from "./writes"
 
 interface RfqDoc {
@@ -72,83 +56,15 @@ export async function updateRfqNumbered(firestore: Firestore, rfqId: string, pat
   })
 }
 
-/** «أغلِق الآن وافتح الأسعار» — the manager's, with a reason, logged in his name. */
-export async function closeRfqNow(firestore: Firestore, actor: RfqWriteActor, rfqId: string, reason: string, now = new Date()): Promise<void> {
-  if (!canCloseEarly(actor)) throw new ProcWriteError("no_permission")
-  if (!reason.trim()) throw new ProcWriteError("reason_required")
-  await runTransaction(firestore, async (tx) => {
-    const snap = await tx.get(rfqRef(firestore, rfqId))
-    if (!snap.exists()) throw new ProcWriteError("rfq_missing")
-    const rfq = snap.data() as RfqDoc
-    if (!rfqMine(rfq, actor)) throw new ProcWriteError("no_permission")
-    const fields = earlyCloseFields(rfq, actor, reason, now)
-    if (!fields) throw new ProcWriteError("rfq_not_open")
-    const at = now.toISOString()
-    tx.update(rfqRef(firestore, rfqId), {
-      ...fields,
-      log: [...(rfq.log || []), rfqLogEntry(actor, "closed_early", at, { note: fields.closedEarly.reason })],
-      updatedAt: serverTimestamp(),
-    })
-  })
-}
-
-/** «ألغِ الطلب» — before any award, with one of three reasons. The status
- * becomes "Cancelled" (counted under completed); a stock need reads only open
- * RFQs and so returns to the needs by itself. */
-export async function cancelRfq(
-  firestore: Firestore,
-  actor: RfqWriteActor,
-  rfqId: string,
-  code: RfqCancelCode,
-  now = new Date(),
-  opts: { copy?: Translator | null; orgName?: string | null } = {}
-): Promise<void> {
-  if (!canRunRfq(actor)) throw new ProcWriteError("no_permission")
-  if (!isRfqCancelCode(code)) throw new ProcWriteError("reason_required")
-  const cancelled = await runTransaction(firestore, async (tx) => {
-    const snap = await tx.get(rfqRef(firestore, rfqId))
-    if (!snap.exists()) throw new ProcWriteError("rfq_missing")
-    const rfq = snap.data() as RfqDoc
-    if (!rfqMine(rfq, actor)) throw new ProcWriteError("no_permission")
-    if (!canCancelRfq(rfq)) throw new ProcWriteError("rfq_not_open")
-    const at = now.toISOString()
-    tx.update(rfqRef(firestore, rfqId), {
-      status: RFQ_CANCELLED,
-      cancellation: { code, byId: actor.uid, byName: actor.name, at },
-      cancelledAt: at,
-      log: [...(rfq.log || []), rfqLogEntry(actor, "cancelled", at, { params: { reason: `@rfqCancel.${code}` } })],
-      updatedAt: serverTimestamp(),
-    })
-    return rfq
-  })
-  // Every quote on it closes with no award, with the reason (OFR-07) — told after the write, best-effort.
-  try {
-    const snap = await getDocs(query(collection(firestore, "offers"), where("rfqId", "==", rfqId), where("contractorOrgId", "==", cancelled.organizationId || "")))
-    const offers = snap.docs.map((d) => ({ ...(d.data() as Omit<OutcomeOffer, "id">), id: d.id })).filter(awaitsOutcome)
-    await emitRfqOutcomes(firestore, actor, offers, {
-      organizationId: cancelled.organizationId || cancelled.contractorId || "",
-      rfqId,
-      rfqNumber: cancelled.rfqNumber || null,
-      rfqTitle: cancelled.title || null,
-      contractor: opts.orgName || actor.name,
-      result: "noaward",
-      why: code,
-      copy: opts.copy,
-    })
-  } catch (err) {
-    console.warn("rfq outcome not told:", (err as { code?: string })?.code || err)
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Re-award after the supplier declined the order (Supplier 1.0 DEC, ORD-03)
 // ---------------------------------------------------------------------------
 
 export { reopenAwardRefusal, type ReopenAwardRefusal } from "./reopen-award"
-const REOPEN_CODES = new Set<string>(["no_permission", "not_your_rfq", "not_declined", "rfq_not_awarded", "award_split_live"])
+const REOPEN_CODES = new Set<string>(["no_permission", "not_your_rfq", "not_declined", "rfq_not_awarded"])
 
 /**
- * «أعد الترسية» — the supplier declined the order (`po.decline` cancels it and stamps `supplierDecline`); the RFQ
+ * «أعد الترسية» — the supplier declined the order (`po.decline` stamps `supplierDecline` and leaves it `sent`); the RFQ
  * still reads `Awarded`, so nothing could be awarded again. The server reopens it in one transaction (`award.reopen`,
  * supplier-free/server-acts.ts): the RFQ goes back to `New` (logged), the declined quote closes as «اعتذر عن الأمر»
  * with `declinedOrder`, and every quote told «awarded to another» waits for a decision again. It runs on the server

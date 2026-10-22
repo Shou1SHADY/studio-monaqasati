@@ -31,12 +31,13 @@ describe("the visitor link (LNK-01, LNK-02)", () => {
     expect(fieldFromClaims(rfqs, { specializations: ["حديد"], coverageCities: ["جدة"] })).toBeNull()
   })
 
-  it("the guest offer route asks only prices, a company name and a Saudi mobile, and finds a duplicate by mobile", () => {
+  it("the guest offer route asks only the four fields, a price and a Saudi mobile, and finds his quote by mobile — never by e-mail", () => {
     const route = fs.readFileSync(path.join(process.cwd(), "src/app/api/rfq-share/[token]/offer/route.ts"), "utf8")
+    const server = fs.readFileSync(path.join(process.cwd(), "src/lib/procurement/visitor-offer-server.ts"), "utf8")
     expect(route).toMatch(/contactName: z\.string\(\)\.trim\(\)\.max\(200\)\.optional\(\)/)
     expect(route).toMatch(/email: z\.string\(\)\.trim\(\)\.toLowerCase\(\)\.email\(\)\.max\(254\)\.optional\(\)/)
-    expect(route).toContain("saudiMobileE164(v) != null")
-    expect(route).toContain('.where("guestContact.phone", "==", phoneE164)')
-    expect(route).not.toContain('.where("guestContact.email"')
+    expect(route).toContain("phoneOf(v) != null")
+    expect(server).toContain('.where("guestContact.phone", "==", ')
+    expect(server).not.toContain('.where("guestContact.email"')
   })
 })

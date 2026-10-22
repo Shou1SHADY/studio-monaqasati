@@ -18,7 +18,6 @@ export function RfqPublishedPanel({
   title,
   openHref,
   onNew,
-  direct,
 }: {
   number: string
   reached: number | null
@@ -27,7 +26,6 @@ export function RfqPublishedPanel({
   title: string
   openHref: string
   onNew: () => void
-  direct?: boolean
 }) {
   const t = useTranslations("Portal.ProcEditor")
   const [copied, setCopied] = useState(false)
@@ -36,8 +34,8 @@ export function RfqPublishedPanel({
     <section className="mx-auto max-w-xl space-y-5 rounded-2xl border bg-card p-6 text-center" aria-live="polite">
       <CheckCircle2 size={40} className="mx-auto text-success" aria-hidden="true" />
       <div>
-        <h2 className="text-xl font-black">{direct ? t("done_direct", { number }) : t("done_title", { number })}</h2>
-        {!direct && <p className="mt-1 text-sm text-muted-foreground">{closesOn ? t("done_sub", { count: reached ?? 0, date: closesOn }) : t("done_sub_nodate", { count: reached ?? 0 })}</p>}
+        <h2 className="text-xl font-black">{t("done_title", { number })}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{closesOn ? t("done_sub", { count: reached ?? 0, date: closesOn }) : t("done_sub_nodate", { count: reached ?? 0 })}</p>
       </div>
       {guestUrl && (
         <div className="space-y-2 rounded-xl border bg-muted/40 p-4 text-start">

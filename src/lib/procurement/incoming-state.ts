@@ -25,13 +25,28 @@ export type FailReason = (typeof FAIL_REASONS)[number]
 /** «سبب آخر» is written by the user and needs this many characters. */
 export const FAIL_OTHER_MIN = 4
 
+/** How a «قبل الشراء» question ended without an answer: its window lapsed (the line is bought in full) or the connector closed (the workshop's unanswered question returns to the buyer). */
+export type AutoResolve = "timeout" | "closed"
+
 export interface StockReply {
-  st: "wait" | "issue" | "part" | "none"
+  /** wait · issue (all) · part · tied (committed to another purpose) · none (no stock). */
+  st: "wait" | "issue" | "part" | "tied" | "none"
   /** What the stores give (issue / part). */
   give?: number
   at: string
   by?: string | null
   why?: string | null
+  /** The last day Inventory may reply: the day asked + the window, never beyond the last day to order and never before the day asked. Absent = the window from `at`. */
+  until?: string | null
+  /** The warehouse the stores give from. */
+  wh?: { id: string; name: string } | null
+  /** The day it was answered. */
+  on?: string | null
+  /** Version of the reply for the `inv:CHK` key. */
+  rv?: number
+  /** Asked and answered through Procurement's own line act (a source request that keeps its own reply is not marked). */
+  src?: "proc"
+  auto?: AutoResolve
 }
 
 export interface WorkshopReply {
@@ -40,6 +55,15 @@ export interface WorkshopReply {
   make?: number
   wo?: string | null
   at: string
+  by?: string | null
+  why?: string | null
+  note?: string | null
+  /** The reference purchase price sent with the question: the last we paid for it. */
+  ref?: { price: number; po: string | null; day: string | null } | null
+  on?: string | null
+  rv?: number
+  src?: "proc"
+  auto?: AutoResolve
 }
 
 export interface LineFail {
@@ -169,15 +193,20 @@ export interface ReplyClock {
   workshopDays: number
 }
 
-const lapsed = (askedAt: string | null | undefined, days: number, now: Date): boolean => {
-  const asked = dayOf(askedAt)
-  return !!asked && todayOf(now) > addDays(asked, Math.max(0, days))
+const lapsed = (askedAt: string | null | undefined, days: number, now: Date, until?: string | null): boolean => {
+  const last = dayOf(until) || (dayOf(askedAt) ? addDays(dayOf(askedAt), Math.max(0, days)) : "")
+  return !!last && todayOf(now) > last
 }
+
+/** The last day the stores may reply to a question asked on `askedAt`. */
+export const stockUntil = (s: Pick<StockReply, "at" | "until">, days: number): string => dayOf(s.until) || addDays(dayOf(s.at), Math.max(0, days))
+/** The last day the workshop may reply. */
+export const workshopUntil = (m: Pick<WorkshopReply, "at">, days: number): string => addDays(dayOf(m.at), Math.max(0, days))
 
 /** Waiting for Inventory's or the workshop's answer inside its window: such a line is NOT published until they answer or the window
  * lapses — after that it fails open and is bought in full (INC-07/08). */
 export function lineHeld(l: IncomingLine, clock: ReplyClock): "stock" | "workshop" | null {
-  if (l.stk?.st === "wait" && !lapsed(l.stk.at, clock.stockDays, clock.now)) return "stock"
+  if (l.stk?.st === "wait" && !lapsed(l.stk.at, clock.stockDays, clock.now, l.stk.until)) return "stock"
   if (l.mk?.st === "ask" && !lapsed(l.mk.at, clock.workshopDays, clock.now)) return "workshop"
   return null
 }
@@ -447,7 +476,26 @@ export function settle(doc: IncomingDoc, world: { rfqs: readonly LinkRfq[]; orde
 // Acts on the lines (pure: each returns the new lines or a refusal)
 // ---------------------------------------------------------------------------
 
-export type ActRefusal = "no_lines" | "already_in_hand" | "not_buyable" | "reason" | "nothing_to_close" | "in_rfq" | "closed" | "not_yours" | "holder_missing"
+export type ActRefusal =
+  | "no_lines"
+  | "already_in_hand"
+  | "not_buyable"
+  | "reason"
+  | "nothing_to_close"
+  | "in_rfq"
+  | "closed"
+  | "not_yours"
+  | "holder_missing"
+  | "no_line"
+  | "not_asked"
+  | "already_asked"
+  | "window_lapsed"
+  | "bad_qty"
+  | "no_warehouse"
+  | "no_reason"
+  | "no_work_order"
+  | "not_makeable"
+  | "connector_off"
 
 export interface FailInput {
   code: FailReason

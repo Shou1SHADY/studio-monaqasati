@@ -13,6 +13,7 @@ import { currentVersionOf, nextVersions, type StoredVersion } from "@/lib/procur
 import { rfqKeyPart, sendProcEvent } from "@/lib/procurement/proc-event-server"
 import { rfqLogEntry, type RfqLogEntry } from "@/lib/procurement/rfq-detail"
 import { noticeAudience } from "@/lib/procurement/policy-enforce"
+import { NoticeRefusal, createDeliveryNotice } from "@/lib/procurement/notice-server"
 import {
   isGuestActionAllowed,
   isGuestOfferAction,
@@ -65,14 +66,14 @@ const sampleSentSchema = z.object({
   note: z.string().trim().max(1000).optional().or(z.literal("")),
 })
 
+// G-08: a delivery notice is a day and a note — the driver, the plate and the quantities are the receiver's. The order link
+// (`/po/<token>`) is where an awarded supplier reports; this stays for an old award that has none, with the same two fields.
 const deliveryNoticeSchema = z.object({
-  deliveryPersonName: z.string().trim().min(2).max(200),
   deliveryDate: z
     .string()
     .trim()
     .regex(/^\d{4}-\d{2}-\d{2}$/),
-  handoverRecipientName: z.string().trim().max(200).optional().or(z.literal("")),
-  notes: z.string().trim().max(1000).optional().or(z.literal("")),
+  notes: z.string().trim().max(500).optional().or(z.literal("")),
 })
 
 function errorResponse(message: string, code: string, status: number) {
@@ -275,11 +276,30 @@ export async function POST(
     }
 
     // --- Delivery notice on an awarded offer ---
-    const parsed = deliveryNoticeSchema.safeParse(
-      formValues(form, ["deliveryPersonName", "deliveryDate", "handoverRecipientName", "notes"])
-    )
+    const parsed = deliveryNoticeSchema.safeParse(formValues(form, ["deliveryDate", "notes"]))
     if (!parsed.success) return errorResponse("Please review the submitted fields", "INVALID_INPUT", 400)
-    const { deliveryPersonName, deliveryDate, handoverRecipientName, notes } = parsed.data
+    const { deliveryDate, notes } = parsed.data
+    const day = riyadhDay(new Date())
+    if (deliveryDate < day) return errorResponse("The delivery day cannot be in the past", "DATE_PAST", 400)
+
+    // An award that has an order reports on the order, numbered and logged like every other notice.
+    if (typeof offer.poId === "string" && offer.poId) {
+      try {
+        await createDeliveryNotice(db, {
+          poId: offer.poId,
+          deliveryDate,
+          note: notes || null,
+          by: { source: "link", uid: `guest:${offerId}`, name: supplierName },
+          authorize: (po) => {
+            if (po.offerId !== offerId) throw new NoticeRefusal("not_yours")
+          },
+        })
+        return NextResponse.json({ success: true, data: { action } })
+      } catch (err) {
+        if (err instanceof NoticeRefusal) return errorResponse("This action is no longer available for this offer", "ACTION_NOT_ALLOWED", err.status)
+        throw err
+      }
+    }
 
     await db.collection("deliveries").add({
       rfqId: (offer.rfqId as string) || null,
@@ -293,15 +313,12 @@ export async function POST(
       supplierId: "guest",
       supplierName,
       isGuestDelivery: true,
-      deliveryPersonName,
-      handoverRecipientName: handoverRecipientName || null,
+      deliveryPersonName: null,
+      handoverRecipientName: null,
       deliveryDate: new Date(deliveryDate).toISOString(),
       notes: notes || null,
       rfqTitle,
-      items: Array.isArray(rfq?.products) ? rfq!.products : [],
-      // The award's purchase order, when one was raised over it — the receipt
-      // is counted against its lines (Procurement PRD 3.0).
-      ...(typeof offer.poId === "string" && offer.poId ? { poId: offer.poId, poNumber: (offer.poNumber as string) || null } : {}),
+      items: [],
       status: "pending_confirmation",
       createdAt: FieldValue.serverTimestamp(),
     })

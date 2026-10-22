@@ -4,7 +4,7 @@ import {
   deadlineEnd,
   guestInviteOf,
   guestInvitesNewestFirst,
-  guestOtpRequired,
+  guestCodeAvailable,
   guestOtpSubject,
   guestOtpSubjectRange,
   guestPaperPath,
@@ -57,10 +57,10 @@ describe("guest page — one-time code", () => {
     expect(other >= from && other <= to).toBe(false)
   })
 
-  it("asks for a code only where one can be delivered — or on UAT, where it is shown", () => {
-    expect(guestOtpRequired(true, false)).toBe(true)
-    expect(guestOtpRequired(false, true)).toBe(true)
-    expect(guestOtpRequired(false, false)).toBe(false)
+  it("a code is given where one can be delivered — or in a test environment, where it is shown; nowhere else (R-05)", () => {
+    expect(guestCodeAvailable(true, false)).toBe(true)
+    expect(guestCodeAvailable(false, true)).toBe(true)
+    expect(guestCodeAvailable(false, false)).toBe(false)
   })
 })
 
@@ -107,12 +107,13 @@ describe("guest page — answered queries", () => {
 
 describe("share link — valid until the deadline", () => {
   const now = new Date("2026-09-29T10:00:00Z")
-  it("a deadline-bound link is open until the deadline's end, closed after, gone once the RFQ is decided", () => {
+  it("a deadline-bound link is open until the deadline's end, closed after — and once the RFQ is decided, so a visitor still reads his result", () => {
     const link = { expiresWith: "deadline" as const, expiresAt: "2026-09-30T23:59:59.999Z" }
     expect(shareLinkState(link, { status: "New", deadline: "2026-09-29" }, now)).toBe("open")
     expect(shareLinkState(link, { status: "New", deadline: "2026-09-28" }, now)).toBe("closed")
     expect(shareLinkState(link, { status: "New", deadline: "2026-10-05" }, now)).toBe("open")
-    expect(shareLinkState(link, { status: "Awarded", deadline: "2026-10-05" }, now)).toBe("gone")
+    expect(shareLinkState(link, { status: "Awarded", deadline: "2026-10-05" }, now)).toBe("closed")
+    expect(shareLinkState(link, { status: "Cancelled", deadline: "2026-10-05" }, now)).toBe("closed")
     expect(shareLinkState({ ...link, revoked: true }, { status: "New", deadline: "2026-10-05" }, now)).toBe("gone")
   })
 

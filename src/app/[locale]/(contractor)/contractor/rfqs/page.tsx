@@ -11,7 +11,6 @@ import { RfqCard } from "@/components/procurement/RfqCard"
 import { RfqTable } from "@/components/procurement/RfqTable"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
-import { offersSealed } from "@/lib/procurement/award"
 import { DEADLINE_FILTERS, GENERAL_STOCK, RFQ_SEGMENTS, WORKSHOP, bulkDeleteSplit, estimateAtLastPrice, inRfqSegment, lineProjectNames, offerersByRfq, optionCount, passesFilters, isBuyer, rfqCategories, rfqInScope, rfqNeedSources, rfqPage, rfqProjectKeys, segmentCounts, sortRfqs, type DeadlineFilter, type NeedLinkedRfq, type RfqFilterKey, type RfqFilters, type RfqSegment } from "@/lib/procurement/rfq-view"
 import { actsOnRfq, ownerReadsRfqs, runsRfqs } from "@/lib/procurement/rfq-access"
 import { materialInScope } from "@/lib/procurement/need-desk"
@@ -39,7 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Search, Loader2, Send, X, Trash2, LayoutGrid, List } from "lucide-react"
-import { ShareRfqLinkDialog } from "@/components/contractor/ShareRfqLinkDialog"
+import { LinkComposer } from "@/components/procurement/rfq/LinkComposer"
 import { MfgPurchaseRequestsPanel } from "@/components/contractor/MfgPurchaseRequestsPanel"
 import { RfqOffersSheet, type SheetRfq } from "@/components/contractor/RfqOffersSheet"
 import { Link } from "@/i18n/routing"
@@ -266,7 +265,7 @@ export default function ContractorRfqsPage() {
   const printOne = async (rfq: RfqRow) => {
     const p = (profile || {}) as { companyName?: string; name?: string; taxNumber?: string; crNumber?: string }
     const number = rfqDisplayNumber(rfq, locale)
-    const model = rfqPrintModel(rfq as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procWorld.orgName || p.name || "", vat: printedNumber(p.taxNumber, print.taxNumber), cr: printedNumber(p.crNumber, print.crNumber) }, number, displayCity(rfq.city || "", locale), procWorld.policies)
+    const model = rfqPrintModel(rfq as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procWorld.orgName || p.name || "", vat: printedNumber(p.taxNumber, print.taxNumber), cr: printedNumber(p.crNumber, print.crNumber) }, number, displayCity(rfq.city || "", locale))
     const link = actsOn(rfq) ? guestLinkUrl(user, rfq) : Promise.resolve(null)
     if (!(await printRfqWithLink(model, locale, (k, params) => tp(`rfqpo.print.${k}`, params), link))) {
       toast({ title: tp("rfqpo.popup_blocked"), variant: "destructive" })
@@ -341,7 +340,7 @@ export default function ContractorRfqsPage() {
       <div className="space-y-5">
         <ProcurementHeader
           title={t("rfqv_title")}
-          description={t("rfqv_desc", { sealed: procWorld.policies.sealOffersUntilDeadline ? 1 : 0 })}
+          description={t("rfqv_desc")}
           action={
             canCreate ? (
               <Button asChild className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90">
@@ -523,7 +522,6 @@ export default function ContractorRfqsPage() {
                   key={rfq.id}
                   rfq={rfq}
                   projectLabels={projectLabels(rfq)}
-                  sealed={offersSealed(rfq, procWorld.policies, now)}
                   now={now}
                   offersHref={offersHref}
                   editHref={editHref}
@@ -554,7 +552,6 @@ export default function ContractorRfqsPage() {
             rows={shownRfqs.map((rfq: any) => ({
               rfq,
               projectLabel: projectLabel(rfq),
-              sealed: offersSealed(rfq, procWorld.policies, now),
               estimate: procWorld.actor.seesPrices ? estimateAtLastPrice(rfq, priceHistory) : null,
               directSupplier: directSupplierOf(rfq),
             }))}
@@ -578,14 +575,14 @@ export default function ContractorRfqsPage() {
         )}
       </div>
 
-      <ShareRfqLinkDialog
+      <LinkComposer
         rfq={shareTarget}
         isOpen={!!shareTarget}
         onClose={() => setShareTarget(null)}
         onPrint={shareTarget ? () => void printOne(shareTarget) : null}
       />
 
-      <RfqExtendDialog target={extendTarget} actor={runner} options={supplierOptions} orgId={procWorld.orgId} onOpenChange={(o) => !o && setExtendTarget(null)} />
+      <RfqExtendDialog target={extendTarget} options={supplierOptions} orgId={procWorld.orgId} onOpenChange={(o) => !o && setExtendTarget(null)} />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>

@@ -3,27 +3,26 @@
 // Offers at a glance (customer review, 27 Sep 2026): clicking an RFQ in the
 // list opens every offer received with its prices side by side — one row per
 // material, one column per supplier, each offer's total at the bottom, the
-// lowest live figure marked — without opening each quote. A sealed round shows
-// who quoted and how many, never an amount; someone who does not see prices
+// lowest live figure marked — without opening each quote. There is no seal
+// (Procurement 2.0): a price shows on arrival; someone who does not see prices
 // (an expediter) sees the suppliers and their status only. The full offers page
 // is one click away for decisions.
 
 import { useMemo } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { collection, doc, query, where } from "firebase/firestore"
+import { collection, query, where } from "firebase/firestore"
 import { ExternalLink, FileText, Loader2, Lock, TrendingDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Money } from "@/components/procurement/PoBits"
-import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useProcActor } from "@/hooks/useProcActor"
 import { Link } from "@/i18n/routing"
-import { offersSealed } from "@/lib/procurement/award"
 import { offerMatrix, type MatrixOffer } from "@/lib/procurement/offer-matrix"
 import { offerPrice } from "@/lib/procurement/po"
-import { resolvePolicies } from "@/lib/procurement/policies"
-import { PROCUREMENT_SETTINGS, type ProcurementPolicies } from "@/lib/procurement/types"
+import { useOfferDecisions } from "@/hooks/useOfferDecisions"
+import { isExcluded } from "@/lib/procurement/offer-decisions"
 import { cn } from "@/lib/utils"
 
 const REJECTED = "مرفوض"
@@ -58,19 +57,16 @@ export function RfqOffersSheet({ rfq, offersHref, open, onOpenChange }: { rfq: S
 
   const offersQuery = useMemoFirebase(() => (firestore && rfq?.id && orgId && open ? query(collection(firestore, "offers"), where("rfqId", "==", rfq.id), where("contractorOrgId", "==", orgId)) : null), [firestore, rfq?.id, orgId, open])
   const { data, isLoading } = useCollection(offersQuery)
-  const policiesRef = useMemoFirebase(() => (firestore && orgId && open ? doc(firestore, PROCUREMENT_SETTINGS, orgId) : null), [firestore, orgId, open])
-  const { data: policiesDoc } = useDoc(policiesRef)
-  const policies = useMemo<ProcurementPolicies>(() => resolvePolicies(policiesDoc as Partial<ProcurementPolicies> | null), [policiesDoc])
+  const { decisions } = useOfferDecisions(orgId, open ? rfq?.id : null)
 
   const offers = useMemo(
     () =>
       ((data ?? []) as unknown as SheetOffer[])
-        .slice()
-        // Live offers first, cheapest first; rejected ones last.
+        // The buyer's exclusions live in the decisions record; the matrix reads the old literal for "out of the running".
+        .map((o) => (isExcluded(o, decisions[o.id]) ? { ...o, status: REJECTED } : o))
         .sort((a, b) => Number(a.status === REJECTED) - Number(b.status === REJECTED) || (offerPrice(a) ?? Infinity) - (offerPrice(b) ?? Infinity)),
-    [data]
+    [data, decisions]
   )
-  const sealed = offersSealed(rfq, policies, new Date())
   const seesPrices = Boolean(actor?.seesPrices)
   const matrix = useMemo(() => offerMatrix(rfq, offers), [rfq, offers])
   const nameOf = (o: SheetOffer) => o.companyName || o.supplierName || t("offers_registered_supplier")
@@ -105,11 +101,11 @@ export function RfqOffersSheet({ rfq, offersHref, open, onOpenChange }: { rfq: S
             </div>
           ) : offers.length === 0 ? (
             <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">{t("offers_no_data")}</p>
-          ) : sealed || !seesPrices ? (
+          ) : !seesPrices ? (
             <div className="space-y-3">
               <div className="flex items-start gap-2 rounded-xl border bg-muted/40 p-3 text-sm">
                 <Lock size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                <p>{sealed ? t("rfq_glance_sealed", { date: rfq?.deadline ? new Date(rfq.deadline).toLocaleDateString(locale) : "—" }) : t("rfq_glance_no_prices")}</p>
+                <p>{t("rfq_glance_no_prices")}</p>
               </div>
               <ul className="divide-y rounded-xl border">
                 {offers.map((o) => (
@@ -214,7 +210,7 @@ export function RfqOffersSheet({ rfq, offersHref, open, onOpenChange }: { rfq: S
               </table>
             </div>
           )}
-          {!sealed && seesPrices && offers.length > 0 && <p className="text-[11px] text-muted-foreground">{t("rfq_glance_note")}</p>}
+          {seesPrices && offers.length > 0 && <p className="text-[11px] text-muted-foreground">{t("rfq_glance_note")}</p>}
         </div>
 
         <div className="border-t px-4 py-3 sm:px-6">

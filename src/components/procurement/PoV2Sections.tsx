@@ -1,8 +1,8 @@
 "use client"
 
-// Procurement 2.0's pieces of the order drawer that are not Finance's or the supplier's: «التواصل مع المورّد» (the section's shell —
-// the channel, the order's last four events, the way to the full conversation and to a call; messaging itself is a later wave) and
-// the pay-later row «قريباً». The Section wrapper stays in the drawer; these only fill it.
+// Procurement 2.0's pieces of the order drawer that are not Finance's or the supplier's: «التواصل مع المورّد» (the live conversation —
+// the channel, the last four lines of messages and the order's own events, the box to write in, the way to the full conversation and
+// to a call) and the pay-later row «قريباً». The Section wrapper stays in the drawer; these only fill it.
 
 import { useState, type ReactNode } from "react"
 import { useTranslations } from "next-intl"
@@ -11,15 +11,23 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Link } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
+import type { PoWithChat, ThreadReceipt } from "@/lib/procurement/po-messages"
 import { useDateText } from "./PoBits"
+import { ConversationPanel } from "./chats/ConversationPanel"
 
 export interface ChatEvent {
   at: string
   text: string
 }
 
-/** The order's conversation as the drawer shows it: who he is reached by, the last four events, then the doors to more. */
-export function PoChatBody({ registered, events, phone, className }: { registered: boolean; events: ChatEvent[]; phone: string | null; className?: string }) {
+/** The order's conversation as the drawer shows it. With the order itself it is live (messages, events, the box to write in); without it,
+ * the old read-only list of the order's events. */
+export function PoChatBody({ registered, events, phone, className, po, receipts }: { registered: boolean; events: ChatEvent[]; phone: string | null; className?: string; po?: PoWithChat; receipts?: ThreadReceipt[] }) {
+  if (po) return <ConversationPanel po={po} side="buyer" orgId={po.organizationId} receipts={receipts} phone={phone} compact className={className} />
+  return <PoEventsBody registered={registered} events={events} phone={phone} className={className} />
+}
+
+function PoEventsBody({ registered, events, phone, className }: { registered: boolean; events: ChatEvent[]; phone: string | null; className?: string }) {
   const t = useTranslations("Portal.ProcOrders")
   const fmt = useDateText()
   const last = events.slice(-4)
@@ -41,7 +49,6 @@ export function PoChatBody({ registered, events, phone, className }: { registere
           ))}
         </ol>
       )}
-      <p className="rounded-lg bg-muted/60 px-3 py-2 text-[11px] text-muted-foreground">{t("chat.messaging_soon")}</p>
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild variant="outline" size="sm" className="gap-1.5">
           <Link href="/contractor/chats">

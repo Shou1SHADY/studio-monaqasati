@@ -734,12 +734,12 @@ service cloud.firestore {
 
       // Subcollection: inquiries (questions from suppliers about the RFQ)
       // Read by the asker's company and the RFQ's; a supplier reads others' answered questions (never who
-      // asked) through /api/supplier-free/questions.
+      // asked) through /api/supplier-free/questions. Written ONLY by the server (Procurement 2.0): a question by
+      // `createInquiry`, an answer or a clarification by /api/procurement/rfq/inquiry.
       match /inquiries/{inquiryId} {
         function rfqOrg() { return rfqData(rfqId).organizationId == getOrganizationId(); }
         allow read: if isSignedIn() && (resource.data.get('organizationId', '') == getOrganizationId() || rfqOrg() || isAdmin());
-        allow create: if false;
-        allow update: if isSignedIn() && rfqOrg() || isAdmin();
+        allow create, update: if false;
         allow delete: if isAdmin();
       }
     }
@@ -760,14 +760,7 @@ service cloud.firestore {
       // 18 Oct 2026): the free journey at /api/supplier-free/act, the full portal, the AI assistant and the mobile app
       // at /api/supplier/offers — both check the RFQ is open and strip the buying side's keys (supplier-offer-server.ts).
       allow create: if isAdmin()
-        // Direct award: the CONTRACTOR creates the accepted offer on behalf of
-        // the chosen supplier — only on their own RFQ, only born accepted, and
-        // only with the same permission that accepting an offer requires.
-        || (rd().get('directAward', false) == true
-            && rd().status == 'مقبول'
-            && rd().contractorOrgId == getOrganizationId()
-            && rfqData(rd().rfqId).organizationId == getOrganizationId()
-            && hasRfqPermission(rfqData(rd().rfqId), 'offers.accept'))
+        // A direct award is an open private RFQ now (Procurement 2.0): no accepted offer is born on the client.
         || (rd().get('isManualOffer', false) == true
             && rd().status == 'قيد المراجعة'
             && rd().recordedById == request.auth.uid
@@ -793,7 +786,10 @@ service cloud.firestore {
                 || (resource.data.rfqId != null
                     && (rfqData(resource.data.rfqId).organizationId == getOrganizationId()
                         || rfqData(resource.data.rfqId).contractorId == request.auth.uid)))
-            && hasOfferDecisionPermission(resource.data));
+            && hasOfferDecisionPermission(resource.data)
+            // An award is the server's (/api/procurement/rfq/award): the contractor's browser never writes its keys or sets «مقبول».
+            && !changedKeys().hasAny(['poId', 'poNumber', 'awardedLines', 'awardedTotal', 'awardReason', 'awaitingOrderApproval', 'outcome', 'breakdown', 'requestedDeliveryDate', 'versions', 'rev', 'bafo', 'reval'])
+            && !(changedKeys().hasAny(['status']) && request.resource.data.status == 'مقبول'));
       // A quote is never deleted by its supplier: withdrawing marks it (server act quote.withdraw) and the buyer keeps it.
       allow delete: if isAdmin();
     }
@@ -2705,7 +2701,8 @@ service cloud.firestore {
         && request.resource.data.get('approvedById', null) == null
         && request.resource.data.get('sentAt', null) == null
         && request.resource.data.get('rating', null) == null
-        && request.resource.data.get('basis', '') in ['rfq', 'direct', 'retroactive']
+        && request.resource.data.get('rfqId', null) == null
+        && request.resource.data.get('basis', '') in ['direct', 'retroactive']
         && (request.resource.data.get('basis', '') != 'retroactive' || request.resource.data.get('approverKind', '') == 'owner')
         && request.resource.data.get('approverKind', '') in ['manager', 'owner']
         && request.resource.data.get('docNumber', '') is string
@@ -2713,6 +2710,12 @@ service cloud.firestore {
       allow update: if isSignedIn() && poUpdateOk(poId);
       // Orders are records other documents point at — only an admin removes one.
       allow delete: if isAdmin();
+    }
+
+    // The order's conversation (Procurement 2.0): read by the buying company and by the registered supplier (a guest's
+    // supplierOrgId is "guest", nobody's org). Written ONLY by the routes (Admin SDK).
+    match /poMessages/{messageId} {
+      allow get, list: if isSignedIn() && (isAdmin() || inOrg() || isSupplierOrg());
     }
 
     // Procurement policies (§6.4) — one document per org, read by every

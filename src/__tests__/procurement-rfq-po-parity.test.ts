@@ -22,7 +22,7 @@ import {
   type RfqListLike,
 } from "@/lib/procurement/rfq-view"
 import { orderTermsOf, parseOfferTerms } from "@/lib/procurement/offer-terms"
-import { extendPatch, extendRefusal } from "@/lib/procurement/rfq-extend-writes"
+import { deadlineRefusal, extendPatch } from "@/lib/procurement/rfq-lifecycle-rules"
 import {
   advanceAmount,
   advanceNumber,
@@ -128,17 +128,15 @@ describe("an offer's terms (R-16)", () => {
 })
 
 describe("extend or add invitees (R-40)", () => {
-  const owner = { isOwner: true, canPrepare: false }
-  it("only an open RFQ asking for offers, and a date after today", () => {
-    expect(extendRefusal({ status: "New" }, owner, { deadline: "2026-10-01", addSupplierOrgIds: [] }, "2026-09-28")).toBeNull()
-    expect(extendRefusal({ status: "Awarded" }, owner, { deadline: "2026-10-01", addSupplierOrgIds: [] }, "2026-09-28")).toBe("rfq_not_open")
-    expect(extendRefusal({ status: "New", directAward: true }, owner, { deadline: "2026-10-01", addSupplierOrgIds: [] }, "2026-09-28")).toBe("rfq_not_open")
-    expect(extendRefusal({ status: "New" }, owner, { deadline: "2026-09-28", addSupplierOrgIds: [] }, "2026-09-28")).toBe("date_invalid")
-    expect(extendRefusal({ status: "New" }, { isOwner: false, canPrepare: false }, { deadline: "2026-10-01", addSupplierOrgIds: [] }, "2026-09-28")).toBe("no_permission")
+  it("a date after today and after the current deadline", () => {
+    expect(deadlineRefusal("2026-09-30", "2026-10-01", "2026-09-28")).toBeNull()
+    expect(deadlineRefusal("2026-09-30", "2026-09-30", "2026-09-28")).toBe("date_invalid")
+    expect(deadlineRefusal("2026-09-25", "2026-09-27", "2026-09-28")).toBe("date_invalid")
+    expect(deadlineRefusal("2026-09-25", "2026-09-28", "2026-09-28")).toBeNull()
   })
   it("adds each new supplier once; a private RFQ's list grows too", () => {
-    expect(extendPatch({ visibility: "private", allowedSupplierOrgIds: ["s1"], invitedSupplierOrgIds: [] }, { deadline: "2026-10-01", addSupplierOrgIds: ["s1", "s2", "s2"] })).toEqual({ deadline: "2026-10-01", allowedSupplierOrgIds: ["s1", "s2"], invitedSupplierOrgIds: ["s2"], added: 1 })
-    expect(extendPatch({ visibility: "public" }, { deadline: "2026-10-01", addSupplierOrgIds: ["s3"] })).toEqual({ deadline: "2026-10-01", invitedSupplierOrgIds: ["s3"], added: 1 })
+    expect(extendPatch({ visibility: "private", allowedSupplierOrgIds: ["s1"], invitedSupplierOrgIds: [] }, ["s1", "s2", "s2"])).toEqual({ fresh: ["s2"], allowedSupplierOrgIds: ["s1", "s2"], invitedSupplierOrgIds: ["s2"] })
+    expect(extendPatch({ visibility: "public" }, ["s3"])).toEqual({ fresh: ["s3"], invitedSupplierOrgIds: ["s3"] })
   })
 })
 

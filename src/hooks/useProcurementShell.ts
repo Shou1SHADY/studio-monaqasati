@@ -6,7 +6,7 @@
 // `useProcTodayWorld` is the one place the Today world is assembled, so the
 // header's counts and the Today screen can never read different worlds.
 
-import { requestCards } from "@/lib/procurement/incoming-requests"
+import { incomingCardCounts, requestCards } from "@/lib/procurement/incoming-requests"
 import { useMemo, useState } from "react"
 import { useModules } from "@/hooks/useCompanyModules"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -82,9 +82,9 @@ export function useProcurementShell(): ProcurementShell {
   const { loading, orders, deliveries, rfqs, policies } = loaded
   const tasks = useMemo(() => todayTasks(world, actor, now), [world, actor, now])
   const kpis = useMemo(() => (loading ? null : todayKpis(world, actor, now)), [loading, world, actor, now])
-  // The rail counts REQUESTS that are new (PUR-01/08: «2 جديدة»), not their lines — a request prepared into a draft is not new.
+  // The rail counts REQUESTS that are new (PUR-01/08: «2 جديدة»), not their lines — a request prepared into a draft is not new; the remainder of a partly handled one is new again.
   const incomingRequests = useMemo(
-    () => requestCards(needs.rows.filter((r) => inBuyerScope(r, needs.viewerCategories)), world.rfqs as Array<{ id: string; status?: string | null; needSources?: unknown; purchaseSource?: unknown }>).filter((c) => c.state === "new").length,
+    () => incomingCardCounts(requestCards(needs.rows.filter((r) => inBuyerScope(r, needs.viewerCategories)), world.rfqs as Array<{ id: string; status?: string | null; needSources?: unknown; purchaseSource?: unknown }>)).new,
     [needs.rows, needs.viewerCategories, world.rfqs]
   )
   const counts = useMemo(() => {

@@ -37,18 +37,17 @@ export function daysToDeadline(rfq: Pick<RfqLike, "deadline">, now: Date): numbe
 }
 
 /**
- * The prototype's RFST: a direct award reads «إسناد مباشر»; an open round is
- * «مفتوحة للتقديم» while its prices are sealed (or nothing came in yet) and
- * «جاهز للمقارنة» once offers are visible — a round without the seal, or one a
- * manager closed early. `sealed` undefined keeps the deadline-only reading.
+ * The prototype's RFST: a round is «مفتوح» until its deadline passes or it is awarded (offers and their prices show the moment
+ * they arrive, so the stage never turns «يُقارن» before the deadline), «يُقارن» once the deadline has passed with offers and no
+ * award, and closed empty when nothing came in.
  */
-export function rfqStage(rfq: RfqLike, now: Date, sealed?: boolean): RfqStage {
+export function rfqStage(rfq: RfqLike, now: Date): RfqStage {
   if (rfq.status === "Draft") return "draft"
   if (rfq.status === "Awarded") return rfq.directAward ? "direct" : "awarded"
   if (rfq.status === "Cancelled") return "cancelled"
   const offers = rfq.offersCount ?? 0
   const days = daysToDeadline(rfq, now)
-  if (days === null || days >= 0) return sealed === false && offers > 0 ? "compare" : "open"
+  if (days === null || days >= 0) return "open"
   return offers > 0 ? "compare" : "closed_empty"
 }
 

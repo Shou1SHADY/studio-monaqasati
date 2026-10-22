@@ -32,7 +32,8 @@ import type { Firestore } from "firebase/firestore"
 import { fakeFirestore, readDoc, resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import { installDomShims, missingKeys, pushed, setPathname, setSignedIn } from "@/test-utils/render-world"
 import { DEFAULT_POLICIES, type ProcActor, type PurchaseOrder } from "@/lib/procurement/types"
-import { approvePurchaseOrder, createPurchaseOrderFromAward, recordSupplierAcceptance, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
+import { approvePurchaseOrder, recordSupplierAcceptance, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
+import { createPurchaseOrderFromAward } from "@/test-utils/legacy-award-writes"
 import { pmCeiling, type PmContext } from "@/lib/pm/access"
 import { approveMaterialRequest, createMaterialRequest } from "@/lib/pm/supply-writes"
 import { todayDay } from "@/lib/pm/format"
@@ -305,15 +306,15 @@ const SPECS: Record<string, ScreenSpec> = {
     only: OMB,
   },
   rfqs: { titles: ["طلبات العروض", "حديد وإسمنت — برج الواحة", "حديد الأسقف", "إسمنت المرحلة الثانية"], acts: { "مشاركة كرابط للزوار": M, "تعديل الموعد أو المدعوين": M }, only: OMB },
-  rfqList: { titles: ["العروض المقدمة", "قائمة العروض", "مقارنة العروض", "الاستفسارات", "تفاصيل الطلب", "مصنع الحديد الوطني", "مؤسسة الإسمنت"], acts: { "طلب عينة": MB, استبعاد: MB, "ترسية وإرسال للمالية": B } },
+  // Procurement 2.0: the path, four tabs by their prototype names, a compact row per offer; the acts live in the offer panel.
+  rfqList: { titles: ["الطلب — الأساس", "العروض", "المقارنة", "الاستفسارات", "التفاصيل", "مصنع الحديد الوطني", "مؤسسة الإسمنت"], acts: { "اطلب توضيحاً": MB } },
   rfqCompare: {
-    titles: ["المقارنة — اضغط خلية لترسية بندها", "البند", "الإجمالي لو أُرسي كاملاً", "حديد تسليح 12 مم"],
-    acts: { "اطلب جولة تخفيض من كل العروض": MB, "اختر الأقل لكل بند": B, "أرسِ وأعِدّ أوامر الشراء": B },
+    titles: ["المقارنة", "البند", "الإجمالي شامل الضريبة", "حديد تسليح 12 مم"],
+    acts: { "اختر الأقل لكل بند": B, "راجع الترسية": B },
   },
   rfqInquiries: { titles: ["الاستفسارات"] },
-  // Prices are sealed until the deadline by default: r1 closed with offers whose prices are now open, so nobody extends it.
-  rfqDetails: { titles: ["تفاصيل الطلب", "المنتجات المطلوبة"], acts: { "ألغِ الطلب": MB, "سجّل عرضاً وصل خارج المنصة": MB, "تعديل الموعد أو المدعوين": [] } },
-  rfqOther: { titles: ["رابط الزوار — لموردين خارج المنصة", "العروض المقدمة"], acts: { "مشاركة كرابط للزوار": M } },
+  rfqDetails: { titles: ["تفاصيل الطلب", "المنتجات المطلوبة"], acts: { "ألغِ الطلب": MB, "سجّل عرضاً وصل خارج المنصة": MB } },
+  rfqOther: { titles: ["الطلب — الأساس", "لا عروض بعد"], acts: { "رابط الزوار": M } },
   orders: {
     titles: ["أوامر الشراء", "يحتاج تصرّفنا", "ننتظر غيرنا", "متأخرة", "مكتملة", "الكل", "الأمر", "المورد", "الموقع", "القيمة", "الخطوة التالية", "من ننتظر", "مؤسسة الإسمنت"],
     acts: { "أمر مباشر لخدمة أو مقطوعية": B },
@@ -420,7 +421,7 @@ describe("owner of a company with a procurement team reads, the team acts", () =
     expect(buttons().some((b) => b.startsWith("اطبع أمر الشراء"))).toBe(false)
     view.unmount()
     view = await openAs("expediter", "rfqCompare")
-    const cells = Array.from(document.querySelectorAll("button")).filter((b) => (b.textContent ?? "").trim() === "——")
+    const cells = Array.from(document.querySelectorAll("button")).filter((b) => (b.textContent ?? "").trim() === "—")
     expect(cells.length).toBeGreaterThan(0)
     expect(cells.every((b) => b.disabled)).toBe(true)
     view.unmount()

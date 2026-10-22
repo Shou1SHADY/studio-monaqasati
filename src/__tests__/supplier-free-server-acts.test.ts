@@ -53,10 +53,11 @@ describe("po.accept (WF-07, ORD-02) — on the server, for the free account and 
 })
 
 describe("po.decline", () => {
-  it("cancels a SENT order with his reason, logs it, says why in the conversation and tells the contractor", async () => {
+  it("declines a SENT order with his reason — it stays sent for the buyer to cancel and re-award — logs it, says why in the conversation and tells the contractor", async () => {
     const db = withDb({ "purchaseOrders/po1": po(), "offers/o1": { contractorId: "c-user", rfqTitle: "Blocks", organizationId: "sup" } })
     await run(db, { action: "po.decline", poId: "po1", reason: "stock", reasonText: "Not in stock", note: "sorry", message: "Not in stock — sorry" })
-    expect(db.get("purchaseOrders/po1")).toMatchObject({ status: "cancelled", cancelledReason: "Not in stock", supplierDecline: { reason: "stock", note: "sorry", byId: "su" } })
+    expect(db.get("purchaseOrders/po1")).toMatchObject({ status: "sent", supplierDecline: { reason: "stock", note: "sorry", byId: "su" }, ver: 2 })
+    expect((db.get("purchaseOrders/po1") as { versions: Array<{ kind: string }> }).versions.at(-1)).toMatchObject({ kind: "decline" })
     expect(logOf(db).map((l) => l.action)).toEqual(["supplier_declined"])
     expect(db.list("chats/o1/messages")).toEqual([expect.objectContaining({ senderId: "su", text: "Not in stock — sorry" })])
     expect(notifyNamed).toHaveBeenCalledWith(db, expect.anything(), expect.objectContaining({ kind: "po_supplier_declined", organizationId: "buyer" }), ["p1", "a1", "s1"], undefined)

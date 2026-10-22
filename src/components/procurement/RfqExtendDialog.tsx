@@ -19,15 +19,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { StatusPill } from "@/components/module-ui/StatusPill"
-import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { useSupplierDirectory } from "@/hooks/useSupplierDirectory"
 import { useMaterialTree } from "@/hooks/useMaterialTree"
 import { categoryTree, treeSupplier } from "@/lib/materials/category-tree"
-import { extendRfq } from "@/lib/procurement/rfq-extend-writes"
+import { lifecycleCall, RfqRouteError } from "@/lib/procurement/rfq-lifecycle-client"
 import { extendPool, sourcingBlockOf } from "@/lib/procurement/rfq-extras"
-import { ProcWriteError } from "@/lib/procurement/writes"
-import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
 import { cn } from "@/lib/utils"
 
 export interface ExtendTarget {
@@ -45,13 +42,11 @@ type Option = { orgId: string; name: string; isFavorite?: boolean }
 
 export function RfqExtendDialog({
   target,
-  actor,
   options,
   orgId,
   onOpenChange,
 }: {
   target: ExtendTarget | null
-  actor: RfqWriteActor
   options: Option[]
   /** Our org — for our records of the platform's suppliers. */
   orgId?: string | null
@@ -65,7 +60,7 @@ export function RfqExtendDialog({
           <DialogTitle>{t(target?.passed ? "rfqpo.extend.title_republish" : "rfqpo.extend.title")}</DialogTitle>
           <DialogDescription dir="auto">{target?.title}</DialogDescription>
         </DialogHeader>
-        {target && <ExtendBody target={target} actor={actor} options={options} orgId={orgId || ""} onOpenChange={onOpenChange} />}
+        {target && <ExtendBody target={target} options={options} orgId={orgId || ""} onOpenChange={onOpenChange} />}
       </DialogContent>
     </Dialog>
   )
@@ -73,16 +68,13 @@ export function RfqExtendDialog({
 
 const NO_OFFERS: never[] = []
 
-function ExtendBody({ target, actor, options, orgId, onOpenChange }: { target: ExtendTarget; actor: RfqWriteActor; options: Option[]; orgId: string; onOpenChange: (open: boolean) => void }) {
+function ExtendBody({ target, options, orgId, onOpenChange }: { target: ExtendTarget; options: Option[]; orgId: string; onOpenChange: (open: boolean) => void }) {
   const t = useTranslations("Portal.Procurement")
   const tr = useTranslations("Portal.Procurement.rfqextras")
-  const tShared = useTranslations("Portal.Shared")
-  const firestore = useFirestore()
   const { toast } = useToast()
-  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
   const today = new Date().toISOString().slice(0, 10)
   const schema = z.object({
-    deadline: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, t("rfqpo.extend.date_required")).refine((d) => d >= tomorrow, t("rfqpo.extend.date_after_today")),
+    deadline: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, t("rfqpo.extend.date_required")).refine((d) => d >= today, t("rfqpo.extend.date_after_today")),
     add: z.array(z.string()),
   })
   const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema), defaultValues: { deadline: "", add: [] } })
@@ -109,13 +101,12 @@ function ExtendBody({ target, actor, options, orgId, onOpenChange }: { target: E
       <form
         className="space-y-4"
         onSubmit={form.handleSubmit(async (v) => {
-          if (!firestore) return
           try {
-            const added = await extendRfq(firestore, actor, target.id, { deadline: v.deadline, addSupplierOrgIds: v.add.filter((id) => !blockOf(id)) }, new Date(), tShared)
-            toast({ title: t("rfqpo.extend.done", { count: added }) })
+            const res = await lifecycleCall({ action: target.passed ? "reopen" : "extend", rfqId: target.id, deadline: v.deadline, ...(target.passed ? {} : { addSupplierOrgIds: v.add.filter((id) => !blockOf(id)) }) } as never)
+            toast({ title: t("rfqpo.extend.done", { count: res.count ?? 0 }) })
             onOpenChange(false)
           } catch (err) {
-            if (err instanceof ProcWriteError) toast({ title: t(`err_${err.code}`), variant: "destructive" })
+            if (err instanceof RfqRouteError) toast({ title: t.has(`err_${err.reason}`) ? t(`err_${err.reason}`) : t("rfqpo.failed"), variant: "destructive" })
             else {
               console.error(err)
               toast({ title: t("rfqpo.failed"), variant: "destructive" })
@@ -130,7 +121,7 @@ function ExtendBody({ target, actor, options, orgId, onOpenChange }: { target: E
             <FormItem>
               <FormLabel>{t("rfqpo.extend.deadline")}</FormLabel>
               <FormControl>
-                <Input type="date" min={tomorrow} dir="ltr" {...field} />
+                <Input type="date" min={today} dir="ltr" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>

@@ -25,11 +25,12 @@ describe("G-11: the rail and the sidebar say the same thing", () => {
     })
   }
 
-  it("the sidebar's Procurement items are the rail's eight pages, in the rail's order, then the two «قريباً» entries", () => {
+  it("the sidebar's Procurement items are the rail's eight pages, in the rail's order, then the two «قريباً» entries and the requester's «طلباتي»", () => {
     expect(mainItems.slice(0, 8).map((i) => [i.titleKey, i.href])).toEqual(PROC_TABS.map((t) => [t.labelKey, t.href]))
     expect(mainItems.slice(8).map((i) => [i.titleKey, i.comingSoon])).toEqual([
       ["contractor_catalog", true],
       ["contractor_bnpl", true],
+      ["contractor_my_requests", undefined],
     ])
   })
 

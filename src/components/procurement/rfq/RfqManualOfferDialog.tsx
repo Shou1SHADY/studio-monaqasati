@@ -33,7 +33,6 @@ export function RfqManualOfferDialog({
   onOpenChange,
   rfq,
   pendingInvitees,
-  sealed,
   actor,
   onDone,
 }: {
@@ -42,7 +41,6 @@ export function RfqManualOfferDialog({
   rfq: RfqView
   /** Invited companies that have not offered yet (org ids). */
   pendingInvitees: string[]
-  sealed: boolean
   actor: RfqWriteActor
   onDone: () => void
 }) {
@@ -103,7 +101,7 @@ export function RfqManualOfferDialog({
     creditDays: credit.trim() ? Math.max(0, Math.round(toAmount(credit))) : null,
     advancePercent: advance.trim() ? Math.min(100, Math.max(0, toAmount(advance))) : null,
     proofUrl: null,
-    early: sealed,
+    early: false,
   }
   const refusal = !pick ? "supplier_missing" : !basis ? "basis_missing" : manualOfferRefusal(input)
 
@@ -259,7 +257,6 @@ export function RfqManualOfferDialog({
             {!file && <p className="text-[11px] text-muted-foreground">{t("manual.no_proof_hint")}</p>}
           </div>
 
-          {sealed && <Callout tone="warn">{t("manual.sealed_warn")}</Callout>}
           {error && <Callout tone="block">{error}</Callout>}
           {refusal && !error && <p className="text-[11px] text-destructive">{t(`manual.err_${refusal}`)}</p>}
         </div>

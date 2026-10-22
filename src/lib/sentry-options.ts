@@ -11,7 +11,7 @@ const DSN = process.env.NEXT_PUBLIC_SENTRY_DSN ?? DEFAULT_DSN
 // A guest link's token IS its access: /receive/<token>, /offer/<token>, /portal/<token>,
 // /rfq/<token> and their API routes. It must never reach Sentry in a URL,
 // a transaction name or a breadcrumb.
-const TOKEN_PATH = /\/(receive|offer|rfq|guest-offer|rfq-share|receipt-links|portal|pm-portal)\/[^/?#\s"']+/g
+const TOKEN_PATH = /\/(receive|offer|rfq|po|po-link|guest-offer|rfq-share|receipt-links|portal|pm-portal)\/[^/?#\s"']+/g
 
 export function scrubTokens<T>(value: T): T {
   return (typeof value === "string" ? value.replace(TOKEN_PATH, "/$1/[token]") : value) as T

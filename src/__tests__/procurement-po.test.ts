@@ -89,12 +89,12 @@ const actor = (over: Partial<ProcActor> = {}): ProcActor => ({ uid: "mgr", name:
 describe("policies · resolvePolicies", () => {
   it("falls back to the reference values and sanitises what it is given", () => {
     expect(resolvePolicies(null)).toEqual(expect.objectContaining(POL))
-    const r = resolvePolicies({ managerApprovalLimit: "200,000" as unknown as number, minOffers: 2.6, splitWindowDays: -3, directPurchaseCap: Number.NaN, sealOffersUntilDeadline: true })
+    const r = resolvePolicies({ managerApprovalLimit: "200,000" as unknown as number, minOffers: 2.6, splitWindowDays: -3, directPurchaseCap: Number.NaN })
     expect(r.managerApprovalLimit).toBe(200000)
     expect(r.minOffers).toBe(3)
     expect(r.splitWindowDays).toBe(30)
     expect(r.directPurchaseCap).toBe(5000)
-    expect(r.sealOffersUntilDeadline).toBe(true)
+    expect("sealOffersUntilDeadline" in r).toBe(false)
   })
 })
 

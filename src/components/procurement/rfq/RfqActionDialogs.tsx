@@ -1,11 +1,9 @@
 "use client"
 
-// The RFQ page's small decisions (R-08, R-11, R-12, R-41): close early and
-// unseal (the manager, with a reason, logged), the one reduction round to every
-// live offer, cancel the RFQ (one of three reasons; its lines return to the
-// needs), exclude an offer (one of five reasons, a note; it stays listed as
-// excluded). Each runs its write from `rfq-writes.ts` and reports a refusal in
-// the dialog.
+// The RFQ page's small decisions (R-08, R-11, R-41): the one reduction round to every
+// live offer and excluding an offer (a reason; it stays listed as excluded). Each runs
+// its write from `rfq-writes.ts` and reports a refusal in the dialog. Extending, reopening
+// and cancelling the RFQ are `RfqLifecycleDialogs`.
 
 import { useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -21,8 +19,8 @@ import { useFirestore } from "@/firebase"
 import { EXCLUSION_CODES } from "@/lib/procurement/award"
 import type { PricedProduct } from "@/lib/procurement/offer-pricing"
 import { addDays, todayOf } from "@/lib/procurement/po"
-import { RFQ_CANCEL_CODES, reductionTargets, type RfqCancelCode } from "@/lib/procurement/rfq-detail"
-import { cancelRfq, closeRfqNow, excludeOffer, requestReductionRound } from "@/lib/procurement/rfq-writes"
+import { reductionTargets } from "@/lib/procurement/rfq-detail"
+import { excludeOffer, requestReductionRound } from "@/lib/procurement/rfq-writes"
 import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import { cn } from "@/lib/utils"
@@ -95,78 +93,6 @@ function Shell({ open, onOpenChange, title, sub, children, error, busy, submitLa
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
-}
-
-export function CloseNowDialog({ open, onOpenChange, rfqId, actor, offered, invited, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; rfqId: string; actor: RfqWriteActor; offered: number; invited: number; onDone: () => void }) {
-  const t = useTranslations("Portal.Procurement.rfqd")
-  const tp = useTranslations("Portal.Procurement")
-  const firestore = useFirestore()
-  const refusalText = useRefusalText()
-  const [why, setWhy] = useState("")
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const submit = async () => {
-    if (!firestore || !why.trim()) return
-    setBusy(true)
-    setError(null)
-    try {
-      await closeRfqNow(firestore, actor, rfqId, why)
-      setWhy("")
-      onDone()
-    } catch (err) {
-      setError(refusalText(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <Shell open={open} onOpenChange={onOpenChange} title={t("close.title")} error={error} busy={busy} submitLabel={t("close.submit")} disabled={!why.trim()} onSubmit={submit}>
-      <div className="space-y-1.5">
-        <Label htmlFor="rfq-close-why" className="text-xs font-bold">
-          {t("close.why")} <span className="text-destructive">*</span>
-        </Label>
-        <Textarea id="rfq-close-why" rows={3} value={why} onChange={(e) => setWhy(e.target.value)} placeholder={t("close.placeholder")} className="resize-none text-sm" />
-      </div>
-      {/* A public round invites nobody by name — «n من 0» would read as nonsense. */}
-      <Callout tone="warn">{invited > 0 ? t("close.warn", { offered, invited }) : tp("p2c.rfq.close_warn_public", { offered })}</Callout>
-    </Shell>
-  )
-}
-
-export function CancelRfqDialog({ open, onOpenChange, rfqId, actor, onDone, orgName }: { open: boolean; onOpenChange: (o: boolean) => void; rfqId: string; actor: RfqWriteActor; onDone: () => void; orgName?: string | null }) {
-  const t = useTranslations("Portal.Procurement.rfqd")
-  // Each supplier is told the request closed with no award (OFR-07), in the sender's words for push.
-  const tShared = useTranslations("Portal.Shared")
-  const firestore = useFirestore()
-  const refusalText = useRefusalText()
-  const [code, setCode] = useState<RfqCancelCode | "">("")
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const submit = async () => {
-    if (!firestore || !code) return
-    setBusy(true)
-    setError(null)
-    try {
-      await cancelRfq(firestore, actor, rfqId, code, new Date(), { copy: tShared, orgName })
-      setCode("")
-      onDone()
-    } catch (err) {
-      setError(refusalText(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <Shell open={open} onOpenChange={onOpenChange} title={t("cancel.title")} error={error} busy={busy} submitLabel={t("cancel.submit")} disabled={!code} onSubmit={submit} destructive>
-      <div className="space-y-1.5">
-        <p className="text-xs font-bold">{t("cancel.reason")}</p>
-        <Chips value={code} onChange={setCode} label={t("cancel.reason")} options={RFQ_CANCEL_CODES.map((c) => ({ value: c, label: t(`cancel.code.${c}`) }))} />
-      </div>
-      <ul className="rounded-xl border bg-muted/30 p-3 text-xs text-muted-foreground">
-        <li>{t("cancel.effect")}</li>
-      </ul>
-    </Shell>
   )
 }
 

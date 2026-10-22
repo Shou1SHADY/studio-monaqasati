@@ -16,34 +16,8 @@ import { PROC_EVENT_COPY_AR, PROC_EVENT_KINDS, PROC_EVENT_PARAM_COPY_AR, buildPr
 import { formatProcDocNumber } from "@/lib/procurement/numbering"
 import { poStatus } from "@/lib/procurement/po"
 import { DEFAULT_POLICIES, type DeliveryLine, type ProcActor, type PurchaseOrder } from "@/lib/procurement/types"
-import {
-  ProcWriteError,
-  applyReceipt,
-  applyRejectDecision,
-  approvePurchaseOrder,
-  buildPoLines,
-  buildRating,
-  cancelPurchaseOrder,
-  cancelRemainder,
-  closePurchaseOrder,
-  createPurchaseOrderFromAward,
-  decideReject,
-  draftPurchaseOrder,
-  offerLeadTimeDays,
-  offerTotalExVat,
-  ratePurchaseOrder,
-  recordSupplierAcceptance,
-  releaseHeld,
-  remindSupplier,
-  resubmitPurchaseOrder,
-  retroactivePurchaseOrder,
-  returnPurchaseOrder,
-  sendPurchaseOrder,
-  supplierOfOffer,
-  updatePromisedDate,
-  type AwardOfferLike,
-  type RfqLike,
-} from "@/lib/procurement/writes"
+import { ProcWriteError, applyReceipt, applyRejectDecision, approvePurchaseOrder, buildPoLines, buildRating, cancelPurchaseOrder, cancelRemainder, closePurchaseOrder, decideReject, draftPurchaseOrder, offerLeadTimeDays, offerTotalExVat, ratePurchaseOrder, recordSupplierAcceptance, releaseHeld, remindSupplier, resubmitPurchaseOrder, retroactivePurchaseOrder, returnPurchaseOrder, sendPurchaseOrder, supplierOfOffer, updatePromisedDate, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
+import { createPurchaseOrderFromAward } from "@/test-utils/legacy-award-writes"
 import { resolveRecipients, type TeamSnapshot } from "@/lib/mfg-events"
 import { doc, runTransaction } from "firebase/firestore"
 

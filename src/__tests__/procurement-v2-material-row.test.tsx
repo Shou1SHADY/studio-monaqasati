@@ -13,12 +13,14 @@ jest.mock("@/i18n/routing", () => jest.requireActual("@/test-utils/render-world"
 jest.mock("next/navigation", () => jest.requireActual("@/test-utils/render-world").navigationMock)
 jest.mock("@/ai/genkit", () => jest.requireActual("@/test-utils/render-world").aiMock)
 jest.mock("@/components/layout/portal-layout", () => jest.requireActual("@/test-utils/render-world").portalLayoutMock)
+const mockPublish = jest.fn()
+jest.mock("@/lib/procurement/rfq-lifecycle-client", () => ({ ...jest.requireActual("@/lib/procurement/rfq-lifecycle-client"), publishRfqCall: (input: unknown) => mockPublish(input) }))
 
 import React from "react"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { act, fireEvent, render } from "@testing-library/react"
-import { listCollection, resetFakeDb, seed } from "@/test-utils/fake-firestore"
+import { resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import { installDomShims, missingKeys, setPathname, setSignedIn } from "@/test-utils/render-world"
 import { indexTree } from "@/lib/materials/tree"
 import { popularChips } from "@/lib/materials/popular"
@@ -196,10 +198,11 @@ describe("the warranty is a switch with a duration (CAT-05)", () => {
     await act(async () => void fireEvent.change(document.querySelector('input[type="date"]')!, { target: { value: day(0) } }))
     await click(button("التالي: المراجعة"))
     expect(text()).toContain("يُنشر طلب واحد")
+    mockPublish.mockImplementation(async (input: { deadline: string }) => ({ id: "R9", number: "RFQ-2026/009", guestUrl: null, reached: 0, closesOn: input.deadline, direct: false, dirOver: false, directEst: null, linkedRequests: 0, edited: false }))
     await click(button("انشر"))
-    const rfq = listCollection<Record<string, unknown>>("rfqs").find((r) => r.status === "New")!
-    expect(rfq.deadline).toBe(day(0))
-    const [rebar, wire] = rfq.products as Array<Record<string, unknown>>
+    const sent = mockPublish.mock.calls[0][0] as { deadline: string; doc: { products: Array<Record<string, unknown>> } }
+    expect(sent.deadline).toBe(day(0))
+    const [rebar, wire] = sent.doc.products
     expect(rebar).toMatchObject({ requiresWarranty: true, warrantyMonths: 36, unitOfMeasure: "طن" })
     expect(rebar.saleUnits).toBeUndefined()
     expect(wire).toMatchObject({ requiresWarranty: false })

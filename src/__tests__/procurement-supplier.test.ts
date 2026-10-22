@@ -16,12 +16,10 @@ import {
   supplierOfferStatus,
   buildDeliveryNotice,
   buildDeliveryNoticeNotification,
-  defaultNoticeLines,
   deliveryNoticeLink,
   inSupplierSegment,
   legacyItemsFromRfq,
   minPromiseDay,
-  noticeDeliveryLines,
   noticeErrors,
   noticeLatenessDays,
   noticeRecipients,
@@ -148,41 +146,20 @@ describe("what the supplier may do", () => {
   })
 })
 
-describe("the notice's lines — never above what may still arrive", () => {
-  it("defaults to what is left per line, dropping finished lines", () => {
-    const order = po({ lines: [line(), line({ id: "l2", name: "Sand", unit: "m3", quantity: 20, accepted: 20 }), line({ id: "l3", name: "Rebar", unit: "t", quantity: 10, accepted: 4, held: 1 })] })
-    expect(defaultNoticeLines(order)).toEqual([
-      { poLineId: "l1", quantity: 100 },
-      { poLineId: "l3", quantity: 5 },
-    ])
-  })
-
+describe("the notice — a day and a note, never a quantity (G-08)", () => {
   it("passes a valid form", () => {
-    expect(noticeErrors(po(), [{ poLineId: "l1", quantity: 60 }], "2026-09-25", NOW)).toEqual([])
+    expect(noticeErrors(po(), "2026-09-25", NOW)).toEqual([])
+    expect(noticeErrors(po(), TODAY, NOW)).toEqual([])
   })
 
-  it("refuses a line above what may still arrive — refused, not trimmed", () => {
-    const errs = noticeErrors(po({ lines: [line({ accepted: 30 })] }), [{ poLineId: "l1", quantity: 71 }], TODAY, NOW)
-    expect(errs).toEqual([{ code: "over_outstanding", poLineId: "l1", params: { line: "Cement", quantity: 71, max: 70, unit: "bag" } }])
-    expect(noticeErrors(po({ lines: [line({ accepted: 30 })] }), [{ poLineId: "l1", quantity: 70 }], TODAY, NOW)).toEqual([])
+  it("needs a date that has not passed", () => {
+    expect(noticeErrors(po(), "", NOW).map((e) => e.code)).toEqual(["date_missing"])
+    expect(noticeErrors(po(), "2026-09-21", NOW).map((e) => e.code)).toEqual(["date_past"])
   })
 
-  it("needs a date that has not passed and at least one quantity", () => {
-    expect(noticeErrors(po(), [{ poLineId: "l1", quantity: 0 }], "", NOW).map((e) => e.code)).toEqual(["date_missing", "nothing_to_ship"])
-    expect(noticeErrors(po(), [{ poLineId: "l1", quantity: 10 }], "2026-09-21", NOW).map((e) => e.code)).toEqual(["date_past"])
-    expect(noticeErrors(po(), [], TODAY, NOW).map((e) => e.code)).toEqual(["nothing_to_ship"])
-  })
-
-  it("refuses a line the order does not have, and an order that cannot be notified", () => {
-    expect(noticeErrors(po(), [{ poLineId: "l9", quantity: 1 }], TODAY, NOW).map((e) => e.code)).toEqual(["unknown_line", "nothing_to_ship"])
-    expect(noticeErrors(po({ status: "sent" }), [{ poLineId: "l1", quantity: 1 }], TODAY, NOW).map((e) => e.code)).toEqual(["not_accepted"])
-  })
-
-  it("keeps only lines with a quantity, in the order's shape", () => {
-    const order = po({ lines: [line(), line({ id: "l2", name: "Sand", unit: "m3", quantity: 20 })] })
-    expect(noticeDeliveryLines(order, [{ poLineId: "l1", quantity: 0 }, { poLineId: "l2", quantity: 7.5 }, { poLineId: "zz", quantity: 3 }])).toEqual([
-      { poLineId: "l2", name: "Sand", unit: "m3", noticeQuantity: 7.5 },
-    ])
+  it("refuses an order that cannot be notified", () => {
+    expect(noticeErrors(po({ status: "sent" }), TODAY, NOW).map((e) => e.code)).toEqual(["not_accepted"])
+    expect(noticeErrors(po({ lines: [line({ accepted: 100 })] }), TODAY, NOW).map((e) => e.code)).toEqual(["not_accepted"])
   })
 })
 
@@ -191,25 +168,16 @@ describe("the delivery document", () => {
   const built = () =>
     buildDeliveryNotice({
       po: po({ lines: [line(), line({ id: "l2", name: "Sand", unit: "m3", quantity: 20 })] }),
-      lines: [
-        { poLineId: "l1", quantity: 60 },
-        { poLineId: "l2", quantity: 0 },
-      ],
       deliveryDate: "2026-09-25",
-      deliveryWindow: "morning",
-      driverName: "  Salem ",
-      vehiclePlate: "ABC 1234",
-      driverPhone: " 0550013416 ",
-      qualityPapers: ["conf", "mill", "conf"],
-      paperNoteNumber: "DN-77",
-      notes: "crane needed",
-      fileUrl: "https://storage/x.pdf",
+      note: "  crane needed ",
+      seq: 2,
+      reportedBy: "link",
       supplier: { uid: "sup-user", orgId: "sup-org", name: "Al Bina" },
       contractorId: "rfq-creator",
       createdAt: created,
     })
 
-  it("keeps today's shape exactly — every field the confirm flow, the queue and the money flow read", () => {
+  it("keeps today's shape — every field the confirm flow, the queue and the money flow read — with the order's number and the notice's", () => {
     const d = built()
     expect(d).toMatchObject({
       rfqId: "rfq1",
@@ -220,50 +188,31 @@ describe("the delivery document", () => {
       supplierOrgId: "sup-org",
       supplierId: "sup-user",
       supplierName: "Al Bina",
-      deliveryPersonName: "Salem",
+      deliveryPersonName: null,
       handoverRecipientName: null,
       deliveryDate: "2026-09-25T00:00:00.000Z",
       notes: "crane needed",
       rfqTitle: "Cement for slab",
       status: "pending_confirmation",
       createdAt: created,
+      poId: "po1",
+      poNumber: "PO-2026/014",
+      seq: 2,
+      reportedBy: "link",
     })
-    // legacy items: populated from the lines (B1 never again), in the guest route's shape
-    expect(d.items).toEqual([{ name: "Cement", quantity: 60, unitOfMeasure: "bag" }])
+    expect(d.items).toEqual([])
   })
 
-  it("lays the order's fields over it", () => {
-    const d = built()
-    expect(d.poId).toBe("po1")
-    expect(d.poNumber).toBe("PO-2026/014")
-    expect(d.lines).toEqual([{ poLineId: "l1", name: "Cement", unit: "bag", noticeQuantity: 60 }])
-    expect(d.vehiclePlate).toBe("ABC 1234")
-    // The prototype's notice: the driver's mobile and the quality papers with the load, once each.
-    expect(d.driverPhone).toBe("0550013416")
-    expect(d.qualityPapers).toEqual(["mill", "conf"])
-    expect(d.paperNoteNumber).toBe("DN-77")
-    expect(d.deliveryWindow).toBe("morning")
-    expect(d.attachmentUrls).toEqual(["https://storage/x.pdf"])
+  it("carries no quantity, driver, plate, paper or window (G-08)", () => {
+    const keys = Object.keys(built())
+    expect(keys.filter((k) => /qty|quantit|driver|plate|paper|window|lines|attachment/i.test(k))).toEqual([])
   })
 
-  it("omits what was not given — nulls, not empty strings; no attachment key without a file", () => {
-    const d = buildDeliveryNotice({
-      po: po(),
-      lines: [{ poLineId: "l1", quantity: 10 }],
-      deliveryDate: "2026-09-25",
-      supplier: { uid: "u", orgId: "o", name: "S" },
-      createdAt: null,
-    })
-    expect(d.deliveryPersonName).toBeNull()
-    expect(d.vehiclePlate).toBeNull()
-    expect(d.driverPhone).toBeNull()
-    expect(d.qualityPapers).toEqual([])
-    expect(d.paperNoteNumber).toBeNull()
-    expect(d.deliveryWindow).toBeNull()
+  it("omits what was not given — null, not an empty string; the preparer stands in for an unknown RFQ creator", () => {
+    const d = buildDeliveryNotice({ po: po(), deliveryDate: "2026-09-25", seq: 1, supplier: { uid: "u", orgId: "o", name: "S" }, createdAt: null })
     expect(d.notes).toBeNull()
-    expect("attachmentUrls" in d).toBe(false)
-    // the preparer stands in for an unknown RFQ creator
     expect(d.contractorId).toBe("buyer-1")
+    expect(d.reportedBy).toBe("supplier")
   })
 
   it("never writes undefined into Firestore", () => {

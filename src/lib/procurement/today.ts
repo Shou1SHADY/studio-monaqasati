@@ -47,7 +47,6 @@ import { forwardUrgency } from "./receivers"
 import { priceDrift } from "./reports"
 import { acceptsHoldPrice, advanceAmount, advanceNumber, advanceState, asX, HOLD_OWNER, holdVariance, openHolds, pmCancelOpen, type HoldOwner } from "./po-extras"
 import { noticeTold } from "./policy-enforce"
-import { offersSealed } from "./award"
 import { rfqInScope } from "./rfq-view"
 import type { ProcActor, ProcurementPolicies, PurchaseOrder, ReceiptFact, SupplierFacts } from "./types"
 
@@ -665,9 +664,9 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
       const pending = offers.filter((o) => OFFER_PENDING.has(o.status || ""))
       const count = offers.length || Number(r.offersCount) || 0
       const closed = deadline != null && deadline <= 0
-      if (pending.length && (closed || !offersSealed(r, w.policies, now))) {
-        // T4a · offers wait and their prices are open — the window closed, or the round is
-        // unsealed (the prototype's `rfqReady`): compare and award. Red once the award cycle is overrun.
+      if (pending.length) {
+        // T4a · offers wait and their prices are always open (no seal, RFQ-03): compare and award any time.
+        // Red once the award cycle is overrun.
         const best = lowestOffer(pending)
         // The nearest offer validity: a price about to lapse is red whatever the cycle says.
         const valid = pending.map((o) => daysFromNow(o.validUntil, now)).filter((x): x is number => x != null)
@@ -1020,7 +1019,7 @@ export function todayKpis(w: ProcWorld, actor: TodayActor, now: Date): ProcKpis 
       const waiting = w.orders.filter((po) => awaitsAdvance(po as FinancelessPo & { advancePercent?: number | null }))
       tiles.push({ id: "awaiting_advance", labelKey: "kpi.awaiting_advance.label", value: waiting.length, unit: "count", noteKey: waiting.length ? "kpi.awaiting_advance.note_some" : "kpi.awaiting_advance.note_none", noteParams: {}, tone: waiting.length ? "warn" : "good", href: "/contractor/rfqs/orders?filter=live" })
     } else tiles.push({ id: "finance_due", labelKey: "kpi.finance_due.label", value: due.total, unit: "money", noteKey: "kpi.finance_due.note_split", noteParams: { advances: due.advances, received: due.received }, tone: "neutral", href: COMMITMENTS_HREF })
-    if (nk) tiles.push({ id: "overdue_lines", labelKey: "kpi.overdue_lines.label", value: nk.overdue, unit: "count", noteKey: nk.overdue ? "kpi.overdue_lines.note_some" : "kpi.overdue_lines.note_none", noteParams: { total: nk.need }, tone: nk.overdue ? "bad" : "good", href: `${NEEDS_HREF}?seg=act` })
+    if (nk) tiles.push({ id: "overdue_lines", labelKey: "kpi.overdue_lines.label", value: nk.overdue, unit: "count", noteKey: nk.overdue ? "kpi.overdue_lines.note_some" : "kpi.overdue_lines.note_none", noteParams: { total: nk.need }, tone: nk.overdue ? "bad" : "good", href: `${NEEDS_HREF}?seg=new` })
     else tiles.push({ id: "late", labelKey: "kpi.late.label", value: lateOrders.length, unit: "count", noteKey: lateOrders.length ? "kpi.late.note_value" : "kpi.late.note_none", noteParams: { amount: lateValue }, tone: lateOrders.length ? "bad" : "good", href: "/contractor/rfqs/orders?filter=late" })
     return { kind, tiles }
   }
@@ -1030,7 +1029,7 @@ export function todayKpis(w: ProcWorld, actor: TodayActor, now: Date): ProcKpis 
   const needs = nk ? nk.need : w.rfqs.filter((r) => r.status === "New" && (daysFromNow(r.deadline, now) ?? 1) <= 0 && w.offers.some((o) => o.rfqId === r.id && OFFER_PENDING.has(o.status || ""))).length
   const committed = round2(live.reduce((s, po) => s + poOpenValue(po), 0))
   const drift = priceDrift(w, { from: addDays(todayOf(now), -30) })
-  if (nk) tiles.push({ id: "needs", labelKey: "kpi.needs.label_requests", value: nk.need, unit: "lines", noteKey: nk.overdue ? "kpi.needs.note_overdue" : "kpi.needs.note_none", noteParams: { count: nk.overdue }, tone: nk.overdue ? "bad" : "good", href: `${NEEDS_HREF}?seg=act` })
+  if (nk) tiles.push({ id: "needs", labelKey: "kpi.needs.label_requests", value: nk.need, unit: "lines", noteKey: nk.overdue ? "kpi.needs.note_overdue" : "kpi.needs.note_none", noteParams: { count: nk.overdue }, tone: nk.overdue ? "bad" : "good", href: `${NEEDS_HREF}?seg=new` })
   else tiles.push({ id: "needs", labelKey: "kpi.needs.label_rfqs", value: needs, unit: "count", noteKey: needs ? "kpi.needs.note_rfqs" : "kpi.needs.note_none", noteParams: {}, tone: needs ? "warn" : "good", href: requests ? NEEDS_HREF : "/contractor/rfqs" })
   tiles.push({ id: "committed", labelKey: "kpi.committed.label", value: committed, unit: "money", noteKey: lateOrders.length ? "kpi.committed.note_late" : "kpi.committed.note_none", noteParams: { amount: lateValue, count: lateOrders.length }, tone: lateOrders.length ? "bad" : "good", href: "/contractor/rfqs/orders?filter=live" })
   tiles.push({ id: "drift", labelKey: "kpi.drift.label", value: drift.totals.impact, unit: "money", noteKey: drift.totals.impact > 0 ? "kpi.drift.note_up" : drift.totals.impact < 0 ? "kpi.drift.note_down" : "kpi.drift.note_none", noteParams: { percent: Math.abs(drift.totals.percent ?? 0) }, tone: drift.totals.impact > 0 ? "warn" : "good", href: "/contractor/rfqs/reports?report=drift&period=30" })

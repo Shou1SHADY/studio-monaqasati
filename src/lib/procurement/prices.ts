@@ -34,6 +34,39 @@ export function materialKey(name: string | null | undefined, unit: string | null
 }
 
 // ---------------------------------------------------------------------------
+// The specification a price belongs to (CMP-05, R-28)
+// ---------------------------------------------------------------------------
+
+export interface SpecSource {
+  name?: string | null
+  unitOfMeasure?: string | null
+  unit?: string | null
+  material?: {
+    nodeId?: string | null
+    specs?: Array<{ name?: { ar?: string | null } | null; value?: { ar?: string | null } | null }> | null
+    brand?: { ar?: string | null } | null
+  } | null
+}
+
+/**
+ * The key of a material AS SPECIFIED: the tree's node, its chosen spec values and brand, and the unit. «بلوك 20 سم» and
+ * «بلوك 15 سم» are one node and two keys — a price for one is no evidence for the other. A row typed outside the list has
+ * no node, hence no key: its history falls back to the folded name and unit.
+ */
+export function specKeyOf(p: SpecSource | null | undefined): { materialId: string | null; specKey: string | null } {
+  const m = p?.material
+  const node = (m?.nodeId || "").trim()
+  if (!m || !node) return { materialId: null, specKey: null }
+  const specs = (m.specs || [])
+    .map((s) => `${foldSearchText(s?.name?.ar)}=${foldSearchText(s?.value?.ar)}`)
+    .filter((s) => s !== "=")
+    .sort()
+    .join(";")
+  const unit = foldSearchText(p?.unitOfMeasure || p?.unit)
+  return { materialId: node, specKey: `spec:${node}|${specs}|${foldSearchText(m.brand?.ar)}|${unit}` }
+}
+
+// ---------------------------------------------------------------------------
 // The agreement
 // ---------------------------------------------------------------------------
 
@@ -176,6 +209,9 @@ export interface PriceHistoryEntry {
   id: string
   organizationId: string
   materialKey: string
+  /** The specification the price was paid for (`specKeyOf`) — absent on a row from before specifications or a material typed outside the list. */
+  specKey?: string | null
+  materialId?: string | null
   name: string
   unit: string
   supplierOrgId: string
@@ -200,6 +236,17 @@ const forMaterial = (history: PriceHistoryEntry[], name: string, unit: string): 
  * who we paid it to and when are half the answer. */
 export function lastPaid(history: PriceHistoryEntry[], name: string, unit: string): PriceHistoryEntry | null {
   const series = forMaterial(history, name, unit)
+  return series.length ? series[series.length - 1] : null
+}
+
+/**
+ * «آخر شراء» under a material on the comparison: the last price we committed to for the SAME SPECIFICATION, with the order's
+ * number — or nothing. A line with a specification key matches only rows carrying that key (a name-and-unit match would show
+ * the price of another size); a line typed outside the list falls back to its name and unit.
+ */
+export function lastPaidFor(history: PriceHistoryEntry[], line: { specKey?: string | null; name: string; unit: string }): PriceHistoryEntry | null {
+  if (!line.specKey) return lastPaid(history, line.name, line.unit)
+  const series = history.filter((h) => h.specKey === line.specKey).sort((a, b) => a.day.localeCompare(b.day) || a.id.localeCompare(b.id))
   return series.length ? series[series.length - 1] : null
 }
 
@@ -321,6 +368,7 @@ export function historyRowsForApproval(po: PurchaseOrder, at: string): HistoryRo
       id: `${po.id}__${line.id}`,
       organizationId: po.organizationId,
       materialKey: materialKey(line.name, line.unit),
+      ...(line.specKey ? { specKey: line.specKey, materialId: line.materialId ?? null } : {}),
       name: line.name,
       unit: line.unit,
       supplierOrgId: po.supplierOrgId,

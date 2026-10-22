@@ -26,6 +26,7 @@ import {
 } from "@/lib/manufacturing-requests"
 import { useMfgUi } from "./MfgUiContext"
 import { MfgEstimateCard, MfgRequestCard } from "./MfgReqCard"
+import { MfgProcurementAsks } from "./MfgProcurementAsks"
 import { MfgReqDrawer } from "./MfgReqDrawer"
 import { MfgEmpty, MfgNote, MfgSegments, type MfgSegmentItem } from "./ui/MfgUi"
 
@@ -80,6 +81,7 @@ export function MfgRequestsView({ initialSegment }: { initialSegment?: RequestSe
     <div className="space-y-4">
       <MfgSegments label={t("mfr_segments_label")} value={segment} onChange={setChosen} items={items} />
 
+      {segment === "new" && <MfgProcurementAsks />}
       {segment === "new" && <MfgNote tone="info">{t("mfr_two_doors_note", { hours: data.settings.answerWindowHours })}</MfgNote>}
       {segment === "estimates" && <MfgNote tone="info">{t("mfr_estimates_note")}</MfgNote>}
 

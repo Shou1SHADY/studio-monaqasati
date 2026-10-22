@@ -10,6 +10,7 @@ import { usePermissions } from "@/hooks/usePermissions"
 import { useModules } from "@/hooks/useCompanyModules"
 import { WarehouseRequestsSection } from "@/components/contractor/WarehouseRequestsSection"
 import { PmRequestRepliesPanel } from "@/components/inventory/PmRequestRepliesPanel"
+import { StockCheckRepliesPanel } from "@/components/inventory/StockCheckRepliesPanel"
 import { ClipboardList, ArrowRight, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -65,6 +66,7 @@ export default function ContractorWarehouseRequestsPage() {
         )}
 
         {on("project-management") && <PmRequestRepliesPanel />}
+        <StockCheckRepliesPanel hideWhenEmpty={on("project-management")} />
       </div>
     </PortalLayout>
   )

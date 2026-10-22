@@ -453,7 +453,7 @@ export function groupsFromRfq(rfq: Record<string, unknown>): EditorGroup[] {
 /** An incoming request as the editor takes it: its place from the delivery sites (a project's
  * own site), its number as the project wrote it, each line as it arrived. A line that already went
  * into an RFQ of its own is not taken again. */
-export function incomingFromNeed(need: Need, sites: DeliverySite[], lastOrderDay: string | null = null): IncomingRequest {
+export function incomingFromNeed(need: Need, sites: DeliverySite[], lastOrderDay: string | null = null, only?: ReadonlySet<number> | null): IncomingRequest {
   // A team request names its site (or a typed place); a project's request, its project's site.
   const site = need.siteId ? sites.find((s) => s.id === need.siteId) || null : need.projectId ? sites.find((s) => s.id === projectSiteId(need.projectId as string) || s.projectId === need.projectId) || null : null
   return {
@@ -470,7 +470,7 @@ export function incomingFromNeed(need: Need, sites: DeliverySite[], lastOrderDay
     linkedBefore: need.lines.filter((l) => l.link).length,
     fact: { ref: need.refLabel, requestedBy: need.requestedBy, approvedBy: need.approved?.name || "", approvedOn: need.approved?.on || "", lastOrderDay },
     lines: need.lines.flatMap((l, index) =>
-      l.link ? [] : [{ name: l.name, quantity: l.quantity, unit: l.unit, needBy: l.needBy ? l.needBy.slice(0, 10) : null, material: l.material || null, index, requestLine: l.requestLine ?? null, itemId: l.itemId ?? null }]
+      l.link || (l.lineKind && l.lineKind !== "buy") || (only && !only.has(index)) ? [] : [{ name: l.name, quantity: l.quantity, unit: l.unit, needBy: l.needBy ? l.needBy.slice(0, 10) : null, material: l.material || null, index, requestLine: l.requestLine ?? null, itemId: l.itemId ?? null }]
     ),
   }
 }

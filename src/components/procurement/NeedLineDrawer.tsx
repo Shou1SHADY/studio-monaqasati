@@ -39,10 +39,7 @@ export interface NeedLineActs {
   seesPrices: boolean
   onRfq: (row: NeedRow) => void
   onOrder: (row: NeedRow, mode: "agreement" | "direct") => void
-  onProceed: (row: NeedRow) => void
   onAskWorkshop: (row: NeedRow) => void
-  onBuyNotMake: (row: NeedRow) => void
-  onWorkshopLapsed: (row: NeedRow) => void
   onArrived?: (row: NeedRow) => void
   onSendBack?: (row: NeedRow) => void
 }
@@ -75,27 +72,12 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, org
         {label}
       </Button>
     )
-    if (row.state === "late")
-      step = (
-        <>
-          <Callout tone="warn">{t("nd_step_late", { cover: qty(Math.min(row.onHand ?? 0, row.total)), total: qty(row.total), unit: row.unit })}</Callout>
-          <div className="flex flex-wrap gap-2">{btn(t("nd_proceed"), () => acts.onProceed(row), true)}</div>
-        </>
-      )
-    else if (row.state === "mfgl")
-      step = (
-        <>
-          <Callout tone="warn">{t("nd_step_mfgl")}</Callout>
-          <div className="flex flex-wrap gap-2">{btn(t("nd_proceed"), () => acts.onWorkshopLapsed(row), true)}</div>
-        </>
-      )
-    else if (row.path === "mfg")
+    if (row.path === "mfg")
       step = (
         <>
           <Callout tone="info">{t("nd_step_mfg")}</Callout>
           <div className="flex flex-wrap gap-2">
             {btn(t("nd_ask_workshop"), () => acts.onAskWorkshop(row), true, <Factory size={14} aria-hidden="true" />)}
-            {btn(t("nd_buy_not_make"), () => acts.onBuyNotMake(row))}
           </div>
         </>
       )

@@ -96,10 +96,12 @@ export class FakeAdminDb {
   }
 
   collection(col: string): FakeCollection {
+    const read = (d: Doc, path: string): unknown => path.split(".").reduce<unknown>((o, k) => (o && typeof o === "object" ? (o as Doc)[k] : undefined), d)
     const matches = (d: Doc, [f, op, v]: [string, string, unknown]): boolean => {
-      if (op === "array-contains") return Array.isArray(d[f]) && (d[f] as unknown[]).includes(v)
-      if (op === "in") return Array.isArray(v) && v.includes(d[f])
-      return d[f] === v
+      const at = read(d, f)
+      if (op === "array-contains") return Array.isArray(at) && (at as unknown[]).includes(v)
+      if (op === "in") return Array.isArray(v) && v.includes(at)
+      return at === v
     }
     const query = (filters: [string, string, unknown][], max: number | null): FakeQuery => ({
       where: (f, op, v) => query([...filters, [f, op, v]], max),

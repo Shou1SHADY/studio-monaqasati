@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, CheckCircle2, FileSignature, Hourglass, Loader2, PackagePlus, Scale, ShoppingCart, X } from "lucide-react"
+import { AlertTriangle, CheckCircle2, FileSignature, Loader2, PackagePlus, Scale, ShoppingCart, X } from "lucide-react"
 import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,7 +33,7 @@ import { useModules } from "@/hooks/useCompanyModules"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { cn } from "@/lib/utils"
 import { matchesSearch } from "@/lib/search-text"
-import { declinePurchaseRequest, markPurchaseArrived, moveRequestToPurchase } from "@/lib/manufacturing-writes"
+import { declinePurchaseRequest, markPurchaseArrived } from "@/lib/manufacturing-writes"
 import { orderRef } from "@/lib/manufacturing-view"
 import { emitMfgEvent, mfgLinks } from "@/lib/mfg-events"
 import { inBuyerScope, selectionSummary, type NeedRow } from "@/lib/procurement/need-desk"
@@ -42,7 +42,7 @@ import { displayNeedRef, displayPoNumber } from "@/lib/procurement/format"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RfqEditor } from "@/components/procurement/rfq-editor/RfqEditor"
-import { recordNeedDecision } from "@/lib/procurement/need-decision-writes"
+import { replyClockOf, type ReplyClock } from "@/lib/procurement/incoming-state"
 import { todayOf } from "@/lib/procurement/po"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import { sarLtr } from "@/lib/riyal"
@@ -53,7 +53,10 @@ import { SignedInAs, mfgActError } from "@/components/shared/MfgHandoffBits"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { DirectOrderDialog } from "@/components/procurement/DirectOrderDialog"
 import { NeedLineDrawer } from "@/components/procurement/NeedLineDrawer"
-import { ProceedPurchaseDialog } from "@/components/procurement/ProceedPurchaseDialog"
+import { BeforeBuyingTable, BeforeChips } from "@/components/procurement/BeforeBuying"
+import { GuideLink } from "@/components/procurement/guide/GuideLink"
+import { ByMaterialView } from "@/components/procurement/ByMaterialView"
+import { UpcomingShell } from "@/components/procurement/UpcomingShell"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { TeamRequestDialog } from "@/components/procurement/TeamRequestDialog"
 import { ReqFailDialog } from "@/components/procurement/ReqFailDialog"
@@ -61,7 +64,7 @@ import { fmtDay } from "@/components/procurement/need-bits"
 import { siteLine } from "@/lib/procurement/delivery-sites"
 import { displayCity } from "@/lib/constants"
 
-type Confirm = { kind: "arrived" | "decline" | "buy" | "lapsed"; row: NeedRow }
+type Confirm = { kind: "arrived" | "decline"; row: NeedRow }
 
 const isSeg = (v: string | null): v is RequestSegment => !!v && (REQUEST_SEGMENTS as string[]).includes(v)
 
@@ -88,6 +91,8 @@ export function PurchaseRequestsInbox() {
   const { agreements, history } = useProcurementPrices(orgId || null)
   const [now] = useState(() => new Date())
   const today = todayOf(now)
+  const mfgOn = on("manufacturing")
+  const clock = useMemo(() => replyClockOf(now, policies), [now, policies])
 
   const ownerRO = procActor.isOwner && desk.ownerHasTeam
   const canStartRfq = !ownerRO && (procActor.isOwner || can("rfq.manage") || can("rfq.create") || can("offers.accept") || can("po.approve"))
@@ -98,6 +103,7 @@ export function PurchaseRequestsInbox() {
 
   const search = searchParams.get("search") || ""
   const searching = search.trim().length > 0
+  const byMaterialView = searchParams.get("view") === "mat" && !searching
   const seg: RequestSegment = searching ? "all" : isSeg(searchParams.get("seg")) ? (searchParams.get("seg") as RequestSegment) : "new"
   // Without Project Management the team asks for materials here (PUR-10, question 4): «طلب مواد».
   const teamOn = !on("project-management")
@@ -137,7 +143,6 @@ export function PurchaseRequestsInbox() {
   const summary = useMemo(() => selectionSummary(scoped, selected, { agreements, policies, now }), [scoped, selected, agreements, policies, now])
 
   const [ordering, setOrdering] = useState<{ rows: NeedRow[]; mode: "agreement" | "direct" } | null>(null)
-  const [proceeding, setProceeding] = useState<NeedRow[] | null>(null)
   const [asking, setAsking] = useState<NeedRow | null>(null)
   const [confirm, setConfirm] = useState<Confirm | null>(null)
   const [reason, setReason] = useState("")
@@ -148,6 +153,7 @@ export function PurchaseRequestsInbox() {
   /** «جهّزه» / «اجمعها في طلب عروض واحد»: the editor on these requests, each its own group (PUR-01, PUR-02). */
   const editorHref = (keys: string[]) => `/contractor/rfqs/new?requests=${encodeURIComponent(Array.from(new Set(keys)).join("|"))}`
 
+  const panelCard = panelKey ? cards.find((c) => c.key === panelKey) ?? null : null
   const drawerRow = openLine ? desk.rows.find((r) => r.key === openLine) ?? null : null
   const mfgOf = (row: NeedRow) => (row.need.kind === "mfg" ? desk.mfgByKey.get(row.needKey) : undefined)
 
@@ -157,29 +163,17 @@ export function PurchaseRequestsInbox() {
     setBusy(true)
     setError(null)
     try {
-      if (kind === "arrived" || kind === "decline") {
-        const m = mfgOf(row)
-        if (!m) return
-        const { order: o, request: r, lotted } = m
-        if (kind === "arrived") {
-          await markPurchaseArrived(firestore, { orderId: o.id, purchaseRequestId: r.id, actor })
-          await emitMfgEvent(firestore, { kind: "purchase_arrived", copy: t, organizationId: orgId, actor, to: [{ permission: "manufacturing.manage" }, { permission: "warehouses.manage" }, { users: [r.byId] }], params: { ref: orderRef(o), qty: fmtQty(r.quantity), unit: r.unit, item: r.itemName, block: lotted ? "@mfn_arrived_block" : "" }, workOrderId: o.id, link: mfgLinks.inventoryDesk() })
-          toast({ title: t("mfy_pr_arrived_saved") })
-        } else {
-          await declinePurchaseRequest(firestore, { orderId: o.id, purchaseRequestId: r.id, reason, actor })
-          await emitMfgEvent(firestore, { kind: "purchase_declined", copy: t, organizationId: orgId, actor, to: [{ permission: "manufacturing.manage" }, { users: [r.byId] }], params: { ref: orderRef(o), qty: fmtQty(r.quantity), unit: r.unit, item: r.itemName, reason: reason.trim() }, workOrderId: o.id, link: mfgLinks.order(o.id) })
-          toast({ title: t("pri_declined_saved") })
-        }
-      } else if (kind === "buy") {
-        const s = row.need.source
-        if (s.kind !== "project_request" || !s.projectId || !s.purchaseRequestId) return
-        await recordNeedDecision(firestore, procActor, { projectId: s.projectId, requestId: s.purchaseRequestId, kind: "buy" })
-        toast({ title: t("nd_buy_saved") })
+      const m = mfgOf(row)
+      if (!m) return
+      const { order: o, request: r, lotted } = m
+      if (kind === "arrived") {
+        await markPurchaseArrived(firestore, { orderId: o.id, purchaseRequestId: r.id, actor })
+        await emitMfgEvent(firestore, { kind: "purchase_arrived", copy: t, organizationId: orgId, actor, to: [{ permission: "manufacturing.manage" }, { permission: "warehouses.manage" }, { users: [r.byId] }], params: { ref: orderRef(o), qty: fmtQty(r.quantity), unit: r.unit, item: r.itemName, block: lotted ? "@mfn_arrived_block" : "" }, workOrderId: o.id, link: mfgLinks.inventoryDesk() })
+        toast({ title: t("mfy_pr_arrived_saved") })
       } else {
-        const mr = row.need.mfgRequestId ? desk.mfgRequests[row.need.mfgRequestId] : undefined
-        if (!mr) return
-        await moveRequestToPurchase(firestore, { request: mr, actor })
-        toast({ title: t("nd_lapsed_saved") })
+        await declinePurchaseRequest(firestore, { orderId: o.id, purchaseRequestId: r.id, reason, actor })
+        await emitMfgEvent(firestore, { kind: "purchase_declined", copy: t, organizationId: orgId, actor, to: [{ permission: "manufacturing.manage" }, { users: [r.byId] }], params: { ref: orderRef(o), qty: fmtQty(r.quantity), unit: r.unit, item: r.itemName, reason: reason.trim() }, workOrderId: o.id, link: mfgLinks.order(o.id) })
+        toast({ title: t("pri_declined_saved") })
       }
       setConfirm(null)
       setReason("")
@@ -203,10 +197,7 @@ export function PurchaseRequestsInbox() {
       seesPrices: procActor.seesPrices,
       onRfq: (r: NeedRow) => setQuery({ publish: r.needKey, line: null }),
       onOrder: (r: NeedRow, mode: "agreement" | "direct") => setOrdering({ rows: siblings(r), mode }),
-      onProceed: (r: NeedRow) => setProceeding(desk.rows.filter((x) => x.needKey === r.needKey)),
       onAskWorkshop: (r: NeedRow) => setAsking(r),
-      onBuyNotMake: (r: NeedRow) => setConfirm({ kind: "buy", row: r }),
-      onWorkshopLapsed: (r: NeedRow) => setConfirm({ kind: "lapsed", row: r }),
       onArrived: live && canMarkArrived ? (r: NeedRow) => setConfirm({ kind: "arrived", row: r }) : undefined,
       onSendBack: live && canAnswer ? (r: NeedRow) => setConfirm({ kind: "decline", row: r }) : undefined,
     }
@@ -226,14 +217,25 @@ export function PurchaseRequestsInbox() {
         }
       />
 
+      <GuideLink variant="incoming" />
+
       <div className="flex flex-wrap items-center gap-2">
-        <ProcChipGroup<RequestSegment>
+        <ProcChipGroup<"req" | "mat">
+          items={[
+            { id: "req", label: tProc("bymat_view_request") },
+            { id: "mat", label: tProc("bymat_view_material") },
+          ]}
+          active={byMaterialView ? "mat" : "req"}
+          onPick={(v) => setQuery({ view: v === "mat" ? "mat" : null })}
+          label={tProc("bymat_view_label")}
+        />
+        {!byMaterialView && <ProcChipGroup<RequestSegment>
           items={REQUEST_SEGMENTS.map((f) => ({ id: f, label: t(`rq_seg_${f}`), count: counts[f] }))}
           active={seg}
           onPick={(f) => setQuery({ seg: f, search: null })}
           label={t("pri_state")}
           dimmed={searching}
-        />
+        />}
         {searching && (
           <span className="ms-auto inline-flex items-center gap-2 text-xs text-muted-foreground">
             {t("nd_results", { count: visible.length, term: search.trim() })}
@@ -245,12 +247,16 @@ export function PurchaseRequestsInbox() {
         {ownerRO && <span className="ms-auto text-xs font-semibold text-muted-foreground">{t("nd_owner_read")}</span>}
       </div>
 
-      {seg === "upcoming" && !searching ? (
-        <div className="rounded-2xl border bg-card p-8 text-center text-muted-foreground">
-          <Hourglass size={32} className="mx-auto mb-2 opacity-30" aria-hidden="true" />
-          <p className="text-sm font-semibold text-foreground">{t("rq_upcoming_title")}</p>
-          <p className="mx-auto mt-1 max-w-xl text-xs">{t("rq_upcoming_hint")}</p>
-        </div>
+      {byMaterialView ? (
+        loading ? (
+          <div className="flex items-center justify-center rounded-2xl border bg-card p-16">
+            <Loader2 className="animate-spin text-muted-foreground" size={28} aria-hidden="true" />
+          </div>
+        ) : (
+          <ByMaterialView rows={scoped} history={history} canCombine={canStartRfq} />
+        )
+      ) : seg === "upcoming" && !searching ? (
+        <UpcomingShell />
       ) : loading ? (
         <div className="flex items-center justify-center rounded-2xl border bg-card p-16">
           <Loader2 className="animate-spin text-muted-foreground" size={28} aria-hidden="true" />
@@ -277,6 +283,8 @@ export function PurchaseRequestsInbox() {
               onLine={(rowKey) => setQuery({ line: rowKey })}
               onFail={c.need.incoming && canStartRfq && c.buyLines > 0 ? () => setFailing(c) : undefined}
               rfqCloses={(id) => (world.rfqs.find((r) => r.id === id)?.deadline as string | null | undefined) ?? null}
+              clock={clock}
+              mfgOn={mfgOn}
             />
           ))}
         </ul>
@@ -328,6 +336,11 @@ export function PurchaseRequestsInbox() {
           <SheetHeader className="sr-only">
             <SheetTitle>{t("rq_panel")}</SheetTitle>
           </SheetHeader>
+          {panelCard?.need.incoming && (
+            <div className="px-4 pt-4">
+              <BeforeBuyingTable doc={panelCard.need.incoming} clock={clock} mfgOn={mfgOn} canAct={canStartRfq} history={history} />
+            </div>
+          )}
           {panelKey && <RfqEditor key={`${panelKey}:${panelStep}`} variant="panel" requestKeys={[panelKey]} startStep={panelStep} onClose={() => setQuery({ publish: null, step: null })} />}
         </SheetContent>
       </Sheet>
@@ -351,7 +364,6 @@ export function PurchaseRequestsInbox() {
           }}
         />
       )}
-      {proceeding && <ProceedPurchaseDialog rows={proceeding} actor={procActor} onClose={() => setProceeding(null)} />}
       {asking && on("manufacturing") && asking.need.source.kind === "project_request" && (
         <PrRouteToMfgDialog
           makeOrBuy
@@ -375,9 +387,7 @@ export function PurchaseRequestsInbox() {
                 <DialogDescription>
                   {confirm.kind === "arrived"
                     ? t("pri_arrived_desc", { qty: fmtQty(confirm.row.total), unit: confirm.row.unit, item: confirm.row.name })
-                    : confirm.kind === "decline"
-                      ? t("pri_decline_desc", { item: confirm.row.name, ref: displayNeedRef(confirm.row.need.refLabel, locale) })
-                      : t(`nd_confirm_${confirm.kind}_desc`, { item: confirm.row.name })}
+                    : t("pri_decline_desc", { item: confirm.row.name, ref: displayNeedRef(confirm.row.need.refLabel, locale) })}
                 </DialogDescription>
               </DialogHeader>
               {confirm.kind === "decline" && (
@@ -417,6 +427,8 @@ function RequestCardView({
   onLine,
   onFail,
   rfqCloses,
+  clock,
+  mfgOn,
 }: {
   card: RequestCard
   selectable: boolean
@@ -431,6 +443,8 @@ function RequestCardView({
   /** «تعذّر الشراء»: closes what is left to buy, with the reason and the alternative its requester reads. */
   onFail?: () => void
   rfqCloses: (rfqId: string) => string | null
+  clock: ReplyClock
+  mfgOn: boolean
 }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
@@ -487,6 +501,7 @@ function RequestCardView({
               {meta.join(" · ")}
             </p>
           )}
+          {doc && live && <BeforeChips doc={doc} clock={clock} mfgOn={mfgOn} />}
           <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm" dir="auto">
             {c.rows.map((r) => {
               const note = lineNote(r)

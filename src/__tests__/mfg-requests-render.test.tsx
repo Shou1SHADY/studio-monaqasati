@@ -180,6 +180,7 @@ const mockUi = {
 }
 
 jest.mock("@/components/manufacturing/MfgUiContext", () => ({ useMfgUi: () => mockUi }))
+jest.mock("@/components/manufacturing/MfgProcurementAsks", () => ({ MfgProcurementAsks: () => null }))
 
 const noLeaks = (text: string | null) => expect(text).not.toContain("MISSING")
 

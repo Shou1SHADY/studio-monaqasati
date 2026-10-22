@@ -357,6 +357,8 @@ describe("G-07 — the request must take quotes: open, in time, and (for the por
       f.set("price", "1500")
       f.set("challengeId", "ch1")
       f.set("code", "123456")
+      f.set("validUntil", "2100-01-15")
+      f.set("executionDuration", "5")
       for (const [k, v] of Object.entries(extra)) f.set(k, v)
       return f
     }

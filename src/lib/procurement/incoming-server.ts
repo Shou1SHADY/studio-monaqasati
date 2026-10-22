@@ -9,7 +9,8 @@ import { FieldValue } from "firebase-admin/firestore"
 import type { DocumentReference, Firestore, Transaction } from "firebase-admin/firestore"
 import { formatYearlyDocNumber } from "@/lib/sales-numbering"
 import { sendSms } from "@/lib/sms"
-import { PROC_EVENTS, buildProcEvent, procEventDocId, requestStatusKey, workshopStatusKey, type ProcEvent } from "./event-keys"
+import { PROC_EVENTS, buildProcEvent, issueRequestKey, procEventDocId, requestStatusKey, stockCheckKey, workshopAskKey, workshopReplyKey, workshopStatusKey, type ProcEvent } from "./event-keys"
+import type { ProcEventId } from "./package-data"
 import { projectSiteId, deliverySites, placeFromText, storedSites } from "./delivery-sites"
 import { offListOf, projectsOn, mfgOn as mfgConnectorOn } from "./financeless-server"
 import { fromMfgRequest, fromPmRequest, fromTeamLegacy, newTeamRequest, refreshFromSource, refreshMfg, type NewTeamRequest } from "./incoming-ingest"
@@ -31,6 +32,7 @@ import {
   type ActRefusal,
   type FailReason,
   type IncomingDoc,
+  type IncomingLine,
   type IncomingLogEntry,
   type IncomingPerson,
   type LinkOrder,
@@ -40,7 +42,20 @@ import {
 } from "./incoming-state"
 import { poStatus } from "./po"
 import { riyadhYear } from "./numbering"
-import { resolvePolicies } from "./policies"
+import { resolvePolicies, type ResolvedPolicies } from "./policies"
+import { PRICE_HISTORY, lastPaid, materialKey, type PriceHistoryEntry } from "./prices"
+import {
+  applyStockReply,
+  applyWorkshopReply,
+  askStock,
+  askWorkshop,
+  asksStock,
+  closeWorkshopQuestions,
+  proceedLapsed,
+  settleReplies,
+  type StockKind,
+  type WorkshopKind,
+} from "./stock-check"
 import { TEAM_NOTICE_COPY_AR } from "./team-request-notify-server"
 import { TEAM_REQUESTS as LEGACY_TEAM_REQUESTS, type TeamRequestDoc } from "./team-requests"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type PurchaseOrder } from "./types"
@@ -97,9 +112,13 @@ export async function worldOf(db: Db, orgId: string): Promise<IncomingWorld> {
   }
 }
 
-export async function clockOf(db: Db, orgId: string, now = new Date()): Promise<ReplyClock> {
+export async function policiesOf(db: Db, orgId: string): Promise<ResolvedPolicies> {
   const settings = (await db.collection(PROCUREMENT_SETTINGS).doc(orgId).get()).data()
-  return replyClockOf(now, resolvePolicies(settings as Parameters<typeof resolvePolicies>[0]))
+  return resolvePolicies(settings as Parameters<typeof resolvePolicies>[0])
+}
+
+export async function clockOf(db: Db, orgId: string, now = new Date()): Promise<ReplyClock> {
+  return replyClockOf(now, await policiesOf(db, orgId))
 }
 
 // ── Numbering: ONE sequence for everything that has no project number ──────
@@ -164,11 +183,28 @@ function statusEvents(db: Db, off: string[], prev: IncomingDoc, next: IncomingDo
   return out
 }
 
+function ruleEvents(db: Db, orgId: string, off: string[], events: RuleEvent[], by: Actor, at: string): EventPlan[] {
+  return events.flatMap((e) => {
+    const event = buildProcEvent({ id: e.id, key: e.key, organizationId: orgId, off, by: by.uid, at, refs: e.refs, payload: e.payload })
+    return event ? [{ ref: db.collection(PROC_EVENTS).doc(procEventDocId(orgId, event.key)), event }] : []
+  })
+}
+
 export interface Committed {
   prev: IncomingDoc
   next: IncomingDoc
   moved: boolean
 }
+
+/** An outbox event an act leaves with its write (`proc:ISS`, `inv:CHK`, `proc:MK`, `mfg:MK`). */
+export interface RuleEvent {
+  id: ProcEventId
+  key: string
+  refs?: ProcEvent["refs"]
+  payload?: ProcEvent["payload"]
+}
+
+type Ruled = { doc: IncomingDoc; log?: Array<Pick<IncomingLogEntry, "act" | "line" | "note">>; events?: RuleEvent[] } | ActRefusal
 
 /**
  * Re-reads the request, applies `rule`, re-derives its state and writes it in ONE transaction, with the `proc:ST` events of the
@@ -180,25 +216,26 @@ export async function mutateIncoming(
   orgId: string,
   mrKey: string,
   by: Actor,
-  rule: (doc: IncomingDoc, ctx: { clock: ReplyClock; world: IncomingWorld; now: Date }) => { doc: IncomingDoc; log?: Array<Pick<IncomingLogEntry, "act" | "line" | "note">> } | ActRefusal,
-  opts: { world?: IncomingWorld; now?: Date; off?: string[]; clock?: ReplyClock } = {}
+  rule: (doc: IncomingDoc, ctx: { clock: ReplyClock; world: IncomingWorld; now: Date; policies: ResolvedPolicies }) => Ruled,
+  opts: { world?: IncomingWorld; now?: Date; off?: string[]; clock?: ReplyClock; policies?: ResolvedPolicies } = {}
 ): Promise<Committed | ActRefusal | "not_found"> {
   const now = opts.now ?? new Date()
   const at = now.toISOString()
-  const [world, clock, off] = await Promise.all([opts.world ?? worldOf(db, orgId), opts.clock ?? clockOf(db, orgId, now), opts.off ?? offListOf(db, orgId)])
+  const [world, policies, off] = await Promise.all([opts.world ?? worldOf(db, orgId), opts.policies ?? policiesOf(db, orgId), opts.off ?? offListOf(db, orgId)])
+  const clock = opts.clock ?? replyClockOf(now, policies)
   const ref = docRef(db, orgId, mrKey)
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref)
     if (!snap.exists) return "not_found" as const
     const prev = snap.data() as IncomingDoc
-    const ruled = rule(prev, { clock, world, now })
+    const ruled = rule(prev, { clock, world, now, policies })
     if (typeof ruled === "string") return ruled
     const settled = settle(ruled.doc, world, clock)
     const entries = [...(ruled.log || []).map((e) => ({ at, by: by.name, ...e })), ...logChanges(prev, settled, by.name, at, clock)]
     const next: IncomingDoc = { ...settled, log: [...(prev.log || []), ...entries].slice(-200) }
     const moved = comparable(prev) !== comparable(next)
     if (!moved) return { prev, next: prev, moved: false }
-    const plans = statusEvents(db, off, prev, next, by, at, clock)
+    const plans = [...statusEvents(db, off, prev, next, by, at, clock), ...ruleEvents(db, orgId, off, ruled.events || [], by, at)]
     const existing = await Promise.all(plans.map((p) => tx.get(p.ref)))
     tx.set(ref, clean(next))
     plans.forEach((p, i) => {
@@ -257,6 +294,131 @@ export const withdrawIncoming = (db: Db, orgId: string, by: Actor, input: { mrKe
   }, opts)
 }
 
+// ── «قبل الشراء»: the stores and the workshop (WP-S2-04) ────────────────────
+
+type ActOpts = Parameters<typeof mutateIncoming>[5]
+
+const refsOf = (doc: IncomingDoc, line: number) => ({ mrKey: doc.mrKey, no: doc.no, line })
+
+/** `proc:ISS` — the stores are asked for a material before it is bought. */
+function issueEvent(doc: IncomingDoc, l: IncomingLine): RuleEvent {
+  return {
+    id: "inv_issue",
+    key: issueRequestKey(eventRefOf(doc.mrKey), l.no),
+    refs: refsOf(doc, l.no),
+    payload: { material: l.name, qty: l.qty, unit: l.unit, for: doc.projectName || doc.place.label || null, needBy: l.needBy || doc.needBy || null, until: l.stk?.until ?? null },
+  }
+}
+
+/** Asks Inventory for every line of the request it has not been asked about (or the numbered ones). A request is asked once, when it arrives; this is for the lines that were not. */
+export const askStockIncoming = (db: Db, orgId: string, by: Actor, input: { mrKey: string; lines?: number[] }, opts?: ActOpts) =>
+  mutateIncoming(db, orgId, input.mrKey, by, (doc, { now, policies }) => {
+    if (!requestOpen(doc.st)) return "closed"
+    const res = askStock(doc, { now, policies }, input.lines)
+    if (typeof res === "string") return res
+    if (!res.asked.length) return "already_asked"
+    return { doc: { ...doc, lines: res.lines }, log: [{ act: "ask_stock", note: String(res.asked.length) }], events: res.asked.map((l) => issueEvent(doc, l)) }
+  }, opts)
+
+export interface StockReplyAct {
+  mrKey: string
+  line: number
+  kind: StockKind
+  give?: number | null
+  warehouseId?: string | null
+  why?: string | null
+}
+
+/** Inventory's answer on one line (`inv:CHK`): the stores issue it, issue part, hold it for another purpose, or have none. Refused once the window lapsed or the line is in hand. */
+export async function stockReplyIncoming(db: Db, orgId: string, by: Actor, input: StockReplyAct, opts?: ActOpts): Promise<Committed | ActRefusal | "not_found"> {
+  let warehouse: { id: string; name: string } | null = null
+  if (input.warehouseId) {
+    const w = (await db.collection("warehouses").doc(input.warehouseId).get()).data() as { organizationId?: string; name?: string } | undefined
+    if (!w || w.organizationId !== orgId) return "no_warehouse"
+    warehouse = { id: input.warehouseId, name: w.name || "" }
+  }
+  return mutateIncoming(db, orgId, input.mrKey, by, (doc, { now, clock }) => {
+    if (!requestOpen(doc.st)) return "closed"
+    const res = applyStockReply(doc, { line: input.line, kind: input.kind, give: input.give, warehouse, why: input.why }, { now, clock, by: by.name })
+    if (typeof res === "string") return res
+    const reply = res.line.stk
+    return {
+      doc: { ...doc, lines: res.lines },
+      log: [{ act: "stock_reply", line: res.line.no, note: input.kind }],
+      events: [{ id: "inv_check", key: stockCheckKey(eventRefOf(doc.mrKey), res.line.no, reply?.rv ?? 1), refs: refsOf(doc, res.line.no), payload: { state: input.kind, give: reply?.give ?? 0, warehouse: reply?.wh?.name ?? null, why: reply?.why ?? null } }],
+    }
+  }, opts)
+}
+
+async function referencePrices(db: Db, orgId: string, doc: IncomingDoc, lines: number[]): Promise<Record<number, { price: number; po: string | null; day: string | null } | null>> {
+  const out: Record<number, { price: number; po: string | null; day: string | null } | null> = {}
+  for (const no of lines) {
+    const l = doc.lines.find((x) => x.no === no)
+    if (!l) continue
+    const snap = await db.collection(PRICE_HISTORY).where("organizationId", "==", orgId).where("materialKey", "==", materialKey(l.name, l.unit)).get()
+    const last = lastPaid(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PriceHistoryEntry), l.name, l.unit)
+    out[no] = last ? { price: last.price, po: last.poNumber ?? null, day: last.day ?? null } : null
+  }
+  return out
+}
+
+/** «اسأل الورشة» (`proc:MK`): refers material the workshop cuts, with the last price we paid for it. Only with the Manufacturing connector on. */
+export async function askWorkshopIncoming(db: Db, orgId: string, by: Actor, input: { mrKey: string; lines: number[]; note?: string | null }, opts?: ActOpts & { mfgOn?: boolean }): Promise<Committed | ActRefusal | "not_found"> {
+  const mfgOn = opts?.mfgOn ?? (await mfgConnectorOn(db, orgId))
+  if (!mfgOn) return "connector_off"
+  const snap = await db.collection(PROC_INCOMING).doc(incomingDocId(orgId, input.mrKey)).get()
+  if (!snap.exists) return "not_found"
+  const refs = await referencePrices(db, orgId, snap.data() as IncomingDoc, input.lines)
+  return mutateIncoming(db, orgId, input.mrKey, by, (doc, { now, clock }) => {
+    if (!requestOpen(doc.st)) return "closed"
+    const res = askWorkshop(doc, { lines: input.lines, note: input.note, refs }, { now, clock, by: by.name, mfgOn })
+    if (typeof res === "string") return res
+    return {
+      doc: { ...doc, lines: res.lines },
+      log: res.asked.map((l) => ({ act: "ask_workshop", line: l.no })),
+      events: res.asked.map((l) => ({
+        id: "mfg_ask" as const,
+        key: workshopAskKey(eventRefOf(doc.mrKey), l.no),
+        refs: refsOf(doc, l.no),
+        payload: { material: l.name, qty: l.qty, unit: l.unit, needBy: l.needBy || doc.needBy || null, refPrice: l.mk?.ref?.price ?? null, refPo: l.mk?.ref?.po ?? null, note: l.mk?.note ?? null },
+      })),
+    }
+  }, opts)
+}
+
+export interface WorkshopReplyAct {
+  mrKey: string
+  line: number
+  kind: WorkshopKind
+  make?: number | null
+  wo?: string | null
+  why?: string | null
+}
+
+/** The workshop's answer (`mfg:MK`): makes it all, makes part under a work order, or buys with a reason. Refused once its day passed. */
+export async function workshopReplyIncoming(db: Db, orgId: string, by: Actor, input: WorkshopReplyAct, opts?: ActOpts & { mfgOn?: boolean }): Promise<Committed | ActRefusal | "not_found"> {
+  const mfgOn = opts?.mfgOn ?? (await mfgConnectorOn(db, orgId))
+  if (!mfgOn) return "connector_off"
+  return mutateIncoming(db, orgId, input.mrKey, by, (doc, { now, clock }) => {
+    if (!requestOpen(doc.st)) return "closed"
+    const res = applyWorkshopReply(doc, input, { now, clock, by: by.name })
+    if (typeof res === "string") return res
+    const reply = res.line.mk
+    return {
+      doc: { ...doc, lines: res.lines },
+      log: [{ act: "workshop_reply", line: res.line.no, note: input.kind }],
+      events: [{ id: "mfg_reply", key: workshopReplyKey(eventRefOf(doc.mrKey), res.line.no, reply?.rv ?? 1), refs: refsOf(doc, res.line.no), payload: { state: input.kind, make: reply?.make ?? 0, wo: reply?.wo ?? null, why: reply?.why ?? null } }],
+    }
+  }, opts)
+}
+
+/** Closes every question whose window lapsed with no answer as «buy everything» — what the daily job and every opening of the desk do; there is no button. */
+export const proceedIncoming = (db: Db, orgId: string, by: Actor, input: { mrKey: string }, opts?: ActOpts) =>
+  mutateIncoming(db, orgId, input.mrKey, by, (doc, { clock }) => {
+    const res = proceedLapsed(doc.lines, clock)
+    return res.closed.length ? { doc: { ...doc, lines: res.lines }, log: [{ act: "proceed", note: res.closed.join(",") }] } : { doc }
+  }, opts)
+
 // ── A team's «طلب مواد» ─────────────────────────────────────────────────────
 
 export type RequestedForInput = { kind: "self" } | { kind: "member"; id: string } | { kind: "receiver"; id: string }
@@ -275,6 +437,15 @@ export async function resolveRequestedFor(db: Db, orgId: string, caller: Actor, 
   return userId ? { kind: "member", id: userId, name: r.name as string, phone: (r.phone as string) || null } : { kind: "receiver", id: input.id, name: r.name as string, phone: (r.phone as string) || null }
 }
 
+/** A request that arrives is asked about at once: every material line waits for the stores, and `proc:ISS` leaves with the write. */
+function withStockCheck(db: Db, doc: IncomingDoc, ctx: { now: Date; policies: ResolvedPolicies; off: string[]; by: Actor }): { doc: IncomingDoc; plans: EventPlan[] } {
+  if (!asksStock(doc)) return { doc, plans: [] }
+  const res = askStock(doc, { now: ctx.now, policies: ctx.policies })
+  if (typeof res === "string" || !res.asked.length) return { doc, plans: [] }
+  const next = { ...doc, lines: res.lines }
+  return { doc: next, plans: ruleEvents(db, doc.organizationId, ctx.off, res.asked.map((l) => issueEvent(next, l)), ctx.by, ctx.now.toISOString()) }
+}
+
 export async function createTeamRequest(
   db: Db,
   orgId: string,
@@ -284,10 +455,13 @@ export async function createTeamRequest(
 ): Promise<IncomingDoc> {
   const year = riyadhYear(now)
   const id = db.collection(PROC_INCOMING).doc().id
+  const [policies, off] = await Promise.all([policiesOf(db, orgId), offListOf(db, orgId)])
   return db.runTransaction(async (tx) => {
     const n = await drawMatNumber(db, tx, orgId, year)
-    const doc = newTeamRequest({ ...input, organizationId: orgId, id, no: n.number, seq: n.seq, requestedBy: { id: by.uid, name: by.name }, at: now.toISOString() })
+    const made = newTeamRequest({ ...input, organizationId: orgId, id, no: n.number, seq: n.seq, requestedBy: { id: by.uid, name: by.name }, at: now.toISOString() })
+    const { doc, plans } = withStockCheck(db, made, { now, policies, off, by })
     tx.create(docRef(db, orgId, doc.mrKey), clean(doc) as unknown as Record<string, unknown>)
+    plans.forEach((p) => tx.create(p.ref, clean(p.event) as unknown as Record<string, unknown>))
     return doc
   })
 }
@@ -380,7 +554,12 @@ export interface SyncResult {
   migrated: number
 }
 
-async function createIfAbsent(db: Db, doc: IncomingDoc, number?: { allocate: (tx: Transaction) => Promise<{ number: string; seq: number }> }): Promise<IncomingDoc | null> {
+async function createIfAbsent(
+  db: Db,
+  doc: IncomingDoc,
+  number?: { allocate: (tx: Transaction) => Promise<{ number: string; seq: number }> },
+  ask?: { now: Date; policies: ResolvedPolicies; off: string[]; by: Actor }
+): Promise<IncomingDoc | null> {
   const ref = docRef(db, doc.organizationId, doc.mrKey)
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref)
@@ -390,8 +569,10 @@ async function createIfAbsent(db: Db, doc: IncomingDoc, number?: { allocate: (tx
       const n = await number.allocate(tx)
       next = { ...doc, no: n.number, seq: n.seq }
     }
-    tx.create(ref, clean(next) as unknown as Record<string, unknown>)
-    return next
+    const checked = ask ? withStockCheck(db, next, ask) : { doc: next, plans: [] as EventPlan[] }
+    tx.create(ref, clean(checked.doc) as unknown as Record<string, unknown>)
+    checked.plans.forEach((p) => tx.create(p.ref, clean(p.event) as unknown as Record<string, unknown>))
+    return checked.doc
   })
 }
 
@@ -507,14 +688,15 @@ export async function syncIncoming(db: Db, orgId: string, opts: { now?: Date; by
   const [off, pmOpen, mfgOpen] = await Promise.all([offListOf(db, orgId), projectsOn(db, orgId), mfgConnectorOn(db, orgId)])
   result.migrated = await migrateLegacyTeam(db, orgId)
   const existing = await existingOf(db, orgId)
-  const clock = await clockOf(db, orgId, now)
+  const policies = await policiesOf(db, orgId)
+  const clock = replyClockOf(now, policies)
   const fresh = await readSources(db, orgId, existing, { pm: pmOpen, mfg: mfgOpen })
 
   const world = await worldOf(db, orgId)
   const year = riyadhYear(now)
   for (const { doc, isNew } of fresh) {
     if (!isNew) continue
-    const made = await createIfAbsent(db, settle(doc, world, clock), doc.src === "mfg" ? { allocate: (tx) => drawMatNumber(db, tx, orgId, year) } : undefined)
+    const made = await createIfAbsent(db, settle(doc, world, clock), doc.src === "mfg" ? { allocate: (tx) => drawMatNumber(db, tx, orgId, year) } : undefined, { now, policies, off, by })
     if (made) {
       result.created++
       existing.set(made.mrKey, made)
@@ -523,12 +705,18 @@ export async function syncIncoming(db: Db, orgId: string, opts: { now?: Date; by
   const sources = new Map(fresh.map((f) => [f.doc.mrKey, f.doc]))
   const reread = (doc: IncomingDoc): IncomingDoc => {
     const source = sources.get(doc.mrKey)
-    if (!source) return doc
-    return doc.src === "mfg" ? refreshMfg(doc, source) : doc.src === "pm" ? refreshFromSource(doc, source) : doc
+    const read = !source ? doc : doc.src === "mfg" ? refreshMfg(doc, source) : doc.src === "pm" ? refreshFromSource(doc, source) : doc
+    const settled = { ...read, lines: settleReplies(doc.lines, read.lines) }
+    const open = mfgOpen ? settled.lines : closeWorkshopQuestions(settled.lines, clock).lines
+    return { ...settled, lines: proceedLapsed(open, clock).lines }
   }
   for (const stored of existing.values()) {
     if (stored.st === "done" || stored.st === "fail" || stored.st === "wd") continue
-    const committed = await mutateIncoming(db, orgId, stored.mrKey, by, (doc) => ({ doc: reread(doc) }), { world, now, off, clock })
+    const committed = await mutateIncoming(db, orgId, stored.mrKey, by, (doc) => {
+      const read = reread(doc)
+      const resolved = read.lines.filter((l, i) => (l.stk?.auto && !doc.lines[i]?.stk?.auto) || (l.mk?.auto && !doc.lines[i]?.mk?.auto)).map((l) => l.no)
+      return { doc: read, ...(resolved.length ? { log: [{ act: "proceed", note: resolved.join(",") }] } : {}) }
+    }, { world, now, off, clock, policies })
     if (committed && typeof committed !== "string" && committed.moved) {
       result.refreshed++
       if (await notifyMoved(db, committed, at)) result.told++

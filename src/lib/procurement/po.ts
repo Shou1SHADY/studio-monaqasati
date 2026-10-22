@@ -212,7 +212,7 @@ export function approvalAmount(po: PurchaseOrder): number {
  * approve it — the purchasing manager never approves their own (prototype:
  * `v > mgrLimit || role === 'mgr'`). */
 export function requiredApprover(po: PurchaseOrder, policies: ProcurementPolicies, preparerApproves = false): "manager" | "owner" {
-  if (po.basis === "retroactive" || preparerApproves) return "owner"
+  if (po.basis === "retroactive" || preparerApproves || po.tags?.directOver) return "owner"
   return approvalAmount(po) > policies.managerApprovalLimit ? "owner" : "manager"
 }
 

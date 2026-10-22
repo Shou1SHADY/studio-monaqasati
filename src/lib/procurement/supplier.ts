@@ -9,8 +9,7 @@
 
 import { statusForSupplier, type DecidableOffer } from "./offer-decisions"
 import { daysLate, dayOf, lineOutstanding, lineToArrive, poStatus, todayOf } from "./po"
-import { noticeLinesFromPo } from "./receipts"
-import { QUALITY_PAPERS, type DeliveryLine, type PoLine, type PoStatus, type PurchaseOrder, type QualityPaper } from "./types"
+import type { PoLine, PoStatus, PurchaseOrder } from "./types"
 
 const num = (n: number | null | undefined) => (Number.isFinite(Number(n)) ? Number(n) : 0)
 
@@ -186,102 +185,52 @@ export { poStatus as supplierOrderStatus }
 export type { PoStatus }
 
 // ---------------------------------------------------------------------------
-// The notice — validation, codes not sentences
+// The notice — a DATE and a NOTE, nothing else (G-08, decision 08). The quantities are the receiver's, counted at the gate;
+// the supplier says when the truck comes and may add a word. Validation returns codes, not sentences.
 // ---------------------------------------------------------------------------
 
-export const NOTICE_ERROR_CODES = ["date_missing", "date_past", "nothing_to_ship", "over_outstanding", "unknown_line", "not_accepted"] as const
+export const NOTICE_ERROR_CODES = ["date_missing", "date_past", "not_accepted"] as const
 export type NoticeErrorCode = (typeof NOTICE_ERROR_CODES)[number]
 
 export interface NoticeError {
   code: NoticeErrorCode
-  poLineId?: string
   params: Record<string, string | number>
 }
 
-export interface NoticeLineInput {
-  poLineId: string
-  quantity: number
-}
+export const NOTICE_NOTE_MAX = 500
 
-/** The notice's lines as typed, against the order. A line above what may
- * still arrive is refused, not trimmed; zero lines are simply left out. */
-export function noticeErrors(po: PurchaseOrder, lines: NoticeLineInput[], deliveryDate: string | null | undefined, now: Date): NoticeError[] {
+export function noticeErrors(po: PurchaseOrder, deliveryDate: string | null | undefined, now: Date): NoticeError[] {
   const out: NoticeError[] = []
   if (!supplierCanNotify(po)) out.push({ code: "not_accepted", params: {} })
   if (!deliveryDate) out.push({ code: "date_missing", params: {} })
   else if (deliveryDate < todayOf(now)) out.push({ code: "date_past", params: { date: deliveryDate } })
-  const byId = new Map(po.lines.map((l) => [l.id, l]))
-  let anything = false
-  for (const l of lines) {
-    const line = byId.get(l.poLineId)
-    if (!line) {
-      out.push({ code: "unknown_line", poLineId: l.poLineId, params: {} })
-      continue
-    }
-    const q = num(l.quantity)
-    if (q <= 0) continue
-    anything = true
-    const max = lineToArrive(line)
-    if (q > max + 1e-9) out.push({ code: "over_outstanding", poLineId: l.poLineId, params: { line: line.name, quantity: q, max, unit: line.unit } })
-  }
-  if (!anything) out.push({ code: "nothing_to_ship", params: {} })
-  return out
-}
-
-/** The default form: everything still to arrive, per line. */
-export const defaultNoticeLines = (po: PurchaseOrder): NoticeLineInput[] => noticeLinesFromPo(po).map((l) => ({ poLineId: l.poLineId, quantity: l.noticeQuantity }))
-
-/** The notice's `DeliveryLine[]` — only lines with a quantity. */
-export function noticeDeliveryLines(po: PurchaseOrder, lines: NoticeLineInput[]): DeliveryLine[] {
-  const byId = new Map(po.lines.map((l) => [l.id, l]))
-  const out: DeliveryLine[] = []
-  for (const l of lines) {
-    const line = byId.get(l.poLineId)
-    const q = num(l.quantity)
-    if (!line || q <= 0) continue
-    out.push({ poLineId: line.id, name: line.name, unit: line.unit, noticeQuantity: q })
-  }
   return out
 }
 
 // ---------------------------------------------------------------------------
-// The delivery document — today's shape, plus the order's fields
+// The delivery document — today's shape (every reader of `deliveries` depends on it), without quantities, driver, plate or papers
 // ---------------------------------------------------------------------------
 
-export const DELIVERY_WINDOWS = ["morning", "afternoon", "evening"] as const
-export type DeliveryWindow = (typeof DELIVERY_WINDOWS)[number]
-
-/** A legacy item row, as the contractor's confirm flow and the printable
- * receipt read it (`{name, quantity, unitOfMeasure}` — the guest API's shape). */
-export interface LegacyDeliveryItem {
-  name: string
-  quantity: number
-  unitOfMeasure: string
-}
+/** Who wrote the notice: the registered supplier in his portal, the off-platform supplier from his order link, or the buyer
+ * recording what a phone call said. */
+export type NoticeSource = "supplier" | "link" | "onBehalf"
 
 export interface NoticeInput {
   po: PurchaseOrder
-  lines: NoticeLineInput[]
   /** `YYYY-MM-DD`. */
   deliveryDate: string
-  deliveryWindow?: DeliveryWindow | null
-  driverName?: string | null
-  driverPhone?: string | null
-  vehiclePlate?: string | null
-  qualityPapers?: QualityPaper[] | null
-  paperNoteNumber?: string | null
-  notes?: string | null
-  /** The uploaded note / certificates, when any. */
-  fileUrl?: string | null
+  note?: string | null
+  /** This order's notice number: two trucks on one day are two notices (REP1, REP2). */
+  seq: number
+  reportedBy?: NoticeSource
   supplier: { uid: string; orgId: string; name: string }
   /** The RFQ's creator — the award's `contractorId`; the preparer stands in when unknown. */
   contractorId?: string | null
-  /** A `serverTimestamp()` in the page; anything in a test. */
+  /** A `serverTimestamp()` in a page; anything in a test. */
   createdAt: unknown
 }
 
 export interface DeliveryNoticeDoc {
-  // Today's shape — every reader of `deliveries` depends on these.
   rfqId: string | null
   offerId: string | null
   projectId: string | null
@@ -290,38 +239,31 @@ export interface DeliveryNoticeDoc {
   supplierOrgId: string
   supplierId: string
   supplierName: string
-  deliveryPersonName: string | null
+  deliveryPersonName: null
   handoverRecipientName: null
   deliveryDate: string
   notes: string | null
   rfqTitle: string
-  items: LegacyDeliveryItem[]
+  /** A notice names no goods: legacy readers get an empty list, never the order's quantities. */
+  items: []
   status: "pending_confirmation"
   createdAt: unknown
-  // The order's fields (`DeliveryPoFields`).
   poId: string
   poNumber: string
-  lines: DeliveryLine[]
-  vehiclePlate: string | null
-  driverPhone: string | null
-  qualityPapers: QualityPaper[]
-  paperNoteNumber: string | null
-  deliveryWindow: string | null
-  attachmentUrls?: string[]
+  seq: number
+  reportedBy: NoticeSource
 }
 
 const text = (s: string | null | undefined): string | null => {
   const t = (s || "").trim()
-  return t ? t : null
+  return t ? t.slice(0, NOTICE_NOTE_MAX) : null
 }
 
-/** `deliveryDate` is stored as an ISO timestamp, as today's supplier notice
- * stores it (`new Date("YYYY-MM-DD").toISOString()`); the receipts layer
- * reads its first ten characters either way. */
+/** `deliveryDate` is stored as an ISO timestamp, as today's supplier notice stores it (`new Date("YYYY-MM-DD").toISOString()`);
+ * the receipts layer reads its first ten characters either way. */
 export function buildDeliveryNotice(input: NoticeInput): DeliveryNoticeDoc {
   const { po } = input
-  const lines = noticeDeliveryLines(po, input.lines)
-  const doc: DeliveryNoticeDoc = {
+  return {
     rfqId: po.rfqId ?? null,
     offerId: po.offerId ?? null,
     projectId: po.projectId ?? null,
@@ -330,25 +272,19 @@ export function buildDeliveryNotice(input: NoticeInput): DeliveryNoticeDoc {
     supplierOrgId: input.supplier.orgId,
     supplierId: input.supplier.uid,
     supplierName: input.supplier.name,
-    deliveryPersonName: text(input.driverName),
+    deliveryPersonName: null,
     handoverRecipientName: null,
     deliveryDate: new Date(`${dayOf(input.deliveryDate)}T00:00:00.000Z`).toISOString(),
-    notes: text(input.notes),
+    notes: text(input.note),
     rfqTitle: po.rfqTitle || "",
-    items: lines.map((l) => ({ name: l.name, quantity: l.noticeQuantity, unitOfMeasure: l.unit })),
+    items: [],
     status: "pending_confirmation",
     createdAt: input.createdAt,
     poId: po.id,
     poNumber: po.docNumber,
-    lines,
-    vehiclePlate: text(input.vehiclePlate),
-    driverPhone: text(input.driverPhone),
-    qualityPapers: QUALITY_PAPERS.filter((p) => input.qualityPapers?.includes(p)),
-    paperNoteNumber: text(input.paperNoteNumber),
-    deliveryWindow: input.deliveryWindow ?? null,
+    seq: Math.max(1, Math.floor(input.seq) || 1),
+    reportedBy: input.reportedBy ?? "supplier",
   }
-  if (input.fileUrl) doc.attachmentUrls = [input.fileUrl]
-  return doc
 }
 
 // ---------------------------------------------------------------------------
@@ -411,6 +347,14 @@ export function buildDeliveryNoticeNotification(po: PurchaseOrder, userId: strin
 // Legacy offers (no order) — bug B1: the items come from the RFQ, never from
 // the offer, which has no `products`
 // ---------------------------------------------------------------------------
+
+/** A legacy item row, as the contractor's confirm flow and the printable receipt read it (`{name, quantity, unitOfMeasure}` — the
+ * guest API's shape). Only a legacy offer (no order) still carries one; a notice names no goods. */
+export interface LegacyDeliveryItem {
+  name: string
+  quantity: number
+  unitOfMeasure: string
+}
 
 export interface RfqProductLike {
   name?: string | null

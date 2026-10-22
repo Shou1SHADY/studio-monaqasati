@@ -13,12 +13,14 @@ jest.mock("@/i18n/routing", () => jest.requireActual("@/test-utils/render-world"
 jest.mock("next/navigation", () => jest.requireActual("@/test-utils/render-world").navigationMock)
 jest.mock("@/ai/genkit", () => jest.requireActual("@/test-utils/render-world").aiMock)
 jest.mock("@/components/layout/portal-layout", () => jest.requireActual("@/test-utils/render-world").portalLayoutMock)
+const mockPublish = jest.fn()
+jest.mock("@/lib/procurement/rfq-lifecycle-client", () => ({ ...jest.requireActual("@/lib/procurement/rfq-lifecycle-client"), publishRfqCall: (input: unknown) => mockPublish(input) }))
 
 import React from "react"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { act, fireEvent, render, renderHook } from "@testing-library/react"
-import { listCollection, resetFakeDb, seed } from "@/test-utils/fake-firestore"
+import { resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import { installDomShims, missingKeys, setPathname, setSignedIn } from "@/test-utils/render-world"
 import { useOpenNeeds } from "@/hooks/useOpenNeeds"
 import { RfqPublishedPanel } from "@/components/procurement/rfq-editor/RfqPublishedPanel"
@@ -157,9 +159,11 @@ describe("the deadline (R-32)", () => {
     await act(async () => void fireEvent.click(button("التالي: المراجعة")!))
     await flush()
     expect(button("انشر")).toBeDefined()
+    mockPublish.mockImplementation(async (input: { deadline: string }) => ({ id: "R9", number: "RFQ-2026/009", guestUrl: null, reached: 0, closesOn: input.deadline, direct: false, dirOver: false, directEst: null, linkedRequests: 0, edited: false }))
     await act(async () => void fireEvent.click(button("انشر")!))
     await flush()
-    expect(listCollection<Record<string, unknown>>("rfqs").find((r) => r.status === "New")?.deadline).toBe(day(0))
+    expect(mockPublish).toHaveBeenCalledWith(expect.objectContaining({ deadline: day(0), audience: "public" }))
+    expect(text()).toContain("RFQ-2026/009")
     expect([...missingKeys]).toEqual([])
     view.unmount()
   })

@@ -58,6 +58,7 @@ import {
   type ReqState,
 } from "@/lib/pm/supply"
 import { approveMaterialRequest, decideChange, withdrawMaterialRequest, type SupplyActor } from "@/lib/pm/supply-writes"
+import { ingestIncoming } from "@/lib/procurement/incoming-client"
 import { lastPaid } from "@/lib/procurement/prices"
 import { cn } from "@/lib/utils"
 import { CheckLine } from "./ContractBits"
@@ -67,6 +68,12 @@ import { ChangeOnClientDialog, NewRequestDialog, qty, ReceiveDialog, RejectReque
 
 const STATE_TONE: Record<ReqState, PillTone> = { wait: "warn", rej: "bad", go: "info", done: "ok", shut: "module", cx: "mute" }
 const CAP = 7
+
+async function approveAndIngest(...args: Parameters<typeof approveMaterialRequest>) {
+  const res = await approveMaterialRequest(...args)
+  if (res === "approved") void ingestIncoming()
+  return res
+}
 
 type LineDialog = { kind: "rcv" | "stop" | "own"; request: PmMaterialRequest; index: number }
 
@@ -396,7 +403,7 @@ function RequestRow({ r, world, items, access, actor, projectId, onOpen, onRejec
         {canDecide &&
           (r.lines.some((l) => l.chg?.st !== "wait") ? (
             <div className="flex gap-1">
-              <Button variant="success" size="sm" className="h-7" disabled={busy !== null} onClick={() => (blocked ? onOpen() : firestore && void run("ok", () => approveMaterialRequest(firestore, access.ctx, projectId, actor, r.id), t("sup.approved", { no: reqNo(r.seq ?? 0) })))}>
+              <Button variant="success" size="sm" className="h-7" disabled={busy !== null} onClick={() => (blocked ? onOpen() : firestore && void run("ok", () => approveAndIngest(firestore, access.ctx, projectId, actor, r.id), t("sup.approved", { no: reqNo(r.seq ?? 0) })))}>
                 <Check size={13} className="me-1" aria-hidden="true" />
                 {ch ? t("sup.approve_rest") : t("sup.approve")}
               </Button>
@@ -526,7 +533,7 @@ function RequestDrawer({
               <div className="flex flex-wrap gap-2 pt-2">
                 {approver && (
                   <>
-                    <Button variant="success" size="sm"  disabled={blocks.length > 0 || busy !== null} onClick={() => firestore && void run("ok", () => approveMaterialRequest(firestore, access.ctx, projectId, actor, r.id), t("sup.approved", { no: reqNo(r.seq ?? 0) })).then((ok) => ok && onClose())}>
+                    <Button variant="success" size="sm"  disabled={blocks.length > 0 || busy !== null} onClick={() => firestore && void run("ok", () => approveAndIngest(firestore, access.ctx, projectId, actor, r.id), t("sup.approved", { no: reqNo(r.seq ?? 0) })).then((ok) => ok && onClose())}>
                       <Check size={14} className="me-1.5" aria-hidden="true" />
                       {checks.held ? t("sup.approve_hold") : t("sup.approve_send")}
                     </Button>

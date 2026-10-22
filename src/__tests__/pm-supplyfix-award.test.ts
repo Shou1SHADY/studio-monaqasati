@@ -16,7 +16,8 @@ import { lineLink, linePhase, receivable, requestOf } from "@/lib/pm/supply"
 import { receiveOnProject } from "@/lib/pm/supply-writes"
 import { projectNeed, type ProjectRequestDoc } from "@/lib/procurement/needs"
 import { DEFAULT_POLICIES, type ProcActor, type PurchaseOrder } from "@/lib/procurement/types"
-import { awardRfq, createPurchaseOrderFromAward, type AwardOfferLike, type AwardRfqInput, type RfqLike } from "@/lib/procurement/writes"
+import { type AwardOfferLike, type AwardRfqInput, type RfqLike } from "@/lib/procurement/writes"
+import { awardRfq, createPurchaseOrderFromAward } from "@/test-utils/legacy-award-writes"
 
 const db = fakeFirestore as unknown as Firestore
 const NOW = new Date("2026-09-22T09:00:00Z")

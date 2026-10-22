@@ -13,6 +13,8 @@
 //   while the RFQ takes offers: it closes with the deadline and an extension
 //   reopens it — nothing to re-mint. Older links keep their fixed expiry.
 
+import { publicInquiry, type InquiryDoc } from "./rfq-inquiries"
+
 export type GuestOtpPurpose = "guest_offer"
 
 /** Saudi mobiles in any usual spelling, or an international E.164 number → E.164; else null. */
@@ -37,8 +39,9 @@ export const guestOtpSubjectRange = (linkId: string): [string, string] => [`rfq_
 /** Codes one link may send in an hour, whatever numbers are typed — a link is not an SMS gateway. */
 export const GUEST_OTP_LINK_CAP_PER_HOUR = 20
 
-/** A code is asked for when the platform can deliver one, or on UAT, where it is shown on screen. */
-export const guestOtpRequired = (canSendCodes: boolean, uat: boolean): boolean => canSendCodes || uat
+/** Whether a code can be given at all: an SMS route exists, or the environment is a test one where it is shown on screen.
+ * Anywhere else the platform cannot vouch for the mobile, so the send is refused (R-05) — a typed number is never the identity. */
+export const guestCodeAvailable = (canSendCodes: boolean, testing: boolean): boolean => canSendCodes || testing
 
 // ---------------------------------------------------------------------------
 // Papers
@@ -90,32 +93,23 @@ export function mergeGuestPapers(current: GuestPaper[] | null | undefined, added
 // Answered queries — what every invitee may read (§5.1), never who asked
 // ---------------------------------------------------------------------------
 
-export interface InquiryDoc {
-  question?: unknown
-  reply?: unknown
-  repliedAt?: unknown
-  createdAt?: unknown
-}
+export type { InquiryDoc }
 
 export interface AnsweredQuery {
   question: string
   answer: string
   answeredAt: string | null
+  /** A clarification the buyer posted himself: the text is `answer`, there is no question behind it. */
+  clarification?: true
 }
 
-const asIso = (v: unknown): string | null => {
-  if (!v) return null
-  if (typeof v === "string") return v
-  const ts = v as { toDate?: () => Date }
-  return typeof ts.toDate === "function" ? ts.toDate().toISOString() : null
-}
-
-const text = (v: unknown): string => (typeof v === "string" ? v.trim() : "")
-
+/** What every visitor may read, never who asked: the buyer's clarifications and the questions he answered «للجميع», in his
+ * own wording when he edited it. A question put to one offer and an answer kept for the asker alone stay private. */
 export function answeredQueries(docs: InquiryDoc[], limit = 50): AnsweredQuery[] {
   return docs
-    .map((d) => ({ question: text(d.question), answer: text(d.reply), answeredAt: asIso(d.repliedAt) || asIso(d.createdAt) }))
-    .filter((q) => q.question && q.answer)
+    .map((d) => publicInquiry(d))
+    .filter((q): q is NonNullable<typeof q> => q != null)
+    .map((q): AnsweredQuery => ({ question: q.question, answer: q.answer, answeredAt: q.answeredAt, ...(q.note ? { clarification: true as const } : {}) }))
     .sort((a, b) => (a.answeredAt || "").localeCompare(b.answeredAt || ""))
     .slice(0, limit)
 }
@@ -145,11 +139,12 @@ export function deadlineEnd(deadline: string | null | undefined): string | null 
 
 export type ShareLinkState = "open" | "closed" | "gone"
 
-/** open: takes offers · closed: the deadline passed while the RFQ still waits (view only; an extension reopens it) · gone: revoked, expired or the RFQ is decided. */
+/** open: takes offers · closed: the deadline passed, or the RFQ is decided — view only, so a visitor who quoted still reads
+ * his result (an extension reopens a waiting one) · gone: revoked, or an older link past its fixed expiry. */
 export function shareLinkState(link: ShareLinkLike, rfq: ShareRfqLike | null, now: Date): ShareLinkState {
   if (link.revoked || !rfq) return "gone"
   if (link.expiresWith === "deadline") {
-    if (rfq.status !== "New") return "gone"
+    if (rfq.status !== "New") return "closed"
     const end = deadlineEnd(rfq.deadline)
     return end && new Date(end).getTime() < now.getTime() ? "closed" : "open"
   }

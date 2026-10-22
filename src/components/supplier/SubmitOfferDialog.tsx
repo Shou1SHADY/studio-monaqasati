@@ -430,7 +430,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
           // amount and no claim about a seal. Same id, so a later server run
           // overwrites this rather than adding a second.
           if (!told) {
-            const notice = newOfferNotice({ supplier: activeCompanyName || "", rfqTitle: selectedRfq.title || "", price: null, sealed: false })
+            const notice = newOfferNotice({ supplier: activeCompanyName || "", rfqTitle: selectedRfq.title || "", price: null })
             await setDoc(doc(firestore, "users", selectedRfq.contractorId, "notifications", newOfferNoticeId(offerRef.id)), {
               userId: selectedRfq.contractorId,
               organizationId: selectedRfq.organizationId || selectedRfq.contractorId,

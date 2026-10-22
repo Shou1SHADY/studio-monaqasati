@@ -4,10 +4,7 @@ import { z } from "zod"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { isSmsConfigured, isVerifyConfigured, normalizePhoneE164, sendSms, startVerification } from "@/lib/sms"
 import { OTP_RESEND_MS } from "@/lib/otp"
-import { offersSealed } from "@/lib/procurement/award"
 import { newOfferNotice, newOfferNoticeId } from "@/lib/procurement/offer-announce"
-import { resolvePolicies } from "@/lib/procurement/policies"
-import type { ProcurementPolicies } from "@/lib/procurement/types"
 import arMessages from "../../../../messages/ar.json"
 import enMessages from "../../../../messages/en.json"
 
@@ -107,13 +104,8 @@ export async function POST(req: Request) {
       : undefined
     const phone = normalizePhoneE164(contractor?.phone || contractor?.whatsapp || contractor?.mobile)
 
-    // A sealed round names no amount — not in the bell, the push or the text.
-    // Only the server can tell: the policy is the contractor's, unreadable to
-    // the supplier whose client used to write this notification itself.
     const orgId = rfq?.organizationId || rfq?.contractorId || null
-    const settings = orgId ? (await db.collection("procurementSettings").doc(orgId).get()).data() : undefined
-    const sealed = offersSealed(rfq, resolvePolicies(settings as Partial<ProcurementPolicies> | undefined), new Date())
-    const notice = newOfferNotice({ supplier: offer.companyName || offer.supplierName || "", rfqTitle: rfq?.title || "", price: Number(offer.price) || 0, sealed })
+    const notice = newOfferNotice({ supplier: offer.companyName || offer.supplierName || "", rfqTitle: rfq?.title || "", price: Number(offer.price) || 0 })
 
     // Marked before sending: a double tap must not become two texts.
     const nowIso = new Date().toISOString()

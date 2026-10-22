@@ -10,7 +10,6 @@
 import { projectNeed, type ProjectRequestDoc } from "@/lib/procurement/needs"
 import { buildNeedRows, latestSampleNo, materialInScope, type DeskFacts } from "@/lib/procurement/need-desk"
 import { isBuyer, poInScope, rfqInScope, rfqStage } from "@/lib/procurement/rfq-view"
-import { offersSealed } from "@/lib/procurement/award"
 import { resolvePolicies } from "@/lib/procurement/policies"
 import { rfqPrintModel, writeRfqPrint } from "@/components/procurement/RfqPrint"
 import { todayTasks, todayWaits, type OfferFact, type ProcWorld, type RfqFact } from "@/lib/procurement/today"
@@ -77,58 +76,45 @@ describe("V5-03 · a buyer's order rows on Today are the orders he prepared", ()
   })
 })
 
-describe("V5-04 · compare and award as soon as the prices are open", () => {
-  const w = (seal: boolean) => world({ rfqs: [rfq()], offers: [offer()], policies: { ...DEFAULT_POLICIES, sealOffersUntilDeadline: seal } })
+describe("V5-04 · compare and award as soon as the offers arrive (no seal, RFQ-03)", () => {
+  const w = world({ rfqs: [rfq()], offers: [offer()] })
 
-  it("unsealed: offers before the deadline raise the task, saying the round is still open", () => {
-    const t = todayTasks(w(false), BUYER, NOW).find((x) => x.kind === "rfq_award")
+  it("offers before the deadline raise the task, saying the round is still open", () => {
+    const t = todayTasks(w, BUYER, NOW).find((x) => x.kind === "rfq_award")
     expect(t).toMatchObject({ severity: "amber", subKey: "task.rfq_award.sub_open", subParams: { inDays: 3, hasDate: 1 }, actionKey: "actions.compare" })
   })
 
-  it("sealed: nothing until the deadline passes", () => {
-    expect(todayTasks(w(true), BUYER, NOW).some((x) => x.kind === "rfq_award")).toBe(false)
-    const closed = world({ rfqs: [rfq({ deadline: "2026-09-20" })], offers: [offer()], policies: { ...DEFAULT_POLICIES, sealOffersUntilDeadline: true } })
+  it("after the deadline the same task says how long ago it closed", () => {
+    const closed = world({ rfqs: [rfq({ deadline: "2026-09-20" })], offers: [offer()] })
     expect(todayTasks(closed, BUYER, NOW).find((x) => x.kind === "rfq_award")).toMatchObject({ subKey: "task.rfq_award.sub", subParams: { ago: 2 } })
   })
 
-  it("a manager's early close opens a sealed round", () => {
-    const early = world({ rfqs: [rfq({ closedEarly: { at: "2026-09-21" } })], offers: [offer()], policies: { ...DEFAULT_POLICIES, sealOffersUntilDeadline: true } })
+  it("an early close changes nothing about it", () => {
+    const early = world({ rfqs: [rfq({ closedEarly: { at: "2026-09-21" } })], offers: [offer()] })
     expect(todayTasks(early, BUYER, NOW).some((x) => x.kind === "rfq_award")).toBe(true)
   })
 })
 
-describe("V5-01 · prices are sealed until the deadline by default (owner's decision; switchable)", () => {
+describe("V5-01 · no seal — the policy is gone and the stage never hides prices", () => {
   const open = rfq({ offersCount: 1 })
-  it("the default and a settings document without the field both seal; the switch still opens them", () => {
-    expect(DEFAULT_POLICIES.sealOffersUntilDeadline).toBe(true)
-    expect(resolvePolicies(null).sealOffersUntilDeadline).toBe(true)
-    expect(resolvePolicies({}).sealOffersUntilDeadline).toBe(true)
-    expect(resolvePolicies({ sealOffersUntilDeadline: false }).sealOffersUntilDeadline).toBe(false)
+  it("neither the defaults nor a stored document carries the seal", () => {
+    expect("sealOffersUntilDeadline" in DEFAULT_POLICIES).toBe(false)
+    expect("sealOffersUntilDeadline" in resolvePolicies({ sealOffersUntilDeadline: true } as never)).toBe(false)
   })
 
-  it("the list pill: «مفتوحة للتقديم — الأسعار مغلقة» before the deadline, ready to compare after it", () => {
-    expect(offersSealed(open, DEFAULT_POLICIES, NOW)).toBe(true)
-    expect(rfqStage(open, NOW, offersSealed(open, DEFAULT_POLICIES, NOW))).toBe("open")
-    const passed = rfq({ deadline: "2026-09-20", offersCount: 1 })
-    expect(rfqStage(passed, NOW, offersSealed(passed, DEFAULT_POLICIES, NOW))).toBe("compare")
+  it("the list pill: open before the deadline, ready to compare after it", () => {
+    expect(rfqStage(open, NOW)).toBe("open")
+    expect(rfqStage(rfq({ deadline: "2026-09-20", offersCount: 1 }), NOW)).toBe("compare")
   })
 
-  it("Today under the default: no award before the deadline, then «قارن وأرسِ»", () => {
-    expect(todayTasks(world({ rfqs: [open], offers: [offer()] }), BUYER, NOW).some((t) => t.kind === "rfq_award")).toBe(false)
-    const passed = world({ rfqs: [rfq({ deadline: "2026-09-21" })], offers: [offer()] })
-    expect(todayTasks(passed, BUYER, NOW).find((t) => t.kind === "rfq_award")).toMatchObject({ subKey: "task.rfq_award.sub", subParams: { ago: 1 } })
-  })
-
-  it("the printed RFQ promises sealed prices only when the policy seals, and never on a direct award", () => {
+  it("the printed RFQ never promises a seal", () => {
     const stored = { id: "r1", title: "Rebar", deadline: "2026-09-25", products: [] }
-    expect(rfqPrintModel(stored, { name: "Co", vat: null, cr: null }, "RFQ-1", "Riyadh", DEFAULT_POLICIES).sealed).toBe(true)
-    expect(rfqPrintModel(stored, { name: "Co", vat: null, cr: null }, "RFQ-1", "Riyadh", { sealOffersUntilDeadline: false }).sealed).toBe(false)
-    expect(rfqPrintModel({ ...stored, directAward: true }, { name: "Co", vat: null, cr: null }, "RFQ-1", "Riyadh", DEFAULT_POLICIES).sealed).toBe(false)
+    expect(rfqPrintModel(stored, { name: "Co", vat: null, cr: null }, "RFQ-1", "Riyadh")).not.toHaveProperty("sealed")
     const written: string[] = []
     const w = { document: { write: (s: string) => void written.push(s), close: () => undefined } } as unknown as Window
-    const t = (k: string, p?: Record<string, string | number>) => (k === "how_to_quote" ? `how:${p?.sealed}` : k)
-    writeRfqPrint(w, rfqPrintModel(stored, { name: "Co", vat: null, cr: null }, "RFQ-1", "Riyadh", { sealOffersUntilDeadline: false }), "ar", t, NOW)
-    expect(written[0]).toContain("how:0")
+    const t = (k: string) => (k === "how_to_quote" ? "how" : k)
+    writeRfqPrint(w, rfqPrintModel(stored, { name: "Co", vat: null, cr: null }, "RFQ-1", "Riyadh"), "ar", t, NOW)
+    expect(written[0]).toContain("how")
   })
 })
 

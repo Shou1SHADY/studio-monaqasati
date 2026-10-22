@@ -60,10 +60,13 @@ import type { Firestore } from "firebase-admin/firestore"
 
 const ORG = "org1"
 const NOW = new Date("2026-10-21T08:00:00.000Z")
+/** A request is asked about when it arrives and held for the stores' answer for a day: these tests raise theirs three days before NOW, so the window has lapsed and the material is to be bought. */
+const ASKED = new Date("2026-10-18T08:00:00.000Z")
 const db = () => mockDb as unknown as Firestore
 const doc = (mrKey: string) => mockDb.get(`procIncoming/${incomingDocId(ORG, mrKey)}`) as unknown as IncomingDoc | undefined
 const incoming = () => mockDb.list("procIncoming") as unknown as IncomingDoc[]
 const events = () => [...mockDb.docs].filter(([k]) => k.startsWith("procEvents/")).map(([, d]) => d) as unknown as Array<{ key: string; id: string; payload: Record<string, unknown>; refs: Record<string, unknown> }>
+const statusEvents = () => events().filter((e) => e.id === "pm_status" || e.id === "mfg_status")
 const notices = (uid: string) => mockDb.list(`users/${uid}/notifications`)
 const by = { uid: "buyer", name: "المشتري" }
 
@@ -107,7 +110,7 @@ const team = async (n = 3, over: Partial<Parameters<typeof createTeamRequest>[3]
       requestedFor: { kind: "member", id: who.uid, name: who.name },
       ...over,
     },
-    NOW
+    ASKED
   )
 
 const pmRequest = (over: Record<string, unknown> = {}, id = "03") =>
@@ -123,8 +126,8 @@ const pmRequest = (over: Record<string, unknown> = {}, id = "03") =>
     approvedOn: "2026-10-20",
     createdAt: "2026-10-19T08:00:00.000Z",
     lines: [
-      { itemId: "i1", code: "04-01-01", key: "k1", name: "بلك اسمنتي مفرغ 20", unit: "حبة", qty: 2000 },
-      { itemId: "i1", code: "04-01-01", key: "k2", name: "اسمنت عادي", unit: "كيس", qty: 150 },
+      { itemId: "i1", code: "04-01-01", key: "k1", name: "بلك اسمنتي مفرغ 20", unit: "حبة", qty: 2000, inv: { k: "none", q: 0, kept: 2000, on: "2026-10-20" } },
+      { itemId: "i1", code: "04-01-01", key: "k2", name: "اسمنت عادي", unit: "كيس", qty: 150, inv: { k: "none", q: 0, kept: 150, on: "2026-10-20" } },
     ],
     items: [{ name: "بلك اسمنتي مفرغ 20", unit: "حبة", quantity: 2000, itemId: "i1" }, { name: "اسمنت عادي", unit: "كيس", quantity: 150, itemId: "i1" }],
     ...over,
@@ -281,18 +284,18 @@ describe("proc:ST — the status of a project's line goes out once per change, V
     await syncIncoming(db(), ORG, { now: NOW })
     rfq("1", "New", [{ name: "بلك اسمنتي مفرغ 20", unit: "حبة", src: pmSrc, line: 0 }])
     await syncIncoming(db(), ORG, { now: NOW })
-    expect(events().map((e) => e.key)).toEqual([`proc:ST:pm.P1.03:1:V2`])
-    expect(events()[0]).toMatchObject({ id: "pm_status", payload: { state: "rfq", rfq: "RFQ-2026/1" }, refs: { mrKey: "pm:P1:03", line: 1 } })
+    expect(statusEvents().map((e) => e.key)).toEqual([`proc:ST:pm.P1.03:1:V2`])
+    expect(statusEvents()[0]).toMatchObject({ id: "pm_status", payload: { state: "rfq", rfq: "RFQ-2026/1" }, refs: { mrKey: "pm:P1:03", line: 1 } })
     mockDb.seed("rfqs/1", { ...(mockDb.get("rfqs/1") as object), status: "Awarded" })
     po("9", "1", [0])
     await syncIncoming(db(), ORG, { now: NOW })
-    expect(events().map((e) => e.key).sort()).toEqual([`proc:ST:pm.P1.03:1:V2`, `proc:ST:pm.P1.03:1:V3`])
+    expect(statusEvents().map((e) => e.key).sort()).toEqual([`proc:ST:pm.P1.03:1:V2`, `proc:ST:pm.P1.03:1:V3`])
     await syncIncoming(db(), ORG, { now: NOW })
-    expect(events()).toHaveLength(2)
+    expect(statusEvents()).toHaveLength(2)
     const t = await team(1)
     rfq("2", "New", [{ name: "الاسمنت العادي", unit: "كيس", src: teamSrc(t.mrKey.split(":")[1]), line: 0 }])
     await syncIncoming(db(), ORG, { now: NOW })
-    expect(events()).toHaveLength(2)
+    expect(statusEvents()).toHaveLength(2)
     expect(EVENTS.find((e) => e.id === "pm_status")?.key).toBe("proc:ST:<mr_id>:<line_no>:V<n>")
   })
 
@@ -303,7 +306,7 @@ describe("proc:ST — the status of a project's line goes out once per change, V
     rfq("1", "New", [{ name: "بلك اسمنتي مفرغ 20", unit: "حبة", src: pmSrc, line: 0 }])
     await syncIncoming(db(), ORG, { now: NOW })
     expect(doc("pm:P1:03")?.lines[0].ps).toBe("rfq")
-    expect(events()).toHaveLength(0)
+    expect(statusEvents()).toHaveLength(0)
   })
 })
 
@@ -339,7 +342,7 @@ describe("R-29 / WF-27 — «تعذّر الشراء» on the server", () => {
     await notifyFailed(db(), doc(t.mrKey) as IncomingDoc, by, NOW.toISOString())
     expect(notices("eng1")).toHaveLength(1)
     expect(notices("eng1")[0]).toMatchObject({ type: "team_request_declined", i18n: { message: "pn_team_request_failed", params: { number: "MAT-2026/001", reason: "الأسعار فوق الميزانية بكثير", alt: "مورد آخر" } } })
-    const r = await createTeamRequest(db(), ORG, by, { lines: [{ name: "رمل", unit: "م³", quantity: 3 }], needBy: "2026-11-10", place: { label: "الخرج", city: "الخرج", district: "" }, requestedFor: { kind: "receiver", id: "r1", name: "سالم القحطاني", phone: "+966500000001" } }, NOW)
+    const r = await createTeamRequest(db(), ORG, by, { lines: [{ name: "رمل", unit: "م³", quantity: 3 }], needBy: "2026-11-10", place: { label: "الخرج", city: "الخرج", district: "" }, requestedFor: { kind: "receiver", id: "r1", name: "سالم القحطاني", phone: "+966500000001" } }, ASKED)
     await failIncoming(db(), ORG, by, { mrKey: r.mrKey, code: "avail" }, { now: NOW })
     await notifyFailed(db(), doc(r.mrKey) as IncomingDoc, by)
     expect(mockSendSms).toHaveBeenCalledTimes(1)
@@ -423,6 +426,10 @@ describe("the routes", () => {
   const json = async (res: Response) => (await res.json()) as { success?: boolean; error?: boolean; code?: string; data?: Record<string, unknown> }
 
   beforeEach(() => mockDb.seed(`companyModules/${ORG}`, { off: ["project-management"] }))
+  const lapse = (mrKey: string) => {
+    const d = doc(mrKey) as IncomingDoc
+    mockDb.seed(`procIncoming/${incomingDocId(ORG, mrKey)}`, { ...d, lines: d.lines.map((l) => (l.stk ? { ...l, stk: { ...l.stk, until: "2026-01-01" } } : l)) } as unknown as Record<string, unknown>)
+  }
 
   it("WF-01: any member raises one for himself; with Projects in the package the server refuses (B-09)", async () => {
     const res = await create("eng1")
@@ -472,6 +479,7 @@ describe("the routes", () => {
   it("«تعذّر الشراء» is Procurement's: a requester is refused, the owner closes it and the requester is told", async () => {
     const made = await json(await create("eng1"))
     const mrKey = String(made.data?.id)
+    lapse(mrKey)
     const refused = await incomingRoute(as("eng1", "/api/procurement/incoming", { action: "fail", mrKey, reason: "avail" }))
     expect(refused.status).toBe(403)
     const ok = await incomingRoute(as(ORG, "/api/procurement/incoming", { action: "fail", mrKey, reason: "avail", alt: "مكافئ" }))
@@ -488,6 +496,7 @@ describe("the routes", () => {
   it("a buyer with the permission links and releases lines through the route; a member without it cannot", async () => {
     const made = await json(await create("eng1"))
     const mrKey = String(made.data?.id)
+    lapse(mrKey)
     person("buyer", { organizationRole: "member" })
     group("buyer", ["rfq.manage"])
     rfq("1", "New", [{ name: "اسمنت", unit: "كيس", src: teamSrc(mrKey.split(":")[1]), line: 0 }])

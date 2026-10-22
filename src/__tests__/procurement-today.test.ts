@@ -222,9 +222,9 @@ describe("T6/T8/T9/T11 · receipts and notices", () => {
 
 describe("T3/T4 · RFQ tasks", () => {
   it("draft · compare and award once closed with pending offers (red past the award cycle) · closed with nothing · closing soon and thin", () => {
-    // Sealed rounds: the award waits for the deadline (an unsealed one: procurement-v5-front).
+    // No seal (RFQ-03): an RFQ with offers waiting is comparable and awardable the moment they arrive.
     const w = world({
-      policies: { ...DEFAULT_POLICIES, sealOffersUntilDeadline: true },
+      policies: { ...DEFAULT_POLICIES },
       rfqs: [
         rfq({ id: "draft", status: "Draft", deadline: null }),
         rfq({ id: "ready", deadline: "2026-09-21" }),
@@ -243,16 +243,17 @@ describe("T3/T4 · RFQ tasks", () => {
       ["rfq_award", "rfq_award:stale", "red"],
       ["rfq_no_offers", "rfq_no_offers:empty", "red"],
       ["rfq_award", "rfq_award:ready", "amber"],
-      ["rfq_closing_thin", "rfq_closing_thin:thin", "blue"],
+      ["rfq_award", "rfq_award:thin", "amber"],
+      ["rfq_award", "rfq_award:fine", "amber"],
       ["rfq_draft", "rfq_draft:draft", "blue"], // no deadline → sorts last among the blues
     ])
     const ready = t.find((x) => x.id === "rfq_award:ready")!
     expect(ready).toMatchObject({ group: "rfq", titleParams: { title: "Rebar for Tower A", count: 2 }, subParams: { ago: 1 }, amount: 11000, href: "/contractor/rfqs/ready/offers", actionKey: "actions.compare" })
-    expect(t.find((x) => x.id === "rfq_closing_thin:thin")).toMatchObject({ titleParams: { inDays: 1, count: 1 } })
+    expect(t.find((x) => x.id === "rfq_award:thin")).toMatchObject({ titleParams: { count: 1 }, subKey: "task.rfq_award.sub_open" })
     // A buyer sees his own (the prototype's `rfqMine`); an expediter none.
     expect(kinds(w, BUYER)).toHaveLength(0)
     const his = { ...w, rfqs: w.rfqs.map((r) => ({ ...r, createdByUserId: "buyer" })) }
-    expect(kinds(his, BUYER)).toHaveLength(5)
+    expect(kinds(his, BUYER)).toHaveLength(6)
     expect(kinds(w, EXPEDITER)).toEqual([])
   })
 })
@@ -309,7 +310,7 @@ describe("KPIs — three per role", () => {
     // With the needs desk loaded, the first tile counts the lines still to source and those past their last order day.
     const row = (key: string, state: NeedRow["state"], lastOrderIn: number | null) => ({ key, state, lastOrderIn, category: null }) as NeedRow
     const k2 = todayKpis({ ...w, needDesk: { rows: [row("a", "open", -2), row("b", "late", 3), row("c", "rfq", null)], buyers: [], viewerCategories: null } }, MANAGER, NOW)
-    expect(k2.tiles[0]).toMatchObject({ id: "needs", value: 3, labelKey: "kpi.needs.label_requests", noteKey: "kpi.needs.note_overdue", noteParams: { count: 1 }, tone: "bad", href: "/contractor/rfqs/requests?seg=act" })
+    expect(k2.tiles[0]).toMatchObject({ id: "needs", value: 3, labelKey: "kpi.needs.label_requests", noteKey: "kpi.needs.note_overdue", noteParams: { count: 1 }, tone: "bad", href: "/contractor/rfqs/requests?seg=new" })
   })
 
   it("owner: awaiting my approval · what Finance will need · late orders", () => {

@@ -202,8 +202,7 @@ describe("what the visitor is shown (LNK-01, G-06, B-06, B-07, B-14)", () => {
     const res = await getLink(token)
     const body = await res.json()
     expect(res.status).toBe(200)
-    expect(body.data.rfq.city).toBe("Riyadh")
-    expect(body.data.rfq.district).toBe("Al Olaya")
+    expect(body.data.rfq.places).toEqual([{ city: "Riyadh", district: "Al Olaya" }])
     expect(body.data.rfq).not.toHaveProperty("locationCoords")
     expect(JSON.stringify(body)).not.toContain("24.7136")
     expect(JSON.stringify(body)).not.toContain("46.6753")
@@ -243,7 +242,7 @@ describe("what the visitor is shown (LNK-01, G-06, B-06, B-07, B-14)", () => {
 })
 
 describe("the link ends with the RFQ (G-07, R-02, NFR-04)", () => {
-  it("opens while the RFQ takes offers, views only after the deadline, and is gone once the RFQ is decided", async () => {
+  it("opens while the RFQ takes offers and is view-only after the deadline and once the RFQ is decided (a visitor reads his result)", async () => {
     const token = tokenOf((await createFor({ rfqId: "R1" })).json.data?.url)
     const open = await (await getLink(token)).json()
     expect(open.data.canSubmit).toBe(true)
@@ -254,9 +253,11 @@ describe("the link ends with the RFQ (G-07, R-02, NFR-04)", () => {
     expect((await closed.json()).data.canSubmit).toBe(false)
 
     mockDb.seed("rfqs/R1", { ...mockDb.get("rfqs/R1")!, deadline: FUTURE, status: "Awarded" })
-    const gone = await getLink(token)
-    expect(gone.status).toBe(410)
-    expect((await gone.json()).code).toBe("LINK_EXPIRED")
+    const decided = await getLink(token)
+    expect(decided.status).toBe(200)
+    const body = await decided.json()
+    expect(body.data.canSubmit).toBe(false)
+    expect(body.data.rfq.state).toBe("awarded")
   })
 
   it("a revoked link is gone for every token it ever had", async () => {
@@ -271,7 +272,7 @@ describe("the link ends with the RFQ (G-07, R-02, NFR-04)", () => {
     const token = tokenOf((await createFor({ rfqId: "R1" })).json.data?.url)
     mockDb.seed("rfqs/R1", { ...mockDb.get("rfqs/R1")!, status: "Awarded" })
     const res = await submitOffer(offerRequest(token, { challengeId: "ch1", code: "123456" }), ctx(token))
-    expect(res.status).toBe(410)
+    expect([res.status, (await res.json()).code]).toEqual([409, "RFQ_CLOSED"])
   })
 })
 
@@ -283,6 +284,8 @@ function offerRequest(token: string, extra: Record<string, string> = {}, phone =
   form.set("companyName", "Visitor Trading")
   form.set("phone", phone)
   form.set("price", "1500")
+  form.set("validUntil", "2100-01-15")
+  form.set("executionDuration", "5")
   for (const [k, v] of Object.entries(extra)) form.set(k, v)
   return new NextRequest(`http://localhost/api/rfq-share/${token}/offer`, { method: "POST", body: form })
 }

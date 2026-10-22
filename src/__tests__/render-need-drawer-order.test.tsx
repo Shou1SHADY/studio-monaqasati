@@ -33,7 +33,7 @@ const need = (items: Array<{ name: string; quantity: number; unit: string }>, id
   projectNeed({ id: "p1", name: "Villas" }, { id, title: "L2", items, status: "approved", needBy: "2026-10-30", requestedByUserName: "Yasser", createdAt: "2026-09-22T06:00:00Z" }, "PR-1")
 
 const ORDER_LABELS = ["أمر على الاتفاقية", "أمر مباشر", "أمر مباشر بمصدر وحيد — بسبب"]
-const acts = (canOrder: boolean): NeedLineActs => ({ canAct: true, canRfq: true, canOrder, seesPrices: true, onRfq: jest.fn(), onOrder: jest.fn(), onProceed: jest.fn(), onAskWorkshop: jest.fn(), onBuyNotMake: jest.fn(), onWorkshopLapsed: jest.fn() })
+const acts = (canOrder: boolean): NeedLineActs => ({ canAct: true, canRfq: true, canOrder, seesPrices: true, onRfq: jest.fn(), onOrder: jest.fn(), onAskWorkshop: jest.fn() })
 const labels = () => Array.from(document.querySelectorAll("button")).map((b) => (b.textContent ?? "").trim())
 
 async function show(items: Array<{ name: string; quantity: number; unit: string }>, canOrder: boolean) {

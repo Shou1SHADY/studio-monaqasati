@@ -11,6 +11,8 @@ import { FakeAdminDb } from "@/test-utils/fake-admin-firestore"
 jest.mock("firebase-admin/firestore", () => ({ FieldValue: { serverTimestamp: () => "TS", increment: (n: number) => ({ __inc: n }) } }))
 jest.mock("@/lib/supplier-free/server-notify", () => ({ notifyNamed: jest.fn(async () => 1) }))
 jest.mock("@/lib/receipt-links", () => ({ callerOf: jest.fn() }))
+jest.mock("@/lib/firebaseAdmin", () => ({ getAdminAuth: () => ({}), getAdminFirestore: () => ({}), getAdminStorage: () => ({}), getStorageBucketName: () => "b" }))
+jest.mock("@/lib/procurement/incoming-server", () => ({ syncIncoming: jest.fn(async () => ({})) }))
 
 type Doc = Record<string, unknown>
 const NOW = new Date("2026-10-15T09:00:00Z")
@@ -52,11 +54,13 @@ describe("award.reopen (DEC)", () => {
     expect(competingOffers(all).map((o) => o.id)).toEqual(["o2"])
   })
 
-  it("is refused while another order of the same award still runs (a split award)", async () => {
+  it("is no longer refused while another order of the same award runs (WF-25): the RFQ reopens, the live order's lines stay locked", async () => {
     as("badr", ["offers.accept"])
-    const db = world().seed("purchaseOrders/p2", po({ status: "approved", supplierDecline: null, offerId: "o4" })).seed("offers/o4", { rfqId: "r1", status: "مقبول", price: "100", poId: "p2" })
-    expect(await refusal(reopen(db))).toBe("award_split_live")
-    expect((db.get("rfqs/r1") as Doc).status).toBe("Awarded")
+    const db = world().seed("purchaseOrders/p2", po({ status: "approved", supplierDecline: null, offerId: "o4", lines: [{ id: "l2", rfqProductIndex: 1 }] })).seed("offers/o4", { rfqId: "r1", status: "مقبول", price: "100", poId: "p2" })
+    expect(await refusal(reopen(db))).toBeNull()
+    expect((db.get("rfqs/r1") as Doc).status).toBe("New")
+    expect((db.get("purchaseOrders/p2") as Doc).status).toBe("approved")
+    expect((db.get("offerDecisions/o1") as Doc).exclusion).toMatchObject({ code: "order_cancelled" })
   })
 
   it("is refused without the award's permission, on another buyer's RFQ, on an order nobody declined, and across companies", async () => {

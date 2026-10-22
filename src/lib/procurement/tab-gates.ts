@@ -6,9 +6,9 @@
 // boundaries. The owner passes every check. Type-only imports: the sidebar
 // bundle pulls nothing else in.
 
-import type { PermissionId } from "../permissions"
+import { PERMISSION_SECTIONS, type PermissionId } from "../permissions"
 
-export type ProcTabId = "today" | "rfqs" | "requests" | "orders" | "receipts" | "suppliers" | "reports" | "settings"
+export type ProcTabId = "today" | "rfqs" | "requests" | "orders" | "receipts" | "suppliers" | "reports" | "settings" | "mine"
 
 /** Every permission of the Procurement section — holding any one opens Today. */
 export const PROC_ANY_PERMISSION: PermissionId[] = ["rfq.create", "rfq.manage", "offers.view", "offers.accept", "po.approve", "po.expedite", "suppliers.manage", "deliveries.confirm"]
@@ -18,7 +18,13 @@ const SOURCING: PermissionId[] = ["rfq.manage", "rfq.create", "offers.accept", "
 /** Whoever sees prices, plus the expediter (dates and quantities only). */
 const ORDER_ROLES: PermissionId[] = ["offers.view", "offers.accept", "po.approve", "po.expedite"]
 
+/** Every permission of the Procurement section. A member who holds none of them is a requester («طالب مواد»): his one entry is «طلباتي». */
+export const PROC_SECTION_PERMISSIONS: PermissionId[] = PERMISSION_SECTIONS.find((s) => s.key === "procurement")?.permissions ?? []
+
+export const PROC_MINE_HREF = "/contractor/rfqs/my-requests"
+
 export const PROC_TAB_GATES: Record<ProcTabId, PermissionId[]> = {
+  mine: [],
   today: PROC_ANY_PERMISSION,
   requests: SOURCING,
   rfqs: SOURCING,

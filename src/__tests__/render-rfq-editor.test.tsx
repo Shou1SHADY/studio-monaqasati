@@ -13,6 +13,8 @@ jest.mock("@/i18n/routing", () => jest.requireActual("@/test-utils/render-world"
 jest.mock("next/navigation", () => jest.requireActual("@/test-utils/render-world").navigationMock)
 jest.mock("@/ai/genkit", () => jest.requireActual("@/test-utils/render-world").aiMock)
 jest.mock("@/components/layout/portal-layout", () => jest.requireActual("@/test-utils/render-world").portalLayoutMock)
+const mockPublish = jest.fn()
+jest.mock("@/lib/procurement/rfq-lifecycle-client", () => ({ ...jest.requireActual("@/lib/procurement/rfq-lifecycle-client"), publishRfqCall: (input: unknown) => mockPublish(input) }))
 
 import React from "react"
 import { readFileSync } from "node:fs"
@@ -143,6 +145,7 @@ describe("the RFQ editor (PUR-02/03)", () => {
       await act(async () => void fireEvent.click(b))
       await flush()
     }
+    mockPublish.mockImplementation(async (input: { deadline: string }) => ({ id: "R9", number: "RFQ-2026/009", guestUrl: null, reached: 0, closesOn: input.deadline, direct: false, dirOver: false, directEst: null, linkedRequests: 0, edited: false }))
     await press("التالي: النشر")
     expect(text()).toContain("الموعد النهائي للعروض") // one line: no pricing choice, as before
     await press("التالي: المراجعة")
@@ -150,12 +153,12 @@ describe("the RFQ editor (PUR-02/03)", () => {
     expect([...missingKeys]).toEqual([])
     await press("انشر")
     await flush()
-    const rfqs = listCollection<Record<string, unknown>>("rfqs").filter((r) => r.status === "New")
-    expect(rfqs).toHaveLength(1)
-    const r = rfqs[0]
-    expect(r.rfqNumber).toMatch(/^RFQ-\d{4}\/\d{3}$/)
+    expect(mockPublish).toHaveBeenCalledTimes(1)
+    const sent = mockPublish.mock.calls[0][0] as { doc: Record<string, unknown>; pricing: string; audience: string }
+    const r = sent.doc
     expect(r.subCategoryIds).toHaveLength(1)
-    expect(r).toMatchObject({ city: "الرياض", district: "حي الياسمين", pricingMode: "line", visibility: "public" })
+    expect(r).toMatchObject({ city: "الرياض", district: "حي الياسمين" })
+    expect(sent).toMatchObject({ pricing: "line", audience: "public" })
     expect((r.products as Array<Record<string, unknown>>)[0]).toMatchObject({ quantity: 8, unitOfMeasure: "طن", deliveryDistrict: "حي الياسمين" })
     expect(text()).toContain("نُشر طلب العروض")
     view.unmount()

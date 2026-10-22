@@ -5,8 +5,7 @@
 // only, the guest supplier at the award, and the new-RFQ form's defaults.
 
 import { actsOnRfq, awardsOnRfq, closesRfqEarly, hasProcurementStaff, isRfqBuyer, ownerReadsRfqs, rfqMine, runsRfqs, type RfqRunner } from "@/lib/procurement/rfq-access"
-import { canCloseEarly, canRunRfq } from "@/lib/procurement/rfq-detail"
-import { extendRefusal } from "@/lib/procurement/rfq-extend-writes"
+import { canRunRfq } from "@/lib/procurement/rfq-detail"
 import { bulkDeleteSplit, rfqFiles, rfqPage, rfqPageTab, rfqStage, segmentCounts, sortRfqs, type RfqListLike } from "@/lib/procurement/rfq-view"
 import { bestOfferIds, coversAllLines, guestAwardRefusal, type OrderableOffer } from "@/lib/procurement/rfq-award"
 import { DEFAULT_RFQ_PRICING, asksForOffers, effectivePricing, firstDeadline, isSaudiVat, showsPricingChoice, step3Refusals } from "@/lib/procurement/rfq-form"
@@ -37,8 +36,6 @@ describe("who runs an RFQ (rfq-access)", () => {
     expect(ownerReadsRfqs(OWNER_TEAM)).toBe(true)
     expect(ownerReadsRfqs(OWNER_SOLO)).toBe(false)
     expect(canRunRfq(OWNER_TEAM)).toBe(false)
-    expect(canCloseEarly(OWNER_TEAM)).toBe(false)
-    expect(canCloseEarly(OWNER_SOLO)).toBe(true)
   })
 
   it("a buyer acts only on the RFQs he raised; the manager on every one", () => {
@@ -76,24 +73,15 @@ describe("who runs an RFQ (rfq-access)", () => {
     expect(hasProcurementStaff([{ id: "org", organizationRole: "owner" }, { id: "m1", organizationRole: "member", defaultGroupId: "g-view" }], groups, "org")).toBe(false)
     expect(hasProcurementStaff([{ id: "m2", organizationRole: "member", defaultGroupId: "g-fin" }], groups, "org")).toBe(true)
   })
-
-  it("the extend write refuses a buyer on someone else's RFQ and the reading owner", () => {
-    const input = { deadline: "2026-10-05", addSupplierOrgIds: [] }
-    expect(extendRefusal({ status: "New", createdByUserId: "buyer" }, BUYER, input, "2026-09-28")).toBeNull()
-    expect(extendRefusal({ status: "New", createdByUserId: "other" }, BUYER, input, "2026-09-28")).toBe("no_permission")
-    expect(extendRefusal({ status: "New" }, OWNER_TEAM, input, "2026-09-28")).toBe("no_permission")
-    expect(extendRefusal({ status: "New" }, SUPPLY_CHAIN, input, "2026-09-28")).toBe("no_permission")
-    expect(extendRefusal({ status: "New", createdByUserId: "sc" }, SUPPLY_CHAIN, input, "2026-09-28")).toBeNull()
-  })
 })
 
 describe("the RFQ list (rfq-view)", () => {
   it("reads «إسناد مباشر» and «جاهز للمقارنة» like the prototype's RFST", () => {
     expect(rfqStage({ status: "Awarded", directAward: true }, NOW)).toBe("direct")
     expect(rfqStage({ status: "Awarded" }, NOW)).toBe("awarded")
-    expect(rfqStage({ status: "New", deadline: "2026-10-05", offersCount: 2 }, NOW, true)).toBe("open")
-    expect(rfqStage({ status: "New", deadline: "2026-10-05", offersCount: 2 }, NOW, false)).toBe("compare")
-    expect(rfqStage({ status: "New", deadline: "2026-10-05", offersCount: 0 }, NOW, false)).toBe("open")
+    expect(rfqStage({ status: "New", deadline: "2026-10-05", offersCount: 2 }, NOW)).toBe("open")
+    expect(rfqStage({ status: "New", deadline: "2026-09-20", offersCount: 2 }, NOW)).toBe("compare")
+    expect(rfqStage({ status: "New", deadline: "2026-10-05", offersCount: 0 }, NOW)).toBe("open")
     expect(rfqStage({ status: "New", deadline: "2026-10-05", offersCount: 2 }, NOW)).toBe("open")
   })
 
@@ -186,22 +174,23 @@ describe("the new-RFQ form (rfq-form)", () => {
     expect(effectivePricing("total", 3, true, "private")).toBe("total")
     expect(effectivePricing("line", 3, false, "public")).toBe("total")
     expect(effectivePricing("total", 1, true, "public")).toBe("line")
-    expect(effectivePricing("total", 3, true, "direct")).toBe("line")
+    expect(effectivePricing("total", 3, true, "direct")).toBe("total")
   })
 
-  it("offers the pricing choice only with more than one line and not for a direct award", () => {
+  it("offers the pricing choice only with more than one line, a direct award included (2.0)", () => {
     expect(showsPricingChoice(1, "public")).toBe(false)
     expect(showsPricingChoice(2, "public")).toBe(true)
-    expect(showsPricingChoice(2, "direct")).toBe(false)
+    expect(showsPricingChoice(2, "direct")).toBe(true)
   })
 
-  it("a direct award asks for no deadline; otherwise the deadline is after today", () => {
-    expect(asksForOffers("direct")).toBe(false)
-    expect(step3Refusals({ city: "Riyadh", deadline: "", audience: "direct", today: "2026-09-28" })).toEqual([])
+  it("every audience asks for a deadline, today or later (R-32); a direct award is an open RFQ", () => {
+    expect(asksForOffers("direct")).toBe(true)
+    expect(step3Refusals({ city: "Riyadh", deadline: "", audience: "direct", today: "2026-09-28" })).toEqual(["deadline"])
     expect(step3Refusals({ city: "Riyadh", deadline: "", audience: "public", today: "2026-09-28" })).toEqual(["deadline"])
-    expect(step3Refusals({ city: "Riyadh", deadline: "2026-09-28", audience: "private", today: "2026-09-28" })).toEqual(["deadline_past"])
+    expect(step3Refusals({ city: "Riyadh", deadline: "2026-09-27", audience: "private", today: "2026-09-28" })).toEqual(["deadline_past"])
+    expect(step3Refusals({ city: "Riyadh", deadline: "2026-09-28", audience: "private", today: "2026-09-28" })).toEqual([])
     expect(step3Refusals({ city: "", deadline: "2026-09-29", audience: "public", today: "2026-09-28" })).toEqual(["city"])
-    expect(firstDeadline("2026-09-30")).toBe("2026-10-01")
+    expect(firstDeadline("2026-09-30")).toBe("2026-09-30")
   })
 
   it("checks a Saudi VAT number the guest types", () => {

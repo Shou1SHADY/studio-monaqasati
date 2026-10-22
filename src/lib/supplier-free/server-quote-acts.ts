@@ -9,17 +9,17 @@
 import { FieldValue, type DocumentData, type Firestore, type UpdateData } from "firebase-admin/firestore"
 import { z } from "zod"
 import { riyadhDay } from "@/lib/hr/format"
-import { OFFER_WITHDRAWN, isWithdrawnOffer, offersSealed } from "@/lib/procurement/award"
+import { OFFER_WITHDRAWN, isWithdrawnOffer } from "@/lib/procurement/award"
 import { rfqOfferKey } from "@/lib/procurement/event-keys"
 import { newOfferNotice, newOfferNoticeId } from "@/lib/procurement/offer-announce"
 import { bafoOpen, bafoReplyKind, bafoReplyRefusal, revalOpen, type OfferBafo, type OfferReval } from "@/lib/procurement/offer-decisions"
 import { currentVersionOf, nextVersions, offerRev, quotingGate, totalFields, type StoredVersion } from "@/lib/procurement/offer-versions"
-import { resolvePolicies } from "@/lib/procurement/policies"
 import { rfqKeyPart, sendProcEvent } from "@/lib/procurement/proc-event-server"
+import { createInquiry } from "@/lib/procurement/rfq-server/inquiry"
+import { answerOf, inquiryKind, publicInquiry, type InquiryDoc } from "@/lib/procurement/rfq-inquiries"
 import { rfqLogEntry, type RfqLogEntry } from "@/lib/procurement/rfq-detail"
-import type { ProcurementPolicies } from "@/lib/procurement/types"
 import { UNDER_REVIEW } from "@/lib/procurement/supplier"
-import { notifyNamed, permissionHolders } from "./server-notify"
+import { notifyNamed } from "./server-notify"
 import { QUOTE_COUNTS, quoteCountId, riyadhMonth } from "@/lib/supplier-approval"
 import { daysBetween, namesSupplier, quoteBlocks, quoteShapeOf, replyByOf, requestReaches, versionOf, type QuoteValues } from "./quote-rules"
 
@@ -77,7 +77,7 @@ export const quoteActSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("quote.withdraw"), offerId: id }),
   z.object({ action: z.literal("quote.sample"), offerId: id, sentAt: day, receivedBy: z.string().trim().max(120).default(""), note: z.string().trim().max(500).default("") }),
   z.object({ action: z.literal("quote.decline"), rfqId: id, note: z.string().trim().max(500).default("") }),
-  z.object({ action: z.literal("quote.ask"), rfqId: id, question: z.string().trim().min(1).max(1000) }),
+  z.object({ action: z.literal("quote.ask"), rfqId: id, question: z.string().trim().min(1).max(1000), li: z.number().int().min(0).max(500).optional() }),
   z.object({ action: z.literal("quote.answer"), inquiryId: id, rfqId: id, answer: z.string().trim().min(1).max(1000) }),
 ])
 export type QuoteAct = z.infer<typeof quoteActSchema>
@@ -122,7 +122,7 @@ function assertOpen(rfq: Rec, today: string) {
 
 function assertOwn(offer: Rec | undefined, s: QuoteSupplier): Rec {
   if (!offer) throw new QuoteActError("offer_missing")
-  if (str(offer.organizationId) !== s.orgId || offer.supplierId === "guest") throw new QuoteActError("not_yours")
+  if (!ownsQuote({ kind: "supplier", supplier: s }, offer)) throw new QuoteActError("not_yours")
   return offer
 }
 
@@ -231,13 +231,11 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
         return { rfq: r, total: version.total }
       })
       await sendProcEvent(db, { id: "rfq_offer", key: rfqOfferKey(rfqKeyPart(rfq, rfq.id), s.orgId, 1), organizationId: str(rfq.organizationId) || str(rfq.contractorId), by: s.uid, at, refs: { rfq: rfqKeyPart(rfq, rfq.id), offer: ref.id }, payload: { version: 1 } })
-      // The amount is named only when the round is not sealed — only the server can tell.
+      // The amount is always named: prices are never hidden from the buyer (RFQ-03).
       const contractorId = str(rfq.contractorId)
       if (contractorId) {
         const orgId = str(rfq.organizationId) || contractorId
-        const settings = (await db.collection("procurementSettings").doc(orgId).get().catch(() => null))?.data()
-        const sealed = offersSealed(rfq as Parameters<typeof offersSealed>[0], resolvePolicies(settings as Partial<ProcurementPolicies> | undefined), now)
-        const notice = newOfferNotice({ supplier: s.company, rfqTitle: str(rfq.title), price: sealed ? null : total, sealed })
+        const notice = newOfferNotice({ supplier: s.company, rfqTitle: str(rfq.title), price: total })
         await db
           .collection("users")
           .doc(contractorId)
@@ -408,30 +406,15 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
       return {}
     }
     case "quote.ask": {
-      // A question on a request he can see, while it is open (RFQ-04). Written by the server so the buying side is told
-      // — the request's creator and whoever runs its RFQs — and so the asker's company is the one he acts for.
+      // A question on a request he can see, while it is open (RFQ-04). The one `createInquiry` writes it and tells the
+      // buying side — the same door the visitors' link uses — so the asker's company is the one he acts for.
       const snap = await rfqRef(act.rfqId).get()
       if (!snap.exists) throw new QuoteActError("rfq_missing")
       const rfq = withId(snap.data(), snap.id)
       if (str(rfq.status) !== "New") throw new QuoteActError("rfq_closed")
       if (!(await seesRequest(db, rfq, s.orgId))) throw new QuoteActError("not_reached")
-      const question = act.question.trim().slice(0, 1000)
-      const ref = rfqRef(rfq.id).collection("inquiries").doc()
-      await ref.set({
-        kind: "ask",
-        question,
-        supplierId: s.uid,
-        userId: s.uid,
-        organizationId: s.orgId,
-        supplierName: s.company,
-        submittedByUserId: s.uid,
-        submittedByUserName: s.name,
-        reply: null,
-        repliedAt: null,
-        createdAt: at,
-      })
-      await tellAboutQuestion(db, s, rfq, ref.id, question, at)
-      return { id: ref.id }
+      const made = await createInquiry(db, { rfq, question: act.question, li: act.li ?? null, asker: { kind: "supplier", uid: s.uid, name: s.name, orgId: s.orgId, company: s.company }, at })
+      return { id: made.id }
     }
     case "quote.answer": {
       // The answer to a clarification the buyer asked on HIS offer («اطلب توضيحاً»): it goes back to the buyer on that
@@ -458,6 +441,18 @@ export async function runQuoteAct(db: Firestore, s: QuoteSupplier, act: QuoteAct
   }
 }
 
+/** The other subject of a quote act: a visitor on the RFQ link, known by the mobile he verified (LNK-09). He owns the quote
+ * made with that mobile and nothing else; the notices the buyer receives name him by his company, or «زائر» when he asked
+ * a question unverified. The visitor's own acts live in `visitor-offer-server.ts` and run the same gates. */
+export type QuoteSubject = { kind: "supplier"; supplier: QuoteSupplier } | { kind: "visitor"; phone: string }
+
+export const visitorActor = (company: string, phone: string): QuoteSupplier => ({ uid: phone ? `guest:${phone}` : "guest", name: company || "زائر", orgId: "guest", company: company || "زائر", field: { specs: [], cities: [] } })
+
+export function ownsQuote(subject: QuoteSubject, offer: Rec): boolean {
+  if (subject.kind === "supplier") return str(offer.organizationId) === subject.supplier.orgId && offer.supplierId !== "guest"
+  return offer.isGuestOffer === true && offer.supplierId === "guest" && str((offer.guestContact as Rec | undefined)?.phone) === subject.phone
+}
+
 /** Whether a supplier's company sees a request: a public one, one that names him, or one he has quoted on. */
 export async function seesRequest(db: Firestore, rfq: Rec & { id: string }, orgId: string): Promise<boolean> {
   if (rfq.visibility !== "private" || namesSupplier(rfq, orgId)) return true
@@ -475,65 +470,43 @@ export interface SupplierQuestion {
   /** A clarification the buyer asked on his offer, waiting for his answer. */
   fromBuyer?: boolean
   offerId?: string | null
+  /** A clarification from the buyer to every invitee: no question behind it. */
+  note?: boolean
 }
 
-/** The questions on a request as a supplier may read them (decision 10): his company's own with their state, and the
- * answered ones of others — without who asked. */
+/** The questions on a request as a supplier may read them (decision 10): his company's own with their state, the answers
+ * given «للجميع» and the buyer's clarifications — never who asked, never an answer given to the asker alone. */
 export async function questionsFor(db: Firestore, orgId: string, rfqId: string): Promise<SupplierQuestion[]> {
   const ref = db.collection("rfqs").doc(rfqId)
   const snap = await ref.get()
   if (!snap.exists) throw new QuoteActError("rfq_missing")
   if (!(await seesRequest(db, withId(snap.data(), snap.id), orgId))) throw new QuoteActError("not_reached")
   const rows = await ref.collection("inquiries").get()
-  return rows.docs
-    .map((d): Rec & { id: string } => ({ ...(d.data() as Rec), id: d.id }))
-    .filter((q) => q.kind !== "our_question" || str((q.to as Rec | undefined)?.orgId) === orgId)
-    .map((q) => {
-      const fromBuyer = q.kind === "our_question"
-      return { id: q.id, question: str(q.question), reply: str(q.reply).trim() || null, repliedAt: str(q.repliedAt) || null, createdAt: str(q.createdAt) || null, mine: !fromBuyer && str(q.organizationId) === orgId, ...(fromBuyer ? { fromBuyer: true, offerId: str((q.to as Rec).offerId) || null } : {}) }
-    })
-    .filter((q) => q.mine || q.fromBuyer || !!q.reply)
-    .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
-}
-
-/** The buying side hears of a question: the request's creator and the holders of rfq.manage (the owner among them). */
-async function tellAboutQuestion(db: Firestore, s: QuoteSupplier, rfq: Rec & { id: string }, inquiryId: string, question: string, at: string): Promise<void> {
-  try {
-    const orgId = str(rfq.organizationId) || str(rfq.contractorId)
-    const holders = await permissionHolders(db, orgId, ["rfq.manage"]).catch(() => [] as string[])
-    const to = [...new Set([str(rfq.createdByUserId), str(rfq.contractorId), ...holders].filter((u) => !!u && u !== s.uid))]
-    const rfqName = str(rfq.rfqNumber) || str(rfq.title)
-    const params = { supplier: s.company, rfq: rfqName, question: question.length > 120 ? `${question.slice(0, 120)}…` : question }
-    await Promise.all(
-      to.map((uid) =>
-        db
-          .collection("users")
-          .doc(uid)
-          .collection("notifications")
-          .doc(`rfq_question__${inquiryId}`)
-          .set({
-            userId: uid,
-            organizationId: orgId,
-            type: "rfq_question",
-            title: `سؤال من ${s.company} على ${rfqName}`,
-            message: params.question,
-            i18n: { title: "pn_rfq_question_title", message: "pn_rfq_question", params },
-            link: `/contractor/rfqs/${rfq.id}/offers?tab=inquiries`,
-            rfqId: rfq.id,
-            actorId: s.uid,
-            actorName: s.name,
-            read: false,
-            createdAt: at,
-          })
-      )
-    )
-  } catch (err) {
-    console.warn("question notice failed:", (err as { code?: string })?.code || err)
+  const out: SupplierQuestion[] = []
+  for (const d of rows.docs) {
+    const q: Rec & { id: string } = { ...(d.data() as Rec), id: d.id }
+    const doc = q as unknown as InquiryDoc & Rec
+    const kind = inquiryKind(doc)
+    const createdAt = str(q.createdAt) || null
+    if (kind === "our_question") {
+      if (str((q.to as Rec | undefined)?.orgId) !== orgId) continue
+      out.push({ id: d.id, question: str(q.question), reply: str(q.reply).trim() || null, repliedAt: str(q.repliedAt) || null, createdAt, mine: false, fromBuyer: true, offerId: str((q.to as Rec).offerId) || null })
+      continue
+    }
+    const pub = publicInquiry(doc)
+    if (kind === "note") {
+      if (pub) out.push({ id: d.id, question: "", reply: pub.answer, repliedAt: pub.answeredAt, createdAt, mine: false, note: true })
+      continue
+    }
+    const mine = str(q.organizationId) === orgId || str((q.from as Rec | undefined)?.orgId) === orgId
+    if (mine) out.push({ id: d.id, question: str(q.question), reply: answerOf(doc)?.text ?? null, repliedAt: answerOf(doc)?.at ?? null, createdAt, mine: true })
+    else if (pub) out.push({ id: d.id, question: pub.question, reply: pub.answer, repliedAt: pub.answeredAt, createdAt, mine: false })
   }
+  return out.sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
 }
 
 /** The buyer who asked hears the supplier's answer: he and the request's owner. */
-async function tellAboutAnswer(db: Firestore, s: QuoteSupplier, rfq: Rec & { id: string }, asker: string, inquiryId: string, answer: string, at: string): Promise<void> {
+export async function tellAboutAnswer(db: Firestore, s: QuoteSupplier, rfq: Rec & { id: string }, asker: string, inquiryId: string, answer: string, at: string): Promise<void> {
   try {
     const orgId = str(rfq.organizationId) || str(rfq.contractorId)
     const to = [...new Set([asker, str(rfq.contractorId)].filter((u) => !!u && u !== s.uid))]

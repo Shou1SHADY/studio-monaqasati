@@ -40,7 +40,7 @@ import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 
 type Unit = "sar" | "percent" | "count" | "days"
-type SwitchKey = "sealOffersUntilDeadline" | "buyerReceives" | "sendOnApproval" | "ownerStepsBack" | "advanceUnknownSupplierOwner"
+type SwitchKey = "buyerReceives" | "sendOnApproval" | "ownerStepsBack" | "advanceUnknownSupplierOwner"
 type NumericKey = Exclude<keyof ResolvedPolicies, SwitchKey | "noticeRouting">
 type PairId = "cycle" | "competition" | "direct"
 type Row =
@@ -52,7 +52,6 @@ type Row =
 
 /** The prototype's order (§6.4): what shapes a quote, the clocks of buying, the limits, then the receipt. */
 const ROWS: Row[] = [
-  { kind: "switch", key: "sealOffersUntilDeadline" },
   { kind: "fixed", id: "awardBeforeDeadline", owner: "gov" },
   { kind: "routing" },
   { kind: "number", key: "forwardWindowDays", unit: "days" },
@@ -97,7 +96,6 @@ const schema = z.object({
   supplyLeadDays: days,
   escalateAfterDays: z.coerce.number().int().min(1),
   tieBandPct: z.coerce.number().min(0).max(100),
-  sealOffersUntilDeadline: z.boolean(),
   sendOnApproval: z.boolean(),
   buyerReceives: z.boolean(),
   ownerStepsBack: z.boolean(),

@@ -212,11 +212,12 @@ describe("sending — only once approved; the portal for a registered supplier, 
     mockDb.seed("purchaseOrders/po1", approved({ isGuestSupplier: true, supplierOrgId: "guest", supplierUserId: null }))
     expect((await run(send, "send", "mgr", { channel: "portal" })).json.reason).toBe("no_portal")
   })
-  it("WhatsApp: the dispatch is recorded as version 1 with the channel, and the answer carries the link when wave C mints one", async () => {
+  it("WhatsApp: the dispatch is recorded as version 1 with the channel, and the answer carries the order link (only its hash stored)", async () => {
     mockDb.seed("purchaseOrders/po1", approved({ isGuestSupplier: true, supplierOrgId: "guest", supplierUserId: null }))
     const res = await run(send, "send", "mgr", { channel: "whatsapp", contact: { phone: "0551234567" } })
     expect(res.status).toBe(200)
-    expect(res.json.data).toMatchObject({ status: "sent", ver: 1, link: null })
+    expect(res.json.data).toMatchObject({ status: "sent", ver: 1 })
+    expect(String(res.json.data?.link)).toMatch(/\/po\/[A-Za-z0-9_-]{22}$/)
     expect(stored()).toMatchObject({ status: "sent", sentChannel: "whatsapp", sentById: "mgr" })
     expect(events()).toContain("proc:PO:PO-2026/001:V1")
     mockDb.seed("purchaseOrders/po2", approved({ isGuestSupplier: true, supplierOrgId: "guest", supplierUserId: null, docNumber: "PO-2026/002" }))

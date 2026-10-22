@@ -22,7 +22,6 @@ import { cn } from "@/lib/utils"
 export interface RfqTableRow {
   rfq: RfqRow
   projectLabel: string
-  sealed: boolean
   estimate: number | null
   directSupplier: string | null
 }
@@ -33,7 +32,7 @@ function OffersCell({ row, onGlance }: { row: RfqTableRow; onGlance: () => void 
   return (
     <>
       <button type="button" onClick={onGlance} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <OffersTag rfq={row.rfq} sealed={row.sealed} directSupplier={row.directSupplier} />
+        <OffersTag rfq={row.rfq} directSupplier={row.directSupplier} />
       </button>
       {q.unanswered > 0 && <p className="mt-1 text-[11px] text-warning">{tp("rfqpo.list.unanswered", { count: q.unanswered })}</p>}
     </>
@@ -87,8 +86,8 @@ export function RfqTable({
         </thead>
         <tbody className="divide-y">
           {rows.map((row) => {
-            const { rfq, projectLabel, sealed, estimate } = row
-            const stage = rfqStage(rfq, now, sealed)
+            const { rfq, projectLabel, estimate } = row
+            const stage = rfqStage(rfq, now)
             const isSelected = selected.includes(rfq.id)
             const meta = [
               rfqDisplayNumber(rfq, locale),
@@ -121,7 +120,7 @@ export function RfqTable({
                   </td>
                 )}
                 <td className="px-3 py-3">
-                  <RfqStagePill stage={stage} sealed={sealed} />
+                  <RfqStagePill stage={stage} />
                 </td>
               </tr>
             )

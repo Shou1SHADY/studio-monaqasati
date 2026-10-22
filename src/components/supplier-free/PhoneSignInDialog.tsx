@@ -52,12 +52,12 @@ async function post<T>(url: string, body: Record<string, unknown>): Promise<{ ok
   }
 }
 
-export function PhoneSignInDialog({ open, onOpenChange, mode }: { open: boolean; onOpenChange: (open: boolean) => void; mode: "signup" | "signin" }) {
+export function PhoneSignInDialog({ open, onOpenChange, mode, initialPhone }: { open: boolean; onOpenChange: (open: boolean) => void; mode: "signup" | "signin"; initialPhone?: string }) {
   const t = useTranslations("SupplierFree")
   const locale = useLocale()
   const auth = useAuth()
   const router = useRouter()
-  const [phone, setPhone] = useState("")
+  const [phone, setPhone] = useState(initialPhone ?? "")
   const [challenge, setChallenge] = useState<Challenge | null>(null)
   const [code, setCode] = useState("")
   const [needsProfile, setNeedsProfile] = useState(false)

@@ -11,6 +11,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { DealPill } from "./Pills"
 import { DealStats, NextBox, Tracker } from "./DealNext"
 import { SecMsgs, SecOffer, SecPay, SecPo, SecRequest, SecShip, SecWar } from "./DealSections"
+import { SecOrderChat } from "./SecOrderChat"
 import { VerifiedMark, actionBtn, docWord, useQueryState } from "./ui"
 import { useFree } from "./useFree"
 
@@ -121,6 +122,7 @@ function Body({ f, d, href, focusMsgs }: { f: ReturnType<typeof useFree>; d: Non
         {d.po && d.po.acc && <SecShip f={f} d={d} />}
         <SecPay f={f} d={d} />
         {d.war && <SecWar f={f} d={d} />}
+        {d.po && <SecOrderChat f={f} d={d} />}
         <SecMsgs f={f} d={d} focus={focusMsgs} />
       </div>
     </>

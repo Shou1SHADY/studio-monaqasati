@@ -10,13 +10,13 @@ jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-u
 
 import type { Firestore } from "firebase/firestore"
 import { fakeFirestore, listCollection, readDoc, resetFakeDb, seed } from "@/test-utils/fake-firestore"
-import { offersSealed } from "@/lib/procurement/award"
 import { awardMode, awardSummary, bestPerLine, checkBreakdown, livePicks, lowestForLines, pickLowest, pickOffer, toggleWhole, togglePick } from "@/lib/procurement/rfq-award"
-import { answerRecipients, manualOfferDoc, manualOfferRefusal, canAskReductionRound, canCancelRfq, canCloseEarly, earlyCloseFields, invitedRows, priceTrail, reductionTargets, rfqLog, rfqTakingOffers, unansweredCount } from "@/lib/procurement/rfq-detail"
+import { answerRecipients, manualOfferDoc, manualOfferRefusal, canAskReductionRound, canCancelRfq, invitedRows, priceTrail, reductionTargets, rfqLog, rfqTakingOffers, unansweredCount } from "@/lib/procurement/rfq-detail"
 import { rfqNotes, type NoteOffer, type NoteRfq } from "@/lib/procurement/rfq-notes"
-import { cancelRfq, closeRfqNow, excludeOffer, recordManualOffer, requestReductionRound } from "@/lib/procurement/rfq-writes"
+import { excludeOffer, recordManualOffer, requestReductionRound } from "@/lib/procurement/rfq-writes"
 import { DEFAULT_POLICIES, type ProcActor, type PurchaseOrder } from "@/lib/procurement/types"
-import { awardRfq, draftSplitOrder, type AwardOfferLike, type AwardRfqInput, type RfqLike } from "@/lib/procurement/writes"
+import { draftSplitOrder, type AwardOfferLike, type AwardRfqInput, type RfqLike } from "@/lib/procurement/writes"
+import { awardRfq } from "@/test-utils/legacy-award-writes"
 
 const db = fakeFirestore as unknown as Firestore
 const NOW = new Date("2026-09-22T09:00:00Z")
@@ -167,28 +167,13 @@ describe("the comparison's notes (R-07)", () => {
 })
 
 describe("early close, cancel, invitees (R-08, R-12, R-14, R-15)", () => {
-  it("only the manager or the owner closes early", () => {
-    expect(canCloseEarly(actor())).toBe(false)
-    expect(canCloseEarly(actor({ canApprove: true }))).toBe(true)
-    expect(canCloseEarly(actor({ isOwner: true }))).toBe(true)
-  })
-  it("an early close moves the deadline to yesterday, needs a reason, and unseals", () => {
-    const rfq = { status: "New", deadline: "2026-09-30" }
-    expect(earlyCloseFields(rfq, actor(), "  ", NOW)).toBeNull()
-    const f = earlyCloseFields(rfq, actor(), "the rest declined", NOW)
-    expect(f?.deadline).toBe("2026-09-21")
-    expect(f?.closedEarly).toMatchObject({ reason: "the rest declined", originalDeadline: "2026-09-30", byName: "Badr" })
-    const sealing = { ...DEFAULT_POLICIES, sealOffersUntilDeadline: true }
-    expect(offersSealed(rfq, sealing, NOW)).toBe(true)
-    expect(offersSealed({ ...rfq, closedEarly: f?.closedEarly }, sealing, NOW)).toBe(false)
-    expect(offersSealed({ ...rfq, status: "Cancelled" }, sealing, NOW)).toBe(false)
-  })
   it("a closed or awarded round takes no offers and cannot close again", () => {
     expect(rfqTakingOffers({ status: "New", deadline: "2026-09-21" }, NOW)).toBe(false)
-    expect(earlyCloseFields({ status: "Awarded", deadline: "2026-09-30" }, actor(), "x", NOW)).toBeNull()
+    expect(rfqTakingOffers({ status: "New", deadline: "2026-09-30", closedEarly: { at: "x", byId: "u", byName: "n", reason: "", originalDeadline: null } }, NOW)).toBe(false)
   })
-  it("cancels only before an award", () => {
+  it("cancels a published round, open or comparing — never a draft or an award", () => {
     expect(canCancelRfq({ status: "New" })).toBe(true)
+    expect(canCancelRfq({ status: "Draft" })).toBe(false)
     expect(canCancelRfq({ status: "Awarded" })).toBe(false)
     expect(canCancelRfq({ status: "Cancelled" })).toBe(false)
   })
@@ -204,10 +189,10 @@ describe("early close, cancel, invitees (R-08, R-12, R-14, R-15)", () => {
     expect(answerRecipients({ allowedSupplierOrgIds: ["s1", "s2"] }, [{ supplierId: "u9" }, { supplierId: "guest", isGuestOffer: true }], { userId: "u7" }, "buyer").sort()).toEqual(["s1", "s2", "u7", "u9"])
     expect(unansweredCount([{ reply: "" }, { reply: "yes" }, {}])).toBe(2)
   })
-  it("the reduction round: once, open, unsealed, with at least one live offer; blank targets are no target", () => {
-    expect(canAskReductionRound({ status: "New" }, 2, false)).toBe(true)
-    expect(canAskReductionRound({ status: "New" }, 2, true)).toBe(false)
-    expect(canAskReductionRound({ status: "New", reductionRound: { at: "", byId: "", byName: "", targets: [], offers: 2 } }, 2, false)).toBe(false)
+  it("the reduction round: once, open, with at least one live offer; blank targets are no target", () => {
+    expect(canAskReductionRound({ status: "New" }, 2)).toBe(true)
+    expect(canAskReductionRound({ status: "New" }, 0)).toBe(false)
+    expect(canAskReductionRound({ status: "New", reductionRound: { at: "", byId: "", byName: "", targets: [], offers: 2 } }, 2)).toBe(false)
     expect(reductionTargets({ 1: "2,900", 0: "", 2: "0" })).toEqual([{ rfqProductIndex: 1, unitPrice: 2900 }])
     expect(priceTrail({ priceHistory: [{ price: "40000", replacedAt: "2026-09-02" }, { price: "42000", replacedAt: "2026-09-01" }] })).toEqual([42000, 40000])
   })
@@ -342,21 +327,6 @@ describe("rfq writes", () => {
     resetFakeDb()
     seed("rfqs/rfq1", { ...rfqDoc, status: "New", deadline: "2026-09-30" })
     seed("offers/A", { ...offerA, status: "قيد المراجعة" })
-  })
-
-  it("closes early in the manager's name and logs it", async () => {
-    await expect(closeRfqNow(db, actor(), "rfq1", "declined", NOW)).rejects.toMatchObject({ code: "no_permission" })
-    await closeRfqNow(db, actor({ canApprove: true }), "rfq1", "the rest declined in writing", NOW)
-    const r = readDoc<{ deadline: string; closedEarly: { reason: string }; log: Array<{ action: string; note: string }> }>("rfqs/rfq1")
-    expect(r?.deadline).toBe("2026-09-21")
-    expect(r?.closedEarly.reason).toBe("the rest declined in writing")
-    expect(r?.log[0]).toMatchObject({ action: "closed_early", note: "the rest declined in writing" })
-  })
-
-  it("cancels with a reason — status Cancelled", async () => {
-    await cancelRfq(db, actor(), "rfq1", "spec", NOW)
-    expect(readDoc<{ status: string; cancellation: { code: string } }>("rfqs/rfq1")).toMatchObject({ status: "Cancelled", cancellation: { code: "spec" } })
-    await expect(cancelRfq(db, actor(), "rfq1", "spec", NOW)).rejects.toMatchObject({ code: "rfq_not_open" })
   })
 
   it("excludes an offer only with one of the five reasons", async () => {

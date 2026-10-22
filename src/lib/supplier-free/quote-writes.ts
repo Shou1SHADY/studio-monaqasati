@@ -49,7 +49,7 @@ async function act<T = Record<string, unknown>>(body: Record<string, unknown>): 
 /** A first quote: the server writes the document every reader of `offers` understands, plus `versions`. */
 export async function submitNewQuote(ctx: QuoteContext, v: QuoteValues): Promise<string> {
   const { offerId } = await act<{ offerId: string }>({ action: "quote.new", rfqId: ctx.rfq.id, values: v, fileUrl: ctx.fileUrl || null, papers: ctx.papers })
-  // The text to the contractor (and his bell, if the server's notice was lost) — the SMS route knows whether the round is sealed.
+  // The text to the contractor (and his bell, if the server's notice was lost) — the server knows the amount.
   const contractorId = (ctx.rfq.contractorId as string) || null
   if (contractorId) {
     let told = false
@@ -64,7 +64,7 @@ export async function submitNewQuote(ctx: QuoteContext, v: QuoteValues): Promise
       console.error("new_offer notice", err)
     }
     if (!told) {
-      const notice = newOfferNotice({ supplier: ctx.companyName, rfqTitle: String(ctx.rfq.title || ""), price: null, sealed: false })
+      const notice = newOfferNotice({ supplier: ctx.companyName, rfqTitle: String(ctx.rfq.title || ""), price: null })
       await setDoc(doc(ctx.firestore, "users", contractorId, "notifications", newOfferNoticeId(offerId)), {
         userId: contractorId,
         organizationId: (ctx.rfq.organizationId as string) || contractorId,

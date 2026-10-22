@@ -82,7 +82,7 @@ import {
   Wrench,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
-import { PROC_TAB_GATES } from "@/lib/procurement/tab-gates"
+import { PROC_MINE_HREF, PROC_SECTION_PERMISSIONS, PROC_TAB_GATES } from "@/lib/procurement/tab-gates"
 import { CATALOG_COMING_SOON, RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
 
 /** Manufacturing's desk tabs belong to the manager, the cost controller and management. */
@@ -105,6 +105,8 @@ export interface NavItem {
   /** Shown when the viewer holds ANY of these (e.g. the three Manufacturing
    * roles that see Requests, Products and Settings). */
   requiredAnyPermission?: PermissionId[]
+  /** Shown only to a viewer who holds NONE of these (the requester's «طلباتي»: a member with no Procurement permission). */
+  requiredNone?: PermissionId[]
   /** Built but not released — the sidebar renders it dimmed and
    * non-interactive, and the route itself serves a "coming soon" placeholder.
    * Driven by a flag in `@/lib/feature-flags`, never hardcoded here, so one
@@ -224,6 +226,8 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           // Procurement 2.0 (NAV-02): the two unreleased entries sit after the eight pages, dimmed and tagged «قريباً».
           { titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket, requiredPermission: "rfq.manage", comingSoon: CATALOG_COMING_SOON },
           { titleKey: "contractor_bnpl", href: "/contractor/rfqs/orders?soon=bnpl", icon: HandCoins, requiredAnyPermission: PROC_TAB_GATES.orders, comingSoon: true, soonModal: "bnpl" },
+          // The requester («طالب مواد») holds no Procurement permission: «طلباتي» is his one page (REQ-01).
+          { titleKey: "contractor_my_requests", href: PROC_MINE_HREF, icon: ClipboardList, requiredNone: PROC_SECTION_PERMISSIONS },
         ],
       },
       {
@@ -865,7 +869,8 @@ export function resolveActiveSupplierComponent(pathname: string, components: Por
 
 export type PermissionCheck = (permission: PermissionId) => boolean
 
-export function itemIsVisible(item: Pick<NavItem, "requiredPermission" | "requiredAnyPermission">, can: PermissionCheck): boolean {
+export function itemIsVisible(item: Pick<NavItem, "requiredPermission" | "requiredAnyPermission" | "requiredNone">, can: PermissionCheck): boolean {
+  if (item.requiredNone?.some((p) => can(p))) return false
   if (item.requiredPermission && !can(item.requiredPermission)) return false
   if (item.requiredAnyPermission?.length && !item.requiredAnyPermission.some((p) => can(p))) return false
   return true

@@ -2,14 +2,17 @@
 
 // Step 2 — «النشر» (PUR-01 p.3, PUR-02): who it reaches, the deadline, how it is priced.
 // The values arrive filled — public with the favourites, the deadline from the settings,
-// per-line pricing — so this step is usually one press of «التالي». «خيارات أخرى» keeps
-// the title, payment terms, notes and attachments, and the internal budget the supplier
-// never sees. The SAME step from the incoming request's panel and from the editor.
+// per-line pricing — so this step is usually one press of «التالي». Payment terms are three
+// chips (and a disabled «بالأجل عبر مدماك — قريباً»); the visitor link is a switch, on for «عام»
+// and off for «خاص» and «إسناد مباشر» unless asked. A direct award shows the server's estimate
+// and, above the cap, the reason. «خيارات أخرى» keeps the notes and attachments and the internal
+// budget the supplier never sees. The SAME step from the incoming request's panel and the editor.
 
 import { useState } from "react"
 import { useTranslations } from "next-intl"
-import { ChevronDown, Globe, Handshake, Loader2, Lock, Paperclip, Trash2, UserPlus } from "lucide-react"
+import { ChevronDown, Coins, Globe, Handshake, Loader2, Lock, Paperclip, Trash2, UserPlus } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Chip } from "@/components/module-ui/Chip"
@@ -17,6 +20,8 @@ import { Callout } from "@/components/module-ui/Callout"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { SupplierRecipientsPicker, type SupplierOption } from "@/components/contractor/SupplierRecipientsPicker"
 import { RfqTermsPicker, type TermRow } from "@/components/procurement/rfq/RfqTermsPicker"
+import { BnplSoonDialog } from "./BnplSoonDialog"
+import { DIRECT_WHY_CODES, TERM_PRESETS, TERM_PRESET_IDS, presetOfTerms, type DirectEstimate, type DirectWhyCode } from "@/lib/procurement/rfq-publish-rules"
 import { cn } from "@/lib/utils"
 import type { SourcingBlock } from "@/lib/procurement/supplier-file"
 
@@ -36,21 +41,26 @@ export interface PublishValues {
   /** Private: the picked recipients (null = every connected supplier). */
   recipients: string[] | null
   directSupplierOrgId: string
-  directPrices: Record<string, string>
-  directReason: "" | "sole" | "match" | "urgent"
+  directReason: "" | DirectWhyCode
+  directNote: string
+  /** The visitor link: null = the audience's default (on for «عام», off for the others). */
+  link: boolean | null
 }
+
+export const linkOn = (v: Pick<PublishValues, "link" | "audience">): boolean => v.link ?? v.audience === "public"
 
 export function EditorPublish({
   values,
   onChange,
-  lines,
   publicReachCount,
+  linesCount,
   favouriteName,
   recipientOptions,
   recipientFacts,
   selectedRecipients,
   directPool,
-  directOverCap,
+  estimate,
+  directCap,
   firstDeadline,
   deadlineHint,
   onInvite,
@@ -61,15 +71,16 @@ export function EditorPublish({
 }: {
   values: PublishValues
   onChange: (patch: Partial<PublishValues>) => void
-  /** The RFQ's complete lines, for direct prices. */
-  lines: Array<{ key: string; name: string; quantity: number; unit: string }>
   publicReachCount: number
+  linesCount: number
   favouriteName: string | null
   recipientOptions: SupplierOption[]
   recipientFacts: Map<string, { onTime: number | null; crExpired: boolean; block?: SourcingBlock | null }>
   selectedRecipients: string[]
   directPool: Array<{ orgId: string; name: string; platform: boolean; favourite: boolean }>
-  directOverCap: boolean
+  /** The direct award's estimate from the last prices (null until the rows are complete). */
+  estimate: DirectEstimate | null
+  directCap: number
   firstDeadline: string
   deadlineHint: string
   onInvite: () => void
@@ -80,21 +91,25 @@ export function EditorPublish({
 }) {
   const t = useTranslations("Portal.ProcEditor")
   const [more, setMore] = useState(false)
-  const multi = lines.length > 1
-  const deadlineBad = showProblems && values.audience !== "direct" && (!values.deadline || values.deadline < firstDeadline)
+  const [soon, setSoon] = useState(false)
+  const multi = linesCount > 1
+  const deadlineBad = showProblems && (!values.deadline || values.deadline < firstDeadline)
+  const over = values.audience === "direct" && estimate != null && estimate.total > directCap
+  const preset = presetOfTerms(values.terms)
+  const linkChecked = linkOn(values)
 
   return (
     <div className="space-y-6">
       <fieldset className="space-y-3">
         <legend className="text-sm font-bold">{t("audience")}</legend>
         <div className="flex flex-wrap gap-2">
-          <Chip selected={values.audience === "public"} icon={Globe} onClick={() => onChange({ audience: "public" })}>
+          <Chip selected={values.audience === "public"} icon={Globe} onClick={() => onChange({ audience: "public", link: null })}>
             {t("aud_public")}
           </Chip>
-          <Chip selected={values.audience === "private"} icon={Lock} onClick={() => onChange({ audience: "private" })}>
+          <Chip selected={values.audience === "private"} icon={Lock} onClick={() => onChange({ audience: "private", link: null })}>
             {t("aud_private")}
           </Chip>
-          <Chip selected={values.audience === "direct"} icon={Handshake} onClick={() => onChange({ audience: "direct", pricing: "line" })}>
+          <Chip selected={values.audience === "direct"} icon={Handshake} onClick={() => onChange({ audience: "direct", link: null })}>
             {t("aud_direct")}
           </Chip>
         </div>
@@ -133,58 +148,49 @@ export function EditorPublish({
                 ))}
               </NativeSelect>
             </label>
-            <div className="space-y-1.5">
-              <p className="text-sm font-semibold">{t("direct_prices")}</p>
-              {lines.map((l) => {
-                const bad = showProblems && !(Number(values.directPrices[l.key]) > 0)
-                return (
-                  <label key={l.key} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="min-w-0 truncate" dir="auto">
-                      {l.name}{" "}
-                      <span className="text-xs text-muted-foreground">
-                        · {l.quantity.toLocaleString("en-US")} {l.unit}
-                      </span>
-                    </span>
-                    <Input
-                      inputMode="decimal"
-                      value={values.directPrices[l.key] || ""}
-                      onChange={(e) => onChange({ directPrices: { ...values.directPrices, [l.key]: e.target.value } })}
-                      aria-label={t("direct_price_of", { name: l.name })}
-                      className={cn("h-9 w-28 text-end tabular-nums", bad && "border-destructive")}
-                      dir="ltr"
-                    />
-                  </label>
-                )
-              })}
-            </div>
-            {directOverCap && (
-              <label className="block space-y-1 text-sm">
-                <span className="font-semibold">{t("direct_reason")}</span>
-                <NativeSelect
-                  value={values.directReason}
-                  onChange={(e) => onChange({ directReason: e.target.value as PublishValues["directReason"] })}
-                  className={cn("w-full", showProblems && !values.directReason && "border-destructive")}
-                >
-                  <option value="">{t("direct_reason_pick")}</option>
-                  <option value="sole">{t("direct_reason_sole")}</option>
-                  <option value="match">{t("direct_reason_match")}</option>
-                  <option value="urgent">{t("direct_reason_urgent")}</option>
-                </NativeSelect>
-              </label>
+            {estimate && (
+              <Callout tone={over ? "warn" : "info"}>
+                {t("direct_est", { total: estimate.total.toLocaleString("en-US"), missing: estimate.missing, cap: directCap.toLocaleString("en-US") })}
+                {over ? ` ${t("direct_est_over")}` : ""}
+              </Callout>
+            )}
+            {over && (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold">
+                  {t("direct_reason")} <span className="text-destructive">*</span>
+                </p>
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("direct_reason")}>
+                  {DIRECT_WHY_CODES.map((c) => (
+                    <Chip key={c} role="radio" aria-checked={values.directReason === c} selected={values.directReason === c} onClick={() => onChange({ directReason: c })}>
+                      {t(`direct_reason_${c}`)}
+                    </Chip>
+                  ))}
+                </div>
+                {values.directReason === "other" && (
+                  <Input value={values.directNote} onChange={(e) => onChange({ directNote: e.target.value })} placeholder={t("direct_reason_other_ph")} dir="auto" aria-label={t("direct_reason_other_ph")} />
+                )}
+                {showProblems && (!values.directReason || (values.directReason === "other" && values.directNote.trim().length < 4)) && <p className="text-xs font-semibold text-destructive">{t("err_direct_reason")}</p>}
+              </div>
             )}
           </div>
         )}
       </fieldset>
 
-      {values.audience !== "direct" && (
-        <label className="block max-w-xs space-y-1">
-          <span className="text-sm font-bold">{t("deadline")}</span>
-          <Input type="date" min={firstDeadline} value={values.deadline} onChange={(e) => onChange({ deadline: e.target.value })} className={cn(deadlineBad && "border-destructive")} dir="ltr" />
-          <span className={cn("block text-xs", deadlineBad ? "font-semibold text-destructive" : "text-muted-foreground")}>{deadlineBad ? t("err_deadline") : deadlineHint}</span>
-        </label>
-      )}
+      <label className="block max-w-xs space-y-1">
+        <span className="text-sm font-bold">{t("deadline")}</span>
+        <Input type="date" min={firstDeadline} value={values.deadline} onChange={(e) => onChange({ deadline: e.target.value })} className={cn(deadlineBad && "border-destructive")} dir="ltr" />
+        <span className={cn("block text-xs", deadlineBad ? "font-semibold text-destructive" : "text-muted-foreground")}>{deadlineBad ? t("err_deadline") : deadlineHint}</span>
+      </label>
 
-      {values.audience !== "direct" && multi && (
+      <div className="space-y-1">
+        <label className="flex items-center gap-3 text-sm font-bold">
+          <Switch checked={linkChecked} onCheckedChange={(on) => onChange({ link: on })} aria-label={t("link_toggle")} />
+          {t("link_toggle")}
+        </label>
+        <p className="text-xs text-muted-foreground">{values.audience === "public" ? t("link_toggle_public") : t("link_toggle_off")}</p>
+      </div>
+
+      {multi && (
         <fieldset className="space-y-2">
           <legend className="text-sm font-bold">{t("pricing")}</legend>
           <div className="flex flex-wrap gap-2">
@@ -199,6 +205,21 @@ export function EditorPublish({
         </fieldset>
       )}
 
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-bold">{t("terms_label")}</legend>
+        <div className="flex flex-wrap gap-2">
+          {TERM_PRESET_IDS.map((id) => (
+            <Chip key={id} selected={preset === id && values.termsSet} onClick={() => onChange({ terms: TERM_PRESETS[id].map((r) => ({ pct: String(r.pct), days: String(r.days) })), termsSet: true })}>
+              {t(`terms_chip_${id}`)}
+            </Chip>
+          ))}
+          <Chip selected={false} icon={Coins} aria-disabled="true" className="border-dashed opacity-70" onClick={() => setSoon(true)}>
+            {t("terms_chip_bnpl")}
+            <span className="rounded-full bg-muted px-1.5 text-[10px] font-bold text-muted-foreground">{t("terms_soon")}</span>
+          </Chip>
+        </div>
+      </fieldset>
+
       <div className="rounded-xl border">
         <button type="button" onClick={() => setMore(!more)} aria-expanded={more} className="flex min-h-11 w-full items-center justify-between gap-2 px-4 text-start text-sm font-semibold">
           <span>
@@ -208,11 +229,6 @@ export function EditorPublish({
         </button>
         {more && (
           <div className="space-y-5 border-t p-4">
-            <label className="block space-y-1">
-              <span className="text-sm font-semibold">{t("title_label")}</span>
-              <Input value={values.title} onChange={(e) => onChange({ title: e.target.value })} dir="auto" />
-              <span className="block text-xs text-muted-foreground">{t("title_hint")}</span>
-            </label>
             <RfqTermsPicker rows={values.terms} onChange={(rows) => onChange({ terms: rows, termsSet: true })} invalid={showProblems} />
             <label className="block space-y-1">
               <span className="text-sm font-semibold">{t("notes")}</span>
@@ -238,17 +254,16 @@ export function EditorPublish({
                 <input type="file" accept="application/pdf" multiple className="sr-only" disabled={uploading} onChange={(e) => onUpload(Array.from(e.target.files || []))} />
               </label>
             </div>
-            {values.audience !== "direct" && (
-              <label className="block max-w-xs space-y-1">
-                <span className="text-sm font-semibold">{t("budget")}</span>
-                <Input inputMode="decimal" value={values.budget} onChange={(e) => onChange({ budget: e.target.value })} dir="ltr" className="tabular-nums" />
-                <span className="block text-xs text-muted-foreground">{t("budget_hint")}</span>
-              </label>
-            )}
+            <label className="block max-w-xs space-y-1">
+              <span className="text-sm font-semibold">{t("budget")}</span>
+              <Input inputMode="decimal" value={values.budget} onChange={(e) => onChange({ budget: e.target.value })} dir="ltr" className="tabular-nums" />
+              <span className="block text-xs text-muted-foreground">{t("budget_hint")}</span>
+            </label>
           </div>
         )}
       </div>
       {values.audience === "private" && !recipientOptions.length && <Callout tone="warn">{t("no_connected")}</Callout>}
+      <BnplSoonDialog open={soon} onOpenChange={setSoon} />
     </div>
   )
 }

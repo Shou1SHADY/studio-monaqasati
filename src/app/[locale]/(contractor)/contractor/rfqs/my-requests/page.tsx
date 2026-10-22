@@ -9,6 +9,7 @@ import { useTranslations } from "next-intl"
 import { Building2, ClipboardList, MapPin, Send } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { EmptyState } from "@/components/module-ui/EmptyState"
+import { GuideLink } from "@/components/procurement/guide/GuideLink"
 import { MyTeamRequests } from "@/components/procurement/MyTeamRequests"
 import { RaiseMaterialRequest } from "@/components/procurement/RaiseMaterialRequest"
 import { Button } from "@/components/ui/button"
@@ -43,6 +44,7 @@ export default function MyMaterialRequestsPage() {
             {isRequester && <p className="mb-1 text-xs font-semibold text-muted-foreground">{t("role_line")}</p>}
             <h1 className="text-2xl font-black text-foreground">{t("title")}</h1>
             <p className="mt-1 text-sm text-muted-foreground">{t("desc")}</p>
+            <GuideLink variant="mine" className="mt-2" />
           </div>
           <RaiseMaterialRequest orgId={organizationId || ""} variant="default" fullName onSent={() => setRefreshKey((k) => k + 1)} />
         </header>

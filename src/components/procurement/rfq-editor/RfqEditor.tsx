@@ -15,7 +15,7 @@ import { displayNeedRef } from "@/lib/procurement/format"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
-import { addDoc, arrayUnion, collection, doc, getDoc, getDocs, limit, query, setDoc, updateDoc, where } from "firebase/firestore"
+import { collection, doc, getDoc, getDocs, limit, query, setDoc, updateDoc, where } from "firebase/firestore"
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage"
 import { ArrowLeft, ArrowRight, ClipboardPaste, Inbox, Loader2, Send } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useStorage, useUser } from "@/firebase"
@@ -32,11 +32,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { WizardSteps } from "@/components/module-ui/WizardSteps"
-import { Callout } from "@/components/module-ui/Callout"
 import { useSupplierRecipientOptions } from "@/components/contractor/SupplierRecipientsPicker"
 import { InviteSupplierDialog } from "@/components/procurement/InviteSupplierDialog"
 import { termRowsOf } from "@/components/procurement/rfq/RfqTermsPicker"
-import { guestLinkUrl } from "@/components/procurement/rfq/guestLinkUrl"
 import { displayCity } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { reachBySub, extendPool, invitableRecipients, sourcingBlockOf } from "@/lib/procurement/rfq-extras"
@@ -44,18 +42,19 @@ import { type InvitationDoc } from "@/components/procurement/SupplierInvitations
 import { needLastOrderDay } from "@/lib/procurement/need-desk"
 import { supplierInvitationsQuery } from "@/lib/procurement/invite-query"
 import { profileVatMark, type SourcingBlock } from "@/lib/procurement/supplier-file"
-import { createRfqWithNumber, updateRfqNumbered } from "@/lib/procurement/rfq-writes"
-import { createPurchaseOrderFromAward } from "@/lib/procurement/writes"
-import { linkNeed } from "@/lib/procurement/needs-writes"
+import { publishRfqCall, RfqRouteError } from "@/lib/procurement/rfq-lifecycle-client"
+import { directEstimate } from "@/lib/procurement/rfq-publish-rules"
+import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { rfqTermsToStore, termsRefusal } from "@/lib/procurement/terms-freeze"
 import { supplierScore } from "@/lib/procurement/po"
-import { displayDocNumber, displayPoNumber, fmtDayLong } from "@/lib/procurement/format"
+import { displayDocNumber, fmtDayLong } from "@/lib/procurement/format"
 import { PROCUREMENT_SETTINGS } from "@/lib/procurement/types"
 import { deliverySites, siteLine, storedSites, projectSiteId } from "@/lib/procurement/delivery-sites"
 import { notifyFavoriteSuppliersOfPublish } from "@/lib/notify-favorites"
 import { upsertCatalogItems } from "@/lib/catalog-utils"
 import { label } from "@/lib/materials/tree"
 import { toAmount } from "@/lib/procurement/offer-pricing"
+import { parseLinesParam } from "@/lib/procurement/by-material"
 import {
   addRequests,
   blankLine,
@@ -81,7 +80,7 @@ import {
   type EditorGroup,
 } from "@/lib/procurement/rfq-editor"
 import { EditorMaterials } from "./EditorMaterials"
-import { EditorPublish, type PublishValues } from "./EditorPublish"
+import { EditorPublish, linkOn, type PublishValues } from "./EditorPublish"
 import { EditorReview, type ReviewModel } from "./EditorReview"
 import { RfqPublishedPanel } from "./RfqPublishedPanel"
 import { parseNeedSource, type Need } from "@/lib/procurement/needs"
@@ -117,7 +116,6 @@ export function RfqEditor({
   const t = useTranslations("Portal.ProcEditor")
   const tShared = useTranslations("Portal.Shared")
   const tr = useTranslations("Portal.Procurement.rfqextras")
-  const tp = useTranslations("Portal.Procurement")
   const locale = useLocale()
   const router = useRouter()
   const params = useSearchParams()
@@ -130,6 +128,7 @@ export function RfqEditor({
   const pmOn = on("project-management")
   const mfgOn = on("manufacturing")
   const world = useProcurementWorld()
+  const { history: priceHistory } = useProcurementPrices(world.orgId)
   const orgId = world.orgId || (profile as { organizationId?: string } | null)?.organizationId || user?.uid || ""
   const { index } = useMaterialTree()
   const fmtDay = (d: string) => fmtDayLong(d, locale)
@@ -206,14 +205,15 @@ export function RfqEditor({
     pricing: "line",
     title: "",
     terms: termRowsOf(null),
-    termsSet: false,
+    termsSet: true,
     notes: "",
     budget: "",
     attachments: [],
     recipients: null,
     directSupplierOrgId: "",
-    directPrices: {},
     directReason: "",
+    directNote: "",
+    link: null,
   }))
   const [titleEdited, setTitleEdited] = useState(false)
   const [showProblems, setShowProblems] = useState(false)
@@ -229,7 +229,7 @@ export function RfqEditor({
   const [pasteText, setPasteText] = useState("")
   const [pickOpen, setPickOpen] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
-  const [done, setDone] = useState<{ id: string; number: string; guestUrl: string | null; reached: number; closesOn: string | null; direct: boolean; po: string | null } | null>(null)
+  const [done, setDone] = useState<{ id: string; number: string; guestUrl: string | null; reached: number; closesOn: string | null } | null>(null)
   const [loaded, setLoaded] = useState(!editId)
 
   // The place of a project's own form is fixed.
@@ -276,7 +276,8 @@ export function RfqEditor({
       setTitleEdited(true)
       setValues((v) => ({
         ...v,
-        audience: data.visibility === "private" ? "private" : "public",
+        audience: data.audience === "direct" ? "direct" : data.visibility === "private" ? "private" : "public",
+        directSupplierOrgId: data.audience === "direct" && Array.isArray(data.allowedSupplierOrgIds) ? String((data.allowedSupplierOrgIds as string[])[0] || "") : v.directSupplierOrgId,
         deadline: typeof data.deadline === "string" ? data.deadline : v.deadline,
         pricing: data.pricingMode === "total" ? "total" : "line",
         title: String(data.title || ""),
@@ -304,8 +305,9 @@ export function RfqEditor({
     const hits = openNeeds.filter((n) => keys.includes(n.key) || sources.some((s) => JSON.stringify(n.source) === JSON.stringify(parseNeedSource(s))))
     if (!hits.length) return
     prefilled.current = true
-    const next = addRequests([newGroup()], hits.map((n) => incomingFromNeed(n, sites, lastOrderOf(n))))
-    setGroups((gs) => (panel ? next : addRequests(gs, hits.map((n) => incomingFromNeed(n, sites, lastOrderOf(n))))))
+    const picked = parseLinesParam(params.get("lines"))
+    const next = addRequests([newGroup()], hits.map((n) => incomingFromNeed(n, sites, lastOrderOf(n), picked.get(n.key))))
+    setGroups((gs) => (panel ? next : addRequests(gs, hits.map((n) => incomingFromNeed(n, sites, lastOrderOf(n), picked.get(n.key))))))
     // «انشره» opens on the publishing step — unless a material still lacks its sub-category, or the place its city:
     // then on the request, the lacking row coloured from the start (PUR-01 p.4). A press on the row opens the request itself.
     if (panel) {
@@ -408,9 +410,14 @@ export function RfqEditor({
     {},
     linesDoc.subCategoryIds,
   )
-  const directLines = complete.map((r) => ({ key: r.line.key, name: r.line.name, quantity: toAmount(r.line.quantity), unit: r.line.unit }))
-  const directTotal = directLines.reduce((s, l) => s + l.quantity * (Number(values.directPrices[l.key]) || 0), 0)
-  const directOverCap = directTotal > world.policies.directPurchaseCap
+  const estimate = useMemo(() => {
+    if (values.audience !== "direct" || !complete.length) return null
+    return directEstimate(
+      complete.map((r) => ({ name: r.line.name, quantity: toAmount(r.line.quantity), unitOfMeasure: r.line.unit, category: r.line.material?.path[0]?.ar || r.line.legacy?.category || "", subCategory: (r.line.material?.path[1] || r.line.material?.path[0])?.ar || r.line.legacy?.subCategory || "" })),
+      priceHistory,
+    )
+  }, [values.audience, complete, priceHistory])
+  const directOver = estimate != null && estimate.total > world.policies.directPurchaseCap
   const firstDeadline = todayDay()
   const facts = reviewFacts(groups, index)
   const place = rfqPlace(groups)
@@ -418,12 +425,11 @@ export function RfqEditor({
 
   const publishProblems = (): string[] => {
     const out: string[] = []
-    if (values.audience !== "direct" && (!values.deadline || values.deadline < firstDeadline)) out.push("deadline")
+    if (!values.deadline || values.deadline < firstDeadline) out.push("deadline")
     if (values.audience === "private" && !selectedRecipients.length) out.push("recipients")
     if (values.audience === "direct") {
       if (!values.directSupplierOrgId) out.push("direct_supplier")
-      if (directLines.some((l) => !(Number(values.directPrices[l.key]) > 0))) out.push("direct_prices")
-      if (directOverCap && !values.directReason) out.push("direct_reason")
+      if (directOver && (!values.directReason || (values.directReason === "other" && values.directNote.trim().length < 4))) out.push("direct_reason")
       if (values.directSupplierOrgId && sourcingOf(values.directSupplierOrgId)) out.push("direct_blocked")
     }
     if (termsRefusal(values.terms)) out.push("terms")
@@ -445,8 +451,8 @@ export function RfqEditor({
   })
 
   // ── The document ─────────────────────────────────────────────────────────
-  const rfqDoc = (status: "Draft" | "New" | "Awarded"): Rec => {
-    const d = rfqLinesDoc(groups, locale, projectName, { draft: status === "Draft", perLine: status === "Draft" ? undefined : partialRequestKeys(groups) })
+  const draftDoc = (): Rec => {
+    const d = rfqLinesDoc(groups, locale, projectName, { draft: true })
     const needSources = Array.from(
       new Map(d.products.filter((p) => "needSource" in p && p.needSource).map((p) => [JSON.stringify((p as { needSource: unknown }).needSource), (p as { needSource: unknown }).needSource])).values(),
     )
@@ -454,7 +460,6 @@ export function RfqEditor({
       .map((p) => (p as { needBy?: string }).needBy)
       .filter((x): x is string => !!x)
       .sort()[0]
-    const direct = values.audience === "direct"
     const kept = identity.current
     return {
       contractorId: kept?.contractorId || user?.uid || "",
@@ -474,17 +479,17 @@ export function RfqEditor({
       district: place.district,
       multiPlace: place.multi,
       cities: place.cities,
-      deadline: direct ? null : values.deadline,
-      estimatedBudget: !direct && values.budget ? toAmount(values.budget) : null,
+      deadline: values.deadline,
+      estimatedBudget: values.budget ? toAmount(values.budget) : null,
       notes: values.notes,
       attachments: values.attachments,
       pdfUrl: values.attachments[0]?.url || null,
       pdfStoragePath: values.attachments[0]?.path || null,
-      status,
-      pricingMode: direct ? "line" : complete.length > 1 ? values.pricing : "line",
-      visibility: direct ? "private" : values.audience,
-      allowedSupplierOrgIds: direct ? [values.directSupplierOrgId] : values.audience === "private" ? selectedRecipients : [],
-      ...(direct ? { directAward: true, awardedAt: new Date().toISOString() } : {}),
+      status: "Draft",
+      audience: values.audience,
+      pricingMode: complete.length > 1 ? values.pricing : "line",
+      visibility: values.audience === "public" ? "public" : "private",
+      allowedSupplierOrgIds: values.audience === "direct" ? (values.directSupplierOrgId ? [values.directSupplierOrgId] : []) : values.audience === "private" ? selectedRecipients : [],
       orderedFromMdmakDirect: false,
       requiresWarranty: d.products.some((p) => p.requiresWarranty),
       paymentTermsList: rfqTermsToStore(values.terms, values.termsSet),
@@ -505,11 +510,11 @@ export function RfqEditor({
     dirty.current = true
   }, [groups, values])
   useEffect(() => {
-    if (!firestore || !user || !orgId || panel || editingLive || done || !loaded || values.audience === "direct") return
+    if (!firestore || !user || !orgId || panel || editingLive || done || !loaded) return
     if (!numberedLines(groups).length || !dirty.current) return
     const timer = window.setTimeout(async () => {
       try {
-        const data = rfqDoc("Draft")
+        const data = draftDoc()
         if (draftId) await updateDoc(doc(firestore, "rfqs", draftId), data as Record<string, never>)
         else {
           const r = doc(collection(firestore, "rfqs"))
@@ -586,9 +591,10 @@ export function RfqEditor({
     perSub: reach.perSub.map((s) => ({ name: index?.byId.get(s.subId) ? label(index.byId.get(s.subId)!, locale) : s.subId, count: s.count })),
     privateCount: selectedRecipients.length,
     directName: directPool.find((p) => p.orgId === values.directSupplierOrgId)?.name || null,
-    deadline: values.audience === "direct" ? null : values.deadline,
+    deadline: values.deadline,
     daysToDeadline: values.deadline ? daysBetween(todayDay(), values.deadline) : null,
     pricing: values.pricing,
+    link: linkOn(values),
     terms: values.termsSet ? values.terms.map((r) => t("terms_row", { pct: r.pct, days: r.days })).join(" + ") : t("terms_offer"),
     delivery: place.multi
       ? t("delivery_each", { city: place.city ? displayCity(place.city, locale) : "—" })
@@ -601,34 +607,54 @@ export function RfqEditor({
     unitDiffers: facts.unitDiffers,
   }
 
-  // ── Publish («انشر», from the review only) ───────────────────────────────
+  // ── Publish («انشر», from the review only) — the server checks the rows again, draws the number and links the lines ──
   const publish = async () => {
     if (!firestore || !user || publishing) return
     if (problems.length || publishProblems().length) return
     setPublishing(true)
-    const direct = values.audience === "direct"
-    const status = direct ? "Awarded" : "New"
-    const data = rfqDoc(status)
     try {
-      let id: string
-      let number: string
-      if (editingLive && editId) {
-        number = (await updateRfqNumbered(firestore, editId, data)) || ""
-        id = editId
-      } else if (draftId) {
-        number = (await updateRfqNumbered(firestore, draftId, { ...data, publishedAt: new Date().toISOString() })) || ""
-        id = draftId
-      } else {
-        const r = await createRfqWithNumber(firestore, { ...data, organizationId: orgId, createdAt: new Date().toISOString() })
-        id = r.id
-        number = r.rfqNumber
+      const d = draftDoc()
+      const lines = rfqLinesDoc(groups, locale, projectName, { perLine: partialRequestKeys(groups) })
+      const needSources = Array.from(
+        new Map(lines.products.filter((p) => "needSource" in p && p.needSource).map((p) => [JSON.stringify((p as { needSource: unknown }).needSource), (p as { needSource: unknown }).needSource])).values(),
+      )
+      const needBy = lines.products
+        .map((p) => (p as { needBy?: string }).needBy)
+        .filter((x): x is string => !!x)
+        .sort()[0]
+      const doc = {
+        ...lines,
+        projectId: projectId || identity.current?.projectId || null,
+        projectIds: d.projectIds,
+        editorGroups: d.editorGroups,
+        deliveryOptions: d.deliveryOptions,
+        materialTree: true,
+        ...(needBy ? { needBy } : {}),
+        ...(needSources.length ? { needSources } : {}),
+        ...(needSources.length === 1 ? { purchaseSource: needSources[0] } : {}),
+        city: place.city,
+        district: place.district,
+        multiPlace: place.multi,
+        cities: place.cities,
       }
-      // Each request a row came from is told which RFQ it became (it reads the state back, PUR-01 p.5).
-      const byName = (profile as { name?: string } | null)?.name || user.email || ""
-      for (const src of (data.needSources as Need["source"][] | undefined) || []) {
-        await linkNeed(firestore, src, { rfqId: id, rfqNumber: number }, byName).catch((err) => console.error("need ↔ RFQ link failed:", err))
-      }
-      if (projectId) await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayUnion(id) }).catch(() => undefined)
+      const direct = values.audience === "direct"
+      const res = await publishRfqCall({
+        rfqId: editingLive && editId ? editId : draftId || undefined,
+        title: title || t("untitled"),
+        audience: values.audience,
+        deadline: values.deadline,
+        pricing: complete.length > 1 ? values.pricing : "line",
+        recipients: values.audience === "private" ? selectedRecipients : [],
+        directSupplierOrgId: direct ? values.directSupplierOrgId : null,
+        directWhy: direct && directOver && values.directReason ? { code: values.directReason, text: values.directNote.trim() } : null,
+        terms: rfqTermsToStore(values.terms, values.termsSet),
+        link: linkOn(values),
+        notes: values.notes,
+        budget: values.budget ? toAmount(values.budget) : null,
+        attachments: values.attachments,
+        doc: doc as never,
+        reach: { count: reach.distinct.length, orgIds: reach.distinct.map((s) => s.orgId) },
+      })
       // Materials typed outside the list reach the platform team (PUR-04).
       const outside = complete.filter((r) => r.line.material?.outside).map((r) => ({ name: r.line.name, subId: r.line.material!.subId }))
       if (outside.length)
@@ -636,112 +662,27 @@ export function RfqEditor({
           .getIdToken()
           .then((tok) => fetch("/api/materials/suggest", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}` }, body: JSON.stringify({ items: outside }) }))
           .catch(() => undefined)
-
-      let po: string | null = null
-      if (direct) po = await directAward(id, number, data)
-      else {
-        void notifyFavoriteSuppliersOfPublish(user, [id])
-        upsertCatalogItems(
-          firestore,
-          user.uid,
-          orgId,
-          complete.map((r) => ({
-            category: r.line.material?.path[0]?.ar || r.line.legacy?.category || "",
-            subCategory: (r.line.material?.path[1] || r.line.material?.path[0])?.ar || r.line.legacy?.subCategory || "",
-            otherSubCategory: r.line.name,
-            quantity: r.line.quantity,
-            unit: r.line.unit,
-            subCategoryId: r.line.material?.subId,
-          })),
-        ).catch(() => undefined)
-      }
-      const guestUrl = direct ? null : await guestLinkUrl(user, { id, status: "New" }).catch(() => null)
-      setDone({ id, number, guestUrl, reached: values.audience === "private" ? selectedRecipients.length : reach.distinct.length, closesOn: direct ? null : fmtDay(values.deadline), direct, po })
+      void notifyFavoriteSuppliersOfPublish(user, [res.id])
+      upsertCatalogItems(
+        firestore,
+        user.uid,
+        orgId,
+        complete.map((r) => ({
+          category: r.line.material?.path[0]?.ar || r.line.legacy?.category || "",
+          subCategory: (r.line.material?.path[1] || r.line.material?.path[0])?.ar || r.line.legacy?.subCategory || "",
+          otherSubCategory: r.line.name,
+          quantity: r.line.quantity,
+          unit: r.line.unit,
+          subCategoryId: r.line.material?.subId,
+        })),
+      ).catch(() => undefined)
+      setDone({ id: res.id, number: res.number, guestUrl: res.guestUrl, reached: res.reached, closesOn: fmtDay(res.closesOn) })
     } catch (err) {
       console.error("publish failed:", err)
-      toast({ title: t("err_publish"), variant: "destructive" })
+      const reason = err instanceof RfqRouteError ? err.reason : ""
+      toast({ title: t("err_publish"), description: reason && t.has(`err_pub_${reason}`) ? t(`err_pub_${reason}`, err instanceof RfqRouteError ? err.params : {}) : undefined, variant: "destructive" })
     } finally {
       setPublishing(false)
-    }
-  }
-
-  /** The direct award: the accepted offer and its purchase order, born awaiting approval (as before). */
-  const directAward = async (rfqId: string, number: string, data: Rec): Promise<string | null> => {
-    if (!firestore || !user) return null
-    const supplierOrg = values.directSupplierOrgId
-    const supplierName = directPool.find((p) => p.orgId === supplierOrg)?.name || ""
-    let supplierUserId = supplierOrg
-    const us = await getDoc(doc(firestore, "users", supplierOrg))
-    if (!us.exists()) supplierUserId = ((await getDoc(doc(firestore, "organizations", supplierOrg))).data()?.ownerUserId as string) || supplierOrg
-    const price = String(Math.round(directTotal * 100) / 100)
-    const offerLines = directLines.map((l, idx) => ({ rfqProductIndex: idx, unitPrice: Number(values.directPrices[l.key]) }))
-    const offerRef = await addDoc(collection(firestore, "offers"), {
-      directAward: true,
-      supplierId: supplierUserId,
-      organizationId: supplierOrg,
-      supplierName,
-      companyName: supplierName,
-      submittedByUserId: user.uid,
-      submittedByUserName: (profile as { name?: string } | null)?.name || user.email || "",
-      rfqId,
-      rfqTitle: data.title,
-      projectId: projectId || null,
-      contractorId: user.uid,
-      contractorOrgId: orgId,
-      price,
-      lines: offerLines,
-      deliveryLocation: place.city,
-      deliveryDistrict: place.district || null,
-      deliveryBatches: [{ location: place.city, deliveryDate: (data.needBy as string) || "", price, quantity: "" }],
-      status: "مقبول",
-      awaitingOrderApproval: true,
-      decidedByUserId: user.uid,
-      decidedByUserName: (profile as { name?: string } | null)?.name || user.email || "",
-      decidedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    })
-    try {
-      const created = await createPurchaseOrderFromAward(
-        firestore,
-        world.actor,
-        {
-          rfq: {
-            id: rfqId,
-            title: String(data.title),
-            organizationId: orgId,
-            contractorId: user.uid,
-            projectId: projectId || null,
-            category: (data.category as string) || null,
-            city: place.city,
-            directAward: true,
-            products: (data.products as Array<{ name: string; quantity: number; unitOfMeasure: string }>).map((p) => ({ name: p.name, quantity: p.quantity, unitOfMeasure: p.unitOfMeasure })),
-            purchaseSource: (data.purchaseSource as never) ?? null,
-            paymentTermsList: rfqTermsToStore(values.terms, values.termsSet),
-          },
-          offer: {
-            id: offerRef.id,
-            price,
-            supplierId: supplierUserId,
-            organizationId: supplierOrg,
-            supplierName,
-            directAward: true,
-            companyName: supplierName,
-            deliveryLocation: place.city,
-            deliveryDistrict: place.district || null,
-            status: "مقبول",
-            lines: offerLines,
-          },
-          offers: [{ id: offerRef.id, price, supplierId: supplierUserId, organizationId: supplierOrg, supplierName, status: "مقبول" }],
-          awardReason: values.directReason ? { code: "other", text: tp(`rfqpo.form.direct_reason_${values.directReason}`) } : null,
-          policies: world.policies,
-        },
-        { copy: tShared, locale: locale === "en" ? "en" : "ar", orgName: world.orgName || null },
-      )
-      return created.docNumber
-    } catch (err) {
-      console.error("purchase order not created after direct award:", (err as { code?: string })?.code || err)
-      void number
-      return null
     }
   }
 
@@ -749,11 +690,6 @@ export function RfqEditor({
   if (done) {
     return (
       <div className="py-6">
-        {done.direct && (
-          <Callout tone="info" className="mx-auto mb-4 max-w-xl">
-            {done.po ? t("done_direct_po", { number: displayPoNumber(done.po, locale) }) : t("done_direct_no_po")}
-          </Callout>
-        )}
         <RfqPublishedPanel
           number={displayDocNumber(done.number, locale)}
           reached={done.reached}
@@ -761,7 +697,6 @@ export function RfqEditor({
           guestUrl={done.guestUrl}
           title={title}
           openHref={`/contractor/rfqs/${done.id}`}
-          direct={done.direct}
           onNew={() => (panel && onClose ? onClose() : router.replace("/contractor/rfqs/new"))}
         />
       </div>
@@ -789,7 +724,7 @@ export function RfqEditor({
                 {!editingLive && <span className="align-middle text-xs font-semibold text-muted-foreground">{savedAt ? t("draft_saved") : t("draft")}</span>}
               </h1>
               <p className="mt-1 text-sm text-muted-foreground" dir="auto">
-                {title || t("title_hint_empty")}
+                {title ? t("title_hint", { title }) : t("title_hint_empty")}
               </p>
             </>
           )}
@@ -824,14 +759,15 @@ export function RfqEditor({
             if (patch.title !== undefined) setTitleEdited(true)
             setValues((v) => ({ ...v, ...patch }))
           }}
-          lines={directLines}
+          linesCount={complete.length}
           publicReachCount={reach.distinct.length}
           favouriteName={favouriteReached}
           recipientOptions={recipientOptions}
           recipientFacts={recipientFacts}
           selectedRecipients={selectedRecipients}
           directPool={directPool}
-          directOverCap={directOverCap}
+          estimate={estimate}
+          directCap={world.policies.directPurchaseCap}
           firstDeadline={firstDeadline}
           deadlineHint={t("deadline_hint", { days: world.policies.rfqWindowDays })}
           onInvite={() => setInviteOpen(true)}
@@ -868,7 +804,7 @@ export function RfqEditor({
           ) : (
             <Button type="button" onClick={() => void publish()} disabled={publishing} className="gap-1.5">
               {publishing ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-              {values.audience === "direct" ? t("award_now") : editingLive ? t("save_changes") : t("publish")}
+              {editingLive ? t("save_changes") : t("publish")}
             </Button>
           )}
         </div>

@@ -21,7 +21,6 @@ import type { PurchaseOrderX } from "@/lib/procurement/po-extras"
 import { approvePurchaseOrder, assertActs, cancelRemainder, sendPurchaseOrder } from "@/lib/procurement/writes"
 import { answerHoldPrice, cancelRemainderWithFee, decideHold, decidePmBudget, pmStopLine, referBudgetToProjects, requestPmStopInTx, selfIssuePurchaseOrder } from "@/lib/procurement/po-extra-writes"
 import { createArrivalWithoutNotice, recordReceipt, trimNotices } from "@/lib/procurement/receipt-writes"
-import { recordNeedDecision } from "@/lib/procurement/need-decision-writes"
 import { exceptions, openCommitments } from "@/lib/procurement/reports"
 
 const db = fakeFirestore as unknown as Firestore
@@ -273,16 +272,6 @@ describe("receipts under the policies", () => {
     await createArrivalWithoutNotice(db, buyer, { po: read(), lines: [counted(100)], receiverName: "Badr", policies: DEFAULT_POLICIES, manual: true, landedWarehouseId: "w1" })
     expect(readDoc<{ closedByReceipt: unknown }>("deliveries/n1")?.closedByReceipt).toBeTruthy()
     expect(kinds("fin")).toContain("receipt_manual")
-  })
-})
-
-describe("the reply window of Inventory (P-33)", () => {
-  it("proceeding waits the policy's days, read from the org's settings", async () => {
-    seed(`procurementSettings/${ORG}`, { replyWindowDays: 3 })
-    seed("projects/p1/purchaseRequests/r1", { status: "pending", createdAt: "2026-09-20T09:00:00Z", items: [] })
-    await expect(recordNeedDecision(db, buyer, { projectId: "p1", requestId: "r1", kind: "proceed_full" }, { now: NOW })).rejects.toMatchObject({ code: "need_not_waiting" })
-    await recordNeedDecision(db, buyer, { projectId: "p1", requestId: "r1", kind: "proceed_full" }, { now: new Date("2026-09-23T10:00:00Z") })
-    expect(readDoc<{ procDecision: { kind: string } }>("projects/p1/purchaseRequests/r1")?.procDecision.kind).toBe("proceed_full")
   })
 })
 

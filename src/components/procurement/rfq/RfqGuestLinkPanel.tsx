@@ -1,71 +1,65 @@
 "use client"
 
-// «رابط الزوار — لموردين خارج المنصة» on the RFQ page (R-40, prototype dRfq):
-// while the round is open, the link a supplier without an account offers
-// through — copy it, share it (the share dialog records the channel), or open
-// it to see exactly what the supplier sees. The link is minted (or reused)
-// by /api/rfq-share/create; nothing is stored on the RFQ itself.
+// «رابط الزوار — لموردين خارج المنصة» on the RFQ page: while the round is open, the link a supplier without an account quotes
+// through — copy it, hand it over with the ready message (the composer), see it as a supplier sees it, and how many times it was
+// opened. The buyer's own preview is not an open (R-21). The link is minted (or reused) by /api/rfq-share/create.
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
 import { Copy, Eye, Link2, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Panel } from "@/components/module-ui/Panel"
+import { Link } from "@/i18n/routing"
 import { useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import type { LinkStats } from "@/lib/procurement/link-views"
 
 export function RfqGuestLinkPanel({ rfqId, canShare, onShare }: { rfqId: string; canShare: boolean; onShare: () => void }) {
   const t = useTranslations("Portal.Procurement.rfqx.guest_link")
+  const tl = useTranslations("Portal.Procurement.linkx")
   const { user } = useUser()
   const { toast } = useToast()
   const [url, setUrl] = useState<string | null>(null)
-  const [busy, setBusy] = useState<"copy" | "view" | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [stats, setStats] = useState<LinkStats | null>(null)
 
-  const linkUrl = async (): Promise<string | null> => {
-    if (url) return url
-    if (!user) return null
-    const idToken = await user.getIdToken()
-    const res = await fetch("/api/rfq-share/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-      body: JSON.stringify({ rfqId }),
-    })
-    const json = (await res.json().catch(() => null)) as { data?: { url?: string } } | null
-    const got = res.ok ? json?.data?.url || null : null
-    setUrl(got)
-    return got
-  }
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const idToken = await user.getIdToken()
+        const res = await fetch(`/api/rfq-share/preview?rfqId=${encodeURIComponent(rfqId)}`, { headers: { Authorization: `Bearer ${idToken}` } })
+        const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { stats?: LinkStats } } | null
+        if (!cancelled && res.ok && json?.success && json.data?.stats) setStats(json.data.stats)
+      } catch {
+        // The counter is a courtesy; the panel works without it.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user, rfqId])
 
   const copy = async () => {
-    setBusy("copy")
+    if (!user) return
+    setBusy(true)
     try {
-      const u = await linkUrl()
-      if (!u) throw new Error("no_link")
-      await navigator.clipboard.writeText(u)
+      let link = url
+      if (!link) {
+        const idToken = await user.getIdToken()
+        const res = await fetch("/api/rfq-share/create", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` }, body: JSON.stringify({ rfqId }) })
+        const json = (await res.json().catch(() => null)) as { data?: { url?: string } } | null
+        link = res.ok ? json?.data?.url || null : null
+        setUrl(link)
+      }
+      if (!link) throw new Error("no_link")
+      await navigator.clipboard.writeText(link)
       toast({ title: t("copied") })
     } catch {
       toast({ title: t("failed"), variant: "destructive" })
     } finally {
-      setBusy(null)
-    }
-  }
-
-  const view = async () => {
-    // Opened inside the click so the browser does not treat it as a popup.
-    const tab = window.open("", "_blank")
-    setBusy("view")
-    try {
-      const u = await linkUrl()
-      if (!u) throw new Error("no_link")
-      if (tab) {
-        tab.opener = null
-        tab.location.href = u
-      } else window.open(u, "_blank", "noopener,noreferrer")
-    } catch {
-      tab?.close()
-      toast({ title: t("failed"), variant: "destructive" })
-    } finally {
-      setBusy(null)
+      setBusy(false)
     }
   }
 
@@ -77,11 +71,17 @@ export function RfqGuestLinkPanel({ rfqId, canShare, onShare }: { rfqId: string;
           {url}
         </p>
       )}
+      {stats && (
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground" data-views>
+          <Eye size={13} aria-hidden="true" />
+          <b className="text-foreground">{stats.views === 0 ? tl("views_none") : stats.views === 1 ? tl("views_one") : tl("views", { count: stats.views })}</b>
+        </p>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
         {canShare && (
           <>
-            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={copy} disabled={busy !== null}>
-              {busy === "copy" ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => void copy()} disabled={busy}>
+              {busy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
               {t("copy")}
             </Button>
             <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={onShare}>
@@ -90,9 +90,11 @@ export function RfqGuestLinkPanel({ rfqId, canShare, onShare }: { rfqId: string;
             </Button>
           </>
         )}
-        <Button type="button" variant="outline" size="sm" className="gap-1.5 border-dashed" onClick={view} disabled={busy !== null}>
-          {busy === "view" ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}
-          {t("supplier_view")}
+        <Button asChild type="button" variant="outline" size="sm" className="gap-1.5 border-dashed">
+          <Link href={`/contractor/rfqs/${rfqId}/preview/link`}>
+            <Eye size={14} aria-hidden="true" />
+            {t("supplier_view")}
+          </Link>
         </Button>
       </div>
     </Panel>

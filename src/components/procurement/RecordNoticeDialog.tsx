@@ -1,7 +1,7 @@
 "use client"
 
 // «سجّل إشعار تسليم» (PUR-06/07): a supplier outside the platform cannot notify, so whoever
-// follows the order up records his notice — the day and the quantities coming — and it is
+// follows the order up records what his phone call said — the day and a word, never a quantity (G-08) — and it is
 // forwarded to the receiver like any other. Written by the server (/api/procurement/record-notice).
 
 import { useState } from "react"
@@ -14,32 +14,28 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import { lineOutstanding, todayOf } from "@/lib/procurement/po"
+import { todayOf } from "@/lib/procurement/po"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 
 export function RecordNoticeDialog({ po, open, onOpenChange, onDone }: { po: PurchaseOrder; open: boolean; onOpenChange: (o: boolean) => void; onDone?: (deliveryId: string) => void }) {
   const t = useTranslations("Portal.ProcOrders")
   const locale = useLocale()
   const { toast } = useToast()
-  const open_ = po.lines.filter((l) => lineOutstanding(l) > 0)
   const [day, setDay] = useState(() => todayOf(new Date()))
-  const [qty, setQty] = useState<Record<string, string>>(() => Object.fromEntries(open_.map((l) => [l.id, String(lineOutstanding(l))])))
-  const [driver, setDriver] = useState("")
   const [notes, setNotes] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const lines = open_.map((l) => ({ poLineId: l.id, quantity: Number(qty[l.id] || 0) })).filter((l) => l.quantity > 0)
 
   const submit = async () => {
     const user = getAuth().currentUser
-    if (!user || !lines.length) return
+    if (!user) return
     setBusy(true)
     setError(null)
     try {
       const res = await fetch("/api/procurement/record-notice", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` },
-        body: JSON.stringify({ poId: po.id, deliveryDate: day, lines, driverName: driver || undefined, notes: notes || undefined }),
+        body: JSON.stringify({ poId: po.id, deliveryDate: day, note: notes || null }),
       })
       const body = (await res.json().catch(() => null)) as { data?: { deliveryId?: string }; message?: string } | null
       if (!res.ok || !body?.data?.deliveryId) {
@@ -68,21 +64,6 @@ export function RecordNoticeDialog({ po, open, onOpenChange, onDone }: { po: Pur
             <Label htmlFor="rn-day" className="text-xs">{t("notice.day")}</Label>
             <Input id="rn-day" type="date" value={day} onChange={(e) => setDay(e.target.value)} dir="ltr" className="h-10" />
           </div>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-muted-foreground">{t("notice.lines")}</p>
-            {open_.map((l) => (
-              <label key={l.id} className="flex items-center justify-between gap-3 text-sm">
-                <span className="min-w-0 truncate" dir="auto">
-                  {l.name} <span className="text-xs text-muted-foreground">· {t("notice.open", { qty: lineOutstanding(l).toLocaleString("en-US"), unit: l.unit })}</span>
-                </span>
-                <Input inputMode="decimal" value={qty[l.id] ?? ""} onChange={(e) => setQty((q) => ({ ...q, [l.id]: e.target.value }))} aria-label={t("notice.qty_of", { name: l.name })} className="h-9 w-24 text-end tabular-nums" dir="ltr" />
-              </label>
-            ))}
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="rn-driver" className="text-xs">{t("notice.driver")}</Label>
-            <Input id="rn-driver" value={driver} onChange={(e) => setDriver(e.target.value)} dir="auto" className="h-10" />
-          </div>
           <div className="space-y-1">
             <Label htmlFor="rn-notes" className="text-xs">{t("notice.notes")}</Label>
             <Textarea id="rn-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} dir="auto" />
@@ -93,7 +74,7 @@ export function RecordNoticeDialog({ po, open, onOpenChange, onDone }: { po: Pur
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             {t("notice.cancel")}
           </Button>
-          <Button type="button" onClick={() => void submit()} disabled={busy || !lines.length || !day} className="gap-1.5">
+          <Button type="button" onClick={() => void submit()} disabled={busy || !day} className="gap-1.5">
             {busy && <Loader2 size={14} className="animate-spin" />}
             {t("notice.submit")}
           </Button>

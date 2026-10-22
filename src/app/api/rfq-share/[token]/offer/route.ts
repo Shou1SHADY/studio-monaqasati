@@ -1,75 +1,47 @@
-import { SAUDI_VAT_RE } from "@/lib/procurement/rfq-form"
 import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "crypto"
 import { z } from "zod"
+import { SAUDI_VAT_RE } from "@/lib/procurement/rfq-form"
 import { parseOfferTerms } from "@/lib/procurement/offer-terms"
-import { faultNames, pricedProducts } from "@/lib/procurement/offer-pricing"
-import { buildQuote, leadDaysFrom, leadDaysRefusal, versionFromQuote, type QuoteRfq } from "@/lib/procurement/offer-versions"
-import { rfqOfferKey } from "@/lib/procurement/event-keys"
-import { rfqKeyPart, sendProcEvent } from "@/lib/procurement/proc-event-server"
 import { unitPriceSchema } from "@/lib/procurement/input-limits"
-import { FieldValue } from "firebase-admin/firestore"
+import { leadDaysFrom, leadDaysRefusal, type QuoteLineInput } from "@/lib/procurement/offer-versions"
 import { getAdminFirestore, getAdminStorage, getStorageBucketName } from "@/lib/firebaseAdmin"
-import { resolveShareToken, isRfqDeadlinePassed } from "@/lib/rfq-share"
+import { resolveShareToken } from "@/lib/rfq-share"
 import { createGuestOfferLink } from "@/lib/guest-offer"
 import { sendEmail, buildGuestOfferReceiptEmail } from "@/lib/email"
 import { normalizeGuestChannel } from "@/utils/guest-offer-workflow"
-import { offersSealed } from "@/lib/procurement/award"
 import { newOfferNotice, newOfferNoticeId } from "@/lib/procurement/offer-announce"
-import { resolvePolicies } from "@/lib/procurement/policies"
-import type { ProcurementPolicies } from "@/lib/procurement/types"
-import { verifyOtp } from "@/lib/otp"
 import { riyadhDay } from "@/lib/hr/format"
-import { guestValidityDefault, saudiMobileE164 } from "@/lib/supplier-free/phone-auth"
-import { canSendCodes } from "@/lib/sms"
-import { consumeMobileRate } from "@/lib/links/rate"
-import { openLinkSession } from "@/lib/links/session"
-import {
-  GUEST_PAPER_KINDS,
-  guestOtpRequired,
-  guestOtpSubject,
-  guestPaperPath,
-  guestPaperRefusal,
-  type GuestPaper,
-} from "@/lib/procurement/guest-supplier"
+import { GUEST_PAPER_KINDS, guestPaperPath, guestPaperRefusal, type GuestPaper } from "@/lib/procurement/guest-supplier"
+import { FieldValue } from "firebase-admin/firestore"
+import { offerIdFor, registeredNameOf, writeVisitorQuote, type VisitorQuoteInput } from "@/lib/procurement/visitor-offer-server"
+import { validateLinkQuote } from "@/lib/procurement/link-validate"
+import { codesPossible, failure, openSession, phoneOf, proveMobile, visitorFailure, writeRate } from "@/lib/procurement/visitor-http"
+import { quotingGate } from "@/lib/procurement/offer-versions"
 
-// Public endpoint: a guest supplier (no account) submits a price offer on an
-// RFQ through a valid share link. The offer lands in the same `offers`
-// collection the contractor already reads, flagged with isGuestOffer +
-// guestContact so it can be told apart from registered-supplier offers.
-// The mobile is proven by a one-time code (`/code`) whenever the platform can
-// send one; the guest's papers (CR, VAT certificate) are stored under the link.
-
-const isUat = () => process.env.NEXT_PUBLIC_APP_ENV === "uat" || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID === "mdmaktech-uat"
-
-const otpSchema = z.object({
-  challengeId: z.string().trim().min(1).max(128),
-  code: z.string().trim().regex(/^\d{6}$/),
-})
+// Public: a visitor (no account) sends his quote through a valid link — and every later send from the same verified mobile is
+// the NEXT version of that quote (LNK-09), never a duplicate and never a refusal. Four things are required (LNK-07): the days
+// to supply (1 to 365), how long the quote holds (not before the request closes), the company and a Saudi mobile — and a price
+// that is positive and reasonable. The mobile is proven by a code, once: the code or the session it bought rides this request.
+// The total is OURS to compute; the request is re-read inside the transaction that writes, so a quote cannot land after the
+// award or the deadline from a page that was still open (G-07). A mobile that already belongs to a registered supplier keeps
+// the registered name (R-04); an edit never renames.
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024
-const MAX_OFFERS_PER_LINK = 100
 
-/** Per-material rates, when the RFQ asked to be quoted that way (PRD §4). They
- * arrive as one JSON field because the rest of the form is flat strings; the
- * TOTAL is computed from them below and a posted total is ignored. */
 const linesSchema = z
   .array(
     z.object({
       rfqProductIndex: z.coerce.number().int().min(0).max(999),
       unitPrice: unitPriceSchema,
-      // The sale unit he priced by («قطعة 6 م»), as its length in request units, and the warranty he offers on the line.
       packLen: z.coerce.number().positive().finite().max(1000).optional(),
       warrantyMonths: z.coerce.number().int().min(0).max(120).optional(),
     })
   )
   .max(200)
 
-/** The materials he says he does not supply (PUR-03): a line is priced or marked here, never blank. */
 const skippedSchema = z.array(z.coerce.number().int().min(0).max(999)).max(200)
 
-// Three things are required of a visitor (LNK-01, B-12): the prices, the company name and a Saudi mobile
-// (05XXXXXXXX or +9665XXXXXXXX, stored as E.164). The contact name and the e-mail are his to give or not.
 const fieldsSchema = z.object({
   companyName: z.string().trim().min(2).max(200),
   contactName: z.string().trim().max(200).optional().or(z.literal("")),
@@ -78,8 +50,7 @@ const fieldsSchema = z.object({
     .string()
     .trim()
     .max(20)
-    .refine((v) => saudiMobileE164(v) != null, "Invalid Saudi mobile"),
-  price: unitPriceSchema,
+    .refine((v) => phoneOf(v) != null, "Invalid Saudi mobile"),
   deliveryLocation: z.string().trim().max(300).optional().or(z.literal("")),
   deliveryDate: z
     .string()
@@ -89,364 +60,204 @@ const fieldsSchema = z.object({
     .or(z.literal("")),
   executionDuration: z.string().trim().max(10).optional().or(z.literal("")),
   executionDurationUnit: z.string().trim().max(20).optional().or(z.literal("")),
-  website: z.string().trim().max(300).optional().or(z.literal("")),
   message: z.string().trim().max(2000).optional().or(z.literal("")),
-  // R-10: without it Finance cannot accept his invoice — asked, never required.
   vatNumber: z.string().trim().regex(SAUDI_VAT_RE, "Invalid VAT number").optional().or(z.literal("")),
 })
 
-function errorResponse(message: string, code: string, status: number) {
-  return NextResponse.json({ error: true, message, code }, { status })
+const FORM_KEYS = [
+  "companyName",
+  "contactName",
+  "email",
+  "phone",
+  "price",
+  "deliveryLocation",
+  "deliveryDate",
+  "executionDuration",
+  "executionDurationUnit",
+  "message",
+  "vatNumber",
+  "priceBasis",
+  "validUntil",
+  "advancePercent",
+  "creditDays",
+  "challengeId",
+  "code",
+  "whole",
+  "vatRegistered",
+] as const
+
+function jsonField<T>(form: FormData, key: string, schema: z.ZodType<T>): { ok: true; value: T | null } | { ok: false } {
+  const raw = form.get(key)
+  if (typeof raw !== "string" || !raw.trim()) return { ok: true, value: null }
+  try {
+    const parsed = schema.safeParse(JSON.parse(raw))
+    return parsed.success ? { ok: true, value: parsed.data } : { ok: false }
+  } catch {
+    return { ok: false }
+  }
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ token: string }> }
-) {
+async function submit(req: NextRequest, token: string): Promise<NextResponse> {
   try {
-    const { token } = await params
     const resolution = await resolveShareToken(token)
-    if (!resolution.ok) {
-      return errorResponse("This link is invalid or has expired", resolution.code, resolution.status)
-    }
+    if (!resolution.ok) return failure("This link is invalid or has expired", resolution.code, resolution.status)
     const { link, linkId, rfq, rfqId } = resolution
 
-    if (rfq.status !== "New") {
-      return errorResponse("This RFQ is no longer accepting offers", "RFQ_CLOSED", 409)
-    }
-    if (isRfqDeadlinePassed(rfq)) {
-      return errorResponse("The RFQ deadline has passed", "DEADLINE_PASSED", 409)
-    }
-    if ((Number(link.offersSubmitted) || 0) >= MAX_OFFERS_PER_LINK) {
-      return errorResponse("This link has reached its offer limit", "LINK_OFFER_LIMIT", 429)
-    }
+    const now = new Date()
+    const gate = quotingGate(rfq, riyadhDay(now))
+    if (gate) return failure(gate === "deadline" ? "The RFQ deadline has passed" : "This RFQ is no longer accepting offers", gate === "deadline" ? "DEADLINE_PASSED" : "RFQ_CLOSED", 409)
+    if (!codesPossible()) return failure("Codes cannot be sent right now", "CODE_UNAVAILABLE", 503)
 
-    // --- Parse + validate multipart form data ---
     const form = await req.formData().catch(() => null)
-    if (!form) return errorResponse("Invalid form submission", "INVALID_INPUT", 400)
-
+    if (!form) return failure("Invalid form submission", "INVALID_INPUT", 400)
     const raw: Record<string, string> = {}
-    for (const key of [
-      "companyName",
-      "contactName",
-      "email",
-      "phone",
-      "price",
-      "deliveryLocation",
-      "deliveryDate",
-      "executionDuration",
-      "executionDurationUnit",
-      "website",
-      "message",
-      "vatNumber",
-      "priceBasis",
-      "validUntil",
-      "advancePercent",
-      "creditDays",
-      "challengeId",
-      "code",
-      "whole",
-      "vatRegistered",
-    ]) {
+    for (const key of FORM_KEYS) {
       const v = form.get(key)
       if (typeof v === "string") raw[key] = v
     }
-    const ratesField = form.get("lines")
-    let postedRates: Array<{ rfqProductIndex: number; unitPrice: number; packLen?: number; warrantyMonths?: number }> = []
-    if (typeof ratesField === "string" && ratesField.trim()) {
-      let decoded: unknown = null
-      try {
-        decoded = JSON.parse(ratesField)
-      } catch {
-        return errorResponse("Invalid form submission", "INVALID_INPUT", 400)
-      }
-      const parsedRates = linesSchema.safeParse(decoded)
-      if (!parsedRates.success) return errorResponse("Please review the prices you entered", "INVALID_INPUT", 400)
-      postedRates = parsedRates.data
-    }
-    const skippedField = form.get("skipped")
-    let postedSkipped: number[] = []
-    if (typeof skippedField === "string" && skippedField.trim()) {
-      let decoded: unknown = null
-      try {
-        decoded = JSON.parse(skippedField)
-      } catch {
-        return errorResponse("Invalid form submission", "INVALID_INPUT", 400)
-      }
-      const parsedSkipped = skippedSchema.safeParse(decoded)
-      if (!parsedSkipped.success) return errorResponse("Please review the prices you entered", "INVALID_INPUT", 400)
-      postedSkipped = parsedSkipped.data
-    }
-
+    const rates = jsonField(form, "lines", linesSchema)
+    const skipped = jsonField(form, "skipped", skippedSchema)
+    if (!rates.ok || !skipped.ok) return failure("Please review the prices you entered", "INVALID_INPUT", 400)
     const parsed = fieldsSchema.safeParse(raw)
-    if (!parsed.success) {
-      return errorResponse("Please review the submitted fields", "INVALID_INPUT", 400)
-    }
+    if (!parsed.success) return failure("Please review the submitted fields", "INVALID_INPUT", 400)
     const data = parsed.data
-    const phoneE164 = saudiMobileE164(data.phone) as string
-    const email = data.email || ""
-    const contactName = data.contactName || ""
-    const otpNeeded = guestOtpRequired(canSendCodes(), isUat())
-    const otp = otpNeeded ? otpSchema.safeParse({ challengeId: raw.challengeId, code: raw.code }) : null
-    if (otp && !otp.success) return errorResponse("Verify your mobile number first", "CODE_REQUIRED", 400)
+    const phone = phoneOf(data.phone) as string
 
-    // Papers are checked before anything is stored or any code is spent.
+    // One clear reason, the first (LNK-07): the same function the page runs while he types.
+    const products = Array.isArray(rfq.products) ? (rfq.products as Array<Record<string, unknown>>) : []
+    const lineMode = (rfq.pricingMode as string) === "line" && products.length > 0
+    const checked = validateLinkQuote({
+      pricing: lineMode ? "line" : "total",
+      lines: (rates.value || []).map((l) => ({ index: l.rfqProductIndex, qty: Number(products[l.rfqProductIndex]?.quantity) || 0, price: l.unitPrice, per: l.packLen ?? null, skipped: (skipped.value || []).includes(l.rfqProductIndex) })),
+      total: raw.price,
+      days: data.executionDuration,
+      valid: raw.validUntil || "",
+      close: typeof rfq.deadline === "string" ? rfq.deadline.slice(0, 10) : null,
+      company: data.companyName,
+      mobile: data.phone,
+    })
+    const blocking = checked.issues.find((i) => i.code === "days" || i.code === "valid_missing" || i.code === "valid_before_close")
+    if (blocking) return failure("Please review the submitted fields", blocking.code === "days" ? "INVALID_DURATION" : blocking.code === "valid_missing" ? "VALID_MISSING" : "VALID_BEFORE_CLOSE", 400)
+    const lead = leadDaysFrom(data.executionDuration, data.executionDurationUnit)
+    if (leadDaysRefusal(lead)) return failure("The duration is a whole number of days from 1 to 365", "INVALID_DURATION", 400)
+
+    const terms = parseOfferTerms({ priceBasis: raw.priceBasis, validUntil: raw.validUntil, advancePercent: raw.advancePercent, creditDays: raw.creditDays }, riyadhDay(now))
+    if (terms.error) return failure("Invalid offer terms", "INVALID_INPUT", 400)
+
     const papers: Array<{ kind: (typeof GUEST_PAPER_KINDS)[number]; file: File }> = []
     for (const kind of GUEST_PAPER_KINDS) {
       const f = form.get(`paper_${kind}`)
       if (!(f instanceof File) || f.size === 0) continue
       const refusal = guestPaperRefusal(f)
-      if (refusal) return errorResponse("Papers must be PDF, JPG or PNG files of 5MB or less", refusal === "size" ? "PAPER_TOO_LARGE" : "INVALID_PAPER", 400)
+      if (refusal) return failure("Papers must be PDF, JPG or PNG files of 5MB or less", refusal === "size" ? "PAPER_TOO_LARGE" : "INVALID_PAPER", 400)
       papers.push({ kind, file: f })
+    }
+    const pdf = form.get("pdf")
+    if (pdf instanceof File && pdf.size > 0) {
+      if (pdf.type !== "application/pdf") return failure("Attachment must be a PDF file", "INVALID_PDF", 400)
+      if (pdf.size > MAX_PDF_BYTES) return failure("PDF must be 10MB or smaller", "PDF_TOO_LARGE", 400)
     }
 
     const db = getAdminFirestore()
+    const proof = await proveMobile(db, req, linkId, phone, { challengeId: raw.challengeId, code: raw.code })
+    if (!proof.ok) return proof.response
+    const blocked = await writeRate(db, phone)
+    if (blocked) return blocked
 
-    const rate = await consumeMobileRate(db, "write", phoneE164)
-    if (!rate.ok) {
-      const res = errorResponse(rate.code === "RATE_LIMITED" ? "Too many submissions from this number — try again later" : "Offers cannot be received right now — try again later", rate.code, rate.status)
-      if (rate.code === "RATE_LIMITED") res.headers.set("Retry-After", String(rate.retryAfterSec))
-      return res
-    }
-
-    // One offer per mobile per RFQ — the mobile is the one thing every visitor gives, so a resent form
-    // never floods the contractor with duplicates.
-    const dup = await db
-      .collection("offers")
-      .where("rfqId", "==", rfqId)
-      .where("guestContact.phone", "==", phoneE164)
-      .limit(1)
-      .get()
-    if (!dup.empty) {
-      return errorResponse("An offer from this mobile already exists for this RFQ", "DUPLICATE_OFFER", 409)
-    }
-
-    if (otp?.success && phoneE164) {
-      const verdict = await verifyOtp(db, otp.data.challengeId, { purpose: "guest_offer", subjectId: guestOtpSubject(linkId, phoneE164) }, otp.data.code)
-      if (verdict === "wrong") return errorResponse("Wrong code", "WRONG_CODE", 400)
-      if (verdict === "unavailable") return errorResponse("The code could not be checked — try again", "CODE_UNCHECKED", 503)
-      if (verdict !== "ok") return errorResponse("The code has expired — ask for a new one", "CODE_EXPIRED", 410)
-    }
-
-    // --- Optional PDF attachment (uploaded server-side with the Admin SDK,
-    //     since guests have no Firebase Auth session for client Storage) ---
-    let offerPdfUrl: string | null = null
-    const pdf = form.get("pdf")
-    if (pdf && pdf instanceof File && pdf.size > 0) {
-      if (pdf.type !== "application/pdf") {
-        return errorResponse("Attachment must be a PDF file", "INVALID_PDF", 400)
-      }
-      if (pdf.size > MAX_PDF_BYTES) {
-        return errorResponse("PDF must be 10MB or smaller", "PDF_TOO_LARGE", 400)
-      }
+    const { id: offerId, existing } = await offerIdFor(db, rfqId, phone)
+    const stamp = Date.now()
+    const upload = async (path: string, file: File) => {
       const bucket = getAdminStorage().bucket(getStorageBucketName())
-      const safeName = (pdf.name || "offer.pdf").replace(/[^\w.\-]+/g, "_").slice(-100)
-      const objectPath = `offers/pdfs/guest/${Date.now()}-${safeName}`
       const downloadToken = randomUUID()
-      const buffer = Buffer.from(await pdf.arrayBuffer())
-      await bucket.file(objectPath).save(buffer, {
-        contentType: "application/pdf",
-        metadata: { metadata: { firebaseStorageDownloadTokens: downloadToken } },
-      })
-      offerPdfUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(objectPath)}?alt=media&token=${downloadToken}`
+      await bucket.file(path).save(Buffer.from(await file.arrayBuffer()), { contentType: file.type, metadata: { metadata: { firebaseStorageDownloadTokens: downloadToken } } })
+      return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media&token=${downloadToken}`
+    }
+    let pdfUrl: string | null = null
+    if (pdf instanceof File && pdf.size > 0) pdfUrl = await upload(`offers/pdfs/guest/${stamp}-${(pdf.name || "offer.pdf").replace(/[^\w.\-]+/g, "_").slice(-100)}`, pdf)
+    const guestPapers: GuestPaper[] = []
+    for (const { kind, file } of papers) {
+      guestPapers.push({ kind, name: file.name || kind, url: await upload(guestPaperPath(linkId, offerId, kind, file.name, stamp), file), contentType: file.type, size: file.size, at: now.toISOString() })
     }
 
-    const offerRef = db.collection("offers").doc()
-    const guestPapers: GuestPaper[] = []
-    if (papers.length) {
-      const bucket = getAdminStorage().bucket(getStorageBucketName())
-      const stamp = Date.now()
-      for (const { kind, file } of papers) {
-        const objectPath = guestPaperPath(linkId, offerRef.id, kind, file.name, stamp)
-        const downloadToken = randomUUID()
-        await bucket.file(objectPath).save(Buffer.from(await file.arrayBuffer()), {
-          contentType: file.type,
-          metadata: { metadata: { firebaseStorageDownloadTokens: downloadToken } },
+    const registered = existing ? null : await registeredNameOf(db, phone)
+    const lines: QuoteLineInput[] = (rates.value || []).map((l) => ({ rfqProductIndex: l.rfqProductIndex, unitPrice: l.unitPrice, packLen: l.packLen, warrantyMonths: l.warrantyMonths }))
+    const input: VisitorQuoteInput = {
+      phone,
+      verified: true,
+      company: registered || data.companyName,
+      contactName: data.contactName || "",
+      email: data.email || "",
+      vatNumber: data.vatNumber || null,
+      deliveryLocation: data.deliveryLocation || "",
+      deliveryDate: data.deliveryDate || "",
+      leadDays: lead,
+      executionDuration: data.executionDuration || "",
+      executionDurationUnit: data.executionDurationUnit || "أيام",
+      validUntil: raw.validUntil,
+      note: data.message || "",
+      quote: { lines, skipped: skipped.value || [], total: raw.price, whole: raw.whole === "true" },
+      vatRegistered: raw.vatRegistered !== "false",
+      terms: terms.terms as Record<string, unknown>,
+      pdfUrl,
+      papers: guestPapers,
+      channel: normalizeGuestChannel(link.channel),
+    }
+    const saved = await writeVisitorQuote(db, { rfqId, linkId, link, offerId, input, now })
+
+    let offerUrl: string | null = null
+    if (saved.created) {
+      try {
+        const guestLink = await createGuestOfferLink({
+          offerId: saved.offerId,
+          rfqId,
+          rfqTitle: (rfq.title as string) || "",
+          contractorId: (rfq.contractorId as string) || null,
+          organizationId: (rfq.organizationId as string) || (rfq.contractorId as string) || null,
+          shareLinkId: linkId,
+          channel: link.channel,
+          email: input.email,
+          phone,
         })
-        guestPapers.push({
-          kind,
-          name: file.name || kind,
-          url: `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(objectPath)}?alt=media&token=${downloadToken}`,
-          contentType: file.type,
-          size: file.size,
-          at: new Date().toISOString(),
-        })
+        offerUrl = guestLink.url
+        await db.collection("offers").doc(saved.offerId).update({ guestOfferLinkId: guestLink.linkId }).catch(() => {})
+      } catch (err) {
+        console.error("Failed to create guest offer link:", err)
+      }
+      if (offerUrl && input.email) {
+        const { subject, html } = buildGuestOfferReceiptEmail({ companyName: saved.companyName, rfqTitle: (rfq.title as string) || "", price: saved.total, offerUrl })
+        await sendEmail({ to: input.email, subject, html }).catch((err) => console.error("Failed to send guest offer receipt:", err))
+      }
+      await db.collection("rfqShareLinks").doc(linkId).update({ offersSubmitted: FieldValue.increment(1), lastOfferAt: now.toISOString() }).catch((err) => console.error("Failed to bump share-link counter:", err))
+      if (rfq.contractorId) {
+        const orgId = (rfq.organizationId as string) || (rfq.contractorId as string)
+        const notice = newOfferNotice({ supplier: saved.companyName, rfqTitle: (rfq.title as string) || "", price: saved.total })
+        await db
+          .collection("users")
+          .doc(rfq.contractorId as string)
+          .collection("notifications")
+          .doc(newOfferNoticeId(saved.offerId))
+          .set({ userId: rfq.contractorId, organizationId: orgId, type: "new_offer", i18n: notice.i18n, title: notice.title, message: notice.message, offerId: saved.offerId, rfqId, createdAt: now.toISOString(), read: false })
+          .catch((err) => console.error("Failed to create guest-offer notification:", err))
       }
     }
 
-    // --- Create the offer, mirroring the registered-supplier offer shape ---
-    const requiredQuantity = Array.isArray(rfq.products) && rfq.products.length > 0
-      ? rfq.products.reduce((sum: number, p: Record<string, unknown>) => sum + (Number(p.quantity) || 0), 0)
-      : Number(rfq.quantity) || 0
-
-    const nowIso = new Date().toISOString()
-
-    // A line-priced RFQ is quoted per material — by the request unit or by a sale unit the line offers — and its total is
-    // OURS to compute (`buildQuote`, through offer-calc): an endpoint that believed a posted figure would let a guest name any
-    // total it liked beside its rates. «غير مسجّل ضريبياً» and «للطلب كاملاً فقط» are his to say.
-    const built = buildQuote(rfq as QuoteRfq, { lines: postedRates, skipped: postedSkipped, total: data.price, whole: raw.whole === "true" }, { registered: raw.vatRegistered !== "false" })
-    if (!built.ok) {
-      const named = faultNames(pricedProducts(rfq as QuoteRfq), built.refusal.indexes)
-      return errorResponse(`${built.refusal.code === "line_prices_incomplete" || built.refusal.code === "line_contradictory" || built.refusal.code === "no_line_priced" ? "Give a price for every material you supply, and mark the rest as not supplied" : "Please review the prices you entered"}${named ? `: ${named}` : ""}`, built.refusal.code.toUpperCase(), 400)
-    }
-    const quote = built.quote
-    const total = quote.total
-    const priceStr = String(total)
-    const pricedLines = quote.mode === "line" ? quote.lines : null
-    const skippedItems = quote.skipped.length ? quote.skipped : null
-    const lead = leadDaysFrom(data.executionDuration, data.executionDurationUnit)
-    if (leadDaysRefusal(lead)) return errorResponse("The duration is a whole number of days from 1 to 365", "INVALID_DURATION", 400)
-    const offerData: Record<string, unknown> = {
-      supplierId: "guest",
-      organizationId: "guest",
-      supplierName: data.companyName,
-      companyName: data.companyName,
-      supplierWebsite: data.website || null,
-      submittedByUserId: null,
-      submittedByUserName: contactName || data.companyName,
-      rfqId,
-      rfqTitle: rfq.title || "",
-      projectId: rfq.projectId || null,
-      contractorId: rfq.contractorId || null,
-      contractorOrgId: rfq.organizationId || rfq.contractorId || null,
-      price: priceStr,
-      ...(pricedLines ? { lines: pricedLines } : {}),
-      ...(skippedItems ? { skippedItems } : {}),
-      ...(quote.lump != null ? { lump: quote.lump } : {}),
-      whole: quote.whole,
-      vatRegistered: quote.vatRegistered,
-      vatRate: quote.vatRate,
-      ...(lead != null ? { leadDays: lead } : {}),
-      deliveryLocation: data.deliveryLocation || "",
-      deliveryBatches: [
-        {
-          location: data.deliveryLocation || "",
-          deliveryDate: data.deliveryDate || "",
-          price: priceStr,
-          quantity: String(requiredQuantity || ""),
-        },
-      ],
-      status: "قيد المراجعة",
-      isGuestOffer: true,
-      guestContact: {
-        name: contactName,
-        email,
-        phone: phoneE164,
-        vatNumber: data.vatNumber || null,
-        phoneVerified: Boolean(otp?.success),
-        ...(otp?.success ? { phoneVerifiedAt: nowIso } : {}),
-      },
-      ...(guestPapers.length ? { guestPapers } : {}),
-      guestMessage: data.message || null,
-      shareLinkId: linkId,
-      // The channel the contractor shared on — the rest of the workflow pushes
-      // updates back to this guest on the same channel.
-      guestChannel: normalizeGuestChannel(link.channel),
-      createdAt: nowIso,
-    }
-    // The offer's commercial terms (R-16) — the same parser as the portal's dialog.
-    const parsedTerms = parseOfferTerms({ priceBasis: raw.priceBasis, validUntil: raw.validUntil || guestValidityDefault(rfq.deadline as string | null), advancePercent: raw.advancePercent, creditDays: raw.creditDays }, riyadhDay())
-    if (parsedTerms.error) return errorResponse("Invalid offer terms", "INVALID_INPUT", 400)
-    Object.assign(offerData, parsedTerms.terms)
-    if (data.executionDuration) {
-      offerData.executionDuration = data.executionDuration
-      offerData.executionDurationUnit = data.executionDurationUnit || "أيام"
-    }
-    if (offerPdfUrl) offerData.offerPdfUrl = offerPdfUrl
-    // Born as version 1: every later edit, from any door, is the next one and keeps this (G-15).
-    offerData.versions = [versionFromQuote(quote, { at: riyadhDay(), arrive: data.deliveryDate || null, valid: String(offerData.validUntil || ""), note: data.message || "", fileUrl: offerPdfUrl, leadDays: lead, by: "guest", n: 1 })]
-    offerData.rev = 1
-
-    await offerRef.set(offerData)
-
-    // --- Private follow-up link: the guest's own page for the rest of the
-    //     workflow (revised prices, sample confirmation, delivery notice) ---
-    let offerUrl: string | null = null
-    try {
-      const guestLink = await createGuestOfferLink({
-        offerId: offerRef.id,
-        rfqId,
-        rfqTitle: (rfq.title as string) || "",
-        contractorId: (rfq.contractorId as string) || null,
-        organizationId: (rfq.organizationId as string) || (rfq.contractorId as string) || null,
-        shareLinkId: linkId,
-        channel: link.channel,
-        email,
-        phone: phoneE164,
-      })
-      offerUrl = guestLink.url
-      await offerRef.update({ guestOfferLinkId: guestLink.linkId }).catch(() => {})
-    } catch (err) {
-      console.error("Failed to create guest offer link:", err)
-    }
-
-    // A receipt e-mail doubles as delivery of that link, when he left an address
-    // (the page also hands him the link on screen).
-    if (offerUrl && email) {
-      const { subject, html } = buildGuestOfferReceiptEmail({
-        companyName: data.companyName,
-        rfqTitle: (rfq.title as string) || "",
-        price: total,
-        offerUrl,
-      })
-      await sendEmail({ to: email, subject, html }).catch((err) =>
-        console.error("Failed to send guest offer receipt:", err)
-      )
-    }
-
-    // --- Bookkeeping + contractor notification (best effort) ---
-    await db
-      .collection("rfqShareLinks")
-      .doc(linkId)
-      .update({ offersSubmitted: FieldValue.increment(1), lastOfferAt: nowIso })
-      .catch((err) => console.error("Failed to bump share-link counter:", err))
-
-    await db
-      .collection("rfqs")
-      .doc(rfqId)
-      .update({ offersCount: FieldValue.increment(1) })
-      .catch((err) => console.error("Failed to bump offersCount:", err))
-
-    await sendProcEvent(db, { id: "rfq_offer", key: rfqOfferKey(rfqKeyPart(rfq, rfqId), offerRef.id, 1), organizationId: (rfq.organizationId as string) || (rfq.contractorId as string) || "", by: "guest", at: nowIso, refs: { rfq: rfqKeyPart(rfq, rfqId), offer: offerRef.id }, payload: { version: 1, channel: "link" } })
-
-    if (rfq.contractorId) {
-      // A sealed round names no amount, from a guest as from anyone.
-      const orgId = (rfq.organizationId as string) || (rfq.contractorId as string)
-      const settings = (await db.collection("procurementSettings").doc(orgId).get().catch(() => null))?.data()
-      const sealed = offersSealed(rfq as Parameters<typeof offersSealed>[0], resolvePolicies(settings as Partial<ProcurementPolicies> | undefined), new Date())
-      const notice = newOfferNotice({ supplier: data.companyName, rfqTitle: (rfq.title as string) || "", price: total, sealed })
-      await db
-        .collection("users")
-        .doc(rfq.contractorId as string)
-        .collection("notifications")
-        .doc(newOfferNoticeId(offerRef.id))
-        .set({
-          userId: rfq.contractorId,
-          organizationId: orgId,
-          type: "new_offer",
-          i18n: notice.i18n,
-          title: notice.title,
-          message: notice.message,
-          offerId: offerRef.id,
-          rfqId,
-          createdAt: nowIso,
-          read: false,
-        })
-        .catch((err) => console.error("Failed to create guest-offer notification:", err))
-    }
-
-    // The verified code buys a short session on this link, so the visitor does not need a second code for what follows.
-    let session: { secret: string; expiresAt: string } | null = null
-    if (otp?.success) {
-      session = await openLinkSession(db, { kind: "rfq", linkId, phone: phoneE164 }).catch((err) => {
-        console.error("Failed to open the visitor session:", err)
-        return null
-      })
-    }
-
-    return NextResponse.json({ success: true, data: { offerId: offerRef.id, offerUrl, ...(session ? { session } : {}) } })
+    const session = proof.viaCode ? await openSession(db, linkId, phone) : null
+    return NextResponse.json({
+      success: true,
+      data: { offerId: saved.offerId, offerUrl, n: saved.n, created: saved.created, total: saved.total, gross: saved.gross, validUntil: saved.validUntil, companyName: saved.companyName, ...(session ? { session } : {}) },
+    })
   } catch (err) {
+    const known = visitorFailure(err)
+    if (known) return known
     console.error("RFQ share guest offer error:", err)
-    return errorResponse("Failed to submit the offer", "INTERNAL_ERROR", 500)
+    return failure("Failed to submit the offer", "INTERNAL_ERROR", 500)
   }
+}
+
+export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  return submit(req, (await params).token)
+}
+
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  return submit(req, (await params).token)
 }

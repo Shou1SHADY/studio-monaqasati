@@ -1,10 +1,8 @@
 /**
- * Procurement PRD 3.0 — three governance rules that had no teeth.
+ * Procurement PRD 3.0 / 2.0 — three governance rules.
  *
- * §5.1-4 sealed prices: the policy was stored and had a labelled switch in
- * settings, and nothing read it — the offers screen showed every price as it
- * landed. A buyer who watches prices arrive can tell the next supplier what to
- * beat, which is the whole point of a sealed round.
+ * RFQ-03 (2.0) NO SEAL: the §5.1-4 seal is gone. The policy, its switch and every reader were deleted, so a buyer sees each
+ * offer's price the moment it arrives and may award before the deadline. (This file once tested the seal; it now guards its absence.)
  *
  * §5.3 idempotency: every cross-module event is supposed to carry a key so a
  * resend never doubles its effect. Notifications were written at fresh
@@ -15,7 +13,8 @@
  * expense — never reached the report the owner reads.
  */
 
-import { offersSealed } from "@/lib/procurement/award"
+import { resolvePolicies } from "@/lib/procurement/policies"
+import { newOfferNotice } from "@/lib/procurement/offer-announce"
 import { procEventKey } from "@/lib/procurement/events"
 import { exceptions, EXCEPTION_KINDS } from "@/lib/procurement/reports"
 import { DEFAULT_POLICIES } from "@/lib/procurement/types"
@@ -23,44 +22,16 @@ import type { ProcEventKind } from "@/lib/procurement/events"
 import type { ProcWorld } from "@/lib/procurement/today"
 import type { ReceiptFact } from "@/lib/procurement/types"
 
-const SEALING = { ...DEFAULT_POLICIES, sealOffersUntilDeadline: true }
-// Riyadh is UTC+3, so a Date at 09:00 local is still the 22nd everywhere we care.
-const NOW = new Date("2026-09-22T09:00:00+03:00")
-
-describe("sealed prices until the deadline", () => {
-  it("seals while the deadline is still ahead", () => {
-    expect(offersSealed({ deadline: "2026-09-25" }, SEALING, NOW)).toBe(true)
+describe("prices are never hidden from the buyer (RFQ-03)", () => {
+  it("the policy no longer exists — not in the defaults, not when a stored document still carries it", () => {
+    expect("sealOffersUntilDeadline" in DEFAULT_POLICIES).toBe(false)
+    expect("sealOffersUntilDeadline" in resolvePolicies({ sealOffersUntilDeadline: true } as never)).toBe(false)
   })
 
-  it("still seals ON the deadline day — a supplier may quote until it ends", () => {
-    expect(offersSealed({ deadline: "2026-09-22" }, SEALING, NOW)).toBe(true)
-  })
-
-  it("opens the day after", () => {
-    expect(offersSealed({ deadline: "2026-09-21" }, SEALING, NOW)).toBe(false)
-  })
-
-  it("seals by default (the PRD and the prototype) and does nothing once the policy is switched off", () => {
-    expect(DEFAULT_POLICIES.sealOffersUntilDeadline).toBe(true)
-    expect(offersSealed({ deadline: "2026-09-25" }, DEFAULT_POLICIES, NOW)).toBe(true)
-    expect(offersSealed({ deadline: "2026-09-25" }, { ...DEFAULT_POLICIES, sealOffersUntilDeadline: false }, NOW)).toBe(false)
-  })
-
-  it("opens an RFQ with no deadline rather than sealing it for ever", () => {
-    // There is no moment to open at; sealing here would hide the prices with no
-    // way back, which is worse than not sealing.
-    expect(offersSealed({ deadline: null }, SEALING, NOW)).toBe(false)
-    expect(offersSealed({}, SEALING, NOW)).toBe(false)
-    expect(offersSealed(null, SEALING, NOW)).toBe(false)
-  })
-
-  it("opens once the award is made — the record is not hidden after the fact", () => {
-    expect(offersSealed({ deadline: "2026-09-25", status: "Awarded" }, SEALING, NOW)).toBe(false)
-  })
-
-  it("reads an ISO deadline by its day, not by a midnight nobody stored", () => {
-    expect(offersSealed({ deadline: "2026-09-22T23:59:59.000Z" }, SEALING, NOW)).toBe(true)
-    expect(offersSealed({ deadline: "2026-09-20T23:59:59.000Z" }, SEALING, NOW)).toBe(false)
+  it("the new-offer notice names the amount whatever the deadline", () => {
+    const n = newOfferNotice({ supplier: "مصنع الجودة", rfqTitle: "حديد", price: 8700 })
+    expect(n.i18n.message).toBe("pn_new_offer")
+    expect(n.smsText).toContain("٨٬٧٠٠")
   })
 })
 

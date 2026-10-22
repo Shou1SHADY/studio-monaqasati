@@ -19,41 +19,35 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { ClipboardList, Truck, PackageCheck, MapPin, Eye, Clock, Calendar, Tag, DollarSign, User, MapPinned, Star, CheckCircle2, ChevronDown, ChevronUp, Loader2, FileText, Building2, AlertTriangle } from "lucide-react"
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react"
-import { collection, query, where, doc, addDoc, serverTimestamp, type Firestore } from "firebase/firestore"
-import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage"
+import { collection, query, where, doc, type Firestore } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { useDoc, useCollection, useFirestore, useStorage, useUser, useMemoFirebase } from "@/firebase"
+import { useDoc, useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { ReviewDialog } from "@/components/ReviewDialog"
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { cn } from "@/lib/utils"
 import { sarLtr } from "@/lib/riyal"
-import { DocumentThread } from "@/components/documents/DocumentThread"
-import { procLinks } from "@/lib/procurement/events"
+import { ConversationPanel } from "@/components/procurement/chats/ConversationPanel"
+import type { PoWithChat } from "@/lib/procurement/po-messages"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { isLumpSum, poStatus, poValue } from "@/lib/procurement/po"
 import type { FinancelessPo } from "@/lib/procurement/payment-mark"
-import { PURCHASE_ORDERS, QUALITY_PAPERS, type PoStatus, type PurchaseOrder, type QualityPaper } from "@/lib/procurement/types"
+import { PURCHASE_ORDERS, type PoStatus, type PurchaseOrder } from "@/lib/procurement/types"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import { acceptOrder, SupplierPoError } from "@/lib/supplier-free/po-writes"
-import { noticeAudience } from "@/lib/procurement/policy-enforce"
 import { pendingVersion } from "@/lib/procurement/po-state"
 import { PoRouteError, poAct } from "@/lib/procurement/po-client"
 import {
-  DELIVERY_WINDOWS,
+  NOTICE_NOTE_MAX,
   SUPPLIER_SEGMENTS,
-  buildDeliveryNotice,
-  buildDeliveryNoticeNotification,
-  defaultNoticeLines,
   inSupplierSegment,
   minPromiseDay,
   noticeErrors,
   noticeLatenessDays,
-  noticeRecipients,
   promiseDateValid,
   supplierCanAccept,
   supplierCanNotify,
@@ -61,7 +55,6 @@ import {
   supplierLineView,
   supplierSegmentCounts,
   visibleSupplierOrders,
-  type DeliveryWindow,
   type NoticeError,
   type SupplierSegment,
 } from "@/lib/procurement/supplier"
@@ -132,7 +125,6 @@ function LegacySupplierOrdersPage() {
   const tp = useTranslations("Portal.Procurement")
   const locale = useLocale()
   const firestore = useFirestore()
-  const storage = useStorage()
   const { user, isUserLoading } = useUser()
   const searchParams = useSearchParams()
   const focusPoId = searchParams.get("po")
@@ -651,46 +643,23 @@ function LegacySupplierOrdersPage() {
         />
       )}
 
-      {/* The delivery notice for one shipment */}
+      {/* The delivery notice for one shipment: a day and a note (G-08) */}
       {noticePo && (
         <DeliveryNoticeDialog
           po={noticePo}
           now={now}
           onClose={() => setNoticePo(null)}
-          onSubmit={async (values, file) => {
-            if (!firestore || !user) return
-            let fileUrl: string | null = null
-            if (file && storage) {
-              const path = `deliveries/notices/${noticePo.id}/${Date.now()}-${file.name}`
-              const fileRef = storageRef(storage, path)
-              await uploadBytes(fileRef, file)
-              fileUrl = await getDownloadURL(fileRef)
-            }
-            const offer = noticePo.offerId ? offerById.get(noticePo.offerId) : undefined
-            const docData = buildDeliveryNotice({
-              po: noticePo,
-              lines: values.lines,
-              deliveryDate: values.deliveryDate,
-              deliveryWindow: values.deliveryWindow,
-              driverName: values.driverName,
-              driverPhone: values.driverPhone,
-              vehiclePlate: values.vehiclePlate,
-              qualityPapers: values.qualityPapers,
-              paperNoteNumber: values.paperNoteNumber,
-              notes: values.notes,
-              fileUrl,
-              supplier: { uid: user.uid, orgId: orgId, name: activeCompanyName || t("generic_supplier") },
-              contractorId: offer?.contractorId || null,
-              createdAt: serverTimestamp(),
+          onSubmit={async (values) => {
+            if (!user) return
+            const res = await fetch("/api/procurement/notice", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` },
+              body: JSON.stringify({ poId: noticePo.id, deliveryDate: values.deliveryDate, note: values.note || null }),
             })
-            const created = await addDoc(collection(firestore, "deliveries"), docData)
-            const at = new Date().toISOString()
-            await Promise.all(
-              // noticeRouting `both`: the receivers stamped on the order at approval hear of it with us.
-              noticeAudience(noticeRecipients(noticePo, offer?.contractorId), noticePo as { noticeCopyTo?: unknown }).map((uid) =>
-                addDoc(collection(firestore, "users", uid, "notifications"), buildDeliveryNoticeNotification(noticePo, uid, created.id, at)).catch(() => undefined)
-              )
-            )
+            if (!res.ok) {
+              const body = (await res.json().catch(() => null)) as { code?: string } | null
+              throw body?.code === "NOT_ACCEPTED" ? new SupplierPoError("wrong_state") : body?.code === "DATE_PAST" ? new SupplierPoError("date_past") : new Error("notice failed")
+            }
             toast({ title: t("po_notice_sent_toast"), description: t("po_notice_sent_desc") })
             setNoticePo(null)
           }}
@@ -739,6 +708,7 @@ interface PoOrderCardProps {
 const PoOrderCard = forwardRef<HTMLDivElement, PoOrderCardProps>(function PoOrderCard({ po, offer, notices, now, open, highlighted, onToggle, onAccept, onNotify, onRate, dayText }, ref) {
   const t = useTranslations("Portal.Supplier")
   const tp = useTranslations("Portal.Procurement")
+  const tc = useTranslations("Portal.ProcChats")
   const locale = useLocale()
   const status = poStatus(po)
   const statusKey = status === "closed" && po.closedShort ? "closed_short" : status
@@ -925,12 +895,14 @@ const PoOrderCard = forwardRef<HTMLDivElement, PoOrderCardProps>(function PoOrde
               )}
             </div>
           </div>
-          <div className="px-4 pb-4">
-            <DocumentThread
-              portal="supplier"
-              target={{ kind: "po", id: po.id, label: displayPoNumber(po.docNumber, locale), href: procLinks.order(po.id), supplierHref: procLinks.supplierOrder(po.id) }}
-              parties={{ buyerOrgId: po.organizationId, supplierOrgId: po.supplierOrgId }}
-              notify={{ buyer: [po.preparedById] }}
+          <div className="space-y-2 pb-2">
+            <p className="text-xs font-bold text-muted-foreground">{tc("thread_title_supplier")}</p>
+            <ConversationPanel
+              po={po as PoWithChat}
+              side="supplier"
+              orgId={po.supplierOrgId}
+              company={offer?.contractorName || ""}
+              receipts={notices.map((n) => ({ docNumber: n.docNumber ?? null, status: n.status ?? null, confirmedAt: n.deliveryDate ?? null }))}
             />
           </div>
         </div>
@@ -1003,117 +975,47 @@ function AcceptOrderDialog({ po, now, onClose, onSubmit }: { po: PurchaseOrder; 
 }
 
 // ---------------------------------------------------------------------------
-// The delivery notice — one shipment
+// The delivery notice — one shipment: the day it comes and a word. The quantities are the receiver's (G-08).
 // ---------------------------------------------------------------------------
 
 interface NoticeValues {
-  lines: Array<{ poLineId: string; quantity: number }>
   deliveryDate: string
-  deliveryWindow: DeliveryWindow | null
-  driverName: string
-  driverPhone: string
-  vehiclePlate: string
-  qualityPapers: QualityPaper[]
-  paperNoteNumber: string
-  notes: string
+  note: string
 }
 
-function DeliveryNoticeDialog({
-  po,
-  now,
-  onClose,
-  onSubmit,
-  onError,
-}: {
-  po: PurchaseOrder
-  now: Date
-  onClose: () => void
-  onSubmit: (values: NoticeValues, file: File | null) => Promise<void>
-  onError: (err: unknown) => void
-}) {
+function DeliveryNoticeDialog({ po, now, onClose, onSubmit, onError }: { po: PurchaseOrder; now: Date; onClose: () => void; onSubmit: (values: NoticeValues) => Promise<void>; onError: (err: unknown) => void }) {
   const t = useTranslations("Portal.Supplier")
-  const tp = useTranslations("Portal.Procurement")
   const locale = useLocale()
-  const { toast } = useToast()
-  const lines = po.lines.map(supplierLineView).filter((l) => l.toArrive > 0)
   const min = minPromiseDay(now)
-  const [file, setFile] = useState<File | null>(null)
   const [domainErrors, setDomainErrors] = useState<NoticeError[]>([])
-
-  const schema = useMemo(
-    () =>
-      z.object({
-        lines: z.array(z.object({ poLineId: z.string(), quantity: z.number().min(0) })),
-        deliveryDate: z.string().min(1),
-        deliveryWindow: z.enum(DELIVERY_WINDOWS).nullable(),
-        driverName: z.string().trim().max(200),
-        driverPhone: z.string().trim().max(30).regex(/^[+\d\s-]*$/),
-        vehiclePlate: z.string().trim().max(40),
-        qualityPapers: z.array(z.enum(QUALITY_PAPERS)),
-        paperNoteNumber: z.string().trim().max(80),
-        notes: z.string().trim().max(2000),
-      }),
-    []
-  )
-  const form = useForm<NoticeValues>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      lines: defaultNoticeLines(po),
-      deliveryDate: po.promisedDate && po.promisedDate >= min ? po.promisedDate : min,
-      deliveryWindow: null,
-      driverName: "",
-      driverPhone: "",
-      vehiclePlate: "",
-      qualityPapers: [],
-      paperNoteNumber: "",
-      notes: "",
-    },
-  })
-  const { register, handleSubmit, watch, setValue, formState } = form
-  const deliveryDate = watch("deliveryDate")
-  const window_ = watch("deliveryWindow")
-  const papers = watch("qualityPapers")
-  const lateBy = noticeLatenessDays(po, deliveryDate)
+  const schema = useMemo(() => z.object({ deliveryDate: z.string().min(1), note: z.string().trim().max(NOTICE_NOTE_MAX) }), [])
+  const form = useForm<NoticeValues>({ resolver: zodResolver(schema), defaultValues: { deliveryDate: po.promisedDate && po.promisedDate >= min ? po.promisedDate : min, note: "" } })
+  const { register, handleSubmit, watch, formState } = form
+  const lateBy = noticeLatenessDays(po, watch("deliveryDate"))
 
   const errorText = (e: NoticeError) => {
     switch (e.code) {
       case "date_missing": return t("po_notice_err_date_missing")
       case "date_past": return t("po_notice_err_date_past")
-      case "nothing_to_ship": return t("po_notice_err_nothing_to_ship")
-      case "over_outstanding": return t("po_notice_err_over_outstanding", { line: String(e.params.line), max: figure(Number(e.params.max)), unit: String(e.params.unit) })
       case "not_accepted": return t("po_notice_err_not_accepted")
       default: return t("po_err_generic")
     }
   }
 
   const submit = async (values: NoticeValues) => {
-    const errs = noticeErrors(po, values.lines, values.deliveryDate, now)
+    const errs = noticeErrors(po, values.deliveryDate, now)
     setDomainErrors(errs)
     if (errs.length) return
     try {
-      await onSubmit(values, file)
+      await onSubmit(values)
     } catch (err) {
       onError(err)
     }
   }
 
-  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] || null
-    if (f && f.type !== "application/pdf" && !f.type.startsWith("image/")) {
-      toast({ title: t("error_title"), description: t("po_notice_file_type_error"), variant: "destructive" })
-      e.target.value = ""
-      setFile(null)
-      return
-    }
-    setFile(f)
-  }
-
-  const lineErrors = new Map(domainErrors.filter((e) => e.poLineId).map((e) => [e.poLineId as string, e]))
-  const generalErrors = domainErrors.filter((e) => !e.poLineId)
-
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto text-start" dir={locale === "ar" ? "rtl" : "ltr"}>
+      <DialogContent className="sm:max-w-md w-[95vw] max-h-[90vh] overflow-y-auto text-start" dir={locale === "ar" ? "rtl" : "ltr"}>
         <form onSubmit={handleSubmit(submit)} className="space-y-5">
           <DialogHeader className="text-start sm:text-start">
             <DialogTitle className="flex items-center gap-2">
@@ -1122,133 +1024,29 @@ function DeliveryNoticeDialog({
             </DialogTitle>
             <DialogDescription>{t("po_notice_desc")}</DialogDescription>
           </DialogHeader>
-
           <div className="space-y-2">
-            <p className="text-sm font-bold">{t("po_notice_lines_title")}</p>
-            {lines.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t("po_notice_nothing_left")}</p>
-            ) : (
-              <div className="space-y-2">
-                {lines.map((l, i) => {
-                  const err = lineErrors.get(l.id)
-                  return (
-                    <div key={l.id} className={cn("flex flex-wrap items-center gap-3 rounded-md border p-3", (err || formState.errors.lines?.[i]?.quantity) && "border-destructive")}>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">{l.name}</p>
-                        <p className="text-xs text-muted-foreground">{t("po_notice_up_to", { max: figure(l.toArrive), unit: l.unit })}</p>
-                        {err && <p className="mt-1 text-xs text-destructive">{errorText(err)}</p>}
-                        {formState.errors.lines?.[i]?.quantity && <p className="mt-1 text-xs text-destructive">{t("po_notice_err_quantity")}</p>}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Label htmlFor={`notice-q-${l.id}`} className="sr-only">
-                          {l.name}
-                        </Label>
-                        <Input id={`notice-q-${l.id}`} type="number" inputMode="decimal" step="any" min={0} dir="ltr" className="w-28 text-end tabular-nums" {...register(`lines.${i}.quantity` as const, { valueAsNumber: true })} disabled={formState.isSubmitting} />
-                        <span className="text-xs text-muted-foreground">{l.unit}</span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            <Label htmlFor="notice-date">
+              {t("po_notice_date_label")} <span className="text-destructive">*</span>
+            </Label>
+            <Input id="notice-date" type="date" min={min} dir="ltr" {...register("deliveryDate")} disabled={formState.isSubmitting} />
+            {lateBy > 0 && <p className="text-xs text-destructive">{t("po_notice_late_hint", { days: lateBy })}</p>}
           </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="notice-date">
-                {t("po_notice_date_label")} <span className="text-destructive">*</span>
-              </Label>
-              <Input id="notice-date" type="date" min={min} dir="ltr" {...register("deliveryDate")} disabled={formState.isSubmitting} />
-              {lateBy > 0 && <p className="text-xs text-destructive">{t("po_notice_late_hint", { days: lateBy })}</p>}
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium">{t("po_notice_window_label")}</p>
-              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("po_notice_window_label")}>
-                {DELIVERY_WINDOWS.map((w) => (
-                  <button
-                    key={w}
-                    type="button"
-                    role="radio"
-                    aria-checked={window_ === w}
-                    onClick={() => setValue("deliveryWindow", window_ === w ? null : w)}
-                    className={cn(
-                      "min-h-[40px] rounded-md border px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                      window_ === w ? "border-transparent bg-module/10 font-bold text-module" : "border-border hover:bg-muted"
-                    )}
-                  >
-                    {tp(`deliveryWindow.${w}`)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="notice-driver">{t("po_notice_driver_label")}</Label>
-              <Input id="notice-driver" placeholder={t("po_notice_driver_placeholder")} {...register("driverName")} disabled={formState.isSubmitting} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="notice-driver-phone">{t("po_notice_driver_phone_label")}</Label>
-              <Input id="notice-driver-phone" type="tel" dir="ltr" inputMode="tel" placeholder="05xxxxxxxx" {...register("driverPhone")} disabled={formState.isSubmitting} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="notice-plate">{t("po_notice_plate_label")}</Label>
-              <Input id="notice-plate" dir="ltr" {...register("vehiclePlate")} disabled={formState.isSubmitting} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="notice-paper">{t("po_notice_paper_label")}</Label>
-              <Input id="notice-paper" dir="ltr" placeholder="DN-" {...register("paperNoteNumber")} disabled={formState.isSubmitting} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="notice-file">{t("po_notice_file_label")}</Label>
-              <Input id="notice-file" type="file" accept=".pdf,image/*" onChange={onFile} disabled={formState.isSubmitting} />
-              <p className="text-xs text-muted-foreground">{t("po_notice_file_hint")}</p>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-sm font-medium">{t("po_notice_papers_label")}</p>
-            <div className="flex flex-wrap gap-2" role="group" aria-label={t("po_notice_papers_label")}>
-              {QUALITY_PAPERS.map((q) => {
-                const on = papers.includes(q)
-                return (
-                  <button
-                    key={q}
-                    type="button"
-                    aria-pressed={on}
-                    disabled={formState.isSubmitting}
-                    onClick={() => setValue("qualityPapers", on ? papers.filter((x) => x !== q) : [...papers, q])}
-                    className={cn(
-                      "min-h-11 rounded-full border px-4 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
-                      on ? "border-transparent bg-module/10 font-bold text-module" : "border-border hover:bg-muted"
-                    )}
-                  >
-                    {t(`po_notice_paper_${q}`)}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
           <div className="space-y-2">
             <Label htmlFor="notice-notes">{t("po_notice_notes_label")}</Label>
-            <Textarea id="notice-notes" rows={3} className="resize-none" placeholder={t("po_notice_notes_placeholder")} {...register("notes")} disabled={formState.isSubmitting} />
+            <Textarea id="notice-notes" rows={3} className="resize-none" placeholder={t("po_notice_notes_placeholder")} {...register("note")} disabled={formState.isSubmitting} />
           </div>
-
-          {generalErrors.length > 0 && (
+          {domainErrors.length > 0 && (
             <ul className="space-y-1 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {generalErrors.map((e, i) => (
+              {domainErrors.map((e, i) => (
                 <li key={i}>{errorText(e)}</li>
               ))}
             </ul>
           )}
-
           <DialogFooter className="flex flex-row justify-end gap-2">
             <Button type="button" variant="outline" onClick={onClose} disabled={formState.isSubmitting}>
               {t("cancel")}
             </Button>
-            <Button type="submit" className="gap-2" disabled={formState.isSubmitting || lines.length === 0}>
+            <Button type="submit" className="gap-2" disabled={formState.isSubmitting}>
               {formState.isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <Truck size={16} />}
               {t("po_notice_submit")}
             </Button>

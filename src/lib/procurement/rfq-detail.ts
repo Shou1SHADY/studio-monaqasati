@@ -9,18 +9,23 @@
 // who did it and why, so every existing reader of the deadline (the list, the
 // supplier's page, the guest link) already treats the round as closed.
 
-import { addDays, todayOf } from "./po"
+import { todayOf } from "./po"
 import type { ProcActor } from "./types"
 import { runsRfqs, type RfqRunner } from "./rfq-access"
 
 export const RFQ_CANCELLED = "Cancelled"
 
-export const RFQ_CANCEL_CODES = ["need", "spec", "reissue"] as const
+/** The reasons a new cancellation takes (RFQ-15); `reissue` stays readable on RFQs cancelled before 2.0. */
+export const RFQ_CANCEL_CODES = ["need", "price", "spec", "other"] as const
 export type RfqCancelCode = (typeof RFQ_CANCEL_CODES)[number]
+/** «سبب آخر» needs words of its own. */
+export const CANCEL_OTHER_MIN = 4
 export const isRfqCancelCode = (v: unknown): v is RfqCancelCode => typeof v === "string" && (RFQ_CANCEL_CODES as readonly string[]).includes(v)
 
 export interface RfqCancellation {
-  code: RfqCancelCode
+  code: RfqCancelCode | "reissue"
+  /** The words of an «سبب آخر». */
+  note?: string | null
   byId: string
   byName: string
   at: string
@@ -35,7 +40,7 @@ export interface RfqEarlyClose {
   originalDeadline: string | null
 }
 
-export const RFQ_LOG_ACTIONS = ["awarded", "award_reopened", "closed_early", "cancelled", "offer_excluded", "query_answered", "reduction_round", "offer_recorded", "guest_registered", "guest_invited", "extended", "document_printed", "guest_link_shared", "guest_link_emailed", "published", "reopened", "shortlisted", "unshortlisted", "offer_versioned", "price_confirmed", "award_reason", "message", "offer_restored", "bafo_asked", "reval_asked"] as const
+export const RFQ_LOG_ACTIONS = ["awarded", "award_reopened", "closed_early", "cancelled", "offer_excluded", "query_answered", "reduction_round", "offer_recorded", "guest_registered", "guest_invited", "extended", "document_printed", "guest_link_shared", "guest_link_emailed", "published", "reopened", "shortlisted", "unshortlisted", "offer_versioned", "price_confirmed", "award_reason", "message", "offer_restored", "bafo_asked", "reval_asked", "renamed", "reminded"] as const
 export type RfqLogAction = (typeof RFQ_LOG_ACTIONS)[number]
 
 export interface RfqLogEntry {
@@ -60,9 +65,6 @@ export function rfqLog(entries: RfqLogEntry[] | null | undefined): RfqLogEntry[]
 // Who may do what on the page
 // ---------------------------------------------------------------------------
 
-/** «أغلِق الآن وافتح الأسعار» is the manager's: po.approve, or the owner without staff. */
-export const canCloseEarly = (actor: Omit<RfqRunner, "uid">): boolean => runsRfqs({ ...actor, uid: "" }) && (actor.isOwner || actor.canApprove)
-
 /** Cancelling, excluding, answering, extending: whoever runs RFQs (`rfq-access.ts`). */
 export const canRunRfq = (actor: Omit<RfqRunner, "uid">): boolean => runsRfqs({ ...actor, uid: "" })
 
@@ -79,19 +81,8 @@ export function rfqTakingOffers(rfq: RfqStateLike | null | undefined, now: Date)
   return !day || todayOf(now) <= day
 }
 
-export const canCancelRfq = (rfq: RfqStateLike | null | undefined): boolean => rfq?.status === "New" || rfq?.status === "Draft"
-
-/** What an early close writes on the RFQ — refused without a reason or on a
- * round that is no longer open. */
-export function earlyCloseFields(rfq: RfqStateLike, actor: Pick<ProcActor, "uid" | "name">, reason: string, now: Date): { deadline: string; closedEarly: RfqEarlyClose } | null {
-  const why = reason.trim()
-  if (!why || !rfqTakingOffers(rfq, now)) return null
-  const at = now.toISOString()
-  return {
-    deadline: addDays(todayOf(now), -1),
-    closedEarly: { at, byId: actor.uid, byName: actor.name, reason: why, originalDeadline: (rfq.deadline || "").slice(0, 10) || null },
-  }
-}
+/** Cancelling is for a published round, open or comparing (RFQ-15); a draft is deleted, an award is re-opened from its order. */
+export const canCancelRfq = (rfq: RfqStateLike | null | undefined): boolean => rfq?.status === "New"
 
 // ---------------------------------------------------------------------------
 // Invited suppliers and queries
@@ -122,14 +113,16 @@ export function invitedRows(rfq: { allowedSupplierOrgIds?: string[] | null; invi
 }
 
 export interface InquiryLike {
-  /** `our_question`: a clarification WE asked of one supplier — it waits on his answer, not on ours. */
+  /** `our_question`: a clarification WE asked of one supplier — it waits on his answer, not on ours. `note`: ours to everyone, nothing to answer. */
   kind?: string | null
   reply?: string | null
+  answer?: { text?: string | null } | null
   userId?: string | null
   organizationId?: string | null
 }
 
-export const unansweredCount = (inquiries: InquiryLike[] | null | undefined): number => (inquiries || []).filter((q) => q.kind !== "our_question" && !(q.reply || "").trim()).length
+export const unansweredCount = (inquiries: InquiryLike[] | null | undefined): number =>
+  (inquiries || []).filter((q) => q.kind !== "our_question" && q.kind !== "note" && !(q.reply || "").trim() && !(q.answer?.text || "").trim()).length
 
 /**
  * Who hears an answer (§5.1: «الجواب يصل كل المدعوّين — لا أفضلية بمعلومة لمورد
@@ -165,8 +158,8 @@ export interface ReductionRound {
   offers: number
 }
 
-export function canAskReductionRound(rfq: (RfqStateLike & { reductionRound?: ReductionRound | null }) | null | undefined, liveOffers: number, sealed: boolean): boolean {
-  return Boolean(rfq && rfq.status === "New" && !rfq.reductionRound && !sealed && liveOffers > 0)
+export function canAskReductionRound(rfq: (RfqStateLike & { reductionRound?: ReductionRound | null }) | null | undefined, liveOffers: number): boolean {
+  return Boolean(rfq && rfq.status === "New" && !rfq.reductionRound && liveOffers > 0)
 }
 
 /** Only positive figures are targets; a blank line asks for a plain "best and final". */
@@ -209,7 +202,7 @@ export interface ManualOfferInput {
   creditDays: number | null
   advancePercent: number | null
   proofUrl: string | null
-  /** The round was still sealed when it was keyed in — he saw the price by typing it. */
+  /** Keyed in before the deadline. */
   early: boolean
 }
 

@@ -5,7 +5,8 @@
 // no React, no sentences: the screens format, the tests read this.
 
 import { PERMISSION_SECTIONS, type PermissionId } from "../permissions"
-import { PROC_TAB_GATES, type ProcTabId } from "./tab-gates"
+import { PROC_MINE_HREF, PROC_TAB_GATES, type ProcTabId } from "./tab-gates"
+import { isRequesterOnly } from "./roles-matrix"
 import { approvalRefusal, daysFromNow, poLate, poStatus, dayOf, lineOutstanding, type NoticeFact } from "./po"
 import type { OfferFact, ProcWorld, RfqFact } from "./today"
 import type { ProcurementPolicies, PurchaseOrder, ReceiptFact, SupplierFacts } from "./types"
@@ -54,10 +55,14 @@ export const PROC_TABS: ProcTabDef[] = [
 
 export type Can = (permission: PermissionId) => boolean
 
+/** The requester's one tab (REQ-01): outside `PROC_TABS`, because the eight pages of the rail are the buyers' and only a member who holds none of Procurement's sees this one. */
+export const PROC_MINE_TAB: ProcTabDef = { id: "mine", href: PROC_MINE_HREF, labelKey: "contractor_my_requests", railKey: "proc_tab_mine", anyOf: [] }
+
 /** The tabs this viewer may open, in rail order. `can` already says yes to
  * everything for the org owner (`usePermissions().can`). */
 export function visibleProcTabs(can: Can, tabs: ProcTabDef[] = PROC_TABS): ProcTabDef[] {
-  return tabs.filter((tab) => tab.anyOf.some((p) => can(p)))
+  const out = tabs.filter((tab) => tab.anyOf.some((p) => can(p)))
+  return out.length === 0 && tabs === PROC_TABS && isRequesterOnly(can, false) ? [PROC_MINE_TAB] : out
 }
 
 /** Longest matching prefix wins: `/rfqs/requests` must not light up `/rfqs`. */

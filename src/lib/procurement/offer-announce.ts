@@ -1,12 +1,7 @@
 /**
  * What the contractor is told when an offer arrives — the bell, the push and
- * the text — and the one rule it obeys: a sealed round names no amount.
- *
- * The offers page kept sealed prices hidden, but the new-offer notification
- * carried "عرضاً بمبلغ ٨٬٧٠٠ ر.س" into the bell (and the push, and the SMS) the
- * moment the offer landed, so the buyer the seal exists to keep in the dark was
- * told anyway. Sealing needs the contractor's policy, which the supplier cannot
- * read — so the server builds this, never the quoting client.
+ * the text. Prices are never hidden from the buyer (Procurement 2.0, RFQ-03:
+ * no seal), so the amount is named whenever the server knows it.
  */
 
 export interface NewOfferNotice {
@@ -17,27 +12,16 @@ export interface NewOfferNotice {
   smsText: string
 }
 
-/**
- * `price: null` is the amount-free wording that claims nothing about a seal —
- * for a client that could not reach the server and so cannot know.
- */
-export function newOfferNotice(input: { supplier: string; rfqTitle: string; price: number | null; sealed: boolean }): NewOfferNotice {
+/** `price: null` is the amount-free wording — for a client that could not reach the server and so cannot know it. */
+export function newOfferNotice(input: { supplier: string; rfqTitle: string; price: number | null }): NewOfferNotice {
   const supplier = input.supplier.trim() || "مورد"
   const rfq = input.rfqTitle.trim()
-  if (!input.sealed && input.price == null) {
+  if (input.price == null) {
     return {
       i18n: { title: "pn_new_offer_title", message: "pn_new_offer_plain", params: { supplier, rfq } },
       title: "عرض سعر جديد",
       message: `قدّم المورد ${supplier} عرضاً على طلب عروض الأسعار: ${rfq}`,
       smsText: `مدماك تيك: وصلك عرض سعر جديد على طلب عروض الأسعار: ${rfq}. قم بتسجيل الدخول للمراجعة.`,
-    }
-  }
-  if (input.sealed || input.price == null) {
-    return {
-      i18n: { title: "pn_new_offer_title", message: "pn_new_offer_sealed", params: { supplier, rfq } },
-      title: "عرض سعر جديد",
-      message: `قدّم المورد ${supplier} عرضاً على طلب عروض الأسعار: ${rfq} — والسعر مغلق حتى الموعد النهائي`,
-      smsText: `مدماك تيك: وصلك عرض سعر جديد على طلب عروض الأسعار: ${rfq}. السعر مغلق حتى الموعد النهائي.`,
     }
   }
   const price = input.price

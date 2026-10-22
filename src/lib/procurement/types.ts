@@ -413,10 +413,6 @@ export interface ProcurementPolicies {
   awardCycleDays: number
   supplierAcceptanceDays: number
   splitWindowDays: number
-  /** Hide offer prices until the RFQ's deadline. ON by default, as the PRD and
-   * the prototype (`POL.seal`): «الأسعار مغلقة حتى الموعد (سياسة قابلة للإيقاف)» —
-   * the owner switches it off in Procurement settings to award as offers arrive. */
-  sealOffersUntilDeadline: boolean
   /** How many days before a delivery a notice still sitting with Procurement
    * becomes somebody's task to forward (§5.2-3b). */
   forwardWindowDays: number
@@ -452,7 +448,6 @@ export const DEFAULT_POLICIES: ProcurementPolicies = {
   awardCycleDays: 2,
   supplierAcceptanceDays: 1,
   splitWindowDays: 30,
-  sealOffersUntilDeadline: true,
   forwardWindowDays: 1,
   sendOnApproval: true,
   rfqDefaultDays: 3,

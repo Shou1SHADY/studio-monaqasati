@@ -43,7 +43,7 @@ export const DEFAULT_OPERATING_POLICIES: OperatingPolicies = {
 export type ResolvedPolicies = ProcurementPolicies & OperatingPolicies
 export const DEFAULT_RESOLVED_POLICIES: ResolvedPolicies = { ...DEFAULT_POLICIES, ...DEFAULT_OPERATING_POLICIES }
 
-type NumericPolicy = Exclude<keyof ProcurementPolicies, "sealOffersUntilDeadline" | "sendOnApproval" | "advanceUnknownSupplierOwner"> | "buyerSelfIssueLimit" | "replyWindowDays"
+type NumericPolicy = Exclude<keyof ProcurementPolicies, "sendOnApproval" | "advanceUnknownSupplierOwner"> | "buyerSelfIssueLimit" | "replyWindowDays"
 
 const NUMERIC: NumericPolicy[] = [
   "managerApprovalLimit",
@@ -105,7 +105,6 @@ export function resolvePolicies(raw: Partial<ResolvedPolicies> | null | undefine
   if (!stored(raw, "inventoryReplyDays") && stored(raw, "replyWindowDays")) out.inventoryReplyDays = out.replyWindowDays
   if (!stored(raw, "workshopReplyDays") && stored(raw, "replyWindowDays")) out.workshopReplyDays = out.replyWindowDays
   out.replyWindowDays = out.inventoryReplyDays
-  if (typeof raw.sealOffersUntilDeadline === "boolean") out.sealOffersUntilDeadline = raw.sealOffersUntilDeadline
   if (typeof raw.advanceUnknownSupplierOwner === "boolean") out.advanceUnknownSupplierOwner = raw.advanceUnknownSupplierOwner
   if (typeof raw.sendOnApproval === "boolean") out.sendOnApproval = raw.sendOnApproval
   if (typeof raw.buyerReceives === "boolean") out.buyerReceives = raw.buyerReceives
@@ -123,7 +122,6 @@ export const operatingPolicies = (p: ProcurementPolicies | Partial<ResolvedPolic
 /** Who owns each policy — the module the chip names (prototype `ext()`). */
 export type PolicyOwner = "gov" | "fin" | "inv" | "mfg"
 export const POLICY_OWNER: Record<keyof ResolvedPolicies, PolicyOwner> = {
-  sealOffersUntilDeadline: "gov",
   noticeRouting: "gov",
   forwardWindowDays: "gov",
   buyerReceives: "gov",
