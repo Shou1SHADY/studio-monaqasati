@@ -126,7 +126,7 @@ describe("«خيارات ▾» on a search result (CAT-03)", () => {
     const opener = document.querySelector('button[aria-label="خيارات الاسمنت العادي"]')
     await click(opener ?? undefined)
     expect(text()).toContain("← النتائج")
-    expect(text()).toContain("اختر ما يلزم فقط — والباقي يحدّده المورد.")
+    expect(text()).toContain("اختر ما يلزم فقط — والباقي يحدّده المورّد.")
     await click(Array.from(document.querySelectorAll('[role="listbox"] button')).find((b) => (b.textContent || "").trim() === "50 كجم"))
     const qty = document.querySelector('[role="listbox"] input') as HTMLInputElement
     await act(async () => void fireEvent.change(qty, { target: { value: "200" } }))
@@ -193,7 +193,7 @@ describe("the warranty is a switch with a duration (CAT-05)", () => {
     const date = document.querySelector('input[type="date"]') as HTMLInputElement
     await act(async () => void fireEvent.change(date, { target: { value: day(-1) } }))
     await click(button("التالي: المراجعة"))
-    expect(text()).toContain("الموعد النهائي مضى: اختر اليوم أو بعده.")
+    expect(text()).toContain("مضى هذا التاريخ: اختر اليوم أو بعده.")
     expect(text()).not.toContain("يُنشر طلب واحد")
     await act(async () => void fireEvent.change(document.querySelector('input[type="date"]')!, { target: { value: day(0) } }))
     await click(button("التالي: المراجعة"))

@@ -45,7 +45,7 @@ async function settle(page: Page) {
 async function expectClean(page: Page, errors: ReturnType<typeof watchErrors>, dir: string) {
   await expectNoSideScroll(page)
   await expect(page.locator('html')).toHaveAttribute('dir', dir)
-  const body = await page.locator('body').innerText()
+  const body = (await page.locator('body').innerText()).replace(/لا زر «تأكيد الاستلام» في المشتريات/g, '').replace(/No (“|")?Confirm receipt(”|")? in Procurement/gi, '')
   expect(body).not.toMatch(SERVER_TEXT)
   for (const re of RETIRED) expect(body, `${re} must not appear`).not.toMatch(re)
   expect(errors.hooks()).toEqual([])

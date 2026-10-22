@@ -347,7 +347,7 @@ describe("what the offers list tells (names §5)", () => {
     expect(offerTags({ offer: { status: "قيد المراجعة", bafo: { at: "x", byId: "u", byName: "n", replyBy: "2026-10-16", note: null, round: 1, answered: null } } as never, today: "2026-10-13" })).toEqual([{ code: "bafo_asked", value: "2026-10-16" }])
   })
 
-  it("«يخالف شروطك» only when the RFQ set terms and the offer states others", () => {
+  it("«يخالف شروط دفعك» only when the RFQ set terms and the offer states others", () => {
     expect(termsDiffer({ advancePercent: 30, creditDays: 30 }, rfqTerms)).toBe(false)
     expect(termsDiffer({ advancePercent: 50, creditDays: 30 }, rfqTerms)).toBe(true)
     expect(termsDiffer({}, rfqTerms)).toBe(false)

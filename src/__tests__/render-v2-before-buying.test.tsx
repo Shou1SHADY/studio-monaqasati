@@ -173,7 +173,7 @@ describe("«بالمادة — قارن واجمع»", () => {
     view.unmount()
   })
 
-  it("picking a material offers «اجمعها في مسودة», a link to the editor on exactly its lines", async () => {
+  it("picking a material offers «اجمعها في طلب عروض واحد», a link to the editor on exactly its lines", async () => {
     twoRequests()
     setPathname("/contractor/rfqs/requests", "view=mat")
     const view = render(<RequestsPage />)
@@ -184,7 +184,7 @@ describe("«بالمادة — قارن واجمع»", () => {
     const href = (document.querySelector('a[href*="/contractor/rfqs/new"]') as HTMLAnchorElement | null)?.getAttribute("href") || ""
     expect(decodeURIComponent(href)).toContain("requests=team:a|team:b")
     expect(decodeURIComponent(href)).toContain("lines=team:a@0|team:b@0")
-    expect(text()).toContain("اجمعها في مسودة")
+    expect(text()).toContain("اجمعها في طلب عروض واحد")
     view.unmount()
   })
 })

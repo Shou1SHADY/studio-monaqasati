@@ -219,7 +219,7 @@ describe("the offers tab (RFQ-04, RFQ-05, RFQ-06)", () => {
     expect(text()).toContain("سعّر 1 فقط")
     expect(text()).toContain("من خارج المنصة · رابط الزوار")
     expect(text()).toContain("بالقطعة")
-    expect(text()).toContain("يخالف شروطك")
+    expect(text()).toContain("يخالف شروط دفعك")
     expect(text()).not.toContain("ترسية وإرسال للمالية")
     expect(text()).not.toContain("السعر مغلق")
     view.unmount()

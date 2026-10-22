@@ -153,7 +153,7 @@ describe("the deadline (R-32)", () => {
     await act(async () => void fireEvent.change(date(), { target: { value: day(-1) } }))
     await act(async () => void fireEvent.click(button("التالي: المراجعة")!))
     await flush()
-    expect(text()).toContain("الموعد النهائي مضى: اختر اليوم أو بعده.")
+    expect(text()).toContain("مضى هذا التاريخ: اختر اليوم أو بعده.")
     expect(button("انشر")).toBeUndefined()
     await act(async () => void fireEvent.change(date(), { target: { value: day(0) } }))
     await act(async () => void fireEvent.click(button("التالي: المراجعة")!))

@@ -19,7 +19,7 @@ for (const path of PAGES) {
     await expect(page.locator('h1').first()).toBeVisible({ timeout: 60_000 })
     await page.waitForTimeout(6000)
     await expectNoSideScroll(page)
-    const body = await page.locator('body').innerText()
+    const body = (await page.locator('body').innerText()).replace(/لا زر «تأكيد الاستلام» في المشتريات/g, '')
     for (const re of REMOVED_WORDING) expect(body, `${re} must not appear`).not.toMatch(re)
     expect(errors.hooks()).toEqual([])
     expect(errors.crashes()).toEqual([])

@@ -475,7 +475,7 @@ describe("SHELL-06 · Today renders over a fake world", () => {
     mockLocale = "en"
     mockWorld = loaded()
     const { container } = render(<ProcurementToday />)
-    expect(screen.getByText("Nothing is waiting on you")).toBeInTheDocument()
+    expect(screen.getByText("Nothing waiting here")).toBeInTheDocument()
     expect(screen.getByText("Nothing pending elsewhere")).toBeInTheDocument()
     expect(screen.getByText("No invitations yet")).toBeInTheDocument()
     expect(container.textContent).not.toMatch(/MISSING/)

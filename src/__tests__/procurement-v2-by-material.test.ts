@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /**
  * Procurement 2.0 — «بالمادة — قارن واجمع» (WP-S2-09, INC-05, WF-07): what is still to be bought, grouped by material AS SPECIFIED;
- * the total, the nearest last day to order and the last price paid for THAT specification; «اجمعها في مسودة» opens the editor on
+ * the total, the nearest last day to order and the last price paid for THAT specification; «اجمعها في طلب عروض واحد» opens the editor on
  * exactly the picked materials' lines; and the editor reads a line selection back (`incomingFromNeed`).
  */
 
@@ -139,7 +139,7 @@ describe("INC-05 / WF-07 — the incoming requests by material", () => {
   })
 })
 
-describe("«اجمعها في مسودة» — the editor on exactly the picked lines", () => {
+describe("«اجمعها في طلب عروض واحد» — the editor on exactly the picked lines", () => {
   it("names the requests the picked materials come from and the lines of each", () => {
     const groups = byMaterial(rows())
     const marble = groups.find((g) => g.name === "رخام")?.key as string
