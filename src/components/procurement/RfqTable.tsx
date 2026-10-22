@@ -1,132 +1,111 @@
 "use client"
 
-// The RFQs as a list (the reference prototype's list view): the RFQ with its
-// number, city, products and author under it; the project (or general stock /
-// the workshop); the offers — or a direct award's supplier — with the
-// unanswered queries; the deadline with "n left"; the estimate at the last
-// price we paid ("no estimate" when a line has no history; money holders
-// only); the stage. A selection column carries the bulk actions.
+// The RFQs as rows (the reference prototype's rows view): the RFQ with its number and name, the materials and where they go, who it
+// reaches, the offers with the unanswered inquiries and the lowest complete offer, when it closes, its state, and the one thing to do
+// next. On a phone each row becomes a card (the shared table does it), so nothing scrolls sideways.
 
-import { useLocale, useTranslations } from "next-intl"
-import { LayoutGrid } from "lucide-react"
-import { Checkbox } from "@/components/ui/checkbox"
+import { useTranslations } from "next-intl"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { Link } from "@/i18n/routing"
-import { DeadlineText, OffersTag, RfqStagePill, type RfqRow } from "@/components/procurement/RfqCard"
+import { ClosesText, LowestOffer, OffersPill, ReachTag, RfqNumber, RfqPrimaryAction, RfqStagePill, SitesTag, UnansweredTag, type RfqCardRow } from "@/components/procurement/RfqCard"
 import { useRfqInquiryCounts } from "@/hooks/useRfqInquiryCounts"
-import { displayCity } from "@/lib/constants"
-import { rfqDisplayNumber } from "@/lib/procurement/format"
-import { productCount, rfqStage } from "@/lib/procurement/rfq-view"
-import { sarLtr } from "@/lib/riyal"
+import { productCount } from "@/lib/procurement/rfq-view"
 import { cn } from "@/lib/utils"
 
-export interface RfqTableRow {
-  rfq: RfqRow
-  projectLabel: string
-  estimate: number | null
-  directSupplier: string | null
-}
-
-function OffersCell({ row, onGlance }: { row: RfqTableRow; onGlance: () => void }) {
-  const tp = useTranslations("Portal.Procurement")
-  const q = useRfqInquiryCounts(row.rfq.status === "Draft" ? null : row.rfq.id)
+function OffersCell({ row, seesPrices, onGlance }: { row: RfqCardRow; seesPrices: boolean; onGlance: () => void }) {
+  const q = useRfqInquiryCounts(row.state === "draft" ? null : row.id)
+  if (row.state === "draft") return <span className="text-xs text-muted-foreground">—</span>
+  const showLowest = seesPrices && row.lowest && (row.state === "open" || row.state === "compare") && !row.noLive
   return (
-    <>
-      <button type="button" onClick={onGlance} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <OffersTag rfq={row.rfq} directSupplier={row.directSupplier} />
-      </button>
-      {q.unanswered > 0 && <p className="mt-1 text-[11px] text-warning">{tp("rfqpo.list.unanswered", { count: q.unanswered })}</p>}
-    </>
+    <span className="flex flex-col items-start gap-1">
+      <OffersPill row={row} onGlance={onGlance} />
+      {showLowest && (
+        <span className="text-[11px] text-muted-foreground">
+          <LowestOffer row={row} />
+        </span>
+      )}
+      <UnansweredTag rfqId={row.id} count={q.unanswered} />
+    </span>
   )
 }
 
 export function RfqTable({
   rows,
-  now,
   seesPrices,
-  selected,
-  selectable,
-  hrefOf,
-  onToggle,
-  onToggleAll,
+  canActOn,
   onGlance,
+  onReopen,
 }: {
-  rows: RfqTableRow[]
-  now: Date
+  rows: readonly RfqCardRow[]
   seesPrices: boolean
-  selected: string[]
-  /** Only the RFQs this viewer runs carry a checkbox (rfq-access.ts). */
-  selectable: (rfq: RfqRow) => boolean
-  /** The RFQ's own page — the row's title opens it (a draft opens its draft view). */
-  hrefOf: (rfq: RfqRow) => string
-  onToggle: (id: string) => void
-  onToggleAll: () => void
-  onGlance: (rfq: RfqRow) => void
+  /** Whether the viewer runs this RFQ (rfq-access.ts). */
+  canActOn: (row: RfqCardRow) => boolean
+  onGlance: (row: RfqCardRow) => void
+  onReopen: (row: RfqCardRow) => void
 }) {
-  const t = useTranslations("Portal.Contractor")
-  const tp = useTranslations("Portal.Procurement")
-  const locale = useLocale()
-  const pickable = rows.filter((r) => selectable(r.rfq))
-  const all = pickable.length > 0 && selected.length === pickable.length
+  const t = useTranslations("Portal.Procurement.rfqlist")
+  const tc = useTranslations("Portal.Contractor")
+
+  const columns: DataColumn<RfqCardRow>[] = [
+    {
+      key: "rfq",
+      header: t("col_rfq"),
+      cell: (row) => (
+        <span className="flex min-w-0 flex-col items-start gap-1">
+          <RfqNumber rfq={row.rfq} />
+          <Link href={`/contractor/rfqs/${row.id}/offers?tab=details`} className="block max-w-[22rem] truncate rounded-sm text-start font-bold text-foreground hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
+            {row.rfq.title}
+          </Link>
+          {row.rfq.createdByUserName && <span className="text-[11px] text-muted-foreground">{t("by", { name: row.rfq.createdByUserName })}</span>}
+        </span>
+      ),
+    },
+    {
+      key: "materials",
+      header: t("col_materials"),
+      cell: (row) => (
+        <span className="flex flex-col items-start gap-1">
+          <span className="text-xs text-muted-foreground">{t("materials", { count: productCount(row.rfq) })}</span>
+          <SitesTag row={row} />
+        </span>
+      ),
+    },
+    { key: "reach", header: t("col_reach"), hideBelow: "lg", cell: (row) => <ReachTag row={row} /> },
+    {
+      key: "offers",
+      header: t("col_offers"),
+      cell: (row) => <OffersCell row={row} seesPrices={seesPrices} onGlance={() => onGlance(row)} />,
+    },
+    {
+      key: "closes",
+      header: t("col_closes"),
+      cell: (row) => (
+        <span className="text-xs text-muted-foreground">
+          <ClosesText row={row} />
+        </span>
+      ),
+    },
+    { key: "status", header: t("col_status"), cell: (row) => <RfqStagePill row={row} /> },
+    {
+      key: "action",
+      header: <span className="sr-only">{t("col_action")}</span>,
+      label: t("col_action"),
+      cardHidden: false,
+      cell: (row) => <RfqPrimaryAction row={row} canAct={canActOn(row)} onReopen={onReopen} />,
+    },
+  ]
 
   return (
-    <div className="overflow-x-auto rounded-2xl border bg-card shadow-sm">
-      <table className="w-full min-w-[860px] text-sm">
-        <thead className="border-b text-xs font-semibold text-muted-foreground">
-          <tr>
-            <th className="w-10 px-3 py-3">
-              {pickable.length > 0 && <Checkbox checked={all ? true : selected.length ? "indeterminate" : false} onCheckedChange={onToggleAll} aria-label={t("rfq_select_all")} />}
-            </th>
-            <th className="px-3 py-3 text-start">{t("rfqv_col_rfq")}</th>
-            <th className="px-3 py-3 text-start">{t("rfqv_col_project")}</th>
-            <th className="px-3 py-3 text-start">{t("rfqv_col_offers")}</th>
-            <th className="px-3 py-3 text-start">{t("rfqv_col_deadline")}</th>
-            {seesPrices && <th className="px-3 py-3 text-end">{t("rfqv_col_estimate")}</th>}
-            <th className="px-3 py-3 text-start">{t("rfqv_col_status")}</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {rows.map((row) => {
-            const { rfq, projectLabel, estimate } = row
-            const stage = rfqStage(rfq, now)
-            const isSelected = selected.includes(rfq.id)
-            const meta = [
-              rfqDisplayNumber(rfq, locale),
-              rfq.city ? `${displayCity(rfq.city, locale)}${rfq.district ? ` — ${displayCity(rfq.district, locale)}` : ""}` : null,
-              t("rfqv_products", { count: productCount(rfq) }),
-              rfq.createdByUserName || null,
-            ].filter(Boolean)
-            return (
-              <tr key={rfq.id} className={cn("hover:bg-muted/30", isSelected && "bg-module/5")}>
-                <td className="px-3 py-3">
-                  {selectable(rfq) && <Checkbox checked={isSelected} onCheckedChange={() => onToggle(rfq.id)} aria-label={rfq.title} />}
-                </td>
-                <td className="max-w-[360px] px-3 py-3">
-                  <Link href={hrefOf(rfq)} className="block max-w-full truncate rounded-sm text-start font-bold text-foreground hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
-                    {rfq.title}
-                  </Link>
-                  <span className="block truncate text-[11px] text-muted-foreground">{meta.join(" · ")}</span>
-                </td>
-                <td className="px-3 py-3">
-                  <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-cta/20 bg-cta/5 px-2 py-0.5 text-[11px] font-semibold text-cta">
-                    <LayoutGrid size={12} aria-hidden="true" />
-                    {projectLabel}
-                  </span>
-                </td>
-                <td className="px-3 py-3">{stage === "draft" ? <span className="text-xs text-muted-foreground">—</span> : <OffersCell row={row} onGlance={() => onGlance(rfq)} />}</td>
-                <td className="whitespace-nowrap px-3 py-3 text-xs">{rfq.directAward ? "—" : <DeadlineText rfq={rfq} now={now} />}</td>
-                {seesPrices && (
-                  <td className="whitespace-nowrap px-3 py-3 text-end tabular-nums" dir="ltr">
-                    {estimate !== null ? sarLtr(Math.round(estimate).toLocaleString("en-US")) : <span className="text-xs text-muted-foreground">{tp("rfqpo.list.no_estimate")}</span>}
-                  </td>
-                )}
-                <td className="px-3 py-3">
-                  <RfqStagePill stage={stage} />
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      columns={columns}
+      rows={rows}
+      rowKey={(row) => row.id}
+      caption={tc("rfqv_title")}
+      labels={{ sortBy: (c) => c, showMore: (n) => t("show_more", { count: n }) }}
+      empty={null}
+      rowTone={(row) => (row.noLive ? "bad" : undefined)}
+      cardTitleKey="rfq"
+      className={cn("shadow-sm")}
+    />
   )
 }

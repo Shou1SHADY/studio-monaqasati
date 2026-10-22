@@ -305,7 +305,9 @@ const SPECS: Record<string, ScreenSpec> = {
     titles: ["طلبات الشراء الواردة", "جديدة", "مُجهَّزة", "في عروض", "في أوامر", "ط.م 01", "برج الواحة", "حديد تسليح 16 مم", "موعد الحاجة"],
     only: OMB,
   },
-  rfqs: { titles: ["طلبات العروض", "حديد وإسمنت — برج الواحة", "حديد الأسقف", "إسمنت المرحلة الثانية"], acts: { "مشاركة كرابط للزوار": M, "تعديل الموعد أو المدعوين": M }, only: OMB },
+  // Procurement 2.0 list: the prototype's chips (open · comparing · awarded · all) in place of drafts/active/completed — the list opens on the
+  // first non-empty one, so the cards depend on the role (the manager's open RFQ; the buyer's own, comparing); the visitor-link button is named as the prototype names it.
+  rfqs: { titles: ["طلبات العروض", "مفتوحة", "تُقارن", "رُسّيت", "الكل"], acts: { "رابط الزوار": M, "تعديل الموعد أو المدعوين": M }, only: OMB },
   // Procurement 2.0: the path, four tabs by their prototype names, a compact row per offer; the acts live in the offer panel.
   rfqList: { titles: ["الطلب — الأساس", "العروض", "المقارنة", "الاستفسارات", "التفاصيل", "مصنع الحديد الوطني", "مؤسسة الإسمنت"], acts: { "اطلب توضيحاً": MB } },
   rfqCompare: {

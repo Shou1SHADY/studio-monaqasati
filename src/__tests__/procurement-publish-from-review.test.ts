@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
 const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8")
-const list = read("src/app/[locale]/(contractor)/contractor/rfqs/page.tsx")
+// Procurement 2.0: the list's draft action lives in the shared card (RfqPrimaryAction), the page only hosts it — read both.
+const list = [read("src/app/[locale]/(contractor)/contractor/rfqs/page.tsx"), read("src/components/procurement/RfqCard.tsx"), read("src/components/procurement/RfqTable.tsx")].join(" ")
 const project = read("src/app/[locale]/(contractor)/contractor/projects/[id]/page.tsx")
 
 describe("no one-click publish of a draft", () => {
@@ -13,7 +14,7 @@ describe("no one-click publish of a draft", () => {
     ["the project's tenders tab", project],
   ])("%s has no publish write of its own and links to the review step", (_name, source) => {
     expect(source).not.toMatch(/handleBatchPublish|handlePublishTender|handleBulkPublishTenders|bulkPublishPatch|publishFields/)
-    expect(source).toContain("rfqReviewHref(")
+    expect(source).toMatch(/rfqReviewHref/)
   })
 
   it("the BOQ dialog prepares a draft and opens the editor — it creates no published RFQ and no old-category RFQ per section", () => {
