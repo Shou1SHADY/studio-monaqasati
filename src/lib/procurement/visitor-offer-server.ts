@@ -280,7 +280,7 @@ export async function writeVisitorQuote(db: Firestore, ctx: { rfqId: string; lin
       offerData.executionDurationUnit = input.executionDurationUnit || "أيام"
     }
     tx.set(offerRef, offerData)
-    tx.update(rfqRef, { offersCount: FieldValue.increment(1) })
+    tx.update(rfqRef, { offersCount: FieldValue.increment(1), log: [...((Array.isArray(rfq.log) ? rfq.log : []) as RfqLogEntry[]), rfqLogEntry({ uid: `guest:${input.phone}`, name: company }, "offer_versioned", at, { params: { supplier: company, version: 1 } })] })
     return { id: offerId, n: 1, created: true, company, rfq, total: quote.total, gross }
   })
 

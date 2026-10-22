@@ -1,12 +1,13 @@
 /**
  * Procurement 1.5, PUR-10 (question 5): a company WITHOUT Finance keeps its books in another
  * system. The order carries an optional payment status, the advance is marked paid and the
- * supplier's date counts from it, the owner's second tile is «بانتظار دفعة مقدّمة», and the
- * accountant gets an export of the period's approved orders and receipts in fixed columns.
+ * supplier's date counts from it, the unpaid advance is a row on Today (the three tiles do not change with the package,
+ * NAV-03), and the accountant gets an export of the period's approved orders and receipts in fixed columns.
  */
 import { ORDER_COLUMNS, RECEIPT_COLUMNS, accountantExport, toCsv } from "@/lib/procurement/accountant-export"
 import { awaitsAdvance, datedFromAdvance, paymentMarkRefusal, paymentStateOf, type FinancelessPo } from "@/lib/procurement/payment-mark"
-import { todayKpis, type ProcWorld, type TodayActor } from "@/lib/procurement/today"
+import { todayKpis } from "@/lib/procurement/kpis"
+import { todayTasks, type ProcWorld, type TodayActor } from "@/lib/procurement/today"
 import { DEFAULT_POLICIES, type PoLine, type PurchaseOrder, type ReceiptFact } from "@/lib/procurement/types"
 
 const NOW = new Date("2026-10-20T08:00:00Z")
@@ -73,16 +74,15 @@ describe("the advance: the supplier's date counts from the day it was paid", () 
   })
 })
 
-describe("the owner's second tile follows the package", () => {
+describe("the package changes Today's rows, never the three tiles (NAV-03)", () => {
   const orders = [po({ id: "a", advancePercent: 20 }), po({ id: "b", advancePercent: 20, advancePaidDay: "2026-10-05" }), po({ id: "c" })]
-  it("without Finance: «بانتظار دفعة مقدّمة» counts the orders whose clock waits", () => {
-    const tiles = todayKpis(world({ orders, financeOn: false }), OWNER, NOW).tiles
-    expect(tiles[1]).toMatchObject({ id: "awaiting_advance", value: 1, unit: "count", tone: "warn", noteKey: "kpi.awaiting_advance.note_some" })
-    expect(tiles.some((t) => t.id === "finance_due")).toBe(false)
+  it("the same three tiles with Finance, without it, or unknown", () => {
+    for (const financeOn of [undefined, true, false]) expect(todayKpis(world({ orders, financeOn }), OWNER, NOW).tiles.map((t) => t.id)).toEqual(["needs", "committed", "drift"])
   })
-  it("with Finance (or unknown): «مستحق للموردين قريباً» as before", () => {
-    expect(todayKpis(world({ orders }), OWNER, NOW).tiles[1].id).toBe("finance_due")
-    expect(todayKpis(world({ orders, financeOn: true }), OWNER, NOW).tiles[1].id).toBe("finance_due")
+  it("without Finance: an advance not marked paid is a row for whoever closes orders — the one that was marked is not", () => {
+    const rows = todayTasks(world({ orders, financeOn: false, ownerHasTeam: false }), OWNER, NOW).filter((t) => t.kind === "advance_unpaid")
+    expect(rows).toMatchObject([{ id: "advance:a", chip: "po", severity: "amber", titleKey: "task.advance_unpaid.title", titleParams: { percent: 20 } }])
+    expect(todayTasks(world({ orders, financeOn: true, ownerHasTeam: false }), OWNER, NOW).some((t) => t.kind === "advance_unpaid")).toBe(false)
   })
 })
 

@@ -9,6 +9,7 @@ import { Star, Loader2, Award } from "lucide-react"
 import { useFirestore } from "@/firebase"
 import { collection, addDoc, doc, updateDoc, getDocs, query, where } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { offerAct } from "@/lib/procurement/offer-acts-client"
 import { useTranslations, useLocale } from 'next-intl'
 
 interface ReviewDialogProps {
@@ -77,11 +78,10 @@ export function ReviewDialog({
       })
 
       // 2. Update the offer status/flag
-      const offerRef = doc(firestore, "offers", offerId)
       if (reviewerRole === "Contractor") {
-        await updateDoc(offerRef, { contractorRated: true })
+        await offerAct({ act: "rated", offerId })
       } else {
-        await updateDoc(offerRef, { supplierRated: true })
+        await updateDoc(doc(firestore, "offers", offerId), { supplierRated: true })
       }
 
       // 3. Recalculate reviewee average rating

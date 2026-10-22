@@ -26,7 +26,7 @@ import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "@/i18n/routing"
 import { SINGLE_SOURCE_REASONS, directLinePrices, directOrderRefusal, directTotal, isSingleSource, type DirectMode, type SingleSourceReason } from "@/lib/procurement/direct"
-import { createOrderWithoutRfq } from "@/lib/procurement/direct-writes"
+import { placeDirectOrder } from "@/lib/procurement/po-direct-client"
 import { displayDocNumber } from "@/lib/procurement/format"
 import { lastPaid, type PriceAgreement, type PriceHistoryEntry } from "@/lib/procurement/prices"
 import type { NeedRow } from "@/lib/procurement/need-desk"
@@ -40,6 +40,7 @@ import type { ProcOffer } from "@/hooks/useProcurementWorld"
 import { useMaterialTree } from "@/hooks/useMaterialTree"
 import { categoryTree, treeSupplier } from "@/lib/materials/category-tree"
 import type { ProcActor, ProcurementPolicies, PurchaseOrder } from "@/lib/procurement/types"
+import type { DirectBody } from "@/lib/procurement/po-direct-server"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
@@ -133,21 +134,18 @@ export function DirectOrderDialog({
     try {
       const needs = Array.from(new Map(rows.map((r) => [r.needKey, r.need])).values())
       const first = needs[0]
-      const po = await createOrderWithoutRfq(firestore, actor, {
+      const po = await placeDirectOrder({
         mode,
-        organizationId: orgId,
         title: rows.length === 1 ? rows[0].name : first?.context || rows[0]?.name || "",
         lines,
         agreementId: agreement?.id ?? null,
-        supplier: mode === "direct" ? { orgId: picked?.orgId ?? null, userId: picked?.userId ?? null, name: supplierName } : null,
+        supplier: mode === "direct" ? { orgId: picked?.orgId ?? null, name: supplierName } : null,
         reason: reasonText,
         reasonCode: reason || null,
         deliverBy,
         callOffs,
         projectId: needs.every((n) => n.projectId === first?.projectId) ? first?.projectId ?? null : null,
-        projectName: needs.every((n) => n.projectId === first?.projectId) ? first?.projectName ?? null : null,
-        purchaseSource: first?.source ?? null,
-        policies,
+        purchaseSource: (first?.source ?? null) as DirectBody["purchaseSource"],
       })
       for (const n of needs) {
         try {

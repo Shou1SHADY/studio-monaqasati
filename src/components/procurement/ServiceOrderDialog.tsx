@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "@/i18n/routing"
-import { createServiceOrder } from "@/lib/procurement/direct-writes"
+import { placeServiceOrder } from "@/lib/procurement/po-direct-client"
 import { displayDocNumber } from "@/lib/procurement/format"
 import { addDays, supplierKey, todayOf } from "@/lib/procurement/po"
 import { serviceOrderValue, serviceSupplierOk } from "@/lib/procurement/service-order"
@@ -84,12 +84,13 @@ export function ServiceOrderDialog({
     project: z.string(),
     value: z.string().refine((v) => serviceOrderValue(v) > 0, t("svc_err_value")),
     dueBy: z.string().refine((v) => !v || v >= today, t("svc_err_due")),
-  })
+    reason: z.string(),
+  }).refine((v) => serviceOrderValue(v.value) <= policies.directPurchaseCap || v.reason.trim().length > 0, { path: ["reason"], message: t("svc_err_reason") })
   type Values = z.infer<typeof schema>
-  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { description: "", supplier: "", project: NONE, value: "", dueBy: addDays(today, 3) } })
+  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { description: "", supplier: "", project: NONE, value: "", dueBy: addDays(today, 3), reason: "" } })
   const [valueText, supplierPick, projectPick] = useWatch({ control: form.control, name: ["value", "supplier", "project"] })
   const value = serviceOrderValue(valueText)
-  const ownerApproves = value > policies.managerApprovalLimit || actor.canApprove || actor.isOwner
+  const ownerApproves = value > policies.directPurchaseCap || value > policies.managerApprovalLimit || actor.canApprove || actor.isOwner
   const errors = form.formState.errors
 
   const close = (next: boolean) => {
@@ -102,22 +103,19 @@ export function ServiceOrderDialog({
   }
 
   const submit = form.handleSubmit(async (v) => {
-    if (!firestore) return
     const picked = suppliers.find((s) => s.key === v.supplier)
     if (!picked) return
     const project = projects.find((p) => p.id === v.project) || null
     setBusy(true)
     setError(null)
     try {
-      const po = await createServiceOrder(firestore, actor, {
-        organizationId: orgId,
+      const po = await placeServiceOrder({
         description: v.description,
-        supplier: { orgId: picked.orgId, userId: picked.userId, name: picked.name },
+        supplier: { orgId: picked.orgId, name: picked.name },
         value: v.value,
         dueBy: v.dueBy || null,
         projectId: project?.id ?? null,
-        projectName: project?.name ?? null,
-        policies,
+        reason: v.reason.trim() || null,
       })
       toast({ title: t("dor_placed", { number: displayDocNumber(po.docNumber, locale) }) })
       form.reset()
@@ -196,6 +194,14 @@ export function ServiceOrderDialog({
               {errors.dueBy && <p className="text-xs text-destructive">{errors.dueBy.message}</p>}
             </div>
           </div>
+
+          {value > policies.directPurchaseCap && (
+            <div className="space-y-1.5">
+              <Label htmlFor="svc-reason">{t("svc_reason")}</Label>
+              <Input id="svc-reason" dir="auto" placeholder={t("svc_reason_ph")} aria-invalid={Boolean(errors.reason)} {...form.register("reason")} />
+              {errors.reason && <p className="text-xs text-destructive">{errors.reason.message}</p>}
+            </div>
+          )}
 
           <div className="rounded-xl border border-module/20 bg-module/5 p-3">
             <p className="mb-1.5 flex items-center gap-1.5 text-xs font-black text-module">

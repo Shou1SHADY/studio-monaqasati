@@ -21,7 +21,7 @@ import { useFirestore, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { INVITE_CHANNELS, inviteErrors, mailtoLink, waLink, type InviteChannel } from "@/lib/procurement/supplier-file"
 import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
-import { recordGuestInvite } from "@/lib/procurement/rfq-writes"
+import { offerAct } from "@/lib/procurement/offer-acts-client"
 import { isSaudiVat } from "@/lib/procurement/rfq-form"
 import { cn } from "@/lib/utils"
 
@@ -37,10 +37,8 @@ const EFFECTS = ["joins", "awardable", "finance"] as const
 
 export function RfqRegisterGuestDialog({
   guest,
-  rfqId,
   rfqTitle,
   orgName,
-  actor,
   onOpenChange,
 }: {
   guest: GuestToRegister | null
@@ -115,8 +113,8 @@ export function RfqRegisterGuestDialog({
       } else if (!data.data.emailSent) {
         window.location.href = mailtoLink(v.email, t("subject"), body)
       }
-      await recordGuestInvite(firestore, actor, { rfqId, offerId: guest.offerId, supplierName: v.companyName, channel: v.channel, invitationId: data.data.invitationId || null }).catch((err) =>
-        console.warn("guest invite not logged:", (err as { code?: string })?.code || err)
+      await offerAct({ act: "guest_invited", offerId: guest.offerId, supplierName: v.companyName, channel: v.channel, invitationId: data.data.invitationId || null }).catch((err) =>
+        console.warn("guest invite not logged:", (err as { reason?: string })?.reason || err)
       )
       toast({ title: t("done") })
       onOpenChange(false)

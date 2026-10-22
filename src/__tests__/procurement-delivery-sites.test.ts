@@ -11,9 +11,9 @@ describe("delivery sites (PUR-10)", () => {
     expect(all.map((s) => s.id).sort()).toEqual(["prj_p1", "s1", "wh_w1"])
     expect(all.find((s) => s.id === projectSiteId("p1"))).toMatchObject({ kind: "project", city: "الرياض", district: "", address: "الرياض" })
   })
-  it("shows no project without Project Management", () => {
-    const all = deliverySites({ stored: [...stored, { id: "prj_p1", kind: "project", name: "x", city: "", district: "", address: "", receiverId: null, projectId: "p1" }], warehouses: [], projects: [{ id: "p1" }], pmOn: false })
-    expect(all.map((s) => s.kind)).toEqual(["site"])
+  it("adds no project of its own without Project Management, and hides none already stored (NFR-08: a package change is a migration, not a filter)", () => {
+    const all = deliverySites({ stored: [...stored, { id: "prj_p1", kind: "project", name: "x", city: "", district: "", address: "", receiverId: null, projectId: "p1" }], warehouses: [], projects: [{ id: "p1" }, { id: "p2", name: "غير مخزّن" }], pmOn: false })
+    expect(all.map((s) => s.id).sort()).toEqual(["prj_p1", "s1"])
   })
   it("prints city and district as the supplier reads them, and saves in place", () => {
     expect(siteLine({ city: "الرياض", district: "حي الياسمين" })).toBe("الرياض — حي الياسمين")

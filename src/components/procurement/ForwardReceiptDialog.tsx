@@ -68,7 +68,6 @@ export function ForwardReceiptDialog({
   const { receivers } = useProcReceivers(orgId)
   const supplierName = delivery.supplierName || po?.supplierName || ""
   const choices = receiversForPlace(receivers, placeWarehouseId)
-  const lines = (delivery.lines || []).map((l) => `${l.noticeQuantity} ${l.unit} ${l.name}`)
   const day = (delivery.deliveryDate || "").slice(0, 10)
 
   // Members: the place's receivers who have an account first, then everyone else on the team.
@@ -228,9 +227,9 @@ export function ForwardReceiptDialog({
                 )}
               </p>
               <p className="text-muted-foreground" dir="auto">
-                {lines.join(" · ") || delivery.rfqTitle || "—"}
+                {delivery.rfqTitle || po?.rfqTitle || "—"}
                 {day && <> — {t("forward.arrives", { date: day })}</>}
-                {delivery.deliveryWindow && <> {tp(`deliveryWindow.${delivery.deliveryWindow}` as "deliveryWindow.morning")}</>}
+                {delivery.notes && <> · {delivery.notes}</>}
               </p>
               <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                 <dt className="text-muted-foreground">{t("forward.place")}</dt>

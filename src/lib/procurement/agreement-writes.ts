@@ -13,7 +13,7 @@
 import { doc, collection, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
 import { ProcWriteError } from "./writes"
 import { drawProcDocNumber } from "./numbering"
-import { PRICE_AGREEMENTS, agreementState, materialKey, type AgreementLine, type AgreementLogEntry, type PriceAgreement } from "./prices"
+import { PRICE_AGREEMENTS, agreementState, materialKey, type AgreementLine, type AgreementLogEntry, type CappedAgreementLine, type PriceAgreement } from "./prices"
 import { dayOf, todayOf } from "./po"
 import { canRenewAgreements, canSignAgreements } from "./supplier-file"
 import type { ProcActor } from "./types"
@@ -39,6 +39,8 @@ export interface AgreementLineInput {
   name: string
   unit: string
   price: number | string
+  /** The most that may be bought on this line, in its unit - optional (SUP-06). */
+  cap?: number | string | null
 }
 
 /** The lines as typed, cleaned. A line with no name, no unit or no price is not
@@ -56,7 +58,8 @@ export function cleanAgreementLines(lines: AgreementLineInput[]): AgreementLine[
     // `agreementFor` pick between two prices from one agreement.
     if (seen.has(key)) continue
     seen.add(key)
-    out.push({ name, unit, price })
+    const cap = round2(Number(String(l.cap ?? "").replace(/,/g, "")))
+    out.push(Number.isFinite(cap) && cap > 0 ? ({ name, unit, price, cap } as CappedAgreementLine) : { name, unit, price })
   }
   return out
 }

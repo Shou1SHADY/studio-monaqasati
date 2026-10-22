@@ -383,12 +383,6 @@ service cloud.firestore {
       return request.resource.data.get('projectId', null) == resource.data.get('projectId', null);
     }
 
-    function hasOfferDecisionPermission(offerData) {
-      return (('rfqId' in offerData) && offerData.rfqId != null && offerData.rfqId is string
-              && exists(/databases/$(database)/documents/rfqs/$(offerData.rfqId)))
-        ? actsOnRfq(rfqData(offerData.rfqId))
-        : hasOrgAny(['offers.accept', 'po.approve', 'rfq.manage', 'rfq.create']);
-    }
     function rfqData(rfqId) { return get(/databases/$(database)/documents/rfqs/$(rfqId)).data; }
     // An offer's keys only the buying side writes — the award, the exclusion, the price cut, the sample request,
     // the outcome, a withdrawal (the server's) — so a supplier never sets them on his own offer (Supplier 1.0 NFR-08).
@@ -610,62 +604,8 @@ service cloud.firestore {
           && ((resource.data.get('status', '') == 'Draft' && actsOnRfq(resource.data))
               || hasRfqAny(resource.data, ['rfq.manage', 'projects.publish']))
         )
-        // R-01 — the award from the comparison: New → Awarded, with the lines
-        // nobody won and one log entry. The offers and orders are written in
-        // the same transaction under their own rules.
-        || (
-          resource.data.get('status', '') == 'New'
-          && rd().status == 'Awarded'
-          && ck
-               .hasOnly(['status', 'awardedAt', 'unawardedLines', 'awardSplit', 'log', 'updatedAt'])
-          && rfqLogAppendsOne()
-          && rfqSameProject()
-          && ownsDoc()
-          && hasRfqPermission(resource.data, 'offers.accept') && actsOnRfq(resource.data)
-        )
-        // R-12 — cancelled before any award, with one of three reasons.
-        || (
-          resource.data.get('status', '') in ['New', 'Draft']
-          && rd().status == 'Cancelled'
-          && ck
-               .hasOnly(['status', 'cancellation', 'cancelledAt', 'log', 'updatedAt'])
-          && rd().cancellation.code in ['need', 'spec', 'reissue']
-          && rd().cancellation.byId == request.auth.uid
-          && rfqLogAppendsOne()
-          && rfqSameProject()
-          && ownsDoc()
-          && actsOnRfq(resource.data)
-        )
-        // R-08 — «أغلِق الآن وافتح الأسعار»: the manager (po.approve) or the
-        // owner, on an open RFQ, with a written reason; the deadline moves
-        // back (never forward) and the close names him.
-        || (
-          resource.data.get('status', '') == 'New'
-          && resource.data.get('closedEarly', null) == null
-          && ck
-               .hasOnly(['deadline', 'closedEarly', 'log', 'updatedAt'])
-          && rd().deadline is string
-          && rd().deadline < resource.data.get('deadline', '9999-12-31')
-          && rd().closedEarly.byId == request.auth.uid
-          && rd().closedEarly.reason is string
-          && rd().closedEarly.reason.size() > 0
-          && rfqLogAppendsOne()
-          && rfqSameProject()
-          && ownsDoc()
-          && hasOrgPermission('po.approve')
-        )
-        // R-11 — the one reduction round to every live offer: recorded once,
-        // never replaced (the offers go `مطلوب تخفيض` under their own rules).
-        || (
-          resource.data.get('status', '') == 'New'
-          && resource.data.get('reductionRound', null) == null
-          && ck.hasOnly(['reductionRound', 'log', 'updatedAt'])
-          && rd().reductionRound.byId == request.auth.uid
-          && rfqLogAppendsOne()
-          && rfqSameProject()
-          && ownsDoc()
-          && actsOnRfq(resource.data)
-        )
+        // The award, a cancellation, closing early, extending the deadline and the reduction round are the server's
+        // (/api/procurement/rfq/{award,lifecycle,reaward}, offers/decide) — no client branch is left for them (WP-S1-11).
         // R-09/R-13/R-15/R-41 — the buyer's other acts only append to the log
         // (the offer's exclusion, the query's answer and an off-platform offer
         // are written under their own rules in the same transaction); an
@@ -678,15 +618,6 @@ service cloud.firestore {
           && ownsDoc()
           && actsOnRfq(resource.data)
         )
-        || (resource.data.status == 'New'
-            && resource.data.get('directAward', false) != true
-            && rd().status == 'New'
-            && ck
-                 .hasOnly(['deadline', 'allowedSupplierOrgIds', 'invitedSupplierOrgIds', 'log', 'updatedAt'])
-            && rfqLogAppendsOne()
-            && rfqSameProject()
-            && ownsDoc()
-            && actsOnRfq(resource.data))
         || (
           isSignedIn()
           && ck.hasOnly(['offersCount'])
@@ -777,19 +708,10 @@ service cloud.firestore {
             && !changedKeys().hasAny(buyerOfferKeys().concat(['supplierId', 'organizationId', 'rfqId', 'contractorId', 'contractorOrgId', 'status', 'price', 'lines', 'deliveryBatches', 'totalBatchesPrice', 'validUntil', 'skippedItems', 'whole', 'vatRegistered', 'vatRate', 'lump', 'leadDays'])))
         // Any member of the buying company marks an offer read (the bell) — those two fields only.
         || (resource.data.get('contractorOrgId', null) == getOrganizationId()
-            && changedKeys().hasOnly(['contractorReadAt', 'contractorUnread']))
-        // The contractor side (named on the offer, or owner of its RFQ): the decision permission
-        // is asked ONCE — it is the costly part and used to be asked in three branches.
-        || (isSignedIn()
-            && (resource.data.contractorId == request.auth.uid
-                || isContractorOrg()
-                || (resource.data.rfqId != null
-                    && (rfqData(resource.data.rfqId).organizationId == getOrganizationId()
-                        || rfqData(resource.data.rfqId).contractorId == request.auth.uid)))
-            && hasOfferDecisionPermission(resource.data)
-            // An award is the server's (/api/procurement/rfq/award): the contractor's browser never writes its keys or sets «مقبول».
-            && !changedKeys().hasAny(['poId', 'poNumber', 'awardedLines', 'awardedTotal', 'awardReason', 'awaitingOrderApproval', 'outcome', 'breakdown', 'requestedDeliveryDate', 'versions', 'rev', 'bafo', 'reval'])
-            && !(changedKeys().hasAny(['status']) && request.resource.data.status == 'مقبول'));
+            && changedKeys().hasOnly(['contractorReadAt', 'contractorUnread']));
+        // The buying side writes nothing else on an offer from the browser (Procurement 2.0, WP-S1-11): the award, the
+        // exclusion and the other decisions are /api/procurement/{rfq/award,offers/decide}; a sample request, a guest's
+        // invitation and the rated flag are /api/procurement/offers/act.
       // A quote is never deleted by its supplier: withdrawing marks it (server act quote.withdraw) and the buyer keeps it.
       allow delete: if isAdmin();
     }
@@ -2301,10 +2223,7 @@ service cloud.firestore {
         || (ownsDoc());
     }
 
-    // Delivery receipts — both contractor and supplier involved can read/write
-    function supNoticeOnly() {
-      return rd().status == 'pending_confirmation' && !rd().keys().hasAny(['confirmedAt', 'confirmedByUserId', 'docNumber']);
-    }
+    // Delivery notices and goods receipts — both sides READ; the server writes (Procurement 2.0)
     match /deliveries/{deliveryId} {
       allow get: if isSignedIn() && (
         resource == null ||
@@ -2315,55 +2234,11 @@ service cloud.firestore {
         isAdmin()
       );
       allow list: if isSignedIn();
-      // Supplier creates delivery notice for their own accepted offer
-      // A supplier's notice is born unconfirmed and carries no receipt fields: only the contractor issues a
-      // receipt (Supplier 1.0 B-01) — the free journey's invoice cap and figures read confirmed deliveries.
-      allow create: if (isSupplier()
-        && rd().supplierOrgId == getOrganizationId()
-        && supNoticeOnly())
-        // Contractor manually logs a receipt for materials received outside the platform —
-        // must already be self-confirmed (no supplier notice/confirmation step to go through)
-        // and must not reference a real supplier account, to prevent impersonating one.
-        || (isContractor()
-          && rd().contractorOrgId == getOrganizationId()
-          && request.resource.data.contractorId == request.auth.uid
-          && request.resource.data.status == "confirmed"
-          && request.resource.data.confirmedByUserId == request.auth.uid
-          // A manual receipt is Procurement's (S-13): whoever prepares orders, or the owner.
-          && (hasOrgPermission('deliveries.confirm')
-              || (procBuyerReceives() && hasOrgPermission('offers.accept')
-                  && request.resource.data.get('selfReceived', false) == true)
-              || (request.resource.data.get('source', '') == 'manual'
-                  && (isOrgOwner() || buysOrApproves())))
-          && !('supplierOrgId' in request.resource.data)
-          && !('supplierId' in request.resource.data)
-          && !('offerId' in request.resource.data)
-          && !('rfqId' in request.resource.data));
-      // Contractor confirms receipt; supplier can update their own notice before confirmation.
-      // A manual (contractor-logged) delivery is created without supplierOrgId/supplierId/
-      // offerId/rfqId to prevent impersonating a real supplier — lock that guarantee on
-      // update too, so those fields can never be added retroactively once absent.
-      // Procurement PRD 3.0 lays optional purchase-order fields over a delivery
-      // (`poId`, `poNumber`, `docNumber`, `lines[]`, `vehiclePlate`, `paperNoteNumber`,
-      // `deliveryWindow`, `checklist`, `receiverUserId`, `landedWarehouseId`,
-      // `postedNet`, `selfReceived`): there is no field allow-list here, so they need
-      // no entry — and a manual receipt regularised by a retroactive order gains a
-      // `poId`, never the four identity fields above.
-      allow update: if isSignedIn() && (
-        (isContractorOrg() && hasOrgPermission('deliveries.confirm')) ||
-        (isSupplierOrg() && resource.data.status == 'pending_confirmation' && supNoticeOnly()) ||
-        isAdmin()
-      ) && (
-        isAdmin() || !('supplierOrgId' in request.resource.data) || 'supplierOrgId' in resource.data
-      ) && (
-        isAdmin() || !('supplierId' in request.resource.data) || 'supplierId' in resource.data
-      ) && (
-        isAdmin() || !('offerId' in request.resource.data) || 'offerId' in resource.data
-      ) && (
-        isAdmin() || !('rfqId' in request.resource.data) || 'rfqId' in resource.data
-      );
-      // Whoever prepares orders regularises a no-PO manual receipt: ties it to an
-      // order or marks it a cash expense — only while it has no order and was never
+      // Procurement 2.0 (G-08, G-09): no browser creates a delivery. A supplier's notice (a day and a note), the receiver's
+      // confirmation, a truck with no notice and a manual receipt are all written by the server (Admin SDK), which numbers
+      // them and moves the order, the stock and the books in the same act — and no browser confirms a receipt or edits one.
+      // The one thing Procurement still writes is regularising a manual receipt that has no order:
+      // ties it to an order or marks it a cash expense — only while it has no order and was never
       // regularised, never touching the identity fields (S-26).
       allow update: if isSignedIn()
         && isContractorOrg()
@@ -2376,25 +2251,6 @@ service cloud.firestore {
              'poId', 'poNumber', 'lines', 'postedNet', 'regularisation',
              'regularisedAt', 'regularisedById', 'regularisedByName', 'updatedAt'])
         && (request.resource.data.get('regularisation', null) in [null, 'expense']);
-      // Under `buyerReceives` the buyer confirms a pending notice (flagged); a receipt
-      // recorded without the notice trims / closes that order's pending notice.
-      allow update: if isSignedIn()
-        && isContractorOrg()
-        && hasOrgPermission('offers.accept')
-        && procBuyerReceives()
-        && resource.data.status == 'pending_confirmation'
-        && request.resource.data.status == 'confirmed'
-        && request.resource.data.get('selfReceived', false) == true
-        && request.resource.data.confirmedByUserId == request.auth.uid
-        && !changedKeys().hasAny(['supplierOrgId', 'supplierId', 'offerId', 'rfqId', 'contractorOrgId']);
-
-      allow update: if isSignedIn()
-        && isContractorOrg()
-        && (isOrgOwner() || buysOrApproves())
-        && resource.data.status == 'pending_confirmation'
-        && request.resource.data.status == 'pending_confirmation'
-        && resource.data.get('closedByReceipt', null) == null
-        && changedKeys().hasOnly(['lines', 'closedByReceipt', 'updatedAt']);
       allow delete: if isAdmin();
     }
 
@@ -2452,10 +2308,6 @@ service cloud.firestore {
     // The org's operating policies (procurementSettings/{orgId}, §6.4); absent = PRD reference.
     function procSettingsPath() {
       return /databases/$(database)/documents/procurementSettings/$(getOrganizationId());
-    }
-    // A firm with no separate receiver: whoever prepares orders records the receipt, flagged.
-    function procBuyerReceives() {
-      return exists(procSettingsPath()) && get(procSettingsPath()).data.get('buyerReceives', false) == true;
     }
     // Inventory's / the workshop's reply window, in whole days (reference 1).
     function procReplyWindowDays() {
@@ -2563,25 +2415,7 @@ service cloud.firestore {
         && ck.hasOnly(['status', 'lines', 'supplierAcceptedAt', 'acceptanceRecordedBy', 'log', 'updatedAt'])
         && (hasOrgPermission('deliveries.confirm') || buysOrApproves());
     }
-    // Rating once, by whoever may prepare, when the story is whole.
-    // R-32: a buyer issues his OWN order at or under the org's self-issue limit
-    // (procurementSettings.buyerSelfIssueLimit, default 2,000 SAR ex VAT).
-    function poSelfIssueLimit() {
-      let path = /databases/$(database)/documents/procurementSettings/$(resource.data.organizationId);
-      return exists(path) ? get(path).data.get('buyerSelfIssueLimit', 2000) : 2000;
-    }
-    function poSelfIssues(ck) {
-      return poFrom() == 'awaiting_approval' && poTo() == 'approved'
-        && ck.hasOnly(['status', 'approvedById', 'approvedByName', 'approvedAt', 'selfIssued', 'log', 'updatedAt'])
-        && resource.data.get('preparedById', '') == request.auth.uid
-        && request.resource.data.get('approvedById', '') == request.auth.uid
-        && request.resource.data.get('selfIssued', false) == true
-        && resource.data.get('basis', '') == 'direct'
-        && resource.data.get('returnedReason', null) == null
-        && hasOrgPermission('offers.accept')
-        && poPmBudgetClear()
-        && resource.data.get('totalExVat', 0) <= poSelfIssueLimit();
-    }
+    // A buyer's own small order (R-32) is approved by the server too (/api/procurement/po/self-issue), reading the limit there.
     // R-21: Procurement's decision on a payment Finance held (same state; the
     // holds array only — the decision fields on one entry).
     function poDecidesHold(ck) {
@@ -2682,7 +2516,7 @@ service cloud.firestore {
       return poIdentityUntouched(ck) && ((inOrg()
             && (poPmStops(poId, ck)
                 || poApproves(ck) || poReturns(ck) || poResubmits(ck) || poExpedites(ck) || poDecides(ck) || poReceives(ck) || poRates(ck)
-                || poSelfIssues(ck) || poDecidesHold(ck) || poFinance(ck) || poFinanceCloses(ck)
+                || poDecidesHold(ck) || poFinance(ck) || poFinanceCloses(ck)
                 || poRefersBudget(ck) || poPmDecidesBudget(ck)))
         || isAdmin());
     }
@@ -2692,21 +2526,9 @@ service cloud.firestore {
       allow get, list: if isSignedIn() && (isAdmin()
         || inOrg()
         || isSupplierOrg());
-      // Prepared by whoever may award, in their own name, born awaiting approval —
-      // never born approved, sent or rated.
-      allow create: if createsInOrg()
-        && (isOrgOwner() || hasOrgPermission('offers.accept'))
-        && request.resource.data.get('preparedById', '') == request.auth.uid
-        && request.resource.data.get('status', '') == 'awaiting_approval'
-        && request.resource.data.get('approvedById', null) == null
-        && request.resource.data.get('sentAt', null) == null
-        && request.resource.data.get('rating', null) == null
-        && request.resource.data.get('rfqId', null) == null
-        && request.resource.data.get('basis', '') in ['direct', 'retroactive']
-        && (request.resource.data.get('basis', '') != 'retroactive' || request.resource.data.get('approverKind', '') == 'owner')
-        && request.resource.data.get('approverKind', '') in ['manager', 'owner']
-        && request.resource.data.get('docNumber', '') is string
-        && request.resource.data.get('docNumber', '').size() > 0;
+      // No client creates an order (Procurement 2.0, NFR-01 / G-16): the award, a direct purchase, a service order and a
+      // retroactive one are written by the server (/api/procurement/{rfq/award,po/direct,po/service,po/retroactive}), which
+      // stores the approver class itself. Without an `allow create` a client's create is denied.
       allow update: if isSignedIn() && poUpdateOk(poId);
       // Orders are records other documents point at — only an admin removes one.
       allow delete: if isAdmin();

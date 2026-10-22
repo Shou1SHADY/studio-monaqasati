@@ -9,6 +9,7 @@
 
 import { addDays, dayOf, daysFromNow, daysLate, isLumpSum, lineOutstanding, poStatus, poValue, round2, supplierKey } from "./po"
 import { advanceNeedsOwner, advanceState, asX, closedByPayment } from "./po-extras"
+import { endsOnPayment, type CloseOnFields } from "./close-on"
 import { deliveryStep, receiptProgress, type DeliveryStep, type StepNotice } from "./next-step"
 import type { PoLine, PoSite, PoVersion, PoVersionKind, ProcActor, ProcurementPolicies, PurchaseOrder } from "./types"
 
@@ -67,7 +68,7 @@ export function poState(po: PurchaseOrder, ctx: PoStateCtx): PoState {
   if (adv === "owner") return done("adv", "app", po.supplierAcceptedAt)
   if (adv === "requested") return done("adv", ctx.financeOn ? "fin" : "us", po.approvedAt)
   if (po.lines.some((l) => Number(l.rejected) > 0 && !l.rejectDecision)) return done("rej", "us", null)
-  if (poStatus(po) === "received") return ctx.financeOn && !closedByPayment(px) ? done("unpaid", "fin", null) : done("done", "none", null)
+  if (poStatus(po) === "received") return endsOnPayment(po as typeof po & CloseOnFields, ctx.financeOn) && !closedByPayment(px) ? done("unpaid", "fin", null) : done("done", "none", null)
 
   const step = deliveryStep(po, ctx.notices, ctx.now)
   switch (step?.kind) {

@@ -1,7 +1,6 @@
-// The goods receipt, derived (PRD 3.0 §5.2, §6.1-6). The gate counts blind —
-// the quantity field is never prefilled from the supplier's notice — then
-// rejects with a coded reason, holds for inspection with a reason, and the
-// variance against the notice appears only after the count. What may be
+// The goods receipt, derived (PRD 3.0 §5.2, §6.1-6; PRD 2.0 RCV-03). The receiver counts blind —
+// there is no quantity from the supplier to prefill: his notice is a date and a note —
+// then rejects with a coded reason and holds for inspection with a reason. What may be
 // invoiced is what was ACCEPTED: counted − rejected − held. A receipt beyond
 // the outstanding quantity plus the tolerance is refused, not trimmed.
 //
@@ -40,9 +39,7 @@ export function legacyLinesOf(delivery: Pick<ReceiptLineSource, "items">): Deliv
     .map((l) => ({ ...l, counted: l.noticeQuantity }))
 }
 
-/** The lines the gate's form starts from: the notice's own lines; on an order
- * whose notice named none, the order's open lines with no notice figure to
- * compare against (the screen says "no notice to compare"). */
+/** The lines the count starts from: a legacy notice's own lines; otherwise the order's open lines — a notice names no quantity (G-08). */
 export function linesForReceipt(delivery: ReceiptLineSource, po: PurchaseOrder | null): DeliveryLine[] {
   if (delivery.lines && delivery.lines.length) return delivery.lines.map((l) => ({ poLineId: l.poLineId, name: l.name, unit: l.unit, noticeQuantity: looseNum(l.noticeQuantity) }))
   if (po) return po.lines.filter((l) => lineToArrive(l) > 0).map((l) => ({ poLineId: l.id, name: l.name, unit: l.unit, noticeQuantity: 0 }))
@@ -115,28 +112,17 @@ export function receiptErrors(po: PurchaseOrder, deliveryLines: DeliveryLine[], 
 }
 
 // ---------------------------------------------------------------------------
-// Variance and state
+// State
 // ---------------------------------------------------------------------------
 
-/** counted − notice: negative = short of what the supplier announced; null before the count. */
-export function varianceVsNotice(line: DeliveryLine): number | null {
-  if (line.counted == null) return null
-  return round2(num(line.counted) - num(line.noticeQuantity))
-}
-
-/** Short against the supplier's own notice — only computable when a notice quantity exists. */
-export function shortVsNotice(line: DeliveryLine): number {
-  if (line.counted == null || !(num(line.noticeQuantity) > 0)) return 0
-  return Math.max(0, round2(num(line.noticeQuantity) - num(line.counted)))
-}
-
-export const RECEIPT_STATES = ["on_the_way", "late_notice", "received", "received_with_rejects", "received_held", "received_short", "manual_no_po"] as const
+export const RECEIPT_STATES = ["on_the_way", "late_notice", "received", "received_with_rejects", "received_held", "manual_no_po"] as const
 export type ReceiptState = (typeof RECEIPT_STATES)[number]
 
 /** First match wins: a receipt with no order is a regularisation case
  * whatever else it says; a pending notice is on the way until its date
  * passes; at the gate, a hold outranks rejects (the prototype's GST — held
- * goods still wait on someone), rejects outrank a shortfall. */
+ * goods still wait on someone). A notice names a date and a note, never a quantity,
+ * so there is no "short against the notice": a shortfall is a rejection with its reason. */
 export function receiptState(delivery: ReceiptFact, now: Date): ReceiptState {
   if (delivery.source === "manual" && !delivery.poId) return "manual_no_po"
   if (delivery.status !== "confirmed") {
@@ -146,7 +132,6 @@ export function receiptState(delivery: ReceiptFact, now: Date): ReceiptState {
   const lines = delivery.lines || []
   if (lines.some((l) => num(l.held) > 0)) return "received_held"
   if (lines.some((l) => num(l.rejected) > 0)) return "received_with_rejects"
-  if (lines.some((l) => shortVsNotice(l) > 0)) return "received_short"
   return "received"
 }
 
@@ -166,11 +151,4 @@ export function receiptNetValue(po: PurchaseOrder, deliveryLines: DeliveryLine[]
   const after = { ...po, lines: applyReceiptToLines(po.lines, deliveryLines) }
   if (!allLinesComplete(after)) return null
   return round2(num(po.totalExVat) - num(alreadyPostedNet))
-}
-
-/** Default lines for the supplier's notice form: what may still arrive, per line. */
-export function noticeLinesFromPo(po: PurchaseOrder): DeliveryLine[] {
-  return po.lines
-    .map((l) => ({ poLineId: l.id, name: l.name, unit: l.unit, noticeQuantity: lineToArrive(l) }))
-    .filter((l) => l.noticeQuantity > 0)
 }

@@ -322,9 +322,11 @@ describe("the contractor's Today — a delivery the supplier reported is the rec
   const po = { id: "po1", organizationId: "buyer", docNumber: "PO-2026/001", supplierName: "Al Noor", status: "accepted", supplierOrgId: "sup", lines: [{ id: "l1", name: "x", unit: "u", quantity: 10, unitPrice: 1, accepted: 0, rejected: 0, held: 0, cancelled: 0 }], deliveryReports: [{ id: "r1", at: "", date: "2026-10-12", note: "At the gate", byId: "su", byName: "S", reminders: ["2026-10-14T00:00:00Z"], closedAt: null }], log: [], createdAt: "2026-10-01" } as unknown as PurchaseOrder
   const world = (orders: PurchaseOrder[]) => ({ orders, receipts: [], rfqs: [], offers: [], policies: DEFAULT_POLICIES, supplierFacts: {} }) as unknown as Parameters<typeof todayTasks>[0]
 
-  it("one row per open report, amber after 2 days, with the action to receive", () => {
+  it("one row per open report, amber after 2 days — the receiver counts it on his own page; Procurement only follows it up", () => {
     const rows = todayTasks(world([po]), actor, new Date("2026-10-15T09:00:00Z")).filter((t) => t.kind === "delivery_reported")
-    expect(rows).toEqual([expect.objectContaining({ severity: "amber", actionKey: "actions.receive", titleParams: { supplier: "Al Noor", number: "PO-2026/001" }, subParams: expect.objectContaining({ date: "2026-10-12", daysAgo: 3, reminded: 1, hasNote: 1 }) })])
+    expect(rows).toEqual([expect.objectContaining({ severity: "amber", chip: "rcv", actionKey: "actions.count", href: "/contractor/receive/po/po1", titleParams: { supplier: "Al Noor", number: "PO-2026/001" }, subParams: expect.objectContaining({ date: "2026-10-12", daysAgo: 3, reminded: 1, hasNote: 1 }) })])
+    const follower = { ...actor, canReceive: false, canExpedite: true }
+    expect(todayTasks(world([po]), follower, new Date("2026-10-15T09:00:00Z")).find((t) => t.kind === "delivery_reported")).toMatchObject({ actionKey: "actions.openNotice", href: "/contractor/goods-received" })
     const closed = { ...po, deliveryReports: [{ ...po.deliveryReports![0], closedAt: "x" }] } as PurchaseOrder
     expect(todayTasks(world([closed]), actor, new Date("2026-10-15T09:00:00Z")).filter((t) => t.kind === "delivery_reported")).toEqual([])
   })

@@ -127,6 +127,22 @@ export class FakeAdminDb {
     }
   }
 
+  /** A write batch: nothing is written before `commit`, which applies the writes in order (`batches` counts the commits). */
+  batches = 0
+  batch(): FakeBatch {
+    const pending: (() => Promise<void>)[] = []
+    const batch: FakeBatch = {
+      set: (ref, data, opts) => void pending.push(() => ref.set(data, opts)),
+      update: (ref, patch) => void pending.push(() => ref.update(patch)),
+      create: (ref, data) => void pending.push(() => ref.create(data)),
+      commit: async () => {
+        this.batches++
+        for (const w of pending) await w()
+      },
+    }
+    return batch
+  }
+
   /** Run transactions one after another, as Firestore does for two that read and write the same document (the second
    * retries after the first commits). Off by default: most tests run one act at a time. */
   serialTx = false
@@ -154,6 +170,13 @@ export class FakeAdminDb {
     for (const w of pending) await w()
     return out
   }
+}
+
+export interface FakeBatch {
+  set: (ref: FakeDocRef, data: Doc, opts?: { merge?: boolean }) => void
+  update: (ref: FakeDocRef, patch: Doc) => void
+  create: (ref: FakeDocRef, data: Doc) => void
+  commit: () => Promise<void>
 }
 
 export interface FakeTx {

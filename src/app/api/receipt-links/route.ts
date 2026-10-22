@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { SITE_URL } from "@/lib/app-env"
+import { sendForwardEvent } from "@/lib/procurement/forward-event"
 import {
   LINK_TTL_MS,
   RECEIPT_LINKS,
@@ -94,6 +95,7 @@ export async function POST(req: NextRequest) {
       },
     })
     await batch.commit()
+    await sendForwardEvent(db, { orgId: caller.orgId, delivery, forwardNo: openLinks.size + 1, by: caller.uid, at: link.createdAt, receiver: receiver.name, via: receiver.userId ? "account" : "link", auto: false })
 
     // A team member is told in his own account and opens the receipt from his task, with no
     // link or code (PUR-06); a person without an account is sent the link by Procurement, by

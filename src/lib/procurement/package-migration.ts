@@ -60,6 +60,18 @@ export interface SnapshotWorkshopAsk {
   returned?: boolean | null
 }
 
+/** A line of a stored incoming request that carries a question to the workshop (`mk`) — Procurement's own state, the one the buyer reads. */
+export interface SnapshotWorkshopLine {
+  mrKey: string
+  no: number
+  /** `mk.st`: `ask` waits for the workshop; `make` / `part` are answers; `buy` is a question handed back (it never comes alive again). */
+  st: "ask" | "make" | "part" | "buy"
+  /** The work order a make / part answer stands on. */
+  wo?: string | null
+  /** The line is already in an RFQ or an order, received, failed or taken out: a closing connector leaves it alone. */
+  busy?: boolean
+}
+
 export interface SnapshotSite {
   id: string
   kind?: string | null
@@ -80,6 +92,8 @@ export interface PackageSnapshot {
   projectsCapped: boolean
   orders: SnapshotOrder[]
   workshopAsks: SnapshotWorkshopAsk[]
+  /** The questions stored on incoming requests' lines — beside the workshop's own request documents above, never the same ask twice. */
+  workshopLines?: SnapshotWorkshopLine[]
   sites: SnapshotSite[]
   workshopWarehouses?: Array<{ id: string; name?: string | null }>
 }
@@ -100,6 +114,12 @@ const requestInFlight = (r: SnapshotProjectRequest): boolean => Boolean(r.rfqId 
 const hasWorkOrder = (a: SnapshotWorkshopAsk): boolean => Boolean(a.workOrderId || (a.workOrderIds && a.workOrderIds.length > 0))
 
 const unansweredAsk = (a: SnapshotWorkshopAsk): boolean => a.status === "new" && !a.returned
+
+const unansweredLine = (l: SnapshotWorkshopLine): boolean => l.st === "ask" && !l.busy
+
+const answeredLine = (l: SnapshotWorkshopLine): boolean => (l.st === "make" || l.st === "part") && Boolean(l.wo)
+
+export const workshopLineId = (l: Pick<SnapshotWorkshopLine, "mrKey" | "no">): string => `${l.mrKey}#${l.no}`
 
 const answeredAsk = (a: SnapshotWorkshopAsk): boolean => (a.status === "accepted" || a.status === "partial") && hasWorkOrder(a)
 
@@ -135,8 +155,8 @@ export function measureImpact(s: PackageSnapshot): ImpactCounts {
   impact.ordersAwaitingPayment = s.orders.filter((o) => liveOrder(o) && o.closeOn !== "receipt" && !paidInFull(o)).length
   impact.advancesRequested = s.orders.filter((o) => o.status !== "cancelled" && advanceState(o) === "requested").length
   impact.buyerPaymentMarks = s.orders.filter((o) => o.status !== "cancelled" && Boolean(o.paymentMark || (o.paymentMarks && o.paymentMarks.length > 0))).length
-  impact.workshopAsksUnanswered = s.workshopAsks.filter(unansweredAsk).length
-  impact.workshopAnswersWithWorkOrder = s.workshopAsks.filter(answeredAsk).length
+  impact.workshopAsksUnanswered = s.workshopAsks.filter(unansweredAsk).length + (s.workshopLines || []).filter(unansweredLine).length
+  impact.workshopAnswersWithWorkOrder = s.workshopAsks.filter(answeredAsk).length + (s.workshopLines || []).filter(answeredLine).length
   impact.sitesToLink = sitesToLink(s.sites, s.projects).length
   return impact
 }
@@ -145,6 +165,7 @@ export type MigrationStep =
   | { kind: "stamp_close_on"; orderIds: string[]; closeOn: "receipt" | "payment" }
   | { kind: "send_commitments"; orderIds: string[] }
   | { kind: "return_workshop_asks"; requestIds: string[]; reason: "connector_closed" }
+  | { kind: "return_workshop_lines"; lines: Array<{ mrKey: string; no: number }>; reason: "connector_closed" }
   | { kind: "keep_workshop_answers"; requestIds: string[] }
   | { kind: "sites_to_ordinary"; siteIds: string[] }
   | { kind: "link_sites"; links: Array<{ siteId: string; projectId: string }> }
@@ -195,9 +216,13 @@ export function planChange(s: PackageSnapshot, conn: Connector, to: "on" | "off"
 
   if (conn === "mfg" && to === "off") {
     const unanswered = s.workshopAsks.filter(unansweredAsk)
+    const asked = (s.workshopLines || []).filter(unansweredLine)
     const answered = s.workshopAsks.filter(answeredAsk)
+    const answeredOnLines = (s.workshopLines || []).filter(answeredLine)
     push(unanswered.length ? { kind: "return_workshop_asks", requestIds: ids(unanswered), reason: "connector_closed" } : null)
-    push(answered.length ? { kind: "keep_workshop_answers", requestIds: ids(answered) } : null)
+    push(asked.length ? { kind: "return_workshop_lines", lines: asked.map(({ mrKey, no }) => ({ mrKey, no })).sort((a, b) => a.mrKey.localeCompare(b.mrKey) || a.no - b.no), reason: "connector_closed" } : null)
+    const kept = [...ids(answered), ...answeredOnLines.map(workshopLineId).sort()]
+    push(kept.length ? { kind: "keep_workshop_answers", requestIds: kept } : null)
   }
   if (conn === "mfg" && to === "on") {
     const has = new Set(s.sites.filter((x) => x.kind === "workshop").map((x) => x.warehouseId).filter(Boolean))

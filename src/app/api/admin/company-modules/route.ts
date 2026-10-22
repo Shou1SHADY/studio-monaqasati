@@ -5,11 +5,16 @@ import { FieldValue } from "firebase-admin/firestore"
 import { adminCaller, adminError } from "@/lib/admin-caller-server"
 import { COMPANY_MODULES } from "@/lib/company-modules"
 import { assessPackageChange, assessmentIsQuiet, contractorOff, readStoredModules } from "@/lib/procurement/package-change-server"
+import { applyPendingChanges, pendingEntries } from "@/lib/procurement/package-migration-server"
 
 // Admin-only: saves a contractor's package — which of its optional components are off, and the answers to the need
 // questions that suggested it. The impact is recomputed here (what the admin read is not trusted); a change that touches
-// records is refused until the admin has acknowledged it. Every connector that changed leaves a history entry, which the
-// migration job of a later wave applies by its id. Nothing is deleted.
+// records is refused until the admin has acknowledged it. Every connector that changed leaves a history entry, and the migration
+// job applies it by its id right after the save (NFR-08): it stamps how in-flight orders end, hands back the workshop questions no
+// one will answer, turns a closed connector's sites into ordinary ones — and never deletes, never reopens a closed order. An entry
+// the job could not finish stays `pending`; saving the same package again runs it again, and a finished entry is never run twice.
+
+export const maxDuration = 60
 
 const HISTORY_KEEP = 20
 
@@ -23,6 +28,17 @@ const bodySchema = z.object({
 })
 
 const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i])
+
+/** The job, after the save. A failure leaves the entries pending (the package IS saved) and says so: the admin saves again to run it. */
+async function runMigration(db: Parameters<typeof applyPendingChanges>[0], orgId: string, caller: { uid: string; name: string }, off: string[]): Promise<{ applied: Record<string, Record<string, number>>; pending: boolean }> {
+  try {
+    const run = await applyPendingChanges(db, orgId, { actor: { uid: caller.uid, name: caller.name }, off })
+    return { applied: run.applied, pending: false }
+  } catch (err) {
+    console.error("company-modules migration failed:", err)
+    return { applied: {}, pending: true }
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -40,7 +56,11 @@ export async function POST(req: NextRequest) {
     const nextOff = contractorOff(parsed.data.off)
     const nextNeeds = { ...stored.needs, ...(parsed.data.needs || {}) }
     const needsChanged = JSON.stringify(nextNeeds) !== JSON.stringify(stored.needs)
-    if (sameList(stored.off, nextOff) && !needsChanged) return NextResponse.json({ success: true, data: { unchanged: true, off: nextOff, changed: [] } })
+    if (sameList(stored.off, nextOff) && !needsChanged) {
+      if (!pendingEntries(stored.history)) return NextResponse.json({ success: true, data: { unchanged: true, off: nextOff, changed: [] } })
+      const resumed = await runMigration(db, orgId, caller, nextOff)
+      return NextResponse.json({ success: true, data: { unchanged: true, off: nextOff, changed: [], ...resumed } })
+    }
 
     const assessment = await assessPackageChange(db, orgId, stored.off, nextOff)
     if (!assessmentIsQuiet(assessment) && ack !== true) {
@@ -58,7 +78,8 @@ export async function POST(req: NextRequest) {
       .doc(orgId)
       .set({ organizationId: orgId, off: nextOff, needs: nextNeeds, history, updatedById: caller.uid, updatedByName: caller.name, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
 
-    return NextResponse.json({ success: true, data: { unchanged: false, off: nextOff, changed: entries.map((e) => ({ id: e.id, connector: e.connector, to: e.to })) } })
+    const migrated = await runMigration(db, orgId, caller, nextOff)
+    return NextResponse.json({ success: true, data: { unchanged: false, off: nextOff, changed: entries.map((e) => ({ id: e.id, connector: e.connector, to: e.to })), ...migrated } })
   } catch (err) {
     console.error("company-modules save failed:", err)
     return adminError("Could not save the package", "SERVER_ERROR", 500)

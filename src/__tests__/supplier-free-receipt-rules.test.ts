@@ -1,19 +1,23 @@
 import { readFileSync } from "fs"
 import { join } from "path"
 
-// B-01: the goods receipt is the contractor's document. A supplier's delivery notice is born unconfirmed, carries no
-// receipt fields, and the supplier may touch it only while it is still unconfirmed — the free journey's invoice cap
-// and figures read confirmed deliveries, so a supplier who could write one could invoice goods nobody received.
+// B-01 → Procurement 2.0 (G-08, G-09): the goods receipt is the contractor's document, and now no browser writes a delivery
+// at all except Procurement regularising a manual receipt. A supplier's notice (a day and a note) is written by the server, which
+// is what keeps a supplier from writing a confirmed delivery the free journey's invoice cap would then read.
 describe("deliveries rules (B-01)", () => {
   const rules = readFileSync(join(process.cwd(), "firestore.rules"), "utf8").replace(/\/\/[^\n]*/g, "")
-  const block = rules.slice(rules.indexOf("match /deliveries/{deliveryId}"), rules.indexOf("allow delete", rules.indexOf("match /deliveries/{deliveryId}")))
+  const start = rules.indexOf("match /deliveries/{deliveryId}")
+  const block = rules.slice(start, rules.indexOf("allow delete", start))
 
-  it("a supplier's notice is pending and carries no confirmation or receipt number", () => {
-    expect(rules).toMatch(/function supNoticeOnly\(\) \{\s*return rd\(\)\.status == 'pending_confirmation' && !rd\(\)\.keys\(\)\.hasAny\(\['confirmedAt', 'confirmedByUserId', 'docNumber'\]\);/)
-    expect(block).toMatch(/allow create: if \(isSupplier\(\)\s*&& rd\(\)\.supplierOrgId == getOrganizationId\(\)\s*&& supNoticeOnly\(\)\)/)
+  it("no browser creates a delivery: not a supplier, not the contractor", () => {
+    expect(block).not.toMatch(/allow create/)
+    expect(rules).not.toMatch(/function supNoticeOnly/)
   })
 
-  it("the supplier's update branch requires an unconfirmed notice that stays unconfirmed", () => {
-    expect(block).toContain("(isSupplierOrg() && resource.data.status == 'pending_confirmation' && supNoticeOnly())")
+  it("no supplier branch updates one, and a contractor may only regularise a manual receipt that has no order", () => {
+    expect(block).not.toContain("isSupplierOrg() && resource.data.status")
+    expect(block).not.toMatch(/procBuyerReceives/)
+    expect(block).toContain("resource.data.get('source', '') == 'manual'")
+    expect(block).toContain("resource.data.get('poId', null) == null")
   })
 })

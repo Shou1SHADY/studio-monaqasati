@@ -1,75 +1,47 @@
 "use client"
 
-// اليوم — Procurement's Today (PRD 3.0 §7.2 tab 1): three numbers, each a door
-// to the list behind it; one decision list sorted by who-only-can-act, then
-// severity, then days; the declared waits (no button — the action is theirs);
-// and what the suppliers announced for this week. Everything on this screen is
-// derived by `src/lib/procurement/today.ts` on every read — nothing here is
-// stored, and a member who may not see money is handed no amount to hide.
+// اليوم — Procurement's Today (PRD 2.0 TDY-01…05): the route strip; one decision list — red first, then the nearest date, with five
+// chips that always show their counts, seven rows and then «عرض N أخرى»; the things we wait on others for, tagged with WHO
+// (المخزون · الورشة · المورد · المستلم · المالية), six and then «عرض N أخرى»; and the platform invitations. Everything on this screen is
+// derived by `src/lib/procurement/today.ts` on every read — nothing here is stored, and a member who may not see money is handed no
+// amount to hide. The three numbers above are the shell's (`ProcurementHeader`).
 
-import { displayNeedRef } from "@/lib/procurement/format"
 import type { ElementType, ReactNode } from "react"
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Clock, Hourglass, Info, Loader2, Send, Truck } from "lucide-react"
+import { AlertTriangle, CheckCircle2, ChevronDown, Hourglass, Loader2, Send } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
+import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
+import { RaiseMaterialRequest } from "@/components/procurement/RaiseMaterialRequest"
+import { TodayFlow } from "@/components/procurement/TodayFlow"
+import { TodayInvitations } from "@/components/procurement/TodayInvitations"
+import { TodayItem } from "@/components/procurement/TodayItem"
+import { useStepSentence } from "@/components/procurement/PoBits"
 import { Button } from "@/components/ui/button"
+import { useModules } from "@/hooks/useCompanyModules"
 import { usePermissions } from "@/hooks/usePermissions"
-import { useProcTodayWorld } from "@/hooks/useProcurementShell"
-import { ORDER_HREF, RECEIPT_HREF, TASK_GROUPS, todayTasks, todayWaits, type Task, type TaskGroup, type TaskSeverity, type Wait } from "@/lib/procurement/today"
-import { displayDocNumber } from "@/lib/procurement/format"
-import { arrivingWithinWeek } from "@/lib/procurement/shell"
+import { useProcTodayWorld } from "@/hooks/useTodayWorld"
 import { runsRfqs } from "@/lib/procurement/rfq-access"
-import { sarLtr } from "@/lib/riyal"
+import { presentParams, type Params } from "@/lib/procurement/today-present"
+import { TODAY_CHIPS, chipCounts, todayFlow, todayInvitations, todayTasks, todayWaits, type TodayChip, type Wait } from "@/lib/procurement/today"
 import { cn } from "@/lib/utils"
 
-const CLIP_TASKS = 7
-const CLIP_WAITS = 4
-const CLIP_ARRIVING = 5
+export const CLIP_TASKS = 7
+export const CLIP_WAITS = 6
 
-const SEVERITY_ICON: Record<TaskSeverity, ElementType> = { red: AlertTriangle, amber: Clock, blue: Info }
-const SEVERITY_TILE: Record<TaskSeverity, string> = {
-  red: "bg-destructive/10 text-destructive",
-  amber: "bg-warning/10 text-warning",
-  blue: "bg-module/10 text-module",
-}
 const MODULE_TAG: Record<Wait["module"], string> = {
   supplier: "bg-violet/10 text-violet",
   finance: "bg-success/10 text-success",
   inventory: "bg-accent/10 text-accent",
   manufacturing: "bg-warning/10 text-warning",
   projects: "bg-pm/10 text-pm",
+  receiver: "bg-module/10 text-module",
+  approver: "bg-warning/10 text-warning",
 }
 
-/** A figure with the sign, for a number isolated in `dir="ltr"`. */
-const money = (n: number) => sarLtr(Math.round(n).toLocaleString("en-US"))
-
-/** `YYYY-MM-DD` → a short day in the locale's script, Western digits in both. */
-function fmtDay(day: string | null | undefined, locale: string): string {
-  if (!day) return ""
-  const d = new Date(`${day.slice(0, 10)}T12:00:00Z`)
-  if (Number.isNaN(d.getTime())) return day
-  return d.toLocaleDateString(locale === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { day: "numeric", month: "short", timeZone: "UTC" })
-}
-
-type Params = Record<string, string | number>
-
-/** The parameters the sentences take, with the document number in the
- * reader's script and the days as dates. Numbers stay numbers — the ICU
- * `{x, number}` and plural forms need them. Coded facts (a finance hold's
- * reason, whose move it is, which module receives) become their words here. */
-function presentParams(p: Params, locale: string, words: (key: string) => string): Params {
-  const out: Params = { ...p }
-  for (const k of ["number", "receipt", "invoice", "advance"]) if (typeof out[k] === "string") out[k] = displayDocNumber(out[k] as string, locale)
-  // A project's request reads as the project wrote it («ط.م 03», PUR-01).
-  if (typeof out.ref === "string") out.ref = displayNeedRef(out.ref as string, locale)
-  for (const k of ["date", "promised", "ready", "fromDay", "toDay"]) if (typeof out[k] === "string" && out[k]) out[k] = fmtDay(out[k] as string, locale)
-  if (typeof out.holdReason === "string") out.reason = words(`rfqpo.po.hold.reason.${out.holdReason}`)
-  if (typeof out.holdOwner === "string") out.owner = words(`rfqpo.po.hold.owner.${out.holdOwner}`)
-  if (typeof out.over === "number") out.over = sarLtr(Math.round(out.over).toLocaleString("en-US"))
-  return out
-}
+/** «A، B و C» — the sources of the need, as the prototype's subtitle lists them. */
+const listOf = (items: string[], locale: string): string => (items.length < 2 ? items.join("") : locale === "ar" ? `${items.slice(0, -1).join("، ")} و${items[items.length - 1]}` : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`)
 
 export function ProcurementToday() {
   const t = useTranslations("Portal.ProcToday")
@@ -77,8 +49,8 @@ export function ProcurementToday() {
   const tCon = useTranslations("Portal.Contractor")
   const locale = useLocale()
   const { can } = usePermissions()
-  const isRtl = locale === "ar"
-  const Chevron = isRtl ? ChevronLeft : ChevronRight
+  const { on } = useModules()
+  const stepText = useStepSentence()
   // One world and one clock per visit, shared with the header's counts.
   const { loaded, world, actor, now, needs } = useProcTodayWorld()
   const { loading } = loaded
@@ -87,48 +59,39 @@ export function ProcurementToday() {
   const canCreate = runsRfqs(runner) && (can("rfq.create") || can("projects.publish") || can("offers.accept") || can("po.approve"))
   const tasks = useMemo(() => todayTasks(world, actor, now), [world, actor, now])
   const waits = useMemo(() => todayWaits(world, actor, now), [world, actor, now])
-  const arriving = useMemo(() => arrivingWithinWeek(world, now, ORDER_HREF, RECEIPT_HREF), [world, now])
-  const orgName = loaded.orgName || ""
-  // An account named only by its company has no first name to greet.
-  const personal = actor.name && actor.name.trim() !== orgName.trim() ? actor.name : ""
-  const firstName = personal.replace(/^(أ|م|د)\.\s*/, "").split(/\s+/)[0] || ""
+  const flow = useMemo(() => todayFlow(world, actor, now), [world, actor, now])
+  const invitations = useMemo(() => todayInvitations(world.invitations || [], world.supplierRecords, now), [world.invitations, world.supplierRecords, now])
+  const counts = useMemo(() => chipCounts(tasks), [tasks])
 
-  const [group, setGroup] = useState<TaskGroup | "all">("all")
+  const [chip, setChip] = useState<TodayChip | "all">("all")
   const [allTasks, setAllTasks] = useState(false)
   const [allWaits, setAllWaits] = useState(false)
-  const [allArriving, setAllArriving] = useState(false)
 
-  const countOf = (g: TaskGroup) => tasks.filter((x) => x.group === g).length
-  const groupsWithItems = TASK_GROUPS.filter((g) => countOf(g) > 0)
-  const activeGroup = group !== "all" && countOf(group) === 0 ? "all" : group
-  const shown = activeGroup === "all" ? tasks : tasks.filter((x) => x.group === activeGroup)
+  const shown = chip === "all" ? tasks : tasks.filter((x) => x.chip === chip)
   const visibleTasks = allTasks ? shown : shown.slice(0, CLIP_TASKS)
   const visibleWaits = allWaits ? waits : waits.slice(0, CLIP_WAITS)
-  const visibleArriving = allArriving ? arriving : arriving.slice(0, CLIP_ARRIVING)
 
-  const words = (key: string) => tProc(key)
-  const present = (p: Params) => {
-    const out = presentParams(p, locale, words)
-    if (typeof out.where === "string") out.where = t(`modules.${out.where}`)
-    return out
-  }
-  const taskTitle = (task: Task) => t(task.titleKey, present(task.titleParams))
-  const taskSub = (task: Task) => (task.subNs === "Procurement" ? tProc(task.subKey, present(task.subParams)) : t(task.subKey, present(task.subParams)))
+  const sources = listOf([on("project-management") ? t("page.source_projects") : t("page.source_team"), on("manufacturing") ? t("page.source_workshop") : "", t("page.source_inventory")].filter(Boolean), locale)
+  const present = (p: Params) => presentParams(p, locale, (key) => tProc(key))
+  const waitSub = (w: Wait) => (w.step ? stepText(w.step) : t(w.subKey, present(w.subParams)))
 
   return (
     <div className="space-y-6">
       <ProcurementHeader
-        title={firstName ? t("page.greeting", { name: firstName }) : t("page.title")}
-        description={t("page.subtitle")}
+        title={t("page.title")}
+        description={t("page.subtitle", { sources })}
         action={
-          canCreate ? (
-            <Button asChild className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90">
-              <Link href="/contractor/rfqs/new">
-                <Send size={16} aria-hidden="true" />
-                {tCon("rfqv_new")}
-              </Link>
-            </Button>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-2">
+            <RaiseMaterialRequest orgId={loaded.orgId} />
+            {canCreate && (
+              <Button asChild className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90">
+                <Link href="/contractor/rfqs/new">
+                  <Send size={16} aria-hidden="true" />
+                  {tCon("rfqv_new")}
+                </Link>
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -137,159 +100,79 @@ export function ProcurementToday() {
           <Loader2 className="animate-spin text-muted-foreground" size={28} aria-hidden="true" />
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
-          {/* ── Needs your decision ── */}
-          <Panel title={t("title")} subtitle={t("subtitle")} icon={AlertTriangle} count={tasks.length}>
-            {tasks.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5" role="group" aria-label={t("groups.all")}>
-                {(["all", ...groupsWithItems] as Array<TaskGroup | "all">).map((g) => {
-                  const count = g === "all" ? tasks.length : countOf(g)
-                  const on = activeGroup === g
-                  return (
-                    <button
-                      key={g}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => {
-                        setGroup(g)
-                        setAllTasks(false)
-                      }}
-                      className={cn(
-                        "flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        on ? "border-module bg-module text-white" : "border-border bg-card text-muted-foreground hover:border-module/40 hover:text-foreground"
-                      )}
-                    >
-                      {t(`groups.${g}`)}
-                      <span className={cn("tabular-nums", on ? "text-white/80" : "text-muted-foreground/80")}>{count}</span>
-                    </button>
-                  )
-                })}
+        <>
+          <TodayFlow tiles={flow} />
+          <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
+            {/* ── Needs your decision — red first, then the nearest date ── */}
+            <Panel testId="today-decisions" title={t("title")} icon={AlertTriangle} count={tasks.length}>
+              <div className="border-b px-4 py-2.5">
+                <ProcChipGroup<TodayChip | "all">
+                  label={t("groups.all")}
+                  active={chip}
+                  onPick={(c) => {
+                    setChip(c)
+                    setAllTasks(false)
+                  }}
+                  items={(["all", ...TODAY_CHIPS] as Array<TodayChip | "all">).map((c) => ({ id: c, label: t(`groups.${c}`), count: counts[c] }))}
+                />
               </div>
-            )}
-
-            {tasks.length === 0 ? (
-              <Empty icon={CheckCircle2} title={t("empty.title")} body={t("empty.body")} />
-            ) : (
-              <ul className="divide-y">
-                {visibleTasks.map((task) => {
-                  const Icon = SEVERITY_ICON[task.severity]
-                  return (
-                    <li key={task.id} className="flex flex-wrap items-start gap-x-3 gap-y-2 px-4 py-3">
-                      <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-lg", SEVERITY_TILE[task.severity])}>
-                        <Icon size={16} aria-hidden="true" />
-                      </span>
-                      <div className="min-w-0 flex-1 basis-48">
-                        <p className="text-sm font-bold leading-snug text-foreground" dir="auto">
-                          {taskTitle(task)}
-                        </p>
-                        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground" dir="auto">
-                          {taskSub(task)}
-                          {task.kind === "reject_decide" && task.reasonCode && (
-                            <span className="ms-1.5 inline-block rounded-md bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">{tProc(`rejectReason.${task.reasonCode}`)}</span>
-                          )}
-                        </p>
-                      </div>
-                      {task.amount != null && (
-                        <span className="shrink-0 self-center text-sm font-black tabular-nums text-foreground" dir="ltr">
-                          {money(task.amount)}
-                        </span>
-                      )}
-                      <Link
-                        href={task.href}
-                        className={cn(
-                          "inline-flex min-h-9 shrink-0 items-center gap-1 self-center rounded-lg border px-3 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                          "max-sm:ms-11 max-sm:basis-full max-sm:justify-center",
-                          task.priority === 0 ? "border-module bg-module text-white hover:bg-module/90" : "border-border bg-card text-foreground hover:border-module/40"
-                        )}
-                      >
-                        {t(task.actionKey)}
-                        <Chevron size={13} aria-hidden="true" />
-                      </Link>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-            {shown.length > CLIP_TASKS && <MoreButton open={allTasks} onClick={() => setAllTasks((v) => !v)} label={allTasks ? t("showLess") : t("showMore", { count: shown.length - CLIP_TASKS })} />}
-          </Panel>
-
-          <div className="space-y-4">
-            {/* ── Waiting on other modules — no button, by design ── */}
-            <Panel title={t("waits.title")} subtitle={t("waits.subtitle")} icon={Hourglass} count={waits.length}>
-              {waits.length === 0 ? (
-                <Empty icon={CheckCircle2} title={t("waits.empty")} />
+              {shown.length === 0 ? (
+                <Empty icon={CheckCircle2} title={t("empty.title")} body={t("empty.body")} />
               ) : (
                 <ul className="divide-y">
-                  {visibleWaits.map((w) => (
-                    <li key={w.id} className="px-4 py-3">
-                      <span className={cn("mb-1 inline-block rounded-md px-1.5 py-0.5 text-[10px] font-bold", MODULE_TAG[w.module])}>{t("waits.on", { module: t(`modules.${w.module}`) })}</span>
-                      <p className="text-sm font-bold leading-snug text-foreground" dir="auto">
-                        {t(w.titleKey, present(w.titleParams))}
-                      </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground" dir="auto">
-                        {t(w.subKey, present(w.subParams))}
-                        {w.kind === "held_inspection" && w.reasonCode && <> · {tProc(`holdReason.${w.reasonCode}`)}</>}
-                      </p>
-                    </li>
+                  {visibleTasks.map((task) => (
+                    <TodayItem key={task.id} task={task} />
                   ))}
                 </ul>
               )}
-              {waits.length > CLIP_WAITS && <MoreButton open={allWaits} onClick={() => setAllWaits((v) => !v)} label={allWaits ? t("showLess") : t("moreRows", { count: waits.length - CLIP_WAITS })} />}
+              {shown.length > CLIP_TASKS && <MoreButton open={allTasks} onClick={() => setAllTasks((v) => !v)} label={allTasks ? t("showLess") : t("showMore", { count: shown.length - CLIP_TASKS })} />}
             </Panel>
 
-            {/* ── Arriving this week — by the supplier's notice; Inventory records the receipt ── */}
-            <Panel title={t("arriving.title")} subtitle={t("arriving.subtitle")} icon={Truck} count={arriving.length}>
-              {arriving.length === 0 ? (
-                <Empty icon={CalendarClock} title={t("arriving.empty")} />
-              ) : (
-                <ul className="divide-y">
-                  {visibleArriving.map((row) => (
-                    <li key={row.id}>
-                      <Link href={row.href} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
-                        <div className="min-w-0 flex-1 basis-40">
-                          <p className="truncate text-sm font-bold text-foreground" dir="auto">
-                            {row.lines || row.supplierName}
-                          </p>
-                          <p className="text-xs text-muted-foreground" dir="auto">
-                            {row.number && (
-                              <>
-                                <span dir="ltr" className="font-mono">
-                                  {displayDocNumber(row.number, locale)}
-                                </span>{" "}
-                                ·{" "}
-                              </>
-                            )}
-                            {row.supplierName}
-                          </p>
-                        </div>
-                        <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums", row.inDays < 0 ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground")}>
-                          {row.inDays < 0 ? t("arriving.late", { days: -row.inDays }) : t("arriving.on", { date: fmtDay(row.date, locale), inDays: row.inDays })}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {arriving.length > CLIP_ARRIVING && <MoreButton open={allArriving} onClick={() => setAllArriving((v) => !v)} label={allArriving ? t("showLess") : t("moreRows", { count: arriving.length - CLIP_ARRIVING })} />}
-            </Panel>
+            <div className="space-y-4">
+              {/* ── Waiting on others — no button, by design ── */}
+              <Panel testId="today-waits" title={t("waits.title")} icon={Hourglass} count={waits.length}>
+                {waits.length === 0 ? (
+                  <Empty icon={CheckCircle2} title={t("waits.empty")} />
+                ) : (
+                  <ul className="divide-y">
+                    {visibleWaits.map((w) => (
+                      <li key={w.id}>
+                        <Link href={w.href} className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold leading-snug text-foreground" dir="auto">
+                              {t(w.titleKey, present(w.titleParams))}
+                            </p>
+                            <p className="mt-0.5 text-xs text-muted-foreground" dir="auto">
+                              {waitSub(w)}
+                              {w.kind === "held_inspection" && w.reasonCode && <> · {tProc(`holdReason.${w.reasonCode}`)}</>}
+                            </p>
+                          </div>
+                          <span className={cn("shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold", MODULE_TAG[w.module])}>{t(`modules.${w.module}`)}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {waits.length > CLIP_WAITS && <MoreButton open={allWaits} onClick={() => setAllWaits((v) => !v)} label={allWaits ? t("showLess") : t("showMore", { count: waits.length - CLIP_WAITS })} />}
+              </Panel>
+
+              <TodayInvitations rows={invitations} />
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   )
 }
 
-function Panel({ title, subtitle, icon: Icon, count, children }: { title: string; subtitle: string; icon: ElementType; count?: number; children: ReactNode }) {
+function Panel({ testId, title, icon: Icon, count, children }: { testId: string; title: string; icon: ElementType; count?: number; children: ReactNode }) {
   return (
-    <section className="min-w-0 overflow-hidden rounded-2xl border bg-card">
-      <header className="flex items-start justify-between gap-3 border-b px-4 py-3.5">
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <h2 className="flex items-center gap-2 text-base font-black text-foreground">
-            <Icon size={15} className="shrink-0 text-module" aria-hidden="true" />
-            {title}
-          </h2>
-          <p className="text-xs leading-relaxed text-muted-foreground">{subtitle}</p>
-        </div>
+    <section data-testid={testId} className="min-w-0 overflow-hidden rounded-2xl border bg-card">
+      <header className="flex items-center justify-between gap-3 border-b px-4 py-3.5">
+        <h2 className="flex items-center gap-2 text-base font-black text-foreground">
+          <Icon size={15} className="shrink-0 text-module" aria-hidden="true" />
+          {title}
+        </h2>
         {count != null && count > 0 && <span className="shrink-0 rounded-full bg-module/10 px-2 py-0.5 text-[11px] font-bold tabular-nums text-module">{count}</span>}
       </header>
       {children}

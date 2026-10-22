@@ -13,11 +13,12 @@ import { riyadhDay } from "@/lib/hr/format"
 import { linkUrl } from "@/lib/links/url"
 import { permissionHolders, notifyNamed } from "@/lib/supplier-free/server-notify"
 import { projectsOn, offListOf } from "./financeless-server"
+import { closeOnFor } from "./close-on"
 import { buildProcEvent, PROC_EVENTS, procEventDocId, advanceRequestKey, commitmentKey, poAcceptKey, poInboundKey, poRejectKey, poVersionKey, type ProcEvent } from "./event-keys"
 import type { ProcEventId } from "./package-data"
 import { PRICE_HISTORY, historyRowsForApproval } from "./prices"
 import { approvalGateBlocks, gateItemIds, noticeReachesReceiver } from "./policy-enforce"
-import { advanceAmount, advanceNeedsOwner, advanceNumber, poActs, type BoqGateItem, type PurchaseOrderX } from "./po-extras"
+import { advanceAmount, advanceNeedsOwner, advanceNumber, poActs, selfIssueRefusal, type BoqGateItem, type PurchaseOrderX } from "./po-extras"
 import { advanceOwnerRequired, nextVersionPatch, pendingVersion, poDueDate, poVer, poVersions, supplierHasRecord } from "./po-state"
 import { resolvePolicies, type ResolvedPolicies } from "./policies"
 import { supplierFactsFromProfile } from "./award"
@@ -204,7 +205,7 @@ async function ordersOf(db: Firestore, orgId: string): Promise<PurchaseOrder[]> 
 }
 
 /** The supplier's platform facts, with our own record laid over them — the way the approval screen reads them. Null for a guest. */
-async function supplierFactsOf(db: Firestore, orgId: string, po: PurchaseOrder): Promise<SupplierFacts | null> {
+export async function supplierFactsOf(db: Firestore, orgId: string, po: Pick<PurchaseOrder, "isGuestSupplier" | "supplierOrgId">): Promise<SupplierFacts | null> {
   if (po.isGuestSupplier || !po.supplierOrgId || po.supplierOrgId === "guest") return null
   try {
     let snap = await db.collection("users").doc(po.supplierOrgId).get()
@@ -235,7 +236,7 @@ async function boqItemsOf(db: Firestore, po: PurchaseOrder): Promise<BoqGateItem
 }
 
 /** A direct award above the cap skipped competition: it carries its reason and the owner alone approves it (G-16, R-36). */
-export const directOverCap = (po: PurchaseOrder, policies: Pick<ResolvedPolicies, "directPurchaseCap">): boolean => po.basis === "direct" && !po.agreementId && poValue(po) > policies.directPurchaseCap
+export const directOverCap = (po: PurchaseOrder, policies: Pick<ResolvedPolicies, "directPurchaseCap">): boolean => Boolean(po.tags?.directOver) || (po.basis === "direct" && !po.agreementId && poValue(po) > policies.directPurchaseCap)
 
 const directReason = (po: PurchaseOrder): string => text(po.tags?.directOver?.why) || text(po.awardReasonText)
 
@@ -247,6 +248,8 @@ const directReason = (po: PurchaseOrder): string => text(po.tags?.directOver?.wh
 export interface ApproveInput {
   poId: string
   asOwner?: boolean
+  /** R-32: the preparer issues his OWN direct order at or under the company's self-issue limit — no approver, flagged on the order. */
+  selfIssue?: boolean
 }
 
 const REFUSAL_REASON: Record<string, PoActReason> = { not_awaiting: "wrong_state", no_permission: "no_permission", own_order: "own_order", owner_only_retroactive: "owner_only", above_limit: "above_limit" }
@@ -273,7 +276,12 @@ export async function approveOrder(ctx: PoCtx, input: ApproveInput): Promise<Pur
 
   const po = await db.runTransaction(async (tx) => {
     const { ref, po } = await readOrder(tx, ctx, input.poId)
-    const refusal = approvalRefusal(po, actor, policies)
+    if (input.selfIssue) {
+      const why = selfIssueRefusal(po, actor, policies.buyerSelfIssueLimit, 0)
+      if (why === "over_limit") throw new PoActError("above_limit", { value: poValue(po), limit: policies.buyerSelfIssueLimit })
+      if (why) throw new PoActError(why === "no_permission" || why === "not_preparer" ? "no_permission" : "wrong_state")
+    }
+    const refusal = input.selfIssue ? null : approvalRefusal(po, actor, policies)
     if (refusal) throw new PoActError(REFUSAL_REASON[refusal.code] || "wrong_state", refusal.params)
     if (directOverCap(po, policies)) {
       if (!actor.isOwner) throw new PoActError("owner_only")
@@ -293,12 +301,14 @@ export async function approveOrder(ctx: PoCtx, input: ApproveInput): Promise<Pur
       approvedAt: at,
       returnedReason: null,
       ver: po.ver ?? 1,
+      closeOn: closeOnFor(ctx.off),
+      ...(input.selfIssue ? { selfIssued: true } : {}),
       ...(retro ? { supplierAcceptedAt: at, acceptanceRecordedBy: "buyer" } : {}),
       ...(receivers && receivers.length && !retro ? { noticeCopyTo: receivers } : {}),
       ...(po.dueDate || retro ? {} : { dueDate: poDueDate(riyadhDay(now), policies.supplierAcceptanceDays, po.leadTimeDays) }),
       ...(needsOwner ? { advanceOwner: { required: true, approvedAt: null } } : {}),
     }
-    const next = commit(tx, ref, po, patch, logEntry(actor, "approved", at, { params: po.preparedById === actor.uid ? { selfApproved: 1 } : null }))
+    const next = commit(tx, ref, po, patch, logEntry(actor, "approved", at, { params: input.selfIssue ? { selfIssued: 1, limit: policies.buyerSelfIssueLimit } : po.preparedById === actor.uid ? { selfApproved: 1 } : null }))
     queueEvent(tx, ctx, "fin_commitment", commitmentKey(po.docNumber, 1), refsOf(po), { total: approvalAmount(po), vatRate: po.vatRate })
     queueEvent(tx, ctx, "po_inbound", poInboundKey(po.docNumber, 1), refsOf(po), { lines: po.lines.length })
     if (advance && !needsOwner && !retro) queueEvent(tx, ctx, "fin_advance_request", advanceRequestKey(advanceNumber(po)), refsOf(po), { amount: advanceAmount(next as PurchaseOrderX) })

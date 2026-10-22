@@ -15,7 +15,6 @@ import { emitProcEvent, procLinks, sarText } from "./events"
 import { approvalGateBlocks, gateItemIds, noticeReachesReceiver } from "./policy-enforce"
 import { readModulesOff } from "../company-modules-reads"
 import { poActs, type BoqGateItem, type PurchaseOrderX } from "./po-extras"
-import { drawProcDocNumber } from "./numbering"
 import { orderDeliveryFields } from "./delivery-sites"
 import { PRICE_HISTORY, historyRowsForApproval, materialKey } from "./prices"
 import { pricedProducts, quotedRatesReconcile } from "./offer-pricing"
@@ -47,6 +46,7 @@ import {
   supplierKey,
   type BlockContext,
 } from "./po"
+import { offerAct } from "./offer-acts-client"
 import { orderTermsOf } from "./offer-terms"
 import { frozenTermsOf } from "./terms-freeze"
 import { isWithdrawnOffer } from "./award"
@@ -94,6 +94,7 @@ export type ProcWriteErrorCode =
   | "reminded_recently"
   // A price agreement (agreement-writes.ts).
   | "supplier_missing"
+  | "supplier_unverified"
   | "no_lines"
   // The receiver register (receiver-writes.ts).
   | "bad_receiver"
@@ -1301,7 +1302,7 @@ export async function ratePurchaseOrder(firestore: Firestore, actor: ProcActor, 
     } catch (err) {
       console.warn("published rating not recorded:", (err as { code?: string })?.code || err)
     }
-    if (po.offerId) await updateDoc(doc(firestore, "offers", po.offerId), { contractorRated: true }).catch(() => undefined)
+    if (po.offerId) await offerAct({ act: "rated", offerId: po.offerId }).catch(() => undefined)
     await emitProcEvent(firestore, actor, {
       kind: "po_rated",
       organizationId: po.organizationId,
@@ -1315,104 +1316,4 @@ export async function ratePurchaseOrder(firestore: Firestore, actor: ProcActor, 
     })
   }
   return po
-}
-
-// ---------------------------------------------------------------------------
-// Retroactive — regularising a receipt that had no order (§6.1-11)
-// ---------------------------------------------------------------------------
-
-export interface RetroactiveInput {
-  organizationId: string
-  rfqTitle: string
-  supplierName: string
-  /** The supplier's platform org/user when known; absent = off-platform. */
-  supplierOrgId?: string | null
-  supplierUserId?: string | null
-  projectId?: string | null
-  projectName?: string | null
-  /** What was received: the receipt's counted lines. */
-  lines: Array<{ name: string; unit: string; quantity: number; unitPrice?: number | null; accepted?: number }>
-  totalExVat: number
-  /** The manual receipt this order regularises; it gets `poId`/`poNumber`. */
-  deliveryId?: string | null
-  reason: string
-}
-
-/** A purchase order raised AFTER the goods arrived — basis `retroactive`,
- * routed to the owner alone. Its lines are born with what was accepted. */
-export async function retroactivePurchaseOrder(firestore: Firestore, actor: ProcActor, input: RetroactiveInput, opts: WriteOpts = {}): Promise<{ id: string; docNumber: string; deliveryLinked: boolean }> {
-  if (!actor.isOwner && !actor.canPrepare) throw new ProcWriteError("no_permission")
-  // Regularising is Procurement's act (the prototype's `regul`): whoever
-  // prepares orders stamps the no-PO receipt with the order it now belongs to.
-  const linkDelivery = Boolean(input.deliveryId)
-  const reason = requireText(input.reason)
-  const now = opts.now ?? new Date()
-  const at = now.toISOString()
-  const lines: PoLine[] = input.lines.map((l, i) => ({
-    id: `l${i + 1}`,
-    name: l.name.trim(),
-    unit: (l.unit || "").trim(),
-    quantity: Math.max(0, Number(l.quantity) || 0),
-    unitPrice: l.unitPrice == null ? null : Number(l.unitPrice),
-    accepted: Math.max(0, Number(l.accepted ?? l.quantity) || 0),
-    rejected: 0,
-    held: 0,
-    cancelled: 0,
-    boqItemId: null,
-    rfqProductIndex: null,
-  }))
-  const poRef = doc(collection(firestore, PURCHASE_ORDERS))
-  const supplierOrgId = input.supplierOrgId || "guest"
-  const docNumber = await runTransaction(firestore, async (tx) => {
-    const number = await drawProcDocNumber(firestore, tx, input.organizationId, "PO", now.getUTCFullYear())
-    const po: Omit<PurchaseOrder, "id"> = {
-      organizationId: input.organizationId,
-      docNumber: number,
-      status: "awaiting_approval",
-      basis: "retroactive",
-      rfqId: null,
-      rfqTitle: input.rfqTitle.trim(),
-      offerId: null,
-      projectId: input.projectId ?? null,
-      projectName: input.projectName ?? null,
-      purchaseSource: null,
-      supplierOrgId,
-      supplierUserId: input.supplierUserId ?? null,
-      supplierName: input.supplierName.trim(),
-      isGuestSupplier: supplierOrgId === "guest",
-      lines,
-      totalExVat: round2(Number(input.totalExVat) || 0),
-      vatRate: 0.15,
-      offersCount: 0,
-      lowestOfferTotal: null,
-      awardReasonCode: "other",
-      awardReasonText: reason,
-      shortCompetition: false,
-      noOfficialQuote: true,
-      // Every order carries its frozen terms (G-08): no RFQ and no offer here, so the default, written out.
-      ...frozenTermsOf({}, null),
-      preparedById: actor.uid,
-      preparedByName: actor.name,
-      createdAt: at,
-      approverKind: "owner",
-      approvedById: null,
-      approvedAt: null,
-      returnedReason: null,
-      rating: null,
-      log: [entry(actor, "created", at, { note: reason, params: { basis: "retroactive", number, deliveryId: input.deliveryId || "" } })],
-      updatedAt: serverTimestamp(),
-    }
-    tx.set(poRef, po)
-    if (linkDelivery) tx.update(doc(firestore, "deliveries", input.deliveryId as string), { poId: poRef.id, poNumber: number, regularisedAt: at, regularisedById: actor.uid, regularisedByName: actor.name })
-    return number
-  })
-  await emitProcEvent(firestore, actor, {
-    kind: "po_awaiting_approval",
-    organizationId: input.organizationId,
-    to: [{ owner: true }],
-    params: { number: docNumber, supplier: input.supplierName, amount: sarText(input.totalExVat, opts.locale), rfq: input.rfqTitle },
-    poId: poRef.id,
-    copy: opts.copy,
-  })
-  return { id: poRef.id, docNumber, deliveryLinked: linkDelivery }
 }

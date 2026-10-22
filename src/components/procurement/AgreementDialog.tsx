@@ -23,13 +23,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useFirestore } from "@/firebase"
 import { cleanAgreementLines, createPriceAgreement, renewPriceAgreement } from "@/lib/procurement/agreement-writes"
-import { materialKey, renewalUntil, type PriceAgreement } from "@/lib/procurement/prices"
+import { materialKey, renewalUntil, type CappedAgreementLine, type PriceAgreement } from "@/lib/procurement/prices"
 import { displayAgreementNumber } from "@/lib/procurement/format"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import type { ProcActor } from "@/lib/procurement/types"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 
-const emptyRow = () => ({ name: "", unit: "", price: "" })
+const emptyRow = () => ({ name: "", unit: "", price: "", cap: "" })
 const today = () => new Date().toISOString().slice(0, 10)
 
 export function AgreementDialog({
@@ -71,7 +71,7 @@ export function AgreementDialog({
       supplierOrgId: z.string(),
       from: z.string(),
       until: z.string(),
-      rows: z.array(z.object({ name: z.string(), unit: z.string(), price: z.string() })),
+      rows: z.array(z.object({ name: z.string(), unit: z.string(), price: z.string(), cap: z.string().optional() })),
       note: z.string(),
     })
     .superRefine((v, ctx) => {
@@ -99,7 +99,7 @@ export function AgreementDialog({
     setError(null)
     form.reset(
       agreement
-        ? { supplierOrgId: agreement.supplierOrgId, from: agreement.from, until: renewalUntil(agreement, today()), rows: (agreement.lines || []).map((l) => ({ name: l.name, unit: l.unit, price: String(l.price) })), note: agreement.note || "" }
+        ? { supplierOrgId: agreement.supplierOrgId, from: agreement.from, until: renewalUntil(agreement, today()), rows: (agreement.lines || []).map((l) => ({ name: l.name, unit: l.unit, price: String(l.price), cap: (l as CappedAgreementLine).cap ? String((l as CappedAgreementLine).cap) : "" })), note: agreement.note || "" }
         : blank()
     )
     // The form is reset only when it opens, never while somebody types.
@@ -210,8 +210,11 @@ export function AgreementDialog({
                   <div className="w-24 space-y-1">
                     <Input aria-label={t("dialog.unit")} placeholder={t("dialog.unit")} dir="auto" disabled={renewing} {...form.register(`rows.${i}.unit`)} />
                   </div>
-                  <div className="w-28 space-y-1">
+                  <div className="w-24 space-y-1">
                     <Input aria-label={t("dialog.price")} placeholder={t("dialog.price")} inputMode="decimal" dir="ltr" {...form.register(`rows.${i}.price`)} />
+                  </div>
+                  <div className="w-24 space-y-1">
+                    <Input aria-label={t("dialog.cap")} placeholder={t("dialog.cap")} inputMode="decimal" dir="ltr" disabled={renewing} {...form.register(`rows.${i}.cap`)} />
                   </div>
                   {!renewing && fields.length > 1 && (
                     <Button type="button" variant="ghost" size="icon" aria-label={t("dialog.removeLine")} onClick={() => remove(i)}>

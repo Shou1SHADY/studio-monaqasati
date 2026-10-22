@@ -4,13 +4,17 @@
 // store by someone else — often someone with no account. So Procurement
 // forwards the delivery: to a team member, or to a name and mobile number. The
 // system makes a single-use link; the receiver opens it, counts what arrived
-// (blind — the notified quantity is never shown), marks what was rejected,
-// signs, and confirms with a code texted to that mobile. The signed count lands
-// on the delivery, and Procurement books the receipt from it — stock, the books
-// and the GR number stay on the one tested path, `recordReceipt`.
+// (blind — the notified quantity is never shown), marks what was rejected and
+// why, and confirms with a code texted to that mobile (or, a member, with his
+// own sign-in). The confirmation IS the receipt: the server draws its number,
+// moves the order and lands the stock in the same act (`./procurement/receipt-
+// confirm-server`) — Procurement never records it.
 //
-// What this answers is "who actually received it": a receipt signed by a
-// verified phone, not a name someone typed in the office.
+// What this answers is "who actually received it": a receipt confirmed by a
+// verified phone or a signed-in member, not a name someone typed in the office.
+//
+// A truck that arrived with NO notice has a link too (`arrival`): the receiver
+// asks for it from the order, signed in, and the receipt is born when he confirms.
 
 import { randomBytes } from "node:crypto"
 import { z } from "zod"
@@ -41,7 +45,11 @@ export interface Receiver {
 
 export interface ReceiptLink {
   token: string
+  /** The notice being counted — or, for an `arrival` link, the id the receipt will take. */
   deliveryId: string
+  /** A truck with no notice: the receipt is made on confirmation, against `poId`. */
+  arrival?: boolean
+  poId?: string | null
   organizationId: string
   receiver: Receiver
   status: LinkStatus
@@ -249,6 +257,15 @@ export function receiverFrom(
   return { kind: "user", userId: input.userId, name: user.name || user.email || "", phone }
 }
 
+/** The delivery an `arrival` link stands for: nothing is stored until the receiver confirms, so it is read off the order. */
+async function arrivalDelivery(db: Firestore, link: ReceiptLink): Promise<Record<string, unknown> | undefined> {
+  if (!link.poId) return undefined
+  if ((await db.collection("deliveries").doc(link.deliveryId).get()).exists) return { status: "confirmed" }
+  const po = (await db.collection(PURCHASE_ORDERS).doc(link.poId).get()).data() as Partial<PurchaseOrder> | undefined
+  if (!po || (po.status !== "sent" && po.status !== "accepted")) return undefined
+  return { contractorOrgId: po.organizationId, poId: link.poId, poNumber: po.docNumber, supplierName: po.supplierName, rfqTitle: po.rfqTitle, projectId: po.projectId ?? null, status: "pending_confirmation", noNotice: true, deliveryDate: new Date().toISOString().slice(0, 10) }
+}
+
 /** A link by its token — the same shape of answer the guest-offer links give. */
 export async function resolveReceiptLink(
   db: Firestore,
@@ -267,8 +284,8 @@ export async function resolveReceiptLink(
   if (refusal === "revoked") return { ok: false, code: "LINK_REVOKED", status: 410 }
   if (refusal === "signed") return { ok: false, code: "LINK_SIGNED", status: 410 }
   if (refusal === "expired") return { ok: false, code: "LINK_EXPIRED", status: 410 }
-  const delivery = (await db.collection("deliveries").doc(link!.deliveryId).get()).data()
-  if (!delivery || delivery.status === "confirmed") return { ok: false, code: "LINK_SIGNED", status: 410 }
+  const delivery = link!.arrival ? await arrivalDelivery(db, link!) : (await db.collection("deliveries").doc(link!.deliveryId).get()).data()
+  if (!delivery || delivery.status === "confirmed" || delivery.closedByReceipt) return { ok: false, code: "LINK_SIGNED", status: 410 }
   return { ok: true, linkId: doc.id, link: link!, delivery }
 }
 

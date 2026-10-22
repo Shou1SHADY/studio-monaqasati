@@ -1,19 +1,32 @@
-// Placing an order without an RFQ — on a price agreement, or as a direct
-// purchase under the cap (`./direct`). ONE transaction: the agreement is read
-// again (it may have ended since the screen opened), the refusal re-run, the
-// PO number drawn, the order written awaiting approval. Approval, sending and
-// receipt then follow the order's ordinary path (`./writes`).
+// TEST FIXTURE ONLY. The browser no longer raises an order without an RFQ (Procurement 2.0, NFR-01 / G-16, WP-S1-11): that is the server's
+// `POST /api/procurement/po/{direct,service,retroactive}` (`po-direct-server.ts`). These are the former client writers, kept so tests that
+// need an order to exist (approval, receipt, terms) can create one over the fake client Firestore the way they always did. Never import from the app.
 
 import { collection, doc, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
-import { directLinePrices, directOrderRefusal, directPoLines, directTotal, isSingleSource, type DirectLineInput, type DirectMode, type SingleSourceReason } from "./direct"
-import { emitProcEvent, sarText } from "./events"
-import { drawProcDocNumber } from "./numbering"
-import { requiredApprover } from "./po"
-import { PRICE_AGREEMENTS, type PriceAgreement } from "./prices"
-import { serviceOrderLine, serviceOrderRefusal, serviceOrderValue } from "./service-order"
-import { frozenTermsOf } from "./terms-freeze"
-import { PURCHASE_ORDERS, type ProcActor, type ProcurementPolicies, type PurchaseOrder } from "./types"
-import { ProcWriteError, type WriteOpts } from "./writes"
+import { directLinePrices, directOrderRefusal, directPoLines, directTotal, isSingleSource, type DirectLineInput, type DirectMode, type SingleSourceReason } from "@/lib/procurement/direct"
+import { emitProcEvent, sarText } from "@/lib/procurement/events"
+import { drawProcDocNumber } from "@/lib/procurement/numbering"
+import { requiredApprover, round2 } from "@/lib/procurement/po"
+import { PRICE_AGREEMENTS, type PriceAgreement } from "@/lib/procurement/prices"
+import { serviceOrderLine, serviceOrderRefusal, serviceOrderValue } from "@/lib/procurement/service-order"
+import { frozenTermsOf } from "@/lib/procurement/terms-freeze"
+import { PURCHASE_ORDERS, type PoLine, type PoLogEntry, type ProcActor, type ProcurementPolicies, type PurchaseOrder } from "@/lib/procurement/types"
+import { ProcWriteError, type WriteOpts } from "@/lib/procurement/writes"
+
+const entry = (actor: Pick<ProcActor, "uid" | "name">, action: PoLogEntry["action"], at: string, extra?: { note?: string | null; params?: PoLogEntry["params"] }): PoLogEntry => ({
+  at,
+  byId: actor.uid,
+  byName: actor.name,
+  action,
+  note: extra?.note ?? null,
+  params: extra?.params ?? null,
+})
+
+const requireText = (s: string | null | undefined): string => {
+  const t = (s ?? "").trim()
+  if (!t) throw new ProcWriteError("reason_required")
+  return t
+}
 
 export interface DirectOrderInput {
   mode: DirectMode
@@ -210,4 +223,104 @@ export async function createServiceOrder(firestore: Firestore, actor: ProcActor,
     copy: opts.copy,
   })
   return { id: poRef.id, docNumber: po.docNumber }
+}
+
+// ---------------------------------------------------------------------------
+// Retroactive — regularising a receipt that had no order (§6.1-11)
+// ---------------------------------------------------------------------------
+
+export interface RetroactiveInput {
+  organizationId: string
+  rfqTitle: string
+  supplierName: string
+  /** The supplier's platform org/user when known; absent = off-platform. */
+  supplierOrgId?: string | null
+  supplierUserId?: string | null
+  projectId?: string | null
+  projectName?: string | null
+  /** What was received: the receipt's counted lines. */
+  lines: Array<{ name: string; unit: string; quantity: number; unitPrice?: number | null; accepted?: number }>
+  totalExVat: number
+  /** The manual receipt this order regularises; it gets `poId`/`poNumber`. */
+  deliveryId?: string | null
+  reason: string
+}
+
+/** A purchase order raised AFTER the goods arrived — basis `retroactive`,
+ * routed to the owner alone. Its lines are born with what was accepted. */
+export async function retroactivePurchaseOrder(firestore: Firestore, actor: ProcActor, input: RetroactiveInput, opts: WriteOpts = {}): Promise<{ id: string; docNumber: string; deliveryLinked: boolean }> {
+  if (!actor.isOwner && !actor.canPrepare) throw new ProcWriteError("no_permission")
+  // Regularising is Procurement's act (the prototype's `regul`): whoever
+  // prepares orders stamps the no-PO receipt with the order it now belongs to.
+  const linkDelivery = Boolean(input.deliveryId)
+  const reason = requireText(input.reason)
+  const now = opts.now ?? new Date()
+  const at = now.toISOString()
+  const lines: PoLine[] = input.lines.map((l, i) => ({
+    id: `l${i + 1}`,
+    name: l.name.trim(),
+    unit: (l.unit || "").trim(),
+    quantity: Math.max(0, Number(l.quantity) || 0),
+    unitPrice: l.unitPrice == null ? null : Number(l.unitPrice),
+    accepted: Math.max(0, Number(l.accepted ?? l.quantity) || 0),
+    rejected: 0,
+    held: 0,
+    cancelled: 0,
+    boqItemId: null,
+    rfqProductIndex: null,
+  }))
+  const poRef = doc(collection(firestore, PURCHASE_ORDERS))
+  const supplierOrgId = input.supplierOrgId || "guest"
+  const docNumber = await runTransaction(firestore, async (tx) => {
+    const number = await drawProcDocNumber(firestore, tx, input.organizationId, "PO", now.getUTCFullYear())
+    const po: Omit<PurchaseOrder, "id"> = {
+      organizationId: input.organizationId,
+      docNumber: number,
+      status: "awaiting_approval",
+      basis: "retroactive",
+      rfqId: null,
+      rfqTitle: input.rfqTitle.trim(),
+      offerId: null,
+      projectId: input.projectId ?? null,
+      projectName: input.projectName ?? null,
+      purchaseSource: null,
+      supplierOrgId,
+      supplierUserId: input.supplierUserId ?? null,
+      supplierName: input.supplierName.trim(),
+      isGuestSupplier: supplierOrgId === "guest",
+      lines,
+      totalExVat: round2(Number(input.totalExVat) || 0),
+      vatRate: 0.15,
+      offersCount: 0,
+      lowestOfferTotal: null,
+      awardReasonCode: "other",
+      awardReasonText: reason,
+      shortCompetition: false,
+      noOfficialQuote: true,
+      // Every order carries its frozen terms (G-08): no RFQ and no offer here, so the default, written out.
+      ...frozenTermsOf({}, null),
+      preparedById: actor.uid,
+      preparedByName: actor.name,
+      createdAt: at,
+      approverKind: "owner",
+      approvedById: null,
+      approvedAt: null,
+      returnedReason: null,
+      rating: null,
+      log: [entry(actor, "created", at, { note: reason, params: { basis: "retroactive", number, deliveryId: input.deliveryId || "" } })],
+      updatedAt: serverTimestamp(),
+    }
+    tx.set(poRef, po)
+    if (linkDelivery) tx.update(doc(firestore, "deliveries", input.deliveryId as string), { poId: poRef.id, poNumber: number, regularisedAt: at, regularisedById: actor.uid, regularisedByName: actor.name })
+    return number
+  })
+  await emitProcEvent(firestore, actor, {
+    kind: "po_awaiting_approval",
+    organizationId: input.organizationId,
+    to: [{ owner: true }],
+    params: { number: docNumber, supplier: input.supplierName, amount: sarText(input.totalExVat, opts.locale), rfq: input.rfqTitle },
+    poId: poRef.id,
+    copy: opts.copy,
+  })
+  return { id: poRef.id, docNumber, deliveryLinked: linkDelivery }
 }

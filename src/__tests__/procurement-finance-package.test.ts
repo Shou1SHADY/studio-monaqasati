@@ -12,7 +12,8 @@ import { payMarkOf } from "@/lib/supplier-free/derive"
 import { workQueueCounts } from "@/lib/procurement/shell"
 import { NO_SITE, inSiteFilter, openRequestsBySite, orderSiteIds } from "@/lib/procurement/site-counts"
 import { spendByProject } from "@/lib/procurement/reports"
-import { TODAY_KEYS, todayKpis, todayTasks, todayWaits, type ProcWorld, type TodayActor } from "@/lib/procurement/today"
+import { todayKpis } from "@/lib/procurement/kpis"
+import { TODAY_KEYS, todayTasks, todayWaits, type ProcWorld, type TodayActor } from "@/lib/procurement/today"
 import { DEFAULT_POLICIES, type PoLine, type PurchaseOrder, type ReceiptFact } from "@/lib/procurement/types"
 
 const NOW = new Date("2026-10-19T09:00:00Z")
@@ -62,16 +63,18 @@ const kinds = (w: ProcWorld, a: TodayActor) => todayTasks(w, a, NOW).map((t) => 
 describe("F1 · without Finance nothing waits on Finance and no text names it", () => {
   const order = received()
 
-  it("a fully received order waits on «سداد وإقفال» only where Finance is in the package", () => {
-    expect(todayWaits(world({ orders: [order] }), MANAGER, NOW).map((x) => x.kind)).toContain("finance_payment")
-    expect(todayWaits(world({ orders: [order], financeOn: true }), MANAGER, NOW).map((x) => x.kind)).toContain("finance_payment")
-    expect(todayWaits(world({ orders: [order], financeOn: false }), MANAGER, NOW).map((x) => x.kind)).not.toContain("finance_payment")
+  const onFinance = (w: ProcWorld, step: string) => todayWaits(w, MANAGER, NOW).some((x) => x.module === "finance" && x.subKey === step)
+
+  it("a fully received order waits on «المالية» for payment only where Finance is in the package", () => {
+    expect(onFinance(world({ orders: [order] }), "step.unpaid")).toBe(true)
+    expect(onFinance(world({ orders: [order], financeOn: true }), "step.unpaid")).toBe(true)
+    expect(onFinance(world({ orders: [order], financeOn: false }), "step.unpaid")).toBe(false)
   })
 
   it("an advance with Finance waits on Finance; without it the wait is gone", () => {
     const advance = po({ advancePercent: 30 })
-    expect(todayWaits(world({ orders: [advance], financeOn: true }), MANAGER, NOW).map((x) => x.kind)).toContain("supplier_advance")
-    expect(todayWaits(world({ orders: [advance], financeOn: false }), MANAGER, NOW).map((x) => x.kind)).not.toContain("supplier_advance")
+    expect(onFinance(world({ orders: [advance], financeOn: true }), "step.adv")).toBe(true)
+    expect(onFinance(world({ orders: [advance], financeOn: false }), "step.adv")).toBe(false)
   })
 
   it("a held invoice is Finance's: neither a wait nor a task without Finance", () => {
@@ -131,8 +134,11 @@ describe("F3 · the advance marked paid clears everywhere", () => {
   })
 
   it("the wait, the task and the trail follow it", () => {
-    expect(todayWaits(world({ orders: [unpaid], financeOn: true }), MANAGER, NOW).map((x) => x.kind)).toContain("supplier_advance")
-    expect(todayWaits(world({ orders: [paid], financeOn: true }), MANAGER, NOW).map((x) => x.kind)).not.toContain("supplier_advance")
+    const waitsOnFinance = (o: PurchaseOrder) => todayWaits(world({ orders: [o], financeOn: true }), MANAGER, NOW).some((x) => x.module === "finance" && x.subKey === "step.adv")
+    expect(waitsOnFinance(unpaid)).toBe(true)
+    // With Finance in the company the buyer's own mark is a reference (PO-07): only Finance's payment clears Finance's wait.
+    expect(waitsOnFinance(paid)).toBe(true)
+    expect(waitsOnFinance(po({ advancePercent: 30, financePayments: [{ kind: "adv", amount: 1000 }] } as Partial<PurchaseOrderX>))).toBe(false)
     expect(kinds(world({ orders: [unpaid], financeOn: false }), MANAGER)).toContain("advance_unpaid")
     expect(kinds(world({ orders: [paid], financeOn: false }), MANAGER)).not.toContain("advance_unpaid")
     expect(kinds(world({ orders: [unpaid], financeOn: true }), MANAGER)).not.toContain("advance_unpaid")
@@ -176,8 +182,8 @@ describe("F7 · since when", () => {
 
   it("Today's «بانتظار الاعتماد» row carries the days", () => {
     const waiting = po({ status: "awaiting_approval", createdAt: "2026-10-16T08:00:00Z", approverKind: "owner" })
-    const row = todayTasks(world({ orders: [waiting] }), BUYER, NOW).find((x) => x.kind === "approval_wait")
-    expect(row?.titleParams).toMatchObject({ days: 3 })
+    const row = todayWaits(world({ orders: [waiting] }), BUYER, NOW).find((x) => x.kind === "approval_wait")
+    expect(row).toMatchObject({ module: "approver", titleParams: { days: 3 } })
   })
 })
 

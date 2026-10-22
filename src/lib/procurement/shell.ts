@@ -1,13 +1,13 @@
 // Procurement's shell (PRD 3.0 §7.1) — the tab rail and what gates each tab,
 // the adapter from what the hook loads to what the pure layer reads, the two
-// dashboard roll-ups, the "arriving this week" panel, and the reports frame
+// dashboard roll-ups, and the reports frame
 // (which reports a role sees, the period presets, CSV text). No Firestore,
 // no React, no sentences: the screens format, the tests read this.
 
 import { PERMISSION_SECTIONS, type PermissionId } from "../permissions"
 import { PROC_MINE_HREF, PROC_TAB_GATES, type ProcTabId } from "./tab-gates"
 import { isRequesterOnly } from "./roles-matrix"
-import { approvalRefusal, daysFromNow, poLate, poStatus, dayOf, lineOutstanding, type NoticeFact } from "./po"
+import { approvalRefusal, daysFromNow, poLate, poStatus, dayOf, type NoticeFact } from "./po"
 import type { OfferFact, ProcWorld, RfqFact } from "./today"
 import type { ProcurementPolicies, PurchaseOrder, ReceiptFact, SupplierFacts } from "./types"
 
@@ -93,6 +93,10 @@ export interface LoadedRfq {
   invitedSupplierOrgIds?: string[] | null
   createdByUserId?: string | null
   contractorId?: string | null
+  pricingMode?: string | null
+  shipmentMode?: string | null
+  needSources?: unknown
+  purchaseSource?: unknown
 }
 
 export interface LoadedOffer {
@@ -105,6 +109,16 @@ export interface LoadedOffer {
   offerPdfUrl?: string | null
   poId?: string | null
   validUntil?: string | null
+  lines?: OfferFact["lines"]
+  lump?: OfferFact["lump"]
+  totalBatchesPrice?: OfferFact["totalBatchesPrice"]
+  vatRegistered?: OfferFact["vatRegistered"]
+  vatRate?: OfferFact["vatRate"]
+  leadDays?: OfferFact["leadDays"]
+  executionDuration?: OfferFact["executionDuration"]
+  executionDurationUnit?: OfferFact["executionDurationUnit"]
+  skippedItems?: unknown
+  withdrawnAt?: unknown
 }
 
 export interface LoadedWorld {
@@ -138,11 +152,34 @@ export function toProcWorld(w: LoadedWorld): ProcWorld {
     invitedCount: r.invitedSupplierOrgIds?.length || null,
     createdByUserId: r.createdByUserId ?? null,
     contractorId: r.contractorId ?? null,
-    products: (r.products || []).map((p) => ({ name: p.name, quantity: p.quantity ?? null, unit: p.unit || p.unitOfMeasure || null, category: p.category ?? null })),
+    products: (r.products || []).map((p) => ({ name: p.name, quantity: p.quantity ?? null, unit: p.unit || p.unitOfMeasure || null, unitOfMeasure: p.unitOfMeasure || null, category: p.category ?? null })),
+    pricingMode: r.pricingMode ?? null,
+    shipmentMode: r.shipmentMode ?? null,
+    needSources: r.needSources,
+    purchaseSource: r.purchaseSource,
   }))
   const offers: OfferFact[] = w.offers
     .filter((o) => Boolean(o.rfqId))
-    .map((o) => ({ id: o.id, rfqId: o.rfqId as string, status: o.status ?? null, price: o.price ?? null, supplierOrgId: o.supplierOrgId ?? o.organizationId ?? null, offerPdfUrl: o.offerPdfUrl ?? null, poId: o.poId ?? null, ...(o.validUntil ? { validUntil: o.validUntil } : {}) }))
+    .map((o) => ({
+      id: o.id,
+      rfqId: o.rfqId as string,
+      status: o.status ?? null,
+      price: o.price ?? null,
+      supplierOrgId: o.supplierOrgId ?? o.organizationId ?? null,
+      offerPdfUrl: o.offerPdfUrl ?? null,
+      poId: o.poId ?? null,
+      ...(o.validUntil ? { validUntil: o.validUntil } : {}),
+      lines: o.lines,
+      lump: o.lump,
+      totalBatchesPrice: o.totalBatchesPrice,
+      vatRegistered: o.vatRegistered,
+      vatRate: o.vatRate,
+      leadDays: o.leadDays,
+      executionDuration: o.executionDuration,
+      executionDurationUnit: o.executionDurationUnit,
+      skippedItems: o.skippedItems,
+      withdrawnAt: o.withdrawnAt,
+    }))
   return {
     orders: w.orders,
     receipts: w.deliveries,
@@ -194,43 +231,6 @@ export function workQueueCounts(orders: PurchaseOrder[], policies: ProcurementPo
     } else if ((st === "in_delivery" || st === "part_received") && poLate(po, now, notices)) late++
   }
   return { approve, attention: { late, notAccepted, notSent, total: late + notAccepted + notSent } }
-}
-
-// ---------------------------------------------------------------------------
-// Arriving this week — the supplier's notices due inside seven days
-// ---------------------------------------------------------------------------
-
-export interface ArrivingRow {
-  id: string
-  supplierName: string
-  number: string
-  /** `YYYY-MM-DD` */
-  date: string
-  /** Days to the date; negative = its date passed with no receipt. */
-  inDays: number
-  /** "name qty unit · …" from the notice, else from the order's open lines. */
-  lines: string
-  href: string
-}
-
-export const ARRIVING_WINDOW_DAYS = 7
-
-export function arrivingThisWeek(w: ProcWorld, now: Date, receiptHref: (id: string) => string): ArrivingRow[] {
-  const orderById = new Map(w.orders.map((o) => [o.id, o]))
-  const out: ArrivingRow[] = []
-  for (const r of w.receipts) {
-    if (r.status !== "pending_confirmation" || !r.deliveryDate) continue
-    const d = daysFromNow(r.deliveryDate, now)
-    if (d == null || d < 0 || d > ARRIVING_WINDOW_DAYS) continue
-    const po = r.poId ? orderById.get(r.poId) : undefined
-    const lines = (r.lines || []).length
-      ? (r.lines || []).map((l) => `${l.name} ${l.noticeQuantity} ${l.unit}`).join(" · ")
-      : po
-        ? po.lines.filter((l) => lineOutstanding(l) > 0).map((l) => `${l.name} ${lineOutstanding(l)} ${l.unit}`).join(" · ")
-        : ""
-    out.push({ id: r.id, supplierName: r.supplierName || po?.supplierName || "", number: r.poNumber || po?.docNumber || "", date: dayOf(r.deliveryDate), inDays: d, lines, href: receiptHref(r.id) })
-  }
-  return out.sort((a, b) => a.inDays - b.inDays || a.supplierName.localeCompare(b.supplierName))
 }
 
 // ---------------------------------------------------------------------------
@@ -324,32 +324,4 @@ export function procRole(actor: { isOwner: boolean; canApprove: boolean; canPrep
   if (actor.canExpedite && !actor.seesPrices) return "expediter"
   if (actor.canReceive) return "receiver"
   return null
-}
-
-/** The prototype's «يصل خلال 7 أيام»: every order in delivery due within the
- * week (by the supplier's notice when he sent one, else his promise), overdue
- * first, each opening its ORDER; plus a notice that names no order. */
-export function arrivingWithinWeek(w: ProcWorld, now: Date, orderHref: (id: string) => string, receiptHref: (id: string) => string): ArrivingRow[] {
-  const out: ArrivingRow[] = []
-  const noticeOf = new Map<string, ReceiptFact>()
-  for (const r of w.receipts) if (r.status === "pending_confirmation" && r.poId && r.deliveryDate) noticeOf.set(r.poId, r)
-  for (const po of w.orders) {
-    const s = poStatus(po)
-    if (s !== "in_delivery" && s !== "part_received") continue
-    const open = po.lines.filter((l) => lineOutstanding(l) > 0)
-    if (!open.length) continue
-    const notice = noticeOf.get(po.id)
-    const date = notice?.deliveryDate ? dayOf(notice.deliveryDate) : po.promisedDate || ""
-    const d = daysFromNow(date, now)
-    // «يصل خلال 7 أيام» is what is DUE in the coming week (PUR-07); an overdue order is Today's «متأخر», counted once there.
-    if (d == null || d < 0 || d > ARRIVING_WINDOW_DAYS) continue
-    out.push({ id: po.id, supplierName: po.supplierName, number: po.docNumber, date, inDays: d, lines: open.map((l) => `${l.name} ${lineOutstanding(l)} ${l.unit}`).join(" · "), href: orderHref(po.id) })
-  }
-  const listed = new Set(out.map((r) => r.id))
-  for (const row of arrivingThisWeek(w, now, receiptHref)) {
-    const r = w.receipts.find((x) => x.id === row.id)
-    if (r?.poId && (listed.has(r.poId) || w.orders.some((o) => o.id === r.poId))) continue
-    out.push(row)
-  }
-  return out.sort((a, b) => a.inDays - b.inDays || a.supplierName.localeCompare(b.supplierName))
 }

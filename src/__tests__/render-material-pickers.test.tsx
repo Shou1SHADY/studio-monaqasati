@@ -21,10 +21,16 @@ import { indexTree } from "@/lib/materials/tree"
 import type { MaterialTreeFile } from "@/lib/materials/types"
 import { MaterialSearchInput } from "@/components/materials/MaterialSearchInput"
 import { SupplierDirectory } from "@/components/procurement/SupplierDirectory"
+import { keyLabel } from "@/lib/materials/subs"
+import { displayCategory } from "@/lib/constants"
+import { EMPTY_SUPPLIER_FILTER } from "@/lib/procurement/supplier-list"
 import { CreateAccountDialog } from "@/components/admin/CreateAccountDialog"
 import { CreateMdmakRfqDialog } from "@/components/admin/CreateMdmakRfqDialog"
-import type { PlatformSupplier } from "@/hooks/useSupplierDirectory"
-import { directoryEntries } from "@/lib/procurement/directory-listing"
+import { specialtyKeys } from "@/lib/materials/subs"
+
+// The directory is read a page at a time from the server (SUP-01, NFR-03); the tree words it filters by are the screen's.
+let mockDirectory: { rows: unknown[]; matched: number; total: number; remaining: number; more: number; facets: { specialties: Array<[string, number]>; cities: Array<[string, number]> }; loading: boolean; failed: boolean; loadMore: () => void; ready: boolean }
+jest.mock("@/hooks/useSupplierDirectory", () => ({ ...jest.requireActual("@/hooks/useSupplierDirectory"), usePlatformDirectory: () => mockDirectory }))
 
 installDomShims()
 jest.setTimeout(60_000)
@@ -93,49 +99,53 @@ describe("«تصفّح شجرة المواد» from a row", () => {
 })
 
 describe("«دليل موردي المنصة» reads the tree", () => {
-  const supplier = (orgId: string, over: Partial<PlatformSupplier>): PlatformSupplier =>
-    ({
-      orgId,
-      memberIds: [orgId],
-      name: `مورد ${orgId}`,
-      city: "الرياض",
-      coverageCities: [],
-      categories: [],
-      subIds: [],
-      certificates: [],
-      worksCount: 0,
-      bio: null,
-      phone: null,
-      email: null,
-      international: false,
-      since: "2025-01-01",
-      platformVerified: true,
-      profileVat: null,
-      profileHasVat: false,
-      profileCrExpiry: null,
-      reviews: [],
-      rating: null,
-      isMine: false,
-      isFavorite: false,
-      isExplicitFavorite: false,
-      linkId: null,
-      linkRequestedBy: null,
-      record: null,
-      ...over,
-    }) as PlatformSupplier
+  const card = (orgId: string, subIds: string[], categories: string[]) => ({
+    orgId,
+    name: `مورد ${orgId}`,
+    city: "الرياض",
+    coverageCities: [],
+    specialties: specialtyKeys(index, subIds, categories),
+    since: "2025-01-01",
+    verified: true,
+    hasProfile: false,
+    hasWorks: false,
+    hasCerts: false,
+    completedOps: 0,
+    judgedOrders: 0,
+    onTimePercent: null,
+    rejectPercent: null,
+    rating: null,
+    reviewAvg: null,
+    reviewCount: 0,
+    updatedAt: "2026-10-21T00:00:00Z",
+    ours: false,
+  })
 
-  it("filters by the tree's sub-categories, and an older category name is still there to pick", async () => {
-    const entries = directoryEntries(index, [supplier("a", { subIds: [rebar] }), supplier("b", { categories: ["خرسانة جاهزة"] })])
-    render(<SupplierDirectory suppliers={entries} onOpen={jest.fn()} />)
+  it("offers the tree's sub-categories as the specialty filter (with their counts), and an older category name is still there to pick", async () => {
+    const rows = [card("a", [rebar], []), card("b", [], ["خرسانة جاهزة"])]
+    const facets = new Map<string, number>()
+    for (const r of rows) for (const k of r.specialties) facets.set(k, (facets.get(k) || 0) + 1)
+    mockDirectory = { rows, matched: 2, total: 2, remaining: 0, more: 0, facets: { specialties: [...facets.entries()], cities: [["الرياض", 2]] }, loading: false, failed: false, loadMore: () => {}, ready: true }
+    const onFilter = jest.fn()
+    render(
+      <SupplierDirectory
+        filter={EMPTY_SUPPLIER_FILTER}
+        onFilter={onFilter}
+        layout="rows"
+        onLayout={jest.fn()}
+        specialtyLabel={(k) => keyLabel(index, k, "ar", displayCategory)}
+        mineIds={new Set()}
+        onOpen={jest.fn()}
+      />
+    )
     await flush()
     const options = Array.from(document.querySelectorAll("option")).map((o) => o.textContent)
-    expect(options).toContain("الحديد › حديد التسليح · 1")
+    expect(options).toContain("حديد التسليح · 1")
     expect(options.some((o) => o?.startsWith("خرسانة جاهزة"))).toBe(true)
     expect(document.body.textContent).toContain("حديد التسليح")
     const select = document.querySelectorAll("select")[0] as HTMLSelectElement
     await act(async () => void fireEvent.change(select, { target: { value: rebar } }))
-    expect(text()).toContain("مورد a")
-    expect(text()).not.toContain("مورد b")
+    expect(onFilter).toHaveBeenCalledWith({ ...EMPTY_SUPPLIER_FILTER, specialty: rebar })
     expect(Array.from(missingKeys)).toEqual([])
   })
 })

@@ -84,7 +84,8 @@ export function storedSites(raw: unknown): DeliverySite[] {
     .filter((s) => s.id && s.name)
 }
 
-/** Every place a delivery can go: the stored ones, then the company's warehouses and (with
+/** Every place a delivery can go: the stored ones — a project's site stays whatever the package says, the package change
+ * turns it into an ordinary site (`package-migration-server.ts`) and never hides it — then the company's warehouses and (with
  * Project Management) its projects not stored yet — those carry the city and district read from the
  * project's own location (`placeFromText`), for the buyer to confirm. The workshop's warehouse is a
  * place only with Manufacturing in the package: `mfgOn: false` leaves it out (absent = not asked). */
@@ -109,7 +110,6 @@ export function deliverySites(input: {
     }
   }
   return out
-    .filter((s) => input.pmOn || s.kind !== "project")
     .filter((s) => input.mfgOn !== false || s.kind !== "workshop")
     .sort((a, b) => Number(!!a.retired) - Number(!!b.retired) || a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name, "ar"))
 }

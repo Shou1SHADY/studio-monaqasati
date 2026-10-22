@@ -121,12 +121,12 @@ describe("the save route", () => {
     expect(mockDb.writes.filter(([p]) => p.startsWith("companyModules"))).toHaveLength(0)
   })
 
-  it("a change that touches no record saves without an acknowledgement and leaves one history entry per connector", async () => {
+  it("a change that touches no record saves without an acknowledgement and leaves one history entry per connector, done at once", async () => {
     const res = await save(post({ orgId: ORG, off: ["manufacturing"], needs: { pm: 1, fin: 1, mfg: 0 } }))
     expect(res.status).toBe(200)
     expect(stored()).toMatchObject({ organizationId: ORG, off: ["manufacturing"], needs: { pm: 1, fin: 1, mfg: 0 }, updatedById: "adm", updatedByName: "Admin A" })
     expect(stored()?.history).toHaveLength(1)
-    expect(stored()?.history?.[0]).toMatchObject({ connector: "mfg", to: "off", byId: "adm", state: "pending", applied: {} })
+    expect(stored()?.history?.[0]).toMatchObject({ connector: "mfg", to: "off", byId: "adm", state: "done", applied: {} })
   })
 
   it("a change that touches records is refused until the admin acknowledges it, then saves", async () => {

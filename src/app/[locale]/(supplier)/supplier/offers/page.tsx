@@ -31,7 +31,7 @@ import { Label } from "@/components/ui/label"
 import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Trash2, Calendar, Tag, DollarSign, MessageSquare, Phone, ArrowDown, Box, FileText, CircleDot, Check, AlertCircle, Archive, ChevronDown, ChevronUp, Truck } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, doc, getDoc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore"
+import { collection, query, where, doc, getDoc, updateDoc, addDoc } from "firebase/firestore"
 import { ActRefused, callAct } from "@/lib/supplier-free/act-client"
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
@@ -40,7 +40,7 @@ import { Link } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { faultNames, ownCoverage, priceOffer, pricedProducts, pricingFault, revisePrice, type PricedProduct } from "@/lib/procurement/offer-pricing"
-import { CLOSED_UNAWARDED, asSupplierSees, legacyItemsFromRfq, type RfqProductLike } from "@/lib/procurement/supplier"
+import { CLOSED_UNAWARDED, asSupplierSees } from "@/lib/procurement/supplier"
 import { useSupplierOrdersById } from "@/hooks/useSupplierOrdersById"
 import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
 import { FreeOffers } from "@/components/supplier-free/FreeOffers"
@@ -74,8 +74,6 @@ function LegacySupplierOffersPage() {
   const [archivingId, setArchivingId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
   const [deliveryOffer, setDeliveryOffer] = useState<any | null>(null)
-  const [deliveryPersonName, setDeliveryPersonName] = useState("")
-  const [handoverRecipientName, setHandoverRecipientName] = useState("")
   const [deliveryDate, setDeliveryDate] = useState("")
   const [deliveryNotes, setDeliveryNotes] = useState("")
   const [isSendingDelivery, setIsSendingDelivery] = useState(false)
@@ -132,58 +130,21 @@ function LegacySupplierOffersPage() {
   ;(deliveries || []).forEach((d: any) => { deliveryByOfferId[d.offerId] = d })
 
   const handleSendDelivery = async () => {
-    if (!firestore || !user || !deliveryOffer || !deliveryPersonName.trim() || !deliveryDate) return
+    if (!user || !deliveryOffer?.poId || !deliveryDate) {
+      if (deliveryOffer && !deliveryOffer.poId) toast({ title: t("error_title"), variant: "destructive" })
+      return
+    }
     setIsSendingDelivery(true)
     try {
-      // The items come from the RFQ — an offer has no `products` (bug B1: the
-      // notice used to carry `items: []`, so nothing landed in stock on confirm).
-      let items = legacyItemsFromRfq(null)
-      if (deliveryOffer.rfqId) {
-        try {
-          const rfqSnap = await getDoc(doc(firestore, "rfqs", deliveryOffer.rfqId))
-          items = legacyItemsFromRfq((rfqSnap.data()?.products as RfqProductLike[] | undefined) || null)
-        } catch {
-          items = []
-        }
-      }
-      await addDoc(collection(firestore, "deliveries"), {
-        rfqId: deliveryOffer.rfqId || null,
-        offerId: deliveryOffer.id,
-        projectId: deliveryOffer.projectId || null,
-        contractorOrgId: deliveryOffer.contractorOrgId || deliveryOffer.contractorId,
-        contractorId: deliveryOffer.contractorId || null,
-        supplierOrgId: profile?.organizationId || user.uid,
-        supplierId: user.uid,
-        supplierName: activeCompanyName || t("generic_supplier"),
-        deliveryPersonName: deliveryPersonName.trim(),
-        handoverRecipientName: handoverRecipientName.trim() || null,
-        deliveryDate: new Date(deliveryDate).toISOString(),
-        notes: deliveryNotes.trim() || null,
-        rfqTitle: deliveryOffer.rfqTitle || "",
-        items,
-        status: "pending_confirmation",
-        createdAt: serverTimestamp()
+      const token = await user.getIdToken()
+      const res = await fetch("/api/procurement/notice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ poId: deliveryOffer.poId, deliveryDate, note: deliveryNotes.trim() || null }),
       })
-
-      if (deliveryOffer.contractorId) {
-        await addDoc(collection(firestore, "users", deliveryOffer.contractorId, "notifications"), {
-          userId: deliveryOffer.contractorId,
-          organizationId: deliveryOffer.contractorOrgId || deliveryOffer.contractorId,
-          type: "delivery_notice",
-          i18n: { title: "pn_delivery_notice_title", message: "pn_delivery_notice", params: { rfq: deliveryOffer.rfqTitle || "" } },
-          title: "🚚 إشعار تسليم جديد",
-          message: `قام المورد بإرسال إشعار تسليم لطلب عروض الأسعار: ${deliveryOffer.rfqTitle || ""}`,
-          offerId: deliveryOffer.id,
-          rfqId: deliveryOffer.rfqId || null,
-          createdAt: new Date().toISOString(),
-          read: false
-        })
-      }
-
+      if (!res.ok) throw new Error("notice")
       toast({ title: t("delivery_sent_toast"), description: t("delivery_sent_desc") })
       setDeliveryOffer(null)
-      setDeliveryPersonName("")
-      setHandoverRecipientName("")
       setDeliveryDate("")
       setDeliveryNotes("")
     } catch {
@@ -912,7 +873,7 @@ function LegacySupplierOffersPage() {
       </AlertDialog>
 
       {/* Delivery Notice Dialog */}
-      <Dialog open={!!deliveryOffer} onOpenChange={(open) => { if (!open) { setDeliveryOffer(null); setDeliveryPersonName(""); setHandoverRecipientName(""); setDeliveryDate(""); setDeliveryNotes("") } }}>
+      <Dialog open={!!deliveryOffer} onOpenChange={(open) => { if (!open) { setDeliveryOffer(null); setDeliveryDate(""); setDeliveryNotes("") } }}>
         <DialogContent className={cn("sm:max-w-md", locale === 'ar' ? 'text-right' : 'text-left')} dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
             <DialogTitle className="flex items-center gap-2">
@@ -922,24 +883,6 @@ function LegacySupplierOffersPage() {
             <DialogDescription>{t("delivery_dialog_desc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>{t("delivery_person_label")} <span className="text-destructive">*</span></Label>
-              <Input
-                value={deliveryPersonName}
-                onChange={(e) => setDeliveryPersonName(e.target.value)}
-                placeholder={t("delivery_person_placeholder")}
-                disabled={isSendingDelivery}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("delivery_handover_recipient_label")}</Label>
-              <Input
-                value={handoverRecipientName}
-                onChange={(e) => setHandoverRecipientName(e.target.value)}
-                placeholder={t("delivery_handover_recipient_placeholder")}
-                disabled={isSendingDelivery}
-              />
-            </div>
             <div className="space-y-2">
               <Label>{t("delivery_date_label")} <span className="text-destructive">*</span></Label>
               <input
@@ -967,7 +910,7 @@ function LegacySupplierOffersPage() {
             <Button variant="outline" onClick={() => setDeliveryOffer(null)} disabled={isSendingDelivery}>{t("cancel")}</Button>
             <Button
               onClick={handleSendDelivery}
-              disabled={isSendingDelivery || !deliveryPersonName.trim() || !deliveryDate}
+              disabled={isSendingDelivery || !deliveryDate}
               className="bg-blue-600 hover:bg-blue-700 gap-2"
             >
               {isSendingDelivery ? <Loader2 className="animate-spin" size={16} /> : <Truck size={16} />}

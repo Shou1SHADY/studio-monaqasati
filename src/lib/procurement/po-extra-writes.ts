@@ -1,8 +1,7 @@
 // The order's second-layer acts (R-21, R-24, R-25, R-27, R-29, R-32), each ONE
 // transaction that re-reads the order and re-runs its rule. Procurement's:
-// logging a dispatch made outside the system, a buyer's self-issue under his
-// limit (the limit and Projects' gates re-read inside the transaction),
-// cancelling a remainder with the supplier's fee, the decision on a payment
+// logging a dispatch made outside the system (a buyer's self-issue under his
+// limit is the server's now: /api/procurement/po/self-issue), cancelling a remainder with the supplier's fee, the decision on a payment
 // Finance held, and referring a budget overrun to Projects. Projects': the
 // budget decision and "stop what has not arrived" on a material. Finance's:
 // recording a payment (the advance included) and holding / releasing an
@@ -14,15 +13,12 @@
 
 import { doc, getDoc, runTransaction, serverTimestamp, setDoc, type DocumentReference, type Firestore, type Transaction } from "firebase/firestore"
 import { emitProcEvent, sarText } from "./events"
-import { canCancelRemainder, lineToArrive, poBlocks, round2, type BlockContext } from "./po"
-import { acceptsHoldPrice, advanceAmount, advanceState, closesOnPayment, HOLD_DECISIONS, HOLD_OWNER, holdVariance, type HoldPricePending, budgetOverrun, overrunTotal, pmBudgetAsk, selfIssueRefusal, type HoldReason, type PaymentKind, type PmCancel, type PoFinanceHold, type PoFinancePayment, type PurchaseOrderX } from "./po-extras"
-import { resolvePolicies, type ResolvedPolicies } from "./policies"
+import { canCancelRemainder, lineToArrive, round2 } from "./po"
+import { acceptsHoldPrice, advanceAmount, advanceState, closesOnPayment, HOLD_DECISIONS, HOLD_OWNER, holdVariance, type HoldPricePending, budgetOverrun, overrunTotal, pmBudgetAsk, type HoldReason, type PaymentKind, type PmCancel, type PoFinanceHold, type PoFinancePayment, type PurchaseOrderX } from "./po-extras"
 import { materialKey, PRICE_HISTORY } from "./prices"
-import { approvalGateBlocks } from "./policy-enforce"
 import { readModulesOff } from "../company-modules-reads"
-import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type PoLogEntry, type ProcActor, type PurchaseOrder } from "./types"
-import { advanceOwnerRequired, supplierHasRecord } from "./po-state"
-import { afterApproval, assertActs, ProcWriteError, readGateItems, type WriteOpts } from "./writes"
+import { PURCHASE_ORDERS, type PoLogEntry, type ProcActor, type PurchaseOrder } from "./types"
+import { assertActs, ProcWriteError, type WriteOpts } from "./writes"
 
 export type PoLogAction = PoLogEntry["action"] | "version_accepted" | "advance_owner_approved" | "finance_reminded" | "hold_decided" | "hold_price_asked" | "hold_price_accepted" | "hold_price_refused" | "budget_referred" | "budget_decided" | "stop_requested"
 export type PoLogEntryX = Omit<PoLogEntry, "action"> & { action: PoLogAction }
@@ -85,46 +81,6 @@ export async function logSentOutside(firestore: Firestore, actor: ProcActor, poI
       log: entry(actor, "sent", at, { params: { outside: 1 } }),
     }
   })
-}
-
-export interface SelfIssueInput {
-  /** The screen's `poBlocks` context (split orders need the org's other orders). */
-  blocks?: Omit<BlockContext, "policies" | "now"> | null
-}
-
-/**
- * A buyer issues his own DIRECT order at or under the self-issue limit — no
- * approver, flagged on the order and in the exceptions report. The limit is
- * read from the org's policies INSIDE the transaction (never the screen's), and
- * Projects' gates run on the BOQ lines read there too. Then it sets off what
- * any approval does: Finance's commitment, the receivers, the price history,
- * the send (`afterApproval`).
- */
-export async function selfIssuePurchaseOrder(firestore: Firestore, actor: ProcActor, poId: string, input: SelfIssueInput = {}, opts: WriteOpts = {}): Promise<PurchaseOrderX> {
-  const now = opts.now ?? new Date()
-  const at = now.toISOString()
-  const ref = doc(firestore, PURCHASE_ORDERS, poId) as DocumentReference
-  let policies: ResolvedPolicies = resolvePolicies(null)
-  const po = await runTransaction(firestore, async (tx) => {
-    const po = await readOrder(tx, ref)
-    const settings = await tx.get(doc(firestore, PROCUREMENT_SETTINGS, po.organizationId))
-    policies = resolvePolicies(settings.exists() ? (settings.data() as Partial<ResolvedPolicies>) : null)
-    const blocks = input.blocks ? poBlocks(po, { ...input.blocks, policies, now }).length : 0
-    const pmOff = (await readModulesOff(tx, firestore, po.organizationId)).has("project-management")
-    const gates = approvalGateBlocks(po, pmOff ? [] : await readGateItems(tx, firestore, po), input.blocks?.otherOrders ?? [], pmOff)
-    const refusal = selfIssueRefusal(po, actor, policies.buyerSelfIssueLimit, blocks + gates.length)
-    if (refusal === "over_limit") throw new ProcWriteError("above_limit", { limit: policies.buyerSelfIssueLimit })
-    if (refusal === "blocked") throw gates.length ? new ProcWriteError(gates[0].code, gates[0].params) : new ProcWriteError("blocked")
-    if (refusal === "not_awaiting" || refusal === "returned" || refusal === "retroactive" || refusal === "not_direct") throw new ProcWriteError("wrong_state")
-    if (refusal) throw new ProcWriteError("no_permission")
-    // An advance to a supplier with no supply record waits for the owner here too (PO-14).
-    const needsOwner = advanceOwnerRequired(po, policies, supplierHasRecord(po, input.blocks?.otherOrders ?? [])) && (Number(po.advancePercent) || 0) > 0
-    return commit(tx, ref, po, {
-      patch: { status: "approved", approvedById: actor.uid, approvedByName: actor.name, approvedAt: at, selfIssued: true, ...(needsOwner ? { advanceOwner: { required: true, approvedAt: null } } : {}) },
-      log: entry(actor, "approved", at, { params: { selfIssued: 1, limit: policies.buyerSelfIssueLimit } }),
-    })
-  })
-  return (await afterApproval(firestore, actor, po, policies, opts, at)) as PurchaseOrderX
 }
 
 /** «أكّد الإلغاء مع المورد»: the rest will not arrive, with the fee the supplier

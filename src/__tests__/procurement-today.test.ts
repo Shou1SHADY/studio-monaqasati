@@ -1,15 +1,13 @@
 /**
- * Procurement PRD 3.0 — Today (§7.2): the "needs your decision" queue, the
- * declared waits and the three numbers, derived from the world on every read.
- * Approvals only I can clear float to the top; red before amber before blue
- * inside a tier; the expediter chases and never sees an amount; the owner
- * gets what is routed to him and a view of the rest.
+ * Procurement 2.0 — Today (TDY-02, R-24): the "needs your decision" queue and the declared waits, derived from the world on every
+ * read. RED first, then the nearest date; an order's row says what its next-step sentence says; the expediter chases and never
+ * sees an amount; the owner gets what is routed to him and a view of the rest. (The new rows — RFQ states, far requests, the
+ * escalation, the route strip — are in procurement-v2-today.test.ts; the three numbers in procurement-v2-kpis.test.ts.)
  */
 
-import { TODAY_KEYS, todayKpis, todayTasks, todayWaits, type OfferFact, type ProcWorld, type RfqFact } from "@/lib/procurement/today"
+import { TODAY_KEYS, chipCounts, todayTasks, todayWaits, type OfferFact, type ProcWorld, type RfqFact } from "@/lib/procurement/today"
 import { DEFAULT_POLICIES, type PoLine, type ProcActor, type PurchaseOrder, type ReceiptFact } from "@/lib/procurement/types"
 import { AGREEMENT_EXPIRY_WINDOW_DAYS, type PriceAgreement } from "@/lib/procurement/prices"
-import type { NeedRow } from "@/lib/procurement/need-desk"
 
 const NOW = new Date("2026-09-22T08:00:00Z")
 
@@ -61,19 +59,28 @@ const RECEIVER: ProcActor = { uid: "rcv", name: "Store", isOwner: false, canAppr
 
 const kinds = (w: ProcWorld, a: ProcActor) => todayTasks(w, a, NOW).map((t) => t.kind)
 
-describe("T5a/T5b · approvals — mine float to the top, everybody else's wait", () => {
+describe("appr · approvals — mine are rows, everybody else's wait on the approver", () => {
   const small = po({ id: "s", status: "awaiting_approval", lines: [line({ quantity: 1, unitPrice: 3000 })], approverKind: "manager" })
   const big = po({ id: "b", status: "awaiting_approval", lines: [line({ quantity: 60, unitPrice: 2935 })] })
   const w = world({ orders: [small, big] })
 
   it("the manager approves the small one and sees the big one wait for the owner, with the honest reason", () => {
     const t = todayTasks(w, MANAGER, NOW)
-    expect(t.map((x) => [x.kind, x.id])).toEqual([
-      ["approve", "approve:s"],
-      ["approval_wait", "approval_wait:b"],
-    ])
-    expect(t[0]).toMatchObject({ priority: 0, severity: "amber", group: "po", amount: 3000, subKey: "task.approve.sub", subParams: { preparer: "Sara", ago: 12 }, href: "/contractor/rfqs/orders?po=s", actionKey: "actions.review" })
-    expect(t[1]).toMatchObject({ priority: 3, severity: "blue", subKey: "task.approval_wait.sub.above_limit", subParams: { value: 202515, limit: 150000 }, actionKey: "actions.view" })
+    expect(t.map((x) => [x.kind, x.id])).toEqual([["approve", "approve:s"]])
+    expect(t[0]).toMatchObject({
+      chip: "po",
+      tier: "normal",
+      severity: "blue",
+      due: 0,
+      amount: 3450,
+      basis: "incl",
+      subNs: "ProcOrders",
+      subKey: "step.appr",
+      step: { state: { k: "appr" } },
+      href: "/contractor/rfqs/orders?po=s",
+      actionKey: "actions.approvePo",
+    })
+    expect(todayWaits(w, MANAGER, NOW).filter((x) => x.kind === "approval_wait")).toMatchObject([{ id: "w_approval:b", module: "approver", subKey: "task.approval_wait.sub.above_limit", subParams: { value: 202515, limit: 150000 } }])
   })
 
   it("the owner may approve both — including one he prepared", () => {
@@ -81,45 +88,59 @@ describe("T5a/T5b · approvals — mine float to the top, everybody else's wait"
     expect(kinds(world({ orders: [{ ...small, preparedById: "owner" }] }), OWNER)).toEqual(["approve"])
   })
 
-  it("the preparer sees his own wait with 'own order'; a stranger with no permission sees nothing; the expediter never", () => {
-    const t = todayTasks(w, BUYER, NOW)
-    expect(t.map((x) => [x.kind, x.subKey])).toEqual([
-      ["approval_wait", "task.approval_wait.sub.own_order"],
-      ["approval_wait", "task.approval_wait.sub.own_order"],
-    ])
+  it("the preparer sees his own order wait (own order); a stranger with no permission sees nothing; the expediter never", () => {
+    expect(kinds(w, BUYER)).toEqual([])
+    expect(todayWaits(w, BUYER, NOW).filter((x) => x.kind === "approval_wait").map((x) => x.subKey)).toEqual(["task.approval_wait.sub.own_order", "task.approval_wait.sub.own_order"])
     expect(kinds(w, { ...BUYER, uid: "someone", canPrepare: false })).toEqual([])
+    expect(todayWaits(w, { ...BUYER, uid: "someone", canPrepare: false }, NOW).filter((x) => x.kind === "approval_wait")).toEqual([])
     expect(kinds(w, EXPEDITER)).toEqual([])
+    expect(todayWaits(w, EXPEDITER, NOW).filter((x) => x.kind === "approval_wait")).toEqual([])
   })
 
-  it("a blocked approval is demoted to blue and its subtitle is the first block, from the Procurement namespace", () => {
+  it("a blocked approval says why in place of the step sentence, from the Procurement namespace", () => {
     const t = todayTasks(world({ orders: [small], supplierFacts: { sup1: { orgId: "sup1", hasVatNumber: true, verified: false, crExpiry: null } } }), MANAGER, NOW)[0]
     expect(t).toMatchObject({ kind: "approve", severity: "blue", subNs: "Procurement", subKey: "blocks.supplier_unverified" })
-    // No VAT number is optional (Supplier 1.0 B-11): the approval stays actionable.
+    expect(t.step).toBeUndefined()
+    // No VAT number is optional (Supplier 1.0 B-11): the approval keeps its step sentence.
     const noVat = todayTasks(world({ orders: [small], supplierFacts: { sup1: { orgId: "sup1", hasVatNumber: false, verified: true, crExpiry: null } } }), MANAGER, NOW)[0]
-    expect(noVat).toMatchObject({ kind: "approve", severity: "amber", subKey: "task.approve.sub" })
+    expect(noVat).toMatchObject({ kind: "approve", subKey: "step.appr" })
+  })
+
+  it("an order sent back to its preparer is HIS row — the approvers no longer see «اعتمده» on it", () => {
+    const returned = po({ id: "ret", status: "awaiting_approval", returnedReason: "price", lines: [line({ quantity: 1, unitPrice: 3000 })] })
+    expect(kinds(world({ orders: [returned] }), BUYER)).toEqual(["returned"])
+    expect(kinds(world({ orders: [returned] }), MANAGER)).toEqual(["returned"])
+    expect(todayTasks(world({ orders: [returned] }), BUYER, NOW)[0]).toMatchObject({ actionKey: "actions.resubmit", severity: "amber" })
+    expect(kinds(world({ orders: [returned] }), EXPEDITER)).toEqual([])
   })
 })
 
-describe("T5c–T5e · send, not accepted, late — the chasing tasks", () => {
-  it("approved not sent · sent and silent past the window · late with the open lines listed", () => {
-    const w = world({
-      orders: [
-        po({ id: "a", status: "approved", approvedAt: "2026-09-20T08:00:00Z" }),
-        po({ id: "b", status: "sent", sentAt: "2026-09-20T08:00:00Z" }),
-        po({ id: "c", status: "sent", sentAt: "2026-09-22T06:00:00Z" }), // inside the one-day window → a wait, not a task
-        po({ id: "d", promisedDate: "2026-09-19", lines: [line({ accepted: 40 }), line({ id: "l2", name: "Mesh", unit: "pc", quantity: 10, accepted: 10 })] }),
-      ],
-    })
-    const t = todayTasks(w, MANAGER, NOW)
-    expect(t.map((x) => x.kind)).toEqual(["send", "late", "not_accepted"])
-    expect(t[0]).toMatchObject({ priority: 1, severity: "amber", amount: 280000, actionKey: "actions.send", sortDays: -2 })
-    expect(t[1]).toMatchObject({ priority: 2, severity: "red", titleParams: { number: "PO-2026/014", supplier: "Al-Hadid", days: 3 }, subParams: { lines: "Rebar 12 mm 60 t" }, amount: 60 * 2800, actionKey: "actions.updateDate" })
-    expect(t[2]).toMatchObject({ priority: 2, severity: "amber", titleParams: { days: 2 } })
-    expect(todayWaits(w, MANAGER, NOW).map((x) => [x.kind, x.id])).toEqual([["supplier_acceptance", "w_accept:c"]])
+describe("send · not accepted · late — the chasing rows, red first", () => {
+  const w = world({
+    orders: [
+      po({ id: "a", status: "approved", approvedAt: "2026-09-20T08:00:00Z" }),
+      po({ id: "b", status: "sent", sentAt: "2026-09-20T08:00:00Z" }),
+      po({ id: "c", status: "sent", sentAt: "2026-09-22T06:00:00Z" }), // inside the one-day window → a wait, not a row
+      po({ id: "d", promisedDate: "2026-09-19", lines: [line({ accepted: 40 }), line({ id: "l2", name: "Mesh", unit: "pc", quantity: 10, accepted: 10 })] }),
+    ],
   })
 
-  it("the expediter sees exactly these — and never an amount", () => {
-    const w = world({
+  it("late is red and first; then by date: approved-not-sent, then sent-and-silent", () => {
+    const t = todayTasks(w, MANAGER, NOW)
+    expect(t.map((x) => x.kind)).toEqual(["late", "send", "not_accepted"])
+    expect(t[0]).toMatchObject({ tier: "red", severity: "red", due: -3, amount: 193200, basis: "incl", subKey: "task.late.sub_part", subParams: { days: 3, lines: "Rebar 12 mm 60 t" }, actionKey: "actions.remindSupplier" })
+    expect(t[1]).toMatchObject({ severity: "amber", due: -2, amount: 322000, actionKey: "actions.send", href: "/contractor/rfqs/orders?po=a&act=send" })
+    expect(t[2]).toMatchObject({ severity: "amber", subKey: "step.nacc", step: { params: { days: 2 } }, actionKey: "actions.remindSupplier" })
+    expect(todayWaits(w, MANAGER, NOW).filter((x) => x.module === "supplier").map((x) => x.id)).toEqual(["w_po:b", "w_po:c", "w_po:d"])
+  })
+
+  it("a late order the supplier never notified reads as its step sentence: «المورد متأخر … ولم يُشعر بالتسليم»", () => {
+    const t = todayTasks(world({ orders: [po({ promisedDate: "2026-09-16" })] }), MANAGER, NOW)
+    expect(t).toMatchObject([{ kind: "late", tier: "red", due: -6, subKey: "step.late", step: { state: { k: "late" }, params: { days: 6 } }, actionKey: "actions.remindSupplier" }])
+  })
+
+  it("the expediter sees exactly the chasing rows — and never an amount", () => {
+    const x = world({
       orders: [
         po({ id: "a", status: "approved" }),
         po({ id: "b", status: "sent", sentAt: "2026-09-15T08:00:00Z" }),
@@ -131,14 +152,13 @@ describe("T5c–T5e · send, not accepted, late — the chasing tasks", () => {
       receipts: [receipt({ id: "n", status: "pending_confirmation", deliveryDate: "2026-09-24" }), receipt({ id: "today" })],
       rfqs: [rfq({ status: "Draft" })],
     })
-    const t = todayTasks(w, EXPEDITER, NOW)
-    expect(t.map((x) => x.kind).sort()).toEqual(["late", "not_accepted", "notice_forward", "send"])
-    expect(t.every((x) => x.amount === null)).toBe(true)
-    expect(todayKpis(w, EXPEDITER, NOW).tiles.every((k) => k.unit === "count")).toBe(true)
+    const t = todayTasks(x, EXPEDITER, NOW)
+    expect(t.map((r) => r.kind).sort()).toEqual(["late", "not_accepted", "notice_forward", "send"])
+    expect(t.every((r) => r.amount === null && r.basis === null)).toBe(true)
   })
 })
 
-describe("T5h/T5i/T10 · confirm before the date · rejected at the gate · rate", () => {
+describe("confirm before the date · rejected at the gate · rate", () => {
   it("a poor on-time supplier due within two days gets a pre-emptive confirm; a good one does not", () => {
     // Three earlier orders of the same supplier, two of them late → 33 % on time.
     const history = [
@@ -151,36 +171,36 @@ describe("T5h/T5i/T10 · confirm before the date · rejected at the gate · rate
     const due = po({ id: "due", promisedDate: "2026-09-23" })
     const t = todayTasks(world({ orders: [...history, due], receipts }), MANAGER, NOW).filter((x) => x.kind === "confirm_before_date")
     expect(t).toHaveLength(1)
-    expect(t[0]).toMatchObject({ severity: "blue", titleParams: { inDays: 1 }, subParams: { percent: 33 }, amount: null }) // 2 late of the 3 with a verdict (the due one is not judged yet)
-    // With no record at all: no task (null is not "poor").
+    expect(t[0]).toMatchObject({ severity: "blue", due: 1, titleParams: { inDays: 1 }, subParams: { percent: 33 }, amount: null }) // 2 late of the 3 with a verdict (the due one is not judged yet)
+    // With no record at all: no row (null is not "poor").
     expect(kinds(world({ orders: [due] }), MANAGER)).toEqual([])
     // An expediter is not asked to confirm ahead.
     expect(kinds(world({ orders: [...history, due], receipts }), EXPEDITER)).toEqual([])
   })
 
-  it("a rejected line with no decision is a priority-1 amber decision, carrying the reason code and the value", () => {
+  it("a rejected line with no decision is a RED row, carrying the reason code and the value; «اطلب استبدالاً»", () => {
     const j = po({ id: "j", lines: [line({ accepted: 90, rejected: 10 })] })
     const w = world({ orders: [j], receipts: [receipt({ poId: "j", confirmedAt: "2026-09-20T08:00:00Z", lines: [{ poLineId: "l1", name: "Rebar 12 mm", unit: "t", noticeQuantity: 100, counted: 100, accepted: 90, rejected: 10, held: 0, rejectReason: "damaged" }] })] })
     const t = todayTasks(w, MANAGER, NOW)
     expect(t.map((x) => x.kind)).toEqual(["reject_decide"])
-    expect(t[0]).toMatchObject({ priority: 1, severity: "amber", group: "delivery", titleParams: { qty: 10, unit: "t", name: "Rebar 12 mm" }, amount: 28000, reasonCode: "damaged", actionKey: "actions.decide" })
+    expect(t[0]).toMatchObject({ chip: "po", tier: "red", severity: "red", titleParams: { number: "PO-2026/014", supplier: "Al-Hadid" }, subKey: "task.reject_decide.sub", subParams: { qty: 10, unit: "t", name: "Rebar 12 mm" }, amount: 32200, basis: "incl", reasonCode: "damaged", actionKey: "actions.askReplace" })
     expect(kinds(world({ orders: [{ ...j, lines: [line({ accepted: 90, rejected: 10, rejectDecision: "replace" })] }] }), MANAGER)).toEqual([])
     // The owner sees it too; the expediter does not.
     expect(kinds(w, OWNER)).toEqual(["reject_decide"])
     expect(kinds(w, EXPEDITER)).toEqual([])
   })
 
-  it("fully received with a receipt → rate (blue, last); Finance's payment is a declared wait", () => {
+  it("fully received with a receipt → rate (blue); Finance's payment is a declared wait on «المالية»", () => {
     const done = po({ id: "r", lines: [line({ accepted: 100 })] })
     const w = world({ orders: [done], receipts: [receipt({ poId: "r", confirmedAt: "2026-09-20T08:00:00Z" })] })
-    expect(todayTasks(w, MANAGER, NOW).map((x) => [x.kind, x.priority, x.severity])).toEqual([["rate", 3, "blue"]])
-    expect(todayWaits(w, MANAGER, NOW).map((x) => [x.kind, x.module])).toEqual([["finance_payment", "finance"]])
+    expect(todayTasks(w, MANAGER, NOW).map((x) => [x.kind, x.severity])).toEqual([["rate", "blue"]])
+    expect(todayWaits(w, MANAGER, NOW).map((x) => [x.kind, x.module, x.subKey])).toEqual([["po_step", "finance", "step.unpaid"]])
     expect(kinds(w, EXPEDITER)).toEqual([])
   })
 })
 
-describe("T6/T8/T9/T11 · receipts and notices", () => {
-  it("arrived today rolls up into one row; a pending notice is on the way, overdue when its date passed, flagged when dated after the promise", () => {
+describe("receipts and notices", () => {
+  it("arrived today rolls up into one row; a notice dated after the promise is flagged; one on its way is no decision", () => {
     const w = world({
       orders: [po()],
       receipts: [
@@ -188,21 +208,17 @@ describe("T6/T8/T9/T11 · receipts and notices", () => {
         receipt({ id: "b", docNumber: "GR-2026/032" }),
         receipt({ id: "old", confirmedAt: "2026-09-20T08:00:00Z" }),
         receipt({ id: "n1", status: "pending_confirmation", deliveryDate: "2026-09-24", confirmedAt: null, forwardedTo: { name: "ماجد" } }),
-        receipt({ id: "n2", status: "pending_confirmation", deliveryDate: "2026-09-20", confirmedAt: null, forwardedTo: { name: "ماجد" } }),
         receipt({ id: "n3", status: "pending_confirmation", deliveryDate: "2026-10-02", confirmedAt: null, forwardedTo: { name: "ماجد" } }),
       ],
     })
     const t = todayTasks(w, MANAGER, NOW)
-    // A forwarded notice simply on its way (n1) is no decision: it waits in «يصل خلال 7 أيام».
-    expect(t.map((x) => [x.kind, x.id])).toEqual([
-      ["notice_overdue", "notice_overdue:n2"],
-      ["notice_late_date", "notice_late_date:n3"],
-      ["arrived_today", "arrived:2026-09-22"],
+    expect(t.map((x) => [x.kind, x.id, x.chip])).toEqual([
+      ["arrived_today", "arrived:2026-09-22", "rcv"],
+      ["notice_late_date", "notice_late_date:n3", "rcv"],
     ])
-    expect(t[0]).toMatchObject({ priority: 1, severity: "red", subParams: { number: "PO-2026/014", date: "2026-09-20", daysAgo: 2 }, href: "/contractor/goods-received?tab=incoming&delivery=n2", actionKey: "actions.openNotice" }) // PUR-09 #6: it opens the notice, so it says so
-    expect(t[1]).toMatchObject({ priority: 1, severity: "amber", titleParams: { supplier: "Al-Hadid", days: 2 }, subParams: { promised: "2026-09-30" } })
-    expect(t[2]).toMatchObject({ titleParams: { count: 2 }, subKey: "task.arrived_today.sub_flags", subParams: { list: "Al-Hadid GR-2026/031 · Al-Hadid GR-2026/032", rejects: 0, short: 0 }, href: "/contractor/goods-received?tab=log" })
-    // The overdue and late-date rows are for those who see the order's money (the prototype's `see`).
+    expect(t[0]).toMatchObject({ titleParams: { count: 2 }, subKey: "task.arrived_today.sub_flags", subParams: { list: "Al-Hadid GR-2026/031 · Al-Hadid GR-2026/032", rejects: 0 }, href: "/contractor/goods-received?tab=recs" })
+    expect(t[1]).toMatchObject({ severity: "amber", due: 10, titleParams: { supplier: "Al-Hadid", days: 2 }, subParams: { promised: "2026-09-30" }, href: "/contractor/goods-received?delivery=n3", actionKey: "actions.openNotice" })
+    // The late-date row is for those who see the order's money (the prototype's `see`).
     expect(todayTasks(w, RECEIVER, NOW).map((x) => x.kind)).toEqual([])
   })
 
@@ -215,124 +231,15 @@ describe("T6/T8/T9/T11 · receipts and notices", () => {
       ],
     })
     const t = todayTasks(w, MANAGER, NOW)
-    expect(t.map((x) => [x.kind, x.id, x.priority, x.severity])).toEqual([["receipt_no_po", "nopo:m1", 1, "amber"]])
+    expect(t.map((x) => [x.kind, x.id, x.chip, x.severity])).toEqual([["receipt_no_po", "nopo:m1", "rcv", "amber"]])
     expect(kinds(w, EXPEDITER)).toEqual([])
-  })
-})
-
-describe("T3/T4 · RFQ tasks", () => {
-  it("draft · compare and award once closed with pending offers (red past the award cycle) · closed with nothing · closing soon and thin", () => {
-    // No seal (RFQ-03): an RFQ with offers waiting is comparable and awardable the moment they arrive.
-    const w = world({
-      policies: { ...DEFAULT_POLICIES },
-      rfqs: [
-        rfq({ id: "draft", status: "Draft", deadline: null }),
-        rfq({ id: "ready", deadline: "2026-09-21" }),
-        rfq({ id: "stale", deadline: "2026-09-18" }),
-        rfq({ id: "empty", deadline: "2026-09-20", offersCount: 0 }),
-        rfq({ id: "thin", deadline: "2026-09-23", offersCount: 1 }),
-        rfq({ id: "fine", deadline: "2026-09-23", offersCount: 3 }),
-        rfq({ id: "awarded", status: "Awarded", deadline: "2026-09-01" }),
-        rfq({ id: "openfar", deadline: "2026-10-10", offersCount: 0 }),
-      ],
-      offers: [offer({ id: "a", rfqId: "ready", price: "12,500" }), offer({ id: "b", rfqId: "ready", price: "11000" }), offer({ id: "c", rfqId: "ready", status: "مرفوض", price: "9000" }), offer({ id: "d", rfqId: "stale" }), offer({ id: "e", rfqId: "thin" }), offer({ id: "f", rfqId: "fine" }), offer({ id: "g", rfqId: "fine" }), offer({ id: "h", rfqId: "fine" })],
-    })
-    const t = todayTasks(w, MANAGER, NOW)
-    expect(t.find((x) => x.kind === "rfq_draft")).toMatchObject({ href: "/contractor/rfqs/new?edit=draft", actionKey: "actions.openDraft" })
-    expect(t.map((x) => [x.kind, x.id, x.severity])).toEqual([
-      ["rfq_award", "rfq_award:stale", "red"],
-      ["rfq_no_offers", "rfq_no_offers:empty", "red"],
-      ["rfq_award", "rfq_award:ready", "amber"],
-      ["rfq_award", "rfq_award:thin", "amber"],
-      ["rfq_award", "rfq_award:fine", "amber"],
-      ["rfq_draft", "rfq_draft:draft", "blue"], // no deadline → sorts last among the blues
-    ])
-    const ready = t.find((x) => x.id === "rfq_award:ready")!
-    expect(ready).toMatchObject({ group: "rfq", titleParams: { title: "Rebar for Tower A", count: 2 }, subParams: { ago: 1 }, amount: 11000, href: "/contractor/rfqs/ready/offers", actionKey: "actions.compare" })
-    expect(t.find((x) => x.id === "rfq_award:thin")).toMatchObject({ titleParams: { count: 1 }, subKey: "task.rfq_award.sub_open" })
-    // A buyer sees his own (the prototype's `rfqMine`); an expediter none.
-    expect(kinds(w, BUYER)).toHaveLength(0)
-    const his = { ...w, rfqs: w.rfqs.map((r) => ({ ...r, createdByUserId: "buyer" })) }
-    expect(kinds(his, BUYER)).toHaveLength(6)
-    expect(kinds(w, EXPEDITER)).toEqual([])
-  })
-})
-
-describe("ordering — priority, then severity, then age", () => {
-  it("a priority-0 blue approval outranks a priority-2 red late order; within a tier red first, then the oldest", () => {
-    const w = world({
-      orders: [
-        po({ id: "late", promisedDate: "2026-09-19" }),
-        po({ id: "appr", status: "awaiting_approval", lines: [line({ quantity: 1, unitPrice: 100 })] }),
-        po({ id: "send_old", status: "approved", approvedAt: "2026-09-01T08:00:00Z" }),
-        po({ id: "send_new", status: "approved", approvedAt: "2026-09-21T08:00:00Z" }),
-        po({ id: "silent", status: "sent", sentAt: "2026-09-10T08:00:00Z" }),
-      ],
-      supplierFacts: { sup1: { orgId: "sup1", hasVatNumber: false, verified: true, crExpiry: null } },
-    })
-    expect(todayTasks(w, MANAGER, NOW).map((x) => x.id)).toEqual(["approve:appr", "send:send_old", "send:send_new", "late:late", "not_accepted:silent"])
   })
 })
 
 describe("waits — held quantities", () => {
   it("a held line waits on Inventory with its hold reason", () => {
     const w = world({ orders: [po({ lines: [line({ accepted: 90, held: 10 })] })], receipts: [receipt({ lines: [{ poLineId: "l1", name: "Rebar 12 mm", unit: "t", noticeQuantity: 100, counted: 100, accepted: 90, held: 10, holdReason: "certificate" }] })] })
-    expect(todayWaits(w, MANAGER, NOW)).toMatchObject([{ kind: "held_inspection", module: "inventory", titleParams: { qty: 10, unit: "t", name: "Rebar 12 mm" }, reasonCode: "certificate" }])
-  })
-})
-
-describe("KPIs — three per role", () => {
-  const w = world({
-    orders: [
-      po({ id: "live1", lines: [line({ accepted: 40 })] }), // 60 × 2,800 = 168,000 open
-      po({ id: "late1", promisedDate: "2026-09-19", lines: [line({ quantity: 10 })] }), // 28,000 open and late
-      po({ id: "recv", lines: [line({ accepted: 100 })] }), // received: Finance will need 280,000
-      po({ id: "sent", status: "sent", sentAt: "2026-09-21T08:00:00Z", lines: [line({ quantity: 1 })] }), // 2,800 open
-      po({ id: "wait", status: "awaiting_approval", lines: [line({ quantity: 1, unitPrice: 500 })] }),
-      po({ id: "prev", createdAt: "2026-08-01T08:00:00Z", status: "closed", lines: [line({ name: "Cement", unit: "bag", unitPrice: 2500, accepted: 100 })] }),
-      po({ id: "drift", createdAt: "2026-09-15T08:00:00Z", lines: [line({ name: "Cement", unit: "bag", quantity: 10, unitPrice: 2750, accepted: 10 })] }), // received: 27,500; drift (2,750 − 2,500) × 10
-    ],
-    rfqs: [rfq()],
-    offers: [offer()],
-  })
-
-  it("manager: needs (RFQs awaiting award without Manufacturing's requests) · committed with the late part · drift over 30 days", () => {
-    const k = todayKpis(w, MANAGER, NOW)
-    expect(k.kind).toBe("buyer")
-    expect(k.tiles.map((t) => [t.id, t.value, t.unit])).toEqual([
-      ["needs", 1, "count"],
-      ["committed", 168000 + 28000 + 2800, "money"],
-      ["drift", 2500, "money"],
-    ])
-    expect(k.tiles[1]).toMatchObject({ noteKey: "kpi.committed.note_late", noteParams: { amount: 28000, count: 1 }, tone: "bad" })
-    // The rebar orders repeat one price: zero drift, but they widen the base (2,500 over 587,800).
-    expect(k.tiles[2]).toMatchObject({ noteKey: "kpi.drift.note_up", noteParams: { percent: 0.43 }, tone: "warn" })
-    // With the needs desk loaded, the first tile counts the lines still to source and those past their last order day.
-    const row = (key: string, state: NeedRow["state"], lastOrderIn: number | null) => ({ key, state, lastOrderIn, category: null }) as NeedRow
-    const k2 = todayKpis({ ...w, needDesk: { rows: [row("a", "open", -2), row("b", "late", 3), row("c", "rfq", null)], buyers: [], viewerCategories: null } }, MANAGER, NOW)
-    expect(k2.tiles[0]).toMatchObject({ id: "needs", value: 3, labelKey: "kpi.needs.label_requests", noteKey: "kpi.needs.note_overdue", noteParams: { count: 1 }, tone: "bad", href: "/contractor/rfqs/requests?seg=new" })
-  })
-
-  it("owner: awaiting my approval · what Finance will need · late orders", () => {
-    const k = todayKpis(w, OWNER, NOW)
-    expect(k.kind).toBe("owner")
-    expect(k.tiles.map((t) => [t.id, t.value])).toEqual([
-      ["my_approval", 500],
-      ["finance_due", 307500],
-      ["late", 1],
-    ])
-    expect(k.tiles[0]).toMatchObject({ noteKey: "kpi.my_approval.note_some", noteParams: { count: 1 } })
-    expect(k.tiles[2]).toMatchObject({ noteKey: "kpi.late.note_value", noteParams: { amount: 28000 } })
-  })
-
-  it("expediter: counts only — with suppliers · late · sent not accepted", () => {
-    const k = todayKpis(w, EXPEDITER, NOW)
-    expect(k.kind).toBe("expediter")
-    expect(k.tiles.map((t) => [t.id, t.value, t.unit])).toEqual([
-      ["with_suppliers", 2, "count"],
-      ["late", 1, "count"],
-      ["sent_not_accepted", 1, "count"],
-    ])
+    expect(todayWaits(w, MANAGER, NOW).filter((x) => x.kind === "held_inspection")).toMatchObject([{ module: "inventory", titleParams: { qty: 10, unit: "t", name: "Rebar 12 mm" }, reasonCode: "certificate" }])
   })
 })
 
@@ -362,14 +269,7 @@ describe("SS4 `AGR` · an agreement about to end", () => {
   it("reaches the queue inside the renewal window, with the number and what it covers", () => {
     const t = todayTasks(world({ agreements: [agreement()] }), MANAGER, NOW)
     const task = t.find((x) => x.kind === "agreement_expiring")
-    expect(task).toMatchObject({
-      severity: "blue",
-      priority: 3,
-      sortDays: 6,
-      titleParams: { supplier: "الراجحي", inDays: 6 },
-      subParams: { number: "AG-2026/003", materials: 1 },
-      amount: null,
-    })
+    expect(task).toMatchObject({ severity: "blue", chip: "po", due: 6, titleParams: { supplier: "الراجحي", inDays: 6 }, subParams: { number: "AG-2026/003", materials: 1 }, amount: null })
     expect(task?.href).toContain("segment=agreements")
   })
 
@@ -393,39 +293,52 @@ describe("SS4 `AGR` · an agreement about to end", () => {
   })
 })
 
-describe("§5.2-3b · a notice nobody has been told to receive", () => {
+describe("fwd · a notice nobody has been told to receive", () => {
   const pending = (over: Partial<ReceiptFact> = {}) => receipt({ id: "n1", status: "pending_confirmation", confirmedAt: null, deliveryDate: "2026-09-23", ...over })
-  // Seen by somebody who does not chase (the forward task is the chaser's — P-20).
-  const noticeTask = (w: ProcWorld) => todayTasks(w, { ...MANAGER, canExpedite: false }, NOW).find((t) => t.kind === "notice_incoming" || t.kind === "notice_overdue")
+  const fwd = (over: Partial<ReceiptFact>, policies = DEFAULT_POLICIES) => todayTasks({ ...world({ orders: [po()], receipts: [pending(over)] }), policies }, MANAGER, NOW).find((t) => t.kind === "notice_forward")
 
-  it("the chaser gets «حوّل للمستلم»: amber inside the window, red on the day, blue while far — and it leads to the forward dialog", () => {
-    const fwd = (over: Partial<ReceiptFact>) => todayTasks(world({ receipts: [pending(over)] }), MANAGER, NOW).find((t) => t.kind === "notice_forward")
-    expect(fwd({})).toMatchObject({ severity: "amber", priority: 0, actionKey: "actions.forward", href: "/contractor/goods-received?tab=incoming&delivery=n1&forward=1" })
-    expect(fwd({ deliveryDate: "2026-09-22" })).toMatchObject({ severity: "red", priority: 0 })
-    expect(fwd({ deliveryDate: "2026-09-30" })).toMatchObject({ severity: "blue", priority: 2 })
+  it("the chaser gets «حوّل للمستلم»: red when the forward window has closed, amber while it is open — and it leads to the forward dialog", () => {
+    // The auto-forward runs one day before the delivery (policy): tomorrow's delivery is due now.
+    expect(fwd({})).toMatchObject({ chip: "rcv", severity: "red", due: 0, titleParams: { number: "PO-2026/014", supplier: "Al-Hadid" }, actionKey: "actions.forward", href: "/contractor/goods-received?delivery=n1&forward=1" })
+    expect(fwd({ deliveryDate: "2026-09-22" })).toMatchObject({ severity: "red", due: -1 })
+    expect(fwd({ deliveryDate: "2026-09-30" })).toMatchObject({ severity: "amber", due: 7 })
     expect(fwd({ forwardedTo: { name: "ماجد" } })).toBeUndefined()
   })
 
-  it("a notice somebody was told about, still on its way, is not a decision — no row at all", () => {
-    expect(noticeTask(world({ receipts: [pending({ forwardedTo: { name: "ماجد" } })] }))).toBeUndefined()
-    expect(noticeTask(world({ receipts: [pending({ receiverReport: { signedAt: "2026-09-22T06:00:00Z" } })] }))).toBeUndefined()
-    // Nor one nobody was told about, for a viewer who does not chase — the forward task is the chaser's.
-    expect(noticeTask(world({ receipts: [pending()] }))).toBeUndefined()
+  it("carries the place the goods land in and the register's receiver — or says there is none", () => {
+    const w = (facts: Record<string, { place: string | null; receiver: string | null }>) => todayTasks({ ...world({ orders: [po()], receipts: [pending()] }), forwardFacts: facts }, MANAGER, NOW).find((t) => t.kind === "notice_forward")
+    expect(w({ n1: { place: "المستودع الرئيسي", receiver: "ماجد" } })?.subParams).toMatchObject({ place: "المستودع الرئيسي", hasPlace: 1, receiver: "ماجد", hasReceiver: 1, noReceiver: 0 })
+    expect(w({ n1: { place: "فيلا الملقا", receiver: null } })?.subParams).toMatchObject({ hasReceiver: 0, noReceiver: 1 })
   })
 
-  it("carries it on the overdue row too — nobody was ever told", () => {
-    const t = noticeTask(world({ receipts: [pending({ deliveryDate: "2026-09-18" })] }))
-    expect(t).toMatchObject({ kind: "notice_overdue", severity: "red" })
-    expect(t?.subParams.notForwarded).toBe(1)
+  it("a notice somebody was told about is no row — nor one nobody was told about, for a viewer who does not chase", () => {
+    const noChase = (w: ProcWorld) => todayTasks(w, { ...MANAGER, canExpedite: false }, NOW).filter((t) => t.chip === "rcv")
+    expect(noChase(world({ orders: [po()], receipts: [pending({ forwardedTo: { name: "ماجد" } })] }))).toEqual([])
+    expect(noChase(world({ orders: [po()], receipts: [pending({ receiverReport: { signedAt: "2026-09-22T06:00:00Z" } })] }))).toEqual([])
+    expect(noChase(world({ orders: [po()], receipts: [pending()] }))).toEqual([])
   })
 
   it("honours a wider window from the policy", () => {
-    const w = { ...world({ receipts: [pending({ deliveryDate: "2026-09-27" })] }), policies: { ...DEFAULT_POLICIES, forwardWindowDays: 7 } }
-    expect(todayTasks(w, MANAGER, NOW).find((t) => t.kind === "notice_forward")).toMatchObject({ severity: "amber", priority: 0 })
+    expect(fwd({ deliveryDate: "2026-09-27" }, { ...DEFAULT_POLICIES, forwardWindowDays: 7 })).toMatchObject({ severity: "red", due: -2 })
   })
 })
 
-describe("TODAY_KEYS — every key the queue and the tiles emit is declared", () => {
+describe("chips", () => {
+  it("every row sits in exactly one chip and the counts add up", () => {
+    const w = world({
+      orders: [po({ id: "a", status: "awaiting_approval", lines: [line({ quantity: 1, unitPrice: 100 })] }), po({ id: "late", promisedDate: "2026-09-19" })],
+      receipts: [receipt({ id: "n", status: "pending_confirmation", deliveryDate: "2026-09-24", poId: "elsewhere" })],
+      rfqs: [rfq({ id: "x", status: "Draft" })],
+    })
+    const t = todayTasks(w, MANAGER, NOW)
+    const c = chipCounts(t)
+    expect(c.all).toBe(t.length)
+    expect(c.req + c.rfq + c.po + c.rcv).toBe(c.all)
+    expect(c).toMatchObject({ rfq: 1, po: 2, rcv: 1 })
+  })
+})
+
+describe("TODAY_KEYS — every key the queue emits is declared", () => {
   it("emitted keys ⊆ TODAY_KEYS", () => {
     const w = world({
       orders: [
@@ -449,17 +362,14 @@ describe("TODAY_KEYS — every key the queue and the tiles emit is declared", ()
         used.add(t.titleKey)
         if (t.subNs === "ProcToday") used.add(t.subKey)
         used.add(t.actionKey)
+        if (t.secondary) used.add(t.secondary.actionKey)
       }
       for (const x of todayWaits(w, a, NOW)) {
         used.add(x.titleKey)
-        used.add(x.subKey)
-      }
-      for (const k of todayKpis(w, a, NOW).tiles) {
-        used.add(k.labelKey)
-        used.add(k.noteKey)
+        if (!x.step) used.add(x.subKey)
       }
     }
     expect([...used].filter((k) => !declared.has(k))).toEqual([])
-    expect(used.size).toBeGreaterThan(40)
+    expect(used.size).toBeGreaterThan(15)
   })
 })

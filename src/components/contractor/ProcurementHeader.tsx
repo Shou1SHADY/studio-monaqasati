@@ -25,6 +25,7 @@ import { useProcurementShell } from "@/hooks/useProcurementShell"
 import { useProcurementNavBadges } from "@/hooks/useProcurementNavBadges"
 import { useAutoForwardTick } from "@/hooks/useAutoForwardTick"
 import { PROC_TABS, activeProcTab, visibleProcTabs } from "@/lib/procurement/shell"
+import type { KpiTile } from "@/lib/procurement/kpis"
 import { displayCategory } from "@/lib/constants"
 import { sarLtr } from "@/lib/riyal"
 import { ServiceOrderDialog } from "@/components/procurement/ServiceOrderDialog"
@@ -56,6 +57,14 @@ const compact = (n: number) => {
   const abs = Math.abs(n)
   const figure = abs >= 1_000_000 ? `${(n / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M` : abs >= 10_000 ? `${(n / 1_000).toFixed(abs >= 100_000 ? 0 : 1)}K` : Math.round(n).toLocaleString("en-US")
   return sarLtr(figure)
+}
+
+/** The word after a tile's figure: «سطراً» · «شامل الضريبة» · «%» · «أمراً» — a money figure always says what it includes (G-18). */
+function kpiUnit(k: KpiTile, t: (key: string, values?: Record<string, string | number>) => string): string {
+  if (k.unit === "lines") return t("kpi.unit_lines", { count: k.value })
+  if (k.unit === "money") return t("kpi.basis_incl")
+  if (k.unit === "percent") return "%"
+  return t(k.id === "committed" ? "kpi.unit_orders" : "kpi.unit_items", { count: k.value })
 }
 
 /** `action` is the page's own act — hidden from the owner of a company with a
@@ -90,8 +99,8 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
   const kpis: ProcurementKpi[] = (shell.kpis?.tiles ?? []).map((k) => ({
     id: k.id,
     label: tToday(k.labelKey),
-    value: k.unit === "money" ? compact(k.value) : k.value.toLocaleString("en-US"),
-    unit: (k.unit as string) === "lines" || (k.unit as string) === "requests" ? tToday("kpi.requests", { count: k.value }) : undefined,
+    value: k.unit === "money" ? compact(k.value) : k.unit === "percent" ? `${k.value > 0 ? "+" : ""}${k.value.toFixed(1)}` : k.value.toLocaleString("en-US"),
+    unit: kpiUnit(k, tToday),
     note: tToday(k.noteKey, k.noteParams),
     tone: k.tone,
     href: k.href,

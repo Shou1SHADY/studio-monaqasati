@@ -34,28 +34,26 @@ import { openRequestsBySite } from "@/lib/procurement/site-counts"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { roleColumns, roleRows, type RoleCell, type RoleRowId } from "@/lib/procurement/roles-matrix"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
-import { DEFAULT_RESOLVED_POLICIES, NOTICE_ROUTINGS, POLICY_OWNER, resolvePolicies, type PolicyOwner, type ResolvedPolicies } from "@/lib/procurement/policies"
+import { DEFAULT_RESOLVED_POLICIES, POLICY_OWNER, resolvePolicies, type PolicyOwner, type ResolvedPolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_SETTINGS } from "@/lib/procurement/types"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 
 type Unit = "sar" | "percent" | "count" | "days"
-type SwitchKey = "buyerReceives" | "sendOnApproval" | "ownerStepsBack" | "advanceUnknownSupplierOwner"
-type NumericKey = Exclude<keyof ResolvedPolicies, SwitchKey | "noticeRouting">
+type SwitchKey = "sendOnApproval" | "ownerStepsBack" | "advanceUnknownSupplierOwner"
+// The receiver alone counts and confirms (G-09): the 1.5 receiving policies are not offered here.
+type NumericKey = { [K in keyof ResolvedPolicies]: ResolvedPolicies[K] extends number ? K : never }[keyof ResolvedPolicies]
 type PairId = "cycle" | "competition" | "direct"
 type Row =
   | { kind: "number"; key: NumericKey; unit: Unit }
   | { kind: "switch"; key: SwitchKey }
-  | { kind: "routing" }
   | { kind: "pair"; id: PairId; keys: [NumericKey, NumericKey]; units: [Unit, Unit] }
   | { kind: "fixed"; id: "awardBeforeDeadline"; owner: PolicyOwner }
 
 /** The prototype's order (§6.4): what shapes a quote, the clocks of buying, the limits, then the receipt. */
 const ROWS: Row[] = [
   { kind: "fixed", id: "awardBeforeDeadline", owner: "gov" },
-  { kind: "routing" },
   { kind: "number", key: "forwardWindowDays", unit: "days" },
-  { kind: "switch", key: "buyerReceives" },
   { kind: "number", key: "rfqDefaultDays", unit: "days" },
   { kind: "pair", id: "cycle", keys: ["rfqWindowDays", "awardCycleDays"], units: ["days", "days"] },
   { kind: "number", key: "supplyLeadDays", unit: "days" },
@@ -97,10 +95,8 @@ const schema = z.object({
   escalateAfterDays: z.coerce.number().int().min(1),
   tieBandPct: z.coerce.number().min(0).max(100),
   sendOnApproval: z.boolean(),
-  buyerReceives: z.boolean(),
   ownerStepsBack: z.boolean(),
   advanceUnknownSupplierOwner: z.boolean(),
-  noticeRouting: z.enum(NOTICE_ROUTINGS),
 })
 type FormValues = z.infer<typeof schema>
 
@@ -216,7 +212,7 @@ export function ProcurementSettings() {
   }
 
   const rowVisible = (row: Row): boolean => {
-    if (row.kind === "fixed" || row.kind === "routing" || row.kind === "switch") return true
+    if (row.kind === "fixed" || row.kind === "switch") return true
     const keys: NumericKey[] = row.kind === "pair" ? row.keys : [row.key]
     const units: Unit[] = row.kind === "pair" ? row.units : [row.unit]
     if (units.includes("sar") && !actor.seesPrices) return false
@@ -259,43 +255,6 @@ export function ProcurementSettings() {
                               </div>
                               <p className="text-[11px] leading-relaxed text-muted-foreground">{t(`policy.${row.id}.desc`)}</p>
                             </div>
-                          )
-                        if (row.kind === "routing")
-                          return (
-                            <FormField
-                              key="noticeRouting"
-                              control={form.control}
-                              name="noticeRouting"
-                              render={({ field }) => (
-                                <FormItem className="grid gap-2 px-4 py-3">
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <FormLabel className="text-sm font-bold text-foreground">{t("policy.noticeRouting.label")}</FormLabel>
-                                    {ownerChip("noticeRouting")}
-                                  </div>
-                                  <FormDescription className="text-[11px] leading-relaxed">{t("policy.noticeRouting.desc")}</FormDescription>
-                                  <FormControl>
-                                    <div role="radiogroup" aria-label={t("policy.noticeRouting.label")} className="inline-flex flex-wrap gap-1 rounded-xl border bg-card p-1">
-                                      {NOTICE_ROUTINGS.map((r) => (
-                                        <button
-                                          key={r}
-                                          type="button"
-                                          role="radio"
-                                          aria-checked={field.value === r}
-                                          disabled={!mayEdit}
-                                          onClick={() => field.onChange(r)}
-                                          className={cn(
-                                            "min-h-9 rounded-lg px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed",
-                                            field.value === r ? "bg-module/10 text-module" : "text-muted-foreground hover:text-foreground"
-                                          )}
-                                        >
-                                          {t(`policy.noticeRouting.${r}`)}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
                           )
                         if (row.kind === "switch")
                           return (

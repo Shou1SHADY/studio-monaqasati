@@ -21,6 +21,7 @@ import { displayCategory, displayCity } from "@/lib/constants"
 import { SupplierWriteError, addFromDirectory } from "@/lib/procurement/supplier-writes"
 import type { ProcActor } from "@/lib/procurement/types"
 import type { PlatformSupplier } from "@/hooks/useSupplierDirectory"
+import type { SupplierCard } from "@/lib/procurement/supplier-stats"
 import { Stars } from "./SupplierFileDrawer"
 
 function Stat({ label, children }: { label: string; children: ReactNode }) {
@@ -41,7 +42,10 @@ export function DirectoryDrawer({
   canManage,
   ownerHasTeam = false,
   onOpenOurs,
+  card,
 }: {
+  /** What the platform knows of him across all buyers — operations completed, on-time, the rating computed from his orders. */
+  card?: SupplierCard | null
   supplier: PlatformSupplier | null
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -115,10 +119,16 @@ export function DirectoryDrawer({
             </>
           )}
 
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <Stat label={t("dir.on_platform_since")}>{supplier.since ? supplier.since.slice(0, 4) : "—"}</Stat>
-            <Stat label={t("col.contractor_rating")}>
-              {supplier.rating ? (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <Stat label={t("file2.stat_ops")}>{card ? <span dir="ltr">{card.completedOps.toLocaleString("en-US")}</span> : "—"}</Stat>
+            <Stat label={t("file2.stat_on_time")}>{card?.onTimePercent != null ? <span dir="ltr">{card.onTimePercent}%</span> : "—"}</Stat>
+            <Stat label={t("file2.stat_rating")}>
+              {card?.rating != null ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Stars value={card.rating} />
+                  <span dir="ltr">{card.rating.toFixed(1)}</span>
+                </span>
+              ) : supplier.rating ? (
                 <span className="inline-flex items-center gap-1.5">
                   <Stars value={supplier.rating.avg} />
                   <span dir="ltr">{supplier.rating.avg.toFixed(1)}</span>
@@ -146,6 +156,7 @@ export function DirectoryDrawer({
               )}
             </div>
             <KeyValueRow label={t("col.city")} value={supplier.city ? displayCity(supplier.city, locale) : "—"} />
+            <KeyValueRow label={t("dir.on_platform_since")} value={supplier.since ? supplier.since.slice(0, 4) : "—"} />
           </DrawerSection>
 
           <DrawerSection title={t("dir.before_adding")}>

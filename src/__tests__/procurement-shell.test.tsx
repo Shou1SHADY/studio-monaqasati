@@ -15,11 +15,10 @@ import fs from "fs"
 import path from "path"
 import type { ReactNode } from "react"
 import { DEFAULT_POLICIES, type PoLine, type ProcActor, type PurchaseOrder, type ReceiptFact } from "@/lib/procurement/types"
-import { RECEIPT_HREF, type ProcWorld } from "@/lib/procurement/today"
+
 import {
   PROC_TABS,
   activeProcTab,
-  arrivingThisWeek,
   csvCell,
   csvText,
   resolveReport,
@@ -162,10 +161,11 @@ jest.mock("@/hooks/useProcurementNeeds", () => ({
   useProcurementNeeds: () => ({ loading: false, rows: [], needs: [], buyers: [], viewerCategories: null, ownerHasTeam: false, mfgByKey: new Map(), mfgRequests: {}, products: [], mfgSettings: {}, stockLoading: false, onHand: () => null }),
 }))
 jest.mock("@/hooks/useRfqQueries", () => ({ useRfqQueries: () => [] }))
+jest.mock("@/hooks/useIncomingDocs", () => ({ useIncomingDocs: () => ({ docs: [], loading: false }) }))
 jest.mock("@/hooks/useCompanyModules", () => ({ useModules: () => ({ on: () => true, off: new Set(), loading: false, linkable: () => true }) }))
 jest.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }))
 
-import { ProcurementToday } from "@/components/procurement/ProcurementToday"
+import { CLIP_TASKS, CLIP_WAITS, ProcurementToday } from "@/components/procurement/ProcurementToday"
 
 // ---------------------------------------------------------------------------
 // Fixtures — the same shapes the domain tests use
@@ -207,7 +207,6 @@ const po = (over: Partial<PurchaseOrder> = {}): PurchaseOrder => ({
   ...over,
 })
 const receipt = (over: Partial<ReceiptFact> = {}): ReceiptFact => ({ id: "d1", status: "pending_confirmation", poId: "po1", poNumber: "PO-2026/014", supplierName: "Al-Hadid", deliveryDate: day(2), lines: [{ poLineId: "l1", name: "Rebar 12 mm", unit: "t", noticeQuantity: 40 }], ...over })
-const world = (over: Partial<ProcWorld> = {}): ProcWorld => ({ orders: [], receipts: [], rfqs: [], offers: [], policies: DEFAULT_POLICIES, supplierFacts: {}, ...over })
 
 const MANAGER: ProcActor = { uid: "mgr", name: "Manager", isOwner: false, canApprove: true, canPrepare: true, canExpedite: true, canReceive: false, seesPrices: true }
 const EXPEDITER: ProcActor = { uid: "exp", name: "Exp", isOwner: false, canApprove: false, canPrepare: false, canExpedite: true, canReceive: false, seesPrices: false }
@@ -282,16 +281,6 @@ describe("SHELL-03 · the dashboard's two roll-ups", () => {
 
   it("attention = late + sent past the acceptance window + approved and not sent", () => {
     expect(workQueueCounts(orders, DEFAULT_POLICIES, { uid: "mgr", isOwner: false }, NOW).attention).toEqual({ late: 1, notAccepted: 1, notSent: 1, total: 3 })
-  })
-})
-
-describe("SHELL-04 · arriving this week", () => {
-  it("lists pending notices dated inside the coming seven days, with the notice's lines — the overdue are Today's «متأخر» (PUR-07)", () => {
-    const w = world({ orders: [po()], receipts: [receipt({ id: "soon", deliveryDate: day(6) }), receipt({ id: "near", deliveryDate: day(0), lines: [] }), receipt({ id: "far", deliveryDate: day(9) }), receipt({ id: "over", deliveryDate: day(-1), lines: [] }), receipt({ id: "done", status: "confirmed" })] })
-    const rows = arrivingThisWeek(w, NOW, RECEIPT_HREF)
-    expect(rows.map((r) => r.id)).toEqual(["near", "soon"])
-    expect(rows[0]).toMatchObject({ inDays: 0, lines: "Rebar 12 mm 100 t", number: "PO-2026/014", href: "/contractor/goods-received?tab=incoming&delivery=near" })
-    expect(rows[1].lines).toBe("Rebar 12 mm 40 t")
   })
 })
 
@@ -382,34 +371,82 @@ describe("SHELL-06 · Today renders over a fake world", () => {
     mockWorld = loaded(busyWorld())
     const { container } = render(<ProcurementToday />)
     expect(container.textContent).not.toMatch(/MISSING/)
-    // The approval floats to the top, with its amount and a filled button.
-    const rows = container.querySelectorAll("section:first-of-type ul li")
-    expect(rows.length).toBeGreaterThanOrEqual(5)
-    expect(rows[0].textContent).toContain(locale === "ar" ? "ط.ش-2026/001" : "PO-2026/001")
-    expect(rows[0].querySelector("a")?.getAttribute("href")).toBe("/contractor/rfqs/orders?po=a")
-    expect(rows[0].textContent).toContain("3,000")
-    // Three KPI tiles, each a link.
-    const kpis = container.querySelectorAll("ul[aria-label] li a")
-    expect(kpis).toHaveLength(3)
-    // A wait on the supplier and one on Inventory (held for inspection), no buttons in that panel.
-    const waitsPanel = container.querySelectorAll("section")[1]
-    expect(waitsPanel.querySelectorAll("a")).toHaveLength(0)
-    expect(waitsPanel.textContent).toContain(locale === "ar" ? "ط.ش-2026/019" : "PO-2026/019")
-    expect(waitsPanel.textContent).toContain(locale === "ar" ? "ط.ش-2026/020" : "PO-2026/020")
-    // Arriving this week: listed by order (P-28) — the notice on PO-2026/007 opens its order.
-    const arriving = container.querySelectorAll("section")[2]
-    expect(arriving.querySelector("a")?.getAttribute("href")).toBe("/contractor/rfqs/orders?po=g")
+    const num = (n: string) => (locale === "ar" ? n.replace("PO-", "ط.ش-") : n)
+    // RED first: the RFQ closed with an offer (award by tomorrow) leads, with the lowest complete offer incl. VAT; the approval (blue) follows the reds.
+    const rows = container.querySelectorAll('[data-testid="today-decisions"] ul li')
+    expect(rows.length).toBeGreaterThanOrEqual(4)
+    expect(rows[0].getAttribute("data-testid")).toBe("today-rfq_award")
+    expect(rows[0].textContent).toContain("Cement for Tower B")
+    expect(rows[0].textContent).toContain("10,350")
+    expect(rows[0].querySelector("a")?.getAttribute("href")).toBe("/contractor/rfqs/r9/offers")
+    const order = Array.from(rows).map((r) => r.getAttribute("data-testid"))
+    expect(order.indexOf("today-rfq_award")).toBeLessThan(order.indexOf("today-approve"))
+    expect(order).toContain("today-notice_forward")
+    const approve = container.querySelector('[data-testid="today-approve"]')
+    expect(approve?.textContent).toContain(num("PO-2026/001"))
+    // The amount carries its basis (G-18): 3,000 + 15 % VAT.
+    expect(approve?.textContent).toContain("3,450")
+    expect(approve?.textContent).toContain(locale === "ar" ? "شامل الضريبة" : "incl. VAT")
+    // Three KPI tiles, each a link — and the five-tile route strip, each a link.
+    expect(container.querySelectorAll("ul[aria-label]")[0].querySelectorAll("li a")).toHaveLength(3)
+    expect(container.querySelectorAll('[data-testid="today-flow"] li a')).toHaveLength(5)
+    // The waits: the supplier's acceptance (PO-019) and Inventory's inspection (PO-020), each tagged with who holds it.
+    const waits = container.querySelector('[data-testid="today-waits"]')?.textContent || ""
+    expect(waits).toContain(num("PO-2026/019"))
+    expect(waits).toContain(num("PO-2026/020"))
+    expect(waits).toContain(locale === "ar" ? "المورد" : "Supplier")
+    expect(waits).toContain(locale === "ar" ? "المخزون" : "Inventory")
+    // The invitations panel is there, empty in this world.
+    expect(container.querySelector('[data-testid="today-invitations"]')).not.toBeNull()
   })
 
-  it("the group chips filter the list and show counts", () => {
+  it("the five chips always show a count and filter the list", () => {
     mockLocale = "en"
     mockWorld = loaded(busyWorld())
     render(<ProcurementToday />)
-    const chip = screen.getByRole("button", { name: /Quotes/ })
+    const labels = ["All", "Incoming", "Offers", "Orders", "Receiving"]
+    for (const l of labels) expect(screen.getByRole("tab", { name: new RegExp(`^${l}\\s*\\d+$`) })).toBeInTheDocument()
+    const chip = screen.getByRole("tab", { name: /^Offers\s*\d+$/ })
     fireEvent.click(chip)
-    expect(chip).toHaveAttribute("aria-pressed", "true")
-    expect(screen.getByText(/Cement for Tower B/)).toBeInTheDocument()
+    expect(chip).toHaveAttribute("aria-selected", "true")
+    expect(screen.getAllByText(/Cement for Tower B/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/PO-2026\/001/)).not.toBeInTheDocument()
+  })
+
+  it("the three numbers above the page: lines · money incl. VAT · a signed percent — and the expediter's as counts", () => {
+    mockLocale = "en"
+    mockWorld = loaded(busyWorld())
+    const seeing = render(<ProcurementToday />)
+    const tiles = Array.from(seeing.container.querySelectorAll("ul[aria-label]")[0].querySelectorAll("li a")).map((a) => a.textContent || "")
+    expect(tiles[0]).toContain("Need without a PO")
+    expect(tiles[0]).toMatch(/lines?/)
+    expect(tiles[1]).toContain("Committed, not arrived")
+    expect(tiles[1]).toContain("incl. VAT")
+    expect(tiles[2]).toContain("Price vs last purchase")
+    expect(tiles[2]).toContain("%")
+    seeing.unmount()
+    mockLocale = "en"
+    mockWorld = loaded({ ...busyWorld(), actor: EXPEDITER })
+    const blind = render(<ProcurementToday />)
+    const counts = Array.from(blind.container.querySelectorAll("ul[aria-label]")[0].querySelectorAll("li a")).map((a) => a.textContent || "")
+    expect(counts[1]).toMatch(/orders?/)
+    expect(counts.join(" ")).not.toMatch(/incl\. VAT|%|⃁/)
+  })
+
+  it("clips the decisions at seven and the waits at six, each with «Show N more»", () => {
+    mockLocale = "en"
+    const many = Array.from({ length: 10 }, (_, i) => po({ id: `late${i}`, docNumber: `PO-2026/1${String(i).padStart(2, "0")}`, promisedDate: day(-(i + 1)) }))
+    const waiting = Array.from({ length: 9 }, (_, i) => po({ id: `sent${i}`, docNumber: `PO-2026/2${String(i).padStart(2, "0")}`, status: "sent", sentAt: iso(0) }))
+    mockWorld = loaded({ orders: [...many, ...waiting] })
+    const { container } = render(<ProcurementToday />)
+    const rows = () => container.querySelectorAll('[data-testid="today-decisions"] ul li').length
+    expect(rows()).toBe(CLIP_TASKS)
+    fireEvent.click(screen.getByRole("button", { name: /Show 3 more/ }))
+    expect(rows()).toBe(10)
+    const waitRows = () => container.querySelectorAll('[data-testid="today-waits"] ul li').length
+    expect(waitRows()).toBe(CLIP_WAITS)
+    fireEvent.click(screen.getByRole("button", { name: /Show 13 more/ }))
+    expect(waitRows()).toBe(19)
   })
 
   it("the head carries the RFQs page's «new RFQ» button for whoever runs RFQs — and none for an expediter (PUR-02)", () => {
@@ -431,7 +468,7 @@ describe("SHELL-06 · Today renders over a fake world", () => {
     const { container } = render(<ProcurementToday />)
     expect(container.textContent).not.toMatch(/MISSING/)
     expect(container.textContent).not.toContain("⃁")
-    expect(container.querySelectorAll("ul[aria-label] li a")).toHaveLength(3)
+    expect(container.querySelectorAll("ul[aria-label]")[0].querySelectorAll("li a")).toHaveLength(3)
   })
 
   it("an empty world says nothing is waiting, in both panels", () => {
@@ -440,7 +477,7 @@ describe("SHELL-06 · Today renders over a fake world", () => {
     const { container } = render(<ProcurementToday />)
     expect(screen.getByText("Nothing is waiting on you")).toBeInTheDocument()
     expect(screen.getByText("Nothing pending elsewhere")).toBeInTheDocument()
-    expect(screen.getByText("No deliveries due this week")).toBeInTheDocument()
+    expect(screen.getByText("No invitations yet")).toBeInTheDocument()
     expect(container.textContent).not.toMatch(/MISSING/)
   })
 

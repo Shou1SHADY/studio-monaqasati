@@ -1,8 +1,8 @@
 /**
  * The final parity check of Procurement's front (V5-proc-front 02–07, 10):
  * prices sealed until the deadline by default (01, the owner's decision),
- * a buyer's RFQs and Today are his own, an unsealed round with offers asks
- * for the award before its deadline, the draft names its number and says its
+ * a buyer's RFQs and Today are his own, an unsealed round that reaches the
+ * competition limit says it can be awarded before its deadline, the draft names its number and says its
  * lines are held, the owner's roll-up opens the needs, the sample wait names
  * the sample, and a buyer's workshop shortfalls follow his categories.
  */
@@ -76,21 +76,23 @@ describe("V5-03 · a buyer's order rows on Today are the orders he prepared", ()
   })
 })
 
-describe("V5-04 · compare and award as soon as the offers arrive (no seal, RFQ-03)", () => {
-  const w = world({ rfqs: [rfq()], offers: [offer()] })
+describe("V5-04 · compare and award as soon as the offers arrive (no seal, RFQ-03; Procurement 2.0 TDY-03)", () => {
+  const three = [offer(), offer({ id: "o2", price: "13,000" }), offer({ id: "o3", price: "14,000" })]
+  const open = rfq({ number: "RFQ-2026/011", products: [{ name: "Rebar", quantity: 100, unit: "t" }] })
 
-  it("offers before the deadline raise the task, saying the round is still open", () => {
-    const t = todayTasks(w, BUYER, NOW).find((x) => x.kind === "rfq_award")
-    expect(t).toMatchObject({ severity: "amber", subKey: "task.rfq_award.sub_open", subParams: { inDays: 3, hasDate: 1 }, actionKey: "actions.compare" })
+  it("before the deadline the offers raise nothing until the competition limit is reached — then «تستطيع الترسية الآن»", () => {
+    expect(todayTasks(world({ rfqs: [open], offers: [offer()] }), BUYER, NOW).some((x) => x.chip === "rfq")).toBe(false)
+    const t = todayTasks(world({ rfqs: [open], offers: three }), BUYER, NOW).find((x) => x.kind === "rfq_can_award")
+    expect(t).toMatchObject({ severity: "blue", due: 3, titleParams: { ref: "RFQ-2026/011", count: 3 }, subKey: "task.rfq_can_award.sub", actionKey: "actions.compare" })
   })
 
-  it("after the deadline the same task says how long ago it closed", () => {
-    const closed = world({ rfqs: [rfq({ deadline: "2026-09-20" })], offers: [offer()] })
-    expect(todayTasks(closed, BUYER, NOW).find((x) => x.kind === "rfq_award")).toMatchObject({ subKey: "task.rfq_award.sub", subParams: { ago: 2 } })
+  it("after the deadline the same RFQ is «قارن ورسِّ», with the date to award by", () => {
+    const closed = world({ rfqs: [{ ...open, deadline: "2026-09-20" }], offers: [offer()] })
+    expect(todayTasks(closed, BUYER, NOW).find((x) => x.kind === "rfq_award")).toMatchObject({ titleParams: { ref: "RFQ-2026/011", count: 1 }, subKey: "task.rfq_award.sub", subParams: { date: "2026-09-22", when: "today" }, actionKey: "actions.compareAward" })
   })
 
-  it("an early close changes nothing about it", () => {
-    const early = world({ rfqs: [rfq({ closedEarly: { at: "2026-09-21" } })], offers: [offer()] })
+  it("an early close makes it a comparison now", () => {
+    const early = world({ rfqs: [{ ...open, closedEarly: { at: "2026-09-21" } }], offers: [offer()] })
     expect(todayTasks(early, BUYER, NOW).some((x) => x.kind === "rfq_award")).toBe(true)
   })
 })

@@ -1,8 +1,10 @@
 "use client"
 
-// Procurement › Suppliers (PRD 3.0 §7.2, prototype vSup). Four segments: our
-// suppliers (with the invitations we sent), the platform directory, and — for
-// those who see prices only — the price agreements and the price history.
+// Procurement › Suppliers (PRD 2.0 SUP-01..06, prototype vSup). Five segments: our
+// suppliers, the invitations we sent, the platform directory, and — for those who
+// see prices only — the price agreements and the price history. «مورّدونا» and the
+// directory are ONE list with one filter bar (SupplierList); the directory is read
+// a page at a time from the server and never loaded whole into the browser.
 // The manager and the buyer manage the file (add, invite, favour); the
 // expediter reads; so does the owner of a company with a procurement team. A
 // buyer's list is his categories' material suppliers plus every service
@@ -12,7 +14,7 @@
 // `?agreement=` and `?material=` open a drawer, so a notification or a Today
 // row can land on the record itself.
 
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
 import { addDoc, arrayRemove, arrayUnion, collection, doc, query, serverTimestamp, updateDoc, where } from "firebase/firestore"
@@ -38,11 +40,10 @@ import { useToast } from "@/hooks/use-toast"
 import { useProcTeam } from "@/hooks/useProcTeam"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
-import { useSupplierDirectory, type PlatformSupplier } from "@/hooks/useSupplierDirectory"
+import { useOurSuppliers, usePlatformCards, usePlatformSupplier, type PlatformSupplier } from "@/hooks/useSupplierDirectory"
 import { useMaterialTree } from "@/hooks/useMaterialTree"
 import { categoryTree, treeScope, treeSupplier } from "@/lib/materials/category-tree"
-import { keyLabel, subLabel } from "@/lib/materials/subs"
-import { directoryEntries, listedInDirectory } from "@/lib/procurement/directory-listing"
+import { keyLabel, specialtyKeys } from "@/lib/materials/subs"
 import { matchesSearch } from "@/lib/search-text"
 import { displayCategory } from "@/lib/constants"
 import { MFG_PRODUCTS } from "@/lib/manufacturing-engine"
@@ -52,8 +53,7 @@ import {
   SUPPLIER_RECORDS,
   canManageSuppliers,
   favouriteLogEntry,
-  filterDirectory,
-  type OriginFilter,
+  isOffPlatform,
   canRenewAgreements,
   canSignAgreements,
   makeOrBuyKeys,
@@ -67,6 +67,8 @@ import {
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { OurSuppliersTable, type SupplierRow } from "@/components/procurement/OurSuppliersTable"
 import { SupplierDirectory } from "@/components/procurement/SupplierDirectory"
+import type { SupplierLayout } from "@/components/procurement/SupplierList"
+import { EMPTY_SUPPLIER_FILTER, type SupplierFilter } from "@/lib/procurement/supplier-list"
 import { SupplierFileDrawer } from "@/components/procurement/SupplierFileDrawer"
 import { DirectoryDrawer } from "@/components/procurement/DirectoryDrawer"
 import { SupplierInvitations, type InvitationDoc } from "@/components/procurement/SupplierInvitations"
@@ -75,8 +77,9 @@ import { InviteSupplierDialog, type InvitePrefill } from "@/components/procureme
 import { PriceAgreementsView } from "@/components/procurement/PriceAgreementsView"
 import { PriceHistoryView } from "@/components/procurement/PriceHistoryView"
 import { displayAgreementNumber } from "@/lib/procurement/format"
+import type { GuestOfferFact } from "@/lib/procurement/supplier-offplatform"
+import type { PriceOfferLike, PriceRfqLike } from "@/lib/procurement/prices"
 import { useInventoryCatalog } from "@/hooks/useInventoryCatalog"
-import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { supplierInvitationsQuery } from "@/lib/procurement/invite-query"
 
 function fmtDate(val: unknown, locale: string) {
@@ -122,7 +125,7 @@ export default function SuppliersPage() {
   const userDocRef = useMemoFirebase(() => (firestore && user ? doc(firestore, "users", user.uid) : null), [firestore, user])
   const { data: profile } = useDoc<{ favoriteSuppliers?: string[] }>(userDocRef)
   const favoriteIds = useMemo(() => profile?.favoriteSuppliers || [], [profile?.favoriteSuppliers])
-  const { suppliers, loading } = useSupplierDirectory(orgId, favoriteIds, offers)
+  const { suppliers, loading } = useOurSuppliers(orgId, favoriteIds, offers)
   const { index: treeIndex } = useMaterialTree()
 
   const invitationsQ = useMemoFirebase(() => (firestore && orgId ? supplierInvitationsQuery(firestore, orgId) : null), [firestore, orgId])
@@ -167,14 +170,19 @@ export default function SuppliersPage() {
   }
 
   const [searchQuery, setSearchQuery] = useState("")
-  const [originFilter, setOriginFilter] = useState<OriginFilter>("")
+  const [oursFilter, setOursFilter] = useState<SupplierFilter>(EMPTY_SUPPLIER_FILTER)
+  const [dirFilter, setDirFilter] = useState<SupplierFilter>(EMPTY_SUPPLIER_FILTER)
+  const [oursLayout, setOursLayout] = useState<SupplierLayout>("rows")
+  const [dirLayout, setDirLayout] = useState<SupplierLayout>("cards")
+  const [dirTotal, setDirTotal] = useState<number | undefined>(undefined)
   const [showInvite, setShowInvite] = useState(false)
   const [removeTarget, setRemoveTarget] = useState<PlatformSupplier | null>(null)
   const [removing, setRemoving] = useState(false)
 
   const mineRows = useMemo<SupplierRow[]>(() => {
+    const scope = treeScope(treeIndex, team.viewerCategories)
     const rows = suppliers
-      .filter((s) => s.isMine && supplierInScope(treeSupplier(s, treeIndex), treeScope(treeIndex, team.viewerCategories), categoryTree(treeIndex)))
+      .filter((s) => s.isMine && (isOffPlatform(s) || supplierInScope(treeSupplier(s, treeIndex), scope, categoryTree(treeIndex))))
       .map((s) => {
         const list = ordersOfSupplier(orders, s.orgId)
         return {
@@ -185,25 +193,25 @@ export default function SuppliersPage() {
       })
     return [...rows.filter((r) => r.isFavorite), ...rows.filter((r) => !r.isFavorite)]
   }, [suppliers, orders, deliveries, rfqs, offers, now, team.viewerCategories, treeIndex])
-  const shownMine = mineRows.filter(
-    (s) =>
-      (!originFilter || (originFilter === "international") === s.international) &&
-      matchesSearch(searchQuery, [s.name, s.city, ...s.categories, ...s.categories.map((c) => displayCategory(c, locale)), ...s.subIds.map((id) => subLabel(treeIndex, id, locale))])
+  const mineIds = useMemo(() => new Set(suppliers.map((s) => s.orgId)), [suppliers])
+  const specialtyLabel = useCallback((key: string) => keyLabel(treeIndex, key, locale, displayCategory), [treeIndex, locale])
+  const specialtiesOf = useCallback((s: SupplierRow) => specialtyKeys(treeIndex, s.subIds, s.categories), [treeIndex])
+  const platformCards = usePlatformCards(
+    useMemo(() => [...mineRows.map((s) => s.orgId), fileId || "", dirId || ""].filter(Boolean), [mineRows, fileId, dirId]),
+    segment === "mine" || Boolean(fileId) || Boolean(dirId)
   )
-  // One search box across the four segments (S-45): the query stays when the segment changes.
-  // A supplier a buyer invited is his «مورّدونا» at once, but is listed here only once the platform verifies him (PUR-05).
-  const directory = useMemo(() => directoryEntries(treeIndex, listedInDirectory(suppliers)), [suppliers, treeIndex])
-  const shownPlatform = useMemo(() => filterDirectory(directory, { q: searchQuery, category: "", city: "", origin: originFilter }, (c) => keyLabel(treeIndex, c, locale, displayCategory)), [directory, searchQuery, originFilter, locale, treeIndex])
   const shownAgreements = useMemo(
     () => agreements.filter((a) => matchesSearch(searchQuery, [a.docNumber, displayAgreementNumber(a.docNumber, locale), a.supplierName, ...(a.lines || []).map((l) => l.name)])),
     [agreements, searchQuery, locale]
   )
   const catalog = useInventoryCatalog(orgId, actor.seesPrices && segment === "history")
 
-  const fileSupplier = suppliers.find((s) => s.orgId === fileId) || null
+  const fetchedFile = usePlatformSupplier(fileId && !mineIds.has(fileId) ? fileId : null, favoriteIds)
+  const fileSupplier = suppliers.find((s) => s.orgId === fileId) || fetchedFile
   const fileRow = mineRows.find((s) => s.orgId === fileId) || null
   const fileInvited = fileSupplier ? rfqInviteFacts(fileSupplier.orgId, fileSupplier.memberIds, rfqs, offers).invited : 0
-  const dirSupplier = suppliers.find((s) => s.orgId === dirId) || null
+  const fetchedDir = usePlatformSupplier(dirId && !mineIds.has(dirId) ? dirId : null, favoriteIds)
+  const dirSupplier = suppliers.find((s) => s.orgId === dirId) || fetchedDir
 
   const toggleFavorite = async (supplier: PlatformSupplier) => {
     if (!userDocRef || !firestore || !orgId) return
@@ -258,7 +266,7 @@ export default function SuppliersPage() {
   }
 
   const segments = visibleSupplierSegments(actor.seesPrices)
-  const counts: Record<SupplierTabSegment, number | undefined> = { mine: mineRows.length, invitations: invitations.length, platform: directory.length, agreements: agreements.length, history: undefined }
+  const counts: Record<SupplierTabSegment, number | undefined> = { mine: mineRows.length, invitations: invitations.length, platform: dirTotal, agreements: agreements.length, history: undefined }
   const spinner = (
     <div className="flex flex-col items-center justify-center p-20 text-muted-foreground">
       <Loader2 className="mb-4 animate-spin" size={32} aria-hidden="true" />
@@ -285,17 +293,8 @@ export default function SuppliersPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           <ProcChipGroup items={segments.map((s) => ({ id: s, label: t(`seg.${s}`), count: counts[s] }))} active={segment} onPick={pickSegment} label={tC("suppliers_scope_label")} />
-          <NativeSelect
-            aria-label={t("origin.label")}
-            value={originFilter}
-            onChange={(e) => setOriginFilter(e.target.value as OriginFilter)}
-            className="ms-auto h-10 rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="">{t("origin.all")}</option>
-            <option value="local">{t("origin.local")}</option>
-            <option value="international">{t("origin.international")}</option>
-          </NativeSelect>
-          <div className="relative w-full sm:w-72">
+          {(segment === "agreements" || segment === "history") && (
+          <div className="relative ms-auto w-full sm:w-72">
             <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input placeholder={t("p2c.search_all")} aria-label={t("p2c.search_all")} className="pe-8 ps-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} dir="auto" />
             {searchQuery && (
@@ -309,6 +308,7 @@ export default function SuppliersPage() {
               </button>
             )}
           </div>
+          )}
         </div>
 
         {segment === "agreements" ? (
@@ -342,6 +342,8 @@ export default function SuppliersPage() {
               orders={orders}
               receipts={deliveries}
               agreements={agreements}
+              offers={offers as unknown as PriceOfferLike[]}
+              rfqs={rfqs as unknown as PriceRfqLike[]}
               makeOrBuy={makeOrBuy}
               locale={locale}
               fmtDate={fmtDate}
@@ -355,7 +357,17 @@ export default function SuppliersPage() {
         ) : loading ? (
           spinner
         ) : segment === "platform" ? (
-          <SupplierDirectory suppliers={shownPlatform} onOpen={setDirId} />
+          <SupplierDirectory
+            filter={dirFilter}
+            onFilter={setDirFilter}
+            layout={dirLayout}
+            onLayout={setDirLayout}
+            specialtyLabel={specialtyLabel}
+            mineIds={mineIds}
+            onOpen={setDirId}
+            onAdd={canManage ? setDirId : undefined}
+            onTotal={setDirTotal}
+          />
         ) : segment === "invitations" ? (
           <SupplierInvitations
             invitations={invitations}
@@ -373,10 +385,18 @@ export default function SuppliersPage() {
         ) : (
           <div className="space-y-4">
             <SupplierConnectionRequests orgId={orgId} orgName={orgName} actor={actor} canManage={canManage} />
-            {shownMine.length === 0 ? (
-              searchQuery ? (
-                <EmptyState icon={Search} title={tC("suppliers_no_search_results")} description={tC("suppliers_no_search_results_desc")} />
-              ) : (
+            <OurSuppliersTable
+              rows={mineRows}
+              cards={platformCards}
+              today={today}
+              filter={oursFilter}
+              onFilter={setOursFilter}
+              layout={oursLayout}
+              onLayout={setOursLayout}
+              specialtiesOf={specialtiesOf}
+              specialtyLabel={specialtyLabel}
+              onOpen={openFile}
+              emptyAll={
                 <EmptyState
                   icon={Briefcase}
                   title={tC("suppliers_no_suppliers")}
@@ -390,10 +410,9 @@ export default function SuppliersPage() {
                     )
                   }
                 />
-              )
-            ) : (
-              <OurSuppliersTable rows={shownMine} today={today} onOpen={openFile} />
-            )}
+              }
+            />
+            <p className="text-xs text-muted-foreground">{t("list.ours_caption")}</p>
           </div>
         )}
       </div>
@@ -403,6 +422,12 @@ export default function SuppliersPage() {
         open={Boolean(fileSupplier)}
         onOpenChange={(o) => !o && openFile(null)}
         notices={deliveries}
+        card={fileSupplier ? platformCards.get(fileSupplier.orgId) : null}
+        offers={offers as unknown as GuestOfferFact[]}
+        onInvite={(p) => {
+          setInvitePrefill(p)
+          setShowInvite(true)
+        }}
         score={fileRow?.score || null}
         invited={fileInvited}
         orders={orders}
@@ -417,6 +442,7 @@ export default function SuppliersPage() {
         onOpenAgreement={openAgreement}
       />
       <DirectoryDrawer
+        card={dirSupplier ? platformCards.get(dirSupplier.orgId) : null}
         supplier={dirSupplier}
         open={Boolean(dirSupplier)}
         onOpenChange={(o) => !o && setDirId(null)}
@@ -439,7 +465,7 @@ export default function SuppliersPage() {
         orgName={orgName}
         prefill={invitePrefill}
         invitations={invitations}
-        platform={suppliers.map((s) => ({ orgId: s.orgId, name: s.name, phone: s.phone, email: s.email }))}
+        platform={suppliers.filter((s) => !isOffPlatform(s)).map((s) => ({ orgId: s.orgId, name: s.name, phone: s.phone, email: s.email }))}
         onAddExisting={(id) => setDirId(id)}
       />
 

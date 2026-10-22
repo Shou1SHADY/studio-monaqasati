@@ -7,6 +7,8 @@
  */
 
 jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-utils/fake-firestore")>("@/test-utils/fake-firestore").firestoreModule)
+const mockOfferAct = jest.fn(async () => undefined)
+jest.mock("@/lib/procurement/offer-acts-client", () => ({ offerAct: (...a: unknown[]) => (mockOfferAct as (...x: unknown[]) => Promise<void>)(...a) }))
 
 import fs from "fs"
 import path from "path"
@@ -16,7 +18,8 @@ import { PROC_EVENT_COPY_AR, PROC_EVENT_KINDS, PROC_EVENT_PARAM_COPY_AR, buildPr
 import { formatProcDocNumber } from "@/lib/procurement/numbering"
 import { poStatus } from "@/lib/procurement/po"
 import { DEFAULT_POLICIES, type DeliveryLine, type ProcActor, type PurchaseOrder } from "@/lib/procurement/types"
-import { ProcWriteError, applyReceipt, applyRejectDecision, approvePurchaseOrder, buildPoLines, buildRating, cancelPurchaseOrder, cancelRemainder, closePurchaseOrder, decideReject, draftPurchaseOrder, offerLeadTimeDays, offerTotalExVat, ratePurchaseOrder, recordSupplierAcceptance, releaseHeld, remindSupplier, resubmitPurchaseOrder, retroactivePurchaseOrder, returnPurchaseOrder, sendPurchaseOrder, supplierOfOffer, updatePromisedDate, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
+import { ProcWriteError, applyReceipt, applyRejectDecision, approvePurchaseOrder, buildPoLines, buildRating, cancelPurchaseOrder, cancelRemainder, closePurchaseOrder, decideReject, draftPurchaseOrder, offerLeadTimeDays, offerTotalExVat, ratePurchaseOrder, recordSupplierAcceptance, releaseHeld, remindSupplier, resubmitPurchaseOrder, returnPurchaseOrder, sendPurchaseOrder, supplierOfOffer, updatePromisedDate, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
+import { retroactivePurchaseOrder } from "@/test-utils/legacy-direct-writes"
 import { createPurchaseOrderFromAward } from "@/test-utils/legacy-award-writes"
 import { resolveRecipients, type TeamSnapshot } from "@/lib/mfg-events"
 import { doc, runTransaction } from "firebase/firestore"
@@ -555,7 +558,7 @@ describe("close-out, cancellation, rating", () => {
     const reviews = listCollection<{ rating: number; anonymous?: boolean; reviewerName?: string; revieweeId: string; poId?: string }>("reviews")
     expect(reviews.find((r) => r.poId === id)).toMatchObject({ rating: 5, anonymous: true, reviewerName: "", revieweeId: "sup-user" })
     expect(readDoc<{ rating: number; reviewsCount: number }>("users/sup-user")).toMatchObject({ rating: 4, reviewsCount: 2 })
-    expect(readDoc<{ contractorRated?: boolean }>("offers/of1")?.contractorRated).toBe(true)
+    expect(mockOfferAct).toHaveBeenCalledWith({ act: "rated", offerId: "of1" })
     expect(told("sup-user", "po_rated")).toMatchObject({ i18n: { params: { stars: 5 } } })
     await expect(ratePurchaseOrder(db, buyer, id, { conformity: 1, cooperation: 1, publishAnonymously: false, receipts })).rejects.toMatchObject({ code: "cannot_rate" })
   })

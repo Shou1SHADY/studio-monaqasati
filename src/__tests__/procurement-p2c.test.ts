@@ -230,7 +230,7 @@ describe("Today (rows 59, 72, 77)", () => {
   it("the forward task names the store and the register's suggested receiver when the screen knows them", () => {
     const notice: ReceiptFact = { id: "n1", status: "pending_confirmation", poId: "po1", supplierName: "Al-Hadid", deliveryDate: "2026-09-23", lines: [] }
     const task = (forwardFacts?: ProcWorld["forwardFacts"]) => todayTasks(world({ orders: [po()], receipts: [notice], forwardFacts }), MANAGER, NOW).find((t) => t.kind === "notice_forward")
-    expect(task({ n1: { place: "Central store", receiver: "Majed" } })).toMatchObject({ subKey: "task.notice_forward.sub_place_rcv", subParams: { place: "Central store", hasPlace: 1, receiver: "Majed", hasReceiver: 1 } })
+    expect(task({ n1: { place: "Central store", receiver: "Majed" } })).toMatchObject({ subKey: "task.notice_forward.sub", subParams: { place: "Central store", hasPlace: 1, receiver: "Majed", hasReceiver: 1 } })
     expect(task()).toMatchObject({ subParams: { place: "Tower A", hasReceiver: 0 } })
   })
 
@@ -246,7 +246,7 @@ describe("Today (rows 59, 72, 77)", () => {
   })
 
   it("the new keys are declared for the i18n check", () => {
-    expect(TODAY_KEYS).toEqual(expect.arrayContaining(["task.notice_forward.sub_place_rcv", "task.receipt_no_po.title_line"]))
+    expect(TODAY_KEYS).toEqual(expect.arrayContaining(["task.notice_forward.sub", "task.receipt_no_po.title_line"]))
   })
 })
 

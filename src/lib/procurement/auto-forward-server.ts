@@ -3,6 +3,7 @@ import { SITE_URL } from "@/lib/app-env"
 import { LINK_TTL_MS, RECEIPT_LINKS, maskPhone, newToken, type ReceiptLink, type Receiver } from "@/lib/receipt-links"
 import { normalizePhoneE164, sendDirectMessage } from "@/lib/sms"
 import { AUTO_FORWARD_ACTOR, autoForwardSkip, selectDueNotices, type AutoForwardOptions, type DueNotice } from "@/lib/procurement/auto-forward"
+import { sendForwardEvent } from "@/lib/procurement/forward-event"
 import { resolvePolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_RECEIVERS, type ProcReceiver } from "@/lib/procurement/receivers"
 import type { DeskDelivery } from "@/lib/procurement/receipt-desk"
@@ -68,6 +69,10 @@ async function forwardOne(db: Firestore, orgId: string, due: DueNotice, now: num
     })
     return "forwarded"
   })
+  if (outcome === "forwarded") {
+    const forwards = await db.collection(RECEIPT_LINKS).where("deliveryId", "==", due.delivery.id).get()
+    await sendForwardEvent(db, { orgId, delivery: due.delivery as { poNumber?: unknown; seq?: unknown }, forwardNo: forwards.size, by: AUTO_FORWARD_ACTOR.id, at, receiver: receiver.name, via: receiver.userId ? "account" : "link", auto: true })
+  }
   return { outcome, token, receiver }
 }
 

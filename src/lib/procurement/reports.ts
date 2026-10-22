@@ -28,6 +28,9 @@
 import { acceptedValue, addDays, dayOf, daysBetween, daysFromNow, daysLate, isShortCompetition, lowestOffer, offerPrice, poFacts, poLive, poOpenValue, poStatus, poValue, receiptDay, round2, supplierKey, supplierScore, todayOf } from "./po"
 import { advanceState, asX, paidTotal, pmCancelOpen } from "./po-extras"
 import { materialKey } from "./prices"
+import { receivedValue } from "./accountant-export"
+import { paymentStateOf, type FinancelessPo, type PaymentState } from "./payment-mark"
+import { inSiteFilter } from "./site-counts"
 import type { OfferFact, ProcWorld, RfqFact } from "./today"
 import type { PurchaseOrder, ReceiptFact } from "./types"
 
@@ -45,8 +48,8 @@ export interface ReportRfqFact extends RfqFact {
 
 /** A quoted rate: the offer's unit price for one of the RFQ's products. */
 export interface OfferRateFact {
-  rfqProductIndex: number
-  unitPrice: number
+  rfqProductIndex?: number | null
+  unitPrice?: string | number | null
 }
 
 export interface ReportOfferFact extends OfferFact {
@@ -152,6 +155,38 @@ export interface Period {
 
 export const inPeriod = (day: string, p: Period | null | undefined): boolean => Boolean(day) && (!p?.from || day >= p.from) && (!p?.to || day <= p.to)
 
+// ---------------------------------------------------------------------------
+// The tags an order carries (G-04) - the ways it left the plain path, read as columns and as a filter
+// ---------------------------------------------------------------------------
+
+export const ORDER_TAGS = ["not_lowest", "short_competition", "direct_over", "lump", "unregistered"] as const
+export type OrderTag = (typeof ORDER_TAGS)[number]
+
+export type TagCounts = Record<OrderTag, number>
+export const emptyTagCounts = (): TagCounts => ({ not_lowest: 0, short_competition: 0, direct_over: 0, lump: 0, unregistered: 0 })
+
+/** Not the lowest, short competition, direct over the cap, lump sum, not VAT-registered: what the record of the order itself says. */
+export function orderTags(po: PurchaseOrder): OrderTag[] {
+  const out: OrderTag[] = []
+  if (po.tags?.notLowest || (po.basis !== "direct" && po.basis !== "retroactive" && (po.awardReasonCode || po.awardReasonText))) out.push("not_lowest")
+  if (po.tags?.lowComp || (po.shortCompetition && po.basis === "rfq")) out.push("short_competition")
+  if (po.tags?.directOver) out.push("direct_over")
+  if (po.lines.length > 0 && po.lines.every((l) => l.unitPrice == null)) out.push("lump")
+  if (po.noVat) out.push("unregistered")
+  return out
+}
+
+/** The period, and optionally one tag and one delivery site: the report filter bar. */
+export interface ReportFilter extends Period {
+  tag?: OrderTag | null
+  /** A delivery site id, `NO_SITE`, or absent for all. Needs `siteOf` to know which sites an order serves. */
+  siteId?: string | null
+  siteOf?: ((po: PurchaseOrder) => string[]) | null
+}
+
+export const passesReportFilter = (po: PurchaseOrder, f: ReportFilter | null | undefined): boolean =>
+  (!f?.tag || orderTags(po).includes(f.tag)) && (!f?.siteId || !f.siteOf || inSiteFilter(f.siteOf(po), f.siteId))
+
 /** The period segment: the last 30 / 90 days, this year, «منذ البداية», or chosen days. */
 export const REPORT_PERIOD_PRESETS = ["30", "90", "year", "all", "custom"] as const
 export type ReportPeriodPreset = (typeof REPORT_PERIOD_PRESETS)[number]
@@ -166,8 +201,8 @@ export function presetPeriod(preset: ReportPeriodPreset, now: Date, custom?: Per
 }
 
 /** Orders that became commitments: not still awaiting approval, not cancelled. */
-export function committedOrders(w: ProcWorld, period?: Period | null): PurchaseOrder[] {
-  return w.orders.filter((po) => po.status !== "awaiting_approval" && po.status !== "cancelled" && inPeriod(dayOf(po.createdAt), period))
+export function committedOrders(w: ProcWorld, period?: ReportFilter | null): PurchaseOrder[] {
+  return w.orders.filter((po) => po.status !== "awaiting_approval" && po.status !== "cancelled" && inPeriod(dayOf(po.createdAt), period) && passesReportFilter(po, period))
 }
 
 // The same folded key the price history uses: lower-casing and trimming alone
@@ -206,6 +241,7 @@ export interface ProjectSpendRow {
   received: number
   receivedUnknown: boolean
   open: number
+  tags: TagCounts
 }
 
 export interface ProjectSpendReport {
@@ -214,13 +250,14 @@ export interface ProjectSpendReport {
 }
 
 /** `site`: the order's delivery site when it names one — without Project Management the report groups by it instead of by project (PUR-10). */
-export function spendByProject(w: ProcWorld, period?: Period | null, opts?: { site?: (po: PurchaseOrder) => { id: string; name: string } | null }): ProjectSpendReport {
+export function spendByProject(w: ProcWorld, period?: ReportFilter | null, opts?: { site?: (po: PurchaseOrder) => { id: string; name: string } | null }): ProjectSpendReport {
   const by = new Map<string, ProjectSpendRow>()
   for (const po of committedOrders(w, period)) {
     const site = opts?.site?.(po) ?? null
     const who = site ? { key: `site:${site.id}`, kind: "site" as RequesterKind, projectId: null } : requesterOf(po)
     const key = who.key
-    const row = by.get(key) || { key, kind: who.kind, projectId: who.projectId, projectName: site ? site.name : who.kind === "project" ? po.projectName || "" : "", orders: 0, lines: 0, ordered: 0, received: 0, receivedUnknown: false, open: 0 }
+    const row = by.get(key) || { key, kind: who.kind, projectId: who.projectId, projectName: site ? site.name : who.kind === "project" ? po.projectName || "" : "", orders: 0, lines: 0, ordered: 0, received: 0, receivedUnknown: false, open: 0, tags: emptyTagCounts() }
+    for (const tag of orderTags(po)) row.tags[tag]++
     const accepted = acceptedValue(po)
     row.orders++
     row.lines += po.lines.length
@@ -258,6 +295,7 @@ export interface SupplierSpendRow {
   sharePercent: number
   onTimePercent: number | null
   concentrated: boolean
+  tags: TagCounts
 }
 
 export interface SupplierSpendReport {
@@ -267,7 +305,7 @@ export interface SupplierSpendReport {
   concentration: { supplierName: string; sharePercent: number } | null
 }
 
-export function spendBySupplier(w: ProcWorld, period: Period | null | undefined, now: Date): SupplierSpendReport {
+export function spendBySupplier(w: ProcWorld, period: ReportFilter | null | undefined, now: Date): SupplierSpendReport {
   const by = new Map<string, { name: string; orders: PurchaseOrder[] }>()
   for (const po of committedOrders(w, period)) {
     const k = supplierKey(po)
@@ -282,7 +320,9 @@ export function spendBySupplier(w: ProcWorld, period: Period | null | undefined,
     .map(([k, g]) => {
       const value = round2(g.orders.reduce((s, po) => s + poValue(po), 0))
       const share = total > 0 ? round2((value / total) * 100) : 0
-      return { supplierKey: k, supplierName: g.name, orders: g.orders.length, value, sharePercent: share, onTimePercent: supplierScore(allBySupplier.get(k) || [], w.receipts, now).onTimePercent, concentrated: share > CONCENTRATION_PERCENT }
+      const tags = emptyTagCounts()
+      for (const po of g.orders) for (const tag of orderTags(po)) tags[tag]++
+      return { supplierKey: k, supplierName: g.name, orders: g.orders.length, value, sharePercent: share, onTimePercent: supplierScore(allBySupplier.get(k) || [], w.receipts, now).onTimePercent, concentrated: share > CONCENTRATION_PERCENT, tags }
     })
     .sort((a, b) => b.value - a.value)
   const top = rows[0]
@@ -304,6 +344,9 @@ export interface DeliveryOrderRow {
   /** Days past the promise (negative = early); null while nothing can be judged yet. */
   gap: number | null
   state: DeliveryOrderState
+  tags: OrderTag[]
+  /** The delivery sites the order serves, when the screen knows how to ask. */
+  siteIds: string[]
 }
 
 export interface DeliverySupplierRow {
@@ -320,7 +363,7 @@ export interface DeliveryReport {
   orders: DeliveryOrderRow[]
 }
 
-export function deliveryPerformance(w: ProcWorld, period: Period | null | undefined, now: Date): DeliveryReport {
+export function deliveryPerformance(w: ProcWorld, period: ReportFilter | null | undefined, now: Date): DeliveryReport {
   const judged = committedOrders(w, period).filter((po) => po.supplierAcceptedAt)
   const orders: DeliveryOrderRow[] = judged.map((po) => {
     const facts = poFacts(po, w.receipts)
@@ -341,7 +384,7 @@ export function deliveryPerformance(w: ProcWorld, period: Period | null | undefi
       gap = null
       state = "cancel_pending"
     }
-    return { orderId: po.id, docNumber: po.docNumber, supplierName: po.supplierName, promisedDate: po.promisedDate || null, lastReceiptDay: facts.lastReceiptDay, gap, state }
+    return { orderId: po.id, docNumber: po.docNumber, supplierName: po.supplierName, promisedDate: po.promisedDate || null, lastReceiptDay: facts.lastReceiptDay, gap, state, tags: orderTags(po), siteIds: period?.siteOf?.(po) ?? [] }
   })
   const by = new Map<string, PurchaseOrder[]>()
   for (const po of judged) by.set(supplierKey(po), [...(by.get(supplierKey(po)) || []), po])
@@ -453,7 +496,7 @@ export function lineSaving(orders: PurchaseOrder[], offers: ReportOfferFact[]): 
   for (const po of orders) {
     for (const l of po.lines) {
       if (l.unitPrice == null || l.rfqProductIndex == null) continue
-      const rates = competing.map((o) => (o.lines || []).find((r) => r.rfqProductIndex === l.rfqProductIndex)?.unitPrice).filter((r): r is number => r != null && r > 0)
+      const rates = competing.map((o) => Number((o.lines || []).find((r) => r.rfqProductIndex === l.rfqProductIndex)?.unitPrice)).filter((r) => Number.isFinite(r) && r > 0)
       if (!rates.length) continue
       const mean = rates.reduce((s, r) => s + r, 0) / rates.length
       saving += (mean - l.unitPrice) * (Number(l.quantity) || 0)
@@ -530,6 +573,7 @@ export function cycleAndCompetition(w: ProcWorld | ReportWorld, period?: Period 
 export const EXCEPTION_KINDS = [
   "retroactive",
   "direct",
+  "direct_over",
   "non_lowest",
   "short_competition",
   "self_approval",
@@ -561,9 +605,12 @@ export interface ExceptionRow {
   day: string
   params: Record<string, string | number>
   href: string
+  /** The tags of the order behind the row (empty for a receipt or an RFQ), and the sites it serves. */
+  tags: OrderTag[]
+  siteIds: string[]
 }
 
-export function exceptions(w: ReportWorld | ProcWorld, period?: Period | null): ExceptionRow[] {
+export function exceptions(w: ReportWorld | ProcWorld, period?: ReportFilter | null): ExceptionRow[] {
   const out: ExceptionRow[] = []
   const orderById = new Map(w.orders.map((o) => [o.id, o]))
   const offers = w.offers as ReportOfferFact[]
@@ -573,11 +620,12 @@ export function exceptions(w: ReportWorld | ProcWorld, period?: Period | null): 
   const rfqHref = (id: string) => `/contractor/rfqs/${id}/offers`
 
   for (const po of committedOrders(w, period)) {
-    const base = { docNumber: po.docNumber, orderId: po.id, receiptId: null, rfqId: po.rfqId, supplierName: po.supplierName, byName: po.preparedByName, approvedByName: po.approvedByName || "", day: dayOf(po.createdAt), href: orderHref(po.id) }
+    const base = { docNumber: po.docNumber, orderId: po.id, receiptId: null, rfqId: po.rfqId, supplierName: po.supplierName, byName: po.preparedByName, approvedByName: po.approvedByName || "", day: dayOf(po.createdAt), href: orderHref(po.id), tags: orderTags(po), siteIds: period?.siteOf?.(po) ?? [] }
     if (po.basis === "retroactive") out.push({ ...base, kind: "retroactive", params: {} })
+    else if (po.tags?.directOver) out.push({ ...base, kind: "direct_over", params: { reason: po.tags.directOver.why || po.awardReasonText || po.awardReasonCode || "" } })
     else if (po.basis === "direct" && !po.agreementId) out.push({ ...base, kind: "direct", params: { reason: po.awardReasonText || po.awardReasonCode || "" } })
-    if (po.basis !== "direct" && po.basis !== "retroactive" && (po.awardReasonCode || po.awardReasonText)) out.push({ ...base, kind: "non_lowest", params: { reasonCode: po.awardReasonCode || "other", reason: po.awardReasonText || "" } })
-    if (po.shortCompetition && po.basis === "rfq") out.push({ ...base, kind: "short_competition", params: { count: po.offersCount } })
+    if (po.tags?.notLowest || (po.basis !== "direct" && po.basis !== "retroactive" && (po.awardReasonCode || po.awardReasonText))) out.push({ ...base, kind: "non_lowest", params: { reasonCode: po.awardReasonCode || "other", reason: po.tags?.notLowest?.why || po.awardReasonText || "" } })
+    if (po.tags?.lowComp || (po.shortCompetition && po.basis === "rfq")) out.push({ ...base, kind: "short_competition", params: { count: po.tags?.lowComp?.n ?? po.offersCount } })
     const px = asX(po)
     // A buyer's own order under his limit is listed as that, not as a self-approval.
     if (px.selfIssued) out.push({ ...base, kind: "self_issued", params: {}, day: dayOf(po.approvedAt) || base.day })
@@ -599,7 +647,7 @@ export function exceptions(w: ReportWorld | ProcWorld, period?: Period | null): 
     const day = dayOf(fw.at)
     if (!day || !inPeriod(day, period)) continue
     const po = r.poId ? orderById.get(r.poId) : undefined
-    out.push({ kind: "auto_forwarded", docNumber: r.docNumber || r.poNumber || po?.docNumber || "", orderId: r.poId || null, receiptId: r.id, rfqId: null, supplierName: r.supplierName || po?.supplierName || "", byName: fw.byName || "", approvedByName: po?.approvedByName || "", day, params: { name: fw.name || "" }, href: receiptHref(r.id) })
+    out.push({ kind: "auto_forwarded", docNumber: r.docNumber || r.poNumber || po?.docNumber || "", orderId: r.poId || null, receiptId: r.id, rfqId: null, supplierName: r.supplierName || po?.supplierName || "", byName: fw.byName || "", approvedByName: po?.approvedByName || "", day, params: { name: fw.name || "" }, href: receiptHref(r.id), tags: [], siteIds: [] })
   }
 
   for (const r of w.receipts) {
@@ -607,7 +655,7 @@ export function exceptions(w: ReportWorld | ProcWorld, period?: Period | null): 
     const day = receiptDay(r)
     if (!inPeriod(day, period)) continue
     const po = r.poId ? orderById.get(r.poId) : undefined
-    const base = { docNumber: r.docNumber || r.poNumber || "", orderId: r.poId || null, receiptId: r.id, rfqId: null, supplierName: r.supplierName || po?.supplierName || "", byName: r.confirmedByName || "", approvedByName: po?.approvedByName || "", day, href: receiptHref(r.id) }
+    const base = { docNumber: r.docNumber || r.poNumber || "", orderId: r.poId || null, receiptId: r.id, rfqId: null, supplierName: r.supplierName || po?.supplierName || "", byName: r.confirmedByName || "", approvedByName: po?.approvedByName || "", day, href: receiptHref(r.id), tags: [] as OrderTag[], siteIds: [] as string[] }
     // A no-order receipt later sent to Finance as an expense is listed once, as
     // the expense, by whoever sent it: open and expensed are two states of the
     // same queue, not two exceptions.
@@ -625,13 +673,13 @@ export function exceptions(w: ReportWorld | ProcWorld, period?: Period | null): 
     const rfq = rfqById.get(o.rfqId)
     const day = dayOf(o.createdAt) || dayOf(rfq?.createdAt)
     if (!inPeriod(day, period)) continue
-    out.push({ kind: "manual_offer", docNumber: rfq?.title || "", orderId: null, receiptId: null, rfqId: o.rfqId, supplierName: o.supplierName || "", byName: o.recordedByName || "", approvedByName: "", day, params: {}, href: rfqHref(o.rfqId) })
+    out.push({ kind: "manual_offer", docNumber: rfq?.title || "", orderId: null, receiptId: null, rfqId: o.rfqId, supplierName: o.supplierName || "", byName: o.recordedByName || "", approvedByName: "", day, params: {}, href: rfqHref(o.rfqId), tags: [], siteIds: [] })
   }
   for (const r of rfqs) {
     if (!r.closedEarly) continue
     const day = dayOf(r.closedEarly.at)
     if (!inPeriod(day, period)) continue
-    out.push({ kind: "early_close", docNumber: r.title || "", orderId: null, receiptId: null, rfqId: r.id, supplierName: "", byName: r.closedEarly.byName || "", approvedByName: "", day, params: { reason: r.closedEarly.reason || "" }, href: rfqHref(r.id) })
+    out.push({ kind: "early_close", docNumber: r.title || "", orderId: null, receiptId: null, rfqId: r.id, supplierName: "", byName: r.closedEarly.byName || "", approvedByName: "", day, params: { reason: r.closedEarly.reason || "" }, href: rfqHref(r.id), tags: [], siteIds: [] })
   }
 
   return out.sort((a, b) => b.day.localeCompare(a.day) || a.docNumber.localeCompare(b.docNumber))
@@ -705,12 +753,13 @@ const emptyTotals = (): CommitmentBucketTotals => ({ advance: 0, received: 0, un
 
 /** Not period-filtered: what is owed from today on. The overdue sit in the
  * first week's bucket — Finance will be asked for them first, not never. */
-export function openCommitments(w: ReportWorld | ProcWorld, now: Date): CommitmentReport {
+export function openCommitments(w: ReportWorld | ProcWorld, now: Date, filter?: ReportFilter | null): CommitmentReport {
   const today = todayOf(now)
   const rows: CommitmentRow[] = []
   let receivedUnknown = 0
   for (const po of w.orders) {
     if (po.status === "awaiting_approval" || po.status === "cancelled" || po.status === "closed") continue
+    if (!passesReportFilter(po, filter)) continue
     const terms = orderTerms(po, w)
     const base = { orderId: po.id, docNumber: po.docNumber, supplierName: po.supplierName, termsDays: terms.days, termsSource: terms.source }
     const push = (part: CommitmentPart, value: number, dueDate: string | null) => {
@@ -758,4 +807,57 @@ export function lastDays(days: number, now: Date): Period {
   const to = todayOf(now)
   const from = new Date(Date.parse(`${to}T00:00:00Z`) - days * 86400000).toISOString().slice(0, 10)
   return { from, to }
+}
+
+// ---------------------------------------------------------------------------
+// 4b - the same drift, read as SAVINGS against the last price (2.0 name: «التوفير عن آخر سعر»). A negative impact is a saving.
+// ---------------------------------------------------------------------------
+
+export interface SavingsSummary {
+  direction: "saved" | "higher" | "flat"
+  /** Always positive: how much below (saved) or above (higher) the last price we paid, in SAR before VAT. */
+  amount: number
+  percent: number | null
+}
+
+export function savingsSummary(report: DriftReport): SavingsSummary {
+  const { impact, percent } = report.totals
+  return { direction: impact < 0 ? "saved" : impact > 0 ? "higher" : "flat", amount: Math.abs(impact), percent: percent == null ? null : Math.abs(percent) }
+}
+
+// ---------------------------------------------------------------------------
+// 7b - without Finance the seventh report is «مستلَم ودُفع - للمحاسب»: per approved order, what arrived (accepted, before VAT) and
+// what the buyer marked paid - the accountant's table, the same figures the export hands him.
+// ---------------------------------------------------------------------------
+
+export interface ReceivedPaidRow {
+  orderId: string
+  docNumber: string
+  supplierName: string
+  approvedDay: string
+  exVat: number
+  vat: number
+  total: number
+  received: number
+  payment: PaymentState
+  paidDay: string | null
+}
+
+export interface ReceivedPaidReport {
+  rows: ReceivedPaidRow[]
+  totals: { exVat: number; vat: number; total: number; received: number; paid: number }
+}
+
+export function receivedAndPaid(w: ProcWorld, period?: ReportFilter | null): ReceivedPaidReport {
+  const rows: ReceivedPaidRow[] = w.orders
+    .filter((po) => po.status !== "awaiting_approval" && po.status !== "cancelled" && inPeriod(dayOf(po.approvedAt), period) && passesReportFilter(po, period))
+    .map((po) => {
+      const f = po as FinancelessPo
+      const exVat = round2(po.totalExVat)
+      const vat = round2(exVat * (po.vatRate || 0))
+      return { orderId: po.id, docNumber: po.docNumber, supplierName: po.supplierName, approvedDay: dayOf(po.approvedAt), exVat, vat, total: round2(exVat + vat), received: receivedValue(po), payment: paymentStateOf(f), paidDay: f.paymentMark?.state === "paid" ? f.paymentMark.day : null }
+    })
+    .sort((a, b) => a.docNumber.localeCompare(b.docNumber))
+  const sum = (pick: (r: ReceivedPaidRow) => number) => round2(rows.reduce((s, r) => s + pick(r), 0))
+  return { rows, totals: { exVat: sum((r) => r.exVat), vat: sum((r) => r.vat), total: sum((r) => r.total), received: sum((r) => r.received), paid: sum((r) => (r.payment === "paid" ? r.total : 0)) } }
 }

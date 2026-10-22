@@ -162,25 +162,23 @@ describe("Today reads the desk", () => {
   const MANAGER: ProcActor = { ...BUYER, uid: "m", canApprove: true }
   const OWNER: ProcActor = { ...MANAGER, uid: "o", isOwner: true }
 
-  it("a buyer gets one task per line, red past its last order day, opening the line", () => {
-    const t = todayTasks(w, BUYER, NOW).filter((x) => x.kind === "need_line")
-    expect(t[0]).toMatchObject({ group: "need", severity: "red", titleParams: { head: "none", path: "rfq", name: "Steel", qty: 1, unit: "t" }, subParams: { when: "past", n: 12 }, href: "/contractor/rfqs/requests?line=project%3Ap1%3Apr1%230", actionKey: "actions.openLine" })
+  it("a buyer gets ONE row per request (not per line), red past its last order day, opening the request's publishing step", () => {
+    const t = todayTasks(w, BUYER, NOW).filter((x) => x.chip === "req")
+    // The request of Steel is 12 days past its last order day; the one waiting on Inventory's reply is not a row to publish.
+    expect(t).toHaveLength(1)
+    expect(t[0]).toMatchObject({ kind: "need_request", tier: "red", severity: "red", titleParams: { ref: "PR-B", place: "Villas", remainder: 0 }, subParams: { count: 1, when: "past", n: 12 }, href: "/contractor/rfqs/requests?publish=project%3Ap1%3Apr1", actionKey: "actions.publishRequest", secondary: { actionKey: "actions.prepare" } })
   })
 
   it("the manager gets a roll-up for a buyer's lines; the owner with a team reads", () => {
     const withBuyer = { ...w, needDesk: { rows, buyers: [{ uid: "u2", name: "Turki", categories: ["steel"] }], viewerCategories: null } }
-    expect(todayTasks(withBuyer, MANAGER, NOW).filter((x) => x.group === "need").map((x) => x.kind)).toEqual(["need_rollup"])
-    const owner = todayTasks({ ...withBuyer, ownerHasTeam: true }, OWNER, NOW).filter((x) => x.group === "need")
+    expect(todayTasks(withBuyer, MANAGER, NOW).filter((x) => x.chip === "req").map((x) => x.kind)).toEqual(["need_rollup"])
+    const owner = todayTasks({ ...withBuyer, ownerHasTeam: true }, OWNER, NOW).filter((x) => x.chip === "req")
     // The roll-up row has no «اطّلع» variant in the prototype: the owner's button reads «افتح الاحتياج» too.
     expect(owner.every((x) => x.kind === "need_rollup" && x.actionKey === "actions.openNeeds")).toBe(true)
   })
 
-  it("waits: the stock check with Inventory, the sample with Projects", () => {
-    expect(todayWaits(w, BUYER, NOW).map((x) => [x.kind, x.module])).toEqual([
-      ["sample_approval", "projects"],
-      ["stock_check", "inventory"],
-      ["stock_check", "inventory"],
-    ])
+  it("waits: the sample with Projects (Inventory's and the workshop's answers come from the stored request lines)", () => {
+    expect(todayWaits(w, BUYER, NOW).map((x) => [x.kind, x.module])).toEqual([["sample_approval", "projects"]])
   })
 })
 

@@ -382,3 +382,244 @@ export function historyRowsForApproval(po: PurchaseOrder, at: string): HistoryRo
   }
   return rows
 }
+
+// ---------------------------------------------------------------------------
+// Price history v2 (SUP-05, SUP-06, WF-24): one material's series from the orders we approved, the offers we were quoted and
+// the agreements we signed — and what an agreement has consumed. Pure and read-only: nothing here is stored.
+// ---------------------------------------------------------------------------
+
+/** `po` — a price we committed to on an approved order. `offer` — a price quoted to us. `agreement` — a price we agreed. */
+export type PriceSource = "po" | "offer" | "agreement"
+
+export interface PricePoint {
+  id: string
+  /** `YYYY-MM-DD`. */
+  day: string
+  supplier: string
+  /** The supplier's org id, else his name — one line on the chart per key. */
+  supplierKey: string
+  /** Unit price EXCLUDING VAT. */
+  price: number
+  quantity: number | null
+  source: PriceSource
+  /** A price we committed to (an order or an agreement). An offer that did not become an order is the hollow dot. */
+  awarded: boolean
+  poId: string | null
+  poNo: string | null
+  rfqId: string | null
+  rfqNo: string | null
+  agreementId: string | null
+  agreementNo: string | null
+}
+
+export interface PriceOfferLike {
+  id: string
+  rfqId?: string | null
+  status?: string | null
+  supplierId?: string | null
+  organizationId?: string | null
+  supplierName?: string | null
+  companyName?: string | null
+  createdAt?: unknown
+  /** The current version's rates, per request unit; a piece rate carries `packLen`. */
+  lines?: Array<{ rfqProductIndex?: unknown; unitPrice?: unknown; packLen?: unknown }> | null
+  /** A request priced as one amount has no rate to compare. */
+  lump?: unknown
+}
+
+export interface PriceRfqLike {
+  id: string
+  title?: string | null
+  rfqNumber?: string | null
+  docNumber?: string | null
+  products?: Array<(SpecSource & { name?: string | null }) | null> | null
+}
+
+const OFFER_ACCEPTED = "مقبول"
+const OFFER_WITHDRAWN = "مسحوب"
+
+const isoDay = (v: unknown): string => {
+  if (!v) return ""
+  if (typeof v === "string") return v.slice(0, 10)
+  const ts = v as { toDate?: () => Date }
+  return typeof ts.toDate === "function" ? ts.toDate().toISOString().slice(0, 10) : ""
+}
+
+const sameMaterial = (key: string, p: { materialKey: string; specKey?: string | null }): boolean => (key.startsWith("spec:") ? p.specKey === key : p.materialKey === key)
+
+const SOURCE_ORDER: Record<PriceSource, number> = { agreement: 0, offer: 1, po: 2 }
+
+/**
+ * Every price one material has had, oldest first. `key` is a name-and-unit key (`materialKey`) or a specification key
+ * (`specKeyOf`: «بلوك 20 سم» and «بلوك 15 سم» are two). A lump-sum order never enters (it has no unit price); an offer that
+ * became an order is the ORDER's point, not a second dot; a withdrawn offer, a piece rate and a lump-sum quote are left out.
+ */
+export function priceSeries(
+  key: string,
+  src: { history: PriceHistoryEntry[]; offers?: PriceOfferLike[]; rfqs?: PriceRfqLike[]; agreements?: PriceAgreement[]; orders?: PurchaseOrder[] }
+): PricePoint[] {
+  const out: PricePoint[] = []
+  const orderById = new Map((src.orders || []).map((o) => [o.id, o]))
+  for (const h of src.history) {
+    if (h.kind !== "po" || !(h.price > 0) || !sameMaterial(key, h)) continue
+    const po = h.poId ? orderById.get(h.poId) : undefined
+    const line = po?.lines.find((l) => `${po.id}__${l.id}` === h.id)
+    out.push({
+      id: `po:${h.id}`,
+      day: h.day,
+      supplier: h.supplierName || "",
+      supplierKey: h.supplierOrgId || h.supplierName,
+      price: h.price,
+      quantity: line ? round2(num(line.quantity) - num(line.cancelled)) || null : null,
+      source: "po",
+      awarded: true,
+      poId: h.poId,
+      poNo: h.poNumber,
+      rfqId: po?.rfqId ?? null,
+      rfqNo: null,
+      agreementId: po?.agreementId ?? null,
+      agreementNo: po?.agreementNo ?? null,
+    })
+  }
+  const rfqById = new Map((src.rfqs || []).map((r) => [r.id, r]))
+  for (const o of src.offers || []) {
+    if (o.status === OFFER_ACCEPTED || o.status === OFFER_WITHDRAWN || o.lump) continue
+    const rfq = o.rfqId ? rfqById.get(o.rfqId) : undefined
+    const day = isoDay(o.createdAt)
+    if (!rfq || !day) continue
+    for (const l of o.lines || []) {
+      const idx = Number(l.rfqProductIndex)
+      const price = Number(l.unitPrice)
+      const product = Number.isInteger(idx) ? rfq.products?.[idx] : null
+      if (!product || !(price > 0) || Number(l.packLen) > 0) continue
+      const spec = specKeyOf(product).specKey
+      const mk = materialKey(product.name, product.unitOfMeasure || product.unit)
+      if (key.startsWith("spec:") ? spec !== key : mk !== key) continue
+      out.push({
+        id: `offer:${o.id}:${idx}`,
+        day,
+        supplier: o.supplierName || o.companyName || "",
+        supplierKey: o.organizationId && o.organizationId !== "guest" ? o.organizationId : o.supplierId || o.supplierName || o.companyName || o.id,
+        price: round2(price),
+        quantity: null,
+        source: "offer",
+        awarded: false,
+        poId: null,
+        poNo: null,
+        rfqId: rfq.id,
+        rfqNo: rfq.rfqNumber || rfq.docNumber || rfq.title || null,
+        agreementId: null,
+        agreementNo: null,
+      })
+    }
+  }
+  for (const a of src.agreements || []) {
+    for (const [i, l] of (a.lines || []).entries()) {
+      if (materialKey(l.name, l.unit) !== key || !(num(l.price) > 0)) continue
+      out.push({
+        id: `agreement:${a.id}:${i}`,
+        day: dayOf(a.from),
+        supplier: a.supplierName || "",
+        supplierKey: a.supplierOrgId || a.supplierName,
+        price: round2(num(l.price)),
+        quantity: null,
+        source: "agreement",
+        awarded: true,
+        poId: null,
+        poNo: null,
+        rfqId: null,
+        rfqNo: null,
+        agreementId: a.id,
+        agreementNo: a.docNumber,
+      })
+    }
+  }
+  return out.sort((a, b) => a.day.localeCompare(b.day) || SOURCE_ORDER[a.source] - SOURCE_ORDER[b.source] || a.id.localeCompare(b.id))
+}
+
+/** The prototype compares the last price with the one ~60 days before it (its label says «قرابة 3 أشهر»; its fixture is −1.1 % over this window). */
+export const PRICE_CHANGE_WINDOW_DAYS = 60
+
+export interface PriceStats {
+  /** Orders and agreements — what we committed to. Offers are evidence, not purchases. */
+  purchases: number
+  last: PricePoint | null
+  min: number | null
+  max: number | null
+  average: number | null
+  /** The price the change is measured from, with its day. */
+  baseline: PricePoint | null
+  changePercent: number | null
+}
+
+export function priceStats(points: PricePoint[], windowDays = PRICE_CHANGE_WINDOW_DAYS): PriceStats {
+  const bought = points.filter((p) => p.awarded)
+  if (!bought.length) return { purchases: 0, last: null, min: null, max: null, average: null, baseline: null, changePercent: null }
+  const prices = bought.map((p) => p.price)
+  const last = bought[bought.length - 1]
+  const cutoff = new Date(`${last.day}T00:00:00Z`)
+  cutoff.setUTCDate(cutoff.getUTCDate() - windowDays)
+  const before = bought.filter((p) => p.day <= cutoff.toISOString().slice(0, 10))
+  const baseline = before.length ? before[before.length - 1] : bought[0]
+  return {
+    purchases: bought.length,
+    last,
+    min: Math.min(...prices),
+    max: Math.max(...prices),
+    average: round2(prices.reduce((s, p) => s + p, 0) / prices.length),
+    baseline,
+    changePercent: bought.length > 1 && baseline.price > 0 ? Math.round(((last.price - baseline.price) / baseline.price) * 1000) / 10 : null,
+  }
+}
+
+/** Each committed price against the committed price before it, in percent; an offer has no «previous purchase» and reads null. */
+export function diffVsPrevious(points: PricePoint[]): Map<string, number | null> {
+  const out = new Map<string, number | null>()
+  let prev: PricePoint | null = null
+  for (const p of points) {
+    if (!p.awarded) {
+      out.set(p.id, null)
+      continue
+    }
+    out.set(p.id, prev && prev.price > 0 ? Math.round(((p.price - prev.price) / prev.price) * 1000) / 10 : null)
+    prev = p
+  }
+  return out
+}
+
+// --- Agreements: the cap and what is left of it (SUP-06). Ordering ON an agreement stays as it is today (open decision 13). ---
+
+/** An agreement line with its ceiling: the most we may buy on it, in the line's unit. Absent = no ceiling stated. */
+export type CappedAgreementLine = AgreementLine & { cap?: number | null }
+
+export interface AgreementConsumption {
+  name: string
+  unit: string
+  price: number
+  cap: number | null
+  /** Ordered on this agreement and not cancelled. */
+  consumed: number
+  /** `cap − consumed`, never below zero; null without a cap. */
+  left: number | null
+  /** `consumed / cap`, 0–∞ in percent; null without a cap. */
+  usedPercent: number | null
+}
+
+/** What each line of an agreement has been ordered for: the quantities of every live order that names it. */
+export function agreementConsumption(agreement: PriceAgreement, orders: PurchaseOrder[]): AgreementConsumption[] {
+  const mine = orders.filter((o) => o.agreementId === agreement.id && o.status !== "cancelled")
+  return (agreement.lines || []).map((l) => {
+    const key = materialKey(l.name, l.unit)
+    const consumed = round2(mine.reduce((s, o) => s + o.lines.filter((x) => materialKey(x.name, x.unit) === key).reduce((t, x) => t + num(x.quantity) - num(x.cancelled), 0), 0))
+    const cap = num((l as CappedAgreementLine).cap) > 0 ? num((l as CappedAgreementLine).cap) : null
+    return {
+      name: l.name,
+      unit: l.unit,
+      price: num(l.price),
+      cap,
+      consumed,
+      left: cap == null ? null : Math.max(0, round2(cap - consumed)),
+      usedPercent: cap == null ? null : Math.round((consumed / cap) * 1000) / 10,
+    }
+  })
+}

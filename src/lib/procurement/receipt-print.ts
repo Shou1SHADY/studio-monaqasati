@@ -1,11 +1,12 @@
-// The printed goods receipt (PRD 3.0 §8): a unified header with the company's
+// The printed goods receipt (PRD 2.0 RCV-04): a unified header with the company's
 // identity, a status banner — final when nothing is left open on the order,
 // partial with what is outstanding, "no PO — manual" for a receipt with no
-// order — the quantity table (on order · per notice · counted · rejected ·
-// held · accepted · unit, value only for a reader who sees prices), the
-// checklist, driver & vehicle, three signature boxes and the footer. Bilingual
-// through the caller's translator, A4, self-contained window. Money is
-// written "ر.س"/"SAR": the riyal glyph's font is not in this window.
+// order — the quantity table (on order · counted · rejected · held · accepted ·
+// unit, value only for a reader who sees prices), the checklist and the footer.
+// DIGITAL: no signature boxes — one line says who registered it, when, and how
+// (signed in or by code), because confirming is the signature. Bilingual through
+// the caller's translator, A4, self-contained window. Money is written
+// "ر.س"/"SAR": the riyal glyph's font is not in this window.
 //
 // `buildReceiptPrintHtml` is pure (tested); `printGoodsReceipt` opens it.
 
@@ -60,6 +61,8 @@ export interface ReceiptPrintInput {
   displayNumber: string
   displayPoNumber: string | null
   withPrices: boolean
+  /** What is still to arrive on the order, when the caller has no order document to read it from (the receiver's own copy). */
+  outstanding?: Array<{ name: string; unit: string; quantity: number }> | null
   locale: string
   /** `Portal.ProcReceipts.print.*`, already scoped. */
   t: ReceiptPrintCopy
@@ -116,12 +119,8 @@ export const RECEIPT_PRINT_CSS = (dir: "rtl" | "ltr") => {
   .para { margin: 10px 0; font-size: 11.5px; }
   .para b { display: inline-block; min-width: 110px; }
   .chk { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px 14px; margin: 4px 0; font-size: 11px; }
-  .pdsg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; }
-  .pdsg div { border: 1px solid #bbb; border-radius: 6px; padding: 8px 10px; min-height: 76px; }
-  .pdsg small { color: #666; display: block; font-size: 10.5px; }
-  .pdsg b { display: block; }
-  .pdsg .line { border-bottom: 1px dashed #666; height: 26px; margin-top: 8px; font-size: 9.5px; color: #888; }
-  .pdsg img { max-height: 40px; display: block; margin-top: 4px; }
+  .dig { margin-top: 16px; border: 1px solid #bbb; border-radius: 6px; padding: 8px 10px; font-size: 11.5px; }
+  .dig small { color: #666; display: block; font-size: 10.5px; margin-top: 2px; }
   .pdf2 { margin-top: 18px; border-top: 1px solid #ccc; padding-top: 6px; font-size: 9.5px; color: #666; line-height: 1.7; }
   .muted { color: #666; }
   `
@@ -142,8 +141,8 @@ export function buildReceiptPrintHtml(m: ReceiptPrintInput): string {
   const { delivery: d, po, t, tp, locale } = m
   const lines = receiptLinesOf(d)
   const noPo = !po && !d.poId
-  const outstanding = po ? po.lines.filter((l) => lineToArrive(l) > 0) : []
-  const complete = po ? outstanding.length === 0 : null
+  const outstanding = po ? po.lines.filter((l) => lineToArrive(l) > 0).map((l) => ({ name: l.name, unit: l.unit, quantity: lineToArrive(l) })) : m.outstanding ?? []
+  const complete = po ? outstanding.length === 0 : m.outstanding ? outstanding.length === 0 : null
   const when = d.confirmedAt || d.deliveryDate || null
   const sub = `${e(m.displayNumber)} · ${longDate(when, locale)}${timeOf(when, locale) ? ` — ${timeOf(when, locale)}` : ""}`
 
@@ -151,7 +150,7 @@ export function buildReceiptPrintHtml(m: ReceiptPrintInput): string {
     ? `<div class="pdst w">${e(t("status_no_po"))}</div>`
     : complete
       ? `<div class="pdst g">${e(t("status_final"))}</div>`
-      : `<div class="pdst w">${e(t("status_partial", { list: outstanding.map((l) => `${figure(lineToArrive(l))} ${l.unit} ${l.name}`).join("، ") }))}</div>`
+      : `<div class="pdst w">${e(t("status_partial", { list: outstanding.map((l) => `${figure(l.quantity)} ${l.unit} ${l.name}`).join("، ") }))}</div>`
 
   const idLine = (cr: string | null | undefined, vat: string | null | undefined) =>
     `${e(t("cr"))} <span class="ltr">${e(cr || "—")}</span> · ${e(t("vat_no"))} <span class="ltr">${e(vat || "—")}</span>`
@@ -187,7 +186,7 @@ export function buildReceiptPrintHtml(m: ReceiptPrintInput): string {
       return `<tr>
         <td class="num">${i + 1}</td>
         <td>${e(l.name)}</td>
-        ${noPo ? "" : `<td class="num">${pl ? figure(num(pl.quantity) - num(pl.cancelled)) : "—"}</td><td class="num">${num(l.noticeQuantity) > 0 ? figure(l.noticeQuantity) : "—"}</td>`}
+        ${noPo ? "" : `<td class="num">${pl ? figure(num(pl.quantity) - num(pl.cancelled)) : "—"}</td>`}
         <td class="num">${figure(counted)}</td>
         ${noPo ? "" : `<td>${num(l.rejected) > 0 ? `<span class="ltr">${figure(l.rejected)}</span> — ${e(l.rejectReason ? tp(`rejectReason.${l.rejectReason}`) : "")}` : "—"}</td><td>${num(l.held) > 0 ? `<span class="ltr">${figure(l.held)}</span> — ${e(l.holdReason ? tp(`holdReason.${l.holdReason}`) : "")}` : "—"}</td>`}
         <td class="num acc">${figure(acc)}</td>
@@ -197,7 +196,7 @@ export function buildReceiptPrintHtml(m: ReceiptPrintInput): string {
     })
     .join("")
   const total = withPrices ? round2(lines.reduce((s, l) => s + (l.accepted ?? acceptedOf(l)) * num(priced.get(l.poLineId)?.unitPrice), 0)) : null
-  const cols = noPo ? 5 : 9
+  const cols = noPo ? 5 : 8
   // A no-PO receipt prints what was typed from the shop invoice — its unit prices and total, for a reader who sees prices.
   const typed = (d.items || []).filter((it) => it.name)
   const typedPriced = m.withPrices && typed.some((it) => it.unitPrice != null && Number.isFinite(Number(it.unitPrice)))
@@ -215,7 +214,7 @@ export function buildReceiptPrintHtml(m: ReceiptPrintInput): string {
     ${typedPriced ? `<tfoot><tr><td colspan="5">${e(t("invoice_as_received"))}</td><td class="num">${e(sar(noPoInvoiceValue(d) ?? 0, locale))}</td></tr></tfoot>` : ""}
   </table>`
   const table = noPo ? noPoTable : `<table>
-    <thead><tr><th class="num">#</th><th>${e(t("col_description"))}</th>${noPo ? "" : `<th class="num">${e(t("col_on_po"))}</th><th class="num">${e(t("col_per_notice"))}</th>`}<th class="num">${e(t("col_counted"))}</th>${noPo ? "" : `<th>${e(t("col_rejected"))}</th><th>${e(t("col_held"))}</th>`}<th class="num">${e(t("col_accepted"))}</th><th>${e(t("col_unit"))}</th>${withPrices ? `<th class="num">${e(t("col_value"))}</th>` : ""}</tr></thead>
+    <thead><tr><th class="num">#</th><th>${e(t("col_description"))}</th>${noPo ? "" : `<th class="num">${e(t("col_on_po"))}</th>`}<th class="num">${e(t("col_counted"))}</th>${noPo ? "" : `<th>${e(t("col_rejected"))}</th><th>${e(t("col_held"))}</th>`}<th class="num">${e(t("col_accepted"))}</th><th>${e(t("col_unit"))}</th>${withPrices ? `<th class="num">${e(t("col_value"))}</th>` : ""}</tr></thead>
     <tbody>${rows || `<tr><td colspan="${cols}" class="muted">—</td></tr>`}</tbody>
     ${withPrices && total != null ? `<tfoot><tr><td colspan="${cols}">${e(t("accepted_value"))}</td><td class="num">${e(sar(total, locale))}</td></tr></tfoot>` : ""}
   </table>`
@@ -231,28 +230,68 @@ export function buildReceiptPrintHtml(m: ReceiptPrintInput): string {
     : ""
   const note = d.receiptNote || d.notes ? `<div class="para"><b>${e(noPo ? t("reason_outside") : t("receiver_note"))}</b> ${e(d.receiptNote || d.notes || "")}</div>` : ""
 
-  const sig = (caption: string, name: string, extra: string, image?: string | null) =>
-    `<div><small>${e(caption)}</small><b>${e(name || "—")}</b>${extra ? `<span class="muted">${e(extra)}</span>` : ""}${image ? `<img src="${e(image)}" alt="">` : `<div class="line">${e(t("signature"))}</div>`}</div>`
-  const receivedLine = `${d.selfReceived ? t("self_received") : t("received_by_role")} · ${longDate(when, locale)} ${timeOf(when, locale)}`.trim() + (d.receiverReport ? ` · ${t("signed_on_link")}` : "")
-  const signatures = `<div class="pdsg">
-    ${sig(t("sig_supplier"), po?.supplierName || d.supplierName || "", d.deliveryPersonName || "", (d as { supplierSignatureData?: string | null }).supplierSignatureData)}
-    ${sig(t("sig_receiver"), d.receivedByName || "", receivedLine, d.receiverSignatureData || (d as { contractorSignatureData?: string | null }).contractorSignatureData)}
-    ${sig(t("sig_procurement"), po?.preparedByName || "", "")}
-  </div>`
+  const when2 = `${longDate(when, locale)} ${timeOf(when, locale)}`.trim()
+  const manual = d.source === "manual"
+  const via = manual ? t("via_manual") : d.confirmedVia === "login" || d.receiverReport?.verifiedBy === "login" ? t("via_login") : t("via_code")
+  const who = manual ? d.confirmedByName || d.receivedByName || "—" : d.receivedByName || "—"
+  const digital = `<div class="dig"><b>${e(manual ? t("registered_by_procurement") : d.selfReceived ? t("self_received") : t("registered_by"))}</b> ${e(who)} · ${e(when2)} · ${e(via)}<small>${e(t("no_signature_note"))}</small></div>`
 
   const footerExtra = noPo ? t("footer_no_po") : t("footer_accepted_only")
   const footer = `<div class="pdf2"><div>${e(footerExtra)}</div><div>${e(t("footer", { company: m.company.name || "—", date: longDate(m.now.toISOString(), locale) }))}</div></div>`
 
   return `<div class="pdh"><div><h1>${e(noPo ? t("title_no_po") : t("title"))}</h1><div class="sub">${sub}</div></div>${companyBlock(m.company, t)}</div>
-    ${banner}${grid}${table}${checklist}${driver}${forwarded}${note}${signatures}${footer}`
+    ${banner}${grid}${table}${checklist}${driver}${forwarded}${note}${digital}${footer}`
+}
+
+/** The whole self-contained page: its own styles, A4, and — when it is meant to be printed at once — the print dialog on load. */
+export function receiptDocumentHtml(m: ReceiptPrintInput, opts: { autoPrint: boolean } = { autoPrint: true }): string {
+  const dir: "rtl" | "ltr" = m.locale === "ar" ? "rtl" : "ltr"
+  return `<!doctype html><html dir="${dir}" lang="${e(m.locale)}"><head><meta charset="utf-8"><title>${e(m.displayNumber)}</title><style>${RECEIPT_PRINT_CSS(dir)}</style></head><body><div class="pd">${buildReceiptPrintHtml(m)}</div>${opts.autoPrint ? "<script>window.onload = function () { window.print() }</script>" : ""}</body></html>`
 }
 
 /** Open the document in its own window; false when the browser blocked the pop-up. */
 export function printGoodsReceipt(m: ReceiptPrintInput): boolean {
-  const dir: "rtl" | "ltr" = m.locale === "ar" ? "rtl" : "ltr"
   const w = window.open("", "_blank", "width=1000,height=760")
   if (!w) return false
-  w.document.write(`<!doctype html><html dir="${dir}" lang="${e(m.locale)}"><head><meta charset="utf-8"><title>${e(m.displayNumber)}</title><style>${RECEIPT_PRINT_CSS(dir)}</style></head><body><div class="pd">${buildReceiptPrintHtml(m)}</div><script>window.onload = function () { window.print() }</script></body></html>`)
+  w.document.write(receiptDocumentHtml(m))
   w.document.close()
   return true
+}
+
+/** What the receiver's page keeps of the receipt it just made, enough to print it without signing in (the server returns it). */
+export interface ReceiptPrintFacts {
+  docNumber: string
+  supplierName: string
+  poNumber: string | null
+  rfqTitle: string
+  receiverName: string
+  at: string
+  lines: DeliveryLine[]
+  placeName: string | null
+  selfReceived: boolean
+  companyName: string
+  via: "login" | "sms_code"
+  /** The order has nothing left to arrive after this receipt; null when there is no order. */
+  complete: boolean | null
+  remaining: Array<{ name: string; unit: string; quantity: number }>
+}
+
+/** The printable input for a receipt known only by its facts — the receiver's «PDF» on the done screen. */
+export function receiptPrintInputFromFacts(f: ReceiptPrintFacts, m: Pick<ReceiptPrintInput, "locale" | "displayNumber" | "displayPoNumber" | "t" | "tp" | "now">): ReceiptPrintInput {
+  const delivery: DeskDelivery = {
+    id: f.docNumber,
+    status: "confirmed",
+    docNumber: f.docNumber,
+    poId: f.poNumber ? "order" : null,
+    poNumber: f.poNumber,
+    supplierName: f.supplierName,
+    rfqTitle: f.rfqTitle,
+    lines: f.lines,
+    receivedByName: f.receiverName,
+    confirmedAt: f.at,
+    deliveryDate: f.at.slice(0, 10),
+    selfReceived: f.selfReceived,
+    confirmedVia: f.via,
+  }
+  return { ...m, delivery, po: null, company: { name: f.companyName }, placeName: f.placeName, projectName: null, withPrices: false, outstanding: f.complete === false ? f.remaining : f.complete === true ? [] : null }
 }

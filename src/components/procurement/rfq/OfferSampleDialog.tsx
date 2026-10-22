@@ -5,14 +5,13 @@
 
 import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
-import { addDoc, collection, doc, updateDoc } from "firebase/firestore"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { offerAct } from "@/lib/procurement/offer-acts-client"
 import { addDays } from "@/lib/procurement/po"
 import type { OfferRowModel } from "@/lib/procurement/rfq-offers-view"
 import type { RfqView } from "./rfqOfferView"
@@ -20,7 +19,6 @@ import type { RfqView } from "./rfqOfferView"
 export function OfferSampleDialog({ row, rfq, today, onClose }: { row: OfferRowModel | null; rfq: RfqView | null; today: string; onClose: () => void }) {
   const t = useTranslations("Portal.Contractor")
   const tp = useTranslations("Portal.Procurement.rfqpage.drawer")
-  const firestore = useFirestore()
   const { toast } = useToast()
   const [ask, setAsk] = useState({ what: "", place: "", by: "" })
   const [busy, setBusy] = useState(false)
@@ -34,40 +32,14 @@ export function OfferSampleDialog({ row, rfq, today, onClose }: { row: OfferRowM
   const ok = Boolean(ask.what.trim() && ask.place.trim() && ask.by && ask.by >= today)
 
   const send = async () => {
-    if (!firestore || !row || !ok) return
+    if (!row || !ok) return
     setBusy(true)
     try {
-      const now = new Date().toISOString()
-      await updateDoc(doc(firestore, "offers", row.id), {
-        sampleStatus: "مطلوبة",
-        sampleUpdatedAt: now,
-        sampleWhat: ask.what.trim().slice(0, 300),
-        samplePlace: ask.place.trim().slice(0, 300),
-        sampleBy: ask.by,
-        sampleRequestedAt: now,
-        sampleSentAt: null,
-        sampleReceivedBy: null,
-        sampleNote: null,
-      })
-      const o = row.offer as { supplierId?: string; organizationId?: string; isGuestOffer?: boolean; rfqTitle?: string }
-      if (o.supplierId && !o.isGuestOffer) {
-        await addDoc(collection(firestore, "users", o.supplierId, "notifications"), {
-          userId: o.supplierId,
-          organizationId: o.organizationId || o.supplierId,
-          type: "sample_requested",
-          i18n: { title: "pn_sample_requested_title", message: "pn_sample_requested", params: { rfq: o.rfqTitle || rfq?.title || "" } },
-          title: "طلب عينة جديد",
-          message: `قام المقاول بطلب عينة لطلب عروض الأسعار: ${o.rfqTitle || rfq?.title || ""}`,
-          offerId: row.id,
-          rfqId: rfq?.id,
-          createdAt: now,
-          read: false,
-        })
-      }
+      await offerAct({ act: "sample", offerId: row.id, what: ask.what.trim(), place: ask.place.trim(), by: ask.by })
       toast({ title: t("offers_toast_sample_req"), description: t("offers_toast_sample_req_desc") })
       onClose()
     } catch (err) {
-      console.error("sample request failed:", (err as { code?: string })?.code || err)
+      console.error("sample request failed:", (err as { reason?: string })?.reason || err)
       toast({ title: t("offers_toast_error"), description: t("offers_toast_sample_error"), variant: "destructive" })
     } finally {
       setBusy(false)

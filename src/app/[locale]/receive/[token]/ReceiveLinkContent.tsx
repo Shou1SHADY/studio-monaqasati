@@ -1,27 +1,24 @@
 "use client"
 
-// The receiver's side of a forwarded delivery (22 Sep review). Whoever is
-// standing at the gate — with or without an account — counts what arrived,
-// marks what was rejected, attaches the proof (photos, the weighbridge ticket,
-// a certificate — PUR-06) and confirms: with a code texted to the mobile
-// Procurement named, or — the member it was forwarded to — with his own
-// sign-in. The confirmation IS the signature; no pad is drawn (question 3). The count is blind: the supplier's quantities are
-// deliberately not shown, so the receiver counts rather than agrees. Like the
-// office's form, a line left blank did not arrive (sent as 0), and part of a
-// count may be set aside for inspection with its reason.
+// The receiver's side (PRD 2.0 RCV-03, G-09). Whoever stands at the truck — with an account or with the link and a code — counts what
+// arrived, says how much of it he accepts and, for what he does not, why (damaged · off spec · short in the pack · other), attaches the
+// proof (a photo of the shipment, the weighbridge ticket, the mill certificate) and presses «أكّد الاستلام». That press IS the signature
+// AND the receipt: the server draws the GR number and lands the goods in the same act, so the page ends on «سُجّل السند». The count is
+// blind — the ordered quantity is never sent to this page — and a line left blank did not arrive (it is sent as 0).
 
 import { fitForUpload } from "@/lib/upload-fit"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
-import { displayPoNumber } from "@/lib/procurement/format"
-import { Camera, CheckCircle2, FileText, Loader2, PackageCheck, ShieldCheck, TriangleAlert } from "lucide-react"
+import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
+import { Camera, CheckCircle2, FileText, Loader2, PackageCheck, Printer, ShieldCheck, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useUser } from "@/firebase"
-import { HOLD_REASON_CODES, REJECT_REASON_CODES } from "@/lib/procurement/po"
+import { RECEIVER_REJECT_REASONS } from "@/lib/procurement/receipt-count"
+import { printGoodsReceipt, receiptPrintInputFromFacts, type ReceiptPrintFacts } from "@/lib/procurement/receipt-print"
 import { cn } from "@/lib/utils"
 
 interface LinkData {
@@ -33,27 +30,38 @@ interface LinkData {
   deliveryDate: string | null
   forwardedBy: string
   note?: string | null
+  noNotice?: boolean
+  where?: "warehouse" | "project"
   lines: Array<{ poLineId: string; name: string; unit: string }>
   receiverUserId?: string | null
   files?: Array<{ name: string; url: string; kind: "photo" | "ticket" | "cert" }>
 }
 
 interface Row {
-  counted: string
-  rejected: string
+  arrived: string
+  accepted: string
   reason: string
-  held: string
-  holdReason: string
   note: string
 }
 
-/** A quantity typed in either script: Arabic-Indic digits and thousands
- * separators are read as the receiver meant them. */
-function toNum(s: string): number | null {
+interface Done {
+  docNumber: string
+  placeName: string | null
+  print: ReceiptPrintFacts
+}
+
+/** A quantity typed in either script: Arabic-Indic digits and thousands separators are read as the receiver meant them. */
+export function toNum(s: string): number | null {
   const t = (s || "").trim()
   if (!t) return null
   const n = Number(t.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[,٬\s]/g, ""))
   return Number.isFinite(n) && n >= 0 ? n : null
+}
+
+/** What he accepted: the figure typed, else everything that arrived — the count only splits when he says part was not accepted. */
+export const acceptedOf = (r: Pick<Row, "arrived" | "accepted">): number => {
+  const arrived = toNum(r.arrived) ?? 0
+  return r.accepted.trim() === "" ? arrived : (toNum(r.accepted) ?? arrived)
 }
 
 export function ReceiveLinkContent() {
@@ -61,6 +69,7 @@ export function ReceiveLinkContent() {
   const locale = useLocale()
   const t = useTranslations("ReceiveLink")
   const tp = useTranslations("Portal.Procurement")
+  const tPrint = useTranslations("Portal.ProcReceipts.print")
 
   const [data, setData] = useState<LinkData | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -75,7 +84,7 @@ export function ReceiveLinkContent() {
   const [testCode, setTestCode] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState(false)
+  const [done, setDone] = useState<Done | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -91,7 +100,7 @@ export function ReceiveLinkContent() {
         setData(d)
         setReceiverName(d.receiverName)
         setFiles(d.files || [])
-        setRows(Object.fromEntries(d.lines.map((l) => [l.poLineId, { counted: "", rejected: "", reason: "", held: "", holdReason: "", note: "" }])))
+        setRows(Object.fromEntries(d.lines.map((l) => [l.poLineId, { arrived: "", accepted: "", reason: "", note: "" }])))
       })
       .catch(() => !cancelled && setLoadError("NETWORK"))
     return () => {
@@ -106,14 +115,12 @@ export function ReceiveLinkContent() {
     if (!data) return null
     for (const l of data.lines) {
       const r = rows[l.poLineId]
-      const counted = toNum(r?.counted ?? "") ?? 0
-      const rejected = toNum(r?.rejected ?? "") ?? 0
-      const held = toNum(r?.held ?? "") ?? 0
-      if (rejected + held > counted) return t("err_rejected_over", { name: l.name })
-      if (rejected > 0 && !r.reason) return t("err_reason_needed", { name: l.name })
-      if (held > 0 && !r.holdReason) return t("err_hold_reason_needed", { name: l.name })
+      const arrived = toNum(r?.arrived ?? "") ?? 0
+      const accepted = acceptedOf(r ?? { arrived: "", accepted: "" })
+      if (accepted > arrived) return t("err_accepted_over", { name: l.name })
+      if (arrived - accepted > 0 && !r?.reason) return t("err_reason_needed", { name: l.name })
     }
-    if (!data.lines.some((l) => (toNum(rows[l.poLineId]?.counted ?? "") ?? 0) > 0)) return t("err_nothing_counted")
+    if (!data.lines.some((l) => (toNum(rows[l.poLineId]?.arrived ?? "") ?? 0) > 0)) return t("err_nothing_counted")
     if (receiverName.trim().length < 2) return t("err_name")
     return null
   }, [data, rows, receiverName, t])
@@ -190,23 +197,15 @@ export function ReceiveLinkContent() {
           signatureData: null,
           lines: data.lines.map((l) => {
             const r = rows[l.poLineId]
-            const rejected = toNum(r.rejected) ?? 0
-            const held = toNum(r.held) ?? 0
-            return {
-              poLineId: l.poLineId,
-              counted: toNum(r.counted) ?? 0,
-              rejected,
-              rejectReason: rejected > 0 ? r.reason : null,
-              held,
-              holdReason: held > 0 ? r.holdReason : null,
-              note: r.note.trim() || null,
-            }
+            const arrived = toNum(r.arrived) ?? 0
+            const rejected = Math.max(0, arrived - acceptedOf(r))
+            return { poLineId: l.poLineId, counted: arrived, rejected, rejectReason: rejected > 0 ? r.reason : null, held: 0, holdReason: null, note: rejected > 0 ? r.note.trim() || null : null }
           }),
         }),
       })
       const body = await res.json().catch(() => null)
       if (res.ok) {
-        setDone(true)
+        setDone({ docNumber: body.data.docNumber, placeName: body.data.placeName ?? null, print: body.data.print })
         return
       }
       if (body?.code === "WRONG_CODE") setError(t("err_wrong_code"))
@@ -214,7 +213,8 @@ export function ReceiveLinkContent() {
         setError(t("err_code_expired"))
         setChallengeId(null)
         setCode("")
-      } else if (res.status === 410) setLoadError(body?.code || "LINK_SIGNED")
+      } else if (body?.code === "OVER_RECEIPT") setError(t("err_over_receipt"))
+      else if (res.status === 410) setLoadError(body?.code || "LINK_SIGNED")
       else setError(t("err_generic"))
     } finally {
       setBusy(false)
@@ -244,16 +244,42 @@ export function ReceiveLinkContent() {
   }
 
   if (done) {
+    const accepted = done.print.lines.reduce((s, l) => s + (l.accepted ?? 0), 0)
+    const rejected = done.print.lines.reduce((s, l) => s + (l.rejected ?? 0), 0)
+    const print = () =>
+      printGoodsReceipt(
+        receiptPrintInputFromFacts(done.print, {
+          locale,
+          displayNumber: displayReceiptNumber(done.docNumber, locale),
+          displayPoNumber: done.print.poNumber ? displayPoNumber(done.print.poNumber, locale) : null,
+          t: (k, p) => tPrint(k as "title", p),
+          tp: (k, p) => tp(k as "doc.GR", p),
+          now: new Date(),
+        })
+      )
     return (
       <Shell>
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <CheckCircle2 className="text-success" size={40} aria-hidden="true" />
-          <h1 className="text-lg font-bold text-foreground">{t("done_title")}</h1>
-          <p className="max-w-sm text-sm text-muted-foreground">{t("done_body", { name: data.forwardedBy })}</p>
+          <h1 className="text-lg font-bold text-foreground">{t("done_title", { no: displayReceiptNumber(done.docNumber, locale) })}</h1>
+          <p className="max-w-sm text-sm text-foreground">
+            {t("done_accepted", { qty: accepted })}
+            {rejected > 0 ? ` ${t("done_rejected", { qty: rejected })}` : ""}
+          </p>
+          <p className="max-w-sm text-xs text-muted-foreground">
+            {data.where === "project" ? t("done_where_project") : t("done_where_warehouse")}
+            {done.placeName ? ` — ${done.placeName}` : ""}. {rejected > 0 ? t("done_rejected_note") : ""}
+          </p>
+          <Button type="button" variant="outline" className="h-10 gap-1.5" onClick={print}>
+            <Printer size={15} aria-hidden="true" />
+            {t("done_pdf")}
+          </Button>
         </div>
       </Shell>
     )
   }
+
+  const whereText = data.where === "project" ? t("where_project") : t("where_warehouse")
 
   return (
     <Shell>
@@ -268,7 +294,7 @@ export function ReceiveLinkContent() {
           {data.poNumber && data.rfqTitle ? " · " : ""}
           {data.rfqTitle}
         </p>
-        <p className="pt-1 text-sm text-foreground">{t("intro", { name: data.forwardedBy })}</p>
+        <p className="pt-1 text-sm text-foreground">{data.noNotice ? t("intro_arrival") : t("intro", { name: data.forwardedBy })}</p>
         {data.note && (
           <p className="mt-2 rounded-lg border border-cta/30 bg-cta/5 p-3 text-sm leading-relaxed text-foreground">
             <b>{t("procurement_note")}:</b> <span dir="auto">{data.note}</span>
@@ -283,39 +309,35 @@ export function ReceiveLinkContent() {
         <ul className="space-y-3">
           {data.lines.map((l) => {
             const r = rows[l.poLineId]
-            const rejected = toNum(r?.rejected ?? "") ?? 0
-            const held = toNum(r?.held ?? "") ?? 0
+            const arrived = toNum(r?.arrived ?? "") ?? 0
+            const rejected = Math.max(0, arrived - acceptedOf(r ?? { arrived: "", accepted: "" }))
             return (
               <li key={l.poLineId} className="space-y-3 rounded-xl border bg-card p-4">
                 <p className="font-semibold text-foreground">
                   {l.name} <span className="text-xs font-normal text-muted-foreground">({l.unit})</span>
                 </p>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <Label htmlFor={`c-${l.poLineId}`} className="text-xs">{t("counted")}</Label>
-                    <Input id={`c-${l.poLineId}`} inputMode="decimal" dir="ltr" className="h-11 tabular-nums" value={r?.counted ?? ""} onChange={(e) => setRow(l.poLineId, { counted: e.target.value })} />
+                    <Input id={`c-${l.poLineId}`} inputMode="decimal" dir="ltr" className="h-11 tabular-nums" value={r?.arrived ?? ""} onChange={(e) => setRow(l.poLineId, { arrived: e.target.value })} />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor={`r-${l.poLineId}`} className="text-xs">{t("rejected")}</Label>
-                    <Input id={`r-${l.poLineId}`} inputMode="decimal" dir="ltr" placeholder="0" className="h-11 tabular-nums" value={r?.rejected ?? ""} onChange={(e) => setRow(l.poLineId, { rejected: e.target.value })} />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor={`h-${l.poLineId}`} className="text-xs">{t("held")}</Label>
-                    <Input id={`h-${l.poLineId}`} inputMode="decimal" dir="ltr" placeholder="0" className="h-11 tabular-nums" value={r?.held ?? ""} onChange={(e) => setRow(l.poLineId, { held: e.target.value })} />
+                    <Label htmlFor={`a-${l.poLineId}`} className="text-xs">{t("accepted")}</Label>
+                    <Input id={`a-${l.poLineId}`} inputMode="decimal" dir="ltr" placeholder={r?.arrived || "0"} className="h-11 tabular-nums" value={r?.accepted ?? ""} onChange={(e) => setRow(l.poLineId, { accepted: e.target.value })} />
                   </div>
                 </div>
                 {rejected > 0 && (
                   <div className="space-y-2">
-                    <p className="text-xs font-medium text-foreground">{t("reason")}</p>
+                    <p className="text-xs font-medium text-foreground">{t("rejected_n", { qty: rejected })}</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {REJECT_REASON_CODES.map((c) => (
+                      {RECEIVER_REJECT_REASONS.map((c) => (
                         <button
                           key={c}
                           type="button"
                           aria-pressed={r.reason === c}
                           onClick={() => setRow(l.poLineId, { reason: r.reason === c ? "" : c })}
                           className={cn(
-                            "min-h-9 rounded-full border px-3 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                            "min-h-11 rounded-full border px-3 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                             r.reason === c ? "border-destructive bg-destructive text-destructive-foreground" : "border-border bg-background hover:bg-muted"
                           )}
                         >
@@ -324,27 +346,6 @@ export function ReceiveLinkContent() {
                       ))}
                     </div>
                     <Input placeholder={t("line_note")} dir="auto" className="h-10 text-sm" value={r.note} onChange={(e) => setRow(l.poLineId, { note: e.target.value })} />
-                  </div>
-                )}
-                {held > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-foreground">{t("hold_reason")}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {HOLD_REASON_CODES.map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          aria-pressed={r.holdReason === c}
-                          onClick={() => setRow(l.poLineId, { holdReason: r.holdReason === c ? "" : c })}
-                          className={cn(
-                            "min-h-9 rounded-full border px-3 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                            r.holdReason === c ? "border-module bg-module text-module-foreground" : "border-border bg-background hover:bg-muted"
-                          )}
-                        >
-                          {tp(`holdReason.${c}`)}
-                        </button>
-                      ))}
-                    </div>
                   </div>
                 )}
               </li>
@@ -364,7 +365,6 @@ export function ReceiveLinkContent() {
         </div>
       </section>
 
-      {/* The proof at the gate (PUR-06): photos, the weighbridge ticket, a certificate. */}
       <section className="space-y-2" aria-labelledby="files-h">
         <h2 id="files-h" className="text-sm font-bold text-foreground">
           {t("files_title")} <span className="text-xs font-normal text-muted-foreground">({t("optional")})</span>
@@ -438,6 +438,9 @@ export function ReceiveLinkContent() {
             </button>
           </>
         )}
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          {t("confirm_is_signature")} · {whereText}
+        </p>
         {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
       </section>
     </Shell>

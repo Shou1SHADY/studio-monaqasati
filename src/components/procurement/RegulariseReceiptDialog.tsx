@@ -29,7 +29,8 @@ import { receiptLinesOf, type DeskDelivery } from "@/lib/procurement/receipt-des
 import { choiceKey, defaultChoice, openOrdersForReceipt, parseChoice, priceAboveReference, priceReference, registeredSuppliers, regulariseProblem, type RegulariseChoice } from "@/lib/procurement/receipt-regularise"
 import { linkReceiptToOrder, markReceiptAsExpense } from "@/lib/procurement/receipt-writes"
 import type { ProcActor, PurchaseOrder } from "@/lib/procurement/types"
-import { ProcWriteError, retroactivePurchaseOrder } from "@/lib/procurement/writes"
+import { placeRetroactiveOrder } from "@/lib/procurement/po-direct-client"
+import { ProcWriteError } from "@/lib/procurement/writes"
 
 const OTHER = "__other__"
 const fmt = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n)
@@ -101,23 +102,15 @@ export function RegulariseReceiptDialog({ delivery: d, actor, orgId, orders, pla
         toast({ title: t("regularise.linked", { number: displayPoNumber(r.poNumber, locale) }) })
         onDone({ poId: choice.poId })
       } else {
-        const r = await retroactivePurchaseOrder(
-          firestore,
-          actor,
-          {
-            organizationId: orgId,
-            rfqTitle: d.notes || lines.map((l) => l.name).join("، ") || supplierName,
-            supplierName,
-            supplierOrgId: picked?.orgId ?? null,
-            supplierUserId: picked?.userId ?? null,
-            projectId: d.projectId ?? null,
-            lines: lines.map((l, i) => ({ name: l.name, unit: l.unit, quantity: qtyOf(i), unitPrice: priceNums[i], accepted: qtyOf(i) })),
-            totalExVat: total,
-            deliveryId: d.id,
-            reason,
-          },
-          opts
-        )
+        const r = await placeRetroactiveOrder({
+          rfqTitle: d.notes || lines.map((l) => l.name).join("، ") || supplierName,
+          supplier: { orgId: picked?.orgId ?? null, name: supplierName },
+          projectId: d.projectId ?? null,
+          lines: lines.map((l, i) => ({ name: l.name, unit: l.unit, quantity: qtyOf(i), unitPrice: priceNums[i], accepted: qtyOf(i) })),
+          totalExVat: total,
+          deliveryId: d.id,
+          reason,
+        })
         toast({ title: t("regularise.done", { number: displayPoNumber(r.docNumber, locale) }) })
         onDone({ poId: r.id })
       }

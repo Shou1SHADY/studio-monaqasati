@@ -49,7 +49,7 @@ export type AwardReasonCode =
 /** What Procurement decided about a quantity rejected at the gate (§5.2-8). */
 export type RejectDecision = "replace" | "discount" | "reduce"
 
-export type RejectReasonCode = "damaged" | "wrong_item" | "wrong_spec" | "sample" | "expired" | "excess" | "other"
+export type RejectReasonCode = "damaged" | "wrong_item" | "wrong_spec" | "short" | "sample" | "expired" | "excess" | "other"
 export type HoldReasonCode = "certificate" | "test" | "consultant"
 
 /** The non-blocking checklist at the gate (§6.3). */
@@ -215,6 +215,8 @@ export interface PoSupplierDecline {
 }
 
 export interface PurchaseOrder {
+  /** How the order ends, stamped at approval from the package of that moment (NFR-08): the goods counted, or Finance's payment. */
+  closeOn?: "receipt" | "payment" | null
   id: string
   organizationId: string
   /** `PO-2026/014` — stored Latin, shown `ط.ش-2026/014` in Arabic. */

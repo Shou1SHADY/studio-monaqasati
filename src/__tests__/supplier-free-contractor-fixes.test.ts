@@ -20,12 +20,13 @@ import { reviewAward, supplierFactsFromProfile, supplierVerified } from "@/lib/p
 import { PROC_EVENT_COPY_AR, PROC_EVENT_PARAM_COPY_AR, type ProcEvent } from "@/lib/procurement/events"
 import { deadlineEnd } from "@/lib/procurement/guest-supplier"
 import { daysLate, poBlocks, poLate, poWarnings } from "@/lib/procurement/po"
-import { incomingRows } from "@/lib/procurement/receipt-desk"
+import { noticeRows } from "@/lib/procurement/receipt-desk"
 import { rfqOutcomeEvent } from "@/lib/procurement/rfq-outcome"
 import { createRfqWithNumber, reopenAwardRefusal } from "@/lib/procurement/rfq-writes"
 import { frozenTermsOf, rfqTermsToStore } from "@/lib/procurement/terms-freeze"
 import { DEFAULT_POLICIES, type ProcActor, type PurchaseOrder } from "@/lib/procurement/types"
-import { retroactivePurchaseOrder, type AwardOfferLike } from "@/lib/procurement/writes"
+import type { AwardOfferLike } from "@/lib/procurement/writes"
+import { retroactivePurchaseOrder } from "@/test-utils/legacy-direct-writes"
 import { awardRfq } from "@/test-utils/legacy-award-writes"
 import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
 import { isRfqDeadlinePassed } from "@/lib/rfq-share"
@@ -168,10 +169,9 @@ describe("lateness: the contractor and the supplier read the same order the same
     expect(supplierLate(order)).toBe(late)
   })
 
-  it("the receipt desk's due row agrees", () => {
-    const rows = incomingRows([], [po({ deliveryReports: [report("2026-10-09")] })], now)
-    expect(rows).toEqual([expect.objectContaining({ kind: "due", daysLate: 0 })])
-    expect(incomingRows([], [po()], now)).toEqual([expect.objectContaining({ kind: "due", daysLate: 4 })])
+  it("the receipts hub lists notices only (Procurement 2.0): an order the supplier has not notified is Today's reminder, not a hub row", () => {
+    expect(noticeRows([], [po({ deliveryReports: [report("2026-10-09")] })], now)).toEqual([])
+    expect(noticeRows([], [po()], now)).toEqual([])
   })
 })
 

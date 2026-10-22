@@ -30,7 +30,11 @@ import {
 } from "@/lib/procurement/supplier-file"
 import { PROC_TAB_GATES } from "@/lib/procurement/tab-gates"
 import { canAssignCategories, cleanCategories, mayInviteSuppliers, procTeam } from "@/lib/procurement/team"
-import { COMMITMENTS_HREF, actorKind, financeDue, todayKpis, todayTasks, todayWaits, type ProcWorld, type RfqFact, type TodayActor } from "@/lib/procurement/today"
+import { newTeamRequest } from "@/lib/procurement/incoming-ingest"
+import { todayKpis } from "@/lib/procurement/kpis"
+import { DEFAULT_RESOLVED_POLICIES } from "@/lib/procurement/policies"
+import { askStock } from "@/lib/procurement/stock-check"
+import { actorKind, financeDue, todayTasks, todayWaits, type ProcWorld, type RfqFact, type TodayActor } from "@/lib/procurement/today"
 import { DEFAULT_POLICIES, type PoLine, type ProcActor, type PurchaseOrder, type ReceiptFact } from "@/lib/procurement/types"
 import type { PermissionId } from "@/lib/permissions"
 
@@ -295,7 +299,7 @@ describe("Today — the rows the audit found missing", () => {
   it("G1 · a member who runs RFQs without preparing orders gets the RFQ and need tasks", () => {
     const needRow = { key: "n1", needKey: "n", state: "open", path: "rfq", name: "Cement", unit: "bag", open: 10, total: 10, lastOrderIn: 1, estimate: 500, category: null, need: { refLabel: "PR-1", projectName: "Tower A" } } as unknown as NeedRow
     const w = world({ rfqs: [rfq({ createdByUserId: "src" })], needDesk: { rows: [needRow], buyers: [], viewerCategories: null } })
-    expect(kinds(w, SOURCER).sort()).toEqual(["need_line", "rfq_draft"])
+    expect(kinds(w, SOURCER).sort()).toEqual(["need_request", "rfq_draft"])
     // The manager without offers.accept sources too; the expediter never.
     expect(kinds(w, actor({ uid: "m2", canApprove: true, seesPrices: true }))).toContain("rfq_draft")
     expect(kinds(w, EXPEDITER)).toEqual([])
@@ -303,7 +307,7 @@ describe("Today — the rows the audit found missing", () => {
 
   it("G4 · Projects closed a material still owed (`pmCancels`): cancel the rest with the supplier", () => {
     const stopped = po({ lines: [line({ id: "l1", accepted: 40 })], pmCancels: { l1: { byName: "PM", reason: "design change" } } })
-    expect(todayTasks(world({ orders: [stopped] }), MANAGER, NOW).find((t) => t.kind === "cancel_remainder")).toMatchObject({ titleParams: { qty: 60, unit: "t", name: "Rebar 12 mm" }, amount: 168000 })
+    expect(todayTasks(world({ orders: [stopped] }), MANAGER, NOW).find((t) => t.kind === "cancel_remainder")).toMatchObject({ titleParams: { qty: 60, unit: "t", name: "Rebar 12 mm" }, amount: 193200, basis: "incl" })
     // Nothing left to arrive: no row.
     expect(kinds(world({ orders: [po({ lines: [line({ accepted: 100 })], pmCancels: { l1: {} } })] }), MANAGER)).not.toContain("cancel_remainder")
   })
@@ -312,7 +316,7 @@ describe("Today — the rows the audit found missing", () => {
 
   it("G5 · a finance hold is ours to decide (red, first), the receiver's to chase, the supplier's through us, the reading owner's to see", () => {
     const w = (reason: PoFinanceHold["reason"]) => world({ orders: [po({ financeHolds: [hold(reason)] })], ownerHasTeam: true })
-    expect(todayTasks(w("price"), MANAGER, NOW)[0]).toMatchObject({ kind: "finance_hold", priority: 0, severity: "red", titleKey: "task.finance_hold.proc.title", titleParams: { invoice: "INV-77", holdReason: "price" }, actionKey: "actions.decide", amount: 11500 })
+    expect(todayTasks(w("price"), MANAGER, NOW)[0]).toMatchObject({ kind: "finance_hold", tier: "red", severity: "red", titleKey: "task.finance_hold.proc.title", titleParams: { invoice: "INV-77", holdReason: "price" }, actionKey: "actions.decide", amount: 11500 })
     expect(todayTasks(w("nogrn"), MANAGER, NOW).find((t) => t.kind === "finance_hold")).toMatchObject({ titleKey: "task.finance_hold.rcv.title", subParams: { where: "projects" }, actionKey: "actions.open" })
     expect(todayTasks(w("vat"), BUYER, NOW).find((t) => t.kind === "finance_hold")).toMatchObject({ titleKey: "task.finance_hold.sup.title" })
     expect(todayTasks(w("price"), OWNER, NOW).find((t) => t.kind === "finance_hold")).toMatchObject({ titleKey: "task.finance_hold.owner.title", subParams: { holdOwner: "proc" }, actionKey: "actions.view" })
@@ -334,21 +338,21 @@ describe("Today — the rows the audit found missing", () => {
 
   it("G6 · the project manager's budget decision and the supplier's advance are waits", () => {
     const waiting = po({ id: "b", status: "awaiting_approval", pmBudget: { state: "pending" } })
-    const advance = po({ id: "a", docNumber: "PO-2026/015", status: "approved", approvedAt: "2026-09-20T08:00:00Z", advancePercent: 20 })
+    const advance = po({ id: "a", docNumber: "PO-2026/015", status: "accepted", approvedAt: "2026-09-20T08:00:00Z", advancePercent: 20 })
     const ws = todayWaits(world({ orders: [waiting, advance], budgetOverruns: { b: 12000 } }), MANAGER, NOW)
     expect(ws.find((x) => x.kind === "pm_budget")).toMatchObject({ module: "projects", subParams: { over: 12000, hasOver: 1 } })
-    expect(ws.find((x) => x.kind === "supplier_advance")).toMatchObject({ module: "finance", titleParams: { percent: 20, number: "PO-2026/015" }, subParams: { advance: "ADV-2026/015" } })
+    expect(ws.find((x) => x.id === "w_po:a")).toMatchObject({ kind: "po_step", module: "finance", titleParams: { number: "PO-2026/015" }, subKey: "step.adv", step: { params: { percent: 20 } } })
     // The amount is withheld from a viewer without prices.
     expect(todayWaits(world({ orders: [waiting], budgetOverruns: { b: 12000 } }), EXPEDITER, NOW)[0]).toMatchObject({ subParams: { over: 0, hasOver: 0 } })
   })
 
-  it("the owner's «ستطلبه المالية» = requested advances + received unpaid, and opens the commitments report", () => {
+  it("Finance's dues = requested advances + received unpaid (the figure the commitments report holds); no tile shows it any more", () => {
     const advance = po({ id: "a", status: "approved", approvedAt: "2026-09-20T08:00:00Z", advancePercent: 10, lines: [line({ quantity: 10, unitPrice: 1000 })] })
     const received = po({ id: "r", lines: [line({ quantity: 10, unitPrice: 500, accepted: 10 })] })
     // The advance is a share of the commitment, VAT included (advanceAmount).
     expect(financeDue([advance, received])).toEqual({ advances: 1150, received: 5000, total: 6150 })
-    const tile = todayKpis(world({ orders: [advance, received], ownerHasTeam: true }), OWNER, NOW).tiles.find((t) => t.id === "finance_due")
-    expect(tile).toMatchObject({ value: 6150, href: COMMITMENTS_HREF, noteKey: "kpi.finance_due.note_split" })
+    // NAV-03: the owner's «ستطلبه المالية» tile is gone — the three tiles are the same for him as for everyone.
+    expect(todayKpis(world({ orders: [advance, received], ownerHasTeam: true }), OWNER, NOW).tiles.map((t) => t.id)).toEqual(["needs", "committed", "drift"])
   })
 
   it("a one-person company's owner gets the working numbers, not the reading owner's", () => {
@@ -367,19 +371,20 @@ describe("Today — the rows the audit found missing", () => {
   it("arrived today is flagged per receipt and is not the reading owner's", () => {
     const got: ReceiptFact = { id: "g1", status: "confirmed", poId: "po1", docNumber: "GR-2026/031", supplierName: "Al-Hadid", confirmedAt: "2026-09-22T06:00:00Z", lines: [{ poLineId: "l1", name: "Rebar", unit: "t", noticeQuantity: 50, counted: 45, rejected: 2, accepted: 43 }] }
     const w = world({ orders: [po()], receipts: [got], ownerHasTeam: true })
-    expect(todayTasks(w, MANAGER, NOW).find((t) => t.kind === "arrived_today")).toMatchObject({ subKey: "task.arrived_today.sub_flags", subParams: { rejects: 1, short: 1 } })
+    expect(todayTasks(w, MANAGER, NOW).find((t) => t.kind === "arrived_today")).toMatchObject({ subKey: "task.arrived_today.sub_flags", subParams: { rejects: 1 } })
+    // G-08: a notice carries no quantities, so a receipt is never "short of the notice".
+    expect(todayTasks(w, MANAGER, NOW).find((t) => t.kind === "arrived_today")?.subParams).not.toHaveProperty("short")
     expect(kinds(w, OWNER)).not.toContain("arrived_today")
   })
 
-  it("the forward task names where the goods go; an expediter gets no overdue/late-date rows (prototype `see`)", () => {
+  it("the forward task names where the goods go; once forwarded and left uncounted past the window it is the escalation — for whoever follows deliveries up (TDY-05)", () => {
     const notice: ReceiptFact = { id: "n1", status: "pending_confirmation", poId: "po1", supplierName: "Al-Hadid", deliveryDate: "2026-09-18", lines: [] }
-    expect(todayTasks(world({ orders: [po()], receipts: [notice] }), MANAGER, NOW).find((t) => t.kind === "notice_forward")).toMatchObject({ subKey: "task.notice_forward.sub_place_rcv", subParams: { place: "Tower A", hasPlace: 1, hasReceiver: 0 } })
-    const told = { ...notice, forwardedTo: { name: "Majed" } }
-    expect(kinds(world({ orders: [po()], receipts: [told] }), MANAGER)).toContain("notice_overdue")
-    expect(kinds(world({ orders: [po()], receipts: [told] }), EXPEDITER)).toEqual([])
-    // Under «both» routing the receiver already has it: no forward task.
-    const both = { ...DEFAULT_POLICIES, noticeRouting: "both" } as typeof DEFAULT_POLICIES
-    expect(kinds(world({ orders: [po()], receipts: [notice], policies: both }), MANAGER)).not.toContain("notice_forward")
+    expect(todayTasks(world({ orders: [po()], receipts: [notice] }), MANAGER, NOW).find((t) => t.kind === "notice_forward")).toMatchObject({ subKey: "task.notice_forward.sub", subParams: { place: "Tower A", hasPlace: 1, hasReceiver: 0 } })
+    const told = { ...notice, forwardedTo: { name: "Majed", at: "2026-09-17T08:00:00Z", userId: "u7" } }
+    expect(kinds(world({ orders: [po()], receipts: [told] }), MANAGER)).toContain("count_escalated")
+    expect(kinds(world({ orders: [po()], receipts: [told] }), EXPEDITER)).toEqual(["count_escalated"])
+    // The reader who does not chase (the reading owner) sees nothing on it.
+    expect(kinds(world({ orders: [po()], receipts: [told], ownerHasTeam: true }), OWNER)).not.toContain("count_escalated")
   })
 
   it("a buyer's Today orders are the ones he prepared — his categories widen the list, not Today; the agreement task opens that agreement", () => {
@@ -391,9 +396,12 @@ describe("Today — the rows the audit found missing", () => {
     expect(todayTasks(world({ agreements: [agr] }), MANAGER, NOW).find((t) => t.kind === "agreement_expiring")?.href).toBe("/contractor/suppliers?segment=agreements&agreement=ag1")
   })
 
-  it("the need desk's waits reach the expediter too (G20)", () => {
-    const row = { key: "n1", needKey: "n", state: "chk", name: "Cement", unit: "bag", open: 10, total: 10, onHand: 4, need: { refLabel: "PR-1" } } as unknown as NeedRow
-    expect(todayWaits(world({ needDesk: { rows: [row], buyers: [], viewerCategories: null } }), EXPEDITER, NOW).map((w) => w.kind)).toEqual(["stock_check"])
+  it("the waits on Inventory reach the expediter too (G20)", () => {
+    const doc = newTeamRequest({ organizationId: "org", id: "r1", no: "MAT-2026/014", seq: 14, lines: [{ name: "Cement", unit: "bag", quantity: 10 }], needBy: "2026-11-22", place: { label: "Tower A", city: "Riyadh", district: "Olaya" }, requestedBy: { id: "u1", name: "Fahd" }, requestedFor: { kind: "member", id: "u1", name: "Fahd" }, at: NOW.toISOString() })
+    const asked = askStock(doc, { now: NOW, policies: DEFAULT_RESOLVED_POLICIES })
+    if (typeof asked === "string") throw new Error(asked)
+    const needDesk = { rows: [], buyers: [], viewerCategories: null }
+    expect(todayWaits(world({ incomingDocs: [{ ...doc, lines: asked.lines }], needDesk }), EXPEDITER, NOW).map((w) => w.kind)).toEqual(["stock_reply"])
   })
 })
 

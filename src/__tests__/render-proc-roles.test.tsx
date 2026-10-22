@@ -226,7 +226,7 @@ const SCREENS: Record<string, Screen> = {
   orderA: { path: "/contractor/rfqs/orders", search: "po=A", node: () => <OrdersPage /> },
   orderB: { path: "/contractor/rfqs/orders", search: "po=B", node: () => <OrdersPage /> },
   receiptsIncoming: { path: "/contractor/goods-received", search: "tab=incoming", node: () => <GoodsReceivedPage /> },
-  receiptsLog: { path: "/contractor/goods-received", search: "tab=log", node: () => <GoodsReceivedPage /> },
+  receiptsLog: { path: "/contractor/goods-received", search: "tab=recs", node: () => <GoodsReceivedPage /> },
   receiptsNoPo: { path: "/contractor/goods-received", search: "tab=nopo", node: () => <GoodsReceivedPage /> },
   suppliers: { path: "/contractor/suppliers", node: () => <SuppliersPage /> },
   reports: { path: "/contractor/rfqs/reports", node: () => <ReportsPage /> },
@@ -297,8 +297,8 @@ interface ScreenSpec {
 
 const SPECS: Record<string, ScreenSpec> = {
   today: {
-    titles: ["يحتاج قرارك", "ننتظره من وحدات أخرى", "يصل خلال"],
-    acts: { "راجع واعتمد": OM, "قارن العروض": MB, "حوّل للمستلم": MBE },
+    titles: ["يحتاج قرارك", "ننتظره من غيرنا", "دعوات الموردين", "واردة جديدة", "في الطريق"],
+    acts: { "اعتمده": OM, "قارن ورسِّ": MB, "حوّل للمستلم": MBE },
   },
   requests: {
     // PUR-01: one card per request, under the project's own number.
@@ -336,10 +336,10 @@ const SPECS: Record<string, ScreenSpec> = {
   },
   // Receiving is Inventory's and Projects' act: the owner of a company with a procurement team only reads here.
   receiptsIncoming: { titles: ["سندات الاستلام", "في الطريق", "السندات", "بلا أمر شراء", "في الطريق — ما أشعر به الموردون وما حلّ موعده", "مؤسسة الإسمنت"], acts: { "سجّل الاستلام": [], "سجّل سند استلام يدوياً": MB } },
-  receiptsLog: { titles: ["سجل الاستلام", "سند الاستلام", "المورد وأمر الشراء", "ما قُبل", "أين استُلم وإلى أين ذهب", "محل مواد البناء"] },
-  receiptsNoPo: { titles: ["بضاعة وصلت بلا أمر شراء", "لا سندات بلا أمر شراء"] },
+  receiptsLog: { titles: ["سندات الاستلام", "السندات", "الأمر والمورد", "الموقع ومن سجّله", "المقبول / الواصل", "الحالة", "محل مواد البناء"] },
+  receiptsNoPo: { titles: ["سندات الاستلام", "بلا أمر شراء"] },
   suppliers: { titles: ["الموردون", "مورّدونا", "الدعوات", "دليل موردي المنصة"], priced: ["تاريخ الأسعار", "اتفاقيات الأسعار"], acts: { "ادعُ مورداً إلى المنصة": MB } },
-  reports: { titles: ["التقارير", "أداء التوريد", "زمن الدورة والمنافسة", "الاستثناءات"], priced: ["المشتريات بحسب المشروع والجهة", "المشتريات بحسب المورد", "فرق السعر عن آخر شراء", "التزامات مفتوحة بحسب الاستحقاق"] },
+  reports: { titles: ["التقارير", "الالتزام بالمواعيد", "المنافسة على الطلبات", "الاستثناءات"], priced: ["بحسب المشروع والجهة", "ما اشتريناه بحسب المورد", "التوفير عن آخر سعر", "الالتزامات والمستحقات"] },
   // PUR-08: only what the customer sets; the developers' pages moved to docs/procurement-boundaries.md.
   settings: { titles: ["الإعدادات", "السياسات", "مواقع التسليم", "المستلمون", "الأدوار"] },
 }

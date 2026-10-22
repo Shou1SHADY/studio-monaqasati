@@ -1,11 +1,13 @@
 // Decision 2 of Supplier 1.0 — the receipt window. When a supplier reports "I delivered" and the contractor records no
 // receipt, the daily job (Vercel cron /api/cron/receipt-window, production only) reminds the contractor's receivers
-// after 2 days and escalates to the procurement manager (po.approve holders and the owner) after 5 — each ONCE per
+// after 2 days and escalates to the procurement manager (po.approve holders and the owner) when the company's window
+// (`escalateAfterDays`, Procurement 2.0 §14 — 2 by default; 5 only when a caller passes none) is over — each ONCE per
 // report, stamped on the report (`nudgedAt` / `escalatedAt`) inside a transaction so a second run, or two overlapping
 // ones, tell nobody twice. The supplier is never late while the report waits (deal-logic `isLate`).
 
 import { FieldValue, type Firestore } from "firebase-admin/firestore"
 import type { PoDeliveryReport, PurchaseOrder } from "@/lib/procurement/types"
+import { readPoliciesAdmin } from "@/lib/procurement/policies-server"
 import { notifyNamed } from "./server-notify"
 
 export const REMIND_AFTER_DAYS = 2
@@ -41,14 +43,14 @@ export const windowStart = (r: Pick<PoDeliveryReport, "date" | "at">): string =>
 
 /** Pure: what each open report is owed today. Escalation also reminds the receivers when they were never reminded
  * (a report the job first sees on day 5). Only an accepted order still waiting for goods has a window. */
-export function receiptWindowDue(pos: readonly PurchaseOrder[], today: string): WindowItem[] {
+export function receiptWindowDue(pos: readonly PurchaseOrder[], today: string, escalateAfter: (po: PurchaseOrder) => number = () => ESCALATE_AFTER_DAYS): WindowItem[] {
   const out: WindowItem[] = []
   for (const po of pos) {
     if (po.status !== "accepted") continue
     for (const r of (po.deliveryReports || []) as WindowReport[]) {
       if (r.closedAt || !r.date) continue
       const days = daysSince(windowStart(r), today)
-      if (days >= ESCALATE_AFTER_DAYS && !r.escalatedAt) out.push({ poId: po.id, reportId: r.id, stage: "escalate", days })
+      if (days >= escalateAfter(po) && !r.escalatedAt) out.push({ poId: po.id, reportId: r.id, stage: "escalate", days })
       if (days >= REMIND_AFTER_DAYS && !r.nudgedAt) out.push({ poId: po.id, reportId: r.id, stage: "remind", days })
     }
   }
@@ -63,7 +65,9 @@ export async function runReceiptWindow(db: Firestore, now: Date = new Date()): P
   const pos = snap.docs.map((d) => ({ ...(d.data() as Omit<PurchaseOrder, "id">), id: d.id }) as PurchaseOrder).filter((p) => (p.deliveryReports || []).some((r) => !r.closedAt))
   const totals = { open: pos.length, reminded: 0, escalated: 0, skipped: 0, failed: 0 }
   const at = now.toISOString()
-  for (const item of receiptWindowDue(pos, today)) {
+  const windows = new Map<string, number>()
+  for (const org of new Set(pos.map((p) => p.organizationId))) windows.set(org, (await readPoliciesAdmin(db, org)).escalateAfterDays)
+  for (const item of receiptWindowDue(pos, today, (po) => windows.get(po.organizationId) ?? ESCALATE_AFTER_DAYS)) {
     try {
       const ref = db.collection("purchaseOrders").doc(item.poId)
       const stamp = item.stage === "remind" ? "nudgedAt" : "escalatedAt"

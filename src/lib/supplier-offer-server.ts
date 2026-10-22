@@ -19,6 +19,7 @@ import { UNDER_REVIEW } from "@/lib/procurement/supplier"
 import { pricingModeOf, type PricedRfq } from "@/lib/procurement/offer-pricing"
 import { buildQuote, leadDaysFrom, leadDaysRefusal, quotingGate, versionFromQuote, type BuiltQuote, type QuoteRefusalCode, type QuoteRfq } from "@/lib/procurement/offer-versions"
 import { rfqKeyPart, sendProcEvent } from "@/lib/procurement/proc-event-server"
+import { rfqLogEntry, type RfqLogEntry } from "@/lib/procurement/rfq-detail"
 import { QUOTE_COUNTS, quoteCountId, riyadhMonth } from "@/lib/supplier-approval"
 import { requestReaches } from "@/lib/supplier-free/quote-rules"
 import type { SupplierCompany } from "@/lib/supplier-free/supplier-company"
@@ -154,7 +155,7 @@ export async function createSupplierOffer(db: Firestore, s: OfferingCompany, rfq
       status: UNDER_REVIEW,
       createdAt: at,
     })
-    tx.update(rfqRef, { offersCount: FieldValue.increment(1) })
+    tx.update(rfqRef, { offersCount: FieldValue.increment(1), log: [...((Array.isArray(rfq.log) ? rfq.log : []) as RfqLogEntry[]), rfqLogEntry({ uid: s.uid, name: s.name || s.company }, "offer_versioned", at, { params: { supplier: s.company, version: 1 } })] })
     if (countRef) tx.set(countRef, { orgId: s.orgId, month: riyadhMonth(now), count: used + 1, updatedAt: at }, { merge: true })
     return rfq
   })

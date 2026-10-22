@@ -81,4 +81,19 @@ describe("Procurement never promises to confirm receipt", () => {
     })
     expect(bad).toEqual([])
   })
+  it("G-09: no Procurement screen offers an act that records a receipt, or the retired receiving policies", () => {
+    const root = process.cwd()
+    const files: string[] = []
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) walk(full)
+        else if (/\.tsx?$/.test(entry.name)) files.push(full)
+      }
+    }
+    walk(path.join(root, "src/components/procurement"))
+    files.push(path.join(root, "src/components/contractor/ProcurementHeader.tsx"))
+    const offenders = files.filter((f) => /ReceiveDeliveryDialog|recordReceipt|buyerReceives|noticeRouting/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(root, f))
+    expect(offenders).toEqual([])
+  })
 })

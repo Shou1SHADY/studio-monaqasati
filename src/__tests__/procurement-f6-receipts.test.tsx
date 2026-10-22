@@ -1,8 +1,7 @@
 /**
- * Fix wave F — V6-proc-back 05/06/07, rendered: receiving is Inventory's and
- * Projects' act, so the owner of a company with a procurement team gets no
- * «سجّل الاستلام» and no «ألحِقه بأمر…» in the receipt drawer; a cash expense
- * is offered only for a receipt Procurement typed by hand.
+ * Fix wave F — V6-proc-back 05/06/07, rendered (Procurement 2.0, G-09/B-01): receiving is the RECEIVER's act, so nobody in the receipt drawer of a
+ * pending notice — the owner of a one-person company included — is offered «سجّل الاستلام»; the owner of a company with a procurement team gets no
+ * «ألحِقه بأمر…» either; a cash expense is offered only for a receipt Procurement typed by hand.
  */
 
 jest.mock("firebase/firestore", () => jest.requireActual("@/test-utils/render-world").firestoreMock)
@@ -60,7 +59,6 @@ function drawer(d: DeskDelivery, who: ProcActor, ownerReadOnly: boolean) {
       projectName={() => null}
       placeKind={() => null}
       now={NOW}
-      onReceive={() => {}}
       onRegularise={() => {}}
       policies={DEFAULT_POLICIES}
       ownerReadOnly={ownerReadOnly}
@@ -73,14 +71,15 @@ beforeEach(() => {
   setSignedIn("buyer")
 })
 
-describe("05 · «سجّل الاستلام» is never the owner's on a Procurement page once he has a team", () => {
-  it("hidden when he only reads; shown to a one-person company's owner", () => {
-    let view = drawer(notice, OWNER, true)
-    expect(buttons()).not.toContain(msg("Portal.ProcReceipts.drawer.record"))
-    view.unmount()
-    view = drawer(notice, OWNER, false)
-    expect(buttons()).toContain(msg("Portal.ProcReceipts.drawer.record"))
-    view.unmount()
+describe("05 · there is no «سجّل الاستلام» on a Procurement page for anyone (G-09)", () => {
+  it("not for the owner with a team, not for a one-person company's owner, not for the buyer — only the follow-up acts", () => {
+    const record = msg("Portal.ProcReceipts.drawer.record")
+    for (const [who, readOnly] of [[OWNER, true], [OWNER, false], [actor(), false]] as const) {
+      const view = drawer(notice, who, readOnly)
+      expect(buttons()).not.toContain(record)
+      expect(buttons().join(" ")).not.toMatch(/تأكيد الاستلام/)
+      view.unmount()
+    }
   })
 })
 

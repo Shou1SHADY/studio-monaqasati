@@ -69,7 +69,7 @@ import {
   type PoLineX,
   type PoTerms,
 } from "@/lib/procurement/po-extras"
-import { cancelRemainderWithFee, answerHoldPrice, decideHold, holdInvoice, referBudgetToProjects, releaseHold, remindApprovers, remindFinanceAboutAdvance, selfIssuePurchaseOrder, type PoLogAction } from "@/lib/procurement/po-extra-writes"
+import { cancelRemainderWithFee, answerHoldPrice, decideHold, holdInvoice, referBudgetToProjects, releaseHold, remindApprovers, remindFinanceAboutAdvance, type PoLogAction } from "@/lib/procurement/po-extra-writes"
 import { operatingPolicies } from "@/lib/procurement/policies"
 import {
   ProcWriteError,
@@ -512,7 +512,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             {f && selfIssue && (
               <div className="space-y-2">
                 <Callout tone="blue">{tProc("rfqpo.po.self_issue_hint", { limit: selfLimit.toLocaleString("en-US") })}</Callout>
-                <Button disabled={busy != null} onClick={() => run("self", () => selfIssuePurchaseOrder(f, actor, po.id, { blocks: { supplier: world.supplierFacts.get(po.supplierOrgId) ?? null, otherOrders: world.orders } }, opts), financeOn ? "toast.approved" : "toast.approved_nofin")}>
+                <Button disabled={busy != null} onClick={() => run("self", () => poAct("self-issue", { poId: po.id }, locale), (out) => ((out as PoActResult | undefined)?.status === "sent" ? "toast.approved_sent" : financeOn ? "toast.approved" : "toast.approved_nofin"))}>
                   {tProc("rfqpo.po.self_issue")}
                 </Button>
               </div>
@@ -1074,7 +1074,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             <ScheduleSection po={px} schedule={schedule} deliveries={world.deliveries} />
             {warranty && <WarrantyCallout />}
 
-            <OrderDeliveriesSections po={px} deliveries={world.deliveries} warehouses={warehouses} routing={operatingPolicies(policies).noticeRouting} now={now} />
+            <OrderDeliveriesSections po={px} deliveries={world.deliveries} warehouses={warehouses} now={now} />
 
             {actor.seesPrices && !financeOn && (
               // Without Finance (PUR-10, Q5): no ledger here — an optional status, the advance, the invoice file to the accountant.

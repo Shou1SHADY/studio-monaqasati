@@ -1,7 +1,7 @@
 /**
  * The four operating policies (§6.4) where they change what happens, and the
  * order's boundary acts: Projects' budget / sample gates re-run at approval,
- * the buyer's self-issue under a limit read in the transaction, who acts on
+ * who acts on
  * an order (R-26), cancel-with-fee and the hold decision telling the others,
  * Projects' stop request, a receipt closing the notice it took, and the reply
  * window of Inventory / the workshop.
@@ -19,8 +19,8 @@ import { resolvePolicies } from "@/lib/procurement/policies"
 import { approvalGateBlocks, noticeAudience, noticeTold, receiveRight, replyLapsed, selfReceivedFlag } from "@/lib/procurement/policy-enforce"
 import type { PurchaseOrderX } from "@/lib/procurement/po-extras"
 import { approvePurchaseOrder, assertActs, cancelRemainder, sendPurchaseOrder } from "@/lib/procurement/writes"
-import { answerHoldPrice, cancelRemainderWithFee, decideHold, decidePmBudget, pmStopLine, referBudgetToProjects, requestPmStopInTx, selfIssuePurchaseOrder } from "@/lib/procurement/po-extra-writes"
-import { createArrivalWithoutNotice, recordReceipt, trimNotices } from "@/lib/procurement/receipt-writes"
+import { answerHoldPrice, cancelRemainderWithFee, decideHold, decidePmBudget, pmStopLine, referBudgetToProjects, requestPmStopInTx } from "@/lib/procurement/po-extra-writes"
+import { trimNotices } from "@/lib/procurement/receipt-count"
 import { exceptions, openCommitments } from "@/lib/procurement/reports"
 
 const db = fakeFirestore as unknown as Firestore
@@ -127,7 +127,7 @@ describe("pure: the operating policies", () => {
     expect(pmStopLine(po, { name: " أسمنت ", unit: "كيس" })?.id).toBe("l1")
     expect(pmStopLine(order({ status: "accepted", lines: [{ ...po.lines[0], accepted: 100 }] }), { name: "أسمنت", unit: "كيس" })).toBeNull()
   })
-  it("a receipt without the notice trims what the notice announced, oldest first; a notice with nothing left closes", () => {
+  it("a receipt without the notice trims what an old notice announced, oldest first; a notice with nothing left closes", () => {
     const n = (q: number): DeliveryLine => ({ poLineId: "l1", name: "أسمنت", unit: "كيس", noticeQuantity: q })
     const out = trimNotices([{ lines: [n(40)] }, { lines: [n(60)] }], [{ ...n(0), counted: 70 }])
     expect(out[0]).toMatchObject({ closed: true, changed: true })
@@ -171,25 +171,6 @@ describe("the budget referral (Procurement) and decision (Projects)", () => {
     await decidePmBudget(db, { uid: "pm", name: "PM" }, "po1", { decision: "accepted" })
     expect(read().pmBudget?.state).toBe("accepted")
     expect(kinds("buyer")).toContain("po_budget_decided")
-  })
-})
-
-describe("the buyer's self-issue (R-32)", () => {
-  it("reads the limit from the org's policies in the transaction, not the screen", async () => {
-    seed(`procurementSettings/${ORG}`, { buyerSelfIssueLimit: 1000 })
-    seedOrder(order())
-    await expect(selfIssuePurchaseOrder(db, buyer, "po1", {}, { now: NOW })).rejects.toMatchObject({ code: "above_limit" })
-  })
-  it("issues a direct order under the limit and tells Finance and the receivers", async () => {
-    seedOrder(order())
-    const out = await selfIssuePurchaseOrder(db, buyer, "po1", {}, { now: NOW })
-    expect(out).toMatchObject({ status: "sent", selfIssued: true })
-    expect(kinds("fin")).toContain("po_approved")
-    expect(kinds("gate")).toContain("po_expected_arrival")
-  })
-  it("never on an RFQ award", async () => {
-    seedOrder(order({ basis: "rfq" }))
-    await expect(selfIssuePurchaseOrder(db, buyer, "po1", {}, { now: NOW })).rejects.toMatchObject({ code: "wrong_state" })
   })
 })
 
@@ -256,24 +237,9 @@ describe("Projects' stop request lands on the order (P-19)", () => {
   })
 })
 
-describe("receipts under the policies", () => {
-  const counted = (q: number): DeliveryLine => ({ poLineId: "l1", name: "أسمنت", unit: "كيس", noticeQuantity: 0, counted: q, rejected: 0, held: 0 })
-  it("a buyer records a receipt only under buyerReceives, and it is flagged", async () => {
-    seedOrder(order({ status: "accepted", preparedById: "other" }))
-    seed("deliveries/d1", { status: "pending_confirmation", contractorOrgId: ORG, poId: "po1", lines: [{ ...counted(0), noticeQuantity: 100 }] })
-    const input = { delivery: { id: "d1", contractorOrgId: ORG, poId: "po1" }, po: read(), lines: [counted(100)], receiverName: "Badr", landedWarehouseId: "w1" }
-    await expect(recordReceipt(db, buyer, { ...input, policies: DEFAULT_POLICIES })).rejects.toMatchObject({ code: "no_permission" })
-    await recordReceipt(db, buyer, { ...input, policies: { ...DEFAULT_POLICIES, buyerReceives: true } as typeof DEFAULT_POLICIES })
-    expect(readDoc<{ selfReceived: boolean; status: string }>("deliveries/d1")).toMatchObject({ status: "confirmed", selfReceived: true })
-  })
-  it("an arrival recorded without the notice closes the notice it took, and a manual one tells Finance", async () => {
-    seedOrder(order({ status: "accepted" }))
-    seed("deliveries/n1", { status: "pending_confirmation", contractorOrgId: ORG, poId: "po1", lines: [{ ...counted(0), noticeQuantity: 100 }] })
-    await createArrivalWithoutNotice(db, buyer, { po: read(), lines: [counted(100)], receiverName: "Badr", policies: DEFAULT_POLICIES, manual: true, landedWarehouseId: "w1" })
-    expect(readDoc<{ closedByReceipt: unknown }>("deliveries/n1")?.closedByReceipt).toBeTruthy()
-    expect(kinds("fin")).toContain("receipt_manual")
-  })
-})
+// 1.5's «a buyer records a receipt under buyerReceives» and «a manual arrival closes the notice» are gone with the client write they tested:
+// the receiver's confirmation makes the receipt on the server (procurement-v2-receipt-confirm.test.ts, WF-18 / R-35) and the manual
+// receipt has its own route (procurement-v2-manual-receipt.test.ts).
 
 describe("open commitments read the advance Finance paid (R-24)", () => {
   it("an advance is due until Finance records it paid; invoice payments come off received", () => {

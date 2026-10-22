@@ -3,7 +3,7 @@
 
 import { getAuth } from "firebase/auth"
 
-export type PoAct = "approve" | "return" | "send" | "cancel" | "close-short" | "reject-decision" | "advance-approve" | "date" | "accept-version"
+export type PoAct = "approve" | "self-issue" | "return" | "send" | "cancel" | "close-short" | "reject-decision" | "advance-approve" | "date" | "accept-version"
 
 export class PoRouteError extends Error {
   constructor(

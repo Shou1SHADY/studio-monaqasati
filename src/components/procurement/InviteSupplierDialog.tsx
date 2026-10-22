@@ -97,7 +97,30 @@ export function InviteSupplierDialog({
   }, [open, prefill])
   const [channel, contact, contactName, message] = useWatch({ control: form.control, name: ["channel", "contact", "contactName", "message"] })
   const parsed = useMemo(() => contactOf(contact || ""), [contact])
-  const dup = useMemo(() => duplicateOf(parsed, invitations, platform), [parsed, invitations, platform])
+  const localDup = useMemo(() => duplicateOf(parsed, invitations, platform), [parsed, invitations, platform])
+  // The platform is not in this browser: whether the number or the address already belongs to a supplier company is asked of the server.
+  const [registered, setRegistered] = useState<{ orgId: string; name: string } | null>(null)
+  useEffect(() => {
+    if (!open || !user || (!parsed.phone && !parsed.email)) {
+      setRegistered(null)
+      return
+    }
+    let live = true
+    const wait = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/procurement/suppliers?contact=${encodeURIComponent(parsed.email || parsed.phone || "")}`, { headers: { Authorization: `Bearer ${await user.getIdToken()}` } })
+        const json = (await res.json().catch(() => null)) as { data?: { match?: { orgId: string; name: string } | null } } | null
+        if (live) setRegistered(res.ok ? json?.data?.match ?? null : null)
+      } catch {
+        if (live) setRegistered(null)
+      }
+    }, 300)
+    return () => {
+      live = false
+      clearTimeout(wait)
+    }
+  }, [open, user, parsed.phone, parsed.email])
+  const dup = localDup?.kind === "registered" ? localDup : registered ? ({ kind: "registered", orgId: registered.orgId, name: registered.name } as const) : localDup
   // The greeting follows the contact's name until the sender edits the text himself.
   useEffect(() => {
     if (!form.formState.dirtyFields.message) form.setValue("message", ready(contactName || ""))

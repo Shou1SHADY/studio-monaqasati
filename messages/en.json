@@ -8693,6 +8693,9 @@
       "svc_err_supplier": "Choose the supplier",
       "svc_err_value": "Enter the value",
       "svc_err_due": "The date cannot be in the past",
+      "svc_reason": "Why one supplier, without offers",
+      "svc_reason_ph": "Above the direct-order cap: the owner reads this before approving",
+      "svc_err_reason": "Above the direct-order cap — write why one supplier",
       "dor_cr_expired": "CR expired",
       "dor_unverified": "not verified yet",
       "dor_effect_self": "Under your limit ({limit}): issued in your name, listed in the exceptions report",
@@ -12386,9 +12389,10 @@
         "other": "Other reason"
       },
       "rejectReason": {
-        "damaged": "Damaged or broken",
+        "damaged": "Damaged",
         "wrong_item": "Wrong item",
-        "wrong_spec": "Off-spec",
+        "wrong_spec": "Off spec",
+        "short": "Short in the pack",
         "expired": "Expired",
         "excess": "More than ordered",
         "other": "Other reason",
@@ -12477,6 +12481,7 @@
       "exception": {
         "retroactive": "Retroactive PO for a receipt with no order",
         "direct": "Direct order, no RFQ",
+        "direct_over": "Direct order over the cap — {reason}",
         "non_lowest": "Non-lowest award — {reason}",
         "short_competition": "Short competition — {count, plural, =0 {no offers} one {# offer} other {# offers}}",
         "self_approval": "Approved by its preparer — no second approver",
@@ -12544,6 +12549,7 @@
       },
       "err_order_no_lines": "The need has no material with a quantity",
       "err_order_supplier_missing": "Pick the supplier",
+      "err_supplier_unverified": "This supplier is not verified by the platform yet — an order cannot be raised to him",
       "err_price_missing": "Enter a unit price for {item}",
       "err_over_direct_cap": "Worth {total}, above the direct-purchase cap of {cap} — start an RFQ instead",
       "err_agreement_not_live": "The agreement is not in force today",
@@ -12598,7 +12604,6 @@
           "heading": "Comparison",
           "none": "No offers to compare",
           "sealed": "The comparison opens at the deadline {date} — {count, plural, one {# offer} other {# offers}} so far.",
-          "close_now": "Close now & unseal",
           "title_lines": "Comparison — click a cell to award its line",
           "title_whole": "Comparison — total pricing: click a supplier total to award the whole request",
           "pick_lowest": "Pick lowest per line",
@@ -12716,7 +12721,7 @@
           "warranty": "Warranty required — the supplier uploads it with the delivery notice.",
           "cancelled_title": "Cancelled",
           "cancelled_by": "{reason} — by {name} on {date}.",
-          "closed_early_title": "Closed early — prices unsealed",
+          "closed_early_title": "Closed early by the award",
           "closed_early_by": "By {name} on {date}: {reason}"
         },
         "privacy": {
@@ -12734,7 +12739,7 @@
           "title": "Log",
           "awarded": "RFQ awarded — {orders} ({suppliers}); lines not awarded: {unawarded}",
           "award_reopened": "Award reopened — {supplier} declined order {number}",
-          "closed_early": "Closed early and prices unsealed",
+          "closed_early": "Closed early by the award",
           "cancelled": "RFQ cancelled: {reason}",
           "offer_excluded": "{supplier}'s offer excluded: {reason}",
           "query_answered": "A query was answered and sent to {recipients} invitees",
@@ -12769,8 +12774,6 @@
           "not_yet": "Not yet"
         },
         "list": {
-          "sealed_banner": "Offers arrive as submitted — supplier, time, attachment and message are visible; prices stay sealed until {date}.",
-          "sealed_until": "sealed until {date}",
           "recorded_by": "recorded by {name}",
           "official_quote": "Official quote",
           "no_official_quote": "No official quote — price is for comparison only",
@@ -12953,7 +12956,6 @@
           "remove_file": "Remove the file",
           "pdf_many": "Drawings & technical specs — several files allowed",
           "deadline_misses": "After {date} the nearest product misses its last order day",
-          "sealed_until": "Prices stay sealed until then",
           "terms_label": "Payment terms",
           "terms_hint": "Suppliers see them before quoting; they are frozen on the order at the award",
           "terms_pct": "Share %",
@@ -13930,33 +13932,80 @@
     },
     "ProcToday": {
       "title": "Needs your decision",
-      "subtitle": "Most urgent first — every button opens the record before the action",
       "empty": {
         "title": "Nothing is waiting on you",
         "body": "Everything of yours is moving."
       },
-      "showMore": "Show {count, plural, one {# more decision} other {# more decisions}}",
+      "showMore": "Show {count} more",
       "groups": {
         "all": "All",
-        "rfq": "Quotes",
+        "req": "Incoming",
+        "rfq": "Offers",
         "po": "Orders",
-        "delivery": "Delivery",
-        "need": "Needs"
+        "rcv": "Receiving"
       },
       "waits": {
-        "title": "Waiting on other modules",
-        "subtitle": "No button — the action is theirs and the state reaches us",
-        "empty": "Nothing pending elsewhere",
-        "more": "more",
-        "on": "Waiting on {module}"
+        "title": "Waiting on others",
+        "empty": "Nothing pending elsewhere"
       },
       "modules": {
-        "supplier": "the supplier",
+        "supplier": "Supplier",
         "finance": "Finance",
         "inventory": "Inventory",
-        "manufacturing": "Manufacturing",
-        "projects": "Projects"
+        "manufacturing": "Workshop",
+        "projects": "Projects",
+        "receiver": "Receiver",
+        "approver": "Approver"
       },
+      "flow": {
+        "label": "The procurement route",
+        "inc": {
+          "label": "New incoming",
+          "sub": "awaiting publishing"
+        },
+        "rfq": {
+          "label": "In RFQs",
+          "sub": "open or comparing"
+        },
+        "po": {
+          "label": "In orders",
+          "sub_value": "{amount} incl. VAT",
+          "sub_open": "open"
+        },
+        "rcv": {
+          "label": "In transit",
+          "sub": "notices without a receipt"
+        },
+        "done": {
+          "label": "Completed",
+          "sub": "this month"
+        }
+      },
+      "invitations": {
+        "title": "Supplier invitations",
+        "link": "Suppliers",
+        "empty": "No invitations yet",
+        "state": {
+          "sent": "Sent {date}{hasChannel, select, 1 { {channel}} other {}}",
+          "opened": "Opened · sent {date}{hasChannel, select, 1 { {channel}} other {}}",
+          "joined": "Joined — in our suppliers · unverified",
+          "joined_verified": "Joined — in our suppliers · verified",
+          "expired": "Expired · sent {date} (valid 30 days)",
+          "declined": "Declined · sent {date}"
+        },
+        "channel": {
+          "wa": "on WhatsApp",
+          "email": "by e-mail",
+          "sms": "by text message"
+        }
+      },
+      "basis": {
+        "incl": "incl. VAT",
+        "excl": "before VAT",
+        "none": "no VAT"
+      },
+      "escalated": "Delivery escalated{hasName, select, 1 { to {name}} other {}}",
+      "escalate_failed": "Could not escalate — try again",
       "actions": {
         "review": "Review and approve",
         "view": "View",
@@ -13964,28 +14013,44 @@
         "open": "Open",
         "updateDate": "Update date",
         "decide": "Decide",
-        "receive": "Record receipt",
         "rate": "Rate",
         "compare": "Compare",
+        "compareAward": "Compare and award",
         "openDraft": "Open draft",
-        "openRfq": "Open RFQ",
+        "openRfq": "Open",
         "seeArrived": "See what arrived",
         "openReceipt": "Open receipt",
         "openAgreement": "Open the agreement",
         "openSupplier": "Open file",
-        "openLine": "Open line",
         "openNeeds": "Open needs",
+        "openIncoming": "Open Incoming",
         "answer": "Answer",
         "forward": "Forward",
         "openProject": "Open the project",
         "openNotice": "Open the notice",
         "closeOrder": "Close the order",
-        "publishRequest": "Publish it"
+        "publishRequest": "Publish",
+        "prepare": "Prepare",
+        "approvePo": "Approve it",
+        "resubmit": "Submit again",
+        "remindSupplier": "Remind supplier",
+        "reaward": "Re-award",
+        "approveAdvance": "Approve the advance",
+        "askReplace": "Ask for a replacement",
+        "logNotice": "Log a delivery notice",
+        "escalate": "Escalate",
+        "reply": "Reply",
+        "count": "Count the shipment"
       },
       "task": {
-        "approve": {
-          "title": "Approve {number} — {supplier}",
-          "sub": "Prepared by {preparer} {ago, plural, =0 {today} one {yesterday} other {# days ago}}"
+        "po": {
+          "title": "{number} · {supplier}"
+        },
+        "change_ask": {
+          "sub": "The supplier asked to change the order: {text}"
+        },
+        "count_escalated": {
+          "sub": "Waiting for {name} to count for {days, plural, one {# day} other {# days}} — past the {limit, plural, one {# day} other {# days}} window"
         },
         "approval_wait": {
           "title": "{number} awaiting {approver, select, owner {the owner's} other {the manager's}} approval {days, plural, =0 {— reached them today} one {for a day} other {for # days}}",
@@ -14001,34 +14066,20 @@
           "title_nofin": "{number} approved — not yet sent to {supplier}",
           "sub": "Back with you to send: portal, WhatsApp or email — the acceptance clock and the delivery date start then"
         },
-        "not_accepted": {
-          "title": "{supplier} has not accepted {number} for {days, plural, one {# day} other {# days}}",
-          "sub": "No acceptance, no delivery date — chase and record it"
-        },
         "late": {
-          "title": "{number} is {days, plural, one {# day} other {# days}} late — {supplier}",
-          "sub": "{lines}"
+          "sub_part": "The supplier is {days, plural, one {# day} other {# days}} behind his date — left: {lines}"
         },
         "confirm_before_date": {
           "title": "Confirm with {supplier} before its date {inDays, plural, =0 {today} one {tomorrow} other {in # days}} — {number}",
           "sub": "Only {percent}% on time — do not wait for the delay"
         },
         "reject_decide": {
-          "title": "Rejected at receipt: {qty} {unit} {name}",
-          "sub": "{number} · {supplier} — replace, discount or reduce the order"
+          "sub": "{qty} {unit} {name} rejected — your decision with the supplier"
         },
         "arrived_today": {
           "title": "{count, plural, one {# receipt} other {# receipts}} arrived today on your orders",
           "sub": "{list}",
-          "sub_flags": "{list}{rejects, plural, =0 {} other { · with rejects}}{short, plural, =0 {} other { · short of note}}"
-        },
-        "notice_incoming": {
-          "title": "{hasDate, select, 0 {Delivery notice from {supplier} — no date} other {Delivery notice from {supplier} — arrives {inDays, plural, =0 {today} one {tomorrow} other {in # days}}}}",
-          "sub": "{number} · {lines}{notForwarded, select, 1 { — nobody has been told to receive it yet} other {}}"
-        },
-        "notice_overdue": {
-          "title": "No receipt recorded for what {supplier} announced",
-          "sub": "{number} · was due {date} ({daysAgo, plural, one {yesterday} other {# days ago}}){notForwarded, select, 1 { — and nobody was ever told to receive it} other { — ask the receiver first, then the supplier}}"
+          "sub_flags": "{list}{rejects, plural, =0 {} other { · with rejects}}"
         },
         "notice_late_date": {
           "title": "{supplier} announced delivery {days, plural, one {# day} other {# days}} after its date",
@@ -14060,18 +14111,16 @@
           "sub": "{hasNumber, select, 1 {{number} · } other {}}Not sent to any supplier — its lines are held"
         },
         "rfq_award": {
-          "title": "Compare and award “{title}” — {count, plural, one {# offer} other {# offers}}",
-          "sub": "Offers closed {ago, plural, =0 {today} one {yesterday} other {# days ago}}",
-          "sub_validity": "Nearest offer validity ends {inDays, plural, =0 {today} =1 {tomorrow} other {in # days}} — prices move",
-          "sub_open": "Still open, prices unsealed{hasDate, select, 1 { — closes {inDays, plural, =0 {today} =1 {tomorrow} other {in # days}}} other {}}"
+          "title": "{ref} closed with {count, plural, one {# offer} other {# offers}}",
+          "sub": "{title} · award by {date} · {when, select, past {{n, plural, one {# day} other {# days}} ago} today {today} future {{n, plural, =1 {tomorrow} other {in # days}}} other {}}"
         },
-        "rfq_no_offers": {
-          "title": "“{title}” closed with no offers",
-          "sub": "Extend the deadline, add suppliers or share the guest link"
+        "rfq_no_live": {
+          "title": "{ref} · no live offer",
+          "sub": "{title} · reopen with a new deadline or cancel it"
         },
-        "rfq_closing_thin": {
-          "title": "“{title}” closes {inDays, plural, =0 {today} one {tomorrow} other {in # days}} with {count, plural, =0 {no offers} one {# offer} other {# offers}}",
-          "sub": "Share the guest link with off-platform suppliers or extend the deadline"
+        "rfq_can_award": {
+          "title": "{ref} · {count, plural, one {# offer is in} other {# offers are in}}",
+          "sub": "{title}{hasLowest, select, 1 { · lowest complete {lowest} {vat, select, 1 {incl. VAT} other {no VAT}}} other {}} · closes {date} — you can award now"
         },
         "agreement_expiring": {
           "title": "{supplier}'s price agreement ends {inDays, plural, =0 {today} one {tomorrow} other {in # days}}",
@@ -14081,27 +14130,20 @@
           "title": "Verify the new supplier: {supplier}",
           "sub": "Added by {name} — no PO approval before you verify"
         },
-        "need_line": {
-          "title": "{head, select, late {Inventory window passed — proceed: } mfgl {Workshop window passed — buy: } other {}}{path, select, agreement {Order on agreement} direct {Direct order — under cap} mfg {Ask our workshop first} stock {Reserve from stock} other {Request quotations}} — {name} {qty} {unit}",
-          "sub": "{ref} · {place} · {when, select, past {last order day passed {n, plural, one {# day} other {# days}} ago} today {last order day is today} future {last order day in {n, plural, one {# day} other {# days}}} other {no need date}}"
-        },
         "need_rollup": {
           "title": "{assigned, select, 1 {With {buyer}} other {No buyer’s categories}}: {count, plural, one {# line} other {# lines}} to source{overdue, plural, =0 {} one { — # past its last order day} other { — # past their last order day}}",
           "sub": "{when, select, past {The nearest had to be ordered {n, plural, one {# day} other {# days}} ago} today {The nearest must be ordered today} future {The nearest must be ordered in {n, plural, one {# day} other {# days}}} other {No need dates yet}}"
         },
         "rfq_query": {
-          "title": "Unanswered supplier query on “{title}”",
-          "sub": "{question}"
+          "title": "{ref} · {count, plural, one {# unanswered inquiry} other {# unanswered inquiries}}",
+          "sub": "{title} · {closed, select, 1 {closed} other {closes {date}}} — {question}"
         },
         "cancel_remainder": {
           "title": "Cancel the rest with the supplier: {qty} {unit} {name}",
           "sub": "Projects closed the material — {number} · {supplier}"
         },
         "notice_forward": {
-          "title": "Forward {supplier}’s delivery notice to the receiver{overdue, select, 1 { — its date has passed} other {{hasDate, select, 1 { — arrives {inDays, plural, =0 {today} =1 {tomorrow} other {in # days}}} other {}}}}",
-          "sub": "{number} · {lines}",
-          "sub_place": "{number} · {lines}{hasPlace, select, 1 { · to {place}} other {}}",
-          "sub_place_rcv": "{number} · {lines}{hasPlace, select, 1 { · to {place}} other {}}{hasReceiver, select, 1 { · suggested: {receiver}} other {{noReceiver, select, 1 { · no receiver for this site — forward it} other {}}}}"
+          "sub": "Delivery notice in{hasDate, select, 1 { ({date})} other {}}{noReceiver, select, 1 { · no receiver for this site — forward it} other { — forward it to the receiver{hasPlace, select, 1 { · to {place}} other {}}{hasReceiver, select, 1 { · suggested: {receiver}} other {}}}}"
         },
         "finance_hold": {
           "proc": {
@@ -14143,29 +14185,30 @@
           "sub": "{project} · {qty} {operator, select, 1 {with operator} other {without operator}} — not in our fleet; a timed hire with a return date"
         },
         "need_request": {
-          "title": "{ref} · {place}: {count, plural, one {# material} other {# materials}} waiting to be bought"
+          "title": "{ref} · {place}{remainder, select, 1 { · the remainder} other {}}",
+          "sub": "{count, plural, one {One material} other {# materials}} · last day to order {date} · {when, select, past {passed {n, plural, one {# day} other {# days}} ago} today {today} future {{n, plural, =1 {tomorrow} other {in # days}}} other {no need date}}"
+        },
+        "need_far": {
+          "title": "{count, plural, one {# more request} other {# more requests}} — last day over a week away",
+          "sub": "The nearest {date} · {when, select, past {passed {n, plural, one {# day} other {# days}} ago} today {today} future {{n, plural, =1 {tomorrow} other {in # days}}} other {}}"
         }
       },
       "wait": {
-        "supplier_acceptance": {
-          "title": "{supplier} to accept {number}",
-          "sub": "Sent {ago, plural, =0 {today} one {yesterday} other {# days ago}}"
+        "request_line": {
+          "title": "{hasPlace, select, 1 {{place} · } other {}}{ref} · {name}"
         },
-        "finance_payment": {
-          "title": "Payment and closure of {number}",
-          "sub": "Fully received — invoice, match and payment are Finance's"
+        "stock_reply": {
+          "sub": "Inventory asked before buying — replies by {date}, else everything is bought"
+        },
+        "workshop_ask": {
+          "sub": "Workshop asked: make or buy? — replies by {date}"
+        },
+        "receiver_count": {
+          "sub": "Waiting for the receiver {name} to count for {days, plural, one {# day} other {# days}}"
         },
         "held_inspection": {
           "title": "Inspection of {qty} {unit} {name} — {number}",
           "sub": "Not issued and not paid before release"
-        },
-        "stock_check": {
-          "title": "Stock check: {name} {qty} {unit}",
-          "sub": "{ref} · computed cover {cover} — no confirmation within a day and we proceed"
-        },
-        "workshop_reply": {
-          "title": "Workshop reply: {name} {qty} {unit}",
-          "sub": "{ref} · one-day window — no reply and we buy"
         },
         "being_made": {
           "title": "Being made: {name} {qty} {unit}",
@@ -14183,83 +14226,38 @@
         "pm_budget": {
           "title": "Budget decision: {number} exceeds the item balance",
           "sub": "{hasOver, select, 1 {Overrun {over} — the project manager decides} other {The project manager decides}}"
-        },
-        "supplier_advance": {
-          "title": "Supplier advance {percent}% — {number}",
-          "sub": "{advance} · lead time starts when paid"
         }
       },
       "kpi": {
         "needs": {
-          "label_requests": "Needs without a PO",
-          "label_rfqs": "RFQs awaiting award",
-          "note_requests": "From Manufacturing — waiting for an RFQ or an order",
-          "note_rfqs": "Closed for offers, with offers to compare",
+          "label": "Need without a PO",
           "note_none": "All within time",
-          "note_overdue": "{count, plural, one {# past its last order day} other {# past their last order day}}"
+          "note_overdue": "{count, plural, one {# request past its last day to order} other {# requests past their last day to order}}"
         },
         "committed": {
-          "label": "Committed, not delivered",
-          "note_late": "{amount, number} late vs the supplier date",
+          "label": "Committed, not arrived",
+          "note_late": "{count, plural, one {# of them late} other {# of them late}}",
           "note_none": "None late"
         },
         "drift": {
-          "label": "Price drift vs last buy — 30 days",
-          "note_up": "{percent}% above our last price",
-          "note_down": "{percent}% below our last price",
-          "note_none": "No drift — or no earlier buy to compare with"
+          "label": "Price vs last purchase — 30 days",
+          "note_up": "{count, plural, one {Above the last price on # line} other {Above the last price on # lines}}",
+          "note_none": "No difference — or nothing earlier to compare with"
         },
-        "my_approval": {
-          "label": "Awaiting your approval",
-          "note_some": "{count, plural, one {# order} other {# orders}}",
-          "note_none": "Nothing pending with you"
-        },
-        "finance_due": {
-          "label": "Due to suppliers soon",
-          "note": "Fully received, not yet paid",
-          "note_split": "advances due + received, unpaid"
-        },
-        "late": {
-          "label": "Late vs supplier date",
-          "note_some": "Need a new date",
-          "note_none": "None late",
-          "note_value": "{amount, number} still owed past its date"
-        },
-        "with_suppliers": {
-          "label": "Orders with suppliers",
-          "note": "In delivery"
-        },
-        "sent_not_accepted": {
-          "label": "Sent, not accepted",
-          "note": "No acceptance, no date"
-        },
-        "overdue_lines": {
-          "label": "Lines past their last order day",
-          "note_some": "of {total} — a site may stop for a material",
-          "note_none": "of {total} — all within time"
-        },
-        "lines": "{count, plural, one {line} other {lines}}",
-        "requests": "{count, plural, one {request} other {requests}}",
-        "awaiting_advance": {
-          "label": "Awaiting an advance",
-          "note_some": "The supplier's date starts once it is marked paid",
-          "note_none": "No order waits for an advance"
-        }
+        "unit_lines": "{count, plural, one {line} other {lines}}",
+        "unit_orders": "{count, plural, one {order} other {orders}}",
+        "unit_items": "{count, plural, one {line} other {lines}}",
+        "basis_incl": "incl. VAT"
       },
       "page": {
         "title": "Today",
-        "subtitle": "What waits for your decision today, and whom we wait on",
-        "greeting": "Good morning {name}"
+        "subtitle": "Needs are born in {sources} — we turn them into on-time supply.",
+        "source_projects": "projects",
+        "source_team": "the team",
+        "source_workshop": "manufacturing",
+        "source_inventory": "inventory"
       },
-      "showLess": "Show less",
-      "moreRows": "{count, plural, one {Show # more} other {Show # more}}",
-      "arriving": {
-        "title": "Arriving within 7 days",
-        "subtitle": "By the supplier's notice — Inventory records the receipt",
-        "empty": "No deliveries due this week",
-        "late": "{days, plural, one {# day late} other {# days late}}",
-        "on": "{date} · {inDays, plural, =0 {today} =1 {tomorrow} other {in # days}}"
-      }
+      "showLess": "Show less"
     },
     "ProcChats": {
       "title": "My chats",
@@ -14975,7 +14973,7 @@
         "button": "Forward to receiver",
         "again": "Forward again",
         "title": "Forward the notice to the receiver",
-        "desc": "The supplier's notice reached us — we pick who receives it and send them the receiving link with a code to their phone",
+        "desc": "Whoever stands at the truck is the one who counts and confirms.",
         "toMember": "A team member",
         "toPerson": "Someone without an account",
         "member": "Member",
@@ -15025,13 +15023,127 @@
         "cancel": "Cancel"
       },
       "title": "Goods receipts",
-      "subtitle": "What is on its way and what arrived — who recorded it and where it went",
+      "subtitle": "Procurement follows until supply is complete, and only the receiver counts and confirms.",
+      "showMore": "Show {n} more",
+      "caption": {
+        "notices": "No “Confirm receipt” in Procurement: only the notice status and its button. Auto-forward runs on the Policies delay; a location without a receiver is not forwarded and shows here.",
+        "receipts": "Every receipt reaches Procurement and opens as a PDF. The receipt is the receiver’s: blind count, photos and ticket, confirmed by login or code. Only manual ones are recorded by Procurement, for off-platform purchases, and they are tagged."
+      },
+      "hub": {
+        "delivery": "delivery",
+        "awaitingCount": "awaiting count for {days, plural, =0 {today} one {# day} other {# days}}",
+        "notDue": "not due yet",
+        "inAccount": "in his account: My tasks",
+        "autoForwardOn": "auto-forwards {date} (the day before delivery) to {name}",
+        "preview": "As the receiver sees it",
+        "escalate": "Escalate",
+        "escalated": "escalated to {name}",
+        "pastWindow": "Past the window — {days, plural, one {# day} other {# days}}",
+        "uncounted": "Awaiting count",
+        "colReceipt": "Receipt",
+        "colOrder": "Order and supplier",
+        "colWhere": "Location and recorded by",
+        "colAccepted": "Accepted / arrived",
+        "colStatus": "Status",
+        "colSource": "Source",
+        "invoiceNo": "Invoice",
+        "draft": "Draft — awaiting the storekeeper",
+        "hasRejected": "Has rejected",
+        "matched": "Matched",
+        "src_manual": "Manual",
+        "src_noNotice": "No notice",
+        "src_login": "From his account",
+        "src_link": "By link and code",
+        "src_none": "—"
+      },
+      "arrival": {
+        "button": "Arrived with no notice",
+        "title": "A delivery arrived with no notice",
+        "desc": "Pick the order it belongs to: you count it blind and confirm it yourself, and the receipt is tagged “no notice”.",
+        "search": "Search by order number, supplier or item…",
+        "none": "No open order can take a delivery",
+        "failedTitle": "Could not open the receipt",
+        "failedHint": "The order may be complete, or you may not hold the receiving permission."
+      },
+      "escalate": {
+        "doneManager": "Escalated to the project manager {name}: the delivery has been uncounted for {days} days; it shows in their Today.",
+        "doneOwner": "Escalated to the owner: the delivery has been uncounted for {days} days; it shows in their Today.",
+        "failed": "Not escalated — it may already have been, or the window is not over",
+        "projectManager": "the project manager",
+        "owner": "the owner"
+      },
+      "preview": {
+        "title": "As the receiver sees it",
+        "desc": "What {name} sees when this delivery reaches them",
+        "frame": "Preview of the receiver's page",
+        "deliveryDay": "Delivery",
+        "viaAccount": "in his account: My tasks",
+        "viaLink": "by link and code"
+      },
+      "draft": {
+        "title": "Awaiting your confirmation",
+        "sub": "Manual receipts for off-platform purchases delivered to your main warehouse — their stock does not enter before you confirm.",
+        "by": "recorded by {name}",
+        "why": "Why do you decline it?",
+        "confirm": "Confirm into stock",
+        "decline": "Decline",
+        "back": "Back",
+        "confirmed": "Receipt {number} entered the warehouse stock",
+        "declined": "Receipt {number} declined — nothing entered stock",
+        "failed": "Could not do it — try again"
+      },
+      "export": {
+        "title": "Export receipts",
+        "sub": "For the accountant or the archive: a table in fixed columns, with a PDF for each receipt if you like.",
+        "from": "From",
+        "to": "To",
+        "location": "Location",
+        "allLocations": "All locations",
+        "format": "Format",
+        "fmt_xlsx": "Excel",
+        "fmt_csv": "CSV",
+        "fmt_zip": "PDFs in a zip",
+        "zipHint": "A zip with the table and each receipt as a print-ready document — open it and save as PDF from the print dialog.",
+        "attach": "Include photos, weighbridge tickets and invoices",
+        "attachHint": "in a folder per receipt",
+        "count": "{n} receipts in the period, {manual} of them manual",
+        "badPeriod": "Pick a valid period: a start date before the end date",
+        "download": "Export",
+        "sendAccountant": "Send to the accountant",
+        "exported": "{n} receipts exported",
+        "sent": "Sent to {to}",
+        "noAccountant": "Set the accountant's e-mail first in Settings",
+        "failed": "The export failed — try again",
+        "sheet": "Receipts",
+        "noPo": "No PO",
+        "col_receipt": "Receipt",
+        "col_date": "Date",
+        "col_supplier": "Supplier",
+        "col_po": "PO",
+        "col_material": "Material",
+        "col_unit": "Unit",
+        "col_counted": "Arrived",
+        "col_accepted": "Accepted",
+        "col_rejected": "Rejected",
+        "col_reason": "Reject reason",
+        "col_place": "Location",
+        "col_receiver": "Receiver",
+        "col_recordedIn": "Recorded in",
+        "col_invoice_no": "Invoice no.",
+        "col_invoice_value": "Invoice value",
+        "col_kind": "Kind",
+        "kind_receipt": "Receipt",
+        "kind_manual": "Manual",
+        "kind_noNotice": "No notice"
+      },
       "searchPlaceholder": "Search by receipt, order, supplier or line…",
       "projectFilter": "Project",
       "allProjects": "All projects",
       "segments": {
-        "incoming": "On the way",
-        "log": "Receipts",
+        "transit": "In transit",
+        "fwd": "Awaiting your forward",
+        "count": "Awaiting count",
+        "recs": "Receipts",
         "nopo": "No PO"
       },
       "info": {
@@ -15040,9 +15152,10 @@
         "nopo": "Goods that arrived with no purchase order: the receiver recorded them (nobody turns a waiting truck away), and they wait for us to attach a retroactive order — until then Finance holds the invoice as \"no PO\"."
       },
       "empty": {
-        "incoming": "Nothing on the way",
+        "incoming": "Nothing here",
         "log": "No receipts yet",
-        "nopo": "No receipts without a PO"
+        "nopo": "No receipts without a PO",
+        "nopoHint": "Off-platform purchases are recorded with “Record a manual receipt” above."
       },
       "incoming": {
         "noNoticeYet": "No notice yet",
@@ -15113,7 +15226,7 @@
         "incompleteLeft": "incomplete — left {qty}"
       },
       "csv": {
-        "button": "CSV",
+        "button": "Export",
         "exported": "Receipts exported — CSV in an encoding Excel reads in Arabic",
         "receipt": "Receipt",
         "date": "Date",
@@ -15215,7 +15328,10 @@
         "noticeTitle": "Delivery notice from the supplier",
         "notFound": "That receipt is missing or is not one of yours",
         "record": "Record the receipt",
-        "print": "Print the receipt",
+        "print": "View receipt PDF",
+        "noPad": "No drawn signature: confirming is the signature. The receipt is digital: who recorded it, when and how is written on it.",
+        "draftCallout": "A draft awaiting the storekeeper's confirmation at {place}: nothing has entered stock yet, and it cannot be tied to an order before that.",
+        "draftDeclined": "Declined by {name}: {why} — nothing entered stock.",
         "openOrder": "Open the PO",
         "regularise": "Regularise with a retroactive PO",
         "markExpense": "Sent as a cash expense",
@@ -15306,13 +15422,31 @@
       },
       "manual": {
         "button": "Record a receipt manually",
-        "title": "Manual goods receipt",
-        "subtitle": "For a purchase made outside the platform or goods that arrived with no order — you type its lines; it is flagged \"recorded by Procurement\" and listed in the exceptions",
+        "title": "Record a manual receipt",
+        "subtitle": "For what was bought outside the platform: it enters the receipts, is tagged “manual”, and its effect arrives like any receipt.",
+        "site": "Delivery location",
+        "sitePlaceholder": "Choose the location",
+        "siteEffectSite": "A project's store: it enters stock at once and is charged to the site, tagged “recorded by the buyer”.",
+        "siteEffectMain": "A main warehouse: it reaches the storekeeper as a draft he confirms — no stock before that.",
+        "date": "Receipt date",
+        "invoiceNo": "Supplier invoice number (optional)",
+        "invoiceValue": "Invoice value (optional)",
+        "then": "Then what?",
+        "after_later": "A later purchase order is attached",
+        "after_cash": "A cash expense with no order",
+        "after_later_hint": "It stays “no PO” until you attach an order; Finance holds its invoice until then.",
+        "after_cash_hint": "It goes to Finance as a cash expense, so it needs no order.",
+        "removeFile": "Remove the file",
+        "doneDraft": "Receipt {number} issued — a draft with the storekeeper",
+        "doneDraftDesc": "It does not enter stock before he confirms it, and it is “no PO” until you attach an order or rule it a cash expense",
+        "failed": "The receipt could not be issued — try again",
+        "errSite": "Choose the delivery location",
+        "errInvoiceValue": "The invoice value is a number, zero or more",
         "warning": "The goods did arrive and we do not deny it — but a manual receipt is an exception: it stays \"no PO\" until you attach one, Finance will not pay before that, and it appears by your name in the exceptions report.",
         "againstPo": "Against a PO?",
         "noPoOption": "No — no PO",
         "poHint": "It will count against {po}: type what you counted of each line, and the order's remainder moves",
-        "supplierAsInvoiced": "Supplier — as on its invoice or stamp",
+        "supplierAsInvoiced": "Supplier",
         "whoReceived": "Who actually received it",
         "paperNote": "Invoice / note no.",
         "place": "Place",
@@ -15331,16 +15465,16 @@
         "effectNoPo": "It enters \"No PO\" on the receipts page and waits to be regularised — Finance holds its invoice until then",
         "effectFlagged": "Flagged \"recorded manually by Procurement\", in the exceptions report by your name",
         "effectPrint": "It can be printed as a record afterwards",
-        "submit": "Issue the receipt",
+        "submit": "Record the receipt",
         "doneOnOrder": "Receipt {number} issued and counted against {po} — flagged as recorded manually",
         "doneNoPo": "Receipt {number} issued",
         "doneNoPoDesc": "It stays \"no PO\" until you attach an order",
         "errSupplier": "Type the supplier name as on its invoice",
         "supplierPlaceholder": "e.g. a neighbourhood merchant",
-        "supplierHint": "Type it; if it is one of our registered suppliers, pick it below to link its POs",
+        "supplierHint": "A free name: the neighbourhood shop or a supplier that is not on the platform. If it is one of ours, pick it from the list.",
         "registered": "Registered with us?",
         "offPlatform": "No — off-platform",
-        "photo": "Photo of the invoice or note (optional)",
+        "photo": "Attach photos of the shipment or the invoice",
         "chooseFile": "Choose a file",
         "errLineDesc": "Describe line {n}",
         "errLineQty": "Enter the quantity of line {n}",
@@ -15441,7 +15575,13 @@
         "forwarded_by": "by {name}",
         "signed_on_link": "signed on the receiving link with the code",
         "forwarded_title_auto": "Forwarded to the receiver:",
-        "forwarded_by_auto": "auto-forwarded after the window"
+        "forwarded_by_auto": "auto-forwarded after the window",
+        "registered_by": "Registered by the receiver:",
+        "registered_by_procurement": "Registered by Procurement (an off-platform purchase):",
+        "via_login": "by signing in to his account",
+        "via_code": "by the code to his mobile",
+        "via_manual": "by hand",
+        "no_signature_note": "No drawn signature: confirming is the signature."
       },
       "place": {
         "general": "General stock",
@@ -15481,7 +15621,8 @@
         "forwarded_member": "{name} · by {by}",
         "forwarded_unannounced": "not forwarded — arrived unannounced",
         "forwarded_direct": "not forwarded — the receiver recorded it directly",
-        "received_link": "signed on the link with the code",
+        "received_link": "confirmed on the link with the code",
+        "received_login": "confirmed by signing in to his account",
         "finance_match": "Matches the supplier invoice to the accepted only",
         "finance_closed": "The order is closed — Finance settles on the accepted",
         "forwarded_both": "The notice reached the receiver and Procurement at once",
@@ -15500,7 +15641,9 @@
         "regularised": "Tied to purchase order {number}",
         "expensed": "Sent to Finance as a cash expense",
         "noticed_numbered": "Supplier notified the delivery {notice} for {day}",
-        "forwarded_auto": "Auto-forwarded to {name} after the window"
+        "forwarded_auto": "Auto-forwarded to {name} after the window",
+        "escalated": "Escalated to {to}",
+        "draft_confirmed": "The storekeeper confirmed receipt {number} into stock"
       },
       "received_by": "Received by",
       "received_by_suggested": "Suggested receiver",
@@ -15513,9 +15656,30 @@
     "ProcReports": {
       "page": {
         "title": "Reports",
-        "subtitle": "Computed from the live record — no numbers are typed. Values are commitments excluding VAT, not costs"
+        "subtitle": "The seven reports as they are today, per package."
+      },
+      "overview": {
+        "seven": "The seven reports"
+      },
+      "basis": {
+        "excl": "before VAT"
+      },
+      "site": {
+        "label": "Delivery site",
+        "all": "All sites",
+        "none": "No site"
+      },
+      "tag": {
+        "label": "Tags",
+        "all": "All",
+        "not_lowest": "Not the lowest",
+        "short_competition": "Short competition",
+        "direct_over": "Direct over the cap",
+        "lump": "Lump sum",
+        "unregistered": "Not VAT-registered"
       },
       "csv": "CSV",
+      "showMore": "Show {count} more",
       "empty": "No data in the period",
       "emptyCommitments": "No open orders",
       "total": "Total",
@@ -15530,14 +15694,15 @@
       "notAwarded": "Not awarded",
       "exceptionsTotal": "{count, plural, one {# exception} other {# exceptions}}",
       "report": {
-        "project": "Spend by project & requester",
-        "project_site": "Spend by delivery site",
+        "project": "By project and party",
+        "project_site": "By delivery location",
         "supplier": "Spend by supplier",
-        "delivery": "Delivery performance",
-        "drift": "Price drift vs last buy",
-        "cycle": "Cycle time & competition",
+        "delivery": "On-time delivery",
+        "drift": "Savings vs last price",
+        "cycle": "Competition on RFQs",
         "exceptions": "Exceptions",
-        "commitments": "Open commitments by due date"
+        "commitments": "Commitments and dues",
+        "commitments_nofin": "Received and paid — for the accountant"
       },
       "period": {
         "30": "30 days",
@@ -15551,6 +15716,15 @@
         "all": "All time"
       },
       "cols": {
+        "tags": "Tags",
+        "siteCol": "Delivery site",
+        "approved": "Approved",
+        "exVat": "Order value",
+        "vat": "VAT",
+        "total": "Total",
+        "receivedValue": "Received",
+        "payment": "Payment",
+        "paidDay": "Paid on",
         "requester": "Requester",
         "site": "Delivery site",
         "orders": "Orders",
@@ -15574,7 +15748,7 @@
         "previous": "Previous price",
         "current": "This PO",
         "qty": "Qty",
-        "impact": "Impact",
+        "impact": "Difference from the last price",
         "rfq": "RFQ",
         "invited": "Invited",
         "offers": "Offers",
@@ -15611,11 +15785,15 @@
         "commitments": "Finance's cash forecast only sees a PO once invoiced — this fills the gap. Due = the supplier's date or the receipt date + payment terms. An advance is due now until Finance records it paid on the order; what Finance paid against invoices comes off \"received\". \"Received\" counts the accepted only.",
         "saving": "Saving = for each awarded line, (the average unit price quoted by the offers still in the running − the awarded price) × its quantity; where no offer quoted unit prices, the average offer − what we awarded. Positive = saved.",
         "commitmentsTerms": "Terms are read from our supplier record first, then the offer's credit days, then days written on the order.",
+        "received_paid": "The orders approved in the period, what was received of them (accepted only, before VAT) and what the buyer marked paid. This is the buyer's mark on the order, not a ledger entry; the books are the accountant's.",
         "cycleArrival": "Days are counted from when the need reached Procurement; an RFQ no need raised counts from its publication."
       },
       "drift": {
         "totals": "Period impact {impact} on a base of {base} ({percent}%)",
-        "noBase": "No earlier price to compare with in this period"
+        "noBase": "No earlier price to compare with in this period",
+        "saved": "We saved {amount} against the last price we paid ({percent}%)",
+        "higher": "{amount} above the last price we paid ({percent}%)",
+        "flat": "No difference from the last price we paid"
       },
       "cycle": {
         "totals": "{rfqs, plural, one {# RFQ} other {# RFQs}} · {awarded} awarded · {short} short competition",
@@ -15624,6 +15802,7 @@
       "kind": {
         "retroactive": "Retroactive",
         "direct": "Direct order",
+        "direct_over": "Direct over the cap",
         "non_lowest": "Non-lowest",
         "short_competition": "Short competition",
         "self_approval": "Self-approval",
@@ -15729,6 +15908,7 @@
         "price": "Price",
         "addLine": "Add a material",
         "removeLine": "Remove this material",
+        "cap": "Cap (optional)",
         "noHistoryForName": "No past purchase under this name and unit — pick one from the list so it can be compared with what we last paid",
         "renewPricesHint": "Leave a price as it is to keep it.",
         "note": "Note",
@@ -15760,6 +15940,52 @@
         "log_created": "Agreement signed",
         "log_renewed": "Renewed to {until}",
         "log_ended": "Ended early: {reason}"
+      },
+      "hist2": {
+        "intro": "Every price we committed to or were quoted for one material — from the orders, offers and price agreements themselves.",
+        "materials": "Material",
+        "more": "Show {count} more",
+        "tile_last": "Last purchase price",
+        "tile_range": "Low · high",
+        "tile_avg": "Average purchase",
+        "tile_change": "Change over ~3 months",
+        "per": "per {unit}",
+        "purchases": "{count, plural, =0 {no purchases} one {# purchase} other {# purchases}}",
+        "change_sub": "from {from} to {to}",
+        "chart_title": "Last 6 months · SAR per {unit} before VAT",
+        "chart_label": "Prices of {name} over time, a line per supplier",
+        "chart_empty": "No prices in the last 6 months — the table below holds the earlier ones.",
+        "older_note": "{count, plural, one {# price older than six months, in the table only} other {# prices older than six months, in the table only}}",
+        "legend_offer": "Offer not awarded",
+        "legend_agreement": "Agreement",
+        "col_date": "Date",
+        "col_supplier": "Supplier",
+        "col_source": "Source",
+        "col_qty": "Qty",
+        "col_price": "Price",
+        "col_diff": "vs previous purchase",
+        "col_ref": "Reference",
+        "source_po": "Purchase order",
+        "source_offer": "Offer",
+        "source_agreement": "Agreement",
+        "material_file": "Material file",
+        "table": "Prices of {name} by source",
+        "caption": "Built from the POs, offers and price agreements themselves; it feeds “Price vs last purchase” above the pages and the reference price Manufacturing reads.",
+        "basis": "Prices are per unit before VAT. A lump-sum order has no unit price, so it does not enter the history."
+      },
+      "agr2": {
+        "col_agreement": "Agreement",
+        "col_material": "Material and price",
+        "col_validity": "Validity",
+        "col_cap": "Used of the cap",
+        "col_status": "Status",
+        "col_orders": "Orders on it",
+        "cap_of": "{used} of {cap} {unit}",
+        "no_cap": "No cap stated — {consumed} {unit} used",
+        "over": "Over the cap",
+        "table": "Price agreements",
+        "more": "Show {count} more",
+        "caption": "A live agreement's price enters the price history, and what is used of its cap is read from the orders that name it."
       },
       "material": {
         "last_price": "Our last price",
@@ -25726,12 +25952,109 @@
       },
       "page": {
         "title": "Suppliers",
-        "subtitle": "Supplier file, agreements and price history — rating is computed from its orders, not typed stars",
+        "subtitle": "Our suppliers, inviting a supplier to the platform, and the platform directory.",
         "empty_desc": "Add one from the platform directory, or invite a supplier who is not on the platform yet."
       },
       "p2c": {
         "off_platform": "Off-platform supplier: gets requests and orders by link; its file lives here only — no Mdmak profile and no ratings from other contractors.",
         "search_all": "Search a supplier, material or agreement"
+      },
+      "list": {
+        "search": "Search by supplier name or specialty…",
+        "clear_search": "Clear the search",
+        "all_specialties": "All specialties",
+        "all_cities": "All cities",
+        "status_label": "Status",
+        "sort_label": "Sort",
+        "st_all": "All statuses",
+        "st_pref": "Preferred",
+        "st_ver": "Verified",
+        "st_unver": "Unverified",
+        "st_off": "Off-platform",
+        "dst_all": "All",
+        "dst_prof": "With a profile",
+        "dst_works": "With previous work",
+        "dst_certs": "With certificates",
+        "dst_notours": "Not ours yet",
+        "sort_deals": "Most supplied",
+        "sort_rate": "Top rated",
+        "sort_new": "Newest",
+        "sort_name": "By name",
+        "count": "{matched} of {total}",
+        "view_label": "Layout",
+        "view_rows": "Rows",
+        "view_cards": "Cards",
+        "empty": "No supplier matches the filters",
+        "clear": "Clear filters",
+        "show_more": "Show {count} more",
+        "failed": "The directory could not be loaded. Try again.",
+        "table": "Suppliers",
+        "col_supplier": "Supplier",
+        "col_specialties": "Specialties",
+        "col_platform": "On the platform",
+        "col_on_time": "On time",
+        "col_rating": "Rating",
+        "col_status": "Status",
+        "ops": "{count, plural, one {operation} other {operations}}",
+        "ops_done": "{count} operations completed",
+        "no_platform_file": "No platform profile",
+        "on_time_text": "{percent}% on time",
+        "since": "since {year}",
+        "more_specialties": "+{count}",
+        "chip_profile": "Profile",
+        "chip_works": "Previous work",
+        "chip_certs": "Certificates",
+        "ours": "Ours",
+        "verified": "Verified",
+        "unverified": "Unverified",
+        "off": "Off-platform",
+        "open_file": "Supplier file",
+        "add": "Add to ours",
+        "ours_caption": "An unverified supplier gets Private RFQs, quotes and can receive orders, tagged in the comparison and the order; he is not listed in the platform directory until verified.",
+        "dir_caption": "The directory lists verified suppliers only, by the same tree specialties. At scale, results show 24 at a time, then Show N more."
+      },
+      "file2": {
+        "optional": "optional",
+        "off_platform": "Off-platform supplier: no Mdmak profile. We know his name, mobile and our orders with him. Invite him to the platform so he adds his profile.",
+        "we_know": "What we know",
+        "name": "Name",
+        "mobile": "Mobile",
+        "we_know_note": "The mobile was proved by a code sent to it on the visitor link. His CR and tax number are as he stated them; nobody verified them.",
+        "invite": "Invite to the platform",
+        "add": "Add to ours",
+        "added": "Added to our suppliers - waiting to be verified",
+        "already": "He is already one of ours",
+        "err_phone_not_verified": "His mobile was not proved by a code on the visitor link - invite him to the platform instead of adding him",
+        "err_not_a_guest": "He is a platform supplier - add him from the supplier directory",
+        "err_not_found": "We could not find this offer in your company",
+        "err_no_permission": "This action is not yours to take",
+        "err_generic": "Not saved. Try again.",
+        "stat_ops": "Completed on the platform",
+        "stat_ops_unit": "supply operations",
+        "stat_on_time": "On time",
+        "stat_on_time_sub": "across all his orders",
+        "stat_rating": "Rating",
+        "stat_rating_sub": "computed from his orders, not typed stars",
+        "stat_with_us": "With us",
+        "no_orders_yet": "no orders yet",
+        "orders_count": "{count, plural, =0 {No orders} one {# order} other {# orders}}",
+        "official": "Official data",
+        "cr": "Commercial registration",
+        "cr_expires": "expires {date}",
+        "soon": "soon",
+        "vat_missing": "Not uploaded - required before award",
+        "address": "National address",
+        "contact": "Contact",
+        "coverage": "Coverage",
+        "response": "Answers our invitations",
+        "profile": "Company profile",
+        "no_profile": "The supplier has not added a company profile.",
+        "works": "Previous work",
+        "no_works": "The supplier has not added previous work.",
+        "certs": "Certificates and supporting files",
+        "no_certs": "The supplier has not added certificates or files.",
+        "valid_until": "valid until {date}",
+        "slots_note": "Profile, previous work and certificates are open fields the supplier adds from his account, or leaves. CR and VAT are required for verification; operations and on-time are computed by the system."
       },
       "origin": {
         "label": "Supplier location",
@@ -25785,6 +26108,8 @@
         "st_sent": "Sent",
         "st_opened": "Opened",
         "st_joined_ours": "Joined — in our suppliers",
+        "st_joined": "Joined",
+        "f_all": "All",
         "st_expired": "Expired",
         "st_cancelled": "Cancelled",
         "st_declined": "Declined",
@@ -27257,7 +27582,7 @@
     "confirm_sample_sent": "Confirm sample sent",
     "sample_awaiting_receipt": "The contractor has been notified and we're waiting for them to confirm receipt.",
     "delivery_title": "Send a delivery notice",
-    "delivery_desc": "When you ship, send a delivery notice so the contractor can confirm receipt and record the materials.",
+    "delivery_desc": "Give the delivery day and, if you like, a note — no quantities, no driver. The receiver at the contractor counts what arrives and confirms it himself.",
     "delivery_person": "Delivery person",
     "delivery_person_placeholder": "Full name of the driver",
     "delivery_date": "Delivery date",
@@ -27298,12 +27623,26 @@
     "errorBusyRetry": "The assistant is busy. Please wait {secs} seconds and try again."
   },
   "ReceiveLink": {
-    "eyebrow": "Confirm receipt",
+    "eyebrow": "Receive a delivery",
     "supplier_unknown": "Delivery",
-    "intro": "{name} forwarded this delivery to you. Count what actually arrived, note anything rejected, then sign and confirm with a code sent to your phone.",
-    "lines_title": "What arrived?",
-    "blind_note": "Count what is in front of you — the supplier's quantities are hidden on purpose.",
-    "counted": "Received",
+    "intro": "{name} forwarded this delivery to you. Count what actually arrived, say what you did not accept and why, then confirm the receipt — confirming is your signature.",
+    "intro_arrival": "This delivery arrived with no notice from the supplier. Count what actually arrived, say what you did not accept and why, then confirm the receipt.",
+    "lines_title": "Count what arrived",
+    "blind_note": "Blind count: the ordered quantity is hidden from you",
+    "counted": "Arrived",
+    "accepted": "Accepted",
+    "rejected_n": "{qty} rejected — reason",
+    "confirm_is_signature": "Confirming is the signature",
+    "where_warehouse": "Enters the warehouse stock on confirmation",
+    "where_project": "Recorded on the project on confirmation",
+    "done_where_warehouse": "It entered the warehouse stock",
+    "done_where_project": "It was recorded on the project",
+    "done_accepted": "{qty} accepted",
+    "done_rejected": "and {qty} rejected",
+    "done_rejected_note": "The rejected part is Procurement’s decision with the supplier.",
+    "done_pdf": "PDF",
+    "err_accepted_over": "More accepted than arrived for “{name}”.",
+    "err_over_receipt": "That is more than is still expected on this order — send the excess back with the driver.",
     "rejected": "Rejected",
     "reason": "Reason for rejecting",
     "line_note": "Note (optional)",
@@ -27318,11 +27657,11 @@
     "code_sent": "Code sent to {phone}. Valid for 5 minutes.",
     "test_code": "Test environment — code: {code}",
     "code_label": "Code",
-    "confirm": "Confirm receipt",
+    "confirm": "Confirm the receipt",
     "resend": "Send the code again",
     "loading": "Loading",
-    "done_title": "Receipt confirmed — thank you",
-    "done_body": "Your count and signature have reached {name} in Procurement to book the receipt.",
+    "done_title": "Receipt {no} recorded",
+    "done_body": "Your count has reached Procurement.",
     "closed_title": "This link no longer works",
     "closed_expired": "The link has expired. Ask Procurement for a new one.",
     "closed_used": "This receipt has already been confirmed.",
@@ -27346,9 +27685,9 @@
     "err_hold_reason_needed": "Choose why “{name}” is on hold.",
     "files_title": "Proof of receipt",
     "optional": "optional",
-    "file_photo": "Shipment photos",
+    "file_photo": "Shipment photo",
     "file_ticket": "Weighbridge ticket",
-    "file_cert": "Certificate",
+    "file_cert": "Mill certificate",
     "uploading": "Uploading…",
     "err_file_big": "The file is over 4 MB — take it at a lower resolution or split it",
     "err_file_type": "Images or PDF only",

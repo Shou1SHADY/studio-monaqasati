@@ -16,21 +16,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useFirestore } from "@/firebase"
 import { matchesSearch } from "@/lib/search-text"
 import { displayAgreementNumber } from "@/lib/procurement/format"
 import { agreementRows, type PriceAgreement, type PriceHistoryEntry } from "@/lib/procurement/prices"
 import { endPriceAgreement } from "@/lib/procurement/agreement-writes"
-import { agreementOrderCounts } from "@/lib/procurement/supplier-file"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import type { ProcActor, PurchaseOrder } from "@/lib/procurement/types"
 import { AgreementDialog } from "./AgreementDialog"
+import { AgreementsPanel } from "./AgreementsPanel"
 import { AgreementDrawer } from "./AgreementDrawer"
-import { sarLtr } from "@/lib/riyal"
-
-/** A unit price, as the prototype's R2: two decimals, the riyal sign on its left. */
-const priceText = (n: number) => sarLtr(Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 
 export function PriceAgreementsView({
   agreements,
@@ -80,7 +75,6 @@ export function PriceAgreementsView({
   }
 
   const today = new Date().toISOString().slice(0, 10)
-  const counts = useMemo(() => agreementOrderCounts(orders), [orders])
   const rows = useMemo(
     () => agreementRows(agreements, today).filter((a) => matchesSearch(q, [a.docNumber, displayAgreementNumber(a.docNumber, locale), a.supplierName, ...(a.lines || []).map((l) => l.name)])),
     [agreements, today, q, locale]
@@ -134,81 +128,12 @@ export function PriceAgreementsView({
           <p className="mt-1 text-sm">{t("agreements.emptyDesc")}</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead className="bg-muted/50 text-xs">
-              <tr>
-                <th className="p-3 text-start font-bold">{t("agreements.colAgreement")}</th>
-                <th className="p-3 text-start font-bold">{t("agreements.colItems")}</th>
-                <th className="p-3 text-start font-bold">{t("agreements.colEnds")}</th>
-                <th className="p-3 text-end font-bold">{t("agreements.colOrders")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="p-6 text-center text-sm text-muted-foreground">
-                    {t("agreements.noMatch")}
-                  </td>
-                </tr>
-              )}
-              {rows.map((a) => (
-                <tr key={a.id} className="cursor-pointer border-t align-top hover:bg-muted/40" onClick={() => pick(a.id)}>
-                  <td className="p-3">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        pick(a.id)
-                      }}
-                      className="rounded font-bold tabular-nums hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      dir="ltr"
-                    >
-                      {displayAgreementNumber(a.docNumber, locale)}
-                    </button>
-                    <span className="block text-xs text-muted-foreground" dir="auto">
-                      {a.supplierName || "—"}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <ul className="space-y-1">
-                      {(a.lines || []).map((l, i) => (
-                        <li key={i}>
-                          <span dir="auto">{l.name}</span>
-                          <span className="text-muted-foreground">
-                            {" — "}
-                            <b className="tabular-nums text-foreground" dir="ltr">
-                              {priceText(l.price)}
-                            </b>
-                            {` / ${l.unit}`}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </td>
-                  <td className="p-3">
-                    {a.state === "expired" ? (
-                      <StatusPill tone="bad">{t("state.expired")}</StatusPill>
-                    ) : a.state === "upcoming" ? (
-                      <>
-                        <StatusPill tone="mute">{t("state.upcoming")}</StatusPill>
-                        <span className="mt-1 block text-[11px] text-muted-foreground">{fmtDate(a.until, locale)}</span>
-                      </>
-                    ) : (
-                      <span className={a.state === "expiring" ? "font-bold text-warning" : undefined}>{fmtDate(a.until, locale)}</span>
-                    )}
-                  </td>
-                  <td className="p-3 text-end tabular-nums">{counts.get(a.id) || 0}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <AgreementsPanel rows={rows} orders={orders} fmtDate={fmtDate} onOpen={pick} empty={<p className="p-6 text-center text-sm text-muted-foreground">{t("agreements.noMatch")}</p>} />
       )}
 
       <p className="flex gap-2 rounded-xl border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
         <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-        {t("agreements.skipsRfq")}
+        {t("agr2.caption")}
       </p>
 
       <AgreementDrawer

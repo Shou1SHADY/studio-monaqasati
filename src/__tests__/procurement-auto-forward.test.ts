@@ -6,7 +6,7 @@ import {
   selectStaleNotices,
   type AutoForwardInput,
 } from "@/lib/procurement/auto-forward"
-import { incomingPill, receiptLog, receiptTrail, type DeskDelivery, type IncomingRow } from "@/lib/procurement/receipt-desk"
+import { noticePill, noticeRows, receiptLog, receiptTrail, type DeskDelivery } from "@/lib/procurement/receipt-desk"
 import type { ProcReceiver } from "@/lib/procurement/receivers"
 import { exceptions } from "@/lib/procurement/reports"
 import { DEFAULT_POLICIES } from "@/lib/procurement/types"
@@ -166,7 +166,7 @@ describe("who receives it", () => {
 
 describe("how the tag reads", () => {
   const forwardedTo = { linkId: "l1", name: "Nasser", userId: null, phoneMasked: "05****67", byName: "Mdmak Tech", at: "2026-09-22T06:00:00.000Z", note: null }
-  const row = (d: DeskDelivery): IncomingRow => ({ kind: "notice", id: d.id, delivery: d, po: null, state: "waiting" as never, day: "2026-09-22", daysFromNow: 0, afterPromise: 0 })
+  const row = (d: DeskDelivery) => noticeRows([{ ...d, deliveryDate: "2026-09-25" }], [], NOW, 2)[0]
 
   it("isAutoForwarded is true only for the job's forward", () => {
     expect(isAutoForwarded(notice({ id: "n1", forwardedTo: { ...forwardedTo, auto: true } }))).toBe(true)
@@ -175,14 +175,14 @@ describe("how the tag reads", () => {
   })
 
   it("the row's pill says auto-forwarded — and a manual forward still reads as before", () => {
-    expect(incomingPill(row(notice({ id: "n1", forwardedTo: { ...forwardedTo, auto: true } })))).toEqual({ kind: "auto_forwarded" })
-    expect(incomingPill(row(notice({ id: "n1", forwardedTo })))).not.toEqual({ kind: "auto_forwarded" })
-    expect(incomingPill(row(notice({ id: "n1" })))).toMatchObject({ kind: "to_forward" })
+    expect(noticePill(row(notice({ id: "n1", forwardedTo: { ...forwardedTo, auto: true } })))).toEqual({ kind: "auto_forwarded" })
+    expect(noticePill(row(notice({ id: "n1", forwardedTo })))).not.toEqual({ kind: "auto_forwarded" })
+    expect(noticePill(row(notice({ id: "n1" })))).toMatchObject({ kind: "to_forward" })
   })
 
-  it("the pill gives way once the receiver has signed", () => {
-    const signed = notice({ id: "n1", forwardedTo: { ...forwardedTo, auto: true }, receiverReport: { signedAt: "2026-09-22T07:00:00.000Z" } as DeskDelivery["receiverReport"] })
-    expect(incomingPill(row(signed))).not.toEqual({ kind: "auto_forwarded" })
+  it("the pill gives way to the count once the delivery day has come", () => {
+    const due = notice({ id: "n1", forwardedTo: { ...forwardedTo, auto: true } })
+    expect(noticePill(noticeRows([due], [], NOW, 2)[0])).not.toEqual({ kind: "auto_forwarded" })
   })
 
   const po = { id: "po1", docNumber: "PO-2026/001", supplierName: "Al Rajhi", status: "approved", lines: [] } as unknown as PurchaseOrder

@@ -98,11 +98,10 @@ const priceSchema = z.object({
 const sampleSchema = z.object({
   note: z.string().trim().max(1000).optional().or(z.literal("")),
 })
+// A delivery notice is a DAY and a note (G-08): no driver, no recipient, no quantity — the receiver counts.
 const deliverySchema = z.object({
-  deliveryPersonName: z.string().trim().min(2).max(200),
   deliveryDate: z.string().trim().min(1),
-  handoverRecipientName: z.string().trim().max(200).optional().or(z.literal("")),
-  notes: z.string().trim().max(1000).optional().or(z.literal("")),
+  notes: z.string().trim().max(500).optional().or(z.literal("")),
 })
 
 type PriceFormValues = z.infer<typeof priceSchema>
@@ -136,7 +135,7 @@ export function GuestOfferContent() {
   const sampleForm = useForm<SampleFormValues>({ resolver: zodResolver(sampleSchema), defaultValues: { note: "" } })
   const deliveryForm = useForm<DeliveryFormValues>({
     resolver: zodResolver(deliverySchema),
-    defaultValues: { deliveryPersonName: "", deliveryDate: "", handoverRecipientName: "", notes: "" },
+    defaultValues: { deliveryDate: "", notes: "" },
   })
 
   const load = useCallback(async () => {
@@ -239,9 +238,7 @@ export function GuestOfferContent() {
 
   const onDeliveryNotice = (values: DeliveryFormValues) =>
     submitAction("delivery_notice", {
-      deliveryPersonName: values.deliveryPersonName,
       deliveryDate: values.deliveryDate,
-      handoverRecipientName: values.handoverRecipientName || "",
       notes: values.notes || "",
     })
 
@@ -681,49 +678,20 @@ export function GuestOfferContent() {
                   </div>
                 </div>
                 <form onSubmit={deliveryForm.handleSubmit(onDeliveryNotice)} className="px-5 py-5 space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="delivery-person" className="text-sm font-bold text-slate-700">
-                        {t("delivery_person")} <span className="text-destructive">*</span>
-                      </Label>
-                      <Input
-                        id="delivery-person"
-                        dir="auto"
-                        placeholder={t("delivery_person_placeholder")}
-                        className="h-11 rounded-xl border-slate-200"
-                        {...deliveryForm.register("deliveryPersonName")}
-                      />
-                      {deliveryForm.formState.errors.deliveryPersonName && (
-                        <p className="text-xs text-destructive font-medium">{t("field_required")}</p>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="delivery-date" className="text-sm font-bold text-slate-700">
-                        {t("delivery_date")} <span className="text-destructive">*</span>
-                      </Label>
-                      <Input
-                        id="delivery-date"
-                        type="date"
-                        dir="ltr"
-                        className="h-11 rounded-xl border-slate-200"
-                        {...deliveryForm.register("deliveryDate")}
-                      />
-                      {deliveryForm.formState.errors.deliveryDate && (
-                        <p className="text-xs text-destructive font-medium">{t("field_required")}</p>
-                      )}
-                    </div>
-                  </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="delivery-recipient" className="text-sm font-bold text-slate-700">
-                      {t("delivery_recipient")}{" "}
-                      <span className="text-muted-foreground text-xs font-normal">({t("optional")})</span>
+                    <Label htmlFor="delivery-date" className="text-sm font-bold text-slate-700">
+                      {t("delivery_date")} <span className="text-destructive">*</span>
                     </Label>
                     <Input
-                      id="delivery-recipient"
-                      dir="auto"
+                      id="delivery-date"
+                      type="date"
+                      dir="ltr"
                       className="h-11 rounded-xl border-slate-200"
-                      {...deliveryForm.register("handoverRecipientName")}
+                      {...deliveryForm.register("deliveryDate")}
                     />
+                    {deliveryForm.formState.errors.deliveryDate && (
+                      <p className="text-xs text-destructive font-medium">{t("field_required")}</p>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="delivery-notes" className="text-sm font-bold text-slate-700">
@@ -763,7 +731,7 @@ export function GuestOfferContent() {
                     {data.delivery.status === "confirmed" ? t("delivery_confirmed") : t("delivery_pending")}
                   </p>
                   <p className="text-sm text-slate-600 mt-0.5" suppressHydrationWarning>
-                    {t("delivery_person")}: {data.delivery.deliveryPersonName} · {fmtDate(data.delivery.deliveryDate)}
+                    {t("delivery_date")}: {fmtDate(data.delivery.deliveryDate)}
                   </p>
                 </div>
               </div>

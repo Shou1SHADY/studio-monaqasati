@@ -3,19 +3,17 @@
  * was counted less rejects and holds; no receipt beyond the outstanding
  * quantity plus the tolerance; the variance against the notice; the receipt's
  * state; what a receipt is worth to the books (never a guessed share of a
- * lump sum); and the default notice lines for the supplier's form.
+ * lump sum). A notice names a day and a note (G-08, PRD 2.0): there is no
+ * variance against it and no notice lines to build.
  */
 
 import {
   acceptedOf,
-  noticeLinesFromPo,
   overReceiptRefusal,
   receiptErrors,
   receiptLineErrors,
   receiptNetValue,
   receiptState,
-  shortVsNotice,
-  varianceVsNotice,
 } from "@/lib/procurement/receipts"
 import { DEFAULT_POLICIES, type DeliveryLine, type PoLine, type PurchaseOrder, type ReceiptFact } from "@/lib/procurement/types"
 
@@ -59,17 +57,13 @@ const po = (over: Partial<PurchaseOrder> = {}): PurchaseOrder => ({
 const delivery = (over: Partial<ReceiptFact> = {}): ReceiptFact => ({ id: "d1", status: "pending_confirmation", poId: "po1", deliveryDate: "2026-09-25", lines: [dl()], ...over })
 
 describe("acceptedOf and the line validation", () => {
-  it("demo GRN 886: notice 650, counted 645, rejected 45 → accepted 600; short of the notice by 5", () => {
+  it("demo GRN 886: counted 645, rejected 45 → accepted 600", () => {
     const l = dl({ counted: 645, rejected: 45, held: 0 })
     expect(acceptedOf(l)).toBe(600)
-    expect(varianceVsNotice(l)).toBe(-5)
-    expect(shortVsNotice(l)).toBe(5)
   })
 
-  it("never negative; null variance before the count", () => {
+  it("never negative", () => {
     expect(acceptedOf({ counted: 10, rejected: 8, held: 5 })).toBe(0)
-    expect(varianceVsNotice(dl())).toBeNull()
-    expect(shortVsNotice(dl())).toBe(0)
   })
 
   it("errors are codes: missing count, negatives, over-deducted, missing reasons", () => {
@@ -119,12 +113,12 @@ describe("receiptState — first match wins", () => {
     expect(receiptState(delivery({ deliveryDate: null }), NOW)).toBe("on_the_way")
   })
 
-  it("at the gate: held > rejects > short > matched (the prototype's GST, #55); a legacy delivery with no lines is received", () => {
+  it("at the gate: held > rejects > matched (the prototype's GST, #55) — a shortfall is a rejection with its reason, never a variance against a notice; a legacy delivery with no lines is received", () => {
     const confirmed = (l: Partial<DeliveryLine>) => delivery({ status: "confirmed", lines: [dl({ counted: 645, ...l })] })
     expect(receiptState(confirmed({ rejected: 45, held: 10 }), NOW)).toBe("received_held")
     expect(receiptState(confirmed({ rejected: 45 }), NOW)).toBe("received_with_rejects")
     expect(receiptState(confirmed({ held: 10 }), NOW)).toBe("received_held")
-    expect(receiptState(confirmed({}), NOW)).toBe("received_short")
+    expect(receiptState(confirmed({}), NOW)).toBe("received")
     expect(receiptState(confirmed({ counted: 650 }), NOW)).toBe("received")
     expect(receiptState(delivery({ status: "confirmed", lines: undefined }), NOW)).toBe("received")
   })
@@ -150,15 +144,5 @@ describe("receiptNetValue — what the books get, ex-VAT", () => {
     const mixed = po({ lines: [line(), line({ id: "l2", name: "Pallets", unit: "pc", quantity: 10, unitPrice: null })] })
     expect(receiptNetValue(mixed, [dl({ counted: 100 })])).toBe(1800)
     expect(receiptNetValue(mixed, [dl({ counted: 100 }), dl({ poLineId: "l2", counted: 5 })])).toBeNull()
-  })
-})
-
-describe("noticeLinesFromPo — what may still arrive, per line", () => {
-  it("outstanding less held; complete lines are left out", () => {
-    const p = po({ lines: [line({ accepted: 200, held: 50 }), line({ id: "l2", name: "Sand", unit: "m³", quantity: 30, accepted: 30 }), line({ id: "l3", name: "Gravel", unit: "m³", quantity: 40, cancelled: 15 })] })
-    expect(noticeLinesFromPo(p)).toEqual([
-      { poLineId: "l1", name: "Cement", unit: "bag", noticeQuantity: 400 },
-      { poLineId: "l3", name: "Gravel", unit: "m³", noticeQuantity: 25 },
-    ])
   })
 })

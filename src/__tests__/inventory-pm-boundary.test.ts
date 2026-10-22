@@ -190,11 +190,11 @@ describe("Procurement reads the projects' SRET / NOPO / EQH", () => {
   ]
   it("one informational row each, opening the project on the tab that holds it; old ones drop off", () => {
     const rows = pmBoundaryTasks(events, NOW)
-    expect(rows.map((r) => [r.kind, r.titleKey, r.href, r.priority])).toEqual([
-      ["pm_supplier_return", "task.pm_supplier_return.title_nc", PROJECT_HREF("p1", "pmStore"), 3],
-      ["pm_supplier_return", "task.pm_supplier_return.title_charged", PROJECT_HREF("p1", "pmStore"), 3],
-      ["pm_cash_inbound", "task.pm_cash_inbound.title", PROJECT_HREF("p1", "pmStore"), 3],
-      ["pm_hire", "task.pm_hire.title", PROJECT_HREF("p1", "pmReq"), 3],
+    expect(rows.map((r) => [r.kind, r.titleKey, r.href, r.severity])).toEqual([
+      ["pm_supplier_return", "task.pm_supplier_return.title_nc", PROJECT_HREF("p1", "pmStore"), "amber"],
+      ["pm_supplier_return", "task.pm_supplier_return.title_charged", PROJECT_HREF("p1", "pmStore"), "amber"],
+      ["pm_cash_inbound", "task.pm_cash_inbound.title", PROJECT_HREF("p1", "pmStore"), "amber"],
+      ["pm_hire", "task.pm_hire.title", PROJECT_HREF("p1", "pmReq"), "amber"],
     ])
     expect(rows[3].titleParams).toMatchObject({ request: "03", what: "Crane 50t", fromDay: "2026-10-01", toDay: "2026-10-10" })
     expect(rows[3].subParams).toMatchObject({ operator: 1, qty: 1 })
@@ -205,8 +205,8 @@ describe("Procurement reads the projects' SRET / NOPO / EQH", () => {
   it("the manager and the buyer see them — amounts only for who sees prices; an expediter does not", () => {
     const buyer = todayTasks(world, actor({ canPrepare: true, canExpedite: true, seesPrices: true }), NOW).filter((x) => x.kind.startsWith("pm_"))
     expect(buyer).toHaveLength(4)
-    expect(buyer.find((x) => x.id === "pm:prj:SRET:1")).toMatchObject({ amount: 900, group: "delivery", actionKey: "actions.openProject" })
-    expect(buyer.find((x) => x.kind === "pm_hire")?.group).toBe("need")
+    expect(buyer.find((x) => x.id === "pm:prj:SRET:1")).toMatchObject({ amount: 900, chip: "rcv", actionKey: "actions.openProject" })
+    expect(buyer.find((x) => x.kind === "pm_hire")?.chip).toBe("req")
     const sourcer = todayTasks(world, actor({ canSource: true }), NOW).filter((x) => x.kind.startsWith("pm_"))
     expect(sourcer.find((x) => x.id === "pm:prj:SRET:1")?.amount).toBeNull()
     expect(todayTasks(world, actor({ canExpedite: true }), NOW).filter((x) => x.kind.startsWith("pm_"))).toEqual([])

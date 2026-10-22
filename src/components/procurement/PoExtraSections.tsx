@@ -28,7 +28,6 @@ import { withSarSign } from "@/lib/riyal"
 import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { poStatus, receiptDay, todayOf } from "@/lib/procurement/po"
 import { buyerMarkReference } from "@/lib/procurement/payment-mark"
-import type { NoticeRouting } from "@/lib/procurement/policies"
 import { destKind, recordedBy } from "@/lib/procurement/receipt-desk"
 import {
   DATE_REASONS,
@@ -511,13 +510,11 @@ export function OrderDeliveriesSections({
   po,
   deliveries,
   warehouses,
-  routing,
   now,
 }: {
   po: PurchaseOrderX
   deliveries: ReceiptFact[]
   warehouses: Array<{ id: string; projectId?: string | null }>
-  routing: NoticeRouting
   now: Date
 }) {
   const t = useTranslations("Portal.Procurement")
@@ -576,7 +573,7 @@ export function OrderDeliveriesSections({
                   fw.byName && <span className="text-muted-foreground"> · {tr("incoming.forwardedBy", { name: fw.byName, when: fmt(fw.at) })}</span>
                 )}
               </>
-            ) : routing === "procurement" && !d.noNotice ? (
+            ) : !d.noNotice ? (
               <span className="text-warning">{tr("incoming.toForward")}</span>
             ) : null}
           </p>

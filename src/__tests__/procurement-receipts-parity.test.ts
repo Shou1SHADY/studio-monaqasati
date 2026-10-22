@@ -1,9 +1,8 @@
 /**
- * Goods received — prototype parity (S-01…S-30): the log's completeness
- * filter and the pseudo-places, the on-the-way pill and shipment ordinal, the
- * suggested receiver, where it went and who recorded it, what earlier receipts
- * accepted, the seven-step trail and the receipt's log; the reject decision's
- * date / price; regularising a no-PO receipt against an open order.
+ * Goods received — prototype parity (S-01…S-30), updated for Procurement 2.0: the receipts' completeness filter and the pseudo-places,
+ * the notice pill and shipment ordinal (the stored sequence), the suggested receiver, where it went and who recorded it, what earlier
+ * receipts accepted, the seven-step trail and the receipt's log; the reject decision's date / price; regularising a no-PO receipt against
+ * an open order. The hub's five segments, and a notice that names no quantity (G-08).
  */
 
 jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-utils/fake-firestore")>("@/test-utils/fake-firestore").firestoreModule)
@@ -14,14 +13,13 @@ import { fakeFirestore, readDoc, resetFakeDb, seed } from "@/test-utils/fake-fir
 import type { Firestore } from "firebase/firestore"
 import { onGoodsReceived } from "@/lib/accounting/hooks"
 import {
-  INCOMING_HORIZON_DAYS,
   PLACE_GENERAL,
   PLACE_WORKSHOP,
   acceptedBefore,
   completenessMatches,
   destKind,
-  incomingPill,
-  incomingRows,
+  noticePill,
+  noticeRows,
   landingWarehouseId,
   needForOrder,
   noPoInvoiceValue,
@@ -96,15 +94,15 @@ describe("the desk: filters, pills, shipments, receivers", () => {
   const all = [g("a", "po1", { projectId: "p1" }), g("b", "po2"), g("c", "po3")]
 
   it("the place filter knows two pseudo-places: general stock and the workshop", () => {
-    expect(segmentCounts(all, orders, { term: "", projectId: PLACE_WORKSHOP }, NOW).log).toBe(1)
-    expect(segmentCounts(all, orders, { term: "", projectId: PLACE_GENERAL }, NOW).log).toBe(1)
-    expect(segmentCounts(all, orders, { term: "", projectId: "p1" }, NOW).log).toBe(1)
+    expect(segmentCounts(all, orders, { term: "", projectId: PLACE_WORKSHOP }, NOW).recs).toBe(1)
+    expect(segmentCounts(all, orders, { term: "", projectId: PLACE_GENERAL }, NOW).recs).toBe(1)
+    expect(segmentCounts(all, orders, { term: "", projectId: "p1" }, NOW).recs).toBe(1)
   })
 
   it("the log says what is left and filters complete / partial; a receipt with no order only under all", () => {
-    const rows = receiptRows(all, orders, "log", NOW)
+    const rows = receiptRows(all, orders, "recs", NOW)
     expect(rows[0]).toMatchObject({ complete: false, remaining: 15 })
-    const done = receiptRows([g("z", "po9")], [order({ id: "po9", lines: [{ id: "l1", name: "a", unit: "u", quantity: 2, unitPrice: 1, accepted: 2, rejected: 0, held: 0, cancelled: 0 }] })], "log", NOW)[0]
+    const done = receiptRows([g("z", "po9")], [order({ id: "po9", lines: [{ id: "l1", name: "a", unit: "u", quantity: 2, unitPrice: 1, accepted: 2, rejected: 0, held: 0, cancelled: 0 }] })], "recs", NOW)[0]
     expect(done).toMatchObject({ complete: true, remaining: 0 })
     expect(completenessMatches(done, "done")).toBe(true)
     expect(completenessMatches(done, "open")).toBe(false)
@@ -112,25 +110,21 @@ describe("the desk: filters, pills, shipments, receivers", () => {
     expect(completenessMatches({ complete: null }, "all")).toBe(true)
   })
 
-  it("the pill: a notice still with us inside the window is ours to forward; red on its day", () => {
+  it("the pill: a notice still with us is ours to forward (amber before its day, red on it); forwarded, it waits for the count and goes red past the window", () => {
     const notice = (day: string, over: Partial<DeskDelivery> = {}): DeskDelivery => ({ id: `n-${day}`, status: "pending_confirmation", poId: "po1", deliveryDate: day, lines: [], ...over })
-    const rowsOf = (d: DeskDelivery) => incomingRows([d], [po], NOW)[0]
-    expect(incomingPill(rowsOf(notice("2026-09-23")))).toEqual({ kind: "to_forward", tone: "warn" })
-    expect(incomingPill(rowsOf(notice("2026-09-22")))).toEqual({ kind: "to_forward", tone: "bad" })
-    expect(incomingPill(rowsOf(notice("2026-09-21")))).toEqual({ kind: "to_forward", tone: "bad" })
+    const rowOf = (d: DeskDelivery) => noticeRows([d], [po], NOW, 2)[0]
+    expect(noticePill(rowOf(notice("2026-09-23")))).toEqual({ kind: "to_forward", tone: "warn" })
+    expect(noticePill(rowOf(notice("2026-09-22")))).toEqual({ kind: "to_forward", tone: "bad" })
+    expect(noticePill(rowOf(notice("2026-09-21")))).toEqual({ kind: "to_forward", tone: "bad" })
     const fw = { linkId: "k", name: "ناصر", userId: null, phoneMasked: "•••12", byName: "Badr", at: "2026-09-21T08:00:00Z" }
-    expect(incomingPill(rowsOf(notice("2026-09-23", { forwardedTo: fw })))).toEqual({ kind: "after_promise", days: 3 })
-    const early = order({ promisedDate: "2026-10-30" })
-    expect(incomingPill(incomingRows([notice("2026-09-21", { forwardedTo: fw })], [early], NOW)[0])).toEqual({ kind: "passed_no_receipt" })
-    expect(incomingPill(incomingRows([notice("2026-09-28", { forwardedTo: fw })], [early], NOW)[0])).toEqual({ kind: "in_days", days: 6 })
-    // Unforwarded before the window: still ours to forward (amber, not blue) — the prototype shows it on every one.
-    expect(incomingPill(incomingRows([notice("2026-09-28")], [early], NOW)[0])).toEqual({ kind: "to_forward", tone: "warn" })
-    // Routed to both at once: nothing waits on us.
-    expect(incomingPill(incomingRows([notice("2026-09-28")], [early], NOW)[0], "both")).toEqual({ kind: "in_days", days: 6 })
-    // A notice a receipt already took is no longer on the way.
-    expect(incomingRows([notice("2026-09-28", { closedByReceipt: { deliveryId: "d2", docNumber: "GR-2026/002" } })], [], NOW)).toEqual([])
-    const due = incomingRows([], [order({ promisedDate: "2026-09-18" })], NOW)[0]
-    expect(incomingPill(due)).toEqual({ kind: "due_late", days: 4 })
+    expect(noticePill(rowOf(notice("2026-09-23", { forwardedTo: fw })))).toEqual({ kind: "in_days", days: 1 })
+    expect(noticePill(rowOf(notice("2026-09-22", { forwardedTo: fw })))).toEqual({ kind: "uncounted", days: 0 })
+    expect(noticePill(rowOf(notice("2026-09-21", { forwardedTo: fw })))).toEqual({ kind: "uncounted", days: 1 })
+    expect(noticePill(rowOf(notice("2026-09-18", { forwardedTo: fw })))).toEqual({ kind: "escalate", days: 4 })
+    expect(noticePill(rowOf(notice("2026-09-28", { forwardedTo: { ...fw, auto: true } })))).toEqual({ kind: "auto_forwarded" })
+    // A notice a receipt already took is no longer on the way; nor is one on a cancelled order.
+    expect(noticeRows([notice("2026-09-28", { closedByReceipt: { deliveryId: "d2", docNumber: "GR-2026/002" } })], [], NOW)).toEqual([])
+    expect(noticeRows([notice("2026-09-28")], [order({ status: "cancelled" })], NOW)).toEqual([])
   })
 
   it("our notice number is derived from the order and the notice's place among its notices — never for a receipt with no notice", () => {
@@ -153,20 +147,13 @@ describe("the desk: filters, pills, shipments, receivers", () => {
     expect(noticeNumberFor("not a number", 1)).toBeNull()
   })
 
-  it("on the way looks 3 days ahead for an order with no notice (prototype prom<=3)", () => {
-    expect(INCOMING_HORIZON_DAYS).toBe(3)
-    expect(incomingRows([], [order({ promisedDate: "2026-09-25" })], NOW)).toHaveLength(1)
-    expect(incomingRows([], [order({ promisedDate: "2026-09-26" })], NOW)).toHaveLength(0)
-  })
-
-  it("shipment n of m: m only when the pending notices cover what is left", () => {
-    const first = g("s1", "po1", { deliveryDate: "2026-09-10", lines: [{ poLineId: "l1", name: "a", unit: "t", noticeQuantity: 4, counted: 4, accepted: 4 }] })
-    const second: DeskDelivery = { id: "s2", status: "pending_confirmation", poId: "po1", deliveryDate: "2026-09-25", lines: [{ poLineId: "l1", name: "a", unit: "t", noticeQuantity: 6 }, { poLineId: "l2", name: "b", unit: "t", noticeQuantity: 5 }] }
-    const after = order({ lines: [{ ...po.lines[0], accepted: 4 }, po.lines[1]] })
-    expect(shipmentOrdinal(second, [first, second], after)).toEqual({ n: 2, m: 2 })
-    const partial = { ...second, lines: [{ poLineId: "l1", name: "a", unit: "t", noticeQuantity: 3 }] }
-    expect(shipmentOrdinal(partial, [first, partial], after)).toEqual({ n: 2, m: null })
-    expect(shipmentOrdinal({ ...partial, id: "only" }, [{ ...partial, id: "only" }], after)).toBeNull()
+  it("shipment n of m: the stored sequence is n; m is said once the order has two notices (a notice names no quantity, so nothing is \"covered\")", () => {
+    const first: DeskDelivery = { id: "s1", status: "confirmed", poId: "po1", deliveryDate: "2026-09-10", seq: 1 }
+    const second: DeskDelivery = { id: "s2", status: "pending_confirmation", poId: "po1", deliveryDate: "2026-09-25", seq: 2 }
+    expect(shipmentOrdinal(second, [first, second], po)).toEqual({ n: 2, m: 2 })
+    expect(shipmentOrdinal(first, [first, second], po)).toEqual({ n: 1, m: 2 })
+    expect(shipmentOrdinal({ ...second, id: "only" }, [{ ...second, id: "only" }], po)).toBeNull()
+    expect(shipmentOrdinal(second, [first, second], null)).toBeNull()
   })
 
   it("the suggested receiver: named for the place first; the project's warehouse, else the central one", () => {
@@ -234,7 +221,7 @@ describe("the trail and the log", () => {
     expect(need).toEqual({ ref: "WO-2026/010", by: "Workshop", for: "Stairs" })
     expect(needForOrder([{ poId: null, refLabel: "R-1", requestedBy: "Ali", projectName: "P", context: "", source: { kind: "project_request", purchaseRequestId: "pr9" } }], order({ purchaseSource: { kind: "project_request", purchaseRequestId: "pr9" } }))).toEqual({ ref: "R-1", by: "Ali", for: "P" })
     expect(needForOrder([], po)).toBeNull()
-    const steps = receiptTrail({ ...d, deliveryWindow: "morning" }, po, "procurement", { need: { ref: "R-1", by: "Ali", for: "P" }, noticeNumber: "ASN-2026/001-1" })
+    const steps = receiptTrail({ ...d, deliveryWindow: "morning" }, po, { need: { ref: "R-1", by: "Ali", for: "P" }, noticeNumber: "ASN-2026/001-1" })
     expect(steps[0]).toMatchObject({ variant: "need", params: { ref: "R-1", by: "Ali", for: "P" } })
     expect(steps[2].params).toMatchObject({ number: "ASN-2026/001-1", window: "morning", note: "DN-77" })
   })

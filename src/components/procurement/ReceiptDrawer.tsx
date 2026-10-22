@@ -1,23 +1,25 @@
 "use client"
 
-// The receipt drawer (PRD 3.0 §7.3, prototype `dGrn`): read-only by design —
-// the gate recorded it, Procurement reads it and acts only on its
+// The receipt drawer (PRD 2.0 §7.3, prototype `dGrn`): read-only by design —
+// the RECEIVER made it, Procurement reads it and acts only on its
 // consequences. A receipt is never edited after recording (a later receipt or
 // a return to the supplier corrects it), so nothing here uploads or changes
-// the record: attachments come with the receipt.
+// the record: attachments come with the receipt. There is no signature pad:
+// the receiver's confirmation is the signature, and the drawer says who and when.
 //
-// On an order: who/what/where with links, the lines (notice · counted ·
-// accepted · accepted before this receipt · open now), what follows (rejects
-// decided here with the supplier — replacement date or discounted price —,
-// held, short), attachments & checklist, the seven-step material trail, the
-// log, and rating the supplier once the order is whole. With no order: what
-// the receiver typed (unit prices and the invoice value for price roles) and
-// the one door to regularise it. A pending notice opens the same drawer with
-// the notice's facts and the "Record the receipt" door.
+// On an order: who/what/where with links, the lines (counted · accepted ·
+// accepted before this receipt · open now), what follows (rejects decided
+// here with the supplier — replacement date or discounted price —, held),
+// attachments & checklist, the seven-step material trail, the log, and rating
+// the supplier once the order is whole. With no order: what was typed (unit
+// prices and the invoice value for price roles), whether it waits for the
+// storekeeper, and the one door to regularise it. A pending notice opens the
+// same drawer with its day and note — a notice names no quantity — and the
+// two acts that are Procurement's: forward it, and follow it up.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, CheckCircle2, ClipboardCheck, Clock, ExternalLink, FileText, Info, Printer, ShieldAlert, Star, Truck } from "lucide-react"
+import { AlertTriangle, CheckCircle2, ClipboardCheck, Clock, Eye, ExternalLink, FileText, Info, Printer, ShieldAlert, Siren, Star, Truck } from "lucide-react"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { useModules } from "@/hooks/useCompanyModules"
@@ -29,13 +31,12 @@ import { cn } from "@/lib/utils"
 import { withSarSign } from "@/lib/riyal"
 import type { Translator } from "@/lib/mfg-events"
 import { operatingPolicies } from "@/lib/procurement/policies"
-import { receiveRight } from "@/lib/procurement/policy-enforce"
 import { poActs } from "@/lib/procurement/po-extras"
 import { displayNoticeNumber, displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { RECEIPT_CHECKS, acceptedOf, canRate, lineToArrive, round2 } from "@/lib/procurement/po"
 import { procLinks } from "@/lib/procurement/events"
 import { RFQ_HREF } from "@/lib/procurement/today"
-import { receiptState, shortVsNotice, type ReceiptState } from "@/lib/procurement/receipts"
+import { receiptState, type ReceiptState } from "@/lib/procurement/receipts"
 import {
   acceptedBefore,
   isNoPo,
@@ -66,7 +67,6 @@ const STATE_TONE: Record<ReceiptState, string> = {
   received: "bg-success/10 text-success",
   received_with_rejects: "bg-amber-100 text-amber-800",
   received_held: "bg-module/10 text-module",
-  received_short: "bg-amber-100 text-amber-800",
   manual_no_po: "bg-destructive/10 text-destructive",
 }
 
@@ -102,13 +102,16 @@ export interface ReceiptDrawerProps {
   projectName: (id: string | null | undefined) => string | null
   placeKind: (d: DeskDelivery, po: PurchaseOrder | null) => DestKind | null
   now: Date
-  onReceive?: (d: DeskDelivery) => void
-  /** The org's policies: who may record (buyerReceives) and how notices travel (noticeRouting). */
+  /** The org's policies: the window after which an uncounted delivery is escalated. */
   policies?: ProcurementPolicies | null
   onRegularise?: (d: DeskDelivery) => void
   /** PUR-06: forward (again) to the receiver, and remind him — the notice's two acts that are Procurement's. */
   onForward?: (d: DeskDelivery) => void
   onRemind?: (d: DeskDelivery) => void
+  /** TDY-05 «صعّد»: an uncounted delivery past the window goes — once — to the project manager or the owner. */
+  onEscalate?: (d: DeskDelivery) => void
+  /** «كما يراه المستلم» — the receiver's page for this notice, as he sees it. */
+  onPreview?: (d: DeskDelivery) => void
   /** The need the order answers, for the trail's first step. */
   need?: TrailNeed | null
   /** The supplier's CR, VAT, city and phone for the printed receipt. */
@@ -121,8 +124,7 @@ const TRAIL_ICON: Record<TrailState, typeof CheckCircle2> = { ok: CheckCircle2, 
 const TRAIL_TONE: Record<TrailState, string> = { ok: "bg-success/10 text-success", bad: "bg-destructive/10 text-destructive", now: "bg-amber-100 text-amber-800" }
 
 export function ReceiptDrawer(props: ReceiptDrawerProps) {
-  const { delivery: d, po, deliveries, onOpenChange, actor, orgName, company, warehouseName, projectName, placeKind, now, onReceive, onRegularise, onForward, onRemind, policies, need, supplier, ownerReadOnly = false } = props
-  const routing = operatingPolicies(policies).noticeRouting
+  const { delivery: d, po, deliveries, onOpenChange, actor, orgName, company, warehouseName, projectName, placeKind, now, onRegularise, onForward, onRemind, onEscalate, onPreview, policies, need, supplier, ownerReadOnly = false } = props
   const t = useTranslations("Portal.ProcReceipts")
   const tp = useTranslations("Portal.Procurement")
   const tOrders = useTranslations("Portal.ProcOrders")
@@ -159,13 +161,10 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
   const acceptedValue = lineValues ? round2(lines.reduce((s, l) => s + (l.accepted ?? acceptedOf(l)) * Number(priced.get(l.poLineId)?.unitPrice || 0), 0)) : null
   const rejects = lines.filter((l) => Number(l.rejected) > 0)
   const held = lines.filter((l) => Number(l.held) > 0)
-  const shorts = lines.map((l) => ({ l, short: shortVsNotice(l) })).filter((x) => x.short > 0)
   // The office's files, and what the receiver attached at the gate (PUR-06) — «كما سجّلها المستلم».
   const attachments = Array.from(new Set([...((d.attachmentUrls || []) as string[]), ...((d.receiverReport?.files || []).map((f) => f.url))]))
-  const wait = pending ? noticeWait(d, now) : null
+  const wait = pending ? noticeWait(d, now, policies?.escalateAfterDays ?? 2) : null
   const checks = (d.checklist || []) as ReceiptCheck[]
-  // Receiving is Inventory's and Projects' act: the owner who only reads Procurement never records here.
-  const canAct = !ownerReadOnly && receiveRight(actor, policies) !== null
   // Procurement's own acts on a receipt (regularise, expense, rate) — buyer or manager (S-13, S-17).
   const canPrepare = !ownerReadOnly && (actor.isOwner || actor.canPrepare || actor.canApprove)
   const manual = d.source === "manual"
@@ -287,6 +286,8 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
             </SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-5">
+            {d.manualDraft?.state === "draft" && <Callout tone="amber">{t("drawer.draftCallout", { place: warehouseName(d.manualDraft.warehouseId) || "—" })}</Callout>}
+            {d.manualDraft?.state === "declined" && <Callout tone="red">{t("drawer.draftDeclined", { name: d.manualDraft.confirmedByName || "", why: d.manualDraft.note || "—" })}</Callout>}
             <Callout tone={expensed ? "blue" : "red"}>{expensed ? t(financeOn ? "drawer.expenseCallout" : "drawer.expenseCallout_nofin") : t("drawer.noPoCallout")}</Callout>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={print} className="gap-1.5">
@@ -336,6 +337,12 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
                     <b dir="auto">{d.receivedByName || "—"}</b>
                     <br />
                     <span className="text-[11px] text-muted-foreground" suppressHydrationWarning>{t("drawer.recordedIn", { module: moduleName, date: dateText(when) })}</span>
+                    {d.invoiceNumber && (
+                      <>
+                        <br />
+                        <span className="text-[11px] text-muted-foreground">{t("hub.invoiceNo")} <span dir="ltr">{d.invoiceNumber}</span></span>
+                      </>
+                    )}
                   </span>
                 </div>
                 {(d.receiptNote || d.notes) && <p className="p-2.5 text-muted-foreground" dir="auto">{d.receiptNote || d.notes}</p>}
@@ -350,7 +357,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
   }
 
   // Without Finance the material's trail ends where it went: the money is another system's (PUR-10).
-  const trail = po && !pending ? receiptTrail(d, po, routing, { need, noticeNumber: noticeNo }).filter((s) => financeOn || s.key !== "finance") : []
+  const trail = po && !pending ? receiptTrail(d, po, { need, noticeNumber: noticeNo }).filter((s) => financeOn || s.key !== "finance") : []
   const windowText = (w: string | number | undefined) => (w && tp.has(`deliveryWindow.${w}`) ? tp(`deliveryWindow.${w}` as "deliveryWindow.morning") : "")
   const trailText = (key: string, variant: string, params: Record<string, string | number>): string => {
     switch (key) {
@@ -373,7 +380,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
       case "forwarded":
         return variant === "auto" ? t("trail.forwarded_auto", params) : variant === "link" ? t("trail.forwarded_link", params) : variant === "member" ? t("trail.forwarded_member", params) : variant === "unannounced" ? t("trail.forwarded_unannounced") : variant === "both" ? t("trail.forwarded_both") : t("trail.forwarded_direct")
       case "received":
-        return [place || project || "—", receiverName, number, variant === "link" ? t("trail.received_link") : ""].filter(Boolean).join(" · ")
+        return [place || project || "—", receiverName, number, variant === "link" ? t("trail.received_link") : variant === "login" ? t("trail.received_login") : ""].filter(Boolean).join(" · ")
       case "went":
         return [place ? t("drawer.wentToWarehouse", { name: place }) : project ? t("drawer.wentToProject", { name: project }) : t("drawer.wentNowhere"), variant === "held" ? t("drawer.heldIsolated") : ""].filter(Boolean).join(" · ")
       default:
@@ -407,10 +414,10 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
         <div className="mt-4 space-y-5">
           {/* Actions */}
           <div className="flex flex-wrap gap-2">
-            {pending && canAct && onReceive && (
-              <Button onClick={() => onReceive(d)} className="gap-1.5">
-                <ClipboardCheck size={15} aria-hidden="true" />
-                {t("drawer.record")}
+            {pending && d.forwardedTo && onPreview && (
+              <Button variant="outline" onClick={() => onPreview(d)} className="gap-1.5">
+                <Eye size={15} aria-hidden="true" />
+                {t("hub.preview")}
               </Button>
             )}
             {!pending && (
@@ -483,9 +490,15 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
           </div>
 
           {/* PUR-06: who we wait on, since when, and the two acts that are ours. */}
-          {wait && wait.kind !== "signed" && (
+          {wait && (
             <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/40 px-3 py-2.5 text-sm">
               <span className="min-w-0 flex-1 font-semibold">{wait.kind === "to_forward" ? t("incoming.forwardNow") : t("incoming.waitingCount", { name: wait.name, days: wait.days })}</span>
+              {wait.kind === "with_receiver" && wait.escalate && onEscalate && (
+                <Button size="sm" className="gap-1 bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => onEscalate(d)}>
+                  <Siren size={13} aria-hidden="true" />
+                  {t("hub.escalate")}
+                </Button>
+              )}
               {wait.kind === "with_receiver" && onRemind && (
                 <Button size="sm" variant="outline" onClick={() => onRemind(d)}>
                   {t("incoming.remindReceiver")}
@@ -499,7 +512,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
             </div>
           )}
 
-          {pending && d.forwardedTo?.auto && !d.receiverReport && (
+          {pending && d.forwardedTo?.auto && (
             <Callout tone="amber">
               <b>{t("incoming.autoForwarded")}</b> <span>{t("drawer.autoForwardedBody", { name: d.forwardedTo.name })}</span>
             </Callout>
@@ -511,7 +524,8 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
             </Callout>
           )}
 
-          {/* Lines */}
+          {/* Lines — a notice names a day and a note, never a quantity (G-08): only a legacy one lists material */}
+          {(!pending || lines.length > 0) && (
           <Section title={pending ? t("drawer.noticeLines") : t("drawer.linesTitle")}>
             {lines.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("drawer.noLines")}</p>
@@ -521,7 +535,6 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
                   <thead className="bg-muted/50">
                     <tr>
                       <th className="px-2 py-2 text-start font-semibold">{t("drawer.colLine")}</th>
-                      <th className="px-2 py-2 text-end font-semibold">{t("drawer.colNotice")}</th>
                       {!pending && (
                         <>
                           <th className="px-2 py-2 text-end font-semibold">{t("drawer.colCounted")}</th>
@@ -534,9 +547,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
                   <tbody>
                     {lines.map((l) => {
                       const pl = priced.get(l.poLineId)
-                      const short = shortVsNotice(l)
                       const counted = Number(l.counted) || 0
-                      const over = Number(l.noticeQuantity) > 0 && l.counted != null ? Math.max(0, round2(counted - Number(l.noticeQuantity))) : 0
                       const acc = l.accepted ?? acceptedOf(l)
                       return (
                         <tr key={l.poLineId} className="border-t align-top">
@@ -548,13 +559,10 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
                               {pl && !pending && <> · {t("drawer.acceptedBefore", { qty: fmt(acceptedBefore(d, deliveries, l.poLineId)) })}</>}
                             </p>
                           </td>
-                          <td className="px-2 py-2 text-end tabular-nums">{Number(l.noticeQuantity) > 0 ? fmt(l.noticeQuantity) : <span className="text-muted-foreground">{t("drawer.noNoticeShort")}</span>}</td>
                           {!pending && (
                             <>
                               <td className="px-2 py-2 text-end tabular-nums">
                                 {fmt(counted)}
-                                {short > 0 && <p className="text-[11px] text-amber-700">{t("drawer.short", { qty: fmt(short) })}</p>}
-                                {over > 0 && <p className="text-[11px] text-amber-700">{t("drawer.over", { qty: fmt(over) })}</p>}
                               </td>
                               <td className="px-2 py-2 text-end tabular-nums">
                                 <span className="font-bold text-success">{fmt(acc)}</span>
@@ -578,9 +586,10 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
               </p>
             )}
           </Section>
+          )}
 
           {/* What follows */}
-          {!pending && (rejects.length > 0 || held.length > 0 || shorts.length > 0) && (
+          {!pending && (rejects.length > 0 || held.length > 0) && (
             <Section title={t("drawer.followsTitle")}>
               <div className="space-y-2">
                 {rejects.map((l) => {
@@ -615,11 +624,6 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
                   <div key={`h-${l.poLineId}`} className="rounded-md border border-module/30 bg-module/5 p-2.5 text-xs">
                     <p>{t("drawer.heldFollowsIn", { qty: fmt(l.held), unit: l.unit, line: l.name, reason: l.holdReason ? tp(`holdReason.${l.holdReason}`) : "", module: moduleName })}</p>
                     <Badge variant="outline" className="mt-1.5 text-[10px]">{t("drawer.waitingOn", { module: t(`module.${kind === "prj" ? "projects" : "inventory"}`) })}</Badge>
-                  </div>
-                ))}
-                {shorts.map(({ l, short }) => (
-                  <div key={`s-${l.poLineId}`} className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
-                    {t("drawer.shortFollows", { counted: fmt(Number(l.counted) || 0), notice: fmt(l.noticeQuantity), short: fmt(short), unit: l.unit, line: l.name })}
                   </div>
                 ))}
               </div>
@@ -697,6 +701,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
             </div>
           )}
           {!pending && <Callout tone="blue">{d.selfReceived ? t("drawer.closingSelf", { name: receiverName, module: moduleName }) : t("drawer.closingBy", { name: receiverName, module: moduleName })}</Callout>}
+          {!pending && <p className="text-[11px] leading-relaxed text-muted-foreground">{t("drawer.noPad")}</p>}
           <LogSection />
         </div>
 
