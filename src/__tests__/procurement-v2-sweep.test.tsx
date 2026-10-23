@@ -272,3 +272,24 @@ describe.each(PACKAGE_STATES.map((s) => [s.id, s] as const))("the %s package", (
     })
   })
 })
+
+// The package states switch Projects, Finance and Manufacturing; HR is a fourth switch of the contractor that stays on with Finance.
+// With Finance on, HR can be off on its own — the four combinations the states above never reach.
+describe.each(PACKAGE_STATES.filter((s) => s.pkg.fin).map((s) => [s.id, s] as const))("the %s package with HR switched off", (_id, state) => {
+  describe.each(["ar", "en"] as const)("in %s", (locale) => {
+    it.each(PAGES.map((p) => [p.id, p] as const))("%s", async (_name, page) => {
+      seed(`companyModules/${ORG}`, { organizationId: ORG, off: [...offFor(state.pkg), "hr"] })
+      setLocale(locale)
+      setSignedIn(ORG)
+      setPathname(page.path, page.search ?? "")
+      missingKeys.clear()
+      const view = render(page.node())
+      await flush()
+      const found = problems(`${state.id}+noHR/${locale}/${page.id}`)
+      expect(text().length).toBeGreaterThan(40)
+      view.unmount()
+      setLocale("ar")
+      expect(found).toEqual([])
+    })
+  })
+})
