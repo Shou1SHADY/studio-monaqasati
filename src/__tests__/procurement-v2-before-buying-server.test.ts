@@ -42,6 +42,8 @@ import type { Firestore } from "firebase-admin/firestore"
 const ORG = "org1"
 const DAY = 86_400_000
 const NOW = new Date("2026-10-21T08:00:00.000Z")
+// The route reads the real clock: pin it to the day the windows below are built from, or they lapse once that day has passed.
+jest.useFakeTimers({ now: NOW, doNotFake: ["nextTick", "setImmediate", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "queueMicrotask"] })
 const at = (n: number) => new Date(NOW.getTime() + n * DAY)
 const db = () => mockDb as unknown as Firestore
 const doc = (mrKey: string) => mockDb.get(`procIncoming/${incomingDocId(ORG, mrKey)}`) as unknown as IncomingDoc | undefined
