@@ -75,7 +75,7 @@ export function SectionsBehindPanel({ projectId, project, items, onProgramme }: 
       bodyClassName="p-0"
       actions={
         onProgramme && (
-          <Button variant="outline" size="sm" onClick={onProgramme} className="h-8 rounded-lg border border-border bg-card text-foreground shadow-none hover:bg-muted">
+          <Button variant="ghost" size="sm" onClick={onProgramme}>
             {t("prg.tab")}
           </Button>
         )
@@ -99,7 +99,7 @@ export function SectionsBehindPanel({ projectId, project, items, onProgramme }: 
                   </span>
                 </div>
               </div>
-              <span className={cn("min-w-[74px] text-end text-xs font-bold", r.deviation < -4 ? "text-destructive" : "text-muted-foreground")}>
+              <span className={cn("min-w-16 shrink-0 text-end text-xs font-bold", r.deviation < -4 ? "text-destructive" : "text-muted-foreground")}>
                 {t(dv >= 0 ? "pulse.points_ahead" : "pulse.points_behind", { count: Math.abs(dv) })}
               </span>
             </li>

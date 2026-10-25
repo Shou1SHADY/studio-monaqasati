@@ -18,7 +18,7 @@ export function UnitField({ id, units, value, onChange, disabled }: { id: string
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="h-10 rounded-md border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        className="w-full max-md:h-11"
       >
         <option value="">{t("units.field_none")}</option>
         {open.map((u) => (
