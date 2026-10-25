@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
@@ -33,6 +34,7 @@ import { useFirestore } from "@/firebase"
 import { resolveCentralForRegion, useCentralWarehouse } from "@/hooks/useCentralWarehouse"
 import { useHandoverPeople } from "@/hooks/useHandoverPeople"
 import { useToast } from "@/hooks/use-toast"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { useRouter } from "@/i18n/routing"
 import { parseBoqFile, type BoqParseResult } from "@/lib/boq-parser"
 import { blankDraftRow, divisionOfCode, draftRowProblems, draftTotal, isBlankDraftRow, parseBoqCsv, type BoqDraftRow, type ImportRow } from "@/lib/pm/boq"
@@ -879,8 +881,17 @@ export function AcceptHandoverWizard({
 function CrmBoqLocked({ rows }: { rows: BoqDraftRow[] }) {
   const t = useTranslations("Portal.PM")
   const filled = rows.filter((r) => !isBlankDraftRow(r))
+  const labels = useTableLabels()
+  const columns: DataColumn<BoqDraftRow>[] = [
+    { key: "code", header: t("wizard.boq_col_code"), cell: (r) => <bdi dir="ltr" className="tabular-nums">{r.itemNo}</bdi> },
+    { key: "desc", header: t("wizard.boq_col_desc"), cell: (r) => <span dir="auto">{r.descriptionAr || r.descriptionEn}</span> },
+    { key: "unit", header: t("wizard.boq_col_unit"), cell: (r) => r.unit },
+    { key: "qty", header: t("boq.qty"), numeric: true, cell: (r) => r.quantity },
+    { key: "rate", header: t("boq.rate"), numeric: true, hideBelow: "md", cell: (r) => (r.rate > 0 ? pmMoney(r.rate) : "—") },
+    { key: "total", header: t("boq.total"), numeric: true, cell: (r) => (r.rate > 0 ? pmMoney(r.rate * r.quantity) : "—") },
+  ]
   return (
-    <section className="rounded-xl border" aria-labelledby="boq-crm-title">
+    <section className="overflow-hidden rounded-xl border" aria-labelledby="boq-crm-title">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
         <div>
           <p id="boq-crm-title" className="flex items-center gap-1.5 text-sm font-bold">
@@ -893,42 +904,17 @@ function CrmBoqLocked({ rows }: { rows: BoqDraftRow[] }) {
           {pmMoney(draftTotal(filled))}
         </span>
       </div>
-      <div className="max-h-80 overflow-auto">
-        <table className="w-full min-w-[560px] text-sm">
-          <thead>
-            <tr className="border-b text-xs text-muted-foreground">
-              <th className="px-3 py-2 text-start font-semibold">{t("wizard.boq_col_code")}</th>
-              <th className="px-3 py-2 text-start font-semibold">{t("wizard.boq_col_desc")}</th>
-              <th className="px-3 py-2 text-start font-semibold">{t("wizard.boq_col_unit")}</th>
-              <th className="px-3 py-2 text-end font-semibold">{t("boq.qty")}</th>
-              <th className="px-3 py-2 text-end font-semibold">{t("boq.rate")}</th>
-              <th className="px-3 py-2 text-end font-semibold">{t("boq.total")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filled.map((r) => (
-              <tr key={r.id} className="border-b last:border-0">
-                <td className="px-3 py-2 tabular-nums" dir="ltr">
-                  {r.itemNo}
-                </td>
-                <td className="px-3 py-2" dir="auto">
-                  {r.descriptionAr || r.descriptionEn}
-                </td>
-                <td className="px-3 py-2">{r.unit}</td>
-                <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                  {r.quantity}
-                </td>
-                <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                  {r.rate > 0 ? pmMoney(r.rate) : "—"}
-                </td>
-                <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                  {r.rate > 0 ? pmMoney(r.rate * r.quantity) : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={filled}
+        rowKey={(r) => r.id}
+        caption={t("wizard.crm_locked_title")}
+        labels={labels}
+        bordered={false}
+        dense
+        maxHeight="20rem"
+        empty={null}
+      />
     </section>
   )
 }
