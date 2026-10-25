@@ -138,7 +138,7 @@ export function SiteFilesField({
                 disabled={disabled}
                 onClick={() => onChange(value.filter((_, j) => j !== i))}
                 aria-label={t("remove", { name: f.name })}
-                className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted max-md:h-11 max-md:w-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <X size={13} aria-hidden="true" />
               </button>
@@ -529,7 +529,7 @@ export function IncidentDialog({
             </Label>
             <Input id="inc-act" dir="auto" placeholder={t("site.hse.action_ph")} value={action} onChange={(e) => setAction(e.target.value)} disabled={busy} />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="inc-day">{t("site.hse.date")}</Label>
               <Input id="inc-day" type="date" dir="ltr" max={today} value={day} onChange={(e) => setDay(e.target.value)} disabled={busy} />
