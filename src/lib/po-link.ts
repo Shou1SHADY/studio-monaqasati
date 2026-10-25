@@ -76,6 +76,8 @@ export interface PoLinkLine {
   base: string | null
   packName: { ar: string; en: string } | null
   cancelled: number
+  /** The specification the RFQ named («16 مم · G60») — what tells 12 mm from 16 mm; null on an order made before it was copied. */
+  spec?: string | null
 }
 
 export interface PoLinkNotice {
@@ -138,4 +140,5 @@ export const lineView = (l: PoLine): PoLinkLine => ({
   base: l.base || null,
   packName: l.packName || null,
   cancelled: Number(l.cancelled) || 0,
+  spec: (l.spec || "").trim() || null,
 })

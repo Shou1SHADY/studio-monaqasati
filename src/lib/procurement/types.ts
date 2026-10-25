@@ -92,6 +92,10 @@ export interface PoLine {
   /** The material's id and the specification key — the price history is by specification (R-28), never by category. */
   materialId?: string | null
   specKey?: string | null
+  /** The line's specification as the RFQ named it («16 مم · G60»), copied at award (PO-01) — absent on an older order. */
+  spec?: string | null
+  /** The material's place in the tree («حديد › حديد تسليح»), copied at award — absent on an older order. */
+  path?: string | null
 }
 
 export interface PoLogEntry {
