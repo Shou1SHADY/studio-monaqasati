@@ -33,9 +33,10 @@ import type { PmAttachment } from "@/lib/pm/attachments"
 import { projectDocNo } from "@/lib/pm/exec-numbers"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
 import { isOpenNcr, NCR_SEVERITIES, NCR_STATUSES, ncrBlocks, ncrCost, ncrNo, ncrStepBlocks, PM_NCRS, type NcrSeverity, type NcrStatus, type PmNcr } from "@/lib/pm/ncr"
-import { acceptNcr, PmNcrError, raiseNcr, submitNcrPlan, type NcrActor } from "@/lib/pm/ncr-writes"
+import { acceptNcr, PmNcrError, raiseNcr, rejectNcrPlan, submitNcrPlan, type NcrActor } from "@/lib/pm/ncr-writes"
 import { cn } from "@/lib/utils"
 import { AttachmentTag, PmFilesField } from "./PmAttachments"
+import { RefuseDialog, RejectsHistory, ReplySource } from "./ConsultantReply"
 
 const TONE: Record<NcrStatus, PillTone> = { open: "bad", plan: "warn", done: "ok" }
 const num = (v: string) => (v.trim() === "" ? null : Number(v))
@@ -72,6 +73,7 @@ export function NcrPanel({
   const [planCost, setPlanCost] = useState("")
   const [planFiles, setPlanFiles] = useState<PmAttachment[]>([])
   const [closing, setClosing] = useState<PmNcr | null>(null)
+  const [rejecting, setRejecting] = useState<PmNcr | null>(null)
   const [closeOn, setCloseOn] = useState(today)
   const [closeCost, setCloseCost] = useState("")
   const [closeFiles, setCloseFiles] = useState<PmAttachment[]>([])
@@ -164,7 +166,13 @@ export function NcrPanel({
                       {t("ncr.corrective")}: {n.plan.text}
                     </p>
                   )}
-                  {n.accepted && <p className="mt-0.5 text-xs text-muted-foreground">{t("ncr.accepted_line2", { date: pmDate(n.accepted.on, locale), who: n.accepted.byName || "—" })}</p>}
+                  {n.accepted && (
+                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                      {t("ncr.accepted_line2", { date: pmDate(n.accepted.on, locale), who: n.accepted.byName || "—" })}
+                      <ReplySource viaPortal={n.accepted.viaPortal} />
+                    </p>
+                  )}
+                  <RejectsHistory rejects={n.rejects} kind="plan" />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <AttachmentTag files={[...(n.files ?? []), ...(n.plan?.files ?? [])]} />
@@ -196,6 +204,11 @@ export function NcrPanel({
                     >
                       <CheckCheck size={14} className="me-1.5" aria-hidden="true" />
                       {t("ncr.record_closure")}
+                    </Button>
+                  )}
+                  {canQa && n.status === "plan" && (
+                    <Button size="sm" variant="outline" onClick={() => setRejecting(n)}>
+                      {t("reply.reject_plan")}
                     </Button>
                   )}
                 </div>
@@ -383,6 +396,27 @@ export function NcrPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <RefuseDialog
+        open={rejecting !== null}
+        onOpenChange={(o) => !o && setRejecting(null)}
+        kind="plan"
+        title={rejecting ? `${t("ncr.no", { no: projectDocNo(projectNo, rejecting.seq) })} — ${rejecting.what || rejecting.root}` : ""}
+        orgId={orgId}
+        folder={`projects/${projectId}/ncr`}
+        onSave={async ({ note, on, files: letter }) => {
+          if (!firestore || !rejecting) return false
+          try {
+            await rejectNcrPlan(firestore, access.ctx, projectId, actor, rejecting.seq, note, { on, files: letter })
+            toast({ title: t("reply.rejected_plan_done") })
+            return true
+          } catch (err) {
+            console.error(err)
+            toast({ title: t(err instanceof PmAccessError ? `refused.${err.code}` : "error.save"), variant: "destructive" })
+            return false
+          }
+        }}
+      />
     </Panel>
   )
 }

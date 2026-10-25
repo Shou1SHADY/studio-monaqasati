@@ -48,6 +48,7 @@ import {
 import { PmSampleError, recordSampleReply, setSampleRequired, submitSample, type SampleActor } from "@/lib/pm/sample-writes"
 import { cn } from "@/lib/utils"
 import { AttachmentTag, PmFilesField } from "./PmAttachments"
+import { ReplySource } from "./ConsultantReply"
 
 const STATUS_TONE: Record<SampleStatus, PillTone> = { sub: "info", appA: "ok", appB: "ok", rej: "bad" }
 
@@ -198,6 +199,7 @@ export function SamplesPanel({
                             {s.reply.note}
                           </p>
                         )}
+                        <ReplySource viaPortal={s.reply?.viaPortal} on={s.reply?.on} />
                       </td>
                       <td className="px-3 py-2.5 text-xs">
                         <span dir="ltr">{i?.code ?? s.code}</span>

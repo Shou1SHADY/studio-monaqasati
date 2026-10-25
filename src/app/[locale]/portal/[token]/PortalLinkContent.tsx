@@ -2,8 +2,10 @@
 
 // The consultant's side of the PM portal: the link names the project, a
 // one-time code on his mobile opens a 12-hour session (kept in this tab's
-// sessionStorage), and he answers what waits on him. No price, cost or amount
-// ever reaches this page — the server sends named fields only.
+// sessionStorage), and he answers what waits on him — certificates and claims
+// included (CP-06), with his files. No price, cost or margin ever reaches this
+// page — a certificate's contract rates and amounts only; the server sends
+// named fields only.
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
@@ -12,10 +14,10 @@ import { CheckCircle2, History, Link2, Loader2, LogOut, ShieldCheck, TriangleAle
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import type { PortalKind } from "@/lib/pm/consultant-portal"
+import { PORTAL_KINDS } from "@/lib/pm/consultant-portal"
 import { pmDate } from "@/lib/pm/format"
 import type { PortalAnswer, PortalHistoryEntry, PortalViewItem } from "@/lib/pm/portal-links"
-import { itemLabel, PortalAnswerCard } from "./PortalAnswerCard"
+import { itemLabel, PortalAnswerCard, type UploadedFile } from "./PortalAnswerCard"
 
 interface LinkInfo {
   projectName: string
@@ -31,8 +33,7 @@ interface Items {
   history: PortalHistoryEntry[]
 }
 
-const KINDS: PortalKind[] = ["subm", "wir", "punch", "corr", "ncr"]
-const BLOCKS = new Set(["no_note", "bad_date", "no_choice", "no_text", "before_letter", "future_day", "bad_day"])
+const BLOCKS = new Set(["no_note", "bad_date", "no_choice", "no_text", "before_letter", "future_day", "bad_day", "bad_amount", "over_gross", "cut_reason", "cut_text", "days_required", "bad_file"])
 const SESSION_HEADER = "x-portal-session"
 
 const storeKey = (token: string) => `pm-portal:${token}`
@@ -131,7 +132,7 @@ export function PortalLinkContent() {
     try {
       const res = await fetch(`/api/pm-portal/${token}/code?locale=${locale === "en" ? "en" : "ar"}`, { method: "POST" })
       const body = await res.json().catch(() => null)
-      if (res.status === 429) return setError(t("err_too_soon"))
+      if (res.status === 429) return setError(t(body?.code === "RATE_LIMITED" ? "err_rate" : "err_too_soon"))
       if (res.status === 410) return setLoadError(body?.code || "LINK_REVOKED")
       if (!res.ok) return setError(t("err_code_send"))
       setChallengeId(body.data.challengeId)
@@ -211,7 +212,25 @@ export function PortalLinkContent() {
     }
   }
 
-  const groups = useMemo(() => KINDS.map((k) => ({ kind: k, items: (data?.items ?? []).filter((x) => x.kind === k) })).filter((g) => g.items.length), [data])
+  const upload = async (file: File): Promise<UploadedFile | null> => {
+    if (!session) return null
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      const res = await fetch(`/api/pm-portal/${token}/upload`, { method: "POST", headers: { [SESSION_HEADER]: session }, body: form })
+      const body = await res.json().catch(() => null)
+      if (res.status === 401) {
+        endSession()
+        setError(t("err_session"))
+        return null
+      }
+      return res.ok ? (body.data.file as UploadedFile) : null
+    } catch {
+      return null
+    }
+  }
+
+  const groups = useMemo(() => PORTAL_KINDS.map((k) => ({ kind: k, items: (data?.items ?? []).filter((x) => x.kind === k) })).filter((g) => g.items.length), [data])
 
   if (loadError) {
     return (
@@ -343,7 +362,7 @@ export function PortalLinkContent() {
                   <ul className="space-y-3">
                     {g.items.map((x) => {
                       const key = `${x.kind}-${x.no}`
-                      return <PortalAnswerCard key={key} item={x} today={data.today} busy={busy === key} onAnswer={(a) => answer(key, a)} />
+                      return <PortalAnswerCard key={key} item={x} today={data.today} busy={busy === key} onAnswer={(a) => answer(key, a)} onUpload={upload} />
                     })}
                   </ul>
                 </div>
@@ -389,7 +408,8 @@ export function PortalLinkContent() {
   )
 }
 
-function closedReason(code: string): "expired" | "revoked" | "missing" {
+function closedReason(code: string): "expired" | "revoked" | "missing" | "closed" {
+  if (code === "PROJECT_CLOSED") return "closed"
   if (code === "LINK_EXPIRED") return "expired"
   if (code === "LINK_REVOKED") return "revoked"
   return "missing"

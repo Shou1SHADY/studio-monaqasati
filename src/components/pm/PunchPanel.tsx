@@ -31,9 +31,10 @@ import type { PmAttachment } from "@/lib/pm/attachments"
 import { projectDocNo } from "@/lib/pm/exec-numbers"
 import { pmDate, todayDay } from "@/lib/pm/format"
 import { isOpenPunch, PM_PUNCH, PUNCH_SEVERITIES, PUNCH_SOURCES, PUNCH_STATUSES, punchBlocks, punchNo, punchStepBlocks, type PunchItem, type PunchSeverity, type PunchSource, type PunchStatus } from "@/lib/pm/punch"
-import { PmPunchError, raisePunch, recordConfirmation, recordFix, type PunchActor } from "@/lib/pm/punch-writes"
+import { PmPunchError, raisePunch, recordConfirmation, recordFix, refuseFix, type PunchActor } from "@/lib/pm/punch-writes"
 import { cn } from "@/lib/utils"
 import { AttachmentTag, PmFilesField } from "./PmAttachments"
+import { RefuseDialog, RejectsHistory, ReplySource } from "./ConsultantReply"
 import { usePmUnits } from "@/hooks/usePmUnits"
 import { UnitField } from "./UnitField"
 
@@ -66,6 +67,7 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
   const [confOn, setConfOn] = useState(today)
   const [confFiles, setConfFiles] = useState<PmAttachment[]>([])
   const [busy, setBusy] = useState<string | null>(null)
+  const [refusing, setRefusing] = useState<PunchItem | null>(null)
 
   const q = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_PUNCH) : null), [firestore, projectId])
   const { data } = useCollection(q)
@@ -207,10 +209,12 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
                         </p>
                       )}
                       {p.conf && (
-                        <p className="mt-0.5 text-xs text-muted-foreground">
+                        <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                           {t("punch.conf_line2", { party: srcName(p.conf.party, p.conf.partyText), date: pmDate(p.conf.on, locale), who: p.conf.byName || "—" })}
+                          <ReplySource viaPortal={p.conf.viaPortal} />
                         </p>
                       )}
+                      <RejectsHistory rejects={p.rejects} kind="fix" />
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <AttachmentTag files={p.files} />
@@ -246,6 +250,11 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
                         >
                           <CheckCheck size={14} className="me-1.5" aria-hidden="true" />
                           {t("punch.record_conf2")}
+                        </Button>
+                      )}
+                      {canQa && p.status === "fix" && p.source === "cons" && (
+                        <Button size="sm" variant="outline" onClick={() => setRefusing(p)}>
+                          {t("reply.refuse_fix")}
                         </Button>
                       )}
                     </div>
@@ -416,6 +425,27 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <RefuseDialog
+        open={refusing !== null}
+        onOpenChange={(o) => !o && setRefusing(null)}
+        kind="fix"
+        title={refusing ? `${t("punch.no", { no: projectDocNo(projectNo, refusing.seq) })} — ${refusing.what}` : ""}
+        orgId={orgId}
+        folder={`projects/${projectId}/punch`}
+        onSave={async ({ note, on, files: letter }) => {
+          if (!firestore || !refusing) return false
+          try {
+            await refuseFix(firestore, access.ctx, projectId, actor, refusing.seq, note, { on, files: letter })
+            toast({ title: t("reply.refused_fix_done") })
+            return true
+          } catch (err) {
+            console.error(err)
+            toast({ title: t(err instanceof PmAccessError ? `refused.${err.code}` : "error.save"), variant: "destructive" })
+            return false
+          }
+        }}
+      />
     </div>
   )
 }

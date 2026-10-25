@@ -33,6 +33,7 @@ import { currentAttempt, isKnownStatus, isOpenOrFailed, itemsNeedingPass, overdu
 import { PmInspectionError, reinspect, setInspectionRequired, type InspectionActor } from "@/lib/pm/inspection-writes"
 import { cn } from "@/lib/utils"
 import { AttachmentTag } from "./PmAttachments"
+import { ReplySource } from "./ConsultantReply"
 import { RecordResultDialog } from "./RecordResultDialog"
 import { RequestInspectionDialog } from "./RequestInspectionDialog"
 import type { SheetItem } from "./WriteSheetDialog"
@@ -208,7 +209,7 @@ export function InspectionsPanel({
                       ) : (
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           {t("wir.on")} {pmDate(a.on, locale)} · {t("wir.result_on", { date: pmDate(resultDay(a), locale) })}
-                          {a.rByName ? ` · ${a.rByName}` : ""}
+                          {a.rByName ? ` · ${a.rByName}` : ""} <ReplySource viaPortal={a.viaPortal} />
                         </p>
                       ))}
                     {a?.note && (

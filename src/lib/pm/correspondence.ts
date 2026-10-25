@@ -31,6 +31,8 @@ export interface LetterReply {
   by: string
   byName?: string | null
   file?: PmFile | null
+  /** Their reply came through the consultant portal (CP-10). */
+  viaPortal?: boolean
 }
 
 export interface PmLetter {
