@@ -114,11 +114,18 @@ function OfferCard({ f, d, href }: { f: Free; d: Deal; href: (p: Record<string, 
       </p>
       <p className="text-sm">
         <b className="tabular-nums" dir="ltr">{fmt.money(L.offerTotal(d))}</b>{" "}
-        {L.offerSt(d) === "reduce" && o.reduce ? <span className="rounded bg-warning/10 px-1.5 py-0.5 text-xs font-bold text-warning">{o.reduce.target > 0 ? t("ocAsk", { v: fmt.money(o.reduce.target) }) : t("ocAskBetter")}</span> : <span className="text-xs text-muted-foreground">{t("beforeVat")}{ver}</span>}
+        {L.offerSt(d) === "reduce" && o.reduce ? <span className="whitespace-nowrap rounded bg-warning/10 px-1.5 py-0.5 text-xs font-bold text-warning" data-testid="offer-ask">{o.reduce.target > 0 ? t("ocAsk", { v: fmt.money(o.reduce.target) }) : t("ocAskBetter")}</span> : <span className="text-xs text-muted-foreground">{t("beforeVat")}{ver}</span>}
       </p>
-      <div className="mt-auto flex items-center gap-2 pt-1">
-        <span className="me-auto text-[11px] text-muted-foreground">{foot}</span>
-        <StepButton f={f} d={d} href={href} />
+      {/* The note takes the row when it is long (a sample's spec): it never squeezes into a column beside the button. */}
+      <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1.5 pt-1" data-testid="offer-foot">
+        {foot && (
+          <span className="min-w-0 flex-[1_1_12rem] text-[11px] leading-5 text-muted-foreground" dir="auto">
+            {foot}
+          </span>
+        )}
+        <span className="ms-auto shrink-0">
+          <StepButton f={f} d={d} href={href} />
+        </span>
       </div>
     </article>
   )

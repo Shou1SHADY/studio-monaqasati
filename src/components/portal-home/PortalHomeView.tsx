@@ -81,6 +81,8 @@ export interface PortalHomeViewProps {
   allDecisions?: { all: string; fewer: string }
   /** A section of the portal's own under the decisions (the free supplier's open requests — TDY-05). */
   after?: ReactNode
+  /** On a phone, the day's decisions (and `after`) come before the module tiles; the desktop order is unchanged. */
+  decisionsFirstOnPhone?: boolean
 }
 
 type HomeT = ReturnType<typeof useTranslations<"Portal.Home">>
@@ -97,7 +99,7 @@ function relativeTimeLabel(ms: number, t: HomeT): string {
 /** A figure long enough (an amount with its unit) to need wrapping in a phone-width hero cell. */
 const longFigure = (v: unknown) => typeof v === "string" && v.length > 8
 
-export function PortalHomeView({ profile, orgId, companyName, modules, kpis, tileStats, badges, urgentTiles, recent, decisions, banner, allDecisions, after }: PortalHomeViewProps) {
+export function PortalHomeView({ profile, orgId, companyName, modules, kpis, tileStats, badges, urgentTiles, recent, decisions, banner, allDecisions, after, decisionsFirstOnPhone }: PortalHomeViewProps) {
   const openSubscription = usePortalFrame()?.openSubscription
   const firestore = useFirestore()
   const { user } = useUser()
@@ -190,7 +192,7 @@ export function PortalHomeView({ profile, orgId, companyName, modules, kpis, til
   const shownDecisions = allDecisions && showAllDecisions ? decisions.items : top3
 
   return (
-    <div className="space-y-6 pb-10">
+    <div className="flex flex-col gap-6 pb-10">
       {/* Hero — rounded card, greeting block at the start, KPIs at the end,
           over a navy→blue gradient with a brick-outline wall and a teal glow. */}
       <div
@@ -265,7 +267,8 @@ export function PortalHomeView({ profile, orgId, companyName, modules, kpis, til
       {/* Component tile grid — one tile per portal component, with a real stats
           line and a "needs action" footer. Modules outside this member's
           permissions render locked (same gate as sidebar/launcher). */}
-      <div className="flex items-center justify-between gap-3 flex-wrap -mb-3">
+      <section className={cn("space-y-3", decisionsFirstOnPhone && "max-sm:order-1")} data-testid="home-tiles">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="text-sm font-black text-foreground">{t("tiles_section_title")}</h2>
         {lockedCount > 0 && (
           <label className="flex items-center gap-2 text-[11.5px] font-medium text-muted-foreground cursor-pointer select-none">
@@ -395,10 +398,11 @@ export function PortalHomeView({ profile, orgId, companyName, modules, kpis, til
           </div>
         )}
       </div>
+      </section>
 
       {/* Needs your decision today — the three most urgent items this member
           can act on, as action cards with one primary action each. */}
-      <div className="space-y-4">
+      <div className="space-y-4" data-testid="home-decisions">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-black text-foreground">{t("home_priorities_title")}</h2>
           {decisions.items.length > 3 &&

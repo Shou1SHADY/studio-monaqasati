@@ -1,7 +1,8 @@
 "use client"
 
 // Admin → a contractor → «اعرض كما يراها» (AD-01, prototype «افتح بوابته كما يراها»): what the contractor's SAVED package
-// shows them, read-only. Never impersonation — it reads `companyModules/{orgId}` and the owner's name, nothing of the
+// shows them, read-only. Never impersonation — it reads `companyModules/{orgId}`, the owner's name and the approval limit of
+// `procurementSettings/{orgId}`, nothing else of the
 // company's records: the subscription panel their Settings show, the pages and sections their menu holds for someone with
 // every permission, and «how Procurement works» for that package. No link here leads into their portal.
 
@@ -20,6 +21,9 @@ import { applyModuleSwitches, COMPANY_MODULES, offSet } from "@/lib/company-modu
 import { COMPONENT_ACCENT_CLASSES, CONTRACTOR_COMPONENTS, type PortalComponentDef } from "@/lib/portal-components"
 import { flowSources, flowStations } from "@/lib/procurement/guide"
 import { packageLabel, packageOf } from "@/lib/procurement/package"
+import { resolvePolicies } from "@/lib/procurement/policies"
+import { PROCUREMENT_SETTINGS } from "@/lib/procurement/types"
+import { sarLtr } from "@/lib/riyal"
 import { subscriptionStatusOf } from "@/lib/subscription-status"
 import { cn } from "@/lib/utils"
 import { PackageChips } from "./PackageIcons"
@@ -42,8 +46,16 @@ export function ContractorPackagePreview({ orgId }: { orgId: string }) {
   const firestore = useFirestore()
   const ownerRef = useMemoFirebase(() => (firestore ? doc(firestore, "users", orgId) : null), [firestore, orgId])
   const modulesRef = useMemoFirebase(() => (firestore ? doc(firestore, COMPANY_MODULES, orgId) : null), [firestore, orgId])
-  const { data: owner, isLoading: ownerLoading } = useDoc(ownerRef)
+  // A secondary company (company switcher) has no users doc of its own: its name is on organizations/{id}.
+  const orgRef = useMemoFirebase(() => (firestore ? doc(firestore, "organizations", orgId) : null), [firestore, orgId])
+  // The approval limit station 5 names: the company's own policy (the admin may read it), else the PRD reference value.
+  const settingsRef = useMemoFirebase(() => (firestore ? doc(firestore, PROCUREMENT_SETTINGS, orgId) : null), [firestore, orgId])
+  const { data: userOwner, isLoading: ownerLoading } = useDoc(ownerRef)
+  const { data: orgDoc, isLoading: orgLoading } = useDoc(orgRef)
   const { data: stored, isLoading: modulesLoading } = useDoc(modulesRef)
+  const { data: settings, isLoading: settingsLoading } = useDoc(settingsRef)
+  const owner = userOwner ?? orgDoc
+  const limit = sarLtr(resolvePolicies(settings as Parameters<typeof resolvePolicies>[0]).managerApprovalLimit.toLocaleString("en-US"))
 
   const off = useMemo(() => offSet(stored as { off?: unknown } | null, "contractor"), [stored])
   const offList = useMemo(() => [...off].sort(), [off])
@@ -62,7 +74,7 @@ export function ContractorPackagePreview({ orgId }: { orgId: string }) {
           {t("back", { name })}
         </Link>
 
-        {ownerLoading || modulesLoading ? (
+        {ownerLoading || orgLoading || modulesLoading || settingsLoading ? (
           <div className="flex justify-center p-16">
             <Loader2 className="animate-spin text-primary" size={28} aria-hidden="true" />
           </div>
@@ -126,7 +138,7 @@ export function ContractorPackagePreview({ orgId }: { orgId: string }) {
                 {t("flow")}
               </h2>
               <GuideSources sources={sources} allowed={noLink} />
-              <GuideStations stations={stations} limit={t("limit")} allowed={noLink} />
+              <GuideStations stations={stations} limit={settings ? limit : t("limit_default", { amount: limit })} allowed={noLink} />
             </section>
           </>
         )}

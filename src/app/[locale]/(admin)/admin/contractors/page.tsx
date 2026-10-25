@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { NewContractorDialog } from "@/components/admin/packages/NewContractorDialog"
@@ -14,15 +14,14 @@ import { useOrgMemberCounts } from "@/hooks/useOrgMemberCounts"
 import { FULL_COMPANY_PACKAGE, useCompanyPackages } from "@/hooks/useCompanyPackages"
 import { Link, useRouter } from "@/i18n/routing"
 import { AccountRowActions } from "@/components/admin/AccountRowActions"
-import { companyOf } from "@/lib/admin-accounts"
+import { companiesOfRole, type CompanyOrgDoc, type CompanyUserDoc, type ListedCompany } from "@/lib/admin-accounts"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
+import { ShowMoreRow } from "@/components/module-ui/ShowMoreRow"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   Building2,
   Search,
-  ShieldCheck,
-  ShieldAlert,
   Filter,
   CheckCircle2,
   XCircle,
@@ -40,7 +39,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from "@/components/ui/dialog"
 import {
   AlertDialog,
@@ -53,11 +51,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query, where, updateDoc, doc, limit } from "firebase/firestore"
+import { collection, query, where, updateDoc, doc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useIdentityOverlays } from "@/hooks/useIdentityOverlays"
-import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
-import { stripIdentityFields } from "@/lib/identity-fields"
+import { identityDocRef } from "@/lib/org-identity"
 import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
@@ -66,6 +63,7 @@ import {
   filterContractorsByStatus,
   filterContractorsByCity,
   searchContractors,
+  type ContractorRow,
   type ContractorStatusFilter,
 } from "@/utils/contractor-filters"
 
@@ -76,9 +74,21 @@ const joinedOn = (ts: unknown, locale: string): string => {
   return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-GB", { year: "numeric", month: "short", day: "numeric" }) : ""
 }
 
-const DOC_LABELS: Record<string, string> = {
-  cr: "السجل التجاري (CR)",
-  vat: "شهادة ضريبة القيمة المضافة (VAT)",
+/** Companies shown before «show more». */
+const PAGE = 20
+
+type CompanyListRow = ContractorRow & {
+  source: ListedCompany["source"]
+  ownerUserId: string | null
+  status: string
+  legalDocuments: Record<string, any>
+  uploadedDocKeys: string[]
+  hasUploadedDocs: boolean
+  hasAllRequiredDocs: boolean
+  hasCr: boolean
+  certificates: any[]
+  hasCerts: boolean
+  createdAt: unknown
 }
 
 export default function AdminContractorsPage() {
@@ -96,7 +106,6 @@ export default function AdminContractorsPage() {
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
-  const [limitCount, setLimitCount] = useState(20)
   const [selectedContractor, setSelectedContractor] = useState<any>(null)
   const [newOpen, setNewOpen] = useState(false)
   const [showDetailDialog, setShowDetailDialog] = useState(false)
@@ -107,14 +116,20 @@ export default function AdminContractorsPage() {
   const [cityFilter, setCityFilter] = useState("all")
   const [sortBy, setSortBy] = useState<"verification" | "latest">("verification")
 
+  // Every contractor account: by its active role, and by the primary role of an owner switched into another company.
   const contractorsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
-    return query(
-      collection(firestore, "users"),
-      where("role", "==", "Contractor"),
-      limit(limitCount)
-    )
-  }, [firestore, user, isUserLoading, limitCount])
+    return query(collection(firestore, "users"), where("role", "==", "Contractor"))
+  }, [firestore, user, isUserLoading])
+  const primaryContractorsQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(collection(firestore, "users"), where("primaryRole", "==", "Contractor"))
+  }, [firestore, user, isUserLoading])
+  // Secondary companies (added from the company switcher) are companies too, whether or not their owner is in them now.
+  const orgsQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(collection(firestore, "organizations"), where("role", "==", "Contractor"))
+  }, [firestore, user, isUserLoading])
 
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -122,30 +137,35 @@ export default function AdminContractorsPage() {
   }, [firestore, user, isUserLoading])
 
   const { data: contractors, isLoading } = useCollection(contractorsQuery)
+  const { data: primaryContractors } = useCollection(primaryContractorsQuery)
+  const { data: contractorOrgs } = useCollection(orgsQuery)
   const { data: allRfqs } = useCollection(rfqsQuery)
-  const [localContractors, setLocalContractors] = useState<any[]>([])
-  // A contractor account switched into a secondary company (added via the
-  // company-switcher) has that company's identity fields on
-  // organizations/{id}, not on its own users/{id} doc — see useIdentityOverlays.
-  const contractorIdentityOverlays = useIdentityOverlays((contractors || []) as { id: string; organizationId?: string; organizationRole?: string }[])
+  const [localContractors, setLocalContractors] = useState<CompanyListRow[]>([])
+  const [shownCount, setShownCount] = useState(PAGE)
+  const accounts = useMemo(() => {
+    const byId = new Map<string, CompanyUserDoc>()
+    for (const u of [...((contractors || []) as CompanyUserDoc[]), ...((primaryContractors || []) as CompanyUserDoc[])]) byId.set(u.id, u)
+    return [...byId.values()]
+  }, [contractors, primaryContractors])
+  // An owner switched into a secondary company whose doc predates the `role` field: its identity still comes from it.
+  const contractorIdentityOverlays = useIdentityOverlays(accounts as { id: string; organizationId?: string; organizationRole?: string }[])
 
   useEffect(() => {
-    if (contractors) {
-      setLocalContractors(contractors.map((row: any) => {
-        const overlay = contractorIdentityOverlays.get(row.id)
-        const c = overlay ? { ...stripIdentityFields(row), ...overlay } : row
+    if (!contractors) return
+    const companies = companiesOfRole("Contractor", accounts, (contractorOrgs || []) as CompanyOrgDoc[], contractorIdentityOverlays)
+    setLocalContractors(companies.map((company): CompanyListRow => {
+        const c = company.doc as Record<string, any>
         const legalDocs = c.legalDocuments || {}
         const uploadedDocKeys = Object.keys(legalDocs).filter(
           k => legalDocs[k]?.url && legalDocs[k].url.length > 0
         )
-        // Count how many RFQs belong to this contractor's organization
-        const rfqCount = allRfqs?.filter((r: any) => r.organizationId === (c.organizationId || c.id)).length || 0
+        const rfqCount = allRfqs?.filter((r: any) => r.organizationId === company.orgId).length || 0
 
         return {
-          id: c.id,
-          organizationId: row.organizationId,
-          organizationRole: row.organizationRole,
-          name: c.name || t("unspecified"),
+          id: company.orgId,
+          source: company.source,
+          ownerUserId: company.ownerUserId,
+          name: c.name || c.companyName || t("unspecified"),
           contact: c.phone || t("unspecified"),
           email: c.email || "",
           city: c.city || "",
@@ -164,7 +184,7 @@ export default function AdminContractorsPage() {
           rfqCount,
           createdAt: c.createdAt,
         }
-      }).sort((a: any, b: any) => {
+      }).sort((a, b) => {
         if (sortBy === "latest") {
           const getTs = (ts: any) => ts?.seconds ? ts.seconds * 1000 : ts?.toDate ? ts.toDate().getTime() : new Date(ts || 0).getTime()
           return getTs(b.createdAt) - getTs(a.createdAt)
@@ -172,18 +192,14 @@ export default function AdminContractorsPage() {
         if (a.verificationRequested === b.verificationRequested) return 0
         return a.verificationRequested ? -1 : 1
       }))
-    }
-  }, [contractors, allRfqs, sortBy])
+  }, [contractors, accounts, contractorOrgs, allRfqs, sortBy, contractorIdentityOverlays.size])
 
   const handleVerify = async (id: string, verify: boolean) => {
     if (!firestore) return
     const row = localContractors.find((c) => c.id === id)
-    // Verification status is a company-identity field — for a secondary
-    // company (added via the company-switcher) it lives on
-    // organizations/{id}, not on the owner's own users/{id} doc.
-    const targetRef = row && isSecondaryOrg(row.organizationId, id, row.organizationRole)
-      ? identityDocRef(firestore, row.organizationId)
-      : doc(firestore, "users", id)
+    // Verification is the COMPANY's: a secondary company's lives on organizations/{id}, a primary one's on its owner's
+    // users/{id} doc.
+    const targetRef = row?.source === "org" ? identityDocRef(firestore, id) : doc(firestore, "users", id)
     try {
       await updateDoc(targetRef, {
         isVerified: verify,
@@ -207,7 +223,7 @@ export default function AdminContractorsPage() {
   }
 
   const handleDeleteContractor = async () => {
-    if (!user || !selectedContractor) return
+    if (!user || !selectedContractor || selectedContractor.source !== "user") return
     setIsDeleting(true)
     try {
       const idToken = await user.getIdToken()
@@ -230,9 +246,9 @@ export default function AdminContractorsPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case t("status_active"): return <Badge className="bg-success/10 text-success border-success/20">{t("status_active")}</Badge>
-      case t("status_pending"): return <Badge className="bg-amber-50 text-amber-600 border-amber-100">{t("status_pending")}</Badge>
-      default: return <Badge variant="secondary">{t("status_review")}</Badge>
+      case t("status_active"): return <Badge className="whitespace-nowrap bg-success/10 text-success border-success/20">{t("verified_label")}</Badge>
+      case t("status_pending"): return <Badge className="whitespace-nowrap bg-warning/10 text-warning border-warning/20">{t("status_pending")}</Badge>
+      default: return <Badge variant="secondary" className="whitespace-nowrap">{t("status_review")}</Badge>
     }
   }
 
@@ -243,11 +259,18 @@ export default function AdminContractorsPage() {
     ),
     cityFilter
   )
+  const shown = filtered.slice(0, shownCount)
 
   // «{city} · {N} users · since {date}» under each name (AD-02).
-  const memberCounts = useOrgMemberCounts(localContractors.map((c) => companyOf(c, localContractors).orgId))
+  const owners = useMemo(() => new Map(localContractors.map((c) => [c.id, c.ownerUserId])), [localContractors])
+  const memberCounts = useOrgMemberCounts(localContractors.map((c) => c.id), owners)
 
-  const companyPackages = Array.from(new Set(localContractors.map((c) => companyOf(c, localContractors).orgId))).map((orgId) => byOrg.get(orgId) ?? FULL_COMPANY_PACKAGE)
+  // The strip counts the SAME rows as the table: companies, before the search and filters.
+  const companyPackages = localContractors.map((c) => byOrg.get(c.id) ?? FULL_COMPANY_PACKAGE)
+  const verificationKpis = [
+    { id: "verified", label: tPkg("kpi.verified"), n: localContractors.filter((c) => c.verified).length },
+    { id: "awaiting", label: tPkg("kpi.awaiting"), n: localContractors.filter((c) => !c.verified && c.verificationRequested).length, warn: true },
+  ]
 
   const activeFilterCount = [statusFilter !== "all", cityFilter !== "all"].filter(Boolean).length
 
@@ -256,27 +279,107 @@ export default function AdminContractorsPage() {
     setCityFilter("all")
   }
 
+  const columns: DataColumn<CompanyListRow>[] = [
+    {
+      key: "company",
+      header: t("company_name"),
+      cell: (c) => (
+        <div className="flex min-w-0 flex-col">
+          <span className="font-bold">{c.name}</span>
+          {c.email && <span className="truncate text-xs text-muted-foreground" dir="ltr">{c.email}</span>}
+          {c.crNumber && <span className="text-xs text-muted-foreground">{t("cr_number")}: <bdi>{c.crNumber}</bdi></span>}
+          <span className="text-xs text-muted-foreground" data-testid="contractor-subline">
+            {[c.city ? displayCity(c.city, locale) : "", memberCounts.has(c.id) ? tPkg("list.users", { count: memberCounts.get(c.id) ?? 1 }) : "", joinedOn(c.createdAt, locale) && tPkg("list.since", { date: joinedOn(c.createdAt, locale) })].filter(Boolean).join(" · ")}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: "package",
+      header: tPkg("list.package"),
+      cell: (c) => {
+        const pkg = byOrg.get(c.id) ?? FULL_COMPANY_PACKAGE
+        return (
+          <div className="flex flex-col items-start gap-1.5">
+            <Link
+              href={`/admin/contractors/${c.id}`}
+              aria-label={tPkg("list.open_package", { name: c.name })}
+              className="inline-flex rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <PackageChips
+                pkg={pkg.pkg}
+                labels={{ core: tProc("base.core.short"), inv: tProc("base.inv.short"), pm: tProc("conn.pm.short"), fin: tProc("conn.fin.short"), mfg: tProc("conn.mfg.short") }}
+              />
+            </Link>
+            <SubscriptionStatusPill status={pkg.subscription} />
+          </div>
+        )
+      },
+    },
+    {
+      key: "version",
+      header: tPkg("list.version"),
+      hideBelow: "xl",
+      cardHidden: true,
+      cell: (c) => (
+        <Link href={`/admin/contractors/${c.id}`} className="inline-flex rounded-lg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <PackageVersionCell company={byOrg.get(c.id) ?? FULL_COMPANY_PACKAGE} />
+        </Link>
+      ),
+    },
+    { key: "rfqs", header: t("tenders_count"), hideBelow: "xl", numeric: true, cell: (c) => c.rfqCount },
+    {
+      key: "docs",
+      header: t("documents"),
+      hideBelow: "xl",
+      cell: (c) =>
+        c.uploadedDocKeys.length > 0 ? (
+          <Badge className="whitespace-nowrap bg-success/10 text-success border-success/20 text-xs">{t("pdf_badge", { count: c.uploadedDocKeys.length })}</Badge>
+        ) : (
+          <span className="text-xs text-muted-foreground">{t("not_available")}</span>
+        ),
+    },
+    { key: "status", header: t("status"), cell: (c) => <span data-testid="verification-status">{getStatusBadge(c.status)}</span> },
+    {
+      key: "actions",
+      header: <span className="sr-only">{t("actions")}</span>,
+      label: t("actions"),
+      className: "w-px",
+      cell: (c) => (
+        <AccountRowActions
+          labels={{ view: t("view"), components: tPkg("list.open"), verify: t("verify"), unverify: t("unverify"), needsDocs: t("verify_needs_docs") }}
+          verified={c.verified}
+          canVerify={c.hasAllRequiredDocs}
+          onView={() => { setSelectedContractor(c); setShowDetailDialog(true) }}
+          onComponents={() => router.push(`/admin/contractors/${c.id}`)}
+          onVerify={(verify) => handleVerify(c.id, verify)}
+        />
+      ),
+    },
+  ]
+
   return (
     <PortalLayout>
       <div className="space-y-6 text-start">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
             <h1 className="text-3xl font-black text-foreground font-headline">{tPkg("page.title")}</h1>
             <p className="text-muted-foreground mt-1">{tPkg("page.subtitle")}</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 sm:flex-nowrap">
             <Button onClick={() => setNewOpen(true)} className="gap-2 shrink-0">
               <Plus size={18} aria-hidden="true" />
               {tPkg("page.new")}
             </Button>
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <div className="relative min-w-[12rem] flex-1 sm:w-64 sm:flex-none">
+              <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <Input
                 placeholder={t("search_placeholder")}
-                className="pr-10"
+                aria-label={t("search_placeholder")}
+                className="ps-10"
                 value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                onChange={e => { setSearchQuery(e.target.value); setShownCount(PAGE) }}
               />
             </div>
             <Button
@@ -301,10 +404,10 @@ export default function AdminContractorsPage() {
               <div className="w-full sm:w-48">
                 <SearchableSelect
                   value={statusFilter}
-                  onChange={v => setStatusFilter(v as ContractorStatusFilter)}
+                  onChange={v => { setStatusFilter(v as ContractorStatusFilter); setShownCount(PAGE) }}
                   options={[
                     { value: "all", label: t("filter_status_all") },
-                    { value: "verified", label: t("status_active") },
+                    { value: "verified", label: t("verified_label") },
                     { value: "pending", label: t("status_pending") },
                     { value: "review", label: t("status_review") },
                   ]}
@@ -317,7 +420,7 @@ export default function AdminContractorsPage() {
               <div className="w-full sm:w-48">
                 <SearchableSelect
                   value={cityFilter}
-                  onChange={setCityFilter}
+                  onChange={v => { setCityFilter(v); setShownCount(PAGE) }}
                   options={[
                     { value: "all", label: t("filter_city_all") },
                     ...SAUDI_CITIES.map(c => ({ value: c, label: displayCity(c, locale) })),
@@ -356,159 +459,46 @@ export default function AdminContractorsPage() {
           </Card>
         )}
 
-        <PackageKpis companies={companyPackages} />
+        <PackageKpis companies={companyPackages} extra={verificationKpis} />
 
-        {/* Stats — real data */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="border-none shadow-sm bg-blue-50/50">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600">
-                <Building2 size={24} />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">{t("total_count")}</p>
-                <p className="text-2xl font-bold">{localContractors.length}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm bg-success/5">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="h-12 w-12 rounded-xl bg-success/10 flex items-center justify-center text-success">
-                <ShieldCheck size={24} />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">{t("verified_count")}</p>
-                <p className="text-2xl font-bold">{localContractors.filter(c => c.verified).length}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm bg-amber-50/50">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="h-12 w-12 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600">
-                <ShieldAlert size={24} />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">{t("pending_count")}</p>
-                <p className="text-2xl font-bold">{localContractors.filter(c => c.verificationRequested).length}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Table */}
-        <Card className="border-none shadow-sm overflow-hidden">
-          <CardHeader className="border-b bg-white">
-            <CardTitle className="text-lg">{t("contractors_list")}</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0 overflow-x-auto">
-            {isLoading ? (
-              <div className="p-20 flex justify-center">
-                <Loader2 className="animate-spin text-primary" size={32} />
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="p-16 text-center text-muted-foreground">
-                <Building2 className="mx-auto h-12 w-12 opacity-20 mb-3" />
-                <p className="font-medium">{t("no_contractors_found")}</p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader className="bg-slate-50">
-                  <TableRow>
-                    <TableHead className="text-start hidden 2xl:table-cell">{t("id")}</TableHead>
-                    <TableHead className="text-start">{t("company_name")}</TableHead>
-                    <TableHead className="text-start hidden lg:table-cell">{tPkg("list.package")}</TableHead>
-                    <TableHead className="text-start hidden md:table-cell">{tPkg("list.version")}</TableHead>
-                    <TableHead className="text-start hidden md:table-cell">{tPkg("list.subscription")}</TableHead>
-                    <TableHead className="text-start hidden md:table-cell">{t("tenders_count")}</TableHead>
-                    <TableHead className="text-start hidden lg:table-cell">{t("documents")}</TableHead>
-                    <TableHead className="text-start">{t("status")}</TableHead>
-                    <TableHead className="text-end">{t("actions")}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((c) => {
-                    const company = companyOf(c, localContractors)
-                    return (
-                      <TableRow key={c.id} className="hover:bg-slate-50/50 transition-colors">
-                        <TableCell className="font-mono text-xs hidden 2xl:table-cell">{c.id.substring(0, 8)}</TableCell>
-                        <TableCell>
-                          <div className="flex min-w-0 flex-col">
-                            <span className="font-bold">{c.name}</span>
-                            <span className="text-xs text-muted-foreground" dir="ltr">{c.email}</span>
-                            {company.memberOf && <span className="text-xs text-muted-foreground">{t("member_of", { company: company.memberOf })}</span>}
-                            {c.crNumber && <span className="text-xs text-muted-foreground">{t("cr_number")}: <bdi>{c.crNumber}</bdi></span>}
-                            <span className="text-xs text-muted-foreground" data-testid="contractor-subline">
-                              {[c.city ? displayCity(c.city, locale) : "", memberCounts.has(company.orgId) ? tPkg("list.users", { count: memberCounts.get(company.orgId) ?? 1 }) : "", joinedOn(c.createdAt, locale) && tPkg("list.since", { date: joinedOn(c.createdAt, locale) })].filter(Boolean).join(" · ")}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden lg:table-cell">
-                          <Link
-                            href={`/admin/contractors/${company.orgId}`}
-                            aria-label={tPkg("list.open_package", { name: company.name })}
-                            className="inline-flex rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            <PackageChips
-                              pkg={(byOrg.get(company.orgId) ?? FULL_COMPANY_PACKAGE).pkg}
-                              labels={{ core: tProc("base.core.short"), inv: tProc("base.inv.short"), pm: tProc("conn.pm.short"), fin: tProc("conn.fin.short"), mfg: tProc("conn.mfg.short") }}
-                            />
-                          </Link>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <Link href={`/admin/contractors/${company.orgId}`} className="inline-flex rounded-lg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <PackageVersionCell company={byOrg.get(company.orgId) ?? FULL_COMPANY_PACKAGE} />
-                          </Link>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <SubscriptionStatusPill status={(byOrg.get(company.orgId) ?? FULL_COMPANY_PACKAGE).subscription} />
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell">
-                          <Badge variant="secondary" className="font-bold">{c.rfqCount}</Badge>
-                        </TableCell>
-                        <TableCell className="hidden lg:table-cell">
-                          {c.uploadedDocKeys.length > 0 ? (
-                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">
-                              {t("pdf_badge", { count: c.uploadedDocKeys.length })}
-                            </Badge>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">{t("not_available")}</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col items-start gap-1">
-                            {getStatusBadge(c.status)}
-                            {c.verified ? (
-                              <span className="flex items-center gap-1 text-success text-xs font-medium"><CheckCircle2 size={12} /> {t("verified_label")}</span>
-                            ) : (
-                              <span className="flex items-center gap-1 text-muted-foreground text-xs font-medium"><XCircle size={12} /> {t("not_verified_label")}</span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <AccountRowActions
-                            labels={{ view: t("view"), components: tPkg("list.open"), verify: t("verify"), unverify: t("unverify"), needsDocs: t("verify_needs_docs") }}
-                            verified={c.verified}
-                            canVerify={c.hasAllRequiredDocs}
-                            onView={() => { setSelectedContractor(c); setShowDetailDialog(true) }}
-                            onComponents={() => router.push(`/admin/contractors/${company.orgId}`)}
-                            onVerify={(verify) => handleVerify(c.id, verify)}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
+        {/* Table — one row per company */}
+        <section className="space-y-3" aria-labelledby="companies-heading">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 id="companies-heading" className="text-lg font-bold">{t("contractors_list")}</h2>
+            {!isLoading && filtered.length > 0 && (
+              <p className="text-sm text-muted-foreground" data-testid="companies-count">
+                {t("companies_shown", { shown: shown.length, total: filtered.length })}
+              </p>
             )}
-            {contractors && contractors.length >= limitCount && (
-              <div className="p-4 text-center border-t">
-                <Button variant="outline" onClick={() => setLimitCount(limitCount + 20)}>
-                  {t("show_more")}
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+          {isLoading ? (
+            <div className="flex justify-center rounded-xl border bg-card p-20">
+              <Loader2 className="animate-spin text-primary" size={32} />
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border bg-card">
+              <DataTable
+                columns={columns}
+                rows={shown}
+                rowKey={(c) => c.id}
+                caption={t("contractors_list")}
+                labels={{ sortBy: (column) => t("sort_by", { column }), showMore: (count) => t("show_more_count", { count }) }}
+                bordered={false}
+                empty={
+                  <div className="p-16 text-center text-muted-foreground">
+                    <Building2 className="mx-auto h-12 w-12 opacity-20 mb-3" />
+                    <p className="font-medium">{t("no_contractors_found")}</p>
+                  </div>
+                }
+              />
+              {filtered.length > shown.length && (
+                <ShowMoreRow onClick={() => setShownCount((n) => n + PAGE)}>
+                  {t("show_more_count", { count: Math.min(PAGE, filtered.length - shown.length) })}
+                </ShowMoreRow>
+              )}
+            </div>
+          )}
+        </section>
 
         {/* Detail Dialog */}
         <NewContractorDialog open={newOpen} onOpenChange={setNewOpen} />
@@ -535,7 +525,7 @@ export default function AdminContractorsPage() {
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                     <div><span className="text-muted-foreground">{t("email_label")}</span><span className="mr-2 font-medium text-xs">{selectedContractor.email || "—"}</span></div>
                     <div><span className="text-muted-foreground">{t("phone_label")}</span><span className="mr-2 font-medium">{selectedContractor.contact || "—"}</span></div>
-                    <div><span className="text-muted-foreground">{t("city_label")}</span><span className="mr-2 font-medium">{selectedContractor.city || "—"}</span></div>
+                    <div><span className="text-muted-foreground">{t("city_label")}</span><span className="mr-2 font-medium">{selectedContractor.city ? displayCity(selectedContractor.city, locale) : "—"}</span></div>
                     <div><span className="text-muted-foreground">{t("cr_label")}</span><span className="mr-2 font-medium">{selectedContractor.crNumber || "—"}</span></div>
                     <div><span className="text-muted-foreground">{t("tax_label")}</span><span className="mr-2 font-medium">{selectedContractor.taxNumber || "—"}</span></div>
                     <div><span className="text-muted-foreground">{t("tenders_number")}</span><span className="mr-2 font-bold text-primary">{selectedContractor.rfqCount}</span></div>
@@ -653,14 +643,16 @@ export default function AdminContractorsPage() {
                       {t("verify_account")}
                     </Button>
                   )}
-                  <Button
-                    variant="outline"
-                    className="gap-2 text-destructive border-destructive/20 hover:bg-destructive/5"
-                    onClick={() => { setShowDetailDialog(false); setShowDeleteDialog(true) }}
-                  >
-                    <Trash2 size={15} />
-                    {t("delete_account")}
-                  </Button>
+                  {selectedContractor.source === "user" && (
+                    <Button
+                      variant="outline"
+                      className="gap-2 text-destructive border-destructive/20 hover:bg-destructive/5"
+                      onClick={() => { setShowDetailDialog(false); setShowDeleteDialog(true) }}
+                    >
+                      <Trash2 size={15} />
+                      {t("delete_account")}
+                    </Button>
+                  )}
                 </div>
               </div>
             )}

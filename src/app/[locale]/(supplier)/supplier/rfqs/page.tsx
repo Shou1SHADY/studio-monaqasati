@@ -56,6 +56,7 @@ import { SubmitOfferDialog } from "@/components/supplier/SubmitOfferDialog"
 import { deliveryLine, readDeliveryOptions } from "@/lib/procurement/delivery-options"
 import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
 import { FreeOpps } from "@/components/supplier-free/FreeOpps"
+import { sarLtr } from "@/lib/riyal"
 
 function LegacyAvailableRfqsPage() {
   const t = useTranslations("Portal.Supplier")
@@ -701,7 +702,7 @@ function LegacyAvailableRfqsPage() {
                 </div>
                 <p className="text-sm font-bold text-slate-800 leading-tight" dir="ltr">
                   {selectedRfq?.estimatedBudget ? (
-                    <span className="text-xl font-black text-primary">{Number(selectedRfq.estimatedBudget).toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {locale === "ar" ? "ر.س" : "SAR"}</span>
+                    <span className="text-xl font-black text-primary">{sarLtr(Number(selectedRfq.estimatedBudget).toLocaleString("en-US"))}</span>
                   ) : (
                     <span className="text-sm font-bold text-slate-400">{t("estimated_budget_not_set")}</span>
                   )}

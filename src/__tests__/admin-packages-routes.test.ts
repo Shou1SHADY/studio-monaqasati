@@ -66,6 +66,16 @@ describe("the impact route", () => {
     expect((await impact(get(""))).status).toBe(400)
   })
 
+  it("a company is its owner's primary company or a secondary organisation, judged by its own role", async () => {
+    // the owner is switched into a supplier company: his primary company is still a contractor
+    mockDb.seed("users/u3", { role: "Supplier", primaryRole: "Contractor", organizationId: "org-s", organizationRole: "owner" })
+    mockDb.seed("organizations/org-s", { role: "Supplier", ownerUserId: "u3" })
+    mockDb.seed("organizations/org-c", { role: "Contractor", ownerUserId: "u3" })
+    expect((await impact(get("orgId=u3"))).status).toBe(200)
+    expect((await impact(get("orgId=org-c"))).status).toBe(200)
+    expect((await impact(get("orgId=org-s"))).status).toBe(404)
+  })
+
   it("counts the records of the staged change: closing Manufacturing names the unanswered question and the answer with a work order", async () => {
     mockDb.seed("manufacturingRequests/m1", { organizationId: ORG, status: "new", sourceKind: "project" })
     mockDb.seed("manufacturingRequests/m2", { organizationId: ORG, status: "accepted", sourceKind: "procurement", workOrderId: "wo1" })

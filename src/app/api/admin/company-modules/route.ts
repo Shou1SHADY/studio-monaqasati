@@ -7,6 +7,7 @@ import { COMPANY_MODULES } from "@/lib/company-modules"
 import { SUBSCRIPTION_STATUSES, subscriptionStatusOf } from "@/lib/subscription-status"
 import { assessPackageChange, assessmentIsQuiet, contractorOff, readStoredModules } from "@/lib/procurement/package-change-server"
 import { applyPendingChanges, pendingEntries } from "@/lib/procurement/package-migration-server"
+import { companyRoleOf } from "@/lib/admin-accounts"
 
 // Admin-only: saves a contractor's package — which of its optional components are off, and the answers to the need
 // questions that suggested it. The impact is recomputed here (what the admin read is not trusted); a change that touches
@@ -52,8 +53,10 @@ export async function POST(req: NextRequest) {
     const { orgId, ack } = parsed.data
     const { db } = caller
 
-    const owner = (await db.collection("users").doc(orgId).get()).data()
-    if (!owner || owner.role !== "Contractor") return adminError("Not a contractor company", "NOT_FOUND", 404)
+    // A company is its owner's users doc (primary) or an organizations doc (a secondary company).
+    const userSnap = await db.collection("users").doc(orgId).get()
+    const owner = userSnap.exists ? userSnap.data() : (await db.collection("organizations").doc(orgId).get()).data()
+    if (companyRoleOf(owner, userSnap.exists ? "user" : "org") !== "Contractor") return adminError("Not a contractor company", "NOT_FOUND", 404)
 
     const stored = await readStoredModules(db, orgId)
     const nextOff = contractorOff(parsed.data.off)

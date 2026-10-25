@@ -137,7 +137,7 @@ export function ActionsProvider({ children }: { children: ReactNode }) {
         void remindPayment({
           po,
           invoiceId,
-          text: f.t("msgPayRemind", { v: f.fmt.money(nd.amt), x: f.fmt.date(nd.due, true) }),
+          text: f.t("msgPayRemind", { v: f.fmt.moneyText(nd.amt), x: f.fmt.date(nd.due, true) }),
           due: nd.due,
           amount: nd.amt,
         })

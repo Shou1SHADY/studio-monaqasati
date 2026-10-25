@@ -90,6 +90,7 @@ export function FreeHome() {
       }
       allDecisions={{ all: t("secAll", { n: f.fmt.n(m.decisions.length) }), fewer: t("secFewer") }}
       after={openSection}
+      decisionsFirstOnPhone
     />
   )
 }
