@@ -4,15 +4,19 @@ import { useCallback, useEffect, useState } from "react"
 import { resolveActiveContractorComponent } from "@/lib/portal-components"
 
 // The sidebar that folds to icons and remembers it (Procurement 2.0 NAV-02, prototype `side-min` + `pf-side`, gap FR-02).
-// Only Procurement's frame folds to icons; every other module keeps today's sidebar that slides away and opens again on each
-// page. Every page mounts its own `PortalLayout`, so the choice lives here — this tab's last choice across page changes, and
+// Procurement's frame folds to icons, and so do Project Management's pages (`/contractor/projects/*`, PM 1.1 UX-01 — the
+// prototype gives a project the whole width); every other module keeps today's sidebar that slides away and opens again on
+// each page. The two share one remembered choice. Every page mounts its own `PortalLayout`, so the choice lives here — this tab's last choice across page changes, and
 // the browser's storage across reloads (read after mount, so the server's and the first client render agree).
 
 const STORAGE_KEY = "pf-side"
 let remembered: boolean | null = null
 
+const PROJECTS = "/contractor/projects"
+
 /** The pages whose sidebar folds to icons instead of sliding away. */
-export const foldsToIcons = (pathname: string): boolean => pathname.startsWith("/contractor") && resolveActiveContractorComponent(pathname).id === "procurement"
+export const foldsToIcons = (pathname: string): boolean =>
+  pathname === PROJECTS || pathname.startsWith(`${PROJECTS}/`) || (pathname.startsWith("/contractor") && resolveActiveContractorComponent(pathname).id === "procurement")
 
 function readStored(): boolean {
   try {

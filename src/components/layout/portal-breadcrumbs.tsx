@@ -38,6 +38,14 @@ import {
  * The Procurement guide's «عُد إلى المشتريات» returns to the page that opened it (`?from=`, IN-18), which this bar cannot know. */
 const OWN_BACK = new Set(["/contractor/rfqs/guide"])
 
+/** Pages whose head carries the WHOLE trail — so the bar would be a second crumb row (PM 1.1 UX-02): a project's page,
+ * whose head says «المشاريع › م-2026/014» (this bar stops at Projects and cannot name the project). Its tenders keep the bar. */
+const PORTFOLIO_PAGES = new Set(["new", "inbox", "today"])
+export const ownsTrail = (pathname: string): boolean => {
+  const m = /^\/contractor\/projects\/([^/]+)$/.exec(pathname)
+  return Boolean(m && !PORTFOLIO_PAGES.has(m[1]))
+}
+
 export function PortalBreadcrumbs() {
   const pathname = usePathname()
   const t = useTranslations("Portal.Sidebar")
@@ -53,7 +61,7 @@ export function PortalBreadcrumbs() {
         ? { components: supplierComponents, root: "/supplier", rootKey: "supplier_dashboard" }
         : null
 
-  if (!portal || pathname === portal.root) return null
+  if (!portal || pathname === portal.root || ownsTrail(pathname)) return null
 
   const { component, crumbs } = resolveNavTrail(portal.components, pathname)
 
