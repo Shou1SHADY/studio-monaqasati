@@ -82,6 +82,10 @@ export interface PmSubcontract {
   note: string | null
   lines: SubcontractLine[]
   value: number
+  /** Who supplies the materials of the let items: «ours» (default — we issue
+   * them from the project store) or «his» under his contract, and then the
+   * project never requests them (REQ-01). */
+  materials?: "ours" | "his" | null
   /** Paid to him — Finance's figure, read here, never written by the project. */
   paid?: number
   /** The signed contract. */

@@ -2165,7 +2165,7 @@ service cloud.firestore {
         // PM 1.0: technical approval / rejection by the project manager (`approve`).
         allow update: if resource.data.status == 'pending'
           && request.resource.data.status in ['approved', 'rejected']
-          && changedKeys().hasOnly(['pm', 'lines', 'items', 'status', 'rejectReason', 'approvedOn', 'approvedBy', 'approvedByName', 'decidedByUserId', 'decidedByUserName', 'decidedAt', 'updatedAt'])
+          && changedKeys().hasOnly(['pm', 'lines', 'items', 'status', 'rejectReason', 'rejectWhy', 'approvedOn', 'approvedBy', 'approvedByName', 'decidedByUserId', 'decidedByUserName', 'decidedAt', 'updatedAt'])
           && inProject(projectId)
           && ('pm' in projectData(projectId))
           && pmDuty(projectId, 'approve');

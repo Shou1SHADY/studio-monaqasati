@@ -19,7 +19,7 @@ import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
 import { lastPaid, PRICE_HISTORY, type PriceHistoryEntry } from "../procurement/prices"
 import { PURCHASE_ORDERS } from "../procurement/types"
-import { pmApprovalLimit } from "./subcontract"
+import { pmApprovalLimit, PM_SUBCONTRACTS } from "./subcontract"
 import { PM_VARIATIONS, voNo } from "./variation"
 import {
   decidedMove,
@@ -32,6 +32,7 @@ import {
   r3,
   rateBlocks,
   ratedOn,
+  ratesWithoutRequest,
   storeBalance,
   storeIdOf,
   storeLineOf,
@@ -41,6 +42,7 @@ import {
   type LoggedMove,
   type MoveDecision,
   type PmStoreLine,
+  type RejectWhy,
   type RxFrom,
   type StoreItem,
   type StoreMove,
@@ -65,12 +67,14 @@ import {
   receivablePortions,
   receiveBlocks,
   receivedLine,
+  rejectBlocks,
   reqNo,
   requestBlocks,
   requestOf,
   requestSample,
   stopBlocks,
   stoppedLine,
+  subSuppliedItems,
   type CloseWhy,
   type LineDraft,
   type OrderFact,
@@ -78,8 +82,10 @@ import {
   type PlantReplyKind,
   type PlantWhy,
   type PmPlantRequest,
+  type PmMaterialRequest,
   type PortionKind,
   type ReqLine,
+  type ReqRejectWhy,
 } from "./supply"
 
 export class PmSupplyError extends Error {
@@ -198,6 +204,28 @@ async function readStores(firestore: Firestore, projectId: string): Promise<PmSt
   return snap.docs.map((d) => storeLineOf(d.id, d.data() as Partial<PmStoreLine>))
 }
 
+/** The items let to a subcontractor who supplies their materials (REQ-01). Read
+ * before the transaction (it cannot query); a contract registered meanwhile is
+ * caught by the next request. */
+async function readSubSupplied(firestore: Firestore, projectId: string): Promise<Set<string>> {
+  const snap = await getDocs(collection(firestore, "projects", projectId, PM_SUBCONTRACTS))
+  return subSuppliedItems(snap.docs.map((d) => d.data() as { materials?: string | null; lines?: Array<{ itemId: string }> }))
+}
+
+/** REQ-05: a FIRST request that dies (withdrawn or rejected) takes back the
+ * materials it added to its items, unless a rate was set on them since. Reads
+ * now — inside the transaction, before any write — and returns the writes. */
+async function takeBackFirstMaterials(tx: Transaction, firestore: Firestore, projectId: string, request: PmMaterialRequest): Promise<Array<() => void>> {
+  const writes: Array<() => void> = []
+  const ids = [...new Set(request.lines.filter((l) => l.first && l.itemId).map((l) => storeIdOf(l.key)))]
+  for (const id of ids) {
+    const { ref, line } = await readStore(tx, firestore, projectId, id)
+    const rates = line ? ratesWithoutRequest(line, request.id) : null
+    if (rates) writes.push(() => tx.update(ref, { rates, updatedAt: serverTimestamp() }))
+  }
+  return writes
+}
+
 // ── Requests ─────────────────────────────────────────────────────────────────
 
 export interface RequestInput {
@@ -211,18 +239,19 @@ export interface RequestInput {
  * A material outside its item's list is a change request; the first request on
  * an item with no list builds it. */
 export async function createMaterialRequest(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, input: RequestInput): Promise<number> {
-  const stores = await readStores(firestore, projectId)
+  const [stores, subSupplied] = await Promise.all([readStores(firestore, projectId), readSubSupplied(firestore, projectId)])
   let seq = 0
   await runTransaction(firestore, async (tx) => {
     const { ref, project, pm } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "supply.request")
-    blocked(requestBlocks({ archived: fresh.archived, lines: input.lines, needBy: input.needBy, today: todayDay() }))
+    blocked(requestBlocks({ archived: fresh.archived, lines: input.lines, needBy: input.needBy, today: todayDay(), subSupplied }))
     const items = await readItems(tx, firestore, projectId, input.lines.map((l) => l.itemId))
     const lines = buildLines(stores, items, input.lines)
-    const cache = new Map<string, { ref: ReturnType<typeof doc>; line: PmStoreLine | null }>()
-    for (const l of lines) if (l.first) await addItemMaterial(tx, firestore, projectId, l, { r: null, w: 5, src: "first" }, items.find((i) => i.id === l.itemId)?.executed ?? 0, cache)
     seq = (pm.mrCount ?? 0) + 1
+    const cache = new Map<string, { ref: ReturnType<typeof doc>; line: PmStoreLine | null }>()
+    // Each material a first request adds names the request, so it can take it back (REQ-05).
+    for (const l of lines) if (l.first) await addItemMaterial(tx, firestore, projectId, l, { r: null, w: 5, src: "first", rq: reqNo(seq) }, items.find((i) => i.id === l.itemId)?.executed ?? 0, cache)
     const day = todayDay()
     tx.set(doc(firestore, "projects", projectId, PURCHASE_REQUESTS, reqNo(seq)), {
       pm: true,
@@ -298,14 +327,18 @@ export async function approveMaterialRequest(firestore: Firestore, ctx: PmContex
   return outcome
 }
 
-export async function rejectMaterialRequest(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, requestId: string, reason: string | null): Promise<void> {
+/** Reject with a reason from the list (REQ-02) — «other» with its text; the
+ * requester sees it. A first request takes back the materials it added (REQ-05). */
+export async function rejectMaterialRequest(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, requestId: string, input: { why: ReqRejectWhy | null; text: string | null }): Promise<void> {
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "request.decide")
     const { ref, request } = await readRequest(tx, firestore, projectId, requestId)
-    blocked(request.status !== "pending" ? ["not_pending"] : fresh.archived ? ["archived"] : [])
-    tx.update(ref, { status: "rejected", rejectReason: reason?.trim() || null, decidedByUserId: actor.uid, decidedByUserName: actor.name, decidedAt: serverTimestamp(), updatedAt: serverTimestamp() })
+    blocked(rejectBlocks({ archived: fresh.archived, status: request.status, why: input.why, text: input.text }))
+    const takeBack = await takeBackFirstMaterials(tx, firestore, projectId, request)
+    tx.update(ref, { status: "rejected", rejectWhy: input.why, rejectReason: input.why === "oth" ? input.text?.trim() || null : null, decidedByUserId: actor.uid, decidedByUserName: actor.name, decidedAt: serverTimestamp(), updatedAt: serverTimestamp() })
+    takeBack.forEach((w) => w())
   })
 }
 
@@ -318,7 +351,9 @@ export async function withdrawMaterialRequest(firestore: Firestore, ctx: PmConte
     const { ref, request } = await readRequest(tx, firestore, projectId, requestId)
     if (request.requestedByUserId !== actor.uid) refuse("no_duty", "supply.request")
     blocked(request.status !== "pending" ? ["not_pending"] : [])
+    const takeBack = await takeBackFirstMaterials(tx, firestore, projectId, request)
     tx.update(ref, { status: "rejected", withdrawn: true, decidedByUserId: actor.uid, decidedByUserName: actor.name, decidedAt: serverTimestamp(), updatedAt: serverTimestamp() })
+    takeBack.forEach((w) => w())
   })
 }
 
@@ -465,6 +500,9 @@ export interface ReceiveInput {
   /** Which portion the delivery note is for — what a main store issued, or what
    * was bought. Needed only while both are on their way. */
   portion?: PortionKind | null
+  /** Why `rej` was rejected — required when anything was (STK-09). */
+  rejWhy?: RejectWhy | null
+  rejNote?: string | null
 }
 
 /** The project-side receipt: the site confirms what arrived from the delivery
@@ -487,7 +525,7 @@ export async function receiveOnProject(firestore: Firestore, ctx: PmContext, pro
     // With the store's issue and the supplier's delivery both on their way, the receiver says which this note is.
     if (!input.portion && open.length > 1 && !fresh.archived) blocked(["no_source"])
     const portion = (input.portion ? open.find((p) => p.k === input.portion) : open[0]) ?? null
-    blocked(receiveBlocks({ archived: fresh.archived, receivable: Boolean(portion), remaining: portion?.left ?? 0, acc: input.acc, rej: input.rej }))
+    blocked(receiveBlocks({ archived: fresh.archived, receivable: Boolean(portion), remaining: portion?.left ?? 0, acc: input.acc, rej: input.rej, rejWhy: input.rejWhy, rejNote: input.rejNote }))
     if (!portion) throw new PmSupplyError("blocked", ["not_receivable"])
     const seq = (pm.grnCount ?? 0) + 1
     grn = reqNo(seq)
@@ -495,13 +533,15 @@ export async function receiveOnProject(firestore: Firestore, ctx: PmContext, pro
     const acc = r3(Math.max(0, input.acc))
     const rej = r3(Math.max(0, input.rej))
     const files = cleanAttachments(input.files)
-    const next = receivedLine(line, { grn, q: acc, rej, on: day, by: actor.uid, byName: actor.name, dn: input.dn?.trim() || null, note: input.note?.trim() || null, short: input.short, src: portion.k, ...(files.length ? { files } : {}) }, day, actor.uid)
+    // The rejection's reason rides the receipt (what Procurement and Inventory read) and the store move.
+    const why = rej > 0 && input.rejWhy ? { rejWhy: input.rejWhy, rejNote: input.rejWhy === "oth" ? input.rejNote?.trim() || null : null } : null
+    const next = receivedLine(line, { grn, q: acc, rej, ...(why ?? {}), on: day, by: actor.uid, byName: actor.name, dn: input.dn?.trim() || null, note: input.note?.trim() || null, short: input.short, src: portion.k, ...(files.length ? { files } : {}) }, day, actor.uid)
     let storeWrite: { ref: ReturnType<typeof doc>; line: PmStoreLine } | null = null
     if (acc > 0 && line.itemId && input.withStore !== false) {
       const id = storeIdOf(line.key)
       const got = await readStore(tx, firestore, projectId, id)
       const base: PmStoreLine = got.line ?? { id, key: line.key, name: line.name, unit: line.unit, rates: {}, moves: [] }
-      const move: StoreMove = { t: "rc", q: acc, on: day, by: actor.uid, byName: actor.name, itemId: line.itemId, code: line.code, reqId: requestId, reqSeq: request.seq ?? null, grn, dn: input.dn?.trim() || null, rej: rej || null, source: (portion.k === "stk" ? line.inv?.warehouseName : by.poNumber) || null, ...(files.length ? { files } : {}) }
+      const move: StoreMove = { t: "rc", q: acc, on: day, by: actor.uid, byName: actor.name, itemId: line.itemId, code: line.code, reqId: requestId, reqSeq: request.seq ?? null, grn, dn: input.dn?.trim() || null, rej: rej || null, ...(why ? { rw: why.rejWhy, rwNote: why.rejNote } : {}), source: (portion.k === "stk" ? line.inv?.warehouseName : by.poNumber) || null, ...(files.length ? { files } : {}) }
       storeWrite = { ref: got.ref, line: { ...base, moves: [...base.moves, move] } }
     }
     const lines = request.lines.map((l, i) => (i === lineIndex ? next : l))

@@ -20416,7 +20416,7 @@
           "sample": "Consultant-approved sample",
           "sample_free": "no sample required",
           "sample_ok": "approved",
-          "sample_pend": "under review — no PO before it",
+          "sample_pend": "with the consultant — approve after the reply",
           "sample_rej": "rejected — resubmit",
           "sample_none": "not submitted",
           "changes": "Change decisions",
@@ -20432,7 +20432,8 @@
           "dup_yes": "{count, plural, one {# material is} other {# materials are}} already requested for a close date",
           "dup_no": "no overlap — batches far apart are fine",
           "lead": "Enough lead time",
-          "lead_none": "not urgent"
+          "lead_none": "not urgent",
+          "route_full": "Once approved it reaches Procurement in full — Procurement asks the store first"
         },
         "trail": {
           "title": "Request trail — and who owns each step",
@@ -20504,7 +20505,8 @@
           "ovh_none": "No site overhead budget recorded on this project.",
           "main_stock": "{q} in the main stores — may be committed elsewhere; the store decides",
           "main_none": "no stock in the main stores",
-          "mat_change": "Change"
+          "mat_change": "Change",
+          "sub_supplies": "Item {code} is let to {name}, who supplies its materials under his contract — not requested by the project."
         },
         "rcv": {
           "title": "Receive on the project",
@@ -20539,7 +20541,11 @@
           "from_store": "From {store}",
           "short_hint_stk": "Inventory is asked to close the transfer gap",
           "enters_store_stk": "It enters the project store and stays open until used. Inventory gets the confirmation to close the issue.",
-          "expensed_stk": "Expensed to site overheads on arrival. Inventory gets the confirmation to close the issue."
+          "expensed_stk": "Expensed to site overheads on arrival. Inventory gets the confirmation to close the issue.",
+          "rej_why": "Why was it rejected?",
+          "rw": {"dmg": "Damaged", "spec": "Not to spec", "over": "More than the note", "exp": "Expired", "oth": "Other — stated"},
+          "rw_oth_ph": "State the reason",
+          "rej_shown": "Rejected {q} — {why}"
         },
         "stop": {
           "title": "Stop the rest",
@@ -20605,7 +20611,11 @@
           "no_free": "Give the date it is free",
           "no_text": "Say what was offered",
           "not_hireable": "Hire only when the fleet is busy or has none",
-          "in_transit": "{q} {unit} on the way — what left the store is not cancelled; receive it, then return it if unwanted"
+          "in_transit": "{q} {unit} on the way — what left the store is not cancelled; receive it, then return it if unwanted",
+          "sample_pending": "Not yet: the item's sample is still with the consultant — approve the request after the reply",
+          "sub_supplies": "This item is let to a subcontractor who supplies its materials under his contract — the project does not request them",
+          "rej_why": "Say why the rejected quantity was rejected",
+          "rej_text": "State the reason for the rejection"
         },
         "err": {
           "missing": "The document is missing — it may have changed on another device",
@@ -20619,7 +20629,10 @@
           "none": "not issued — {why} — it is bought",
           "issue_wh": "issues {q} {unit} from {warehouse}",
           "kept": "{q} {unit} not issued: {why} — to be bought"
-        }
+        },
+        "rej_why": {"spec": "Not to spec", "qty": "Quantity above the need", "dup": "Duplicate of another request", "early": "Too early", "oth": "Other — stated"},
+        "reject_pick": "Why is it rejected?",
+        "reject_oth_ph": "State the reason"
       },
       "store": {
         "title": "Project store",
@@ -20727,7 +20740,8 @@
           "appr": "approved by {name}",
           "self": "self-approved by the owner",
           "recovery": "accounting return — deducted from his certificate",
-          "inv_ok": "Inventory confirmed · {name}"
+          "inv_ok": "Inventory confirmed · {name}",
+          "rw": "rejected: {why}"
         },
         "w": {
           "approval": "awaiting approval",

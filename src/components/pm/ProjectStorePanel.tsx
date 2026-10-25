@@ -559,7 +559,7 @@ function MoveRow({ m, locale, canApprove, canMove, mine, busy, onDecide, onConfi
   const note = m.note ? ` — ${m.note}` : ""
   const det =
     m.t === "rc"
-      ? [m.grn ? t("sup.grn", { no: m.grn }) : "", m.source || t("store.mv_det.purchase"), m.reqSeq ? t("sup.no", { no: reqNo(m.reqSeq) }) : "", m.code || "", m.dn ? t("store.mv_det.dn", { no: m.dn }) : t("store.mv_det.no_dn"), m.rej ? t("sup.rej_s", { q: qty(m.rej) }) : ""].filter(Boolean).join(" · ")
+      ? [m.grn ? t("sup.grn", { no: m.grn }) : "", m.source || t("store.mv_det.purchase"), m.reqSeq ? t("sup.no", { no: reqNo(m.reqSeq) }) : "", m.code || "", m.dn ? t("store.mv_det.dn", { no: m.dn }) : t("store.mv_det.no_dn"), m.rej ? t("sup.rej_s", { q: qty(m.rej) }) : "", m.rej && m.rw ? t("store.mv_det.rw", { why: m.rw === "oth" && m.rwNote ? m.rwNote : t(`sup.rcv.rw.${m.rw}`) }) : ""].filter(Boolean).join(" · ")
       : m.t === "rx"
         ? `${m.from ? t(`store.rx_from.${m.from}`) : ""}${m.otherProjectName ? ` · ${m.otherProjectName}` : ""}${note}`
         : m.t === "use"

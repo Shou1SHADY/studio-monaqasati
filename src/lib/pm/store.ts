@@ -47,6 +47,9 @@ export interface StoreMove {
   grn?: string | null
   dn?: string | null
   rej?: number | null
+  /** rc: why the rejected quantity was rejected (STK-09) and the stated text for «other». */
+  rw?: RejectWhy | null
+  rwNote?: string | null
   source?: string | null
   /** ret: the main store it goes back to. */
   warehouseId?: string | null
@@ -80,6 +83,11 @@ export interface StoreMove {
   recovery?: boolean | null
 }
 
+/** Why a quantity was rejected on receipt (STK-09): damaged · not to spec · more
+ * than the note · expired · other, stated. The same list Procurement's door uses. */
+export const REJECT_WHY = ["dmg", "spec", "over", "exp", "oth"] as const
+export type RejectWhy = (typeof REJECT_WHY)[number]
+
 /** The value of a subcontractor's waste, deducted from his next certificate
  * (`certSeq` null = awaiting deduction). */
 export interface StoreRecovery {
@@ -107,6 +115,9 @@ export interface ItemRate {
   src: "first" | "chg" | "rate"
   ref?: string | null
   voSeq?: number | null
+  /** first: the request that added it — a withdrawn or rejected first request takes
+   * back what it added while no rate was set (REQ-05). */
+  rq?: string | null
 }
 
 export interface PmStoreLine {
@@ -328,6 +339,21 @@ export function decidedMove(m: StoreMove, decision: MoveDecision, actor: { uid: 
   const stamp = { appr: actor.uid, apprName: actor.name, apprOn: on, self: m.by === actor.uid ? true : null }
   if (decision === "sup") return { ...m, ...stamp, t: "sret", sup: true, st: "wait" }
   return { ...m, ...stamp, st: decision }
+}
+
+/** The item rates a withdrawn or rejected FIRST request takes back (REQ-05): the
+ * entries it added (`src: first`, `rq` = the request) on which no rate was set.
+ * Null when there is nothing to take back. */
+export function ratesWithoutRequest(x: Pick<PmStoreLine, "rates">, requestId: string): Record<string, ItemRate> | null {
+  const rates = { ...(x.rates || {}) }
+  let hit = false
+  for (const [itemId, r] of Object.entries(rates)) {
+    if (r.src === "first" && r.rq === requestId && r.r == null) {
+      delete rates[itemId]
+      hit = true
+    }
+  }
+  return hit ? rates : null
 }
 
 export type RateBlock = "archived" | "bad_rate" | "bad_waste" | "no_item"
