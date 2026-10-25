@@ -17918,7 +17918,7 @@
         "dlp_ended": "{count, plural, =0 {ended today} one {ended # day ago} other {ended # days ago}}",
         "not_recorded": "Not recorded",
         "by_manager": "Recorded by the project manager",
-        "event_note": "Each fact reaches Finance as a keyed event (prj:HND:project:type) — claiming and receiving the retention happen there, not here. Recording it late leaves the retention with no clock: the money contractors lose most often.",
+        "event_note": "Each fact recorded here reaches Finance once — claiming and receiving the retention happen there, not here. Recording it late leaves the retention with no clock running: the money contractors lose most often.",
         "sub": "Facts we record — Finance claims retention on them",
         "ret_phase": {
           "held": "held until handover",
