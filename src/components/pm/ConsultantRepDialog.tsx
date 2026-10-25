@@ -109,7 +109,7 @@ export function ConsultantRepDialog({
             <Label htmlFor="cr-name">{t("rep_name")}</Label>
             <Input id="cr-name" dir="auto" className="h-11" maxLength={120} value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="cr-phone">{t("rep_phone")}</Label>
               <Input id="cr-phone" dir="ltr" type="tel" inputMode="tel" autoComplete="off" placeholder="05XXXXXXXX" className="h-11" maxLength={30} value={phone} disabled={busy} onChange={(e) => setPhone(e.target.value)} aria-invalid={tried && phoneBad} />

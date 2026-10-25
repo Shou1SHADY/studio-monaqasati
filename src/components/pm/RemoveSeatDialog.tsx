@@ -77,7 +77,7 @@ export function RemoveSeatDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("team.remove_title", { name })}</DialogTitle>
           <DialogDescription>{t("team.remove_desc")}</DialogDescription>

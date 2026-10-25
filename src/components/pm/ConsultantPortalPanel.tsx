@@ -1,7 +1,7 @@
 "use client"
 
-// The consultant portal under File › Correspondence (the prototype's بوابة
-// الاستشاري). What he is waiting on is read from the project's own records —
+// The consultant portal — its own sub-tab under File (CP-01; the prototype's بوابة
+// الاستشاري, which sat under Correspondence). What he is waiting on is read from the project's own records —
 // seven sources, each only while its section is on (CP-06). The link — one per
 // project — goes to his representative's mobile from the project's details
 // (PRJ-01, CP-02): without one the panel asks to add it. It is made on the
@@ -28,6 +28,7 @@ import type { PmAccess } from "@/hooks/usePmAccess"
 import { PM_CERTIFICATES } from "@/lib/pm/certificate"
 import type { PmCertificate } from "@/lib/pm/certificate-writes"
 import { PM_CLAIMS, type PmClaim } from "@/lib/pm/claim"
+import { PM_LETTERS } from "@/lib/pm/correspondence"
 import { portalAge, portalItems, PORTAL_LATE_DAYS, type PmPortalState, type PortalItem } from "@/lib/pm/consultant-portal"
 import { letterLabel, type PmLetter } from "@/lib/pm/correspondence"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
@@ -35,7 +36,6 @@ import { PM_INSPECTIONS, type PmInspection } from "@/lib/pm/inspection"
 import { PM_NCRS, type PmNcr } from "@/lib/pm/ncr"
 import { PM_PUNCH, type PunchItem } from "@/lib/pm/punch"
 import { PM_SUBMITTALS, type PmSubmittal } from "@/lib/pm/sample"
-import { cn } from "@/lib/utils"
 import { ConsultantRepDialog, type ConsultantDetails } from "./ConsultantRepDialog"
 
 const NO_KEY: Record<PortalItem["kind"], string> = { subm: "sample.no", wir: "wir.no", punch: "punch.no", ncr: "ncr.no", corr: "", ipc: "ipc.no", claim: "claim.no" }
@@ -49,14 +49,15 @@ export function ConsultantPortalPanel({
   projectId,
   projectName,
   portal: portalProp,
-  letters,
+  letters: lettersProp,
   items,
   access,
 }: {
   projectId: string
   projectName: string
   portal: { sentOn?: string | null; seenOn?: string | null; name?: string | null; phoneMasked?: string | null } | null
-  letters: PmLetter[]
+  /** The project's letters when the caller already reads them; read here otherwise (the portal's own tab). */
+  letters?: PmLetter[]
   items: Array<{ id: string; code: string; description: string }>
   access: PmAccess
 }) {
@@ -89,6 +90,9 @@ export function ConsultantPortalPanel({
   const { data: ncrs } = useCollection(ncrQ)
   const { data: claims } = useCollection(claimQ)
   const { data: certs } = useCollection(certQ)
+  const letterQ = useMemoFirebase(() => (firestore && !lettersProp ? collection(firestore, "projects", projectId, PM_LETTERS) : null), [firestore, projectId, lettersProp])
+  const { data: letterData } = useCollection(letterQ)
+  const letters = useMemo(() => lettersProp ?? ((letterData ?? []) as unknown as PmLetter[]), [lettersProp, letterData])
 
   const certNet = useMemo(() => new Map(((certs ?? []) as unknown as PmCertificate[]).map((c) => [String(c.seq).padStart(2, "0"), c.gross])), [certs])
   const pending = useMemo(() => {
@@ -162,7 +166,7 @@ export function ConsultantPortalPanel({
   const titleOf = (x: PortalItem) => (x.kind === "ipc" ? [x.title, money && certNet.has(x.no) ? pmMoney(certNet.get(x.no) ?? 0) : ""].filter(Boolean).join(" · ") : x.title)
 
   const gate = (ok: boolean, title: string, sub: string) => (
-    <div className={cn("flex items-start gap-2 rounded-xl border p-3", ok ? "border-success/30 bg-success/5" : "bg-muted/40")}>
+    <div className="flex min-w-0 items-start gap-2 px-4 py-3">
       {ok ? <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" aria-hidden="true" /> : <Clock size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
       <div className="min-w-0">
         <p className="text-sm font-bold">{title}</p>
@@ -187,21 +191,22 @@ export function ConsultantPortalPanel({
               {busy ? <Loader2 size={15} className="me-1.5 animate-spin" aria-hidden="true" /> : <Link2 size={15} className="me-1.5" aria-hidden="true" />}
               {sentOn ? t("portal.resend") : t("portal.send")}
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setPreview(true)}>
+            <Button size="sm" variant="ghost" className="border" onClick={() => setPreview(true)}>
               <Eye size={15} className="me-1.5" aria-hidden="true" />
               {t("portal.view")}
             </Button>
           </>
         ) : null
       }
+      description={t("portal.sub")}
+      bodyClassName="p-0"
     >
-      <p className="mb-3 text-xs text-muted-foreground">{t("portal.sub")}</p>
       {projectDoc && !hasRep && (
-        <Callout tone="warn" className="mb-3">
+        <Callout tone="warn" className="m-3">
           <span className="flex flex-wrap items-center justify-between gap-2">
             <span>{t("portal.no_rep")}</span>
             {canEditRep && (
-              <Button size="sm" variant="outline" onClick={() => setEditingRep(true)}>
+              <Button size="sm" variant="ghost" className="border" onClick={() => setEditingRep(true)}>
                 <UserPlus size={14} className="me-1.5" aria-hidden="true" />
                 {t("portal.add_rep")}
               </Button>
@@ -210,7 +215,7 @@ export function ConsultantPortalPanel({
         </Callout>
       )}
       {hasRep && (
-        <p className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <p className="flex flex-wrap items-center gap-2 border-b px-4 py-2 text-xs text-muted-foreground">
           <span dir="auto">{t("portal.goes_to", { name: rep?.name || projectDoc?.consultant || "—", phone: maskLocal(rep?.phone) })}</span>
           {canEditRep && (
             <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={() => setEditingRep(true)}>
@@ -219,7 +224,7 @@ export function ConsultantPortalPanel({
           )}
         </p>
       )}
-      <div className="mb-3 grid gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-1 divide-y border-b sm:grid-cols-3 sm:divide-y-0 sm:[&>*+*]:border-s">
         {gate(
           Boolean(sentOn),
           t("portal.sent"),
@@ -232,14 +237,14 @@ export function ConsultantPortalPanel({
       </div>
 
       {pending.length === 0 ? (
-        <p className="rounded-xl border border-dashed px-3 py-4 text-center text-sm text-muted-foreground">{t("portal.empty")}</p>
+        <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("portal.empty")}</p>
       ) : (
-        <ul className="divide-y rounded-xl border">
+        <ul className="divide-y">
           {pending.slice(0, 6).map((x) => {
             const age = portalAge(x.day, today)
             const title = titleOf(x)
             return (
-              <li key={`${x.kind}-${x.no}`} className="flex items-center justify-between gap-2 px-3 py-2.5">
+              <li key={`${x.kind}-${x.no}`} className="flex items-center justify-between gap-2 px-4 py-2.5">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">
                     <bdi>{label(x)}</bdi>
@@ -261,7 +266,7 @@ export function ConsultantPortalPanel({
         </ul>
       )}
 
-      <p className="mt-3 text-xs text-muted-foreground">{t("portal.foot")}</p>
+      <p className="border-t px-4 py-2 text-xs text-muted-foreground">{t("portal.foot")}</p>
 
       <ConsultantRepDialog open={editingRep} onOpenChange={setEditingRep} projectId={projectId} project={projectDoc ?? {}} linkSent={Boolean(sentOn)} />
 
@@ -313,8 +318,8 @@ export function ConsultantPortalPanel({
       </Dialog>
 
       <Sheet open={preview} onOpenChange={setPreview}>
-        <SheetContent side={locale === "ar" ? "left" : "right"} className="w-full overflow-y-auto sm:max-w-lg" dir={locale === "ar" ? "rtl" : "ltr"}>
-          <SheetHeader className="text-start">
+        <SheetContent side={locale === "ar" ? "left" : "right"} className="w-full overflow-y-auto sm:max-w-2xl" dir={locale === "ar" ? "rtl" : "ltr"}>
+          <SheetHeader className="pe-10 text-start">
             <SheetTitle className="flex items-center gap-2">
               <Eye size={18} className="text-module" aria-hidden="true" />
               {t("portal.preview_title")}

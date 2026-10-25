@@ -3,7 +3,7 @@
 // File › Correspondence on a PM 1.0 project (COR-01): letters sent and
 // received with their dates, party, reply deadline and the reply with its own
 // date. An open letter past its deadline shows red — it is half a claim. The
-// consultant portal sits under it, as in the prototype.
+// consultant portal has its own sub-tab under File (CP-01, `pmPortal`).
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -52,7 +52,6 @@ import { pmDate, todayDay } from "@/lib/pm/format"
 import { obstacleSeq, PM_OBSTACLES, type PmObstacle } from "@/lib/pm/site"
 import { PM_VARIATIONS, voNo, type PmVariation } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
-import { ConsultantPortalPanel } from "./ConsultantPortalPanel"
 import { ReplySource } from "./ConsultantReply"
 
 const TONE: Record<LetterStatus, PillTone> = { out: "warn", rep: "ok", in: "info", done: "mute" }
@@ -68,7 +67,6 @@ export function CorrespondencePanel({
   orgId,
   projectName,
   pm,
-  items,
   access,
   actor,
 }: {
@@ -76,7 +74,8 @@ export function CorrespondencePanel({
   orgId: string
   projectName: string
   pm: { no?: string | null; lettersOut?: number; lettersIn?: number; portal?: { sentOn?: string | null; seenOn?: string | null } | null }
-  items: Array<{ id: string; code: string; description: string }>
+  /** No longer read here: the consultant portal, which names the items, moved to its own sub-tab (CP-01). */
+  items?: Array<{ id: string; code: string; description: string }>
   access: PmAccess
   actor: LetterActor
 }) {
@@ -207,12 +206,13 @@ export function CorrespondencePanel({
             </Button>
           ) : null
         }
+        description={t("corr.sub")}
+        bodyClassName="p-0"
       >
-        <p className="mb-3 text-xs text-muted-foreground">{t("corr.sub")}</p>
         {letters.length === 0 ? (
-          <EmptyState icon={Mail} title={t("corr.empty")} description={t("corr.empty_desc")} />
+          <EmptyState bare icon={Mail} title={t("corr.empty")} description={t("corr.empty_desc")} />
         ) : (
-          <ul className="space-y-2">
+          <ul className="divide-y">
             {letters.map((l) => {
               const isLate = isLetterLate(l, today)
               const closed = l.status === "rep" || l.status === "done"
@@ -221,12 +221,12 @@ export function CorrespondencePanel({
               return (
                 <li
                   key={l.id}
-                  className={cn("flex flex-wrap items-start gap-3 rounded-xl border border-s-4 p-3", closed ? "border-s-success" : isLate ? "border-s-destructive" : "border-s-warning")}
+                  className={cn("flex flex-wrap items-start gap-3 border-s-4 px-4 py-3", closed ? "border-s-success" : isLate ? "border-s-destructive" : "border-s-warning")}
                 >
                   <span className={cn("mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full", l.dir === "out" ? "bg-module/10 text-module" : "bg-cta/10 text-cta")}>
                     {l.dir === "out" ? <ArrowUpRight size={14} className="rtl-flip" aria-hidden="true" /> : <ArrowDownLeft size={14} className="rtl-flip" aria-hidden="true" />}
                   </span>
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 basis-60">
                     <p className="text-sm font-bold">
                       <bdi dir="ltr">{letterLabel(l, locale)}</bdi> — <span dir="auto">{l.subject}</span>
                     </p>
@@ -259,7 +259,8 @@ export function CorrespondencePanel({
                     {canWrite && isLetterOpen(l) && (
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="ghost"
+                        className="border"
                         onClick={() => {
                           setReplyText("")
                           setReplyOn(today)
@@ -277,8 +278,6 @@ export function CorrespondencePanel({
           </ul>
         )}
       </Panel>
-
-      <ConsultantPortalPanel projectId={projectId} projectName={projectName} portal={pm.portal ?? null} letters={letters} items={items} access={access} />
 
       <Dialog open={adding} onOpenChange={(o) => busy === null && setAdding(o)}>
         <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
@@ -315,7 +314,7 @@ export function CorrespondencePanel({
               </Label>
               <Input id="corr-subject" dir="auto" value={subject} placeholder={t("corr.subject_ph")} onChange={(e) => setSubject(e.target.value)} disabled={busy !== null} />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="corr-day">{t("corr.day")}</Label>
                 <Input id="corr-day" type="date" dir="ltr" value={day} max={today} onChange={(e) => setDay(e.target.value)} disabled={busy !== null} />

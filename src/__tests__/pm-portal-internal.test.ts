@@ -111,14 +111,14 @@ describe("CP-13 — the consultant decisions", () => {
   it("a certificate with him is a decision only past his period: amber, red past twice it, in the money group", () => {
     expect(find({ certificates: [sub("2026-10-15")] }, "cert_consultant")).toBeUndefined()
     expect(find({ certificates: [sub("2026-10-05")], consultant: "دار" }, "cert_consultant")).toMatchObject({ severity: "amber", age: 20, vars: { days: 14, link: "unsent" }, detail: "detail_unsent" })
-    expect(find({ certificates: [sub("2026-09-20")], consultant: "دار", portal: { sentOn: "2026-09-21", seenOn: null } }, "cert_consultant")).toMatchObject({ severity: "red", detail: "detail_sent", tab: "pmCorr" })
+    expect(find({ certificates: [sub("2026-09-20")], consultant: "دار", portal: { sentOn: "2026-09-21", seenOn: null } }, "cert_consultant")).toMatchObject({ severity: "red", detail: "detail_sent", tab: "pmPortal" })
     expect(find({ certificates: [sub("2026-10-05")] }, "cert_consultant")).toMatchObject({ detail: "detail_letter", tab: "ipc" })
     expect(find({ certificates: [sub("2026-10-05")], viewer: viewer(["approve"]) }, "cert_consultant")).toBeUndefined()
   })
 
   it("a link sent three days ago and never opened, while something waits on him, is the approver's decision", () => {
     const portal = { sentOn: "2026-10-22", seenOn: null }
-    expect(find({ portal, portalWaiting: 2, viewer: viewer(["approve"]) }, "portal_unopened")).toMatchObject({ severity: "amber", count: 2, age: 3 })
+    expect(find({ portal, portalWaiting: 2, viewer: viewer(["approve"]) }, "portal_unopened")).toMatchObject({ severity: "amber", count: 2, age: 3, tab: "pmPortal" })
     expect(find({ portal: { sentOn: "2026-10-23", seenOn: null }, portalWaiting: 2 }, "portal_unopened")).toBeUndefined()
     expect(find({ portal: { ...portal, seenOn: "2026-10-23" }, portalWaiting: 2 }, "portal_unopened")).toBeUndefined()
     expect(find({ portal, portalWaiting: 0 }, "portal_unopened")).toBeUndefined()

@@ -112,10 +112,9 @@ export function SectionsPanel({
       .join(" · ")
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <div className="space-y-4 lg:col-span-2">
-        <Panel title={t("sec.panel_title")} icon={Grid3x3}>
-          <p className="mb-4 text-xs text-muted-foreground">{t("sec.panel_sub", { on: onCount, total: built.length })}</p>
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+      <div className="min-w-0 space-y-4 lg:col-span-2">
+        <Panel title={t("sec.panel_title")} icon={Grid3x3} description={t("sec.panel_sub", { on: onCount, total: built.length })}>
           <div className="space-y-5">
             {SECTION_GROUPS.map((group) => {
               const ids = built.filter((id) => SECTION_REGISTRY[id].group === group)
@@ -123,7 +122,7 @@ export function SectionsPanel({
               return (
                 <div key={group}>
                   <p className="mb-2 text-xs font-bold text-muted-foreground">{tShared(`sec_group_${group}`)}</p>
-                  <div className="grid gap-2.5 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     {ids.map((id) => {
                       const def = SECTION_REGISTRY[id]
                       const on = enabled.has(id)
@@ -181,15 +180,12 @@ export function SectionsPanel({
               )
             })}
           </div>
-          <Callout tone="info" className="mt-4">
-            {t("sec.never_deletes")}
-          </Callout>
+          <p className="mt-4 border-t pt-3 text-xs leading-relaxed text-muted-foreground">{t("sec.never_deletes")}</p>
           {!canSwitch && !access.ctx.archived && <p className="mt-2 text-xs text-muted-foreground">{t("sec.read_only")}</p>}
         </Panel>
 
         {log.length > 0 && (
-          <Panel title={t("sec.log_title")} icon={Clock} bodyClassName="p-0">
-            <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("sec.log_sub")}</p>
+          <Panel title={t("sec.log_title")} icon={Clock} description={t("sec.log_sub")} bodyClassName="p-0">
             <ul className="divide-y">
               {log.map((r, i) => {
                 const reason = r.reason === "other" ? r.reasonText || t("sec.why.other") : r.reason && (LEGACY_OFF_REASONS as readonly string[]).includes(r.reason) ? t(`sec.reason.${r.reason}`) : r.reason ? t(`sec.why.${r.reason}`) : null
@@ -225,7 +221,7 @@ export function SectionsPanel({
             <div className="space-y-3 border-t p-4">
               <Callout tone="warn">{t("sec.soon_note")}</Callout>
               {soonOurs.length > 0 && (
-                <div className="grid gap-2.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                   {soonOurs.map((id) => (
                     <div key={id} className="rounded-xl border border-dashed p-3">
                       <p className="text-sm font-bold">{tShared(sectionLabelKey(id))}</p>
@@ -445,15 +441,15 @@ function SectionsHelp({ on, total }: { on: number; total: number }) {
     </li>
   )
   return (
-    <Panel title={t("sec.help.title")} icon={ShieldCheck} className="self-start">
-      <Callout tone="info">{t("sec.help.intro")}</Callout>
+    <Panel title={t("sec.help.title")} icon={ShieldCheck} className="min-w-0">
+      <p className="text-xs leading-relaxed text-muted-foreground">{t("sec.help.intro")}</p>
       <ul className="mt-3 space-y-3">
         {step(t("sec.help.confirm"), t("sec.help.confirm_note"))}
         {step(t("sec.help.money"), t("sec.help.money_note"))}
         {step(t("sec.help.paper"), t("sec.help.paper_note"))}
         {step(t("sec.help.nothing"), t("sec.help.nothing_note"))}
       </ul>
-      <div className="mt-3 flex items-baseline justify-between rounded-xl border bg-muted/30 px-3 py-2 text-sm">
+      <div className="mt-3 flex items-baseline justify-between border-t pt-3 text-sm">
         <span className="text-muted-foreground">{t("sec.help.on_now")}</span>
         <b dir="ltr" className="tabular-nums">
           {on} / {total}

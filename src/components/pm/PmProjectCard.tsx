@@ -107,7 +107,7 @@ export function PmProjectCard({ project, onFeed }: { project: PortfolioProject; 
         <ProgressLine feed={feed} />
       )}
 
-      <dl className="grid grid-cols-3 gap-2 border-t pt-3 text-xs">
+      <dl className="grid grid-cols-3 gap-2 border-t pt-3 text-xs [&>div]:min-w-0">
         <div>
           <dt className="text-muted-foreground">{t("list.contract_value")}</dt>
           <dd className="font-black tabular-nums text-foreground" dir="ltr">

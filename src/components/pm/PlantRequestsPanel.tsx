@@ -101,9 +101,9 @@ export function PlantRequestsPanel({ projectId, orgId, access, actor }: { projec
             )}
           </>
         }
+        description={t("plantreq.sub")}
         bodyClassName="p-0"
       >
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t("plantreq.sub")}</p>
         {list.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("plantreq.empty")}</p>
         ) : (
@@ -144,13 +144,13 @@ export function PlantRequestsPanel({ projectId, orgId, access, actor }: { projec
                           <Check size={13} className="me-1" aria-hidden="true" />
                           {t("sup.approve")}
                         </Button>
-                        <Button size="sm" variant="outline" className="h-7" disabled={busy !== null} onClick={() => firestore && void run(`no${r.seq}`, () => decidePlant(firestore, access.ctx, projectId, actor, r.seq, false), t("plantreq.rejected", { no: plantNo(r.seq) }))}>
+                        <Button size="sm" variant="ghost" className="h-7" disabled={busy !== null} onClick={() => firestore && void run(`no${r.seq}`, () => decidePlant(firestore, access.ctx, projectId, actor, r.seq, false), t("plantreq.rejected", { no: plantNo(r.seq) }))}>
                           {t("sup.reject")}
                         </Button>
                       </div>
                     )}
                     {r.status === "go" && !r.rep && canReq && (
-                      <Button size="sm" variant="outline" className="h-7" onClick={() => setReplyOf(r)}>
+                      <Button size="sm" variant="ghost" className="h-7" onClick={() => setReplyOf(r)}>
                         {t("plantreq.rep.record")}
                       </Button>
                     )}
@@ -163,7 +163,7 @@ export function PlantRequestsPanel({ projectId, orgId, access, actor }: { projec
                     {plantHireable(r) && canOk && (
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="ghost"
                         className="h-7"
                         disabled={busy !== null}
                         onClick={() => firestore && void run(`hire${r.seq}`, () => hirePlantInstead(firestore, access.ctx, projectId, actor, r.seq), t("plantreq.hired", { no: plantNo(r.seq) }))}
@@ -178,9 +178,7 @@ export function PlantRequestsPanel({ projectId, orgId, access, actor }: { projec
             })}
           </div>
         )}
-        <div className="p-3">
-          <Callout tone="info">{t("plantreq.trigger")}</Callout>
-        </div>
+        <p className="border-t px-4 py-2 text-xs text-muted-foreground">{t("plantreq.trigger")}</p>
       </Panel>
       {open && <PlantDialog projectId={projectId} access={access} actor={actor} acts={acts} onClose={() => setOpen(false)} />}
       {replyOf && <ReplyDialog projectId={projectId} r={replyOf} access={access} actor={actor} onClose={() => setReplyOf(null)} />}
@@ -207,7 +205,7 @@ function ReplyDialog({ projectId, r, access, actor, onClose }: { projectId: stri
   }
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("plantreq.rep.title")}</DialogTitle>
           <DialogDescription dir="auto">

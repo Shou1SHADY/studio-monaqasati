@@ -81,7 +81,7 @@ export type DecisionKind =
   | "ztight"
   | "portal_unopened"
 
-export type DecisionTab = "pmUnits" | "pmMeasure" | "pmQa" | "pmSubm" | "pmVo" | "pmClaims" | "pmClose" | "pmProgramme" | "pmTerms" | "pmSubs" | "pmDocs" | "pmCorr" | "pmSite" | "pmCvr" | "pmReq" | "pmStore" | "pmPo" | "boq" | "ipc" | "team" | "info"
+export type DecisionTab = "pmUnits" | "pmMeasure" | "pmQa" | "pmSubm" | "pmVo" | "pmClaims" | "pmClose" | "pmProgramme" | "pmTerms" | "pmSubs" | "pmDocs" | "pmCorr" | "pmPortal" | "pmSite" | "pmCvr" | "pmReq" | "pmStore" | "pmPo" | "boq" | "ipc" | "team" | "info"
 
 /** The prototype's four groups (DGRP): money on hold, contract risk, what
  * stops the site, and what waits on you. */
@@ -667,14 +667,15 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
       count: pastPeriod.length,
       amount: r2(pastPeriod.reduce((a, c) => a + c.net, 0)),
       age,
-      tab: link === "letter" ? "ipc" : "pmCorr",
+      // CP-01: where the link is — the portal's own screen; without a portal, the certificate itself.
+      tab: link === "letter" ? "ipc" : "pmPortal",
       detail: `detail_${link}`,
       vars: { days: period, link },
     })
   }
   // CP-13: the link went out and was never opened while something waits on him.
   if (f.portal?.sentOn && !f.portal.seenOn && (f.portalWaiting ?? 0) > 0 && days(f.portal.sentOn, f.today) >= PORTAL_UNOPENED_DAYS)
-    out.push({ kind: "portal_unopened", severity: "amber", count: f.portalWaiting, age: days(f.portal.sentOn, f.today), tab: "pmCorr" })
+    out.push({ kind: "portal_unopened", severity: "amber", count: f.portalWaiting, age: days(f.portal.sentOn, f.today), tab: "pmPortal" })
   const overdue = f.certificates.filter((c) => (c.status === "appr" || c.status === "part") && c.dueOn && c.dueOn < f.today)
   // Finance records what is collected: with Finance switched off there is nobody to chase it with.
   if (overdue.length && !f.financeOff) {

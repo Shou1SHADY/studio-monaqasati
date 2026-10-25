@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Chip } from "@/components/module-ui/Chip"
 import { Callout } from "@/components/module-ui/Callout"
 import { DrawerSection } from "@/components/module-ui/DrawerSection"
 import { EmptyState } from "@/components/module-ui/EmptyState"
@@ -121,24 +122,17 @@ export function ProjectStorePanel({
 
   return (
     <>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <Panel title={t("store.title")} icon={Box} count={groups.open.length + groups.act.length} bodyClassName="p-0">
-          <p className="px-4 pt-3 text-xs text-muted-foreground">{t("store.sub")}</p>
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <Panel title={t("store.title")} icon={Box} count={groups.open.length + groups.act.length} description={t("store.sub")} className="min-w-0" bodyClassName="p-0">
           {lines.length === 0 ? (
-            <EmptyState icon={Box} title={t("store.empty")} description={t("store.empty_desc")} className="py-8" />
+            <EmptyState bare icon={Box} title={t("store.empty")} description={t("store.empty_desc")} />
           ) : (
             <>
               <div className="flex flex-wrap gap-1.5 px-4 pb-1 pt-3">
                 {(["act", "open", "done"] as const).map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    aria-pressed={f === k}
-                    onClick={() => setFilter(k)}
-                    className={cn("rounded-full border px-3 py-1 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", f === k ? "border-module bg-module/10 text-module" : "hover:bg-muted")}
-                  >
-                    {t(`store.f.${k}`)} <b className="tabular-nums">{groups[k].length}</b>
-                  </button>
+                  <Chip key={k} selected={f === k} count={groups[k].length} onClick={() => setFilter(k)}>
+                    {t(`store.f.${k}`)}
+                  </Chip>
                 ))}
               </div>
               {list.length === 0 ? (
@@ -160,7 +154,7 @@ export function ProjectStorePanel({
           <p className="border-t px-4 py-2 text-xs text-muted-foreground">{t("store.foot")}</p>
         </Panel>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <Panel
             title={
               <span className="flex items-center gap-2">
@@ -171,9 +165,9 @@ export function ProjectStorePanel({
               </span>
             }
             icon={Truck}
+            description={t("store.rcv.sub")}
             bodyClassName="p-0"
           >
-            <p className="px-4 pt-3 text-xs text-muted-foreground">{t("store.rcv.sub")}</p>
             {rows.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("store.rcv.none")}</p>
             ) : (
@@ -192,7 +186,7 @@ export function ProjectStorePanel({
                         </p>
                       </div>
                       {canRcv && (
-                        <Button size="sm" variant={left ? "default" : "outline"} className="h-7" onClick={() => setRcv({ request: r, index })}>
+                        <Button size="sm" variant={left ? "default" : "ghost"} className="h-7" onClick={() => setRcv({ request: r, index })}>
                           {t("sup.receive")}
                         </Button>
                       )}
@@ -209,8 +203,7 @@ export function ProjectStorePanel({
           </Panel>
 
           {money && (
-            <Panel title={t("store.ww.title")} icon={CircleDollarSign}>
-              <p className="-mt-1 mb-2 text-xs text-muted-foreground">{t("store.ww.sub")}</p>
+            <Panel title={t("store.ww.title")} icon={CircleDollarSign} description={t("store.ww.sub")}>
               <KeyValueRow label={t("store.ww.received")} value={pmMoney(ww.received)} ltr />
               <KeyValueRow label={t("store.ww.measured")} value={pmMoney(ww.measured)} ltr />
               <KeyValueRow label={t("store.ww.declared")} value={pmMoney(ww.declared)} ltr />
@@ -382,8 +375,8 @@ function LedgerDrawer({
   return (
     <>
       <Sheet open onOpenChange={(o) => !o && onClose()}>
-        <SheetContent side={side} className="w-full overflow-y-auto sm:max-w-xl" dir={dir}>
-          <SheetHeader className="text-start">
+        <SheetContent side={side} className="w-full overflow-y-auto sm:max-w-2xl" dir={dir}>
+          <SheetHeader className="pe-10 text-start">
             <SheetTitle dir="auto">{x.name}</SheetTitle>
             <SheetDescription className="flex flex-wrap items-center gap-2">
               <StatusPill tone={ST_TONE[st]}>{t(`store.st.${st}`)}</StatusPill>
@@ -419,7 +412,7 @@ function LedgerDrawer({
                         {qty(itemUse(x, it))}
                       </b>
                       {canRate && (
-                        <Button size="sm" variant="outline" className="h-7" onClick={() => setRate(id)}>
+                        <Button size="sm" variant="ghost" className="h-7" onClick={() => setRate(id)}>
                           {r ? t("store.rate.correct") : t("store.rate.set")}
                         </Button>
                       )}
@@ -452,7 +445,7 @@ function LedgerDrawer({
                         )}
                       </span>
                       {!access.ctx.archived && (pmCan(access.ctx, "approve") || r.requestedByUserId === actor.uid) && (
-                        <Button size="sm" variant={done ? "default" : "outline"} className="h-7" onClick={() => onStop({ request: r, index })}>
+                        <Button size="sm" variant={done ? "default" : "ghost"} className="h-7" onClick={() => onStop({ request: r, index })}>
                           {t("sup.stop.title")}
                         </Button>
                       )}
@@ -469,7 +462,7 @@ function LedgerDrawer({
                     {t("store.mv.rx")}
                   </Button>
                   {canRate && codes.some((id) => ratedOn(x, id)) && (
-                    <Button size="sm" variant="outline" onClick={() => setRate(codes.find((id) => ratedOn(x, id)) ?? null)}>
+                    <Button size="sm" variant="ghost" className="border" onClick={() => setRate(codes.find((id) => ratedOn(x, id)) ?? null)}>
                       {t("store.rate.correct_the")}
                     </Button>
                   )}
@@ -499,35 +492,35 @@ function LedgerDrawer({
             {can && (
               <div className="flex flex-wrap gap-2 border-t pt-3">
                 {contracts.length > 0 && engineerHold(x, items, contracts) > 0.005 && (
-                  <Button size="sm" variant="outline" onClick={() => setIssue(true)}>
+                  <Button size="sm" variant="ghost" className="border" onClick={() => setIssue(true)}>
                     <HardHat size={14} className="me-1.5" aria-hidden="true" />
                     {t("store.mv.iss")}
                   </Button>
                 )}
                 {bal > 0.005 && unrated && (
-                  <Button size="sm" variant="outline" onClick={() => setMove({ t: "use" })}>
+                  <Button size="sm" variant="ghost" className="border" onClick={() => setMove({ t: "use" })}>
                     <Check size={14} className="me-1.5" aria-hidden="true" />
                     {t("store.mv.use")}
                   </Button>
                 )}
                 {bal > 0.005 && (
                   <>
-                    <Button size="sm" variant="outline" onClick={() => setMove({ t: "ret" })}>
+                    <Button size="sm" variant="ghost" className="border" onClick={() => setMove({ t: "ret" })}>
                       <Undo2 size={14} className="me-1.5" aria-hidden="true" />
                       {t("store.mv.ret")}
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => setMove({ t: "xo" })}>
+                    <Button size="sm" variant="ghost" className="border" onClick={() => setMove({ t: "xo" })}>
                       <ArrowLeftRight size={14} className="me-1.5" aria-hidden="true" />
                       {t("store.mv.xo")}
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => setMove({ t: "loss" })}>
+                    <Button size="sm" variant="ghost" className="border" onClick={() => setMove({ t: "loss" })}>
                       <AlertTriangle size={14} className="me-1.5" aria-hidden="true" />
                       {t("store.mv.loss")}
                     </Button>
                   </>
                 )}
                 {st !== "neg" && (
-                  <Button size="sm" variant="outline" onClick={() => setMove({ t: "rx" })}>
+                  <Button size="sm" variant="ghost" className="border" onClick={() => setMove({ t: "rx" })}>
                     <Plus size={14} className="me-1.5" aria-hidden="true" />
                     {t("store.mv.rx_s")}
                   </Button>
@@ -613,11 +606,11 @@ function MoveRow({ m, locale, canApprove, canMove, mine, sentByMe, busy, onDecid
             {t("sup.approve")}
           </Button>
           {m.t === "loss" && m.why !== "theft" && (
-            <Button size="sm" variant="outline" className="h-7" disabled={busy !== null} onClick={() => onDecide("sup")}>
+            <Button size="sm" variant="ghost" className="h-7" disabled={busy !== null} onClick={() => onDecide("sup")}>
               {t("store.on_supplier")}
             </Button>
           )}
-          <Button size="sm" variant="outline" className="h-7 text-destructive" disabled={busy !== null} onClick={() => onDecide("rej")}>
+          <Button size="sm" variant="ghost" className="h-7 text-destructive" disabled={busy !== null} onClick={() => onDecide("rej")}>
             {t("sup.reject")}
           </Button>
         </div>
@@ -630,7 +623,7 @@ function MoveRow({ m, locale, canApprove, canMove, mine, sentByMe, busy, onDecid
           <Button size="sm" className="h-7" disabled={busy !== null} onClick={onConfirm}>
             {t("store.confirm_in")}
           </Button>
-          <Button size="sm" variant="outline" className="h-7 text-destructive" disabled={busy !== null} onClick={onRefuse}>
+          <Button size="sm" variant="ghost" className="h-7 text-destructive" disabled={busy !== null} onClick={onRefuse}>
             {t("store.refuse_in")}
           </Button>
         </div>
@@ -651,7 +644,7 @@ function RefuseTransferDialog({ projectId, x, index, onClose }: { projectId: str
   }
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("store.refuse.title")}</DialogTitle>
           <DialogDescription dir="auto">{t("store.refuse.desc", { q: qty(m.q), unit: x.unit, name: x.name, project: m.otherProjectName || "—" })}</DialogDescription>
@@ -855,7 +848,7 @@ function RateDialog({ projectId, x, item, access, onClose }: { projectId: string
   }
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{had ? t("store.rate.correct_the") : t("store.rate.set_the")}</DialogTitle>
           <DialogDescription dir="auto">

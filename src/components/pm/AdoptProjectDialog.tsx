@@ -49,7 +49,7 @@ export function AdoptProjectDialog({ open, onOpenChange, projectId, orgId, actor
 
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("adopt.title")}</DialogTitle>
           <DialogDescription>{t("adopt.desc")}</DialogDescription>
@@ -68,7 +68,7 @@ export function AdoptProjectDialog({ open, onOpenChange, projectId, orgId, actor
               disabled={busy}
             />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="adopt-start">{t("adopt.start_on")}</Label>
               <Input id="adopt-start" type="date" dir="ltr" value={startOn} onChange={(e) => setStartOn(e.target.value)} disabled={busy} />

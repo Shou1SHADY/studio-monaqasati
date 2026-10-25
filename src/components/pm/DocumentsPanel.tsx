@@ -138,17 +138,17 @@ export function DocumentsPanel({
       icon={FileText}
       actions={
         canManage ? (
-          <Button size="sm" variant="outline" onClick={openForm}>
+          <Button size="sm" variant="ghost" className="border" onClick={openForm}>
             <Plus size={15} className="me-1.5" aria-hidden="true" />
             {t("docs.new")}
           </Button>
         ) : null
       }
+      description={t("docs.sub")}
+      bodyClassName="p-0"
     >
-      <p className="mb-3 text-xs text-muted-foreground">{t("docs.sub")}</p>
-
       {stale.length > 0 && (
-        <Callout tone="block" className="mb-3">
+        <Callout tone="block" className="m-3">
           <b>{t("docs.stale_head", { count: stale.length })}</b>{" "}
           {stale.map((d, i) => (
             <span key={d.id}>
@@ -161,15 +161,15 @@ export function DocumentsPanel({
       )}
 
       {docs.length === 0 ? (
-        <EmptyState icon={FileText} title={t("docs.empty")} description={t("docs.empty_desc")} />
+        <EmptyState bare icon={FileText} title={t("docs.empty")} description={t("docs.empty_desc")} />
       ) : (
-        <ul className="divide-y rounded-xl border">
+        <ul className={cn("divide-y", stale.length > 0 && "border-t")}>
           {docs.map((d) => {
             const cur = currentRevision(d)
             const prev = previousCode(d)
             const f = fileOf(d)
             return (
-              <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
+              <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold" dir="auto">
                     {d.name}
@@ -246,7 +246,7 @@ export function DocumentsPanel({
               </>
             )}
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="doc-code">{t("docs.code")}</Label>
                 <Input id="doc-code" dir="ltr" value={code} onChange={(e) => setCode(e.target.value)} disabled={busy} />

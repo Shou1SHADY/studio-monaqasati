@@ -36,6 +36,7 @@ import { createMaterialRequest, decideChange, PmSupplyError, receiveOnProject, r
 import { PURCHASE_ORDERS } from "@/lib/procurement/types"
 import { ChoiceChips, FormHint } from "./ContractBits"
 import { PmFilesField } from "./PmAttachments"
+import { IconButton } from "@/components/module-ui/IconButton"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { MaterialSearchInput } from "@/components/materials/MaterialSearchInput"
 import { MaterialBrowserDialog, type BrowserResult } from "@/components/materials/MaterialBrowserDialog"
@@ -209,7 +210,7 @@ export function NewRequestDialog({
               </Button>
             )}
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="mr-need">{t("sup.form.need_by")}</Label>
               <Input id="mr-need" type="date" dir="ltr" min={today} value={needBy} onChange={(e) => setNeedBy(e.target.value)} />
@@ -361,9 +362,7 @@ function LineEditor({
           <option value={GEN}>{t("sup.general")}</option>
         </NativeSelect>
         {removable && (
-          <Button type="button" size="icon" variant="ghost" className="shrink-0" aria-label={t("sup.form.remove_line")} onClick={onRemove}>
-            <X size={15} aria-hidden="true" />
-          </Button>
+          <IconButton icon={X} label={t("sup.form.remove_line")} className="shrink-0" onClick={onRemove} />
         )}
       </div>
       {line.itemId && (
@@ -532,7 +531,7 @@ export function ReceiveDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("sup.rcv.title")}</DialogTitle>
           <DialogDescription dir="auto">
@@ -553,7 +552,7 @@ export function ReceiveDialog({
             {lineGot(line) > 0 && <KeyValueRow label={t("sup.rcv.before")} value={`${qty(lineGot(line))} ${line.unit}`} />}
             <KeyValueRow label={t("sup.rcv.left")} value={`${qty(left)} ${line.unit}`} strong />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="rc-acc">{t("sup.rcv.acc")} *</Label>
               <Input id="rc-acc" type="number" min={0} dir="ltr" placeholder={t("sup.rcv.acc_ph")} value={acc} onChange={(e) => setAcc(e.target.value)} />
@@ -640,7 +639,7 @@ export function StopLineDialog({ projectId, access, actor, request, index, onClo
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{mode === "close" ? t("sup.stop.title") : t("sup.stop.cancel_title")}</DialogTitle>
           <DialogDescription dir="auto">
@@ -703,7 +702,7 @@ export function ChangeOnClientDialog({ projectId, access, actor, request, index,
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("sup.chg.own_title")}</DialogTitle>
           <DialogDescription dir="auto">
@@ -758,7 +757,7 @@ export function RejectRequestDialog({ projectId, access, actor, request, onClose
   }
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("sup.reject_title")}</DialogTitle>
           <DialogDescription dir="auto">{request.title}</DialogDescription>

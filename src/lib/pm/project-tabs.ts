@@ -53,6 +53,7 @@ export const GROUP_OF: Record<string, ProjectGroup> = {
   info: "file",
   pmDocs: "file",
   pmCorr: "file",
+  pmPortal: "file",
   docs: "file",
   contract: "file",
   team: "settings",
@@ -69,7 +70,8 @@ export interface GroupedTabs<T extends { key: string }> {
 
 // Where the prototype's SEGS put a screen first: the certificates lead Money,
 // the contract data leads File. Unranked screens keep the order they were given.
-const LEAD: Record<string, number> = { ipc: 0, pmCost: 1, pmMatch: 2, pmCvr: 3, info: 0, pmDocs: 1, pmCorr: 2, pmClose: 3 }
+// The consultant portal follows Correspondence (CP-01 — its own screen, no longer under the letters).
+const LEAD: Record<string, number> = { ipc: 0, pmCost: 1, pmMatch: 2, pmCvr: 3, info: 0, pmDocs: 1, pmCorr: 2, pmPortal: 3, pmClose: 4 }
 
 /** The groups that have at least one screen, in the prototype's order, each
  * with its screens in the prototype's order. */

@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
@@ -33,6 +34,7 @@ import { useFirestore } from "@/firebase"
 import { resolveCentralForRegion, useCentralWarehouse } from "@/hooks/useCentralWarehouse"
 import { useHandoverPeople } from "@/hooks/useHandoverPeople"
 import { useToast } from "@/hooks/use-toast"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { useRouter } from "@/i18n/routing"
 import { parseBoqFile, type BoqParseResult } from "@/lib/boq-parser"
 import { blankDraftRow, divisionOfCode, draftRowProblems, draftTotal, isBlankDraftRow, parseBoqCsv, type BoqDraftRow, type ImportRow } from "@/lib/pm/boq"
@@ -433,7 +435,7 @@ export function AcceptHandoverWizard({
               </Label>
               <Input id="new-name" dir="auto" value={draft.name} onChange={(e) => set("name", e.target.value)} placeholder={t("manual.name_ph")} disabled={busy} aria-required="true" />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="new-client">
                   {t("field.client")} <span className="text-destructive">*</span>
@@ -465,7 +467,7 @@ export function AcceptHandoverWizard({
                 <p className="text-xs text-muted-foreground">{t("manual.kind_hint")}</p>
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="new-region">{t("manual.region")}</Label>
                 <Input id="new-region" dir="auto" value={draft.region} onChange={(e) => set("region", e.target.value)} placeholder={t("manual.region_ph")} disabled={busy} />
@@ -475,7 +477,7 @@ export function AcceptHandoverWizard({
                 <Input id="new-loc" dir="auto" value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t("wizard.site_location_ph")} disabled={busy} />
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="new-pm">{t("wizard.pm_label")}</Label>
                 <Select value={managerUid} onValueChange={setManagerUid} disabled={busy}>
@@ -512,7 +514,7 @@ export function AcceptHandoverWizard({
                 <p className="text-xs text-muted-foreground">{t("wizard.site_hint")}</p>
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label htmlFor="new-start">{t("manual.start")}</Label>
                 <Input id="new-start" type="date" dir="ltr" value={draft.startOn} onChange={(e) => set("startOn", e.target.value)} disabled={busy} />
@@ -528,7 +530,7 @@ export function AcceptHandoverWizard({
                 <p className="text-xs text-muted-foreground">{t("manual.value_hint")}</p>
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <fieldset className="space-y-1.5">
                 <legend className="text-sm font-medium">{t("manual.advance")}</legend>
                 <div className="flex flex-wrap gap-1.5">
@@ -590,7 +592,7 @@ export function AcceptHandoverWizard({
               {fileExtras(handover).consultantName && <KeyValueRow label={t("wizard.row_consultant")} value={<span dir="auto">{fileExtras(handover).consultantName}</span>} />}
               <KeyValueRow label={t("wizard.row_boq")} value={crmCount ? t("wizard.boq_from_bid", { count: crmCount }) : <span className="font-bold text-destructive">{t("wizard.boq_not_attached")}</span>} />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="acc-region">{t("manual.region")}</Label>
                 <Input id="acc-region" dir="auto" value={region} onChange={(e) => setRegion(e.target.value)} placeholder={t("manual.region_ph")} disabled={busy} />
@@ -685,7 +687,7 @@ export function AcceptHandoverWizard({
                       </Button>
                     </div>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {rows.map((id) => {
                       const def = SECTION_REGISTRY[id]
                       const on = sections.includes(id)
@@ -734,7 +736,7 @@ export function AcceptHandoverWizard({
                   <ChevronDown size={14} className="transition-transform group-open:rotate-180" aria-hidden="true" />
                 </summary>
                 <div className="space-y-2 border-t p-3">
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {ghosts.map((id) => (
                       <div key={id} className="rounded-xl border border-dashed p-3 opacity-70">
                         <p className="text-sm font-bold">{secName(id)}</p>
@@ -753,7 +755,7 @@ export function AcceptHandoverWizard({
           <div className="space-y-4">
             <fieldset className="space-y-2">
               <legend className="text-sm font-bold">{t("wizard.boq_where")}</legend>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {(handover ? boqSourcesFor(handover) : boqSourcesFor({ boq: [] })).map((s) => {
                   const Icon = SOURCE_ICON[s]
                   return (
@@ -879,8 +881,17 @@ export function AcceptHandoverWizard({
 function CrmBoqLocked({ rows }: { rows: BoqDraftRow[] }) {
   const t = useTranslations("Portal.PM")
   const filled = rows.filter((r) => !isBlankDraftRow(r))
+  const labels = useTableLabels()
+  const columns: DataColumn<BoqDraftRow>[] = [
+    { key: "code", header: t("wizard.boq_col_code"), cell: (r) => <bdi dir="ltr" className="tabular-nums">{r.itemNo}</bdi> },
+    { key: "desc", header: t("wizard.boq_col_desc"), cell: (r) => <span dir="auto">{r.descriptionAr || r.descriptionEn}</span> },
+    { key: "unit", header: t("wizard.boq_col_unit"), cell: (r) => r.unit },
+    { key: "qty", header: t("boq.qty"), numeric: true, cell: (r) => r.quantity },
+    { key: "rate", header: t("boq.rate"), numeric: true, hideBelow: "md", cell: (r) => (r.rate > 0 ? pmMoney(r.rate) : "—") },
+    { key: "total", header: t("boq.total"), numeric: true, cell: (r) => (r.rate > 0 ? pmMoney(r.rate * r.quantity) : "—") },
+  ]
   return (
-    <section className="rounded-xl border" aria-labelledby="boq-crm-title">
+    <section className="overflow-hidden rounded-xl border" aria-labelledby="boq-crm-title">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
         <div>
           <p id="boq-crm-title" className="flex items-center gap-1.5 text-sm font-bold">
@@ -893,42 +904,17 @@ function CrmBoqLocked({ rows }: { rows: BoqDraftRow[] }) {
           {pmMoney(draftTotal(filled))}
         </span>
       </div>
-      <div className="max-h-80 overflow-auto">
-        <table className="w-full min-w-[560px] text-sm">
-          <thead>
-            <tr className="border-b text-xs text-muted-foreground">
-              <th className="px-3 py-2 text-start font-semibold">{t("wizard.boq_col_code")}</th>
-              <th className="px-3 py-2 text-start font-semibold">{t("wizard.boq_col_desc")}</th>
-              <th className="px-3 py-2 text-start font-semibold">{t("wizard.boq_col_unit")}</th>
-              <th className="px-3 py-2 text-end font-semibold">{t("boq.qty")}</th>
-              <th className="px-3 py-2 text-end font-semibold">{t("boq.rate")}</th>
-              <th className="px-3 py-2 text-end font-semibold">{t("boq.total")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filled.map((r) => (
-              <tr key={r.id} className="border-b last:border-0">
-                <td className="px-3 py-2 tabular-nums" dir="ltr">
-                  {r.itemNo}
-                </td>
-                <td className="px-3 py-2" dir="auto">
-                  {r.descriptionAr || r.descriptionEn}
-                </td>
-                <td className="px-3 py-2">{r.unit}</td>
-                <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                  {r.quantity}
-                </td>
-                <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                  {r.rate > 0 ? pmMoney(r.rate) : "—"}
-                </td>
-                <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                  {r.rate > 0 ? pmMoney(r.rate * r.quantity) : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={filled}
+        rowKey={(r) => r.id}
+        caption={t("wizard.crm_locked_title")}
+        labels={labels}
+        bordered={false}
+        dense
+        maxHeight="20rem"
+        empty={null}
+      />
     </section>
   )
 }

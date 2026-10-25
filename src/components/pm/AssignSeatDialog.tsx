@@ -216,7 +216,7 @@ export function AssignSeatDialog({
               return (
                 <div key={g.key} className="space-y-1.5">
                   <p className="text-xs font-bold text-muted-foreground">{t(`duty_group.${g.key}`)}</p>
-                  <div className="grid gap-1.5 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                     {offered.map((d) => {
                       const allowedHere = within(d)
                       const on = allowedHere && ticked.includes(d)

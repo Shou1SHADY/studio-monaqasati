@@ -139,7 +139,8 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
         canEdit ? (
           <Button
             size="sm"
-            variant="outline"
+            variant="ghost"
+            className="border"
             onClick={() => {
               setLocation(project.location ?? "")
               setEditing(true)
@@ -234,13 +235,13 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
       {prov && <KeyValueRow label={t("info.prov")} value={t("info.prov_value", { date: pmDate(prov, locale), end: pmDate(addDays(prov, terms.defectsDays), locale) })} />}
 
       <Dialog open={editing} onOpenChange={(o) => !busy && setEditing(o)}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("info.edit_title")}</DialogTitle>
             <DialogDescription dir="auto">{project.name ?? ""}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="pi-loc">{t("info.location")}</Label>
                 <Input id="pi-loc" value={location} onChange={(e) => setLocation(e.target.value)} disabled={busy} dir="auto" />
@@ -323,14 +324,14 @@ export function PmTermsGlance({
       icon={Settings2}
       actions={
         onOpenTerms ? (
-          <Button size="sm" variant="outline" onClick={onOpenTerms}>
+          <Button size="sm" variant="ghost" className="border" onClick={onOpenTerms}>
             <FileText size={14} className="me-1.5" aria-hidden="true" />
             {t("glance.open_terms")}
           </Button>
         ) : undefined
       }
+      description={t("glance.sub")}
     >
-      <p className="mb-2 text-xs text-muted-foreground">{t("glance.sub")}</p>
       <KeyValueRow label={t("terms.payer")} value={text("payer", terms.payer)} />
       <KeyValueRow label={t("terms.damages")} value={text("damages", terms.damages)} />
       {terms.damages.on &&
@@ -339,9 +340,7 @@ export function PmTermsGlance({
             {t("glance.penalty", { amount: pmMoney(delay.damages), pct: pmPct(value ? delay.damages / value : 0) })}
           </Callout>
         ) : (
-          <Callout tone="info" className="my-2">
-            {t("glance.no_penalty")}
-          </Callout>
+          <FormHint>{t("glance.no_penalty")}</FormHint>
         ))}
       <KeyValueRow label={t("terms.claimNoticeDays")} value={text("claimNoticeDays", terms.claimNoticeDays)} />
       <FormHint>{t("terms.mean.notice")}</FormHint>
@@ -378,13 +377,12 @@ export function PmStartPanel({ projectId, project, boqItems, access }: { project
   }
 
   return (
-    <Panel title={t("startp.title")} icon={Play}>
-      <p className="mb-2 text-xs text-muted-foreground">{t("startp.sub")}</p>
+    <Panel title={t("startp.title")} icon={Play} description={t("startp.sub")}>
       <CheckLine ok={boqItems > 0} title={t("startp.boq")} note={boqItems > 0 ? t("startp.items", { count: boqItems }) : t("startp.no_items")} />
       <CheckLine ok={Boolean(project.projectManagerId)} title={t("startp.pm")} note={project.projectManagerName || t("startp.not_assigned")} />
       <CheckLine ok={!blocks.includes("terms_invalid")} title={t("startp.terms")} note={blocks.includes("terms_invalid") ? t("start_block.terms_invalid") : t("startp.terms_ok")} />
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <Button variant="success"  onClick={() => void start()} disabled={busy || blocks.length > 0}>
+        <Button variant="success" size="sm" onClick={() => void start()} disabled={busy || blocks.length > 0}>
           {busy ? <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" /> : <Play size={16} className="me-1.5" aria-hidden="true" />}
           {t("startp.start")}
         </Button>
