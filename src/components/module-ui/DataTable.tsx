@@ -17,7 +17,8 @@
 //  - a phone (< 768 px) gets a card per row instead of a sideways scroll — never give the table a fixed `min-w`;
 //  - `rowGroup` names the section a row belongs to (the BOQ's division): a full-width section row opens each run of rows
 //    of one section, on the phone a small heading between the cards. Sorting reorders rows inside the grouping the
-//    caller gave; a section that comes back later opens again.
+//    caller gave; a section that comes back later opens again. `foldedGroups` keeps a section's row but leaves its rows
+//    out (the BOQ's fold per division — the label carries the caller's own toggle).
 
 import { useMemo, useState, type ReactNode } from "react"
 import { useLocale } from "next-intl"
@@ -71,13 +72,14 @@ export interface RowGroup {
 }
 
 /** The rows with a section heading before each run of one section (`rowGroup` absent: the rows alone). */
-function withGroups<T>(rows: readonly T[], rowGroup?: (row: T) => RowGroup | null | undefined): Array<{ group: RowGroup } | { row: T }> {
+function withGroups<T>(rows: readonly T[], rowGroup?: (row: T) => RowGroup | null | undefined, folded?: ReadonlySet<string>): Array<{ group: RowGroup } | { row: T }> {
   const out: Array<{ group: RowGroup } | { row: T }> = []
   let last: string | null = null
   for (const row of rows) {
     const g = rowGroup?.(row)
     if (g && g.key !== last) out.push({ group: g })
     last = g ? g.key : null
+    if (g && folded?.has(g.key)) continue
     out.push({ row })
   }
   return out
@@ -106,6 +108,7 @@ export function DataTable<T>({
   dense,
   cardTitleKey,
   rowGroup,
+  foldedGroups,
   bordered = true,
   onRowClick,
   className,
@@ -129,6 +132,8 @@ export function DataTable<T>({
   cardTitleKey?: string
   /** The section a row belongs to (e.g. the BOQ division): a section row opens each run of its rows. */
   rowGroup?: (row: T) => RowGroup | null | undefined
+  /** Sections (by `rowGroup` key) shown by their section row only — their rows are left out. */
+  foldedGroups?: ReadonlySet<string>
   /** False inside a Panel that already draws the frame. */
   bordered?: boolean
   /** The whole row opens it (a click that lands on a link or button inside the row is left to that control).
@@ -180,7 +185,7 @@ export function DataTable<T>({
     return (
       <div className={cn(frame, "overflow-hidden", className)}>
         <ul className="divide-y" aria-label={caption}>
-          {withGroups(shown, rowGroup).map((entry, n) => {
+          {withGroups(shown, rowGroup, foldedGroups).map((entry, n) => {
             if ("group" in entry)
               return (
                 <li key={`g:${entry.group.key}:${n}`} data-row-group="" className="bg-muted/60 px-4 py-1.5 text-xs font-bold text-muted-foreground">
@@ -257,7 +262,7 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody className="divide-y">
-            {withGroups(shown, rowGroup).map((entry, n) => {
+            {withGroups(shown, rowGroup, foldedGroups).map((entry, n) => {
               if ("group" in entry)
                 return (
                   <tr key={`g:${entry.group.key}:${n}`} data-row-group="" className="bg-muted/60">

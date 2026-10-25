@@ -62,23 +62,25 @@ export function BoqItemSupply({
     <>
       {mats.length > 0 && (
         <DrawerSection title={t("boqsup.need_title")}>
+          <div className="divide-y">
           {mats.map((x) => {
             const row = need.gaps.find((g) => g.key === x.key && g.itemId === item.id)
             const bal = Math.max(0, storeBalance(x, items))
             const way = onTheWay(world.requests, x.key)
             const n = need30.find((g) => g.key === x.key && g.itemId === item.id)?.need ?? 0
             return (
-              <div key={x.id} className="flex items-center justify-between gap-2 py-2 text-xs">
+              <div key={x.id} className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 py-2 text-xs">
                 <span className="min-w-0 truncate font-semibold" dir="auto">
                   {x.name}
                 </span>
-                <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
+                <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-muted-foreground">
                   <span>{t("boqsup.need_line_30", { need: qty(n), site: qty(bal), way: qty(way) })}</span>
                   {row ? <StatusPill tone="bad">{t("boqsup.gap", { q: qty(row.gap) })}</StatusPill> : <StatusPill tone="ok">{t("boqsup.covered")}</StatusPill>}
                 </span>
               </div>
             )
           })}
+          </div>
         </DrawerSection>
       )}
       <DrawerSection title={t("boqsup.mats_title")} count={mats.length}>
@@ -87,6 +89,7 @@ export function BoqItemSupply({
         ) : (
           <>
             <p className="pb-1 text-[11px] text-muted-foreground">{t("boqsup.shared")}</p>
+            <div className="divide-y">
             {mats.map((x) => {
               const r = ratedOn(x, item.id)
               const src = x.rates[item.id]
@@ -129,11 +132,13 @@ export function BoqItemSupply({
                 </div>
               )
             })}
+            </div>
           </>
         )}
       </DrawerSection>
       {reqs.length > 0 && (
         <DrawerSection title={t("boqsup.req_title")} count={reqs.length}>
+          <div className="divide-y">
           {reqs.map((r) => {
             const st = reqState(r)
             const mine = r.lines.filter((l) => l.itemId === item.id)
@@ -149,6 +154,7 @@ export function BoqItemSupply({
               </div>
             )
           })}
+          </div>
         </DrawerSection>
       )}
     </>

@@ -27,7 +27,8 @@ import { Callout } from "@/components/module-ui/Callout"
 import { DrawerSection } from "@/components/module-ui/DrawerSection"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
-import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
+import { Chip } from "@/components/module-ui/Chip"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
@@ -72,6 +73,7 @@ import { PM_VARIATIONS, voNo, type PmVariation } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
 import { CheckLine, FormHint } from "./ContractBits"
 
+const TABLE_LABELS = { sortBy: (c: string) => c, showMore: (n: number) => `+${n}` }
 const fmt = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US")
 const pct = (n: number) => `${Math.round(n)}%`
 
@@ -135,10 +137,10 @@ export function PmBoqPanel({
   const canImport = !access.ctx.archived && access.allowed("boq.import")
   const canEditLines = canImport && planning
   const open = lines.find((b) => b.id === openId) ?? null
-  const cols = money ? 6 : 3
   const filtering = search.trim() !== "" || view !== "all"
   const divisionKeys = groups.flatMap((g) => (g.division === null ? [] : [g.division]))
   const allCollapsed = divisionKeys.length > 0 && divisionKeys.every((d) => collapsed.has(d))
+  const columns = boqColumns({ t, money, canPrice, canEdit: canEditLines, totals: money && shown.length > 0 ? totals : null, onOpen: setOpenId, onPrice: setPricing, onEdit: setEditing })
   const toggleDivision = (d: string) =>
     setCollapsed((cur) => {
       const next = new Set(cur)
@@ -154,7 +156,8 @@ export function PmBoqPanel({
           icon={TableProperties}
           title={t("boq.empty")}
           description={t("boq.empty_desc")}
-          className="p-8"
+          bare
+          className="py-10"
           action={
             // CON-03: no import after the start — work outside the BOQ enters by a variation.
             canImport && planning ? (
@@ -184,52 +187,38 @@ export function PmBoqPanel({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <SegmentedNav
-          ariaLabel={t("boq.views")}
-          active={view}
-          onSelect={(id) => setView(id as BoqView)}
-          segments={[
-            {
-              id: "all",
-              label: t("boq.view.all"),
-              count: counts.all,
-              tone: "mute",
-            },
-            {
-              id: "leak",
-              label: t("boq.view.leak"),
-              count: counts.leak,
-              tone: counts.leak ? "bad" : "mute",
-            },
-            {
-              id: "ub",
-              label: t("boq.view.ub"),
-              count: counts.ub,
-              tone: counts.ub ? "warn" : "mute",
-            },
-            {
-              id: "ns",
-              label: t("boq.view.ns"),
-              count: counts.ns,
-              tone: "mute",
-            },
-            {
-              id: "done",
-              label: t("boq.view.done"),
-              count: counts.done,
-              tone: "ok",
-            },
-          ]}
-        />
+        <div role="group" aria-label={t("boq.views")} className="flex flex-wrap items-center gap-1.5">
+          {(
+            [
+              ["all", counts.all, null],
+              ["leak", counts.leak, "bad"],
+              ["ub", counts.ub, "warn"],
+              ["ns", counts.ns, null],
+              ["done", counts.done, null],
+            ] as const
+          ).map(([id, n, tone]) => (
+            <Chip key={id} selected={view === id} onClick={() => setView(id)}>
+              {t(`boq.view.${id}`)}
+              <span
+                dir="ltr"
+                className={cn(
+                  "min-w-5 rounded-full px-1.5 text-center text-[11px] tabular-nums leading-5",
+                  view === id ? "bg-white/20" : n > 0 && tone === "bad" ? "bg-destructive/10 text-destructive" : n > 0 && tone === "warn" ? "bg-warning/10 text-warning" : "bg-muted",
+                )}
+              >
+                {n}
+              </span>
+            </Chip>
+          ))}
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative w-full sm:w-auto">
             <Search size={14} className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("boq.search_ph")} aria-label={t("boq.search_ph")} className="h-9 w-full ps-8 sm:w-56" dir="auto" />
           </div>
-          <Button size="sm" variant={bySection ? "default" : "outline"} aria-pressed={bySection} onClick={() => setBySection((v) => !v)}>
-            <ListTree size={14} className="me-1.5" aria-hidden="true" />
+          <Chip selected={bySection} icon={ListTree} onClick={() => setBySection((v) => !v)}>
             {t("boq.group")}
-          </Button>
+          </Chip>
           {canEditLines && (
             <Button size="sm" onClick={() => setEditing("new")}>
               <Plus size={14} className="me-1.5" aria-hidden="true" />
@@ -237,7 +226,7 @@ export function PmBoqPanel({
             </Button>
           )}
           {bySection && divisionKeys.length > 1 && !filtering && (
-            <Button size="sm" variant="outline" onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(divisionKeys))}>
+            <Button size="sm" variant="ghost" onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(divisionKeys))}>
               {t(allCollapsed ? "boq.expand_all" : "boq.collapse_all")}
             </Button>
           )}
@@ -253,64 +242,19 @@ export function PmBoqPanel({
       )}
       {view === "leak" && counts.leak > 0 && <Callout tone="warn">{t("boq.leak_note")}</Callout>}
 
-      <div className="overflow-x-auto rounded-xl border bg-card">
-        <table className="w-full min-w-[44rem] text-sm">
-          <thead className="bg-muted/40 text-xs text-muted-foreground">
-            <tr>
-              <th className="px-4 py-2 text-start font-semibold">{t("boq.col.item")}</th>
-              <th className="px-3 py-2 text-end font-semibold">{t("boq.col.contracted")}</th>
-              <th className="px-3 py-2 text-start font-semibold">{t("boq.col.executed")}</th>
-              {money && <th className="px-3 py-2 text-end font-semibold">{t("boq.col.unbilled")}</th>}
-              {money && <th className="px-3 py-2 text-end font-semibold">{t("boq.col.cost")}</th>}
-              {money && <th className="px-4 py-2 text-end font-semibold">{t("boq.col.margin")}</th>}
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {shown.length === 0 && (
-              <tr>
-                <td colSpan={cols} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  {t("boq.none_match")}
-                </td>
-              </tr>
-            )}
-            {groups.map((g) => (
-              <BoqGroupRows
-                key={g.division ?? "_all"}
-                group={g}
-                cols={cols}
-                money={money}
-                canPrice={canPrice}
-                canEdit={canEditLines}
-                folded={!filtering && g.division !== null && collapsed.has(g.division)}
-                onToggle={toggleDivision}
-                onOpen={setOpenId}
-                onPrice={setPricing}
-                onEdit={setEditing}
-              />
-            ))}
-            {money && shown.length > 0 && (
-              <tr className="bg-muted/40 font-bold">
-                <td className="px-4 py-2">{t("boq.total")}</td>
-                <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                  {fmt(totals.contract)}
-                </td>
-                <td className="px-3 py-2 tabular-nums" dir="ltr">
-                  {pct(totals.progress)}
-                </td>
-                <td className="px-3 py-2 text-end tabular-nums text-destructive" dir="ltr">
-                  {fmt(totals.unbilled)}
-                </td>
-                <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                  {totals.costed ? fmt(totals.cost) : "—"}
-                </td>
-                <td className={cn("px-4 py-2 text-end tabular-nums", !totals.costed ? "text-muted-foreground" : totals.margin > 0 ? "text-success" : "text-destructive")} dir="ltr">
-                  {totals.costed ? fmt(totals.margin) : "—"}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable<PmBoqLine>
+        caption={t("boq.views")}
+        columns={columns}
+        rows={shown}
+        rowKey={(b) => b.id}
+        labels={TABLE_LABELS}
+        empty={<EmptyState bare icon={Search} title={t("boq.none_match")} className="rounded-xl border bg-card" />}
+        rowGroup={bySection ? (b) => ({ key: b.division, label: <GroupLabel group={groups.find((g) => g.division === b.division)} money={money} folded={!filtering && collapsed.has(b.division)} onToggle={toggleDivision} /> }) : undefined}
+        foldedGroups={filtering ? undefined : collapsed}
+        onRowClick={(b) => setOpenId(b.id)}
+        maxHeight="70vh"
+        dense
+      />
       {money && totals.estimated && <FormHint>{t("boq.cost_estimated")}</FormHint>}
 
       <ItemDrawer projectId={projectId} orgId={orgId ?? null} line={open} lines={lines} money={money} onClose={() => setOpenId(null)} />
@@ -330,183 +274,193 @@ export function PmBoqPanel({
   )
 }
 
-function BoqGroupRows({
-  group,
-  cols,
+/** The section row of the BOQ by division: fold toggle · name · count · contract value and earned share for money. */
+function GroupLabel({ group, money, folded, onToggle }: { group: ReturnType<typeof groupLines>[number] | undefined; money: boolean; folded: boolean; onToggle: (division: string) => void }) {
+  const t = useTranslations("Portal.PM")
+  if (!group) return null
+  return (
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-1 font-normal">
+      <button
+        type="button"
+        aria-expanded={!folded}
+        aria-label={t(folded ? "boq.expand_section" : "boq.collapse_section", { name: group.division || "—" })}
+        onClick={() => onToggle(group.division ?? "")}
+        className="inline-flex min-h-8 items-center gap-1.5 rounded text-start text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <ChevronDown size={14} className={cn("transition-transform", folded && "-rotate-90 rtl:rotate-90")} aria-hidden="true" />
+        <b dir="auto">{group.division || "—"}</b>
+        <span className="rounded-full bg-muted px-1.5 text-[11px] tabular-nums text-muted-foreground">{group.lines.length}</span>
+      </button>
+      {money && (
+        <span className="tabular-nums" dir="auto">
+          {group.contract > 0
+            ? t("boq.group_line", {
+                value: pmMoney(group.contract),
+                pct: pct((group.earned / group.contract) * 100),
+              })
+            : t("boq.no_rate")}
+        </span>
+      )}
+    </span>
+  )
+}
+
+/** The BOQ's columns: the item (opens the drawer), contracted, executed — and for money holders unbilled, cost, margin. */
+function boqColumns({
+  t,
   money,
   canPrice,
   canEdit,
-  folded,
-  onToggle,
+  totals,
   onOpen,
   onPrice,
   onEdit,
 }: {
-  group: ReturnType<typeof groupLines>[number]
-  cols: number
+  t: ReturnType<typeof useTranslations>
   money: boolean
   canPrice: boolean
   canEdit: boolean
-  folded: boolean
-  onToggle: (division: string) => void
+  totals: ReturnType<typeof boqTotals> | null
   onOpen: (id: string) => void
   onPrice: (b: PmBoqLine) => void
   onEdit: (b: PmBoqLine) => void
-}) {
-  const t = useTranslations("Portal.PM")
-  return (
-    <>
-      {group.division !== null && (
-        <tr className="bg-muted/25">
-          <td colSpan={cols} className="px-4 py-1.5 text-xs">
-            <button
-              type="button"
-              aria-expanded={!folded}
-              aria-label={t(folded ? "boq.expand_section" : "boq.collapse_section", { name: group.division || "—" })}
-              onClick={() => onToggle(group.division ?? "")}
-              className="inline-flex min-h-8 items-center gap-1.5 rounded text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <ChevronDown size={14} className={cn("transition-transform", folded && "-rotate-90 rtl:rotate-90")} aria-hidden="true" />
-              <b dir="auto">{group.division || "—"}</b>
-            </button>
-            <span className="ms-2 rounded-full bg-muted px-1.5 text-[11px] tabular-nums text-muted-foreground">{group.lines.length}</span>
-            {money && (
-              <span className="ms-3 tabular-nums text-muted-foreground" dir="auto">
-                {group.contract > 0
-                  ? t("boq.group_line", {
-                      value: pmMoney(group.contract),
-                      pct: pct((group.earned / group.contract) * 100),
-                    })
-                  : t("boq.no_rate")}
-              </span>
+}): DataColumn<PmBoqLine>[] {
+  const cols: DataColumn<PmBoqLine>[] = [
+    {
+      key: "item",
+      header: t("boq.col.item"),
+      className: "min-w-0",
+      footer: totals ? t("boq.total") : undefined,
+      cell: (b) => (
+        <div className="min-w-0">
+          <button type="button" className="block rounded text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpen(b.id)}>
+            <b className="block" dir="auto">
+              {b.description || "—"}
+            </b>
+          </button>
+          <span className="flex flex-wrap items-center gap-1.5 text-xs font-normal text-muted-foreground">
+            <span className="font-mono" dir="ltr">
+              {b.code}
+            </span>
+            <span dir="ltr">
+              · {fmt(b.quantity)} {b.unit}
+              {money && linePriced(b) ? ` × ${fmt(b.rate)}` : ""}
+            </span>
+            {!linePriced(b) && (
+              <StatusPill tone="warn" className="px-1.5 py-0 text-[10px]">
+                {t("boq.no_rate")}
+              </StatusPill>
             )}
-          </td>
-        </tr>
-      )}
-      {(folded ? [] : group.lines).map((b) => {
+            {lineBleeding(b) && (
+              <StatusPill tone="bad" className="px-1.5 py-0 text-[10px]">
+                <Flame size={10} aria-hidden="true" />
+                {t("boq.bleeding")}
+              </StatusPill>
+            )}
+            {!linePriced(b) && canPrice && (
+              <Button size="sm" className="h-7 px-2 text-[11px] max-md:h-11" onClick={() => onPrice(b)}>
+                {t("boq.price_it")}
+              </Button>
+            )}
+            {canEdit && (
+              <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px] max-md:h-11" aria-label={t("boq.item_edit", { code: b.code })} onClick={() => onEdit(b)}>
+                <Pencil size={11} className="me-1" aria-hidden="true" />
+                {t("boq.edit")}
+              </Button>
+            )}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: "contracted",
+      header: t("boq.col.contracted"),
+      numeric: true,
+      cell: (b) => (!money ? "•••" : linePriced(b) ? fmt(lineContract(b)) : "—"),
+      footer: totals ? fmt(totals.contract) : undefined,
+    },
+    {
+      key: "executed",
+      header: t("boq.col.executed"),
+      className: "min-w-36",
+      footer: totals ? <bdi dir="ltr" className="tabular-nums">{pct(totals.progress)}</bdi> : undefined,
+      cell: (b) => {
         const pr = lineProgress(b)
-        const mg = lineMarginPct(b)
-        const ub = lineUnbilled(b)
         return (
-          <tr key={b.id} className="cursor-pointer hover:bg-muted/30 focus-within:bg-muted/30" onClick={() => onOpen(b.id)}>
-            <td className="px-4 py-2">
-              <button
-                type="button"
-                className="block rounded text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onOpen(b.id)
-                }}
-              >
-                <b className="block" dir="auto">
-                  {b.description || "—"}
-                </b>
-              </button>
-              <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="font-mono" dir="ltr">
-                  {b.code}
-                </span>
-                <span dir="ltr">
-                  · {fmt(b.quantity)} {b.unit}
-                  {money && linePriced(b) ? ` × ${fmt(b.rate)}` : ""}
-                </span>
-                {!linePriced(b) && (
-                  <StatusPill tone="warn" className="px-1.5 py-0 text-[10px]">
-                    {t("boq.no_rate")}
-                  </StatusPill>
-                )}
-                {!linePriced(b) && canPrice && (
-                  <Button
-                    size="sm"
-                    className="h-6 px-2 text-[11px]"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onPrice(b)
-                    }}
-                  >
-                    {t("boq.price_it")}
-                  </Button>
-                )}
-                {canEdit && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 px-2 text-[11px]"
-                    aria-label={t("boq.item_edit", { code: b.code })}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onEdit(b)
-                    }}
-                  >
-                    <Pencil size={11} className="me-1" aria-hidden="true" />
-                    {t("boq.edit")}
-                  </Button>
-                )}
-                {lineBleeding(b) && (
-                  <StatusPill tone="bad" className="px-1.5 py-0 text-[10px]">
-                    <Flame size={10} aria-hidden="true" />
-                    {t("boq.bleeding")}
-                  </StatusPill>
-                )}
+          <div className="min-w-0">
+            <div className="flex items-baseline justify-between gap-2 text-xs tabular-nums" dir="ltr">
+              <span>
+                {fmt(b.executed)} <small className="text-muted-foreground">{t("boq.of", { qty: fmt(b.quantity) })}</small>
               </span>
-            </td>
-            <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-              {!money ? "•••" : linePriced(b) ? fmt(lineContract(b)) : "—"}
-            </td>
-            <td className="px-3 py-2">
-              <div className="flex items-baseline justify-between gap-2 text-xs tabular-nums" dir="ltr">
-                <span>
-                  {fmt(b.executed)} <small className="text-muted-foreground">{t("boq.of", { qty: fmt(b.quantity) })}</small>
-                </span>
-                <small>{pct(pr)}</small>
-              </div>
-              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted" dir="ltr" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(100, pr))} aria-label={t("boq.col.executed")}>
-                <div className={cn("h-full rounded-full", pr >= 99.5 ? "bg-success" : "bg-module")} style={{ width: `${Math.min(100, pr)}%` }} />
-              </div>
-            </td>
-            {money && (
-              <td className={cn("px-3 py-2 text-end tabular-nums", ub > UNBILLED_FLOOR ? "text-destructive" : "text-muted-foreground")} dir="ltr">
-                {ub > 1 ? fmt(ub) : "—"}
-              </td>
-            )}
-            {money &&
-              (linePriced(b) ? (
-                <>
-                  <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
-                    <span className="block text-xs">{b.actual !== null ? fmt(b.actual) : "—"}</span>
-                    <span className="block text-[11px] text-muted-foreground">
-                      {t("boq.budget")} {fmt(lineBudgetEx(b))}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-end tabular-nums">
-                    {b.estCost > 0 ? (
-                      <>
-                        <span
-                          className={cn("rounded px-1.5 text-xs font-bold", mg > 12 ? "bg-success/10 text-success" : mg > 5 ? "bg-warning/10 text-warning" : "bg-destructive/10 text-destructive")}
-                          dir="ltr"
-                        >
-                          {Math.round(mg)}%
-                        </span>
-                        <span className="block text-[11px] text-muted-foreground" dir="ltr">
-                          {fmt(lineMargin(b))}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-[11px] text-muted-foreground">{t("boq.no_budget_cost")}</span>
-                    )}
-                  </td>
-                </>
-              ) : (
-                <>
-                  <td className="px-3 py-2 text-end text-xs text-muted-foreground">—</td>
-                  <td className="px-4 py-2 text-end text-xs text-muted-foreground">—</td>
-                </>
-              ))}
-          </tr>
+              <small>{pct(pr)}</small>
+            </div>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted" dir="ltr" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(100, pr))} aria-label={t("boq.col.executed")}>
+              <div className={cn("h-full rounded-full", pr >= 99.5 ? "bg-success" : "bg-module")} style={{ width: `${Math.min(100, pr)}%` }} />
+            </div>
+          </div>
         )
-      })}
-    </>
+      },
+    },
+  ]
+  if (!money) return cols
+  cols.push(
+    {
+      key: "unbilled",
+      header: t("boq.col.unbilled"),
+      numeric: true,
+      cell: (b) => {
+        const ub = lineUnbilled(b)
+        return <span className={ub > UNBILLED_FLOOR ? "text-destructive" : "text-muted-foreground"}>{ub > 1 ? fmt(ub) : "—"}</span>
+      },
+      footer: totals ? <span className="text-destructive">{fmt(totals.unbilled)}</span> : undefined,
+    },
+    {
+      key: "cost",
+      header: t("boq.col.cost"),
+      className: "text-end",
+      hideBelow: "lg",
+      cell: (b) =>
+        linePriced(b) ? (
+          <span className="block tabular-nums">
+            <bdi dir="ltr" className="block text-xs">
+              {b.actual !== null ? fmt(b.actual) : "—"}
+            </bdi>
+            <span className="block text-[11px] text-muted-foreground">
+              {t("boq.budget")} <bdi dir="ltr">{fmt(lineBudgetEx(b))}</bdi>
+            </span>
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        ),
+      footer: totals ? <bdi dir="ltr" className="tabular-nums">{totals.costed ? fmt(totals.cost) : "—"}</bdi> : undefined,
+    },
+    {
+      key: "margin",
+      header: t("boq.col.margin"),
+      className: "text-end",
+      cell: (b) => {
+        if (!linePriced(b)) return <span className="text-xs text-muted-foreground">—</span>
+        if (b.estCost <= 0) return <span className="text-[11px] text-muted-foreground">{t("boq.no_budget_cost")}</span>
+        const mg = lineMarginPct(b)
+        return (
+          <span className="block tabular-nums">
+            <bdi dir="ltr" className={cn("rounded px-1.5 text-xs font-bold", mg > 12 ? "bg-success/10 text-success" : mg > 5 ? "bg-warning/10 text-warning" : "bg-destructive/10 text-destructive")}>
+              {Math.round(mg)}%
+            </bdi>
+            <bdi dir="ltr" className="block text-[11px] text-muted-foreground">
+              {fmt(lineMargin(b))}
+            </bdi>
+          </span>
+        )
+      },
+      footer: totals ? (
+        <bdi dir="ltr" className={cn("tabular-nums", !totals.costed ? "text-muted-foreground" : totals.margin > 0 ? "text-success" : "text-destructive")}>
+          {totals.costed ? fmt(totals.margin) : "—"}
+        </bdi>
+      ) : undefined,
+    },
   )
+  return cols
 }
 
 function ItemDrawer({ projectId, orgId, line, lines, money, onClose }: { projectId: string; orgId: string | null; line: PmBoqLine | null; lines: PmBoqLine[]; money: boolean; onClose: () => void }) {
@@ -545,8 +499,8 @@ function ItemDrawer({ projectId, orgId, line, lines, money, onClose }: { project
   const mg = lineMarginPct(line)
   return (
     <Sheet open onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side={locale === "ar" ? "left" : "right"} className="w-full overflow-y-auto sm:max-w-lg" dir={locale === "ar" ? "rtl" : "ltr"}>
-        <SheetHeader className="text-start">
+      <SheetContent side={locale === "ar" ? "left" : "right"} className="w-full overflow-y-auto sm:max-w-2xl" dir={locale === "ar" ? "rtl" : "ltr"}>
+        <SheetHeader className="pe-12 text-start">
           <SheetTitle dir="auto">{line.description || line.code}</SheetTitle>
           <SheetDescription className="flex flex-wrap items-center gap-2">
             <StatusPill tone="module">
@@ -786,7 +740,7 @@ function PriceDialog({ projectId, line, access, actor, onClose }: { projectId: s
             <KeyValueRow label={t("boq.d.contracted_qty")} value={`${fmt(line.quantity)} ${line.unit}`} />
             {line.executed > 0 && <KeyValueRow label={t("boq.executed_so_far")} value={`${fmt(line.executed)} ${line.unit}`} />}
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="bp-rate">
                 {t("boq.agreed_rate")} <span className="text-warning">*</span>
@@ -888,57 +842,52 @@ function ImportDialog({
             <Textarea id="boq-raw" value={raw} onChange={(e) => setRaw(e.target.value)} className="h-40 font-mono text-xs" placeholder="02-01-01	…	m3	18400	24	18.5" disabled={busy} dir="auto" />
           </div>
           {rows.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border">
-              <table className="w-full text-xs">
-                <thead className="bg-muted/40 text-muted-foreground">
-                  <tr>
-                    <th className="px-2 py-1.5 text-start">#</th>
-                    <th className="px-2 py-1.5 text-start">{t("boq.col.item")}</th>
-                    <th className="px-2 py-1.5 text-end">{t("boq.qty")}</th>
-                    <th className="px-2 py-1.5 text-end">{t("boq.rate")}</th>
-                    <th className="px-2 py-1.5 text-end">{t("boq.cost")}</th>
-                    <th className="px-2 py-1.5 text-start">{t("boq.verdict")}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {rows.map((o) => (
-                    <tr key={o.line}>
-                      <td className="px-2 py-1.5 tabular-nums text-muted-foreground">{o.line}</td>
-                      <td className="px-2 py-1.5">
-                        <b className="block" dir="auto">
-                          {o.description || "—"}
-                        </b>
-                        <span className="font-mono text-muted-foreground" dir="ltr">
-                          {o.code} · {o.unit}
-                        </span>
-                      </td>
-                      <td className="px-2 py-1.5 text-end tabular-nums" dir="ltr">
-                        {Number.isNaN(o.quantity) ? "—" : fmt(o.quantity)}
-                      </td>
-                      <td className="px-2 py-1.5 text-end tabular-nums" dir="ltr">
-                        {o.rate ? fmt(o.rate) : <span className="text-muted-foreground">{t("boq.no_rate")}</span>}
-                      </td>
-                      <td className="px-2 py-1.5 text-end tabular-nums" dir="ltr">
-                        {o.cost ? fmt(o.cost) : "—"}
-                      </td>
-                      <td className="px-2 py-1.5">
-                        {o.problems.length ? (
-                          <span className="flex flex-wrap gap-1">
-                            {o.problems.map((p) => (
-                              <StatusPill key={p} tone="bad">
-                                {t(`boq.problem.${p}`)}
-                              </StatusPill>
-                            ))}
-                          </span>
-                        ) : (
-                          <StatusPill tone="ok">{t("boq.valid")}</StatusPill>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable<(typeof rows)[number]>
+              caption={t("boq.import_title")}
+              rows={rows}
+              rowKey={(o) => String(o.line)}
+              labels={TABLE_LABELS}
+              empty={null}
+              dense
+              maxHeight="40vh"
+              cardTitleKey="item"
+              columns={[
+                { key: "line", header: "#", numeric: true, cardHidden: true, className: "w-10 text-muted-foreground", cell: (o) => o.line },
+                {
+                  key: "item",
+                  header: t("boq.col.item"),
+                  cell: (o) => (
+                    <>
+                      <b className="block" dir="auto">
+                        {o.description || "—"}
+                      </b>
+                      <span className="font-mono text-xs font-normal text-muted-foreground" dir="ltr">
+                        {o.code} · {o.unit}
+                      </span>
+                    </>
+                  ),
+                },
+                { key: "qty", header: t("boq.qty"), numeric: true, cell: (o) => (Number.isNaN(o.quantity) ? "—" : fmt(o.quantity)) },
+                { key: "rate", header: t("boq.rate"), numeric: true, cell: (o) => (o.rate ? fmt(o.rate) : <span className="text-muted-foreground">{t("boq.no_rate")}</span>) },
+                { key: "cost", header: t("boq.cost"), numeric: true, cell: (o) => (o.cost ? fmt(o.cost) : "—") },
+                {
+                  key: "verdict",
+                  header: t("boq.verdict"),
+                  cell: (o) =>
+                    o.problems.length ? (
+                      <span className="flex flex-wrap gap-1">
+                        {o.problems.map((p) => (
+                          <StatusPill key={p} tone="bad">
+                            {t(`boq.problem.${p}`)}
+                          </StatusPill>
+                        ))}
+                      </span>
+                    ) : (
+                      <StatusPill tone="ok">{t("boq.valid")}</StatusPill>
+                    ),
+                },
+              ]}
+            />
           )}
           {mismatch && money && (
             <Callout tone={mismatch.under ? "warn" : "block"}>
