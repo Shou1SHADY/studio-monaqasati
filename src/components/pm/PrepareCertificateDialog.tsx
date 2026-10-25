@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Check, ChevronDown, ClipboardList, Loader2, Ruler } from "lucide-react"
+import { Check, ChevronDown, ClipboardList, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -158,12 +158,7 @@ export function PrepareCertificateDialog({
           <DialogDescription>{t("money.form.period", { project: projectName || "—", from: pmDate(periodFrom, locale), to: pmDate(todayDay(), locale) })}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <Callout tone="info">
-            <span className="flex items-start gap-1.5">
-              <Ruler size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-              {t("money.form.no_amount")}
-            </span>
-          </Callout>
+          <Callout tone="info">{t("money.form.no_amount")}</Callout>
 
           {nothing ? (
             <p className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">{t("money.form.nothing")}</p>
@@ -213,7 +208,7 @@ export function PrepareCertificateDialog({
                             <span className="shrink-0 text-xs text-muted-foreground" dir="ltr">
                               <b>{qty(l.qty)}</b> {i?.unit}
                             </span>
-                            <span className="w-28 shrink-0 text-end font-semibold tabular-nums" dir="ltr">
+                            <span className="w-24 shrink-0 text-end font-semibold tabular-nums sm:w-28" dir="ltr">
                               {pmMoney(l.amount)}
                             </span>
                           </label>
@@ -241,7 +236,7 @@ export function PrepareCertificateDialog({
                             </span>
                             <span className="block text-xs text-muted-foreground">{t("money.form.vo_line", { no: String(v.seq).padStart(2, "0"), ex: pmPct(v.executedPct), bl: pmPct(v.billedPct ?? 0) })}</span>
                           </span>
-                          <span className="w-28 shrink-0 text-end font-semibold tabular-nums" dir="ltr">
+                          <span className="w-24 shrink-0 text-end font-semibold tabular-nums sm:w-28" dir="ltr">
                             {pmMoney(v.value * (v.executedPct - (v.billedPct ?? 0)))}
                           </span>
                         </label>
@@ -259,7 +254,7 @@ export function PrepareCertificateDialog({
                       <span className="block font-medium">{t("money.form.cuts")}</span>
                       {cutFrom.length > 0 && <span className="block text-xs text-muted-foreground">{cutFrom.map((c) => `${t("ipc.no", { no: c.no })} — ${c.reason || "—"}`).join(" · ")}</span>}
                     </span>
-                    <span className="w-28 shrink-0 text-end font-semibold tabular-nums" dir="ltr">
+                    <span className="w-24 shrink-0 text-end font-semibold tabular-nums sm:w-28" dir="ltr">
                       {pmMoney(cutPool)}
                     </span>
                   </label>
