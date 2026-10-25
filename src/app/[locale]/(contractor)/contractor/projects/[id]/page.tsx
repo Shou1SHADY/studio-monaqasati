@@ -878,6 +878,12 @@ export default function ProjectDetailPage() {
     setActiveTab(tab)
     setWork(null)
     if (tab === "boq") loadBoqItems()
+    // The screen is in the address (PM 1.1 UX-18), so a reload, Back from the page it opens, or a shared link lands on it.
+    // Replaced, not pushed: a tab is not a page of its own in the browser's history. `work` was a one-time instruction.
+    const query = new URLSearchParams(searchParams.toString())
+    query.set("tab", tab)
+    query.delete("work")
+    router.replace(`/contractor/projects/${projectId}?${query.toString()}`, { scroll: false })
   }
 
   // Load BOQ items eagerly (not just on tab switch) so the "next step" guidance banner
@@ -2158,7 +2164,8 @@ export default function ProjectDetailPage() {
 
   return (
     <PortalLayout>
-      <div className="space-y-5 max-w-5xl mx-auto">
+      {/* No width cap of its own (PM 1.1 UX-01): the portal's max-w-7xl, as Procurement and HR — the sidebar folds to icons here. */}
+      <div className="space-y-5">
         {/* A project handed over from the CRM waits here for its PM to
             accept it — above the header, because until they do the project
             has no owner. */}
@@ -2179,7 +2186,7 @@ export default function ProjectDetailPage() {
             ipcOn={dynamicTabs.includes("ipc" as SectionId)}
             onOpen={(tab) => handleTabChange(tab as ActiveTab)}
             onWork={openWork}
-            actions={<PmHoldControl projectId={projectId} project={typedProject} access={pmAccess} actor={pmActor} />}
+            actions={<PmHoldControl projectId={projectId} project={typedProject} access={pmAccess} actor={pmActor} trigger="menu" />}
           />
         ) : (
           <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -2191,7 +2198,7 @@ export default function ProjectDetailPage() {
                 <span aria-hidden="true">›</span>
                 <span dir="ltr">{typedProject.name}</span>
               </nav>
-              <h1 className="text-2xl font-black text-foreground font-headline leading-snug truncate">
+              <h1 className="text-xl font-black text-foreground font-headline leading-snug break-words sm:text-2xl" dir="auto">
                 {typedProject.name}
               </h1>
               {(typedProject.clientName || typedProject.location) && (
@@ -2215,7 +2222,7 @@ export default function ProjectDetailPage() {
                 )}
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 shrink-0">
+            <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:shrink-0">
               {typedProject.pm && pmAccess.allowed("measurement.write") && (
                 <Button variant="outline" size="sm" onClick={() => handleTabChange("pmMeasure")} className="gap-1.5 rounded-xl border border-border bg-card text-foreground shadow-none hover:bg-card hover:border-module/40">
                   <Ruler size={14} />
@@ -2282,8 +2289,10 @@ export default function ProjectDetailPage() {
 
         {/* The PM 1.0 prototype's rail: seven groups, each with its own screens (§5).
             A screen is still addressed by its key, so every existing link keeps working. */}
-        <nav aria-label={t("proj_tabs_label")} className="space-y-3">
-          <ul className="-mx-4 flex items-center gap-1 overflow-x-auto border-b px-4 [scrollbar-width:thin] sm:mx-0 sm:px-0">
+        {/* The group rail stays in view while the screen scrolls (its own sticky block — the sub-tabs scroll away), and
+            fades at its far edge on a phone so «التوريد · المال…» read as continuing (UX-06, as ModuleHeader's rail). */}
+        <nav aria-label={t("proj_tabs_label")} className="sticky top-0 z-10 -mx-4 bg-background sm:mx-0">
+          <ul className="rail-fade flex items-center gap-1 overflow-x-auto border-b pe-10 ps-4 [scrollbar-width:thin] sm:pe-0 sm:ps-0">
             {tabGroups.map((g) => {
               const on = g.group === activeGroup
               const GroupIcon = GROUP_ICON[g.group]
@@ -2314,7 +2323,11 @@ export default function ProjectDetailPage() {
               )
             })}
           </ul>
-          {activeGroupTabs.length > 1 && typedProject.pm && (
+        </nav>
+        {/* The group's screens: a muted tray under the rail, unlike the filter chips inside the screens (UX-07). */}
+        {activeGroupTabs.length > 1 && (
+          <div className="-mt-2">
+          {typedProject.pm && (
             <PmSubTabNav
               projectId={projectId}
               orgId={pmOrg || null}
@@ -2341,15 +2354,17 @@ export default function ProjectDetailPage() {
               }}
             />
           )}
-          {activeGroupTabs.length > 1 && !typedProject.pm && (
+          {!typedProject.pm && (
             <SegmentedNav
+              variant="tray"
               ariaLabel={tPm(`grp.${activeGroup}`)}
               active={current}
               onSelect={(key) => handleTabChange(key)}
               segments={activeGroupTabs.map((x) => ({ id: x.key, label: x.label }))}
             />
           )}
-        </nav>
+          </div>
+        )}
 
         {typedProject.pm && pmAccess.ctx.archived && (
           <Callout tone="info" className="mb-4" title={tPm("close.archived_title")}>
@@ -2371,14 +2386,14 @@ export default function ProjectDetailPage() {
         {current === "info" && (
           <div className="space-y-4">
           {typedProject.pm ? (
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="space-y-4">
+            <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+              <div className="min-w-0 space-y-4">
                 <PmInfoPanel projectId={projectId} project={typedProject as ComponentProps<typeof PmInfoPanel>["project"]} access={pmAccess} />
                 {pmHandoverPanel}
                 {!pmOn.close && lifecycleOf(typedProject) === "done" && pmAccess.has("money") && pmCloseoutPanel}
                 <PmStartPanel projectId={projectId} project={typedProject as ComponentProps<typeof PmStartPanel>["project"]} boqItems={boqItems.length} access={pmAccess} />
               </div>
-              <div className="space-y-4">
+              <div className="min-w-0 space-y-4">
                 <PmTermsGlance projectId={projectId} project={typedProject as ComponentProps<typeof PmTermsGlance>["project"]} items={pmItems} access={pmAccess} actor={pmActor} onOpenTerms={() => handleTabChange("pmTerms")} />
                 <PmTeamRoster projectId={projectId} project={typedProject} access={pmAccess} />
               </div>
@@ -3489,7 +3504,7 @@ export default function ProjectDetailPage() {
         )}
         {current === "pmQa" && typedProject.pm && (
           <div className="space-y-4">
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
               <InspectionsPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} access={pmAccess} actor={pmActor} bare onItemsChanged={() => void loadBoqItems()} unitsOn={pmOn.zone} />
               <PunchPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} access={pmAccess} actor={pmActor} bare unitsOn={pmOn.zone} />
             </div>

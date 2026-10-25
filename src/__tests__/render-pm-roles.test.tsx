@@ -383,7 +383,8 @@ const VIEWS: Record<string, ViewSpec> = {
 }
 
 // What sits on every screen of the project: the head's acts and the rail's groups.
-const HEAD_ACTS: Record<string, Role[]> = { "أجّل المشروع": OP, المال: OPQ, قياس: ALL, النبض: ALL, العقد: ALL, التنفيذ: ALL, التوريد: ALL, الملف: ALL, الإعدادات: ALL }
+// Postpone sits behind the head's «…» (PM 1.1 UX-04), named «إجراءات أخرى».
+const HEAD_ACTS: Record<string, Role[]> = { "إجراءات أخرى": OP, المال: OPQ, قياس: ALL, النبض: ALL, العقد: ALL, التنفيذ: ALL, التوريد: ALL, الملف: ALL, الإعدادات: ALL }
 
 describe.each(ROLES)("as %s", (role) => {
   it.each(Object.keys(VIEWS))("%s renders, every key resolved, titles and gates as the prototype", async (tab) => {
@@ -403,7 +404,7 @@ describe.each(ROLES)("as %s", (role) => {
     // The Pulse shows five decisions and folds the rest behind «عرض N قرارات أخرى» (the prototype's cap).
     const more = Array.from(document.querySelectorAll("button")).find((b) => /قرارات? أخرى|قراران آخران|قرار آخر/.test(b.textContent ?? ""))
     if (more) await act(async () => { more.click() })
-    const now = buttons()
+    const now = [...buttons(), ...Array.from(document.querySelectorAll("button[aria-label]")).map((x) => x.getAttribute("aria-label") ?? "")]
     for (const [label, who] of Object.entries(HEAD_ACTS)) expect({ tab, role, label, shown: now.includes(label) }).toEqual({ tab, role, label, shown: who.includes(role) })
     for (const [label, who] of Object.entries(spec.acts ?? {})) expect({ tab, role, label, shown: now.includes(label) }).toEqual({ tab, role, label, shown: offered && who.includes(role) })
     if (role === "site") expect({ tab, riyal: text().includes(RIYAL) }).toEqual({ tab, riyal: false })

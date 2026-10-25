@@ -13,15 +13,15 @@ import type { ReactNode } from "react"
 import { useMemo } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection } from "firebase/firestore"
-import { AlertTriangle, Banknote, Check, ChevronRight, Clock, FolderKanban, Hand, Lock, Package, Pause, Play, Receipt, Ruler, TrendingUp, Wallet, type LucideIcon } from "lucide-react"
+import { AlertTriangle, Banknote, Check, Clock, FolderKanban, Hand, Lock, Package, Pause, Play, Receipt, Ruler, TrendingUp, Wallet, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ModuleHeader, type ModuleKpi } from "@/components/module-ui/ModuleHeader"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { useProjectFigures } from "@/hooks/useProjectFigures"
 import { usePulseCost } from "@/hooks/usePulseCost"
 import { useSupplyWorld } from "@/hooks/useSupplyWorld"
-import { Link } from "@/i18n/routing"
 import { grantedDays, PM_CLAIMS, type PmClaim } from "@/lib/pm/claim"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
 import { lifecycleOf, type PmLifecycle } from "@/lib/pm/lifecycle"
@@ -29,7 +29,7 @@ import { PREPARE_OFFER_AT, progressNote, progressTone, projectDays, UNBILLED_ALA
 import { isOpenObstacle, PM_OBSTACLES, type PmObstacle } from "@/lib/pm/site"
 import { needsWithin, reqState } from "@/lib/pm/supply"
 import { displayDocNumber } from "@/lib/procurement/format"
-import { cn } from "@/lib/utils"
+import { SAR_SIGN } from "@/lib/riyal"
 
 export interface PmHeadProject {
   name?: string
@@ -53,13 +53,17 @@ const STATE: Record<PmLifecycle, { tone: PillTone; icon: LucideIcon }> = {
 }
 
 type Tone = "bad" | "warn" | "good" | "neutral"
-const TONE: Record<Tone, string> = { bad: "bg-destructive/10 text-destructive", warn: "bg-warning/10 text-warning", good: "bg-success/10 text-success", neutral: "bg-muted text-muted-foreground" }
+
+/** A tile's amount: the figure, and the riyal sign as its unit (ModuleKpi draws it left of the figure, above it on a phone). */
+export const moneyTile = (n: number): { value: string; unit: string } => ({ value: Math.round(n).toLocaleString("en-US"), unit: SAR_SIGN })
 
 interface Tile {
   id: string
   icon: LucideIcon
   label: string
   value: string
+  /** An amount's sign, set apart so a phone puts it above the figure and never cuts the figure. */
+  unit?: string
   note: string
   tone: Tone
   tab?: string
@@ -82,7 +86,7 @@ export function ProjectHead({
   onOpen: (tab: string) => void
   /** The head's two acts open the work itself — the measurement writer, the IPC form — not just their tab. */
   onWork?: (what: "measure" | "prepare") => void
-  /** The page's own buttons (sections, edit, delete) after the PM actions. */
+  /** After the two acts: the secondary ones, behind a «…» menu (Postpone — `PmHoldControl trigger="menu"`), or Resume. */
   actions?: ReactNode
 }) {
   const t = useTranslations("Portal.PM")
@@ -138,7 +142,7 @@ export function ProjectHead({
         id: "committed",
         icon: Hand,
         label: t("head.kpi_committed"),
-        value: pmMoney(cost?.total.committed ?? 0),
+        ...moneyTile(cost?.total.committed ?? 0),
         note: budget !== null ? t("head.kpi_committed_of", { budget: pmMoney(budget) }) : t("head.kpi_committed_note"),
         tone: "neutral",
       },
@@ -158,8 +162,8 @@ export function ProjectHead({
         tone: progressTone(note),
         tab: "pmToday",
       },
-      { id: "unbilled", icon: Banknote, label: t("pulse.kpi_unbilled"), value: pmMoney(fig.unbilled), note: t("pulse.kpi_unbilled_note"), tone: fig.unbilled > UNBILLED_ALARM ? "bad" : "good", tab: "ipc" },
-      { id: "cash", icon: Wallet, label: t("pulse.kpi_cash"), value: pmMoney(fig.cash), note: t("head.kpi_cash_note", { in: pmMoney(fig.cashIn), out: pmMoney(fig.cashOut) }), tone: fig.cash < 0 ? "bad" : "good", tab: "ipc" }
+      { id: "unbilled", icon: Banknote, label: t("pulse.kpi_unbilled"), ...moneyTile(fig.unbilled), note: t("pulse.kpi_unbilled_note"), tone: fig.unbilled > UNBILLED_ALARM ? "bad" : "good", tab: "ipc" },
+      { id: "cash", icon: Wallet, label: t("pulse.kpi_cash"), ...moneyTile(fig.cash), note: t("head.kpi_cash_note", { in: pmMoney(fig.cashIn), out: pmMoney(fig.cashOut) }), tone: fig.cash < 0 ? "bad" : "good", tab: "ipc" }
     )
   }
 
@@ -174,92 +178,78 @@ export function ProjectHead({
         ? t("head.day_of", { el: days.el, tot: days.tot })
         : null
   const State = STATE[lifecycle]
+  const measureAct = access.allowed("measurement.write")
+  const prepareAct = ipcOn && access.allowed("certificate.prepare") && fig.unbilled > PREPARE_OFFER_AT
 
+  const kpis: ModuleKpi[] = tiles.map((k) => ({
+    id: k.id,
+    label: k.label,
+    value: k.value,
+    unit: k.unit,
+    note: k.note,
+    tone: k.tone,
+    icon: k.icon,
+    onClick: k.tab ? () => onOpen(k.tab as string) : undefined,
+  }))
+
+  // The prototype's project head, in the module head every Mdmak module shows (PM 1.1 UX-02…05): ONE crumb row (the
+  // portal's bar steps aside on this page), the icon beside — not inside — the name, which wraps instead of being cut,
+  // the two acts that wrap under the title on a phone, the secondary ones behind «…» (`actions`), and the three numbers
+  // three across, compact, on a phone too.
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <nav aria-label={t("head.crumbs")} className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Link href="/contractor/projects" className="rounded font-semibold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              {t("head.crumb_projects")}
-            </Link>
-            <ChevronRight size={12} className="rtl-flip" aria-hidden="true" />
-            <span dir="ltr">{no ?? project.name}</span>
-          </nav>
-          <h1 className="flex flex-wrap items-center gap-2 font-headline text-2xl font-black leading-snug text-foreground">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-module/10 text-module" aria-hidden="true">
-              <FolderKanban size={18} />
-            </span>
-            <span className="min-w-0 truncate" dir="auto">
-              {project.name}
-            </span>
-            <StatusPill tone={State.tone}>
-              <State.icon size={12} aria-hidden="true" />
-              {t(`lifecycle.${lifecycle}`)}
+    <ModuleHeader
+      icon={FolderKanban}
+      crumbs={[{ label: t("head.crumb_projects"), href: "/contractor/projects" }, { label: no ?? project.name ?? "" }]}
+      crumbsLabel={t("head.crumbs")}
+      title={
+        <span className="break-words" dir="auto">
+          {project.name}
+        </span>
+      }
+      status={
+        <>
+          <StatusPill tone={State.tone}>
+            <State.icon size={12} aria-hidden="true" />
+            {t(`lifecycle.${lifecycle}`)}
+          </StatusPill>
+          {money && fig.overdue > 0 && (
+            <StatusPill tone="bad">
+              <Wallet size={12} aria-hidden="true" />
+              {t("head.overdue")}
             </StatusPill>
-            {money && fig.overdue > 0 && (
-              <StatusPill tone="bad">
-                <Wallet size={12} aria-hidden="true" />
-                {t("head.overdue")}
-              </StatusPill>
+          )}
+        </>
+      }
+      description={
+        facts || when ? (
+          <span dir="auto">
+            {facts}
+            {facts && when ? " — " : ""}
+            {when}
+          </span>
+        ) : undefined
+      }
+      actions={
+        measureAct || prepareAct || actions ? (
+          <>
+            {measureAct && (
+              <Button variant="outline" size="sm" onClick={() => (onWork ? onWork("measure") : onOpen("pmMeasure"))} className="gap-1.5 rounded-xl border border-border bg-card text-foreground shadow-none hover:border-module/40 hover:bg-card">
+                <Ruler size={14} aria-hidden="true" />
+                {t("pulse.act_measure")}
+              </Button>
             )}
-          </h1>
-          {(facts || when) && (
-            <p className="mt-1 text-sm text-muted-foreground" dir="auto">
-              {facts}
-              {facts && when ? " — " : ""}
-              {when}
-            </p>
-          )}
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          {access.allowed("measurement.write") && (
-            <Button variant="outline" size="sm" onClick={() => (onWork ? onWork("measure") : onOpen("pmMeasure"))} className="gap-1.5 rounded-xl border border-border bg-card text-foreground shadow-none hover:border-module/40 hover:bg-card">
-              <Ruler size={14} aria-hidden="true" />
-              {t("pulse.act_measure")}
-            </Button>
-          )}
-          {ipcOn && access.allowed("certificate.prepare") && fig.unbilled > PREPARE_OFFER_AT && (
-            <Button size="sm" onClick={() => (onWork ? onWork("prepare") : onOpen("ipc"))} className="gap-1.5 rounded-xl bg-module text-module-foreground hover:bg-module/90">
-              <Receipt size={14} aria-hidden="true" />
-              {t("head.prepare_ipc")}
-            </Button>
-          )}
-          {actions}
-        </div>
-      </div>
-
-      <ul className="grid gap-3 sm:grid-cols-3" aria-label={t("pulse.kpis")}>
-        {tiles.map((k) => {
-          const body = (
-            <>
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                <k.icon size={14} className="text-module" aria-hidden="true" />
-                {k.label}
-              </span>
-              <span className="mt-2 block truncate text-2xl font-black tabular-nums text-foreground" dir="ltr">
-                {k.value}
-              </span>
-              <span className={cn("mt-2 inline-block max-w-full truncate rounded-full px-2 py-0.5 text-[11px] font-semibold", TONE[k.tone])}>{k.note}</span>
-            </>
-          )
-          return (
-            <li key={k.id}>
-              {k.tab ? (
-                <button
-                  type="button"
-                  onClick={() => onOpen(k.tab as string)}
-                  className="block w-full rounded-2xl border bg-card p-4 text-start shadow-sm transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:p-5"
-                >
-                  {body}
-                </button>
-              ) : (
-                <div className="rounded-2xl border bg-card p-4 shadow-sm sm:p-5">{body}</div>
-              )}
-            </li>
-          )
-        })}
-      </ul>
-    </div>
+            {prepareAct && (
+              <Button size="sm" onClick={() => (onWork ? onWork("prepare") : onOpen("ipc"))} className="gap-1.5 rounded-xl bg-module text-module-foreground hover:bg-module/90">
+                <Receipt size={14} aria-hidden="true" />
+                {t("head.prepare_ipc")}
+              </Button>
+            )}
+            {actions}
+          </>
+        ) : undefined
+      }
+      kpis={kpis}
+      kpisLabel={t("pulse.kpis")}
+    />
   )
 }

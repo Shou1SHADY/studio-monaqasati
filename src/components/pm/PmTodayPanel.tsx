@@ -42,6 +42,7 @@ import {
   type LucideIcon,
   Boxes,
 } from "lucide-react"
+import { ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DecisionRow } from "@/components/module-ui/DecisionRow"
 import { EmptyState } from "@/components/module-ui/EmptyState"
@@ -137,9 +138,11 @@ export function DecisionItem({ d, money, onOpen, project }: { d: PmDecision; mon
       age={d.age ? t("days", { count: d.age }) : undefined}
       ageDays={d.age}
       amount={d.amount && money ? pmMoney(d.amount) : undefined}
+      dense
       action={
-        <Button size="sm" variant={d.severity === "red" ? "default" : "outline"} className={cn(d.severity === "red" ? "bg-module text-module-foreground hover:bg-module/90" : "border border-border bg-card text-foreground shadow-none hover:bg-muted")} onClick={onOpen}>
+        <Button size="sm" variant={d.severity === "red" ? "default" : "outline"} className={cn("gap-1", d.severity === "red" ? "bg-module text-module-foreground hover:bg-module/90" : "border border-border bg-card text-foreground shadow-none hover:bg-muted")} onClick={onOpen}>
           {t(`dec.${d.kind}.${d.act ?? "act"}`)}
+          <ChevronRight size={14} className="rtl-flip" aria-hidden="true" />
         </Button>
       }
     />
@@ -166,24 +169,23 @@ export function DecisionList({ decisions, money, onOpen, limit }: { decisions: P
   )
 }
 
-/** «N عاجل · أقدمها منذ N يوماً» — the line under the panel title. */
-export function DecisionSubline({ decisions }: { decisions: PmDecision[] }) {
+/** «N عاجل · أقدمها منذ N يوماً» — the panel's subtitle, inline after its title (PM 1.1 UX-14). */
+export function useDecisionSubline(decisions: PmDecision[]): string | undefined {
   const t = useTranslations("Portal.PM")
-  if (!decisions.length) return null
+  if (!decisions.length) return undefined
   const urgent = decisions.filter((d) => d.severity === "red").length
   const oldest = decisions.reduce((m, d) => Math.max(m, d.age ?? 0), 0)
   const parts = [urgent ? t("dec.sub_urgent", { count: urgent }) : null, oldest ? t("dec.sub_oldest", { count: oldest }) : null].filter(Boolean)
-  if (!parts.length) return null
-  return <p className="border-b px-4 py-2 text-xs text-muted-foreground">{parts.join(" · ")}</p>
+  return parts.length ? parts.join(" · ") : undefined
 }
 
 export function PmTodayPanel({ projectId, project, access, onOpen }: { projectId: string; project: PmDecisionProject; access: PmAccess; onOpen: (tab: DecisionTab, kind: DecisionKind) => void }) {
   const t = useTranslations("Portal.PM")
   const { decisions } = usePmDecisions(projectId, project, access)
   const red = decisions.some((d) => d.severity === "red")
+  const subline = useDecisionSubline(decisions)
   return (
-    <Panel title={t("dec.panel_title")} icon={AlertTriangle} count={decisions.length || undefined} countTone={red ? "bad" : "mute"} bodyClassName="p-0">
-      <DecisionSubline decisions={decisions} />
+    <Panel title={t("dec.panel_title")} icon={AlertTriangle} count={decisions.length || undefined} countTone={red ? "bad" : "mute"} description={subline} bodyClassName="p-0">
       {decisions.length === 0 ? (
         <div className="p-4">
           <EmptyState icon={CheckCircle2} title={t("dec.none_today")} description={t("dec.none_desc")} />

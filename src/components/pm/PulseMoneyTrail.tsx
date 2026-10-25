@@ -125,24 +125,27 @@ export function PulseMoneyTrail({ projectId, project, access, ipcOn, costOn }: {
   ]
 
   return (
-    <Panel title={t("trail.title")} icon={Wallet} bodyClassName="space-y-3 p-4">
-      <p className="-mt-1 text-xs text-muted-foreground">{t("trail.desc")}</p>
+    <Panel title={t("trail.title")} icon={Wallet} description={t("trail.desc")} bodyClassName="space-y-3 p-4">
+      {/* Four steps a row: 2×2 below `xl`, where a quarter of the column was too narrow for a figure («₼ 4,658…») or a
+          word («outstandin g», UX-10); in one line with arrows from `xl`. A figure is never cut: it wraps whole. */}
       {rows.map((row, r) => (
-        <ol key={r} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] sm:items-start">
+        <ol key={r} data-trail-row="" className="grid grid-cols-2 gap-x-3 gap-y-3 rounded-xl border p-3 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-start xl:gap-x-2">
           {row.map((s, i) => (
             <li key={s.label} className="contents">
-              {i > 0 && <ChevronRight size={14} className="rtl-flip hidden self-center text-muted-foreground sm:block" aria-hidden="true" />}
+              {i > 0 && <ChevronRight size={14} className="rtl-flip hidden self-center text-muted-foreground xl:block" aria-hidden="true" />}
               <div className="min-w-0">
-                <p className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
-                  <s.icon size={12} aria-hidden="true" />
-                  <span className="truncate">{s.label}</span>
+                <p className="flex items-start gap-1 text-[11px] font-semibold leading-snug text-muted-foreground">
+                  <s.icon size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  <span className="line-clamp-2">{s.label}</span>
                 </p>
-                <p className="truncate text-sm font-black tabular-nums text-foreground" dir="ltr">
-                  {s.value}
+                <p className="mt-0.5 text-sm font-black tabular-nums text-foreground" data-trail-figure="">
+                  <bdi dir="ltr">{s.value}</bdi>
                 </p>
-                <p className={cn("mt-0.5 text-[11px]", s.gap ? "font-bold text-destructive" : "text-muted-foreground")}>
-                  <span dir="auto">{s.sub}</span>
-                  {s.finance && <SourceBadge module="payments" label={t("trail.from_finance")} className="ms-1 align-middle" />}
+                <p className={cn("mt-0.5 text-[11px] leading-snug", s.gap ? "font-bold text-destructive" : "text-muted-foreground")}>
+                  <span dir="auto" className="line-clamp-2">
+                    {s.sub}
+                  </span>
+                  {s.finance && <SourceBadge module="payments" label={t("trail.from_finance")} className="mt-1" />}
                 </p>
               </div>
             </li>

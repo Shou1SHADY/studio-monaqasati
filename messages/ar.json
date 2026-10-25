@@ -20162,7 +20162,8 @@
         "kpi_committed": "ملتزم به",
         "kpi_committed_of": "من موازنة {budget}",
         "kpi_committed_note": "أوامر شراء وعقود باطن",
-        "kpi_cash_note": "داخل {in} · خارج {out} — الضريبة المحصَّلة مستبعدة"
+        "kpi_cash_note": "داخل {in} · خارج {out} — الضريبة المحصَّلة مستبعدة",
+        "more": "إجراءات أخرى"
       },
       "trail": {
         "title": "مسار المال",

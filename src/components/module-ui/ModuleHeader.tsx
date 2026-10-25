@@ -21,6 +21,8 @@ export interface ModuleKpi {
   note?: string
   tone?: "good" | "bad" | "warn" | "neutral"
   href?: string
+  /** A tile that opens something on the same page (a project's tab) instead of a link: rendered as a button. */
+  onClick?: () => void
   icon?: ElementType
 }
 
@@ -45,18 +47,53 @@ function KpiBody({ kpi }: { kpi: ModuleKpi }) {
   const Icon = kpi.icon
   return (
     <>
-      <p className="flex items-center gap-1.5 text-[11px] font-semibold leading-snug text-muted-foreground sm:text-xs">
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold leading-snug text-muted-foreground sm:text-xs">
         {Icon && <Icon size={14} className="hidden shrink-0 text-module sm:block" aria-hidden="true" />}
         <span className="line-clamp-2">{kpi.label}</span>
-      </p>
-      <p className={cn("mt-1.5 text-lg font-black tabular-nums text-foreground sm:truncate sm:text-2xl", kpi.unit ? "max-sm:break-words max-sm:text-base max-sm:leading-tight" : "truncate")} dir="ltr">
+      </span>
+      <span className={cn("mt-1.5 block text-lg font-black tabular-nums text-foreground sm:truncate sm:text-2xl", kpi.unit ? "max-sm:break-words max-sm:text-base max-sm:leading-tight" : "truncate")} dir="ltr">
         {/* The figure line is LTR while the unit is Arabic text: its gap is set on the physical right, toward the figure. */}
         {kpi.unit && <bdi className="text-xs font-bold text-muted-foreground max-sm:block sm:mr-1">{kpi.unit}</bdi>}
         {kpi.unit ? <bdi>{kpi.value}</bdi> : kpi.value}
-      </p>
-      {/* A phone's third of the row is too narrow for a one-line note («13 في تخصص…», review 3 #19): it wraps there; `sm` up it stays one line. */}
-      {kpi.note && <p className={cn("mt-1.5 inline-block max-w-full break-words rounded-md px-1.5 py-0.5 text-[10px] font-semibold max-sm:leading-snug sm:truncate sm:text-[11px]", TONE_CHIP[kpi.tone ?? "neutral"])}>{kpi.note}</p>}
+      </span>
+      {/* Spans, not paragraphs: a tile may be a button, which takes phrasing content only.
+          A phone's third of the row is too narrow for a one-line note («13 في تخصص…», review 3 #19): it wraps there; `sm` up it stays one line. */}
+      {kpi.note && <span className={cn("mt-1.5 inline-block max-w-full break-words rounded-md px-1.5 py-0.5 text-[10px] font-semibold max-sm:leading-snug sm:truncate sm:text-[11px]", TONE_CHIP[kpi.tone ?? "neutral"])}>{kpi.note}</span>}
     </>
+  )
+}
+
+const TILE = "block h-full w-full rounded-xl border bg-card p-3 text-start sm:p-4"
+const TILE_LIVE = "transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+
+/**
+ * The three numbers of a module head, compact (PM 1.1 UX-03): ALWAYS three across — on a phone too, where the tile is
+ * `p-3`, the figure `text-lg`, the label icon hidden and an amount's unit sits above its figure so the figure is never cut
+ * — then `p-4`/`text-2xl` from `sm`. A tile with `href` is a link, with `onClick` a button (a door to a tab of the same
+ * page), else plain. `ModuleHeader` renders it under the title; a page whose head is its own (the project head) uses it alone.
+ */
+export function ModuleKpiStrip({ kpis, label, className }: { kpis: ModuleKpi[]; label?: string; className?: string }) {
+  if (kpis.length === 0) return null
+  return (
+    <ul className={cn("grid grid-cols-3 gap-2 sm:gap-3", className)} aria-label={label}>
+      {kpis.map((kpi) => (
+        <li key={kpi.id} className="min-w-0">
+          {kpi.href ? (
+            <Link href={kpi.href} className={cn(TILE, TILE_LIVE)}>
+              <KpiBody kpi={kpi} />
+            </Link>
+          ) : kpi.onClick ? (
+            <button type="button" onClick={kpi.onClick} className={cn(TILE, TILE_LIVE)}>
+              <KpiBody kpi={kpi} />
+            </button>
+          ) : (
+            <div className={TILE}>
+              <KpiBody kpi={kpi} />
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -66,6 +103,7 @@ export function ModuleHeader({
   status,
   description,
   crumbs,
+  crumbsLabel,
   actions,
   kpis,
   kpisLabel,
@@ -78,6 +116,8 @@ export function ModuleHeader({
   status?: ReactNode
   description?: ReactNode
   crumbs?: Array<{ label: string; href?: string }>
+  /** The crumb trail's accessible name (the tabs' when absent). */
+  crumbsLabel?: string
   actions?: ReactNode
   kpis?: ModuleKpi[]
   kpisLabel?: string
@@ -88,16 +128,18 @@ export function ModuleHeader({
   return (
     <div className="space-y-4">
       {crumbs && crumbs.length > 0 && (
-        <nav aria-label={tabsLabel}>
+        <nav aria-label={crumbsLabel ?? tabsLabel}>
           <ol className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
             {crumbs.map((c, i) => (
               <li key={`${c.label}-${i}`} className="flex items-center gap-1">
                 {c.href ? (
                   <Link href={c.href} className="rounded font-semibold hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    {c.label}
+                    <bdi>{c.label}</bdi>
                   </Link>
                 ) : (
-                  <span className="font-semibold text-foreground">{c.label}</span>
+                  <span className="font-semibold text-foreground">
+                    <bdi>{c.label}</bdi>
+                  </span>
                 )}
                 {i < crumbs.length - 1 && <ChevronRight size={12} className="rtl-flip" aria-hidden="true" />}
               </li>
@@ -113,7 +155,7 @@ export function ModuleHeader({
           </span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-black text-primary">{title}</h1>
+              <h1 className="text-xl font-black leading-snug text-primary sm:text-2xl">{title}</h1>
               {status}
             </div>
             {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
@@ -122,26 +164,7 @@ export function ModuleHeader({
         {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
 
-      {kpis && kpis.length > 0 && (
-        <ul className="grid grid-cols-3 gap-2 sm:gap-3" aria-label={kpisLabel}>
-          {kpis.map((kpi) => (
-            <li key={kpi.id} className="min-w-0">
-              {kpi.href ? (
-                <Link
-                  href={kpi.href}
-                  className="block h-full rounded-xl border bg-card p-3 transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:p-4"
-                >
-                  <KpiBody kpi={kpi} />
-                </Link>
-              ) : (
-                <div className="h-full rounded-xl border bg-card p-3 sm:p-4">
-                  <KpiBody kpi={kpi} />
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      {kpis && kpis.length > 0 && <ModuleKpiStrip kpis={kpis} label={kpisLabel} />}
 
       {tabs && tabs.length > 1 && (
         <nav aria-label={tabsLabel}>
