@@ -15653,7 +15653,7 @@
         "lineDescPlaceholder": "مثلاً: زوايا حديد 50 مم",
         "unitPlaceholder": "حبة · متر · كجم",
         "unitDefault": "وحدة",
-        "unitPrice": "سعر الوحدة",
+        "unitPrice": "سعر الوحدة (دون الضريبة)",
         "removeLine": "احذف البند",
         "reason": "لماذا تمّ خارج المنصة؟",
         "reasonPlaceholder": "مثلاً: شراء نقدي عاجل يوم الصبّة",

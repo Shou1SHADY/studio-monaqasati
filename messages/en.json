@@ -15653,7 +15653,7 @@
         "lineDescPlaceholder": "e.g. steel angles 50 mm",
         "unitPlaceholder": "pc · m · kg",
         "unitDefault": "unit",
-        "unitPrice": "Unit price",
+        "unitPrice": "Unit price (excl. VAT)",
         "removeLine": "Remove line",
         "reason": "Why outside the platform?",
         "reasonPlaceholder": "e.g. urgent cash purchase on pour day",
