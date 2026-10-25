@@ -43,7 +43,7 @@ export const measuredItem = (id: string, data: Record<string, unknown>): Measure
   quantity: num(data.quantity),
   rate: num(data.unitPrice),
   executed: num(data.executedQuantity),
-  gate: { pmInspect: data.pmInspect === true, pmWir: (data.pmWir as GateFields["pmWir"]) ?? null },
+  gate: { pmInspect: data.pmInspect === true, pmWir: (data.pmWir as GateFields["pmWir"]) ?? null, pmWirByUnit: (data.pmWirByUnit as GateFields["pmWirByUnit"]) ?? null },
 })
 
 async function readProject(tx: Transaction, firestore: Firestore, projectId: string) {

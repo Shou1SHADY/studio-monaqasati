@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Callout } from "@/components/module-ui/Callout"
+import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
@@ -61,8 +62,6 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
   const [fixOn, setFixOn] = useState(today)
   const [fixFiles, setFixFiles] = useState<PmAttachment[]>([])
   const [confirming, setConfirming] = useState<PunchItem | null>(null)
-  const [confParty, setConfParty] = useState<PunchSource>("cons")
-  const [confText, setConfText] = useState("")
   const [confOn, setConfOn] = useState(today)
   const [confFiles, setConfFiles] = useState<PmAttachment[]>([])
   const [busy, setBusy] = useState<string | null>(null)
@@ -81,7 +80,7 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
   const blocks = punchBlocks({ archived: access.ctx.archived, what, location, source, sourceText, day, today })
   const fixBlocks = fixing ? punchStepBlocks({ archived: access.ctx.archived, status: fixing.status, step: "fix", note: fixNote, day: fixOn, today, after: fixing.day }) : []
   const confBlocks = confirming
-    ? punchStepBlocks({ archived: access.ctx.archived, status: confirming.status, step: "confirm", party: confParty, partyText: confText, day: confOn, today, after: confirming.fix?.on ?? confirming.day })
+    ? punchStepBlocks({ archived: access.ctx.archived, status: confirming.status, step: "confirm", day: confOn, today, after: confirming.fix?.on ?? confirming.day })
     : []
 
   const fail = (err: unknown) => {
@@ -127,7 +126,7 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
     if (!firestore || !confirming || confBlocks.length) return
     setBusy("conf")
     try {
-      await recordConfirmation(firestore, access.ctx, projectId, actor, confirming.seq, { on: confOn, party: confParty, partyText: confText, files: confFiles })
+      await recordConfirmation(firestore, access.ctx, projectId, actor, confirming.seq, { on: confOn, files: confFiles })
       toast({ title: t("punch.closed", { no: punchNo(confirming.seq), count: Math.max(0, open.length - 1) }) })
       setConfirming(null)
     } catch (err) {
@@ -237,8 +236,6 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
                         <Button
                           size="sm"
                           onClick={() => {
-                            setConfParty(p.source)
-                            setConfText(p.source === "oth" ? p.sourceText ?? "" : "")
                             setConfOn(todayDay())
                             setConfFiles([])
                             setConfirming(p)
@@ -376,27 +373,8 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
           </DialogHeader>
           <div className="space-y-4">
             <Callout tone="info">{t("punch.conf_note")}</Callout>
-            <div className="space-y-1.5">
-              <Label htmlFor="pn-conf-party">{t("punch.conf_who")}</Label>
-              <Select value={confParty} onValueChange={(v) => setConfParty(v as PunchSource)} disabled={busy !== null}>
-                <SelectTrigger id="pn-conf-party">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PUNCH_SOURCES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {t(`punch.source.${s}`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {confParty === "oth" && (
-              <div className="space-y-1.5">
-                <Label htmlFor="pn-conf-text">{t("punch.source_text")}</Label>
-                <Input id="pn-conf-text" value={confText} onChange={(e) => setConfText(e.target.value)} disabled={busy !== null} />
-              </div>
-            )}
+            {/* PN-02 (1.1): the confirmer is never picked — it is whoever raised the item. */}
+            {confirming && <KeyValueRow label={t("punch.conf_who")} value={<b dir="auto">{t("punch.conf_by_raiser", { party: partyName(confirming) })}</b>} />}
             {confirming?.fix && <Callout tone="info">{t("punch.recorded_fix", { note: confirming.fix.note || "—", date: pmDate(confirming.fix.on, locale), who: confirming.fix.byName || "—" })}</Callout>}
             <div className="space-y-1.5">
               <Label htmlFor="pn-conf-on">{t("punch.conf_date")}</Label>

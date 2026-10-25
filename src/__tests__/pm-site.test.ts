@@ -179,7 +179,7 @@ describe("safety (HSE-01)", () => {
     expect(expiredPermits(p, T)).toHaveLength(1)
     expect(p.map((x) => permitState(x, T))).toEqual(["soon", "expired", "today", "valid"])
     expect(sortPermits(p, T).map((x) => x.to)).toEqual([T, shift(T, 1), shift(T, 4), shift(T, -1)])
-    expect(permitBlocks({ archived: false, title: " ", who: "", from: T, to: shift(T, -1) })).toEqual(["no_work", "no_who", "bad_period"])
+    expect(permitBlocks({ archived: false, type: "hot", title: " ", who: "", from: T, to: shift(T, -1) })).toEqual(["no_work", "no_who", "bad_period"])
   })
 
   it("is the HSE officer's — the site engineer's template leaves safety out (RL-06)", async () => {
@@ -189,7 +189,7 @@ describe("safety (HSE-01)", () => {
     expect(await logIncident(db, hse, "p1", { uid: "hs1", name: "Majed" }, { ...input, type: "near", lostDays: 5 })).toBe(2)
     expect(readDoc("projects/p1/pmIncidents/01")).toMatchObject({ type: "lti", lostDays: 21, by: "hs1" })
     expect(readDoc("projects/p1/pmIncidents/02")).toMatchObject({ type: "near", lostDays: 0 })
-    expect(await issuePermit(db, hse, "p1", { uid: "hs1", name: null }, { title: "Hot work — roof", who: "Al-Itqan", from: today, to: shift(today, 1) })).toBe(1)
+    expect(await issuePermit(db, hse, "p1", { uid: "hs1", name: null }, { type: "hot", title: "Hot work — roof", who: "Al-Itqan", from: today, to: shift(today, 1) })).toBe(1)
     expect(readDoc("projects/p1")).toMatchObject({ pm: { incidentCount: 2, permitCount: 1 } })
   })
 })

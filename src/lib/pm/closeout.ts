@@ -28,6 +28,8 @@ export interface CloseRow {
   n?: number
   /** subs: sub certificates still awaiting approval. */
   m?: number
+  /** A warning row: shown on the list, never a block (1.1 WF-31 — an open letter). */
+  warn?: boolean
 }
 
 /** The screen that settles each row — the row opens it (prototype `go`). */
@@ -69,7 +71,7 @@ export interface CloseInput {
   plantOnSite?: number | null
   /** Subcontractor dues; null = no subcontracts and the section is off. */
   subs?: { due: number; pending: number } | null
-  /** Formal letters — one still open (sent or received, no reply) blocks. */
+  /** Formal letters — one still open (sent or received, no reply) is a WARNING row, never a block (1.1 WF-31). */
   letters?: Array<{ status: "out" | "in" | "rep" | "done" }> | null
   /** Finance is switched off for the company: what only Finance can settle — collections, the retention release and
    * what subcontractors are owed — is not waited for, so a project can still close. */
@@ -121,7 +123,7 @@ export function closeoutRows(input: CloseInput): CloseRow[] {
   }
   if (input.letters) {
     const openLetters = input.letters.filter(isLetterOpen).length
-    rows.push({ key: "corr", ok: openLetters === 0, n: openLetters })
+    rows.push({ key: "corr", ok: openLetters === 0, n: openLetters, warn: true })
   }
   return rows
 }
@@ -161,7 +163,8 @@ export function projectLessons(input: {
   }
 }
 
-export const closeBlocks = (rows: CloseRow[]) => rows.filter((r) => !r.ok)
+/** What stops closing: every row that does not hold — except a warning row, which only warns. */
+export const closeBlocks = (rows: CloseRow[]) => rows.filter((r) => !r.ok && !r.warn)
 
 /** What the project store still holds (prototype `plOf(p).filter(plBal>0.005)`):
  * the PM ledger `projects/{id}/pmStore`, never a company warehouse. The value

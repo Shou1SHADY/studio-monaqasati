@@ -41,7 +41,7 @@ export interface PunchItem {
   /** Photo of the item (optional). */
   files?: PmAttachment[]
   fix?: { on: string; by: string; byName?: string | null; note?: string | null; files?: PmAttachment[] } | null
-  /** Who confirmed the closure — the raising party by default, chosen at confirmation. */
+  /** Who confirmed the closure — always the party that raised it (PN-02, 1.1); `by` is who recorded it. */
   conf?: { on: string; by: string; byName?: string | null; party: PunchSource; partyText?: string | null; files?: PmAttachment[] } | null
 }
 

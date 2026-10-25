@@ -270,7 +270,7 @@ async function buildWorld() {
   await attempt("daily", () => fileDailyReport(db, ctxOf("site"), P, actorOf("site"), { labour: 58, plant: 4, done: "صب سقف الفيلا 4", obstacle: "", files: [] }))
   await attempt("obstacle", () => openObstacle(db, ctxOf("site"), P, actorOf("site"), { type: "rfi", title: "تعارض مجاري التكييف — الفيلا 3", party: "consultant", partyName: "مكتب البناء", itemIds: ["i06"], impact: "يوقف الأسقف", openOn: d(-4) }))
   await attempt("document", () => registerDocument(db, ctxOf("pm"), P, actorOf("pm"), { name: "المخططات المعمارية", type: "dwg", code: "R01", day: d(-30) }))
-  await attempt("letter", () => logLetter(db, ctxOf("qs"), P, actorOf("qs"), { dir: "out", party: "cons", subject: "طلب توضيح", day: d(-12), due: 14, links: "" }))
+  await attempt("letter", () => logLetter(db, ctxOf("qs"), P, actorOf("qs"), { dir: "out", party: "cons", subject: "طلب توضيح", day: d(-12), due: 14 }))
   await attempt("petty", () => logDirectPurchase(db, ctxOf("site"), P, actorOf("site"), { what: "مسامير", supplier: "محل البناء", amount: 350, receipt: "R-1", day: d(-1) }))
 }
 

@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { PmAccessError } from "@/lib/pm/access"
@@ -35,11 +35,13 @@ import {
   obstacleDays,
   obstacleSeq,
   obstacleTone,
+  isPermitType,
   permitState,
   PM_DAILY,
   PM_INCIDENTS,
   PM_OBSTACLES,
   PM_PERMITS,
+  replyStats,
   sortDaily,
   sortIncidents,
   sortObstacles,
@@ -115,6 +117,7 @@ export function SitePanel({
   const [busy, setBusy] = useState<string | null>(null)
   const [dialog, setDialog] = useState<"daily" | "obstacle" | "incident" | "permit" | null>(null)
   const [closing, setClosing] = useState<PmObstacle | null>(null)
+  const { user } = useUser()
   const [allDaily, setAllDaily] = useState(false)
   const [showClosed, setShowClosed] = useState(false)
 
@@ -144,6 +147,21 @@ export function SitePanel({
   const filedToday = reports.some((r) => r.day === today)
 
   const obsNo = (o: Pick<PmObstacle, "type" | "seq">) => t(`site.obs.no.${o.type}`, { no: obstacleSeq(o.seq) })
+  /** `obs-03` → its number in the reader's language. */
+  const obsNoOf = (id: string) => {
+    const [type, seq] = id.split("-")
+    return type === "rfi" || type === "obs" ? obsNo({ type, seq: Number(seq) || 0 }) : id
+  }
+  // OBS-01 (1.1): how long answers take, overall and per party — kept in the archive too.
+  const replies = replyStats(obstacles)
+  const repliesLine =
+    replies.avg !== null ? (
+      <p className="border-t bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground">
+        <b className="text-foreground">{t("site.obs.reply_avg", { days: replies.avg, count: replies.n })}</b>
+        {replies.byParty.length > 1 &&
+          ` · ${replies.byParty.map((g) => t("site.obs.reply_party", { party: g.partyName || t(`site.obs.party.${g.party}`), days: g.avg })).join(" · ")}`}
+      </p>
+    ) : null
   const partyOf = (o: PmObstacle) => (o.party === "none" ? "—" : o.partyName || t(`site.obs.party.${o.party}`))
   const coverOf = (o: PmObstacle) => claims.find((c) => c.obstacleId === o.id)
   const rel = (day: string) => {
@@ -266,6 +284,7 @@ export function SitePanel({
                     <p className="mt-1 flex items-start gap-1 text-xs font-semibold text-warning" dir="auto">
                       <AlertTriangle size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
                       {d.obstacle}
+                      {d.obsId && <span className="font-normal text-muted-foreground"> · {t("site.daily.obs_logged", { no: obsNoOf(d.obsId) })}</span>}
                     </p>
                   )}
                 </div>
@@ -382,6 +401,7 @@ export function SitePanel({
       ) : (
         <ul className="divide-y">{open.map((o) => openRow(o, true))}</ul>
       )}
+      {repliesLine}
       {closed.length > 0 && (
         <div className="border-t">
           <Button variant="ghost" size="sm" className="m-2" aria-expanded={showClosed} onClick={() => setShowClosed(!showClosed)}>
@@ -420,6 +440,7 @@ export function SitePanel({
           </section>
         </div>
       )}
+      {obstacles.length > 0 && repliesLine}
     </Panel>
   )
 
@@ -428,11 +449,30 @@ export function SitePanel({
   const lost = lostDays(incidents)
   const live = livePermits(permits, today)
   const dead = expiredPermits(permits, today)
-  const pmtTone: Record<ReturnType<typeof permitState>, PillTone> = { expired: "bad", today: "warn", soon: "warn", valid: "ok" }
+  const pmtTone: Record<ReturnType<typeof permitState>, PillTone> = { closed: "mute", expired: "bad", today: "warn", soon: "warn", valid: "ok" }
   const pmtText = (p: PmPermit) => {
     const s = permitState(p, today)
+    if (s === "closed") return t("site.hse.pmt_closed", { date: pmDate(p.closedOn, locale) })
     return s === "expired" ? t("site.hse.pmt_expired", { date: pmDate(p.to, locale) }) : s === "today" ? t("site.hse.pmt_today") : t("site.hse.pmt_until", { date: pmDate(p.to, locale) })
   }
+  /** The permit's kind in the reader's language; one issued before kinds has none. */
+  const pmtKind = (p: PmPermit) => (isPermitType(p.k) ? (p.k === "oth" ? p.kText || t("site.hse.pmt_type.oth") : t(`site.hse.pmt_type.${p.k}`)) : null)
+  // HSE-01 (1.1): closing early runs on the server — the permit is never edited from the browser.
+  const closePermit = (p: PmPermit) =>
+    void run(
+      `p${p.id}`,
+      async () => {
+        if (!user) throw new Error("no user")
+        const res = await fetch("/api/pm/permit-close", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` },
+          body: JSON.stringify({ projectId, permitId: p.id }),
+        })
+        const body = (await res.json().catch(() => null)) as { blocks?: string[]; code?: string } | null
+        if (!res.ok) throw new PmSiteError("blocked", [body?.blocks?.includes("closed") ? "pmt_closed" : body?.blocks?.includes("expired") ? "pmt_expired" : body?.blocks?.includes("archived") ? "archived" : "pmt_refused"])
+      },
+      t("site.hse.pmt_closed_done")
+    )
   const tile = (label: string, value: string, sub: string, bad = false) => (
     <div className="px-4 py-3">
       <p className="text-xs text-muted-foreground">{label}</p>
@@ -474,17 +514,29 @@ export function SitePanel({
       </div>
       {permits.length > 0 && (
         <ul className="mx-4 mb-3 space-y-1.5">
-          {permits.map((p) => (
-            <li key={p.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
-              <b className="min-w-0 flex-1" dir="auto">
-                {p.title}
-              </b>
-              <span className="text-xs text-muted-foreground" dir="auto">
-                {p.who}
-              </span>
-              <StatusPill tone={pmtTone[permitState(p, today)]}>{pmtText(p)}</StatusPill>
-            </li>
-          ))}
+          {permits.map((p) => {
+            const st = permitState(p, today)
+            return (
+              <li key={p.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                <span className="min-w-0 flex-1">
+                  <b className="block" dir="auto">
+                    {pmtKind(p) ? `${pmtKind(p)} — ${p.title}` : p.title}
+                  </b>
+                  <span className="block text-xs text-muted-foreground" dir="auto">
+                    {[p.where, p.who].filter(Boolean).join(" · ")}
+                  </span>
+                </span>
+                <Files files={p.files} />
+                <StatusPill tone={pmtTone[st]}>{pmtText(p)}</StatusPill>
+                {canHse && st !== "closed" && st !== "expired" && (
+                  <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => closePermit(p)}>
+                    {busy === `p${p.id}` && <Loader2 size={14} className="me-1.5 animate-spin" aria-hidden="true" />}
+                    {t("site.hse.pmt_close")}
+                  </Button>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
       {incidents.length === 0 ? (
@@ -544,6 +596,7 @@ export function SitePanel({
         projectId={projectId}
         filedToday={filedToday}
         archived={archived}
+        logsObstacles={sections.rfi}
         onSubmit={(v) =>
           firestore
             ? run("daily", () => fileDailyReport(firestore, access.ctx, projectId, actor, v), v.files.length ? t("site.daily.saved_files", { count: v.files.length }) : t("site.daily.saved"))
@@ -553,6 +606,8 @@ export function SitePanel({
       <ObstacleDialog
         open={dialog === "obstacle"}
         onOpenChange={(o) => setDialog(o ? "obstacle" : null)}
+        orgId={orgId}
+        projectId={projectId}
         items={items}
         archived={archived}
         onSubmit={(v) => (firestore ? run("obs", () => openObstacle(firestore, access.ctx, projectId, actor, v), t("site.obs.opened")) : Promise.resolve(false))}
@@ -560,6 +615,8 @@ export function SitePanel({
       <CloseObstacleDialog
         target={closing ? { no: obsNo(closing), title: closing.title, openOn: closing.openOn } : null}
         onClose={() => setClosing(null)}
+        orgId={orgId}
+        projectId={projectId}
         archived={archived}
         onSubmit={(v) =>
           firestore && closing
@@ -582,6 +639,8 @@ export function SitePanel({
       <PermitDialog
         open={dialog === "permit"}
         onOpenChange={(o) => setDialog(o ? "permit" : null)}
+        orgId={orgId}
+        projectId={projectId}
         archived={archived}
         onSubmit={(v) => (firestore ? run("pmt", () => issuePermit(firestore, access.ctx, projectId, actor, v), t("site.hse.pmt_saved")) : Promise.resolve(false))}
       />

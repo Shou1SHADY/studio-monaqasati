@@ -1,12 +1,15 @@
 // PM 1.0 — programme activities (PRG-01). Laid over the approved programme by
 // whoever approves on the project (`programme.manage`), one transaction each
 // with the guard first; the project numbers them (`pm.activityCount`). An
-// activity is edited, never deleted — its dates and items are the record.
+// activity is edited, never deleted — its dates and items are the record; once
+// the project is live its dates are the baseline and stay (1.1, WF-32).
 
 import { collection, doc, getDocs, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
+import { lifecycleOf } from "./lifecycle"
 import { activityBlocks, activityNo, PM_ACTIVITIES, type ActivityBlock, type PmActivity } from "./programme"
 import { withFreshState } from "./project-writes"
+import { isPermitType, type PermitType } from "./site"
 
 export class PmActivityError extends Error {
   constructor(readonly code: "missing" | "not_pm_project" | "archived" | "blocked", readonly blocks: ActivityBlock[] = []) {
@@ -26,8 +29,12 @@ export interface ActivityInput {
   to: string
   itemIds: string[]
   pred: string | null
-  permit?: boolean
+  /** The work-permit kind it needs; null/false = none (HSE-01). */
+  permit?: PermitType | boolean | null
 }
+
+/** Only a known kind is stored; `true` keeps an activity flagged before kinds existed. */
+const permitOf = (p: ActivityInput["permit"]): PermitType | boolean => (isPermitType(p) ? p : p === true)
 
 type ProjectData = { organizationId?: string; status?: string; projectManagerId?: string | null; pm?: { lifecycle?: string; activityCount?: number } & Record<string, unknown> }
 
@@ -64,7 +71,7 @@ export async function addActivity(firestore: Firestore, ctx: PmContext, projectI
       to: input.to,
       itemIds: input.itemIds,
       pred: input.pred || null,
-      permit: Boolean(input.permit),
+      permit: permitOf(input.permit),
       by: actor.uid,
       byName: actor.name,
       at: new Date().toISOString(),
@@ -83,9 +90,11 @@ export async function updateActivity(firestore: Firestore, ctx: PmContext, proje
     if (fresh.archived) throw new PmActivityError("archived")
     assertPm(fresh, "programme.manage")
     const aRef = doc(firestore, "projects", projectId, PM_ACTIVITIES, id)
-    if (!(await tx.get(aRef)).exists()) throw new PmActivityError("missing")
-    const blocks = activityBlocks({ ...input, id }, others)
+    const snap = await tx.get(aRef)
+    if (!snap.exists()) throw new PmActivityError("missing")
+    const was = snap.data() as Pick<PmActivity, "from" | "to">
+    const blocks = activityBlocks({ ...input, id }, others, { lifecycle: lifecycleOf(project), was })
     if (blocks.length) throw new PmActivityError("blocked", blocks)
-    tx.update(aRef, { name: input.name.trim(), from: input.from, to: input.to, itemIds: input.itemIds, pred: input.pred || null, permit: Boolean(input.permit), updatedAt: serverTimestamp() })
+    tx.update(aRef, { name: input.name.trim(), from: input.from, to: input.to, itemIds: input.itemIds, pred: input.pred || null, permit: permitOf(input.permit), updatedAt: serverTimestamp() })
   })
 }

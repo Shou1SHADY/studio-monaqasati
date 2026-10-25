@@ -6,7 +6,7 @@
 
 jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-utils/fake-firestore")>("@/test-utils/fake-firestore").firestoreModule)
 
-import { fakeFirestore, resetFakeDb, seed } from "@/test-utils/fake-firestore"
+import { fakeFirestore, readDoc, resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import type { Firestore } from "firebase/firestore"
 import { pmCeiling, type PmContext } from "@/lib/pm/access"
 import { eventStats, boundaryLog } from "@/lib/pm/boundary"
@@ -59,11 +59,12 @@ describe("closeout rows (C-37)", () => {
     expect(closeBlocks(rows)).toEqual([])
   })
 
-  it("stock, sub dues, a sub certificate awaiting approval and an open letter each block", () => {
+  it("stock, sub dues and a sub certificate awaiting approval each block; an open letter only warns (1.1 WF-31)", () => {
     expect(closeBlocks(closeoutRows({ ...base, storeLines: 2 })).map((r) => r.key)).toEqual(["store"])
     expect(closeBlocks(closeoutRows({ ...base, subs: { due: 450, pending: 0 } })).map((r) => r.key)).toEqual(["subs"])
     expect(closeBlocks(closeoutRows({ ...base, subs: { due: 0.4, pending: 1 } }))[0]).toMatchObject({ key: "subs", m: 1 })
-    expect(closeBlocks(closeoutRows({ ...base, letters: [{ status: "rep" }, { status: "in" }] }))).toEqual([{ key: "corr", ok: false, n: 1 }])
+    expect(closeBlocks(closeoutRows({ ...base, letters: [{ status: "rep" }, { status: "in" }] }))).toEqual([])
+    expect(closeoutRows({ ...base, letters: [{ status: "rep" }, { status: "in" }] }).find((r) => r.key === "corr")).toEqual({ key: "corr", ok: false, n: 1, warn: true })
   })
 
   it("SC-04: dues are certified minus paid, per party above half a riyal", () => {
@@ -71,11 +72,12 @@ describe("closeout rows (C-37)", () => {
     expect(subDues([contract({ paid: 499.7 })], [{ status: "int" }, { status: "ok" }])).toEqual({ due: 0, pending: 1 })
   })
 
-  it("an open letter refuses close and archive through the gate", async () => {
+  it("an open letter no longer refuses close and archive through the gate (1.1 WF-31: a warning row)", async () => {
     const terms = { ...defaultTerms(), payer: "none" as const }
     seed("projects/p1", { organizationId: "org", budget: 0, projectManagerId: "pm1", status: "remaining_payment", enabledSections: ["contract", "procure"], pm: { no: "PJ-2026/005", lifecycle: "done", terms, original: terms, acceptances: base.acceptances } })
     seed("projects/p1/pmLetters/01", { seq: 1, status: "out", dir: "out", day: "2026-09-01", due: 7 })
-    await expect(closeAndArchive(db, pm, "p1", { uid: "pm1", name: null })).rejects.toMatchObject({ code: "blocked", blocks: ["corr"] })
+    await closeAndArchive(db, pm, "p1", { uid: "pm1", name: null })
+    expect(readDoc<{ pm: { lifecycle: string } }>("projects/p1")!.pm.lifecycle).toBe("closed")
   })
 })
 

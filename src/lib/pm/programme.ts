@@ -5,6 +5,7 @@
 // the measurement of its items, and the critical path from its links. Pure.
 
 import { grantedDays, type PmClaim } from "./claim"
+import type { PermitType } from "./site"
 
 export const PM_ACTIVITIES = "pmActivities"
 
@@ -97,8 +98,10 @@ export interface PmActivity {
   itemIds: string[]
   /** The activity that must finish first, when there is one. */
   pred: string | null
-  /** Needs a live work permit before it can start (the look-ahead's permit constraint). */
-  permit?: boolean | null
+  /** The work-permit kind it needs (HSE-01, 1.1): the look-ahead wants a permit OF
+   * THAT KIND valid on its start day. `true` = flagged before kinds existed (any kind
+   * will do); none = it needs no permit. Stored in `permit` (the rules' key list). */
+  permit?: PermitType | boolean | null
   by: string
   byName?: string | null
   at: string
@@ -107,6 +110,12 @@ export interface PmActivity {
 export type ActivityState = "done" | "run" | "late" | "soon" | "idle"
 
 export const activityNo = (seq: number) => String(seq).padStart(2, "0")
+
+/** The permit an activity needs: its kind, `true` for any kind (flagged before kinds), or null. */
+export const permitNeed = (a: Pick<PmActivity, "permit">): PermitType | true | null => (typeof a.permit === "string" ? a.permit : a.permit ? true : null)
+
+/** Its length in days, both ends counted — a one-day activity (start = end) lasts 1 day. */
+export const activityDays = (a: Pick<PmActivity, "from" | "to">) => Math.max(0, Math.round(dayNum(a.to) - dayNum(a.from))) + 1
 
 /** % from the measurement of its items, weighted by value — never typed. */
 export function activityProgress(a: Pick<PmActivity, "itemIds">, items: Array<{ id: string; quantity: number; rate: number; executed: number }>): number | null {
@@ -150,12 +159,25 @@ export function criticalPath(acts: Array<Pick<PmActivity, "id" | "to" | "pred">>
 /** What a late activity holds up: the ones that wait on it. */
 export const activityNext = (acts: Array<Pick<PmActivity, "id" | "pred" | "name">>, id: string) => acts.filter((a) => a.pred === id)
 
-export type ActivityBlock = "no_name" | "dates" | "pred_self" | "pred_cycle"
+export type ActivityBlock = "no_name" | "dates" | "pred_self" | "pred_cycle" | "dates_locked"
 
-export function activityBlocks(input: { name: string; from: string; to: string; pred: string | null; id?: string | null }, acts: Array<Pick<PmActivity, "id" | "pred">>): ActivityBlock[] {
+/** Whether an activity's dates may still change: before go-live only. After it the
+ * plan is the baseline — editing it would hide the delay; a new revision comes only
+ * from an approved extension (PRG-01, WF-32 «no button to edit the plan»). */
+export const activityDatesOpen = (lifecycle: string | null | undefined) => !lifecycle || lifecycle === "plan"
+
+/** PRG-01: named, and the end never precedes the start — a one-day activity (end =
+ * start) is valid (1.1, FX-70); one predecessor, never itself or a loop back. With
+ * `lock.was` (an edit), a started project keeps the dates it had (`dates_locked`). */
+export function activityBlocks(
+  input: { name: string; from: string; to: string; pred: string | null; id?: string | null },
+  acts: Array<Pick<PmActivity, "id" | "pred">>,
+  lock?: { lifecycle: string | null | undefined; was: Pick<PmActivity, "from" | "to"> | null }
+): ActivityBlock[] {
   const out: ActivityBlock[] = []
   if (!input.name.trim()) out.push("no_name")
-  if (!input.from || !input.to || input.to <= input.from) out.push("dates")
+  if (!input.from || !input.to || input.to < input.from) out.push("dates")
+  if (lock?.was && !activityDatesOpen(lock.lifecycle) && (lock.was.from !== input.from || lock.was.to !== input.to)) out.push("dates_locked")
   if (input.pred && input.id && input.pred === input.id) out.push("pred_self")
   else if (input.pred && input.id) {
     // Walking back from the chosen predecessor must never reach this activity.

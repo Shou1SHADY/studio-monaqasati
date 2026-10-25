@@ -164,8 +164,8 @@ describe("the change on the client", () => {
 
 describe("hold (G-27)", () => {
   it("postponing needs a live project, a reason and a day not ahead", () => {
-    expect(holdBlocks({ archived: false, lifecycle: "live", to: "hold", why: "", since: today, today })).toEqual(["no_reason"])
-    expect(holdBlocks({ archived: false, lifecycle: "plan", to: "hold", why: "x", since: today, today })).toEqual(["not_live"])
+    expect(holdBlocks({ archived: false, lifecycle: "live", to: "hold", k: null, since: today, today })).toEqual(["no_reason"])
+    expect(holdBlocks({ archived: false, lifecycle: "plan", to: "hold", k: "client", since: today, today })).toEqual(["not_live"])
     expect(holdBlocks({ archived: false, lifecycle: "live", to: "live", today })).toEqual(["not_held"])
   })
 })
@@ -249,9 +249,9 @@ describe("writes", () => {
   })
 
   it("hold stores its day and reason; resume clears them and logs the hold", async () => {
-    await expect(holdProject(db, site, "p1", { why: "Owner redesign", since: today })).rejects.toBeInstanceOf(PmAccessError)
-    await holdProject(db, owner, "p1", { why: "Owner redesign", since: "2026-09-01" })
-    expect(readDoc<{ status: string; pm: Record<string, unknown> }>(P)).toMatchObject({ status: "hold", pm: { lifecycle: "hold", holdSince: "2026-09-01", holdWhy: "Owner redesign" } })
+    await expect(holdProject(db, site, "p1", siteActor, { k: "design", since: today })).rejects.toBeInstanceOf(PmAccessError)
+    await holdProject(db, owner, "p1", pmActor, { k: "oth", text: "Owner redesign", since: "2026-09-01" })
+    expect(readDoc<{ status: string; pm: Record<string, unknown> }>(P)).toMatchObject({ status: "hold", pm: { lifecycle: "hold", holdSince: "2026-09-01", holdK: "oth", holdWhy: "Owner redesign" } })
     await resumeProject(db, pm, "p1", pmActor)
     const after = readDoc<{ status: string; pm: { lifecycle: string; holdSince: null; holdLog: unknown[] } }>(P)!
     expect(after.pm).toMatchObject({ lifecycle: "live", holdSince: null })

@@ -1012,10 +1012,11 @@ service cloud.firestore {
             && request.resource.data.billedQuantity <= resource.data.get('executedQuantity', 0) + 0.01
             && (pmDuty(projectId, 'prep') || pmDuty(projectId, 'approve')))
         // …the line's last inspection result is written by quality (`qa`), one of the
-        // known states only (WIR-03); which lines require inspection is `approve`'s.
+        // known states only (WIR-03) — per delivery unit too (`pmWirByUnit`, MS-03);
+        // which lines require inspection is `approve`'s.
         || (isPm
-            && ck.hasOnly(['pmWir', 'updatedAt'])
-            && request.resource.data.pmWir in ['open', 'pass', 'cond', 'fail']
+            && ck.hasOnly(['pmWir', 'pmWirByUnit', 'updatedAt'])
+            && request.resource.data.get('pmWir', 'open') in ['open', 'pass', 'cond', 'fail']
             && pmDuty(projectId, 'qa'))
         || (isPm
             && ck.hasOnly(['pmInspect', 'updatedAt'])
@@ -1491,7 +1492,8 @@ service cloud.firestore {
       // open → corrective plan → closed on the consultant's acceptance.
       // PM 1.0 programme activities (PRG-01) — `pmActivities/{NN}`, laid over the
       // approved programme by approve; edited, never deleted. The number is drawn
-      // from `pm.activityCount` by the same approve branch on the project.
+      // from `pm.activityCount` by the same approve branch on the project. The end
+      // never precedes the start; a one-day activity (end = start) is valid (1.1 FX-70).
       match /pmActivities/{activityId} {
         allow read: if inProject(projectId);
 
@@ -1499,11 +1501,11 @@ service cloud.firestore {
           && request.resource.data.by == request.auth.uid
           && request.resource.data.name is string && request.resource.data.name.size() > 0
           && request.resource.data.from is string && request.resource.data.to is string
-          && request.resource.data.to > request.resource.data.from
+          && request.resource.data.to >= request.resource.data.from
           && request.resource.data.seq is int;
 
         allow update: if pmOpen(projectId, 'approve')
-          && request.resource.data.to > request.resource.data.from
+          && request.resource.data.to >= request.resource.data.from
           && changedKeys().hasOnly(['name', 'from', 'to', 'itemIds', 'pred', 'permit', 'updatedAt']);
 
         allow delete: if isAdmin();
@@ -1632,8 +1634,8 @@ service cloud.firestore {
         allow delete: if isAdmin();
       }
 
-      // PM 1.0 correspondence (COR-01) — `pmLetters/{NN}`, logged by `corr`. out|in → rep
-      // with the reply; nothing else on a letter ever changes (its dates are the evidence).
+      // PM 1.0 correspondence (COR-01) — `pmLetters/{NN}`, logged by `corr`. out → rep (their
+      // reply), in → done (ours closes it, 1.1 FX-26); nothing else on a letter ever changes.
       match /pmLetters/{letterId} {
         allow read: if inProject(projectId);
 
@@ -1649,7 +1651,7 @@ service cloud.firestore {
 
         allow update: if pmOpen(projectId, 'corr')
           && resource.data.status in ['out', 'in']
-          && request.resource.data.status == 'rep'
+          && request.resource.data.status == (resource.data.status == 'in' ? 'done' : 'rep')
           && request.resource.data.reply.by == request.auth.uid
           && request.resource.data.reply.text is string && request.resource.data.reply.text.size() > 0
           && request.resource.data.reply.on >= resource.data.day
@@ -1675,8 +1677,9 @@ service cloud.firestore {
       }
 
       // PM 1.0 obstacles and RFIs (OBS-01) — `pmObstacles/{rfi|obs}-{NN}`. Raised,
-      // chased and closed by `daily` or `approve`; closed, never deleted. A chase
-      // only appends one signed entry; closing sets the day, the answer and who.
+      // chased and closed by `daily` or `approve` (1.1 §C3 — a chase is no longer anyone's);
+      // closed, never deleted. A chase only appends one signed entry; closing sets the day,
+      // the answer, who, and optionally the answer's document.
       match /pmObstacles/{obstacleId} {
         allow read: if inProject(projectId);
 
@@ -1693,12 +1696,11 @@ service cloud.firestore {
 
         allow update: if inOpenProject(projectId)
           && resource.data.closeOn == null
+          && (pmDuty(projectId, 'daily') || pmDuty(projectId, 'approve'))
           && ((changedKeys().hasOnly(['chases', 'updatedAt'])
-                && (pmLiveSeat(projectId) || pmCeilingHas('all'))
                 && request.resource.data.chases.size() == resource.data.get('chases', []).size() + 1
                 && request.resource.data.chases[request.resource.data.chases.size() - 1].by == request.auth.uid)
-              || ((pmDuty(projectId, 'daily') || pmDuty(projectId, 'approve'))
-                && changedKeys().hasOnly(['closeOn', 'answer', 'closedBy', 'closedByName', 'updatedAt'])
+              || (changedKeys().hasOnly(['closeOn', 'answer', 'closedBy', 'closedByName', 'closeFiles', 'updatedAt'])
                 && request.resource.data.closeOn is string
                 && request.resource.data.closeOn >= resource.data.openOn
                 && request.resource.data.closedBy == request.auth.uid));

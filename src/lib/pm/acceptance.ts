@@ -49,11 +49,12 @@ export function provisionalBlocks(input: { archived: boolean; lifecycle: string;
 
 /** No final before provisional (INV-09); an open punch item blocks it (PN-03);
  * and none before the defects period ends (WF-25 — the prototype offers the
- * final only once it has). */
+ * final only once it has). A suspended project is accepted too — it becomes
+ * completed (1.1 HND-01, WF-28). */
 export function finalBlocks(input: { archived: boolean; lifecycle: string; acceptances: Acceptances; openPunch: number; defectsEnd?: string | null; today?: string }): FinalBlock[] {
   const out: FinalBlock[] = []
   if (input.archived) out.push("archived")
-  else if (input.lifecycle !== "live") out.push("not_live")
+  else if (input.lifecycle !== "live" && input.lifecycle !== "hold") out.push("not_live")
   if (!input.acceptances.prov) out.push("no_provisional")
   if (input.acceptances.final) out.push("already")
   if (input.openPunch > 0) out.push("punch_open")

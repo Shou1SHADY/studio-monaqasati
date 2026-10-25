@@ -10,7 +10,7 @@
 import { defectsEnd, progressOf, PROVISIONAL_AT, type Acceptances } from "./acceptance"
 import { CERTIFICATE_READY_AT, type CertificateStatus } from "./certificate"
 import { delayAndDamages, grantedDays, noticeDeadline, noticeLate, type ClaimStatus } from "./claim"
-import { isLetterLate, type PmLetter } from "./correspondence"
+import { isLetterLate, lateLettersSeverity, type PmLetter } from "./correspondence"
 import { staleDrawings, type PmDocument } from "./documents"
 import { wirNo } from "./inspection"
 import { RERATE_SHARE, sheetNo } from "./measurement"
@@ -224,7 +224,7 @@ export interface DecisionFacts {
   /** Retention held on certificates, and what handovers already made claimable — a ready unit frees a share of it. */
   retentionHeld?: number
   retentionFreed?: number
-  letters?: Array<Pick<PmLetter, "status" | "day" | "due" | "party">>
+  letters?: Array<Pick<PmLetter, "status" | "day" | "due" | "party" | "dir">>
   obstacles?: Array<Pick<PmObstacle, "id" | "type" | "closeOn" | "itemIds" | "openOn">>
   /** The last approved monthly reconciliation (CVR-01), if any. */
   eac?: { on: string } | null
@@ -607,10 +607,10 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
   const stale = staleDrawings(f.documents ?? [], f.sheets)
   if (stale.length) out.push({ kind: "doc_stale", severity: "amber", count: stale.length, age: oldest(stale.map((d) => d.revisions[d.revisions.length - 1]?.day ?? f.today), f.today), tab: "pmDocs" })
 
-  // A letter to the client or the consultant left unanswered builds or loses a claim (COR-01).
+  // A letter past its reply deadline builds or loses a claim (COR-01): red when an incoming one waits for us, amber when we wait (1.1).
   const lateLetters = (f.letters ?? []).filter((l) => isLetterLate(l, f.today))
   if (lateLetters.length)
-    out.push({ kind: "letters_late", severity: lateLetters.some((l) => l.party === "cons" || l.party === "own") ? "red" : "amber", count: lateLetters.length, age: oldest(lateLetters.map((l) => l.day), f.today), tab: "pmCorr" })
+    out.push({ kind: "letters_late", severity: lateLettersSeverity(lateLetters), count: lateLetters.length, age: oldest(lateLetters.map((l) => l.day), f.today), tab: "pmCorr" })
 
   const drafts = f.addenda.filter((a) => a.status === "draft")
   if (drafts.length) out.push({ kind: "addendum_unsigned", severity: "amber", count: drafts.length, age: oldest(drafts.map((a) => a.day), f.today), tab: "pmTerms" })

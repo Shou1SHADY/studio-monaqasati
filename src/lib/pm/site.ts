@@ -4,7 +4,11 @@
 // of it is ever deleted: a daily report is one per day and never rewritten, an
 // obstacle is closed not removed, and every chase is dated and signed — the
 // evidence a claim later cites. RFIs and other obstacles are numbered apart
-// (RFI-07 · مع-02), as the prototype numbers them. Pure: no I/O.
+// (RFI-07 · مع-02), as the prototype numbers them. PM 1.1: a daily report's
+// obstacle becomes an obstacle record (DLY-01); an RFI names who owes the answer
+// and answer times are averaged per party (OBS-01); permits have a kind, close
+// early, and an activity needs one of its kind valid on its start day (HSE-01).
+// Pure: no I/O.
 
 /** `projects/{id}/pmDaily/{YYYY-MM-DD}` — the day is the id: one report a day. */
 export const PM_DAILY = "pmDaily"
@@ -41,6 +45,8 @@ export interface PmDaily {
   done: string
   /** What stopped work today, in the engineer's words — empty when nothing did. */
   obstacle?: string | null
+  /** DLY-01 (1.1): the obstacle record that text became (`pmObstacles/obs-NN`), when it was logged. */
+  obsId?: string | null
   files?: SiteFile[]
   by: string
   byName?: string | null
@@ -102,6 +108,11 @@ export interface PmObstacle {
   closedBy?: string | null
   closedByName?: string | null
   chases?: ObstacleChase[]
+  /** Photos or a letter at opening, and the answer's document at closing — optional (1.1 OBS-01). */
+  files?: SiteFile[]
+  closeFiles?: SiteFile[]
+  /** Logged from a daily report (DLY-01): the report's day. */
+  src?: { daily: string } | null
   by: string
   byName?: string | null
 }
@@ -129,7 +140,7 @@ export function sortObstacles<T extends Pick<PmObstacle, "openOn" | "closeOn">>(
   return list.slice().sort((a, b) => Number(Boolean(a.closeOn)) - Number(Boolean(b.closeOn)) || (a.closeOn ? (b.closeOn ?? "").localeCompare(a.closeOn) : a.openOn.localeCompare(b.openOn)))
 }
 
-export type ObstacleBlock = "archived" | "no_type" | "no_title" | "no_impact" | "no_party" | "no_party_name" | "open_date" | "bad_item"
+export type ObstacleBlock = "archived" | "no_type" | "no_title" | "no_impact" | "no_party" | "no_party_name" | "rfi_party" | "open_date" | "bad_item"
 
 export function obstacleBlocks(input: {
   archived: boolean
@@ -150,6 +161,8 @@ export function obstacleBlocks(input: {
   if (!input.impact.trim()) out.push("no_impact")
   if (!(OBSTACLE_PARTIES as readonly unknown[]).includes(input.party)) out.push("no_party")
   else if (input.party === "other" && !input.partyName.trim()) out.push("no_party_name")
+  // OBS-01 (1.1): an RFI is a question put to someone — it always names who owes the answer.
+  else if (input.type === "rfi" && input.party === "none") out.push("rfi_party")
   if (!DAY.test(input.openOn) || input.openOn > input.today) out.push("open_date")
   if (input.itemIds.some((id) => !input.knownItems.has(id))) out.push("bad_item")
   return out
@@ -171,6 +184,44 @@ export function closeObstacleBlocks(input: { archived: boolean; openOn: string; 
   if (input.closeOn) out.push("closed")
   if (!DAY.test(input.on) || input.on < input.openOn || input.on > input.today) out.push("close_date")
   return out
+}
+
+/** The obstacle a daily report's text becomes (DLY-01, 1.1): an obstacle (not an
+ * RFI) opened on the report's day, owed by nobody until someone says otherwise,
+ * stopping no line — the engineer's words as its subject. */
+export function obstacleFromDaily(text: string, day: string): Pick<PmObstacle, "type" | "title" | "party" | "partyName" | "itemIds" | "codes" | "impact" | "openOn" | "src"> {
+  return { type: "obs", title: text.trim(), party: "none", partyName: null, itemIds: [], codes: [], impact: "—", openOn: day, src: { daily: day } }
+}
+
+export interface ReplyStat {
+  party: ObstacleParty
+  partyName: string | null
+  n: number
+  avg: number
+}
+
+/** OBS-01 / CST-04 (1.1): how long answers take — the average days from opening
+ * to closing over the closed obstacles and RFIs that were put to someone (one owed
+ * by nobody has no "reply"), overall and per party (an "other" party by its name).
+ * Kept to one decimal; null overall when none is closed. */
+export function replyStats(list: Array<Pick<PmObstacle, "party" | "partyName" | "openOn" | "closeOn">>): { avg: number | null; n: number; byParty: ReplyStat[] } {
+  const done = list.filter((o) => o.closeOn && o.party !== "none")
+  const r1 = (n: number) => Math.round(n * 10) / 10
+  const groups = new Map<string, { party: ObstacleParty; partyName: string | null; n: number; sum: number }>()
+  for (const o of done) {
+    const name = o.party === "other" ? o.partyName?.trim() || null : null
+    const key = `${o.party}|${name ?? ""}`
+    const g = groups.get(key) ?? { party: o.party, partyName: name, n: 0, sum: 0 }
+    g.n += 1
+    g.sum += daysBetween(o.openOn, o.closeOn as string)
+    groups.set(key, g)
+  }
+  const total = [...groups.values()].reduce((a, g) => a + g.sum, 0)
+  return {
+    avg: done.length ? r1(total / done.length) : null,
+    n: done.length,
+    byParty: [...groups.values()].map((g) => ({ party: g.party, partyName: g.partyName, n: g.n, avg: r1(g.sum / g.n) })).sort((a, b) => b.avg - a.avg),
+  }
 }
 
 /** Open obstacles that stop at least one BOQ line — a decision (the prototype's `rfi`). */
@@ -247,45 +298,86 @@ export function daysSinceLti(incidents: Pick<PmIncident, "type" | "day">[], star
 /** Lost work days: they count in the delay and nobody reimburses them. */
 export const lostDays = (incidents: Pick<PmIncident, "lostDays">[]) => incidents.reduce((a, i) => a + (i.lostDays || 0), 0)
 
+/** HSE-01 (1.1): what kind of work the permit allows — an activity that needs a
+ * kind is ready only with a permit of THAT kind. "oth" is stated (RSN-01). */
+export const PERMIT_TYPES = ["hot", "height", "exc", "conf", "elec", "lift", "oth"] as const
+export type PermitType = (typeof PERMIT_TYPES)[number]
+export const isPermitType = (v: unknown): v is PermitType => (PERMIT_TYPES as readonly unknown[]).includes(v)
+
 export interface PmPermit {
   id: string
   seq: number
+  /** The kind of work (1.1). A permit issued before kinds existed has none. */
+  k?: PermitType | null
+  /** The kind in words when it is "oth". */
+  kText?: string | null
   title: string
+  /** Where on site (optional). */
+  where?: string | null
   /** Who works under it: our crew, a subcontractor. */
   who: string
   from: string
   to: string
+  /** Closed early (HSE-01): from this day no activity relies on it. Written by the server (`/api/pm/permit-close`). */
+  closedOn?: string | null
+  closedBy?: string | null
+  closedByName?: string | null
+  files?: SiteFile[]
   by: string
   byName?: string | null
 }
 
 export const permitNo = (seq: number) => String(seq).padStart(2, "0")
 
-export type PermitBlock = "archived" | "no_work" | "no_who" | "bad_period"
+export type PermitBlock = "archived" | "no_type" | "type_text" | "no_work" | "no_who" | "bad_period"
 
-export function permitBlocks(input: { archived: boolean; title: string; who: string; from: string; to: string }): PermitBlock[] {
+export function permitBlocks(input: { archived: boolean; type: unknown; typeText?: string | null; title: string; who: string; from: string; to: string }): PermitBlock[] {
   const out: PermitBlock[] = []
   if (input.archived) out.push("archived")
+  if (!isPermitType(input.type)) out.push("no_type")
+  else if (input.type === "oth" && !input.typeText?.trim()) out.push("type_text")
   if (!input.title.trim()) out.push("no_work")
   if (!input.who.trim()) out.push("no_who")
   if (!DAY.test(input.from) || !DAY.test(input.to) || input.to < input.from) out.push("bad_period")
   return out
 }
 
-/** Valid through its last day. The weekly plan's permit constraint reads this. */
-export const livePermits = <T extends Pick<PmPermit, "to">>(list: T[], today: string) => list.filter((p) => p.to >= today)
-export const expiredPermits = <T extends Pick<PmPermit, "to">>(list: T[], today: string) => list.filter((p) => p.to < today)
+/** Closed on or before `day`: it covers nothing from its closing day on. */
+const closedBy = (p: Pick<PmPermit, "closedOn">, day: string) => Boolean(p.closedOn) && (p.closedOn as string) <= day
 
-/** expired · ends today · ends tomorrow (warn) · valid. */
-export function permitState(p: Pick<PmPermit, "to">, today: string): "expired" | "today" | "soon" | "valid" {
+/** Valid through its last day, unless closed early. The safety tile counts these. */
+export const livePermits = <T extends Pick<PmPermit, "to" | "closedOn">>(list: T[], today: string) => list.filter((p) => p.to >= today && !closedBy(p, today))
+export const expiredPermits = <T extends Pick<PmPermit, "to" | "closedOn">>(list: T[], today: string) => list.filter((p) => p.to < today || closedBy(p, today))
+
+/** HSE-01 / WWP-01 (1.1): a permit of the kind needed, valid on `day` — issued for a
+ * period that covers it and not closed by then. `true` (an activity flagged before
+ * kinds existed) accepts a permit of any kind. */
+export function permitValidOn(list: Array<Pick<PmPermit, "k" | "from" | "to" | "closedOn">>, kind: PermitType | true, day: string): boolean {
+  return list.some((p) => (kind === true || p.k === kind) && p.from <= day && p.to >= day && !closedBy(p, day))
+}
+
+/** closed · expired · ends today · ends tomorrow (warn) · valid. */
+export function permitState(p: Pick<PmPermit, "to" | "closedOn">, today: string): "closed" | "expired" | "today" | "soon" | "valid" {
+  if (p.closedOn && p.closedOn <= today && p.to >= p.closedOn) return "closed"
   if (p.to < today) return "expired"
   if (p.to === today) return "today"
   return daysBetween(today, p.to) <= 1 ? "soon" : "valid"
 }
 
-/** Live ones first (soonest to end on top), then expired, most recent first. */
-export function sortPermits<T extends Pick<PmPermit, "to">>(list: T[], today: string): T[] {
+export type PermitCloseBlock = "archived" | "closed" | "expired"
+
+/** Closing early (HSE-01): a permit still running (or not yet begun), closed today. */
+export function closePermitBlocks(input: { archived: boolean; to: string; closedOn?: string | null; today: string }): PermitCloseBlock[] {
+  const out: PermitCloseBlock[] = []
+  if (input.archived) out.push("archived")
+  if (input.closedOn) out.push("closed")
+  else if (input.to < input.today) out.push("expired")
+  return out
+}
+
+/** Live ones first (soonest to end on top), then expired or closed, most recent first. */
+export function sortPermits<T extends Pick<PmPermit, "to" | "closedOn">>(list: T[], today: string): T[] {
   const live = livePermits(list, today).sort((a, b) => a.to.localeCompare(b.to))
-  const dead = expiredPermits(list, today).sort((a, b) => b.to.localeCompare(a.to))
+  const dead = expiredPermits(list, today).sort((a, b) => (b.closedOn ?? b.to).localeCompare(a.closedOn ?? a.to))
   return [...live, ...dead]
 }

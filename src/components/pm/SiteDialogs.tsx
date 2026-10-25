@@ -26,10 +26,12 @@ import {
   OBSTACLE_PARTIES,
   OBSTACLE_TYPES,
   obstacleBlocks,
+  PERMIT_TYPES,
   permitBlocks,
   type IncidentType,
   type ObstacleParty,
   type ObstacleType,
+  type PermitType,
   type SiteFile,
 } from "@/lib/pm/site"
 import type { ObstacleInput } from "@/lib/pm/site-writes"
@@ -43,7 +45,7 @@ export interface SiteItem {
 
 const intOr = (s: string, fallback: number) => (s.trim() === "" ? fallback : Number(s))
 
-function Chips<T extends string>({ value, options, label, onChange, disabled }: { value: T; options: readonly T[]; label: (v: T) => string; onChange: (v: T) => void; disabled?: boolean }) {
+function Chips<T extends string>({ value, options, label, onChange, disabled }: { value: T | null; options: readonly T[]; label: (v: T) => string; onChange: (v: T) => void; disabled?: boolean }) {
   return (
     <div className="flex flex-wrap gap-2" role="radiogroup">
       {options.map((o) => (
@@ -184,6 +186,7 @@ export function DailyReportDialog({
   projectId,
   filedToday,
   archived,
+  logsObstacles = false,
   onSubmit,
 }: {
   open: boolean
@@ -192,7 +195,9 @@ export function DailyReportDialog({
   projectId: string
   filedToday: boolean
   archived: boolean
-  onSubmit: Submit<{ labour: number; plant: number; done: string; obstacle: string; files: SiteFile[] }>
+  /** The project keeps an obstacles list: a written obstacle enters it (DLY-01, 1.1) unless unticked. */
+  logsObstacles?: boolean
+  onSubmit: Submit<{ labour: number; plant: number; done: string; obstacle: string; files: SiteFile[]; logObstacle: boolean }>
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
@@ -200,9 +205,10 @@ export function DailyReportDialog({
   const [plant, setPlant] = useState("")
   const [done, setDone] = useState("")
   const [obstacle, setObstacle] = useState("")
+  const [logObstacle, setLogObstacle] = useState(true)
   const [files, setFiles] = useState<SiteFile[]>([])
   const [busy, setBusy] = useState(false)
-  const values = { labour: intOr(labour, 0), plant: intOr(plant, 0), done, obstacle, files }
+  const values = { labour: intOr(labour, 0), plant: intOr(plant, 0), done, obstacle, files, logObstacle: logsObstacles && logObstacle }
   const blocks = dailyBlocks({ archived, done, labour: values.labour, plant: values.plant, filed: filedToday })
 
   const save = async () => {
@@ -214,6 +220,7 @@ export function DailyReportDialog({
       setPlant("")
       setDone("")
       setObstacle("")
+      setLogObstacle(true)
       setFiles([])
       onOpenChange(false)
     }
@@ -247,6 +254,15 @@ export function DailyReportDialog({
             <Label htmlFor="day-obs">{t("site.daily.obstacle")}</Label>
             <Textarea id="day-obs" dir="auto" placeholder={t("site.daily.obstacle_ph")} value={obstacle} onChange={(e) => setObstacle(e.target.value)} disabled={busy} />
             <p className="text-xs leading-relaxed text-muted-foreground">{t("site.daily.obstacle_hint")}</p>
+            {logsObstacles && obstacle.trim() && (
+              <label htmlFor="day-obs-log" className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm">
+                <input id="day-obs-log" type="checkbox" checked={logObstacle} onChange={(e) => setLogObstacle(e.target.checked)} disabled={busy} className="h-4 w-4" />
+                <span>
+                  <b className="block">{t("site.daily.obstacle_log")}</b>
+                  <span className="text-xs text-muted-foreground">{t("site.daily.obstacle_log_hint")}</span>
+                </span>
+              </label>
+            )}
           </div>
           <SiteFilesField orgId={orgId} projectId={projectId} folder="daily" value={files} onChange={setFiles} label={t("site.daily.files")} hint={t("site.daily.files_hint")} disabled={busy} />
           <BlockingReasons title={t("cannot_save")} reasons={blocks.filter((b) => b !== "no_done").map((b) => t(`site.block.${b}`))} />
@@ -260,12 +276,16 @@ export function DailyReportDialog({
 export function ObstacleDialog({
   open,
   onOpenChange,
+  orgId,
+  projectId,
   items,
   archived,
   onSubmit,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
+  orgId: string
+  projectId: string
   items: SiteItem[]
   archived: boolean
   onSubmit: Submit<ObstacleInput>
@@ -279,6 +299,7 @@ export function ObstacleDialog({
   const [itemIds, setItemIds] = useState<string[]>([])
   const [impact, setImpact] = useState("")
   const [openOn, setOpenOn] = useState(today)
+  const [files, setFiles] = useState<SiteFile[]>([])
   const [busy, setBusy] = useState(false)
   const known = new Set(items.map((i) => i.id))
   const blocks = obstacleBlocks({ archived, type, title, party, partyName, impact, openOn, itemIds, knownItems: known, today })
@@ -289,7 +310,7 @@ export function ObstacleDialog({
 
   const save = async () => {
     setBusy(true)
-    const ok = await onSubmit({ type, title, party, partyName, itemIds, impact, openOn })
+    const ok = await onSubmit({ type, title, party, partyName, itemIds, impact, openOn, files })
     setBusy(false)
     if (ok) {
       setTitle("")
@@ -297,6 +318,7 @@ export function ObstacleDialog({
       setItemIds([])
       setImpact("")
       setOpenOn(todayDay())
+      setFiles([])
       onOpenChange(false)
     }
   }
@@ -371,6 +393,7 @@ export function ObstacleDialog({
             <Input id="obs-open" type="date" dir="ltr" max={today} value={openOn} onChange={(e) => setOpenOn(e.target.value)} disabled={busy} />
             <p className="text-xs text-muted-foreground">{t("site.obs.open_on_hint")}</p>
           </div>
+          <SiteFilesField orgId={orgId} projectId={projectId} folder="obstacles" value={files} onChange={setFiles} label={t("site.obs.files")} hint={t("site.obs.files_hint")} disabled={busy} />
           <BlockingReasons title={t("cannot_save")} reasons={blocks.filter((b) => b !== "no_title" && b !== "no_impact").map((b) => t(`site.block.${b}`))} />
         </div>
         <Footer busy={busy} disabled={blocks.length > 0} onCancel={() => onOpenChange(false)} onSave={() => void save()} label={t("site.obs.save")} />
@@ -382,28 +405,34 @@ export function ObstacleDialog({
 export function CloseObstacleDialog({
   target,
   onClose,
+  orgId,
+  projectId,
   archived,
   onSubmit,
 }: {
   target: { no: string; title: string; openOn: string } | null
   onClose: () => void
+  orgId: string
+  projectId: string
   archived: boolean
-  onSubmit: Submit<{ on: string; answer: string }>
+  onSubmit: Submit<{ on: string; answer: string; files: SiteFile[] }>
 }) {
   const t = useTranslations("Portal.PM")
   const today = todayDay()
   const [on, setOn] = useState(today)
   const [answer, setAnswer] = useState("")
+  const [files, setFiles] = useState<SiteFile[]>([])
   const [busy, setBusy] = useState(false)
   const blocks = target ? closeObstacleBlocks({ archived, openOn: target.openOn, on, today }) : []
 
   const save = async () => {
     setBusy(true)
-    const ok = await onSubmit({ on, answer })
+    const ok = await onSubmit({ on, answer, files })
     setBusy(false)
     if (ok) {
       setOn(todayDay())
       setAnswer("")
+      setFiles([])
       onClose()
     }
   }
@@ -424,6 +453,7 @@ export function CloseObstacleDialog({
             <Label htmlFor="obs-answer">{t("site.obs.answer")}</Label>
             <Textarea id="obs-answer" dir="auto" placeholder={t("site.obs.answer_ph")} value={answer} onChange={(e) => setAnswer(e.target.value)} disabled={busy} />
           </div>
+          <SiteFilesField orgId={orgId} projectId={projectId} folder="obstacles" value={files} onChange={setFiles} label={t("site.obs.close_files")} disabled={busy} />
           <BlockingReasons title={t("cannot_save")} reasons={blocks.map((b) => t(`site.block.${b}`))} />
         </div>
         <Footer busy={busy} disabled={blocks.length > 0} onCancel={onClose} onSave={() => void save()} label={t("site.obs.close_save")} />
@@ -521,52 +551,88 @@ export function IncidentDialog({
   )
 }
 
+export interface PermitValues {
+  type: PermitType | null
+  typeText: string
+  title: string
+  where: string
+  who: string
+  from: string
+  to: string
+  files: SiteFile[]
+}
+
 export function PermitDialog({
   open,
   onOpenChange,
+  orgId,
+  projectId,
   archived,
   onSubmit,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
+  orgId: string
+  projectId: string
   archived: boolean
-  onSubmit: Submit<{ title: string; who: string; from: string; to: string }>
+  onSubmit: Submit<PermitValues>
 }) {
   const t = useTranslations("Portal.PM")
   const today = todayDay()
+  const [type, setType] = useState<PermitType | null>(null)
+  const [typeText, setTypeText] = useState("")
   const [title, setTitle] = useState("")
+  const [where, setWhere] = useState("")
   const [who, setWho] = useState("")
   const [from, setFrom] = useState(today)
   const [to, setTo] = useState(today)
+  const [files, setFiles] = useState<SiteFile[]>([])
   const [busy, setBusy] = useState(false)
-  const blocks = permitBlocks({ archived, title, who, from, to })
+  const blocks = permitBlocks({ archived, type, typeText, title, who, from, to })
 
   const save = async () => {
     setBusy(true)
-    const ok = await onSubmit({ title, who, from, to })
+    const ok = await onSubmit({ type, typeText, title, where, who, from, to, files })
     setBusy(false)
     if (ok) {
+      setType(null)
+      setTypeText("")
       setTitle("")
+      setWhere("")
       setWho("")
       setFrom(todayDay())
       setTo(todayDay())
+      setFiles([])
       onOpenChange(false)
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("site.hse.pmt_title")}</DialogTitle>
           <DialogDescription>{t("site.hse.pmt_desc")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
+            <Label>
+              {t("site.hse.pmt_type_label")} <span className="text-destructive">*</span>
+            </Label>
+            <Chips value={type} options={PERMIT_TYPES} label={(v) => t(`site.hse.pmt_type.${v}`)} onChange={setType} disabled={busy} />
+            {type === "oth" && (
+              <Input dir="auto" aria-label={t("site.hse.pmt_type_text")} placeholder={t("site.hse.pmt_type_text_ph")} value={typeText} onChange={(e) => setTypeText(e.target.value)} disabled={busy} />
+            )}
+          </div>
+          <div className="space-y-1.5">
             <Label htmlFor="pmt-t">
               {t("site.hse.pmt_work")} <span className="text-destructive">*</span>
             </Label>
             <Input id="pmt-t" dir="auto" placeholder={t("site.hse.pmt_work_ph")} value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="pmt-where">{t("site.hse.pmt_where")}</Label>
+            <Input id="pmt-where" dir="auto" placeholder={t("site.hse.pmt_where_ph")} value={where} onChange={(e) => setWhere(e.target.value)} disabled={busy} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="pmt-who">
@@ -584,7 +650,8 @@ export function PermitDialog({
               <Input id="pmt-to" type="date" dir="ltr" min={from} value={to} onChange={(e) => setTo(e.target.value)} disabled={busy} />
             </div>
           </div>
-          <BlockingReasons title={t("cannot_save")} reasons={blocks.filter((b) => b !== "no_work" && b !== "no_who").map((b) => t(`site.block.${b}`))} />
+          <SiteFilesField orgId={orgId} projectId={projectId} folder="permits" value={files} onChange={setFiles} label={t("site.hse.pmt_files")} disabled={busy} />
+          <BlockingReasons title={t("cannot_save")} reasons={blocks.filter((b) => b !== "no_work" && b !== "no_who" && b !== "no_type").map((b) => t(`site.block.${b}`))} />
         </div>
         <Footer busy={busy} disabled={blocks.length > 0} onCancel={() => onOpenChange(false)} onSave={() => void save()} label={t("site.hse.pmt_save")} />
       </DialogContent>

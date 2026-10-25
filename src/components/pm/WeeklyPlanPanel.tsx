@@ -85,17 +85,20 @@ export function WeeklyPlanPanel({
         return t("wwp.cx.pred", { name: d.name, pc: Math.round(d.pc) })
       case "failed":
         return t("wwp.cx.failed", { code: d.code })
+      case "pred_insp":
+        return t("wwp.cx.pred_insp", { code: d.code })
       case "obstacle": {
         // The name typed for the party, else its code in the reader's language; addressed to nobody, the title stands alone.
         const party = d.partyName || (d.party !== "none" && (OBSTACLE_PARTIES as readonly string[]).includes(d.party) ? t(`site.obs.party.${d.party}`) : "")
         return party ? t("wwp.cx.obstacle", { title: d.title, party }) : d.title
       }
       case "no_permit":
-        return t("wwp.cx.no_permit")
+        // HSE-01 (1.1): the kind it needs, valid on the day it starts.
+        return d.type && d.day ? t("wwp.cx.no_permit_kind", { kind: t(`site.hse.pmt_type.${d.type}`), date: pmDate(d.day, locale) }) : t("wwp.cx.no_permit")
       case "materials":
         return d.count > 2 ? t("wwp.cx.materials_more", { names: d.names.join(" · "), count: d.count - 2 }) : t("wwp.cx.materials", { names: d.names.join(" · ") })
       case "plant":
-        return t("wwp.cx.plant", { what: d.what })
+        return t(d.waiting ? "wwp.cx.plant_waiting" : "wwp.cx.plant", { what: d.what })
     }
   }
   const when = (r: LookRow) => (r.startsIn > 0 ? t("wwp.starts_in", { count: r.startsIn }) : t("wwp.running", { count: -r.startsIn }))

@@ -5,20 +5,25 @@
 //   dwg  current drawing   — no drawing revised after the last approved measurement
 //   subm approved sample   — every item needing a sample has an approved one
 //   pred preceding work    — the preceding activity at ≥ 95%
-//   insp passed inspection — no failed inspection on an item needing one
+//   insp passed inspection — no failed last inspection on an item needing one,
+//        and the PRECEDING work's gated items passed theirs (1.1 WWP-01, FX-31)
 //   rfi  no open obstacle  — no open obstacle stopping one of its items
-//   pmt  valid work permit — for an activity that needs a permit, one is live
+//   pmt  valid work permit — a permit OF THE KIND it needs, valid on its start
+//        day (today once it runs), not closed by then (1.1 HSE-01, FX-29)
 //   mat  materials on site — every material of its items is on the project, or
 //        an approved request brings it within a week of the start
-//   crew plant             — every approved equipment request of the activity
-//        was received on site (not evaluated when it asked for none)
+//   crew plant             — every equipment request of the activity, approved
+//        or awaiting approval, reached the site (1.1 WWP-02, FX-30; not
+//        evaluated when it asked for none)
 // Committing with open constraints is allowed and
 // recorded; at the week's end every task not done needs a reason from a closed
 // list ("other" stated) — a repeated cause is a management defect, not bad
 // luck. PPC = done ÷ committed. Pure: no I/O.
 
-import { activityProgress, addDays, type PmActivity } from "./programme"
+import { gateOf, type GateFields } from "./inspection"
+import { activityProgress, addDays, permitNeed, type PmActivity } from "./programme"
 import { sampleStateOf } from "./sample"
+import { permitValidOn, type PermitType, type PmPermit } from "./site"
 import { storeBalance, type PmStoreLine } from "./store"
 import { lineOut, type PmMaterialRequest } from "./supply"
 
@@ -40,10 +45,11 @@ export interface Constraint {
     | { kind: "sample"; code: string; state: "not_submitted" | "rejected" | "with_consultant" }
     | { kind: "pred"; name: string; pc: number }
     | { kind: "failed"; code: string }
+    | { kind: "pred_insp"; code: string }
     | { kind: "obstacle"; title: string; party: string; partyName?: string | null }
-    | { kind: "no_permit" }
+    | { kind: "no_permit"; type?: PermitType | null; day?: string | null }
     | { kind: "materials"; names: string[]; count: number }
-    | { kind: "plant"; what: string; count: number }
+    | { kind: "plant"; what: string; count: number; waiting?: boolean }
 }
 
 export interface LookItem {
@@ -58,9 +64,9 @@ export interface LookItem {
   pmSub?: string | null
 }
 
-export type LookActivity = PmActivity & { permit?: boolean | null }
+export type LookActivity = PmActivity
 
-/** An equipment request as the look-ahead reads it: approved (`go`) and whether it reached the site. */
+/** An equipment request as the look-ahead reads it: approved (`go`) or awaiting approval (`wait`), and whether it reached the site. */
 export interface LookPlant {
   activityId: string | null
   status: string
@@ -73,7 +79,10 @@ export interface LookFacts {
   activities: LookActivity[]
   /** Open obstacles and the items they stop. `party` is the stored code; the name is only what was typed. */
   obstacles: LookObstacle[]
+  /** How many permits are live today — read only when `permits` is not given (an older caller). */
   livePermits: number
+  /** The work permits with their kind and period (HSE-01): the constraint reads the one valid on the start day. */
+  permits?: Array<Pick<PmPermit, "k" | "from" | "to" | "closedOn">>
   staleDrawings: number
   /** The project store and the material requests (mat), the equipment requests (crew). */
   stores?: PmStoreLine[]
@@ -138,7 +147,10 @@ export function activityConstraints(a: LookActivity, f: LookFacts, today = new D
   }
   if (f.on.wir) {
     const bad = mine.find((i) => i.gate?.pmInspect && i.gate.pmWir === "fail")
-    out.push({ k: "insp", ok: !bad, detail: bad ? { kind: "failed", code: bad.code } : undefined })
+    // …and the preceding work's gated items have a passed last inspection (WWP-01, 1.1).
+    const p = a.pred ? f.activities.find((x) => x.id === a.pred) : null
+    const prior = p ? f.items.find((i) => p.itemIds.includes(i.id) && i.gate?.pmInspect && gateOf(i.gate as GateFields) !== "passed") : undefined
+    out.push({ k: "insp", ok: !bad && !prior, detail: bad ? { kind: "failed", code: bad.code } : prior ? { kind: "pred_insp", code: prior.code } : undefined })
   }
   if (f.on.rfi) {
     const o = f.obstacles.find((x) => !x.closeOn && x.itemIds.some((id) => a.itemIds.includes(id)))
@@ -152,9 +164,15 @@ export function activityConstraints(a: LookActivity, f: LookFacts, today = new D
     // WWP-02: a machine requested for it counts while approved OR still awaiting approval.
     const rq = (f.plant ?? []).filter((r) => r.activityId === a.id && (r.status === "go" || r.status === "wait"))
     const miss = rq.filter((r) => !r.got)
-    out.push({ k: "crew", ok: rq.length ? !miss.length : null, detail: miss.length ? { kind: "plant", what: miss[0].what, count: miss.length } : undefined })
+    out.push({ k: "crew", ok: rq.length ? !miss.length : null, detail: miss.length ? { kind: "plant", what: miss[0].what, count: miss.length, waiting: miss[0].status === "wait" } : undefined })
   }
-  if (f.on.hse && a.permit) out.push({ k: "pmt", ok: f.livePermits > 0, detail: f.livePermits > 0 ? undefined : { kind: "no_permit" } })
+  const need = permitNeed(a)
+  if (f.on.hse && need) {
+    // Its start day — or today, once it runs (the prototype's max(0, from)).
+    const day = a.from > today ? a.from : today
+    const ok = f.permits ? permitValidOn(f.permits, need, day) : f.livePermits > 0
+    out.push({ k: "pmt", ok, detail: ok ? undefined : { kind: "no_permit", type: need === true ? null : need, day: f.permits ? day : null } })
+  }
   return out
 }
 

@@ -55,6 +55,7 @@ export function usePmLookahead(projectId: string, items: LookItem[], on: Lookahe
       activities: (acts.data ?? []) as unknown as LookActivity[],
       obstacles: ((obs.data ?? []) as unknown as PmObstacle[]).map(lookObstacle),
       livePermits: livePermits((pmt.data ?? []) as unknown as PmPermit[], today).length,
+      permits: (pmt.data ?? []) as unknown as PmPermit[],
       staleDrawings: staleDrawings((docs.data ?? []) as unknown as PmDocument[], (sheets.data ?? []) as unknown as PmSheet[]).length,
       stores: ((store.data ?? []) as Array<Partial<PmStoreLine> & { id: string }>).map((d) => storeLineOf(d.id, d)),
       requests: ((reqs.data ?? []) as Array<Record<string, unknown> & { id: string }>).map(requestOf),
