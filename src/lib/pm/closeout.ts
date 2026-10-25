@@ -28,6 +28,8 @@ export interface CloseRow {
   n?: number
   /** subs: sub certificates still awaiting approval. */
   m?: number
+  /** A warning row: shown, never blocking (WF-31 — open correspondence). */
+  warn?: boolean
 }
 
 /** The screen that settles each row — the row opens it (prototype `go`). */
@@ -121,7 +123,8 @@ export function closeoutRows(input: CloseInput): CloseRow[] {
   }
   if (input.letters) {
     const openLetters = input.letters.filter(isLetterOpen).length
-    rows.push({ key: "corr", ok: openLetters === 0, n: openLetters })
+    // WF-31 / COR-01 (1.1): an open letter is a WARNING at closing, not a block.
+    rows.push({ key: "corr", ok: openLetters === 0, n: openLetters, warn: true })
   }
   return rows
 }
@@ -161,7 +164,7 @@ export function projectLessons(input: {
   }
 }
 
-export const closeBlocks = (rows: CloseRow[]) => rows.filter((r) => !r.ok)
+export const closeBlocks = (rows: CloseRow[]) => rows.filter((r) => !r.ok && !r.warn)
 
 /** What the project store still holds (prototype `plOf(p).filter(plBal>0.005)`):
  * the PM ledger `projects/{id}/pmStore`, never a company warehouse. The value

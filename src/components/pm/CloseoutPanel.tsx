@@ -303,7 +303,7 @@ export function CloseoutPanel({
                     {!r.ok && FINANCE_ROWS.has(r.key) && ` ${t("close.waits_finance")}`}
                   </span>
                 </span>
-                {!r.ok && <StatusPill tone="warn">{t("close.pending")}</StatusPill>}
+                {!r.ok && <StatusPill tone={r.warn ? "info" : "warn"}>{r.warn ? t("close.warn_only") : t("close.pending")}</StatusPill>}
               </>
             )
             const cls = cn("flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-start text-sm", r.ok ? "border-success/20" : "border-warning/30 bg-warning/5")

@@ -17939,6 +17939,7 @@
         "title_full": "Project closeout",
         "sub": "A project ends with its last document, not its last pour",
         "pending": "pending",
+        "warn_only": "warning — does not block",
         "left_note": "{count, plural, one {# item blocks} other {# items block}} closing — an open project keeps burning indirect cost, holds retention and keeps a guarantee alive.",
         "all_clear": "Everything is closed — the project can be archived with its full record.",
         "archive_hint": "Archiving removes it from live lists; nothing is deleted",
