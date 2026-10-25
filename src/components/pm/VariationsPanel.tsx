@@ -19,6 +19,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Textarea } from "@/components/ui/textarea"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { DrawerSection } from "@/components/module-ui/DrawerSection"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
@@ -28,6 +29,7 @@ import { MfgFileField, type UploadedFile } from "@/components/manufacturing/MfgF
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { PmAccessError } from "@/lib/pm/access"
 import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
 import {
@@ -81,6 +83,7 @@ export function VariationsPanel({
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
+  const labels = useTableLabels()
   const today = todayDay()
   const [logging, setLogging] = useState(false)
   const [title, setTitle] = useState("")
@@ -197,6 +200,97 @@ export function VariationsPanel({
   const priceMargin = price && num(price.value) > 0 ? num(price.value) - num(price.cost) : null
   const decideBlocks = decide ? [...(!decide.approve && !decide.text.trim() ? ["no_reason"] : []), ...decisionDateBlocks({ on: decide.on || null, requestedOn: decide.vo.day, today })] : []
 
+  const columns: DataColumn<PmVariation>[] = [
+    {
+      key: "vo",
+      header: t("vo.col.vo"),
+      cell: (v) => {
+        const cs = codes(v)
+        return (
+          <button type="button" className="rounded-sm text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setOpenId(v.id)}>
+            <b className="block hover:text-module" dir="auto">
+              {v.title}
+            </b>
+            <span className="text-xs text-muted-foreground">
+              <span className="font-mono" dir="ltr">
+                {t("vo.no", { no: voNo(v.seq) })}
+              </span>
+              {" · "}
+              {pmDate(v.day, locale)}
+              {cs.length > 0 && ` · ${t("vo.items_line", { codes: cs.join(", ") })}`}
+              {" · "}
+              <span dir="auto">{sourceName(v)}</span>
+              {v.instructionNo ? <span dir="auto"> · {v.instructionNo}</span> : <span className="text-warning"> · {t("vo.no_instruction")}</span>}
+            </span>
+          </button>
+        )
+      },
+    },
+    {
+      key: "status",
+      header: t("vo.col.status"),
+      cell: (v) => {
+        const known = (VO_STATUSES as readonly string[]).includes(v.status)
+        const files = allFiles(v)
+        return (
+          <span className="flex flex-wrap items-center gap-1">
+            <StatusPill tone={known ? TONE[v.status] : "bad"}>{known ? t(`vo.status.${v.status}`) : t("unknown_state")}</StatusPill>
+            {files.length > 0 && (
+              <StatusPill tone="info">
+                <Paperclip size={11} aria-hidden="true" />
+                {files.length}
+              </StatusPill>
+            )}
+            {(v.days ?? 0) > 0 && <StatusPill tone="mute">+{t("days", { count: v.days ?? 0 })}</StatusPill>}
+          </span>
+        )
+      },
+    },
+    {
+      key: "executed",
+      header: t("vo.col.executed"),
+      sortValue: (v) => v.executedPct,
+      cell: (v) => {
+        const pct = Math.round(v.executedPct * 100)
+        return (
+          <div className="w-24">
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted" dir="ltr">
+              <div className={cn("h-full rounded-full", v.status === "appr" ? "bg-success" : "bg-destructive")} style={{ width: `${Math.min(100, pct)}%` }} />
+            </div>
+            <p className="mt-0.5 text-[11px] tabular-nums" dir="ltr">
+              {pct}%
+            </p>
+          </div>
+        )
+      },
+    },
+    ...(money
+      ? ([
+          {
+            key: "value",
+            header: t("vo.col.value"),
+            numeric: true,
+            sortValue: (v) => v.value,
+            cell: (v) => (v.value > 0 ? <span className="whitespace-nowrap">{pmMoney(v.value)}</span> : <span className="text-xs text-muted-foreground">{t("vo.no_value")}</span>),
+          },
+          {
+            key: "impact",
+            header: t("vo.col.impact"),
+            numeric: true,
+            hideBelow: "lg",
+            cell: (v) =>
+              v.status === "appr" && v.value > 0 ? (
+                <span className="whitespace-nowrap font-semibold text-success">+{pmMoney(v.value)}</span>
+              ) : v.value > 0 ? (
+                <span className="text-xs text-muted-foreground">{t("vo.not_added")}</span>
+              ) : (
+                "—"
+              ),
+          },
+        ] satisfies DataColumn<PmVariation>[])
+      : []),
+  ]
+
   return (
     <div className="space-y-4">
       {risk > 0 && (
@@ -205,115 +299,40 @@ export function VariationsPanel({
         </Callout>
       )}
 
-      <Panel title={t("vo.title")} icon={ArrowLeftRight} count={vos.filter((v) => v.status === "wait" || v.status === "draft").length || undefined} actions={newButton} bodyClassName="p-0">
-        {vos.length === 0 ? (
-          <EmptyState icon={ArrowLeftRight} title={t("vo.empty")} description={t("vo.empty_desc")} className="p-6" />
-        ) : (
-          <>
-            <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("vo.sub")}</p>
-            {money && (
-              <div className="grid gap-x-6 border-b px-4 py-1 sm:grid-cols-3">
-                <KeyValueRow label={t("vo.base_value")} value={pmMoney(baseValue)} ltr />
-                <KeyValueRow label={t("vo.approved_value")} value={pmMoney(approved)} ltr />
-                <KeyValueRow label={t("vo.live_value")} value={pmMoney(baseValue + approved)} ltr strong />
-              </div>
-            )}
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[40rem] text-sm">
-                <thead className="bg-muted/40 text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2 text-start font-semibold">{t("vo.col.vo")}</th>
-                    <th className="px-3 py-2 text-start font-semibold">{t("vo.col.status")}</th>
-                    <th className="px-3 py-2 text-center font-semibold">{t("vo.col.executed")}</th>
-                    {money && <th className="px-3 py-2 text-end font-semibold">{t("vo.col.value")}</th>}
-                    {money && <th className="px-4 py-2 text-end font-semibold">{t("vo.col.impact")}</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {vos.map((v) => {
-                    const known = (VO_STATUSES as readonly string[]).includes(v.status)
-                    const pct = Math.round(v.executedPct * 100)
-                    const cs = codes(v)
-                    const files = allFiles(v)
-                    return (
-                      <tr key={v.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setOpenId(v.id)}>
-                        <td className="px-4 py-2.5">
-                          <button type="button" className="text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setOpenId(v.id)}>
-                            <b className="block" dir="auto">
-                              {v.title}
-                            </b>
-                            <span className="text-xs text-muted-foreground">
-                              <span className="font-mono" dir="ltr">
-                                {t("vo.no", { no: voNo(v.seq) })}
-                              </span>
-                              {" · "}
-                              {pmDate(v.day, locale)}
-                              {cs.length > 0 && ` · ${t("vo.items_line", { codes: cs.join(", ") })}`}
-                              {" · "}
-                              <span dir="auto">{sourceName(v)}</span>
-                              {v.instructionNo ? (
-                                <span dir="auto"> · {v.instructionNo}</span>
-                              ) : (
-                                <span className="text-warning"> · {t("vo.no_instruction")}</span>
-                              )}
-                            </span>
-                          </button>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <span className="flex flex-wrap items-center gap-1">
-                            <StatusPill tone={known ? TONE[v.status] : "bad"}>{known ? t(`vo.status.${v.status}`) : t("unknown_state")}</StatusPill>
-                            {files.length > 0 && (
-                              <StatusPill tone="info">
-                                <Paperclip size={11} aria-hidden="true" />
-                                {files.length}
-                              </StatusPill>
-                            )}
-                            {(v.days ?? 0) > 0 && <StatusPill tone="mute">+{t("days", { count: v.days ?? 0 })}</StatusPill>}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <div className="mx-auto w-24">
-                            <div className="h-1.5 overflow-hidden rounded-full bg-muted" dir="ltr">
-                              <div className={cn("h-full rounded-full", v.status === "appr" ? "bg-success" : "bg-destructive")} style={{ width: `${Math.min(100, pct)}%` }} />
-                            </div>
-                            <p className="mt-0.5 text-center text-[11px] tabular-nums" dir="ltr">
-                              {pct}%
-                            </p>
-                          </div>
-                        </td>
-                        {money && (
-                          <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">
-                            {v.value > 0 ? pmMoney(v.value) : <span className="text-xs text-muted-foreground">{t("vo.no_value")}</span>}
-                          </td>
-                        )}
-                        {money && (
-                          <td className="px-4 py-2.5 text-end tabular-nums">
-                            {v.status === "appr" && v.value > 0 ? (
-                              <span className="font-semibold text-success" dir="ltr">
-                                +{pmMoney(v.value)}
-                              </span>
-                            ) : v.value > 0 ? (
-                              <span className="text-xs text-muted-foreground">{t("vo.not_added")}</span>
-                            ) : (
-                              "—"
-                            )}
-                          </td>
-                        )}
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </>
+      <Panel
+        title={t("vo.title")}
+        icon={ArrowLeftRight}
+        count={vos.filter((v) => v.status === "wait" || v.status === "draft").length || undefined}
+        description={vos.length ? t("vo.sub") : undefined}
+        actions={newButton}
+        bodyClassName="p-0"
+      >
+        {money && vos.length > 0 && (
+          <div className="grid grid-cols-1 gap-x-6 border-b px-4 py-1 sm:grid-cols-3">
+            <KeyValueRow label={t("vo.base_value")} value={pmMoney(baseValue)} ltr />
+            <KeyValueRow label={t("vo.approved_value")} value={pmMoney(approved)} ltr />
+            <KeyValueRow label={t("vo.live_value")} value={pmMoney(baseValue + approved)} ltr strong />
+          </div>
         )}
+        <DataTable
+          columns={columns}
+          rows={vos}
+          rowKey={(v) => v.id}
+          caption={t("vo.title")}
+          labels={labels}
+          bordered={false}
+          dense
+          maxHeight="70vh"
+          onRowClick={(v) => setOpenId(v.id)}
+          empty={<EmptyState bare icon={ArrowLeftRight} title={t("vo.empty")} description={t("vo.empty_desc")} />}
+        />
       </Panel>
 
       <Sheet open={open !== null} onOpenChange={(o) => !o && setOpenId(null)}>
-        <SheetContent side={locale === "ar" ? "left" : "right"} className="w-full overflow-y-auto sm:max-w-lg" dir={locale === "ar" ? "rtl" : "ltr"}>
+        <SheetContent side={locale === "ar" ? "left" : "right"} className="w-full overflow-y-auto sm:max-w-2xl" dir={locale === "ar" ? "rtl" : "ltr"}>
           {open && (
             <>
-              <SheetHeader className="text-start">
+              <SheetHeader className="pe-8 text-start">
                 <SheetTitle dir="auto">{open.title}</SheetTitle>
                 <SheetDescription className="flex flex-wrap items-center gap-2">
                   <StatusPill tone="module">{t("vo.no", { no: voNo(open.seq) })}</StatusPill>
@@ -328,20 +347,17 @@ export function VariationsPanel({
                   </Callout>
                 )}
                 {money && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-xl border p-3">
-                      <p className="text-xs text-muted-foreground">{t("vo.claimed_value")}</p>
-                      <p className="text-lg font-black tabular-nums" dir="ltr">
-                        {open.value > 0 ? pmMoney(open.value) : "—"}
-                      </p>
-                    </div>
-                    <div className="rounded-xl border p-3">
-                      <p className="text-xs text-muted-foreground">{t("vo.est_cost")}</p>
-                      <p className="text-lg font-black tabular-nums" dir="ltr">
-                        {open.cost > 0 ? pmMoney(open.cost) : "—"}
-                      </p>
-                      {voMarginPct(open) !== null && <p className="text-xs text-muted-foreground">{t("vo.margin_pct", { pct: pmPct((voMarginPct(open) ?? 0) / 100) })}</p>}
-                    </div>
+                  <div className="px-1">
+                    <KeyValueRow label={t("vo.claimed_value")} value={open.value > 0 ? pmMoney(open.value) : "—"} ltr strong />
+                    <KeyValueRow
+                      label={t("vo.est_cost")}
+                      value={
+                        <span className="inline-flex flex-wrap items-baseline justify-end gap-x-2">
+                          <bdi dir="ltr">{open.cost > 0 ? pmMoney(open.cost) : "—"}</bdi>
+                          {voMarginPct(open) !== null && <span className="text-xs font-normal text-muted-foreground">{t("vo.margin_pct", { pct: pmPct((voMarginPct(open) ?? 0) / 100) })}</span>}
+                        </span>
+                      }
+                    />
                   </div>
                 )}
                 <DrawerSection title={t("vo.reason_basis")}>
@@ -408,23 +424,23 @@ export function VariationsPanel({
                       </Button>
                     )}
                     {canLog && open.status === "draft" && (
-                      <Button size="sm" variant="outline" disabled={busy !== null || !(open.value > 0)} onClick={() => firestore && void run(`s${open.seq}`, () => submitVariation(firestore, access.ctx, projectId, open.seq), t("vo.submitted"))}>
+                      <Button size="sm" variant="ghost" disabled={busy !== null || !(open.value > 0)} onClick={() => firestore && void run(`s${open.seq}`, () => submitVariation(firestore, access.ctx, projectId, open.seq), t("vo.submitted"))}>
                         <Send size={14} className="me-1.5" aria-hidden="true" />
                         {t("vo.submit")}
                       </Button>
                     )}
                     {(canProgress || canLog) && (
-                      <Button size="sm" variant="outline" onClick={() => setProgress({ vo: open, pct: String(Math.round(open.executedPct * 100)), instructionNo: open.instructionNo ?? "", note: "" })}>
+                      <Button size="sm" variant="ghost" onClick={() => setProgress({ vo: open, pct: String(Math.round(open.executedPct * 100)), instructionNo: open.instructionNo ?? "", note: "" })}>
                         {t("vo.update")}
                       </Button>
                     )}
                     {canDecide && open.status === "wait" && (
                       <>
-                        <Button variant="success" size="sm"  onClick={() => setDecide({ vo: open, approve: true, text: open.instructionNo ?? "", on: today, file: null })}>
+                        <Button variant="success" size="sm" onClick={() => setDecide({ vo: open, approve: true, text: open.instructionNo ?? "", on: today, file: null })}>
                           <Check size={14} className="me-1.5" aria-hidden="true" />
                           {t("vo.approve")}
                         </Button>
-                        <Button size="sm" variant="destructive" onClick={() => setDecide({ vo: open, approve: false, text: "", on: today, file: null })}>
+                        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setDecide({ vo: open, approve: false, text: "", on: today, file: null })}>
                           <X size={14} className="me-1.5" aria-hidden="true" />
                           {t("vo.reject")}
                         </Button>
@@ -466,7 +482,7 @@ export function VariationsPanel({
                 </div>
               )}
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="vo-ins">{t("vo.instruction_label_opt")}</Label>
                 <Input id="vo-ins" value={instructionNo} onChange={(e) => setInstructionNo(e.target.value)} placeholder={t("vo.instruction_ph")} disabled={busy !== null} dir="auto" />
@@ -614,7 +630,7 @@ export function VariationsPanel({
           </DialogHeader>
           {progress && (
             <div className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {canProgress && (
                   <div className="space-y-1.5">
                     <Label htmlFor="ve-pct">{t("vo.pct")}</Label>
@@ -684,7 +700,7 @@ export function VariationsPanel({
                   <FormHint>{t("vo.reason_hint")}</FormHint>
                 </div>
               )}
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="vo-on">{decide.approve ? t("vo.approval_date") : t("vo.reject_date")}</Label>
                   <Input id="vo-on" type="date" dir="ltr" min={decide.vo.day} max={today} value={decide.on} onChange={(e) => setDecide({ ...decide, on: e.target.value })} disabled={busy !== null} />

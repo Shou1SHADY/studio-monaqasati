@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
 import { CheckCircle2, Clock, Link2 } from "lucide-react"
+import { Panel } from "@/components/module-ui/Panel"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useModules } from "@/hooks/useCompanyModules"
@@ -161,17 +162,17 @@ export function WaitingOnOthers({
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border bg-card">
-      <header className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-        <h3 className="flex min-w-0 items-center gap-2 text-sm font-bold text-foreground">
-          <Link2 size={16} className="shrink-0 text-module" aria-hidden="true" />
+    <Panel
+      title={
+        <span className="inline-flex items-center gap-2">
           {t("pulse.waiting_title")}
-        </h3>
-        <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums", view.late ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground")}>
-          {showAll ? view.total : view.late || view.total}
+          <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums", view.late ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground")}>{showAll ? view.total : view.late || view.total}</span>
         </span>
-        <span className="text-xs text-muted-foreground">{t("wait.desc")}</span>
-      </header>
+      }
+      icon={Link2}
+      description={t("wait.desc")}
+      bodyClassName="p-0"
+    >
       {view.shown.length ? (
         <ul className="divide-y">
           {view.shown.map((r) => {
@@ -231,6 +232,6 @@ export function WaitingOnOthers({
           {t("wait.show_all", { count: view.total, by: view.byModule.map((m) => `${t(`wait.src.${m.module}`)} ${m.count}`).join(" · ") })}
         </ShowMoreRow>
       )}
-    </section>
+    </Panel>
   )
 }

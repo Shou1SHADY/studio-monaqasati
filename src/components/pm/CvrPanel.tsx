@@ -13,17 +13,20 @@ import { Check, ClipboardList, Flame, List, Loader2, Ruler, ShieldCheck } from "
 import { Button } from "@/components/ui/button"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
+import { EmptyState } from "@/components/module-ui/EmptyState"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { useProjectCost } from "@/hooks/useProjectCost"
 import { PmAccessError } from "@/lib/pm/access"
 import { progressOf } from "@/lib/pm/acceptance"
 import { inForce, PM_ADDENDA, type PmAddendum } from "@/lib/pm/addenda"
 import { delayAndDamages, grantedDays, PM_CLAIMS, type PmClaim } from "@/lib/pm/claim"
-import { EAC_STALE_DAYS, estimateAge, estimateBlocks, itemCosts, projectCost, sectionRows, type ApprovedEstimate, type CostItem } from "@/lib/pm/cost"
+import { EAC_STALE_DAYS, estimateAge, estimateBlocks, itemCosts, projectCost, sectionRows, type ApprovedEstimate, type CostItem, type SectionRow } from "@/lib/pm/cost"
 import { approveReconciliation, PmCvrError } from "@/lib/pm/cvr-writes"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
 import type { ContractTerms } from "@/lib/pm/terms"
@@ -65,6 +68,7 @@ export function CvrPanel({
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
+  const labels = useTableLabels()
   const money = access.has("money")
   const world = useProjectCost(projectId, orgId, money)
   const indirect = usePmIndirect(projectId, orgId, money)
@@ -123,9 +127,53 @@ export function CvrPanel({
     }
   }
 
+  const money3 = (n: number, cls?: string) => <span className={cn("whitespace-nowrap", cls)}>{pmMoney(n)}</span>
+  const columns: DataColumn<SectionRow>[] = [
+    {
+      key: "section",
+      header: t("money.cost.col.section"),
+      cell: (x) => (
+        <>
+          <p className="font-bold" dir="auto">
+            {x.section}
+          </p>
+          <p className="text-xs text-muted-foreground">{t("money.cvr.section_sub", { count: x.n, pct: pct(x.progress * 100) })}</p>
+        </>
+      ),
+      footer: t("money.total"),
+    },
+    { key: "contract", header: t("money.cvr.col.contract"), numeric: true, hideBelow: "lg", cell: (x) => money3(x.contract), footer: pmMoney(c.contract) },
+    { key: "earned", header: t("money.cvr.col.earned"), numeric: true, cell: (x) => money3(x.earned), footer: pmMoney(c.earned) },
+    { key: "budget_executed", header: t("money.cost.col.budget_executed"), numeric: true, hideBelow: "xl", cell: (x) => money3(x.budgetExecuted), footer: pmMoney(c.budgetExecuted) },
+    { key: "actual", header: t("money.cvr.col.actual"), numeric: true, cell: (x) => money3(x.actual), footer: pmMoney(c.actual) },
+    {
+      key: "margin",
+      header: t("money.cvr.col.margin"),
+      numeric: true,
+      cell: (x) => money3(x.earned - x.actual, cn("font-bold", x.earned - x.actual > 0 ? "text-success" : "text-destructive")),
+      footer: <span className={c.marginToDate > 0 ? "text-success" : "text-destructive"}>{pmMoney(c.marginToDate)}</span>,
+    },
+    { key: "fcost", header: t("money.cvr.col.fcost"), numeric: true, hideBelow: "xl", cell: (x) => money3(x.forecast), footer: pmMoney(c.forecastCost) },
+    {
+      key: "fmargin",
+      header: t("money.cvr.col.fmargin"),
+      numeric: true,
+      cell: (x) => {
+        const fmg = x.contract - x.forecast
+        return (
+          <>
+            {money3(fmg, cn("font-bold", fmg > x.contract * 0.08 ? "text-success" : fmg > 0 ? "text-warning" : "text-destructive"))}
+            <span className="block text-xs text-muted-foreground">{x.contract ? pct((fmg / x.contract) * 100) : "—"}</span>
+          </>
+        )
+      },
+      footer: <span className={c.forecastMargin > 0 ? "text-success" : "text-destructive"}>{pmMoney(c.forecastMargin)}</span>,
+    },
+  ]
+
   return (
     <div className="space-y-4">
-      <Panel title={t("money.cvr.approve_title")} icon={ShieldCheck} actions={<span className="text-xs text-muted-foreground">{eac ? t("money.cvr.last_approved", { date: pmDate(eac.on, locale), who: eac.byName || "—" }) : t("money.cvr.never")}</span>}>
+      <Panel title={t("money.cvr.approve_title")} icon={ShieldCheck} description={eac ? t("money.cvr.last_approved", { date: pmDate(eac.on, locale), who: eac.byName || "—" }) : t("money.cvr.never")}>
         <KeyValueRow label={t("money.cvr.eac_today")} value={noBudget ? "—" : pmMoney(c.forecastCost)} ltr strong />
         {eac && (
           <>
@@ -159,7 +207,7 @@ export function CvrPanel({
 
       {!noBudget && (
       <>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-3">
         <Tile icon={ClipboardList} label={t("money.cvr.planned")} value={pmMoney(c.plannedMargin)} note={t("money.cvr.of_contract", { pct: c.contract ? pct((c.plannedMargin / c.contract) * 100) : "—" })} />
         <Tile
           icon={Ruler}
@@ -184,65 +232,17 @@ export function CvrPanel({
         </Callout>
       )}
 
-      <Panel title={t("money.cvr.by_section")} icon={List} actions={<span className="text-xs text-muted-foreground">{t("money.cvr.as_at", { date: pmDate(today, locale) })}</span>} bodyClassName="p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
-            <thead>
-              <tr className="border-b text-xs text-muted-foreground">
-                <th className="sticky start-0 bg-card px-4 py-2 text-start font-semibold">{t("money.cost.col.section")}</th>
-                <th className="px-3 py-2 text-end font-semibold">{t("money.cvr.col.contract")}</th>
-                <th className="px-3 py-2 text-end font-semibold">{t("money.cvr.col.earned")}</th>
-                <th className="px-3 py-2 text-end font-semibold">{t("money.cost.col.budget_executed")}</th>
-                <th className="px-3 py-2 text-end font-semibold">{t("money.cvr.col.actual")}</th>
-                <th className="px-3 py-2 text-end font-semibold">{t("money.cvr.col.margin")}</th>
-                <th className="px-3 py-2 text-end font-semibold">{t("money.cvr.col.fcost")}</th>
-                <th className="px-4 py-2 text-end font-semibold">{t("money.cvr.col.fmargin")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((x) => {
-                const mg = x.earned - x.actual
-                const fmg = x.contract - x.forecast
-                return (
-                  <tr key={x.section} className="border-b">
-                    <td className="sticky start-0 bg-card px-4 py-2.5">
-                      <p className="font-bold" dir="auto">
-                        {x.section}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{t("money.cvr.section_sub", { count: x.n, pct: pct(x.progress * 100) })}</p>
-                    </td>
-                    <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">{pmMoney(x.contract)}</td>
-                    <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">{pmMoney(x.earned)}</td>
-                    <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">{pmMoney(x.budgetExecuted)}</td>
-                    <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">{pmMoney(x.actual)}</td>
-                    <td className={cn("px-3 py-2.5 text-end font-bold tabular-nums", mg > 0 ? "text-success" : "text-destructive")} dir="ltr">
-                      {pmMoney(mg)}
-                    </td>
-                    <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">{pmMoney(x.forecast)}</td>
-                    <td className="px-4 py-2.5 text-end" dir="ltr">
-                      <b className={cn("tabular-nums", fmg > x.contract * 0.08 ? "text-success" : fmg > 0 ? "text-warning" : "text-destructive")}>{pmMoney(fmg)}</b>
-                      <p className="text-xs text-muted-foreground">{x.contract ? pct((fmg / x.contract) * 100) : "—"}</p>
-                    </td>
-                  </tr>
-                )
-              })}
-              <tr className="bg-muted/40 font-bold">
-                <td className="sticky start-0 bg-muted px-4 py-2.5">{t("money.total")}</td>
-                <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">{pmMoney(c.contract)}</td>
-                <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">{pmMoney(c.earned)}</td>
-                <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">{pmMoney(c.budgetExecuted)}</td>
-                <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">{pmMoney(c.actual)}</td>
-                <td className={cn("px-3 py-2.5 text-end tabular-nums", c.marginToDate > 0 ? "text-success" : "text-destructive")} dir="ltr">
-                  {pmMoney(c.marginToDate)}
-                </td>
-                <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">{pmMoney(c.forecastCost)}</td>
-                <td className={cn("px-4 py-2.5 text-end tabular-nums", c.forecastMargin > 0 ? "text-success" : "text-destructive")} dir="ltr">
-                  {pmMoney(c.forecastMargin)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <Panel title={t("money.cvr.by_section")} icon={List} description={t("money.cvr.as_at", { date: pmDate(today, locale) })} bodyClassName="p-0">
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(x) => x.section}
+          caption={t("money.cvr.by_section")}
+          labels={labels}
+          bordered={false}
+          dense
+          empty={<EmptyState bare icon={List} title={t("money.cost.no_items")} />}
+        />
         <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">{t("money.cvr.footer")}</p>
       </Panel>
       </>

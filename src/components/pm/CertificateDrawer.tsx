@@ -11,7 +11,7 @@
 import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { doc } from "firebase/firestore"
-import { BadgeCheck, Calculator, Check, ClipboardCheck, Info, Link2, Loader2, Lock, Receipt, ShieldCheck, Undo2, Users } from "lucide-react"
+import { BadgeCheck, Calculator, Check, ClipboardCheck, Link2, Loader2, Lock, Receipt, ShieldCheck, Undo2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Callout } from "@/components/module-ui/Callout"
@@ -27,7 +27,6 @@ import { CERTIFICATE_CHECKS, CERTIFICATE_STATUSES, certificateNo, type Certifica
 import { approveCertificate, PmCertificateError, withdrawCertificate, type CertificateActor, type PmCertificate } from "@/lib/pm/certificate-writes"
 import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
 import { PM_SETTINGS, type PmOrgSettings } from "@/lib/pm/info-writes"
-import { cn } from "@/lib/utils"
 import { ReplySource } from "./ConsultantReply"
 
 export const CERT_TONE: Record<CertificateStatus, PillTone> = { int: "warn", sub: "info", appr: "module", part: "warn", paid: "ok", void: "mute" }
@@ -109,10 +108,10 @@ export function CertificateDrawer({
 
   return (
     <Sheet open={Boolean(c)} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side={isRtl ? "left" : "right"} dir={isRtl ? "rtl" : "ltr"} className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-xl">
+      <SheetContent side={isRtl ? "left" : "right"} dir={isRtl ? "rtl" : "ltr"} className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-2xl">
         {c && (
           <>
-            <SheetHeader className="space-y-2 border-b px-4 py-4 text-start sm:px-6">
+            <SheetHeader className="space-y-2 border-b py-4 pe-12 ps-4 text-start sm:ps-6">
               <div className="flex items-start gap-3">
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-module/10 text-module">
                   <Receipt size={20} aria-hidden="true" />
@@ -132,13 +131,11 @@ export function CertificateDrawer({
 
             <div className="space-y-4 px-4 py-4 sm:px-6">
               <DrawerSection title={<span className="flex items-center gap-1.5"><Calculator size={14} aria-hidden="true" />{t("money.dr.how")}</span>}>
-                <div className="rounded-xl border px-3 py-1">
-                  <KeyValueRow label={t("money.dr.work")} value={pmMoney(c.gross)} ltr />
-                  <KeyValueRow label={t("money.dr.recovery", { rate: pmPct(c.terms?.advance) })} value={`− ${pmMoney(c.recovery)}`} ltr />
-                  <KeyValueRow label={t("money.dr.retention", { rate: pmPct(c.terms?.retention) })} value={`− ${pmMoney(c.retention)}`} ltr />
-                  <KeyValueRow label={t("money.dr.vat")} value={`+ ${pmMoney(c.vat)}`} ltr />
-                  <KeyValueRow label={t("money.dr.net")} value={pmMoney(c.net)} ltr strong />
-                </div>
+                <KeyValueRow label={t("money.dr.work")} value={pmMoney(c.gross)} ltr />
+                <KeyValueRow label={t("money.dr.recovery", { rate: pmPct(c.terms?.advance) })} value={`− ${pmMoney(c.recovery)}`} ltr />
+                <KeyValueRow label={t("money.dr.retention", { rate: pmPct(c.terms?.retention) })} value={`− ${pmMoney(c.retention)}`} ltr />
+                <KeyValueRow label={t("money.dr.vat")} value={`+ ${pmMoney(c.vat)}`} ltr />
+                <KeyValueRow label={t("money.dr.net")} value={pmMoney(c.net)} ltr strong />
                 {(c.voLines?.length ?? 0) > 0 && (
                   <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
                     {c.voLines!.map((v) => (
@@ -151,27 +148,31 @@ export function CertificateDrawer({
                 )}
               </DrawerSection>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl border p-3">
-                  <p className="text-xs text-muted-foreground">{t("money.dr.due")}</p>
-                  <p className="mt-1 font-bold">{pmDate(c.dueOn, locale)}</p>
-                  <p className="text-xs">
-                    {late > 0 ? (
-                      <span className="font-bold text-destructive">{t("money.late", { days: late })}</span>
-                    ) : c.dueOn ? (
-                      <span className="text-muted-foreground">{t("money.dr.in_days", { days: Math.max(0, daysBetween(today, c.dueOn)) })}</span>
-                    ) : (
-                      <span className="text-muted-foreground">{t("money.dr.due_after_cert")}</span>
-                    )}
-                  </p>
-                </div>
-                <div className="rounded-xl border p-3">
-                  <p className="text-xs text-muted-foreground">{t("money.col.collected")}</p>
-                  <p className="mt-1 font-bold tabular-nums" dir="ltr">
-                    {pmMoney(collectedAmount(c))}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{share < 1 ? t("money.dr.outstanding", { amount: pmMoney(c.net * (1 - share)) }) : t("money.dr.in_full")}</p>
-                </div>
+              <div className="px-1" data-cert-due="">
+                <KeyValueRow
+                  label={t("money.dr.due")}
+                  value={
+                    <span className="flex flex-wrap items-baseline justify-end gap-x-2">
+                      {pmDate(c.dueOn, locale)}
+                      {late > 0 ? (
+                        <span className="text-xs font-bold text-destructive">{t("money.late", { days: late })}</span>
+                      ) : c.dueOn ? (
+                        <span className="text-xs font-normal text-muted-foreground">{t("money.dr.in_days", { days: Math.max(0, daysBetween(today, c.dueOn)) })}</span>
+                      ) : (
+                        <span className="text-xs font-normal text-muted-foreground">{t("money.dr.due_after_cert")}</span>
+                      )}
+                    </span>
+                  }
+                />
+                <KeyValueRow
+                  label={t("money.col.collected")}
+                  value={
+                    <span className="flex flex-wrap items-baseline justify-end gap-x-2">
+                      <bdi dir="ltr">{pmMoney(collectedAmount(c))}</bdi>
+                      <span className="text-xs font-normal text-muted-foreground">{share < 1 ? t("money.dr.outstanding", { amount: pmMoney(c.net * (1 - share)) }) : t("money.dr.in_full")}</span>
+                    </span>
+                  }
+                />
               </div>
 
               <DrawerSection title={<span className="flex items-center gap-1.5"><Users size={14} aria-hidden="true" />{t("money.dr.who")}</span>}>
@@ -208,13 +209,13 @@ export function CertificateDrawer({
                           {t("money.dr.approve")}
                         </Button>
                       ) : (
-                        <Button size="sm" variant="outline" disabled>
+                        <Button size="sm" variant="ghost" disabled>
                           <Lock size={14} className="me-1.5" aria-hidden="true" />
                           {isPreparer ? t("money.dr.you_prepared") : t("money.dr.not_yours")}
                         </Button>
                       )}
                       {mayWithdraw && (
-                        <Button size="sm" variant="outline" onClick={() => void act(c, "withdraw")} disabled={busy !== null}>
+                        <Button size="sm" variant="ghost" onClick={() => void act(c, "withdraw")} disabled={busy !== null}>
                           {busy === "withdraw" ? <Loader2 size={14} className="me-1.5 animate-spin" aria-hidden="true" /> : <Undo2 size={14} className="me-1.5" aria-hidden="true" />}
                           {t("ipc.withdraw")}
                         </Button>
@@ -236,7 +237,7 @@ export function CertificateDrawer({
                         {t("ipc.certify")}
                       </Button>
                     ) : (
-                      <Button size="sm" variant="outline" disabled>
+                      <Button size="sm" variant="ghost" disabled>
                         <Lock size={14} className="me-1.5" aria-hidden="true" />
                         {t("money.dr.pm_records")}
                       </Button>
@@ -272,16 +273,11 @@ export function CertificateDrawer({
                 </DrawerSection>
               )}
 
-              <Callout tone="info">
-                <span className="flex items-start gap-1.5">
-                  <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-                  {t("money.dr.no_hand_amount")}
-                </span>
-              </Callout>
-              <div className={cn("flex items-start gap-1.5 rounded-xl border border-success/25 bg-success/5 p-3 text-sm")}>
+              <Callout tone="info">{t("money.dr.no_hand_amount")}</Callout>
+              <p className="flex items-start gap-1.5 px-1 text-xs text-muted-foreground">
                 <Link2 size={14} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
                 <span>{t("money.dr.finance_owns")}</span>
-              </div>
+              </p>
             </div>
           </>
         )}

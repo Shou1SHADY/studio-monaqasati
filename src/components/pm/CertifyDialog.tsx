@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
 import { doc } from "firebase/firestore"
-import { Link2, Loader2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -146,16 +146,11 @@ export function CertifyDialog({
             </div>
           )}
           <Callout tone="info">
-            <span className="flex items-start gap-1.5">
-              <Link2 size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-              <span>
-                {t("ipc.finance_event")}{" "}
-                <b dir="ltr" className="font-mono text-xs [unicode-bidi:isolate]">
-                  {key}
-                </b>{" "}
-                — {t("ipc.finance_event_once")}
-              </span>
-            </span>
+            {t("ipc.finance_event")}{" "}
+            <b dir="ltr" className="font-mono text-xs [unicode-bidi:isolate]">
+              {key}
+            </b>{" "}
+            — {t("ipc.finance_event_once")}
           </Callout>
           <BlockingReasons title={t("cannot_save")} reasons={shownBlocks.map((b) => t(`ipc.block.${b}`))} />
         </div>
