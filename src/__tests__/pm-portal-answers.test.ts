@@ -238,13 +238,21 @@ describe("applyPortalAnswer — a certification through the portal (CP-08)", () 
   type Doc = Record<string, unknown>
   function fakeDb(store: Map<string, Doc>) {
     const writes: Array<{ op: string; path: string; patch: Doc }> = []
-    type Ref = { path: string; collection: (n: string) => { doc: (id: string) => Ref } }
-    const ref = (path: string): Ref => ({ path, collection: (n: string) => ({ doc: (id: string) => ref(`${path}/${n}/${id}`) }) })
+    type Query = { path: string; field: string; value: unknown }
+    type Coll = { doc: (id: string) => Ref; where: (field: string, op: string, value: unknown) => Query }
+    type Ref = { path: string; collection: (n: string) => Coll }
+    const ref = (path: string): Ref => ({
+      path,
+      collection: (n: string) => ({ doc: (id: string) => ref(`${path}/${n}/${id}`), where: (field: string, _op: string, value: unknown) => ({ path: `${path}/${n}`, field, value }) }),
+    })
     const db = {
       collection: (n: string) => ({ doc: (id: string) => ref(`${n}/${id}`) }),
       runTransaction: async <T>(fn: (tx: unknown) => Promise<T>) =>
         fn({
-          get: async (r: { path: string }) => ({ exists: store.has(r.path), data: () => store.get(r.path) }),
+          get: async (r: { path: string; field?: string; value?: unknown }) =>
+            r.field
+              ? { docs: [...store.entries()].filter(([k, v]) => k.startsWith(`${r.path}/`) && k.split("/").length === r.path.split("/").length + 1 && v[r.field as string] === r.value).map(([, v]) => ({ data: () => v })) }
+              : { exists: store.has(r.path), data: () => store.get(r.path) },
           update: (r: { path: string }, patch: Doc) => writes.push({ op: "update", path: r.path, patch }),
           set: (r: { path: string }, patch: Doc) => writes.push({ op: "set", path: r.path, patch }),
         }),
@@ -306,5 +314,22 @@ describe("applyPortalAnswer — a certification through the portal (CP-08)", () 
     await applyPortalAnswer(db, "L1", { kind: "claim", seq: 2, response: "appr", days: 20 }, NOW)
     expect((writes.find((w) => w.path === "projects/P")?.patch.pm as Doc).programmeRev).toBe(2)
     expect(writes.find((w) => w.path === "projects/P/pmClaims/02")?.patch).toMatchObject({ status: "appr", revision: 2 })
+  })
+
+  it("an inspection result moves the BOQ line only from the item's newest inspection (MS-03, 1.1)", async () => {
+    const store = new Map<string, Doc>([
+      ["pmPortalLinks/L1", link as unknown as Doc],
+      ["projects/P", project()],
+      ["projects/P/pmInspections/01", { seq: 1, itemId: "L2", unit: "V1", party: "consultant", status: "open", location: "الدور الأول", attempts: [{ n: 1, on: "2026-10-20" }] }],
+      ["projects/P/pmInspections/02", { seq: 2, itemId: "L2", unit: "V2", party: "consultant", status: "open", location: "الدور الثاني", attempts: [{ n: 1, on: "2026-10-21" }] }],
+      ["projects/P/boqItems/L2", { itemNo: "04-02", pmWir: "open", pmWirByUnit: { V2: "open" } }],
+    ])
+    const older = fakeDb(store)
+    await applyPortalAnswer(older.db, "L1", { kind: "wir", seq: 1, result: "pass", on: "2026-10-24" }, NOW)
+    expect(older.writes.find((w) => w.path === "projects/P/boqItems/L2")?.patch).toMatchObject({ pmWirByUnit: { V2: "open", V1: "pass" } })
+    expect(older.writes.find((w) => w.path === "projects/P/boqItems/L2")?.patch.pmWir).toBeUndefined()
+    const newest = fakeDb(store)
+    await applyPortalAnswer(newest.db, "L1", { kind: "wir", seq: 2, result: "fail", note: "تعشيش", on: "2026-10-24" }, NOW)
+    expect(newest.writes.find((w) => w.path === "projects/P/boqItems/L2")?.patch).toMatchObject({ pmWir: "fail", pmWirByUnit: { V2: "fail" } })
   })
 })

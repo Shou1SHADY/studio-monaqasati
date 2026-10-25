@@ -31,7 +31,7 @@ import { planCertify, planRefuseFix, planRejectPlan, planRespond } from "./consu
 import { portalItems, portalKindOn, type PmPortalState, type PortalKind, type PortalRejection } from "./consultant-portal"
 import { isLetterOpen, letterDocId, PM_LETTERS, replyBlocks as letterReplyBlocks, type PmLetter } from "./correspondence"
 import { PM_EVENTS, pmEventDocId, type PmEvent } from "./events"
-import { PM_INSPECTIONS, resultBlocks, WIR_RESULTS, wirNo, type PmInspection } from "./inspection"
+import { PM_INSPECTIONS, resultBlocks, WIR_RESULTS, wirNo, type PmInspection, type WirStatus } from "./inspection"
 import { lifecycleOf } from "./lifecycle"
 import { ncrNo, ncrStepBlocks, PM_NCRS, type PmNcr } from "./ncr"
 import { PM_PUNCH, punchNo, punchStepBlocks, type PunchItem } from "./punch"
@@ -488,6 +488,8 @@ export interface AnswerPlan {
   pm?: Record<string, unknown> | null
   /** prj:IPC for Finance, at the certified amount. */
   event?: PmEvent | null
+  /** An inspection result: the line's gate moves only from the item's NEWEST inspection (MS-03, 1.1). */
+  wirGate?: { seq: number; unit: string | null; status: WirStatus } | null
   entry: Pick<PortalHistoryEntry, "kind" | "no" | "title" | "what">
 }
 
@@ -566,6 +568,7 @@ export function planAnswer(input: PortalAnswer, record: Record<string, unknown> 
         plan: {
           patch: { status: input.result, attempts },
           line: w.itemId ? { itemId: w.itemId, patch: { pmWir: input.result } } : null,
+          wirGate: { seq: w.seq, unit: w.unit ?? null, status: input.result },
           entry: { kind: "wir", no: wirNo(w.seq), title: w.location, what: input.result },
         },
       }
@@ -680,6 +683,22 @@ export function planAnswer(input: PortalAnswer, record: Record<string, unknown> 
 export const filesAllowed = (attached: ReadonlyArray<Pick<PmAttachment, "url">> | undefined, uploads: PortalUpload[] | undefined) =>
   (attached ?? []).every((f) => (uploads ?? []).some((u) => u.url === f.url))
 
+/** MS-03 (1.1) — the same newest-only rule the internal inspection write runs
+ * (`gateWrites` / `gatePatch` in inspection.ts on the site branch; kept here
+ * until the two merge): a late answer on an older request never overwrites a
+ * newer one, for the item and for its delivery unit (`pmWirByUnit`). */
+export function portalGatePatch(
+  target: { seq: number; unit: string | null; status: WirStatus },
+  sameItem: Array<Pick<PmInspection, "seq" | "unit">>,
+  current: { pmWirByUnit?: Record<string, WirStatus> | null }
+): { pmWir?: WirStatus; pmWirByUnit?: Record<string, WirStatus> } {
+  const newer = sameItem.filter((w) => w.seq > target.seq)
+  const out: { pmWir?: WirStatus; pmWirByUnit?: Record<string, WirStatus> } = {}
+  if (!newer.length) out.pmWir = target.status
+  if (target.unit && !newer.some((w) => w.unit === target.unit)) out.pmWirByUnit = { ...(current.pmWirByUnit ?? {}), [target.unit]: target.status }
+  return out
+}
+
 export class PortalAnswerError extends Error {
   constructor(
     readonly code: AnswerRefusal | ProjectRefusal | "LINK_REVOKED" | "LINK_EXPIRED",
@@ -749,7 +768,13 @@ export async function applyPortalAnswer(
 
     const { plan } = result
     const lineRef = plan.line ? projectRef.collection("boqItems").doc(plan.line.itemId) : null
-    const lineExists = lineRef ? (await tx.get(lineRef)).exists : false
+    const lineSnap = lineRef ? await tx.get(lineRef) : null
+    const lineExists = Boolean(lineSnap?.exists)
+    if (plan.line && plan.wirGate) {
+      const sameItem = await tx.get(projectRef.collection(PM_INSPECTIONS).where("itemId", "==", plan.line.itemId))
+      const others = (sameItem.docs ?? []).map((d) => d.data() as Pick<PmInspection, "seq" | "unit">)
+      plan.line = { itemId: plan.line.itemId, patch: portalGatePatch(plan.wirGate, others, (lineSnap?.data() ?? {}) as { pmWirByUnit?: Record<string, WirStatus> | null }) }
+    }
     // The internal record of an approval lifts the mark off the live requests in
     // its own transaction (sample-writes.ts); his answer here does the same.
     const lifted: Array<{ ref: DocumentReference; items: unknown[] }> = []
@@ -763,7 +788,7 @@ export async function applyPortalAnswer(
     }
 
     tx.update(recordRef, { ...plan.patch, updatedAt: FieldValue.serverTimestamp() })
-    if (lineRef && lineExists && plan.line) tx.update(lineRef, { ...plan.line.patch, updatedAt: FieldValue.serverTimestamp() })
+    if (lineRef && lineExists && plan.line && Object.keys(plan.line.patch).length) tx.update(lineRef, { ...plan.line.patch, updatedAt: FieldValue.serverTimestamp() })
     for (const l of lifted) tx.update(l.ref, { items: l.items, updatedAt: FieldValue.serverTimestamp() })
     if (plan.pm) tx.update(projectRef, { pm: { ...pm, ...plan.pm }, updatedAt: FieldValue.serverTimestamp() })
     if (plan.event) tx.set(db.collection(PM_EVENTS).doc(pmEventDocId(plan.event.organizationId, plan.event.key)), plan.event)

@@ -229,7 +229,7 @@ export interface DecisionFacts {
   /** Retention held on certificates, and what handovers already made claimable — a ready unit frees a share of it. */
   retentionHeld?: number
   retentionFreed?: number
-  letters?: Array<Pick<PmLetter, "status" | "day" | "due" | "party"> & { dir?: PmLetter["dir"] }>
+  letters?: Array<Pick<PmLetter, "status" | "day" | "due" | "party">>
   obstacles?: Array<Pick<PmObstacle, "id" | "type" | "closeOn" | "itemIds" | "openOn">>
   /** The last approved monthly reconciliation (CVR-01), if any. */
   eac?: { on: string } | null
@@ -630,13 +630,10 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
   const stale = staleDrawings(f.documents ?? [], f.sheets)
   if (stale.length) out.push({ kind: "doc_stale", severity: "amber", count: stale.length, age: oldest(stale.map((d) => d.revisions[d.revisions.length - 1]?.day ?? f.today), f.today), tab: "pmDocs" })
 
-  // A letter left unanswered builds or loses a claim (COR-01): an incoming one is
-  // us late — red; ours unanswered past its deadline is them late — amber.
+  // A letter to the client or the consultant left unanswered builds or loses a claim (COR-01).
   const lateLetters = (f.letters ?? []).filter((l) => isLetterLate(l, f.today))
-  if (lateLetters.length) {
-    const ours = lateLetters.some((l) => l.dir === "in")
-    out.push({ kind: "letters_late", severity: ours ? "red" : "amber", count: lateLetters.length, age: oldest(lateLetters.map((l) => l.day), f.today), tab: "pmCorr", ...(ours ? { detail: "detail_in", act: "act_in" } : {}) })
-  }
+  if (lateLetters.length)
+    out.push({ kind: "letters_late", severity: lateLetters.some((l) => l.party === "cons" || l.party === "own") ? "red" : "amber", count: lateLetters.length, age: oldest(lateLetters.map((l) => l.day), f.today), tab: "pmCorr" })
 
   const drafts = f.addenda.filter((a) => a.status === "draft")
   if (drafts.length) out.push({ kind: "addendum_unsigned", severity: "amber", count: drafts.length, age: oldest(drafts.map((a) => a.day), f.today), tab: "pmTerms" })

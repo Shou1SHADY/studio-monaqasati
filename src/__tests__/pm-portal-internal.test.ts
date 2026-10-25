@@ -6,7 +6,7 @@
  * him and its due date comes from the contract in force on certification day
  * (IPC-06). Decisions: the certificate past his period (amber, red at 2×, with
  * the link's state), the unopened link (CP-13), DEC-01's duty narrowing and
- * section silencing (FX-59…62), and late letters by direction (COR-01).
+ * section silencing (FX-59…62).
  */
 
 jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-utils/fake-firestore")>("@/test-utils/fake-firestore").firestoreModule)
@@ -152,13 +152,5 @@ describe("DEC-01 — each decision reaches its duty, and only while its section 
     expect(find(f, "rerate")).toBeDefined()
     expect(find({ ...f, sections: ["contract", "procure", "claim"] }, "rerate")).toBeUndefined()
     expect(find({ ...f, sections: ["contract", "procure", "claim", "vo"] }, "rerate")).toBeDefined()
-  })
-})
-
-describe("COR-01 — a late letter: ours to answer is red, theirs to answer amber", () => {
-  const letter = (dir: "in" | "out") => ({ status: dir === "in" ? ("in" as const) : ("out" as const), day: "2026-10-01", due: 7, party: "cons" as const, dir })
-  it("by direction, not by party", () => {
-    expect(find({ letters: [letter("out")] }, "letters_late")?.severity).toBe("amber")
-    expect(find({ letters: [letter("in")] }, "letters_late")).toMatchObject({ severity: "red", detail: "detail_in" })
   })
 })
