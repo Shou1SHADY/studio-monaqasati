@@ -54,7 +54,14 @@ const accept = (id: string, actor: { uid: string; name: string; owner?: boolean 
 const pmCtx: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.manage"] }), seat: { uid: "pm1", role: "pm" }, archived: false }
 const siteCtx: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.site"] }), seat: { uid: "se1", role: "site" }, archived: false }
 
-beforeEach(() => resetFakeDb())
+beforeEach(() => {
+  resetFakeDb()
+  // HO-04: a file goes only to a project manager (default group with pm.manage) or the owner.
+  seed("teamGroups/g-pm", { organizationId: ORG, permissions: ["pm.manage"] })
+  seed("teamGroups/g-site", { organizationId: ORG, permissions: ["pm.site"] })
+  seed("users/pm2", { organizationId: ORG, organizationRole: "member", defaultGroupId: "g-pm", name: "Fahad" })
+  seed("users/se1", { organizationId: ORG, organizationRole: "member", defaultGroupId: "g-site", name: "Omar" })
+})
 
 describe("CRM sends a file — it creates no project (HO-01)", () => {
   it("writes a waiting file addressed to the manager, and marks the deal handed over without a project", async () => {
@@ -127,6 +134,15 @@ describe("return and reassign (HO-03, HO-04)", () => {
     await expect(accept(id, pm)).rejects.toMatchObject({ code: "not_yours" })
     await accept(id, other)
     expect(file(id).status).toBe("acc")
+  })
+
+  it("HO-04 (FX-07): the handler refuses a target who is not a project manager or the owner — whatever the screen listed", async () => {
+    const id = await send()
+    await expect(reassignHandover(db, pm, id, { to: "se1", toName: "Omar", reason: "load" })).rejects.toMatchObject({ code: "not_candidate" })
+    await expect(reassignHandover(db, pm, id, { to: "ghost", toName: "?", reason: "load" })).rejects.toMatchObject({ code: "not_candidate" })
+    expect(file(id).to).toBe("pm1")
+    await reassignHandover(db, pm, id, { to: ORG, toName: "Owner", reason: "spec" })
+    expect(file(id).to).toBe(ORG)
   })
 })
 

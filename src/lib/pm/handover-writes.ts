@@ -3,7 +3,7 @@
 // completion, or passes it on. Each answer is one transaction that re-reads the
 // file, so two managers — or two tabs — cannot both act on it.
 
-import { addDoc, collection, doc, runTransaction, serverTimestamp, setDoc, updateDoc, type Firestore } from "firebase/firestore"
+import { addDoc, collection, doc, runTransaction, serverTimestamp, setDoc, updateDoc, type Firestore, type Transaction } from "firebase/firestore"
 import { CRM_OPPORTUNITIES, type CrmOpportunity } from "../crm"
 import { defaultEnabledSections } from "../project-sections"
 import { drawYearlyDocNumber } from "../sales-numbering"
@@ -21,9 +21,10 @@ import {
   type ReassignReason,
 } from "./handover"
 import { defaultTerms, termProblems, type ContractTerms } from "./terms"
+import { pmCeiling } from "./access"
 
 export class PmHandoverError extends Error {
-  constructor(readonly code: "missing" | "not_yours" | "not_waiting" | "blocked" | "invalid") {
+  constructor(readonly code: "missing" | "not_yours" | "not_waiting" | "blocked" | "invalid" | "not_candidate") {
     super(code)
     this.name = "PmHandoverError"
   }
@@ -165,6 +166,25 @@ function mustAnswer(h: PmHandover | undefined, actor: PmActor): PmHandover {
   return h
 }
 
+/**
+ * HO-04 — whether `uid` may be handed a file: the organisation's owner, or a
+ * member whose DEFAULT group gives the PM ceiling `approve` (a project manager).
+ * Read inside the caller's transaction: a group changed meanwhile is seen.
+ */
+export async function mayReceiveHandover(tx: Transaction, firestore: Firestore, organizationId: string, uid: string): Promise<boolean> {
+  if (!uid) return false
+  if (uid === organizationId) return true
+  const snap = await tx.get(doc(firestore, "users", uid))
+  if (!snap.exists()) return false
+  const u = snap.data() as { organizationId?: string; organizationRole?: string | null; defaultGroupId?: string | null }
+  if ((u.organizationId ?? uid) !== organizationId) return false
+  if (!("organizationRole" in u) || u.organizationRole === "owner") return true
+  if (!u.defaultGroupId) return false
+  const g = await tx.get(doc(firestore, "teamGroups", u.defaultGroupId))
+  const permissions = g.exists() ? (((g.data() as { permissions?: unknown }).permissions as string[] | undefined) ?? []) : []
+  return pmCeiling({ owner: false, permissions }).has("approve")
+}
+
 export async function reassignHandover(
   firestore: Firestore,
   actor: PmActor,
@@ -176,6 +196,8 @@ export async function reassignHandover(
     const snap = await tx.get(ref)
     const h = mustAnswer(snap.exists() ? ({ id: snap.id, ...snap.data() } as PmHandover) : undefined, actor)
     if (reassignBlocks(h, input.to, input.reason, input.reasonText).length) throw new PmHandoverError("invalid")
+    // HO-04 (FX-07): only to a project manager or the owner — checked here, not by the list the screen showed.
+    if (!(await mayReceiveHandover(tx, firestore, h.organizationId, input.to))) throw new PmHandoverError("not_candidate")
     tx.update(ref, {
       to: input.to,
       toName: input.toName,

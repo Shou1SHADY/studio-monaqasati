@@ -16814,7 +16814,8 @@
         "not_yours": "This handover is addressed to another manager",
         "not_waiting": "This handover was already answered",
         "blocked": "It cannot be accepted until its value, duration and signature are fixed",
-        "invalid": "Some values are not valid"
+        "invalid": "Some values are not valid",
+        "not_candidate": "A handover goes only to a project manager or the owner"
       },
       "field": {
         "client": "Client",
