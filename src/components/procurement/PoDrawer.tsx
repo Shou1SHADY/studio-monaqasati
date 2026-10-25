@@ -16,6 +16,16 @@ import { getAuth } from "firebase/auth"
 import { deliveryStep, waitingSinceDays, type StepNotice } from "@/lib/procurement/next-step"
 import { FORWARD_HREF } from "@/lib/procurement/today"
 import { RecordNoticeDialog } from "@/components/procurement/RecordNoticeDialog"
+import { ForwardReceiptDialog } from "@/components/procurement/ForwardReceiptDialog"
+import { ReceiverPreviewDialog } from "@/components/procurement/ReceiverPreviewDialog"
+import { LineSpec } from "@/components/procurement/LineSpec"
+import { openWhatsAppWithLink } from "@/components/procurement/chats/ConversationPanel"
+import { EscalateError, escalateNoticeCall } from "@/lib/procurement/notice-escalate-client"
+import { needsEscalation } from "@/lib/procurement/escalation"
+import { printGoodsReceipt, supplierIdentityOf } from "@/lib/procurement/receipt-print"
+import type { DeskDelivery } from "@/lib/procurement/receipt-desk"
+import { changeAskOpen, type PoWithChat } from "@/lib/procurement/po-messages"
+import { sendPoMessage } from "@/lib/procurement/po-message-client"
 import { usePrintProfile } from "@/hooks/usePrintProfile"
 import { printedNumber } from "@/lib/company-print-profile"
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
@@ -39,8 +49,8 @@ import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
 import { DocumentThread } from "@/components/documents/DocumentThread"
 import { useModules } from "@/hooks/useCompanyModules"
 import { procLinks } from "@/lib/procurement/events"
-import { displayDocNumber, displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
-import { approvalRefusal, canCancelRemainder, canRecordAcceptance, canSend, canUpdateDate, isSelfApproval, lineToArrive, poBlocks, poStatus, poWarnings, receiptDay, receiptsOf, reminderCooldownUntil, todayOf, dayOf } from "@/lib/procurement/po"
+import { displayDocNumber, displayNoticeNumber, displayPoNumber, displayReceiptNumber, noticeNumberFor } from "@/lib/procurement/format"
+import { approvalRefusal, canCancelRemainder, canRecordAcceptance, canSend, canUpdateDate, isLumpSum, isSelfApproval, lineToArrive, poBlocks, poStatus, poWarnings, receiptDay, receiptsOf, reminderCooldownUntil, round2, todayOf, dayOf } from "@/lib/procurement/po"
 import { PRICE_AGREEMENTS, agreementState, type PriceAgreement } from "@/lib/procurement/prices"
 import { AGREEMENT_HREF } from "@/lib/procurement/today"
 import type { PoLine, PoLogEntry, PoSendChannel, PurchaseOrder, RejectDecision } from "@/lib/procurement/types"
@@ -129,6 +139,8 @@ import { PoReceiverLine } from "./PoReceiverLine"
 import { PoBnplRow, PoChatBody } from "./PoV2Sections"
 import { PoRouteError, poAct, type PoActResult } from "@/lib/procurement/po-client"
 import { lineUnitName, pendingVersion, pieceView, poNextStep, poSiteOf, poVer, type PoStateCtx } from "@/lib/procurement/po-state"
+import { noticeNumberOf } from "@/lib/procurement/receipt-desk"
+import { bareOrderNo } from "@/lib/po-link"
 
 type Tone = "red" | "amber" | "blue" | "green"
 
@@ -237,6 +249,25 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const [approverReminded, setApproverReminded] = useState<string | null>(null)
   // «علّمها مدفوعة» in the next step opens the payment section's own form.
   const [advanceAsk, setAdvanceAsk] = useState(0)
+  // PO-06: «حوّل للمستلم» / «أعد التحويل» open the forward form here, without leaving the order. PO-05: «كما يراه المستلم».
+  const [forwardId, setForwardId] = useState<string | null>(null)
+  const [receiverViewId, setReceiverViewId] = useState<string | null>(null)
+  const tContractor = useTranslations("Portal.Contractor")
+  const tReceiptPrint = useTranslations("Portal.ProcReceipts.print")
+  // «ردّ في المحادثة» (PO-13) brings the conversation's box into view.
+  const chatRef = useRef<HTMLDivElement | null>(null)
+  /** «صعّد» (PO-07, TDY-05): an uncounted delivery past the policy window goes to the project manager — or the owner. */
+  const escalateOf = async (deliveryId: string) => {
+    setBusy("escalate")
+    try {
+      const r = await escalateNoticeCall(deliveryId)
+      toast({ title: t("next2.escalated", { name: r.toName || "", hasName: r.toName ? 1 : 0 }) })
+    } catch (error) {
+      toast({ title: t("next2.escalate_failed"), description: error instanceof EscalateError ? error.code : undefined, variant: "destructive" })
+    } finally {
+      setBusy(null)
+    }
+  }
   const remindReceiverOf = async (deliveryId: string, name: string) => {
     const u = getAuth().currentUser
     if (!u) return
@@ -343,6 +374,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
 
   if (!po) return null
   const px = asX(po)
+  const lumpOrder = isLumpSum(po)
   const status = poStatus(po)
   const paidClosed = closedByPayment(asX(po))
   const acts = poActs(po, actor, stepsBack)
@@ -386,6 +418,78 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const supplierPhone = ((world.supplierRecords.find((r) => r.supplierOrgId === po.supplierOrgId) as { contactPhone?: string | null } | undefined)?.contactPhone || guestContact?.phone || null) as string | null
   const rfqNo = (rfqDoc as { rfqNumber?: string } | undefined)?.rfqNumber
   const rfqLabel = rfqNo ? displayDocNumber(rfqNo, locale) : po.rfqTitle || "—"
+  // An off-platform supplier reads the order on its link, and hears from us on WhatsApp (MSG-05).
+  const offPlatform = Boolean(po.isGuestSupplier) || !po.supplierUserId
+  // The supplier asked for a change from the link or his portal and nobody answered yet (PO-13).
+  const changeAsk = po.status !== "cancelled" && po.status !== "closed" ? changeAskOpen(po as PoWithChat) : null
+  const canExpedite = actorCanExpedite(actor) && acts.acts
+  const deliveryOf = (id: string | null) => (id ? (world.deliveries.find((d) => d.id === id) as DeskDelivery | undefined) : undefined)
+  /** Where a delivery lands and what the place is called — the forward form offers that place's receivers first. */
+  const placeOf = (d: DeskDelivery): { id: string | null; name: string } => {
+    const whs = warehousesData || []
+    const id = d.landedWarehouseId || (d as { warehouseId?: string | null }).warehouseId || (po.projectId ? whs.find((w) => w.projectId === po.projectId)?.id : null) || (world.orgId ? `central_${world.orgId}` : null)
+    return { id: id || null, name: (id ? whs.find((w) => w.id === id)?.name : null) || tContractor("wh_central_name") }
+  }
+  const noticeRawOf = (d: DeskDelivery): string | null => noticeNumberOf(d, world.deliveries as DeskDelivery[], po) || noticeNumberFor(po.docNumber, Number(d.seq) > 0 ? Number(d.seq) : null)
+  const noticeNoOf = (d: DeskDelivery): string | null => {
+    const n = noticeRawOf(d)
+    return n ? displayNoticeNumber(n, locale) : null
+  }
+  /** «ذكّر المورد». A registered supplier hears in his portal; one outside the platform gets the same reminder on WhatsApp from this
+   * device, with a fresh order link, and it is posted in the order's conversation (PO-09) — the cooldown is the write's. */
+  const remindNow = (kind: "accept" | "delivery" | "rest") => {
+    if (!f) return
+    if (!offPlatform) {
+      void run("remind", () => remindSupplier(f, actor, po.id, opts), kind === "rest" ? "toast.reminded_rest" : "toast.reminded_portal")
+      return
+    }
+    const opened = window.open("", "_blank")
+    void run(
+      "remind",
+      async () => {
+        try {
+          await remindSupplier(f, actor, po.id, opts)
+          const text = t(kind === "accept" ? "next2.wa_remind_accept" : kind === "rest" ? "next2.wa_remind_rest" : "next2.wa_remind_delivery", { company: world.orgName || company.name || "", number: bareOrderNo(po.docNumber) })
+          await sendPoMessage({ poId: po.id, text, channel: "whatsapp", locale })
+          await openWhatsAppWithLink(po.id, supplierPhone, text, opened)
+        } catch (err) {
+          opened?.close()
+          throw err
+        }
+      },
+      "toast.reminded_whatsapp"
+    )
+  }
+  /** One receipt's «PDF» (PO-10), as the Goods received desk prints it. */
+  const printReceiptOf = (id: string) => {
+    const d = deliveryOf(id)
+    if (!d) return
+    const placeId = d.landedWarehouseId || (d as { warehouseId?: string | null }).warehouseId || null
+    const vat = world.supplierRecords.find((r) => r.supplierOrgId === po.supplierOrgId)?.vatNumber
+    const ok = printGoodsReceipt({
+      delivery: d,
+      po,
+      company,
+      supplier: statementSupplier ?? supplierIdentityOf(null, vat),
+      noticeNumber: noticeNoOf(d),
+      placeName: (placeId ? (warehousesData || []).find((w) => w.id === placeId)?.name : null) || po.projectName || null,
+      projectName: po.projectName || null,
+      displayNumber: d.docNumber ? displayReceiptNumber(d.docNumber, locale) : `DEL-${d.id.slice(0, 8).toUpperCase()}`,
+      displayPoNumber: displayPoNumber(po.docNumber, locale),
+      withPrices: actor.seesPrices,
+      locale,
+      t: (k, p) => tReceiptPrint(k as "title", p),
+      tp: (k, p) => tProc(k as "doc.GR", p),
+      now,
+    })
+    if (!ok) toast({ title: t("toast.popup_blocked"), variant: "destructive" })
+  }
+  const scrollToChat = () => {
+    const box = chatRef.current
+    if (!box) return
+    box.scrollIntoView({ behavior: "smooth", block: "start" })
+    box.querySelector("textarea")?.focus()
+  }
 
   const printOrder = () => {
     const extras = { revision, paymentTerms: terms, tolerancePercent: policies.overReceiptTolerancePercent }
@@ -616,30 +720,49 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               )}
             </>
           )
-        return (
-          <>
-            <Callout tone="blue">
-              {t("next.sent_body", { channel: po.sentChannel ? tProc(`channel.${po.sentChannel}`) : "—", date: fmt(po.sentAt) })}
-              {waitingAcceptanceDays > 0 && <b className="ms-1">{t("next.sent_since", { days: waitingAcceptanceDays })}</b>}
-            </Callout>
-            <div className="flex flex-wrap items-center gap-2">
-              {f && expediter && canRecordAcceptance(po) && (
-                <Button disabled={busy != null} onClick={() => setDialog({ kind: "accept" })}>
-                  {t("next.record_acceptance")}
-                </Button>
+        {
+          // PO-08: inside the acceptance window the order simply waits (blue); past it (`nacc`) it is amber, says since when and by
+          // which policy, and «ذكّر المورد» leads — recording the acceptance stays for a supplier who said yes on the phone.
+          const nacc = ps.state.k === "nacc"
+          const sentLine = t("next.sent_body", { channel: po.sentChannel ? tProc(`channel.${po.sentChannel}`) : "—", date: fmt(po.sentAt) })
+          return (
+            <>
+              {nacc ? (
+                <Callout tone="amber">
+                  <b>{t("next.sent_since", { days: waitingAcceptanceDays })}</b>
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">{t("next.nacc_sub", { window: policies.supplierAcceptanceDays })}</span>
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">{sentLine}</span>
+                </Callout>
+              ) : (
+                <Callout tone="blue">
+                  <b>{t("next.sent_waiting")}</b> {sentLine}
+                </Callout>
               )}
-              {f && expediter && (
-                <>
-                  <Button variant="outline" disabled={busy != null || remindUntil != null} onClick={() => run("remind", () => remindSupplier(f, actor, po.id, opts), po.supplierUserId ? "toast.reminded_portal" : "toast.reminded_offline")}>
-                    {t("next.remind")}
+              <div className="flex flex-wrap items-center gap-2">
+                {f && expediter && canRecordAcceptance(po) && (
+                  <Button variant={nacc ? "outline" : "default"} disabled={busy != null} onClick={() => setDialog({ kind: "accept" })}>
+                    {t("next.record_acceptance")}
                   </Button>
-                  {remindUntil && <span className="text-[11px] text-muted-foreground">{t("next.remind_after", { time: remindUntil.toLocaleString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) })}</span>}
-                </>
-              )}
-              {cancelLink}
-            </div>
-          </>
-        )
+                )}
+                {f && expediter && (
+                  <>
+                    <Button variant={nacc ? "default" : "outline"} disabled={busy != null || remindUntil != null} onClick={() => remindNow("accept")}>
+                      {t("next.remind")}
+                    </Button>
+                    {remindUntil && <span className="text-[11px] text-muted-foreground">{t("next.remind_after", { time: remindUntil.toLocaleString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) })}</span>}
+                  </>
+                )}
+                {nacc && f && acts.acts && canCancelOrder(po, actor) ? (
+                  <Button variant="outline" className="text-destructive" disabled={busy != null} onClick={() => setDialog({ kind: "cancel_order" })}>
+                    {t("next.cancel_order")}
+                  </Button>
+                ) : (
+                  cancelLink
+                )}
+              </div>
+            </>
+          )
+        }
       case "in_delivery":
       case "part_received": {
         // PUR-07: the step from the facts — who we wait on and since when; the supplier is never blamed
@@ -649,7 +772,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
           f &&
           expediter && (
             <>
-              <Button variant="outline" disabled={busy != null || remindUntil != null} onClick={() => run("remind", () => remindSupplier(f, actor, po.id, opts), po.supplierUserId ? (rest ? "toast.reminded_rest" : "toast.reminded_portal") : "toast.reminded_offline")}>
+              <Button variant="outline" disabled={busy != null || remindUntil != null} onClick={() => remindNow(rest ? "rest" : "delivery")}>
                 {label}
               </Button>
               {remindUntil && <span className="text-[11px] text-muted-foreground">{t("next.remind_after", { time: remindUntil.toLocaleString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) })}</span>}
@@ -675,10 +798,16 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 <span className="mt-0.5 block text-[11px] text-muted-foreground">{t("next2.to_forward_sub", { date: step.noticeDay ? fmt(step.noticeDay) : "—", place: po.deliveryLocation ? ` · ${po.deliveryLocation}` : "" })}</span>
               </Callout>
             )
+            // PO-06: the forward form opens here; the desk stays one link away.
             buttons = expediter && (
-              <Button asChild>
-                <Link href={FORWARD_HREF(step.deliveryId)}>{t("next2.forward")}</Link>
-              </Button>
+              <>
+                <Button disabled={busy != null} onClick={() => setForwardId(step.deliveryId)}>
+                  {t("next2.forward")}
+                </Button>
+                <Button asChild variant="ghost">
+                  <Link href={FORWARD_HREF(step.deliveryId)}>{t("next2.open_desk")}</Link>
+                </Button>
+              </>
             )
             break
           case "in_transit":
@@ -689,24 +818,37 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               </Callout>
             )
             break
-          case "receiver_late":
+          case "receiver_late": {
+            // PO-07: past the policy window «صعّد» leads and the reminder steps back; escalated once, it says to whom.
+            const notice = deliveryOf(step.deliveryId)
+            const escalation = notice?.escalation ?? null
+            const canEscalate = Boolean(notice) && needsEscalation(notice as DeskDelivery, now, policies.escalateAfterDays)
             body = (
-              <Callout tone="amber">
-                <b>{t("next2.receiver_late", { name: step.receiver || "—", days: step.days })}</b>{" "}
-                {t("next2.receiver_late_sub", { noticed: step.noticeDay ? fmt(step.noticeDay) : "—", forwarded: step.forwardedDay ? fmt(step.forwardedDay) : "—", how: step.byLink ? t("next2.by_link") : t("next2.in_app") })}
-              </Callout>
+              <>
+                <Callout tone="amber">
+                  <b>{t("next2.receiver_late", { name: step.receiver || "—", days: step.days })}</b>{" "}
+                  {t("next2.receiver_late_sub", { noticed: step.noticeDay ? fmt(step.noticeDay) : "—", forwarded: step.forwardedDay ? fmt(step.forwardedDay) : "—", how: step.byLink ? t("next2.by_link") : t("next2.in_app") })}
+                </Callout>
+                {escalation && <p className="text-xs text-muted-foreground">{t("next2.escalated_note", { date: fmt(escalation.at), name: escalation.toName || "", hasName: escalation.toName ? 1 : 0 })}</p>}
+              </>
             )
             buttons = expediter && (
               <>
-                <Button disabled={busy != null} onClick={() => void remindReceiverOf(step.deliveryId, step.receiver)}>
+                {canEscalate && (
+                  <Button disabled={busy != null} onClick={() => void escalateOf(step.deliveryId)}>
+                    {t("next2.escalate")}
+                  </Button>
+                )}
+                <Button variant={canEscalate ? "outline" : "default"} disabled={busy != null} onClick={() => void remindReceiverOf(step.deliveryId, step.receiver)}>
                   {t("next2.remind_receiver")}
                 </Button>
-                <Button asChild variant="outline">
-                  <Link href={FORWARD_HREF(step.deliveryId)}>{t("next2.reforward")}</Link>
+                <Button variant="outline" disabled={busy != null} onClick={() => setForwardId(step.deliveryId)}>
+                  {t("next2.reforward")}
                 </Button>
               </>
             )
             break
+          }
           case "counted":
             body = <Callout tone="green">{t("next2.counted", { name: step.receiver || "—" })}</Callout>
             buttons = (
@@ -1004,13 +1146,39 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               {acts.ownerReadOnly && status !== "awaiting_approval" && status !== "closed" && !paidClosed && status !== "cancelled" && <Callout tone="blue">{tProc("rfqpo.po.owner_reads", { by: po.preparedByName })}</Callout>}
               {acts.notMine && <Callout tone="blue">{tProc("rfqpo.po.not_mine", { by: po.preparedByName })}</Callout>}
               {pendingV && <Callout tone="amber">{t("version.pending", { n: pendingV.n })}</Callout>}
+              {changeAsk && (
+                // PO-13: the supplier's change request is the first thing to answer — in the conversation, by a new date, or by cancelling.
+                <>
+                  <Callout tone="amber">
+                    <b dir="auto">{t("next.change_asked", { text: changeAsk.text })}</b>
+                    <span className="mt-0.5 block text-[11px] text-muted-foreground">{t("next.change_asked_sub", { date: fmt(changeAsk.at) })}</span>
+                  </Callout>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button disabled={busy != null} onClick={scrollToChat}>
+                      {t("next.reply_in_chat")}
+                    </Button>
+                    {f && canExpedite && canUpdateDate(po) && (
+                      <Button variant="outline" disabled={busy != null} onClick={() => setDialog({ kind: "date" })}>
+                        {t("next.update_date")}
+                      </Button>
+                    )}
+                    {f && acts.acts && canCancelOrder(po, actor) && (
+                      <Button variant="outline" className="text-destructive" disabled={busy != null} onClick={() => setDialog({ kind: "cancel_order" })}>
+                        {t("next.cancel_order")}
+                      </Button>
+                    )}
+                  </div>
+                </>
+              )}
               {nextStep()}
             </Section>
 
             {po.sentAt && po.status !== "cancelled" && (
-              <Section title={t("chat.title")}>
-                <PoChatBody registered={!po.isGuestSupplier && Boolean(po.supplierUserId)} events={chatEvents} phone={supplierPhone} po={po} receipts={world.deliveries} />
-              </Section>
+              <div ref={chatRef} className="scroll-mt-4">
+                <Section title={t("chat.title")}>
+                  <PoChatBody registered={!po.isGuestSupplier && Boolean(po.supplierUserId)} events={chatEvents} phone={supplierPhone} po={po} receipts={world.deliveries} />
+                </Section>
+              </div>
             )}
 
             <Section title={t("sec.lines", { count: po.lines.length })} badge={actor.seesPrices ? <span className="font-normal text-foreground/80">{t("sec.lines_total", { total: moneyFigure(money.commitment) })}</span> : undefined}>
@@ -1023,16 +1191,27 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 return (
                   <div key={l.id} className="space-y-2 border-b pb-3 last:border-b-0 last:pb-0">
                     <div className="flex items-start justify-between gap-3">
-                      <p className="min-w-0 text-sm font-bold" dir="auto">
-                        {l.name}
-                      </p>
-                      <p className="shrink-0 text-sm tabular-nums">
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-sm font-bold" dir="auto">
+                          {l.name}
+                        </p>
+                        {/* PO-01: the spec and the tree path the RFQ named — 12 mm is not 16 mm. */}
+                        <LineSpec spec={l.spec} path={l.path} />
+                      </div>
+                      <p className="shrink-0 text-end text-sm tabular-nums">
                         {quantityText(parts.ordered, lineUnitName(l, locale))}
-                        {actor.seesPrices && l.unitPrice != null && (
+                        {actor.seesPrices && l.unitPrice != null && !lumpOrder && (
                           <span className="ms-1 text-xs text-muted-foreground">
                             × <Money value={l.unitPrice} />
                           </span>
                         )}
+                        {/* PO-11: price × qty = total; a lump-sum line is «ضمن المبلغ الإجمالي». */}
+                        {actor.seesPrices && l.unitPrice != null && !lumpOrder && (
+                          <span className="block text-xs text-muted-foreground">
+                            = <Money value={round2(parts.ordered * l.unitPrice)} />
+                          </span>
+                        )}
+                        {actor.seesPrices && lumpOrder && <span className="block text-[11px] text-muted-foreground">{tProc("cmp2.in_lump")}</span>}
                       </p>
                     </div>
                     {pv && (
@@ -1107,7 +1286,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             <ScheduleSection po={px} schedule={schedule} deliveries={world.deliveries} />
             {warranty && <WarrantyCallout />}
 
-            <OrderDeliveriesSections po={px} deliveries={world.deliveries} warehouses={warehouses} now={now} />
+            <OrderDeliveriesSections po={px} deliveries={world.deliveries} warehouses={warehouses} now={now} onPreviewReceiver={setReceiverViewId} onPrintReceipt={printReceiptOf} />
 
             {actor.seesPrices && !financeOn && (
               // Without Finance (PUR-10, Q5): no ledger here — an optional status, the advance, the invoice file to the accountant.
@@ -1349,6 +1528,16 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             onSubmit={({ date }) => run("accept", () => recordSupplierAcceptance(f, actor, po.id, { promisedDate: date, by: "buyer" }, opts), "toast.accepted")}
           />
           {noticeOpen && <RecordNoticeDialog po={po} open={noticeOpen} onOpenChange={setNoticeOpen} />}
+          {(() => {
+            const d = deliveryOf(forwardId)
+            if (!d) return null
+            const place = placeOf(d)
+            return <ForwardReceiptDialog open onOpenChange={(o) => !o && setForwardId(null)} delivery={d} po={po} orgId={world.orgId || ""} placeWarehouseId={place.id} placeName={place.name} noticeNumber={noticeRawOf(d)} />
+          })()}
+          {(() => {
+            const d = deliveryOf(receiverViewId)
+            return d ? <ReceiverPreviewDialog open onOpenChange={(o) => !o && setReceiverViewId(null)} delivery={d} po={po} placeName={placeOf(d).name} /> : null
+          })()}
           <SupplierDateDialog open={dialog?.kind === "date"} onOpenChange={(o) => !o && setDialog(null)} po={px} now={now} onSubmit={({ date, note }) => run("date", () => poAct("date", { poId: po.id, date, note: note || null }, locale), "toast.date_updated")} />
           <DecideHoldDialog
             hold={dialog?.kind === "decide_hold" ? dialog.hold : null}

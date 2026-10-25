@@ -14,6 +14,17 @@ import { useProcReceivers } from "@/hooks/useProcReceivers"
 import { landingWarehouseId, suggestedReceiver } from "@/lib/procurement/receipt-desk"
 import { forwardedReceiverOf } from "@/lib/procurement/receivers"
 
+/** The register's receiver for where an order's goods land — the project's own store, else the central one (also named by
+ * «سجّل إشعار تسليم», PO-14). Null while the register is empty. */
+export function useSuggestedReceiver(organizationId: string, projectId: string | null | undefined) {
+  const firestore = useFirestore()
+  const { receivers } = useProcReceivers(organizationId)
+  const projectRef = useMemoFirebase(() => (firestore && projectId ? doc(firestore, "projects", projectId) : null), [firestore, projectId])
+  const { data: project } = useDoc<{ warehouseId?: string | null }>(projectRef)
+  const place = landingWarehouseId(projectId, project && projectId ? [{ id: projectId, warehouseId: project.warehouseId ?? null }] : [], organizationId)
+  return { suggested: suggestedReceiver(receivers, place), receivers }
+}
+
 export function PoReceiverLine({
   organizationId,
   projectId,
@@ -26,12 +37,7 @@ export function PoReceiverLine({
   notices?: ReadonlyArray<{ poId?: string | null; status?: string; closedByReceipt?: unknown; forwardedTo?: unknown }>
 }) {
   const t = useTranslations("Portal.ProcReceipts")
-  const firestore = useFirestore()
-  const { receivers } = useProcReceivers(organizationId)
-  const projectRef = useMemoFirebase(() => (firestore && projectId ? doc(firestore, "projects", projectId) : null), [firestore, projectId])
-  const { data: project } = useDoc<{ warehouseId?: string | null }>(projectRef)
-  const place = landingWarehouseId(projectId, project && projectId ? [{ id: projectId, warehouseId: project.warehouseId ?? null }] : [], organizationId)
-  const suggested = suggestedReceiver(receivers, place)
+  const { suggested, receivers } = useSuggestedReceiver(organizationId, projectId)
   const forwarded = forwardedReceiverOf(notices as Parameters<typeof forwardedReceiverOf>[0], poId)
   if (!forwarded && !suggested) return null
   const registered = forwarded ? receivers.find((r) => (forwarded.userId && r.userId === forwarded.userId) || r.name === forwarded.name) : suggested

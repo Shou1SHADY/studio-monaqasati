@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from "@/hooks/use-toast"
 import { todayOf } from "@/lib/procurement/po"
 import type { PurchaseOrder } from "@/lib/procurement/types"
+import { useSuggestedReceiver } from "./PoReceiverLine"
 
 export function RecordNoticeDialog({ po, open, onOpenChange, onDone }: { po: PurchaseOrder; open: boolean; onOpenChange: (o: boolean) => void; onDone?: (deliveryId: string) => void }) {
   const t = useTranslations("Portal.ProcOrders")
@@ -25,6 +26,8 @@ export function RecordNoticeDialog({ po, open, onOpenChange, onDone }: { po: Pur
   const [notes, setNotes] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // PO-14: who it goes to next — the site's receiver from the register.
+  const { suggested } = useSuggestedReceiver(po.organizationId, po.projectId)
 
   const submit = async () => {
     const user = getAuth().currentUser
@@ -68,6 +71,11 @@ export function RecordNoticeDialog({ po, open, onOpenChange, onDone }: { po: Pur
             <Label htmlFor="rn-notes" className="text-xs">{t("notice.notes")}</Label>
             <Textarea id="rn-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} dir="auto" />
           </div>
+          {suggested?.name && (
+            <p className="text-xs text-muted-foreground" dir="auto">
+              {t("notice.receiver_hint", { name: suggested.name })}
+            </p>
+          )}
           {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
         </div>
         <DialogFooter>

@@ -345,11 +345,15 @@ export function lineInTransit(po: PurchaseOrder, line: PoLine, deliveries: Array
 }
 
 /** When and how the supplier sent a delivery notice (prototype poAsnSec): a
- * guest writes it from the order's link, a registered supplier from its portal. */
-export function noticeSent(d: { createdAt?: unknown; isGuestDelivery?: boolean | null; notes?: string | null }): { at: string | null; via: "link" | "portal"; note: string | null } {
+ * guest writes it from the order's link, a registered supplier from its portal —
+ * or a member of ours recorded what his phone call said, on his behalf (PO-04,
+ * prototype `logntc` «نيابة عن مورد خارج المنصة»), and then `by` names him. */
+export function noticeSent(d: { createdAt?: unknown; isGuestDelivery?: boolean | null; notes?: string | null; reportedBy?: string | null; recordedOnBehalf?: { byName?: string | null } | null }): { at: string | null; via: "link" | "portal" | "onBehalf"; note: string | null; by?: string } {
   const v = d.createdAt as { toDate?: () => Date } | string | null | undefined
   const at = typeof v === "string" ? v : v && typeof v.toDate === "function" ? v.toDate().toISOString() : null
-  return { at, via: d.isGuestDelivery ? "link" : "portal", note: (d.notes || "").trim() || null }
+  const note = (d.notes || "").trim() || null
+  if (d.reportedBy === "onBehalf" || d.recordedOnBehalf) return { at, via: "onBehalf", note, by: (d.recordedOnBehalf?.byName || "").trim() }
+  return { at, via: d.isGuestDelivery ? "link" : "portal", note }
 }
 
 /** What Projects asked of this line, if anything. */

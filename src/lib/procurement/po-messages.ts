@@ -6,6 +6,7 @@
 
 import { matchesSearch } from "@/lib/search-text"
 import { bareOrderNo } from "@/lib/po-link"
+import { pendingChangeAsk } from "./po-state"
 import type { PoLogEntry, PurchaseOrder } from "./types"
 
 export const POLL_MESSAGES = "poMessages"
@@ -67,9 +68,7 @@ export const chatOf = (po: Pick<PoWithChat, "chat">): PoChatSummary => ({ ...EMP
 
 /** The supplier's request to change the order, while the buyer has not answered it with a message. */
 export function changeAskOpen(po: PoWithChat): PoChangeAsk | null {
-  const ask = po.changeAsked
-  if (!ask) return null
-  return chatOf(po).usSeq > ask.seq ? null : ask
+  return pendingChangeAsk(po)
 }
 
 /** Whether a member of the buying company has something to read: the supplier spoke last and he has not read it. */
@@ -161,7 +160,8 @@ export function orderFacts(po: PurchaseOrder, receipts: ReadonlyArray<ThreadRece
     n += 1
     if (e.action === "supplier_accepted") out.push({ sys: true, kind: e.params?.recordedBy === "buyer" ? "accepted_for" : "accepted", at: e.at, k: 2 + n / 1000, params: { name: e.byName, date: String(e.params?.date ?? "") } })
     else if (e.action === "supplier_declined") out.push({ sys: true, kind: "declined", at: e.at, k: 2 + n / 1000, params: { reason: e.note || "" } })
-    else if (e.action === "delivery_reported") out.push({ sys: true, kind: "reported", at: e.at, k: 3 + n / 1000, params: { date: String(e.params?.date ?? ""), note: e.note || "" } })
+    // A notice the buyer recorded from a phone call says so, and by whom (PO-04).
+    else if (e.action === "delivery_reported") out.push({ sys: true, kind: "reported", at: e.at, k: 3 + n / 1000, params: { date: String(e.params?.date ?? ""), note: e.note || "", ...(e.params?.via === "onBehalf" ? { by: e.byName || "" } : {}) } })
     else if (e.action === "date_updated") out.push({ sys: true, kind: "date", at: e.at, k: 3 + n / 1000, params: { date: String(e.params?.date ?? "") } })
     else if (e.action === "closed") out.push({ sys: true, kind: "closed", at: e.at, k: 6 + n / 1000, params: { reason: e.note || "" } })
     else if (e.action === "cancelled") out.push({ sys: true, kind: "cancelled", at: e.at, k: 6 + n / 1000, params: { reason: e.note || "" } })

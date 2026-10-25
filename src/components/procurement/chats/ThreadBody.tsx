@@ -30,6 +30,7 @@ export function factText(t: T, f: PoFact, no: string, locale: string): string {
     case "declined":
       return t("sys.declined", { reason: String(f.params.reason || "") })
     case "reported":
+      if (f.params.by) return t(f.params.note ? "sys.reported_for_note" : "sys.reported_for", { date, note: String(f.params.note || ""), name: String(f.params.by) })
       return t(f.params.note ? "sys.reported_note" : "sys.reported", { date, note: String(f.params.note || "") })
     case "receipt":
       return t("sys.receipt", { no: String(f.params.no || "") })
