@@ -10,7 +10,7 @@ const CANCEL_WHY = ["need", "price", "spec", "reissue"] as const
 
 // HIS result once the request is decided (LNK-11), in the prototype's four words: awarded to him — with the order's link when
 // it exists —, not awarded, still under review, cancelled with its reason.
-export function LinkResult({ result, rfq }: { result: VisitorResult; rfq: LinkRfqView }) {
+export function LinkResult({ result, rfq }: { result: VisitorResult; rfq: Pick<LinkRfqView, "closedAt" | "closeAt" | "closedEarly"> }) {
   const t = useTranslations("PublicRfq")
   const locale = useLocale()
   const closed = fmtDay((rfq.closedAt || rfq.closeAt || "").slice(0, 10), locale)
