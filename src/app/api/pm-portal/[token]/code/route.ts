@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { getAdminFirestore } from "@/lib/firebaseAdmin"
 import { issueOtp, issueRemoteOtp } from "@/lib/otp"
 import { isSmsConfigured, isVerifyConfigured, sendSms, startVerification } from "@/lib/sms"
-import { maskPhone, resolvePortalLink } from "@/lib/pm/portal-links"
+import { consumeMobileRate } from "@/lib/links/rate"
+import { maskPhone, projectRefusal, resolvePortalLink, type PortalProjectDoc } from "@/lib/pm/portal-links"
 
 // The consultant's one-time code, sent to the mobile the project named when
-// it sent the link — never one the page supplies. One code a minute per link.
+// it sent the link — never one the page supplies. One code a minute per link,
+// and five an hour per mobile across every link (a number is not an SMS
+// gateway). An archived project sends none (CP-14).
 
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
 
@@ -20,8 +23,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     if (!resolved.ok) return fail("This link is invalid, replaced, or has expired", resolved.code, resolved.status)
 
     const { linkId, link } = resolved
+    const project = (await db.collection("projects").doc(link.projectId).get()).data() as PortalProjectDoc | undefined
+    const closed = projectRefusal(project, link.organizationId)
+    if (closed) return fail("This project is closed", closed, closed === "PROJECT_CLOSED" ? 410 : 404)
     const phone = link.consultant.phone
     const phoneMasked = maskPhone(phone)
+    const rate = await consumeMobileRate(db, "otp", phone)
+    if (!rate.ok) return rate.code === "RATE_LIMITED" ? fail("Too many codes for this mobile — try again later", "RATE_LIMITED", 429) : fail("The code could not be sent", rate.code, 503)
     if (isVerifyConfigured()) {
       const remote = await issueRemoteOtp(db, { purpose: "pm_portal", subjectId: linkId, phone }, () => startVerification(phone, locale))
       if ("error" in remote) {

@@ -9,6 +9,7 @@
 
 import { defectsEnd, progressOf, PROVISIONAL_AT, type Acceptances } from "./acceptance"
 import { CERTIFICATE_READY_AT, type CertificateStatus } from "./certificate"
+import { PORTAL_UNOPENED_DAYS, portalLinkState, type PortalLinkState } from "./consultant-portal"
 import { delayAndDamages, grantedDays, noticeDeadline, noticeLate, type ClaimStatus } from "./claim"
 import { isLetterLate, type PmLetter } from "./correspondence"
 import { staleDrawings, type PmDocument } from "./documents"
@@ -78,6 +79,7 @@ export type DecisionKind =
   | "po_budget"
   | "zone"
   | "ztight"
+  | "portal_unopened"
 
 export type DecisionTab = "pmUnits" | "pmMeasure" | "pmQa" | "pmSubm" | "pmVo" | "pmClaims" | "pmClose" | "pmProgramme" | "pmTerms" | "pmSubs" | "pmDocs" | "pmCorr" | "pmSite" | "pmCvr" | "pmReq" | "pmStore" | "pmPo" | "boq" | "ipc" | "team" | "info"
 
@@ -112,7 +114,7 @@ export const DECISION_GROUP: Record<DecisionKind, DecisionGroup> = {
   sheets_waiting: "appr",
   cert_internal: "appr",
   cert_mine: "appr",
-  cert_consultant: "appr",
+  cert_consultant: "money",
   final_ready: "appr",
   sub_cert_waiting: "appr",
   req_waiting: "appr",
@@ -136,6 +138,7 @@ export const DECISION_GROUP: Record<DecisionKind, DecisionGroup> = {
   eqp_licence: "appr",
   zone: "money",
   ztight: "risk",
+  portal_unopened: "appr",
 }
 
 /** The order of the group chips for each seat (the prototype's GORD). */
@@ -165,6 +168,8 @@ export interface DecisionVars {
   points?: number
   rate?: number
   cap?: number
+  /** The portal link's state where a certificate waits on the consultant (CP-13). */
+  link?: PortalLinkState
 }
 
 export interface PmDecision {
@@ -205,7 +210,7 @@ export interface DecisionFacts {
   items: Array<{ id?: string; code?: string; unit?: string; quantity: number; rate: number; executed: number; billed?: number; gate?: { pmInspect?: boolean | null; pmWir?: string | null } | null; pmSample?: boolean | null; pmSub?: string | null }>
   sheets: Array<{ status: string; day: string; seq?: number; byName?: string | null; lines?: unknown[] }>
   addenda: Array<{ status: string; day: string }>
-  certificates: Array<{ status: CertificateStatus; net: number; dueOn?: string | null; collected?: number | null; prepOn?: string | null; prep?: string | null; prepName?: string | null }>
+  certificates: Array<{ status: CertificateStatus; net: number; dueOn?: string | null; collected?: number | null; prepOn?: string | null; prep?: string | null; prepName?: string | null; apprOn?: string | null; seq?: number }>
   punch: Array<{ status: PunchStatus; unit?: string | null }>
   /** Inspections: the delivery units they block, and the failed one a decision names. */
   inspections?: Array<{ status: string; unit?: string | null; seq?: number; itemId?: string; location?: string; attempts?: Array<{ on: string; rOn?: string | null; note?: string | null }> }>
@@ -224,7 +229,7 @@ export interface DecisionFacts {
   /** Retention held on certificates, and what handovers already made claimable — a ready unit frees a share of it. */
   retentionHeld?: number
   retentionFreed?: number
-  letters?: Array<Pick<PmLetter, "status" | "day" | "due" | "party">>
+  letters?: Array<Pick<PmLetter, "status" | "day" | "due" | "party"> & { dir?: PmLetter["dir"] }>
   obstacles?: Array<Pick<PmObstacle, "id" | "type" | "closeOn" | "itemIds" | "openOn">>
   /** The last approved monthly reconciliation (CVR-01), if any. */
   eac?: { on: string } | null
@@ -255,6 +260,11 @@ export interface DecisionFacts {
   plant?: Array<Pick<PmPlant, "status" | "to" | "days" | "dayRate" | "category" | "qty" | "licenceTo" | "offOk">>
   /** Realised margin (earned − actual cost); damages above it turn red. Absent = unknown. */
   margin?: number | null
+  /** The consultant named on the project, and the portal link's record (`pm.portal`) — CP-13. */
+  consultant?: string | null
+  portal?: { sentOn?: string | null; seenOn?: string | null } | null
+  /** What waits on the consultant now (portalItems over what the viewer reads). */
+  portalWaiting?: number
   /** The project's purchase orders Procurement referred for a budget decision (pmBudget pending). */
   budgetReferrals?: Array<{ askedAt?: string | null; over?: number | null }>
   today: string
@@ -303,36 +313,49 @@ const REACHES: Record<DecisionKind, (h: (k: string) => boolean) => boolean> = {
   sub_cert_waiting: (h) => h("ipcOk"),
   doc_stale: (h) => h("measure") || h("approve"),
   letters_late: (h) => h("corr") || h("approve"),
-  obstacle_blocking: () => true,
+  obstacle_blocking: (h) => h("daily") || h("approve"),
   obstacle_unprotected: (h) => h("approve") || h("prep"),
   cvr_stale: (h) => h("approve"),
-  req_waiting: (h) => h("req") || h("approve"),
+  // Its approval is the approver's decision — the requester sees its state in his list (FX-60).
+  req_waiting: (h) => h("approve"),
   req_stop: (h) => h("req") || h("approve"),
-  req_incoming: (h) => h("req"),
+  req_incoming: (h) => h("rcv"),
   store_move: (h) => h("approve"),
   store_incoming: (h) => h("req"),
   store_close: (h) => h("req") || h("approve"),
   store_negative: (h) => h("approve") || h("measure"),
   change_held: (h) => h("approve"),
   change_rejected: (h) => h("approve"),
-  need_short: () => true,
+  need_short: (h) => h("req"),
   eqp_waiting: (h) => h("approve"),
   eqp_receive: (h) => h("req") || h("approve"),
   eqp_hire: (h) => h("approve"),
-  eqp_idle: () => true,
-  eqp_overdue: () => true,
-  eqp_offhire: () => true,
-  eqp_licence: () => true,
+  eqp_idle: (h) => h("req") || h("daily") || h("approve"),
+  eqp_overdue: (h) => h("req") || h("daily") || h("approve"),
+  eqp_offhire: (h) => h("req") || h("daily") || h("approve"),
+  eqp_licence: (h) => h("req") || h("daily") || h("approve"),
   rerate: (h) => h("client"),
   po_budget: (h) => h("approve"),
   zone: (h) => h("measure") || h("approve"),
   ztight: (h) => h("measure") || h("approve"),
+  // The link is sent by whoever approves.
+  portal_unopened: (h) => h("approve"),
 }
 
-/** A kind that lives in a section, and the section (the prototype's HAS2 guards). */
+/** A kind that lives in a section, and the section (the prototype's HAS2 guards):
+ * switching a section off silences every kind it holds, and they come back with it. */
 export const SECTION_OF: Partial<Record<DecisionKind, SectionId>> = {
   vo_work: "vo",
   vo_waiting: "vo",
+  rerate: "vo",
+  obstacle_blocking: "rfi",
+  req_waiting: "procure",
+  req_stop: "procure",
+  req_incoming: "procure",
+  change_held: "procure",
+  change_rejected: "procure",
+  need_short: "procure",
+  po_budget: "procure",
   ipc_ready: "ipc",
   cert_internal: "ipc",
   cert_mine: "ipc",
@@ -607,10 +630,13 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
   const stale = staleDrawings(f.documents ?? [], f.sheets)
   if (stale.length) out.push({ kind: "doc_stale", severity: "amber", count: stale.length, age: oldest(stale.map((d) => d.revisions[d.revisions.length - 1]?.day ?? f.today), f.today), tab: "pmDocs" })
 
-  // A letter to the client or the consultant left unanswered builds or loses a claim (COR-01).
+  // A letter left unanswered builds or loses a claim (COR-01): an incoming one is
+  // us late — red; ours unanswered past its deadline is them late — amber.
   const lateLetters = (f.letters ?? []).filter((l) => isLetterLate(l, f.today))
-  if (lateLetters.length)
-    out.push({ kind: "letters_late", severity: lateLetters.some((l) => l.party === "cons" || l.party === "own") ? "red" : "amber", count: lateLetters.length, age: oldest(lateLetters.map((l) => l.day), f.today), tab: "pmCorr" })
+  if (lateLetters.length) {
+    const ours = lateLetters.some((l) => l.dir === "in")
+    out.push({ kind: "letters_late", severity: ours ? "red" : "amber", count: lateLetters.length, age: oldest(lateLetters.map((l) => l.day), f.today), tab: "pmCorr", ...(ours ? { detail: "detail_in", act: "act_in" } : {}) })
+  }
 
   const drafts = f.addenda.filter((a) => a.status === "draft")
   if (drafts.length) out.push({ kind: "addendum_unsigned", severity: "amber", count: drafts.length, age: oldest(drafts.map((a) => a.day), f.today), tab: "pmTerms" })
@@ -631,8 +657,27 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
     })
   }
   if (mine.length) out.push({ kind: "cert_mine", severity: "amber", count: mine.length, amount: r2(mine.reduce((a, c) => a + c.net, 0)), age: oldest(mine.map((c) => c.prepOn ?? f.today), f.today), tab: "ipc" })
-  const withConsultant = f.certificates.filter((c) => c.status === "sub")
-  if (withConsultant.length) out.push({ kind: "cert_consultant", severity: "blue", count: withConsultant.length, amount: r2(withConsultant.reduce((a, c) => a + c.net, 0)), tab: "ipc" })
+  // CP-13: a certificate with the consultant past his contractual period is money
+  // standing still — amber, red past twice the period — saying where the link is.
+  const period = Math.max(0, f.terms.consultantDays ?? 0)
+  const pastPeriod = f.certificates.filter((c) => c.status === "sub" && days(c.apprOn ?? c.prepOn ?? f.today, f.today) > period)
+  if (pastPeriod.length) {
+    const age = oldest(pastPeriod.map((c) => c.apprOn ?? c.prepOn ?? f.today), f.today)
+    const link = portalLinkState({ consultant: f.consultant, portal: f.portal?.sentOn ? { sentOn: f.portal.sentOn, seenOn: f.portal.seenOn ?? null } : null })
+    out.push({
+      kind: "cert_consultant",
+      severity: age > 2 * period ? "red" : "amber",
+      count: pastPeriod.length,
+      amount: r2(pastPeriod.reduce((a, c) => a + c.net, 0)),
+      age,
+      tab: link === "letter" ? "ipc" : "pmCorr",
+      detail: `detail_${link}`,
+      vars: { days: period, link },
+    })
+  }
+  // CP-13: the link went out and was never opened while something waits on him.
+  if (f.portal?.sentOn && !f.portal.seenOn && (f.portalWaiting ?? 0) > 0 && days(f.portal.sentOn, f.today) >= PORTAL_UNOPENED_DAYS)
+    out.push({ kind: "portal_unopened", severity: "amber", count: f.portalWaiting, age: days(f.portal.sentOn, f.today), tab: "pmCorr" })
   const overdue = f.certificates.filter((c) => (c.status === "appr" || c.status === "part") && c.dueOn && c.dueOn < f.today)
   // Finance records what is collected: with Finance switched off there is nobody to chase it with.
   if (overdue.length && !f.financeOff) {

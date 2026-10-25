@@ -111,7 +111,7 @@ export function prepareBlocks(input: { archived: boolean; lifecycle: string; pay
   return out
 }
 
-export type CertifyBlock = "not_submitted" | "bad_amount" | "over_gross" | "cut_reason"
+export type CertifyBlock = "not_submitted" | "bad_amount" | "over_gross" | "cut_reason" | "cut_text"
 
 /** Why the consultant cut (prototype CUTR) — the reason decides the follow-up:
  * quantities are re-measured, an uninspected item gets its inspection, a
@@ -120,14 +120,21 @@ export const CUT_REASONS = ["qty", "wir", "rate", "oth"] as const
 export type CutReason = (typeof CUT_REASONS)[number]
 export const isCutReason = (r: unknown): r is CutReason => (CUT_REASONS as readonly unknown[]).includes(r)
 
+/** A deduction up to one riyal is rounding, not a decision: no reason asked (IPC-03, CP-07). */
+export const CUT_REASON_ABOVE = 1
+
 /** The consultant certifies the submitted gross, or less — never more; a
- * deduction states one of the four reasons. */
-export function certifyBlocks(input: { status: CertificateStatus; gross: number; certified: number; reason?: string | null }): CertifyBlock[] {
+ * deduction above one riyal states one of the four reasons, and "other" says
+ * which (RSN-01) — in the form, at save and through the portal alike. */
+export function certifyBlocks(input: { status: CertificateStatus; gross: number; certified: number; reason?: string | null; reasonNote?: string | null }): CertifyBlock[] {
   const out: CertifyBlock[] = []
   if (input.status !== "sub") out.push("not_submitted")
   if (!(input.certified > 0) || !Number.isFinite(input.certified)) out.push("bad_amount")
   else if (input.certified > input.gross + 0.005) out.push("over_gross")
-  else if (input.gross - input.certified > 0.005 && !isCutReason(input.reason)) out.push("cut_reason")
+  else if (input.gross - input.certified > CUT_REASON_ABOVE) {
+    if (!isCutReason(input.reason)) out.push("cut_reason")
+    else if (input.reason === "oth" && !input.reasonNote?.trim()) out.push("cut_text")
+  }
   return out
 }
 

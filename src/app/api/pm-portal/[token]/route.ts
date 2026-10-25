@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAdminFirestore } from "@/lib/firebaseAdmin"
-import { maskPhone, resolvePortalLink, type PortalProjectDoc } from "@/lib/pm/portal-links"
+import { maskPhone, projectRefusal, resolvePortalLink, type PortalProjectDoc } from "@/lib/pm/portal-links"
 
 // Public: enough for the consultant to know the link is his before the code —
 // the project's name and number, his name, and the last digits of the mobile
-// the code goes to. Nothing the project holds comes back before the code.
+// the code goes to. Nothing the project holds comes back before the code. An
+// archived project closes the link: no entry, no code (CP-14).
 
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
 
@@ -16,6 +17,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
     if (!resolved.ok) return fail("This link is invalid, replaced, or has expired", resolved.code, resolved.status)
     const { link } = resolved
     const project = (await db.collection("projects").doc(link.projectId).get()).data() as PortalProjectDoc | undefined
+    const refusal = projectRefusal(project, link.organizationId)
+    if (refusal) return fail("This project is closed", refusal, refusal === "PROJECT_CLOSED" ? 410 : 404)
     return NextResponse.json({
       success: true,
       data: {

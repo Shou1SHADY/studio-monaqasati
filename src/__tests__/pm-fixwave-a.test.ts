@@ -63,15 +63,16 @@ describe("supply decisions (G-12)", () => {
     expect(find({ requests: [request({ needBy: "2026-12-01" })] }, "req_waiting")?.severity).toBe("blue")
   })
 
-  it("an ordered line is on its way to the site engineer, never to the owner", () => {
+  it("an ordered line is on its way to whoever receives (rcv, FX-62), never to the owner", () => {
     const r = request({ status: "approved", poId: "po1" })
-    expect(find({ requests: [r], viewer: viewer(["req"]) }, "req_incoming")).toMatchObject({ severity: "blue", count: 1 })
-    expect(find({ requests: [r], viewer: viewer(["req", "approve", "admin"], "o", true) }, "req_incoming")).toBeUndefined()
+    expect(find({ requests: [r], viewer: viewer(["rcv"]) }, "req_incoming")).toMatchObject({ severity: "blue", count: 1 })
+    expect(find({ requests: [r], viewer: viewer(["req"]) }, "req_incoming")).toBeUndefined()
+    expect(find({ requests: [r], viewer: viewer(["rcv", "approve", "admin"], "o", true) }, "req_incoming")).toBeUndefined()
   })
 
   it("an order still awaiting approval — or cancelled — brings nothing; one the viewer cannot read is taken as coming", () => {
     const r = request({ status: "approved", poId: "po1" })
-    const v = viewer(["req"])
+    const v = viewer(["rcv"])
     expect(find({ requests: [r], viewer: v, orderStatus: { po1: "awaiting_approval" } }, "req_incoming")).toBeUndefined()
     expect(find({ requests: [r], viewer: v, orderStatus: { po1: "cancelled" } }, "req_incoming")).toBeUndefined()
     expect(find({ requests: [r], viewer: v, orderStatus: { po1: "sent" } }, "req_incoming")).toMatchObject({ count: 1 })
@@ -93,8 +94,9 @@ describe("supply decisions (G-12)", () => {
     expect(find({ requests: [own], variations: [{ seq: 3, status: "rej", value: 1000, executedPct: 0, day: "2026-09-01" }], viewer: viewer(["measure"]) }, "change_rejected")).toBeUndefined()
   })
 
-  it("shortages reach everyone but the owner", () => {
-    expect(find({ shortages: 2, viewer: viewer(["measure"]) }, "need_short")?.count).toBe(2)
+  it("shortages reach whoever requests materials (FX-59), never the owner", () => {
+    expect(find({ shortages: 2, viewer: viewer(["req"]) }, "need_short")?.count).toBe(2)
+    expect(find({ shortages: 2, viewer: viewer(["measure", "money"]) }, "need_short")).toBeUndefined()
     expect(find({ shortages: 2, viewer: viewer(["approve", "admin"], "o", true) }, "need_short")).toBeUndefined()
   })
 

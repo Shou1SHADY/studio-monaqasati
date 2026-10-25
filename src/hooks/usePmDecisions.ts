@@ -29,6 +29,8 @@ import { PM_SHEETS, type PmSheet } from "@/lib/pm/measurement"
 import { PM_PLANT as PM_PLANT_ON_SITE, type PmPlant } from "@/lib/pm/plant"
 import { PM_ACTIVITIES, type PmActivity } from "@/lib/pm/programme"
 import { PM_PUNCH, type PunchItem } from "@/lib/pm/punch"
+import { PM_NCRS, type PmNcr } from "@/lib/pm/ncr"
+import { portalItems } from "@/lib/pm/consultant-portal"
 import { PM_INSPECTIONS, type PmInspection } from "@/lib/pm/inspection"
 import { PM_UNITS, type PmUnit } from "@/lib/pm/units"
 import { PM_SUBMITTALS, type PmSubmittal } from "@/lib/pm/sample"
@@ -50,6 +52,7 @@ export interface PmDecisionProject {
   warehouseId?: string | null
   enabledSections?: string[]
   clientName?: string | null
+  consultant?: string | null
   pm?: {
     lifecycle?: string
     terms?: ContractTerms
@@ -62,6 +65,7 @@ export interface PmDecisionProject {
     eac?: { on: string } | null
     durationDays?: number
     acceptances?: Acceptances
+    portal?: { sentOn?: string | null; seenOn?: string | null } | null
   } | null
 }
 
@@ -138,6 +142,9 @@ export function usePmDecisions(
   const reqRows = useSub<Record<string, unknown> & { id: string }>(projectId, PURCHASE_REQUESTS, on)
   const storeRows = useSub<Partial<PmStoreLine> & { id: string }>(projectId, PM_STORE, on)
   const activities = useSub<PmActivity>(projectId, PM_ACTIVITIES, on)
+  // CP-13: what waits on the consultant matters only while his link sits unopened.
+  const portalUnseen = on && access.has("approve") && Boolean(project?.pm?.portal?.sentOn) && !project?.pm?.portal?.seenOn
+  const ncrs = useSub<PmNcr>(projectId, PM_NCRS, portalUnseen)
   const supply = useMemo(
     () => ({ requests: reqRows.rows.map(requestOf), stores: storeRows.rows.map((d) => storeLineOf(d.id, d)), activities: activities.rows }),
     [reqRows.rows, storeRows.rows, activities.rows]
@@ -187,6 +194,19 @@ export function usePmDecisions(
   }, [on, supply.stores, supply.requests, supply.activities, storeItems, project?.pm?.startedAt, today, obstacles.rows, items.rows, vos.rows])
 
   const financeOff = !useModules().on("payments")
+  const portalWaiting = useMemo(() => {
+    if (!portalUnseen) return 0
+    return portalItems({
+      submittals: submittals.rows.map((x) => ({ seq: x.seq, status: x.status, day: x.day, title: "" })),
+      inspections: inspections.rows.map((w) => ({ seq: w.seq, status: w.status, party: w.party, day: w.attempts?.[w.attempts.length - 1]?.on ?? today, location: "" })),
+      punch: punch.rows.map((x) => ({ seq: x.seq, status: x.status, source: x.source, day: x.day, fixOn: x.fix?.on ?? null, what: "" })),
+      letters: letters.rows.map((l) => ({ no: l.no, dir: l.dir, party: l.party, status: l.status, day: l.day, subject: "" })),
+      ncrs: ncrs.rows.map((n) => ({ seq: n.seq, status: n.status, day: n.day, planOn: n.plan?.on ?? null, title: "" })),
+      certificates: certs.rows.map((c) => ({ seq: c.seq, status: c.status, apprOn: c.apprOn ?? null, prepOn: c.prepOn })),
+      claims: claims.rows.map((c) => ({ seq: c.seq, status: c.status, submittedOn: c.submittedOn ?? null, eventOn: c.eventOn, cause: "" })),
+      sections: project?.enabledSections?.length ? project.enabledSections : null,
+    }).length
+  }, [portalUnseen, submittals.rows, inspections.rows, punch.rows, letters.rows, ncrs.rows, certs.rows, claims.rows, project?.enabledSections, today])
   const decisions = useMemo(() => {
     const pm = project?.pm
     if (!project || !pm) return []
@@ -249,10 +269,13 @@ export function usePmDecisions(
       margin: cost ? cost.total.earned - cost.total.actual : null,
       budgetReferrals,
       financeOff,
+      consultant: project.consultant ?? null,
+      portal: pm.portal ?? null,
+      portalWaiting,
       today,
       viewer: access.uid ? { uid: access.uid, has: (k) => access.has(k as Parameters<PmAccess["has"]>[0]), owner: access.has("admin") } : null,
     })
-  }, [project, items.rows, sheets.rows, addenda.rows, certs.rows, punch.rows, units.rows, inspections.rows, zoneOn, vos.rows, claims.rows, submittals.rows, subCerts.rows, docs.rows, letters.rows, obstacles.rows, supply.requests, supply.stores, facts.shortages, plantRequests.rows, plant.rows, cost, budgetReferrals, poData, storeCostOf, money, client, onHold, indirect.actual, access, today, plan, financeOff])
+  }, [project, items.rows, sheets.rows, addenda.rows, certs.rows, punch.rows, units.rows, inspections.rows, zoneOn, vos.rows, claims.rows, submittals.rows, subCerts.rows, docs.rows, letters.rows, obstacles.rows, supply.requests, supply.stores, facts.shortages, plantRequests.rows, plant.rows, cost, budgetReferrals, poData, storeCostOf, money, client, onHold, indirect.actual, access, today, plan, financeOff, portalWaiting])
 
   const progress = useMemo(() => progressOf(items.rows.map((d) => ({ quantity: num(d.quantity), rate: num(d.unitPrice), executed: num(d.executedQuantity) }))), [items.rows])
 

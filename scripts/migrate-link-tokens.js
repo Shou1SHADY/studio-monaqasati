@@ -1,5 +1,6 @@
 // Link tokens are stored as a SHA-256 hash from now on (src/lib/links). Links issued before that hold their
-// token as plaintext in a `token` field of rfqShareLinks / guestOfferLinks. This gives each of them its hash:
+// token as plaintext in a `token` field of rfqShareLinks / guestOfferLinks / pmPortalLinks (the PM consultant
+// portal, hashed since PM 1.1 — kind "pm"). This gives each of them its hash:
 //
 //   linkTokens/{sha256(token)}  →  { kind, linkId }      (the lookup index)
 //   <link>.tokenHashes          →  [..., sha256(token)]
@@ -12,6 +13,7 @@
 //   node scripts/migrate-link-tokens.js uat  --apply --strip  — also deletes the plaintext `token`
 //   node scripts/migrate-link-tokens.js prod                  — dry run against production
 //   node scripts/migrate-link-tokens.js prod --apply          — OWNER ONLY, after reading the dry run
+//   node scripts/migrate-link-tokens.js uat --only pmPortalLinks  — one collection (dry run unless --apply)
 //
 // Idempotent: a link whose hash is already listed is skipped, and a link with no plaintext token is left alone.
 // Expiry is never touched. receiptLinks are a later pass (src/lib/receipt-links.ts still reads its own plaintext).
@@ -55,10 +57,18 @@ initializeApp({
 })
 const db = getFirestore()
 
-const COLLECTIONS = [
+const ALL_COLLECTIONS = [
   { name: "rfqShareLinks", kind: "rfq" },
   { name: "guestOfferLinks", kind: "offer" },
+  { name: "pmPortalLinks", kind: "pm" },
 ]
+const onlyAt = process.argv.indexOf("--only")
+const only = onlyAt > 0 ? process.argv[onlyAt + 1] : null
+const COLLECTIONS = only ? ALL_COLLECTIONS.filter((c) => c.name === only) : ALL_COLLECTIONS
+if (only && !COLLECTIONS.length) {
+  console.error(`--only: unknown collection "${only}" (${ALL_COLLECTIONS.map((c) => c.name).join(", ")})`)
+  process.exit(1)
+}
 const INDEX = "linkTokens"
 const hashToken = (token) => createHash("sha256").update(token).digest("hex")
 
