@@ -199,6 +199,7 @@ export function PmBoqPanel({
           ).map(([id, n, tone]) => (
             <Chip key={id} selected={view === id} onClick={() => setView(id)}>
               {t(`boq.view.${id}`)}
+              {n > 0 && (
               <span
                 dir="ltr"
                 className={cn(
@@ -208,6 +209,7 @@ export function PmBoqPanel({
               >
                 {n}
               </span>
+              )}
             </Chip>
           ))}
         </div>
