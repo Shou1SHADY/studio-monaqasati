@@ -128,7 +128,7 @@ export function TermsFields({
   const gap = ct !== undefined && paid ? Math.max(0, ct * Math.min(value.retention || 0, value.retentionCap || 0) - ct * (value.advance || 0)) : null
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
       {choice("payer", PAYERS)}
       {choice("basis", PRICING_BASES)}
       {paid && pctField("advance")}

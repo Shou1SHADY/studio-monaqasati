@@ -8,15 +8,16 @@
 // The original view carries the value and duration as signed; under "nobody
 // pays" the payment terms do not exist in either view.
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection } from "firebase/firestore"
-import { FilePen, FileSignature, Lock, PenLine, Undo2 } from "lucide-react"
+import { FilePen, FileSignature, History, Lock, PenLine, ScrollText, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Callout } from "@/components/module-ui/Callout"
 import { DecisionRow } from "@/components/module-ui/DecisionRow"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
+import { Panel } from "@/components/module-ui/Panel"
 import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
@@ -73,6 +74,9 @@ export function ContractInForce({
   durationDays = 0,
   advanceRecovered = 0,
   advLog = null,
+  headActions,
+  facts,
+  footer,
 }: {
   projectId: string
   original: ContractTerms
@@ -87,6 +91,12 @@ export function ContractInForce({
   durationDays?: number
   advanceRecovered?: number
   advLog?: AdvanceChange[] | null
+  /** The contract panel's head: the project number and its lifecycle (ProjectTermsPanel). */
+  headActions?: ReactNode
+  /** Start · duration · planned end, at the top of the contract panel. */
+  facts?: ReactNode
+  /** Who last completed the terms, under them. */
+  footer?: ReactNode
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
@@ -158,10 +168,27 @@ export function ContractInForce({
         })}
       </Callout>
 
-      <div className="grid items-start gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         <div className="min-w-0 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <Panel
+            title={view === "original" ? t("amend.orig_head") : t("amend.force_head")}
+            icon={ScrollText}
+            description={view === "original" ? t("amend.orig_head_sub") : t("amend.force_head_sub")}
+            actions={
+              <>
+                {headActions}
+                {canDraft && (
+                  <Button size="sm" onClick={() => setDrafting(true)}>
+                    <FilePen size={15} className="me-1.5" aria-hidden="true" />
+                    {t("amend.new")}
+                  </Button>
+                )}
+              </>
+            }
+          >
             <SegmentedNav
+              variant="tray"
+              className="mb-3"
               ariaLabel={t("amend.views")}
               active={view}
               onSelect={(id) => setView(id as View)}
@@ -170,97 +197,83 @@ export function ContractInForce({
                 { id: "original", label: t("amend.view_original") },
               ]}
             />
-            {canDraft && (
-              <Button size="sm" onClick={() => setDrafting(true)}>
-                <FilePen size={15} className="me-1.5" aria-hidden="true" />
-                {t("amend.new")}
-              </Button>
+            {facts}
+
+            {view === "force" && (
+              <div>
+                <TermRow
+                  label={t("terms.contract_value")}
+                  value={access.has("money") ? pmMoney(liveValue) : "•••"}
+                  note={
+                    approvedVos.length
+                      ? t("terms.value_note_vos", {
+                          orig: access.has("money") ? pmMoney(contractValue) : "•••",
+                          count: approvedVos.length,
+                        })
+                      : t("terms.value_note")
+                  }
+                />
+                <TermRow
+                  label={t("terms.duration")}
+                  value={t("days", { count: durationDays + eot })}
+                  note={
+                    eot > 0
+                      ? t("terms.duration_note_eot", {
+                          orig: t("days", { count: durationDays }),
+                          eot: t("days", { count: eot }),
+                        })
+                      : t("terms.duration_note")
+                  }
+                />
+                {shownFor(terms).map(
+                  (k) => {
+                    const by = marks[k]
+                    const m = meaning(k, terms)
+                    return (
+                      <TermRow
+                        key={k}
+                        label={t(`terms.${k}` as "terms.save")}
+                        value={text(k, terms[k])}
+                        note={m.note}
+                        warn={m.warn}
+                        mark={
+                          by
+                            ? t("amend.mark", {
+                                no: addendumNo(by.seq),
+                                was: text(k, originalOf(k)),
+                                date: pmDate(by.signedOn, locale),
+                              })
+                            : undefined
+                        }
+                      />
+                    )
+                  },
+                )}
+                <TermRow label={t("terms.vat")} value="15%" note={t("terms.vat_note")} />
+                <AdvanceLogNote log={advLog} />
+              </div>
             )}
-          </div>
 
-          <div>
-            <h3 className="text-sm font-bold">{view === "original" ? t("amend.orig_head") : t("amend.force_head")}</h3>
-            <p className="text-xs text-muted-foreground">{view === "original" ? t("amend.orig_head_sub") : t("amend.force_head_sub")}</p>
-          </div>
+            {view === "original" && (
+              <div>
+                <p className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Lock size={13} aria-hidden="true" />
+                  {t("amend.original_note")}
+                </p>
+                <TermRow label={t("terms.contract_value")} value={access.has("money") ? pmMoney(contractValue) : "•••"} note={t("amend.orig_value_note")} />
+                <TermRow label={t("terms.duration")} value={t("days", { count: durationDays })} note={t("amend.orig_duration_note", { date: pmDate(startedAt?.slice(0, 10), locale) })} />
+                {shownFor(original).map((k) => (
+                  <KeyValueRow key={k} label={t(`terms.${k}` as "terms.save")} value={text(k, original[k])} />
+                ))}
+              </div>
+            )}
 
-          {view === "force" && (
-            <div>
-              <TermRow
-                label={t("terms.contract_value")}
-                value={access.has("money") ? pmMoney(liveValue) : "•••"}
-                note={
-                  approvedVos.length
-                    ? t("terms.value_note_vos", {
-                        orig: access.has("money") ? pmMoney(contractValue) : "•••",
-                        count: approvedVos.length,
-                      })
-                    : t("terms.value_note")
-                }
-              />
-              <TermRow
-                label={t("terms.duration")}
-                value={t("days", { count: durationDays + eot })}
-                note={
-                  eot > 0
-                    ? t("terms.duration_note_eot", {
-                        orig: t("days", { count: durationDays }),
-                        eot: t("days", { count: eot }),
-                      })
-                    : t("terms.duration_note")
-                }
-              />
-              {shownFor(terms).map(
-                (k) => {
-                  const by = marks[k]
-                  const m = meaning(k, terms)
-                  return (
-                    <TermRow
-                      key={k}
-                      label={t(`terms.${k}` as "terms.save")}
-                      value={text(k, terms[k])}
-                      note={m.note}
-                      warn={m.warn}
-                      mark={
-                        by
-                          ? t("amend.mark", {
-                              no: addendumNo(by.seq),
-                              was: text(k, originalOf(k)),
-                              date: pmDate(by.signedOn, locale),
-                            })
-                          : undefined
-                      }
-                    />
-                  )
-                },
-              )}
-              <TermRow label={t("terms.vat")} value="15%" note={t("terms.vat_note")} />
-              <AdvanceLogNote log={advLog} />
-            </div>
-          )}
-
-          {view === "original" && (
-            <div>
-              <p className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Lock size={13} aria-hidden="true" />
-                {t("amend.original_note")}
-              </p>
-              <TermRow label={t("terms.contract_value")} value={access.has("money") ? pmMoney(contractValue) : "•••"} note={t("amend.orig_value_note")} />
-              <TermRow label={t("terms.duration")} value={t("days", { count: durationDays })} note={t("amend.orig_duration_note", { date: pmDate(startedAt?.slice(0, 10), locale) })} />
-              {shownFor(original).map((k) => (
-                <KeyValueRow key={k} label={t(`terms.${k}` as "terms.save")} value={text(k, original[k])} />
-              ))}
-            </div>
-          )}
+            {footer}
+          </Panel>
 
           {drafts.length > 0 && (
-            <section className="space-y-2" aria-labelledby="addenda-drafts-title">
-              <div>
-                <h3 id="addenda-drafts-title" className="text-sm font-bold">
-                  {t("amend.drafts_title")}
-                </h3>
-                <p className="text-xs text-muted-foreground">{t("amend.drafts_sub")}</p>
-              </div>
-              <ul className="divide-y overflow-hidden rounded-xl border">
+            <Panel title={t("amend.drafts_title")} icon={FileSignature} count={drafts.length} description={t("amend.drafts_sub")} bodyClassName="p-0">
+              <ul className="divide-y">
                 {drafts.map((a) => {
                   const mayWithdraw = open && mayWithdrawAddendum(access.ctx, access.uid ?? "", a.by)
                   const staleList = staleChanges(a.changes, terms)
@@ -316,7 +329,7 @@ export function ContractInForce({
                               </Button>
                             )}
                             {mayWithdraw && (
-                              <Button size="sm" variant="outline" onClick={() => setWithdrawing(a)}>
+                              <Button size="sm" variant="ghost" onClick={() => setWithdrawing(a)}>
                                 <Undo2 size={14} className="me-1.5" aria-hidden="true" />
                                 {t("amend.withdraw")}
                               </Button>
@@ -328,22 +341,17 @@ export function ContractInForce({
                   )
                 })}
               </ul>
-            </section>
+            </Panel>
           )}
         </div>
         <div className="min-w-0 space-y-4">
-          <section className="rounded-xl border p-3" aria-labelledby="contract-record-title">
-            <h3 id="contract-record-title" className="flex items-center gap-2 text-sm font-bold">
-              {t("amend.view_record")}
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold tabular-nums text-muted-foreground">{record.length}</span>
-            </h3>
-            <p className="mb-2 text-xs text-muted-foreground">{t("amend.record_sub")}</p>
+          <Panel title={t("amend.view_record")} icon={History} count={record.length} description={t("amend.record_sub")} bodyClassName="p-0">
             {record.length === 0 ? (
-              <EmptyState icon={FileSignature} title={t("amend.record_empty")} description={t("amend.record_starts")} />
+              <EmptyState bare icon={FileSignature} title={t("amend.record_empty")} description={t("amend.record_starts")} />
             ) : (
-              <ol className="divide-y rounded-xl border">
+              <ol className="divide-y">
                 {record.map((e) => (
-                  <li key={`${e.kind}-${e.seq ?? 0}`} className="flex items-start gap-3 px-3 py-2.5">
+                  <li key={`${e.kind}-${e.seq ?? 0}`} className="flex items-start gap-3 px-4 py-2.5">
                     <StatusPill tone={RECORD_TONE[e.kind]} className="shrink-0">
                       {t(`amend.kind.${e.kind}`)}
                     </StatusPill>
@@ -415,7 +423,7 @@ export function ContractInForce({
                 ))}
               </ol>
             )}
-          </section>
+          </Panel>
           {access.has("money") && <TermsCashPanel terms={terms} contractValue={liveValue} />}
         </div>
       </div>

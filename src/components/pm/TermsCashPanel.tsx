@@ -6,7 +6,6 @@
 
 import { useTranslations } from "next-intl"
 import { Banknote } from "lucide-react"
-import { Callout } from "@/components/module-ui/Callout"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { termsCash } from "@/lib/pm/contract-record"
@@ -24,9 +23,7 @@ export function TermsCashPanel({ terms, contractValue }: { terms: ContractTerms;
       {paid && <KeyValueRow label={t("terms.cash.upfront")} value={pmMoney(c.upfront)} ltr />}
       {terms.damages.on && <KeyValueRow label={<span className="text-destructive">{t("terms.cash.worst")}</span>} value={<span className="text-destructive">{pmMoney(c.worstDamages)}</span>} ltr />}
       <KeyValueRow label={t("terms.cash.gap")} value={pmMoney(c.gap)} ltr strong />
-      <Callout tone="info" className="mt-3">
-        {t("terms.cash.note")}
-      </Callout>
+      <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{t("terms.cash.note")}</p>
     </Panel>
   )
 }

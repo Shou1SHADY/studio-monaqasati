@@ -153,96 +153,97 @@ export function ProjectTermsPanel({
     }
   }
 
-  return (
-    <div className="space-y-4">
-    <Panel
-      title={t(lifecycle === "plan" ? "terms.title_plan" : "terms.title_force")}
-      icon={ScrollText}
-      actions={
-        <>
-          {pm.no && (
-            <span className="text-xs font-bold text-muted-foreground" dir="ltr">
-              {displayDocNumber(pm.no, locale)}
-            </span>
-          )}
-          <StatusPill tone={LIFECYCLE_TONE[lifecycle]}>{t(`lifecycle.${lifecycle}`)}</StatusPill>
-        </>
-      }
-    >
-      <p className="-mt-1 mb-3 text-xs text-muted-foreground">{t(lifecycle === "plan" ? "terms.sub_plan" : "terms.sub_force")}</p>
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <KeyValueRow label={t("field.start_on")} value={pmDate(pm.startOn, locale)} />
-        <KeyValueRow label={t("field.duration")} value={pm.durationDays ? t("days", { count: pm.durationDays }) : "—"} />
-        <KeyValueRow label={t("terms.planned_end")} value={pmDate(end, locale)} />
-      </div>
-
-      {lifecycle !== "plan" ? (
-        <ContractInForce
-          projectId={projectId}
-          original={pm.original ?? stored}
-          startedAt={pm.startedAt ?? null}
-          lifecycle={lifecycle}
-          contractValue={project.budget ?? 0}
-          retentionHeld={pm.retentionHeld ?? 0}
-          access={access}
-          actor={actor}
-          orgId={orgId}
-          durationDays={pm.durationDays ?? 0}
-          advanceRecovered={pm.advanceRecovered ?? 0}
-          advLog={pm.advLog ?? null}
-        />
-      ) : (
-        <>
-          <Callout tone="info" className="mb-4">
-            {t("terms.plan_note")}
-          </Callout>
-          {editable && (
-            <div role="note" className="mb-4 flex gap-2.5 rounded-xl border bg-muted/40 px-3.5 py-3 text-sm leading-relaxed">
-              <ShieldCheck size={16} className="mt-0.5 shrink-0 text-module" aria-hidden="true" />
-              <span>{t("terms.no_copy")}</span>
-            </div>
-          )}
-          <TermsFields
-            value={draft}
-            onChange={(k, v) => setDraft((d) => ({ ...d, [k]: v }))}
-            disabled={!editable || busy !== null}
-            contractValue={access.has("money") ? (project.budget ?? 0) : undefined}
-            payerChangedFrom={stored.payer}
-            financeAdvance={financeAdvance}
-          />
-          <AdvanceLogNote log={pm.advLog} />
-          {editable && (
-            <div className="mt-4 space-y-3">
-              <BlockingReasons title={t("cannot_save")} reasons={problems.map((p) => t(`terms.problem.${p}`))} />
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => void save()} disabled={!dirty || problems.length > 0 || busy !== null}>
-                  {busy === "save" && <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" />}
-                  {t("terms.save")}
-                </Button>
-                {canStart && (
-                  <Button onClick={() => void start()} disabled={starts.length > 0 || dirty || busy !== null}>
-                    {busy === "start" ? <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" /> : <Play size={16} className="me-1.5" aria-hidden="true" />}
-                    {t("terms.start")}
-                  </Button>
-                )}
-              </div>
-              {canStart && <BlockingReasons title={t("cannot_start")} reasons={[...(dirty ? [t("start_block.unsaved")] : []), ...starts.map((b) => t(`start_block.${b}`))]} />}
-            </div>
-          )}
-          {access.has("money") && (
-            <div className="mt-4">
-              <TermsCashPanel terms={draft} contractValue={project.budget ?? 0} />
-            </div>
-          )}
-        </>
+  const headActions = (
+    <>
+      {pm.no && (
+        <span className="text-xs font-bold text-muted-foreground" dir="ltr">
+          {displayDocNumber(pm.no, locale)}
+        </span>
       )}
-      {pm.termsByName && pm.termsOn && <p className="mt-3 text-xs text-muted-foreground">{t("terms.last_completed", { who: pm.termsByName, date: pmDate(pm.termsOn, locale) })}</p>}
-    </Panel>
-    {lifecycle === "plan" && (
-      <Panel title={t("amend.view_record")} icon={FileSignature}>
-        <EmptyState icon={FileSignature} title={t("amend.record_starts_title")} description={t("amend.record_starts")} />
+      <StatusPill tone={LIFECYCLE_TONE[lifecycle]}>{t(`lifecycle.${lifecycle}`)}</StatusPill>
+    </>
+  )
+  // Start · duration · planned end — one quiet row at the top of the contract, not cards.
+  const facts = (
+    <div className="mb-2 grid grid-cols-1 gap-x-6 border-b border-border/60 sm:grid-cols-3" data-terms-facts="">
+      <KeyValueRow label={t("field.start_on")} value={pmDate(pm.startOn, locale)} className="sm:border-b-0" />
+      <KeyValueRow label={t("field.duration")} value={pm.durationDays ? t("days", { count: pm.durationDays }) : "—"} className="sm:border-b-0" />
+      <KeyValueRow label={t("terms.planned_end")} value={pmDate(end, locale)} className="sm:border-b-0" />
+    </div>
+  )
+  const footer = pm.termsByName && pm.termsOn ? <p className="mt-3 text-xs text-muted-foreground">{t("terms.last_completed", { who: pm.termsByName, date: pmDate(pm.termsOn, locale) })}</p> : null
+
+  // After start: the contract in force, its drafts, the record and the cash — side by side as top-level panels
+  // (UX-15: the outer panel and its repeated «العقد الساري» heading are gone).
+  if (lifecycle !== "plan")
+    return (
+      <ContractInForce
+        projectId={projectId}
+        original={pm.original ?? stored}
+        startedAt={pm.startedAt ?? null}
+        lifecycle={lifecycle}
+        contractValue={project.budget ?? 0}
+        retentionHeld={pm.retentionHeld ?? 0}
+        access={access}
+        actor={actor}
+        orgId={orgId}
+        durationDays={pm.durationDays ?? 0}
+        advanceRecovered={pm.advanceRecovered ?? 0}
+        advLog={pm.advLog ?? null}
+        headActions={headActions}
+        facts={facts}
+        footer={footer}
+      />
+    )
+
+  return (
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+      <Panel title={t("terms.title_plan")} icon={ScrollText} description={t("terms.sub_plan")} actions={headActions} className="min-w-0">
+        {facts}
+        <Callout tone="info" className="mb-4">
+          {t("terms.plan_note")}
+        </Callout>
+        {editable && (
+          <p role="note" className="mb-4 flex gap-2 text-xs leading-relaxed text-muted-foreground">
+            <ShieldCheck size={15} className="mt-0.5 shrink-0 text-module" aria-hidden="true" />
+            <span>{t("terms.no_copy")}</span>
+          </p>
+        )}
+        <TermsFields
+          value={draft}
+          onChange={(k, v) => setDraft((d) => ({ ...d, [k]: v }))}
+          disabled={!editable || busy !== null}
+          contractValue={access.has("money") ? (project.budget ?? 0) : undefined}
+          payerChangedFrom={stored.payer}
+          financeAdvance={financeAdvance}
+        />
+        <AdvanceLogNote log={pm.advLog} />
+        {editable && (
+          <div className="mt-4 space-y-3">
+            <BlockingReasons title={t("cannot_save")} reasons={problems.map((p) => t(`terms.problem.${p}`))} />
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => void save()} disabled={!dirty || problems.length > 0 || busy !== null}>
+                {busy === "save" && <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" />}
+                {t("terms.save")}
+              </Button>
+              {canStart && (
+                <Button onClick={() => void start()} disabled={starts.length > 0 || dirty || busy !== null}>
+                  {busy === "start" ? <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" /> : <Play size={16} className="me-1.5" aria-hidden="true" />}
+                  {t("terms.start")}
+                </Button>
+              )}
+            </div>
+            {canStart && <BlockingReasons title={t("cannot_start")} reasons={[...(dirty ? [t("start_block.unsaved")] : []), ...starts.map((b) => t(`start_block.${b}`))]} />}
+          </div>
+        )}
+        {footer}
       </Panel>
-    )}
+      <div className="min-w-0 space-y-4">
+        {access.has("money") && <TermsCashPanel terms={draft} contractValue={project.budget ?? 0} />}
+        <Panel title={t("amend.view_record")} icon={FileSignature}>
+          <EmptyState bare icon={FileSignature} title={t("amend.record_starts_title")} description={t("amend.record_starts")} />
+        </Panel>
+      </div>
     </div>
   )
 }
