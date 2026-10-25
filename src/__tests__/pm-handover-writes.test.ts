@@ -12,7 +12,7 @@ import type { Firestore } from "firebase/firestore"
 import type { CrmOpportunity } from "@/lib/crm"
 import { PM_EVENTS } from "@/lib/pm/events"
 import { PM_HANDOVERS, type PmHandover } from "@/lib/pm/handover"
-import { acceptHandover, reassignHandover, returnHandover, sendHandoverFile, PmHandoverError } from "@/lib/pm/handover-writes"
+import { acceptHandover, localAcceptTransport, reassignHandover, returnHandover, sendHandoverFile, PmHandoverError } from "@/lib/pm/handover-writes"
 import { PmAccessError, pmCeiling, type PmContext } from "@/lib/pm/access"
 import { savePlanTerms, startProject, PmProjectError } from "@/lib/pm/project-writes"
 import { defaultTerms } from "@/lib/pm/terms"
@@ -49,7 +49,7 @@ async function send(over: Partial<Parameters<typeof sendHandoverFile>[1]> = {}) 
 }
 const file = (id: string) => readDoc<PmHandover>(`${PM_HANDOVERS}/${id}`) as PmHandover
 const accept = (id: string, actor: { uid: string; name: string; owner?: boolean } = pm) =>
-  acceptHandover(db, actor, id, { kind: "bld", location: null, enabledSections: ["contract", "procure"], manager: { uid: actor.uid, name: actor.name, groupId: "g-pm" } })
+  acceptHandover(db, actor, id, { kind: "bld", location: null, enabledSections: ["contract", "procure"], manager: { uid: actor.uid, name: actor.name, groupId: "g-pm" } }, localAcceptTransport(db, { uid: actor.uid, owner: Boolean(actor.owner) }))
 
 const pmCtx: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.manage"] }), seat: { uid: "pm1", role: "pm" }, archived: false }
 const siteCtx: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.site"] }), seat: { uid: "se1", role: "site" }, archived: false }
@@ -160,7 +160,7 @@ describe("the acceptance wizard's choices and the owner (G-31, G-35, G-37)", () 
       siteEngineer: { uid: "se1", name: "Omar", groupId: "g-site" },
       note: " Access road not ready ",
       store: { name: "Store Al-Yasmin", centralWarehouseId: "central_x" },
-    })
+    }, localAcceptTransport(db, { uid: ORG, owner: true }))
     const project = readDoc<Record<string, any>>(`projects/${projectId}`) as Record<string, any>
     expect(project).toMatchObject({ projectManagerId: "pm2", projectManagerName: "Fahad", contractorId: ORG, pm: { acceptNote: "Access road not ready" } })
     expect(readDoc(`projects/${projectId}/members/pm2`)).toMatchObject({ pmRole: "pm", viaHandover: true, groupId: "g-pm", addedBy: ORG })
@@ -174,7 +174,7 @@ describe("the acceptance wizard's choices and the owner (G-31, G-35, G-37)", () 
     const { projectId } = await accept(await send())
     expect((readDoc<Record<string, any>>(`projects/${projectId}`) as Record<string, any>).warehouseId).toBeUndefined()
     const id = await send()
-    await expect(acceptHandover(db, pm, id, { kind: "bld", location: null, enabledSections: [], manager: { uid: "", name: null, groupId: null } })).rejects.toMatchObject({ code: "invalid" })
+    await expect(acceptHandover(db, pm, id, { kind: "bld", location: null, enabledSections: [], manager: { uid: "", name: null, groupId: null } }, localAcceptTransport(db, { uid: pm.uid, owner: false }))).rejects.toMatchObject({ code: "invalid" })
   })
 })
 

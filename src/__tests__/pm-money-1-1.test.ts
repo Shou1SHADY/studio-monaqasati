@@ -18,6 +18,9 @@ import { addendumNo, draftBlocks, type PmAddendum } from "@/lib/pm/addenda"
 import { draftAddendum } from "@/lib/pm/addendum-writes"
 import { setOrgSelfApproval } from "@/lib/pm/info-writes"
 import { todayDay } from "@/lib/pm/format"
+import { listCollection } from "@/test-utils/fake-firestore"
+import { acceptHandover, localAcceptTransport } from "@/lib/pm/handover-writes"
+import { acceptStepBlocks, boqSourcesFor, PM_HANDOVERS } from "@/lib/pm/handover"
 import { archiveSnapshot, rfiReplyAverages } from "@/lib/pm/closeout"
 import { importBoq, PmBoqError } from "@/lib/pm/boq-writes"
 import { certifyBlocks } from "@/lib/pm/certificate"
@@ -270,5 +273,60 @@ describe("the consultant's cut — above one riyal, 'other' stated", () => {
     expect(certifyBlocks({ status: "sub", gross: 100_000, certified: 99_998 })).toEqual(["cut_reason"])
     expect(certifyBlocks({ status: "sub", gross: 100_000, certified: 99_000, reason: "oth" })).toEqual(["cut_text"])
     expect(certifyBlocks({ status: "sub", gross: 100_000, certified: 99_000, reason: "oth", reasonText: "Prelims disallowed" })).toEqual([])
+  })
+})
+
+describe("CON-01 (FX-08) — a priced handover BOQ is transferred as it is, inside the acceptance", () => {
+  const boq = [
+    { code: "03-01", descriptionAr: "خرسانة", descriptionEn: "Concrete", unit: "m3", quantity: 100, rate: 1_000 },
+    { code: "03-02", descriptionAr: "حديد", unit: "t", quantity: 20, rate: 4_000 },
+    { code: "03-03", descriptionAr: "ملغى", unit: "m", quantity: 0, rate: 5 },
+  ]
+  function file(withBoq: boolean) {
+    seed("crmOpportunities/o1", { organizationId: "org", state: "won" })
+    seed(`${PM_HANDOVERS}/h1`, {
+      organizationId: "org", status: "wait", to: "pm1", toName: "Abdullah", opportunityId: "o1", title: "Tower", clientName: "Client", clientType: "private",
+      kind: "bld", location: "Riyadh", contractNumber: "C-1", value: 1_000_000, durationDays: 300, signedOn: "2026-09-01", startOn: "2026-10-01",
+      advance: 0.1, retention: 0.05, note: null, requestedBy: "crm1", createdAt: "2026-09-20T00:00:00Z", ...(withBoq ? { boq } : {}),
+    })
+  }
+  const base = { kind: "bld" as const, location: null, enabledSections: ["contract"], manager: { uid: "pm1", name: "Abdullah", groupId: null } }
+  const t = () => localAcceptTransport(db, { uid: "pm1", owner: false })
+
+  it("the wizard offers only «from the bid», and any other source is a block", () => {
+    expect(boqSourcesFor({ boq })).toEqual(["crm"])
+    expect(acceptStepBlocks({ source: "xl", managerUid: "u", xlItems: 5, xlLoaded: true, fileBoq: true })).toEqual(["boq_from_crm"])
+    expect(acceptStepBlocks({ source: "crm", managerUid: "u", xlItems: 2, fileBoq: true })).toEqual([])
+  })
+
+  it("at save: Excel, typed or «later» on a file with a priced BOQ is refused, and nothing is created", async () => {
+    file(true)
+    for (const source of ["xl", "man", "later"] as const) {
+      await expect(acceptHandover(db, pmActor, "h1", { ...base, source, lines: [{ itemNo: "X", descriptionAr: "x", descriptionEn: "x", unit: "m", quantity: 1, unitPrice: 1, groupId: null }] }, t())).rejects.toMatchObject({ code: "boq_from_crm" })
+    }
+    expect(listCollection("projects")).toHaveLength(0)
+  })
+
+  it("the file's own lines are written in the acceptance — whatever lines the screen sent", async () => {
+    file(true)
+    const tampered = [{ itemNo: "03-01", descriptionAr: "x", descriptionEn: "x", unit: "m3", quantity: 999, unitPrice: 1, groupId: null }]
+    const { projectId, lines } = await acceptHandover(db, pmActor, "h1", { ...base, source: "crm", lines: tampered }, t())
+    expect(lines).toBe(2)
+    const items = listCollection<{ itemNo: string; quantity: number; unitPrice: number; descriptionEn: string }>(`projects/${projectId}/boqItems`)
+    expect(items.map((i) => [i.itemNo, i.quantity, i.unitPrice]).sort()).toEqual([
+      ["03-01", 100, 1_000],
+      ["03-02", 20, 4_000],
+    ])
+    expect(items.find((i) => i.itemNo === "03-02")?.descriptionEn).toBe("حديد")
+    // IPC-07 at birth: prj:ADV and the frozen advance in the same write.
+    expect(readDoc<{ pm: { advAmt: number; boqFrom: string } }>(`projects/${projectId}`)?.pm).toMatchObject({ advAmt: 100_000, boqFrom: "crm" })
+    expect(readDoc<{ status: string }>(`${PM_HANDOVERS}/h1`)?.status).toBe("acc")
+  })
+
+  it("a file without a BOQ takes an Excel / typed BOQ in the same transaction; «from the bid» is refused", async () => {
+    file(false)
+    await expect(acceptHandover(db, pmActor, "h1", { ...base, source: "crm" }, t())).rejects.toMatchObject({ code: "boq_from_crm" })
+    const { projectId } = await acceptHandover(db, pmActor, "h1", { ...base, source: "man", lines: [{ itemNo: "01", descriptionAr: "حفر", descriptionEn: "Dig", unit: "m3", quantity: 50, unitPrice: 30, groupId: null }] }, t())
+    expect(listCollection(`projects/${projectId}/boqItems`)).toHaveLength(1)
   })
 })
