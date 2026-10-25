@@ -774,9 +774,11 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
           }
         }
       }
-      for (const q of w.rfqQueries || []) {
-        if (q.rfqId !== r.id || q.answered) continue
-        add({ id: `rfq_query:${r.id}:${q.id}`, kind: "rfq_query", severity: "amber", due: closed ? 0 : (days ?? 0), titleKey: "task.rfq_query.title", titleParams: { ref, count: 1 }, subKey: "task.rfq_query.sub", subParams: { title, closed: closed ? 1 : 0, date: dayOf(r.deadline), question: q.question }, amount: null, href: `${RFQ_HREF(r.id)}?tab=inquiries`, actionKey: "actions.answer" })
+      // One row per RFQ (the prototype's «RFQ-… · 3 استفسارات بلا جواب»): the first question is quoted, the rest counted — five
+      // questions on one RFQ never take five of the seven visible rows.
+      const asked = (w.rfqQueries || []).filter((q) => q.rfqId === r.id && !q.answered)
+      if (asked.length) {
+        add({ id: `rfq_query:${r.id}`, kind: "rfq_query", severity: "amber", due: closed ? 0 : (days ?? 0), titleKey: "task.rfq_query.title", titleParams: { ref, count: asked.length }, subKey: "task.rfq_query.sub", subParams: { title, closed: closed ? 1 : 0, date: dayOf(r.deadline), question: asked[0].question, more: asked.length - 1 }, amount: null, href: `${RFQ_HREF(r.id)}?tab=inquiries`, actionKey: "actions.answer" })
       }
     }
   }

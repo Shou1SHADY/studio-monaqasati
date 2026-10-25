@@ -1,19 +1,22 @@
 "use client"
 
 // «دعوات الموردين» under the waits (WF-23): one row per invitation to the platform with its state — أُرسلت · فُتحت · انضم · انتهت —
-// and a link to the Suppliers tab, where they are resent, cancelled and opened.
+// and a link to the Suppliers tab, where they are resent, cancelled and opened. Five, then «عرض N أخرى» like the panels beside it.
 
+import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Send } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { fmtDay } from "@/lib/procurement/today-present"
 import { SUPPLIERS_HREF, type InvitationRow } from "@/lib/procurement/today"
+import { TodayMoreButton } from "./TodayMoreButton"
 
 const CLIP = 5
 
 export function TodayInvitations({ rows }: { rows: InvitationRow[] }) {
   const t = useTranslations("Portal.ProcToday")
   const locale = useLocale()
+  const [all, setAll] = useState(false)
   const sentence = (row: InvitationRow): string => {
     const date = fmtDay(row.sentDay, locale)
     const channel = row.channel ? t(`invitations.channel.${row.channel}`) : ""
@@ -38,7 +41,7 @@ export function TodayInvitations({ rows }: { rows: InvitationRow[] }) {
         <p className="px-4 py-6 text-center text-xs text-muted-foreground">{t("invitations.empty")}</p>
       ) : (
         <ul className="divide-y">
-          {rows.slice(0, CLIP).map((row) => (
+          {(all ? rows : rows.slice(0, CLIP)).map((row) => (
             <li key={row.id} className="px-4 py-3">
               <p className="text-sm font-bold leading-snug text-foreground" dir="auto">
                 {row.name}
@@ -50,6 +53,7 @@ export function TodayInvitations({ rows }: { rows: InvitationRow[] }) {
           ))}
         </ul>
       )}
+      {rows.length > CLIP && <TodayMoreButton open={all} onClick={() => setAll((v) => !v)} label={all ? t("showLess") : t("showMore", { count: rows.length - CLIP })} />}
     </section>
   )
 }

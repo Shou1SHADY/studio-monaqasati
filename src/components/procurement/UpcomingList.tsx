@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { fmtDay, qty } from "@/components/procurement/need-bits"
-import { displayNeedRef } from "@/lib/procurement/format"
+import { displayNeedRef, displayPoNumber } from "@/lib/procurement/format"
 import { lastPaid, type PriceHistoryEntry } from "@/lib/procurement/prices"
 import type { UpcomingItem } from "@/lib/procurement/upcoming"
 import { sarLtr } from "@/lib/riyal"
@@ -88,6 +88,12 @@ export function UpcomingList({
                           {last && (
                             <span className="ms-1 text-[11px] text-muted-foreground">
                               · {t("rq_up_last_price")} <bdi className="tabular-nums">{sarLtr(last.price.toLocaleString("en-US"))}</bdi>
+                              {/* Where that price came from: the order and its day (the prototype's `lastTx`). */}
+                              {(last.poNumber || last.day) && (
+                                <bdi className="ms-1" data-testid="upcoming-price-source">
+                                  · {[last.poNumber ? displayPoNumber(last.poNumber, locale) : "", last.day ? fmtDay(last.day, locale) : ""].filter(Boolean).join(" · ")}
+                                </bdi>
+                              )}
                             </span>
                           )}
                         </span>

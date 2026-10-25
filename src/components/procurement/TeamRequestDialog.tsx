@@ -10,11 +10,12 @@ import { useLocale, useTranslations } from "next-intl"
 import { getAuth } from "firebase/auth"
 import { collection, doc, query, where } from "firebase/firestore"
 import { Loader2, Send } from "lucide-react"
-import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { useMaterialTree } from "@/hooks/useMaterialTree"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { PROCUREMENT_RECEIVERS, phoneUsable, type ProcReceiver } from "@/lib/procurement/receivers"
 import { Button } from "@/components/ui/button"
@@ -46,18 +47,28 @@ export function TeamRequestDialog({ open, onOpenChange, orgId, onSent, from = "t
   const sites = useMemo(() => deliverySites({ stored: storedSites((settingsDoc as Rec | null)?.deliverySites), warehouses: (warehouses || []) as Array<{ id: string; name?: string }>, projects: [], pmOn: false }), [settingsDoc, warehouses])
 
   // «طلبه»: only whoever sources may raise a request for somebody else (the server refuses anyone else).
-  const { can } = usePermissions()
+  const { can, groups: teamGroups } = usePermissions()
+  const { user } = useUser()
+  const { profile } = useResolvedProfile(user?.uid)
+  const myName = String((profile as Rec | null)?.name || user?.displayName || "")
   const mayAsk = can("offers.accept") || can("rfq.manage") || can("po.approve")
   const { orgMembers } = useOrgMembers(open && mayAsk ? orgId : null)
   const receiversQ = useMemoFirebase(() => (firestore && orgId && open && mayAsk ? query(collection(firestore, PROCUREMENT_RECEIVERS), where("organizationId", "==", orgId)) : null), [firestore, orgId, open, mayAsk])
   const { data: receiversData } = useCollection(receiversQ)
   const people = useMemo(() => {
     const accounts = new Map(orgMembers.map((m) => [m.id, (m.name as string) || (m.email as string) || m.id]))
-    const receivers = ((receiversData || []) as ProcReceiver[]).filter((r) => r.active !== false).map((r) => ({ value: r.userId ? `member:${r.userId}` : `receiver:${r.id}`, name: r.name, hasAccount: Boolean(r.userId), usable: Boolean(r.userId) || phoneUsable(r.phone) }))
-    const members = Array.from(accounts, ([id, name]) => ({ value: `member:${id}`, name, hasAccount: true, usable: true }))
+    // «name — role»: the member's group in the company, where he has one (the prototype's «طلبه» list).
+    const roleOf = new Map(
+      orgMembers.map((m) => {
+        const g = teamGroups.find((x) => x.id === (m.defaultGroupId as string | undefined))
+        return [m.id, g ? (g.key ? t(`team_group_${g.key}` as "team_group_viewer") : g.name) : ""] as const
+      })
+    )
+    const receivers = ((receiversData || []) as ProcReceiver[]).filter((r) => r.active !== false).map((r) => ({ value: r.userId ? `member:${r.userId}` : `receiver:${r.id}`, name: r.name, role: (r.userId && roleOf.get(r.userId)) || "", hasAccount: Boolean(r.userId), usable: Boolean(r.userId) || phoneUsable(r.phone) }))
+    const members = Array.from(accounts, ([id, name]) => ({ value: `member:${id}`, name, role: roleOf.get(id) || "", hasAccount: true, usable: true }))
     const seen = new Set(members.map((m) => m.value))
     return [...members, ...receivers.filter((r) => !seen.has(r.value))].sort((a, b) => a.name.localeCompare(b.name))
-  }, [orgMembers, receiversData])
+  }, [orgMembers, receiversData, teamGroups, t])
   const [forWhom, setForWhom] = useState("self")
 
   const [groups, setGroups] = useState<EditorGroup[]>(() => [newGroup({ lines: [blankLine()] })])
@@ -119,7 +130,8 @@ export function TeamRequestDialog({ open, onOpenChange, orgId, onSent, from = "t
       <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-h-[92vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("tr_title")}</DialogTitle>
-          <DialogDescription>{t("tr_desc")}</DialogDescription>
+          {/* The requester raising his own reads where it goes and where he follows it; a buyer on «الواردة» keeps the general line. */}
+          <DialogDescription>{from === "team" && myName ? t("tr_desc_self", { name: myName }) : t("tr_desc")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           {mayAsk && (
@@ -131,7 +143,7 @@ export function TeamRequestDialog({ open, onOpenChange, orgId, onSent, from = "t
                 <option value="self">{t("tr_for_self")}</option>
                 {people.map((p) => (
                   <option key={p.value} value={p.value} disabled={!p.usable}>
-                    {p.hasAccount ? p.name : `${p.name} — ${t("tr_for_none")}`}
+                    {[p.name, [p.role, p.hasAccount ? "" : t("tr_for_none")].filter(Boolean).join(" · ")].filter(Boolean).join(" — ")}
                   </option>
                 ))}
               </NativeSelect>

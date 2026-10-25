@@ -12,7 +12,7 @@
 // recipients with their facts, the direct award with its order, the needs' back-links.
 
 import { displayNeedRef } from "@/lib/procurement/format"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
 import { collection, doc, getDoc, getDocs, limit, query, setDoc, updateDoc, where } from "firebase/firestore"
@@ -112,6 +112,8 @@ export function RfqEditor({
   variant = "page",
   startStep = 2,
   onClose,
+  headExtra,
+  footerExtra,
 }: {
   projectId?: string
   /** The incoming request(s) the panel opens on (PUR-01 «انشره»). */
@@ -121,6 +123,10 @@ export function RfqEditor({
   /** The panel opens on the publishing step («انشره») or on the request itself (a press on its row). */
   startStep?: 1 | 2
   onClose?: () => void
+  /** Panel only: shown beside the request's number (its state and source). */
+  headExtra?: ReactNode
+  /** Panel only, on the request step: a further act in the footer («تعذّر الشراء»). */
+  footerExtra?: ReactNode
 }) {
   const panel = variant === "panel"
   const t = useTranslations("Portal.ProcEditor")
@@ -747,7 +753,10 @@ export function RfqEditor({
         <div className="min-w-[14rem] flex-1">
           {panel ? (
             <>
-              <h2 className="text-xl font-black text-foreground">{firstGroup?.requestRefs.map((r) => displayNeedRef(r, locale)).join(" · ") || t("title_new")}</h2>
+              <h2 className="flex flex-wrap items-center gap-2 text-xl font-black text-foreground">
+                {firstGroup?.requestRefs.map((r) => displayNeedRef(r, locale)).join(" · ") || t("title_new")}
+                {headExtra}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground" dir="auto">
                 {t("panel_sub", { place: firstGroup?.label || "—", count: facts.lines || numberedLines(groups).length })}
               </p>
@@ -832,6 +841,7 @@ export function RfqEditor({
           <Button type="button" variant="ghost" onClick={() => (panel && onClose ? onClose() : router.push(projectId && pmOn ? `/contractor/projects/${projectId}?tab=rfqs` : "/contractor/rfqs"))}>
             {t("cancel")}
           </Button>
+          {panel && step === 1 && footerExtra}
           {panel && step === 1 && (
             <Button type="button" variant="outline" onClick={() => router.push(prepareHref)}>
               {t("prepare")}

@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { StatusPill } from "@/components/module-ui/StatusPill"
+import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { fmtDay } from "@/components/procurement/need-bits"
 import { incomingAct } from "@/lib/procurement/incoming-client"
 import { displayPoNumber } from "@/lib/procurement/format"
@@ -205,6 +206,13 @@ export function AskWorkshopDialog({ doc, line, history, onClose, onDone }: { doc
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
+          {/* The material with its specifications and when it is needed (the prototype's `MOD.mkask` info grid). */}
+          <div className="rounded-xl border px-3 py-1 text-xs" data-testid="ask-workshop-facts">
+            {(line.material?.specs || []).map((sp) => (
+              <KeyValueRow key={sp.name.ar} label={locale === "ar" ? sp.name.ar : sp.name.en || sp.name.ar} value={locale === "ar" ? sp.value.ar : sp.value.en || sp.value.ar} className="text-xs" />
+            ))}
+            <KeyValueRow label={t("before_ask_need_by")} value={line.needBy || doc.needBy ? fmtDay(line.needBy || doc.needBy, locale) : "—"} className="text-xs" />
+          </div>
           <p className="rounded-xl bg-muted/50 px-3 py-2 text-xs">
             <b>{t("before_ask_ref")}</b>{" "}
             {ref ? t("before_ask_ref_value", { price: sarLtr(ref.price.toLocaleString("en-US")), unit: line.unit, po: ref.poNumber || "—" }) : t("before_ask_ref_none")}

@@ -6,7 +6,7 @@
 
 import { useState, type ElementType } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, ChevronLeft, ChevronRight, Clock, Info, Loader2 } from "lucide-react"
+import { AlertTriangle, ChevronLeft, ChevronRight, FileText, Inbox, Loader2, Mail, Scale, Truck } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { useToast } from "@/hooks/use-toast"
 import { EscalateError, escalateNoticeCall } from "@/lib/procurement/notice-escalate-client"
@@ -14,9 +14,17 @@ import { presentParams, type Params } from "@/lib/procurement/today-present"
 import type { Task, TaskSeverity } from "@/lib/procurement/today"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
+import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useStepSentence } from "./PoBits"
 
-const SEVERITY_ICON: Record<TaskSeverity, ElementType> = { red: AlertTriangle, amber: Clock, blue: Info }
+/** The tile's colour is the urgency; its icon is the KIND of row (the prototype's `inbox` · `scale` · `alert` · `mail` · `doc` · `truck`),
+ * so a request, an RFQ to compare, a question, an order and a receipt read apart at a glance. */
+const CHIP_ICON: Record<Task["chip"], ElementType> = { req: Inbox, rfq: Scale, po: FileText, rcv: Truck }
+export function taskIcon(task: Pick<Task, "kind" | "chip">): ElementType {
+  if (task.kind === "rfq_query") return Mail
+  if (task.kind === "rfq_no_live") return AlertTriangle
+  return CHIP_ICON[task.chip]
+}
 const SEVERITY_TILE: Record<TaskSeverity, string> = {
   red: "bg-destructive/10 text-destructive",
   amber: "bg-warning/10 text-warning",
@@ -37,7 +45,7 @@ export function TodayItem({ task }: { task: Task }) {
   const { toast } = useToast()
   const stepText = useStepSentence()
   const Chevron = locale === "ar" ? ChevronLeft : ChevronRight
-  const Icon = SEVERITY_ICON[task.severity]
+  const Icon = taskIcon(task)
   const [busy, setBusy] = useState(false)
 
   const present = (p: Params) => {
@@ -45,7 +53,9 @@ export function TodayItem({ task }: { task: Task }) {
     if (typeof out.where === "string") out.where = t(`modules.${out.where}`)
     return out
   }
-  const title = t(task.titleKey, present(task.titleParams))
+  // «الباقي منه» is a pill after the title, the same one the incoming card wears — not words inside it.
+  const remainderPill = task.kind === "need_request" && task.titleParams.remainder === 1
+  const title = t(task.titleKey, present(remainderPill ? { ...task.titleParams, remainder: 0 } : task.titleParams))
   const sub = task.step ? stepText(task.step) : task.subNs === "Procurement" ? tProc(task.subKey, present(task.subParams)) : t(task.subKey, present(task.subParams))
   const solid = task.tier === "red" || task.kind === "approve"
 
@@ -70,6 +80,11 @@ export function TodayItem({ task }: { task: Task }) {
       <div className="min-w-0 flex-1 basis-48">
         <p className="text-sm font-bold leading-snug text-foreground" dir="auto">
           {title}
+          {remainderPill && (
+            <StatusPill tone="violet" className="ms-1.5 align-middle text-[10px]">
+              {t("remainderPill")}
+            </StatusPill>
+          )}
         </p>
         <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground" dir="auto">
           {sub}
