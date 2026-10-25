@@ -12,6 +12,7 @@
 
 import { categoryRoot, effectiveCrExpiry, isUnverified, supplierSourcingBlock, type SourcingBlock, type SupplierRecord } from "./supplier-file"
 import type { SupplierFacts } from "./types"
+import { cityCovers, supplierCities } from "@/lib/materials/reach"
 
 // ---------------------------------------------------------------------------
 // The suggested title
@@ -76,26 +77,46 @@ export interface ReachSupplier {
   /** The material tree's sub-categories he chose (PUR-04). */
   subIds?: string[]
   record?: Pick<SupplierRecord, "verified" | "kind"> | null
+  /** The cities he covers, else his own city (ED-21) — read through `supplierCities`; none = reached anywhere. */
+  coverageCities?: string[]
+  city?: string | null
 }
 
 const servesAny = (s: ReachSupplier, roots: string[], tree: Record<string, readonly string[]>): boolean =>
   s.categories.some((c) => roots.includes(categoryRoot(c, tree)))
 
+/** ED-21: does a public RFQ delivering to `cities` reach him? The one rule (`cityCovers`) the supplier's lists read too. */
+export const servesCity = (s: ReachSupplier, cities: readonly string[] | undefined): boolean =>
+  cityCovers(supplierCities({ coverageCities: s.coverageCities, city: s.city }), cities || [])
+
 /** «يصل إلى n مورداً متخصصاً في …»: material suppliers of the RFQ's categories, less the unvouched.
  * An RFQ written on the material tree passes its sub-category ids (`subIds`) and is matched on them
- * alone (PUR-04); an older one on its category names. */
-export function publicReach<T extends ReachSupplier>(suppliers: T[], rfqCategories: string[], tree: Record<string, readonly string[]>, subIds?: string[]): T[] {
-  const vouched = (s: T) => (s.record?.kind || "mat") === "mat" && !isUnverified(s.record)
+ * alone (PUR-04); an older one on its category names. `cities` — the RFQ's delivery cities — keeps those who
+ * serve one of them (ED-21); a supplier with no city data, or an RFQ with no city, is never cut. */
+export function publicReach<T extends ReachSupplier>(suppliers: T[], rfqCategories: string[], tree: Record<string, readonly string[]>, subIds?: string[], cities?: string[]): T[] {
+  const vouched = (s: T) => (s.record?.kind || "mat") === "mat" && !isUnverified(s.record) && servesCity(s, cities)
   if (subIds && subIds.length) return suppliers.filter((s) => vouched(s) && (s.subIds || []).some((id) => subIds.includes(id)))
   const roots = [...new Set(rfqCategories.filter(Boolean).map((c) => categoryRoot(c, tree)))]
   if (!roots.length) return []
   return suppliers.filter((s) => vouched(s) && servesAny(s, roots, tree))
 }
 
-/** «حسب الفئة الفرعية: البلك الاسمنتي 2 · الاسمنت العادي 3 (5 دون تكرار)» — the review step's count. */
-export function reachBySub<T extends ReachSupplier>(suppliers: T[], subIds: string[]): { perSub: Array<{ subId: string; count: number }>; distinct: T[] } {
-  const reached = publicReach(suppliers, [], {}, subIds)
-  return { perSub: subIds.map((id) => ({ subId: id, count: reached.filter((s) => (s.subIds || []).includes(id)).length })), distinct: reached }
+/** «حسب الفئة الفرعية: البلك الاسمنتي 2 · الاسمنت العادي 3 (5 دون تكرار)» — the review step's count, within the
+ * RFQ's delivery cities (ED-21). `elsewhere` per sub-category and `elsewhereDistinct` count those of the field in
+ * OTHER cities only — for «لا مورّد في الرياض — N في مدن أخرى». */
+export function reachBySub<T extends ReachSupplier>(
+  suppliers: T[],
+  subIds: string[],
+  cities: string[] = [],
+): { perSub: Array<{ subId: string; count: number; elsewhere: number }>; distinct: T[]; elsewhereDistinct: number } {
+  const reached = publicReach(suppliers, [], {}, subIds, cities)
+  const anyCity = cities.length ? publicReach(suppliers, [], {}, subIds) : reached
+  const inSub = (list: T[], id: string) => list.filter((s) => (s.subIds || []).includes(id)).length
+  return {
+    perSub: subIds.map((id) => ({ subId: id, count: inSub(reached, id), elsewhere: inSub(anyCity, id) - inSub(reached, id) })),
+    distinct: reached,
+    elsewhereDistinct: anyCity.length - reached.length,
+  }
 }
 
 export interface PoolEntry {

@@ -551,7 +551,10 @@ export async function supplierFieldOf(db: Firestore, user: Rec, orgId: string, u
     if (org && list(org.specializations).length) specs = list(org.specializations)
     if (org && list(org.coverageCities).length) cities = list(org.coverageCities)
     if (org && list(org.specialtyIds).length) subIds = list(org.specialtyIds)
+    // ED-21: with no coverage list, his company's own city is where he serves.
+    if (!cities.length && org && typeof org.city === "string" && org.city) cities = [org.city]
   }
+  if (!cities.length && typeof user.city === "string" && user.city) cities = [user.city]
   return { specs, cities, subIds }
 }
 

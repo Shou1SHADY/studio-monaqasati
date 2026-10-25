@@ -21,7 +21,12 @@ export interface ReviewModel {
   /** Public: how many suppliers, and the favourite among them. */
   reach: number
   favourite: string | null
-  perSub: Array<{ name: string; count: number }>
+  /** Per sub-category within the delivery cities; `elsewhere` = specialists in other cities only (ED-21). */
+  perSub: Array<{ name: string; count: number; elsewhere?: number }>
+  /** ED-21: the delivery cities the reach is counted in, as words («الرياض أو جدة»); empty = nationwide. */
+  reachCities?: string
+  /** ED-21: specialists of these sub-categories in other cities only. */
+  elsewhere?: number
   privateCount: number
   /** ED-16: the chosen suppliers' names, «خاص: …». */
   privateNames?: string[]
@@ -66,7 +71,7 @@ export function EditorReview({ model, fmtDay, onInvite }: { model: ReviewModel; 
         <KeyValueRow label={t("rev_materials")} value={t("rev_materials_v", { count: m.lines, subs: m.subs, groups: m.groups })} />
         {m.audience === "public" && (
           <>
-            <KeyValueRow label={t("rev_reaches")} value={`${t("reach_public", { count: m.reach })}${m.favourite ? ` ${t("reach_fav", { name: m.favourite })}` : ""}`} />
+            <KeyValueRow label={t("rev_reaches")} value={`${m.reachCities ? t("reach_public_city", { count: m.reach, city: m.reachCities }) : t("reach_public", { count: m.reach })}${m.favourite ? ` ${t("reach_fav", { name: m.favourite })}` : ""}`} />
             {m.perSub.length > 0 && <KeyValueRow label={t("rev_by_sub")} value={`${m.perSub.map((s) => `${s.name} ${s.count}`).join(" · ")} (${t("rev_distinct", { count: m.reach })})`} />}
           </>
         )}
@@ -95,13 +100,13 @@ export function EditorReview({ model, fmtDay, onInvite }: { model: ReviewModel; 
       </div>
       {m.audience === "public" && m.reach === 0 && (
         <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> {t("rev_reach_none")}
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> {m.reachCities && m.elsewhere ? t("rev_reach_none_city", { city: m.reachCities, count: m.elsewhere }) : t("rev_reach_none")}
         </p>
       )}
       {emptySubs.map((s) => (
         <div key={`z-${s.name}`} className="flex flex-wrap items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
           <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-          <span className="min-w-0 flex-1">{t("rev_sub_none", { name: s.name })}</span>
+          <span className="min-w-0 flex-1">{m.reachCities && s.elsewhere ? t("rev_sub_none_city", { name: s.name, city: m.reachCities, count: s.elsewhere }) : t("rev_sub_none", { name: s.name })}</span>
           {onInvite && (
             <Button type="button" variant="link" className="h-auto gap-1 p-0 text-xs text-cta" onClick={onInvite}>
               <UserPlus size={13} aria-hidden="true" /> {t("rev_sub_invite")}

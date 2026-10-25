@@ -298,6 +298,20 @@ describe("step 2 and 3", () => {
     v.unmount()
   })
 
+  it("the reach names the city, and a city that leaves a sub-category with nobody says how many are elsewhere (ED-21)", () => {
+    const a = render(<EditorReview model={model({ reachCities: "الرياض", reach: 4, perSub: [{ name: "البلك الاسمنتي", count: 4, elsewhere: 0 }, { name: "حجر نادر", count: 0, elsewhere: 3 }] })} fmtDay={(d) => d} />)
+    expect(text()).toContain("يصل 4 موردين مختصين في الرياض.")
+    expect(text()).toContain("لا مورّد مختص بـ«حجر نادر» في الرياض — 3 موردين في مدن أخرى")
+    a.unmount()
+    const b = render(<EditorReview model={model({ reachCities: "الرياض", reach: 0, elsewhere: 5, perSub: [{ name: "حجر نادر", count: 0, elsewhere: 5 }] })} fmtDay={(d) => d} />)
+    expect(text()).toContain("لا مورّد مختص في الرياض — 5 موردين في مدن أخرى")
+    expect([...missingKeys]).toEqual([])
+    b.unmount()
+    const c = mount(values(), () => undefined, { reachCities: "الرياض أو جدة" })
+    expect(text()).toContain("يصل 4 موردين مختصين في الرياض أو جدة.")
+    c.unmount()
+  })
+
   it("private names up to five then «و# آخرين»; delivery options as the supplier reads them (ED-16, ED-17)", () => {
     const names = ["أ", "ب", "ج", "د", "هـ", "و", "ز"]
     const v = render(<EditorReview model={model({ audience: "private", privateCount: 7, privateNames: names, deliveryOptions: ["التنزيل على المورّد · صباحاً — البوابة الشمالية"] })} fmtDay={(d) => d} />)

@@ -1,6 +1,6 @@
 "use client"
 
-import { categoryText, fieldCovers, rfqCategoryNames, supplierSubIds } from "@/lib/materials/reach"
+import { categoryText, publicFieldReaches, rfqCategoryNames, supplierCities, supplierSubIds } from "@/lib/materials/reach"
 import { useState, useEffect, useRef, useMemo } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
@@ -184,8 +184,9 @@ function LegacyAvailableRfqsPage() {
           if (supplierOrgId && (rfq.allowedSupplierOrgIds || []).includes(supplierOrgId)) return true;
           // An RFQ may carry several categories (PUR-03): the filter matches any of them, on the client.
           if (selectedCategory !== "all" && !rfqCategoryNames(rfq).includes(selectedCategory)) return false;
-          // On the tree by sub-category id, before it by category name (PUR-04).
-          return fieldCovers({ subIds: supplierSubIds(profile as Record<string, unknown> | null), specs: profile?.specializations || [] }, rfq);
+          // On the tree by sub-category id, before it by category name (PUR-04) — and in his cities (ED-21: the
+          // same rule the buyer's reach count and the publish server use; no city on either side = reached).
+          return publicFieldReaches({ subIds: supplierSubIds(profile as Record<string, unknown> | null), specs: profile?.specializations || [], cities: supplierCities(profile as Record<string, unknown> | null) }, rfq);
         })
         .sort((a: any, b: any) => {
           const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0

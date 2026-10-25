@@ -413,7 +413,10 @@ export function RfqEditor({
   }, [suggested, titleEdited, values.title])
 
   const linesDoc = useMemo(() => rfqLinesDoc(groups, locale, projectName), [groups, locale, projects])
-  const reach = useMemo(() => reachBySub(platform, linesDoc.subCategoryIds), [platform, linesDoc.subCategoryIds])
+  // ED-21: «عام» reaches the specialists of the sub-categories IN the delivery cities (any of them, several places).
+  const reachCities = useMemo(() => rfqPlace(groups).cities, [groups])
+  const reach = useMemo(() => reachBySub(platform, linesDoc.subCategoryIds, reachCities), [platform, linesDoc.subCategoryIds, reachCities])
+  const citiesText = reachCities.map((c) => displayCity(c, locale)).join(locale === "ar" ? " أو " : " or ")
   const favouriteReached = reach.distinct.find((s) => favoriteIds.includes(s.orgId))?.name || null
   const matching = useMemo(() => new Set(reach.distinct.map((s) => s.orgId)), [reach])
   // An unverified supplier — one who joined through our invitation — may be picked in «خاص» (PUR-05), with his tag;
@@ -629,7 +632,9 @@ export function RfqEditor({
     audience: values.audience,
     reach: reach.distinct.length,
     favourite: favouriteReached,
-    perSub: reach.perSub.map((s) => ({ name: index?.byId.get(s.subId) ? label(index.byId.get(s.subId)!, locale) : s.subId, count: s.count })),
+    perSub: reach.perSub.map((s) => ({ name: index?.byId.get(s.subId) ? label(index.byId.get(s.subId)!, locale) : s.subId, count: s.count, elsewhere: s.elsewhere })),
+    reachCities: citiesText,
+    elsewhere: reach.elsewhereDistinct,
     privateCount: selectedRecipients.length,
     privateNames: selectedRecipients.map((id) => recipientOptions.find((o) => o.orgId === id)?.name || "").filter(Boolean),
     directName: directPool.find((p) => p.orgId === values.directSupplierOrgId)?.name || null,
@@ -826,6 +831,7 @@ export function RfqEditor({
           linesCount={complete.length}
           publicReachCount={reach.distinct.length}
           favouriteName={favouriteReached}
+          reachCities={citiesText}
           recipientOptions={recipientOptions}
           recipientFacts={recipientFacts}
           selectedRecipients={selectedRecipients}

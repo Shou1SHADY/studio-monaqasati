@@ -70,6 +70,7 @@ export function EditorPublish({
   showProblems,
   supplierSubs,
   directFacts,
+  reachCities,
 }: {
   values: PublishValues
   onChange: (patch: Partial<PublishValues>) => void
@@ -96,6 +97,8 @@ export function EditorPublish({
   supplierSubs?: ReadonlyMap<string, string[]>
   /** ED-13: the direct pool's facts — on-time, sourcing block (any block stops a direct award), «مختص». */
   directFacts?: Map<string, { onTime: number | null; crExpired: boolean; block: SourcingBlock | null; matches: boolean }>
+  /** ED-21: the delivery cities the public reach is counted in («… في الرياض»); empty = nationwide. */
+  reachCities?: string
 }) {
   const t = useTranslations("Portal.ProcEditor")
   const [more, setMore] = useState(false)
@@ -148,7 +151,7 @@ export function EditorPublish({
         </div>
         {values.audience === "public" && (
           <p className="text-sm text-muted-foreground">
-            {t("reach_public", { count: publicReachCount })}
+            {reachCities ? t("reach_public_city", { count: publicReachCount, city: reachCities }) : t("reach_public", { count: publicReachCount })}
             {favouriteName ? ` ${t("reach_fav", { name: favouriteName })}` : ""}
           </p>
         )}
