@@ -89,7 +89,7 @@ describe("Today — a row in English with an Arabic title (UI review)", () => {
     try {
       const { container } = render(
         <ul>
-          <TodayItem task={task({ kind: "rfq_award", chip: "rfq", titleKey: "task.rfq_award.title", titleParams: { ref: "طلب عروض أسعار - حديد تسليح", count: 1 }, subKey: "task.rfq_award.sub", subParams: { title: "طلب عروض أسعار - حديد تسليح", date: "2026-09-12", when: "past", n: 43 }, actionKey: "actions.compareAward" })} />
+          <TodayItem task={task({ kind: "rfq_award", chip: "rfq", titleKey: "task.rfq_award.title", titleParams: { ref: "طلب عروض أسعار - حديد تسليح", count: 1 }, subKey: "task.rfq_award.sub", subParams: { title: "طلب عروض أسعار - حديد تسليح", hasTitle: 1, date: "2026-09-12", when: "past", n: 43 }, actionKey: "actions.compareAward" })} />
         </ul>,
       )
       const [title, sub] = Array.from(container.querySelectorAll("p"))
