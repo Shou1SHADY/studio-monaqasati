@@ -251,7 +251,7 @@ export function CertificateDrawer({
                   {(c.cut ?? 0) > 0 && (
                     <>
                       <KeyValueRow
-                        label={<span className="font-bold text-destructive">{t("money.dr.cut", { reason: isCutReason(c.cutReason) ? t(`ipc.cut_reasons.${c.cutReason}`) : c.cutReason || "—" })}</span>}
+                        label={<span className="font-bold text-destructive">{t("money.dr.cut", { reason: c.cutReason === "oth" && c.cutText ? c.cutText : isCutReason(c.cutReason) ? t(`ipc.cut_reasons.${c.cutReason}`) : c.cutReason || "—" })}</span>}
                         value={<span className="font-bold text-destructive">{`− ${pmMoney(c.cut ?? 0)}`}</span>}
                         ltr
                       />

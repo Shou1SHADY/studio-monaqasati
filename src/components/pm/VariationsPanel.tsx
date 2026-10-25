@@ -34,6 +34,7 @@ import {
   approvedValue,
   decisionDateBlocks,
   logBlocks,
+  stepBlocks,
   valueAtRisk,
   VO_SOURCES,
   VO_STATUSES,
@@ -45,7 +46,7 @@ import {
   type VoSource,
   type VoStatus,
 } from "@/lib/pm/variation"
-import { approveVariation, logVariation, PmVariationError, priceVariation, recordVariationProgress, rejectVariation, submitVariation, type VoActor } from "@/lib/pm/variation-writes"
+import { approveVariation, logVariation, PmVariationError, priceVariation, recordVariationProgress, rejectVariation, setVariationInstruction, submitVariation, type VoActor } from "@/lib/pm/variation-writes"
 import { PURCHASE_REQUESTS, requestOf } from "@/lib/pm/supply"
 import { cn } from "@/lib/utils"
 import { CheckLine, ChoiceChips, FileLinks, FormHint } from "./ContractBits"
@@ -54,7 +55,7 @@ const TONE: Record<VoStatus, PillTone> = { draft: "mute", wait: "warn", appr: "o
 
 type Item = { id: string; code: string; description: string }
 type Price = { vo: PmVariation; value: string; cost: string; days: string; file: UploadedFile | null }
-type Progress = { vo: PmVariation; pct: string; instructionNo: string }
+type Progress = { vo: PmVariation; pct: string; instructionNo: string; note: string }
 type Decide = { vo: PmVariation; approve: boolean; text: string; on: string; file: UploadedFile | null }
 
 const num = (s: string) => (s.trim() === "" ? 0 : Number(s))
@@ -116,6 +117,11 @@ export function VariationsPanel({
   const money = access.has("money")
   const canLog = !access.ctx.archived && access.allowed("variation.log")
   const canDecide = !access.ctx.archived && access.allowed("variation.decide")
+  // VO-03 (1.1 `vopc`): the executed share is approve's to record — never down, logged.
+  const canProgress = !access.ctx.archived && access.allowed("variation.progress")
+  const pctChanged = (p: Progress) => Math.abs(num(p.pct) / 100 - p.vo.executedPct) > 0.00001
+  const progressBlocks = (p: Progress) =>
+    stepBlocks({ archived: access.ctx.archived, status: p.vo.status, step: "progress", executedPct: num(p.pct) / 100, billedPct: p.vo.billedPct, currentPct: p.vo.executedPct })
   const approved = approvedValue(vos)
   const risk = valueAtRisk(vos)
   const risky = workBeforeApproval(vos)
@@ -346,6 +352,30 @@ export function VariationsPanel({
                   <KeyValueRow label={t("vo.col.executed")} value={`${Math.round(open.executedPct * 100)}%`} ltr />
                   {open.byName && <KeyValueRow label={t("vo.logged_by")} value={`${open.byName} · ${pmDate(open.loggedOn ?? open.day, locale)}`} />}
                 </DrawerSection>
+                {(open.pcLog?.length ?? 0) > 0 && (
+                  <DrawerSection title={t("vo.pc_log")} count={open.pcLog?.length}>
+                    <ul className="space-y-1 py-1 text-xs">
+                      {(open.pcLog ?? [])
+                        .slice()
+                        .reverse()
+                        .map((e, i) => (
+                          <li key={`${e.d}-${i}`} className="flex flex-wrap items-baseline justify-between gap-2">
+                            <span>
+                              <span dir="ltr" className="font-semibold tabular-nums">
+                                {Math.round(e.from * 100)}% → {Math.round(e.to * 100)}%
+                              </span>
+                              {e.note && (
+                                <span className="ms-2 text-muted-foreground" dir="auto">
+                                  {e.note}
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-muted-foreground">{t("vo.pc_by", { who: e.byName || "—", date: pmDate(e.d, locale) })}</span>
+                          </li>
+                        ))}
+                    </ul>
+                  </DrawerSection>
+                )}
                 <DrawerSection title={t("vo.before_counts")}>
                   <CheckLine ok={open.value > 0} title={t("vo.check.priced")} note={open.value > 0 ? (money ? pmMoney(open.value) : t("vo.check.yes")) : t("vo.check.priced_no")} />
                   <CheckLine ok={open.status === "appr"} title={t("vo.check.written")} note={open.status === "appr" ? t("vo.check.on_file") : t("vo.check.missing")} />
@@ -383,8 +413,8 @@ export function VariationsPanel({
                         {t("vo.submit")}
                       </Button>
                     )}
-                    {canLog && (
-                      <Button size="sm" variant="outline" onClick={() => setProgress({ vo: open, pct: String(Math.round(open.executedPct * 100)), instructionNo: open.instructionNo ?? "" })}>
+                    {(canProgress || canLog) && (
+                      <Button size="sm" variant="outline" onClick={() => setProgress({ vo: open, pct: String(Math.round(open.executedPct * 100)), instructionNo: open.instructionNo ?? "", note: "" })}>
                         {t("vo.update")}
                       </Button>
                     )}
@@ -583,15 +613,29 @@ export function VariationsPanel({
             <DialogDescription>{t("vo.update_desc")}</DialogDescription>
           </DialogHeader>
           {progress && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="ve-pct">{t("vo.pct")}</Label>
-                <Input id="ve-pct" dir="ltr" inputMode="decimal" value={progress.pct} onChange={(e) => setProgress({ ...progress, pct: e.target.value })} disabled={busy !== null} />
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {canProgress && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ve-pct">{t("vo.pct")}</Label>
+                    <Input id="ve-pct" dir="ltr" inputMode="decimal" value={progress.pct} onChange={(e) => setProgress({ ...progress, pct: e.target.value })} disabled={busy !== null} />
+                    <p className="text-xs text-muted-foreground">{t("vo.pct_never_down", { pct: Math.round(progress.vo.executedPct * 100) })}</p>
+                  </div>
+                )}
+                {canLog && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ve-ins">{t("vo.instruction_label")}</Label>
+                    <Input id="ve-ins" value={progress.instructionNo} onChange={(e) => setProgress({ ...progress, instructionNo: e.target.value })} disabled={busy !== null} dir="auto" />
+                  </div>
+                )}
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="ve-ins">{t("vo.instruction_label")}</Label>
-                <Input id="ve-ins" value={progress.instructionNo} onChange={(e) => setProgress({ ...progress, instructionNo: e.target.value })} disabled={busy !== null} dir="auto" />
-              </div>
+              {canProgress && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="ve-note">{t("vo.pc_note")}</Label>
+                  <Input id="ve-note" value={progress.note} onChange={(e) => setProgress({ ...progress, note: e.target.value })} disabled={busy !== null} dir="auto" />
+                </div>
+              )}
+              {canProgress && pctChanged(progress) && <BlockingReasons title={t("cannot_save")} reasons={progressBlocks(progress).map((b) => t(`vo.block.${b}`))} />}
             </div>
           )}
           <DialogFooter>
@@ -599,10 +643,19 @@ export function VariationsPanel({
               {t("cancel")}
             </Button>
             <Button
-              disabled={busy !== null}
+              disabled={busy !== null || (progress !== null && canProgress && pctChanged(progress) && progressBlocks(progress).length > 0)}
               onClick={async () => {
                 if (!firestore || !progress) return
-                const ok = await run("progress", () => recordVariationProgress(firestore, access.ctx, projectId, progress.vo.seq, num(progress.pct) / 100, progress.instructionNo), t("vo.saved"))
+                const p = progress
+                const insChanged = canLog && p.instructionNo.trim() !== "" && p.instructionNo.trim() !== (p.vo.instructionNo ?? "")
+                const ok = await run(
+                  "progress",
+                  async () => {
+                    if (canProgress && pctChanged(p)) await recordVariationProgress(firestore, access.ctx, projectId, actor, p.vo.seq, num(p.pct) / 100, p.note)
+                    if (insChanged) await setVariationInstruction(firestore, access.ctx, projectId, p.vo.seq, p.instructionNo)
+                  },
+                  t("vo.saved")
+                )
                 if (ok) setProgress(null)
               }}
             >

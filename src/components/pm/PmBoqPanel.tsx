@@ -129,9 +129,9 @@ export function PmBoqPanel({
   const groups = useMemo(() => groupLines(shown, bySection), [shown, bySection])
   const totals = boqTotals(shown)
   const up = unpricedNote(lines)
-  // The row's «سعّره» is the approver's (prototype: money && approve); the write
-  // itself still accepts prep, as the prototype's handler does.
-  const canPrice = money && !access.ctx.archived && access.allowed("item.price") && access.has("approve")
+  // CON-03 / WF-29 (FX-64): «سعّره» is whoever holds the pricing duty (prep or
+  // approve) AND sees amounts — the QS office or the PM — exactly as the write.
+  const canPrice = money && !access.ctx.archived && access.allowed("item.price")
   const canImport = !access.ctx.archived && access.allowed("boq.import")
   const canEditLines = canImport && planning
   const open = lines.find((b) => b.id === openId) ?? null
@@ -156,7 +156,8 @@ export function PmBoqPanel({
           description={t("boq.empty_desc")}
           className="p-8"
           action={
-            canImport ? (
+            // CON-03: no import after the start — work outside the BOQ enters by a variation.
+            canImport && planning ? (
               <div className="flex flex-wrap justify-center gap-2">
                 <Button onClick={() => setImporting(true)}>
                   <Plus size={15} className="me-1.5" aria-hidden="true" />
@@ -169,10 +170,12 @@ export function PmBoqPanel({
                   </Button>
                 )}
               </div>
+            ) : canImport ? (
+              <p className="text-xs text-muted-foreground">{t("boq.import_err.started")}</p>
             ) : undefined
           }
         />
-        {canImport && <ImportDialog open={importing} onOpenChange={setImporting} projectId={projectId} access={access} contractValue={contractValue} money={money} />}
+        {canImport && planning && <ImportDialog open={importing} onOpenChange={setImporting} projectId={projectId} access={access} contractValue={contractValue} money={money} />}
         {editing && <BoqItemDialog projectId={projectId} access={access} money={money} line={null} existingCodes={[]} onClose={() => setEditing(null)} />}
       </section>
     )

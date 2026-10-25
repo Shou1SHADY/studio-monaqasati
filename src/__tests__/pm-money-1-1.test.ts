@@ -18,6 +18,12 @@ import { addendumNo, draftBlocks, type PmAddendum } from "@/lib/pm/addenda"
 import { draftAddendum } from "@/lib/pm/addendum-writes"
 import { setOrgSelfApproval } from "@/lib/pm/info-writes"
 import { todayDay } from "@/lib/pm/format"
+import { archiveSnapshot, rfiReplyAverages } from "@/lib/pm/closeout"
+import { importBoq, PmBoqError } from "@/lib/pm/boq-writes"
+import { certifyBlocks } from "@/lib/pm/certificate"
+import { pmAllowed } from "@/lib/pm/access"
+import { stepBlocks, type PmVariation } from "@/lib/pm/variation"
+import { logVariation, recordVariationProgress } from "@/lib/pm/variation-writes"
 import { planAdvanceBackfill } from "@/lib/pm/advance-backfill"
 import { certificateAmounts, certifiedRetention, collectionFigures, frozenAdvance, legacyClaimsCollected, projectCashIn, type CertificateFacts } from "@/lib/pm/certificate"
 import { prepareCertificate, type PmCertificate } from "@/lib/pm/certificate-writes"
@@ -179,5 +185,90 @@ describe("AMD-10 (FX-49) — self-approval is an organisation setting, the owner
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const team = require("fs").readFileSync(require("path").join(process.cwd(), "src/components/team-management.tsx"), "utf8") as string
     expect(team).toMatch(/<PmSelfApprovalSetting/)
+  })
+})
+
+describe("CST-04 — the archive measures delay against the effective duration", () => {
+  const base = { contractValue: 1_000_000, items: [], certificates: [], retentionHeld: 0, advanceRecovered: 0, durationDays: 300, startedAt: "2026-01-01T00:00:00Z", provisionalOn: "2027-01-06", finalOn: null, today: "2027-02-01" }
+  it("original + granted extension days; the original kept beside it", () => {
+    const f = archiveSnapshot({ ...base, grantedDays: 60 })
+    expect(f.actualDays).toBe(370)
+    expect(f.contractDays).toBe(360)
+    expect(f.durOrig).toBe(300)
+    expect(f.delayDays).toBe(10) // the 1.0 code read 70 — the granted 60 days are not delay
+  })
+  it("average RFI reply time, overall and per party, answered RFIs only", () => {
+    const list = [
+      { type: "rfi", party: "consultant", openOn: "2026-02-01", closeOn: "2026-02-05" },
+      { type: "rfi", party: "consultant", openOn: "2026-03-01", closeOn: "2026-03-11" },
+      { type: "rfi", party: "client", openOn: "2026-03-01", closeOn: "2026-03-04" },
+      { type: "rfi", party: "client", openOn: "2026-04-01", closeOn: null },
+      { type: "obs", party: "authority", openOn: "2026-04-01", closeOn: "2026-05-01" },
+    ]
+    expect(rfiReplyAverages(list)).toEqual({ overall: 5.7, byParty: { client: 3, consultant: 7 } })
+    const f = archiveSnapshot({ ...base, obstacles: list })
+    expect(f.rfiAvg).toBe(5.7)
+    expect(f.rfiBy).toEqual({ client: 3, consultant: 7 })
+    expect(archiveSnapshot(base).rfiAvg).toBeNull()
+  })
+})
+
+describe("CON-03 — later pricing and no import after the start", () => {
+  it("FX-64: the pricing duty is prep OR approve with money — the QS office prices an unpriced item", () => {
+    expect(pmAllowed(qs, "item.price")).toBe(true)
+    expect(pmAllowed(site, "item.price")).toBe(false)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const src = require("fs").readFileSync(require("path").join(process.cwd(), "src/components/pm/PmBoqPanel.tsx"), "utf8") as string
+    const line = src.split("\n").find((l) => l.includes("const canPrice")) ?? ""
+    expect(line).toContain('access.allowed("item.price")')
+    expect(line).not.toContain('access.has("approve")')
+  })
+  it("FX-54: a started project with NO lines refuses an import", async () => {
+    project(1_000_000)
+    const row = { line: 1, code: "03-01", description: "Concrete", unit: "m3", quantity: 10, rate: 100, cost: null, problems: [] }
+    await expect(importBoq(db, pm, "p1", [row] as unknown as Parameters<typeof importBoq>[3])).rejects.toMatchObject({ code: "started" })
+    await expect(importBoq(db, pm, "p1", [row] as unknown as Parameters<typeof importBoq>[3])).rejects.toBeInstanceOf(PmBoqError)
+  })
+})
+
+describe("VO-03 (vopc) — the executed share: approve, never down, logged", () => {
+  it("the pure rule refuses going down and an unchanged value", () => {
+    expect(stepBlocks({ archived: false, status: "appr", step: "progress", executedPct: 0.3, billedPct: 0.1, currentPct: 0.5 })).toEqual(["below_current"])
+    expect(stepBlocks({ archived: false, status: "wait", step: "progress", executedPct: 0.5, currentPct: 0.5 })).toEqual(["no_change"])
+    expect(stepBlocks({ archived: false, status: "draft", step: "progress", executedPct: 0.6, currentPct: 0.5 })).toEqual([])
+    expect(stepBlocks({ archived: false, status: "rej", step: "progress", executedPct: 0.6, currentPct: 0.5 })).toEqual(["wrong_state"])
+  })
+  it("recorded by approve only, appended to pcLog with who, when, from → to", async () => {
+    project(1_000_000)
+    const seq = await logVariation(db, qs, "p1", { uid: "qs1", name: "Huda" }, { title: "Canopy", source: "cons", value: 0, cost: 0, executedPct: 0.3 })
+    // A vo holder's executed share at logging is not kept.
+    expect(readDoc<PmVariation>("projects/p1/pmVariations/01")?.executedPct).toBe(0)
+    await expect(recordVariationProgress(db, qs, "p1", { uid: "qs1", name: "Huda" }, seq, 0.4)).rejects.toBeInstanceOf(PmAccessError)
+    await recordVariationProgress(db, pm, "p1", pmActor, seq, 0.4, "slab poured")
+    await recordVariationProgress(db, pm, "p1", pmActor, seq, 0.7)
+    await expect(recordVariationProgress(db, pm, "p1", pmActor, seq, 0.5)).rejects.toMatchObject({ blocks: ["below_current"] })
+    const v = readDoc<PmVariation>("projects/p1/pmVariations/01") as PmVariation
+    expect(v.executedPct).toBe(0.7)
+    expect(v.pcLog?.map((e) => [e.from, e.to, e.by])).toEqual([
+      [0, 0.4, "pm1"],
+      [0.4, 0.7, "pm1"],
+    ])
+    expect(v.pcLog?.[0].note).toBe("slab poured")
+  })
+  it("the rules: a vo holder may no longer move the executed share; approve may, with its log", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const rules = require("fs").readFileSync(require("path").join(process.cwd(), "firestore.rules"), "utf8") as string
+    const vo = rules.slice(rules.indexOf("match /pmVariations/{voId}"), rules.indexOf("allow delete", rules.indexOf("match /pmVariations/{voId}")))
+    expect(vo).toContain("changedKeys().hasOnly(['value', 'cost', 'instructionNo', 'status', 'days', 'files', 'updatedAt'])")
+    expect(vo).toContain("pmDuty(projectId, changedKeys().hasAny(['executedPct', 'pcLog']) ? 'approve' : 'vo')")
+  })
+})
+
+describe("the consultant's cut — above one riyal, 'other' stated", () => {
+  it("rounding is not a cut; 'other' needs its text", () => {
+    expect(certifyBlocks({ status: "sub", gross: 100_000, certified: 99_999.5 })).toEqual([])
+    expect(certifyBlocks({ status: "sub", gross: 100_000, certified: 99_998 })).toEqual(["cut_reason"])
+    expect(certifyBlocks({ status: "sub", gross: 100_000, certified: 99_000, reason: "oth" })).toEqual(["cut_text"])
+    expect(certifyBlocks({ status: "sub", gross: 100_000, certified: 99_000, reason: "oth", reasonText: "Prelims disallowed" })).toEqual([])
   })
 })

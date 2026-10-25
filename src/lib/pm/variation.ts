@@ -45,10 +45,23 @@ export interface PmVariation {
   executedPct: number
   /** 0…1 already billed on owner certificates — moved only by the certificate writes. */
   billedPct?: number
+  /** Every change of the executed share, oldest first, with who and when (VO-03, 1.1 `pcLog`). */
+  pcLog?: VoProgressEntry[]
   status: VoStatus
   by: string
   byName?: string | null
   decision?: { on: string; by: string; byName?: string | null; ref?: string | null; reason?: string | null; files?: VoFile[] } | null
+}
+
+/** One recorded change of a variation's executed share. */
+export interface VoProgressEntry {
+  /** The day it was recorded, `YYYY-MM-DD`. */
+  d: string
+  by: string
+  byName?: string | null
+  from: number
+  to: number
+  note?: string | null
 }
 
 export const voNo = (seq: number) => String(seq).padStart(2, "0")
@@ -112,11 +125,22 @@ export function decisionDateBlocks(input: { on: string | null; requestedOn: stri
   return out
 }
 
-export type VoStepBlock = "archived" | "wrong_state" | "unpriced" | "no_reason" | "price_locked" | "bad_pct" | "below_billed"
+export type VoStepBlock = "archived" | "wrong_state" | "unpriced" | "no_reason" | "price_locked" | "bad_pct" | "below_billed" | "below_current" | "no_change"
 
 /** draft → wait (priced) → appr | rej. A reason is required to reject; the price
- * is fixed once submitted; the executed share keeps moving until decided. */
-export function stepBlocks(input: { archived: boolean; status: VoStatus; step: "submit" | "approve" | "reject" | "progress" | "reprice"; value?: number; reason?: string | null; executedPct?: number; billedPct?: number | null }): VoStepBlock[] {
+ * is fixed once submitted. The executed share is recorded on any variation not
+ * rejected — never down, never above 100%, never under what was billed (VO-03). */
+export function stepBlocks(input: {
+  archived: boolean
+  status: VoStatus
+  step: "submit" | "approve" | "reject" | "progress" | "reprice"
+  value?: number
+  reason?: string | null
+  executedPct?: number
+  billedPct?: number | null
+  /** The share recorded now — progress never goes below it. */
+  currentPct?: number | null
+}): VoStepBlock[] {
   const out: VoStepBlock[] = []
   if (input.archived) out.push("archived")
   const from: Record<typeof input.step, VoStatus[]> = { submit: ["draft"], approve: ["wait"], reject: ["wait"], progress: ["draft", "wait", "appr"], reprice: ["draft"] }
@@ -126,5 +150,8 @@ export function stepBlocks(input: { archived: boolean; status: VoStatus; step: "
   if (input.step === "progress" && !(Number.isFinite(input.executedPct) && (input.executedPct as number) >= 0 && (input.executedPct as number) <= 1)) out.push("bad_pct")
   // INV-03: what a certificate billed was executed — the share cannot go back under it.
   else if (input.step === "progress" && (input.executedPct as number) < (input.billedPct ?? 0) - 0.0001) out.push("below_billed")
+  // VO-03: executed work is never un-executed.
+  else if (input.step === "progress" && (input.executedPct as number) < (input.currentPct ?? 0) - 0.0001) out.push("below_current")
+  else if (input.step === "progress" && input.currentPct != null && Math.abs((input.executedPct as number) - input.currentPct) < 0.0001) out.push("no_change")
   return out
 }

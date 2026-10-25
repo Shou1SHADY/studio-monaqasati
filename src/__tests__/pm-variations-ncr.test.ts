@@ -63,7 +63,9 @@ describe("variations — the one door the contract value changes through", () =>
     await expect(approveVariation(db, qs, "p1", qsA, seq)).rejects.toBeInstanceOf(PmAccessError)
     await approveVariation(db, pm, "p1", pmA, seq, "Letter 12")
     expect(vo("01")).toMatchObject({ status: "appr", value: 30_000, decision: { by: "pm1", ref: "Letter 12" } })
-    await recordVariationProgress(db, qs, "p1", seq, 0.4)
+    // VO-03 (1.1 vopc): the executed share is approve's — the QS (vo) records none.
+    await expect(recordVariationProgress(db, qs, "p1", qsA, seq, 0.4)).rejects.toBeInstanceOf(PmAccessError)
+    await recordVariationProgress(db, pm, "p1", pmA, seq, 0.4)
     expect(vo("01").executedPct).toBe(0.4)
   })
 

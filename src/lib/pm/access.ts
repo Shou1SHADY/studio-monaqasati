@@ -208,6 +208,8 @@ export const PM_GUARD = {
   "change.decide": { all: ["approve"] },
   "store.approve": { all: ["approve"] },
   "variation.decide": { all: ["approve"] },
+  // VO-03 (1.1 `vopc`): the executed share is recorded by approve — never down, logged.
+  "variation.progress": { all: ["approve"] },
   "project.create": { all: ["create"] },
   "boq.import": { all: ["create"] },
   "terms.complete": { all: ["money"], any: ["all", "approve"] },

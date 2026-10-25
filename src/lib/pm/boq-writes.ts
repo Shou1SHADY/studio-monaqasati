@@ -68,6 +68,8 @@ export async function importBoq(firestore: Firestore, ctx: PmContext, projectId:
     const project = pSnap.data() as ProjectData
     if (!project.pm) throw new PmBoqError("not_pm_project")
     assertPm(withFreshState(ctx, project), "boq.import")
+    // CON-03 (FX-54): no BOQ import after the start — even onto a project with no lines.
+    if ((project.pm.lifecycle ?? "plan") !== "plan") throw new PmBoqError("started")
     const items = collection(firestore, "projects", projectId, "boqItems")
     for (const r of rows) {
       tx.set(doc(items), {

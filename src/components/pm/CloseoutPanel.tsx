@@ -246,7 +246,24 @@ export function CloseoutPanel({
               }
             />
             <KeyValueRow label={t("close.snap.contract_days")} value={f.contractDays === null ? "—" : t("days", { count: f.contractDays })} />
+            {/* CST-04: the original duration beside the effective one (older archives have no durOrig). */}
+            {f.durOrig != null && f.durOrig !== f.contractDays && <KeyValueRow label={t("close.snap.dur_orig")} value={t("days", { count: f.durOrig })} />}
             <KeyValueRow label={t("close.snap.actual_days")} value={f.actualDays === null ? "—" : t("days", { count: f.actualDays })} />
+            {f.rfiAvg != null && (
+              <KeyValueRow
+                label={t("close.snap.rfi_avg")}
+                value={
+                  <span className="inline-flex flex-wrap items-center justify-end gap-x-2">
+                    <span>{t("close.snap.rfi_days", { n: f.rfiAvg })}</span>
+                    {Object.entries(f.rfiBy ?? {}).map(([party, n]) => (
+                      <span key={party} className="text-xs font-normal text-muted-foreground">
+                        {t("close.snap.rfi_party", { party: t(`site.obs.party.${party}` as "site.obs.party.consultant"), n })}
+                      </span>
+                    ))}
+                  </span>
+                }
+              />
+            )}
             <KeyValueRow label={t("close.snap.closed_on")} value={pmDate(f.closedOn, locale)} />
             <KeyValueRow label={t("close.snap.manager")} value={<span dir="auto">{managerName || "—"}</span>} />
           </div>

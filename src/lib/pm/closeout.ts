@@ -222,10 +222,37 @@ export interface ArchiveSnapshot {
   marginPct?: number | null
   retentionHeld: number
   advanceRecovered: number
+  /** The EFFECTIVE contract duration: the original + extensions granted (CST-04). */
   contractDays: number | null
+  /** The original duration as signed, beside it (1.1 `fin.durOrig`). */
+  durOrig?: number | null
   actualDays: number | null
+  /** Delay against the effective duration — a granted extension is not delay. */
   delayDays: number | null
+  /** Average RFI reply time in days, overall and per party (1.1 `fin.rfiAvg` / `fin.rfiBy`); null with no answered RFI. */
+  rfiAvg?: number | null
+  rfiBy?: Record<string, number> | null
   closedOn: string
+}
+
+/** An RFI or obstacle as the reply average reads it. */
+export interface ReplyFact {
+  type: string
+  party: string
+  openOn: string
+  closeOn?: string | null
+}
+
+const avg1 = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, x) => a + x, 0) / xs.length) * 10) / 10 : null)
+
+/** CST-04 / OBS-01 — how long the parties took to answer: answered RFIs only,
+ * opening → closing in days, overall and per party (one decimal). */
+export function rfiReplyAverages(list: ReplyFact[]): { overall: number | null; byParty: Record<string, number> } {
+  const answered = list.filter((o) => o.type === "rfi" && o.closeOn && o.openOn && o.closeOn >= o.openOn)
+  const spans = answered.map((o) => ({ party: o.party, d: days(o.openOn, o.closeOn as string) }))
+  const byParty: Record<string, number> = {}
+  for (const p of [...new Set(spans.map((x) => x.party))].sort()) byParty[p] = avg1(spans.filter((x) => x.party === p).map((x) => x.d)) as number
+  return { overall: avg1(spans.map((x) => x.d)), byParty }
 }
 
 
@@ -235,7 +262,12 @@ export function archiveSnapshot(input: {
   certificates: Array<{ status: CertificateStatus; gross: number }>
   retentionHeld: number
   advanceRecovered: number
+  /** The ORIGINAL duration as signed. */
   durationDays: number | null
+  /** Extension days granted on approved claims (claim.ts `grantedDays`). */
+  grantedDays?: number
+  /** RFIs and obstacles, for the reply-time averages. */
+  obstacles?: ReplyFact[]
   startedAt: string | null
   /** The provisional handover: where the works' duration ends (the defects period after it is not delay). */
   provisionalOn?: string | null
@@ -253,7 +285,11 @@ export function archiveSnapshot(input: {
   // acceptance cannot come before the defects period ends, so measuring to it
   // froze every project a year "late".
   const actualDays = input.startedAt ? days(input.startedAt, input.provisionalOn ?? input.finalOn ?? input.today) : null
-  const contractDays = input.durationDays ?? null
+  // CST-04: delay is measured against the EFFECTIVE duration (original + granted
+  // extensions); the original is kept beside it.
+  const durOrig = input.durationDays ?? null
+  const contractDays = durOrig !== null ? durOrig + Math.max(0, input.grantedDays ?? 0) : null
+  const replies = rfiReplyAverages(input.obstacles ?? [])
   const margin = c ? r2(c.earned - c.actual) : null
   return {
     contractValue: input.contractValue,
@@ -265,8 +301,11 @@ export function archiveSnapshot(input: {
     retentionHeld: input.retentionHeld,
     advanceRecovered: input.advanceRecovered,
     contractDays,
+    durOrig,
     actualDays,
     delayDays: actualDays !== null && contractDays !== null ? Math.max(0, actualDays - contractDays) : null,
+    rfiAvg: replies.overall,
+    rfiBy: Object.keys(replies.byParty).length ? replies.byParty : null,
     closedOn: input.today,
   }
 }

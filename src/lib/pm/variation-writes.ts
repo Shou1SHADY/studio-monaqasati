@@ -2,7 +2,7 @@
 // first: logged by `vo`, decided by `approve`; the project numbers them.
 
 import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
-import { assertPm, type PmAction, type PmContext } from "./access"
+import { assertPm, pmCan, type PmAction, type PmContext } from "./access"
 import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
 import { decisionDateBlocks, logBlocks, PM_VARIATIONS, stepBlocks, voNo, type PmVariation, type VoFile, type VoSource } from "./variation"
@@ -45,7 +45,9 @@ export interface LogInput {
   files?: VoFile[]
 }
 
-/** Logged the day it is asked (VO-01); it changes no value until approved (VO-02). */
+/** Logged the day it is asked (VO-01); it changes no value until approved (VO-02).
+ * An executed share given at logging is kept only from an approve holder, and
+ * logged (VO-03) — anyone else's variation starts at 0. */
 export async function logVariation(firestore: Firestore, ctx: PmContext, projectId: string, actor: VoActor, input: LogInput): Promise<number> {
   let seq = 0
   await runTransaction(firestore, async (tx) => {
@@ -57,6 +59,7 @@ export async function logVariation(firestore: Firestore, ctx: PmContext, project
     const blocks = logBlocks({ archived: fresh.archived, ...input, requestedOn, days: input.days ?? 0, today })
     if (blocks.length) throw new PmVariationError("blocked", blocks)
     seq = (pm.voCount ?? 0) + 1
+    const executedPct = input.executedPct > 0 && pmCan(fresh, "approve") ? input.executedPct : 0
     const vo: Omit<PmVariation, "id"> = {
       seq,
       title: input.title.trim(),
@@ -70,7 +73,8 @@ export async function logVariation(firestore: Firestore, ctx: PmContext, project
       files: input.files ?? [],
       value: input.value,
       cost: input.cost,
-      executedPct: input.executedPct,
+      executedPct,
+      ...(executedPct > 0 ? { pcLog: [{ d: today, by: actor.uid, byName: actor.name, from: 0, to: executedPct, note: null }] } : {}),
       status: "draft",
       by: actor.uid,
       byName: actor.name,
@@ -127,12 +131,34 @@ export const priceVariation = (firestore: Firestore, ctx: PmContext, projectId: 
     })
   )
 
-/** How much of its work is executed — moves until it is decided, and after approval. */
-export const recordVariationProgress = (firestore: Firestore, ctx: PmContext, projectId: string, seq: number, executedPct: number, instructionNo?: string | null) =>
-  step(firestore, ctx, projectId, seq, "variation.log", (vo, archived) => stepBlocks({ archived, status: vo.status, step: "progress", executedPct, billedPct: vo.billedPct }), (vo) => ({
-    executedPct,
-    ...(instructionNo !== undefined ? { instructionNo: instructionNo?.trim() || vo.instructionNo || null } : {}),
-  }))
+/** VO-03 (1.1 `vopc`): how much of its work is executed — recorded by approve on
+ * any variation not rejected, never down, never above 100%, never under what was
+ * billed; each change appended to `pcLog` with who and when. */
+export const recordVariationProgress = (firestore: Firestore, ctx: PmContext, projectId: string, actor: VoActor, seq: number, executedPct: number, note?: string | null) =>
+  step(
+    firestore,
+    ctx,
+    projectId,
+    seq,
+    "variation.progress",
+    (vo, archived) => stepBlocks({ archived, status: vo.status, step: "progress", executedPct, billedPct: vo.billedPct, currentPct: vo.executedPct ?? 0 }),
+    (vo) => ({
+      executedPct,
+      pcLog: [...(vo.pcLog ?? []), { d: todayDay(), by: actor.uid, byName: actor.name, from: vo.executedPct ?? 0, to: executedPct, note: note?.trim() || null }],
+    })
+  )
+
+/** The written instruction's number, given later (VO-02) — the logger's (`vo`). */
+export const setVariationInstruction = (firestore: Firestore, ctx: PmContext, projectId: string, seq: number, instructionNo: string) =>
+  step(
+    firestore,
+    ctx,
+    projectId,
+    seq,
+    "variation.log",
+    (vo, archived) => [...(archived ? ["archived"] : []), ...(vo.status === "rej" ? ["wrong_state"] : [])],
+    (vo) => ({ instructionNo: instructionNo.trim() || vo.instructionNo || null })
+  )
 
 export const submitVariation = (firestore: Firestore, ctx: PmContext, projectId: string, seq: number) =>
   step(firestore, ctx, projectId, seq, "variation.log", (vo, archived) => stepBlocks({ archived, status: vo.status, step: "submit", value: vo.value }), () => ({ status: "wait" }))
