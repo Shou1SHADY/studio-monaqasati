@@ -21,6 +21,7 @@ import { act, fireEvent, render } from "@testing-library/react"
 import { listCollection, readDoc, resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import { installDomShims, missingKeys, setPathname, setSignedIn } from "@/test-utils/render-world"
 import type { PurchaseOrder } from "@/lib/procurement/types"
+import { addDays, todayOf } from "@/lib/procurement/po"
 import OrdersPage from "@/app/[locale]/(contractor)/contractor/rfqs/orders/page"
 
 installDomShims()
@@ -154,7 +155,7 @@ describe("the next step names who we wait on and offers the reminder", () => {
     seed("users/mgr", { organizationId: ORG, organizationRole: "member", defaultGroupId: "g-mgr", name: "نورة" })
     seed("teamGroups/g-buy", { organizationId: ORG, permissions: ["offers.accept"] })
     seed("teamGroups/g-mgr", { organizationId: ORG, permissions: ["po.approve"] })
-    seed("purchaseOrders/wait", order({ status: "awaiting_approval", approvedAt: null, approvedById: null, preparedById: "buy", preparedByName: "بدر", approverKind: "manager", createdAt: new Date(Date.now() - 3 * 86_400_000).toISOString(), sentAt: null, supplierAcceptedAt: null, lines: [line({ accepted: 0 })] }))
+    seed("purchaseOrders/wait", order({ status: "awaiting_approval", approvedAt: null, approvedById: null, preparedById: "buy", preparedByName: "بدر", approverKind: "manager", createdAt: `${addDays(todayOf(new Date()), -3)}T09:00:00Z`, sentAt: null, supplierAcceptedAt: null, lines: [line({ accepted: 0 })] }))
     setSignedIn("buy")
     setPathname("/contractor/rfqs/orders", "po=wait")
     render(<OrdersPage />)

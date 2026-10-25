@@ -25,12 +25,13 @@ import { resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import { installDomShims, messages, missingKeys, setLocale, setPathname, setSignedIn } from "@/test-utils/render-world"
 import GoodsReceivedPage from "@/app/[locale]/(contractor)/contractor/goods-received/page"
 import { ReceiveLinkContent } from "@/app/[locale]/receive/[token]/ReceiveLinkContent"
+import { addDays, todayOf } from "@/lib/procurement/po"
 
 installDomShims()
 jest.setTimeout(60_000)
 
 const ORG = "own"
-const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10)
+const day = (offset: number) => addDays(todayOf(new Date()), offset)
 type Tree = Record<string, unknown>
 const msg = (path: string): string => {
   const v = path.split(".").reduce<unknown>((n, k) => (n && typeof n === "object" ? (n as Tree)[k] : undefined), messages("ar"))

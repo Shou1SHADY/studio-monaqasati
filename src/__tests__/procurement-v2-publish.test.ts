@@ -161,7 +161,7 @@ describe("WF-06 · the publish", () => {
   it("the route answers { success, data } to a signed-in buyer and 401 to nobody", async () => {
     const call = (token: string | null, body: unknown) => publishRoute(new NextRequest("http://x/api", { method: "POST", headers: token ? { authorization: `Bearer ${token}` } : {}, body: JSON.stringify(body) }))
     expect((await call(null, input())).status).toBe(401)
-    const ok = await call(`tok:${ORG}`, input())
+    const ok = await call(`tok:${ORG}`, input({ deadline: "2099-01-01" }))
     expect(ok.status).toBe(200)
     expect(await ok.json()).toMatchObject({ success: true, data: { number: "RFQ-2026/001" } })
     const bad = await call(`tok:${ORG}`, input({ deadline: "2026-10-01" }))
