@@ -696,38 +696,30 @@ export async function decideStoreMove(firestore: Firestore, ctx: PmContext, proj
   })
 }
 
-/** The receiving project's engineer confirms a material moved in; the sending
- * project's move closes with it, and the cost moves (prj:XFER). */
-export async function confirmMoveIn(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, storeId: string, index: number, costHint: number | null): Promise<void> {
-  await runTransaction(firestore, async (tx) => {
-    const { project, pm } = await readProject(tx, firestore, projectId)
-    const fresh = withFreshState(ctx, project)
-    assertPm(fresh, "store.move")
-    const { ref, line } = await readStore(tx, firestore, projectId, storeId)
-    const move = line?.moves[index]
-    if (!line || !move) throw new PmSupplyError("missing")
-    if (move.t !== "xi" || move.st !== "wait") throw new PmSupplyError("blocked", ["not_waiting"])
-    const day = todayDay()
-    let src: { ref: ReturnType<typeof doc>; line: PmStoreLine | null } | null = null
-    if (move.otherProjectId && move.srcStoreId) src = await readStore(tx, firestore, move.otherProjectId, move.srcStoreId)
-    tx.update(ref, { moves: line.moves.map((m, i) => (i === index ? { ...m, st: "done", appr: actor.uid, apprName: actor.name, apprOn: day } : m)), updatedAt: serverTimestamp() })
-    if (src?.line && move.srcMove != null && src.line.moves[move.srcMove]?.t === "xo") {
-      tx.update(src.ref, { moves: src.line.moves.map((m, i) => (i === move.srcMove ? { ...m, st: "done" } : m)), updatedAt: serverTimestamp() })
-    }
-    const projectNo = pm.no ?? projectId
-    const key = `prj:XFER:${projectNo}:${storeId}:${index}`
-    tx.set(doc(firestore, PM_EVENTS, pmEventDocId(project.organizationId ?? "", key)), {
-      key,
-      kind: "XFER",
-      organizationId: project.organizationId ?? "",
-      projectId,
-      projectNo,
-      amount: costHint != null ? r2(costHint * move.q) : 0,
-      params: { material: line.name, unit: line.unit, qty: move.q, fromProjectId: move.otherProjectId ?? "", fromProject: move.otherProjectName ?? "", unitCost: costHint ?? 0 },
-      by: actor.uid,
-      at: new Date().toISOString(),
-    })
+/** The receiving project's `req` answers a material moved in from another
+ * project (STK-11): confirmed, it enters here and the sending project's move
+ * closes with it (prj:XFER); refused, with the reason, it goes back into the
+ * sender's balance. Never by the person who sent it. Written on the server
+ * (`/api/pm/store-transfer`): the sender's line belongs to another project,
+ * which the receiving engineer's own rules may not touch. */
+export async function answerMoveIn(projectId: string, storeId: string, index: number, input: { answer: "confirm" | "refuse"; why?: string | null; costHint?: number | null }): Promise<void> {
+  const { getAuth } = await import("firebase/auth")
+  const token = await getAuth().currentUser?.getIdToken()
+  if (!token) throw new PmAccessError("not_on_team", "store.move")
+  const res = await fetch("/api/pm/store-transfer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ projectId, storeId, index, answer: input.answer, why: input.why ?? null, costHint: input.costHint ?? null }),
   })
+  if (res.ok) return
+  const body = (await res.json().catch(() => null)) as { code?: string; blocks?: string[] } | null
+  if (body?.code === "REFUSED") {
+    const code = body.blocks?.[0]
+    throw new PmAccessError(code === "archived" || code === "not_on_team" ? code : "no_duty", "store.move")
+  }
+  if (body?.code === "BLOCKED") throw new PmSupplyError("blocked", body.blocks ?? [])
+  if (body?.code === "NOT_FOUND") throw new PmSupplyError("missing")
+  throw new Error(body?.code || `store-transfer ${res.status}`)
 }
 
 /** Inventory confirms a return is back in its main store (the keeper's act, from

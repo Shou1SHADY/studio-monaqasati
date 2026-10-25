@@ -31,6 +31,7 @@ import type { PmAttachment } from "@/lib/pm/attachments"
 import { PM_SETTINGS } from "@/lib/pm/info-writes"
 import { pmDate, pmMoney, pmPct } from "@/lib/pm/format"
 import {
+  isCharge,
   isCustodyMove,
   itemProgress,
   itemUse,
@@ -60,7 +61,8 @@ import {
 } from "@/lib/pm/store"
 import { engineerHold, PM_SUBCONTRACTS, type PmSubcontract } from "@/lib/pm/subcontract"
 import { awaitingReceipt, lineOut, linePhase, reqNo, type PmMaterialRequest } from "@/lib/pm/supply"
-import { confirmMoveIn, decideStoreMove, logStoreMove, setMaterialRate, type SupplyActor } from "@/lib/pm/supply-writes"
+import { answerMoveIn, decideStoreMove, logStoreMove, setMaterialRate, type SupplyActor } from "@/lib/pm/supply-writes"
+import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { ChoiceChips, FormHint } from "./ContractBits"
 import { AttachmentTag, PmFilesField } from "./PmAttachments"
@@ -345,6 +347,7 @@ function LedgerDrawer({
   const [move, setMove] = useState<MoveDialogState | null>(null)
   const [rate, setRate] = useState<string | null>(null)
   const [issue, setIssue] = useState(false)
+  const [refusing, setRefusing] = useState<number | null>(null)
   const scQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_SUBCONTRACTS) : null), [firestore, projectId])
   const setQ = useMemoFirebase(() => (firestore && orgId ? doc(firestore, PM_SETTINGS, orgId) : null), [firestore, orgId])
   const { data: orgSettings } = useDoc<{ selfApproval?: boolean }>(setQ)
@@ -485,9 +488,11 @@ function LedgerDrawer({
                     canApprove={canApprove}
                     canMove={can}
                     mine={m.by === actor.uid && !selfAllowed}
+                    sentByMe={m.by === actor.uid}
                     busy={busy}
                     onDecide={(d) => firestore && void run(`d${i}${d}`, () => decideStoreMove(firestore, access.ctx, projectId, actor, x.id, i, d, cost), t(`store.mv_done.${d === "ok" ? (m.t === "loss" ? "loss_ok" : m.t === "use" ? "use_ok" : "rx_ok") : d}`, { code: m.code ?? "" }))}
-                    onConfirm={() => firestore && void run(`x${i}`, () => confirmMoveIn(firestore, access.ctx, projectId, actor, x.id, i, cost), t("store.mv_done.xi"))}
+                    onConfirm={() => void run(`x${i}`, () => answerMoveIn(projectId, x.id, i, { answer: "confirm", costHint: cost }), t("store.mv_done.xi"))}
+                    onRefuse={() => setRefusing(i)}
                   />
                 ))}
             </DrawerSection>
@@ -534,6 +539,7 @@ function LedgerDrawer({
       </Sheet>
       {move && <MoveDialog projectId={projectId} orgId={orgId} x={x} items={items} access={access} actor={actor} initial={move.t} onClose={() => setMove(null)} />}
       {rate && <RateDialog projectId={projectId} x={x} item={items.find((i) => i.id === rate)} access={access} onClose={() => setRate(null)} />}
+      {refusing !== null && x.moves[refusing] && <RefuseTransferDialog projectId={projectId} x={x} index={refusing} onClose={() => setRefusing(null)} />}
       {issue && <SubStoreMoveDialog projectId={projectId} orgId={orgId} kind="iss" lines={world.stores} items={items} contracts={contracts} storeId={x.id} access={access} actor={actor} onClose={() => setIssue(false)} />}
     </>
   )
@@ -551,10 +557,12 @@ function Stat({ label, value, sub, bad }: { label: string; value: string; sub: s
   )
 }
 
-function MoveRow({ m, locale, canApprove, canMove, mine, busy, onDecide, onConfirm }: { m: StoreMove; locale: string; canApprove: boolean; canMove: boolean; mine: boolean; busy: string | null; onDecide: (d: "ok" | "rej" | "sup") => void; onConfirm: () => void }) {
+function MoveRow({ m, locale, canApprove, canMove, mine, sentByMe, busy, onDecide, onConfirm, onRefuse }: { m: StoreMove; locale: string; canApprove: boolean; canMove: boolean; mine: boolean; sentByMe: boolean; busy: string | null; onDecide: (d: "ok" | "rej" | "sup") => void; onConfirm: () => void; onRefuse: () => void }) {
   const t = useTranslations("Portal.PM")
   const plus = PLUS.has(m.t)
-  const custody = isCustodyMove(m.t)
+  // STK-04: a charge to a subcontractor (and a recovery booked before it) leaves the balance — not a custody move.
+  const charge = isCharge(m)
+  const custody = isCustodyMove(m.t) && !charge
   const approvable = (m.t === "loss" || m.t === "use" || m.t === "rx") && m.st === "wait"
   const note = m.note ? ` — ${m.note}` : ""
   const det =
@@ -570,7 +578,9 @@ function MoveRow({ m, locale, canApprove, canMove, mine, busy, onDecide, onConfi
               ? m.otherProjectName ?? ""
               : m.t === "loss" || m.t === "sret"
                 ? `${m.why ? t(`store.loss_why.${m.why}`) : ""}${m.sup ? ` · ${t("store.mv_det.on_supplier")}` : ""}${note}`
-                : custody
+                : charge
+                  ? `${m.subName ?? ""} · ${t("store.mv_det.charged")}${note}`
+                  : custody
                   ? `${m.subName ?? ""}${m.recovery ? ` · ${t("store.mv_det.recovery")}` : ""}${note}`
                   : ""
   const waitLabel = m.st === "wait" ? (approvable ? t("store.w.approval") : m.t === "xi" ? t("store.w.xi") : m.t === "xo" ? t("store.w.xo") : m.t === "sret" ? t("store.w.sret") : t("store.w.inv")) : null
@@ -578,8 +588,8 @@ function MoveRow({ m, locale, canApprove, canMove, mine, busy, onDecide, onConfi
     <div className="flex flex-wrap items-center gap-2 border-b py-2 last:border-0">
       <div className="min-w-0 flex-1">
         <p className="text-xs font-bold">
-          {t(`store.mt.${m.t}`)} {waitLabel && <StatusPill tone="warn">{waitLabel}</StatusPill>}
-          {m.st === "rej" && <StatusPill tone="mute">{t("store.w.rejected")}</StatusPill>}
+          {t(`store.mt.${charge ? "chg" : m.t}`)} {waitLabel && <StatusPill tone="warn">{waitLabel}</StatusPill>}
+          {m.st === "rej" && <StatusPill tone="mute">{m.refBy ? t("store.w.refused") : t("store.w.rejected")}</StatusPill>}
         </p>
         <p className="text-xs text-muted-foreground" dir="auto">
           {pmDate(m.on, locale)} · {m.byName || "—"}
@@ -587,6 +597,7 @@ function MoveRow({ m, locale, canApprove, canMove, mine, busy, onDecide, onConfi
           {m.apprName && ` · ${t("store.mv_det.appr", { name: m.apprName })}`}
           {m.self && ` · ${t("store.mv_det.self")}`}
           {m.t === "ret" && m.st === "done" && ` · ${t("store.mv_det.inv_ok", { name: m.invByName || "—" })}`}
+          {m.refBy && ` · ${t("store.mv_det.refused", { name: m.refByName || "—", why: m.refWhy || "—" })}`}
         </p>
       </div>
       <AttachmentTag files={m.files} />
@@ -611,12 +622,56 @@ function MoveRow({ m, locale, canApprove, canMove, mine, busy, onDecide, onConfi
           </Button>
         </div>
       ))}
-      {m.t === "xi" && m.st === "wait" && canMove && (
-        <Button size="sm" className="h-7" disabled={busy !== null} onClick={onConfirm}>
-          {t("store.confirm_in")}
-        </Button>
-      )}
+      {/* STK-11: the receiving project answers — never the person who sent it. */}
+      {m.t === "xi" && m.st === "wait" && canMove && (sentByMe ? (
+        <span className="text-xs text-muted-foreground">{t("store.sent_by_you")}</span>
+      ) : (
+        <div className="flex flex-wrap gap-1">
+          <Button size="sm" className="h-7" disabled={busy !== null} onClick={onConfirm}>
+            {t("store.confirm_in")}
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 text-destructive" disabled={busy !== null} onClick={onRefuse}>
+            {t("store.refuse_in")}
+          </Button>
+        </div>
+      ))}
     </div>
+  )
+}
+
+/** «ارفض» a transfer in (STK-11): with the reason; it goes back to the sender's balance. */
+function RefuseTransferDialog({ projectId, x, index, onClose }: { projectId: string; x: PmStoreLine; index: number; onClose: () => void }) {
+  const t = useTranslations("Portal.PM")
+  const { busy, run } = useSupplyRun()
+  const m = x.moves[index]
+  const [why, setWhy] = useState("")
+  const save = async () => {
+    const done = await run("ref", () => answerMoveIn(projectId, x.id, index, { answer: "refuse", why }), t("store.mv_done.xi_rej"))
+    if (done) onClose()
+  }
+  return (
+    <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t("store.refuse.title")}</DialogTitle>
+          <DialogDescription dir="auto">{t("store.refuse.desc", { q: qty(m.q), unit: x.unit, name: x.name, project: m.otherProjectName || "—" })}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-1.5">
+          <Label htmlFor="xi-why">{t("store.refuse.why")} *</Label>
+          <Textarea id="xi-why" dir="auto" rows={2} placeholder={t("store.refuse.why_ph")} value={why} onChange={(e) => setWhy(e.target.value)} />
+          {!why.trim() && <FormHint>{t("sup.block.why_text")}</FormHint>}
+        </div>
+        <Callout tone="info">{t("store.refuse.note")}</Callout>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy !== null}>
+            {t("sup.back")}
+          </Button>
+          <Button variant="destructive" onClick={() => void save()} disabled={!why.trim() || busy !== null}>
+            {t("store.refuse_in")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

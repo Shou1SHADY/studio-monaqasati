@@ -20615,7 +20615,8 @@
           "sample_pending": "Not yet: the item's sample is still with the consultant — approve the request after the reply",
           "sub_supplies": "This item is let to a subcontractor who supplies its materials under his contract — the project does not request them",
           "rej_why": "Say why the rejected quantity was rejected",
-          "rej_text": "State the reason for the rejection"
+          "rej_text": "State the reason for the rejection",
+          "own_transfer": "You sent this transfer — the receiving project's engineer confirms or refuses it"
         },
         "err": {
           "missing": "The document is missing — it may have changed on another device",
@@ -20729,7 +20730,8 @@
           "sret": "Back to the supplier",
           "iss": "Issued to a subcontractor",
           "back": "Returned from a subcontractor",
-          "cnt": "Count at a subcontractor"
+          "cnt": "Count at a subcontractor",
+          "chg": "Charged to a subcontractor"
         },
         "mv_det": {
           "purchase": "purchase",
@@ -20741,7 +20743,9 @@
           "self": "self-approved by the owner",
           "recovery": "accounting return — deducted from his certificate",
           "inv_ok": "Inventory confirmed · {name}",
-          "rw": "rejected: {why}"
+          "rw": "rejected: {why}",
+          "charged": "charged to him — deducted from his certificate",
+          "refused": "refused by {name}: {why}"
         },
         "w": {
           "approval": "awaiting approval",
@@ -20749,7 +20753,8 @@
           "xo": "awaiting the other project",
           "sret": "with Procurement",
           "inv": "with Inventory",
-          "rejected": "rejected — not counted"
+          "rejected": "rejected — not counted",
+          "refused": "refused — back with the sender"
         },
         "mine": "you logged it — someone else approves",
         "on_supplier": "On the supplier",
@@ -20830,7 +20835,8 @@
           "rx_ok": "Inbound approved — it entered the project store",
           "rej": "Rejected — not counted",
           "sup": "Charged to the supplier — Procurement claims it; not a project loss",
-          "xi": "Moved material received — it entered the project store"
+          "xi": "Moved material received — it entered the project store",
+          "xi_rej": "Transfer refused — it went back to the sending project"
         },
         "rate": {
           "set": "Set a rate",
@@ -20844,6 +20850,15 @@
           "save": "Save the rate",
           "saved": "Rate set {r} {unit} per {per} — use is computed from measurement from now on",
           "corrected": "Rate corrected to {r} — use recomputed since tracking began"
+        },
+        "refuse_in": "Refuse",
+        "sent_by_you": "You sent it — the receiving project answers",
+        "refuse": {
+          "title": "Refuse the transfer",
+          "desc": "{q} {unit} of {name} from {project}",
+          "why": "Why is it refused?",
+          "why_ph": "e.g. not needed here, wrong material, damaged",
+          "note": "It does not enter this project: it goes back into the sending project's balance, and its engineer sees your reason."
         }
       },
       "plant": {

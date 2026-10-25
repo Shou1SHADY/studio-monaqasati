@@ -19,8 +19,11 @@ export const PM_STORE = "pmStore"
  * moved to another project · xi moved in from another project · loss loss or
  * damage (approved) · sret back to the supplier. iss issued into a
  * subcontractor's custody · back returned from it · cnt a physical count at his
- * place — custody moves: the material stays ours and the balance does not move. */
-export const MOVE_TYPES = ["op", "rc", "rx", "use", "ret", "xo", "xi", "loss", "sret", "iss", "back", "cnt"] as const
+ * place — custody moves: the material stays ours and the balance does not move.
+ * chg charged to a subcontractor (STK-04): what a count found short and a
+ * recovery billed him — it LEAVES the project's balance and his custody, so the
+ * engineer's hold does not move. */
+export const MOVE_TYPES = ["op", "rc", "rx", "use", "ret", "xo", "xi", "loss", "sret", "iss", "back", "cnt", "chg"] as const
 export const CUSTODY_MOVES = ["iss", "back", "cnt"] as const
 export type CustodyMoveType = (typeof CUSTODY_MOVES)[number]
 export const isCustodyMove = (t: MoveType): t is CustodyMoveType => (CUSTODY_MOVES as readonly string[]).includes(t)
@@ -79,9 +82,18 @@ export interface StoreMove {
   /** iss / back / cnt: the subcontractor (`partyKey`) and his name as registered. */
   sub?: string | null
   subName?: string | null
-  /** back: booked by a recovery — an accounting return, not material coming back. */
+  /** back: booked by a recovery before STK-04 — read as `chg` (`isCharge`). */
   recovery?: boolean | null
+  /** xi / xo: the receiving project refused the transfer (STK-11) — who, when, why. */
+  refBy?: string | null
+  refByName?: string | null
+  refOn?: string | null
+  refWhy?: string | null
 }
+
+/** A charge to a subcontractor: a `chg` move, or a recovery booked before STK-04
+ * as a `back` with `recovery` — read the same way, no migration. */
+export const isCharge = (m: Pick<StoreMove, "t" | "recovery">) => m.t === "chg" || (m.t === "back" && Boolean(m.recovery))
 
 /** Why a quantity was rejected on receipt (STK-09): damaged · not to spec · more
  * than the note · expired · other, stated. The same list Procurement's door uses. */
@@ -183,7 +195,11 @@ export const itemUse = (x: PmStoreLine, item: StoreItem | undefined) => (item ? 
 
 export const storeReceived = (x: PmStoreLine) => r2(sum(x, "op") + sum(x, "rc") + sum(x, "rx", (m) => m.st === "ok") + sum(x, "xi", (m) => m.st === "done"))
 export const storeUsed = (x: PmStoreLine, items: StoreItem[]) => r2(storeCodes(x, items).reduce((a, id) => a + itemUse(x, items.find((i) => i.id === id)), 0))
-export const storeOut = (x: PmStoreLine) => r2(sum(x, "ret") + sum(x, "xo") + sum(x, "sret") + sum(x, "loss", (m) => m.st === "ok"))
+/** Charged to subcontractors (STK-04), legacy recoveries included. */
+export const storeCharged = (x: Pick<PmStoreLine, "moves">) => r2(x.moves.filter(isCharge).reduce((a, m) => a + m.q, 0))
+/** What left: returns, transfers out (a refused one came back), supplier returns,
+ * approved losses, and charges to subcontractors. */
+export const storeOut = (x: PmStoreLine) => r2(sum(x, "ret") + sum(x, "xo", (m) => m.st !== "rej") + sum(x, "sret") + sum(x, "loss", (m) => m.st === "ok") + storeCharged(x))
 export const storeBalance = (x: PmStoreLine, items: StoreItem[]) => r2(storeReceived(x) - storeUsed(x, items) - storeOut(x))
 export const pendingMoves = (x: PmStoreLine) => x.moves.filter((m) => (m.t === "loss" || m.t === "use" || m.t === "rx") && m.st === "wait")
 
@@ -254,7 +270,7 @@ export function whereWent(lines: PmStoreLine[], items: StoreItem[], costOf: (x: 
     out.measured += measured * c
     out.declared += sum(x, "use", (m) => m.st === "ok") * c
     out.losses += sum(x, "loss", (m) => m.st === "ok") * c
-    out.out += (sum(x, "ret") + sum(x, "sret") + sum(x, "xo")) * c
+    out.out += (sum(x, "ret") + sum(x, "sret") + sum(x, "xo", (m) => m.st !== "rej") + storeCharged(x)) * c
     const now = Math.max(0, bal) * c
     out.now += now
     if (storeAllDone(x, items)) out.idle += now
@@ -339,6 +355,33 @@ export function decidedMove(m: StoreMove, decision: MoveDecision, actor: { uid: 
   const stamp = { appr: actor.uid, apprName: actor.name, apprOn: on, self: m.by === actor.uid ? true : null }
   if (decision === "sup") return { ...m, ...stamp, t: "sret", sup: true, st: "wait" }
   return { ...m, ...stamp, st: decision }
+}
+
+// ── A transfer from another project (STK-11) ─────────────────────────────────
+
+export type TransferAnswer = "confirm" | "refuse"
+export type TransferBlock = "archived" | "not_waiting" | "own_transfer" | "why_text"
+
+/** Answering a move in: the RECEIVING project's `req` confirms or refuses it, never
+ * the person who sent it — even one seated on both teams. A refusal says why, and
+ * the material goes back into the sender's balance. */
+export function transferBlocks(input: { archived: boolean; move: Pick<StoreMove, "t" | "st" | "by"> | null | undefined; actorUid: string; answer: TransferAnswer; why?: string | null }): TransferBlock[] {
+  const out: TransferBlock[] = []
+  if (input.archived) out.push("archived")
+  if (!input.move || input.move.t !== "xi" || input.move.st !== "wait") out.push("not_waiting")
+  else if (input.move.by === input.actorUid) out.push("own_transfer")
+  if (input.answer === "refuse" && !input.why?.trim()) out.push("why_text")
+  return out
+}
+
+/** The two halves of an answered transfer: the receiving line's `xi` and the
+ * sending line's `xo`. Confirmed → both done (it enters here). Refused → both
+ * `rej` with who, when and why: the `xo` stops counting out, so the sender's
+ * balance is whole again. */
+export function answeredTransfer(move: StoreMove, answer: TransferAnswer, actor: { uid: string; name: string | null }, on: string, why: string | null): { xi: StoreMove; xo: (m: StoreMove) => StoreMove } {
+  if (answer === "confirm") return { xi: { ...move, st: "done", appr: actor.uid, apprName: actor.name, apprOn: on }, xo: (m) => ({ ...m, st: "done" }) }
+  const stamp = { st: "rej" as const, refBy: actor.uid, refByName: actor.name, refOn: on, refWhy: why?.trim() || null }
+  return { xi: { ...move, ...stamp }, xo: (m) => ({ ...m, ...stamp }) }
 }
 
 /** The item rates a withdrawn or rejected FIRST request takes back (REQ-05): the
