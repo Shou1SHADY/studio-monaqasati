@@ -338,6 +338,8 @@ export interface PrintCompany {
 export interface PoPrintLine {
   index: number
   name: string
+  /** The spec the RFQ named (PO-01), when the order carries it. */
+  spec?: string | null
   unit: string
   quantity: number
   /** null when the printer may not see prices, or the order is a lump sum. */
@@ -379,7 +381,7 @@ export function buildPoPrintModel(po: PurchaseOrder, company: PrintCompany, with
   const lines: PoPrintLine[] = po.lines.map((l, i) => {
     const q = Math.max(0, round2((Number(l.quantity) || 0) - (Number(l.cancelled) || 0)))
     const price = withPrices && !lump && l.unitPrice != null ? Number(l.unitPrice) : null
-    return { index: i + 1, name: l.name, unit: l.unit, quantity: q, unitPrice: price, total: price == null ? null : round2(q * price) }
+    return { index: i + 1, name: l.name, ...(l.spec ? { spec: l.spec } : {}), unit: l.unit, quantity: q, unitPrice: price, total: price == null ? null : round2(q * price) }
   })
   return {
     number: po.docNumber,

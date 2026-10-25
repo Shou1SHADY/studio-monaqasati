@@ -112,7 +112,7 @@ export function purchaseOrderBody(m: PoPrintModel, displayNumber: string, locale
   const rows = m.lines
     .map(
       (l) =>
-        `<tr><td class="num">${l.index}</td><td>${e(l.name)}</td><td class="num">${figure(l.quantity)}</td><td>${e(l.unit || "—")}</td>${
+        `<tr><td class="num">${l.index}</td><td>${e(l.name)}${l.spec ? `<div class="muted">${e(l.spec)}</div>` : ""}</td><td class="num">${figure(l.quantity)}</td><td>${e(l.unit || "—")}</td>${
           m.withPrices ? `<td class="num">${l.unitPrice == null ? "—" : figure(l.unitPrice)}</td><td class="num">${l.total == null ? "—" : figure(l.total)}</td>` : ""
         }</tr>`
     )

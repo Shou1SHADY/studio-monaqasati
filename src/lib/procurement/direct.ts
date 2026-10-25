@@ -18,13 +18,18 @@ export interface DirectLineInput {
   quantity: number
   /** Ex-VAT. Ignored on an agreement order: the agreement sets the price. */
   unitPrice: number | null
+  /** The need line's specification and tree path, carried onto the order line (PO-01). */
+  spec?: string | null
+  path?: string | null
 }
 
 export type DirectRefusalCode = "order_no_lines" | "order_supplier_missing" | "reason_required" | "price_missing" | "over_direct_cap" | "agreement_not_live" | "agreement_line_missing" | "delivery_date_missing"
 
-/** Why one supplier above the cap. */
-export type SingleSourceReason = "sole" | "match" | "urgent"
-export const SINGLE_SOURCE_REASONS: SingleSourceReason[] = ["sole", "match", "urgent"]
+/** Why one supplier above the cap — «سبب آخر» (`other`) only with its own words (PO-15). */
+export type SingleSourceReason = "sole" | "match" | "urgent" | "other"
+export const SINGLE_SOURCE_REASONS: SingleSourceReason[] = ["sole", "match", "urgent", "other"]
+/** The shortest note «سبب آخر» accepts. */
+export const OTHER_REASON_MIN = 4
 
 export interface DirectRefusal {
   code: DirectRefusalCode
@@ -37,6 +42,8 @@ export interface DirectOrderCheck {
   supplierName: string
   /** A single-source reason code (or any text) — required only above the cap. */
   reason: string
+  /** The chip picked; `other` makes `reason` the typed note, which must say something. */
+  reasonCode?: string | null
   agreement?: PriceAgreement | null
   /** «مطلوب التسليم قبل» — checked only when the caller asks for it. */
   deliverBy?: string | null
@@ -73,7 +80,7 @@ export function directOrderRefusal(c: DirectOrderCheck): DirectRefusal | null {
   if (!c.supplierName.trim()) return { code: "order_supplier_missing", params: {} }
   const unpriced = lines.find((l) => l.unitPrice == null)
   if (unpriced) return { code: "price_missing", params: { item: unpriced.name } }
-  if (isSingleSource(c) && !c.reason.trim()) return { code: "reason_required", params: {} }
+  if (isSingleSource(c) && (!c.reason.trim() || (c.reasonCode === "other" && c.reason.trim().length < OTHER_REASON_MIN))) return { code: "reason_required", params: {} }
   return deliverByRefusal(c)
 }
 
@@ -100,5 +107,7 @@ export function directPoLines(lines: Array<DirectLineInput & { unitPrice: number
     cancelled: 0,
     boqItemId: null,
     rfqProductIndex: null,
+    ...(l.spec?.trim() ? { spec: l.spec.trim().slice(0, 300) } : {}),
+    ...(l.path?.trim() ? { path: l.path.trim().slice(0, 200) } : {}),
   }))
 }

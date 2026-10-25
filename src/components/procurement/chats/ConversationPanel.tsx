@@ -6,7 +6,7 @@
 // lets the two companies' members in; every write goes through the routes. For an off-platform supplier "send" stores the message
 // and opens WhatsApp on THIS device with the message and the order link (no integration, B-08).
 
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where, type Firestore } from "firebase/firestore"
 import { Eye, MessageSquare, Phone } from "lucide-react"
@@ -14,14 +14,26 @@ import { Button } from "@/components/ui/button"
 import { Link } from "@/i18n/routing"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
-import { buildWhatsAppLink } from "@/utils/guest-offer-workflow"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { bareOrderNo } from "@/lib/po-link"
+import { buildWhatsAppLink } from "@/utils/guest-offer-workflow"
 import { fetchPoLink, markPoRead, sendPoMessage, uploadPoMessageFile } from "@/lib/procurement/po-message-client"
 import { POLL_MESSAGES, lastLines, threadOf, unreadForBuyer, unreadForSupplier, type PoMessage, type PoWithChat, type ThreadReceipt } from "@/lib/procurement/po-messages"
 import { cn } from "@/lib/utils"
 import { Composer } from "./Composer"
 import { ThreadBody, type ThreadSide } from "./ThreadBody"
+import { PoLinkPreviewSheet } from "./PoLinkPreviewSheet"
+
+/** The off-platform supplier's channel (MSG-05, no integration): WhatsApp opened on THIS device with the words and a fresh order
+ * link. Shared by «أرسل» here and the drawer's «ذكّر المورد» (PO-09). The caller opens the blank window synchronously in the click
+ * (a pop-up blocker allows only that) and hands it in. */
+export async function openWhatsAppWithLink(poId: string, phone: string | null, text: string, opened: Window | null): Promise<void> {
+  const link = await fetchPoLink(poId)
+  const body = `${text}\n${link}`
+  const url = buildWhatsAppLink(phone, body) ?? `https://wa.me/?text=${encodeURIComponent(body)}`
+  if (opened) opened.location.href = url
+  else window.open(url, "_blank", "noopener")
+}
 
 /** The order's messages, live. The query names the viewer's company, which is what the rule can prove. */
 export function usePoMessages(po: Pick<PoWithChat, "id" | "organizationId">, side: ThreadSide, orgId: string): { messages: PoMessage[]; loading: boolean } {
@@ -69,6 +81,8 @@ export function ConversationPanel({
   const no = side === "buyer" ? displayPoNumber(po.docNumber, locale) : bareOrderNo(po.docNumber)
   const unread = side === "buyer" ? (user ? unreadForBuyer(po, user.uid) : false) : unreadForSupplier(po)
   const readFor = useRef<string>("")
+  // «رابط الأمر كما يراه» opens a read-only preview (PO-02) — never the live link, which would act in the supplier's name.
+  const [preview, setPreview] = useState(false)
 
   useEffect(() => {
     if (!unread || cancelled) return
@@ -78,33 +92,15 @@ export function ConversationPanel({
     void markPoRead(po.id).catch(() => undefined)
   }, [unread, cancelled, po.id, po.chat?.supSeq, po.chat?.usSeq])
 
-  const openWhatsApp = async (text: string, opened: Window | null) => {
-    const link = await fetchPoLink(po.id)
-    const url = buildWhatsAppLink(phone, `${text}\n${link}`) ?? `https://wa.me/?text=${encodeURIComponent(`${text}\n${link}`)}`
-    if (opened) opened.location.href = url
-    else window.open(url, "_blank", "noopener")
-  }
-
   const onSend = async ({ text, file }: { text: string; file: { name: string; url: string } | null }) => {
     const opened = offPlatform ? window.open("", "_blank") : null
     try {
       await sendPoMessage({ poId: po.id, text: text.trim() || null, file, channel: offPlatform ? "whatsapp" : "portal", locale })
-      if (offPlatform) await openWhatsApp(text.trim() || file?.name || "", opened)
+      if (offPlatform) await openWhatsAppWithLink(po.id, phone, text.trim() || file?.name || "", opened)
       toast({ title: t(offPlatform ? "sent_whatsapp_toast" : "sent_portal_toast") })
     } catch (err) {
       opened?.close()
       throw err
-    }
-  }
-
-  const viewAsSupplier = async () => {
-    const opened = window.open("", "_blank")
-    try {
-      const link = await fetchPoLink(po.id)
-      if (opened) opened.location.href = link
-    } catch {
-      opened?.close()
-      toast({ title: t("failed"), variant: "destructive" })
     }
   }
 
@@ -145,13 +141,14 @@ export function ConversationPanel({
             </Button>
           )}
           {offPlatform && !cancelled && (
-            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => void viewAsSupplier()}>
+            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setPreview(true)}>
               <Eye size={14} aria-hidden="true" />
               {t("order_link_as")}
             </Button>
           )}
         </div>
       )}
+      {side === "buyer" && offPlatform && !cancelled && <PoLinkPreviewSheet poId={po.id} supplierName={po.supplierName} open={preview} onOpenChange={setPreview} />}
     </div>
   )
 }

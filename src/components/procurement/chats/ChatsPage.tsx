@@ -15,7 +15,10 @@ import { Link } from "@/i18n/routing"
 import { useUser } from "@/firebase"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { displayPoNumber } from "@/lib/procurement/format"
-import { poSiteOf } from "@/lib/procurement/po-state"
+import { poNextStep, poSiteOf, type PoStateCtx } from "@/lib/procurement/po-state"
+import type { StepNotice } from "@/lib/procurement/next-step"
+import { useModules } from "@/hooks/useCompanyModules"
+import { WhoTag, useStepSentence } from "@/components/procurement/PoBits"
 import { chatRows, type ChatRow, type PoWithChat, type ThreadReceipt } from "@/lib/procurement/po-messages"
 import { cn } from "@/lib/utils"
 import { factText } from "./ThreadBody"
@@ -46,6 +49,11 @@ export function ChatsPage() {
   const [search, setSearch] = useState("")
   const [picked, setPicked] = useState<string | null>(params.get("po"))
   const [thread, setThread] = useState(Boolean(params.get("po")))
+  // The thread's header reads the order's next step in the same words as the orders list (PO-12).
+  const financeOn = useModules().on("payments")
+  const [now] = useState(() => new Date())
+  const stateCtx = useMemo<PoStateCtx>(() => ({ notices: world.deliveries as StepNotice[], financeOn, acceptanceDays: world.policies.supplierAcceptanceDays, now }), [world.deliveries, financeOn, world.policies.supplierAcceptanceDays, now])
+  const stepText = useStepSentence()
 
   const receiptsByPo = useMemo(() => {
     const m = new Map<string, ThreadReceipt[]>()
@@ -143,11 +151,25 @@ export function ChatsPage() {
               </Button>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-bold" dir="auto">
-                  {selected.po.supplierName}
+                  {selected.po.supplierOrgId && selected.po.supplierOrgId !== "guest" ? (
+                    <Link href={`/contractor/suppliers?supplier=${encodeURIComponent(selected.po.supplierOrgId)}`} className="text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      {selected.po.supplierName}
+                    </Link>
+                  ) : (
+                    selected.po.supplierName
+                  )}
                 </p>
-                <p className="truncate text-xs text-muted-foreground" dir="auto">
-                  {[displayPoNumber(selected.po.docNumber, locale), poSiteOf(selected.po)?.name].filter(Boolean).join(" · ")}
-                </p>
+                {(() => {
+                  const next = poNextStep(selected.po, stateCtx)
+                  return (
+                    <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                      <WhoTag who={next.state.who} className="shrink-0" />
+                      <span className="truncate" dir="auto">
+                        {[displayPoNumber(selected.po.docNumber, locale), poSiteOf(selected.po)?.name, stepText(next)].filter(Boolean).join(" · ")}
+                      </span>
+                    </p>
+                  )
+                })()}
               </div>
               <Button asChild variant="outline" size="sm">
                 <Link href={`/contractor/rfqs/orders?po=${selected.po.id}`}>{t("open_order")}</Link>

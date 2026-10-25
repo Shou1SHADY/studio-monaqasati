@@ -20,12 +20,13 @@ import { CheckCircle2, FileSignature, Info, Loader2, ShoppingCart } from "lucide
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "@/i18n/routing"
-import { SINGLE_SOURCE_REASONS, directLinePrices, directOrderRefusal, directTotal, isSingleSource, type DirectMode, type SingleSourceReason } from "@/lib/procurement/direct"
+import { OTHER_REASON_MIN, SINGLE_SOURCE_REASONS, directLinePrices, directOrderRefusal, directTotal, isSingleSource, type DirectMode, type SingleSourceReason } from "@/lib/procurement/direct"
 import { placeDirectOrder } from "@/lib/procurement/po-direct-client"
 import { displayDocNumber } from "@/lib/procurement/format"
 import { lastPaid, type PriceAgreement, type PriceHistoryEntry } from "@/lib/procurement/prices"
@@ -43,6 +44,7 @@ import type { ProcActor, ProcurementPolicies, PurchaseOrder } from "@/lib/procur
 import type { DirectBody } from "@/lib/procurement/po-direct-server"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import { sarLtr } from "@/lib/riyal"
+import { pathOfMaterial, specOfMaterial } from "@/lib/procurement/po-line-spec"
 import { cn } from "@/lib/utils"
 
 const NO_IDS: string[] = []
@@ -103,6 +105,8 @@ export function DirectOrderDialog({
   })
   const [prices, setPrices] = useState<string[]>(() => rows.map(() => ""))
   const [reason, setReason] = useState<SingleSourceReason | "">("")
+  // «سبب آخر» carries its own words (PO-15).
+  const [otherNote, setOtherNote] = useState("")
   const needDays = rows.map((r) => r.needBy).filter((d): d is string => Boolean(d)).sort()
   const [deliverBy, setDeliverBy] = useState(() => {
     const d = needDays[0] ? addDays(needDays[0], -1) : addDays(today, 3)
@@ -115,9 +119,15 @@ export function DirectOrderDialog({
 
   const picked = suppliers.find((s) => s.key === supplierPick) ?? null
   const supplierName = mode === "agreement" ? agreement?.supplierName || "" : picked ? picked.name : ""
-  const lines = rows.map((r, i) => ({ name: r.name, unit: r.unit, quantity: r.open, unitPrice: prices[i] ? Number(prices[i]) : null }))
-  const reasonText = reason ? t(`dor_why_${reason}`) : ""
-  const check = { mode, lines, supplierName, reason: reasonText, agreement, policies, today, deliverBy, requireDeliverBy: true }
+  // The need line's material: its spec and tree path ride onto the order line (PO-01).
+  const lines = rows.map((r, i) => {
+    const m = r.need.lines[r.index]?.material
+    const spec = specOfMaterial(m)
+    const path = pathOfMaterial(m)
+    return { name: r.name, unit: r.unit, quantity: r.open, unitPrice: prices[i] ? Number(prices[i]) : null, ...(spec ? { spec } : {}), ...(path ? { path } : {}) }
+  })
+  const reasonText = reason === "other" ? otherNote.trim() : reason ? t(`dor_why_${reason}`) : ""
+  const check = { mode, lines, supplierName, reason: reasonText, reasonCode: reason || null, agreement, policies, today, deliverBy, requireDeliverBy: true }
   const priced = directLinePrices(check)
   const total = directTotal(priced)
   const single = isSingleSource(check)
@@ -273,6 +283,17 @@ export function DirectOrderDialog({
                   </button>
                 ))}
               </div>
+              {reason === "other" && (
+                <Textarea
+                  rows={2}
+                  value={otherNote}
+                  onChange={(e) => setOtherNote(e.target.value)}
+                  maxLength={500}
+                  placeholder={t("dor_why_other_ph", { min: OTHER_REASON_MIN })}
+                  aria-label={t("dor_why_other_ph", { min: OTHER_REASON_MIN })}
+                  dir="auto"
+                />
+              )}
               <p className="text-[11px] text-muted-foreground">{t("dor_why_hint")}</p>
             </fieldset>
           )}

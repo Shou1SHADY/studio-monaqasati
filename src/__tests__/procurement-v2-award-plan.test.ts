@@ -192,6 +192,20 @@ describe("the order document (R-18, R-20, tags)", () => {
     expect(d.lines[0].specKey).toMatch(/^spec:n1\|/)
     expect(d.totalExVat).toBe(2220)
   })
+  it("PO-01: each order line copies its RFQ product's specification and tree path; a product with neither adds no key", () => {
+    const r = rfq({
+      products: [
+        prod("أسياخ حديد", 175, { description: "القطر 16 مم · الدرجة G60", material: { nodeId: "n16", path: [{ ar: "الحديد", en: "Steel" }, { ar: "حديد التسليح", en: "Rebar" }, { ar: "أسياخ", en: "Bars" }], specs: [{ name: { ar: "القطر" }, value: { ar: "16 مم" } }] } }),
+        prod("خشب", 320),
+      ],
+    })
+    const both = offer("P", [{ rfqProductIndex: 0, unitPrice: 74 }, { rfqProductIndex: 1, unitPrice: 3.6 }], { vatRegistered: false, vatRate: 0 })
+    const pl = plan({ picks: [pin(0, "P"), pin(1, "P")] }, ctxOf(), [both], r)
+    const d = draftOrder({ rfq: r, offer: both, group: pl.groups[0], plan: pl, offersCount: 1, lowestOfferTotal: null, whyText: null, lowCompText: null, preparer: { uid: "buyer", name: "ريم" }, actor: ctxOf().actor, policies, now: "2026-10-22T09:00:00Z", round: 1, site: null })
+    expect(d.lines[0]).toMatchObject({ spec: "القطر 16 مم · الدرجة G60", path: "الحديد › حديد التسليح" })
+    expect(d.lines[1]).not.toHaveProperty("spec")
+    expect(d.lines[1]).not.toHaveProperty("path")
+  })
   it("a supplier who is not VAT-registered gets an order with no VAT", () => {
     expect(draft([pin(0, "P")])).toMatchObject({ vatRate: 0, noVat: true, siteKey: "org_P|s1", offerRev: 1, awardRound: 1, basis: "rfq", status: "awaiting_approval" })
   })

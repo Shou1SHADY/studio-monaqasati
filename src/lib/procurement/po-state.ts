@@ -103,7 +103,18 @@ export function poSeg(po: PurchaseOrder, ctx: PoStateCtx): PoSeg {
   const s = poState(po, ctx)
   if (s.k === "done" || s.k === "cancel") return "done"
   if (daysLate(po, ctx.now, ctx.notices) > 0) return "late"
+  // The supplier asked for a change and nobody answered: the next move is ours, whatever the order waits on (PO-13).
+  if (pendingChangeAsk(po)) return "act"
   return s.who === "us" || s.who === "app" ? "act" : "wait"
+}
+
+/** The supplier's change request (from his link or his portal) while the buyer has not written back since — the conversation's
+ * fields, read loosely here (they live outside `types.ts`, which is mirrored to the mobile app). */
+export function pendingChangeAsk(po: PurchaseOrder): { at: string; seq: number; text: string } | null {
+  const x = po as PurchaseOrder & { changeAsked?: { at: string; seq: number; text: string } | null; chat?: { usSeq?: number } | null }
+  const ask = x.changeAsked
+  if (!ask) return null
+  return (Number(x.chat?.usSeq) || 0) > (Number(ask.seq) || 0) ? null : ask
 }
 
 // ---------------------------------------------------------------------------

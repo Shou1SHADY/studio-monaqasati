@@ -4,6 +4,7 @@
 import { getAuth } from "firebase/auth"
 import { PoRouteError } from "./po-client"
 import type { MessageFile } from "./po-messages"
+import type { PoLinkView } from "@/lib/po-link"
 
 async function token(): Promise<string> {
   const user = getAuth().currentUser
@@ -40,4 +41,10 @@ export async function uploadPoMessageFile(poId: string, file: File): Promise<Mes
 export async function fetchPoLink(poId: string): Promise<string> {
   const res = await fetch("/api/procurement/po/message/link", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` }, body: JSON.stringify({ poId }) })
   return (await read<{ link: string }>(res, "link failed")).link
+}
+
+/** The order link's page as the supplier reads it, for the buyer to look at (PO-02) — read-only: no token, no read receipt. */
+export async function fetchPoLinkPreview(poId: string): Promise<PoLinkView> {
+  const res = await fetch("/api/procurement/po/message/preview", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token()}` }, body: JSON.stringify({ poId }) })
+  return (await read<{ view: PoLinkView }>(res, "preview failed")).view
 }

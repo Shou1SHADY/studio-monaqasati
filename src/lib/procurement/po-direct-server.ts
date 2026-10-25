@@ -78,7 +78,7 @@ export const directBody = z.object({
   mode: z.enum(["agreement", "direct"]),
   title: z.string().trim().max(200),
   lines: z
-    .array(z.object({ name, unit, quantity: z.number().finite().positive().max(10_000_000), unitPrice: z.number().finite().min(0).max(MAX_UNIT_PRICE).nullable() }))
+    .array(z.object({ name, unit, quantity: z.number().finite().positive().max(10_000_000), unitPrice: z.number().finite().min(0).max(MAX_UNIT_PRICE).nullable(), spec: z.string().trim().max(300).nullish(), path: z.string().trim().max(200).nullish() }))
     .min(1)
     .max(100),
   agreementId: id.nullish(),
@@ -253,7 +253,7 @@ export async function createDirectOrder(ctx: PoCtx, input: DirectBody): Promise<
       agreement = data && data.organizationId === ctx.orgId ? { ...data, id: snap.id } : null
     }
     const supplier: SupplierOnFile = agreement ? await supplierOnFile(ctx, { orgId: agreement.supplierOrgId, name: agreement.supplierName }) : (registered ?? { orgId: null, userId: null, name: "" })
-    const check: DirectOrderCheck = { mode: input.mode, lines: input.lines, supplierName: supplier.name, reason: input.reason || "", agreement, policies, today, deliverBy: input.deliverBy ?? null, requireDeliverBy: input.deliverBy !== undefined }
+    const check: DirectOrderCheck = { mode: input.mode, lines: input.lines, supplierName: supplier.name, reason: input.reason || "", reasonCode: input.reasonCode ?? null, agreement, policies, today, deliverBy: input.deliverBy ?? null, requireDeliverBy: input.deliverBy !== undefined }
     const refusal = directOrderRefusal(check)
     if (refusal) throw new PoDirectError(refusal.code as PoDirectReason, refusal.params)
     const priced = directLinePrices(check)

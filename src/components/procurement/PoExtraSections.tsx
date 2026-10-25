@@ -14,7 +14,7 @@ import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { collection } from "firebase/firestore"
-import { AlertTriangle, CheckCircle2, ChevronDown, Clock, Loader2, Paperclip } from "lucide-react"
+import { AlertTriangle, CheckCircle2, ChevronDown, Clock, Eye, Loader2, Paperclip, Printer } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -25,7 +25,7 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useModules } from "@/hooks/useCompanyModules"
 import { cn } from "@/lib/utils"
 import { withSarSign } from "@/lib/riyal"
-import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
+import { displayNoticeNumber, displayPoNumber, displayReceiptNumber, noticeNumberFor } from "@/lib/procurement/format"
 import { poStatus, receiptDay, todayOf } from "@/lib/procurement/po"
 import { buyerMarkReference } from "@/lib/procurement/payment-mark"
 import { destKind, recordedBy } from "@/lib/procurement/receipt-desk"
@@ -64,6 +64,7 @@ import { moneyTrail } from "./PoModel"
 import type { Submit } from "./PoActionDialogs"
 import { RecordedByPill } from "./ReceiptDrawer"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
+import { IconButton } from "@/components/module-ui/IconButton"
 
 type Tone = "red" | "amber" | "blue" | "green"
 
@@ -485,6 +486,11 @@ type OrderDeliveryRow = ReceiptFact & {
   warehouseId?: string | null
   isGuestDelivery?: boolean | null
   notes?: string | null
+  /** A 2.0 notice: numbered per order, and who wrote it (the supplier, his link, or one of ours on his behalf). */
+  seq?: number | null
+  reportedBy?: string | null
+  recordedOnBehalf?: { byName?: string | null } | null
+  receiverReport?: unknown
 }
 
 const createdKey = (d: OrderDeliveryRow): string => {
@@ -515,11 +521,17 @@ export function OrderDeliveriesSections({
   deliveries,
   warehouses,
   now,
+  onPreviewReceiver,
+  onPrintReceipt,
 }: {
   po: PurchaseOrderX
   deliveries: ReceiptFact[]
   warehouses: Array<{ id: string; projectId?: string | null }>
   now: Date
+  /** «كما يراه المستلم» on a forwarded notice nobody counted yet (PO-05). */
+  onPreviewReceiver?: (deliveryId: string) => void
+  /** The receipt's «PDF» (PO-10). */
+  onPrintReceipt?: (deliveryId: string) => void
 }) {
   const t = useTranslations("Portal.Procurement")
   const tr = useTranslations("Portal.ProcReceipts")
@@ -543,28 +555,63 @@ export function OrderDeliveriesSections({
     const fw = d.forwardedTo
     const papers = (d.qualityPapers || []).map((p) => tr(`incoming.paper_${p}`))
     const sentFact = noticeSent(d)
-    const facts = [
-      [fmt(d.deliveryDate), d.deliveryWindow ? t(`deliveryWindow.${d.deliveryWindow}` as "deliveryWindow.morning") : ""].filter(Boolean).join(" "),
-      d.deliveryPersonName || tr("incoming.driverUnknown"),
-      d.driverPhone || "",
-      d.vehiclePlate || "",
-      d.paperNoteNumber ? `${tr("incoming.note")} ${d.paperNoteNumber}` : "",
-      papers.join("، "),
-    ].filter(Boolean)
+    // A Procurement 2.0 notice is a day and a word (G-08): no quantities, no driver until he is named (PO-03).
+    const lined = (d.lines || []).length > 0
+    const number = noticeNumberFor(po.docNumber, Number(d.seq) > 0 ? Number(d.seq) : n)
+    const facts = lined
+      ? [
+          [fmt(d.deliveryDate), d.deliveryWindow ? t(`deliveryWindow.${d.deliveryWindow}` as "deliveryWindow.morning") : ""].filter(Boolean).join(" "),
+          d.deliveryPersonName || tr("incoming.driverUnknown"),
+          d.driverPhone || "",
+          d.vehiclePlate || "",
+          d.paperNoteNumber ? `${tr("incoming.note")} ${d.paperNoteNumber}` : "",
+          papers.join("، "),
+        ].filter(Boolean)
+      : [
+          tOrders("deliveries.delivery_on", { date: fmt(d.deliveryDate) }) + (d.deliveryWindow ? ` ${t(`deliveryWindow.${d.deliveryWindow}` as "deliveryWindow.morning")}` : ""),
+          d.deliveryPersonName || "",
+          d.driverPhone || "",
+          d.vehiclePlate || "",
+          d.paperNoteNumber ? `${tr("incoming.note")} ${d.paperNoteNumber}` : "",
+          papers.join("، "),
+        ].filter(Boolean)
+    // Forwarded, the day came, nobody counted yet (prototype «بانتظار العدّ»).
+    const noticeDay = (d.deliveryDate || "").slice(0, 10)
+    const awaitingCount = Boolean(fw?.name) && !d.receiverReport && noticeDay !== "" && noticeDay <= today
     return (
-      <Link key={d.id} href={href(d)} className={rowClass}>
-        <div className="min-w-0 space-y-0.5">
+      <div key={d.id} className="flex items-start justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
+        <Link href={href(d)} className="min-w-0 flex-1 space-y-0.5 rounded-md transition-colors hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <p className="font-bold">
-            {tOrders("deliveries.notice")} · <span dir="ltr" className="tabular-nums">{qtyText((d.lines || []).map((l) => ({ q: Number(l.noticeQuantity) || 0, lineId: l.poLineId })))}</span>
-            {sent.length > 1 && n > 0 && <span className="ms-1 font-normal text-muted-foreground">· {tr("incoming.shipment", { n })}</span>}
+            {lined ? (
+              <>
+                {tOrders("deliveries.notice")} · <span dir="ltr" className="tabular-nums">{qtyText((d.lines || []).map((l) => ({ q: Number(l.noticeQuantity) || 0, lineId: l.poLineId })))}</span>
+                {sent.length > 1 && n > 0 && <span className="ms-1 font-normal text-muted-foreground">· {tr("incoming.shipment", { n })}</span>}
+              </>
+            ) : (
+              <>
+                {tOrders("deliveries.notice")}
+                {number && (
+                  <span dir="ltr" className="ms-1 tabular-nums">
+                    {displayNoticeNumber(number, locale)}
+                  </span>
+                )}
+              </>
+            )}
           </p>
           <p className="text-xs text-muted-foreground" dir="auto">
             {facts.join(" · ")}
             {(d.attachmentUrls || []).length > 0 && <Paperclip size={12} className="ms-1 inline" aria-label={tr("incoming.attachments", { n: (d.attachmentUrls || []).length })} />}
           </p>
+          {!lined && sentFact.note && (
+            <p className="text-xs" dir="auto">
+              {sentFact.note}
+            </p>
+          )}
           <p className="text-[11px] text-muted-foreground" dir="auto">
-            {tOrders("deliveries.sent_via", { hasWhen: sentFact.at ? 1 : 0, when: sentFact.at ? fmt(sentFact.at) : "", via: sentFact.via })}
-            {sentFact.note && ` · ${sentFact.note}`}
+            {sentFact.via === "onBehalf"
+              ? tOrders("deliveries.recorded_for", { hasWhen: sentFact.at ? 1 : 0, when: sentFact.at ? fmt(sentFact.at) : "", name: sentFact.by || "—" })
+              : tOrders("deliveries.sent_via", { hasWhen: sentFact.at ? 1 : 0, when: sentFact.at ? fmt(sentFact.at) : "", via: sentFact.via })}
+            {lined && sentFact.note && ` · ${sentFact.note}`}
           </p>
           <p className="text-xs">
             {fw?.name ? (
@@ -581,15 +628,25 @@ export function OrderDeliveriesSections({
               <span className="text-warning">{tr("incoming.toForward")}</span>
             ) : null}
           </p>
+        </Link>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          {ns.kind === "passed" ? (
+            <Pill tone="red">{tr("incoming.passedNoReceipt")}</Pill>
+          ) : ns.kind === "after_promise" ? (
+            <Pill tone="red">{tr("incoming.afterPromise", { days: ns.days })}</Pill>
+          ) : awaitingCount ? (
+            <Pill tone="amber">{tOrders("deliveries.awaiting_count")}</Pill>
+          ) : (
+            <Pill tone="blue">{t("receiptState.on_the_way")}</Pill>
+          )}
+          {fw?.name && !d.receiverReport && onPreviewReceiver && (
+            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => onPreviewReceiver(d.id)}>
+              <Eye size={14} aria-hidden="true" />
+              {tOrders("deliveries.as_receiver")}
+            </Button>
+          )}
         </div>
-        {ns.kind === "passed" ? (
-          <Pill tone="red">{tr("incoming.passedNoReceipt")}</Pill>
-        ) : ns.kind === "after_promise" ? (
-          <Pill tone="red">{tr("incoming.afterPromise", { days: ns.days })}</Pill>
-        ) : (
-          <Pill tone="blue">{t("receiptState.on_the_way")}</Pill>
-        )}
-      </Link>
+      </div>
     )
   })
 
@@ -598,7 +655,8 @@ export function OrderDeliveriesSections({
     const kind = destKind(placeId ? warehouses.find((w) => w.id === placeId) || { projectId: null } : null, d.projectId || po.projectId)
     const q = receiptQuantities(d)
     return (
-      <Link key={d.id} href={href(d)} className={rowClass}>
+      <div key={d.id} className="flex items-start gap-1">
+      <Link href={href(d)} className={cn(rowClass, "min-w-0 flex-1")}>
         <div className="min-w-0 space-y-0.5">
           <p className="flex flex-wrap items-center gap-1.5 font-bold">
             <span dir="ltr" className="tabular-nums">
@@ -618,6 +676,8 @@ export function OrderDeliveriesSections({
           {q.rejected > 0 && <Pill tone="amber">{t("rfqpo.po.receipts.rejected", { qty: q.rejected.toLocaleString("en-US") })}</Pill>}
         </div>
       </Link>
+      {onPrintReceipt && <IconButton icon={Printer} label={tOrders("deliveries.receipt_pdf")} variant="outline" onClick={() => onPrintReceipt(d.id)} />}
+      </div>
     )
   })
 

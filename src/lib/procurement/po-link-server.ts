@@ -21,7 +21,7 @@ import { createDeliveryNotice, NoticeRefusal } from "./notice-server"
 import type { FinancelessPo } from "./payment-mark"
 import { addDays, dayOf, isLumpSum, poValue } from "./po"
 import { pendingVersion, poSiteOf, poVer, poVersions } from "./po-state"
-import { readPolicies, type OrderLinkMinter } from "./po-server"
+import { PoActError, readPolicies, type OrderLinkMinter } from "./po-server"
 import { PURCHASE_ORDERS, type PoLogEntry, type PurchaseOrder } from "./types"
 
 export const ORDER_LINKS = "orderLinks"
@@ -170,7 +170,8 @@ export async function buildLinkView(db: Firestore, po: PoWithChat): Promise<PoLi
     cancel: state === "cancelled" ? { at: cancelledEntry?.at || po.closedAt || "", why: po.cancelledReason || cancelledEntry?.note || "" } : null,
     decline: po.supplierDecline ? { at: po.supplierDecline.at, reason: po.supplierDecline.reason, note: po.supplierDecline.note || null } : null,
     payment: !financeIsOn && mark ? { state: mark.state, day: mark.day ?? null } : null,
-    thread: threadOf(po, visible, receipts),
+    // A fact the buyer's member recorded on the supplier's behalf names the company, as his messages do.
+    thread: threadOf(po, visible, receipts).map((i) => (i.sys && i.params.by ? { ...i, params: { ...i.params, by: company || String(i.params.by) } } : i)),
     unread: supplierUnreadCount(po, messages),
   }
 }
@@ -358,6 +359,18 @@ export async function linkRead(db: Firestore, resolved: ResolvedOrder): Promise<
   return markRead(db, resolved.poId, { kind: "supplier" }, () => undefined)
 }
 
+
+/** «رابط الأمر كما يراه» for the BUYER (PO-02): the page the supplier reads, built by the same `buildLinkView`, and nothing else —
+ * no token is minted, `me` is never called (his read state stays his), no act is run. Only the order's own company, and only once
+ * the order was sent and while it is not cancelled (the same rule as minting the link). */
+export async function previewOrderLink(db: Firestore, orgId: string, poId: string): Promise<PoLinkView> {
+  const snap = await db.collection(PURCHASE_ORDERS).doc(poId).get()
+  const data = snap.exists ? snap.data() : undefined
+  if (!snap.exists || !data || data.organizationId !== orgId) throw new PoActError("order_missing")
+  const po = asPo(snap.id, data)
+  if (!po.sentAt || po.status === "cancelled" || !poLinkState(po)) throw new PoActError("wrong_state")
+  return { ...(await buildLinkView(db, po)), unread: 0 }
+}
 
 /** The order as it stands now — the answer of an act that wrote beside the order (a notice, a message). */
 export async function reloadOrder(db: Firestore, poId: string): Promise<PoWithChat> {

@@ -17,6 +17,7 @@ import { frozenTermsOf } from "./terms-freeze"
 import { orderSiteKey } from "./po-state"
 import { dayOf } from "./po"
 import { specKeyOf } from "./prices"
+import { lineSpecOf, type SpecMaterial } from "./po-line-spec"
 import { requiredApprover } from "./po"
 import { readDeliveryOptions } from "./delivery-options"
 import type { ResolvedPolicies } from "./policies"
@@ -48,6 +49,11 @@ export interface PlanProduct {
   requiresWarranty?: boolean | null
   material?: Parameters<typeof specKeyOf>[0] extends infer S ? (S extends { material?: infer M } ? M : never) : never
   saleUnits?: Array<{ ar?: string; en?: string; lengthM?: number }> | null
+  /** The spec words and the tree path the order line copies (PO-01). */
+  description?: string | null
+  materialPath?: string | null
+  category?: string | null
+  subCategory?: string | null
 }
 
 export interface PlanRfq extends PricedRfq {
@@ -688,6 +694,7 @@ export function draftOrder(input: OrderDraftInput): OrderDraft {
       rfqProductIndex: l.li,
       ...(pack ? { pk: l.packLen, need, base: baseUnit, packName: { ar: packAr, en: packAr } } : {}),
       ...(specKey ? { materialId, specKey } : {}),
+      ...lineSpecOf({ ...p, material: p.material as SpecMaterial | null | undefined }),
     }
   })
   const supplier = planSupplier(offer)

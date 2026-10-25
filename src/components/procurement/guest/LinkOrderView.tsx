@@ -14,6 +14,7 @@ import { fmtDayLong } from "@/lib/procurement/format"
 import { POL_DECLINE_REASONS, POL_REPORT_OFFSETS, type PoDeclineReason, type PoLinkLine, type PoLinkView, type PoReportOffset } from "@/lib/po-link"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
+import { LineSpec } from "@/components/procurement/LineSpec"
 
 const figure = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n)
 
@@ -47,9 +48,12 @@ function Lines({ view }: { view: PoLinkView }) {
       <ul className="divide-y">
         {view.lines.map((l) => (
           <li key={l.id} className="flex items-start justify-between gap-3 px-3.5 py-2.5">
-            <p className="min-w-0 text-sm font-bold" dir="auto">
-              {l.name}
-            </p>
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm font-bold" dir="auto">
+                {l.name}
+              </p>
+              <LineSpec spec={l.spec} />
+            </div>
             <p className="shrink-0 text-end text-sm tabular-nums">
               <b>{figure(l.quantity)}</b> <span dir="auto">{unitOf(l)}</span>
               {l.price != null && <span className="text-muted-foreground"> × {figure(l.price)}</span>}
@@ -276,12 +280,28 @@ function ReportPanel({ view, actions, busy }: { view: PoLinkView; actions: LinkO
   )
 }
 
-export function LinkOrderView({ view, actions, busy }: { view: PoLinkView; actions: LinkOrderActions; busy: boolean }) {
-  const t = useTranslations("PoLink")
+/** `readOnly`: the buyer's preview (PO-02) — the same page with every control disabled; nothing it shows can act. */
+export function LinkOrderView({ view, actions, busy, readOnly = false }: { view: PoLinkView; actions: LinkOrderActions; busy: boolean; readOnly?: boolean }) {
   const locale = useLocale()
   const day = (iso: string | null | undefined) => fmtDayLong((iso || "").slice(0, 10), locale)
+  if (readOnly) {
+    return (
+      <fieldset disabled aria-disabled="true" className="min-w-0 space-y-4">
+        <LinkOrderBody view={view} actions={actions} busy day={day} />
+      </fieldset>
+    )
+  }
   return (
     <div className="space-y-4">
+      <LinkOrderBody view={view} actions={actions} busy={busy} day={day} />
+    </div>
+  )
+}
+
+function LinkOrderBody({ view, actions, busy, day }: { view: PoLinkView; actions: LinkOrderActions; busy: boolean; day: (iso: string | null | undefined) => string }) {
+  const t = useTranslations("PoLink")
+  return (
+    <>
       <Head view={view} />
       <Lines view={view} />
       {view.pendingVersion && view.acts.acceptVersion && (
@@ -300,6 +320,6 @@ export function LinkOrderView({ view, actions, busy }: { view: PoLinkView; actio
       {view.state === "complete" && <StateCard tone="good" icon={<Check size={20} aria-hidden="true" />} title={t("complete_title")} body={t("complete_body")} />}
       {view.state === "awaiting" && <AcceptPanel view={view} actions={actions} busy={busy} />}
       {view.state === "accepted" && (view.acts.report ? <ReportPanel view={view} actions={actions} busy={busy} /> : <StateCard tone="good" icon={<Check size={20} aria-hidden="true" />} title={t("accepted_title")} body={t("accepted_body")} />)}
-    </div>
+    </>
   )
 }
