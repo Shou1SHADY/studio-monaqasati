@@ -35,7 +35,7 @@ export function Panel({
   const heading = (
     <h3 className="flex min-w-0 items-center gap-2 text-sm font-bold text-foreground">
       {Icon && <Icon size={16} className="shrink-0 text-module" aria-hidden="true" />}
-      <span className="truncate">{title}</span>
+      <span className="min-w-0 break-words">{title}</span>
       {count !== undefined && (
         <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums", countTone === "bad" ? "bg-destructive text-destructive-foreground" : countTone === "ok" ? "bg-success/15 text-success" : "bg-muted text-muted-foreground")}>{count}</span>
       )}
@@ -45,7 +45,7 @@ export function Panel({
     <section className={cn("overflow-hidden rounded-xl border bg-card", className)}>
       <header className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
         {description ? (
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-2">
             {heading}
             <p className="min-w-0 text-xs text-muted-foreground sm:line-clamp-2" dir="auto" data-panel-description="">
               {description}

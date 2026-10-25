@@ -29,7 +29,7 @@ import { useModules } from "@/hooks/useCompanyModules"
 import { usePortalRegistry } from "@/hooks/usePortalRegistry"
 import { PortalBreadcrumbs } from "@/components/layout/portal-breadcrumbs"
 import { PackageChip } from "@/components/procurement/PackageChip"
-import { foldsToIcons, useSidebarFold } from "@/hooks/useSidebarFold"
+import { foldsToIcons, useSidebarFold, startsFolded } from "@/hooks/useSidebarFold"
 import { ModuleIdentity } from "@/components/layout/ModuleIdentity"
 import { hidesTopBarSearch } from "@/lib/procurement/frame"
 import { useUser, useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase"
@@ -141,7 +141,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   const frame = usePortalFrame()
   const supplierComponents = usePortalRegistry("supplier")
   // Procurement's sidebar folds to icons and remembers it across its pages (FR-02); elsewhere the provider is as it was.
-  const sidebarFold = useSidebarFold(foldsToIcons(pathname))
+  const sidebarFold = useSidebarFold(foldsToIcons(pathname), startsFolded(pathname))
   const searchParams = useSearchParams()
   const searchParam = frame?.search?.param ?? "search"
   const [searchQuery, setSearchQuery] = React.useState(searchParams.get(searchParam) || "")

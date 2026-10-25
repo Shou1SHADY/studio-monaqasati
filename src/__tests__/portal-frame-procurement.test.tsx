@@ -127,17 +127,33 @@ describe("Procurement's sidebar folds to icons and remembers it (FR-02)", () => 
   })
 
   it("Project Management's pages fold to icons too and share the choice (PM 1.1 UX-01)", async () => {
+    // Inside a project, with no choice made yet, the sidebar starts folded — the project gets the whole width.
     let view = await open("/contractor/projects/P1")
     expect(sidebar().getAttribute("data-collapsible")).not.toBe("offcanvas")
+    expect(sidebar().getAttribute("data-state")).toBe("collapsed")
+    // Opening it is a choice, remembered across pages.
     fireEvent.click(toggle())
     await flush()
-    expect(sidebar().getAttribute("data-state")).toBe("collapsed")
-    expect(window.localStorage.getItem("pf-side")).toBe("min")
+    expect(sidebar().getAttribute("data-state")).toBe("expanded")
+    expect(window.localStorage.getItem("pf-side")).toBe("full")
     view.unmount()
-    view = await open("/contractor/rfqs/today")
-    expect(sidebar().getAttribute("data-state")).toBe("collapsed")
+    view = await open("/contractor/projects/P2")
+    expect(sidebar().getAttribute("data-state")).toBe("expanded")
     view.unmount()
-    view = await open("/contractor/projects")
+  })
+
+  it("only a project's own page starts folded: the list, Today, the inbox and Procurement start open (PM 1.1 UX-01)", async () => {
+    for (const path of ["/contractor/projects", "/contractor/projects/today", "/contractor/projects/inbox", "/contractor/rfqs/today"]) {
+      forgetSidebarFold()
+      window.localStorage.clear()
+      const view = await open(path)
+      expect({ path, state: sidebar().getAttribute("data-state") }).toEqual({ path, state: "expanded" })
+      view.unmount()
+    }
+    // A folded choice made anywhere still holds on the list.
+    forgetSidebarFold()
+    window.localStorage.setItem("pf-side", "min")
+    const view = await open("/contractor/projects")
     expect(sidebar().getAttribute("data-state")).toBe("collapsed")
     view.unmount()
   })

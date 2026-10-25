@@ -334,6 +334,17 @@ describe("the phase-2 primitives", () => {
     expect(classesOf(desc.parentElement!)).toContain("sm:flex-row")
   })
 
+  it("a Panel's title is never cut, even beside a long subtitle — the pair wraps instead (review of the Terms screen)", () => {
+    render(
+      <Panel title="سجل العقد" description="كل ما غيّر العقد بتاريخه، الأحدث أولاً — لا يُحذف منه شيء">
+        <p>body</p>
+      </Panel>
+    )
+    const title = screen.getByText("سجل العقد")
+    expect(classesOf(title)).not.toContain("truncate")
+    expect(classesOf(screen.getByText(/كل ما غيّر العقد/).parentElement!)).toContain("sm:flex-wrap")
+  })
+
   it("SegmentedNav tray: muted track that wraps, the chosen segment lifted, 44 px on a phone; pills unchanged", () => {
     const segs = [
       { id: "a", label: "BOQ" },
