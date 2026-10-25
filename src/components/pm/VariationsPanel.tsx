@@ -482,7 +482,7 @@ export function VariationsPanel({
                 </div>
               )}
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="vo-ins">{t("vo.instruction_label_opt")}</Label>
                 <Input id="vo-ins" value={instructionNo} onChange={(e) => setInstructionNo(e.target.value)} placeholder={t("vo.instruction_ph")} disabled={busy !== null} dir="auto" />
@@ -630,7 +630,7 @@ export function VariationsPanel({
           </DialogHeader>
           {progress && (
             <div className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {canProgress && (
                   <div className="space-y-1.5">
                     <Label htmlFor="ve-pct">{t("vo.pct")}</Label>
@@ -700,7 +700,7 @@ export function VariationsPanel({
                   <FormHint>{t("vo.reason_hint")}</FormHint>
                 </div>
               )}
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="vo-on">{decide.approve ? t("vo.approval_date") : t("vo.reject_date")}</Label>
                   <Input id="vo-on" type="date" dir="ltr" min={decide.vo.day} max={today} value={decide.on} onChange={(e) => setDecide({ ...decide, on: e.target.value })} disabled={busy !== null} />

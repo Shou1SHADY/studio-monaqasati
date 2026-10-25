@@ -149,7 +149,7 @@ export function TermsFields({
           <Switch id={`${idPrefix}-dmg`} checked={value.damages.on} onCheckedChange={(v) => onChange("damages", { ...value.damages, on: v })} disabled={disabled} />
         </div>
         {value.damages.on && (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor={`${idPrefix}-dmg-rate`}>{t("terms.damages_rate")}</Label>
               <Input id={`${idPrefix}-dmg-rate`} type="number" min="0" step="any" dir="ltr" value={toPct(value.damages.weeklyRate)} onChange={(e) => onChange("damages", { ...value.damages, weeklyRate: fromPct(e.target.value) })} disabled={disabled} />

@@ -137,7 +137,7 @@ export function DraftAddendumDialog({
           <Callout tone="info">{t("amend.three_doors")}</Callout>
           <TermsFields value={next} onChange={(k, v) => setNext((d) => ({ ...d, [k]: v }))} disabled={busy !== null} changed={changed} idPrefix="amd" contractValue={money ? contractValue : undefined} hint={hint} />
           <TermChangeList changes={changes} className="rounded-xl border bg-muted/30 p-3" />
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="amd-reason">{t("amend.reason")}</Label>
               <Select value={reason ?? ""} onValueChange={(v) => setReason(v as AddendumReason)} disabled={busy !== null}>
@@ -171,7 +171,7 @@ export function DraftAddendumDialog({
           </div>
           <MfgFileField orgId={orgId} area="pm" folder={`projects/${projectId}/addenda`} value={file} onChange={setFile} label={t("amend.draft_file")} hint={t("amend.draft_file_hint")} />
           {canSign && (
-            <div className="grid gap-3 rounded-xl border p-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 rounded-xl border p-3 sm:grid-cols-2">
               <p className="text-xs text-muted-foreground sm:col-span-2">{t("amend.sign_now_note")}</p>
               <div className="space-y-1.5">
                 <Label htmlFor="amd-now-date">{t("amend.signed_on")}</Label>

@@ -345,7 +345,7 @@ export function ClaimsPanel({
               </Label>
               <Input id="cl-cause" value={cause} onChange={(e) => setCause(e.target.value)} placeholder={t("claim.cause_ph")} disabled={busy !== null} dir="auto" />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>{t("claim.kind_label")}</Label>
                 <ChoiceChips label={t("claim.kind_label")} options={CLAIM_KINDS.map((k2) => ({ id: k2, label: t(`claim.kind.${k2}`) }))} value={kind} onChange={setKind} disabled={busy !== null} />
@@ -370,7 +370,7 @@ export function ClaimsPanel({
                 </div>
               )}
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {kind !== "cost" && (
                 <div className="space-y-1.5">
                   <Label htmlFor="cl-days">{t("claim.days_optional")}</Label>
@@ -467,7 +467,7 @@ export function ClaimsPanel({
           </DialogHeader>
           {submitting && (
             <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {submitting.c.kind !== "cost" && (
                   <div className="space-y-1.5">
                     <Label htmlFor="cs-days">
@@ -521,7 +521,7 @@ export function ClaimsPanel({
                 <ChoiceChips label={t("claim.decision")} options={CLAIM_RESPONSES.map((r) => ({ id: r, label: t(`claim.status.${r}`) }))} value={responding.response || null} onChange={(r) => setResponding({ ...responding, response: r })} />
               </div>
               {responding.response && responding.response !== "rej" && (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {responding.c.kind !== "cost" && (
                     <div className="space-y-1.5">
                       <Label htmlFor="cl-got-days">{t("claim.days_granted")}</Label>
