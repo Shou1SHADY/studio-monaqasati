@@ -17792,7 +17792,7 @@
         "vat_on_certified": "VAT on (certified − recovery)",
         "net_finance": "Net Finance will invoice",
         "back_to_unbilled": "Returns to unbilled",
-        "finance_event": "On save Finance receives the “owner certificate approved” event, key",
+        "finance_event": "On save Finance receives the “owner certificate approved” event",
         "finance_event_once": "resending never creates a second invoice.",
         "certify_send": "Record & send to Finance",
         "cut_text": "The reason as the consultant stated it"

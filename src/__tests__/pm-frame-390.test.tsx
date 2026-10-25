@@ -328,7 +328,9 @@ describe("the phase-2 primitives", () => {
     )
     const desc = screen.getByText("2 urgent · oldest 12 days")
     expect(desc.closest("header")).not.toBeNull()
-    expect(classesOf(desc)).toContain("sm:truncate")
+    // Wraps to two lines rather than cutting the sentence (it often names what the list holds).
+    expect(classesOf(desc)).toContain("sm:line-clamp-2")
+    expect(classesOf(desc)).not.toContain("truncate")
     expect(classesOf(desc.parentElement!)).toContain("sm:flex-row")
   })
 

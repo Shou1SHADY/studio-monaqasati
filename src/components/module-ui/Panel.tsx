@@ -47,7 +47,7 @@ export function Panel({
         {description ? (
           <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
             {heading}
-            <p className="min-w-0 text-xs text-muted-foreground sm:truncate" dir="auto" data-panel-description="">
+            <p className="min-w-0 text-xs text-muted-foreground sm:line-clamp-2" dir="auto" data-panel-description="">
               {description}
             </p>
           </div>

@@ -170,6 +170,15 @@ describe("the money panels' sources", () => {
       expect(note).not.toMatch(/prj:|HND/)
     }
   })
+
+  it("the certify dialog tells the user Finance is told — never the event's developer key", () => {
+    const code = read("src/components/pm/CertifyDialog.tsx").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "")
+    expect(code).not.toMatch(/prj:IPC/)
+    for (const file of ["messages/ar.json", "messages/en.json"]) {
+      const ipc = JSON.parse(read(file)).Portal.PM.ipc as Record<string, string>
+      expect(ipc.finance_event).not.toMatch(/prj:|مفتاح|\bkey\b/)
+    }
+  })
 })
 
 describe("Certificates (UX-11, UX-14, UX-20)", () => {

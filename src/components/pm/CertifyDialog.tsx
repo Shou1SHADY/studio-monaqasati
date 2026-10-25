@@ -57,7 +57,6 @@ export function CertifyDialog({
   const [busy, setBusy] = useState(false)
   const projectRef = useMemoFirebase(() => (firestore ? doc(firestore, "projects", projectId) : null), [firestore, projectId])
   const { data: projectDoc } = useDoc<{ name?: string; pm?: { no?: string } }>(projectRef)
-  const projectNo = projectDoc?.pm?.no ?? null
 
   useEffect(() => {
     if (open) {
@@ -73,7 +72,6 @@ export function CertifyDialog({
   const valid = Number.isFinite(certified) && certified > 0 && certified <= cert.gross + 0.005
   const amounts = valid ? certificateAmounts({ gross: certified, terms: cert.terms, contractValue: cert.contractValue, held: held - cert.retention, recovered: recovered - cert.recovery }) : null
   const cut = valid ? Math.max(0, cert.gross - certified) : 0
-  const key = `prj:IPC:${projectNo || projectId}:${certificateNo(cert.seq)}`
 
   const save = async () => {
     if (!firestore || blocks.length) return
@@ -146,11 +144,7 @@ export function CertifyDialog({
             </div>
           )}
           <Callout tone="info">
-            {t("ipc.finance_event")}{" "}
-            <b dir="ltr" className="font-mono text-xs [unicode-bidi:isolate]">
-              {key}
-            </b>{" "}
-            — {t("ipc.finance_event_once")}
+            {t("ipc.finance_event")} — {t("ipc.finance_event_once")}
           </Callout>
           <BlockingReasons title={t("cannot_save")} reasons={shownBlocks.map((b) => t(`ipc.block.${b}`))} />
         </div>
