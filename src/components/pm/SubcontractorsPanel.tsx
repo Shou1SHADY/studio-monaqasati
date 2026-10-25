@@ -22,7 +22,9 @@ import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Chip } from "@/components/module-ui/Chip"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { EmptyState } from "@/components/module-ui/EmptyState"
+import { IconButton } from "@/components/module-ui/IconButton"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
@@ -30,6 +32,7 @@ import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { useSupplyWorld } from "@/hooks/useSupplyWorld"
 import { PmAccessError } from "@/lib/pm/access"
 import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
@@ -109,6 +112,7 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
+  const labels = useTableLabels()
   const [busy, setBusy] = useState<string | null>(null)
   const [dialog, setDialog] = useState<null | "register" | "cert">(null)
   const [moveOf, setMoveOf] = useState<{ c: PmSubCustody; t: "iss" | "back" | "cnt" } | null>(null)
@@ -180,7 +184,7 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
     return (
       <>
         <Panel title={t("subs.title")} icon={Users} actions={registerBtn}>
-          <EmptyState icon={Users} title={t("subs.empty")} description={t("subs.empty_desc")} />
+          <EmptyState bare icon={Users} title={t("subs.empty")} description={t("subs.empty_desc")} />
         </Panel>
         {dialog === "register" && firestore && (
           <RegisterDialog projectId={projectId} orgId={orgId} items={items} contracts={contracts} money={money} limit={limit} busy={busy} onClose={() => setDialog(null)} onSave={(input) => run("register", () => registerSubcontract(firestore, access.ctx, projectId, actor, input), t("subs.registered"))} />
@@ -194,79 +198,220 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
   const bad = gapRows.filter((r) => r.f.gap !== null && r.f.gap > 0.005).length + ledRows.filter((r) => r.gap !== null && r.gap > 0.005).length
   const due = rows.map((r) => ({ r, v: recoveryDue(custody, r.partyKey) + ledgerRecoveryDue(world.stores, r.partyKey) })).filter((x) => x.v > 0)
 
-  return (
-    <div className="space-y-4">
-      <Panel title={t("subs.title")} icon={Users} actions={registerBtn} bodyClassName="p-0">
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t("subs.owned")}</p>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead>
-              <tr className="border-b text-xs text-muted-foreground">
-                <th className="px-4 py-2 text-start font-semibold">{t("subs.col.sub")}</th>
-                <th className="px-4 py-2 text-start font-semibold">{t("subs.col.scope")}</th>
-                <th className="px-4 py-2 text-start font-semibold">{t("subs.col.progress")}</th>
-                {money && (
+  type ReconRow = {
+    key: string
+    name: string
+    what: string
+    earlier: boolean
+    issued: number
+    theoretical: number
+    allowed: number
+    book: number
+    count: { q: number; on: string } | null
+    gap: number | null
+    gapValue: number
+    onCount: () => void
+    onIssue: () => void
+    onBack: () => void
+    onRecover: () => void
+  }
+  const reconRows: ReconRow[] = [
+    ...ledRows.map((r) => ({
+      key: `${r.storeId}:${r.partyKey}`,
+      name: r.name,
+      what: `${r.line.name} · ${r.line.unit}`,
+      earlier: false,
+      issued: r.issued,
+      theoretical: r.theoretical,
+      allowed: r.allowed,
+      book: r.book,
+      count: r.count ? { q: r.count.q, on: r.count.on } : null,
+      gap: r.gap,
+      gapValue: r.gapValue,
+      onCount: () => setLedMove({ t: "cnt", storeId: r.storeId, partyKey: r.partyKey }),
+      onIssue: () => setLedMove({ t: "iss", storeId: r.storeId, partyKey: r.partyKey }),
+      onBack: () => setLedMove({ t: "back", storeId: r.storeId, partyKey: r.partyKey }),
+      onRecover: () => setLedRecover(r),
+    })),
+    ...gapRows.map(({ c, f }) => ({
+      key: c.id,
+      name: c.party.name,
+      what: `${c.material} · ${c.unit} · ${c.code || itemName(c.itemId)}`,
+      earlier: true,
+      issued: f.issued,
+      theoretical: f.theoretical,
+      allowed: f.allowed,
+      book: f.book,
+      count: f.count ? { q: f.count.q, on: f.count.day } : null,
+      gap: f.gap,
+      gapValue: f.gapValue,
+      onCount: () => setMoveOf({ c, t: "cnt" }),
+      onIssue: () => setMoveOf({ c, t: "iss" }),
+      onBack: () => setMoveOf({ c, t: "back" }),
+      onRecover: () => setRecoverOf(c),
+    })),
+  ]
+  const isShort = (r: ReconRow) => r.gap !== null && r.gap > 0.005
+  const reconColumns: DataColumn<ReconRow>[] = [
+    {
+      key: "who",
+      header: t("subs.recon.col.who"),
+      cell: (r) => (
+        <>
+          <p className="font-bold" dir="auto">
+            {r.name}
+          </p>
+          <p className="text-xs text-muted-foreground" dir="auto">
+            {r.what}
+          </p>
+          {r.earlier && (
+            <StatusPill tone="mute" className="mt-0.5">
+              {t("subs.led.earlier")}
+            </StatusPill>
+          )}
+        </>
+      ),
+    },
+    { key: "issued", header: t("subs.recon.col.issued"), numeric: true, cell: (r) => qty(r.issued) },
+    { key: "theo", header: t("subs.recon.col.theo"), numeric: true, hideBelow: "xl", cell: (r) => qty(r.theoretical) },
+    { key: "allowed", header: t("subs.recon.col.allowed"), numeric: true, hideBelow: "xl", cell: (r) => qty(r.allowed) },
+    { key: "book", header: t("subs.recon.col.book"), numeric: true, cell: (r) => qty(r.book) },
+    {
+      key: "count",
+      header: t("subs.recon.col.count"),
+      cell: (r) =>
+        r.count ? (
+          <>
+            <bdi dir="ltr" className="tabular-nums">
+              {qty(r.count.q)}
+            </bdi>
+            <p className="text-xs text-muted-foreground">{pmDate(r.count.on, locale)}</p>
+          </>
+        ) : (
+          "—"
+        ),
+    },
+    {
+      key: "gap",
+      header: t("subs.recon.col.gap"),
+      cell: (r) => (
+        <span className={cn("text-xs font-semibold", r.gap === null ? "text-muted-foreground" : isShort(r) ? "text-destructive" : "text-success")}>
+          {r.gap === null ? (
+            t("subs.recon.needs_count")
+          ) : isShort(r) ? (
+            <>
+              <bdi dir="ltr">−{qty(r.gap)}</bdi>
+              {money && r.gapValue > 0 && (
+                <span className="block font-normal" dir="ltr">
+                  {pmMoney(r.gapValue)}
+                </span>
+              )}
+            </>
+          ) : (
+            t("subs.recon.matched")
+          )}
+        </span>
+      ),
+    },
+    ...(canReconcile || canStore
+      ? [
+          {
+            key: "act",
+            header: <span className="sr-only">{t("subs.recon.col.act")}</span>,
+            label: t("subs.recon.col.act"),
+            cell: (r: ReconRow) => (
+              <div className="flex flex-wrap items-center justify-end gap-1">
+                {canReconcile && isShort(r) && (
+                  <Button size="sm" variant="destructive" onClick={r.onRecover}>
+                    {t("subs.recon.recover")}
+                  </Button>
+                )}
+                {canReconcile && (
+                  <Button size="sm" variant={isShort(r) ? "ghost" : "default"} onClick={r.onCount}>
+                    {r.count ? t("subs.recon.recount") : t("subs.recon.count")}
+                  </Button>
+                )}
+                {canStore && (
                   <>
-                    <th className="px-4 py-2 text-end font-semibold">{t("subs.col.contract")}</th>
-                    <th className="px-4 py-2 text-end font-semibold">{t("subs.col.certified")}</th>
-                    <th className="px-4 py-2 text-end font-semibold">{t("subs.col.paid")}</th>
-                    <th className="px-4 py-2 text-end font-semibold">{t("subs.col.retention")}</th>
+                    <IconButton icon={Plus} label={t("subs.recon.issue_more")} onClick={r.onIssue} />
+                    <IconButton icon={Undo2} label={t("subs.recon.return")} onClick={r.onBack} disabled={r.issued <= 0} />
                   </>
                 )}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const scope = [...new Set(r.itemIds.map((id) => itemOf(id)?.division).filter((d): d is string => Boolean(d)))]
-                return (
-                  <tr key={r.partyKey} className="border-b last:border-0">
-                    <td className="px-4 py-2.5">
-                      <p className="font-bold" dir="auto">
-                        {r.party.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{t("subs.items", { count: r.itemIds.length })}</p>
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-muted-foreground" dir="auto">
-                      {scope.join(" · ") || "—"}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex min-w-[120px] items-center gap-2">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={Math.round(r.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={t("subs.col.progress")}>
-                          <div className={cn("h-full rounded-full", r.progress >= 0.99 ? "bg-success" : "bg-module")} style={{ width: `${Math.min(100, r.progress * 100)}%` }} />
-                        </div>
-                        <span className="text-xs tabular-nums" dir="ltr">
-                          {pmPct(r.progress)}
-                        </span>
-                      </div>
-                    </td>
-                    {money && (
-                      <>
-                        <td className="px-4 py-2.5 text-end tabular-nums" dir="ltr">
-                          {pmMoney(r.value)}
-                        </td>
-                        <td className="px-4 py-2.5 text-end tabular-nums" dir="ltr">
-                          {pmMoney(r.certified)}
-                        </td>
-                        <td className="px-4 py-2.5 text-end">
-                          <p className="tabular-nums" dir="ltr">
-                            {pmMoney(r.paid)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {t("subs.due")} <span dir="ltr">{pmMoney(r.due)}</span>
-                          </p>
-                          <SourceBadge module="payments" label={t("subs.finance")} className="mt-0.5" />
-                        </td>
-                        <td className="px-4 py-2.5 text-end tabular-nums" dir="ltr">
-                          {pmMoney(r.retention)}
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+              </div>
+            ),
+          },
+        ]
+      : []),
+  ]
+
+  type SubRow = (typeof rows)[number]
+  const summaryColumns: DataColumn<SubRow>[] = [
+    {
+      key: "sub",
+      header: t("subs.col.sub"),
+      cell: (r) => (
+        <>
+          <p className="font-bold" dir="auto">
+            {r.party.name}
+          </p>
+          <p className="text-xs text-muted-foreground">{t("subs.items", { count: r.itemIds.length })}</p>
+        </>
+      ),
+    },
+    {
+      key: "scope",
+      header: t("subs.col.scope"),
+      hideBelow: "lg",
+      cell: (r) => (
+        <span className="text-xs text-muted-foreground" dir="auto">
+          {[...new Set(r.itemIds.map((id) => itemOf(id)?.division).filter((d): d is string => Boolean(d)))].join(" · ") || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "progress",
+      header: t("subs.col.progress"),
+      sortValue: (r) => r.progress,
+      cell: (r) => (
+        <div className="flex min-w-24 items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={Math.round(r.progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={t("subs.col.progress")}>
+            <div className={cn("h-full rounded-full", r.progress >= 0.99 ? "bg-success" : "bg-module")} style={{ width: `${Math.min(100, r.progress * 100)}%` }} />
+          </div>
+          <bdi className="text-xs tabular-nums" dir="ltr">
+            {pmPct(r.progress)}
+          </bdi>
         </div>
+      ),
+    },
+    ...(money
+      ? ([
+          { key: "contract", header: t("subs.col.contract"), numeric: true, sortValue: (r) => r.value, cell: (r) => pmMoney(r.value) },
+          { key: "certified", header: t("subs.col.certified"), numeric: true, cell: (r) => pmMoney(r.certified) },
+          {
+            key: "paid",
+            header: t("subs.col.paid"),
+            cell: (r) => (
+              <div className="text-end">
+                <bdi className="tabular-nums" dir="ltr">
+                  {pmMoney(r.paid)}
+                </bdi>
+                <p className="text-xs text-muted-foreground">
+                  {t("subs.due")} <bdi dir="ltr">{pmMoney(r.due)}</bdi>
+                </p>
+                <SourceBadge module="payments" label={t("subs.finance")} className="mt-0.5" />
+              </div>
+            ),
+            className: "text-end",
+          },
+          { key: "retention", header: t("subs.col.retention"), numeric: true, hideBelow: "lg", cell: (r) => pmMoney(r.retention) },
+        ] satisfies DataColumn<SubRow>[])
+      : []),
+  ]
+
+  return (
+    <div className="space-y-4">
+      <Panel title={t("subs.title")} icon={Users} actions={registerBtn} description={t("subs.owned")} bodyClassName="p-0">
+        <DataTable columns={summaryColumns} rows={rows} rowKey={(r) => r.partyKey} caption={t("subs.title")} labels={labels} bordered={false} dense empty={null} />
         {money && (
           <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">
             {t("subs.totals", { total: pmMoney(totals.value), share: pmPct(totals.share), retention: pmMoney(totals.retention) })}
@@ -274,13 +419,12 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
         )}
       </Panel>
 
-      <Panel title={t("subs.contracts")} icon={FileText} count={contracts.length}>
-        <p className="mb-3 text-xs text-muted-foreground">{t("subs.contracts_sub")}</p>
-        <ul className="space-y-2">
+      <Panel title={t("subs.contracts")} icon={FileText} count={contracts.length} description={t("subs.contracts_sub")} bodyClassName="p-0">
+        <ul className="divide-y">
           {contracts.map((c) => (
-            <li key={c.id} className="rounded-xl border p-3">
+            <li key={c.id} className="px-4 py-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1 basis-60">
                   <p className="text-sm font-bold" dir="auto">
                     {t("subs.contract_no", { no: subcontractNo(c.seq) })} — {c.party.name}
                   </p>
@@ -311,7 +455,7 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
                   )}
                 </div>
               </div>
-              <ul className="mt-2 space-y-0.5 border-t pt-2 text-xs text-muted-foreground">
+              <ul className="mt-2 space-y-0.5 text-xs text-muted-foreground">
                 {c.lines.map((l, i) => (
                   <li key={i} className="flex flex-wrap justify-between gap-2">
                     <span dir="auto">
@@ -332,10 +476,11 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
       <Panel
         title={t("subs.recon.title")}
         icon={Boxes}
-        count={gapRows.length + ledRows.length}
+        count={reconRows.length}
+        description={<span className={cn(bad ? "text-destructive" : undefined)}>{t("subs.recon.sub")}</span>}
         actions={
           canStore ? (
-            <Button size="sm" variant="outline" onClick={() => setLedMove({ t: "iss" })}>
+            <Button size="sm" variant="ghost" className="border" onClick={() => setLedMove({ t: "iss" })}>
               <Plus size={15} className="me-1.5" aria-hidden="true" />
               {t("subs.recon.issue")}
             </Button>
@@ -343,192 +488,17 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
         }
         bodyClassName="p-0"
       >
-        <p className={cn("px-4 pt-3 text-xs", bad ? "text-destructive" : "text-muted-foreground")}>{t("subs.recon.sub")}</p>
-        {gapRows.length + ledRows.length === 0 ? (
-          <div className="p-4">
-            <EmptyState icon={Boxes} title={t("subs.recon.empty")} />
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
-              <thead>
-                <tr className="border-b text-xs text-muted-foreground">
-                  <th className="px-4 py-2 text-start font-semibold">{t("subs.recon.col.who")}</th>
-                  <th className="px-3 py-2 text-center font-semibold">{t("subs.recon.col.issued")}</th>
-                  <th className="px-3 py-2 text-center font-semibold">{t("subs.recon.col.theo")}</th>
-                  <th className="px-3 py-2 text-center font-semibold">{t("subs.recon.col.allowed")}</th>
-                  <th className="px-3 py-2 text-center font-semibold">{t("subs.recon.col.book")}</th>
-                  <th className="px-3 py-2 text-center font-semibold">{t("subs.recon.col.count")}</th>
-                  <th className="px-3 py-2 text-center font-semibold">{t("subs.recon.col.gap")}</th>
-                  <th className="px-4 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {ledRows.map((r) => {
-                  const short = r.gap !== null && r.gap > 0.005
-                  return (
-                    <tr key={`${r.storeId}:${r.partyKey}`} className="border-b last:border-0">
-                      <td className="px-4 py-2.5">
-                        <p className="font-bold" dir="auto">
-                          {r.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground" dir="auto">
-                          {r.line.name} · {r.line.unit}
-                        </p>
-                      </td>
-                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
-                        {qty(r.issued)}
-                      </td>
-                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
-                        {qty(r.theoretical)}
-                      </td>
-                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
-                        {qty(r.allowed)}
-                      </td>
-                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
-                        {qty(r.book)}
-                      </td>
-                      <td className="px-3 py-2.5 text-center">
-                        {r.count ? (
-                          <>
-                            <span className="tabular-nums" dir="ltr">
-                              {qty(r.count.q)}
-                            </span>
-                            <p className="text-xs text-muted-foreground">{pmDate(r.count.on, locale)}</p>
-                          </>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className={cn("px-3 py-2.5 text-center text-xs font-semibold", r.gap === null ? "text-muted-foreground" : short ? "text-destructive" : "text-success")}>
-                        {r.gap === null ? (
-                          t("subs.recon.needs_count")
-                        ) : short ? (
-                          <>
-                            <span dir="ltr">−{qty(r.gap)}</span>
-                            {money && r.gapValue > 0 && (
-                              <p className="font-normal" dir="ltr">
-                                {pmMoney(r.gapValue)}
-                              </p>
-                            )}
-                          </>
-                        ) : (
-                          t("subs.recon.matched")
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex flex-wrap justify-end gap-1.5">
-                          {canReconcile && (
-                            <Button size="sm" variant="outline" onClick={() => setLedMove({ t: "cnt", storeId: r.storeId, partyKey: r.partyKey })}>
-                              {r.count ? t("subs.recon.recount") : t("subs.recon.count")}
-                            </Button>
-                          )}
-                          {canStore && (
-                            <>
-                              <Button size="sm" variant="ghost" onClick={() => setLedMove({ t: "iss", storeId: r.storeId, partyKey: r.partyKey })} aria-label={t("subs.recon.issue_more")}>
-                                <Plus size={14} aria-hidden="true" />
-                              </Button>
-                              <Button size="sm" variant="ghost" onClick={() => setLedMove({ t: "back", storeId: r.storeId, partyKey: r.partyKey })} aria-label={t("subs.recon.return")} disabled={r.issued <= 0}>
-                                <Undo2 size={14} aria-hidden="true" />
-                              </Button>
-                            </>
-                          )}
-                          {canReconcile && short && (
-                            <Button size="sm" variant="destructive" onClick={() => setLedRecover(r)}>
-                              {t("subs.recon.recover")}
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-                {gapRows.map(({ c, f }) => {
-                  const short = f.gap !== null && f.gap > 0.005
-                  return (
-                    <tr key={c.id} className="border-b last:border-0">
-                      <td className="px-4 py-2.5">
-                        <p className="font-bold" dir="auto">
-                          {c.party.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground" dir="auto">
-                          {c.material} · {c.unit} · {c.code || itemName(c.itemId)}
-                        </p>
-                        <StatusPill tone="mute" className="mt-0.5">
-                          {t("subs.led.earlier")}
-                        </StatusPill>
-                      </td>
-                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
-                        {qty(f.issued)}
-                      </td>
-                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
-                        {qty(f.theoretical)}
-                      </td>
-                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
-                        {qty(f.allowed)}
-                      </td>
-                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
-                        {qty(f.book)}
-                      </td>
-                      <td className="px-3 py-2.5 text-center">
-                        {f.count ? (
-                          <>
-                            <span className="tabular-nums" dir="ltr">
-                              {qty(f.count.q)}
-                            </span>
-                            <p className="text-xs text-muted-foreground">{pmDate(f.count.day, locale)}</p>
-                          </>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className={cn("px-3 py-2.5 text-center text-xs font-semibold", f.gap === null ? "text-muted-foreground" : short ? "text-destructive" : "text-success")}>
-                        {f.gap === null ? (
-                          t("subs.recon.needs_count")
-                        ) : short ? (
-                          <>
-                            <span dir="ltr">−{qty(f.gap)}</span>
-                            {money && (
-                              <p className="font-normal" dir="ltr">
-                                {pmMoney(f.gapValue)}
-                              </p>
-                            )}
-                          </>
-                        ) : (
-                          t("subs.recon.matched")
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex flex-wrap justify-end gap-1.5">
-                          {canReconcile && (
-                            <Button size="sm" variant="outline" onClick={() => setMoveOf({ c, t: "cnt" })}>
-                              {f.count ? t("subs.recon.recount") : t("subs.recon.count")}
-                            </Button>
-                          )}
-                          {canStore && (
-                            <>
-                              <Button size="sm" variant="ghost" onClick={() => setMoveOf({ c, t: "iss" })} aria-label={t("subs.recon.issue_more")}>
-                                <Plus size={14} aria-hidden="true" />
-                              </Button>
-                              <Button size="sm" variant="ghost" onClick={() => setMoveOf({ c, t: "back" })} aria-label={t("subs.recon.return")} disabled={f.issued <= 0}>
-                                <Undo2 size={14} aria-hidden="true" />
-                              </Button>
-                            </>
-                          )}
-                          {canReconcile && short && (
-                            <Button size="sm" variant="destructive" onClick={() => setRecoverOf(c)}>
-                              {t("subs.recon.recover")}
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DataTable
+          columns={reconColumns}
+          rows={reconRows}
+          rowKey={(r) => r.key}
+          caption={t("subs.recon.title")}
+          labels={labels}
+          bordered={false}
+          dense
+          rowTone={(r) => (isShort(r) ? "bad" : undefined)}
+          empty={<EmptyState bare icon={Boxes} title={t("subs.recon.empty")} />}
+        />
         <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">{t("subs.recon.foot")}</p>
         {due.length > 0 && money && (
           <div className="px-4 pb-3">
@@ -556,19 +526,20 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
             </Button>
           ) : null
         }
+        description={t("subs.certs.sub")}
+        bodyClassName="p-0"
       >
-        <p className="mb-3 text-xs text-muted-foreground">{t("subs.certs.sub")}</p>
         {certs.length === 0 ? (
-          <EmptyState icon={ClipboardList} title={t("subs.certs.empty")} />
+          <EmptyState bare icon={ClipboardList} title={t("subs.certs.empty")} />
         ) : (
-          <ul className="space-y-2">
+          <ul className="divide-y">
             {certs.map((s) => {
               const refusal = subApproveRefusal({ archived: access.ctx.archived, ipcOk: access.has("ipcOk"), actorUid: access.uid ?? "", prep: s.prep, amount: s.gross, limit, selfApproval })
               const mayWithdraw = subWithdrawRefusal({ archived: access.ctx.archived, status: s.status, actorUid: access.uid ?? "", prep: s.prep, sub: access.has("sub"), ipcOk: access.has("ipcOk") }) === null
               const self = s.prep === access.uid
               return (
-                <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3">
-                  <div className="min-w-0">
+                <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+                  <div className="min-w-0 flex-1 basis-60">
                     <p className="text-sm font-bold" dir="auto">
                       {t("subs.certs.no", { no: subCertificateNo(s.seq) })} — {s.party.name}
                     </p>
@@ -613,7 +584,7 @@ export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: 
                     {mayWithdraw && (
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="ghost"
                         disabled={busy !== null}
                         onClick={() => firestore && void run(`void${s.seq}`, () => withdrawSubCertificate(firestore, access.ctx, projectId, actor, s.seq), t("subs.certs.withdrawn", { no: subCertificateNo(s.seq) }))}
                       >

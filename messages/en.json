@@ -19441,7 +19441,8 @@
             "allowed": "Allowed waste",
             "book": "Book",
             "count": "Counted",
-            "gap": "Gap"
+            "gap": "Gap",
+            "act": "Action"
           },
           "needs_count": "needs a count",
           "matched": "matched",
