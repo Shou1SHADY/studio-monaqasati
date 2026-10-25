@@ -9,6 +9,15 @@
 // inside it, so in Arabic the digits sat on the far side from their heading);
 // the digits are isolated in a <bdi dir="ltr"> instead and the cell keeps the
 // table's direction. All text comes in as props, as everywhere in module-ui.
+//
+// For the PM tables (PM 1.1 UX-12 — BOQ, variations, certificates, cost, samples):
+//  - the header sticks while the BODY scrolls: give `maxHeight` (e.g. "70vh") on a long list — without it the table is
+//    as tall as its rows and the header scrolls away with the page;
+//  - `hideBelow: "md" | "lg" | "xl"` drops a secondary column on a narrow desktop (it stays on the phone card);
+//  - a phone (< 768 px) gets a card per row instead of a sideways scroll — never give the table a fixed `min-w`;
+//  - `rowGroup` names the section a row belongs to (the BOQ's division): a full-width section row opens each run of rows
+//    of one section, on the phone a small heading between the cards. Sorting reorders rows inside the grouping the
+//    caller gave; a section that comes back later opens again.
 
 import { useMemo, useState, type ReactNode } from "react"
 import { useLocale } from "next-intl"
@@ -30,7 +39,7 @@ export interface DataColumn<T> {
   /** Sortable when given; `null` sorts last. */
   sortValue?: (row: T) => string | number | null | undefined
   /** On a narrow desktop, hide below this width (the phone card still shows it). */
-  hideBelow?: "lg" | "xl"
+  hideBelow?: "md" | "lg" | "xl"
   /** Left out of the phone card (e.g. a column the card's title already says). */
   cardHidden?: boolean
   /** The totals row's cell. */
@@ -54,7 +63,25 @@ const TONE_CARD: Record<RowTone, string> = {
   mute: "opacity-70",
   ok: "",
 }
-const HIDE: Record<NonNullable<DataColumn<unknown>["hideBelow"]>, string> = { lg: "hidden lg:table-cell", xl: "hidden xl:table-cell" }
+const HIDE: Record<NonNullable<DataColumn<unknown>["hideBelow"]>, string> = { md: "hidden md:table-cell", lg: "hidden lg:table-cell", xl: "hidden xl:table-cell" }
+
+export interface RowGroup {
+  key: string
+  label: ReactNode
+}
+
+/** The rows with a section heading before each run of one section (`rowGroup` absent: the rows alone). */
+function withGroups<T>(rows: readonly T[], rowGroup?: (row: T) => RowGroup | null | undefined): Array<{ group: RowGroup } | { row: T }> {
+  const out: Array<{ group: RowGroup } | { row: T }> = []
+  let last: string | null = null
+  for (const row of rows) {
+    const g = rowGroup?.(row)
+    if (g && g.key !== last) out.push({ group: g })
+    last = g ? g.key : null
+    out.push({ row })
+  }
+  return out
+}
 
 /** Digits isolated left-to-right inside a cell that keeps the table's direction. */
 export function Figure({ children, className }: { children: ReactNode; className?: string }) {
@@ -78,6 +105,7 @@ export function DataTable<T>({
   maxHeight,
   dense,
   cardTitleKey,
+  rowGroup,
   bordered = true,
   onRowClick,
   className,
@@ -99,6 +127,8 @@ export function DataTable<T>({
   dense?: boolean
   /** The column that titles a row's card on a phone (the first one by default). */
   cardTitleKey?: string
+  /** The section a row belongs to (e.g. the BOQ division): a section row opens each run of its rows. */
+  rowGroup?: (row: T) => RowGroup | null | undefined
   /** False inside a Panel that already draws the frame. */
   bordered?: boolean
   /** The whole row opens it (a click that lands on a link or button inside the row is left to that control).
@@ -150,7 +180,14 @@ export function DataTable<T>({
     return (
       <div className={cn(frame, "overflow-hidden", className)}>
         <ul className="divide-y" aria-label={caption}>
-          {shown.map((r) => {
+          {withGroups(shown, rowGroup).map((entry, n) => {
+            if ("group" in entry)
+              return (
+                <li key={`g:${entry.group.key}:${n}`} data-row-group="" className="bg-muted/60 px-4 py-1.5 text-xs font-bold text-muted-foreground">
+                  {entry.group.label}
+                </li>
+              )
+            const r = entry.row
             const tone = rowTone?.(r)
             return (
               <li key={rowKey(r)} onClick={rowClick?.(r)} className={cn("space-y-2 px-4 py-3", tone && TONE_CARD[tone], rowClick && "cursor-pointer")}>
@@ -220,7 +257,16 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody className="divide-y">
-            {shown.map((r) => {
+            {withGroups(shown, rowGroup).map((entry, n) => {
+              if ("group" in entry)
+                return (
+                  <tr key={`g:${entry.group.key}:${n}`} data-row-group="" className="bg-muted/60">
+                    <th scope="colgroup" colSpan={columns.length} className={cn(dense ? "px-3 py-1.5" : "px-4 py-2", "text-start text-xs font-bold text-muted-foreground")}>
+                      {entry.group.label}
+                    </th>
+                  </tr>
+                )
+              const r = entry.row
               const tone = rowTone?.(r)
               return (
                 <tr key={rowKey(r)} onClick={rowClick?.(r)} className={cn("transition-colors hover:bg-muted/40", tone && TONE_ROW[tone], rowClick && "cursor-pointer")}>
