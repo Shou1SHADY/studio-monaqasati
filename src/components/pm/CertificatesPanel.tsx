@@ -15,11 +15,14 @@ import { collection } from "firebase/firestore"
 import { Banknote, FileCheck2, Plus, Receipt, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
+import { EmptyState } from "@/components/module-ui/EmptyState"
 import { Panel } from "@/components/module-ui/Panel"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { inForce, PM_ADDENDA, type PmAddendum } from "@/lib/pm/addenda"
 import {
   certificateNo,
@@ -99,6 +102,7 @@ export function CertificatesPanel({
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const firestore = useFirestore()
+  const labels = useTableLabels()
   const [preparing, setPreparing] = useState(() => Boolean(startPreparing))
   const [openSeq, setOpenSeq] = useState<number | null>(null)
   const [certifying, setCertifying] = useState<PmCertificate | null>(null)
@@ -162,6 +166,66 @@ export function CertificatesPanel({
   if (!money) return <Callout tone="info">{t("ipc.money_only")}</Callout>
   if (!(access.has("client") && access.has("ipc"))) return <Callout tone="info">{t("money.ipc_client_only")}</Callout>
 
+  const columns: DataColumn<PmCertificate>[] = [
+    {
+      key: "cert",
+      header: t("money.col.cert"),
+      cell: (c) => {
+        const p = periods.get(c.seq)
+        return (
+          <>
+            <button
+              type="button"
+              onClick={() => setOpenSeq(c.seq)}
+              className="rounded-sm font-bold text-foreground hover:text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {t("ipc.no", { no: certificateNo(c.seq) })}
+            </button>
+            <p className="text-xs text-muted-foreground">{t("money.period", { from: pmDate(p?.from, locale), to: pmDate(p?.to, locale) })}</p>
+          </>
+        )
+      },
+      footer: t("money.total"),
+    },
+    {
+      key: "work",
+      header: t("money.col.work"),
+      numeric: true,
+      cell: (c) => (
+        <>
+          <span className="whitespace-nowrap">{pmMoney(c.gross)}</span>
+          {(c.cut ?? 0) > 0 && <span className="block text-xs text-destructive">{t("money.cut_short", { amount: pmMoney(c.cut ?? 0) })}</span>}
+        </>
+      ),
+      footer: pmMoney(sum.gross),
+    },
+    { key: "net", header: t("money.col.net"), numeric: true, cell: (c) => <span className="whitespace-nowrap font-bold">{pmMoney(c.net)}</span>, footer: pmMoney(sum.net) },
+    {
+      key: "collected",
+      header: t("money.col.collected"),
+      numeric: true,
+      cell: (c) => {
+        const late = lateDays(c, today)
+        const got = collectedAmount(c)
+        return (
+          <>
+            <span className="whitespace-nowrap">{got > 0 ? pmMoney(got) : "—"}</span>
+            {late > 0 && <span className="block text-xs text-destructive">{t("money.late", { days: late })}</span>}
+          </>
+        )
+      },
+      footer: pmMoney(sum.collected),
+    },
+    {
+      key: "status",
+      header: t("money.col.status"),
+      cell: (c) => {
+        const known = (CERTIFICATE_STATUSES as readonly string[]).includes(c.status)
+        return <StatusPill tone={known ? CERT_TONE[c.status] : "bad"}>{known ? t(`ipc.status.${c.status}`) : t("unknown_state")}</StatusPill>
+      },
+    },
+  ]
+
   const list = (
     <div className="space-y-3">
       {certPayer === "none" && <Callout tone="info">{t("ipc.no_client")}</Callout>}
@@ -188,85 +252,21 @@ export function CertificatesPanel({
             </Button>
           ) : null
         }
+        description={t("money.certs_sub")}
         bodyClassName="p-0"
       >
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t("money.certs_sub")}</p>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[620px] text-sm">
-            <thead>
-              <tr className="border-b text-xs text-muted-foreground">
-                <th className="px-4 py-2 text-start font-semibold">{t("money.col.cert")}</th>
-                <th className="px-3 py-2 text-end font-semibold">{t("money.col.work")}</th>
-                <th className="px-3 py-2 text-end font-semibold">{t("money.col.net")}</th>
-                <th className="px-3 py-2 text-end font-semibold">{t("money.col.collected")}</th>
-                <th className="px-4 py-2 text-start font-semibold">{t("money.col.status")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {certs.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    {t("money.no_certs")}
-                  </td>
-                </tr>
-              )}
-              {certs.map((c) => {
-                const known = (CERTIFICATE_STATUSES as readonly string[]).includes(c.status)
-                const p = periods.get(c.seq)
-                const late = lateDays(c, today)
-                const got = collectedAmount(c)
-                return (
-                  <tr
-                    key={c.seq}
-                    tabIndex={0}
-                    onClick={() => setOpenSeq(c.seq)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault()
-                        setOpenSeq(c.seq)
-                      }
-                    }}
-                    className={cn("cursor-pointer border-b last:border-0 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", c.status === "void" && "opacity-60")}
-                  >
-                    <td className="px-4 py-2.5">
-                      <p className="font-bold">{t("ipc.no", { no: certificateNo(c.seq) })}</p>
-                      <p className="text-xs text-muted-foreground">{t("money.period", { from: pmDate(p?.from, locale), to: pmDate(p?.to, locale) })}</p>
-                    </td>
-                    <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">
-                      {pmMoney(c.gross)}
-                      {(c.cut ?? 0) > 0 && <p className="text-xs text-destructive">{t("money.cut_short", { amount: pmMoney(c.cut ?? 0) })}</p>}
-                    </td>
-                    <td className="px-3 py-2.5 text-end font-bold tabular-nums" dir="ltr">
-                      {pmMoney(c.net)}
-                    </td>
-                    <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">
-                      {got > 0 ? pmMoney(got) : "—"}
-                      {late > 0 && <p className="text-xs text-destructive">{t("money.late", { days: late })}</p>}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <StatusPill tone={known ? CERT_TONE[c.status] : "bad"}>{known ? t(`ipc.status.${c.status}`) : t("unknown_state")}</StatusPill>
-                    </td>
-                  </tr>
-                )
-              })}
-              {certs.length > 0 && (
-                <tr className="bg-muted/40 font-bold">
-                  <td className="px-4 py-2.5">{t("money.total")}</td>
-                  <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">
-                    {pmMoney(sum.gross)}
-                  </td>
-                  <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">
-                    {pmMoney(sum.net)}
-                  </td>
-                  <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">
-                    {pmMoney(sum.collected)}
-                  </td>
-                  <td />
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={columns}
+          rows={certs}
+          rowKey={(c) => String(c.seq)}
+          caption={t("money.certs_title")}
+          labels={labels}
+          bordered={false}
+          dense
+          rowTone={(c) => (c.status === "void" ? "mute" : undefined)}
+          onRowClick={(c) => setOpenSeq(c.seq)}
+          empty={<EmptyState bare icon={Receipt} title={t("money.no_certs")} />}
+        />
       </Panel>
     </div>
   )
@@ -291,7 +291,7 @@ export function CertificatesPanel({
         <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5">
           <span className="text-xs text-muted-foreground">{t("money.coll.release_note")}</span>
           {onOpenHandover && (
-            <Button size="sm" variant="outline" onClick={onOpenHandover}>
+            <Button size="sm" variant="ghost" className="max-sm:min-h-11" onClick={onOpenHandover}>
               {t("money.coll.handover")}
             </Button>
           )}
