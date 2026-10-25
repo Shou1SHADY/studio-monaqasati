@@ -82,6 +82,19 @@ describe("the subscription panel is read-only and names the package (B-11)", () 
     })
   }
 
+  it("each row opens with its unit's icon, a connector not subscribed greyed and dashed (ST-04)", async () => {
+    seedCompany(offFor({ pm: false, fin: true, mfg: false }))
+    const view = render(<SubscriptionPanel />)
+    await flush()
+    const icons = Array.from(document.querySelectorAll("li span.grid > svg")).map((svg) => svg.getAttribute("data-icon"))
+    expect(icons).toEqual(["ShoppingCart", "Warehouse", "Building2", "Wallet", "Wrench"])
+    const tile = (conn: string) => document.querySelector(`[data-connector="${conn}"] span`) as HTMLElement
+    expect(tile("pm").className).toContain("border-dashed")
+    expect(tile("fin").className).not.toContain("border-dashed")
+    expect(tile("fin").className).toContain("text-success")
+    view.unmount()
+  })
+
   it("a connector the company has not got says what it does without it", async () => {
     seedCompany(offFor({ pm: false, fin: true, mfg: false }))
     const view = render(<SubscriptionPanel />)
@@ -204,6 +217,17 @@ describe("the delivery site's map link and kinds in Settings (SET-02)", () => {
     expect(field.value).toBe("https://maps.app.goo.gl/x")
     expect(document.querySelector("#ds-kind")).toBeNull()
     expect([...missingKeys]).toEqual([])
+    view.unmount()
+  })
+
+  it("a site with no default receiver says so in the table: no auto-forward (ST-03)", async () => {
+    seedCompany(null)
+    seed(`procurementSettings/${ORG}`, { organizationId: ORG, deliverySites: [{ id: "s1", kind: "site", name: "فيلا النرجس", city: "الرياض", district: "النرجس", address: "", receiverId: null }] })
+    const view = render(<SettingsPage />)
+    await flush()
+    await open()
+    const row = Array.from(document.querySelectorAll("tbody tr")).find((r) => (r.textContent || "").includes("فيلا النرجس")) as HTMLElement
+    expect(row.textContent).toContain("بلا مستلم — لا يُحوَّل تلقائياً")
     view.unmount()
   })
 

@@ -10,10 +10,22 @@ import { cn } from "@/lib/utils"
 export const UNIT_ICON: Record<PipelineUnit, ElementType> = { core: ShoppingCart, inv: Warehouse, pm: Building2, fin: Wallet, mfg: Wrench }
 export const UNIT_TOKEN: Record<PipelineUnit, AccentToken> = { core: "teal", inv: "accent", pm: "pm", fin: "success", mfg: "warning" }
 
+/**
+ * A unit's chip — a label in the unit's colour (ST-05): the same token as its icon, so Inventory reads alike in Settings, the
+ * subscription panel, the admin's cards and the pipeline. A light token (the teal `accent`) keeps the text dark for contrast.
+ */
+export const UNIT_CHIP: Record<PipelineUnit, string> = {
+  core: COMPONENT_ACCENT_CLASSES[UNIT_TOKEN.core].tile,
+  inv: "bg-accent/15 text-foreground",
+  pm: COMPONENT_ACCENT_CLASSES[UNIT_TOKEN.pm].tile,
+  fin: COMPONENT_ACCENT_CLASSES[UNIT_TOKEN.fin].tile,
+  mfg: COMPONENT_ACCENT_CLASSES[UNIT_TOKEN.mfg].tile,
+}
+
 export function UnitIcon({ unit, on = true, className }: { unit: PipelineUnit; on?: boolean; className?: string }) {
   const Icon = UNIT_ICON[unit]
   return (
-    <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-lg", on ? COMPONENT_ACCENT_CLASSES[UNIT_TOKEN[unit]].tile : "bg-muted text-muted-foreground/60", className)}>
+    <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-lg", on ? COMPONENT_ACCENT_CLASSES[UNIT_TOKEN[unit]].tile : "border border-dashed border-muted-foreground/40 bg-muted text-muted-foreground/60", className)}>
       <Icon size={15} aria-hidden="true" />
     </span>
   )

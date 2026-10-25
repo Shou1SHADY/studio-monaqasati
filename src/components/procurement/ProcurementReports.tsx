@@ -17,7 +17,7 @@ import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
 import { collection, query, where } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
-import { ArrowRight, Download, Info, Loader2, Lock, Printer } from "lucide-react"
+import { AlertTriangle, ArrowRight, Clock, Download, Info, Loader2, Lock, MapPin, Printer, Scale, TrendingDown, Users, Wallet, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -336,6 +336,7 @@ export function ProcurementReports() {
               <ul>
                 {reports.map((id) => (
                   <li key={id} className="flex flex-wrap items-center gap-2 border-t px-4 py-3 first:border-t-0">
+                    <ReportIcon id={id} />
                     <button
                       type="button"
                       onClick={() => setReport(id)}
@@ -839,4 +840,12 @@ function Note({ children, tone }: { children: ReactNode; tone?: "warn" }) {
 
 function Empty({ children }: { children: ReactNode }) {
   return <p className="px-4 py-8 text-center text-sm text-muted-foreground">{children}</p>
+}
+
+/** «التقارير السبعة» (ST-06): each report opens with its icon, in the module's colour. */
+const REPORT_ICON: Record<ReportId, LucideIcon> = { supplier: Users, project: MapPin, delivery: Clock, cycle: Scale, exceptions: AlertTriangle, drift: TrendingDown, commitments: Wallet }
+
+function ReportIcon({ id }: { id: ReportId }) {
+  const Icon = REPORT_ICON[id]
+  return <Icon size={16} className="shrink-0 text-module" aria-hidden="true" data-report-icon={id} />
 }

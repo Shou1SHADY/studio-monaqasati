@@ -28,6 +28,7 @@ import { ReceiverRegister } from "@/components/procurement/ReceiverRegister"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { DeliverySitesPanel } from "@/components/procurement/DeliverySitesPanel"
 import { SubscriptionPanel } from "@/components/procurement/SubscriptionPanel"
+import { UNIT_CHIP } from "@/components/admin/packages/PackageIcons"
 import { useModules } from "@/hooks/useCompanyModules"
 import { deliverySites, storedSites } from "@/lib/procurement/delivery-sites"
 import { openRequestsBySite } from "@/lib/procurement/site-counts"
@@ -113,11 +114,12 @@ type Segment = "pol" | "sites" | "receivers" | "roles" | "sub"
 const SEGMENTS: Segment[] = ["pol", "sites", "receivers", "roles", "sub"]
 
 type Party = "pm" | "mfg" | "inv" | "fin" | "sup" | "me" | "gov"
+// One colour per unit everywhere (ST-05): the module chips take the unit's token from the package icons.
 const PARTY_TONE: Record<Party, string> = {
-  pm: "bg-pm/10 text-pm",
-  mfg: "bg-warning/10 text-warning",
-  inv: "bg-cta/10 text-cta",
-  fin: "bg-success/10 text-success",
+  pm: UNIT_CHIP.pm,
+  mfg: UNIT_CHIP.mfg,
+  inv: UNIT_CHIP.inv,
+  fin: UNIT_CHIP.fin,
   sup: "bg-accent/15 text-foreground",
   gov: "bg-muted text-muted-foreground",
   me: "bg-module/10 text-module",

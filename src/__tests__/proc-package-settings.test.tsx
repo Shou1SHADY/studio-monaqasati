@@ -84,6 +84,17 @@ describe("the policies (§14)", () => {
     view.unmount()
   })
 
+  it("colour each owner chip as its unit is coloured everywhere: Inventory's teal, not the blue it was (ST-05)", async () => {
+    world()
+    const view = await open(ORG)
+    const chip = (label: string) => Array.from(document.querySelectorAll("span")).find((el) => el.textContent === label) as HTMLElement
+    expect(chip("من المخزون").className).toContain("bg-accent/15")
+    expect(chip("من المخزون").className).not.toContain("text-cta")
+    expect(chip("من المالية").className).toContain("text-success")
+    expect(chip("من التصنيع").className).toContain("text-warning")
+    view.unmount()
+  })
+
   it("show the defaults of the PRD as placeholders: 3 days, 10 days lead, 0.5%, 2 days to escalate, 1 day to accept", async () => {
     world()
     const view = await open(ORG)

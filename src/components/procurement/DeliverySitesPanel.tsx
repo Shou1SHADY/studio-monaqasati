@@ -143,7 +143,7 @@ export function DeliverySitesPanel({
                     </span>
                   </td>
                   <td className="px-4 py-3">{s.city ? siteLine(s, (c) => displayCity(c, locale)) : <StatusPill tone="warn">{t("sites.no_city")}</StatusPill>}</td>
-                  <td className="px-4 py-3">{s.receiverId ? receiverName.get(s.receiverId) || "—" : <span className="text-muted-foreground">—</span>}</td>
+                  <td className="px-4 py-3">{s.receiverId ? receiverName.get(s.receiverId) || "—" : <StatusPill tone="warn">{t("sites.no_receiver")}</StatusPill>}</td>
                   <td className="px-4 py-3 text-end tabular-nums">{openRequests(s.id)}</td>
                   <td className="px-4 py-3 text-end">
                     {mayEdit && (
