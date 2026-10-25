@@ -162,9 +162,10 @@ export function MeasurementPanel({
       <Panel
         title={t("meas.period_title")}
         icon={Ruler}
+        description={`${t("meas.period_sub")}${hidden > 0 ? ` · ${t("meas.hidden", { count: hidden })}` : ""}`}
         actions={
           measuring ? (
-            <Button size="sm" variant="outline" onClick={stop}>
+            <Button size="sm" variant="ghost" onClick={stop}>
               {t("cancel")}
             </Button>
           ) : canWrite ? (
@@ -181,17 +182,13 @@ export function MeasurementPanel({
         }
         bodyClassName="p-0"
       >
-        <p className="border-b px-4 py-2 text-xs text-muted-foreground">
-          {t("meas.period_sub")}
-          {hidden > 0 ? ` · ${t("meas.hidden", { count: hidden })}` : ""}
-        </p>
         {waiting.length > 0 && (
           <Callout tone="warn" className="m-4">
             {t("meas.wait_callout", { count: waiting.length })}
           </Callout>
         )}
         {items.length === 0 ? (
-          <EmptyState icon={Ruler} title={t("meas.nothing_title")} description={t("meas.nothing_desc")} />
+          <EmptyState bare icon={Ruler} title={t("meas.nothing_title")} description={t("meas.nothing_desc")} />
         ) : open.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("meas.all_done")}</p>
         ) : (
@@ -240,7 +237,7 @@ export function MeasurementPanel({
                       {noPass && <p className="mt-0.5 text-xs font-bold text-destructive">{t("meas.gate_line")}</p>}
                     </div>
                     {measuring ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {openUnits.length > 0 && allocated(i.id) && (
                           <NativeSelect
                             aria-label={t("units.field")}
@@ -315,8 +312,7 @@ export function MeasurementPanel({
         )}
       </Panel>
 
-      <Panel title={t("meas.sheets_title")} icon={ClipboardList} count={waiting.length || undefined} bodyClassName="p-0">
-        <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("meas.sheets_sub")}</p>
+      <Panel title={t("meas.sheets_title")} icon={ClipboardList} count={waiting.length || undefined} description={t("meas.sheets_sub")} bodyClassName="p-0">
         {sheets.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t("meas.sheets_empty")}</p>
         ) : (
@@ -361,7 +357,7 @@ export function MeasurementPanel({
                           {busy === `${s.seq}:ok` ? <Loader2 size={14} className="me-1.5 animate-spin" aria-hidden="true" /> : <Check size={14} className="me-1.5" aria-hidden="true" />}
                           {t("meas.approve")}
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => void decide(s, "no")} disabled={busy !== null}>
+                        <Button size="sm" variant="ghost" onClick={() => void decide(s, "no")} disabled={busy !== null}>
                           <Undo2 size={14} className="me-1.5" aria-hidden="true" />
                           {t("meas.send_back")}
                         </Button>
