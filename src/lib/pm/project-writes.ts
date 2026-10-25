@@ -23,7 +23,7 @@ export class PmProjectError extends Error {
   }
 }
 
-type PmBlock = { lifecycle?: string; no?: string; terms?: ContractTerms; original?: ContractTerms | null; startedAt?: string | null; advLog?: AdvanceChange[] } & Record<string, unknown>
+type PmBlock = { lifecycle?: string; no?: string; terms?: ContractTerms; original?: ContractTerms | null; startedAt?: string | null; advLog?: AdvanceChange[]; advAmt?: number | null } & Record<string, unknown>
 
 /** An advance changed before start after Finance already held the original. */
 export interface AdvanceChange {
@@ -52,8 +52,15 @@ export const withFreshState = (ctx: PmContext, data: { pm?: unknown; status?: st
  * id may today belong to another company's project of the same number.
  */
 export async function advanceEventSent(firestore: Firestore, organizationId: string, projectNo: string): Promise<boolean> {
+  return (await sentAdvanceAmount(firestore, organizationId, projectNo)) !== null
+}
+
+/** The advance Finance already holds (prj:ADV's amount), or null when none was sent. */
+export async function sentAdvanceAmount(firestore: Firestore, organizationId: string, projectNo: string): Promise<number | null> {
   const sent = await getDocs(query(collection(firestore, PM_EVENTS), where("organizationId", "==", organizationId), where("key", "==", `prj:ADV:${projectNo}`)))
-  return !sent.empty
+  if (sent.empty) return null
+  const amount = Number((sent.docs[0].data() as { amount?: unknown }).amount)
+  return Number.isFinite(amount) ? amount : 0
 }
 
 export async function savePlanTerms(
@@ -97,17 +104,24 @@ export async function savePlanTerms(
  * certificate recovered it. Sent once, on the contract value in force; none when
  * Finance already holds one, there is no advance, or nobody pays. Read beside
  * the transaction (an outbox is append-only): a retry sees what the first try saw.
+ *
+ * IPC-07: it also says what the advance FREEZES at (`pm.advAmt`): what Finance
+ * already holds when prj:ADV went at birth, else what is sent now (contract value
+ * that day × its rate), else 0. Written by `goLive` in the same transaction.
  */
-export async function advanceDueAtStart(
+export async function advanceAtGoLive(
   firestore: Firestore,
   projectId: string,
-  data: { organizationId?: string; budget?: number | null; pm?: { no?: string; terms?: ContractTerms } },
+  data: { organizationId?: string; budget?: number | null; pm?: { no?: string; terms?: ContractTerms; advAmt?: number | null } },
   by: string
-): Promise<PmEvent | null> {
+): Promise<{ event: PmEvent | null; advAmt: number }> {
+  const frozen = data.pm?.advAmt
+  if (typeof frozen === "number" && frozen > 0) return { event: null, advAmt: frozen }
   const no = data.pm?.no
   const terms = data.pm?.terms
-  if (!no || !data.organizationId || !terms || !(terms.advance > 0) || terms.payer === "none") return null
-  if (await advanceEventSent(firestore, data.organizationId, no)) return null
+  if (!no || !data.organizationId || !terms || !(terms.advance > 0) || terms.payer === "none") return { event: null, advAmt: 0 }
+  const held = await sentAdvanceAmount(firestore, data.organizationId, no)
+  if (held !== null) return { event: null, advAmt: held }
   let contractValue = data.budget ?? 0
   try {
     contractValue = await readContractValue(firestore, projectId, data.budget)
@@ -115,8 +129,19 @@ export async function advanceDueAtStart(
     // A measurer who may not read the variations: the handover's figure stands.
     if ((err as { code?: string })?.code !== "permission-denied") throw err
   }
-  if (!(contractValue > 0)) return null
-  return advanceEvent({ organizationId: data.organizationId, projectId, projectNo: no, contractValue, terms, by, at: new Date().toISOString() })
+  if (!(contractValue > 0)) return { event: null, advAmt: 0 }
+  const event = advanceEvent({ organizationId: data.organizationId, projectId, projectNo: no, contractValue, terms, by, at: new Date().toISOString() })
+  return { event, advAmt: event?.amount ?? 0 }
+}
+
+/** The prj:ADV a go-live owes, alone (see `advanceAtGoLive`). */
+export async function advanceDueAtStart(
+  firestore: Firestore,
+  projectId: string,
+  data: { organizationId?: string; budget?: number | null; pm?: { no?: string; terms?: ContractTerms; advAmt?: number | null } },
+  by: string
+): Promise<PmEvent | null> {
+  return (await advanceAtGoLive(firestore, projectId, data, by)).event
 }
 
 /** Writes it in the go-live's own transaction. */
@@ -125,9 +150,17 @@ export const sendAdvance = (tx: Transaction, firestore: Firestore, event: PmEven
 }
 
 /** plan → live: the original freezes as it stands (TRM-02). `by` says why — the
- * manager's Start, or the first approved measurement (MS-04). */
-export function goLive<T extends PmBlock>(pm: T, by: "start" | "measurement"): T & { lifecycle: "live" } {
-  return { ...pm, lifecycle: "live", original: pm.original ?? pm.terms ?? null, startedAt: new Date().toISOString(), startedBy: by }
+ * manager's Start, or the first approved measurement (MS-04). `advAmt`, when
+ * given, freezes the advance with it (IPC-07; `advanceAtGoLive`). */
+export function goLive<T extends PmBlock>(pm: T, by: "start" | "measurement", advAmt?: number | null): T & { lifecycle: "live" } {
+  return {
+    ...pm,
+    lifecycle: "live",
+    original: pm.original ?? pm.terms ?? null,
+    startedAt: new Date().toISOString(),
+    startedBy: by,
+    ...(typeof advAmt === "number" && Number.isFinite(advAmt) ? { advAmt: Math.round(advAmt * 100) / 100 } : {}),
+  }
 }
 
 /** Start work: plan → live, and the original contract freezes as it stands. */
@@ -141,9 +174,10 @@ export async function startProject(firestore: Firestore, ctx: PmContext, project
     assertPm(withFreshState(ctx, data), "project.start")
     const blocks = startBlocks({ lifecycle: lifecycleOf(data), hasManager: Boolean(data.projectManagerId), boqItems, termProblems: termProblems(data.pm.terms).length })
     if (blocks.length) throw new PmProjectError("blocked", blocks)
-    sendAdvance(tx, firestore, actor ? await advanceDueAtStart(firestore, projectId, data, actor.uid) : null)
+    const adv = await advanceAtGoLive(firestore, projectId, data, actor?.uid ?? "")
+    sendAdvance(tx, firestore, actor ? adv.event : null)
     tx.update(ref, {
-      pm: goLive(data.pm, "start"),
+      pm: goLive(data.pm, "start", adv.advAmt),
       status: "working",
       updatedAt: serverTimestamp(),
     })

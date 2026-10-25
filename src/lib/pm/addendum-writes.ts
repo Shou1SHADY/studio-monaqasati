@@ -51,6 +51,8 @@ export interface PmBlockData {
   /** The contract in force after the last signature (terms.ts `termsNow`): what
    * everyone on the project reads, since the addenda themselves are money's or approve's. */
   inForce?: ContractTerms
+  /** The frozen advance (IPC-07, certificate.ts `frozenAdvance`). */
+  advAmt?: number | null
 }
 
 type ProjectData = { organizationId?: string; budget?: number; status?: string; projectManagerId?: string | null; pm?: PmBlockData }

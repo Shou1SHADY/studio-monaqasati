@@ -19950,6 +19950,8 @@
           "late_row": "Certificate {no} · {days, plural, one {# day} other {# days}} late",
           "cash_in": "Cash in to date",
           "adv_ret": "Advance & retention",
+          "adv_total": "Advance received (frozen at start)",
+          "adv_recovered": "Recovered on submitted certificates",
           "adv_left": "Advance ({rate}) — left to recover",
           "ret_on_you": "Retention {payer} holds on you ({rate})",
           "ret_on_subs": "Held by you on subcontractors",

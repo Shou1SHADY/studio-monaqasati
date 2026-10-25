@@ -56,7 +56,8 @@ describe("certificates — period, collection, lateness, totals (IPC-04)", () =>
     expect(f.overdue).toBe(90_000)
     expect(f.late).toEqual([{ seq: 2, days: 27, amount: 90_000 }])
     expect(f.cashIn).toBe(100_000 + 90_000 - 12_000)
-    expect(f.advanceLeft).toBe(100_000 - 30_000)
+    // IPC-07 (1.1): "recovered" counts from submitted certificates onward — the internal draft (seq 3) not yet.
+    expect(f.advanceLeft).toBe(100_000 - 20_000)
     expect(f.retentionHeld).toBe(20_000)
   })
 })

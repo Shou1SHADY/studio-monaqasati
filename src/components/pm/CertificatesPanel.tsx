@@ -28,8 +28,10 @@ import {
   certificateTotals,
   collectedAmount,
   collectionFigures,
+  frozenAdvance,
   isCutReason,
   lateDays,
+  legacyClaimsCollected,
   PM_CERTIFICATES,
   unbilledValue,
   unreclaimedCuts,
@@ -82,7 +84,7 @@ export function CertificatesPanel({
   lifecycle: string
   startOn?: string | null
   contractValue: number
-  totals: { retentionHeld?: number; advanceRecovered?: number; cutPool?: number; retentionHalfReleased?: boolean }
+  totals: { retentionHeld?: number; advanceRecovered?: number; cutPool?: number; retentionHalfReleased?: boolean; advAmt?: number | null }
   retentionReleased?: boolean
   items: CertItem[]
   /** The `collect` section is on: the collection side panel shows beside the list. */
@@ -123,11 +125,29 @@ export function CertificatesPanel({
   const subQuery = useMemoFirebase(() => (firestore && money && showCollection ? collection(firestore, "projects", projectId, PM_SUBCONTRACTS) : null), [firestore, projectId, money, showCollection])
   const { data: subData } = useCollection(subQuery)
 
+  // An adopted project's legacy claims: what the client paid on them is cash in too (the project head adds it).
+  const legacyQuery = useMemoFirebase(() => (firestore && money ? collection(firestore, "projects", projectId, "ipcClaims") : null), [firestore, projectId, money])
+  const { data: legacyData } = useCollection(legacyQuery)
+  const legacyCollected = useMemo(() => legacyClaimsCollected((legacyData ?? []) as Array<{ status?: unknown; amount?: unknown }>), [legacyData])
+
   const periods = useMemo(() => certificatePeriods(certs, startOn ?? null), [certs, startOn])
   const sum = useMemo(() => certificateTotals(certs), [certs])
+  // IPC-07 / CST-05: the advance at its frozen value — the figure the project head's cash reads too.
+  const advanceTotal = frozenAdvance({ advAmt: totals.advAmt, original }, liveValue)
   const coll = useMemo(
-    () => collectionFigures({ certs, today, contractValue: liveValue, advance: terms.advance, started: lifecycle !== "plan", retentionReleased: Boolean(retentionReleased), retentionHalfReleased: totals.retentionHalfReleased === true }),
-    [certs, today, liveValue, terms.advance, lifecycle, retentionReleased, totals.retentionHalfReleased]
+    () =>
+      collectionFigures({
+        certs,
+        today,
+        contractValue: liveValue,
+        advance: terms.advance,
+        advanceTotal,
+        started: lifecycle !== "plan",
+        legacyCollected,
+        retentionReleased: Boolean(retentionReleased),
+        retentionHalfReleased: totals.retentionHalfReleased === true,
+      }),
+    [certs, today, liveValue, terms.advance, advanceTotal, lifecycle, legacyCollected, retentionReleased, totals.retentionHalfReleased]
   )
   const subRetention = useMemo(() => subTotals(subSummaries((subData ?? []) as unknown as PmSubcontract[])).retention, [subData])
 
@@ -262,6 +282,8 @@ export function CertificatesPanel({
         <Row label={t("money.coll.cash_in")} value={pmMoney(coll.cashIn)} tone="total" />
       </Panel>
       <Panel title={t("money.coll.adv_ret")} icon={ShieldCheck} bodyClassName="p-0">
+        <Row label={t("money.coll.adv_total")} value={pmMoney(coll.advanceTotal)} />
+        <Row label={t("money.coll.adv_recovered")} value={pmMoney(coll.advanceRecovered)} />
         <Row label={t("money.coll.adv_left", { rate: pmPct(terms.advance) })} value={pmMoney(coll.advanceLeft)} />
         <Row label={t("money.coll.ret_on_you", { payer, rate: pmPct(terms.retention) })} value={pmMoney(coll.retentionHeld)} />
         <Row label={t("money.coll.ret_on_subs")} value={pmMoney(subRetention)} />
@@ -296,6 +318,7 @@ export function CertificatesPanel({
           payer={certPayer}
           lifecycle={lifecycle}
           contractValue={liveValue}
+          advAmt={advanceTotal}
           held={held}
           recovered={recovered}
           cutPool={cutPool}

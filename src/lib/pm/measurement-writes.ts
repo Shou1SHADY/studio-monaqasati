@@ -11,7 +11,7 @@ import { cleanAttachments, type PmAttachment } from "./attachments"
 import type { GateFields } from "./inspection"
 import { lifecycleOf } from "./lifecycle"
 import { applySheet, inspectionGateOn, PM_SHEETS, sheetBlocks, sheetNo, sheetWriteBlocks, type MeasuredItem, type PmSheet, type SheetLine } from "./measurement"
-import { advanceDueAtStart, goLive, sendAdvance, withFreshState } from "./project-writes"
+import { advanceAtGoLive, goLive, sendAdvance, withFreshState } from "./project-writes"
 import type { ContractTerms } from "./terms"
 import { attributeToUnits, PM_UNITS, type PmUnit } from "./units"
 import { termsNow } from "./terms"
@@ -124,9 +124,10 @@ export async function writeSheet(firestore: Firestore, ctx: PmContext, projectId
       stored = r.applied.lines
       wentLive = r.wentLive
       if (wentLive) {
-        nextPm = goLive(nextPm, "measurement")
+        const adv = await advanceAtGoLive(firestore, projectId, project, actor.uid)
+        nextPm = goLive(nextPm, "measurement", adv.advAmt)
         status = "working"
-        sendAdvance(tx, firestore, await advanceDueAtStart(firestore, projectId, project, actor.uid))
+        sendAdvance(tx, firestore, adv.event)
       }
     }
     const sheet: Omit<PmSheet, "id"> = {
@@ -170,8 +171,9 @@ export async function approveSheet(firestore: Firestore, ctx: PmContext, project
     const { applied, wentLive } = approveInto(tx, firestore, projectId, project, items, sheet.lines, units)
     tx.update(sRef, { status: "ok", lines: applied.lines, okBy: actor.uid, okByName: actor.name, okAt: new Date().toISOString(), self: sheet.by === actor.uid, updatedAt: serverTimestamp() })
     if (wentLive) {
-      sendAdvance(tx, firestore, await advanceDueAtStart(firestore, projectId, project, actor.uid))
-      tx.update(ref, { pm: goLive(pm, "measurement"), status: "working", updatedAt: serverTimestamp() })
+      const adv = await advanceAtGoLive(firestore, projectId, project, actor.uid)
+      sendAdvance(tx, firestore, adv.event)
+      tx.update(ref, { pm: goLive(pm, "measurement", adv.advAmt), status: "working", updatedAt: serverTimestamp() })
     }
     result = { value: applied.value, moved: applied.moved, wentLive }
   })

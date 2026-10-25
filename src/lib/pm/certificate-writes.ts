@@ -16,6 +16,7 @@ import {
   certificateVoLines,
   certifyBlocks,
   dueDate,
+  frozenAdvance,
   PM_CERTIFICATES,
   prepareBlocks,
   termsSnapshot,
@@ -157,7 +158,9 @@ export async function prepareCertificate(firestore: Firestore, ctx: PmContext, p
 
     // INV-01: priced items + approved variations (the handover's figure only while no BOQ is priced).
     const contractValue = await readContractValue(firestore, projectId, project.budget)
-    const amounts = certificateAmounts({ gross, terms, contractValue, held: totals.retentionHeld ?? 0, recovered: totals.advanceRecovered ?? 0 })
+    // IPC-07: recovery is capped at what is left of the FROZEN advance, at today's rate.
+    const snapshot = termsSnapshot(terms, frozenAdvance(pm, contractValue))
+    const amounts = certificateAmounts({ gross, terms: snapshot, contractValue, held: totals.retentionHeld ?? 0, recovered: totals.advanceRecovered ?? 0 })
     const seq = (totals.ipcCount ?? 0) + 1
     const prepOn = todayDay()
     const cert: Omit<PmCertificate, "id"> = {
@@ -170,7 +173,7 @@ export async function prepareCertificate(firestore: Firestore, ctx: PmContext, p
       periodTo: prepOn,
       checks: [...new Set(input.checks ?? [])],
       ...amounts,
-      terms: termsSnapshot(terms),
+      terms: snapshot,
       contractValue,
       prep: actor.uid,
       prepName: actor.name,

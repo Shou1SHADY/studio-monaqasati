@@ -68,6 +68,7 @@ export function PrepareCertificateDialog({
   payer,
   lifecycle,
   contractValue,
+  advAmt,
   held,
   recovered,
   cutPool,
@@ -88,6 +89,8 @@ export function PrepareCertificateDialog({
   payer?: string
   lifecycle: string
   contractValue: number
+  /** The frozen advance recovery is capped at (IPC-07, `frozenAdvance`) — the same figure the write uses. */
+  advAmt?: number | null
   held: number
   recovered: number
   cutPool: number
@@ -122,7 +125,7 @@ export function PrepareCertificateDialog({
   const lines = billable.filter((l) => chosen.has(l.itemId))
   const voLines = certificateVoLines(variations, vos)
   const gross = lines.reduce((a, l) => a + l.amount, 0) + voLines.reduce((a, l) => a + l.amount, 0) + (cuts ? cutPool : 0)
-  const amounts = certificateAmounts({ gross, terms, contractValue, held, recovered })
+  const amounts = certificateAmounts({ gross, terms: { ...terms, advAmt: advAmt ?? null }, contractValue, held, recovered })
   const blocks = prepareBlocks({ archived: access.ctx.archived, lifecycle, payer: payer ?? terms.payer, gross })
   const capped = gross * terms.retention - amounts.retention > 0.005
   const byId = new Map(items.map((i) => [i.id, i]))

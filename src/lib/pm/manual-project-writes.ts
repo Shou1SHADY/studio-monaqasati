@@ -75,6 +75,8 @@ export async function createManualProject(firestore: Firestore, ctx: PmContext, 
         terms,
         original: null,
         startedAt: null,
+        // IPC-07: the advance freezes in the transaction that sends prj:ADV.
+        ...(event && value > 0 ? { advAmt: event.amount } : {}),
       },
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
