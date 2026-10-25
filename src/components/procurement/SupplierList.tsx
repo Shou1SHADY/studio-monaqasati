@@ -17,7 +17,7 @@ import { EmptyState } from "@/components/module-ui/EmptyState"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { displayCity } from "@/lib/constants"
-import { DIR_STATUSES, OURS_STATUSES, SUPPLIER_SORTS, EMPTY_SUPPLIER_FILTER, ratingText, supplierFilterActive, type SupplierFacets, type SupplierFilter, type SupplierListItem, type SupplierListKind, type SupplierSort, type SupplierStatus } from "@/lib/procurement/supplier-list"
+import { DIR_STATUSES, OURS_STATUSES, SUPPLIER_SORTS, EMPTY_SUPPLIER_FILTER, ratingText, supplierFilterActive, supplierInitials, type SupplierFacets, type SupplierFilter, type SupplierListItem, type SupplierListKind, type SupplierSort, type SupplierStatus } from "@/lib/procurement/supplier-list"
 import { cn } from "@/lib/utils"
 import { Stars } from "./SupplierFileDrawer"
 
@@ -54,7 +54,7 @@ export interface SupplierListProps<T extends SupplierListItem> {
 function Avatar({ name }: { name: string }) {
   return (
     <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-module/10 text-xs font-black text-module" aria-hidden="true">
-      {name.trim().slice(0, 2)}
+      {supplierInitials(name)}
     </span>
   )
 }

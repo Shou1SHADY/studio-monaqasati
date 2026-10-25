@@ -42,12 +42,14 @@ import {
 import { SupplierWriteError, verifySupplier } from "@/lib/procurement/supplier-writes"
 import type { ProcActor, PurchaseOrder } from "@/lib/procurement/types"
 import type { PlatformSupplier } from "@/hooks/useSupplierDirectory"
+import { supplierInitials } from "@/lib/procurement/supplier-list"
 import type { SupplierCard } from "@/lib/procurement/supplier-stats"
 import { sarLtr } from "@/lib/riyal"
 import { Money, PoStatusPill, useDateText } from "./PoBits"
 import { SupplierRecordDialog } from "./SupplierRecordDialog"
 import type { InvitePrefill } from "./InviteSupplierDialog"
 import { AddGuestSupplierButton } from "./AddGuestSupplierButton"
+import { SupplierOfficialSection, SupplierOptionalSlots, SupplierStatePills } from "./SupplierProfileSections"
 import { ordersOfGuest, type GuestOfferFact } from "@/lib/procurement/supplier-offplatform"
 
 function Tile({ label, sub, children }: { label: string; sub?: string; children: React.ReactNode }) {
@@ -57,15 +59,6 @@ function Tile({ label, sub, children }: { label: string; sub?: string; children:
       <div className="mt-1 text-base font-black text-foreground">{children}</div>
       {sub && <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>}
     </div>
-  )
-}
-
-function Optional({ title, empty, children, hasContent }: { title: string; empty: string; children?: React.ReactNode; hasContent: boolean }) {
-  const t2 = useTranslations("Portal.ProcSuppliers.file2")
-  return (
-    <DrawerSection title={`${title} · ${t2("optional")}`}>
-      {hasContent ? children : <p className="py-2 text-sm text-muted-foreground">{empty}</p>}
-    </DrawerSection>
   )
 }
 
@@ -170,7 +163,6 @@ export function SupplierFileDrawer({
   const off = isOffPlatform(supplier)
   const invite: InvitePrefill = { companyName: supplier.name, contactName: supplier.contactName || "", contact: supplier.phone || supplier.email || "", specialtyIds: supplier.subIds }
   const ordersValue = mine.reduce((sum, po) => sum + poValue(po), 0)
-  const crSoon = docs.crDays != null && docs.crDays >= 0 && docs.crDays <= 60
 
   const ordersSection = (
     <DrawerSection title={t("file.orders")} count={mine.length}>
@@ -217,7 +209,7 @@ export function SupplierFileDrawer({
           <SheetHeader className="space-y-1 border-b px-5 py-4 text-start">
             <div className="flex items-center gap-3">
               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-module/10 text-sm font-black text-module" aria-hidden="true">
-                {supplier.name.slice(0, 2)}
+                {supplierInitials(supplier.name)}
               </span>
               <div className="min-w-0">
                 <SheetTitle className="truncate text-lg" dir="auto">
@@ -233,6 +225,9 @@ export function SupplierFileDrawer({
                     </StatusPill>
                   )}
                 </SheetDescription>
+                <div className="pt-1.5">
+                  <SupplierStatePills verified={!off && (record ? !isUnverified(record) : supplier.platformVerified)} onPlatform={!off} since={supplier.since} ours={supplier.isMine} />
+                </div>
               </div>
             </div>
           </SheetHeader>
@@ -313,50 +308,18 @@ export function SupplierFileDrawer({
               </p>
             )}
 
-            <DrawerSection title={t("file2.official")}>
-              <KeyValueRow
-                label={t("file2.cr")}
-                value={
-                  <span className="flex flex-col items-end">
-                    <span dir="ltr">{supplier.crNumber || "—"}</span>
-                    <span className={cn("text-xs font-normal", crSoon || docs.state === "cr_expired" ? "text-warning" : "text-muted-foreground")}>
-                      {docs.crExpiry ? `${t("file2.cr_expires", { date: fmt(docs.crExpiry) })}${crSoon ? ` · ${t("file2.soon")}` : ""}` : t("file.not_recorded")}
-                    </span>
-                  </span>
-                }
-              />
-              <KeyValueRow label={t("file.vat")} ltr value={displayVat(record, supplierVat) || (vat ? t("file.vat_on_file") : <span className="font-normal text-warning">{t("file2.vat_missing")}</span>)} />
-              <KeyValueRow label={t("file2.address")} value={supplier.address ? <span dir="auto">{supplier.address}</span> : <span className="font-normal text-muted-foreground">—</span>} />
-              <KeyValueRow
-                label={t("file2.contact")}
-                value={
-                  <span className="flex flex-col items-end">
-                    <span dir="auto">{supplier.contactName || "—"}</span>
-                    {supplier.phone && <span className="text-xs font-normal" dir="ltr">{supplier.phone}</span>}
-                    {supplier.email && <span className="text-xs font-normal" dir="ltr">{supplier.email}</span>}
-                  </span>
-                }
-              />
-              <KeyValueRow label={t("file2.coverage")} value={[supplier.city, ...supplier.coverageCities].filter((c, i, a): c is string => Boolean(c) && a.indexOf(c) === i).map((c) => displayCity(c, locale)).join(sep) || "—"} />
-              <KeyValueRow label={t("file.verified_since")} value={supplier.since ? fmt(supplier.since) : "—"} />
-              {score?.responsePercent != null && <KeyValueRow label={t("file2.response")} value={<span dir="ltr">{score.responsePercent}%</span>} />}
-            </DrawerSection>
+            <SupplierOfficialSection
+              supplier={supplier}
+              facts={{
+                crExpiry: docs.crExpiry,
+                crDays: docs.crDays,
+                crExpired: docs.state === "cr_expired",
+                vatText: displayVat(record, supplierVat) || (vat ? t("file.vat_on_file") : null),
+                responsePercent: score?.responsePercent ?? null,
+              }}
+            />
 
-            <Optional title={t("file2.profile")} empty={t("file2.no_profile")} hasContent={Boolean(supplier.bio)}>
-              <p className="py-2 text-sm" dir="auto">{supplier.bio}</p>
-            </Optional>
-            <Optional title={t("file2.works")} empty={t("file2.no_works")} hasContent={supplier.worksCount > 0}>
-              <p className="py-2 text-sm">{t("file.works_count", { count: supplier.worksCount })}</p>
-            </Optional>
-            <Optional title={t("file2.certs")} empty={t("file2.no_certs")} hasContent={supplier.certificates.length > 0}>
-              {supplier.certificates.map((c, i) => (
-                <div key={c.id || i} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-2 text-sm last:border-b-0">
-                  <span dir="auto">{c.name || "—"}</span>
-                  {c.expiryDate && <span className="shrink-0 text-xs text-muted-foreground">{t("file2.valid_until", { date: fmt(c.expiryDate) })}</span>}
-                </div>
-              ))}
-            </Optional>
-            <p className="text-xs text-muted-foreground">{t("file2.slots_note")}</p>
+            <SupplierOptionalSlots supplier={supplier} today={today} />
 
             {kind === "sub" && <Callout tone="info">{t("file.sub_note")}</Callout>}
 

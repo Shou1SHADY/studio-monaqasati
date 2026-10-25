@@ -30,6 +30,47 @@ export interface SupplierCertificate {
   documentUrl?: string
 }
 
+/** A previous work the supplier shows on his profile (SP-01): its title, where, and its photos. */
+export interface SupplierWork {
+  id: string
+  title: string
+  description: string | null
+  images: string[]
+}
+
+/** A supporting file the supplier added to his profile (SP-01): a brochure, a certificate scan. */
+export interface SupplierProfileFile {
+  id: string
+  name: string
+  url: string
+  kind: "image" | "document"
+}
+
+const https = (v: unknown): string | null => (typeof v === "string" && /^https:\/\//i.test(v.trim()) ? v.trim() : null)
+
+/** His «سابقة الأعمال» as the profile page stores them (`projects[]`: name, description, images). */
+export function worksOf(raw: unknown): SupplierWork[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
+    .map((x, i) => ({
+      id: String(x.id ?? i),
+      title: String(x.name ?? x.title ?? "").trim(),
+      description: typeof x.description === "string" && x.description.trim() ? x.description.trim() : null,
+      images: (Array.isArray(x.images) ? x.images : []).map(https).filter((u): u is string => Boolean(u)),
+    }))
+    .filter((w) => w.title || w.images.length)
+}
+
+/** His supporting files (`companyFiles[]`) — only those with an address we can open. */
+export function profileFilesOf(raw: unknown): SupplierProfileFile[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
+    .map((x, i) => ({ id: String(x.id ?? i), name: String(x.name ?? "").trim(), url: https(x.url) || "", kind: x.type === "image" ? ("image" as const) : ("document" as const) }))
+    .filter((f) => f.url && f.name)
+}
+
 interface SupplierUserDoc {
   id: string
   organizationId?: string
@@ -111,6 +152,10 @@ export interface PlatformSupplier {
   address?: string | null
   contactName?: string | null
   crNumber?: string | null
+  /** SP-01: the profile's optional slots, readable in the file — previous work with its photos, supporting files, the profile file. */
+  works?: SupplierWork[]
+  files?: SupplierProfileFile[]
+  profileFileUrl?: string | null
 }
 
 const asDay = (v: unknown): string | null => {
@@ -204,6 +249,9 @@ function assembleSuppliers(p: Parts): PlatformSupplier[] {
       address: str(pick("nationalAddress")) || str(pick("location")),
       contactName: str(owner.name),
       crNumber: str(pick("crNumber")),
+      works: worksOf(pick("projects")),
+      files: profileFilesOf(pick("companyFiles")),
+      profileFileUrl: https(pick("companyProfileUrl")) || https(pick("profileFileUrl")),
     }
   })
 }

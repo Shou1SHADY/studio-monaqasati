@@ -26214,6 +26214,17 @@
         "no_certs": "لم يضف المورّد شهادات أو ملفات.",
         "valid_until": "صالحة حتى {date}",
         "slots_note": "الملف التعريفي وسابقة الأعمال والشهادات خانات مفتوحة يضيفها المورّد من حسابه أو يتركها. والسجل والرقم الضريبي يطلبهما التوثيق، وعدد العمليات والالتزام يحسبهما النظام.",
+        "pill_verified": "موثّق",
+        "pill_unverified": "غير موثّق",
+        "pill_on_platform": "على المنصة",
+        "pill_on_platform_since": "على المنصة منذ {date}",
+        "pill_off_platform": "خارج المنصة",
+        "pill_ours": "من مورّدينا",
+        "profile_file": "الملف التعريفي — {name}",
+        "view": "اعرض",
+        "photos": "{count, plural, zero {لا صور} one {صورة واحدة} two {صورتان} few {# صور} many {# صورة} other {# صورة}}",
+        "photo_n": "صورة {n} من «{title}»",
+        "expired_on": "انتهت في {date}",
         "private_rfq": "طلب عروض خاص له"
       },
       "origin": {

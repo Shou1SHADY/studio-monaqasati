@@ -128,6 +128,7 @@ import { reopenAwardAfterDecline, reopenAwardRefusal } from "@/lib/procurement/r
 import { PoReceiverLine } from "./PoReceiverLine"
 import { PoBnplRow, PoChatBody } from "./PoV2Sections"
 import { PoRouteError, poAct, type PoActResult } from "@/lib/procurement/po-client"
+import { SupplierLink } from "./SupplierLink"
 import { lineUnitName, pendingVersion, pieceView, poNextStep, poSiteOf, poVer, type PoStateCtx } from "@/lib/procurement/po-state"
 
 type Tone = "red" | "amber" | "blue" | "green"
@@ -980,9 +981,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 </SheetTitle>
                 <SheetDescription className="text-sm text-foreground">
                   {po.supplierOrgId ? (
-                    <Link href={`/contractor/suppliers?supplier=${encodeURIComponent(po.supplierOrgId)}`} className="font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
-                      {po.supplierName}
-                    </Link>
+                    <SupplierLink orgId={po.supplierOrgId} name={po.supplierName} className="font-bold" />
                   ) : (
                     <span className="font-bold">{po.supplierName}</span>
                   )}

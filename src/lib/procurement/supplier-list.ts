@@ -144,3 +144,23 @@ export function listSuppliers<T extends SupplierListItem>(items: readonly T[], f
 
 /** The platform stars as the list prints them: one decimal, a point, never a trailing zero twice. */
 export const ratingText = (r: number | null): string => (r == null ? "—" : r.toFixed(1))
+
+/** The words a company name opens with that say nothing about WHICH company it is (prototype `supIni`). */
+const GENERIC_NAME_WORD = /^(مؤسسة|شركة|مصنع|مصانع|مجموعة|—|-|–|·|company|co\.?|est\.?|factory|the)$/i
+
+/**
+ * Two letters for a supplier's avatar: the first letter of each of the first two meaningful words — «مؤسسة/شركة/مصنع» are
+ * skipped and the article «ال/لل» dropped — so «مصنع الجودة للخرسانة» is «جخ», not «مص», and the tiles can be told apart.
+ * A name of one meaningful word gives its first letter; a name with none falls back to its first two characters.
+ */
+export function supplierInitials(name: string | null | undefined): string {
+  const raw = (name || "").trim()
+  if (!raw) return "—"
+  const words = raw.split(/\s+/).filter((w) => w && !GENERIC_NAME_WORD.test(w))
+  const letters = words
+    .slice(0, 2)
+    .map((w) => (/^(ال|لل)./.test(w) && w.length > 3 ? w.replace(/^(ال|لل)/, "") : w).replace(/^[^\p{L}\p{N}]+/u, "").charAt(0))
+    .filter(Boolean)
+    .join("")
+  return (letters || raw.slice(0, 2)).toLocaleUpperCase("en-US")
+}

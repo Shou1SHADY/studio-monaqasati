@@ -17,6 +17,7 @@ import { agreementConsumption, type AgreementState, type PriceAgreement } from "
 import { agreementOrderCounts } from "@/lib/procurement/supplier-file"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import { cn } from "@/lib/utils"
+import { SupplierLink } from "./SupplierLink"
 import { sarLtr } from "@/lib/riyal"
 
 export type AgreementRow = PriceAgreement & { state: AgreementState; daysLeft: number }
@@ -46,8 +47,8 @@ export function AgreementsPanel({ rows, orders, fmtDate, onOpen, empty }: { rows
           >
             {displayAgreementNumber(a.docNumber, locale)}
           </button>
-          <span className="block text-xs font-normal text-muted-foreground" dir="auto">
-            {a.supplierName || "—"}
+          <span className="block text-xs font-normal text-muted-foreground">
+            <SupplierLink orgId={a.supplierOrgId} name={a.supplierName} />
           </span>
         </>
       ),

@@ -14,7 +14,6 @@ import { DrawerSection } from "@/components/module-ui/DrawerSection"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { Money, useDateText } from "@/components/procurement/PoBits"
-import { Link } from "@/i18n/routing"
 import type { AwardSelection, RfqWorld } from "@/hooks/useRfqWorld"
 import { awardSupplierOrgId } from "@/lib/procurement/award"
 import { fromHalalas, lineOf, pricedProducts } from "@/lib/procurement/offer-calc"
@@ -26,6 +25,7 @@ import { cn } from "@/lib/utils"
 import { OfferTags } from "./OfferTags"
 import { OffPlatformBox } from "./OffPlatformBox"
 import { useTermsText } from "./rfqOfferText"
+import { SupplierLink } from "../SupplierLink"
 import type { RfqOfferView } from "./rfqOfferView"
 
 export interface DrawerActions {
@@ -125,13 +125,8 @@ export function RfqOfferDrawer({ row, world, actions, onClose, fallbackName }: {
             <OffPlatformBox row={r} rfqTitle={rfq?.title || ""} today={today} canAct={access.acts} inOurs={Boolean(orgId && world.records.has(orgId))} onInvite={() => actions.onInvite(r)} />
           ) : (
             <DrawerSection title={t("supplier")} defaultOpen>
-              {orgId ? (
-                <Link href={`/contractor/supplier/profile/${orgId}`} className="font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
-                  {name}
-                </Link>
-              ) : (
-                <span className="font-bold" dir="auto">{name}</span>
-              )}
+              {/* SP-03: his file opens over this drawer and closes back to it, instead of leaving the RFQ. */}
+              <SupplierLink orgId={orgId} name={name} className="font-bold" />
               {profile?.city && <KeyValueRow label={t("city")} value={profile.city} />}
               <KeyValueRow label={t("our_experience")} value={exp.orders ? t("our_orders", { count: exp.orders }) : t("new_supplier")} />
               {exp.onTimePercent != null && <KeyValueRow label={t("commitment")} value={`${exp.onTimePercent}%`} ltr />}

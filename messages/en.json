@@ -26214,6 +26214,17 @@
         "no_certs": "The supplier has not added certificates or files.",
         "valid_until": "valid until {date}",
         "slots_note": "Profile, previous work and certificates are open fields the supplier adds from his account — or leaves. CR and VAT are required for verification; operations and on-time are computed by the system.",
+        "pill_verified": "Verified",
+        "pill_unverified": "Unverified",
+        "pill_on_platform": "On the platform",
+        "pill_on_platform_since": "On the platform since {date}",
+        "pill_off_platform": "Off-platform",
+        "pill_ours": "One of ours",
+        "profile_file": "Company profile — {name}",
+        "view": "View",
+        "photos": "{count, plural, =0 {No photos} one {# photo} other {# photos}}",
+        "photo_n": "Photo {n} of “{title}”",
+        "expired_on": "Expired on {date}",
         "private_rfq": "Private RFQ to him"
       },
       "origin": {

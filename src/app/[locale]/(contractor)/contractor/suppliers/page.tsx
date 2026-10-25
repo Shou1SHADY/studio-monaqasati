@@ -71,6 +71,7 @@ import type { SupplierLayout } from "@/components/procurement/SupplierList"
 import { EMPTY_SUPPLIER_FILTER, type SupplierFilter } from "@/lib/procurement/supplier-list"
 import { SupplierFileDrawer } from "@/components/procurement/SupplierFileDrawer"
 import { DirectoryDrawer } from "@/components/procurement/DirectoryDrawer"
+import { SupplierLinkContext } from "@/components/procurement/SupplierLink"
 import { SupplierInvitations, type InvitationDoc } from "@/components/procurement/SupplierInvitations"
 import { SupplierConnectionRequests } from "@/components/procurement/SupplierConnectionRequests"
 import { InviteSupplierDialog, type InvitePrefill } from "@/components/procurement/InviteSupplierDialog"
@@ -274,8 +275,12 @@ export default function SuppliersPage() {
     </div>
   )
 
+  // SP-03: a supplier's name in the agreements and the price history opens his file on this page — ours, or the directory's profile.
+  const openSupplierLink = (id: string) => (mineIds.has(id) ? openFile(id) : setDirId(id))
+
   return (
     <PortalLayout>
+      <SupplierLinkContext.Provider value={openSupplierLink}>
       <div className="space-y-6">
         <ProcurementHeader
           title={t("page.title")}
@@ -484,6 +489,7 @@ export default function SuppliersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </SupplierLinkContext.Provider>
     </PortalLayout>
   )
 }
