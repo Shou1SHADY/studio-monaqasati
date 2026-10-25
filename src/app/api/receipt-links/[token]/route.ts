@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getAdminFirestore } from "@/lib/firebaseAdmin"
 import { deliveryLines, maskPhone, resolveReceiptLink } from "@/lib/receipt-links"
 import { resolveLanding } from "@/lib/procurement/receipt-effects-server"
+import { projectsOn } from "@/lib/procurement/financeless-server"
 
 // Public: what the receiver needs to count a delivery — and nothing more.
 // The token is 32 random bytes, so it is the key; what comes back is the
@@ -32,7 +33,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
     return NextResponse.json({
       success: true,
       data: {
-        where: place.module === "projects" ? "project" : "warehouse",
+        where: place.module === "projects" ? ((await projectsOn(db, link.organizationId)) ? "project" : "site") : "warehouse",
         receiverName: link.receiver.name,
         phoneMasked: maskPhone(link.receiver.phone),
         supplierName: (delivery.supplierName as string) || "",

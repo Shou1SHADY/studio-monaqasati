@@ -64,6 +64,10 @@ export type ListRfq = Omit<RfqListLike, "products"> & {
   products?: Array<{ description?: string | null; name?: string | null; quantity?: string | number | null; unit?: string | null; category?: string | null; projectId?: string | null; projectName?: string | null; deliverySiteId?: string | null; deliveryCity?: string | null; materialPath?: string | null }> | null
 }
 
+/** «نُشر الآن»: published within the last hour. */
+export const JUST_PUBLISHED_MS = 60 * 60 * 1000
+export const isJustPublished = (row: { state: string; publishedMs?: number }, nowMs: number): boolean => row.state !== "draft" && !!row.publishedMs && nowMs - row.publishedMs >= 0 && nowMs - row.publishedMs < JUST_PUBLISHED_MS
+
 export type ListOffer = PlanOffer & RowOffer
 
 export interface RfqListRow<T extends ListRfq = ListRfq> {

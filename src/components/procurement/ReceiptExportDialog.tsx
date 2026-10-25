@@ -139,7 +139,7 @@ export function ReceiptExportDialog({ open, onOpenChange, deliveries, orders, wa
       a.download = f.filename
       a.click()
       URL.revokeObjectURL(url)
-      toast({ title: t("exported", { n: counts.total }) })
+      toast({ title: format === "zip" ? t("exportedZip") : t("exportedSheet", { fmt: format === "xlsx" ? "Excel" : "CSV" }) })
       onOpenChange(false)
     } catch {
       toast({ title: t("failed"), variant: "destructive" })

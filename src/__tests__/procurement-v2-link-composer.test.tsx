@@ -121,7 +121,7 @@ describe("the composer", () => {
     await open()
     expect(document.querySelector("[data-views]")?.textContent).toContain("اطّلع عليه 3 مرات")
     expect(text()).toContain("معاينتك لا تُحسب اطّلاعاً")
-    const as = screen.getByText("افتح الرابط كما يراه المورّد").closest("a") as HTMLAnchorElement
+    const as = screen.getByText("كما يراه المورّد").closest("a") as HTMLAnchorElement
     expect(as.getAttribute("href")).toBe("/contractor/rfqs/R1/preview/link")
   })
 

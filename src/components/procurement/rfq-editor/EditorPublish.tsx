@@ -8,7 +8,7 @@
 // and, above the cap, the reason. «خيارات أخرى» keeps the notes and attachments and the internal
 // budget the supplier never sees. The SAME step from the incoming request's panel and the editor.
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
 import { ChevronDown, Coins, Globe, Handshake, Loader2, Lock, Paperclip, Trash2, UserPlus } from "lucide-react"
 import { Input } from "@/components/ui/input"
@@ -59,6 +59,7 @@ export function EditorPublish({
   recipientFacts,
   selectedRecipients,
   directPool,
+  matching,
   estimate,
   directCap,
   firstDeadline,
@@ -78,6 +79,8 @@ export function EditorPublish({
   recipientFacts: Map<string, { onTime: number | null; crExpired: boolean; block?: SourcingBlock | null }>
   selectedRecipients: string[]
   directPool: Array<{ orgId: string; name: string; platform: boolean; favourite: boolean }>
+  /** The suppliers whose sub-categories the materials fall in («مختص»). */
+  matching: ReadonlySet<string>
   /** The direct award's estimate from the last prices (null until the rows are complete). */
   estimate: DirectEstimate | null
   directCap: number
@@ -90,6 +93,7 @@ export function EditorPublish({
   showProblems: boolean
 }) {
   const t = useTranslations("Portal.ProcEditor")
+  const tm = useTranslations("Portal.Procurement.rfqextras.sourcing")
   const [more, setMore] = useState(false)
   const [soon, setSoon] = useState(false)
   const multi = linesCount > 1
@@ -97,6 +101,7 @@ export function EditorPublish({
   const over = values.audience === "direct" && estimate != null && estimate.total > directCap
   const preset = presetOfTerms(values.terms)
   const linkChecked = linkOn(values)
+  const pickerFacts = useMemo(() => new Map(Array.from(recipientFacts, ([id, f]) => [id, { ...f, matches: matching.has(id) }] as const)), [recipientFacts, matching])
 
   return (
     <div className="space-y-6">
@@ -121,7 +126,7 @@ export function EditorPublish({
         )}
         {values.audience === "private" && (
           <div className="space-y-2">
-            <SupplierRecipientsPicker options={recipientOptions} selected={selectedRecipients} onChange={(next) => onChange({ recipients: next })} facts={recipientFacts} />
+            <SupplierRecipientsPicker options={recipientOptions} selected={selectedRecipients} onChange={(next) => onChange({ recipients: next })} facts={pickerFacts} />
             <p className={cn("text-xs", showProblems && !selectedRecipients.length ? "font-semibold text-destructive" : "text-muted-foreground")}>
               {t("reach_private", { count: selectedRecipients.length, total: recipientOptions.length })}
             </p>
@@ -144,10 +149,17 @@ export function EditorPublish({
                   <option key={p.orgId} value={p.orgId}>
                     {p.name}
                     {p.favourite ? ` · ${t("favourite")}` : p.platform ? ` · ${t("platform")}` : ""}
+                    {matching.has(p.orgId) ? ` · ${tm("tag_matches")}` : ""}
                   </option>
                 ))}
               </NativeSelect>
             </label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">{t("direct_one")}</span>
+              <Button type="button" variant="link" className="h-auto gap-1.5 p-0 text-cta" onClick={onInvite}>
+                <UserPlus size={14} /> {t("invite_missing")}
+              </Button>
+            </div>
             {estimate && (
               <Callout tone={over ? "warn" : "info"}>
                 {t("direct_est", { total: estimate.total.toLocaleString("en-US"), missing: estimate.missing, cap: directCap.toLocaleString("en-US") })}
@@ -222,9 +234,7 @@ export function EditorPublish({
 
       <div className="rounded-xl border">
         <button type="button" onClick={() => setMore(!more)} aria-expanded={more} className="flex min-h-11 w-full items-center justify-between gap-2 px-4 text-start text-sm font-semibold">
-          <span>
-            {t("more")} <span className="font-normal text-muted-foreground">· {t("more_list")}</span>
-          </span>
+          <span>{t("more_options")}</span>
           <ChevronDown size={15} className={cn("transition-transform", more && "rotate-180")} aria-hidden="true" />
         </button>
         {more && (

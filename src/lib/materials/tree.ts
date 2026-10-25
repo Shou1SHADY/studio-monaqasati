@@ -193,6 +193,9 @@ export function unitIsTheMaterials(unit: string, units: MaterialUnit[]): boolean
   return units.some((x) => [x.ar, x.en, x.key].some((v) => foldSearchText(v) === u))
 }
 
+/** The name a free-text spec carries («أخرى: لون رمادي»). */
+export const OTHER_SPEC: MaterialText = { ar: "أخرى", en: "Other" }
+
 const KG_PER: Record<string, number> = { kg: 1, ton: 1000 }
 
 /**

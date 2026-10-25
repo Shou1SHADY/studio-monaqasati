@@ -64,7 +64,7 @@ export function flowStations(pkg: PackageFlags, actual: PackageFlags = pkg): Gui
     previewOnly,
   })
   return [
-    st(1, "request", pkg.pm ? ["pm"] : ["req"], pkg.pm ? "station.request.what_pm" : "station.request.what_team", "with_proc", pkg.pm || actual.pm ? [] : [link(MY_REQUESTS_HREF, "btn.open_mine")], ["need_line", ...(pkg.mfg ? ["mfg_sends"] : [])], !pkg.pm && actual.pm),
+    st(1, "request", pkg.pm ? ["pm"] : ["req"], pkg.pm ? "station.request.what_pm" : "station.request.what_team", "with_proc", pkg.pm || actual.pm ? [] : [link(MY_REQUESTS_HREF, "btn.open_mine_as"), link(MY_REQUESTS_HREF, "btn.on_behalf_him")], ["need_line", ...(pkg.mfg ? ["mfg_sends"] : [])], !pkg.pm && actual.pm),
     st(2, "incoming", ["buy", "inv"], "station.incoming.what", "with_proc", [link("/contractor/rfqs/requests", "btn.incoming", "requests")], ["inv_asked", ...(pkg.mfg ? ["mfg_asked"] : [])]),
     st(3, "publish", ["buy"], "station.publish.what", "in_rfq", [link("/contractor/rfqs/new", "btn.new_rfq", "rfqs")]),
     st(4, "offers", ["sup"], "station.offers.what", "in_rfq", [link("/contractor/rfqs", "btn.open_rfqs", "rfqs")]),

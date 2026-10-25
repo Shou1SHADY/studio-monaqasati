@@ -6,9 +6,10 @@
 // with no spec, one outside the list, a unit kept that is not the tree's). «انشر» is
 // pressed only here, on both roads (the editor and the incoming request's panel).
 
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { AlertTriangle, Info } from "lucide-react"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
+import { sarLtr } from "@/lib/riyal"
 import type { Audience, Pricing } from "./EditorPublish"
 
 export interface ReviewModel {
@@ -29,6 +30,9 @@ export interface ReviewModel {
   link: boolean
   terms: string
   delivery: string
+  files: string[]
+  /** The internal budget, as typed: the supplier never sees it. */
+  budget: string | null
   noSpec: string[]
   outside: string[]
   unitDiffers: string[]
@@ -36,6 +40,7 @@ export interface ReviewModel {
 
 export function EditorReview({ model, fmtDay }: { model: ReviewModel; fmtDay: (d: string) => string }) {
   const t = useTranslations("Portal.ProcEditor")
+  const locale = useLocale()
   const m = model
   return (
     <div className="space-y-4">
@@ -57,6 +62,20 @@ export function EditorReview({ model, fmtDay }: { model: ReviewModel; fmtDay: (d
         <KeyValueRow label={t("pricing")} value={m.pricing === "line" ? t("pricing_line") : t("pricing_total")} />
         <KeyValueRow label={t("rev_terms")} value={m.terms} />
         <KeyValueRow label={t("rev_delivery")} value={m.delivery} />
+        {m.files.length > 0 && <KeyValueRow label={t("attachments")} value={m.files.join(locale === "ar" ? "، " : ", ")} />}
+        {m.budget && (
+          <KeyValueRow
+            label={t("budget")}
+            value={
+              <span>
+                <b className="tabular-nums" dir="ltr">
+                  {sarLtr(m.budget)}
+                </b>{" "}
+                <span className="text-xs font-normal text-muted-foreground">{t("budget_hidden")}</span>
+              </span>
+            }
+          />
+        )}
       </div>
       {m.audience === "public" && m.reach === 0 && (
         <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">

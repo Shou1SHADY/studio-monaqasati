@@ -10,7 +10,7 @@
 import { displayNeedRef } from "@/lib/procurement/format"
 import { useMemo, useRef, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { CalendarClock, Copy, MapPin, MoreHorizontal, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react"
+import { CalendarClock, Copy, Layers, MapPin, MoreHorizontal, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -26,9 +26,10 @@ import { LocationChips } from "@/components/procurement/location/LocationChips"
 import { NewLocationDialog } from "@/components/procurement/location/NewLocationDialog"
 import { DeliveryOptionsRow } from "@/components/procurement/location/DeliveryOptionsRow"
 import { useProcActor } from "@/hooks/useProcActor"
+import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { SAUDI_CITIES, displayCity } from "@/lib/constants"
-import { label, pathLabel, pickOf, unitConversion, unitsOf, type MaterialHit, type MaterialIndex } from "@/lib/materials/tree"
+import { label, pathLabel, pathOf, pickOf, unitConversion, unitsOf, type MaterialHit, type MaterialIndex } from "@/lib/materials/tree"
 import { siteLine, type DeliverySite } from "@/lib/procurement/delivery-sites"
 import { fmtDayLong } from "@/lib/procurement/format"
 import { daysBetween } from "@/lib/procurement/po"
@@ -84,9 +85,10 @@ export function EditorMaterials({
   const t = useTranslations("Portal.ProcEditor")
   const tm = useTranslations("Portal.Materials")
   const locale = useLocale()
+  const { toast } = useToast()
   const { actor, orgId } = useProcActor()
   const maySetSites = actor.isOwner || actor.canApprove
-  const [browse, setBrowse] = useState<{ groupKey: string; lineKey: string | null; query: string; freeText: string | null } | null>(null)
+  const [browse, setBrowse] = useState<{ groupKey: string; lineKey: string | null; query: string; freeText: string | null; startAt?: string | null } | null>(null)
   // The groups whose city and district are open for change (a place typed by hand stays open while it is typed).
   const [placeOpen, setPlaceOpen] = useState<Set<string>>(() => new Set())
   const setPlace = (key: string, open: boolean) =>
@@ -143,21 +145,34 @@ export function EditorMaterials({
     )
   const setGroup = (g: EditorGroup, patch: Partial<EditorGroup>) => onChange(groups.map((x) => (x.key === g.key ? { ...x, ...patch } : x)))
 
+  const changeFromTree = (g: EditorGroup, l: EditorLine) => {
+    const path = index && l.material && !l.material.outside ? pathOf(index, l.material.nodeId) : []
+    setBrowse({ groupKey: g.key, lineKey: l.key, query: "", freeText: null, startAt: path.length > 1 ? path[path.length - 2].id : null })
+  }
+
   const rowMenu = (g: EditorGroup, l: EditorLine) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <IconButton label={t("row_menu", { no: numbers.get(l.key) || "" })} icon={MoreHorizontal} />
+        <IconButton label={t("row_menu", { no: numbers.get(l.key) || "" })} title={t("row_menu_hint")} icon={MoreHorizontal} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={() => onChange(repeatLine(groups, g.key, l.key))}>
-          <Copy size={14} className="me-2" /> {t("repeat")}
+        <DropdownMenuItem
+          onSelect={() => {
+            onChange(repeatLine(groups, g.key, l.key))
+            toast({ title: t("toast_repeated") })
+          }}
+        >
+          <Copy size={14} className="me-2" /> {t("row_repeat")}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onChange(updateLine(groups, g.key, l.key, { needBy: l.needBy ? null : g.needBy || "" }))}>
-          <CalendarClock size={14} className="me-2" /> {l.needBy != null ? t("same_date") : t("other_date")}
+          <CalendarClock size={14} className="me-2" /> {l.needBy != null ? t("same_date") : t("row_other_date")}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => changeFromTree(g, l)}>
+          <Layers size={14} className="me-2" /> {t("row_change_material")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem className="text-destructive" onSelect={() => onChange(removeLine(groups, g.key, l.key))}>
-          <Trash2 size={14} className="me-2" /> {t("remove")}
+          <Trash2 size={14} className="me-2" /> {t("row_delete")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -283,6 +298,7 @@ export function EditorMaterials({
             dir="auto"
           />
         )}
+        {l.pastedUnit && <p className="max-w-[10rem] text-[10.5px] leading-snug text-amber-700">{t("paste_unit_differs", { unit: l.pastedUnit })}</p>}
         {note && (
           <p className="max-w-[10rem] text-[10.5px] leading-snug text-amber-700">
             {conv
@@ -333,7 +349,7 @@ export function EditorMaterials({
   }
 
   const problemText = (codes: string[], no: number | undefined) =>
-    codes.length && no ? <p className="text-[11px] font-semibold text-destructive">{codes.map((c) => t(`err_${c}`, { no })).join(" · ")}</p> : null
+    codes.length && no ? <p className="text-[11px] font-semibold text-destructive">{codes.map((c) => (fixed && c === "material" ? t("row_err_step2") : t(`row_err_${c}`))).join(" · ")}</p> : null
 
   return (
     <div className="space-y-5">
@@ -506,14 +522,17 @@ export function EditorMaterials({
       })}
 
       {!lockedProjectId && !fixed && (
-        <Button
-          type="button"
-          variant="outline"
-          className="gap-2"
-          onClick={() => onChange([...groups, { key: `g${Date.now().toString(36)}`, siteId: null, projectId: null, label: "", city: "", district: "", needBy: null, requestRefs: [], lines: [] }])}
-        >
-          <Plus size={15} /> {t("add_group")}
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2"
+            onClick={() => onChange([...groups, { key: `g${Date.now().toString(36)}`, siteId: null, projectId: null, label: "", city: "", district: "", needBy: null, requestRefs: [], lines: [] }])}
+          >
+            <Plus size={15} /> {pmOn ? t("add_group") : t("add_group_nopm")}
+          </Button>
+          <span className="text-xs text-muted-foreground">{t("add_group_hint")}</span>
+        </div>
       )}
 
       <NewLocationDialog
@@ -533,11 +552,15 @@ export function EditorMaterials({
         index={index}
         initialQuery={browse?.query || ""}
         freeText={browse?.freeText ?? null}
+        startAt={browse?.startAt ?? null}
         target={browse?.lineKey ? t("row_no", { no: numbers.get(browse.lineKey) || "" }) : undefined}
         onAdd={(r) => {
           if (!browse) return
-          place(browse.groupKey, browse.lineKey, r.pick, r.unit, r.name, r.repeat)
-          setBrowse(null)
+          place(browse.groupKey, browse.lineKey, r.pick, r.unit, r.name)
+          if (r.repeat) {
+            setBrowse({ ...browse, lineKey: null })
+            toast({ title: tm("added_again") })
+          } else setBrowse(null)
         }}
       />
     </div>

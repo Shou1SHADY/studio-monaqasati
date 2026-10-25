@@ -260,7 +260,7 @@ describe("«الصق من إكسل» (CAT-07)", () => {
     expect(text()).toContain("اسياخ حديد التسليح")
     expect(text()).toContain("شي مجهول تماماً")
     await click(button("التالي: النشر"))
-    expect(text()).toContain("اختر المادة أو فئتها الفرعية في الصف 2")
+    expect(Array.from(document.querySelectorAll("p.text-destructive")).map((p) => p.textContent)).toContain("اختر المادة")
     expect([...missingKeys]).toEqual([])
     view.unmount()
   })

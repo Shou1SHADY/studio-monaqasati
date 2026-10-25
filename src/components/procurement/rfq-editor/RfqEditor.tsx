@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { WizardSteps } from "@/components/module-ui/WizardSteps"
+import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useSupplierRecipientOptions } from "@/components/contractor/SupplierRecipientsPicker"
 import { InviteSupplierDialog } from "@/components/procurement/InviteSupplierDialog"
 import { termRowsOf } from "@/components/procurement/rfq/RfqTermsPicker"
@@ -95,6 +96,15 @@ const plusDays = (day: string, n: number) => {
   return d.toISOString().slice(0, 10)
 }
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000)
+/** A step-2 problem, said as the publishing step's own refusal does («الموعد النهائي مضى: اختر اليوم أو بعده»). */
+const PUBLISH_REFUSAL: Record<string, string> = {
+  deadline: "date_invalid",
+  recipients: "recipients_missing",
+  direct_supplier: "direct_supplier_missing",
+  direct_reason: "reason_required",
+  direct_blocked: "direct_blocked",
+  terms: "terms_invalid",
+}
 
 export function RfqEditor({
   projectId,
@@ -309,13 +319,25 @@ export function RfqEditor({
     const next = addRequests([newGroup()], hits.map((n) => incomingFromNeed(n, sites, lastOrderOf(n), picked.get(n.key))))
     setGroups((gs) => (panel ? next : addRequests(gs, hits.map((n) => incomingFromNeed(n, sites, lastOrderOf(n), picked.get(n.key))))))
     // «انشره» opens on the publishing step — unless a material still lacks its sub-category, or the place its city:
-    // then on the request, the lacking row coloured from the start (PUR-01 p.4). A press on the row opens the request itself.
+    // then on the request, the lacking row coloured from the start (PUR-01 p.4), with the reason said. A press on the row opens the request itself.
     if (panel) {
       const lacking = materialsProblems(next).length > 0
       setShowProblems(lacking)
       if (!lacking) setStep(startStep)
-    }
-  }, [openNeeds, params, sites, editId, requestKeys, panel, startStep, lastOrderOf])
+      else if (startStep === 2) toast({ title: t("panel_lacking") })
+    } else if (picked.size) {
+      toast({ title: t("merged_materials", { materials: Array.from(picked.values()).reduce((n, s) => n + s.size, 0), requests: hits.length }) })
+    } else if (hits.length > 1) toast({ title: t("merged") })
+  }, [openNeeds, params, sites, editId, requestKeys, panel, startStep, lastOrderOf, toast, t])
+  // ?private=<supplier> (a supplier's file, «طلب عروض خاص له»): the RFQ starts private, to him alone.
+  const privateStarted = useRef(false)
+  const privateTo = params.get("private")
+  useEffect(() => {
+    if (privateStarted.current || !privateTo || editId || panel) return
+    privateStarted.current = true
+    setValues((v) => ({ ...v, audience: "private", recipients: [privateTo], link: null }))
+    toast({ title: t("private_started") })
+  }, [privateTo, editId, panel, toast, t])
   // ?items=[{name, quantity, unit}] (the workshop's shortfalls, the catalogue)
   useEffect(() => {
     const raw = params.get("items")
@@ -391,6 +413,7 @@ export function RfqEditor({
   const linesDoc = useMemo(() => rfqLinesDoc(groups, locale, projectName), [groups, locale, projects])
   const reach = useMemo(() => reachBySub(platform, linesDoc.subCategoryIds), [platform, linesDoc.subCategoryIds])
   const favouriteReached = reach.distinct.find((s) => favoriteIds.includes(s.orgId))?.name || null
+  const matching = useMemo(() => new Set(reach.distinct.map((s) => s.orgId)), [reach])
   // An unverified supplier — one who joined through our invitation — may be picked in «خاص» (PUR-05), with his tag;
   // he is never ticked for us, and an expired CR still blocks him.
   const privateBlockOf = (id: string): SourcingBlock | null => {
@@ -573,7 +596,7 @@ export function RfqEditor({
       const p = publishProblems()
       if (p.length) {
         setShowProblems(true)
-        toast({ title: t("err_step2"), description: t(`err_${p[0]}`), variant: "destructive" })
+        toast({ title: t("err_step2"), description: t(`err_pub_${PUBLISH_REFUSAL[p[0]] || p[0]}`), variant: "destructive" })
         return
       }
       setShowProblems(false)
@@ -602,6 +625,8 @@ export function RfqEditor({
           .filter((g) => g.lines.some(lineComplete))
           .map((g) => `${g.label || t("group_unnamed")} · ${siteLine(g, (c) => displayCity(c, locale))}`)
           .join(" ؛ "),
+    files: values.attachments.map((a) => a.name),
+    budget: values.budget.trim() && toAmount(values.budget) > 0 ? toAmount(values.budget).toLocaleString("en-US") : null,
     noSpec: facts.noSpec,
     outside: facts.outside,
     unitDiffers: facts.unitDiffers,
@@ -689,7 +714,17 @@ export function RfqEditor({
   // ── Render ───────────────────────────────────────────────────────────────
   if (done) {
     return (
-      <div className="py-6">
+      <div className="space-y-4 py-6">
+        {!panel && (
+          <div>
+            <h1 className="text-2xl font-black text-foreground">
+              {t("title_new")} <StatusPill tone="mute">{t("published")}</StatusPill>
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground" dir="auto">
+              {title}
+            </p>
+          </div>
+        )}
         <RfqPublishedPanel
           number={displayDocNumber(done.number, locale)}
           reached={done.reached}
@@ -719,6 +754,7 @@ export function RfqEditor({
             </>
           ) : (
             <>
+              <p className="mb-1 text-xs font-semibold text-muted-foreground">{t("editor_desc")}</p>
               <h1 className="text-2xl font-black text-foreground">
                 {editingLive ? t("title_edit") : t("title_new")}{" "}
                 {!editingLive && <span className="align-middle text-xs font-semibold text-muted-foreground">{savedAt ? t("draft_saved") : t("draft")}</span>}
@@ -731,7 +767,7 @@ export function RfqEditor({
         </div>
         {step === 1 && !panel && (
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" className="gap-2" disabled={!newRequests.length} onClick={() => setPickOpen(true)}>
+            <Button type="button" variant="outline" className="gap-2" disabled={!newRequests.length} title={newRequests.length ? undefined : t("none_left")} onClick={() => setPickOpen(true)}>
               <Inbox size={15} /> {t("from_incoming", { count: newRequests.length })}
             </Button>
             <Button type="button" variant="outline" className="gap-2" onClick={() => setPasteOpen(true)}>
@@ -766,6 +802,7 @@ export function RfqEditor({
           recipientFacts={recipientFacts}
           selectedRecipients={selectedRecipients}
           directPool={directPool}
+          matching={matching}
           estimate={estimate}
           directCap={world.policies.directPurchaseCap}
           firstDeadline={firstDeadline}
@@ -783,7 +820,10 @@ export function RfqEditor({
       {/* The footer: what the RFQ is so far, and the step's one action (fixed on a phone). */}
       <div className={cn(panel ? "sticky bottom-0 rounded-xl border bg-card px-4 py-3 max-md:pe-20" : "fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 py-3 backdrop-blur max-md:pe-20 md:static md:z-auto md:rounded-xl md:border md:bg-card")}>
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3">
-          <p className="min-w-0 flex-1 text-xs text-muted-foreground">{t("footer_sum", { lines: facts.lines, groups: facts.groups, subs: facts.subs, reach: reach.distinct.length })}</p>
+          <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+            {t("footer_sum", { lines: facts.lines, groups: facts.groups, subs: facts.subs, reach: reach.distinct.length })}
+            {step === 1 && !panel && <span className="hidden md:block">{t("ebar_hint")}</span>}
+          </p>
           {step > 1 && (
             <Button type="button" variant="outline" onClick={() => setStep((s) => (s - 1) as Step)} className="gap-1.5">
               {locale === "ar" ? <ArrowRight size={15} /> : <ArrowLeft size={15} />} {t("back")}
@@ -823,15 +863,18 @@ export function RfqEditor({
         <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("paste_title")}</DialogTitle>
-            <DialogDescription>{t("paste_desc")}</DialogDescription>
+            <DialogDescription>
+              {t("paste_desc")} {t("paste_more")}
+            </DialogDescription>
           </DialogHeader>
           <Textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} rows={8} dir="auto" aria-label={t("paste_title")} placeholder={t("paste_placeholder")} />
+          <p className="text-xs text-muted-foreground">{t("paste_unit_hint")}</p>
           <DialogFooter>
             <Button
               type="button"
               disabled={!parsePaste(pasteText).length}
               onClick={() => {
-                const lines = linesFromPaste(parsePaste(pasteText), index)
+                const lines = linesFromPaste(parsePaste(pasteText), index, { unitFromMaterial: true })
                 setGroups((gs) => {
                   const last = gs[gs.length - 1]
                   return [...gs.slice(0, -1), { ...last, lines: [...last.lines.filter(lineStarted), ...lines] }]
@@ -850,7 +893,9 @@ export function RfqEditor({
         <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-h-[85vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("pick_incoming")}</DialogTitle>
-            <DialogDescription>{t("pick_incoming_desc")}</DialogDescription>
+            <DialogDescription>
+              {t("pick_incoming_desc")} {t("pick_incoming_more")}
+            </DialogDescription>
           </DialogHeader>
           <ul className="divide-y rounded-lg border">
             {newRequests.map((n) => (

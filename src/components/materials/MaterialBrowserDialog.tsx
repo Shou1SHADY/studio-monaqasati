@@ -8,15 +8,16 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { ChevronLeft, PenLine, Plus, Search, X } from "lucide-react"
+import { ChevronLeft, PenLine, Search } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { Chip } from "@/components/module-ui/Chip"
 import { MaterialSpecChoices } from "./MaterialSpecChoices"
 import { cn } from "@/lib/utils"
 import { isHeavyEquipmentRental, otherEquipmentSub } from "@/lib/materials/equipment"
-import { brandsOf, isMaterial, label, pathLabel, pathOf, pickOf, searchMaterials, shortSpecName, specsOf, unitsOf, type MaterialIndex } from "@/lib/materials/tree"
+import { OTHER_SPEC, brandsOf, isMaterial, label, pathLabel, pathOf, pickOf, searchMaterials, shortSpecName, specsOf, unitsOf, type MaterialIndex } from "@/lib/materials/tree"
 import type { MaterialNode, MaterialPick, MaterialText, MaterialUnit } from "@/lib/materials/types"
 
 export interface BrowserResult {
@@ -34,6 +35,7 @@ export function MaterialBrowserDialog({
   index,
   initialQuery = "",
   freeText,
+  startAt,
   target,
   onAdd,
 }: {
@@ -43,7 +45,9 @@ export function MaterialBrowserDialog({
   initialQuery?: string
   /** Set when the words are kept as they are: the dialog asks only for the sub-category. */
   freeText?: string | null
-  /** «الصف 6» — where the material lands. */
+  /** The category the tree opens in (a row's material changed «من الشجرة»); the root when absent. */
+  startAt?: string | null
+  /** «الصف 6» — set when the material replaces a row's; absent when it is added as a new row. */
   target?: string
   onAdd: (r: BrowserResult) => void
 }) {
@@ -55,19 +59,19 @@ export function MaterialBrowserDialog({
   const [specs, setSpecs] = useState<Record<string, MaterialText>>({})
   const [unitKey, setUnitKey] = useState<string | null>(null)
   const [brand, setBrand] = useState<MaterialText | null>(null)
-  const [extra, setExtra] = useState<Array<{ name: string; value: string }>>([])
+  const [freeSpec, setFreeSpec] = useState("")
   const [outside, setOutside] = useState<string | null>(freeText ?? null)
 
   useEffect(() => {
     if (!open) return
     setQ(initialQuery)
-    setAt(freeText && isHeavyEquipmentRental(freeText) ? otherEquipmentSub(index)?.id ?? null : null)
+    setAt(freeText && isHeavyEquipmentRental(freeText) ? otherEquipmentSub(index)?.id ?? null : startAt ?? null)
     setSpecs({})
     setUnitKey(null)
     setBrand(null)
-    setExtra([])
+    setFreeSpec("")
     setOutside(freeText ?? null)
-  }, [open, initialQuery, freeText, index])
+  }, [open, initialQuery, freeText, index, startAt])
 
   const node = at && index ? index.byId.get(at) || null : null
   const path = node && index ? pathOf(index, node.id) : []
@@ -80,7 +84,7 @@ export function MaterialBrowserDialog({
     setSpecs(preset)
     setUnitKey(null)
     setBrand(null)
-    setExtra([])
+    setFreeSpec("")
     setQ("")
   }
 
@@ -100,9 +104,15 @@ export function MaterialBrowserDialog({
     const chosen = specsOf(index, node.id)
       .filter((s) => specs[s.ar])
       .map((s) => ({ name: shortSpecName(s), value: specs[s.ar] }))
-    const free = extra.filter((x) => x.name.trim() && x.value.trim()).map((x) => ({ name: { ar: x.name.trim(), en: x.name.trim() }, value: { ar: x.value.trim(), en: x.value.trim() }, free: true }))
+    const free = freeSpec.trim() ? [{ name: OTHER_SPEC, value: { ar: freeSpec.trim(), en: freeSpec.trim() }, free: true }] : []
     const pick = pickOf(index, node.id, [...chosen, ...free], brand)
-    if (pick) onAdd({ pick, unit, repeat })
+    if (!pick) return
+    onAdd({ pick, unit, repeat })
+    if (repeat) {
+      setSpecs({})
+      setBrand(null)
+      setFreeSpec("")
+    }
   }
 
   const crumbs = (
@@ -134,7 +144,7 @@ export function MaterialBrowserDialog({
             <label htmlFor="mat-outside" className="text-xs font-semibold text-muted-foreground">
               {t("outside_name")}
             </label>
-            <Input id="mat-outside" value={outside} onChange={(e) => setOutside(e.target.value)} dir="auto" />
+            <Input id="mat-outside" value={outside} onChange={(e) => setOutside(e.target.value)} placeholder={t("free_material")} dir="auto" />
           </div>
         )}
 
@@ -164,6 +174,8 @@ export function MaterialBrowserDialog({
               </li>
             ))}
           </ul>
+        ) : q.trim() && !showsDetail ? (
+          <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">{t("tree_no_match")}</p>
         ) : showsDetail && node ? (
           <div className="space-y-4">
             <p className="text-sm font-bold">{pathLabel(path, locale, true)}</p>
@@ -188,41 +200,24 @@ export function MaterialBrowserDialog({
               <legend className="text-xs font-semibold text-muted-foreground">
                 {t("other")} <span className="font-normal">({t("optional")})</span>
               </legend>
-              {brandsOf(index, node.id).length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {brandsOf(index, node.id).map((b) => (
-                    <Chip key={b.ar} selected={brand?.ar === b.ar} onClick={() => setBrand(brand?.ar === b.ar ? null : b)}>
-                      {label(b, locale)}
-                    </Chip>
-                  ))}
-                </div>
-              )}
-              {extra.map((x, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Input
-                    value={x.name}
-                    onChange={(e) => setExtra((cur) => cur.map((y, j) => (j === i ? { ...y, name: e.target.value } : y)))}
-                    placeholder={t("free_spec_name")}
-                    aria-label={t("free_spec_name")}
-                    className="h-9"
-                    dir="auto"
-                  />
-                  <Input
-                    value={x.value}
-                    onChange={(e) => setExtra((cur) => cur.map((y, j) => (j === i ? { ...y, value: e.target.value } : y)))}
-                    placeholder={t("free_spec_value")}
-                    aria-label={t("free_spec_value")}
-                    className="h-9"
-                    dir="auto"
-                  />
-                  <Button type="button" variant="ghost" size="icon" onClick={() => setExtra((cur) => cur.filter((_, j) => j !== i))} aria-label={t("remove")}>
-                    <X size={14} />
-                  </Button>
-                </div>
-              ))}
-              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setExtra((cur) => [...cur, { name: "", value: "" }])}>
-                <Plus size={14} /> {t("add_free_spec")}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                {brandsOf(index, node.id).length > 0 && (
+                  <NativeSelect
+                    value={brand ? brand.ar : ""}
+                    onChange={(e) => setBrand(brandsOf(index, node.id).find((b) => b.ar === e.target.value) || null)}
+                    aria-label={t("brand")}
+                    className="h-9 w-56"
+                  >
+                    <option value="">{t("brand_any")}</option>
+                    {brandsOf(index, node.id).map((b) => (
+                      <option key={b.ar} value={b.ar}>
+                        {label(b, locale)}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                )}
+                <Input value={freeSpec} onChange={(e) => setFreeSpec(e.target.value)} placeholder={t("free_spec")} aria-label={t("free_spec")} className="h-9 w-56" dir="auto" />
+              </div>
             </fieldset>
           </div>
         ) : (
@@ -251,21 +246,24 @@ export function MaterialBrowserDialog({
         )}
 
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          {outside == null ? (
-            <button type="button" onClick={() => setOutside(q || "")} className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground">
-              <PenLine size={13} aria-hidden="true" /> {t("type_as_is_tagged")}
-            </button>
-          ) : (
-            <p className="text-xs text-muted-foreground">{outsideSub ? t("outside_sub_chosen", { sub: label(outsideSub, locale) }) : t("outside_pick_sub")}</p>
-          )}
+          <div className="space-y-1">
+            {outside == null ? (
+              <button type="button" onClick={() => setOutside(q || "")} className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground">
+                <PenLine size={13} aria-hidden="true" /> {t("not_listed")} {t("write_as_is")} · {t("tagged_outside")}
+              </button>
+            ) : (
+              <p className="text-xs text-muted-foreground">{outsideSub ? t("outside_sub_chosen", { sub: label(outsideSub, locale) }) : t("outside_pick_sub")}</p>
+            )}
+            {!showsDetail && <p className="text-xs text-muted-foreground">{outside == null ? t("tree_cap_mat") : t("tree_cap_sub")}</p>}
+          </div>
           <div className="flex flex-wrap gap-2">
-            {outside == null && (
+            {outside == null && !target && (
               <Button type="button" variant="outline" disabled={!showsDetail || (units.length > 1 && !unit)} onClick={() => submit(true)}>
                 {t("add_and_repeat")}
               </Button>
             )}
             <Button type="button" disabled={outside != null ? !outsideSub || !outside.trim() : !showsDetail || (units.length > 1 && !unit)} onClick={() => submit(false)}>
-              {target ? t("add_to", { target }) : t("add")}
+              {target ? t("put_in_row") : t("add_to_row")}
             </Button>
           </div>
         </DialogFooter>

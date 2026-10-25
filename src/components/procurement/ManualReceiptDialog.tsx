@@ -223,6 +223,7 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
                 )
               })}
             </div>
+            <p className="text-[11px] text-muted-foreground">{t("manual.qtyHint")}</p>
           </div>
 
           <div className="space-y-2">

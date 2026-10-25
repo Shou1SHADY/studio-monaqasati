@@ -6,8 +6,9 @@
 
 import { useState } from "react"
 import { useTranslations } from "next-intl"
-import { CheckCircle2, Copy, Mail, MessageCircle } from "lucide-react"
+import { CheckCircle2, Copy, Eye, Mail, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
 
 export function RfqPublishedPanel({
@@ -28,6 +29,7 @@ export function RfqPublishedPanel({
   onNew: () => void
 }) {
   const t = useTranslations("Portal.ProcEditor")
+  const { toast } = useToast()
   const [copied, setCopied] = useState(false)
   const message = guestUrl ? t("share_message", { title, url: guestUrl }) : ""
   return (
@@ -52,19 +54,25 @@ export function RfqPublishedPanel({
               onClick={() => {
                 void navigator.clipboard?.writeText(guestUrl)
                 setCopied(true)
+                toast({ title: t("copied_toast") })
               }}
             >
               <Copy size={14} /> {copied ? t("copied") : t("copy")}
             </Button>
             <Button asChild size="sm" variant="outline" className="gap-1.5">
-              <a href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer">
+              <a href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer" onClick={() => toast({ title: t("wa_toast") })}>
                 <MessageCircle size={14} /> {t("whatsapp")}
               </a>
             </Button>
             <Button asChild size="sm" variant="outline" className="gap-1.5">
-              <a href={`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(message)}`}>
+              <a href={`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(message)}`} onClick={() => toast({ title: t("mail_toast") })}>
                 <Mail size={14} /> {t("email")}
               </a>
+            </Button>
+            <Button asChild size="sm" variant="outline" className="gap-1.5">
+              <Link href={`${openHref}/preview/link`}>
+                <Eye size={14} /> {t("as_supplier")}
+              </Link>
             </Button>
           </div>
           <p className="text-xs leading-relaxed text-muted-foreground">{t("guest_hint")}</p>

@@ -24,6 +24,11 @@ const body = z.discriminatedUnion("action", [
     table: z.object({ filename: z.string().regex(/^[\w.-]{1,80}\.(xlsx|csv)$/), base64: z.string().max(4_000_000) }).nullish(),
     withFiles: z.boolean(),
   }),
+  z.object({
+    action: z.literal("invoices"),
+    poIds: z.array(z.string().min(1).max(128)).min(1).max(300),
+    table: z.object({ filename: z.string().regex(/^[\w.-]{1,80}\.(xlsx|csv)$/), base64: z.string().max(4_000_000) }).nullish(),
+  }),
   z.object({ action: z.literal("send"), filename: z.string().regex(/^[\w.-]{1,80}\.(xlsx|csv|zip)$/), base64: z.string().max(6_000_000), period: z.string().max(80) }),
 ])
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
@@ -59,6 +64,42 @@ export async function POST(req: NextRequest) {
       const sent = (await sendEmail({ to, subject: `سندات الاستلام — ${data.period}`, html, attachments: [{ filename: data.filename, content: data.base64 }] })).sent
       if (!sent) return fail("The e-mail could not be sent", "NOT_SENT", 502)
       return NextResponse.json({ success: true, data: { to } })
+    }
+
+    if (data.action === "invoices") {
+      const orders = await Promise.all(data.poIds.map(async (id) => ({ id, d: (await db.collection("purchaseOrders").doc(id).get()).data() as { organizationId?: string; docNumber?: string; invoiceFiles?: Array<{ url?: string }> } | undefined })))
+      const mine = orders.filter((x) => x.d && x.d.organizationId === caller.orgId)
+      if (!mine.length) return fail("None of these orders is yours", "NOT_FOUND", 404)
+      const files: ZipEntry[] = []
+      let size = 0
+      for (const x of mine) {
+        const urls = new Set<string>((x.d?.invoiceFiles || []).map((f) => f.url || "").filter(Boolean))
+        const portal = await db.collection("supplierInvoices").where("buyerOrgId", "==", caller.orgId).where("poId", "==", x.id).get()
+        for (const doc of portal.docs) {
+          const url = (doc.data().file as { url?: string } | undefined)?.url
+          if (url) urls.add(url)
+        }
+        const folder = `invoices/${voucherFile(x.d?.docNumber, x.id)}`
+        let n = 0
+        for (const url of Array.from(urls).filter((u) => OWN_STORAGE.test(u)).slice(0, MAX_PER_RECEIPT)) {
+          if (size >= MAX_TOTAL) break
+          try {
+            const res = await fetch(url)
+            if (!res.ok) continue
+            const bytes = new Uint8Array(await res.arrayBuffer())
+            if (bytes.byteLength > MAX_FILE) continue
+            size += bytes.byteLength
+            n += 1
+            const ext = /\.(jpe?g|png|pdf|webp|gif)(\?|$)/i.exec(decodeURIComponent(url))?.[1]?.toLowerCase() || "bin"
+            files.push({ path: `${folder}/${n}.${ext}`, bytes })
+          } catch (err) {
+            console.warn("export invoice not read:", (err as { code?: string })?.code || err)
+          }
+        }
+      }
+      const table = data.table ? { filename: data.table.filename, bytes: Uint8Array.from(Buffer.from(data.table.base64, "base64")) } : null
+      const zip = receiptsZip({ table, documents: [], attachments: files })
+      return new Response(Buffer.from(zip), { status: 200, headers: { "content-type": "application/zip", "content-disposition": 'attachment; filename="accounting.zip"', "cache-control": "no-store" } })
     }
 
     const docs = await Promise.all(data.ids.map(async (id) => ({ id, d: (await db.collection("deliveries").doc(id).get()).data() as (DeskDelivery & { contractorOrgId?: string }) | undefined })))

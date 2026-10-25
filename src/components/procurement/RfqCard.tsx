@@ -15,7 +15,7 @@ import { useRfqInquiryCounts } from "@/hooks/useRfqInquiryCounts"
 import { Link } from "@/i18n/routing"
 import { fmtDayLong, rfqDisplayNumber } from "@/lib/procurement/format"
 import { fromHalalas } from "@/lib/procurement/offer-calc"
-import { actionHref, primaryAction, type ListReach, type ListRfq, type ListState, type PrimaryAction, type RfqListRow } from "@/lib/procurement/rfq-list"
+import { actionHref, isJustPublished, primaryAction, type ListReach, type ListRfq, type ListState, type PrimaryAction, type RfqListRow } from "@/lib/procurement/rfq-list"
 import { rfqReviewHref } from "@/lib/procurement/rfq-routes"
 import { productCount } from "@/lib/procurement/rfq-view"
 import { sarLtr } from "@/lib/riyal"
@@ -41,8 +41,9 @@ export type RfqCardRow = RfqListRow<RfqRow>
 
 const REACH_ICON = { public: Globe, private: Lock, direct: Hand } as const
 
-export function RfqStagePill({ row }: { row: Pick<RfqListRow, "state" | "closedEarly"> }) {
+export function RfqStagePill({ row }: { row: Pick<RfqListRow, "state" | "closedEarly"> & { publishedMs?: number } }) {
   const tp = useTranslations("Portal.Procurement.rfqpage")
+  const tList = useTranslations("Portal.Procurement.rfqlist")
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
       <StatusPill tone={STATE_TONE[row.state]}>
@@ -50,6 +51,7 @@ export function RfqStagePill({ row }: { row: Pick<RfqListRow, "state" | "closedE
         {tp(`stage.${row.state}`)}
       </StatusPill>
       {row.closedEarly && row.state === "awarded" && <StatusPill tone="warn">{tp("stage.early")}</StatusPill>}
+      {isJustPublished(row, Date.now()) && <StatusPill tone="ok">{tList("just_published")}</StatusPill>}
     </span>
   )
 }

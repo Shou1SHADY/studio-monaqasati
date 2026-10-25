@@ -286,7 +286,7 @@ export default function ContractorRfqsPage() {
       <div className="space-y-5">
         <ProcurementHeader
           title={t("rfqv_title")}
-          description={t("rfqv_desc")}
+          description={tp("rfqlist.page_desc")}
           action={
             canCreate ? (
               <Button asChild className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90">

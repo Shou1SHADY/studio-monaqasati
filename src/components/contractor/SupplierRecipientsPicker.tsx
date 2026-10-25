@@ -147,7 +147,7 @@ export function SupplierRecipientsPicker({
    * and why he may not be invited at all (`supplierSourcingBlock`): such a row is greyed and cannot be ticked.
    * `unverified`: one who joined through our invitation — he may be picked, with his «غير موثّق» tag (PUR-05),
    * but «حدّد الكل» does not tick him for us. */
-  facts?: Map<string, { onTime: number | null; crExpired: boolean; block?: SourcingBlock | null; unverified?: boolean }>
+  facts?: Map<string, { onTime: number | null; crExpired: boolean; block?: SourcingBlock | null; unverified?: boolean; matches?: boolean }>
 }) {
   const t = useTranslations("Portal.Contractor")
   const tp = useTranslations("Portal.Procurement")
@@ -209,6 +209,9 @@ export function SupplierRecipientsPicker({
                   </span>
                 )}
               </span>
+              {!block && facts?.get(option.orgId)?.matches && (
+                <span className="shrink-0 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-bold text-success">{tp("rfqextras.sourcing.tag_matches")}</span>
+              )}
               {option.isFavorite && (
                 <span className="shrink-0 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 flex items-center gap-1">
                   <Heart size={9} className="fill-amber-500 text-amber-500" />

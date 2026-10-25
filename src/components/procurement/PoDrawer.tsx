@@ -382,7 +382,8 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const terms = termsText(poTerms(px))
   const site = poSiteOf(po)
   const siteLine = site ? [site.name, site.district].filter(Boolean).join(" — ") : null
-  const supplierPhone = ((world.supplierRecords.find((r) => r.supplierOrgId === po.supplierOrgId) as { contactPhone?: string | null } | undefined)?.contactPhone || (world.offers.find((o) => o.id === po.offerId) as { guestContact?: { phone?: string | null } } | undefined)?.guestContact?.phone || null) as string | null
+  const guestContact = (world.offers.find((o) => o.id === po.offerId) as { guestContact?: { name?: string | null; phone?: string | null } } | undefined)?.guestContact
+  const supplierPhone = ((world.supplierRecords.find((r) => r.supplierOrgId === po.supplierOrgId) as { contactPhone?: string | null } | undefined)?.contactPhone || guestContact?.phone || null) as string | null
   const rfqNo = (rfqDoc as { rfqNumber?: string } | undefined)?.rfqNumber
   const rfqLabel = rfqNo ? displayDocNumber(rfqNo, locale) : po.rfqTitle || "—"
 
@@ -644,11 +645,11 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
         // PUR-07: the step from the facts — who we wait on and since when; the supplier is never blamed
         // for a notice he sent in time that waits for our count.
         const step = deliveryStep(po, world.deliveries as StepNotice[], now)
-        const remindSupplierBtn = (label: string) =>
+        const remindSupplierBtn = (label: string, rest = false) =>
           f &&
           expediter && (
             <>
-              <Button variant="outline" disabled={busy != null || remindUntil != null} onClick={() => run("remind", () => remindSupplier(f, actor, po.id, opts), po.supplierUserId ? "toast.reminded_portal" : "toast.reminded_offline")}>
+              <Button variant="outline" disabled={busy != null || remindUntil != null} onClick={() => run("remind", () => remindSupplier(f, actor, po.id, opts), po.supplierUserId ? (rest ? "toast.reminded_rest" : "toast.reminded_portal") : "toast.reminded_offline")}>
                 {label}
               </Button>
               {remindUntil && <span className="text-[11px] text-muted-foreground">{t("next.remind_after", { time: remindUntil.toLocaleString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) })}</span>}
@@ -668,7 +669,12 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
         let buttons: ReactNode = null
         switch (step?.kind) {
           case "notice_to_forward":
-            body = <Callout tone="amber">{t("next2.to_forward", { date: step.noticeDay ? fmt(step.noticeDay) : "—" })}</Callout>
+            body = (
+              <Callout tone="amber">
+                {t("next2.to_forward")}
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">{t("next2.to_forward_sub", { date: step.noticeDay ? fmt(step.noticeDay) : "—", place: po.deliveryLocation ? ` · ${po.deliveryLocation}` : "" })}</span>
+              </Callout>
+            )
             buttons = expediter && (
               <Button asChild>
                 <Link href={FORWARD_HREF(step.deliveryId)}>{t("next2.forward")}</Link>
@@ -676,7 +682,12 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             )
             break
           case "in_transit":
-            body = <Callout tone="blue">{t("next2.in_transit", { date: step.day ? fmt(step.day) : "—", name: step.receiver || "—" })}</Callout>
+            body = (
+              <Callout tone="blue">
+                {t("next2.in_transit", { date: step.day ? fmt(step.day) : "—", name: step.receiver || "—" })}
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">{step.auto ? t("next2.in_transit_auto") : t("next2.in_transit_fwd", { date: step.forwardedDay ? fmt(step.forwardedDay) : "—" })}</span>
+              </Callout>
+            )
             break
           case "receiver_late":
             body = (
@@ -705,16 +716,26 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             )
             break
           case "part_received":
-            body = <Callout tone="blue">{step.byLines ? t("next2.part_lines", { done: step.linesDone, total: step.linesTotal }) : t("next2.part", { received: step.received.toLocaleString("en-US"), ordered: step.ordered.toLocaleString("en-US"), left: step.left.toLocaleString("en-US"), unit: step.unit })}</Callout>
+            body = (
+              <Callout tone="blue">
+                {step.byLines ? t("next2.part_lines", { done: step.linesDone, total: step.linesTotal }) : t("next2.part", { received: step.received.toLocaleString("en-US"), ordered: step.ordered.toLocaleString("en-US"), left: step.left.toLocaleString("en-US"), unit: step.unit })}
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">{t("next2.part_sub")}</span>
+              </Callout>
+            )
             buttons = (
               <>
-                {remindSupplierBtn(t("next2.remind_rest"))}
+                {remindSupplierBtn(t("next2.remind_rest"), true)}
                 {closeShortBtn}
               </>
             )
             break
           case "rejected": {
-            body = <Callout tone="red">{t("next2.rejected", { qty: step.qty.toLocaleString("en-US"), unit: step.unit })}</Callout>
+            body = (
+              <Callout tone="red">
+                {t("next2.rejected", { qty: step.qty.toLocaleString("en-US"), unit: step.unit })}
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">{t("next2.rejected_sub")}</span>
+              </Callout>
+            )
             const rejectedLine = po.lines.find((l) => l.id === step.lineId)
             // The three answers of the form, one press away (PUR-07): replace · discount · send it back (reduce the order).
             buttons =
@@ -730,12 +751,24 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             break
           }
           case "guest_due":
-            body = <Callout tone="amber">{t("next2.guest_due")}</Callout>
+            body = (
+              <Callout tone="amber">
+                {t("next2.guest_due")}
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                  {t("next2.guest_due_sub", { date: fmt(step.day), contact: [guestContact?.name, supplierPhone].filter(Boolean).length ? ` · ${[guestContact?.name, supplierPhone].filter(Boolean).join(" ")}` : "" })}
+                </span>
+              </Callout>
+            )
             buttons = (
               <>
                 {f && expediter && (
                   <Button disabled={busy != null} onClick={() => setNoticeOpen(true)}>
                     {t("next2.record_notice")}
+                  </Button>
+                )}
+                {supplierPhone && (
+                  <Button asChild variant="outline">
+                    <a href={`tel:${supplierPhone.replace(/\s/g, "")}`}>{t("next2.call")}</a>
                   </Button>
                 )}
                 {dateBtn}
@@ -1293,7 +1326,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             label={t("close_short.label")}
             submitLabel={t("close_short.submit")}
             effects={[t(financeOn ? "close_short.effect" : "close_short.effect_nofin")]}
-            onSubmit={(reason) => run("close", () => poAct("close-short", { poId: po.id, reason }, locale), "toast.closed")}
+            onSubmit={(reason) => run("close", () => poAct("close-short", { poId: po.id, reason }, locale), "toast.closed_short")}
           />
           <CancelWithFeeDialog
             open={dialog?.kind === "cancel_line"}
@@ -1324,13 +1357,13 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             onOpenChange={(o) => !o && setDialog(null)}
             onSubmit={({ decision, note, price }) => (dialog?.kind === "decide_hold" ? run("hold", () => decideHold(f, actor, po.id, { holdId: dialog.hold.id, decision, note, price }, opts), "toast.saved") : Promise.resolve(false))}
           />
-          <HoldInvoiceDialog open={dialog?.kind === "hold_invoice"} lines={po.lines} onOpenChange={(o) => !o && setDialog(null)} onSubmit={(input) => run("hold_invoice", () => holdInvoice(f, actor, isFinance, po.id, input), "toast.saved")} />
+          <HoldInvoiceDialog open={dialog?.kind === "hold_invoice"} lines={po.lines} onOpenChange={(o) => !o && setDialog(null)} onSubmit={(input) => run("hold_invoice", () => holdInvoice(f, actor, isFinance, po.id, input), "toast.hold_sent")} />
           <RejectDecisionDialog
             open={dialog?.kind === "reject"}
             onOpenChange={(o) => !o && setDialog(null)}
             line={dialog?.kind === "reject" ? dialog.line : null}
             initialDecision={dialog?.kind === "reject" ? dialog.decision : undefined}
-            onSubmit={({ decision, note, replaceBy, discountPrice }) => (dialog?.kind === "reject" ? run("reject", () => poAct("reject-decision", { poId: po.id, lineId: dialog.line.id, decision, note: note || null, replaceBy: replaceBy || null, discountPrice: discountPrice ?? null }, locale), "toast.reject_decided") : Promise.resolve(false))}
+            onSubmit={({ decision, note, replaceBy, discountPrice }) => (dialog?.kind === "reject" ? run("reject", () => poAct("reject-decision", { poId: po.id, lineId: dialog.line.id, decision, note: note || null, replaceBy: replaceBy || null, discountPrice: discountPrice ?? null }, locale), decision === "replace" ? "toast.reject_replace" : decision === "discount" ? "toast.reject_discount" : "toast.reject_return") : Promise.resolve(false))}
           />
           <PoSendDialog
             open={dialog?.kind === "send"}

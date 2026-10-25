@@ -31,7 +31,7 @@ interface LinkData {
   forwardedBy: string
   note?: string | null
   noNotice?: boolean
-  where?: "warehouse" | "project"
+  where?: "warehouse" | "project" | "site"
   lines: Array<{ poLineId: string; name: string; unit: string }>
   receiverUserId?: string | null
   files?: Array<{ name: string; url: string; kind: "photo" | "ticket" | "cert" }>
@@ -267,7 +267,7 @@ export function ReceiveLinkContent() {
             {rejected > 0 ? ` ${t("done_rejected", { qty: rejected })}` : ""}
           </p>
           <p className="max-w-sm text-xs text-muted-foreground">
-            {data.where === "project" ? t("done_where_project") : t("done_where_warehouse")}
+            {data.where === "project" ? t("done_where_project") : data.where === "site" ? t("done_where_site") : t("done_where_warehouse")}
             {done.placeName ? ` — ${done.placeName}` : ""}. {rejected > 0 ? t("done_rejected_note") : ""}
           </p>
           <Button type="button" variant="outline" className="h-10 gap-1.5" onClick={print}>
@@ -279,7 +279,7 @@ export function ReceiveLinkContent() {
     )
   }
 
-  const whereText = data.where === "project" ? t("where_project") : t("where_warehouse")
+  const whereText = data.where === "project" ? t("where_project") : data.where === "site" ? t("where_site") : t("where_warehouse")
 
   return (
     <Shell>
@@ -429,6 +429,7 @@ export function ReceiveLinkContent() {
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660)).replace(/[^0-9]/g, ""))}
             />
+            <p className="text-[11px] leading-relaxed text-muted-foreground">{t("code_scope")}</p>
             <Button className="h-11 w-full" disabled={busy || code.length !== 6 || Boolean(problem)} onClick={confirm}>
               {busy ? <Loader2 className="animate-spin" size={16} aria-hidden="true" /> : null}
               {t("confirm")}

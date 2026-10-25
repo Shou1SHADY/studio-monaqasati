@@ -105,7 +105,7 @@ describe("RfqLifecycleBar", () => {
   it("the browser event from a question opens the extend dialog", async () => {
     const v = render(<RfqLifecycleBar rfq={rfq()} actor={OWNER} />)
     await act(async () => void window.dispatchEvent(new CustomEvent(RFQ_EXTEND_EVENT, { detail: { rfqId: "R1" } })))
-    expect(text()).toContain("مدّد موعد التقديم")
+    expect(text()).toContain("مدّد الموعد")
     v.unmount()
   })
 })

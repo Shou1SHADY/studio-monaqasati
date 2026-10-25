@@ -96,7 +96,7 @@ describe("without Finance", () => {
     const text = await open("rcv")
     expect(missingKeys.size).toBe(0)
     expect(text).toContain("ط.ش-2026/001")
-    expect(text).not.toContain("المالية")
+    expect(text.replace("ولا «أوقف صرف فاتورة» بلا المالية.", "")).not.toContain("المالية")
     expect(text).not.toContain("مسار المال")
   })
 

@@ -119,8 +119,10 @@ export const RECEIPT_PRINT_CSS = (dir: "rtl" | "ltr") => {
   .para { margin: 10px 0; font-size: 11.5px; }
   .para b { display: inline-block; min-width: 110px; }
   .chk { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2px 14px; margin: 4px 0; font-size: 11px; }
-  .dig { margin-top: 16px; border: 1px solid #bbb; border-radius: 6px; padding: 8px 10px; font-size: 11.5px; }
-  .dig small { color: #666; display: block; font-size: 10.5px; margin-top: 2px; }
+  .trio { margin-top: 16px; }
+  .trio div { min-height: 74px; }
+  .sgline { border-top: 1px solid #999; margin-top: 18px; padding-top: 3px; font-size: 10px; color: #444; }
+  .dig-note { color: #666; font-size: 10.5px; margin-top: 4px; }
   .pdf2 { margin-top: 18px; border-top: 1px solid #ccc; padding-top: 6px; font-size: 9.5px; color: #666; line-height: 1.7; }
   .muted { color: #666; }
   `
@@ -146,11 +148,15 @@ export function buildReceiptPrintHtml(m: ReceiptPrintInput): string {
   const when = d.confirmedAt || d.deliveryDate || null
   const sub = `${e(m.displayNumber)} · ${longDate(when, locale)}${timeOf(when, locale) ? ` — ${timeOf(when, locale)}` : ""}`
 
+  const hasRejects = lines.some((l) => num(l.rejected) > 0)
+  const partial = `<div class="pdst w">${e(t("status_partial", { list: outstanding.map((l) => `${figure(l.quantity)} ${l.unit} ${l.name}`).join("، ") }))}</div>`
   const banner = noPo
     ? `<div class="pdst w">${e(t("status_no_po"))}</div>`
-    : complete
-      ? `<div class="pdst g">${e(t("status_final"))}</div>`
-      : `<div class="pdst w">${e(t("status_partial", { list: outstanding.map((l) => `${figure(l.quantity)} ${l.unit} ${l.name}`).join("، ") }))}</div>`
+    : hasRejects
+      ? `<div class="pdst w">${e(t("status_rejected"))}</div>${complete ? `<div class="pdst g">${e(t("status_final"))}</div>` : partial}`
+      : complete
+        ? `<div class="pdst g">${e(t("status_matched"))} — ${e(t("status_final"))}</div>`
+        : partial
 
   const idLine = (cr: string | null | undefined, vat: string | null | undefined) =>
     `${e(t("cr"))} <span class="ltr">${e(cr || "—")}</span> · ${e(t("vat_no"))} <span class="ltr">${e(vat || "—")}</span>`
@@ -166,7 +172,7 @@ export function buildReceiptPrintHtml(m: ReceiptPrintInput): string {
   const grid = noPo
     ? `<div class="pdg">
         <div><small>${e(t("supplier_as_written"))}</small><b>${e(d.supplierName || "—")}</b><span>${noPoIdentity}</span></div>
-        <div><small>${e(t("reference"))}</small><b>${d.paperNoteNumber ? `<span class="ltr">${e(d.paperNoteNumber)}</span>` : "—"}</b><span>${e(t("no_purchase_order"))}</span></div>
+        <div><small>${e(t("notice_or_invoice"))}</small><b>${d.invoiceNumber || d.paperNoteNumber ? `<span class="ltr">${e(d.invoiceNumber || d.paperNoteNumber || "")}</span>` : "—"}</b><span>${e(t(d.after === "later" ? "after_later" : d.after === "cash" ? "after_cash" : "no_purchase_order"))}</span></div>
         <div><small>${e(t("place"))}</small><b>${e(m.placeName || t("general_stock"))}</b>${m.projectName ? `<span>${e(m.projectName)}</span>` : ""}</div>
       </div>`
     : `<div class="pdg">
@@ -228,19 +234,25 @@ export function buildReceiptPrintHtml(m: ReceiptPrintInput): string {
   const forwarded = fw
     ? `<div class="para"><b>${e(t(fw.auto ? "forwarded_title_auto" : "forwarded_title"))}</b> ${e(fw.name)}${fw.userId ? "" : ` — ${e(t("forwarded_by_link"))} <span class="ltr">${e(fw.phoneMasked)}</span>`} · ${e(fw.auto ? t("forwarded_by_auto") : t("forwarded_by", { name: fw.byName }))}</div>`
     : ""
+  const invoiceValue = m.withPrices && !typedPriced && d.invoiceValue != null && Number.isFinite(Number(d.invoiceValue)) ? `<div class="para"><b>${e(t("invoice_as_received"))}:</b> ${e(sar(Number(d.invoiceValue), locale))}</div>` : ""
   const note = d.receiptNote || d.notes ? `<div class="para"><b>${e(noPo ? t("reason_outside") : t("receiver_note"))}</b> ${e(d.receiptNote || d.notes || "")}</div>` : ""
 
   const when2 = `${longDate(when, locale)} ${timeOf(when, locale)}`.trim()
   const manual = d.source === "manual"
   const via = manual ? t("via_manual") : d.confirmedVia === "login" || d.receiverReport?.verifiedBy === "login" ? t("via_login") : t("via_code")
   const who = manual ? d.confirmedByName || d.receivedByName || "—" : d.receivedByName || "—"
-  const digital = `<div class="dig"><b>${e(manual ? t("registered_by_procurement") : d.selfReceived ? t("self_received") : t("registered_by"))}</b> ${e(who)} · ${e(when2)} · ${e(via)}<small>${e(t("no_signature_note"))}</small></div>`
+  const recordedLabel = manual ? t("registered_by_procurement") : d.selfReceived ? t("self_received") : t("registered_by")
+  const digital = `<div class="pdg trio">
+    <div><small>${e(recordedLabel)}</small><b>${e(who)}</b><div class="sgline">${e(t("sig_confirmed"))}</div><div class="dig-note">${e(when2)} · ${e(via)}</div></div>
+    <div><small>${e(t("sig_buyer"))}</small><b>${e(po?.preparedByName || "—")}</b><div class="sgline">${e(t("sig_reviewed"))}</div></div>
+    <div><small>${e(t("supplier"))}</small><b>${e(po?.supplierName || d.supplierName || "—")}</b><div class="sgline">${e(t("sig_copy"))}</div></div>
+  </div><div class="dig-note">${e(t("no_signature_note"))}</div>`
 
   const footerExtra = noPo ? t("footer_no_po") : t("footer_accepted_only")
   const footer = `<div class="pdf2"><div>${e(footerExtra)}</div><div>${e(t("footer", { company: m.company.name || "—", date: longDate(m.now.toISOString(), locale) }))}</div></div>`
 
   return `<div class="pdh"><div><h1>${e(noPo ? t("title_no_po") : t("title"))}</h1><div class="sub">${sub}</div></div>${companyBlock(m.company, t)}</div>
-    ${banner}${grid}${table}${checklist}${driver}${forwarded}${note}${digital}${footer}`
+    ${banner}${grid}${table}${invoiceValue}${checklist}${driver}${forwarded}${note}${digital}${footer}`
 }
 
 /** The whole self-contained page: its own styles, A4, and — when it is meant to be printed at once — the print dialog on load. */

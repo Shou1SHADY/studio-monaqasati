@@ -294,7 +294,7 @@ describe("«طلباتي» — the requester's page", () => {
     setPathname("/contractor/rfqs/my-requests", "")
     const view = render(<MyRequestsPage />)
     await flush()
-    expect(text()).toContain("لم ترسل طلب مواد بعد")
+    expect(text()).toContain("لا طلبات بعد")
     view.unmount()
   })
 })

@@ -46,7 +46,7 @@ export interface NeedLineActs {
 
 const SOURCE_ICON = { mfg: Factory, project: FolderKanban, stock: Boxes, team: Users }
 
-export function NeedLineDrawer({ row, agreements, history, cap, today, acts, orgId, onClose }: { row: NeedRow; agreements: PriceAgreement[]; history: PriceHistoryEntry[]; cap: number; today: string; acts: NeedLineActs; orgId?: string | null; onClose: () => void }) {
+export function NeedLineDrawer({ row, agreements, history, cap, today, acts, orgId, banner, onClose }: { row: NeedRow; agreements: PriceAgreement[]; history: PriceHistoryEntry[]; cap: number; today: string; acts: NeedLineActs; orgId?: string | null; /** What the line's request says of where it stands (`RequestStatusBlock`). */ banner?: ReactNode; onClose: () => void }) {
   const t = useTranslations("Portal.Shared")
   const tp = useTranslations("Portal.Procurement")
   const budgetLeft = useItemBudgetLeft(row.need.kind === "project" ? row.need.projectId : null, orgId ?? null, row.itemId, acts.seesPrices)
@@ -154,6 +154,7 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, org
         </SheetHeader>
 
         <div className="space-y-4 p-5">
+          {banner}
           {step && (
             <section className="space-y-2">
               <h3 className="text-sm font-black">{t("nd_next_step")}</h3>
@@ -196,7 +197,11 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, org
           </DrawerSection>
 
           <DrawerSection title={t("nd_where_from")}>
-            <KeyValueRow label={t("nd_source")} value={`${t(`pri_from_${n.kind}`)} · ${displayNeedRef(n.refLabel, locale)}`} />
+            {n.kind === "stock" && n.stock ? (
+              <KeyValueRow label={t("rq_inv_line")} value={`${displayNeedRef(n.refLabel, locale)} · ${t("rq_inv_why", { onHand: qty(n.stock.onHand), min: qty(n.stock.min) })}`} />
+            ) : (
+              <KeyValueRow label={t("nd_source")} value={`${t(`pri_from_${n.kind}`)} · ${displayNeedRef(n.refLabel, locale)}`} />
+            )}
             {n.projectName && (
               <KeyValueRow
                 label={facts.item ? tp("p2c.need.project_item") : t("nd_project")}

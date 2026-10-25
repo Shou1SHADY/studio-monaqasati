@@ -127,7 +127,8 @@ export function RfqCompareGrid(props: RfqCompareGridProps) {
   if (!model.columns.length && !offers.length) {
     return (
       <Panel title={t("heading")} icon={Scale}>
-        <p className="text-sm text-muted-foreground">{t("none")}</p>
+        <p className="text-sm font-semibold">{t("none")}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t("none_hint")}</p>
       </Panel>
     )
   }
@@ -359,6 +360,7 @@ function SupplierHead({ col }: { col: CompareColumn }) {
         {col.shortlisted && <Star size={11} className="me-1 inline text-warning" aria-label={t("shortlisted")} />}
         {col.name || "—"}
       </span>
+      {col.shortlisted && <small className="block text-warning">{t("shortlist_short")}</small>}
       {col.facts.guest && <small className="block text-violet">{t("off_platform")}</small>}
       {col.excluded && <small className="block font-bold text-destructive">{t("excluded")}</small>}
       {col.taken && <small className="block font-bold text-success">{t("awarded_to")}</small>}

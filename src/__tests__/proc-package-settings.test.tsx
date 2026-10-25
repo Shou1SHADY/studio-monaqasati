@@ -119,13 +119,13 @@ describe("the policies (§14)", () => {
 })
 
 describe("the roles table (§4)", () => {
-  it("is the matrix of the PRD: thirteen rows and five columns without Project Management", async () => {
+  it("is the matrix of the PRD: fourteen rows and five columns without Project Management", async () => {
     world({ off: ["project-management", "manufacturing"] })
     const view = await open(ORG)
     await pick("الأدوار")
     const head = Array.from(document.querySelectorAll("thead th")).map((h) => (h.textContent ?? "").trim())
     expect(head).toEqual(["ما يفعله", "مالك الشركة", "مدير المشتريات", "مسؤول المشتريات", "متابع التوريد", "طالب مواد"])
-    expect(document.querySelectorAll("tbody tr")).toHaveLength(13)
+    expect(document.querySelectorAll("tbody tr")).toHaveLength(14)
     for (const row of ["يرى الأسعار والقيم", "يصعّد تسليماً لم يُعدّ", "يضبط السياسات والمواقع والمستلمين", "يرى الاشتراك (قراءة فقط)", "يسجّل سنداً يدوياً لشراء خارج المنصة"])
       expect({ row, shown: text().includes(row) }).toEqual({ row, shown: true })
     expect(text()).toContain("المواقع والمستلمون")
@@ -137,7 +137,7 @@ describe("the roles table (§4)", () => {
     world({ off: ["project-management"] })
     const view = await open(ORG)
     await pick("الأدوار")
-    expect(document.querySelectorAll("tbody tr")).toHaveLength(14)
+    expect(document.querySelectorAll("tbody tr")).toHaveLength(15)
     expect(text()).toContain("يسأل الورشة: نصنّع أم نشتري")
     view.unmount()
   })

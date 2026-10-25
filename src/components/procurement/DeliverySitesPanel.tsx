@@ -129,7 +129,7 @@ export function DeliverySitesPanel({
                       {s.name}
                     </b>
                     <span className="text-xs text-muted-foreground">
-                      {t(`sites.kind_${s.kind}`)}
+                      {s.kind === "warehouse" ? t(s.warehouseId ? "sites.line_warehouse_inv" : "sites.line_warehouse") : s.kind === "workshop" ? t("sites.line_workshop") : t(`sites.kind_${s.kind}`)}
                       {pmOn && linkedProjectId(s) && <> · {t("sites.linked_to", { project: projectName.get(linkedProjectId(s) as string) || "—" })}</>}
                       {s.mapUrl && (
                         <>

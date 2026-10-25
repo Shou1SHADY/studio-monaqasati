@@ -1,5 +1,5 @@
 // Settings → «الأدوار» (Procurement 2.0 PRD §4): what each Procurement role does, in the customer's words, as the screens and
-// the server apply it — thirteen rows (without Projects) and five columns. The owner holds every act unless he stepped back (question 1).
+// the server apply it — fourteen rows (without Projects) and five columns. The owner holds every act unless he stepped back (question 1).
 // What follows the package shows by it: «يرفع طلب مواد» and the requester's column only without Project Management (with it,
 // requests come from the projects), «يعلّم الدفع» only without Finance, «يسأل الورشة» only with Manufacturing. Receiving is not a
 // Procurement act, nor paying while Finance is in the company. Pure.
@@ -20,6 +20,7 @@ export type RoleRowId =
   | "cancel"
   | "escalate"
   | "expedite"
+  | "invite_suppliers"
   | "manual_receipt"
   | "raise_request"
   | "settings"
@@ -58,11 +59,12 @@ export function roleRows(ctx: RoleContext): RoleRow[] {
     row("cancel", owner(false), true, true, false),
     row("escalate", owner(false), true, true, true),
     row("expedite", owner(false), true, true, true),
+    row("invite_suppliers", owner(false), true, true, false),
     row("manual_receipt", owner(false), true, true, false),
     row("settings", true, "sites", false, false),
     row("subscription", true, true, false, false),
   ]
-  if (!ctx.pmOn) rows.splice(10, 0, row("raise_request", true, true, true, false, true))
+  if (!ctx.pmOn) rows.splice(rows.findIndex((r) => r.id === "settings"), 0, row("raise_request", true, true, true, false, true))
   if (!ctx.financeOn) rows.push(row("mark_paid", true, true, false, false))
   if (ctx.mfgOn) rows.push(row("ask_workshop", owner(false), true, true, false))
   return rows

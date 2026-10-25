@@ -146,7 +146,10 @@ export function BeforeBuyingTable({ doc, clock, mfgOn, canAct, history, onAsk }:
           </li>
         ))}
       </ul>
-      <p className="text-xs text-muted-foreground">{t("before_hint")}</p>
+      <p className="text-xs text-muted-foreground">
+        {t("before_hint")}
+        {mfgOn && rows.some((r) => r.view.canAsk || r.view.workshop) ? ` ${t("before_hint_mfg")}` : ""}
+      </p>
       {asking && <AskWorkshopDialog doc={doc} line={asking} history={history} onClose={() => setAsking(null)} onDone={onAsk} />}
     </section>
   )

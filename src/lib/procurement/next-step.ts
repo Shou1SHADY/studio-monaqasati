@@ -16,7 +16,7 @@ export type DeliveryStep =
   /** A notice is with us: forward it to the receiver. Waits on: us. */
   | { kind: "notice_to_forward"; deliveryId: string; noticeDay: string | null }
   /** Forwarded; the delivery day has not come. Waits on: nobody. */
-  | { kind: "in_transit"; deliveryId: string; day: string | null; receiver: string }
+  | { kind: "in_transit"; deliveryId: string; day: string | null; receiver: string; auto: boolean; forwardedDay: string | null }
   /** Forwarded; the day passed and nobody counted. Waits on: the receiver. */
   | { kind: "receiver_late"; deliveryId: string; receiver: string; days: number; noticeDay: string | null; forwardedDay: string | null; byLink: boolean }
   /** The receiver counted at the gate; the receipt is to be booked. Waits on: us. */
@@ -66,7 +66,7 @@ export function deliveryStep(po: PurchaseOrder, notices: ReadonlyArray<StepNotic
     const d = daysFromNow(day, now)
     if (d != null && d < 0)
       return { kind: "receiver_late", deliveryId: n.id, receiver: n.forwardedTo.name || "", days: -d, noticeDay: day, forwardedDay: dayOf(n.forwardedTo.at) || null, byLink: !n.forwardedTo.userId }
-    return { kind: "in_transit", deliveryId: n.id, day, receiver: n.forwardedTo.name || "" }
+    return { kind: "in_transit", deliveryId: n.id, day, receiver: n.forwardedTo.name || "", auto: Boolean(n.forwardedTo.auto), forwardedDay: dayOf(n.forwardedTo.at) || null }
   }
   const rejected = po.lines.filter((l) => num(l.rejected) > 0 && !l.rejectDecision)
   if (rejected.length) return { kind: "rejected", qty: rejected.reduce((s, l) => s + num(l.rejected), 0), unit: rejected[0].unit, reason: null, lineId: rejected[0].id }

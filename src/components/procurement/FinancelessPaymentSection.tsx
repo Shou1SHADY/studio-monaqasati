@@ -195,7 +195,10 @@ export function FinancelessPaymentSection({ po, actor, orgId, Section, advanceAs
         )}
         <div className="flex justify-between gap-3">
           <dt className="text-muted-foreground">{t("pay.received")}</dt>
-          <dd className="font-semibold">{done ? t("pay.received_done") : progress.byLines ? t("pay.received_lines", { done: progress.linesDone, total: progress.linesTotal }) : t("pay.received_of", { received: progress.received.toLocaleString("en-US"), ordered: progress.ordered.toLocaleString("en-US"), unit: progress.unit })}</dd>
+          <dd className="font-semibold">
+            {progress.byLines ? t("pay.received_lines", { done: progress.linesDone, total: progress.linesTotal }) : t("pay.received_of", { received: progress.received.toLocaleString("en-US"), ordered: progress.ordered.toLocaleString("en-US"), unit: progress.unit })}
+            {done && ` · ${t("pay.order_closed")}`}
+          </dd>
         </div>
         {last && (
           <div className="flex justify-between gap-3">
@@ -235,7 +238,7 @@ export function FinancelessPaymentSection({ po, actor, orgId, Section, advanceAs
         {files && (
           <label className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed px-3 text-xs font-semibold text-muted-foreground hover:text-foreground">
             {busy === "upload" ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-            {t("pay.upload_invoice")}
+            {invoiceFiles.length === 0 ? t("pay.upload_short") : t("pay.upload_invoice")}
             <input type="file" accept="application/pdf,image/*" className="sr-only" onChange={(e) => void upload(e.target.files)} />
           </label>
         )}

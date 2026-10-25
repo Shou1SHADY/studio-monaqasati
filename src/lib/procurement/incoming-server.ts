@@ -62,6 +62,7 @@ import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type PurchaseOrder } from "./typ
 import { reachesProcurement, type ProjectRequestDoc } from "./needs"
 import type { PurchaseRequestRecord } from "../manufacturing-engine"
 import { PROCUREMENT_RECEIVERS } from "./receivers"
+import { notifyArrived, notifyStockReached } from "./upcoming-watch-server"
 
 export const MAT_TYPE = "MAT"
 const LEGACY_MIGRATED = "migrated"
@@ -694,14 +695,18 @@ export async function syncIncoming(db: Db, orgId: string, opts: { now?: Date; by
 
   const world = await worldOf(db, orgId)
   const year = riyadhYear(now)
+  const arrived: Array<{ key: string; ref: string }> = []
   for (const { doc, isNew } of fresh) {
     if (!isNew) continue
     const made = await createIfAbsent(db, settle(doc, world, clock), doc.src === "mfg" ? { allocate: (tx) => drawMatNumber(db, tx, orgId, year) } : undefined, { now, policies, off, by })
     if (made) {
       result.created++
       existing.set(made.mrKey, made)
+      if (made.src === "pm") arrived.push({ key: made.mrKey, ref: made.no })
     }
   }
+  // «قادمة» → «نبّهني حين يصل»: whoever watched a project's request that was approved, or a stock item that reached its minimum, is told once.
+  result.told += (await notifyArrived(db, orgId, arrived, at).catch((err) => (console.warn("upcoming watch notice failed:", err), 0))) + (await notifyStockReached(db, orgId, at).catch((err) => (console.warn("stock watch notice failed:", err), 0)))
   const sources = new Map(fresh.map((f) => [f.doc.mrKey, f.doc]))
   const reread = (doc: IncomingDoc): IncomingDoc => {
     const source = sources.get(doc.mrKey)

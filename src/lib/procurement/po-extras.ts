@@ -261,7 +261,7 @@ export function poRevision(po: Pick<PurchaseOrder, "log">): number {
 // ---------------------------------------------------------------------------
 
 export type TrailState = "ok" | "now" | "bad" | "todo"
-export type TrailKey = "prepared" | "approved" | "finance" | "sent" | "accepted" | "advance" | "notice" | "receipt" | "invoice"
+export type TrailKey = "prepared" | "approved" | "finance" | "sent" | "accepted" | "advance" | "notice" | "receipt" | "invoice" | "payment"
 export interface TrailStep {
   key: TrailKey
   at: string | null
@@ -315,7 +315,11 @@ export function docTrail(po: PurchaseOrderX, deliveries: Array<ReceiptFact & { p
     state: st === "received" || st === "closed" ? "ok" : st === "part_received" ? "now" : "todo",
     flags: [],
   })
-  if (!financeOn) return steps
+  if (!financeOn) {
+    const mark = (po as { paymentMark?: { state?: string; day?: string } | null }).paymentMark
+    steps.push({ key: "payment", at: mark?.day || null, who: [], state: mark?.state === "paid" ? "ok" : "todo", flags: [] })
+    return steps
+  }
   const holds = openHolds(po)
   const lastPay = paymentsNewestFirst(po).find((p) => p.kind !== "adv")
   steps.push({

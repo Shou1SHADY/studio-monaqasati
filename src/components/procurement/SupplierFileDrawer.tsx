@@ -10,7 +10,7 @@
 import { useSupplierVat } from "@/hooks/useSupplierVat"
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Loader2, ShieldCheck, Star, UserPlus } from "lucide-react"
+import { Loader2, Send, ShieldCheck, Star, UserPlus } from "lucide-react"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
@@ -491,6 +491,17 @@ export function SupplierFileDrawer({
                 <p className="py-2 text-sm text-muted-foreground">{t("file.no_log")}</p>
               )}
             </DrawerSection>
+
+            {supplier.isMine && !ownerHasTeam && (
+              <div className="pt-1">
+                <Button asChild size="sm" className="gap-1.5 bg-module text-module-foreground hover:bg-module/90">
+                  <Link href={`/contractor/rfqs/new?private=${encodeURIComponent(supplier.orgId)}`}>
+                    <Send size={14} aria-hidden="true" />
+                    {t("file2.private_rfq")}
+                  </Link>
+                </Button>
+              </div>
+            )}
 
             {canManage && supplier.linkId && (
               <div className="pt-1">

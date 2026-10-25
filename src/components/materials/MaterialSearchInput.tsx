@@ -227,7 +227,7 @@ export function MaterialSearchInput({
                       className={cn("inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-muted-foreground", active === hits.length + 1 ? "bg-muted" : "hover:bg-muted")}
                     >
                       <PenLine size={14} aria-hidden="true" />
-                      {t("type_as_is")}
+                      {t("not_listed")} {t("write_as_is")}
                     </button>
                   )}
                 </div>

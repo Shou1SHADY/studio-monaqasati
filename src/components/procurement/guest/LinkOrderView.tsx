@@ -105,7 +105,7 @@ function Head({ view }: { view: PoLinkView }) {
             {place || view.site?.name}
             {view.site?.address ? ` · ${view.site.address}` : ""}
             {view.site?.mapUrl && (
-              <a href={view.site.mapUrl} target="_blank" rel="noreferrer" className="font-bold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <a href={view.site.mapUrl} target="_blank" rel="noreferrer" title={t("map_hint")} className="font-bold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 {t("on_map")}
               </a>
             )}

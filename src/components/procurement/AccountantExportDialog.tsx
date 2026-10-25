@@ -22,6 +22,8 @@ import type { FinancelessPo } from "@/lib/procurement/payment-mark"
 import type { ReceiptFact } from "@/lib/procurement/types"
 
 type Format = "xlsx" | "csv"
+type What = { po: boolean; grn: boolean; inv: boolean }
+const WHAT: ReadonlyArray<keyof What> = ["po", "grn", "inv"]
 
 const monthStart = (today: string) => `${today.slice(0, 7)}-01`
 
@@ -53,6 +55,7 @@ export function AccountantExportDialog({ open, onOpenChange, orders, receipts }:
   const [from, setFrom] = useState(() => monthStart(today))
   const [to, setTo] = useState(today)
   const [format, setFormat] = useState<Format>("xlsx")
+  const [what, setWhat] = useState<What>({ po: true, grn: true, inv: true })
   const [busy, setBusy] = useState<null | "download" | "send">(null)
   const [noAccountant, setNoAccountant] = useState(false)
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= to
@@ -61,13 +64,32 @@ export function AccountantExportDialog({ open, onOpenChange, orders, receipts }:
   const tables = () =>
     data
       ? [
-          { title: t("sheet_orders"), head: ORDER_COLUMNS.map((c) => t(`ocol_${c}`)), rows: data.orders },
-          { title: t("sheet_receipts"), head: RECEIPT_COLUMNS.map((c) => t(`rcol_${c}`)), rows: data.receipts },
-          { title: t("sheet_invoices"), head: [t("icol_order"), t("icol_name"), t("icol_url")], rows: data.invoices.map((i) => [i.order, i.name, i.url] as Cell[]) },
+          ...(what.po ? [{ title: t("sheet_orders"), head: ORDER_COLUMNS.map((c) => t(`ocol_${c}`)), rows: data.orders }] : []),
+          ...(what.grn ? [{ title: t("sheet_receipts"), head: RECEIPT_COLUMNS.map((c) => t(`rcol_${c}`)), rows: data.receipts }] : []),
+          ...(what.inv ? [{ title: t("sheet_invoices"), head: [t("icol_order"), t("icol_name"), t("icol_url")], rows: data.invoices.map((i) => [i.order, i.name, i.url] as Cell[]) }] : []),
         ]
       : []
-  const filename = `procurement-${from}-${to}.${format}`
-  const content = async () => (format === "xlsx" ? workbook(tables(), locale === "ar") : toBase64(toCsv(tables())))
+  const withZip = what.inv && (data?.invoices.length ?? 0) > 0
+  const nothing = !what.po && !what.grn && !what.inv
+  const tableName = `procurement-${from}-${to}.${format}`
+  const filename = withZip ? `procurement-${from}-${to}.zip` : tableName
+  const tableBase64 = async () => (format === "xlsx" ? workbook(tables(), locale === "ar") : toBase64(toCsv(tables())))
+  // The table, and — when the supplier invoices are asked for — a zip that carries them beside it (the server reads each file from its own order).
+  const content = async () => {
+    const table = await tableBase64()
+    if (!withZip || !data) return table
+    const token = (await getAuth().currentUser?.getIdToken()) || ""
+    const res = await fetch("/api/procurement/receipt-export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ action: "invoices", poIds: data.poIds, table: { filename: tableName, base64: table } }),
+    })
+    if (!res.ok) throw new Error("zip")
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    let bin = ""
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+    return btoa(bin)
+  }
 
   const download = async () => {
     setBusy("download")
@@ -75,13 +97,14 @@ export function AccountantExportDialog({ open, onOpenChange, orders, receipts }:
       const b64 = await content()
       const bin = atob(b64)
       const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0))
-      const blob = new Blob([bytes], { type: format === "xlsx" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv;charset=utf-8" })
+      const blob = new Blob([bytes], { type: withZip ? "application/zip" : format === "xlsx" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv;charset=utf-8" })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
       a.download = filename
       a.click()
       URL.revokeObjectURL(url)
+      toast({ title: t(withZip ? "downloaded" : "downloaded_file") })
     } catch {
       toast({ title: tp("failed"), variant: "destructive" })
     } finally {
@@ -154,6 +177,15 @@ export function AccountantExportDialog({ open, onOpenChange, orders, receipts }:
               CSV
             </Chip>
           </div>
+          <div className="space-y-1.5" role="group" aria-label={t("what_label")}>
+            {WHAT.map((k) => (
+              <label key={k} className="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm">
+                <input type="checkbox" className="mt-1 h-4 w-4" checked={what[k]} onChange={() => setWhat((w) => ({ ...w, [k]: !w[k] }))} />
+                <span>{t(`what_${k}`)}</span>
+              </label>
+            ))}
+          </div>
+          <Callout tone="info">{t("fixed_columns")}</Callout>
           {data && (
             <p className="text-sm text-muted-foreground">
               {t("counts", { orders: data.orders.length, receipts: data.receipts.length, invoices: data.invoices.length })}
@@ -162,11 +194,11 @@ export function AccountantExportDialog({ open, onOpenChange, orders, receipts }:
           {noAccountant && <Callout tone="warn">{t("no_accountant")}</Callout>}
         </div>
         <DialogFooter className="gap-2">
-          <Button variant="outline" className="gap-1.5" disabled={!data || busy != null} onClick={() => void send()}>
+          <Button variant="outline" className="gap-1.5" disabled={!data || nothing || busy != null} onClick={() => void send()}>
             {busy === "send" ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
             {t("send")}
           </Button>
-          <Button className="gap-1.5" disabled={!data || busy != null} onClick={() => void download()}>
+          <Button className="gap-1.5" disabled={!data || nothing || busy != null} onClick={() => void download()}>
             {busy === "download" ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             {t("download")}
           </Button>

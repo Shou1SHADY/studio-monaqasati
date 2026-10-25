@@ -19,7 +19,7 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, CheckCircle2, ClipboardCheck, Clock, Eye, ExternalLink, FileText, Info, Printer, ShieldAlert, Siren, Star, Truck } from "lucide-react"
+import { AlertTriangle, CheckCircle2, ClipboardCheck, Clock, Coins, Eye, ExternalLink, Factory, FileText, HardHat, Info, Printer, ShieldAlert, Siren, Star, Truck, Warehouse } from "lucide-react"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { useModules } from "@/hooks/useCompanyModules"
@@ -37,6 +37,7 @@ import { RECEIPT_CHECKS, acceptedOf, canRate, lineToArrive, round2 } from "@/lib
 import { procLinks } from "@/lib/procurement/events"
 import { RFQ_HREF } from "@/lib/procurement/today"
 import { receiptState, type ReceiptState } from "@/lib/procurement/receipts"
+import { receiptEffects, type EffectModule } from "@/lib/procurement/receipt-effects"
 import {
   acceptedBefore,
   isNoPo,
@@ -54,7 +55,7 @@ import {
   type TrailNeed,
   type TrailState,
 } from "@/lib/procurement/receipt-desk"
-import { noticeWait } from "@/lib/procurement/receipt-desk"
+import { isWorkshopOrder, noticeWait } from "@/lib/procurement/receipt-desk"
 import { printGoodsReceipt, type ReceiptPrintCompany, type SupplierIdentity } from "@/lib/procurement/receipt-print"
 import type { PoLine, ProcActor, ProcurementPolicies, PurchaseOrder, ReceiptCheck, RejectDecision } from "@/lib/procurement/types"
 import { ProcWriteError, decideReject, ratePurchaseOrder, type RatingInput } from "@/lib/procurement/writes"
@@ -120,6 +121,9 @@ export interface ReceiptDrawerProps {
   ownerReadOnly?: boolean
 }
 
+const FX_ICON: Record<EffectModule, typeof CheckCircle2> = { core: ClipboardCheck, inv: Warehouse, pm: HardHat, mfg: Factory, fin: Coins }
+const FX_TONE: Record<EffectModule, string> = { core: "bg-module/10 text-module", inv: "bg-cta/10 text-cta", pm: "bg-pm/10 text-pm", mfg: "bg-amber-100 text-amber-800", fin: "bg-success/10 text-success" }
+
 const TRAIL_ICON: Record<TrailState, typeof CheckCircle2> = { ok: CheckCircle2, bad: AlertTriangle, now: Clock }
 const TRAIL_TONE: Record<TrailState, string> = { ok: "bg-success/10 text-success", bad: "bg-destructive/10 text-destructive", now: "bg-amber-100 text-amber-800" }
 
@@ -135,7 +139,8 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
   const isRtl = locale === "ar"
   const firestore = useFirestore()
   const { toast } = useToast()
-  const financeOn = useModules().on("payments")
+  const modules = useModules()
+  const financeOn = modules.on("payments")
   const [rejectLine, setRejectLine] = useState<PoLine | null>(null)
   const [rateOpen, setRateOpen] = useState(false)
 
@@ -260,6 +265,26 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
       </Section>
     ) : null
 
+  const effects = receiptEffects({ dest: kind, workshop: isWorkshopOrder(po), pmOn: modules.on("project-management"), mfgOn: modules.on("manufacturing"), finOn: financeOn })
+  const FxSection = () =>
+    pending ? null : (
+      <Section title={t("drawer.fxTitle")}>
+        <ul className="space-y-1.5">
+          {effects.map((e) => {
+            const Icon = FX_ICON[e.module]
+            return (
+              <li key={e.key} className="flex items-center gap-2.5 text-xs">
+                <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-full", FX_TONE[e.module])}>
+                  <Icon size={13} aria-hidden="true" />
+                </span>
+                <span dir="auto">{t(`fx.${e.key}`, { name: place || "" })}</span>
+              </li>
+            )
+          })}
+        </ul>
+      </Section>
+    )
+
   // ------------------------------------------------------------------
   // A receipt with no order
   // ------------------------------------------------------------------
@@ -289,6 +314,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
             {d.manualDraft?.state === "draft" && <Callout tone="amber">{t("drawer.draftCallout", { place: warehouseName(d.manualDraft.warehouseId) || "—" })}</Callout>}
             {d.manualDraft?.state === "declined" && <Callout tone="red">{t("drawer.draftDeclined", { name: d.manualDraft.confirmedByName || "", why: d.manualDraft.note || "—" })}</Callout>}
             <Callout tone={expensed ? "blue" : "red"}>{expensed ? t(financeOn ? "drawer.expenseCallout" : "drawer.expenseCallout_nofin") : t("drawer.noPoCallout")}</Callout>
+            {manual && !expensed && d.after && <Callout tone="amber">{t(d.after === "later" ? "drawer.afterLater" : "drawer.afterCash")}</Callout>}
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={print} className="gap-1.5">
                 <Printer size={15} aria-hidden="true" />
@@ -349,6 +375,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
               </div>
             </Section>
             <AttachmentsList urls={attachments} label={(n) => tc("goods_received_document_label", { num: n })} empty={t("drawer.noAttachments")} />
+            <FxSection />
             <LogSection />
           </div>
         </SheetContent>
@@ -539,6 +566,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
                         <>
                           <th className="px-2 py-2 text-end font-semibold">{t("drawer.colCounted")}</th>
                           <th className="px-2 py-2 text-end font-semibold">{t("drawer.colAccepted")}</th>
+                          <th className="px-2 py-2 text-start font-semibold">{t("drawer.colRejected")}</th>
                           {po && <th className="px-2 py-2 text-end font-semibold">{t("drawer.colOpenNow")}</th>}
                         </>
                       )}
@@ -566,8 +594,17 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
                               </td>
                               <td className="px-2 py-2 text-end tabular-nums">
                                 <span className="font-bold text-success">{fmt(acc)}</span>
-                                {Number(l.rejected) > 0 && <p className="text-[11px] text-destructive">{t("drawer.rejected", { qty: fmt(l.rejected) })}{l.rejectReason ? ` — ${tp(`rejectReason.${l.rejectReason}`)}` : ""}</p>}
                                 {Number(l.held) > 0 && <p className="text-[11px] text-module">{t("drawer.held", { qty: fmt(l.held) })}{l.holdReason ? ` — ${tp(`holdReason.${l.holdReason}`)}` : ""}</p>}
+                              </td>
+                              <td className="px-2 py-2 text-xs text-destructive">
+                                {Number(l.rejected) > 0 ? (
+                                  <>
+                                    <b className="tabular-nums">{fmt(l.rejected)}</b>
+                                    {l.rejectReason ? ` · ${tp(`rejectReason.${l.rejectReason}`)}` : ""}
+                                  </>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
                               </td>
                               {po && <td className="px-2 py-2 text-end tabular-nums">{pl ? `${fmt(lineToArrive(pl))} ${pl.unit}` : "—"}</td>}
                             </>
@@ -694,6 +731,8 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
             </Section>
           )}
 
+          <FxSection />
+
           {!pending && d.selfReceived && (
             <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
               <ShieldAlert size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -714,7 +753,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
               now={now}
               onSubmit={(v: { decision: RejectDecision; note: string | null; replaceBy: string | null; discountPrice: number | null }) =>
                 rejectLine && firestore
-                  ? run(() => decideReject(firestore, actor, po.id, { lineId: rejectLine.id, decision: v.decision, note: v.note, replaceBy: v.replaceBy, discountPrice: v.discountPrice }, opts), "toast.reject_decided")
+                  ? run(() => decideReject(firestore, actor, po.id, { lineId: rejectLine.id, decision: v.decision, note: v.note, replaceBy: v.replaceBy, discountPrice: v.discountPrice }, opts), v.decision === "replace" ? "toast.reject_replace" : v.decision === "discount" ? "toast.reject_discount" : "toast.reject_return")
                   : Promise.resolve(false)
               }
             />

@@ -296,6 +296,7 @@ export function RoleSidebar() {
   // "Supplier" / "Contractor" next to the module name — the account type,
   // labelled top-left as the client asked.
   let portalRoleKey = ""
+  let moduleSubKey = ""
   let dashboardHref = "/"
 
   if (pathname.startsWith("/supplier")) {
@@ -311,6 +312,7 @@ export function RoleSidebar() {
     portalTitleKey = activeComponent.labelKey
     roleColor = "text-accent"
     portalRoleKey = "contractor_portal_role"
+    if (activeComponent.id === "procurement") moduleSubKey = "proc_sub"
     dashboardHref = activeComponent.homeHref
   } else if (pathname.startsWith("/admin")) {
     sections = adminSections
@@ -349,6 +351,7 @@ export function RoleSidebar() {
               <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/20 text-accent w-fit">{t("free_plan_chip")}</span>
             )}
           </div>
+          {moduleSubKey && <p className="text-[11px] leading-relaxed text-sidebar-foreground/60">{t(moduleSubKey)}</p>}
         </div>
       </SidebarHeader>
       <SidebarContent className="py-4">

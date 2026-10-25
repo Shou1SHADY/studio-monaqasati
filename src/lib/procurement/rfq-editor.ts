@@ -36,6 +36,8 @@ export interface EditorLine {
   unit: string
   /** The unit came with the line (an incoming request, a paste): kept even when the tree's differs. */
   unitFromSource: boolean
+  /** A pasted unit that is not one of the material's: the row takes the material's unit and says so. */
+  pastedUnit?: string | null
   /** «موعد مختلف»: its own need-by date. */
   needBy?: string | null
   /** Asked for with a duration (CAT-05); null/absent = no warranty. */
@@ -269,12 +271,17 @@ export function parsePaste(text: string): PastedRow[] {
 
 /** A pasted row is the same material row: matched to the tree when its words name ONE material
  * well enough, else it waits with «اختر المادة» on it. The pasted unit stays, flagged if it differs. */
-export function linesFromPaste(rows: PastedRow[], index: MaterialIndex | null): EditorLine[] {
+export function linesFromPaste(rows: PastedRow[], index: MaterialIndex | null, opts: { unitFromMaterial?: boolean } = {}): EditorLine[] {
   return rows.map((r) => {
     const hits = index ? searchMaterials(index, r.name, 2) : []
     const sure = hits.length > 0 && (hits.length === 1 || hits[0].score > hits[1].score)
     const material = sure && index ? pickOf(index, hits[0].node.id, hits[0].preset.map((p) => ({ name: { ar: p.spec.ar, en: p.spec.en }, value: p.value }))) : null
-    const unit = r.unit || (material && index ? unitsOf(index, material.nodeId)[0]?.ar || "" : "")
+    const materialUnits = material && index ? unitsOf(index, material.nodeId) : []
+    if (opts.unitFromMaterial && material && materialUnits.length) {
+      const own = r.unit && unitIsTheMaterials(r.unit, materialUnits)
+      return { key: newKey(), name: r.name, material, quantity: r.quantity, unit: own ? r.unit : materialUnits[0].ar, unitFromSource: false, pastedUnit: r.unit && !own ? r.unit : null }
+    }
+    const unit = r.unit || materialUnits[0]?.ar || ""
     return { key: newKey(), name: r.name, material, quantity: r.quantity, unit, unitFromSource: Boolean(r.unit) }
   })
 }

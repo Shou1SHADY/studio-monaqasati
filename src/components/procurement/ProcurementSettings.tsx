@@ -10,7 +10,7 @@
 import type { ElementType, ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
-import { useForm, type UseFormReturn } from "react-hook-form"
+import { useForm, useWatch, type UseFormReturn } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { collection, doc, query, serverTimestamp, setDoc, where } from "firebase/firestore"
@@ -48,10 +48,11 @@ type Row =
   | { kind: "number"; key: NumericKey; unit: Unit }
   | { kind: "switch"; key: SwitchKey }
   | { kind: "pair"; id: PairId; keys: [NumericKey, NumericKey]; units: [Unit, Unit] }
-  | { kind: "fixed"; id: "awardBeforeDeadline"; owner: PolicyOwner }
+  | { kind: "fixed"; id: "offerVisibility" | "awardBeforeDeadline"; owner: PolicyOwner }
 
 /** The prototype's order (§6.4): what shapes a quote, the clocks of buying, the limits, then the receipt. */
 const ROWS: Row[] = [
+  { kind: "fixed", id: "offerVisibility", owner: "gov" },
   { kind: "fixed", id: "awardBeforeDeadline", owner: "gov" },
   { kind: "number", key: "forwardWindowDays", unit: "days" },
   { kind: "number", key: "rfqDefaultDays", unit: "days" },
@@ -160,6 +161,7 @@ export function ProcurementSettings() {
   const [segment, setSegment] = useState<Segment>("pol")
 
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: policies })
+  const tiePct = useWatch({ control: form.control, name: "tieBandPct" })
   // The document arrives after the first render: seed the form once it does,
   // and never over a form the member has started editing.
   useEffect(() => {
@@ -303,7 +305,7 @@ export function ProcurementSettings() {
                                 <p className="text-sm font-bold text-foreground">{t(`policy.${key}.label`)}</p>
                                 {ownerChip(key)}
                               </div>
-                              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{t(`policy.${key}.desc`)}</p>
+                              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{t(`policy.${key}.desc`, { pct: String(Number(tiePct) || 0) })}</p>
                             </div>
                             <div>
                               <NumberField form={form} name={key} unit={unit} label={t(`policy.${key}.label`)} hideLabel disabled={!mayEdit} placeholder={fmtRef(key, unit)} unitLabel={t(`unit.${unit}`)} />
@@ -322,6 +324,7 @@ export function ProcurementSettings() {
                           </div>
                           <div className="flex gap-2">
                             <Input type="email" dir="ltr" value={accountantValue} onChange={(e) => setAccountant(e.target.value)} disabled={!mayEditSites} aria-label={t("accountant.label")} placeholder="accountant@company.sa" className="h-10" />
+                            {!accountantValue && <span className="self-center text-[11px] text-muted-foreground">{t("accountant.empty")}</span>}
                             {mayEditSites && accountant != null && accountant !== storedAccountant && (
                               <Button type="button" size="sm" className="h-10" onClick={() => void saveAccountant()}>
                                 {t("save")}

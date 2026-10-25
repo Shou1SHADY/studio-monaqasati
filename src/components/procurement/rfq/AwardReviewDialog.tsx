@@ -382,6 +382,7 @@ function GroupCard({
     <section className="space-y-2 rounded-xl border p-3" aria-label={name}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <b dir="auto">{name}</b>
+        {g.guest && <span className="text-xs text-warning">{t("via_link")}</span>}
         {site && <span className="text-xs text-muted-foreground">{site}</span>}
         <span className="ms-auto text-end">
           <b dir="ltr" className="tabular-nums">

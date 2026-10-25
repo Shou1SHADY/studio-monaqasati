@@ -237,6 +237,7 @@ export function InviteSupplierDialog({
                       {t("inv2.add_existing")}
                     </Button>
                   )}
+                  {onAddExisting && dup.orgId && <span>{t("inv2.add_instead")}</span>}
                 </span>
               </Callout>
             )}
@@ -247,10 +248,13 @@ export function InviteSupplierDialog({
                 <FormItem>
                   <button type="button" onClick={() => setShowSubs(!showSubs)} aria-expanded={showSubs} className="flex w-full items-center justify-between text-sm font-medium">
                     <span>
-                      {t("inv2.specialties")} <span className="font-normal text-muted-foreground">({t("inv2.optional")})</span>
+                      {t("inv2.specialties")} <span className="font-normal text-muted-foreground">({t("inv2.specialties_hint")})</span>
                       {field.value.length > 0 && <span className="ms-2 rounded-full bg-module/10 px-2 text-xs text-module">{field.value.length}</span>}
                     </span>
-                    <ChevronDown size={15} className={cn("transition-transform", showSubs && "rotate-180")} aria-hidden="true" />
+                    <span className="flex items-center gap-1.5">
+                      {!showSubs && <span className="text-xs font-bold text-module">{t("inv2.add_specialty")}</span>}
+                      <ChevronDown size={15} className={cn("transition-transform", showSubs && "rotate-180")} aria-hidden="true" />
+                    </span>
                   </button>
                   {showSubs && <MaterialSubsPicker index={index} value={field.value} onChange={field.onChange} />}
                 </FormItem>

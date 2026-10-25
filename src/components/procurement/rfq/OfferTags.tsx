@@ -31,7 +31,7 @@ export function OfferTags({ row }: { row: Pick<OfferRowModel, "tags"> }) {
     <>
       {row.tags.map((tag) => (
         <StatusPill key={tag.code} tone={TONE[tag.code]}>
-          {t(tag.code, { date: tag.code === "bafo_asked" ? date(String(tag.value || "")) : "", version: tag.value ?? "" })}
+          {tag.code === "bafo_lowered" && tag.value != null ? t("bafo_lowered_pct", { pct: tag.value }) : t(tag.code, { date: tag.code === "bafo_asked" ? date(String(tag.value || "")) : "", version: tag.value ?? "" })}
         </StatusPill>
       ))}
     </>

@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, CheckCircle2, FileSignature, Loader2, PackagePlus, Scale, ShoppingCart, X } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Eye, FileSignature, Layers, Loader2, PackagePlus, Scale, ShoppingCart, Users, X } from "lucide-react"
 import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -56,7 +56,10 @@ import { NeedLineDrawer } from "@/components/procurement/NeedLineDrawer"
 import { BeforeBuyingTable, BeforeChips } from "@/components/procurement/BeforeBuying"
 import { GuideLink } from "@/components/procurement/guide/GuideLink"
 import { ByMaterialView } from "@/components/procurement/ByMaterialView"
-import { UpcomingShell } from "@/components/procurement/UpcomingShell"
+import { UpcomingList } from "@/components/procurement/UpcomingList"
+import { RequestStatusBlock } from "@/components/procurement/RequestStatusBlock"
+import { Callout } from "@/components/module-ui/Callout"
+import { useUpcoming } from "@/hooks/useUpcoming"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { TeamRequestDialog } from "@/components/procurement/TeamRequestDialog"
 import { ReqFailDialog } from "@/components/procurement/ReqFailDialog"
@@ -70,7 +73,7 @@ const isSeg = (v: string | null): v is RequestSegment => !!v && (REQUEST_SEGMENT
 
 /** The states whose request may still have lines to publish: its panel is the request; the others open the line's own drawer. */
 const PANEL_STATES: RequestCard["state"][] = ["new", "prepared", "partial"]
-const hasPanel = (c: RequestCard) => c.buyLines > 0 && PANEL_STATES.includes(c.state)
+const hasPanel = (c: RequestCard) => PANEL_STATES.includes(c.state)
 
 export function PurchaseRequestsInbox() {
   const t = useTranslations("Portal.Shared")
@@ -125,7 +128,8 @@ export function PurchaseRequestsInbox() {
 
   const scoped = useMemo(() => desk.rows.filter((r) => inBuyerScope(r, desk.viewerCategories)), [desk.rows, desk.viewerCategories])
   const cards = useMemo(() => requestCards(scoped, world.rfqs as Array<{ id: string; status?: string | null; needSources?: unknown; purchaseSource?: unknown }>), [scoped, world.rfqs])
-  const counts = useMemo(() => requestSegmentCounts(cards), [cards])
+  const upcoming = useUpcoming(orgId || null)
+  const counts = useMemo(() => requestSegmentCounts(cards, upcoming.items.length), [cards, upcoming.items.length])
   const visible = useMemo(
     () => sortCards(cards.filter((c) => inRequestSegment(c, seg) && matchesSearch(search, [displayNeedRef(c.need.refLabel, locale), c.need.refLabel, c.need.context, c.need.requestedBy, c.need.projectName, c.need.rfqNumber, c.need.poNumber, ...c.rows.map((r) => r.name)]))),
     [cards, seg, search, locale]
@@ -155,6 +159,19 @@ export function PurchaseRequestsInbox() {
 
   const panelCard = panelKey ? cards.find((c) => c.key === panelKey) ?? null : null
   const drawerRow = openLine ? desk.rows.find((r) => r.key === openLine) ?? null : null
+  const drawerCard = drawerRow ? cards.find((c) => c.key === drawerRow.needKey) ?? null : null
+  // A request with nothing left to buy (each material issued, made or waiting for a reply) opens its panel with the reason, and no editor.
+  const panelBlocked = !!panelCard && panelCard.buyLines === 0 && PANEL_STATES.includes(panelCard.state)
+  const deadlineOf = (rfqId: string | null | undefined) => (rfqId ? ((world.rfqs.find((r) => r.id === rfqId)?.deadline as string | null | undefined) ?? null) : null)
+  const orderOf = (poId: string | null | undefined) => {
+    const o = poId ? world.orders.find((x) => x.id === poId) : null
+    return o ? { supplierName: o.supplierName || null, dueDate: o.promisedDate || o.dueDate || null } : null
+  }
+  useEffect(() => {
+    if (!panelBlocked || panelStep !== 2) return
+    toast({ title: t("rq_nothing_toast") })
+    setQuery({ step: "1" })
+  }, [panelBlocked, panelStep, panelKey])
   const mfgOf = (row: NeedRow) => (row.need.kind === "mfg" ? desk.mfgByKey.get(row.needKey) : undefined)
 
   const runConfirm = async () => {
@@ -247,6 +264,23 @@ export function PurchaseRequestsInbox() {
         {ownerRO && <span className="ms-auto text-xs font-semibold text-muted-foreground">{t("nd_owner_read")}</span>}
       </div>
 
+      {teamOn && !byMaterialView && !(seg === "upcoming" && !searching) && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-muted/40 px-4 py-3 text-sm">
+          <Users size={16} className="shrink-0 text-module" aria-hidden="true" />
+          <span className="min-w-0 flex-1 basis-72">{t("rq_team_banner")}</span>
+          <Button asChild size="sm" variant="outline" className="gap-1.5">
+            <Link href="/contractor/rfqs/my-requests">
+              <Eye size={13} aria-hidden="true" /> {t("rq_team_view")}
+            </Link>
+          </Button>
+          <Button asChild size="sm" variant="outline" className="gap-1.5">
+            <Link href="/contractor/rfqs/guide">
+              <Layers size={13} aria-hidden="true" /> {t("rq_team_flow")}
+            </Link>
+          </Button>
+        </div>
+      )}
+
       {byMaterialView ? (
         loading ? (
           <div className="flex items-center justify-center rounded-2xl border bg-card p-16">
@@ -256,7 +290,7 @@ export function PurchaseRequestsInbox() {
           <ByMaterialView rows={scoped} history={history} canCombine={canStartRfq} />
         )
       ) : seg === "upcoming" && !searching ? (
-        <UpcomingShell />
+        <UpcomingList items={upcoming.items} loading={upcoming.loading} watched={upcoming.watched} onWatch={upcoming.watch} history={history} />
       ) : loading ? (
         <div className="flex items-center justify-center rounded-2xl border bg-card p-16">
           <Loader2 className="animate-spin text-muted-foreground" size={28} aria-hidden="true" />
@@ -295,6 +329,7 @@ export function PurchaseRequestsInbox() {
           open={raising}
           onOpenChange={setRaising}
           orgId={orgId || ""}
+          from="incoming"
           onSent={() => setQuery({ seg: "new", search: null })}
         />
       )}
@@ -336,16 +371,31 @@ export function PurchaseRequestsInbox() {
           <SheetHeader className="sr-only">
             <SheetTitle>{t("rq_panel")}</SheetTitle>
           </SheetHeader>
-          {panelCard?.need.incoming && (
-            <div className="px-4 pt-4">
-              <BeforeBuyingTable doc={panelCard.need.incoming} clock={clock} mfgOn={mfgOn} canAct={canStartRfq} history={history} />
+          {panelCard && (
+            <div className="space-y-3 px-4 pt-4">
+              <RequestStatusBlock card={panelCard} rfqDeadline={deadlineOf(panelCard.rfqs[0]?.id)} order={orderOf(panelCard.orders[0]?.id)} />
+              {panelCard.need.incoming && <BeforeBuyingTable doc={panelCard.need.incoming} clock={clock} mfgOn={mfgOn} canAct={canStartRfq} history={history} />}
+              {panelCard.need.incoming?.src === "mfg" && <p className="text-xs text-muted-foreground">{tProc("before_hint_mfg_src")}</p>}
+              {panelBlocked && <Callout tone="warn">{t("rq_nothing_block")}</Callout>}
             </div>
           )}
-          {panelKey && <RfqEditor key={`${panelKey}:${panelStep}`} variant="panel" requestKeys={[panelKey]} startStep={panelStep} onClose={() => setQuery({ publish: null, step: null })} />}
+          {panelKey && !panelBlocked && <RfqEditor key={`${panelKey}:${panelStep}`} variant="panel" requestKeys={[panelKey]} startStep={panelStep} onClose={() => setQuery({ publish: null, step: null })} />}
         </SheetContent>
       </Sheet>
 
-      {drawerRow && <NeedLineDrawer row={drawerRow} agreements={agreements} history={history} cap={policies.directPurchaseCap} today={today} acts={actsFor(drawerRow)} orgId={orgId || null} onClose={() => setQuery({ line: null })} />}
+      {drawerRow && (
+        <NeedLineDrawer
+          row={drawerRow}
+          agreements={agreements}
+          history={history}
+          cap={policies.directPurchaseCap}
+          today={today}
+          acts={actsFor(drawerRow)}
+          orgId={orgId || null}
+          banner={drawerCard ? <RequestStatusBlock card={drawerCard} rfqDeadline={deadlineOf(drawerCard.rfqs[0]?.id)} order={orderOf(drawerCard.orders[0]?.id)} /> : undefined}
+          onClose={() => setQuery({ line: null })}
+        />
+      )}
 
       {ordering && (
         <DirectOrderDialog
@@ -459,6 +509,7 @@ function RequestCardView({
   const inHand = c.state === "rfq" || c.state === "partial" || c.state === "order"
   const where = doc ? siteLine(doc.place, (c) => displayCity(c, locale)) : ""
   const closes = rfqLink ? rfqCloses(rfqLink.id) : null
+  const noCategory = c.rows.some((r) => (r.state === "open" || r.state === "late" || r.state === "mfgl") && doc && !doc.lines[r.index]?.material && !doc.lines[r.index]?.category)
   const meta = [
     n.requestedBy ? t("rq_by", { name: n.requestedBy }) : "",
     n.approved?.name || n.approved?.on ? t("rq_approved", { date: n.approved.on ? fmtDay(n.approved.on, locale) : "—" }) : "",
@@ -502,6 +553,7 @@ function RequestCardView({
             </p>
           )}
           {doc && live && <BeforeChips doc={doc} clock={clock} mfgOn={mfgOn} />}
+          {live && noCategory && <StatusPill tone="warn">{t("rq_no_cat")}</StatusPill>}
           <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm" dir="auto">
             {c.rows.map((r) => {
               const note = lineNote(r)
@@ -521,12 +573,12 @@ function RequestCardView({
               )
             })}
           </p>
-          {c.state === "rfq" && rfqLink && (
+          {(c.state === "rfq" || c.state === "partial") && rfqLink && (
             <p className="text-xs font-semibold text-module" dir="auto">
-              {t("rq_line_rfq", { rfq: rfqLink.number || "—", date: closes ? fmtDay(closes, locale) : "—" })}
+              {rfqLink.number || "—"} · {t("rq_closes")} {closes ? fmtDay(closes, locale) : "—"}
             </p>
           )}
-          {c.state === "order" && poLink && (
+          {(c.state === "order" || c.state === "partial") && poLink && (
             <p className="text-xs font-semibold text-module" dir="ltr">
               {displayPoNumber(poLink.number || "", locale)}
             </p>

@@ -5,10 +5,11 @@ import * as React from "react"
 import { RoleSidebar } from "./role-sidebar"
 import { 
   SidebarInset, 
-  SidebarProvider, 
-  SidebarTrigger 
+  SidebarProvider 
 } from "@/components/ui/sidebar"
-import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, TrendingDown, Box, MessageSquare, ShieldCheck, AlertCircle, Check, Building2, ArrowLeftRight } from "lucide-react"
+import { SidebarToggle } from "@/components/layout/sidebar-toggle"
+import { OwnerHoldsNote } from "@/components/procurement/settings/OwnerHoldsNote"
+import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, TrendingDown, Box, MessageSquare, ShieldCheck, AlertCircle, Check, Building2, ArrowLeftRight, LayoutGrid } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Link } from "@/i18n/routing"
@@ -682,13 +683,24 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
       ? resolveActiveContractorComponent(pathname).accentToken
       : undefined
 
+  const procurementActive = pathname.startsWith("/contractor") && resolveActiveContractorComponent(pathname).id === "procurement"
+
   return (
     <SidebarProvider data-accent={moduleAccent}>
       <CompanySwitchOverlay show={!!switchingOrgId} />
       {!isPortalHome && <RoleSidebar />}
       <SidebarInset>
         <header className={cn("sticky top-0 z-50 flex h-14 items-center gap-2 md:gap-4 border-b bg-background px-3 md:px-6 shadow-sm", isAdminOverview && "md:ml-24")}>
-          {!isPortalHome && <SidebarTrigger />}
+          {!isPortalHome && <SidebarToggle />}
+          {!isPortalHome && (isSupplier || isContractor) && (
+            <Link
+              href={isSupplier ? "/supplier" : "/contractor"}
+              className="hidden items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:inline-flex"
+            >
+              <LayoutGrid size={13} aria-hidden="true" />
+              {t("hub")}
+            </Link>
+          )}
 
           <div className="hidden md:flex flex-1 max-w-md">
             <TooltipProvider>
@@ -951,6 +963,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
+                  <div className="px-2 py-1.5 text-[11px] font-bold text-muted-foreground">{t("account")}</div>
+                  {procurementActive && <OwnerHoldsNote />}
                   <DropdownMenuItem onClick={() => router.push(`/${basePath}/profile`)}>{t("profile")}</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => router.push(`/${basePath}/profile`)}>{t("settings")}</DropdownMenuItem>
                   {frame?.openSubscription && (

@@ -54,6 +54,7 @@ function mount(v: PublishValues, extra: Partial<React.ComponentProps<typeof Edit
       recipientFacts={new Map()}
       selectedRecipients={[]}
       directPool={[{ orgId: "s1", name: "مورد الأفق", platform: true, favourite: false }]}
+      matching={new Set<string>()}
       estimate={null}
       directCap={5000}
       firstDeadline="2026-10-22"
@@ -148,7 +149,7 @@ describe("the direct award (ED-06)", () => {
 })
 
 describe("the review (ED-08)", () => {
-  const model = (over: Partial<ReviewModel> = {}): ReviewModel => ({ lines: 3, subs: 2, groups: 1, audience: "public", reach: 9, favourite: null, perSub: [], privateCount: 0, directName: null, deadline: "2026-10-25", daysToDeadline: 3, pricing: "line", link: true, terms: "100%", delivery: "x", noSpec: [], outside: [], unitDiffers: [], ...over })
+  const model = (over: Partial<ReviewModel> = {}): ReviewModel => ({ lines: 3, subs: 2, groups: 1, audience: "public", reach: 9, favourite: null, perSub: [], privateCount: 0, directName: null, deadline: "2026-10-25", daysToDeadline: 3, pricing: "line", link: true, terms: "100%", delivery: "x", files: [], budget: null, noSpec: [], outside: [], unitDiffers: [], ...over })
 
   it("says whether the visitor link will be made", () => {
     const a = render(<EditorReview model={model()} fmtDay={(d) => d} />)

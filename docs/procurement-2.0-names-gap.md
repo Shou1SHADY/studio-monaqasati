@@ -13,30 +13,30 @@ CI fails only on the core names (the eight pages, the sidebar, the segments, the
 
 ## Summary
 
-Pairs checked: **1817** · equal in both languages: **887** · English differs: **130** · Arabic differs: **54** · missing: **746**
+Pairs checked: **1817** · equal in both languages: **1047** · English differs: **7** · Arabic differs: **38** · missing: **725**
 
 | Screen | Pairs | Equal | English differs | Arabic differs | Missing |
 |---|---:|---:|---:|---:|---:|
-| Admin portal | 79 | 46 | 2 | 1 | 30 |
-| Agreements | 6 | 3 | 2 | 0 | 1 |
-| Guide | 39 | 34 | 1 | 0 | 4 |
-| Incoming requests | 43 | 24 | 2 | 2 | 15 |
-| Messages | 21 | 16 | 1 | 0 | 4 |
+| Admin portal | 79 | 46 | 2 | 2 | 29 |
+| Agreements | 6 | 5 | 0 | 0 | 1 |
+| Guide | 39 | 35 | 0 | 0 | 4 |
+| Incoming requests | 43 | 26 | 0 | 2 | 15 |
+| Messages | 21 | 17 | 0 | 0 | 4 |
 | Price history | 11 | 9 | 0 | 0 | 2 |
-| Publish | 47 | 30 | 8 | 0 | 9 |
-| Purchase orders | 66 | 36 | 7 | 6 | 17 |
-| Receipts | 49 | 26 | 4 | 2 | 17 |
+| Publish | 47 | 38 | 1 | 0 | 8 |
+| Purchase orders | 66 | 48 | 0 | 4 | 14 |
+| Receipts | 49 | 32 | 0 | 0 | 17 |
 | Reports | 11 | 10 | 0 | 0 | 1 |
-| RFQ editor | 34 | 11 | 3 | 1 | 19 |
-| RFQ page | 107 | 61 | 20 | 6 | 20 |
-| RFQs | 26 | 10 | 2 | 6 | 8 |
-| Settings | 69 | 42 | 6 | 1 | 20 |
-| Sidebar and header | 35 | 26 | 2 | 1 | 6 |
-| Suppliers | 38 | 33 | 3 | 0 | 2 |
-| Today | 27 | 26 | 0 | 0 | 1 |
+| RFQ editor | 34 | 14 | 0 | 1 | 19 |
+| RFQ page | 107 | 86 | 1 | 4 | 16 |
+| RFQs | 26 | 22 | 1 | 2 | 1 |
+| Settings | 69 | 52 | 0 | 0 | 17 |
+| Sidebar and header | 35 | 29 | 0 | 0 | 6 |
+| Suppliers | 38 | 36 | 0 | 0 | 2 |
+| Today | 27 | 27 | 0 | 0 | 0 |
 | Visitor link | 61 | 53 | 0 | 2 | 6 |
-| Windows and drawers | 34 | 3 | 1 | 4 | 26 |
-| Vocabulary tables (prototype constants) | 1014 | 388 | 66 | 22 | 538 |
+| Windows and drawers | 34 | 4 | 0 | 4 | 26 |
+| Vocabulary tables (prototype constants) | 1014 | 458 | 2 | 17 | 537 |
 
 ## Admin portal
 
@@ -47,13 +47,14 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | المقاول | Contractor | `PublicRfq.trust_generic`<br>المقاول / the contractor |
 | تُسأل الورشة من الآن عن الرخام والجرانيت والحجر، وما نُشر لا يتغيّر. | The workshop is asked from now on; what was published does not change. | `Portal.AdminPackages.impact.sentence.mfg_on`<br>تُسأل الورشة من الآن عن الرخام والجرانيت والحجر، وما نُشر لا يتغيّر. / The workshop is asked from now on about marble, granite and stone; what was published does not change. |
 
-### Arabic differs (1)
+### Arabic differs (2)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
 | العملاء المحتملون | Leads | `Portal.Sidebar.admin_leads`<br>الطلبات الواردة / Leads |
+| نشط | Active | `Portal.ProcPrices.state.live`<br>سارية / Active |
 
-### Missing — labels (18)
+### Missing — labels (17)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
@@ -61,7 +62,6 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | بوابة المقاول | Contractor portal | `Portal.Sidebar.contractor_portal_role`<br>مقاول / Contractor (0.67) |
 | مفتوحة في النموذج | Open in prototype | `Portal.Shared.pri_state_open`<br>مفتوحة / Open (0.5) |
 | أجاب «نعم» عن  | Said yes to  | `Portal.AdminPackages.list.said_yes`<br>أجاب «نعم» عن {names} / Said yes to {names} (0.86) |
-| نشط | Active | — |
 | تجريبي | Trial | — |
 | يقترح | Suggests | — |
 | افتح بوابته كما يراها | Open their portal as they see it | — |
@@ -74,7 +74,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | مواقع المشاريع تلقائياً | Project sites automatically | `Portal.Sidebar.contractor_projects`<br>مشاريع / Projects (0.5) |
 | تُضاف يدوياً | Added by hand | `Portal.ProcReceipts.print.via_manual`<br>يدوياً / by hand (0.67) |
 | + المستودعات | + warehouses | `Portal.Sidebar.contractor_warehouses`<br>المستودعات / Warehouses (1) |
-| + مستودع الورشة | + workshop store | `Portal.ProcSettings.sites.kind_workshop`<br>مستودع الورشة / Workshop warehouse (1) |
+| + مستودع الورشة | + workshop store | `Portal.ProcSettings.sites.kind_workshop`<br>مستودع الورشة / Workshop store (1) |
 
 ### Missing — sentences (12)
 
@@ -95,13 +95,6 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 
 ## Agreements
 
-### English differs (2)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| المستهلك من السقف | Used of cap | `Portal.ProcPrices.agr2.col_cap`<br>المستهلك من السقف / Used of the cap |
-| سارية | Active | `Portal.ProcPrices.state.live`<br>سارية / Live |
-
 ### Missing — sentences (1)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
@@ -109,12 +102,6 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | اتفاقية سارية تعني أمراً بسعرها بلا طلب عروض حتى سقفها، وسعرها يدخل تاريخ الأسعار. | An active agreement means a PO at its price without an RFQ, up to its cap; its price enters the price history. | — |
 
 ## Guide
-
-### English differs (1)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| وصلت المواد وسُجّل سندها | Materials arrived; receipt recorded | `Portal.ProcMyRequests.flow_arrived`<br>وصلت المواد وسُجّل سندها / The materials arrived and their receipt was recorded |
 
 ### Missing — labels (3)
 
@@ -132,18 +119,11 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 
 ## Incoming requests
 
-### English differs (2)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| «طلب مواد» في الأعلى يرفع طلباً يصل هنا. | “Material request” above raises one that lands here. | `Portal.Shared.rq_empty_hint_team`<br>«طلب مواد» في الأعلى يرفع طلباً يصل هنا. / “Material request” above raises one that arrives here. |
-| اجمعها في طلب عروض واحد | Combine into one RFQ | `Portal.Shared.rq_combine`<br>اجمعها في طلب عروض واحد / Combine them in one RFQ |
-
 ### Arabic differs (2)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
-| تُغلق | closes | `PublicRfq.head_closes`<br>يُغلق / Closes |
+| تُغلق | closes | `Portal.Procurement.rfqlist.col_closes`<br>الإغلاق / Closes |
 | قبل | by | `Portal.ProcReports.cols.by`<br>صاحبه / By |
 
 ### Missing — labels (9)
@@ -168,25 +148,19 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | لا شيء للشراء الآن: انظر «قبل الشراء» في الطلب. | Nothing to buy now: see “Before buying” in the request. | `Portal.Shared.rf_nothing`<br>لا شيء للشراء الآن في هذا الطلب / Nothing left to buy in this request (0.63) |
 | مُجهَّز: مسودة طلب عروض محفوظة. افتحها لتكمل. | Prepared: an RFQ draft is saved. Open it to continue. | — |
 | مادة بلا فئة: تُختار في الخطوة 1 | A material lacks a category: pick it in step 1 | — |
-| بلا إدارة المشاريع: الطلبات يرفعها الفريق من «طلباتي» بدور «طالب مواد»، أو يرفعها المشتري نيابةً عمّن لا حساب له، ويصل «سطر احتياج» من المخزون — كلها هنا بالشكل والزرّين نفسيهما. | Without Projects: the team raises requests from “My requests” with the Requester role, or the buyer raises them on behalf of people without an account; Inventory sends need lines — all land here in the same form. | `Portal.ProcMyRequests.footer`<br>من أين تأتي طلبات الفريق بلا إدارة المشاريع؟ كل من له حساب بدور «طالب مواد» يرفعها من هنا، والمشتري يرفعها نيابةً عمّن لا حساب له، وأمين المستودع يرسل «سطر احتياج» من المخزون. وكلها تصل «طلبات الشراء الواردة» بالشكل نفسه. / Where do the team’s requests come from without Project Management? Anyone with an account in the “materials requester” role raises them here, the buyer raises them on behalf of someone with no account, and the storekeeper sends a need line from Inventory. All of them reach the incoming purchase requests the same way. (0.59) |
-| «قادمة» للاستعداد لا للشراء: لا يُنشر طلب قبل اعتماده الفني. ومنها تعرف ما سيأتي فتجمع المتشابه وتتابع الأسعار مبكراً. | “Upcoming” is for preparing, not buying: nothing is published before technical approval. It shows what is coming so you can group similar items and watch prices early. | `Portal.Shared.rq_upcoming_hint`<br>لا يُنشر طلب قبل اعتماده الفني. ومنها تعرف ما سيأتي فتجمع المتشابه وتتابع الأسعار مبكراً. لا شيء قادماً الآن. / No request is published before its technical approval. From here you learn what is coming, so you can combine the similar and follow prices early. Nothing is upcoming now. (0.79) |
+| بلا إدارة المشاريع: الطلبات يرفعها الفريق من «طلباتي» بدور «طالب مواد»، أو يرفعها المشتري نيابةً عمّن لا حساب له، ويصل «سطر احتياج» من المخزون — كلها هنا بالشكل والزرّين نفسيهما. | Without Projects: the team raises requests from “My requests” with the Requester role, or the buyer raises them on behalf of people without an account; Inventory sends need lines — all land here in the same form. | `Portal.ProcMyRequests.footer`<br>من أين تأتي طلبات الفريق بلا إدارة المشاريع؟ كل من له حساب بدور «طالب مواد» يرفعها من هنا، والمشتري يرفعها نيابةً عمّن لا حساب له، وأمين المستودع يرسل «سطر احتياج» من المخزون. وكلها تصل «طلبات الشراء الواردة» بالشكل نفسه. / Where do team requests come from without Projects? Anyone with an account and the “Requester” role raises them here; the buyer raises them on behalf of people without an account; the storekeeper sends Inventory need lines. All of them land in Incoming in the same form. (0.59) |
+| «قادمة» للاستعداد لا للشراء: لا يُنشر طلب قبل اعتماده الفني. ومنها تعرف ما سيأتي فتجمع المتشابه وتتابع الأسعار مبكراً. | “Upcoming” is for preparing, not buying: nothing is published before technical approval. It shows what is coming so you can group similar items and watch prices early. | `Portal.Shared.rq_upcoming_hint`<br>لا يُنشر طلب قبل اعتماده الفني. ومنها تعرف ما سيأتي فتجمع المتشابه وتتابع الأسعار مبكراً. لا شيء قادماً الآن. / Nothing is published before technical approval. It shows what is coming so you can group similar items and watch prices early. Nothing is upcoming now. (0.79) |
 
 ## Messages
-
-### English differs (1)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| محادثة لكل أمر شراء مع مورّده — داخل المنصة، ومع من خارجها على واتساب برابط الأمر. | One conversation per purchase order with its supplier — on the platform, or on WhatsApp with the order link for off-platform suppliers. | `Portal.ProcChats.desc`<br>محادثة لكل أمر شراء مع مورّده — داخل المنصة، ومع من خارجها على واتساب برابط الأمر. / One conversation per purchase order with its supplier — on the platform, or on WhatsApp with the order link for one outside it. |
 
 ### Missing — labels (4)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
+| رابط الأمر كما يراه | The order link as he sees it | `Portal.Procurement.linkx.open_as`<br>افتح الرابط كما يراه المورّد / Open the link as the supplier sees it (0.67) |
 | اكتب رسالتك. | Write your message. | `Portal.Shared.svc_err_description`<br>اكتب الوصف / Describe it (0.5) |
 | مخطط-الموقع.pdf | site-plan.pdf | — |
 | أُرفق الملف في المحادثة. | File attached to the conversation. | `Portal.ProcEditor.attach_pdf`<br>أرفق ملف PDF / Attach a PDF (0.57) |
-| رابط الأمر | Order link | `Portal.ProcChats.via_link`<br>من رابط الأمر / from the order link (0.8) |
 
 ## Price history
 
@@ -204,78 +178,54 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 
 ## Publish
 
-### English differs (8)
+### English differs (1)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
-| من يصله | Who receives it | `Portal.ProcEditor.audience`<br>من يصله / Who it reaches |
-| كل مورد يقدّم على ما يورّده، والترسية بنداً بنداً. | Each supplier quotes what they supply; award item by item. | `Portal.ProcEditor.pricing_line_hint`<br>كل مورد يقدّم على ما يورّده، والترسية بنداً بنداً. / Each supplier quotes what he supplies; the award is line by line. |
-| لا عروض جزئية: يُرسى الطلب كاملاً على مورد واحد. | No partial offers: the whole request goes to one supplier. | `Portal.ProcEditor.pricing_total_hint`<br>لا عروض جزئية: يُرسى الطلب كاملاً على مورد واحد. / No partial offers: the whole RFQ is awarded to one supplier. |
-| يصله | Goes to / Sent to | `Portal.ProcEditor.rev_reaches`<br>يصله / Reaches |
-| حسب الفئة الفرعية | By subcategory | `Portal.ProcEditor.rev_by_sub`<br>حسب الفئة الفرعية / By sub-category |
-| لا يراها المورد | hidden from suppliers | `Portal.ProcEditor.budget_hint`<br>لا يراها المورد. / The supplier never sees it. |
-| رابط الزوار — لمورد خارج المنصة | Visitor link — for an off-platform supplier | `Portal.ProcEditor.guest_link`<br>رابط الزوار — لمورد خارج المنصة / Guest link — for a supplier outside the platform |
-| يرى المورد الطلب ويقدّم عرضه بلا حساب، ويُغلق الرابط مع الموعد النهائي أو بالترسية. ولضمّ مورد إلى المنصة نفسها: «ادعُ مورداً إلى المنصة» في «الموردون». | The supplier sees the request and quotes without an account; the link closes at the deadline or on award. To bring a supplier onto the platform itself: “Invite a supplier” in Suppliers. | `Portal.ProcEditor.guest_hint`<br>يرى المورد الطلب ويقدّم عرضه بلا حساب، ويُغلق الرابط مع الموعد النهائي أو بالترسية. ولضمّ مورد إلى المنصة نفسها: «ادعُ مورداً إلى المنصة» في «الموردون». / The supplier sees the RFQ and quotes without an account; the link closes at the deadline or on award. To bring a supplier onto the platform itself: “Invite a supplier to the platform” in Suppliers. |
+| رابط الزوار — لمورد خارج المنصة | Visitor link — for an off-platform supplier | `Portal.ProcEditor.guest_link`<br>رابط الزوار — لمورد خارج المنصة / Visitor link — off-platform supplier |
 
-### Missing — labels (6)
+### Missing — labels (5)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
 | ، ومنهم مورّدك المفضّل | , including your preferred supplier | `Portal.ProcEditor.reach_fav`<br>ومنهم مورّدك المفضّل «{name}». / Your favourite “{name}” among them. (0.86) |
 | مختص | Matches | — |
 | مورد واحد يُختار | One supplier is chosen | `Portal.Sidebar.supplier_portal_role`<br>مورد / Supplier (0.5) |
-| اختياري — لا يراها المورد | optional — hidden from suppliers | `Portal.ProcEditor.budget_hint`<br>لا يراها المورد. / The supplier never sees it. (0.86) |
-| ملاحظات للمورد | Notes for suppliers | `Portal.Procurement.rfqpo.print.notes`<br>ملاحظات / Notes (0.67) |
 | في | in | `Portal.Shared.pri_state_order`<br>في أوامر / In orders (0.67) |
+| لا يراها المورد | hidden from suppliers | `Portal.ProcEditor.budget_hint`<br>اختياري — لا يراها المورد / optional — hidden from suppliers (0.86) |
 
 ### Missing — sentences (3)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
-| مضى هذا التاريخ: اختر اليوم أو بعده. | This date has passed: pick today or later. | `Portal.ProcEditor.err_deadline`<br>الموعد النهائي مضى: اختر اليوم أو بعده. / The deadline has passed: pick today or later. (0.57) |
+| الموعد النهائي مضى: اختر اليوم أو بعده. | The deadline has passed: pick today or later. | `Portal.Shared.tr_need_by_missing`<br>حدّد موعد الحاجة — اليوم أو بعده / Set the need-by date — today or later (0.62) |
 | خيارات أخرى: الملاحظات والمرفقات · الميزانية الداخلية | More options: notes and files · internal budget | `Portal.ProcEditor.more_list`<br>الملاحظات والمرفقات · الميزانية الداخلية / Notes and files · internal budget (0.8) |
-| بمبلغ إجمالي: يُرسى كاملاً على مورد واحد. | Lump sum: awarded whole to one supplier. | `Portal.ProcEditor.rev_lead_total`<br>يُنشر طلب واحد {count, plural, one {بمادة واحدة} two {بمادتين} few {بـ# مواد} many {بـ# مادة} other {بـ# مادة}} بمبلغ إجمالي: يُرسى كاملاً على مورد واحد. / One RFQ goes out with {count, plural, one {# material} other {# materials}} for one total: it is awarded whole to one supplier. (0.78) |
+| بمبلغ إجمالي: يُرسى كاملاً على مورد واحد. | Lump sum: awarded whole to one supplier. | `Portal.ProcEditor.rev_lead_total`<br>يُنشر طلب واحد {count, plural, one {بمادة واحدة} two {بمادتين} few {بـ# مواد} many {بـ# مادة} other {بـ# مادة}}. بمبلغ إجمالي: يُرسى كاملاً على مورد واحد. / One request with {count, plural, one {# material} other {# materials}} is published. Lump sum: awarded whole to one supplier. (0.78) |
 
 ## Purchase orders
 
-### English differs (7)
+### Arabic differs (4)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
-| ذكّر المعتمِد | Remind approver | `Portal.ProcOrders.next.remind_approver`<br>ذكّر المعتمِد / Remind the approver |
-| ذكّر المستلم | Remind receiver / Remind | `Portal.ProcOrders.next2.remind_receiver`<br>ذكّر المستلم / Remind the receiver |
-| ذكّر المورد بالباقي | Remind about the rest | `Portal.ProcOrders.next2.remind_rest`<br>ذكّر المورد بالباقي / Remind the supplier of the rest |
-| اطلب استبدالاً | Ask for replacement | `Portal.ProcToday.actions.askReplace`<br>اطلب استبدالاً / Ask for a replacement |
-| أرجِعه | Return it | `Portal.ProcOrders.next2.ask_reduce`<br>أرجِعه / Send it back |
-| المقبول في سندات الاستلام | Accepted in receipts | `Portal.Procurement.rfqpo.po.money.accepted`<br>المقبول في سندات الاستلام / Accepted on the receipts |
-| أرسلها للمحاسب | Send to accountant | `Portal.ProcOrders.pay.to_accountant`<br>أرسلها للمحاسب / Send to the accountant |
-
-### Arabic differs (6)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| حدّث موعده | Update date | `Portal.ProcToday.actions.updateDate`<br>حدّث الموعد / Update date |
 | حُوّل تلقائياً | Auto-forwarded | `Portal.ProcReports.kind.auto_forwarded`<br>تحويل تلقائي / Auto-forwarded |
 | الدفعة المقدّمة | Advance / advance | `Portal.Procurement.rfqpo.po.pay.kind.adv`<br>دفعة مقدّمة / Advance |
 | دُفعت | paid | `Portal.Procurement.rfqpo.po.money.paid`<br>المسدَّد / Paid |
 | الأمر مُقفل | order closed | `Portal.ProcOrders.toast.closed`<br>أُقفل الأمر / Order closed |
-| آخر علامة | Last mark | `Portal.ProcOrders.pay.last`<br>آخر تعليم / Last mark |
 
-### Missing — labels (9)
+### Missing — labels (7)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
 | اتصل بالمورد | Call supplier | `Portal.ProcChats.call`<br>اتصل / Call (0.67) |
 | الباقي عند المورد | The rest is with the supplier | `Portal.Procurement.status.in_delivery`<br>عند المورد — التوريد جارٍ / With supplier — in delivery (0.57) |
-| سجّله المستلم في السند | Recorded by the receiver in the receipt | `Portal.ProcReceipts.print.registered_by`<br>سجّله المستلم: / Registered by the receiver: (0.67) |
+| سجّله المستلم في السند | Recorded by the receiver in the receipt | `Portal.ProcReceipts.print.registered_by`<br>سجّله المستلم: / Recorded by the receiver: (0.67) |
 | استُلم وسُدّد | Received and paid | `Portal.Shared.nd_state_done`<br>استُلم / Received (0.67) |
-| الالتزام شامل الضريبة | Commitment incl. VAT | `Portal.Procurement.cmp2.incl_vat`<br>شامل الضريبة / incl. VAT (0.8) |
 | طُلبت من المالية | requested from Finance | `Portal.ProcSettings.owner.fin`<br>من المالية / From Finance (0.8) |
-| من بوابة المورد | from the supplier portal | `Portal.Procurement.channel.portal`<br>بوابة المورد / Supplier portal (0.8) |
 | الفاتورة.pdf | invoice.pdf | — |
 | ارفعها | Upload | — |
 
-### Missing — sentences (8)
+### Missing — sentences (7)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
@@ -285,26 +235,9 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | يُقفل الأمر حين تُقفله المالية بالسداد | Finance closes it when paid | — |
 | يُقفل حين يكتمل الاستلام، وحالة الدفع لا تمنعه | Closed on full receipt; payment status does not block it | — |
 | القرار للمشتريات، والصرف للمالية. لا «سجّل دفعة» هنا. | Our decision; Finance pays. No “Record payment” here. | — |
-| لم تصل بعد. يرفعها المورد من بوابته، أو ترفعها أنت. | Not yet. The supplier uploads it from the portal, or you do. | `Portal.ProcOrders.pay.no_invoice`<br>لا فاتورة بعد — تصل من بوابة المورد أو ترفعها هنا / No invoice yet — it comes from the supplier's portal, or upload it here (0.5) |
-| حالة الدفع اختيارية، ولا تمنع إقفال الأمر. والمورد يرى الحالة على أمره. ولا «أوقف صرف فاتورة» بلا المالية. | Payment status is optional and never blocks closing. The supplier sees it on the order. No “Hold an invoice” without Finance. | `Portal.ProcOrders.pay.optional`<br>حالة الدفع اختيارية، يراها المورد على أمره، ولا تمنع إقفال الأمر. / The payment status is optional; the supplier sees it on his order, and it never stops the order closing. (0.62) |
+| حالة الدفع اختيارية، ولا تمنع إقفال الأمر. والمورد يرى الحالة على أمره. ولا «أوقف صرف فاتورة» بلا المالية. | Payment status is optional and never blocks closing. The supplier sees it on the order. No “Hold an invoice” without Finance. | `Portal.ProcOrders.pay.optional`<br>حالة الدفع اختيارية، ولا تمنع إقفال الأمر. والمورد يرى الحالة على أمره. / Payment status is optional and never blocks closing. The supplier sees it on the order. (0.8) |
 
 ## Receipts
-
-### English differs (4)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| وصلنا — حوّله للمستلم | Received — forward it to the receiver | `Portal.ProcReceipts.incoming.forwardNow`<br>وصلنا — حوّله للمستلم / Arrived with us — forward it to the receiver |
-| مصروف نقدي بلا أمر | Cash expense, no PO | `Portal.ProcReceipts.manual.after_cash`<br>مصروف نقدي بلا أمر / A cash expense with no order |
-| تاريخ الاستلام | Received on | `Portal.ProcReceipts.manual.date`<br>تاريخ الاستلام / Receipt date |
-| المطلوب | Ordered | `Portal.Shared.nd_stat_requested`<br>المطلوب / Requested |
-
-### Arabic differs (2)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| بلا أمر | No PO | `Portal.ProcReceipts.export.noPo`<br>بلا أمر شراء / No PO |
-| سند استلام مواد | Goods receipt note | `Portal.ProcReceipts.print.title`<br>سند استلام بضاعة / Goods Receipt Note |
 
 ### Missing — labels (9)
 
@@ -312,7 +245,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 |--------------------|--------------------|---------------------------------|
 | المشتريات: تحدّث الأمر و«الخطوة التالية» | Procurement: updates the PO and its next step | — |
 | استُلم مطابقاً | Received as ordered | `Portal.Shared.nd_state_done`<br>استُلم / Received (0.67) |
-| يُلحق به أمر لاحق | A later PO will be attached | `Portal.ProcReceipts.manual.after_later`<br>يُلحق به أمر شراء لاحق / A later purchase order is attached (0.89) |
+| يُلحق به أمر لاحق | A later PO will be attached | `Portal.ProcReceipts.manual.after_later`<br>يُلحق به أمر شراء لاحق / Attach a later purchase order (0.89) |
 | إشعار المورد / فاتورته | Supplier notice / invoice | `Portal.ProcReceipts.print.paper_note`<br>إشعار المورد / Supplier's note (0.8) |
 | المرفوض وسببه | Rejected and why | `Portal.ProcOrders.print.st_col_rejected`<br>المرفوض / Rejected (0.67) |
 | قيمة فاتورة المورد | Supplier invoice value | `Portal.ProcOrders.pay.invoices`<br>فاتورة المورد / Supplier invoice (0.8) |
@@ -343,14 +276,6 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 
 ## RFQ editor
 
-### English differs (3)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| طلب عروض أسعار جديد | New request for quotations | `Portal.ProcEditor.title_new`<br>طلب عروض أسعار جديد / New request for quotation |
-| احذف المجموعة | Remove group | `Portal.ProcEditor.remove_group`<br>احذف المجموعة / Remove the group |
-| مشروع آخر أو موقع تسليم | Another project or delivery location / Another project or location | `Portal.ProcEditor.add_group`<br>مشروع آخر أو موقع تسليم / Another project or delivery site |
-
 ### Arabic differs (1)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
@@ -365,15 +290,15 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | اكتب الكمية | Enter the quantity | `Portal.Shared.pri_col_qty`<br>الكمية / Quantity (0.67) |
 | اختر الوحدة | Pick the unit | `Portal.Shared.dor_choose`<br>اختر… / Choose… (0.67) |
 | مادة بنص حر | Free-text material | `Portal.Procurement.bymat_material`<br>المادة / Material (0.5) |
-| العلامة | Brand | — |
+| العلامة | Brand | `Portal.ProcOrders.pay.last`<br>آخر علامة / Last mark (0.67) |
 | + مواصفة | + spec | `Portal.Procurement.rfqd.cancel.code.spec`<br>تغيّرت المواصفة / The spec changed (0.67) |
 | خارج القائمة | Not in list | `Portal.Sidebar.sales_nav_price_list`<br>قائمة الأسعار / Price list (0.5) |
-| اختر الفئة الفرعية | Pick the subcategory | `Portal.ProcEditor.rev_by_sub`<br>حسب الفئة الفرعية / By sub-category (0.67) |
-| الأكثر طلباً: | Most requested: | `Portal.ProcSuppliers.list.sort_deals`<br>الأكثر توريداً / Most supplied (0.5) |
+| اختر الفئة الفرعية | Pick the subcategory | `Portal.ProcEditor.rev_by_sub`<br>حسب الفئة الفرعية / By subcategory (0.67) |
+| الأكثر طلباً: | Most requested: | `Portal.Procurement.rfqlist.sort_offers`<br>الأكثر عروضاً / Most offers (0.5) |
 | تصفّح الشجرة | Browse the tree | `Portal.Sidebar.admin_materials`<br>شجرة المواد / Material tree (0.5) |
 | ← النتائج | ← Results | `Portal.ProcChats.no_results`<br>لا نتائج. / No results. (0.67) |
 | أضِفها | Add it / Add them | — |
-| لم يبقَ طلب جديد | No new request left | `Portal.ProcEditor.new_rfq`<br>طلب جديد / New RFQ (0.67) |
+| لم يبقَ طلب جديد | No new request left | `Portal.ProcEditor.new_rfq`<br>طلب جديد / New request (0.67) |
 | موقع تسليم آخر | Another delivery location | `Portal.ProcOrders.site_filter`<br>موقع التسليم / Delivery site (0.8) |
 
 ### Missing — sentences (5)
@@ -388,50 +313,27 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 
 ## RFQ page
 
-### English differs (20)
+### English differs (1)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
-| الطلب غير موجود | RFQ not found | `Portal.Procurement.award2.err_rfq_missing`<br>الطلب غير موجود. / The RFQ does not exist. |
-| بلا ضريبة · كل المواد | no VAT · all items | `Portal.Procurement.rfqpage.best.no_vat_all`<br>بلا ضريبة · كل المواد / No VAT · all materials |
-| شامل الضريبة · كل المواد | incl. VAT · all items | `Portal.Procurement.rfqpage.best.incl_all`<br>شامل الضريبة · كل المواد / Incl. VAT · all materials |
-| لا أحد سعّر كل المواد بعد | Nobody priced every item yet | `Portal.Procurement.rfqpage.best.lowest_none`<br>لا أحد سعّر كل المواد بعد / Nobody priced every material yet |
-| عروض حيّة لأقل بند — أقل من حدّ السياسات. ذكّر المدعوّين أو شارك الرابط | Live offers on the thinnest item — below the policy threshold. Remind invitees or share the link | `Portal.Procurement.rfqpage.best.competition_sub`<br>عروض حيّة لأقل بند — أقل من حدّ السياسات. ذكّر المدعوّين أو شارك الرابط / Live offers on the thinnest item — below the policy limit. Remind the invitees or share the link |
-| بالقطعة | Per piece | `Portal.Procurement.rfqpage.list.by_piece`<br>بالقطعة / By the piece |
-| انتهت صلاحيته — اطلب تأكيد السعر | Expired — ask to confirm the price | `Portal.Procurement.offerLabel.expired`<br>انتهت صلاحيته — اطلب تأكيد السعر / Price expired — ask to confirm |
-| كل المواد | All items | `Portal.Procurement.rfqpage.list.all_materials`<br>كل المواد / All materials |
-| الأحدث | Newest | `Portal.Procurement.rfqpage.sort.latest`<br>الأحدث / Latest |
-| انتهى — اطلب تأكيد السعر | expired — ask to confirm | `Portal.Procurement.cmp2.validity_expired`<br>انتهى — اطلب تأكيد السعر / Expired — ask to confirm the price |
-| الالتزام وتجربتنا | On-time and our record | `Portal.Procurement.cmp2.fact_commitment`<br>الالتزام وتجربتنا / Commitment and our experience |
-| موثّق بعرض رسمي | verified, official quote | `Portal.Procurement.cmp2.verified_quote`<br>موثّق بعرض رسمي / verified, with an official quote |
-| فهمت | OK | `Portal.Procurement.cmp2.understood`<br>فهمت / Got it |
-| الأقل من الموثّقين بعرض رسمي | Lowest from verified with a quote | `Portal.Procurement.cmp2.pick_lowest_safe`<br>الأقل من الموثّقين بعرض رسمي / Lowest of the verified with an official quote |
-| يلتزم بشروط الدفع فقط | Matching payment terms only | `Portal.Procurement.cmp2.terms_only`<br>يلتزم بشروط الدفع فقط / Matches payment terms only |
-| الجواب «للجميع» يصل كل من وصله الطلب ويظهر في رابط الزوار بلا اسم السائل. و«للسائل فقط» لما يخصّه وحده. | An answer “to all” reaches everyone invited and shows on the visitor link without the asker’s name. “Asker only” is for what concerns him alone. | `Portal.Procurement.rfqpage.qa.caption`<br>الجواب «للجميع» يصل كل من وصله الطلب ويظهر في رابط الزوار بلا اسم السائل. و«للسائل فقط» لما يخصّه وحده. / An answer "to all" reaches everyone the RFQ reached and shows on the visitor link without the asker's name. "Asker only" is for what concerns him alone. |
-| توضيح منّا لكل المدعوّين | Our clarification to all invited | `Portal.Procurement.rfqpage.qa.ours_all`<br>توضيح منّا لكل المدعوّين / A clarification from us to all invited |
-| زائر من الرابط — بلا اسم | Link visitor — no name | `Portal.Procurement.rfqpage.qa.visitor`<br>زائر من الرابط — بلا اسم / Visitor from the link — no name |
-| يسأل المورّد من بوابته أو من رابط الزوار، ويصلك هنا وفي «اليوم». | Suppliers ask from their portal or the visitor link; it reaches you here and in Today. | `Portal.Procurement.rfqpage.qa.empty`<br>يسأل المورّد من بوابته أو من رابط الزوار، ويصلك هنا وفي «اليوم». / A supplier asks from his portal or the visitor link, and it reaches you here and in Today. |
-| رابط الزوار — لمورّد خارج المنصة | Visitor link — off-platform supplier | `Portal.ProcEditor.guest_link`<br>رابط الزوار — لمورد خارج المنصة / Guest link — for a supplier outside the platform |
+| اكتب جوابك… | Write your answer… | `Portal.Procurement.rfqpage.qa.answer_ph`<br>اكتب جوابك… / Write your reply… |
 
-### Arabic differs (6)
+### Arabic differs (4)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
-| يخالف شروط دفعك | Differs from your payment terms | `Portal.Procurement.offerLabel.differs_terms`<br>يخالف شروطك / Differs from your payment terms |
-| قُدّم | sent | `Portal.ProcSuppliers.inv2.col_sent`<br>أُرسلت / Sent |
+| قُدّم | sent | `Portal.Procurement.rfqpo.po.trail.sent`<br>أُرسل للمورد / Sent |
 | قصيرة | shortlist | `Portal.Procurement.offerLabel.shortlist`<br>القائمة القصيرة / Shortlist |
 | الموعد النهائي | Deadline | `Portal.Procurement.rfqpo.list.deadline_label`<br>الموعد: / Deadline: |
-| مرفقات | Attachments | `Portal.Procurement.rfqd.details.attachments`<br>المرفقات / Attachments |
 | مدّد الموعد | Extend the deadline | `Portal.Procurement.rfqlife.extend_title`<br>مدّد موعد التقديم / Extend the deadline |
 
-### Missing — labels (17)
+### Missing — labels (13)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
 | مكمّلة | Completes the set | — |
 | خفّض 3% بعد طلبك | Lowered 3% on request | — |
-| لا عروض في هذا الفلتر. | No offers in this filter. | `Portal.Procurement.rfqpage.list.none_here`<br>لا عروض في هذا التصنيف / No offers in this view (0.8) |
-| لا عروض للمقارنة بعد | No offers to compare yet | `Portal.Procurement.cmp2.none`<br>لا عروض للمقارنة / No offers to compare (0.86) |
 |  فعلياً |  effective | `Portal.Procurement.cmp2.per_unit_effective`<br>لكل {unit} فعلياً / per {unit}, effective (0.5) |
 | رسِّ هذا البند عليه | Award this item to him | `Portal.Procurement.rfqpage.drawer.award_all`<br>رسِّ الطلب كله عليه / Award the whole RFQ to him (0.5) |
 | ▾ مرتّب بها | ▾ sorted | `Portal.Procurement.cmp2.sorted_by`<br>مرتّب بها / Sorted by it (1) |
@@ -442,8 +344,6 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | التسليم والشروط | Delivery and terms | `Portal.ProcOrders.print.delivery`<br>التسليم / Delivery (0.67) |
 | خيارات التسليم | Delivery options | `Portal.ProcOrders.print.delivery`<br>التسليم / Delivery (0.67) |
 | ملاحظات للموردين | Notes to suppliers | `Portal.Procurement.rfqpo.print.notes`<br>ملاحظات / Notes (0.67) |
-| ما يراه المورّد الآن | What the supplier sees now | `Portal.Procurement.rfqx.guest_link.supplier_view`<br>ما يراه المورد / Supplier view (0.86) |
-| أوامر الشراء الناتجة | Resulting purchase orders | `Portal.Sidebar.contractor_purchase_orders`<br>أوامر الشراء / Purchase orders (0.8) |
 | الطلبات الواردة فيه | Incoming requests in it | `Portal.Sidebar.admin_leads`<br>الطلبات الواردة / Leads (0.8) |
 
 ### Missing — sentences (3)
@@ -456,74 +356,43 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 
 ## RFQs
 
-### English differs (2)
+### English differs (1)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
-| كل مواقع التسليم | All delivery locations | `Portal.ProcOrders.site_all`<br>كل مواقع التسليم / All delivery sites |
-| من المشتريات مباشرة | Raised by Procurement | `Portal.Procurement.rfqpage.path.direct`<br>من المشتريات مباشرة / From Procurement directly |
+| العروض مفتوحة الآن للمقارنة | Offers open now for comparison | `Portal.Procurement.rfqlist.compare_open`<br>العروض مفتوحة الآن للمقارنة / Offers are open for comparison now |
 
-### Arabic differs (6)
+### Arabic differs (2)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
-| تُقارن | Comparing | `Portal.Procurement.rfqpage.stage.compare`<br>يُقارن / Comparing |
-| رُسّيت | Awarded | `Portal.Procurement.cmp2.lock_taken`<br>رُسّي عليه / Awarded |
 | المسودة المفتوحة | Open draft | `Portal.ProcToday.actions.openDraft`<br>افتح المسودة / Open draft |
-| الأحدث نشراً | Newest | `Portal.ProcSuppliers.list.sort_new`<br>الأحدث انضماماً / Newest |
-| الإغلاق | Closes | `PublicRfq.head_closes`<br>يُغلق / Closes |
 | تمّت | Done | `Portal.ProcEditor.place_done`<br>تم / Done |
 
-### Missing — labels (8)
+### Missing — labels (1)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
-| ابحث برقم الطلب أو المادة… | Search by RFQ number or material… | `Portal.ProcOrders.search_ph`<br>ابحث برقم الأمر أو المورد أو الطلب أو المشروع / Search by PO number, supplier, RFQ or project (0.57) |
-| عام · خاص · مباشر | Public · private · direct | `Portal.Procurement.rfqd.privacy.public`<br>عام / Public (0.5) |
-| الأقرب إغلاقاً | Closing soonest | — |
-| الأكثر عروضاً | Most offers | `Portal.Shared.nd_rfq`<br>اطلب عروضاً / Request quotes (0.5) |
-| لا طلبات تطابق الفلاتر | No RFQs match the filters | `Portal.Shared.rq_empty`<br>لا طلبات هنا. / No requests here. (0.57) |
 | نُشر الآن | Just published | `Portal.Procurement.rfqpage.path.published`<br>نُشر / Published (0.67) |
-| العروض مفتوحة الآن للمقارنة | Offers open now for comparison | `Portal.Procurement.cmp2.none`<br>لا عروض للمقارنة / No offers to compare (0.57) |
-| المواد والموقع | Materials and location | `Portal.ProcEditor.rev_materials`<br>المواد / Materials (0.67) |
 
 ## Settings
 
-### English differs (6)
+### Missing — labels (10)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
-| مسموحة: تُغلق الطلب مبكراً، ويُبلَّغ من لم يقدّم | Allowed: it closes the RFQ early and non-responders are told | `Portal.ProcSettings.policy.awardBeforeDeadline.desc`<br>مسموحة: تُغلق الطلب مبكراً، ويُبلَّغ من لم يقدّم / Allowed: it closes the RFQ early, and those who did not quote are told |
-| المالك يقرأ ويعتمد فقط | Owner reads and approves only | `Portal.ProcSettings.policy.ownerStepsBack.label`<br>المالك يقرأ ويعتمد فقط / The owner reads and approves only |
-| الموقع يحمل المدينة والحي اللذين يراهما المورد، والمستلم الذي يُقترح لكل شحنة. | A location holds the city and district suppliers see, and the receiver proposed for each delivery. | `Portal.ProcSettings.sites.sub`<br>الموقع يحمل المدينة والحي اللذين يراهما المورد، والمستلم الذي يُقترح لكل شحنة. / A site carries the city and district the supplier reads, and the receiver proposed for every delivery. |
-| أضف موقعاً | Add location | `Portal.ProcSettings.sites.add`<br>أضف موقعاً / Add a site |
-| بلا مدينة — يحتاجها المورد | No city — suppliers need it | `Portal.ProcSettings.sites.no_city`<br>بلا مدينة — يحتاجها المورد / No city — the supplier needs it |
-| يرسي ويُعِدّ أمر الشراء | Awards and prepares POs | `Portal.ProcSettings.roles2.row_award`<br>يرسي ويُعدّ أمر الشراء / Awards and prepares orders |
-
-### Arabic differs (1)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| ينشر طلب عروض من الطلبات الواردة أو من جديد | Publishes RFQs from incoming or new | `Portal.ProcSettings.roles2.row_publish`<br>ينشر طلب عروض من الواردة أو من جديد / Publishes RFQs from incoming or new |
-
-### Missing — labels (12)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| ظهور العروض | Offer visibility | `Portal.Procurement.rfqpage.path.offers`<br>العروض / Offers (0.67) |
+| ظهور العروض | Offer visibility | `Portal.Procurement.rfqlist.col_offers`<br>العروض / Offers (0.67) |
 | اعتماد طلبات الفريق قبل المشتريات | Approve team requests before Procurement | `Portal.Procurement.rfqx.owner_reads`<br>قراءة فقط — فريق المشتريات يدير طلبات العروض / Read-only — your procurement team runs the RFQs (0.5) |
-| يصل المشتريات ثم نحوّله للمستلم | Reaches Procurement, then we forward it to the receiver | `Portal.ProcSettings.policy.noticeRouting.procurement`<br>يصل المشتريات ثم نحوّله / To Procurement, then we forward (0.89) |
 | مستودع رئيسي · من المخزون | Main warehouse · from Inventory | `Portal.Shared.nd_went_stock`<br>من المخزون / From stock (0.67) |
-| أُضيف من إدارة المشاريع | added from Projects | `Portal.Sidebar.component_project_management`<br>إدارة المشاريع / Project Management (0.67) |
+| أُضيف من إدارة المشاريع | added from Projects | `Portal.ProcSettings.sites.kind_project`<br>موقع عمل · أُضيف من إدارة المشاريع / Work site · added from Projects (0.8) |
 | الوصول | Access | `Portal.Shared.nd_confirm_arrived_title`<br>سجّل الوصول / Record arrival (0.67) |
 | حسابه: «مهامي» | His account: My tasks | `Portal.ProcReceipts.hub.inAccount`<br>داخل حسابه: «مهامي» / in his account: My tasks (0.8) |
 | رابط ورمز | Link and code | `Portal.ProcOrders.export.icol_url`<br>الرابط / Link (0.67) |
 | يعتمد أمراً أعدّه غيره | Approves orders prepared by others | `Portal.ProcSettings.roles2.row_approve`<br>يعتمد أمراً أعدّه غيره (ولا يعتمد ما أعدّه بنفسه إلا المالك) / Approves orders prepared by others (only the owner approves his own) (0.53) |
 | حتى 150,000 | up to 150,000 | `Portal.Procurement.rfqpo.print.until`<br>حتى / until (0.67) |
-| يتابع المواعيد ويحوّل إشعار التسليم | Follows dates and forwards notices | `Portal.ProcReceipts.drawer.notice`<br>إشعار التسليم / Delivery notice (0.57) |
 | يدعو مورداً ويضيفه إلى مورّدينا | Invites and adds suppliers | `Portal.ProcSuppliers.dir.add`<br>أضِفه إلى مورّدينا / Add to our suppliers (0.5) |
 
-### Missing — sentences (8)
+### Missing — sentences (7)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
@@ -534,22 +403,8 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | متوقف: المالك يملك أفعال المشتريات كلها | Off: the owner holds every procurement action | `Portal.ProcSettings.policy.ownerStepsBack.desc`<br>متوقف: المالك يملك أفعال المشتريات كلها — ينشر ويرسي ويُعدّ الأمر ويتابع ويحوّل الاستلام، ولو كان للشركة فريق مشتريات. / Off: the owner holds every Procurement act — publishes, awards, prepares orders, follows up and forwards receipts — even when the company has a procurement team. (0.5) |
 | فارغ — يُطلب عند أول إرسال | Empty — asked on first send | — |
 | مستودع الورشة · أُضيف من التصنيع | Workshop store · added from Manufacturing | `Portal.Shared.nd_deliver_workshop`<br>ورشة التصنيع / Our workshop (0.57) |
-| بلا مستلم — لا يُحوَّل تلقائياً | No receiver — no auto-forward | `Portal.ProcSettings.sites.no_receiver`<br>بلا مستلم / No receiver (0.57) |
 
 ## Sidebar and header
-
-### English differs (2)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| لا فرق — أو لا شراء سابق يُقارن به | No difference — or nothing to compare | `Portal.ProcToday.kpi.drift.note_none`<br>لا فرق — أو لا شراء سابق يُقارن به / No difference — or nothing earlier to compare with |
-| تسجيل الخروج | Sign out | `Portal.Sidebar.logout`<br>تسجيل الخروج / Logout |
-
-### Arabic differs (1)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| مدماك تِك | Mdmak Tech | `Portal.Procurement.rfqpage.list.mdmak`<br>مدماك تيك / Mdmak Tech |
 
 ### Missing — labels (4)
 
@@ -569,28 +424,12 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 
 ## Suppliers
 
-### English differs (3)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| المورد غير الموثّق يصله «خاص» ويقدّم عروضه ويُصدَر له أمر، ووسمه ظاهر في المقارنة والأمر، ولا يظهر في «دليل موردي المنصة» حتى يُوثَّق. | An unverified supplier gets Private RFQs, quotes and can receive orders, tagged in comparison and orders; not listed in the platform directory until verified. | `Portal.ProcSuppliers.list.ours_caption`<br>المورد غير الموثّق يصله «خاص» ويقدّم عروضه ويُصدَر له أمر، ووسمه ظاهر في المقارنة والأمر، ولا يظهر في «دليل موردي المنصة» حتى يُوثَّق. / An unverified supplier gets Private RFQs, quotes and can receive orders, tagged in the comparison and the order; he is not listed in the platform directory until verified. |
-| افتح ملفه | Open profile | `Portal.ProcToday.actions.openSupplier`<br>افتح ملفه / Open file |
-| ألغِ | Cancel | `Portal.ProcSuppliers.inv2.cancel`<br>ألغِ / Cancel it |
-
 ### Missing — labels (2)
 
 | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |--------------------|--------------------|---------------------------------|
 | في مورّدينا · غير موثّق | in our suppliers · unverified | `Portal.ProcToday.invitations.state.joined`<br>انضم — في مورّدينا · غير موثّق / Joined — in our suppliers · unverified (0.89) |
 | عملية | ops | `Portal.ProcSuppliers.file2.stat_ops_unit`<br>عملية توريد / supply operations (0.67) |
-
-## Today
-
-### Missing — labels (1)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| لا شيء ينتظرك هنا | Nothing waiting here | `Portal.ProcToday.empty.title`<br>لا شيء ينتظرك / Nothing is waiting on you (0.86) |
 
 ## Visitor link
 
@@ -618,12 +457,6 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | عرضك محفوظ، والتسجيل متاح متى شئت من هذا الرابط. | Your quote is saved; you can join any time from this link. | — |
 
 ## Windows and drawers
-
-### English differs (1)
-
-| Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
-|--------------------|--------------------|---------------------------------|
-| مستودع الورشة | Workshop store | `Portal.ProcSettings.sites.kind_workshop`<br>مستودع الورشة / Workshop warehouse |
 
 ### Arabic differs (4)
 
@@ -658,7 +491,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | فيلا الملقا | Al-Malqa Villa | — |
 | حي الملقا | Al-Malqa | `Portal.ProcSettings.sites.district`<br>الحي / District (0.67) |
 | شارع النخيل، فيلا 12 | Al-Nakheel St, villa 12 | — |
-| المستودع المركزي | Central warehouse | `Portal.ProcSettings.sites.kind_warehouse`<br>مستودع / Warehouse (0.67) |
+| المستودع المركزي | Central warehouse | `Portal.ProcEditor.newloc_kind_warehouse`<br>مستودع / Warehouse (0.67) |
 | حي السلي | Al-Sulai | `Portal.ProcSettings.sites.district`<br>الحي / District (0.67) |
 | شارع الصناعة، البوابة 3 | Al-Sinaa St, gate 3 | — |
 
@@ -672,105 +505,36 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 
 ## Vocabulary tables (prototype constants)
 
-### English differs (66)
+### English differs (2)
 
 | Table | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |-----------|--------------------|--------------------|---------------------------------|
-| lastTx | لا شراء سابق بهذه المواصفة | No earlier purchase of this spec | `Portal.Procurement.bymat_no_last`<br>لا شراء سابق بهذه المواصفة / No earlier purchase of this specification |
-| rowHead | المواصفات | Specs | `Portal.Procurement.award2.loss_spec`<br>المواصفات / Specifications |
-| stp3 | المخزون يُسأل تلقائياً حين يصل الطلب، ومهلته يوم ثم يُشترى الكل. | Inventory is asked automatically on arrival; after a day everything is bought. | `Portal.Procurement.before_hint`<br>المخزون يُسأل تلقائياً حين يصل الطلب، ومهلته يوم ثم يُشترى الكل. / Inventory is asked automatically when the request arrives; its window is a day, then everything is bought. |
-| stp3 | التالي: النشر | Next: Publishing | `Portal.ProcEditor.next_publish`<br>التالي: النشر / Next: publish |
-| stp3 | لنشر بعض المواد فقط: «جهّزه» واحذف ما لا تريد. | To publish only some materials: Prepare, then delete the rest. | `Portal.ProcEditor.panel_part_hint`<br>لنشر بعض المواد فقط: «جهّزه» واحذف ما لا تريد. / To publish only some of the materials: “Prepare it” and remove what you do not want. |
-| stp3 | السجل | History | `Portal.Procurement.rfqd.log.title`<br>السجل / Log |
-| stp3 | طلب جديد | New request | `Portal.ProcEditor.new_rfq`<br>طلب جديد / New RFQ |
-| reqOpenBtn | افتح الأمر | Open the PO | `Portal.Procurement.award2.open_order`<br>افتح الأمر / Open the order |
-| HD | المشتريات تتابع حتى يكتمل التوريد، والمستلم وحده يعدّ ويؤكّد. | Procurement follows until supply completes; only the receiver counts and confirms. | `Portal.ProcReceipts.subtitle`<br>المشتريات تتابع حتى يكتمل التوريد، والمستلم وحده يعدّ ويؤكّد. / Procurement follows until supply is complete, and only the receiver counts and confirms. |
-| HD | مورّدونا، ودعوة مورد إلى المنصة، ودليل موردي المنصة. | Our suppliers, invitations to the platform, and the platform directory. | `Portal.ProcSuppliers.page.subtitle`<br>مورّدونا، ودعوة مورد إلى المنصة، ودليل موردي المنصة. / Our suppliers, inviting a supplier to the platform, and the platform directory. |
-| HD | التقارير السبعة كما هي اليوم، بحسب الباقة. | The seven reports as today, per package. | `Portal.ProcReports.page.subtitle`<br>التقارير السبعة كما هي اليوم، بحسب الباقة. / The seven reports as they are today, per package. |
-| RFQ_ST | أُرسل للمورد | Sent | `Portal.Procurement.rfqpo.po.trail.sent`<br>أُرسل للمورد / Sent to supplier |
-| RFQ_ST | قبِله المورد | Accepted | `Portal.Procurement.status.accepted`<br>قبِله المورد / Accepted by the supplier |
-| poAltOffers | يُبلَّغ المورّد، ويصدر الأمر بإصدار «ملغى» إلى المالية والمخزون. والمواد لا تبقى معلّقة. | The supplier is told and a “cancelled” version goes to Finance and Inventory. The items are never left hanging. | `Portal.ProcOrders.cancel_order.sub`<br>يُبلَّغ المورّد، ويصدر الأمر بإصدار «ملغى» إلى المالية والمخزون. والمواد لا تبقى معلّقة. / The supplier is told, and a “cancelled” version goes to Finance and Inventory. The items are never left hanging. |
-| poAltOffers | يعود الطلب إلى «يُقارن» بلا عرضه، فتختار التالي. | The RFQ goes back to Comparing without his offer; you pick the next. | `Portal.ProcOrders.cancel_order.then_hint.reaward`<br>يعود الطلب إلى «يُقارن» بلا عرضه، فتختار التالي. / The request goes back to Comparing without his offer; you pick the next. |
-| poAltOffers | من يقف عند الشاحنة هو من يعدّ ويؤكّد. | Whoever stands at the truck counts and confirms. | `Portal.ProcReceipts.forward.desc`<br>من يقف عند الشاحنة هو من يعدّ ويؤكّد. / Whoever stands at the truck is the one who counts and confirms. |
-| poAltOffers | عضو في الفريق | Team member | `Portal.ProcReceipts.forward.toMember`<br>عضو في الفريق / A team member |
-| poAltOffers | شخص بلا حساب | Person without an account | `Portal.ProcReceipts.forward.toPerson`<br>شخص بلا حساب / Someone without an account |
-| poAltOffers | رابط ورمز إلى جواله، صالحان 3 أيام. | Link and code to his phone, valid 3 days. | `Portal.ProcReceipts.forward.personHint`<br>رابط ورمز إلى جواله، صالحان 3 أيام / A link and a code to their mobile, good for 3 days |
-| poAltOffers | أرسل الرابط والرمز | Send link and code | `Portal.ProcReceipts.forward.sendLink`<br>أرسل الرابط والرمز / Send the link & code |
-| poAltOffers | سجّلته المشتريات | Recorded by Procurement | `Portal.ProcReceipts.recordedBy.procurement`<br>سجّلته المشتريات / by Procurement |
-| poAltOffers | سجّله المستلم | Recorded by the receiver | `Portal.ProcReceipts.print.registered_by`<br>سجّله المستلم: / Registered by the receiver: |
-| poAltOffers | لا لوح توقيع مرسوم: التأكيد هو التوقيع. | No drawn signature pad: the confirmation is the signature. | `Portal.ProcReceipts.print.no_signature_note`<br>لا لوح توقيع مرسوم: التأكيد هو التوقيع. / No drawn signature: confirming is the signature. |
-| INV_ST | الجوال أو البريد | Mobile or email | `Portal.ProcSuppliers.inv2.contact`<br>الجوال أو البريد / Mobile or e-mail |
-| INV_ST | رسالة نصية | SMS | `Portal.ProcSuppliers.inv2.ch_sms`<br>رسالة نصية / Text message |
-| INV_ST | أرسل بالواتساب | Send on WhatsApp | `Portal.ProcSuppliers.inv2.send_wa`<br>أرسل بالواتساب / Send by WhatsApp |
-| INV_ST | أرسل بالبريد | Send by email | `Portal.ProcSuppliers.inv2.send_email`<br>أرسل بالبريد / Send by e-mail |
-| INV_ST | أرسل رسالة نصية | Send SMS | `Portal.ProcSuppliers.inv2.send_sms`<br>أرسل رسالة نصية / Send a text |
-| INV_ST | ترفعه نيابةً عمّن لا حساب له، وتصله حالته برسالة على جواله. | Raise it on behalf of someone without an account; they get its status by text message. | `Portal.Shared.tr_for_hint`<br>ترفعه نيابةً عمّن لا حساب له، وتصله حالته برسالة على جواله. / Raise it on behalf of someone with no account; his status reaches his phone as a text message. |
-| INV_ST | يصل المشتريات، وتصل حالته صاحبه. | Goes to Procurement; its status goes back to the requester. | `Portal.Shared.tr_desc`<br>يصل المشتريات، وتصل حالته صاحبه. / It reaches Procurement, and its status reaches whoever it is for. |
-| INV_ST | أرسله إلى المحاسب | Send to accountant | `Portal.ProcOrders.export.send`<br>أرسله إلى المحاسب / Send to the accountant |
-| grnSrc | لما اشتُري خارج المنصة: يدخل السندات ويُوسم «يدوي»، ويصل أثره كأي سند. | For purchases made off-platform: joins the receipts tagged “manual”, with the same effects as any receipt. | `Portal.ProcReceipts.manual.subtitle`<br>لما اشتُري خارج المنصة: يدخل السندات ويُوسم «يدوي»، ويصل أثره كأي سند. / For what was bought outside the platform: it enters the receipts, is tagged “manual”, and its effect arrives like any receipt. |
-| grnSrc | يُلحق به أمر شراء لاحق | Attach a later purchase order | `Portal.ProcReceipts.manual.after_later`<br>يُلحق به أمر شراء لاحق / A later purchase order is attached |
-| grnSrc | أرفق صور الشحنة أو الفاتورة | Attach shipment photos or invoice | `Portal.ProcReceipts.manual.photo`<br>أرفق صور الشحنة أو الفاتورة / Attach photos of the shipment or the invoice |
-| grnSrc | للمحاسب أو للأرشيف: جدول بأعمدة ثابتة، ومعه ملف PDF لكل سند إن شئت. | For the accountant or the archive: a fixed-column sheet, with a PDF per receipt if you like. | `Portal.ProcReceipts.export.sub`<br>للمحاسب أو للأرشيف: جدول بأعمدة ثابتة، ومعه ملف PDF لكل سند إن شئت. / For the accountant or the archive: a table in fixed columns, with a PDF for each receipt if you like. |
-| grnSrc | في مجلد لكل سند | One folder per receipt | `Portal.ProcReceipts.export.attachHint`<br>في مجلد لكل سند / in a folder per receipt |
-| supLink | مورّد خارج المنصة: لا ملف له على مدماك. ما نعرفه منه: اسمه وجواله وأوامرنا معه. وادعُه إلى المنصة ليضيف ملفه. | Off-platform supplier: no Mdmak profile. We know his name, mobile and our orders with him. Invite him to add his profile. | `Portal.ProcSuppliers.file2.off_platform`<br>مورّد خارج المنصة: لا ملف له على مدماك. ما نعرفه منه: اسمه وجواله وأوامرنا معه. وادعُه إلى المنصة ليضيف ملفه. / Off-platform supplier: no Mdmak profile. We know his name, mobile and our orders with him. Invite him to the platform so he adds his profile. |
-| supLink | التزامه بالمواعيد | On-time | `Portal.ProcSuppliers.file2.stat_on_time`<br>التزامه بالمواعيد / On time |
-| supLink | محسوب من أوامره لا نجوماً تُكتب | computed from orders, not typed stars | `Portal.ProcSuppliers.file2.stat_rating_sub`<br>محسوب من أوامره لا نجوماً تُكتب / computed from his orders, not typed stars |
-| supLink | لم يُرفع — يُطلب قبل الترسية | Not uploaded — required before award | `Portal.ProcSuppliers.file2.vat_missing`<br>لم يُرفع — يُطلب قبل الترسية / Not uploaded - required before award |
-| supLink | الملف التعريفي وسابقة الأعمال والشهادات خانات مفتوحة يضيفها المورّد من حسابه أو يتركها. والسجل والرقم الضريبي يطلبهما التوثيق، وعدد العمليات والالتزام يحسبهما النظام. | Profile, previous work and certificates are open fields the supplier adds from his account — or leaves. CR and VAT are required for verification; operations and on-time are computed by the system. | `Portal.ProcSuppliers.file2.slots_note`<br>الملف التعريفي وسابقة الأعمال والشهادات خانات مفتوحة يضيفها المورّد من حسابه أو يتركها. والسجل والرقم الضريبي يطلبهما التوثيق، وعدد العمليات والالتزام يحسبهما النظام. / Profile, previous work and certificates are open fields the supplier adds from his account, or leaves. CR and VAT are required for verification; operations and on-time are computed by the system. |
-| lkQ | اكتب جوابك. | Write your reply. | `Portal.Procurement.rfqpage.qa.answer_ph`<br>اكتب جوابك… / Write your answer… |
-| rnSave | حُفظ الاسم، ويراه المورّدون في الطلب والرابط. | Name saved; suppliers see it on the RFQ and the link. | `Portal.Procurement.rfqpage.title.saved`<br>حُفظ الاسم، ويراه المورّدون في الطلب والرابط. / Name saved. Suppliers see it on the request and the link. |
-| noLive | أعد فتحه بموعد جديد، أو ألغِه فتعود مواده إلى «الواردة». | Reopen it with a new deadline, or cancel it so its items return to Incoming. | `Portal.Procurement.rfqlife.no_live_hint`<br>أعد فتحه بموعد جديد، أو ألغِه فتعود مواده إلى «الواردة». / Reopen it with a new deadline, or cancel it and its items return to Incoming. |
-| noLive | لم يُتحقق منه | unverified | `Portal.Procurement.rfqpage.off.unverified`<br>لم يُتحقق منه / Not verified |
-| noLive | لم يذكره | Not given | `Portal.Procurement.rfqpage.off.missing`<br>لم يذكره / Not stated |
-| noLive | يخالف شروطك | Differs from yours / differs from yours | `Portal.Procurement.cmp2.differs_terms`<br>يخالف شروطك / Differs from your terms |
-| noLive | انتهت — اطلب تأكيد السعر | Expired — ask to confirm | `Portal.Procurement.rfqpage.drawer.expired`<br>انتهت — اطلب تأكيد السعر / Expired — ask to confirm the price |
-| noLive | ينتهي قريباً | Expires soon / expires soon | `Portal.Procurement.cmp2.validity_soon`<br>ينتهي قريباً / Ends soon |
-| noLive | رُسّي عليه وصدر له أمر شراء | Awarded; a PO was issued | `Portal.Procurement.rfqpage.history.awarded`<br>رُسّي عليه وصدر له أمر شراء / Awarded, and a purchase order was issued |
-| noLive | من قبول الأمر | from PO acceptance | `Portal.Procurement.rfqpage.drawer.lead_from`<br>من قبول الأمر / from accepting the order |
-| noLive | الفعلي لوحدة الطلب | Effective per unit | `Portal.Procurement.rfqpage.drawer.effective`<br>الفعلي لوحدة الطلب / Effective per request unit |
-| noLive | ما جرى | History | `Portal.Procurement.rfqpage.drawer.history`<br>ما جرى / What happened |
-| noLive | يبقى في السجل بسببه، ولا يدخل المقارنة ولا الترسية، وتستطيع إعادته. | Kept on record with its reason, out of comparison and award; you can restore it. | `Portal.Procurement.rfqpage.exclude.sub`<br>يبقى في السجل بسببه، ولا يدخل المقارنة ولا الترسية، وتستطيع إعادته. / It stays on record with its reason, leaves the comparison and the award, and you can restore it. |
-| noLive | جولة واحدة لكل عرض: يخفّض سعره أو يثبّته، ويبقى عرضه الأول في السجل. | One round per offer: he lowers or keeps his price; his first offer stays on record. | `Portal.Procurement.rfqpage.bafo.sub`<br>جولة واحدة لكل عرض: يخفّض سعره أو يثبّته، ويبقى عرضه الأول في السجل. / One round per offer: he lowers his price or keeps it, and his first offer stays on record. |
-| noLive | لا تُذكر له أسعار غيره ولا أسماؤهم. | Other prices and names are never shown to him. | `Portal.Procurement.rfqpage.bafo.hint`<br>لا تُذكر له أسعار غيره ولا أسماؤهم. / No other supplier's price or name is ever shown to him. |
-| noLive | أرسل الطلب | Send request | `Portal.Procurement.rfqpage.bafo.submit`<br>أرسل الطلب / Send the request |
-| poNext | أُرسل الجواب إلى السائل وحده. | Answer sent to the asker only. | `Portal.Procurement.rfqpage.qa.sent_asker`<br>أُرسل الجواب إلى السائل وحده / The answer was sent to the asker alone |
-| msgHTML | من رابط الأمر | via the order link | `Portal.ProcChats.via_link`<br>من رابط الأمر / from the order link |
-| unreadN | التاريخ والملاحظة فقط — والكميات يعدّها المستلم | Date and note only — the receiver counts quantities | `PoLink.report_sub`<br>التاريخ والملاحظة فقط — والكميات يعدّها المستلم / Date and note only — the receiver counts the quantities |
-| TSTEP | اطلب ما يحتاجه موقعك، وتابع حالته حتى يصل. الأسعار والموردون عند المشتريات. | Request what your site needs and follow it until it arrives. Prices and suppliers stay with Procurement. | `Portal.ProcMyRequests.desc`<br>اطلب ما يحتاجه موقعك، وتابع حالته حتى يصل. الأسعار والموردون عند المشتريات. / Ask for what your site needs, and follow it until it arrives. Prices and suppliers stay with Procurement. |
-| TSTEP | من القائمة نفسها، أو «الأكثر طلباً» بضغطة | From the same list, or “most requested” in one tap | `Portal.ProcMyRequests.how_pick_d`<br>من القائمة نفسها، أو «الأكثر طلباً» بضغطة / From the same list, or “Most requested” in one press |
-| TSTEP | موقع التسليم بضغطة، وموعد الحاجة | Delivery site in one tap, and the need date | `Portal.ProcMyRequests.how_place_d`<br>موقع التسليم بضغطة، وموعد الحاجة / The delivery site in one press, and the date you need it |
-| TSTEP | يصل المشتريات، وتتابع حالته هنا حتى يصل | It reaches Procurement; follow it here until it arrives | `Portal.ProcMyRequests.how_send_d`<br>يصل المشتريات، وتتابع حالته هنا حتى يصل / It reaches Procurement, and you follow its status here until it arrives |
-| TSTEP | من أين تأتي طلبات الفريق بلا إدارة المشاريع؟ كل من له حساب بدور «طالب مواد» يرفعها من هنا، والمشتري يرفعها نيابةً عمّن لا حساب له، وأمين المستودع يرسل «سطر احتياج» من المخزون. وكلها تصل «طلبات الشراء الواردة» بالشكل نفسه. | Where do team requests come from without Projects? Anyone with an account and the “Requester” role raises them here; the buyer raises them on behalf of people without an account; the storekeeper sends Inventory need lines. All of them land in Incoming in the same form. | `Portal.ProcMyRequests.footer`<br>من أين تأتي طلبات الفريق بلا إدارة المشاريع؟ كل من له حساب بدور «طالب مواد» يرفعها من هنا، والمشتري يرفعها نيابةً عمّن لا حساب له، وأمين المستودع يرسل «سطر احتياج» من المخزون. وكلها تصل «طلبات الشراء الواردة» بالشكل نفسه. / Where do the team’s requests come from without Project Management? Anyone with an account in the “materials requester” role raises them here, the buyer raises them on behalf of someone with no account, and the storekeeper sends a need line from Inventory. All of them reach the incoming purchase requests the same way. |
-| PC_WHY | لم يقبله المورد في مهلته | Not accepted in time | `Portal.ProcOrders.cancel_order.why.nacc`<br>لم يقبله المورد في مهلته / He did not accept in time |
+| stp3 | لنشر بعض المواد فقط: «جهّزه» واحذف ما لا تريد. | To publish only some materials: Prepare, then delete the rest. | `Portal.ProcEditor.panel_part_hint`<br>لنشر بعض المواد فقط: «جهّزه» واحذف ما لا تريد. / To publish only some materials: “Prepare it”, then delete the rest. |
+| noLive | يخالف شروطك | Differs from yours / differs from yours | `Portal.Procurement.rfqpage.drawer.differs`<br>يخالف شروطك / Differs from your terms |
 
-### Arabic differs (22)
+### Arabic differs (17)
 
 | Table | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |-----------|--------------------|--------------------|---------------------------------|
-| hasSpec | كل الفئات | All categories | `Portal.ProcSuppliers.dir.all_categories`<br>كل التصنيفات / All categories |
 | hasSpec | أخرى | Other | `Portal.Procurement.award2.why_other`<br>سبب آخر / Other |
 | W_MAT | مادة | material | `Portal.Procurement.bymat_material`<br>المادة / Material |
 | W_MAT | مواد | Materials | `Portal.ProcSuppliers.kind.mat`<br>مورد مواد / Materials |
-| RFQ_ST | أبلغ المورد | Notified | `Portal.Procurement.rfqpo.po.schedule.notified`<br>أُشعر بها / notified |
 | RFQ_ST | وصلنا | Received | `Portal.ProcReceipts.regularise.lines`<br>ما استُلم / Received |
 | RFQ_ST | السداد | Payment | `Portal.ProcOrders.print.payment`<br>الدفع / Payment |
 | RFQ_ST | اختيارية | optional | `Portal.Procurement.before_optional`<br>اختياري / optional |
-| poAltOffers | احفظ وأرسل | Save and send | `Portal.ProcOrders.pay.save_and_send`<br>احفظه وأرسل / Save and send |
 | poAltOffers | نزّله | Download | `Portal.ProcOrders.pay.download`<br>نزّلها / Download |
-| INV_ST | افتحها | Open | `Portal.Procurement.rfqpage.stage.open`<br>مفتوح / Open |
-| grnSrc | اطبع | Print | `Portal.ProcReports.print`<br>طباعة / Print |
-| RJ_WHY | قُبل | Accepted | `Portal.ProcOrders.supplier.warranty_ok`<br>مقبول / Accepted |
-| supLink | اعرض | View | `Portal.ProcToday.actions.view`<br>اطّلع / View |
+| INV_ST | افتحها | Open | `Portal.Procurement.rfqlist.seg.open`<br>مفتوحة / Open |
+| RJ_WHY | قُبل | Accepted | `Portal.Procurement.status.accepted`<br>قبِله المورد / Accepted |
+| supLink | اعرض | View | `Portal.Procurement.rfqlist.layout_label`<br>طريقة العرض / View |
 | supLink | صالحة حتى | Valid until | `Portal.Procurement.cmp2.fact_valid`<br>صالح حتى / Valid until |
-| lkMsgHtml | آخر موعد | closes | `PublicRfq.head_closes`<br>يُغلق / Closes |
-| noLive | لم يسعّرها | Not priced | `Portal.Procurement.rfqpage.drawer.not_priced`<br>لم يسعّر / Not priced |
+| lkSums | الإجمالي — منشأة غير مسجّلة ضريبياً | Total — not VAT-registered | `PublicRfq.sum_nonvat`<br>الإجمالي — غير مسجّل ضريبياً / Total — not VAT-registered |
+| lkMsgHtml | آخر موعد | closes | `Portal.Procurement.rfqlist.col_closes`<br>الإغلاق / Closes |
 | noLive | بلا | none | `Portal.Shared.pn_activity_about_none`<br>لا يوجد / none |
 | noLive | الالتزام | On-time | `Portal.ProcSuppliers.col.on_time`<br>التزامه بالموعد / On-time |
-| noLive | الإجمالي — غير مسجّل ضريبياً | Total — not VAT-registered | `PublicRfq.sum_nonvat`<br>الإجمالي — منشأة غير مسجّلة ضريبياً / Total — not VAT-registered |
 | noLive | المجموع | Total | `Portal.Procurement.rfqpo.print.col_total`<br>الإجمالي / Total |
 | EVTS | تحويل الإشعار إلى المستلم (حسابه أو رابط ورمز) | Forward the notice to the receiver | `Portal.ProcReceipts.forward.title`<br>حوّل الإشعار للمستلم / Forward the notice to the receiver |
 
-### Missing — labels (313)
+### Missing — labels (312)
 
 | Table | Prototype (ar) | Prototype (en) | Ours (closest key, ar / en) |
 |-----------|--------------------|--------------------|---------------------------------|
@@ -779,15 +543,15 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | verLabel | الأساسية +  | Base +  | `Portal.ProcPackage.label.base`<br>الأساسية / Base (1) |
 | verTitle | المشتريات +  | Procurement +  | `Portal.Sidebar.component_procurement`<br>المشتريات / Procurement (1) |
 | hasSpec | تصفّح شجرة المواد | Browse the materials tree / Browse the tree | `Portal.Sidebar.admin_materials`<br>شجرة المواد / Material tree (0.8) |
-| hasSpec | اختر الفئة الفرعية للمادة. | Pick the subcategory for this material. | `Portal.ProcEditor.rev_by_sub`<br>حسب الفئة الفرعية / By sub-category (0.57) |
+| hasSpec | اختر الفئة الفرعية للمادة. | Pick the subcategory for this material. | `Portal.ProcEditor.rev_by_sub`<br>حسب الفئة الفرعية / By subcategory (0.57) |
 | hasSpec | الوحدة الوحيدة لهذه المادة | The only unit for this material | `Portal.ProcEditor.direct_reason_only`<br>مورّد وحيد لهذه المادة / The only supplier for this item (0.5) |
 | hasSpec | علامة: أي علامة | Brand: any | — |
 | hasSpec | مواصفة بنص حر | Free-text spec | — |
-| hasSpec | ابحث باسم المادة أو المقاس… | Search by material or size… | `Portal.ProcSuppliers.list.search`<br>ابحث باسم المورّد أو تخصصه… / Search by supplier name or specialty… (0.6) |
+| hasSpec | ابحث باسم المادة أو المقاس… | Search by material or size… | `Portal.Procurement.rfqlist.search`<br>ابحث برقم الطلب أو المادة… / Search by RFQ number or material… (0.6) |
 | hasSpec | ضعها في الصف | Put it in the row | `Portal.ProcEditor.err_quantity`<br>اكتب الكمية في الصف {no} / Enter the quantity on row {no} (0.5) |
 | hasSpec | أضِفها إلى الصف | Add it to the row | `Portal.Procurement.linkx.mail_to`<br>إلى / To (0.5) |
 | hasSpec | أضِفها وكرّر | Add and repeat | — |
-| hasSpec | غير موجود؟ | Not listed? | `Portal.Procurement.award2.err_rfq_missing`<br>الطلب غير موجود. / The RFQ does not exist. (0.8) |
+| hasSpec | غير موجود؟ | Not listed? | `Portal.Procurement.award2.err_rfq_missing`<br>الطلب غير موجود. / RFQ not found. (0.8) |
 | hasSpec | اكتبه كما هو | Write it as-is | — |
 | hasSpec | يُوسم «خارج القائمة» | tagged “not in list” | — |
 | reqName | أمر التشغيل | Work order | `Portal.Shared.rq_wo`<br>أمر التشغيل {no} / Work order {no} (0.8) |
@@ -806,11 +570,10 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | stp3 | سطر احتياج من المخزون | Need line from Inventory | `Portal.ProcGuide.source.inv.title`<br>المخزون — سطر احتياج / Inventory — need line (0.86) |
 | edBarTx | من إدارة المشاريع | from Projects | `Portal.Sidebar.component_project_management`<br>إدارة المشاريع / Project Management (0.8) |
 | edBarTx | كل المواقع في الطلب. | All locations are in the request. | `Portal.ProcReceipts.export.allLocations`<br>كل المواقع / All locations (0.67) |
-| edBarTx | أضِف الصفوف | Add rows | `Portal.ProcSuppliers.list.view_rows`<br>صفوف / Rows (0.67) |
+| edBarTx | أضِف الصفوف | Add rows | `Portal.Procurement.rfqlist.rows`<br>صفوف / Rows (0.67) |
 | RFQ_ST | حُوّل إلى | forwarded to / Forwarded to | `Portal.ProcReceipts.forward.toMemberNamed`<br>حوّل إلى {name} / Forward to {name} (0.8) |
 | RFQ_ST | مدير المشتريات أو المالك | Procurement manager or owner | `Portal.Shared.team_group_procurement_manager`<br>مدير المشتريات / Procurement manager (0.67) |
 | RFQ_ST | يسجّله المستلم في سند | The receiver records a receipt | `PoLink.receiver`<br>المستلم في الموقع / Site receiver (0.57) |
-| poTags | إسناد مباشر فوق السقف | Direct award above the cap | `Portal.ProcEditor.direct_reason`<br>سبب الإسناد المباشر فوق السقف / Reason for a direct award above the cap (0.89) |
 | poCur | اعتمدتَ الدفعة المقدّمة، وطُلبت الآن. | You approved the advance; it is now requested. | `Portal.ProcOrders.toast.advance_approved`<br>اعتُمدت الدفعة المقدّمة — وطُلبت من المالية / Advance approved — and requested from Finance (0.73) |
 | poCur | ذُكّر مدير المشتريات في «مهامي». | The procurement manager was reminded in My tasks. | `Portal.Shared.team_group_procurement_manager`<br>مدير المشتريات / Procurement manager (0.57) |
 | poCur | ذُكّر المورد بالكمية الباقية. | The supplier was reminded about the remaining quantity. | `Portal.ProcToday.actions.remindSupplier`<br>ذكّر المورد / Remind supplier (0.67) |
@@ -820,7 +583,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | poAltOffers | الإشعار | Notice | `Portal.ProcReceipts.incoming.note`<br>إشعار / note (1) |
 | poAltOffers | مستلم هذا الموقع | Receiver for this location | `PoLink.receiver`<br>المستلم في الموقع / Site receiver (0.67) |
 | poAltOffers | أعدّ هذا الأمر | prepared this order | `Portal.Shared.dor_prepare`<br>أعِدّ الأمر / Prepare PO (0.8) |
-| poAltOffers | أُرسل الرابط والرمز إلى جواله. | Link and code sent to his phone. | `Portal.ProcReceipts.forward.sendLink`<br>أرسل الرابط والرمز / Send the link & code (0.75) |
+| poAltOffers | أُرسل الرابط والرمز إلى جواله. | Link and code sent to his phone. | `Portal.ProcReceipts.forward.sendLink`<br>أرسل الرابط والرمز / Send link and code (0.75) |
 | poAltOffers | العدّ | Count | `Portal.ProcToday.actions.count`<br>عدّ الشحنة / Count the shipment (0.67) |
 | poAltOffers | مرفوض وسببه | Rejected and why | `Portal.ProcOrders.print.st_col_rejected`<br>المرفوض / Rejected (0.67) |
 | poAltOffers | أين ذهب أثر السند | Where the receipt went | — |
@@ -847,7 +610,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | grnSrc | رقم فاتورة المورد وقيمتها | Supplier invoice no. and value | `Portal.Procurement.rfqpo.po.fin.invoice_no`<br>رقم فاتورة المورد / Supplier invoice no. (0.86) |
 | grnSrc | للمشتريات الصغيرة من محل الحي. | For small purchases from a local shop. | — |
 | grnSrc | فاتورة-المورد.pdf | supplier-invoice.pdf | — |
-| grnSrc | صور الشحنة (2) | Shipment photos (2) | `Portal.ProcReceipts.manual.photo`<br>أرفق صور الشحنة أو الفاتورة / Attach photos of the shipment or the invoice (0.57) |
+| grnSrc | صور الشحنة (2) | Shipment photos (2) | `Portal.ProcReceipts.manual.photo`<br>أرفق صور الشحنة أو الفاتورة / Attach shipment photos or invoice (0.57) |
 | grnSrc | اكتب اسم المورد. | Enter the supplier name. | `Portal.Shared.dor_other_name`<br>اسم المورد / Supplier name (0.8) |
 | RJ_WHY | يدخل رصيد المستودع عند تأكيده | Enters the warehouse stock on confirmation | `Portal.Shared.nd_for_stock`<br>رصيد المستودع / Store stock (0.57) |
 | RJ_WHY | يُسجَّل في المشروع عند تأكيده | Recorded on the project on confirmation | — |
@@ -857,7 +620,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | RJ_WHY | عدّ ما وصل | Count what arrived | `Portal.ProcToday.actions.seeArrived`<br>اطّلع على ما وصل / See what arrived (0.57) |
 | RJ_WHY | صورة الشحنة | Shipment photo | `Portal.Procurement.rfqpo.po.schedule.shipment`<br>الشحنة {n} / Shipment {n} (0.5) |
 | RJ_WHY | أكّد الاستلام | Confirm the receipt | `Portal.Procurement.rfqpage.path.receipt`<br>الاستلام / Receiving (0.67) |
-| RJ_WHY | التأكيد هو التوقيع | Confirming is the signature | `Portal.ProcReceipts.print.no_signature_note`<br>لا لوح توقيع مرسوم: التأكيد هو التوقيع. / No drawn signature: confirming is the signature. (0.6) |
+| RJ_WHY | التأكيد هو التوقيع | Confirming is the signature | `Portal.ProcReceipts.print.no_signature_note`<br>لا لوح توقيع مرسوم: التأكيد هو التوقيع. / No drawn signature pad: the confirmation is the signature. (0.6) |
 | RJ_WHY | مدماك · مهامي | Mdmak · My tasks | `Portal.Sidebar.component_activities`<br>مهامي / My to-dos (0.67) |
 | RJ_WHY | استلام شحنة | Receive a delivery | `Portal.Procurement.rfqpage.path.receipt`<br>الاستلام / Receiving (0.67) |
 | RJ_WHY | اكتب الرمز من 4 أرقام. | Enter the 4-digit code. | `Portal.Procurement.rfqpage.exclude.suggested`<br>مقترح من الأرقام / Suggested by the numbers (0.57) |
@@ -865,7 +628,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | RJ_WHY | اختر سبب ما لم يُقبل. | Pick the reason for what was rejected. | `Portal.Shared.pn_offer_rejected_title`<br>لم يُقبل عرضك / Your offer was not accepted (0.5) |
 | RJ_WHY | سُجّل السند، ووصل المشتريات. | Receipt recorded; Procurement has it. | `Portal.ProcReceipts.manual.submit`<br>سجّل السند / Record the receipt (0.67) |
 | supLink | منذ | since | `Portal.ProcReports.period.all`<br>منذ البداية / All time (0.67) |
-| supLink | ينتهي | Expires | `Portal.Procurement.cmp2.validity_soon`<br>ينتهي قريباً / Ends soon (0.67) |
+| supLink | ينتهي | Expires | `Portal.Procurement.cmp2.validity_soon`<br>ينتهي قريباً / Expires soon (0.67) |
 | supLink | متوسط ردّه على الطلبات | Average response to RFQs | `Portal.ProcReports.report.cycle`<br>المنافسة على الطلبات / Competition on RFQs (0.57) |
 | supLink | أوامرنا معه | Our orders with him | `Portal.Procurement.rfqpage.drawer.inquiries`<br>الاستفسارات معه / Inquiries with him (0.5) |
 | supLink | طلب عروض خاص له | Private RFQ to him | `Portal.Procurement.doc.RFQ`<br>طلب عروض / Request for quotation (0.67) |
@@ -886,12 +649,12 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | noLive | فُتح عرض السعر المختوم (PDF). | The stamped quote (PDF) opened. | `PublicRfq.extra_file`<br>عرض السعر الرسمي (PDF مختوم) / Official quote (stamped PDF) (0.8) |
 | noLive | ملاحظة له | Note to him | `Portal.Procurement.rfqpage.bafo.note`<br>ملاحظة له (اختياري) / A note for him (optional) (0.8) |
 | poNext | اكتب الجواب أولاً. | Write the answer first. | `Portal.Procurement.rfqpage.qa.err.text_missing`<br>اكتب الجواب / Write the answer (0.8) |
-| poNext | توضيح لكل المدعوّين | Clarification to all invited | `Portal.Procurement.rfqpage.qa.ours_all`<br>توضيح منّا لكل المدعوّين / A clarification from us to all invited (0.86) |
+| poNext | توضيح لكل المدعوّين | Clarification to all invited | `Portal.Procurement.rfqpage.qa.ours_all`<br>توضيح منّا لكل المدعوّين / Our clarification to all invited (0.86) |
 | poNext | اكتب التوضيح. | Write the clarification. | `Portal.Procurement.rfqd.exclude.detail`<br>توضيح / Detail (0.67) |
 | poNext | أُرسل التوضيح لكل المدعوّين. | Clarification sent to all invited. | `Portal.Procurement.rfqpage.qa.note_button`<br>أرسل توضيحاً لكل المدعوّين / Send a clarification to all invited (0.75) |
 | subChips | احفظ الباقة أو تراجع أولاً. | Save or undo the package first. | `Portal.AdminPackages.detail.bar.save`<br>احفظ الباقة / Save package (0.57) |
 | TSTEP | دوره: طالب مواد | Role: Requester | `Portal.Shared.team_group_material_requester`<br>طالب مواد / Requester (0.8) |
-| TSTEP | لا طلبات بعد | No requests yet | `Portal.Shared.rq_empty`<br>لا طلبات هنا. / No requests here. (0.67) |
+| TSTEP | لا طلبات بعد | No requests yet | `Portal.Procurement.rfqlist.empty_all`<br>لا طلبات / No RFQs (0.8) |
 | STAGES | الاحتياج | Need | `Portal.Shared.nd_stat_need`<br>موعد الاحتياج / Needed (0.67) |
 | STAGES | الترسية وأمر الشراء | Award & PO | `Portal.ProcReceipts.log.colSupplierPo`<br>المورد وأمر الشراء / Supplier & PO (0.67) |
 | STAGES | التسليم والاستلام | Delivery & receipt | `Portal.ProcOrders.print.delivery`<br>التسليم / Delivery (0.67) |
@@ -903,7 +666,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | EVTS | فاتورته تُوقف «بلا أمر شراء» | Its invoice is held “no PO” | `Portal.Procurement.rfqpo.po.hold.reason.nopo`<br>بلا أمر شراء / No purchase order (0.75) |
 | EVTS | يدخل ملف «صدّر للمحاسبة» للفترة | Goes into the period’s accounting export | `Portal.ProcOrders.export.open`<br>صدّر للمحاسبة / Export for accounting (0.57) |
 | EVTS | طلب دفعة مقدّمة | Advance payment request | `Portal.Procurement.rfqd.manual.advance`<br>دفعة مقدّمة % / Advance % (0.8) |
-| EVTS | لا تبدأ مدة المورد | The supplier’s clock does not start | `Portal.ProcEditor.budget_hint`<br>لا يراها المورد. / The supplier never sees it. (0.57) |
+| EVTS | لا تبدأ مدة المورد | The supplier’s clock does not start | `Portal.ProcReceipts.manual.offPlatform`<br>لا — مورد خارج المنصة / No — off-platform (0.5) |
 | EVTS | «علّمها مدفوعة» في الأمر | “Mark it paid” in the PO | `Portal.Shared.rq_state_order`<br>في أمر / In PO (0.67) |
 | EVTS | قرارنا في فرق السعر | Our price-variance decision | `Portal.Procurement.rfqpo.po.hold.form_title`<br>قرارنا في إيقاف الصرف / Our decision on the held payment (0.5) |
 | EVTS | تبقى الفاتورة موقوفة | The invoice stays held | `Portal.Procurement.rfqpo.po.row_held`<br>فاتورة موقوفة عند المالية / invoice held by Finance (0.57) |
@@ -925,7 +688,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | EVTS | في الباقة الأساسية دائماً | Always in the base package | `Portal.ProcPackage.sub.pill_base`<br>الباقة الأساسية / Base package (0.67) |
 | EVTS | المستلم لا يعرف ما ينتظره | The receiver doesn’t know what is coming | — |
 | EVTS | أساس | Core | `Portal.ProcOrders.award.basis`<br>الأساس / Basis (1) |
-| EVTS | لا عروض | No offers | `Portal.Procurement.cmp2.none`<br>لا عروض للمقارنة / No offers to compare (0.8) |
+| EVTS | لا عروض | No offers | `Portal.Procurement.rfqd.cmp.none`<br>لا عروض للمقارنة / No offers to compare (0.8) |
 | EVTS | السؤال · المادة · السائل | question · material · asker | `Portal.Procurement.bymat_material`<br>المادة / Material (0.5) |
 | EVTS | يسعّر على تخمين | He prices on a guess | — |
 | EVTS | يبقى السؤال في «اليوم» | The question stays in Today | `Portal.Procurement.award2.approval_waits`<br>وإلا ينتظر في «اليوم». / Otherwise it waits in Today. (0.5) |
@@ -941,7 +704,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | EVTS | اعتذار المورد عن الأمر بسببه | Supplier declines the PO, with reason | `Portal.ProcOrders.next.declined_title`<br>اعتذر المورّد عن الأمر / The supplier declined the order (0.67) |
 | EVTS | السبب · التاريخ | reason · date | `Portal.Shared.pri_decline_reason`<br>السبب / Reason (0.67) |
 | EVTS | يبقى المرفوض بلا قرار | The rejected quantity hangs | `Portal.Shared.pn_po_rejects_decided_title`<br>قرار في المرفوض — {number} / Decision on rejected goods — {number} (0.5) |
-| EVTS | يبقى الأمر مفتوحاً بلا عدّ | The PO stays open uncounted | `Portal.Procurement.rfqpo.po.hold.reason.nopo`<br>بلا أمر شراء / No purchase order (0.5) |
+| EVTS | يبقى الأمر مفتوحاً بلا عدّ | The PO stays open uncounted | `Portal.ProcReceipts.log.noPo`<br>بلا أمر / No PO (0.57) |
 | EVTS | إلى المالك | To the owner | `Portal.Procurement.linkx.mail_to`<br>إلى / To (0.67) |
 | EVTS | «أوقف صرف فاتورة» بسببه | “Hold an invoice”, with reason | `Portal.Procurement.rfqpo.po.fin.hold_invoice`<br>أوقف صرف فاتورة / Hold an invoice (0.86) |
 | EVTS | تُصرف فاتورة فيها خلاف | A disputed invoice gets paid | — |
@@ -979,9 +742,9 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | MAKES | عند الاستلام | On delivery | `Portal.ProcOrders.reject.title`<br>المرفوض عند الاستلام / Rejected at receipt (0.8) |
 | MAKES | أسمنت مقاوم — برج العليا | Sulphate-resistant cement — Al-Olaya | — |
 | PL | صدأ ظاهر | Visible rust | — |
-| poById | التسليم صباحاً من البوابة الجنوبية | Morning delivery, south gate | — |
+| poById | التسليم صباحاً من البوابة الجنوبية | Morning delivery, south gate | `Portal.ProcOrders.pay.from_supplier`<br>من بوابة المورد / from the supplier portal (0.5) |
 | poById | شاحنة واحدة، ويحتاج رافعة شوكية | One truck, needs a forklift | — |
-| poById | صور الشحنة (3) | Shipment photos (3) | `Portal.ProcReceipts.manual.photo`<br>أرفق صور الشحنة أو الفاتورة / Attach photos of the shipment or the invoice (0.57) |
+| poById | صور الشحنة (3) | Shipment photos (3) | `Portal.ProcReceipts.manual.photo`<br>أرفق صور الشحنة أو الفاتورة / Attach shipment photos or invoice (0.57) |
 | poById | صورتان | 2 photos | — |
 | poById | صور المرفوض (2) | Photos of rejected (2) | `Portal.ProcOrders.print.st_col_rejected`<br>المرفوض / Rejected (0.67) |
 | QUICK | حديد 16 | Rebar 16 | `Portal.ProcEditor.paste_placeholder`<br>اسياخ حديد التسليح 16	8	طن / Rebar 16	8	ton (0.57) |
@@ -1117,7 +880,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | qMatch | جُمعت في مسودة واحدة: كل طلب مجموعة، وكل مادة منسوبة إلى طلبها ومشروعها. | Combined into one draft: each request is a group; each material keeps its request and project. | `Portal.ProcEditor.pick_incoming_desc`<br>كل طلب مختار يدخل مجموعةً بمشروعه وموعده ورقمه، وكل مادة تبقى منسوبة إلى طلبها. / Each request you pick lands as a group with its project, date and number; every material stays tied to its request. (0.59) |
 | RFQ_ST | بانتظار العدّ — كما يراه المستلم | Awaiting count — as the receiver sees it | `Portal.ProcReceipts.hub.preview`<br>كما يراه المستلم / As the receiver sees it (0.75) |
 | RFQ_ST | لا إشعار بعد. المورد يُبلغ «سلّمت» بتاريخ وملاحظة فقط، والكميات يسجّلها المستلم. | No notice yet. The supplier reports “delivered” with a date and note only; the receiver records quantities. | — |
-| poCur | أُرسل تذكير للمورد في بوابته وبالواتساب. | The supplier was reminded in the portal and on WhatsApp. | `Portal.Procurement.rfqpo.po.trail.sent`<br>أُرسل للمورد / Sent to supplier (0.5) |
+| poCur | أُرسل تذكير للمورد في بوابته وبالواتساب. | The supplier was reminded in the portal and on WhatsApp. | `Portal.Procurement.rfqpo.po.trail.sent`<br>أُرسل للمورد / Sent (0.5) |
 | poAltOffers | أُقفل الأمر ناقصاً بما استُلم، وأُبلغ المورد والمشروع. | Closed short at what was received; supplier and project told. | `Portal.ProcChats.sys.closed_reason`<br>أُقفل الأمر بما استُلم — {reason} / The order was closed with what was received — {reason} (0.62) |
 | poAltOffers | طُلب استبدال المرفوض: يبقى في الأمر حتى يصل البديل. | Replacement requested: it stays on the order until it arrives. | — |
 | poAltOffers | طُلب خصم على المرفوض، وأُبلغ المورد. | A discount was requested; supplier told. | `Portal.Shared.pn_rfq_outcome_lost`<br>رُسّي الطلب على مورد آخر / The request was awarded to another supplier (0.55) |
@@ -1128,7 +891,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | poAltOffers | سُجّل الإشعار نيابة عن المورد. حوّله للمستلم الآن. | Notice logged for the supplier. Forward it now. | `Portal.ProcOrders.notice.saved`<br>سُجّل الإشعار — حوّله للمستلم من «سندات الاستلام» / Notice recorded — forward it to the receiver from Goods received (0.53) |
 | poAltOffers | يصله داخل حسابه («مهامي» ووحدته) بلا رمز. | Lands in his account (My tasks), no code. | `Portal.ProcReceipts.forward.memberHint`<br>يصله في «مهامي» وفي وحدته، بلا رمز / Reaches them in My tasks and their module, no code (0.57) |
 | poAltOffers | حوّلتَه إلى من أعدّ الأمر: يُوسم السند «استلمه مُعِدّ الأمر» ويظهر في تقرير الاستثناءات. | Forwarded to the person who prepared the order: the receipt is tagged and shows in the exceptions report. | `Portal.ProcReceipts.forward.selfWarning`<br>إن حوّلتَ إلى من أعدّ الأمر يُوسم السند «استلمه مُعِدّ الأمر» ويظهر في تقرير الاستثناءات، ما لم يكن المالك. / Forwarding to whoever prepared the order flags the receipt “received by the order's preparer” in the exceptions report, unless it is the owner. (0.73) |
-| poAltOffers | يُلحق به أمر شراء لاحق بأسعار الفاتورة، ويظهر السند في تقرير الاستثناءات حتى يُلحق. | A later PO at invoice prices will be attached; the receipt shows in the exceptions report until then. | `Portal.ProcReceipts.manual.after_later`<br>يُلحق به أمر شراء لاحق / A later purchase order is attached (0.63) |
+| poAltOffers | يُلحق به أمر شراء لاحق بأسعار الفاتورة، ويظهر السند في تقرير الاستثناءات حتى يُلحق. | A later PO at invoice prices will be attached; the receipt shows in the exceptions report until then. | `Portal.ProcReceipts.manual.after_later`<br>يُلحق به أمر شراء لاحق / Attach a later purchase order (0.63) |
 | poAltOffers | مصروف نقدي بلا أمر: يدخل ملف المحاسبة بقيمته، ويظهر في تقرير الاستثناءات. | Cash expense with no PO: goes to the accounting file with its value, and shows in the exceptions report. | — |
 | INV_ST | غير رابط الطلب: الدعوة تضمّه إلى المنصة وإلى «مورّدونا». | Not the RFQ link: this brings them onto the platform and into Our suppliers. | — |
 | INV_ST | اختياري — بالبحث أو «تصفّح شجرة المواد» | optional — search or browse the tree | `Portal.Sidebar.admin_materials`<br>شجرة المواد / Material tree (0.5) |
@@ -1140,7 +903,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | INV_ST | وصل الطلب إلى «طلبات الشراء الواردة» بزرّي «انشره» و«جهّزه». | The request reached Incoming with Publish and Prepare. | `Portal.Sidebar.contractor_purchase_requests`<br>طلبات الشراء الواردة / Incoming requests (0.5) |
 | INV_ST | ملف واحد كل فترة بأعمدة ثابتة، ومعه ملفات الفواتير. تصدير لا ربط. | One file per period, fixed columns, with invoice files. Export, not integration. | — |
 | INV_ST | أوامر الشراء المعتمدة · قيمها وضريبتها ومورّدوها وحالة دفعها | Approved POs · values, VAT, suppliers, payment status | — |
-| INV_ST | سندات الاستلام · المقبول من كل بند | Receipts · accepted per line | `Portal.Procurement.rfqpo.po.money.accepted`<br>المقبول في سندات الاستلام / Accepted on the receipts (0.6) |
+| INV_ST | سندات الاستلام · المقبول من كل بند | Receipts · accepted per line | `Portal.Procurement.rfqpo.po.money.accepted`<br>المقبول في سندات الاستلام / Accepted in receipts (0.6) |
 | INV_ST | فواتير الموردين · ملفات PDF في ملف مضغوط | Supplier invoices · PDFs in a zip | — |
 | INV_ST | الأعمدة ثابتة في كل تصدير، فيبني المحاسب قالب الاستيراد مرة واحدة. | Columns are fixed every time, so the accountant builds the import template once. | — |
 | INV_ST | الطلب الوارد: «انشره» يفتح الخطوات في اللوح نفسه، و«جهّزه» يفتح المحرّر. وجرّب ط.م 05: مادة بلا فئة تُختار فئتها في الخطوة 1. | Incoming request: Publish opens the steps in the same panel; Prepare opens the editor. Try MR 05: a material without a category. | — |
@@ -1183,7 +946,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | noLive | جديد علينا: لا تقييم ولا سجل توريد بعد. مع أمر الشراء يُطلب منه السجل والعرض الرسمي، ولا تُقبل فاتورته بلا رقم ضريبي — ولا يمنع ذلك الترسية. | New to us: no rating or supply record yet. With the PO he is asked for his CR and official quote, and no invoice is accepted without a VAT number — none of this blocks the award. | `Portal.Procurement.rfqpage.off.new`<br>جديد علينا: لا تقييم ولا سجل توريد بعد. يُطلب سجله التجاري وعرضه الرسمي مع الأمر، ولا تُقبل فاتورته بلا رقم ضريبي — ولا يمنع هذا الترسية. / New to us: no rating and no supply record yet. His CR and official quote are asked with the order, and his invoice is not accepted without a VAT number — none of this blocks the award. (0.86) |
 | noLive | لم يُرفق بعد — يُطلب مع الأمر | Not attached yet — requested with the PO | `Portal.Procurement.cmp2.quote_missing`<br>لم يُرفق بعد / Not attached yet (0.67) |
 | noLive | عدّل عرضه، وبقي آخر إرسال هو المعتمد | Updated his offer; the last one stands | — |
-| noLive | الفعلي = ما تدفعه ÷ ما طلبته | Effective = paid ÷ requested | `Portal.Procurement.rfqpage.drawer.history`<br>ما جرى / What happened (0.57) |
+| noLive | الفعلي = ما تدفعه ÷ ما طلبته | Effective = paid ÷ requested | `Portal.Procurement.rfqpage.drawer.history`<br>ما جرى / History (0.57) |
 | noLive | اكتب سبب الاستبعاد — يُحفظ ويظهر في التقارير. | Write the exclusion reason — it is kept and shown in reports. | — |
 | noLive | اُستبعد العرض، وبقي في السجل بسببه. | Offer excluded; kept on record with its reason. | `Portal.Procurement.rfqpage.toast.excluded`<br>استُبعد العرض وبقي في السجل بسببه / The offer was excluded and stays on record with its reason (1) |
 | noLive | يصله على عرضه في بوابته، ويظهر جوابه في «الاستفسارات». لا يغيّر سعره. | It reaches him on his offer in his portal; the answer shows in Inquiries. It does not change his price. | `Portal.Procurement.rfqpage.clarify.sub`<br>سؤال على عرضه لا يغيّر سعره. يظهر في «الاستفسارات» سؤالاً منّا، ويعود جوابه إليك هناك. / A question on his offer; it does not change his price. It shows in Inquiries as a question from us, and his answer comes back there. (0.52) |
@@ -1198,7 +961,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | noLive | ذُكّر من لم يقدّم بعد: على المنصة، ومن خارجها برسالة الرابط. | Non-responders reminded: on the platform, and off-platform ones by link message. | `Portal.Procurement.rfqlife.remind`<br>ذكّر من لم يقدّم / Remind non-responders (0.53) |
 | noLive | عرضه للطلب كاملاً فقط: اختير كل ما سعّره. | His offer is whole-only: everything he priced is selected. | — |
 | AW_NO | هنا يُختار الأجل حين يُطلق: يُدفع للمورّد كاملاً عند التسليم، وتسدّد أنت على دفعات. | Pay-later will be chosen here at launch: the supplier is paid in full on delivery, and you pay in instalments. | — |
-| poNext | يصل كل من وصله الطلب، ويظهر في رابط الزوار. | Reaches everyone invited and shows on the visitor link. | `Portal.Procurement.rfqpage.qa.caption`<br>الجواب «للجميع» يصل كل من وصله الطلب ويظهر في رابط الزوار بلا اسم السائل. و«للسائل فقط» لما يخصّه وحده. / An answer "to all" reaches everyone the RFQ reached and shows on the visitor link without the asker's name. "Asker only" is for what concerns him alone. (0.64) |
+| poNext | يصل كل من وصله الطلب، ويظهر في رابط الزوار. | Reaches everyone invited and shows on the visitor link. | `Portal.Procurement.rfqpage.qa.caption`<br>الجواب «للجميع» يصل كل من وصله الطلب ويظهر في رابط الزوار بلا اسم السائل. و«للسائل فقط» لما يخصّه وحده. / An answer "to all" reaches everyone invited and shows on the visitor link without the asker's name. "Asker only" is for what concerns him alone. (0.64) |
 | poNext | مثال: التسليم صباحاً فقط من البوابة الشمالية. | e.g. Morning deliveries only, north gate. | — |
 | polOk | وصل اعتذارك إلى المشتري، ويعيد ترسية الأمر. | Your decline reached the buyer; he will re-award the order. | `PoLink.done_decline`<br>وصل اعتذارك إلى المشتري، ويقرّر في الأمر. / Your decline reached the buyer; he will decide on the order. (0.71) |
 | polOk | يُفتح الموقع على الخرائط من جوالك. | The location opens in Maps on your phone. | — |
@@ -1251,7 +1014,7 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | EVTS | نشتري ممن قدّم، ويُسجَّل «منافسة ناقصة» | We buy from who quoted; thin competition logged | `Portal.ProcReports.shortCompetition`<br>منافسة ناقصة / Short competition (0.5) |
 | EVTS | نشر طلب العروض، وكل تعديل عليه بإصدار: تمديد · إعادة فتح · إلغاء | RFQ published, and every change as a version: extend · reopen · cancel | `Portal.Procurement.rfqpo.list.republish`<br>إعادة نشر طلب عروض الأسعار / Re-publish the RFQ (0.5) |
 | EVTS | المواد ووحدات بيعها · المدينة والحي فقط · الموعد · خيارات التسليم · الشروط | materials and sale units · city and district only · deadline · delivery options · terms | — |
-| EVTS | استفسار مورّد من بوابته أو من الرابط (قد يكون بلا اسم) | Supplier inquiry from the portal or the link (may be anonymous) | `Portal.Procurement.rfqpage.qa.visitor`<br>زائر من الرابط — بلا اسم / Visitor from the link — no name (0.63) |
+| EVTS | استفسار مورّد من بوابته أو من الرابط (قد يكون بلا اسم) | Supplier inquiry from the portal or the link (may be anonymous) | `Portal.Procurement.rfqpage.qa.visitor`<br>زائر من الرابط — بلا اسم / Link visitor — no name (0.63) |
 | EVTS | جواب «للجميع» أو «للسائل»، أو توضيح لكل المدعوّين | Answer to all or to the asker, or a clarification to all invited | `Portal.Procurement.rfqpo.extend.title`<br>تعديل الموعد أو المدعوّين / Edit deadline / invitees (0.5) |
 | EVTS | النص · لمن · بلا اسم السائل في «للجميع» | text · audience · no asker name when to all | — |
 | EVTS | طلب سعر أفضل — جولة واحدة لكل عرض | Better-price request — one round per offer | `Portal.Procurement.rfqpage.err.already_asked`<br>طُلب منه سعر أفضل مرة — جولة واحدة لكل عرض / A better price was already asked — one round per offer (0.88) |
@@ -1259,9 +1022,9 @@ Pairs checked: **1817** · equal in both languages: **887** · English differs: 
 | EVTS | نتيجة الطلب لكل مقدّم، والإغلاق المبكر، وجولة جديدة إن أُعيدت الترسية بعد إلغاء أمر | Result to every bidder, the early close, and a new round when re-awarded after a cancelled order | — |
 | EVTS | رُسّي عليك برقم الأمر · رُسّي على غيرك · أُغلق الطلب | won with the PO number · lost · RFQ closed | `Portal.Shared.pn_rfq_won_title`<br>{contractor} — رُسّي الطلب {rfq} عليك / {contractor} — RFQ {rfq} awarded to you (0.57) |
 | EVTS | رسالة في محادثة الأمر — ولمن خارج المنصة على واتساب مع رابط الأمر | A message in the order conversation — WhatsApp with the order link for off-platform suppliers | `Portal.ProcChats.channel_link`<br>خارج المنصة — تصله على واتساب برابط الأمر، ويردّ منه / Off-platform — reaches him on WhatsApp with the order link; he replies there (0.57) |
-| EVTS | ردّ المورّد في محادثة الأمر (من بوابته أو من رابط الأمر) | Supplier reply in the order conversation (portal or order link) | `Portal.ProcChats.via_link`<br>من رابط الأمر / from the order link (0.71) |
+| EVTS | ردّ المورّد في محادثة الأمر (من بوابته أو من رابط الأمر) | Supplier reply in the order conversation (portal or order link) | `Portal.ProcChats.via_link`<br>من رابط الأمر / via the order link (0.71) |
 | EVTS | إرسال الأمر للمورد، وكل إصدار بعده (إلغاء · موعد جديد · إقفال ناقص) | PO sent to the supplier, and each later version (cancel · new date · close short) | — |
-| EVTS | يصير «لم يقبل المورد» قراراً في «اليوم» | Becomes “not accepted” in Today | `Portal.ProcOrders.cancel_order.why.nacc`<br>لم يقبله المورد في مهلته / He did not accept in time (0.5) |
+| EVTS | يصير «لم يقبل المورد» قراراً في «اليوم» | Becomes “not accepted” in Today | `Portal.ProcOrders.cancel_order.why.nacc`<br>لم يقبله المورد في مهلته / Not accepted in time (0.5) |
 | EVTS | إشعار تسليم: تاريخ وملاحظة فقط — بتسلسل، فشاحنتان في يوم إشعاران | Delivery notice: date and note only — sequenced, so two trucks a day are two notices | — |
 | EVTS | يُسجَّل السند ويُوسم «وصلت بلا إشعار» | Receipt logged, tagged “no notice” | `Portal.ProcReceipts.arrival.button`<br>وصلت بلا إشعار / Arrived with no notice (0.67) |
 | EVTS | الشحنة · المستلم · الرمز · ملاحظة | shipment · receiver · code · note | `Portal.ProcReceipts.print.receiver_note`<br>ملاحظة المستلم / Receiver's note (0.67) |

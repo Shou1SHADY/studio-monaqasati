@@ -145,7 +145,7 @@ function useDoc(ref: Ref | null | undefined) {
   return { data: useStable(data), isLoading: false, error: null }
 }
 
-const fakeUser = (uid: string) => ({ uid, email: `${uid}@test.sa`, displayName: uid })
+const fakeUser = (uid: string) => ({ uid, email: `${uid}@test.sa`, displayName: uid, getIdToken: async () => `token-${uid}` })
 
 function useUser() {
   const uid = state.uid

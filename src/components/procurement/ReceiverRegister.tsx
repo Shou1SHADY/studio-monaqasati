@@ -142,6 +142,8 @@ export function ReceiverRegister({
                 </p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
                   {(r.warehouseIds || []).length ? (r.warehouseIds || []).map(nameOf).join(" · ") : t("anyPlace")}
+                  {" · "}
+                  {t("access.label")}: {r.userId ? t("access.account") : t("access.link")}
                 </p>
               </div>
               <span className={cn("text-xs tabular-nums", phoneUsable(r.phone) ? "text-foreground" : "text-destructive")} dir="ltr">

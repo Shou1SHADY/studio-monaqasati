@@ -28,6 +28,7 @@ import { Chip } from "@/components/module-ui/Chip"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useModules } from "@/hooks/useCompanyModules"
+import { useToast } from "@/hooks/use-toast"
 import { useDeliverySiteList } from "@/hooks/useDeliverySiteList"
 import { NO_SITE, orderSiteIds } from "@/lib/procurement/site-counts"
 import type { PurchaseOrder } from "@/lib/procurement/types"
@@ -105,6 +106,7 @@ export function ProcurementReports() {
   const router = useRouter()
   const params = useSearchParams()
   const { on } = useModules()
+  const { toast } = useToast()
   const loaded = useProcurementWorld()
   const { actor, loading } = loaded
   const [now] = useState(() => new Date())
@@ -262,6 +264,7 @@ export function ProcurementReports() {
   const exportCsv = (id: ReportId) => {
     const { head, rows } = csvOf(id)
     downloadCsv(`procurement-${id}.csv`, csvText(head, rows))
+    toast({ title: t("csv_done") })
   }
 
   const periodLabel = preset === "custom" ? `${fmtDay(period.from, locale)} – ${fmtDay(period.to, locale)}` : t(`period.${preset}`)

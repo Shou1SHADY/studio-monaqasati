@@ -65,7 +65,8 @@ describe("the eight stations", () => {
     expect(preview.links).toEqual([])
     const own = flowStations(base, base)[0]
     expect(own.previewOnly).toBe(false)
-    expect(own.links.map((l) => l.href)).toEqual([MY_REQUESTS_HREF])
+    expect(own.links.map((l) => l.href)).toEqual([MY_REQUESTS_HREF, MY_REQUESTS_HREF])
+    expect(own.links.map((l) => l.labelKey)).toEqual(["btn.open_mine_as", "btn.on_behalf_him"])
     expect(flowStations(full, full)[0].links).toEqual([])
   })
 

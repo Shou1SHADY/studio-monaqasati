@@ -18,7 +18,9 @@ export function MaterialStrip({ strip, columns, sortLine, onSort, showPrices }: 
   const nameOf = (id: string | null) => columns.find((c) => c.offer.id === id)?.name || "—"
   return (
     <div className="rounded-xl border bg-muted/20 p-3" aria-label={t("strip_title")}>
-      <p className="mb-2 text-xs font-bold">{t("strip_title")}</p>
+      <p className="mb-2 text-xs font-bold">
+        {t("strip_title")} <span className="font-normal text-muted-foreground">{t("strip_sub")}</span>
+      </p>
       <ul className="grid gap-2 sm:grid-cols-2">
         {strip.map((s) => (
           <li key={s.li} className="rounded-lg border bg-card px-3 py-2 text-xs">
@@ -42,7 +44,7 @@ export function MaterialStrip({ strip, columns, sortLine, onSort, showPrices }: 
                 {s.lowestIsSafe && <span className="ms-1 text-success">{t("verified_quote")}</span>}
               </p>
             ) : (
-              <p className="mt-1 text-muted-foreground">{t("no_price")}</p>
+              <p className="mt-1 text-muted-foreground">{t("no_live_line")}</p>
             )}
             {s.safe && (
               <p className="mt-0.5 text-muted-foreground">

@@ -31,7 +31,7 @@ import { PROCUREMENT_SETTINGS } from "@/lib/procurement/types"
 
 type Rec = Record<string, unknown>
 
-export function TeamRequestDialog({ open, onOpenChange, orgId, onSent }: { open: boolean; onOpenChange: (o: boolean) => void; orgId: string; onSent?: (number: string) => void }) {
+export function TeamRequestDialog({ open, onOpenChange, orgId, onSent, from = "team" }: { open: boolean; onOpenChange: (o: boolean) => void; orgId: string; onSent?: (number: string) => void; from?: "team" | "incoming" }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const firestore = useFirestore()
@@ -103,7 +103,7 @@ export function TeamRequestDialog({ open, onOpenChange, orgId, onSent }: { open:
         setError(t("tr_failed"))
         return
       }
-      toast({ title: t("tr_sent", { number: body.data.number }) })
+      toast({ title: t(from === "incoming" ? "tr_sent_incoming" : "tr_sent_team", { number: body.data.number }) })
       onSent?.(body.data.number)
       reset()
       onOpenChange(false)

@@ -4,7 +4,7 @@ import type { PermissionId } from "@/lib/permissions"
 const full = { financeOn: true, pmOn: false, mfgOn: false, ownerStepsBack: false }
 
 describe("Settings → roles (Procurement 2.0 PRD §4)", () => {
-  it("has the thirteen rows of the matrix, in its order", () => {
+  it("has the fourteen rows of the matrix, in its order", () => {
     expect(roleRows(full).map((r) => r.id)).toEqual([
       "prices",
       "publish",
@@ -15,6 +15,7 @@ describe("Settings → roles (Procurement 2.0 PRD §4)", () => {
       "cancel",
       "escalate",
       "expedite",
+      "invite_suppliers",
       "manual_receipt",
       "raise_request",
       "settings",
@@ -52,6 +53,11 @@ describe("Settings → roles (Procurement 2.0 PRD §4)", () => {
     expect(roleRows({ ...full, pmOn: true }).map((r) => r.id)).not.toContain("raise_request")
     const raise = roleRows(full).find((r) => r.id === "raise_request")
     expect(raise?.cells).toEqual({ owner: true, manager: true, buyer: true, expediter: false, requester: true })
+  })
+
+  it("«يدعو مورداً» is the manager's and the buyer's, as `mayInviteSuppliers` gates it — never the expediter's", () => {
+    expect(roleRows(full).find((r) => r.id === "invite_suppliers")?.cells).toEqual({ owner: true, manager: true, buyer: true, expediter: false, requester: false })
+    expect(roleRows({ ...full, ownerStepsBack: true }).find((r) => r.id === "invite_suppliers")?.cells.owner).toBe(false)
   })
 
   it("«يعلّم الدفع» shows without Finance and «يسأل الورشة» with Manufacturing", () => {

@@ -57,6 +57,7 @@ import { RfqNumbersRow } from "./RfqNumbersRow"
 import { RfqOfferDrawer } from "./RfqOfferDrawer"
 import { RfqOfferList } from "./RfqOfferList"
 import { RfqPathHeader } from "./RfqPathHeader"
+import { RfqRequestsPanel, RfqTermsPanel } from "./RfqTermsPanel"
 import { RfqTitleEdit } from "./RfqTitleEdit"
 import { requestExtend } from "./rfqPageEvents"
 import type { RfqView } from "./rfqOfferView"
@@ -333,8 +334,10 @@ export function RfqPage({ rfqId }: { rfqId: string }) {
                       onPrint={() => void printDoc()}
                       projectName={projectName}
                     />
+                    <RfqTermsPanel rfq={rfq} onExtend={access.acts && open ? () => requestExtend(rfqId) : null} />
                     {state.stage === "open" && !rfq.directAward && <RfqGuestLinkPanel rfqId={rfqId} canShare={access.acts} onShare={() => setShareOpen(true)} />}
                     <RfqInvitedList rfq={rfq} offers={world.offers} guestOffers={offPlatform} favoriteIds={[]} />
+                    <RfqRequestsPanel requests={world.requests} />
                   </TabsContent>
                 </Tabs>
               </>

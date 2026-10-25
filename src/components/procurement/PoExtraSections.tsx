@@ -128,6 +128,9 @@ export function DocTrailSection({ po, deliveries, receiptNumber, financeOn = tru
       else if (f === "held") out.push(t("rfqpo.po.trail.held"))
     }
     if (s.key === "accepted" && po.promisedDate && s.at) out.unshift(t("rfqpo.po.trail.date", { date: fmt(po.promisedDate) }))
+    if (s.key === "approved" && !s.at) out.push(t("rfqpo.po.trail.approver_role"))
+    if (s.key === "receipt" && !s.who.length) out.push(t("rfqpo.po.trail.receiver_role"))
+    if (s.key === "payment") out.push(t("rfqpo.po.trail.payment_optional"))
     return out
   }
   return (
@@ -417,6 +420,7 @@ export function FinanceTrailSection({
           )}
         </div>
       )}
+      {canHold && !onRecordPayment && po.approvedAt && po.status !== "cancelled" && <p className="text-[11px] leading-relaxed text-muted-foreground">{t("rfqpo.po.money.hold_cap")}</p>}
       <p className="text-[11px] leading-relaxed text-muted-foreground">{t("rfqpo.po.money.footer")}</p>
     </Box>
   )

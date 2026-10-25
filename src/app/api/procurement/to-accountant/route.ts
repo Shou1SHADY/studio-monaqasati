@@ -13,7 +13,7 @@ import { financeOn } from "@/lib/procurement/financeless-server"
 
 const body = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("invoice"), poId: z.string().min(1).max(128), url: z.string().url().max(2000), name: z.string().max(200) }),
-  z.object({ kind: z.literal("export"), filename: z.string().regex(/^[\w.؀-ۿ -]{1,120}\.(xlsx|csv)$/), content: z.string().max(4_000_000), period: z.string().max(80) }),
+  z.object({ kind: z.literal("export"), filename: z.string().regex(/^[\w.؀-ۿ -]{1,120}\.(xlsx|csv|zip)$/), content: z.string().max(6_000_000), period: z.string().max(80) }),
 ])
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string)

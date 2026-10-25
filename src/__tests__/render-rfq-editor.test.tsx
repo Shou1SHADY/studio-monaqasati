@@ -109,7 +109,7 @@ describe("the RFQ editor (PUR-02/03)", () => {
     const next = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent || "").includes("التالي: النشر"))!
     await act(async () => void fireEvent.click(next))
     await flush()
-    expect(text()).toContain("اختر المادة أو فئتها الفرعية في الصف 1")
+    expect(Array.from(document.querySelectorAll("p.text-destructive")).map((p) => p.textContent)).toContain("اختر المادة")
     expect([...missingKeys]).toEqual([])
     view.unmount()
   })
@@ -186,8 +186,8 @@ describe("the RFQ editor (PUR-02/03)", () => {
     setPathname("/contractor/rfqs/requests", "publish=project:P1:01")
     const view = render(<RequestsPage />)
     await flush()
-    // No «التالي» was pressed: the row lacking its material already says so.
-    expect(text()).toContain("اختر المادة أو فئتها الفرعية في الصف 1")
+    // No «التالي» was pressed: the row lacking its material already says so — step 2 stays closed until its subcategory is chosen.
+    expect(text()).toContain("لا تُفتح الخطوة 2 قبل اختيار فئتها الفرعية: بها يصل الطلب إلى الموردين.")
     expect(Array.from(document.querySelectorAll("li")).some((x) => x.classList.contains("bg-destructive/5"))).toBe(true)
     expect(text()).toContain("طلبه م. فهد")
     expect(text()).toContain("اعتمده م. فهد")

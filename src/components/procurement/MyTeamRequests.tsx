@@ -133,7 +133,9 @@ export function MyTeamRequests({ refreshKey }: { refreshKey: number }) {
             {r.step === "failed"
               ? r.failed?.alt
                 ? t("line_failed_alt", { why: r.failed.why, alt: r.failed.alt })
-                : t("line_failed", { why: r.failed?.why || "—" })
+                : r.failed?.why
+                  ? t("line_failed", { why: r.failed.why })
+                  : t("line_failed_check")
               : r.step === "withdrawn"
                 ? t("line_withdrawn")
                 : r.step === "order" && r.promisedDate

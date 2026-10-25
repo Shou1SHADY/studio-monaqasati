@@ -27,6 +27,8 @@ const round2 = (n: number) => Math.round(n * 100) / 100
 const inPeriod = (d: string | null, from: string, to: string) => Boolean(d && d >= from && d <= to)
 
 export interface AccountantExport {
+  /** The orders of `orders`, in the same order — the ids whose invoice files the zip carries. */
+  poIds: string[]
   orders: Cell[][]
   receipts: Cell[][]
   /** Invoice files of the exported orders — name and link. */
@@ -78,7 +80,7 @@ export function accountantExport(
     }
   }
   receiptRows.sort((a, b) => String(a[1]).localeCompare(String(b[1])) || String(a[0]).localeCompare(String(b[0])))
-  return { orders: orderRows, receipts: receiptRows, invoices }
+  return { poIds: approved.map((po) => po.id), orders: orderRows, receipts: receiptRows, invoices }
 }
 
 /** CSV (UTF-8 with BOM, so Excel reads Arabic) — one table after the other. */

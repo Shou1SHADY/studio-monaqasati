@@ -9,6 +9,7 @@ import { useTranslations } from "next-intl"
 import { Loader2, MessageCircle, Paperclip, Send, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useToast } from "@/hooks/use-toast"
 import type { MessageFile } from "@/lib/procurement/po-messages"
 
 export function Composer({
@@ -25,6 +26,7 @@ export function Composer({
   onUpload: (file: File) => Promise<MessageFile>
 }) {
   const t = useTranslations("Portal.ProcChats")
+  const { toast } = useToast()
   const [text, setText] = useState("")
   const [file, setFile] = useState<MessageFile | null>(null)
   const [busy, setBusy] = useState(false)
@@ -32,7 +34,11 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null)
 
   const submit = async () => {
-    if (busy || disabled || (!text.trim() && !file)) return
+    if (busy || disabled) return
+    if (!text.trim() && !file) {
+      toast({ title: t("write_message") })
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -53,6 +59,7 @@ export function Composer({
     setError(null)
     try {
       setFile(await onUpload(f))
+      toast({ title: t("file_attached") })
     } catch {
       setError(t("upload_failed"))
     } finally {

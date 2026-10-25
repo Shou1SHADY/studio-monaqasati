@@ -22,7 +22,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { brandsOf, label, shortSpecName, specsOf, type MaterialIndex } from "@/lib/materials/tree"
+import { OTHER_SPEC, brandsOf, label, shortSpecName, specsOf, type MaterialIndex } from "@/lib/materials/tree"
 import type { MaterialPick, MaterialSpec, MaterialText } from "@/lib/materials/types"
 
 const optionKey = (o: MaterialText) => `${o.ar}|${o.en}`
@@ -34,7 +34,6 @@ export function MaterialSpecCells({ index, pick, onChange, readOnly }: { index: 
   const t = useTranslations("Portal.Materials")
   const locale = useLocale()
   const [freeOpen, setFreeOpen] = useState(false)
-  const [freeName, setFreeName] = useState("")
   const [freeValue, setFreeValue] = useState("")
   const specs: MaterialSpec[] = index && !pick.outside ? specsOf(index, pick.nodeId) : []
   const brands = index && !pick.outside ? brandsOf(index, pick.nodeId) : []
@@ -116,8 +115,7 @@ export function MaterialSpecCells({ index, pick, onChange, readOnly }: { index: 
       )}
       <DropdownMenu>
         <DropdownMenuTrigger className={cn(cellClass, "text-muted-foreground")} aria-label={t("add_spec")}>
-          <Plus size={12} aria-hidden="true" />
-          {!shown.length && !pick.brand && !pick.specs.length && <span>{t("spec")}</span>}
+          {!shown.length && !pick.brand && !pick.specs.length ? <span>{t("spec")}</span> : <Plus size={12} aria-hidden="true" />}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
           {unchosen.map((s) => (
@@ -133,7 +131,7 @@ export function MaterialSpecCells({ index, pick, onChange, readOnly }: { index: 
           ))}
           {brands.length > 0 && !pick.brand && (
             <>
-              <DropdownMenuLabel className="text-xs">{t("brand")}</DropdownMenuLabel>
+              <DropdownMenuLabel className="text-xs">{t("brand_of_category")}</DropdownMenuLabel>
               {brands.map((b) => (
                 <DropdownMenuItem key={b.ar} onSelect={() => onChange({ ...pick, brand: b })}>
                   {label(b, locale)}
@@ -142,33 +140,32 @@ export function MaterialSpecCells({ index, pick, onChange, readOnly }: { index: 
               <DropdownMenuSeparator />
             </>
           )}
-          <DropdownMenuItem onSelect={() => setFreeOpen(true)}>{t("add_free_spec")}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setFreeOpen(true)}>{t("free_spec")}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
       <Dialog open={freeOpen} onOpenChange={setFreeOpen}>
         <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>{t("add_free_spec")}</DialogTitle>
+            <DialogTitle>{t("free_spec")}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <Input value={freeName} onChange={(e) => setFreeName(e.target.value)} placeholder={t("free_spec_name")} aria-label={t("free_spec_name")} dir="auto" />
-            <Input value={freeValue} onChange={(e) => setFreeValue(e.target.value)} placeholder={t("free_spec_value")} aria-label={t("free_spec_value")} dir="auto" />
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              disabled={!freeName.trim() || !freeValue.trim()}
-              onClick={() => {
-                onChange({ ...pick, specs: [...pick.specs, { name: { ar: freeName.trim(), en: freeName.trim() }, value: { ar: freeValue.trim(), en: freeValue.trim() }, free: true }] })
-                setFreeName("")
-                setFreeValue("")
-                setFreeOpen(false)
-              }}
-            >
-              {t("add")}
-            </Button>
-          </DialogFooter>
+          <form
+            className="space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (!freeValue.trim()) return
+              onChange({ ...pick, specs: [...pick.specs, { name: OTHER_SPEC, value: { ar: freeValue.trim(), en: freeValue.trim() }, free: true }] })
+              setFreeValue("")
+              setFreeOpen(false)
+            }}
+          >
+            <Input autoFocus value={freeValue} onChange={(e) => setFreeValue(e.target.value)} placeholder={t("free_spec_ph")} aria-label={t("free_spec")} dir="auto" />
+            <DialogFooter>
+              <Button type="submit" disabled={!freeValue.trim()}>
+                {t("add")}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
