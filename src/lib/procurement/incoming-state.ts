@@ -604,6 +604,9 @@ export interface MyRequest {
   rfqNumber: string | null
   poNumber: string | null
   promisedDate: string | null
+  /** When the RFQ it is in closes, and the earliest open delivery notice on its order («في الطريق — يصل …»). Never a price, never a supplier. */
+  rfqDeadline?: string | null
+  transitDate?: string | null
   failed: { why: string; alt: string } | null
   withdrawable: boolean
 }

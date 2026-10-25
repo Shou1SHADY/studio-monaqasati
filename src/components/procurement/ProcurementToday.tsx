@@ -23,6 +23,8 @@ import { Button } from "@/components/ui/button"
 import { useModules } from "@/hooks/useCompanyModules"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useProcTodayWorld } from "@/hooks/useTodayWorld"
+import { useTeamApprovals } from "@/hooks/useTeamApprovals"
+import { teamApprovalTasks, withApprovalTasks } from "@/lib/procurement/team-approval-today"
 import { runsRfqs } from "@/lib/procurement/rfq-access"
 import { presentParams, type Params } from "@/lib/procurement/today-present"
 import { TODAY_CHIPS, chipCounts, todayFlow, todayInvitations, todayTasks, todayWaits, type TodayChip, type Wait } from "@/lib/procurement/today"
@@ -58,7 +60,9 @@ export function ProcurementToday() {
   // The same gate as the RFQs page's «طرح طلب عروض أسعار جديد» (rfq-access.ts): whoever runs RFQs, the owner only without staff.
   const runner = { ...loaded.actor, managesRfqs: can("rfq.manage") || can("rfq.create"), ownerHasTeam: loaded.actor.isOwner && needs.ownerHasTeam }
   const canCreate = runsRfqs(runner) && (can("rfq.create") || can("projects.publish") || can("offers.accept") || can("po.approve"))
-  const tasks = useMemo(() => todayTasks(world, actor, now), [world, actor, now])
+  // A team «طلب مواد» awaiting the viewer's approval is one of his decisions too (REQ-05).
+  const { approvals } = useTeamApprovals()
+  const tasks = useMemo(() => withApprovalTasks(todayTasks(world, actor, now), teamApprovalTasks(approvals)), [world, actor, now, approvals])
   const waits = useMemo(() => todayWaits(world, actor, now), [world, actor, now])
   const flow = useMemo(() => todayFlow(world, actor, now), [world, actor, now])
   const invitations = useMemo(() => todayInvitations(world.invitations || [], world.supplierRecords, now), [world.invitations, world.supplierRecords, now])

@@ -97,10 +97,13 @@ describe("«قادمة» — what is read before it arrives (INC-06)", () => {
     expect(sortUpcoming([far, a, near, b]).map((i) => i.key)).toEqual(["pm:P1:06", "pm:P1:05", "stock:w:y", "stock:w:x"])
   })
 
-  it("a watch key is a request's or a stock item's — nothing else is accepted", () => {
+  it("a watch key is a request's, a stock item's, a planned work order's or a team request awaiting approval's — nothing else is accepted", () => {
     expect(isWatchKey("pm:P1:05")).toBe(true)
     expect(isWatchKey("stock:w1:item9")).toBe(true)
-    for (const bad of ["", "pm:P1", "mfg:W1:PRQ1", "stock:w1", "pm:P1:05:x", "pm: P1:05", "team:abc"]) expect(isWatchKey(bad)).toBe(false)
+    // «قادمة» also shows a planned work order and a team request awaiting approval (IN-12, IN-17): both are watched.
+    expect(isWatchKey("wo:W1")).toBe(true)
+    expect(isWatchKey("team:abc")).toBe(true)
+    for (const bad of ["", "pm:P1", "mfg:W1:PRQ1", "stock:w1", "pm:P1:05:x", "pm: P1:05", "team:a:b", "wo:"]) expect(isWatchKey(bad)).toBe(false)
   })
 })
 

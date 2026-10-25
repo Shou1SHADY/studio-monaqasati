@@ -172,7 +172,8 @@ describe("GuideLink", () => {
       </>,
     )
     const links = Array.from(container.querySelectorAll("a"))
-    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/contractor/rfqs/guide", "/contractor/rfqs/guide"])
+    // Each door names where it was opened from, so «عُد إلى المشتريات» returns there (IN-18).
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/contractor/rfqs/guide?from=incoming", "/contractor/rfqs/guide?from=mine"])
     expect(links.map((a) => a.textContent)).toEqual(["كيف تعمل المشتريات؟", "كيف يسير طلبي بعد الإرسال؟"])
   })
 })

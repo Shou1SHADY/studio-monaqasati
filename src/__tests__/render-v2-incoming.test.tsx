@@ -264,7 +264,8 @@ describe("«طلباتي» — the requester's page", () => {
     expect(text()).toContain("ط.م-2026/014")
     for (const step of ["عند المشتريات", "في عروض", "في أمر", "وصلت"]) expect(text()).toContain(step)
     expect(text()).toContain("عند المشتريات — لم يُنشر بعد")
-    expect(text()).toContain("في أمر شراء — موعد المورد")
+    // The order is named as the prototype's `teamStatus` names it (IN-15): its number in Arabic and the supplier's date — never the supplier.
+    expect(text()).toContain("في أمر ط.ش-2026/021 · موعد المورد")
     expect(text()).toContain("تعذّر الشراء: الأسعار فوق الميزانية بكثير. البديل المقترح: مورد في الخرج")
     expect(button("اسحبه")).toBeDefined()
     expect(document.querySelectorAll('button')).toBeTruthy()

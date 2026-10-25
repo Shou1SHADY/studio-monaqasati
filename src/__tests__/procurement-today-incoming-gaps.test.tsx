@@ -27,6 +27,10 @@ import { flowStations, guideBackHref, INCOMING_HREF, MY_REQUESTS_HREF, RAISE_HRE
 import { RequestReadPanel } from "@/components/procurement/RequestReadPanel"
 import type { RequestCard } from "@/lib/procurement/incoming-requests"
 import type { IncomingDoc } from "@/lib/procurement/incoming-state"
+import { UpcomingList } from "@/components/procurement/UpcomingList"
+import { TeamApprovalsSection } from "@/components/procurement/TeamApprovalsSection"
+import type { TeamApprovalView } from "@/lib/procurement/team-approval"
+import type { UpcomingItem } from "@/lib/procurement/upcoming"
 
 installDomShims()
 
@@ -194,5 +198,40 @@ describe("Incoming — the request read only (IN-02, IN-03, IN-06, IN-07, IN-08)
     render(<RequestReadPanel card={card({ state: "prepared", draftId: "d9", buyLines: 1 })} rfqDeadline={null} order={null} canAct onLine={() => {}} />)
     expect(screen.getByRole("link", { name: "افتح المسودة" }).getAttribute("href")).toBe("/contractor/rfqs/new?edit=d9")
     expect(screen.queryByText("جهّزه")).toBeNull()
+  })
+})
+
+describe("«قادمة» and «طلباتي» — the new sources render (IN-11, IN-12, IN-17)", () => {
+  it("a team request awaiting approval names its approvers; a planned work order its number; a stock item its days and eta", () => {
+    const items: UpcomingItem[] = [
+      { key: "team:t1", kind: "team", ref: "MAT-2026/004", place: "Site", by: "Fahd", since: day(-2), lines: [{ name: "Cement", unit: "bag", qty: 5 }], needBy: day(10), stock: null, approvers: ["Owner", "Manager"] },
+      { key: "wo:p", kind: "workorder", ref: null, place: "Marble countertop", by: null, since: null, lines: [{ name: "Slab", unit: "m2", qty: 6 }], needBy: day(20), stock: null, workOrder: { no: "WO-2026/063", product: "Marble countertop" } },
+      { key: "stock:w:i", kind: "stock", ref: null, place: "Main", by: null, since: null, lines: [{ name: "Sand", unit: "m3", qty: 10 }], needBy: null, stock: { onHand: 280, min: 100 }, etaDays: 9, perDay: 20 },
+    ]
+    render(<UpcomingList items={items} loading={false} watched={new Set()} onWatch={async () => true} history={[]} />)
+    expect(screen.getByText(/Owner أو Manager/)).toBeTruthy()
+    expect(screen.getByText("أمر التشغيل WO-2026/063")).toBeTruthy()
+    expect(screen.getByText(/يكفي 9 أيام/)).toBeTruthy()
+    expect(screen.getByText("يُتوقع وصوله خلال 9 أيام")).toBeTruthy()
+    expect(missingKeys.size).toBe(0)
+  })
+
+  it("the approver approves or returns with a reason; the requester reads who holds it and may withdraw", async () => {
+    const calls: Array<Record<string, unknown>> = []
+    global.fetch = jest.fn(async (_u: unknown, init?: { body?: string }) => {
+      calls.push(JSON.parse(init?.body || "{}"))
+      return { ok: true, json: async () => ({ success: true }) }
+    }) as unknown as typeof fetch
+    const view = (over: Partial<TeamApprovalView>): TeamApprovalView => ({ id: "t1", mrKey: "team:t1", no: "MAT-2026/004", st: "wait", place: { label: "Site", city: "", district: "" }, siteId: null, needBy: day(10), note: null, lines: [{ name: "Cement", unit: "bag", qty: 5, needBy: null, material: null }], requestedBy: "Fahd", requestedFor: "Fahd", sentAt: `${day(-3)}T08:00:00Z`, createdAt: `${day(-3)}T08:00:00Z`, waitingDays: 3, approvers: ["Owner", "Manager"], returned: null, canDecide: true, mine: false, overdue: true, ...over })
+    const onChanged = jest.fn()
+    render(<TeamApprovalsSection approvals={[view({}), view({ id: "t2", mrKey: "team:t2", no: "MAT-2026/005", canDecide: false, mine: true, overdue: false })]} orgId="own" onChanged={onChanged} />)
+    expect(screen.getByText("بانتظار اعتمادك")).toBeTruthy()
+    expect(screen.getByText(/مع Owner أو Manager للاعتماد/)).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "أعده للتعديل" }))
+    const send = screen.getByRole("button", { name: "أعده" }) as HTMLButtonElement
+    expect(send.disabled).toBe(true)
+    fireEvent.click(screen.getByRole("button", { name: "راجع الكميات" }))
+    expect(send.disabled).toBe(false)
+    expect(missingKeys.size).toBe(0)
   })
 })

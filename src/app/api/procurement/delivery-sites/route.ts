@@ -44,11 +44,17 @@ export async function POST(req: NextRequest) {
       const receiver = await db.collection(PROCUREMENT_RECEIVERS).doc(input.receiverId).get()
       if (!receiver.exists || receiver.data()?.organizationId !== caller.orgId) return fail("Receiver not found", "BAD_RECEIVER", 400)
     }
+    if (input.managerId) {
+      const member = (await db.collection("users").doc(input.managerId).get()).data()
+      if (!member || ((member.organizationId as string) || input.managerId) !== caller.orgId) return fail("That member is not in this company", "BAD_MANAGER", 400)
+    }
     const ref = db.collection(PROCUREMENT_SETTINGS).doc(caller.orgId)
     const site = await db.runTransaction(async (tx) => {
       const list = storedSites((await tx.get(ref)).data()?.deliverySites)
       const id = input.id || newSiteId()
       if (!list.some((s) => s.id === id) && list.length >= MAX_SITES) return null
+      // The editor's «+ موقع جديد» does not send the manager: a site saved without the key keeps the one it had.
+      const managerId = input.managerId !== undefined ? input.managerId : list.find((s) => s.id === id)?.managerId ?? null
       const next: DeliverySite = {
         id,
         kind: input.kind,
@@ -57,6 +63,7 @@ export async function POST(req: NextRequest) {
         district: input.district,
         address: input.address,
         receiverId: input.receiverId || null,
+        ...(managerId ? { managerId } : {}),
         projectId: input.projectId || null,
         warehouseId: input.warehouseId || null,
         ...(input.mapUrl ? { mapUrl: input.mapUrl } : {}),

@@ -29,10 +29,38 @@ import { toAmount } from "@/lib/procurement/offer-pricing"
 import { deliverySites, storedSites } from "@/lib/procurement/delivery-sites"
 import { todayOf } from "@/lib/procurement/po"
 import { PROCUREMENT_SETTINGS } from "@/lib/procurement/types"
+import type { TeamApprovalView } from "@/lib/procurement/team-approval"
+import { Callout } from "@/components/module-ui/Callout"
+
+/** The editor's group a returned request is edited in: its place, its date and its lines as they were sent. */
+const groupOf = (v: TeamApprovalView): EditorGroup =>
+  newGroup({
+    siteId: v.siteId,
+    label: v.place.label,
+    city: v.place.city,
+    district: v.place.district,
+    needBy: v.needBy,
+    lines: v.lines.map((l) => ({ ...blankLine(), name: l.name, unit: l.unit, quantity: String(l.qty), unitFromSource: true, material: l.material ?? null, needBy: l.needBy })),
+  })
 
 type Rec = Record<string, unknown>
 
-export function TeamRequestDialog({ open, onOpenChange, orgId, onSent, from = "team" }: { open: boolean; onOpenChange: (o: boolean) => void; orgId: string; onSent?: (number: string) => void; from?: "team" | "incoming" }) {
+export function TeamRequestDialog({
+  open,
+  onOpenChange,
+  orgId,
+  onSent,
+  from = "team",
+  editing = null,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  orgId: string
+  onSent?: (number: string) => void
+  from?: "team" | "incoming"
+  /** A request returned by its approver (REQ-05): edited here and sent again — it waits for approval again. Mount with a `key`. */
+  editing?: TeamApprovalView | null
+}) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const firestore = useFirestore()
@@ -71,8 +99,8 @@ export function TeamRequestDialog({ open, onOpenChange, orgId, onSent, from = "t
   }, [orgMembers, receiversData, teamGroups, t])
   const [forWhom, setForWhom] = useState("self")
 
-  const [groups, setGroups] = useState<EditorGroup[]>(() => [newGroup({ lines: [blankLine()] })])
-  const [note, setNote] = useState("")
+  const [groups, setGroups] = useState<EditorGroup[]>(() => [editing ? groupOf(editing) : newGroup({ lines: [blankLine()] })])
+  const [note, setNote] = useState(editing?.note || "")
   const [tried, setTried] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -100,21 +128,22 @@ export function TeamRequestDialog({ open, onOpenChange, orgId, onSent, from = "t
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          action: "create",
+          ...(editing ? { action: "resubmit", id: editing.id } : { action: "create" }),
           lines: lines.map((l) => ({ name: l.name.trim(), unit: l.unit.trim(), quantity: toAmount(l.quantity), needBy: l.needBy || null, material: l.material || null })),
           needBy: g.needBy,
           siteId: g.siteId,
           place: { label: g.label.trim(), city: g.city, district: g.district },
           note: note.trim() || null,
-          requestedFor: forWhom === "self" ? { kind: "self" } : { kind: forWhom.startsWith("receiver:") ? "receiver" : "member", id: forWhom.slice(forWhom.indexOf(":") + 1) },
+          ...(editing ? {} : { requestedFor: forWhom === "self" ? { kind: "self" } : { kind: forWhom.startsWith("receiver:") ? "receiver" : "member", id: forWhom.slice(forWhom.indexOf(":") + 1) } }),
         }),
       })
-      const body = (await res.json().catch(() => null)) as { data?: { number?: string } } | null
+      const body = (await res.json().catch(() => null)) as { data?: { number?: string; pending?: boolean } } | null
       if (!res.ok || !body?.data?.number) {
         setError(t("tr_failed"))
         return
       }
-      toast({ title: t(from === "incoming" ? "tr_sent_incoming" : "tr_sent_team", { number: body.data.number }) })
+      // With the approval policy on, it waits for the owner or the site's manager before it reaches Incoming.
+      toast({ title: t(editing ? "tr_resent" : body.data.pending ? "tr_sent_pending" : from === "incoming" ? "tr_sent_incoming" : "tr_sent_team", { number: body.data.number }) })
       onSent?.(body.data.number)
       reset()
       onOpenChange(false)
@@ -129,12 +158,13 @@ export function TeamRequestDialog({ open, onOpenChange, orgId, onSent, from = "t
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-h-[92vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t("tr_title")}</DialogTitle>
+          <DialogTitle>{editing ? t("tr_title_edit", { number: editing.no }) : t("tr_title")}</DialogTitle>
           {/* The requester raising his own reads where it goes and where he follows it; a buyer on «الواردة» keeps the general line. */}
           <DialogDescription>{from === "team" && myName ? t("tr_desc_self", { name: myName }) : t("tr_desc")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          {mayAsk && (
+          {editing?.returned && <Callout tone="warn">{t("tr_returned_why", { name: editing.returned.byName, why: editing.returned.why })}</Callout>}
+          {mayAsk && !editing && (
             <div className="space-y-1">
               <Label htmlFor="tr-for" className="text-xs">
                 {t("tr_for")}
@@ -171,7 +201,7 @@ export function TeamRequestDialog({ open, onOpenChange, orgId, onSent, from = "t
           </Button>
           <Button onClick={() => void submit()} disabled={busy} className="gap-1.5">
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            {t("tr_submit")}
+            {editing ? t("tr_resubmit") : t("tr_submit")}
           </Button>
         </DialogFooter>
       </DialogContent>

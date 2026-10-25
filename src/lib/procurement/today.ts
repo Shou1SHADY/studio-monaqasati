@@ -254,6 +254,7 @@ export type TaskKind =
   | "rfq_no_live"
   | "rfq_can_award" // open, the competition limit reached
   | "rfq_query"
+  | "team_approval" // a team «طلب مواد» awaiting the viewer's approval before Procurement (REQ-05, `team-approval-today.ts`)
 
 export interface Task {
   id: string
@@ -358,6 +359,7 @@ const CHIP_OF: Record<TaskKind, TodayChip> = {
   rfq_no_live: "rfq",
   rfq_can_award: "rfq",
   rfq_query: "rfq",
+  team_approval: "req",
 }
 
 /** Below this on-time score we confirm with the supplier before his date, not after. */
@@ -1169,6 +1171,9 @@ export function financeDue(orders: PurchaseOrder[]): { advances: number; receive
 // ---------------------------------------------------------------------------
 
 export const TODAY_KEYS = [
+  "task.team_approval.title",
+  "task.team_approval.sub",
+  "actions.decideRequest",
   "page.title",
   "page.subtitle",
   "title",

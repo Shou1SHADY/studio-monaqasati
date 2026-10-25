@@ -35,6 +35,7 @@ export function DeliverySitesPanel({
   pmOn = false,
   mfgOn = false,
   projects = [],
+  members,
 }: {
   /** What the settings document holds. */
   stored: DeliverySite[]
@@ -49,6 +50,8 @@ export function DeliverySitesPanel({
   /** Manufacturing is in the package: the workshop's warehouse is a kind of place. */
   mfgOn?: boolean
   projects?: Array<{ id: string; name?: string }>
+  /** Without Projects: the company's members, to name a site's manager — he approves the team's requests for it when the policy is on. */
+  members?: Array<{ id: string; name: string }>
 }) {
   const t = useTranslations("Portal.ProcSettings")
   const locale = useLocale()
@@ -80,6 +83,7 @@ export function DeliverySitesPanel({
       district: site.district,
       address: site.address,
       receiverId: site.receiverId,
+      ...(members ? { managerId: site.managerId || null } : {}),
       projectId: site.projectId || null,
       warehouseId: site.warehouseId || null,
       mapUrl: mapText.trim() ? normaliseMapUrl(mapText) : null,
@@ -255,6 +259,20 @@ export function DeliverySitesPanel({
                 </NativeSelect>
                 <p className="text-[11px] text-muted-foreground">{t("sites.receiver_hint")}</p>
               </div>
+              {members && (
+                <div className="space-y-1">
+                  <Label htmlFor="ds-mgr" className="text-xs">{t("sites.manager")}</Label>
+                  <NativeSelect id="ds-mgr" value={editing.managerId || ""} onChange={(e) => setEditing({ ...editing, managerId: e.target.value || null })} className="w-full">
+                    <option value="">{t("sites.no_manager")}</option>
+                    {members.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                  <p className="text-[11px] text-muted-foreground">{t("sites.manager_hint")}</p>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter className="gap-2">
