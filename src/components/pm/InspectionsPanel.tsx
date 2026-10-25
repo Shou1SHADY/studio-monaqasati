@@ -149,6 +149,7 @@ export function InspectionsPanel({
         title={t("wir.title")}
         icon={SearchCheck}
         count={openCount || undefined}
+        description={list.length > 0 ? t("wir.sub", { open: openCount, total: list.length }) : undefined}
         bodyClassName="p-0"
         actions={
           <>
@@ -174,9 +175,8 @@ export function InspectionsPanel({
           </>
         }
       >
-        {list.length > 0 && <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("wir.sub", { open: openCount, total: list.length })}</p>}
         {list.length === 0 ? (
-          <EmptyState icon={SearchCheck} title={t("wir.empty")} description={t("wir.empty_desc", { count: gatedCount })} />
+          <EmptyState bare icon={SearchCheck} title={t("wir.empty")} description={t("wir.empty_desc", { count: gatedCount })} />
         ) : (
           <ul className="divide-y">
             {list.map((w) => {
@@ -243,7 +243,6 @@ export function InspectionsPanel({
                     {st === "fail" && canQa && (
                       <Button
                         size="sm"
-                        variant="outline"
                         onClick={() => {
                           setAgainOn(today)
                           setAgain(w)
