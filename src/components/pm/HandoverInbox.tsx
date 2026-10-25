@@ -103,10 +103,10 @@ export function HandoverInbox() {
         tabsLabel={t("inbox.title")}
       />
 
-      <Callout tone="info">
+      <p className="text-sm leading-relaxed text-muted-foreground">
         <span className="me-1.5">{t("inbox.intro")}</span>
         {crmTag}
-      </Callout>
+      </p>
 
       {!isLoading && files.length === 0 && returned.length === 0 && <EmptyState icon={Hand} title={t("inbox.empty_title")} description={t("inbox.empty_desc")} />}
 
@@ -137,27 +137,28 @@ export function HandoverInbox() {
                   {dealNo ? <SourceBadge module="crm" label={t("dec.ho.deal", { no: displayDocNumber(dealNo, locale) })} /> : crmTag}
                 </>
               }
+              bodyClassName="p-0"
             >
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div className="rounded-lg bg-muted/40 p-3">
+              <div className="grid grid-cols-1 divide-y border-b sm:grid-cols-3 sm:divide-y-0 sm:[&>*+*]:border-s">
+                <div className="min-w-0 px-4 py-3">
                   <p className="text-xs text-muted-foreground">{t("inbox.stat_value")}</p>
                   <p className="mt-1 text-lg font-black tabular-nums" dir="ltr">
                     {h.value > 0 ? pmMoney(h.value) : "—"}
                   </p>
                   {!(h.value > 0) && <p className="text-xs text-muted-foreground">{t("not_fixed")}</p>}
                 </div>
-                <div className="rounded-lg bg-muted/40 p-3">
+                <div className="min-w-0 px-4 py-3">
                   <p className="text-xs text-muted-foreground">{t("field.duration")}</p>
                   <p className="mt-1 text-lg font-black">{h.durationDays > 0 ? t("days", { count: h.durationDays }) : "—"}</p>
                   {!(h.durationDays > 0) && <p className="text-xs text-muted-foreground">{t("not_fixed")}</p>}
                 </div>
-                <div className="rounded-lg bg-muted/40 p-3">
+                <div className="min-w-0 px-4 py-3">
                   <p className="text-xs text-muted-foreground">{t("field.start_on")}</p>
                   <p className="mt-1 text-sm font-black">{pmDate(h.startOn, locale)}</p>
                   <p className={cn("text-xs", flags.rush ? "font-bold text-destructive" : "text-muted-foreground")}>{rel(h.startOn)}</p>
                 </div>
               </div>
-              <div className="mt-3 rounded-xl border px-4">
+              <div className="px-4 py-1">
                 <KeyValueRow
                   label={t("field.client")}
                   value={
@@ -176,26 +177,26 @@ export function HandoverInbox() {
                 {h.note && <KeyValueRow label={t("field.note")} value={<span dir="auto">{h.note}</span>} />}
               </div>
               {blocks.length > 0 && (
-                <Callout tone="block" className="mt-3" title={t("inbox.cannot_accept_as_is")}>
+                <Callout tone="block" className="mx-4 mb-3" title={t("inbox.cannot_accept_as_is")}>
                   {blocks.map((b) => t(`accept_block.${b}`)).join(" · ")}. {t("inbox.invented_number")}
                 </Callout>
               )}
               {h.to !== uid && (
-                <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <p className="flex items-center gap-1.5 px-4 pb-3 text-xs text-muted-foreground">
                   <AlertTriangle size={13} aria-hidden="true" />
                   {t("inbox.owner_acting", { name: h.toName ?? "—" })}
                 </p>
               )}
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button onClick={() => setDialog({ kind: "accept", handover: h })} disabled={blocks.length > 0} className={cn(!blocks.length && "bg-success text-white hover:bg-success/90")} variant={blocks.length ? "outline" : "default"}>
-                  <Check size={16} className="me-1.5" aria-hidden="true" />
+              <div className="flex flex-wrap gap-2 border-t px-4 py-3">
+                <Button size="sm" onClick={() => setDialog({ kind: "accept", handover: h })} disabled={blocks.length > 0} variant={blocks.length ? "outline" : "success"}>
+                  <Check size={15} className="me-1.5" aria-hidden="true" />
                   {t("inbox.accept")}
                 </Button>
-                <Button variant="outline" onClick={() => setDialog({ kind: "reassign", handover: h })}>
+                <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "reassign", handover: h })}>
                   <ArrowRightLeft size={16} className="me-1.5" aria-hidden="true" />
                   {t("inbox.reassign")}
                 </Button>
-                <Button variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setDialog({ kind: "return", handover: h })}>
+                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setDialog({ kind: "return", handover: h })}>
                   <Undo2 size={16} className="me-1.5" aria-hidden="true" />
                   {t("inbox.return")}
                 </Button>
@@ -206,10 +207,10 @@ export function HandoverInbox() {
       </div>
 
       {returned.length > 0 && (
-        <Panel icon={AlertTriangle} title={t("inbox.returned_title")} actions={<span className="text-xs text-muted-foreground">{t("inbox.returned_sub")}</span>}>
+        <Panel icon={AlertTriangle} title={t("inbox.returned_title")} description={t("inbox.returned_sub")} bodyClassName="p-0">
           <ul className="divide-y">
             {returned.map((h) => (
-              <li key={h.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+              <li key={h.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
                 <div className="min-w-0">
                   <p className="text-sm font-bold" dir="auto">
                     {h.title}
