@@ -13,7 +13,7 @@ import { riyadhDay } from "@/lib/hr/format"
 import { actsOnRfq, type RfqWriteActor } from "@/lib/procurement/rfq-access"
 import type { LifecycleResult } from "@/lib/procurement/rfq-server/lifecycle"
 import { CancelRfqDialog, ExtendRfqDialog, RemindRfqDialog } from "./RfqLifecycleDialogs"
-import { RFQ_EXTEND_EVENT } from "./rfqPageEvents"
+import { RFQ_EXTEND_EVENT, RFQ_REMIND_EVENT } from "./rfqPageEvents"
 
 export interface LifecycleRfq {
   id: string
@@ -52,8 +52,15 @@ export function useRfqLifecycle(rfq: LifecycleRfq, onChanged?: () => void) {
     const open = (e: Event) => {
       if ((e as CustomEvent<{ rfqId?: string }>).detail?.rfqId === rfq.id) setDialog("extend")
     }
+    const remind = (e: Event) => {
+      if ((e as CustomEvent<{ rfqId?: string }>).detail?.rfqId === rfq.id) setDialog("remind")
+    }
     window.addEventListener(RFQ_EXTEND_EVENT, open)
-    return () => window.removeEventListener(RFQ_EXTEND_EVENT, open)
+    window.addEventListener(RFQ_REMIND_EVENT, remind)
+    return () => {
+      window.removeEventListener(RFQ_EXTEND_EVENT, open)
+      window.removeEventListener(RFQ_REMIND_EVENT, remind)
+    }
   }, [rfq.id])
   const done = (r: LifecycleResult) => {
     if (r.action === "cancel") toast({ title: t("done_cancelled", { count: r.count ?? 0 }) })

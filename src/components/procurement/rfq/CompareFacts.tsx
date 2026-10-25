@@ -5,8 +5,10 @@
 // per fact so the grid (suppliers as columns) and the table (suppliers as rows) say the same words.
 
 import { useLocale, useTranslations } from "next-intl"
+import { Star } from "lucide-react"
 import { moneyFigure } from "@/components/procurement/PoModel"
-import type { CompareColumn } from "@/lib/procurement/compare-model"
+import type { CompareColumn, Experience } from "@/lib/procurement/compare-model"
+import { displayPoNumber } from "@/lib/procurement/format"
 import { cn } from "@/lib/utils"
 
 export const FACT_IDS = ["total", "lead", "terms", "valid", "quote", "commitment"] as const
@@ -63,8 +65,16 @@ export function FactCell({ id, col, showPrices }: { id: FactId; col: CompareColu
         <span className="block text-xs">
           {f.experience && f.experience.orders > 0 ? (
             <>
-              {f.experience.onTimePercent != null && <b dir="ltr">{f.experience.onTimePercent}%</b>} {t("experience_orders", { count: f.experience.orders })}
+              {f.experience.onTimePercent != null && <b dir="ltr">{f.experience.onTimePercent}%</b>}
+              {f.experience.rating != null && (
+                <span className="ms-1 inline-flex items-center gap-0.5" dir="ltr" aria-label={t("rating_label", { rating: f.experience.rating })}>
+                  <Star size={11} className="fill-warning text-warning" aria-hidden="true" />
+                  {f.experience.rating}
+                </span>
+              )}{" "}
+              {t("experience_orders", { count: f.experience.orders })}
               {f.experience.rejectPercent != null && f.experience.rejectPercent > 0 ? ` · ${t("experience_rejects", { percent: f.experience.rejectPercent })}` : ""}
+              <ExperienceNotes exp={f.experience} />
             </>
           ) : (
             <span className="text-muted-foreground">{t("new_to_us")}</span>
@@ -72,4 +82,28 @@ export function FactCell({ id, col, showPrices }: { id: FactId; col: CompareColu
         </span>
       )
   }
+}
+
+/** The two facts that warn (prototype `expTx`): the latest rejection at our gate with its reason and order, and what is late now. */
+export function ExperienceNotes({ exp }: { exp: Pick<Experience, "lastReject" | "lateNow"> }) {
+  const t = useTranslations("Portal.Procurement.cmp2")
+  const tr = useTranslations("Portal.Procurement.rejectReason")
+  const locale = useLocale()
+  const r = exp.lastReject
+  const late = exp.lateNow ?? 0
+  if (!r && !late) return null
+  return (
+    <small className="mt-0.5 block text-[11px] font-semibold text-warning" dir="auto">
+      {r
+        ? t("experience_last_reject", {
+            qty: r.qty.toLocaleString("en-US", { maximumFractionDigits: 3 }),
+            unit: r.unit,
+            reason: r.reason && tr.has(r.reason) ? tr(r.reason) : tr("other"),
+            po: r.poNo ? displayPoNumber(r.poNo, locale) : "—",
+          })
+        : null}
+      {r && late ? " · " : null}
+      {late ? t("experience_late_now", { count: late }) : null}
+    </small>
+  )
 }

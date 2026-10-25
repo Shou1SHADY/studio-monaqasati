@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { IconButton } from "@/components/module-ui/IconButton"
 import { Money, useDateText } from "@/components/procurement/PoBits"
 import { fromHalalas } from "@/lib/procurement/offer-calc"
-import { daysAgo, pricedByPiece, warrantyOf, type OfferRowModel } from "@/lib/procurement/rfq-offers-view"
+import { currentNote, daysAgo, piecePackNames, warrantyOf, type OfferRowModel } from "@/lib/procurement/rfq-offers-view"
 import { cn } from "@/lib/utils"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useTermsText } from "./rfqOfferText"
@@ -27,6 +27,10 @@ export interface OfferRowProps {
   canAsk: boolean
   fallbackName: string
   hasRecord: boolean
+  /** Registered and verified by his documents — told apart from the orders we gave him (prototype row subtitle). */
+  verified?: boolean
+  /** Our orders with him. */
+  orders?: number
   onOpen: (id: string) => void
   onToggleShortlist: (row: OfferRowModel) => void
   onClarify: (row: OfferRowModel) => void
@@ -34,7 +38,10 @@ export interface OfferRowProps {
 
 const RANK_TONE: Record<number, string> = { 1: "bg-warning/15 text-warning" }
 
-function OfferRowView({ row, rfq, today, showPrices, canShortlist, canAsk, fallbackName, hasRecord, onOpen, onToggleShortlist, onClarify }: OfferRowProps) {
+/** A click on the row opens the panel, unless it landed on one of the row's own controls. */
+const fromControl = (target: EventTarget | null): boolean => target instanceof Element && Boolean(target.closest("button, a, input, select, textarea, [role='button']"))
+
+function OfferRowView({ row, rfq, today, showPrices, canShortlist, canAsk, fallbackName, hasRecord, verified, orders, onOpen, onToggleShortlist, onClarify }: OfferRowProps) {
   const t = useTranslations("Portal.Procurement.rfqpage.list")
   const date = useDateText()
   const termsText = useTermsText()
@@ -46,14 +53,26 @@ function OfferRowView({ row, rfq, today, showPrices, canShortlist, canAsk, fallb
   const sent = daysAgo(row.submittedAt, today)
   const guest = row.origin === "guest"
   const lowest = ev.isLowestComplete
+  const packs = piecePackNames(row.offer)
+  const note = currentNote(row.offer)
+  const subtitle = guest
+    ? t("off_platform")
+    : row.origin === "mdmak"
+      ? t("mdmak")
+      : verified === undefined
+        ? hasRecord
+          ? t("verified")
+          : t("platform")
+        : `${verified ? t("docs_verified") : t("docs_unverified")} · ${orders ? t("orders_with_us", { count: orders }) : t("new_with_us")}`
 
   return (
     <div
       role="row"
       data-offer={row.id}
       data-state={out ? "out" : row.awarded ? "won" : ev.partial ? "short" : "live"}
+      onClick={(e) => !fromControl(e.target) && onOpen(row.id)}
       className={cn(
-        "grid gap-x-3 gap-y-1 border-b px-3 py-2.5 text-sm last:border-b-0 md:grid-cols-[2.25rem_minmax(0,2.2fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_auto] md:items-center",
+        "grid cursor-pointer gap-x-3 gap-y-1 border-b px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-muted/40 md:grid-cols-[2.25rem_minmax(0,2.2fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_auto] md:items-center",
         guest && "bg-warning/5",
         out && "opacity-70",
         row.awarded && "bg-success/5"
@@ -71,8 +90,8 @@ function OfferRowView({ row, rfq, today, showPrices, canShortlist, canAsk, fallb
           <button type="button" onClick={() => onOpen(row.id)} className="block max-w-full truncate rounded-sm text-start font-bold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
             {name}
           </button>
-          <span className="block truncate text-[11px] text-muted-foreground">
-            {guest ? t("off_platform") : row.origin === "mdmak" ? t("mdmak") : hasRecord ? t("verified") : t("platform")}
+          <span className="block truncate text-[11px] text-muted-foreground" data-subtitle>
+            {subtitle}
           </span>
         </span>
       </div>
@@ -135,7 +154,16 @@ function OfferRowView({ row, rfq, today, showPrices, canShortlist, canAsk, fallb
         {ev.partial && <StatusPill tone="warn">{t("priced_only", { count: row.coverage.covered })}</StatusPill>}
         <StatusPill tone={(row.officialQuote ? "ok" : "mute") as PillTone}>{row.officialQuote ? t("official") : t("no_official")}</StatusPill>
         {warranty && <StatusPill tone={warranty.short ? "warn" : "ok"}>{warranty.months === 0 ? t("warranty_none") : warranty.short ? t("warranty_short", { months: warranty.months }) : t("warranty_ok", { months: warranty.months })}</StatusPill>}
-        {pricedByPiece(row.offer) && <StatusPill tone="mute">{t("by_piece")}</StatusPill>}
+        {packs.length > 0 && <StatusPill tone="mute">{t("by_piece_named", { packs: packs.join(t("packs_sep")) })}</StatusPill>}
+        {note && (
+          <span title={note} className="inline-flex max-w-[16rem]">
+            <StatusPill tone="mute" className="truncate font-medium">
+              <span className="truncate" dir="auto">
+                {note}
+              </span>
+            </StatusPill>
+          </span>
+        )}
         {ev.kind === "lump" && <StatusPill tone="mute">{t("lump")}</StatusPill>}
         {row.withdrawn && <StatusPill tone="mute">{t("withdrawn")}</StatusPill>}
         {row.declined && <StatusPill tone="mute">{t("declined")}</StatusPill>}

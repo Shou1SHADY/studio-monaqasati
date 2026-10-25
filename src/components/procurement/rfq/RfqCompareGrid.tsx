@@ -8,16 +8,17 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useTranslations } from "next-intl"
-import { Columns3, FileCheck, Rows3, Scale, Star, TrendingDown } from "lucide-react"
+import { Columns3, FileCheck, Rows3, Scale, ShieldCheck, Star, TrendingDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Callout } from "@/components/module-ui/Callout"
 import { Chip } from "@/components/module-ui/Chip"
 import { Panel } from "@/components/module-ui/Panel"
 import { moneyFigure } from "@/components/procurement/PoModel"
-import { buildCompareModel, lowestPicksOfModel, type CompareColumn, type Experience } from "@/lib/procurement/compare-model"
-import { dropStale, pickAllOf, planAward, planSupplier, type AwardPicks, type Dropped, type PlanOffer, type PlanPolicies, type PlanRfq } from "@/lib/procurement/award-plan"
+import { useToast } from "@/hooks/use-toast"
+import { buildCompareModel, experienceFrom, lowestPicksOfModel, type CompareColumn, type Experience } from "@/lib/procurement/compare-model"
+import { dropStale, offerIsOut, pickAllOf, planAward, planSupplier, type AwardPicks, type Dropped, type PlanOffer, type PlanPolicies, type PlanRfq } from "@/lib/procurement/award-plan"
 import type { DecisionMap } from "@/lib/procurement/offer-decisions"
-import { supplierKey, supplierScore } from "@/lib/procurement/po"
+import { supplierKey } from "@/lib/procurement/po"
 import { locksOf } from "@/lib/procurement/rfq-server/award-locks"
 import type { PriceHistoryEntry } from "@/lib/procurement/prices"
 import type { PurchaseOrder, ReceiptFact } from "@/lib/procurement/types"
@@ -50,6 +51,9 @@ export interface RfqCompareGridProps {
   actor: { uid: string; isOwner: boolean; canPrepare: boolean; canApprove: boolean }
   onReview: () => void
   onAskReval?: (offer: PlanOffer) => void
+  /** «اختر الأقل لكل بند» asked outside the grid (the best cards): a new value picks the lowest per line, then `onLowestHandled`. */
+  lowestRequest?: number | null
+  onLowestHandled?: () => void
   /** Shown above the grid once an award was made (orders and the reason). */
   awardedBlock?: ReactNode
   /** The «لا عرض حيّاً» block and the like. */
@@ -63,7 +67,9 @@ export function RfqCompareGrid(props: RfqCompareGridProps) {
   const t = useTranslations("Portal.Procurement.cmp2")
   const now = props.now ?? new Date()
   const [layoutMode, setLayoutMode] = useState<"auto" | "columns" | "rows">("auto")
-  const [hideExcluded, setHideExcluded] = useState(false)
+  const { toast } = useToast()
+  // «أخفِ المستبعدين» starts on once something is excluded (prototype `cmpF.hideOut`); the chip stays a toggle.
+  const [hideChoice, setHideExcluded] = useState<boolean | null>(null)
   const [shortlistOnly, setShortlistOnly] = useState(false)
   const [termsOnly, setTermsOnly] = useState(false)
   const [sortLine, setSortLine] = useState<number | null>(null)
@@ -76,11 +82,7 @@ export function RfqCompareGrid(props: RfqCompareGridProps) {
   const scores = useMemo(() => {
     const map = new Map<string, Experience>()
     const keys = new Set(orders.map((o) => supplierKey(o)))
-    for (const key of keys) {
-      const list = orders.filter((o) => supplierKey(o) === key)
-      const s = supplierScore(list, receipts, now)
-      map.set(key, { orders: s.orders, onTimePercent: s.onTimePercent, rejectPercent: s.rejectPercent })
-    }
+    for (const key of keys) map.set(key, experienceFrom(orders.filter((o) => supplierKey(o) === key), receipts, now))
     return map
     // `now` only matters to the day; recomputing when the orders or receipts change is what keeps it honest.
   }, [orders, receipts])
@@ -92,6 +94,8 @@ export function RfqCompareGrid(props: RfqCompareGridProps) {
     [scores]
   )
 
+  const anyExcluded = useMemo(() => offers.some((o) => offerIsOut(o, decisions[o.id])), [offers, decisions])
+  const hideExcluded = hideChoice ?? anyExcluded
   const model = useMemo(
     () => buildCompareModel({ rfq, offers, ctx, picks, history, experienceOf, verifiedOf: props.verifiedOf, opts: { layout: layoutMode, hideExcluded, shortlistOnly, termsOnly, sortLine } }),
     [rfq, offers, ctx, picks, history, experienceOf, props.verifiedOf, layoutMode, hideExcluded, shortlistOnly, termsOnly, sortLine]
@@ -116,6 +120,16 @@ export function RfqCompareGrid(props: RfqCompareGridProps) {
 
   const togglePick = (li: number, col: CompareColumn) => {
     const cur = picks[li]
+    // «للطلب كاملاً فقط»: one cell takes every line he priced (or none) — the review would refuse a part of it anyway.
+    if (col.facts.whole) {
+      if (cur && cur.offerId === col.offer.id) {
+        onPicksChange(Object.fromEntries(Object.entries(picks).filter(([, p]) => p.offerId !== col.offer.id)))
+        return
+      }
+      onPicksChange(pickAllOf(model.ev, col.offer, ctx, picks))
+      toast({ title: t("whole_picked", { name: col.name || "—" }) })
+      return
+    }
     const next = { ...picks }
     if (cur && cur.offerId === col.offer.id) delete next[li]
     else next[li] = { offerId: col.offer.id, rev: col.rev }
@@ -123,6 +137,15 @@ export function RfqCompareGrid(props: RfqCompareGridProps) {
   }
   const pickLowest = (safe: boolean) => onPicksChange(lowestPicksOfModel(model, byId, safe ? { safeOnly: (o) => props.verifiedOf(o) && Boolean((o.offerPdfUrl || "").trim()) && !planSupplier(o).isGuestSupplier } : {}))
   const pickSupplier = (col: CompareColumn) => onPicksChange(pickAllOf(model.ev, col.offer, ctx, picks))
+
+  // The best cards' «اختر الأقل لكل بند» (prototype `cmp-best` with `go`): the picks are made here, where the model is.
+  const lowestRequest = props.lowestRequest ?? null
+  useEffect(() => {
+    if (lowestRequest == null) return
+    if (interactive) pickLowest(false)
+    props.onLowestHandled?.()
+    // Only a new request picks; the model moving under it must not re-pick over the buyer's own clicks.
+  }, [lowestRequest])
 
   if (!model.columns.length && !offers.length) {
     return (
@@ -175,7 +198,7 @@ export function RfqCompareGrid(props: RfqCompareGridProps) {
         }
       >
         <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
-          <Chip selected={hideExcluded} onClick={() => setHideExcluded((v) => !v)} count={model.columns.length ? undefined : 0}>
+          <Chip selected={hideExcluded} onClick={() => setHideExcluded(!hideExcluded)} count={model.columns.length ? undefined : 0}>
             {t("hide_excluded", { count: hideExcluded ? model.hiddenExcluded : offers.filter((o) => model.ev.byId[o.id] && !model.ev.byId[o.id].live).length })}
           </Chip>
           <Chip selected={shortlistOnly} onClick={() => setShortlistOnly((v) => !v)}>
@@ -226,6 +249,7 @@ export function RfqCompareGrid(props: RfqCompareGridProps) {
                       <span className="block text-[11px] font-normal text-muted-foreground" dir="auto">
                         <bdi dir="ltr">{r.qty.toLocaleString("en-US", { maximumFractionDigits: 3 })}</bdi> {r.unit}
                       </span>
+                      <WarrantyAsked months={r.warrantyAsked} />
                       {showPrices && <LastBuy entry={r.lastBuy} />}
                     </th>
                     {model.columns.map((c) => (
@@ -271,6 +295,7 @@ export function RfqCompareGrid(props: RfqCompareGridProps) {
                       <span className="block max-w-[12rem] truncate" dir="auto">
                         {r.name || "—"}
                       </span>
+                      <WarrantyAsked months={r.warrantyAsked} />
                       {showPrices && <LastBuy entry={r.lastBuy} />}
                     </th>
                   ))}
@@ -349,6 +374,18 @@ export function RfqCompareGrid(props: RfqCompareGridProps) {
       </Panel>
       {props.children}
     </div>
+  )
+}
+
+/** «ضمان 24 شهراً» under a material that asks one (prototype material header). */
+function WarrantyAsked({ months }: { months: number | null }) {
+  const t = useTranslations("Portal.Procurement.cmp2")
+  if (months == null) return null
+  return (
+    <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-normal text-muted-foreground">
+      <ShieldCheck size={11} aria-hidden="true" />
+      {t("warranty_asked", { months })}
+    </span>
   )
 }
 

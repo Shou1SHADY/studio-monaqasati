@@ -79,6 +79,7 @@ export function DataTable<T>({
   dense,
   cardTitleKey,
   bordered = true,
+  onRowClick,
   className,
 }: {
   columns: DataColumn<T>[]
@@ -100,6 +101,9 @@ export function DataTable<T>({
   cardTitleKey?: string
   /** False inside a Panel that already draws the frame. */
   bordered?: boolean
+  /** The whole row opens it (a click that lands on a link or button inside the row is left to that control).
+   * Keep a real link in the row for the keyboard — this is the pointer's shortcut. */
+  onRowClick?: (row: T) => void
   className?: string
 }) {
   const locale = useLocale()
@@ -128,6 +132,12 @@ export function DataTable<T>({
   const hasFooter = columns.some((c) => c.footer !== undefined)
   const textOf = (c: DataColumn<T>) => c.label ?? (typeof c.header === "string" ? c.header : c.key)
   const pad = dense ? "px-3 py-2" : "px-4 py-3"
+  const rowClick = onRowClick
+    ? (r: T) => (e: { target: EventTarget | null }) => {
+        if (e.target instanceof Element && e.target.closest("a, button, input, select, textarea, label, [role='button']")) return
+        onRowClick(r)
+      }
+    : null
   const frame = bordered ? "rounded-xl border bg-card" : ""
 
   if (rows.length === 0) return <div className={className}>{empty}</div>
@@ -143,7 +153,7 @@ export function DataTable<T>({
           {shown.map((r) => {
             const tone = rowTone?.(r)
             return (
-              <li key={rowKey(r)} className={cn("space-y-2 px-4 py-3", tone && TONE_CARD[tone])}>
+              <li key={rowKey(r)} onClick={rowClick?.(r)} className={cn("space-y-2 px-4 py-3", tone && TONE_CARD[tone], rowClick && "cursor-pointer")}>
                 <div className="text-sm font-semibold">{title.cell(r)}</div>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
                   {others
@@ -213,7 +223,7 @@ export function DataTable<T>({
             {shown.map((r) => {
               const tone = rowTone?.(r)
               return (
-                <tr key={rowKey(r)} className={cn("transition-colors hover:bg-muted/40", tone && TONE_ROW[tone])}>
+                <tr key={rowKey(r)} onClick={rowClick?.(r)} className={cn("transition-colors hover:bg-muted/40", tone && TONE_ROW[tone], rowClick && "cursor-pointer")}>
                   {columns.map((c, i) => (
                     <td key={c.key} className={cn(pad, "align-middle", c.numeric ? "text-end" : "text-start", c.hideBelow && HIDE[c.hideBelow], i === 0 && tone && TONE_EDGE[tone], c.className)}>
                       {c.numeric ? <Figure>{c.cell(r)}</Figure> : c.cell(r)}

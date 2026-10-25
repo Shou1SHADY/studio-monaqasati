@@ -2,11 +2,13 @@
 // carry the ★, the fact rows, «آخر شراء» by specification and the strip of the lowest per material. Everything money is read from
 // `offer-calc` (G-02/G-03), so the grid, the list, the panel and the review say one figure. Pure: no I/O.
 
-import { isTie, lineOf, type Evaluation, type OfferEval, type OfferLineCalc, type ValidityState } from "./offer-calc"
+import { isTie, lineCalc, lineOf, type Evaluation, type OfferEval, type OfferLineCalc, type ValidityState } from "./offer-calc"
 import { evaluatePlanOffers, cellPickable, offerIsOut, offerLeadDays, planSupplier, type AwardPicks, type PlanContext, type PlanOffer, type PlanRfq } from "./award-plan"
 import { isShortlisted } from "./offer-decisions"
 import { termsDiffer } from "./offer-labels"
-import { offerRev } from "./offer-versions"
+import { offerRev, warrantyAskedOf, type QuoteProduct, type StoredVersion } from "./offer-versions"
+import { poLate, supplierScore } from "./po"
+import type { PurchaseOrder, ReceiptFact, RejectReasonCode } from "./types"
 import { lastPaidFor, specKeyOf, type PriceHistoryEntry } from "./prices"
 import { pricedProducts } from "./offer-calc"
 
@@ -19,6 +21,36 @@ export interface Experience {
   orders: number
   onTimePercent: number | null
   rejectPercent: number | null
+  /** Our own stars on his orders (conformity and cooperation, 1–5), averaged — null before any rating. */
+  rating?: number | null
+  /** The latest rejection at our gate: how much, why, on which order. */
+  lastReject?: { qty: number; unit: string; reason: RejectReasonCode | null; poNo: string | null } | null
+  /** His orders that are late right now. */
+  lateNow?: number
+}
+
+/** «تجربتنا» from our own orders and receipts (prototype `ourExp`): the score, our stars, the latest rejection and what is late now. */
+export function experienceFrom(orders: readonly PurchaseOrder[], receipts: readonly ReceiptFact[], now: Date): Experience {
+  const s = supplierScore(orders as PurchaseOrder[], receipts as ReceiptFact[], now)
+  const live = orders.filter((o) => o.status !== "cancelled")
+  const stars = live.flatMap((o) => (o.rating ? [(Number(o.rating.conformity) + Number(o.rating.cooperation)) / 2] : [])).filter((n) => Number.isFinite(n) && n > 0)
+  const rating = stars.length ? Math.round((stars.reduce((a, b) => a + b, 0) / stars.length) * 10) / 10 : null
+  const byId = new Map(live.map((o) => [o.id, o]))
+  let lastReject: Experience["lastReject"] = null
+  let lastAt = ""
+  for (const r of receipts) {
+    const po = r.poId ? byId.get(r.poId) : null
+    if (!po || r.status !== "confirmed") continue
+    const at = String(r.confirmedAt || r.deliveryDate || "")
+    for (const l of r.lines || []) {
+      const qty = Number(l.rejected) || 0
+      if (qty <= 0 || (lastReject && at < lastAt)) continue
+      lastReject = { qty, unit: l.unit || "", reason: l.rejectReason ?? null, poNo: r.poNumber || po.docNumber || null }
+      lastAt = at
+    }
+  }
+  const lateNow = live.filter((o) => poLate(o, now, receipts)).length
+  return { orders: s.orders, onTimePercent: s.onTimePercent, rejectPercent: s.rejectPercent, rating, lastReject, lateNow }
 }
 
 export interface CompareOptions {
@@ -96,6 +128,10 @@ export interface CompareCell {
   picked: boolean
   pickable: ReturnType<typeof cellPickable>
   warrantyMonths: number | null
+  /** Below the warranty the line asks (none stated counts as none given only when he wrote 0). */
+  warrantyShort: boolean
+  /** The line's total before his latest version (a better price or an edit), when it changed — shown struck. */
+  previousTotalH: number | null
   /** The line already sits in a live order: its number. */
   lockedBy: string | null
 }
@@ -106,6 +142,8 @@ export interface CompareRow {
   unit: string
   qty: number
   needBy: string | null
+  /** The warranty the request asks on this line, in months (null = none asked). */
+  warrantyAsked: number | null
   lastBuy: PriceHistoryEntry | null
   cells: Record<string, CompareCell>
   liveCount: number
@@ -201,6 +239,7 @@ export function buildCompareModel(input: CompareInput): CompareModel {
     const raw = rawProducts[p.rfqProductIndex]
     const { specKey } = specKeyOf(raw)
     const le = ev.lines.find((l) => l.rfqProductIndex === p.rfqProductIndex)
+    const asked = warrantyAskedOf(raw as QuoteProduct | undefined)
     const cells: Record<string, CompareCell> = {}
     for (const c of columns) {
       const lc = c.calc.kind === "lump" ? null : lineOf(c.calc, p.rfqProductIndex)
@@ -220,6 +259,8 @@ export function buildCompareModel(input: CompareInput): CompareModel {
         picked: Boolean(pickedBy && pickedBy.offerId === c.offer.id),
         pickable,
         warrantyMonths: warranty == null ? null : Number(warranty),
+        warrantyShort: asked != null && warranty != null && Number(warranty) < asked,
+        previousTotalH: lc ? previousLineTotalH(c.offer, p.rfqProductIndex, p.quantity, lc.totalH) : null,
         lockedBy: ctx.locked[p.rfqProductIndex]?.poNumber || null,
       }
     }
@@ -229,6 +270,7 @@ export function buildCompareModel(input: CompareInput): CompareModel {
       unit: p.unit,
       qty: p.quantity,
       needBy: (raw?.needBy || rfq.needBy || null) as string | null,
+      warrantyAsked: asked,
       lastBuy: lastPaidFor(history, { specKey, name: p.name, unit: p.unit }),
       cells,
       liveCount: le?.liveCount ?? 0,
@@ -274,6 +316,16 @@ export function buildCompareModel(input: CompareInput): CompareModel {
     shortlistCount: base.filter((c) => c.shortlisted).length,
     lowestCompleteId: ev.lowestComplete?.id ?? null,
   }
+}
+
+/** The line's total in the version before the current one, when it differs from today's (CMP-02: «<s>was</s>»). */
+export function previousLineTotalH(offer: PlanOffer, li: number, qty: number, currentH: number): number | null {
+  const versions = (offer as unknown as { versions?: StoredVersion[] }).versions
+  if (!Array.isArray(versions) || versions.length < 2) return null
+  const prev = (versions[versions.length - 2]?.lines || []).find((l) => Number(l.rfqProductIndex) === li)
+  if (!prev || !(Number(prev.unitPrice) > 0)) return null
+  const h = lineCalc(qty, prev.unitPrice, prev.packLen).totalH
+  return h > 0 && h !== currentH ? h : null
 }
 
 function termsText(o: PlanOffer): string | null {

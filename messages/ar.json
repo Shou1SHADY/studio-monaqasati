@@ -12259,6 +12259,13 @@
         "experience_orders": "تجربتنا: {count, plural, one {أمر واحد} two {أمران} few {# أوامر} many {# أمراً} other {# أمر}}",
         "experience_rejects": "رُفض {percent}% مما وصل",
         "new_to_us": "جديد — لا سجل توريد بعد",
+        "rating_label": "تقييمنا {rating} من 5",
+        "experience_last_reject": "رُفض {qty} {unit}: {reason} ({po})",
+        "experience_late_now": "متأخر الآن في {count, plural, one {أمر واحد} two {أمرين} few {# أوامر} many {# أمراً} other {# أمر}}",
+        "whole_picked": "{name} يقبل الطلب كاملاً فقط — اختير كل ما سعّره",
+        "warranty_asked": "ضمان {months, plural, one {شهر} two {شهرين} few {# أشهر} many {# شهراً} other {# شهر}} مطلوب",
+        "warranty_below": "أقل من الضمان المطلوب",
+        "was_total": "كان {total}",
         "last_buy": "آخر شراء {price}",
         "strip_title": "الأقل لكل مادة",
         "sort_by": "رتّب بها",
@@ -12745,7 +12752,12 @@
           "cancelled_title": "أُلغي",
           "cancelled_by": "{reason} — ألغاه {name} في {date}.",
           "closed_early_title": "أُغلق مبكراً بالترسية",
-          "closed_early_by": "أغلقه {name} في {date}: {reason}"
+          "closed_early_by": "أغلقه {name} في {date}: {reason}",
+          "direct_over": "إسناد مباشر فوق السقف: {reason}",
+          "direct_over_short": "إسناد مباشر فوق السقف",
+          "pieces": "يُسمح بالتسعير بالقطعة: {lines}. والمقارنة بوحدة الطلب.",
+          "pieces_line": "{name} ({units})",
+          "pieces_or": " أو "
         },
         "privacy": {
           "public": "عام",
@@ -13408,7 +13420,9 @@
           "src_pm": "إدارة المشاريع",
           "src_team": "طلب مواد من الفريق",
           "src_inv": "المخزون",
-          "src_mfg": "ورشة التصنيع"
+          "src_mfg": "ورشة التصنيع",
+          "open_request": "افتح الطلب الوارد",
+          "more_requests": "{count, plural, one {طلب وارد آخر} two {طلبان آخران} few {# طلبات أخرى} many {# طلباً آخر} other {# طلب آخر}} — في التفاصيل"
         },
         "numbers": {
           "reached": "{count, plural, zero {لم يصل لأحد} one {وصل إلى مورّد} two {وصل إلى مورّدين} few {وصل إلى # مورّدين} many {وصل إلى # مورّداً} other {وصل إلى # مورّد}}",
@@ -13484,6 +13498,13 @@
           "empty_title": "لا عروض بعد",
           "empty": "تظهر هنا فور وصولها، حتى {date}. ذكّر من لم يقدّم، أو شارك رابط الزوار مع مورّد خارج المنصة.",
           "empty_link": "رابط الزوار",
+          "empty_remind": "ذكّر من لم يقدّم",
+          "docs_verified": "موثّق",
+          "docs_unverified": "غير موثّق",
+          "orders_with_us": "{count, plural, one {أمر واحد معنا} two {أمران معنا} few {# أوامر معنا} many {# أمراً معنا} other {# أمر معنا}}",
+          "new_with_us": "جديد علينا",
+          "by_piece_named": "بالقطعة: {packs}",
+          "packs_sep": "، ",
           "foot": "تصل العروض حتى {date} وتظهر هنا فوراً. تستطيع الترسية قبل الموعد، فيُغلق الطلب مبكراً ويُبلَّغ الباقون."
         },
         "drawer": {
@@ -13511,6 +13532,9 @@
           "effective": "الفعلي لوحدة الطلب",
           "per_received": "للوحدة المستلمة",
           "warranty_months": "ضمان {months} أشهر",
+          "line_lowest": "الأقل",
+          "warranty_asked": "المطلوب {months} أشهر",
+          "price_confirmed": "أكّد سعره",
           "in_lump": "ضمن المبلغ الإجمالي",
           "not_priced": "لم يسعّرها",
           "terms": "الشروط",
@@ -13581,6 +13605,7 @@
           "invited": "أُرسلت له الدعوة",
           "in_ours": "في موردينا",
           "add_on_join": "يُضاف إلى موردينا حين ينضم",
+          "add_hint": "يدخل موردينا الآن باسمه وجواله، ويبقى من خارج المنصة حتى يقبل دعوتك.",
           "wa_message": "بخصوص عرضكم على طلب العروض «{rfq}»:",
           "wa_message_link": "بخصوص عرضكم على طلب العروض «{rfq}» — رابط عرضكم الخاص: {url}"
         },
@@ -13815,6 +13840,12 @@
           "copy": "انسخ",
           "share": "مشاركة كرابط للزوار",
           "supplier_view": "ما يراه المورّد الآن",
+          "hint_closed": "أُغلق الرابط: من يفتحه يقرأ أن الطلب لم يعد يستقبل عروضاً.",
+          "works_until": "يعمل حتى {date} · قدّم منه {count, plural, zero {لا عروض} one {عرض واحد} two {عرضان} few {# عروض} many {# عرضاً} other {# عرض}}",
+          "offers_via": "قدّم منه {count, plural, zero {لا عروض} one {عرض واحد} two {عرضان} few {# عروض} many {# عرضاً} other {# عرض}}",
+          "closed_award": "أُغلق {date} بالترسية · قدّم منه {count, plural, zero {لا عروض} one {عرض واحد} two {عرضان} few {# عروض} many {# عرضاً} other {# عرض}}",
+          "closed_deadline": "أُغلق {date} مع الموعد · قدّم منه {count, plural, zero {لا عروض} one {عرض واحد} two {عرضان} few {# عروض} many {# عرضاً} other {# عرض}}",
+          "closed_cancelled": "أُغلق {date} بإلغاء الطلب · قدّم منه {count, plural, zero {لا عروض} one {عرض واحد} two {عرضان} few {# عروض} many {# عرضاً} other {# عرض}}",
           "copied": "نُسخ الرابط",
           "failed": "تعذّر إنشاء رابط الزوار"
         },

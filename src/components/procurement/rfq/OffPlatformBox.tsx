@@ -14,6 +14,7 @@ import { useUser } from "@/firebase"
 import { buildWhatsAppLink } from "@/utils/guest-offer-workflow"
 import { daysAgo, type OfferRowModel } from "@/lib/procurement/rfq-offers-view"
 import { GuestOfferProof } from "@/components/procurement/guest/GuestOfferProof"
+import { AddGuestSupplierButton } from "@/components/procurement/AddGuestSupplierButton"
 import type { RfqOfferView } from "./rfqOfferView"
 
 /** The private link to his own offer, the one he edits and answers from — minted by the server for the buyer. */
@@ -32,6 +33,7 @@ export function OffPlatformBox({ row, rfqTitle, today, canAct, inOurs, onInvite 
   const t = useTranslations("Portal.Procurement.rfqpage.off")
   const { user } = useUser()
   const [opening, setOpening] = useState(false)
+  const [added, setAdded] = useState(false)
   const offer = row.offer as RfqOfferView
   const contact = offer.guestContact || null
   const ago = daysAgo(row.submittedAt, today)
@@ -78,9 +80,14 @@ export function OffPlatformBox({ row, rfqTitle, today, canAct, inOurs, onInvite 
             <UserPlus size={14} aria-hidden="true" />
             {offer.guestInvite?.at ? t("invited") : t("invite")}
           </Button>
-          {inOurs ? <span className="inline-flex items-center rounded-full bg-success/10 px-2.5 text-xs font-bold text-success">{t("in_ours")}</span> : <span className="self-center text-[11px] text-muted-foreground">{t("add_on_join")}</span>}
+          {inOurs || added ? (
+            <span className="inline-flex items-center rounded-full bg-success/10 px-2.5 text-xs font-bold text-success">{t("in_ours")}</span>
+          ) : (
+            <AddGuestSupplierButton target={{ offerId: row.id }} size="sm" variant="outline" onAdded={() => setAdded(true)} />
+          )}
         </div>
       )}
+      {canAct && !inOurs && !added && <p className="text-[11px] text-muted-foreground">{t("add_hint")}</p>}
     </section>
   )
 }

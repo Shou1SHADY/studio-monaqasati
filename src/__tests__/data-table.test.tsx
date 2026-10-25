@@ -99,3 +99,26 @@ describe("DataTable", () => {
     expect(screen.getByText("19,200")).toBeInTheDocument()
   })
 })
+
+describe("DataTable — the whole row opens it (RQ-01)", () => {
+  const withAction: DataColumn<Row>[] = [...columns, { key: "act", header: "إجراء", cell: (r) => <button type="button">افتح {r.name}</button> }]
+  it("a click anywhere on the row calls onRowClick, but a click on a control inside the row is left to that control", () => {
+    const open = jest.fn()
+    render(<DataTable columns={withAction} rows={rows} rowKey={(r) => r.id} caption="المسير" labels={labels} empty="—" onRowClick={open} />)
+    fireEvent.click(screen.getByText("يوسف"))
+    expect(open).toHaveBeenCalledWith(rows[0])
+    fireEvent.click(screen.getByRole("button", { name: "افتح أحمد" }))
+    expect(open).toHaveBeenCalledTimes(1)
+  })
+  it("on a phone the card is the row", () => {
+    mobile = true
+    const open = jest.fn()
+    render(<DataTable columns={withAction} rows={rows} rowKey={(r) => r.id} caption="المسير" labels={labels} empty="—" onRowClick={open} />)
+    fireEvent.click(screen.getByText("أحمد"))
+    expect(open).toHaveBeenCalledWith(rows[1])
+  })
+  it("without onRowClick a row is not clickable", () => {
+    render(<DataTable columns={columns} rows={rows} rowKey={(r) => r.id} caption="المسير" labels={labels} empty="—" />)
+    expect(screen.getAllByRole("row")[1].className).not.toContain("cursor-pointer")
+  })
+})

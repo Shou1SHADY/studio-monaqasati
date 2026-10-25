@@ -12,10 +12,16 @@ import { Panel } from "@/components/module-ui/Panel"
 import { Link } from "@/i18n/routing"
 import { useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { useDateText } from "@/components/procurement/PoBits"
 import type { LinkStats } from "@/lib/procurement/link-views"
 
-export function RfqGuestLinkPanel({ rfqId, canShare, onShare }: { rfqId: string; canShare: boolean; onShare: () => void }) {
+/** Where the link stands (prototype rdDet): working until the deadline, or closed — on the award, with the deadline, or by a cancellation. */
+export type GuestLinkPhase = { kind: "open"; until: string | null } | { kind: "closed"; on: string | null; how: "award" | "deadline" | "cancelled" }
+
+export function RfqGuestLinkPanel({ rfqId, canShare, onShare, phase = { kind: "open", until: null }, viaLink }: { rfqId: string; canShare: boolean; onShare: () => void; phase?: GuestLinkPhase; viaLink?: number }) {
   const t = useTranslations("Portal.Procurement.rfqx.guest_link")
+  const date = useDateText()
+  const open = phase.kind === "open"
   const tl = useTranslations("Portal.Procurement.linkx")
   const { user } = useUser()
   const { toast } = useToast()
@@ -65,7 +71,7 @@ export function RfqGuestLinkPanel({ rfqId, canShare, onShare }: { rfqId: string;
 
   return (
     <Panel title={t("title")} icon={Link2}>
-      <p className="text-xs text-muted-foreground">{t("hint")}</p>
+      <p className="text-xs text-muted-foreground">{open ? t("hint") : t("hint_closed")}</p>
       {url && (
         <p className="mt-2 truncate rounded-lg bg-muted px-3 py-2 text-xs font-semibold" dir="ltr">
           {url}
@@ -78,7 +84,7 @@ export function RfqGuestLinkPanel({ rfqId, canShare, onShare }: { rfqId: string;
         </p>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
-        {canShare && (
+        {canShare && open && (
           <>
             <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => void copy()} disabled={busy}>
               {busy ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
@@ -97,6 +103,15 @@ export function RfqGuestLinkPanel({ rfqId, canShare, onShare }: { rfqId: string;
           </Link>
         </Button>
       </div>
+      {viaLink != null && (
+        <p className="mt-2 text-[11px] text-muted-foreground" data-link-phase={phase.kind}>
+          {phase.kind === "open"
+            ? phase.until
+              ? t("works_until", { date: date(phase.until), count: viaLink })
+              : t("offers_via", { count: viaLink })
+            : t(`closed_${phase.how}`, { date: phase.on ? date(phase.on) : "—", count: viaLink })}
+        </p>
+      )}
     </Panel>
   )
 }

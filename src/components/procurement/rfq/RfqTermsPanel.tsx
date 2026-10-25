@@ -24,14 +24,12 @@ const STATE_KEY: Record<RequestSt, string> = { new: "new", prep: "prepared", par
 
 type Group = { label?: string; city?: string; district?: string }
 
-export function RfqTermsPanel({ rfq, onExtend }: { rfq: RfqView; onExtend?: (() => void) | null }) {
-  const t = useTranslations("Portal.Procurement.rfqd")
+/** Where the RFQ delivers (every site by name) and its delivery options in words — the details panel and the page's header line
+ * (prototype `rfqDelivTx`) say the same. */
+export function useRfqDelivery(rfq: RfqView): { places: string[]; optionLines: string[]; notes: string[] } {
   const te = useTranslations("Portal.ProcEditor")
-  const tl = useTranslations("Portal.Procurement.rfqlife")
   const locale = useLocale()
-  const date = useDateText()
-  const extra = rfq as RfqView & { needBy?: string | null; editorGroups?: Group[] | null; deliveryOptions?: unknown }
-
+  const extra = rfq as RfqView & { editorGroups?: Group[] | null; deliveryOptions?: unknown }
   const places = Array.from(
     new Set(
       (extra.editorGroups?.length ? extra.editorGroups : [{ city: rfq.city || "", district: rfq.district || "" }])
@@ -39,11 +37,21 @@ export function RfqTermsPanel({ rfq, onExtend }: { rfq: RfqView; onExtend?: (() 
         .filter(Boolean),
     ),
   )
-  const needs = [extra.needBy, ...(rfq.products || []).map((p) => p.needBy)].filter((d): d is string => !!d).map((d) => d.slice(0, 10)).sort()
-  const terms = rfq.paymentTermsList?.length ? rfq.paymentTermsList.map((r) => te("terms_row", { pct: r.pct, days: r.days })).join(" + ") : te("terms_offer")
   const options = readDeliveryOptions(extra.deliveryOptions)
   const optionLines = Array.from(new Set(Object.values(options).map((d) => deliveryLine(d, te)).filter(Boolean)))
   const notes = Array.from(new Set(Object.values(options).map((d) => d.note).filter((n): n is string => !!n)))
+  return { places, optionLines, notes }
+}
+
+export function RfqTermsPanel({ rfq, onExtend }: { rfq: RfqView; onExtend?: (() => void) | null }) {
+  const t = useTranslations("Portal.Procurement.rfqd")
+  const te = useTranslations("Portal.ProcEditor")
+  const tl = useTranslations("Portal.Procurement.rfqlife")
+  const date = useDateText()
+  const extra = rfq as RfqView & { needBy?: string | null }
+  const { places, optionLines, notes } = useRfqDelivery(rfq)
+  const needs = [extra.needBy, ...(rfq.products || []).map((p) => p.needBy)].filter((d): d is string => !!d).map((d) => d.slice(0, 10)).sort()
+  const terms = rfq.paymentTermsList?.length ? rfq.paymentTermsList.map((r) => te("terms_row", { pct: r.pct, days: r.days })).join(" + ") : te("terms_offer")
   const early = rfq.closedEarly
   const open = rfq.status === "New"
 

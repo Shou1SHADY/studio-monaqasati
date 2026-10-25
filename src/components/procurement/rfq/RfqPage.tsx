@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
 import { arrayRemove, deleteDoc, doc, updateDoc } from "firebase/firestore"
-import { ArrowRight, Link2, Loader2, Scale, TrendingUp } from "lucide-react"
+import { ArrowRight, Bell, Link2, Loader2, Scale, TrendingUp } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -37,12 +37,14 @@ import { DecisionRefused, decideOffer } from "@/lib/procurement/offer-decisions-
 import { invitedRows } from "@/lib/procurement/rfq-detail"
 import { noLiveOffer } from "@/lib/procurement/rfq-no-live"
 import { logRfqDocument } from "@/lib/procurement/rfq-writes"
+import { actsOnRfq } from "@/lib/procurement/rfq-access"
+import { awardSupplierOrgId } from "@/lib/procurement/award"
 import { rfqNeedSources, rfqPageTab, type NeedLinkedRfq, type RfqPageTab } from "@/lib/procurement/rfq-view"
 import { pricingModeOf } from "@/lib/procurement/offer-calc"
 import type { OfferRowModel } from "@/lib/procurement/rfq-offers-view"
 import { cn } from "@/lib/utils"
 import { RfqDetailsPanel, RfqDraftPanel, RfqInvitedList } from "./RfqDetailsPanel"
-import { RfqGuestLinkPanel } from "./RfqGuestLinkPanel"
+import { RfqGuestLinkPanel, type GuestLinkPhase } from "./RfqGuestLinkPanel"
 import { guestLinkUrl } from "./guestLinkUrl"
 import { RfqManualOfferDialog } from "./RfqManualOfferDialog"
 import { RfqRegisterGuestDialog, type GuestToRegister } from "./RfqRegisterGuestDialog"
@@ -57,9 +59,9 @@ import { RfqNumbersRow } from "./RfqNumbersRow"
 import { RfqOfferDrawer } from "./RfqOfferDrawer"
 import { RfqOfferList } from "./RfqOfferList"
 import { RfqPathHeader } from "./RfqPathHeader"
-import { RfqRequestsPanel, RfqTermsPanel } from "./RfqTermsPanel"
+import { RfqRequestsPanel, RfqTermsPanel, useRfqDelivery } from "./RfqTermsPanel"
 import { RfqTitleEdit } from "./RfqTitleEdit"
-import { requestExtend } from "./rfqPageEvents"
+import { requestExtend, requestRemind } from "./rfqPageEvents"
 import type { RfqView } from "./rfqOfferView"
 
 const STAGE_TONE: Record<string, PillTone> = { draft: "mute", open: "info", compare: "warn", awarded: "ok", cancelled: "mute" }
@@ -94,6 +96,8 @@ export function RfqPage({ rfqId }: { rfqId: string }) {
   const [revalRow, setRevalRow] = useState<OfferRowModel | null>(null)
   const [sampleRow, setSampleRow] = useState<OfferRowModel | null>(null)
   const [selection, setSelection] = useState<AwardSelection | null>(null)
+  // «اختر الأقل لكل بند» from the best cards: the comparison applies it and clears it.
+  const [lowestRequest, setLowestRequest] = useState<number | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
   const [registerGuest, setRegisterGuest] = useState<GuestToRegister | null>(null)
@@ -111,6 +115,32 @@ export function RfqPage({ rfqId }: { rfqId: string }) {
   const rfqView = (rfq as RfqView | null) || null
   const noLive = useMemo(() => (rfq ? noLiveOffer(rfq, world.offers, world.decisions) : null), [rfq, world.offers, world.decisions])
   const noLiveBanner = noLive && rfq && access.acts ? <NoLiveBanner rfq={rfq} actor={world.runner} reason={noLive} /> : null
+  const delivery = useRfqDelivery((rfq || { id: rfqId }) as RfqView)
+  const canRemind = Boolean(rfq && state.stage === "open" && actsOnRfq(rfq, world.runner))
+  const pickLowest = () => {
+    setLowestRequest(Date.now())
+    setUserTab("compare")
+  }
+  const supplierOf = (row: OfferRowModel) => {
+    const id = awardSupplierOrgId(row.offer as never)
+    return { verified: world.verifiedOf(id), orders: world.experienceOf(id).orders }
+  }
+  const askRevalOf = (offerId: string) => {
+    const row = rows.find((r) => r.id === offerId)
+    if (row) setRevalRow(row)
+  }
+  const showRequests = () => {
+    setUserTab("details")
+    window.requestAnimationFrame(() => document.getElementById("rfq-requests")?.scrollIntoView({ behavior: "smooth", block: "start" }))
+  }
+  const linkPhase: GuestLinkPhase =
+    state.stage === "open"
+      ? { kind: "open", until: rfq?.deadline ? rfq.deadline.slice(0, 10) : null }
+      : state.stage === "cancelled"
+        ? { kind: "closed", on: rfq?.cancellation?.at ? rfq.cancellation.at.slice(0, 10) : null, how: "cancelled" }
+        : state.closedEarly && rfq?.closedEarly?.at
+          ? { kind: "closed", on: rfq.closedEarly.at.slice(0, 10), how: "award" }
+          : { kind: "closed", on: rfq?.deadline ? rfq.deadline.slice(0, 10) : null, how: "deadline" }
 
   const showError = (err: unknown) => {
     const code = err instanceof DecisionRefused ? err.code : "INTERNAL"
@@ -217,6 +247,7 @@ export function RfqPage({ rfqId }: { rfqId: string }) {
                 {state.closedEarly && state.stage === "awarded" && <StatusPill tone="warn">{t("stage.early")}</StatusPill>}
                 <StatusPill tone="mute">{t(`audience.${audience}`)}</StatusPill>
                 <StatusPill tone="mute">{t(`pricing.${pricingModeOf(rfq as never)}`)}</StatusPill>
+                {rfq.directAward && rfqView?.dirOver && <StatusPill tone="warn">{tProc("rfqd.details.direct_over_short")}</StatusPill>}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <RfqTitleEdit rfqId={rfqId} title={rfq.title || ""} canEdit={access.acts && state.stage !== "cancelled"} />
@@ -237,7 +268,10 @@ export function RfqPage({ rfqId }: { rfqId: string }) {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground" dir="auto">
-                {t("sub", { count: rfq.products?.length || 1, place: [displayCity(rfq.city || "", locale), rfq.district ? displayCity(rfq.district, locale) : ""].filter(Boolean).join(" · ") })}
+                {t("sub", {
+                  count: rfq.products?.length || 1,
+                  place: [...(delivery.places.length ? delivery.places : [[displayCity(rfq.city || "", locale), rfq.district ? displayCity(rfq.district, locale) : ""].filter(Boolean).join(" · ")]), ...delivery.optionLines].filter(Boolean).join(" · "),
+                })}
               </p>
               <ProjectChangedFlag from={rfq} />
             </header>
@@ -249,7 +283,7 @@ export function RfqPage({ rfqId }: { rfqId: string }) {
               <RfqDraftPanel rfq={rfq} projectName={projectName} editHref={`/contractor/rfqs/new?edit=${rfqId}`} canAct={access.acts} deleting={deletingDraft} onDelete={() => setDraftDeleteOpen(true)} />
             ) : (
               <>
-                <RfqPathHeader path={world.path} stage={state.stage} />
+                <RfqPathHeader path={world.path} stage={state.stage} onMoreRequests={showRequests} />
                 <RfqNumbersRow
                   reached={typeof (rfq as { reachedCount?: number }).reachedCount === "number" ? (rfq as { reachedCount?: number }).reachedCount ?? null : null}
                   views={Number((rfq as { viewsCount?: number }).viewsCount) || 0}
@@ -288,15 +322,26 @@ export function RfqPage({ rfqId }: { rfqId: string }) {
                         description={t("list.empty", { date: deadlineText })}
                         action={
                           access.acts && open ? (
-                            <Button type="button" variant="outline" size="sm" onClick={() => setShareOpen(true)}>
-                              {t("list.empty_link")}
-                            </Button>
+                            <span className="flex flex-wrap justify-center gap-2">
+                              {canRemind && (
+                                <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => requestRemind(rfqId)}>
+                                  <Bell size={14} aria-hidden="true" />
+                                  {t("list.empty_remind")}
+                                </Button>
+                              )}
+                              {!rfq.directAward && (
+                                <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => setShareOpen(true)}>
+                                  <Link2 size={14} aria-hidden="true" />
+                                  {t("list.empty_link")}
+                                </Button>
+                              )}
+                            </span>
                           ) : undefined
                         }
                       />
                     ) : (
                       <>
-                        <RfqBestCards cards={world.cards} showPrices={access.seesPrices} fallbackName={fallbackName} canSplit={access.canDecide && open} onSplit={() => setUserTab("compare")} />
+                        <RfqBestCards cards={world.cards} showPrices={access.seesPrices} fallbackName={fallbackName} canSplit={access.canDecide && open} onSplit={pickLowest} />
                         <RfqOfferList
                           rows={rows}
                           rfq={rfq}
@@ -306,6 +351,7 @@ export function RfqPage({ rfqId }: { rfqId: string }) {
                           canAsk={access.acts && open}
                           fallbackName={fallbackName}
                           hasRecord={world.hasRecord}
+                          supplierOf={supplierOf}
                           onOpen={setDrawerId}
                           onToggleShortlist={toggleShortlist}
                           onClarify={setClarifyRow}
@@ -317,7 +363,8 @@ export function RfqPage({ rfqId }: { rfqId: string }) {
 
                   <TabsContent value="compare" className="m-0 space-y-4">
                     {noLiveBanner}
-                    <RfqCompare world={world} selection={selection} onSelectionHandled={() => setSelection(null)} />
+                    {world.offers.length > 0 && <RfqBestCards cards={world.cards} showPrices={access.seesPrices} fallbackName={fallbackName} canSplit={access.canDecide && open} onSplit={pickLowest} />}
+                    <RfqCompare world={world} selection={selection} onSelectionHandled={() => setSelection(null)} onAskReval={askRevalOf} lowestRequest={lowestRequest} onLowestHandled={() => setLowestRequest(null)} />
                   </TabsContent>
 
                   <TabsContent value="inquiries" className="m-0">
@@ -335,9 +382,11 @@ export function RfqPage({ rfqId }: { rfqId: string }) {
                       projectName={projectName}
                     />
                     <RfqTermsPanel rfq={rfq} onExtend={access.acts && open ? () => requestExtend(rfqId) : null} />
-                    {state.stage === "open" && !rfq.directAward && <RfqGuestLinkPanel rfqId={rfqId} canShare={access.acts} onShare={() => setShareOpen(true)} />}
+                    {!rfq.directAward && <RfqGuestLinkPanel rfqId={rfqId} canShare={access.acts} onShare={() => setShareOpen(true)} phase={linkPhase} viaLink={offPlatform} />}
                     <RfqInvitedList rfq={rfq} offers={world.offers} guestOffers={offPlatform} favoriteIds={[]} />
-                    <RfqRequestsPanel requests={world.requests} />
+                    <div id="rfq-requests" className="scroll-mt-4">
+                      <RfqRequestsPanel requests={world.requests} />
+                    </div>
                   </TabsContent>
                 </Tabs>
               </>

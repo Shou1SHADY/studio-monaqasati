@@ -22,6 +22,8 @@ export interface OfferListProps {
   canAsk: boolean
   fallbackName: string
   hasRecord: (row: OfferRowModel) => boolean
+  /** Verified by documents, and our orders with him — the row's subtitle (the page's world gives both). */
+  supplierOf?: (row: OfferRowModel) => { verified: boolean; orders: number }
   onOpen: (id: string) => void
   onToggleShortlist: (row: OfferRowModel) => void
   onClarify: (row: OfferRowModel) => void
@@ -29,7 +31,7 @@ export interface OfferListProps {
   initialFilter?: OfferFilter
 }
 
-export function RfqOfferList({ rows, rfq, today, showPrices, canShortlist, canAsk, fallbackName, hasRecord, onOpen, onToggleShortlist, onClarify, initialFilter = "all" }: OfferListProps) {
+export function RfqOfferList({ rows, rfq, today, showPrices, canShortlist, canAsk, fallbackName, hasRecord, supplierOf, onOpen, onToggleShortlist, onClarify, initialFilter = "all" }: OfferListProps) {
   const t = useTranslations("Portal.Procurement.rfqpage.list")
   const [filter, setFilter] = useState<OfferFilter>(initialFilter)
   const [sort, setSort] = useState<OfferSort>("price")
@@ -51,9 +53,10 @@ export function RfqOfferList({ rows, rfq, today, showPrices, canShortlist, canAs
           <span role="columnheader">{t("head_valid")}</span>
           <span role="columnheader" className="w-32" aria-hidden="true" />
         </div>
-        {page.map((row) => (
-          <OfferRow key={row.id} row={row} rfq={rfq} today={today} showPrices={showPrices} canShortlist={canShortlist} canAsk={canAsk} fallbackName={fallbackName} hasRecord={hasRecord(row)} onOpen={onOpen} onToggleShortlist={onToggleShortlist} onClarify={onClarify} />
-        ))}
+        {page.map((row) => {
+          const sup = supplierOf?.(row)
+          return <OfferRow key={row.id} row={row} rfq={rfq} today={today} showPrices={showPrices} canShortlist={canShortlist} canAsk={canAsk} fallbackName={fallbackName} hasRecord={hasRecord(row)} verified={sup?.verified} orders={sup?.orders} onOpen={onOpen} onToggleShortlist={onToggleShortlist} onClarify={onClarify} />
+        })}
         {!page.length && <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t("none_here")}</p>}
       </div>
       {visible.length > shown && (

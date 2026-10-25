@@ -398,7 +398,7 @@ export default function ContractorRfqsPage() {
         )}
 
         {!isLoading && page.matched > 0 && layout === "rows" && (
-          <RfqTable rows={page.rows} seesPrices={seesPrices} canActOn={(row) => actsOn(row.rfq)} onGlance={(row) => setGlanceRfq(row.rfq as SheetRfq)} onReopen={(r) => setReopenTarget(r.rfq)} />
+          <RfqTable rows={page.rows} seesPrices={seesPrices} canActOn={(row) => actsOn(row.rfq)} onGlance={(row) => setGlanceRfq(row.rfq as SheetRfq)} onReopen={(r) => setReopenTarget(r.rfq)} onShare={(r) => setShareTarget(r.rfq)} />
         )}
 
         {page.more > 0 && (

@@ -24,7 +24,7 @@ export interface RowOffer extends LabelOffer {
   isManualOffer?: boolean | null
   directAward?: boolean | null
   guestContact?: { name?: string | null; phone?: string | null; email?: string | null; vatNumber?: string | null; phoneVerified?: boolean | null } | null
-  lines?: Array<{ rfqProductIndex?: number | null; unitPrice?: number | string | null; packLen?: number | string | null; warrantyMonths?: number | null }> | null
+  lines?: Array<{ rfqProductIndex?: number | null; unitPrice?: number | string | null; packLen?: number | string | null; packKey?: string | null; warrantyMonths?: number | null }> | null
   skippedItems?: Array<number | null> | null
   lump?: number | string | null
   price?: unknown
@@ -348,6 +348,18 @@ export function warrantyOf(o: RowOffer, rfq: { products?: QuoteProduct[] | null 
 
 /** Whether any line is priced per sale unit («بالقطعة»). */
 export const pricedByPiece = (o: RowOffer): boolean => (o.lines || []).some((l) => toAmount(l.packLen) > 0)
+
+/** The pieces he priced in, by the name the request gave them («قطعة 6 م»), else the length — once each. */
+export function piecePackNames(o: RowOffer): string[] {
+  const names = (o.lines || []).filter((l) => toAmount(l.packLen) > 0).map((l) => String(l.packKey || "").trim() || `× ${toAmount(l.packLen)}`)
+  return Array.from(new Set(names))
+}
+
+/** Whether the version he stands at answered our «أكّد سعره» (a reval reply) — the panel's «أكّد سعره». */
+export function priceConfirmed(o: RowOffer): boolean {
+  const versions = Array.isArray(o.versions) ? (o.versions as unknown as Array<{ reval?: boolean }>) : []
+  return versions.length > 1 && versions[versions.length - 1]?.reval === true
+}
 
 // ---------------------------------------------------------------------------
 // «ما جرى» — the offer's own story, oldest first

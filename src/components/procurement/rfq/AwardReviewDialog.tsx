@@ -25,7 +25,9 @@ import { dropStale, planAward, planSupplier, type AwardPicks, type Dropped, type
 import type { AwardResult } from "@/lib/procurement/rfq-server/award-server"
 import type { DecisionMap } from "@/lib/procurement/offer-decisions"
 import { locksOf } from "@/lib/procurement/rfq-server/award-locks"
-import { supplierKey, supplierScore } from "@/lib/procurement/po"
+import { supplierKey } from "@/lib/procurement/po"
+import { experienceFrom, type Experience } from "@/lib/procurement/compare-model"
+import { ExperienceNotes } from "./CompareFacts"
 import type { PurchaseOrder, ReceiptFact } from "@/lib/procurement/types"
 import { cn } from "@/lib/utils"
 
@@ -83,14 +85,14 @@ export function AwardReviewDialog(props: AwardReviewDialogProps) {
   const mine = useMemo(() => orders.filter((o) => o.rfqId === rfq.id), [orders, rfq.id])
   const locks = useMemo(() => locksOf(mine), [mine])
   const scores = useMemo(() => {
-    const map = new Map<string, { orders: number; onTime: number | null }>()
+    const map = new Map<string, { orders: number; onTime: number | null; lastReject: Experience["lastReject"]; lateNow: number }>()
     for (const key of new Set(orders.map((o) => supplierKey(o)))) {
-      const s = supplierScore(
+      const s = experienceFrom(
         orders.filter((o) => supplierKey(o) === key),
         receipts,
         now
       )
-      map.set(key, { orders: s.orders, onTime: s.onTimePercent })
+      map.set(key, { orders: s.orders, onTime: s.onTimePercent, lastReject: s.lastReject ?? null, lateNow: s.lateNow ?? 0 })
     }
     return map
   }, [orders, receipts])
@@ -374,7 +376,7 @@ function GroupCard({
   approveOn: boolean
   onToggle: () => void
   fmtDay: (iso: string | null) => string
-  experience: { orders: number; onTime: number | null } | undefined
+  experience: { orders: number; onTime: number | null; lastReject?: Experience["lastReject"]; lateNow?: number } | undefined
 }) {
   const t = useTranslations("Portal.Procurement.award2")
   const site = [g.site.city, g.site.district].filter(Boolean).join(" — ")
@@ -431,6 +433,7 @@ function GroupCard({
           </span>
         )}
       </div>
+      {experience && experience.orders > 0 && <ExperienceNotes exp={experience} />}
       {g.noOfficialQuote && offer && <p className="text-[11px] text-warning">{t("no_quote_one")}</p>}
       <div className="rounded-lg bg-muted/40 px-3 py-2 text-xs">
         {g.approval === "sent" ? (
