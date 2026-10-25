@@ -77,7 +77,7 @@ export type SheetBlock = "archived" | "no_lines" | "bad_qty" | "unknown_item" | 
 /** What stops writing — or approving — a sheet. Over-remaining on a lump sum is
  * a warning here (the cap applies at approval). An item that requires
  * inspection without a passed last attempt is refused (MS-03). */
-export function sheetBlocks(input: { archived: boolean; lines: Pick<SheetLine, "itemId" | "qty">[]; items: Pick<MeasuredItem, "id" | "gate">[]; gateOn?: boolean }): SheetBlock[] {
+export function sheetBlocks(input: { archived: boolean; lines: Array<Pick<SheetLine, "itemId" | "qty"> & { unit?: string | null }>; items: Pick<MeasuredItem, "id" | "gate">[]; gateOn?: boolean }): SheetBlock[] {
   const out: SheetBlock[] = []
   if (input.archived) out.push("archived")
   const lines = input.lines.filter((l) => l.qty !== 0)
@@ -88,8 +88,9 @@ export function sheetBlocks(input: { archived: boolean; lines: Pick<SheetLine, "
   // The gate lives in the inspections section (the prototype's HAS('wir')): with it
   // switched off there is no screen to request an inspection — or to lift the flag —
   // so a flagged item would be refused for good.
-  const gated = new Set(input.gateOn === false ? [] : input.items.filter((i) => i.gate && !measurable(i.gate)).map((i) => i.id))
-  if (lines.some((l) => gated.has(l.itemId))) out.push("not_measurable")
+  // A line on a delivery unit reads that unit's inspection (MS-03, 1.1).
+  const gates = new Map(input.items.map((i) => [i.id, i.gate]))
+  if (input.gateOn !== false && lines.some((l) => { const g = gates.get(l.itemId); return Boolean(g) && !measurable(g as GateFields, l.unit) })) out.push("not_measurable")
   return out
 }
 
@@ -103,7 +104,7 @@ export type WriteBlock = SheetBlock | "over_remaining" | "bad_day"
  * remaining NOW is refused — the extra needs a variation first (CON-05). The
  * cut at approval stays, because sheets waiting for the PM are not in
  * "executed" yet and a later approval can still meet a smaller remaining. */
-export function sheetWriteBlocks(input: { archived: boolean; basis: PricingBasis; lines: Pick<SheetLine, "itemId" | "qty">[]; items: Array<Pick<MeasuredItem, "id" | "gate" | "quantity" | "executed">>; gateOn?: boolean; day?: string; today?: string }): WriteBlock[] {
+export function sheetWriteBlocks(input: { archived: boolean; basis: PricingBasis; lines: Array<Pick<SheetLine, "itemId" | "qty"> & { unit?: string | null }>; items: Array<Pick<MeasuredItem, "id" | "gate" | "quantity" | "executed">>; gateOn?: boolean; day?: string; today?: string }): WriteBlock[] {
   const out: WriteBlock[] = sheetBlocks(input)
   // The measuring day: a real day, never ahead of today — it becomes "the last
   // measurement" that drawings are judged stale against.
@@ -135,7 +136,7 @@ export interface MeasureSummary {
 }
 
 /** The live footer of the inline measurement (the prototype's act2 box). */
-export function measureSummary(basis: PricingBasis, lines: Pick<SheetLine, "itemId" | "qty">[], items: MeasuredItem[]): MeasureSummary {
+export function measureSummary(basis: PricingBasis, lines: Array<Pick<SheetLine, "itemId" | "qty"> & { unit?: string | null }>, items: MeasuredItem[]): MeasureSummary {
   const byId = new Map(items.map((i) => [i.id, i]))
   const out: MeasureSummary = { count: 0, value: 0, unpriced: 0, over: 0, noPass: 0 }
   for (const l of lines) {
@@ -144,7 +145,7 @@ export function measureSummary(basis: PricingBasis, lines: Pick<SheetLine, "item
     out.count += 1
     if (!(i.rate > 0)) out.unpriced += 1
     if (overRemaining(basis, i, l.qty) > 0) out.over += 1
-    if (i.gate && !measurable(i.gate)) out.noPass += 1
+    if (i.gate && !measurable(i.gate, l.unit)) out.noPass += 1
     out.value += l.qty * (i.rate > 0 ? i.rate : 0)
   }
   out.value = r2(out.value)

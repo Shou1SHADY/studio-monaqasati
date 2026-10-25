@@ -20,6 +20,7 @@ import { pmMoney, todayDay } from "@/lib/pm/format"
 import { lifecycleOf, type PmLifecycle } from "@/lib/pm/lifecycle"
 import { displayDocNumber } from "@/lib/sales-numbering"
 import { cn } from "@/lib/utils"
+import { useHoldReason } from "./PmHoldControl"
 
 export const LIFECYCLE_TONE: Record<PmLifecycle, PillTone> = { plan: "mute", live: "info", hold: "warn", done: "module", closed: "mute" }
 
@@ -56,6 +57,7 @@ export function PmProjectCard({ project, onFeed }: { project: PortfolioProject; 
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const feed = usePortfolioFeed(project)
+  const holdReason = useHoldReason()
   const lifecycle = lifecycleOf(project as { pm?: { lifecycle?: string }; status?: string })
   const noBoq = feed.itemCount === 0
   const holdDays = lifecycle === "hold" && project.pm?.holdSince ? Math.max(0, Math.round(dayNum(todayDay()) - dayNum(project.pm.holdSince))) : null
@@ -86,12 +88,12 @@ export function PmProjectCard({ project, onFeed }: { project: PortfolioProject; 
         <StatusPill tone={LIFECYCLE_TONE[lifecycle]}>{t(`lifecycle.${lifecycle}`)}</StatusPill>
       </div>
 
-      {lifecycle === "hold" && (holdDays !== null || project.pm?.holdWhy) && (
+      {lifecycle === "hold" && (holdDays !== null || project.pm?.holdWhy || project.pm?.holdK) && (
         <p className="flex items-start gap-2 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-xs">
           <Pause size={13} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
           <span>
             {holdDays !== null && <b>{t("list.hold_since", { count: holdDays })}</b>}
-            {project.pm?.holdWhy && <span dir="auto"> — {project.pm.holdWhy}</span>}
+            {(project.pm?.holdWhy || project.pm?.holdK) && <span dir="auto"> — {holdReason(project.pm?.holdK, project.pm?.holdWhy)}</span>}
           </span>
         </p>
       )}

@@ -116,21 +116,50 @@ export const canReinspect = (status: WirStatus) => status === "fail"
 export interface GateFields {
   pmInspect?: boolean | null
   pmWir?: WirStatus | null
+  /** MS-03 (1.1): the last result per delivery unit, from inspections that named one. */
+  pmWirByUnit?: Record<string, WirStatus> | null
 }
 
 export type GateState = "free" | "passed" | "needs" | "open" | "failed"
 
+/** The status the gate reads: with a unit, that unit's own result — once the item
+ * has any unit-level result, a unit without one still needs its inspection; an
+ * item inspected only as a whole (no units) reads the item's result. */
+export function gateStatus(item: GateFields, unit?: string | null): WirStatus | null {
+  const byUnit = item.pmWirByUnit ?? null
+  if (unit && byUnit && Object.keys(byUnit).length) return byUnit[unit] ?? null
+  return item.pmWir ?? null
+}
+
 /** MS-03: free when the item needs no inspection; otherwise measurable only
- * when its last attempt passed (with or without comments). */
-export function gateOf(item: GateFields): GateState {
+ * when its last attempt passed (with or without comments) — per unit when the
+ * measured line names one (1.1). */
+export function gateOf(item: GateFields, unit?: string | null): GateState {
   if (!item.pmInspect) return "free"
-  if (item.pmWir === "pass" || item.pmWir === "cond") return "passed"
-  if (item.pmWir === "fail") return "failed"
-  if (item.pmWir === "open") return "open"
+  const st = gateStatus(item, unit)
+  if (st === "pass" || st === "cond") return "passed"
+  if (st === "fail") return "failed"
+  if (st === "open") return "open"
   return "needs"
 }
 
-export const measurable = (item: GateFields) => {
-  const g = gateOf(item)
+export const measurable = (item: GateFields, unit?: string | null) => {
+  const g = gateOf(item, unit)
   return g === "free" || g === "passed"
+}
+
+/** MS-03 (1.1): a result reaches the line only from the item's NEWEST inspection —
+ * a late answer on an older request never overwrites a newer one. `item` says
+ * whether it may set the item's result, `unit` its unit's (newest for that unit). */
+export function gateWrites(target: Pick<PmInspection, "seq" | "unit">, sameItem: Array<Pick<PmInspection, "seq" | "unit">>): { item: boolean; unit: boolean } {
+  const newer = sameItem.filter((w) => w.seq > target.seq)
+  return { item: newer.length === 0, unit: Boolean(target.unit) && !newer.some((w) => w.unit === target.unit) }
+}
+
+/** The fields a result (or a request / re-inspection: "open") writes on the BOQ line. */
+export function gatePatch(current: GateFields, status: WirStatus, unit: string | null | undefined, may: { item: boolean; unit: boolean }): { pmWir?: WirStatus; pmWirByUnit?: Record<string, WirStatus> } {
+  const out: { pmWir?: WirStatus; pmWirByUnit?: Record<string, WirStatus> } = {}
+  if (may.item) out.pmWir = status
+  if (unit && may.unit) out.pmWirByUnit = { ...(current.pmWirByUnit ?? {}), [unit]: status }
+  return out
 }

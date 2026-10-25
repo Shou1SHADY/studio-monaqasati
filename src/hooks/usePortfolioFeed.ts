@@ -40,6 +40,7 @@ export type PortfolioProject = PmDecisionProject & {
         no?: string
         kind?: string
         holdWhy?: string | null
+        holdK?: string | null
         cutPool?: number
         retentionHeld?: number
         retentionReleased?: boolean

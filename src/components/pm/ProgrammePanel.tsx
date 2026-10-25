@@ -29,12 +29,15 @@ import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
 import { PM_SHEETS, type PmSheet } from "@/lib/pm/measurement"
 import {
   activityBlocks,
+  activityDatesOpen,
+  activityDays,
   activityNext,
   activityPlanned,
   activityProgress,
   activityState,
   criticalPath,
   effectiveDuration,
+  permitNeed,
   PM_ACTIVITIES,
   planF,
   plannedLine,
@@ -47,6 +50,7 @@ import {
 } from "@/lib/pm/programme"
 import { addActivity, PmActivityError, updateActivity, type ActivityActor } from "@/lib/pm/programme-writes"
 import { sectionRows } from "@/lib/pm/pulse"
+import { isPermitType, PERMIT_TYPES, type PermitType } from "@/lib/pm/site"
 import type { ContractTerms } from "@/lib/pm/terms"
 import { approvedValue, PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
@@ -61,7 +65,6 @@ type Item = {
   executed: number
 }
 
-const spanDays = (from: string, to: string) => Math.max(0, Math.round((Date.parse(`${to.slice(0, 10)}T00:00:00Z`) - Date.parse(`${from.slice(0, 10)}T00:00:00Z`)) / 86_400_000))
 
 const STATE_TONE: Record<ActivityState, PillTone> = {
   done: "ok",
@@ -362,7 +365,7 @@ export function ProgrammePanel({
         </Panel>
       )}
 
-      {editing && <ActivityDialog projectId={projectId} access={access} actor={actor} items={items} acts={acts} editing={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
+      {editing && <ActivityDialog projectId={projectId} lifecycle={lifecycle} access={access} actor={actor} items={items} acts={acts} editing={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
     </div>
   )
 }
@@ -564,10 +567,10 @@ function ActivityRows({
               <p className="flex flex-wrap items-center gap-2 text-sm font-bold">
                 <span dir="auto">{a.name}</span>
                 {critical.has(a.id) && <StatusPill tone="bad">{t("prg.critical")}</StatusPill>}
-                {a.permit && <StatusPill tone="warn">{t("prg.act_permit_pill")}</StatusPill>}
+                {permitNeed(a) && <StatusPill tone="warn">{permitNeed(a) === true ? t("prg.act_permit_pill") : t("prg.act_permit_kind_pill", { kind: t(`site.hse.pmt_type.${permitNeed(a)}`) })}</StatusPill>}
               </p>
               <p className="text-xs text-muted-foreground" dir="auto">
-                {pmDate(a.from, locale)} — {pmDate(a.to, locale)} · {t("days", { count: spanDays(a.from, a.to) })}
+                {pmDate(a.from, locale)} — {pmDate(a.to, locale)} · {t("days", { count: activityDays(a) })}
                 {a.itemIds.length > 0 &&
                   ` · ${a.itemIds
                     .map((id) => codeOf.get(id) || "")
@@ -621,6 +624,7 @@ const NONE = "__none__"
 
 function ActivityDialog({
   projectId,
+  lifecycle,
   access,
   actor,
   items,
@@ -629,6 +633,7 @@ function ActivityDialog({
   onClose,
 }: {
   projectId: string
+  lifecycle: string
   access: PmAccess
   actor: ActivityActor
   items: Item[]
@@ -646,7 +651,10 @@ function ActivityDialog({
   const [to, setTo] = useState(editing?.to ?? "")
   const [picked, setPicked] = useState<string[]>(editing?.itemIds ?? [])
   const [pred, setPred] = useState<string>(editing?.pred ?? NONE)
-  const [permit, setPermit] = useState<boolean>(Boolean(editing?.permit))
+  // HSE-01 (1.1): the kind of permit it needs — "any" only for one flagged before kinds existed.
+  const [permit, setPermit] = useState<PermitType | "any" | typeof NONE>(isPermitType(editing?.permit) ? editing.permit : editing?.permit === true ? "any" : NONE)
+  // WF-32: once the project is live the plan is the baseline — an edit keeps its dates.
+  const datesLocked = Boolean(editing) && !activityDatesOpen(lifecycle)
   const [filter, setFilter] = useState("")
   const [busy, setBusy] = useState(false)
   const blocks = activityBlocks(
@@ -658,6 +666,7 @@ function ActivityDialog({
       pred: pred === NONE ? null : pred,
     },
     acts,
+    { lifecycle, was: editing ? { from: editing.from, to: editing.to } : null },
   )
   const shown = items.filter((i) => !filter.trim() || `${i.code} ${i.description}`.toLowerCase().includes(filter.trim().toLowerCase()))
 
@@ -671,7 +680,7 @@ function ActivityDialog({
         to,
         itemIds: picked,
         pred: pred === NONE ? null : pred,
-        permit,
+        permit: permit === NONE ? null : permit === "any" ? true : permit,
       }
       if (editing) await updateActivity(firestore, access.ctx, projectId, editing.id, input)
       else await addActivity(firestore, access.ctx, projectId, actor, input)
@@ -703,13 +712,14 @@ function ActivityDialog({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="act-from">{t("prg.act_from")}</Label>
-              <Input id="act-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} dir="ltr" />
+              <Input id="act-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} dir="ltr" disabled={datesLocked} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="act-to">{t("prg.act_to")}</Label>
-              <Input id="act-to" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} dir="ltr" />
+              <Input id="act-to" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} dir="ltr" disabled={datesLocked} />
             </div>
           </div>
+          <p className="text-[11px] text-muted-foreground">{datesLocked ? t("prg.act_dates_locked") : t("prg.act_one_day")}</p>
           <div className="space-y-1.5">
             <Label htmlFor="act-pred">{t("prg.act_pred")}</Label>
             <Select value={pred} onValueChange={setPred}>
@@ -748,13 +758,24 @@ function ActivityDialog({
             </ul>
             <p className="text-[11px] text-muted-foreground">{picked.length ? t("prg.act_items_hint") : t("prg.act_items_none")}</p>
           </div>
-          <label htmlFor="act-permit" className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm">
-            <input id="act-permit" type="checkbox" checked={permit} onChange={(e) => setPermit(e.target.checked)} className="h-4 w-4" />
-            <span>
-              <b className="block">{t("prg.act_permit")}</b>
-              <span className="text-xs text-muted-foreground">{t("prg.act_permit_hint")}</span>
-            </span>
-          </label>
+          <div className="space-y-1.5">
+            <Label htmlFor="act-permit">{t("prg.act_permit")}</Label>
+            <Select value={permit} onValueChange={(v) => setPermit(v as PermitType | "any" | typeof NONE)}>
+              <SelectTrigger id="act-permit">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>{t("prg.act_permit_none")}</SelectItem>
+                {permit === "any" && <SelectItem value="any">{t("prg.act_permit_pill")}</SelectItem>}
+                {PERMIT_TYPES.map((k) => (
+                  <SelectItem key={k} value={k}>
+                    {t(`site.hse.pmt_type.${k}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">{t("prg.act_permit_hint_kind")}</p>
+          </div>
           {blocks.length > 0 && (name || to) && <p className="text-xs text-destructive">{t(`prg.block.${blocks[0]}`)}</p>}
         </div>
         <DialogFooter>

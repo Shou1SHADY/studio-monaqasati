@@ -9,6 +9,7 @@ import { defectsEnd, finalBlocks, handoverEvent, progressOf, provisionalBlocks, 
 import { readContract } from "./addendum-writes"
 import { PM_EVENTS, pmEventDocId } from "./events"
 import { todayDay } from "./format"
+import { closeHold, type HoldPmBlock } from "./hold-writes"
 import { lifecycleOf } from "./lifecycle"
 import { measuredItem } from "./measurement-writes"
 import { withFreshState } from "./project-writes"
@@ -92,7 +93,9 @@ export async function recordFinal(firestore: Firestore, ctx: PmContext, projectI
       by: actor.uid,
       at: new Date().toISOString(),
     })
-    tx.update(pRef, { pm: { ...pm, acceptances: next, lifecycle: "done", retentionFreed: freedOf(pm) + event.amount }, status: "remaining_payment", updatedAt: serverTimestamp() })
+    // A suspended project is completed by its final acceptance: the suspension's log line closes today (HND-01).
+    const base = lifecycleOf(project) === "hold" ? closeHold(pm as HoldPmBlock, actor, on, "final") : pm
+    tx.update(pRef, { pm: { ...base, acceptances: next, lifecycle: "done", retentionFreed: freedOf(pm) + event.amount }, status: "remaining_payment", updatedAt: serverTimestamp() })
     tx.set(doc(firestore, PM_EVENTS, pmEventDocId(event.organizationId, event.key)), event)
   })
 }

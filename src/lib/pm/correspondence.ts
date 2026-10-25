@@ -2,7 +2,10 @@
 // say it?" but "when did you send it, and when did they answer?" — a letter is
 // its dates: sent or received, the party, a reply deadline, and the reply with
 // its own date. A deadline that passes with no reply is half a claim, so a late
-// letter shows red. Numbers read ص-014/023 (out) and و-014/017 (in): the
+// letter is a decision — red when an incoming letter waits for OUR reply, amber
+// when we wait for theirs (1.1 COR-01). Our reply closes an incoming letter
+// ("done"); theirs answers ours ("rep"). Links point only to the project's own
+// variations, claims, obstacles and RFIs (1.1 FX-68). Numbers read ص-014/023 (out) and و-014/017 (in): the
 // project's sequence, then the letter's within its direction; the stored
 // number stays Latin and the prefix follows the reader's language. A deadline
 // of 0 days means none (a letter for information is never late). Pure: no I/O.
@@ -19,7 +22,7 @@ export type LetterDir = (typeof LETTER_DIRS)[number]
 export const LETTER_PARTIES = ["cons", "own", "gov", "sub"] as const
 export type LetterParty = (typeof LETTER_PARTIES)[number]
 
-/** out = sent, awaiting their reply · in = received, needs ours · rep = replied · done = closed. */
+/** out = sent, awaiting their reply · in = received, needs ours · rep = theirs came (to ours) · done = ours closed it (an incoming letter). */
 export const LETTER_STATUSES = ["out", "in", "rep", "done"] as const
 export type LetterStatus = (typeof LETTER_STATUSES)[number]
 
@@ -44,7 +47,10 @@ export interface PmLetter {
   day: string
   due: number
   status: LetterStatus
+  /** The linked records' numbers as stored (Latin: VO-03, CLM-02, RFI-07, OBS-02) — what the portal shows. */
   links: string[]
+  /** The linked records themselves (1.1): only the project's own, checked at save. */
+  refs?: LetterRef[] | null
   file?: PmFile | null
   reply?: LetterReply | null
   by: string
@@ -73,7 +79,45 @@ export const isLetterLate = (l: Pick<PmLetter, "status" | "day" | "due">, today:
 /** Days past the deadline (0 when not late). */
 export const lateBy = (l: Pick<PmLetter, "status" | "day" | "due">, today: string) => (isLetterLate(l, today) ? letterAge(l, today) - l.due : 0)
 
-/** "أ.ت-03، مط-014/02، RFI-07" → three references; any separator the keyboard offers. */
+/** A letter's link to one of the project's own records (COR-01, 1.1). `id` is the record's document id. */
+export const LETTER_REF_KINDS = ["vo", "claim", "obs"] as const
+export type LetterRefKind = (typeof LETTER_REF_KINDS)[number]
+export interface LetterRef {
+  kind: LetterRefKind
+  id: string
+}
+
+/** The stored (Latin) number of a linked record: VO-03 · CLM-02 · RFI-07 / OBS-02 (an obstacle's id carries its type). */
+export function refLabel(r: LetterRef): string {
+  if (r.kind === "vo") return `VO-${r.id}`
+  if (r.kind === "claim") return `CLM-${r.id}`
+  return r.id.toUpperCase()
+}
+
+/** Only links to records the project holds are kept — anything else is dropped at
+ * save (FX-68), and a record is linked once. */
+export function keepOwnRefs(refs: readonly LetterRef[] | null | undefined, own: { vo: ReadonlySet<string>; claim: ReadonlySet<string>; obs: ReadonlySet<string> }): LetterRef[] {
+  const out: LetterRef[] = []
+  for (const r of refs ?? []) {
+    if (!r || !(LETTER_REF_KINDS as readonly unknown[]).includes(r.kind) || typeof r.id !== "string") continue
+    if (!own[r.kind].has(r.id) || out.some((x) => x.kind === r.kind && x.id === r.id)) continue
+    out.push({ kind: r.kind, id: r.id })
+  }
+  return out
+}
+
+/** The status a reply moves the letter to: ours closes an incoming letter, theirs answers ours. */
+export const replyStatus = (dir: LetterDir): LetterStatus => (dir === "in" ? "done" : "rep")
+
+/** What the screen shows: an incoming letter answered before 1.1 was stored "rep" — it reads closed too. */
+export const shownLetterStatus = (l: Pick<PmLetter, "dir" | "status">): LetterStatus => (l.dir === "in" && l.status === "rep" ? "done" : l.status)
+
+/** The decision's colour for the late letters (1.1 COR-01, DEC-01 `corr`): red when an
+ * incoming letter waits for our reply — we are the late ones — amber when we wait for theirs. */
+export const lateLettersSeverity = (late: Array<Pick<PmLetter, "dir">>): "red" | "amber" => (late.some((l) => l.dir === "in") ? "red" : "amber")
+
+/** "أ.ت-03، مط-014/02، RFI-07" → three references; any separator the keyboard offers. Letters
+ * logged before 1.1 kept their links as typed; a new letter links records (`refs`). */
 export function parseLinks(text: string): string[] {
   const out: string[] = []
   for (const part of text.split(/[,،;؛\n·]+/)) {

@@ -8,12 +8,13 @@
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection } from "firebase/firestore"
-import { ArrowDownLeft, ArrowUpRight, Loader2, Mail, Paperclip, Plus } from "lucide-react"
+import { ArrowDownLeft, ArrowUpRight, Link2, Loader2, Mail, Paperclip, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { MfgFileField } from "@/components/manufacturing/MfgFileField"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { EmptyState } from "@/components/module-ui/EmptyState"
@@ -23,6 +24,7 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { PmAccessError } from "@/lib/pm/access"
+import { claimNo, PM_CLAIMS, type PmClaim } from "@/lib/pm/claim"
 import {
   DEFAULT_REPLY_DAYS,
   isLetterLate,
@@ -37,14 +39,18 @@ import {
   letterNumber,
   PM_LETTERS,
   replyBlocks,
+  shownLetterStatus,
   type LetterDir,
   type LetterParty,
+  type LetterRef,
   type LetterStatus,
   type PmLetter,
 } from "@/lib/pm/correspondence"
 import { logLetter, logReply, PmLetterError, type LetterActor } from "@/lib/pm/correspondence-writes"
 import type { PmFile } from "@/lib/pm/documents"
 import { pmDate, todayDay } from "@/lib/pm/format"
+import { obstacleSeq, PM_OBSTACLES, type PmObstacle } from "@/lib/pm/site"
+import { PM_VARIATIONS, voNo, type PmVariation } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
 import { ConsultantPortalPanel } from "./ConsultantPortalPanel"
 
@@ -86,13 +92,32 @@ export function CorrespondencePanel({
   const late = letters.filter((l) => isLetterLate(l, today))
   const canWrite = !access.ctx.archived && access.allowed("correspondence.write")
 
+  // COR-01 (1.1): a letter links the project's own variations, claims, obstacles and RFIs — picked, never typed.
+  const voQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_VARIATIONS) : null), [firestore, projectId])
+  const clmQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_CLAIMS) : null), [firestore, projectId])
+  const obsQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_OBSTACLES) : null), [firestore, projectId])
+  const { data: voData } = useCollection(voQ)
+  const { data: clmData } = useCollection(clmQ)
+  const { data: obsData } = useCollection(obsQ)
+  const refOptions = useMemo(() => {
+    const out: Array<{ ref: LetterRef; label: string; title: string }> = []
+    for (const v of (voData ?? []) as unknown as PmVariation[]) out.push({ ref: { kind: "vo", id: v.id }, label: t("vo.no", { no: voNo(v.seq) }), title: v.title })
+    for (const c of (clmData ?? []) as unknown as PmClaim[]) out.push({ ref: { kind: "claim", id: c.id }, label: t("claim.no", { no: claimNo(c.seq) }), title: c.cause })
+    for (const o of (obsData ?? []) as unknown as PmObstacle[]) out.push({ ref: { kind: "obs", id: o.id }, label: t(`site.obs.no.${o.type === "rfi" ? "rfi" : "obs"}`, { no: obstacleSeq(o.seq) }), title: o.title })
+    return out
+  }, [voData, clmData, obsData, t])
+  const refKey = (r: LetterRef) => `${r.kind}:${r.id}`
+  const refText = (r: LetterRef) => refOptions.find((o) => refKey(o.ref) === refKey(r))?.label ?? r.id
+  /** A letter's links in the reader's language; one logged before 1.1 keeps its typed references. */
+  const linksOf = (l: PmLetter) => (l.refs?.length ? l.refs.map(refText) : l.links ?? [])
+
   const [adding, setAdding] = useState(false)
   const [dir, setDir] = useState<LetterDir>("out")
   const [party, setParty] = useState<LetterParty>("cons")
   const [subject, setSubject] = useState("")
   const [day, setDay] = useState(today)
   const [due, setDue] = useState(String(DEFAULT_REPLY_DAYS))
-  const [links, setLinks] = useState("")
+  const [refs, setRefs] = useState<LetterRef[]>([])
   const [file, setFile] = useState<PmFile | null>(null)
 
   const [replying, setReplying] = useState<PmLetter | null>(null)
@@ -117,7 +142,7 @@ export function CorrespondencePanel({
     setSubject("")
     setDay(today)
     setDue(String(DEFAULT_REPLY_DAYS))
-    setLinks("")
+    setRefs([])
     setFile(null)
     setAdding(true)
   }
@@ -126,7 +151,7 @@ export function CorrespondencePanel({
     if (!firestore || blocks.length) return
     setBusy("add")
     try {
-      const r = await logLetter(firestore, access.ctx, projectId, actor, { dir, party, subject, day, due: dueNum, links, file })
+      const r = await logLetter(firestore, access.ctx, projectId, actor, { dir, party, subject, day, due: dueNum, refs, file })
       toast({ title: t("corr.logged", { no: letterLabel({ dir, no: r.no }, locale) }) })
       setAdding(false)
     } catch (err) {
@@ -208,14 +233,14 @@ export function CorrespondencePanel({
                       {(LETTER_PARTIES as readonly string[]).includes(l.party) ? t(`corr.party.${l.party}`) : l.party} ·{" "}
                       {t(l.dir === "out" ? "corr.sent" : "corr.received", { date: pmDate(l.day, locale) })}
                       {l.due > 0 ? ` · ${t("corr.deadline", { days: t("days", { count: l.due }) })}` : ""}
-                      {l.links?.length ? (
+                      {linksOf(l).length ? (
                         <>
                           {" · "}
-                          <span dir="auto">{l.links.join(" · ")}</span>
+                          <span dir="auto">{linksOf(l).join(" · ")}</span>
                         </>
                       ) : null}
                     </p>
-                    {l.status === "rep" && l.reply && (
+                    {(l.status === "rep" || l.status === "done") && l.reply && (
                       <p className="mt-0.5 text-xs font-semibold text-success" dir="auto">
                         {t("corr.reply_line", { date: pmDate(l.reply.on, locale), text: l.reply.text })}
                       </p>
@@ -228,7 +253,8 @@ export function CorrespondencePanel({
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {files.map(fileLink)}
-                    <StatusPill tone={known ? TONE[l.status] : "bad"}>{known ? t(`corr.status.${l.status}`) : t("unknown_state")}</StatusPill>
+                    {/* Our reply closes an incoming letter (1.1); one answered before that was stored "rep" — it reads closed too. */}
+                    <StatusPill tone={known ? TONE[shownLetterStatus(l)] : "bad"}>{known ? t(`corr.status.${shownLetterStatus(l)}`) : t("unknown_state")}</StatusPill>
                     {canWrite && isLetterOpen(l) && (
                       <Button
                         size="sm"
@@ -300,9 +326,41 @@ export function CorrespondencePanel({
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="corr-links">{t("corr.links")}</Label>
-              <Input id="corr-links" dir="auto" value={links} placeholder={t("corr.links_ph")} onChange={(e) => setLinks(e.target.value)} disabled={busy !== null} />
-              <p className="text-[11px] text-muted-foreground">{t("corr.links_hint")}</p>
+              <Label>{t("corr.links")}</Label>
+              <SearchableSelect
+                value=""
+                onChange={(v) => {
+                  const o = refOptions.find((x) => refKey(x.ref) === v)
+                  if (o && !refs.some((r) => refKey(r) === v)) setRefs([...refs, o.ref])
+                }}
+                options={refOptions.filter((o) => !refs.some((r) => refKey(r) === refKey(o.ref))).map((o) => ({ value: refKey(o.ref), label: `${o.label} — ${o.title}`, keywords: o.label }))}
+                placeholder={refOptions.length ? t("corr.links_pick") : t("corr.links_none")}
+                searchPlaceholder={t("corr.links_search")}
+                noResultsText={t("corr.links_no_match")}
+                ariaLabel={t("corr.links")}
+                disabled={busy !== null || refOptions.length === 0}
+              />
+              {refs.length > 0 && (
+                <ul className="flex flex-wrap gap-1.5">
+                  {refs.map((r) => (
+                    <li key={refKey(r)} className="inline-flex max-w-full items-center gap-1 rounded-full bg-module/10 py-0.5 pe-1 ps-2.5 text-xs font-semibold text-module">
+                      <Link2 size={12} aria-hidden="true" />
+                      <span className="truncate" dir="auto">
+                        {refText(r)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setRefs(refs.filter((x) => refKey(x) !== refKey(r)))}
+                        aria-label={t("corr.links_remove", { ref: refText(r) })}
+                        className="grid h-6 w-6 place-items-center rounded-full hover:bg-module/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <X size={12} aria-hidden="true" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-[11px] text-muted-foreground">{t("corr.links_hint_own")}</p>
             </div>
             {orgId && <MfgFileField orgId={orgId} area="pm" folder={`projects/${projectId}/letters`} value={file} onChange={setFile} label={t("corr.attach")} />}
             <BlockingReasons title={t("cannot_save")} reasons={blocks.map((b) => t(`corr.block.${b}`))} />

@@ -105,29 +105,27 @@ export const recordFix = (firestore: Firestore, ctx: PmContext, projectId: strin
   }))
 }
 
-/** The confirmation is recorded: closed. Whoever confirmed is chosen at the
- * time (the raising party by default); "other" is stated. */
+/** The confirmation is recorded: closed. The confirmer is never chosen — it is
+ * whoever raised the item ("other" with the text recorded when it was raised):
+ * an internal confirmation cannot close the consultant's item (PN-02, 1.1 FX-25). */
 export const recordConfirmation = (
   firestore: Firestore,
   ctx: PmContext,
   projectId: string,
   actor: PunchActor,
   seq: number,
-  opts: { on?: string; party?: PunchSource; partyText?: string | null; files?: PmAttachment[] | null } = {}
+  opts: { on?: string; files?: PmAttachment[] | null } = {}
 ) => {
   const today = todayDay()
-  return step(firestore, ctx, projectId, seq, "confirm", { day: opts.on ?? today, today, party: opts.party, partyText: opts.partyText }, (item) => {
-    const party = opts.party ?? item.source
-    return {
-      status: "done",
-      conf: {
-        on: opts.on || today,
-        by: actor.uid,
-        byName: actor.name,
-        party,
-        partyText: party === "oth" ? (opts.party ? opts.partyText?.trim() : item.sourceText) ?? null : null,
-        files: cleanAttachments(opts.files),
-      },
-    }
-  })
+  return step(firestore, ctx, projectId, seq, "confirm", { day: opts.on ?? today, today }, (item) => ({
+    status: "done",
+    conf: {
+      on: opts.on || today,
+      by: actor.uid,
+      byName: actor.name,
+      party: item.source,
+      partyText: item.source === "oth" ? item.sourceText ?? null : null,
+      files: cleanAttachments(opts.files),
+    },
+  }))
 }

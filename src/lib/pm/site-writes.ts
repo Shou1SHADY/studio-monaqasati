@@ -1,11 +1,13 @@
 // PM 1.0 — site writes (WF-19, WF-20). One transaction per act, the guard
 // first with the project as it stands. The daily report is `daily`'s; safety is
 // `hse`'s; obstacles are raised, chased and closed by whoever writes the site
-// record (`daily`) or runs the project (`approve`) — the guard table has no
-// entry for that pair yet, so both are asked here.
+// record (`daily`) or runs the project (`approve`). A daily report's obstacle
+// becomes an obstacle record in the same transaction (DLY-01, 1.1). Closing a
+// permit early is the server's (`/api/pm/permit-close`, permit-close-server.ts).
 
 import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
+import { LEGACY_DEFAULT_SECTIONS } from "../project-sections"
 import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
 import {
@@ -16,6 +18,7 @@ import {
   incidentBlocks,
   incidentNo,
   obstacleBlocks,
+  obstacleFromDaily,
   obstacleId,
   permitBlocks,
   permitNo,
@@ -29,6 +32,7 @@ import {
   type PmDaily,
   type PmIncident,
   type PmObstacle,
+  type PermitType,
   type PmPermit,
   type SiteFile,
 } from "./site"
@@ -46,7 +50,10 @@ export interface SiteActor {
 }
 
 type Counters = { rfiCount?: number; obstacleCount?: number; incidentCount?: number; permitCount?: number }
-type ProjectData = { organizationId?: string; status?: string; projectManagerId?: string | null; pm?: { lifecycle?: string } & Counters & Record<string, unknown> }
+type ProjectData = { organizationId?: string; status?: string; projectManagerId?: string | null; enabledSections?: string[] | null; pm?: { lifecycle?: string } & Counters & Record<string, unknown> }
+
+/** Whether the project keeps an obstacles list (the `rfi` section) — the same reading the project page makes. */
+export const obstaclesOn = (enabledSections: readonly string[] | null | undefined) => (enabledSections?.length ? enabledSections : LEGACY_DEFAULT_SECTIONS).includes("rfi")
 
 async function readProject(tx: Transaction, firestore: Firestore, projectId: string) {
   const ref = doc(firestore, "projects", projectId)
@@ -64,23 +71,36 @@ export async function fileDailyReport(
   ctx: PmContext,
   projectId: string,
   actor: SiteActor,
-  input: { labour: number; plant: number; done: string; obstacle: string; files?: SiteFile[] }
+  input: { labour: number; plant: number; done: string; obstacle: string; files?: SiteFile[]; logObstacle?: boolean }
 ): Promise<string> {
   const day = todayDay()
   await runTransaction(firestore, async (tx) => {
-    const { project } = await readProject(tx, firestore, projectId)
+    const { ref: pRef, project, pm } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "daily.write")
     const ref = doc(firestore, "projects", projectId, PM_DAILY, day)
     const existing = await tx.get(ref)
     const blocks = dailyBlocks({ archived: fresh.archived, done: input.done, labour: input.labour, plant: input.plant, filed: existing.exists() })
     if (blocks.length) throw new PmSiteError("blocked", blocks)
+    // DLY-01 (1.1): a written obstacle enters the obstacles list, dated today — unless the
+    // engineer unticks it, or the project keeps no obstacles list.
+    const text = input.obstacle.trim()
+    let obsId: string | null = null
+    if (text && input.logObstacle !== false && obstaclesOn(project.enabledSections)) {
+      assertPm(fresh, "obstacle.record")
+      const seq = (pm.obstacleCount ?? 0) + 1
+      obsId = obstacleId("obs", seq)
+      const obstacle: Omit<PmObstacle, "id"> = { ...obstacleFromDaily(text, day), seq, closeOn: null, answer: null, chases: [], by: actor.uid, byName: actor.name }
+      tx.set(doc(firestore, "projects", projectId, PM_OBSTACLES, obsId), { ...obstacle, organizationId: project.organizationId ?? null, createdAt: serverTimestamp() })
+      tx.update(pRef, { pm: { ...pm, obstacleCount: seq }, updatedAt: serverTimestamp() })
+    }
     const report: Omit<PmDaily, "id"> = {
       day,
       labour: input.labour,
       plant: input.plant,
       done: input.done.trim(),
-      obstacle: input.obstacle.trim() || null,
+      obstacle: text || null,
+      obsId,
       files: cleanFiles(input.files),
       by: actor.uid,
       byName: actor.name,
@@ -98,6 +118,7 @@ export interface ObstacleInput {
   itemIds: string[]
   impact: string
   openOn: string
+  files?: SiteFile[]
 }
 
 export async function openObstacle(firestore: Firestore, ctx: PmContext, projectId: string, actor: SiteActor, input: ObstacleInput): Promise<string> {
@@ -127,6 +148,7 @@ export async function openObstacle(firestore: Firestore, ctx: PmContext, project
       closeOn: null,
       answer: null,
       chases: [],
+      files: cleanFiles(input.files),
       by: actor.uid,
       byName: actor.name,
     }
@@ -161,7 +183,7 @@ export async function chaseObstacle(firestore: Firestore, ctx: PmContext, projec
 }
 
 /** The answer came (or the cause ended): closed on that day, with what was said. */
-export async function closeObstacle(firestore: Firestore, ctx: PmContext, projectId: string, actor: SiteActor, id: string, input: { on: string; answer: string }): Promise<void> {
+export async function closeObstacle(firestore: Firestore, ctx: PmContext, projectId: string, actor: SiteActor, id: string, input: { on: string; answer: string; files?: SiteFile[] }): Promise<void> {
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
@@ -169,7 +191,8 @@ export async function closeObstacle(firestore: Firestore, ctx: PmContext, projec
     const { ref, obstacle } = await readObstacle(tx, firestore, projectId, id)
     const blocks = closeObstacleBlocks({ archived: fresh.archived, openOn: obstacle.openOn, closeOn: obstacle.closeOn, on: input.on, today: todayDay() })
     if (blocks.length) throw new PmSiteError("blocked", blocks)
-    tx.update(ref, { closeOn: input.on, answer: input.answer.trim() || null, closedBy: actor.uid, closedByName: actor.name, updatedAt: serverTimestamp() })
+    const closeFiles = cleanFiles(input.files)
+    tx.update(ref, { closeOn: input.on, answer: input.answer.trim() || null, closedBy: actor.uid, closedByName: actor.name, ...(closeFiles.length ? { closeFiles } : {}), updatedAt: serverTimestamp() })
   })
 }
 
@@ -206,7 +229,13 @@ export async function logIncident(
   return seq
 }
 
-export async function issuePermit(firestore: Firestore, ctx: PmContext, projectId: string, actor: SiteActor, input: { title: string; who: string; from: string; to: string }): Promise<number> {
+export async function issuePermit(
+  firestore: Firestore,
+  ctx: PmContext,
+  projectId: string,
+  actor: SiteActor,
+  input: { type: PermitType | null; typeText?: string | null; title: string; where?: string | null; who: string; from: string; to: string; files?: SiteFile[] }
+): Promise<number> {
   let seq = 0
   await runTransaction(firestore, async (tx) => {
     const { ref, project, pm } = await readProject(tx, firestore, projectId)
@@ -215,7 +244,20 @@ export async function issuePermit(firestore: Firestore, ctx: PmContext, projectI
     const blocks = permitBlocks({ archived: fresh.archived, ...input })
     if (blocks.length) throw new PmSiteError("blocked", blocks)
     seq = (pm.permitCount ?? 0) + 1
-    const permit: Omit<PmPermit, "id"> = { seq, title: input.title.trim(), who: input.who.trim(), from: input.from, to: input.to, by: actor.uid, byName: actor.name }
+    const permit: Omit<PmPermit, "id"> = {
+      seq,
+      k: input.type,
+      kText: input.type === "oth" ? input.typeText?.trim() || null : null,
+      title: input.title.trim(),
+      where: input.where?.trim() || null,
+      who: input.who.trim(),
+      from: input.from,
+      to: input.to,
+      closedOn: null,
+      files: cleanFiles(input.files),
+      by: actor.uid,
+      byName: actor.name,
+    }
     tx.set(doc(firestore, "projects", projectId, PM_PERMITS, permitNo(seq)), { ...permit, organizationId: project.organizationId ?? null, createdAt: serverTimestamp() })
     tx.update(ref, { pm: { ...pm, permitCount: seq }, updatedAt: serverTimestamp() })
   })

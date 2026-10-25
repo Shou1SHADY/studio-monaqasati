@@ -1,25 +1,34 @@
 // PM 1.0 — correspondence writes (COR-01), by whoever holds `corr`. One
 // transaction each with the guard first. The number is drawn inside the write:
 // the document id from `pm.letterCount`, the letter's own number from its
-// direction's sequence (`pm.lettersOut` / `pm.lettersIn`).
+// direction's sequence (`pm.lettersOut` / `pm.lettersIn`). Links are re-read in
+// the transaction: a record the project does not hold is dropped (1.1 FX-68).
 
 import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
+import { PM_CLAIMS } from "./claim"
 import {
+  keepOwnRefs,
   letterBlocks,
   letterDocId,
   letterNumber,
-  parseLinks,
   PM_LETTERS,
+  refLabel,
   replyBlocks,
+  replyStatus,
   type LetterDir,
   type LetterParty,
+  type LetterRef,
   type LetterReply,
   type PmLetter,
 } from "./correspondence"
 import type { PmFile } from "./documents"
 import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
+import { PM_OBSTACLES } from "./site"
+import { PM_VARIATIONS } from "./variation"
+
+const REF_COLLECTION = { vo: PM_VARIATIONS, claim: PM_CLAIMS, obs: PM_OBSTACLES } as const
 
 export class PmLetterError extends Error {
   constructor(readonly code: "missing" | "not_pm_project" | "blocked", readonly blocks: string[] = []) {
@@ -52,7 +61,7 @@ export async function logLetter(
   ctx: PmContext,
   projectId: string,
   actor: LetterActor,
-  input: { dir: LetterDir; party: LetterParty; subject: string; day: string; due: number; links: string; file?: PmFile | null },
+  input: { dir: LetterDir; party: LetterParty; subject: string; day: string; due: number; refs?: LetterRef[] | null; file?: PmFile | null },
 ): Promise<{ seq: number; no: string }> {
   let seq = 0
   let no = ""
@@ -60,6 +69,14 @@ export async function logLetter(
     const { ref, project, pm, archived } = await readProject(tx, firestore, ctx, projectId)
     const blocks = letterBlocks({ archived, subject: input.subject, day: input.day, due: input.due, today: todayDay() })
     if (blocks.length) throw new PmLetterError("blocked", blocks)
+    // The project's own records only: each named one is read here, and what is not there is dropped.
+    const asked = (input.refs ?? []).filter((r) => r && r.kind in REF_COLLECTION && typeof r.id === "string" && r.id && !r.id.includes("/")).slice(0, 20)
+    const found = await Promise.all(asked.map((r) => tx.get(doc(firestore, "projects", projectId, REF_COLLECTION[r.kind], r.id))))
+    const own = { vo: new Set<string>(), claim: new Set<string>(), obs: new Set<string>() }
+    asked.forEach((r, i) => {
+      if (found[i].exists()) own[r.kind].add(r.id)
+    })
+    const refs = keepOwnRefs(asked, own)
     seq = (pm.letterCount ?? 0) + 1
     const dirKey = input.dir === "out" ? "lettersOut" : "lettersIn"
     const dirSeq = (pm[dirKey] ?? 0) + 1
@@ -73,7 +90,8 @@ export async function logLetter(
       day: input.day,
       due: input.due,
       status: input.dir === "in" ? "in" : "out",
-      links: parseLinks(input.links),
+      links: refs.map(refLabel),
+      refs,
       file: input.file ?? null,
       reply: null,
       by: actor.uid,
@@ -102,6 +120,6 @@ export async function logReply(
     const blocks = replyBlocks({ archived, status: letter.status, text: input.text, on: input.on, letterDay: letter.day, today: todayDay() })
     if (blocks.length) throw new PmLetterError("blocked", blocks)
     const reply: LetterReply = { text: input.text.trim(), on: input.on, by: actor.uid, byName: actor.name, file: input.file ?? null }
-    tx.update(ref, { status: "rep", reply, updatedAt: serverTimestamp() })
+    tx.update(ref, { status: replyStatus(letter.dir), reply, updatedAt: serverTimestamp() })
   })
 }

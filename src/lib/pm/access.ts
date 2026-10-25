@@ -167,14 +167,16 @@ type Req = { all?: PmKey[]; any?: PmKey[] }
 export const PM_GUARD = {
   "measurement.write": { all: ["measure"] },
   "obstacle.record": { any: ["daily", "approve"] },
-  // «سجّل متابعة» carries no duty gate in the prototype: anyone on the project (any duty) chases.
-  "obstacle.chase": { any: ["measure", "daily", "qa", "hse", "req", "rcv", "sub", "approve", "vo", "prep", "ipc", "ipcOk", "client", "corr"] },
+  // PM 1.1 (§C3 `chase`): a chase is the site record's or the manager's — daily | approve, as recording and closing.
+  "obstacle.chase": { any: ["daily", "approve"] },
   "item.rate.set": { all: ["measure", "money"] },
   "daily.write": { all: ["daily"] },
   "qa.record": { all: ["qa"] },
   "submittal.record": { any: ["measure", "approve"] },
   "weeklyPlan.manage": { any: ["measure", "approve"] },
   "hse.record": { all: ["hse"] },
+  // PM 1.1 (HSE-01 `pmtclose`): closing a work permit early — safety's; run on the server.
+  "permit.close": { all: ["hse"] },
   "supply.request": { all: ["req"] },
   "store.move": { all: ["req"] },
   "plant.request": { all: ["req"] },
@@ -193,6 +195,8 @@ export const PM_GUARD = {
   "reconciliation.manage": { all: ["approve"] },
   "document.manage": { all: ["approve"] },
   "project.edit": { all: ["approve"] },
+  // PM 1.1 (PRJ-02 `prjhold` · `prjresume`): suspending and resuming — the PM or the owner.
+  "project.suspend": { all: ["approve"] },
   "consultantPortal.manage": { all: ["approve"] },
   "claim.submit": { all: ["approve"] },
   "claim.respond": { all: ["approve"] },

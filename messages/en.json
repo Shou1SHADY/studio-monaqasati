@@ -17806,7 +17806,8 @@
         "conf_date": "Confirmation date",
         "conf_proof": "Proof of confirmation",
         "conf_proof_hint": "A walk minute, an e-mail or a signed form — if one exists.",
-        "close_item": "Close the item"
+        "close_item": "Close the item",
+        "conf_by_raiser": "{party} — who raised it"
       },
       "hnd": {
         "tab": "Handover & closeout",
@@ -17955,7 +17956,8 @@
           "lost": "Material lost: {amount}",
           "lost_note": "Approved waste, damage and theft — compare it with the waste allowed in your analysis"
         },
-        "money_title": "Open money also blocks closing"
+        "money_title": "Open money also blocks closing",
+        "warn_only": "Warning — does not block"
       },
       "vo": {
         "title": "Variations",
@@ -19174,9 +19176,10 @@
         },
         "block": {
           "no_name": "Name the activity",
-          "dates": "The end must come after the start",
+          "dates": "The end cannot come before the start",
           "pred_self": "An activity cannot precede itself",
-          "pred_cycle": "That link would loop back to this activity"
+          "pred_cycle": "That link would loop back to this activity",
+          "dates_locked": "The project is live — the activity's dates stay as planned"
         },
         "legend_planned": "Planned — {rev} in force",
         "legend_r01": "Planned — R0 original",
@@ -19190,13 +19193,18 @@
         "ends_no_eot": "{rev} · ends {date}",
         "sec_items": "{count, plural, one {# item} other {# items}}",
         "sec_plan": "plan {pct}%",
-        "act_permit": "Needs a work permit",
+        "act_permit": "Work permit it needs",
         "act_permit_hint": "It cannot start without a live permit — the look-ahead checks it",
         "act_permit_pill": "permit",
         "hover_planned": "{date} · planned {rev} {pct}%",
         "hover_r0": "original R0 {pct}%",
         "hover_actual": "actual {pct}%",
-        "hover_hint": "Point at the curve (or focus it and use the arrow keys) to read a date"
+        "hover_hint": "Point at the curve (or focus it and use the arrow keys) to read a date",
+        "act_permit_kind_pill": "Permit: {kind}",
+        "act_dates_locked": "The project is live: the plan's dates stay — only an approved extension issues a new revision",
+        "act_one_day": "A one-day activity ends on the day it starts",
+        "act_permit_none": "No permit needed",
+        "act_permit_hint_kind": "It is not ready in the look-ahead without a permit of this kind valid on its start day"
       },
       "seat": {
         "chip": "Your authority: {role}",
@@ -19569,7 +19577,13 @@
           "bad_day": "Choose the reply date",
           "before_letter": "A reply cannot be dated before the letter",
           "future_day": "The reply date cannot be in the future"
-        }
+        },
+        "links_pick": "Pick a variation, claim, obstacle or RFI",
+        "links_none": "No variations, claims or RFIs on this project yet",
+        "links_search": "Search by number or subject",
+        "links_no_match": "Nothing matches",
+        "links_remove": "Remove {ref}",
+        "links_hint_own": "Only this project's own records can be linked"
       },
       "portal": {
         "title": "Consultant portal",
@@ -19681,7 +19695,10 @@
           "no_files": "no files",
           "avg": "Average {avg} workers/day over the last {count, plural, one {report} other {# reports}}",
           "saved": "Daily report saved",
-          "saved_files": "Daily report saved with {count, plural, one {# file} other {# files}}"
+          "saved_files": "Daily report saved with {count, plural, one {# file} other {# files}}",
+          "obstacle_log": "Log it in the obstacles list",
+          "obstacle_log_hint": "Opened today — it can then be chased and linked to a claim",
+          "obs_logged": "logged as {no}"
         },
         "obs": {
           "title": "Obstacles & RFI",
@@ -19747,7 +19764,12 @@
           "open_on": "Opened on",
           "open_on_hint": "The response time and a claim’s notice period count from here",
           "save": "Log",
-          "opened": "Obstacle logged — its response time is tracked"
+          "opened": "Obstacle logged — its response time is tracked",
+          "files": "Photos or the letter (optional)",
+          "files_hint": "What a claim will cite later",
+          "close_files": "The answer's document (optional)",
+          "reply_avg": "Answers take {days} days on average ({count} closed)",
+          "reply_party": "{party} {days} d"
         },
         "hse": {
           "title": "Safety",
@@ -19798,7 +19820,25 @@
           "pmt_from": "From",
           "pmt_to": "Until",
           "pmt_save": "Log the permit",
-          "pmt_saved": "Work permit logged"
+          "pmt_saved": "Work permit logged",
+          "pmt_type": {
+            "hot": "Hot work",
+            "height": "Work at height",
+            "exc": "Excavation",
+            "conf": "Confined space",
+            "elec": "Electrical isolation",
+            "lift": "Heavy lift",
+            "oth": "Other kind"
+          },
+          "pmt_type_label": "Kind of permit",
+          "pmt_type_text": "The kind, in words",
+          "pmt_type_text_ph": "e.g. work near live services",
+          "pmt_where": "Where (optional)",
+          "pmt_where_ph": "e.g. Villa 4 roof",
+          "pmt_files": "The signed permit (optional)",
+          "pmt_closed": "Closed {date}",
+          "pmt_closed_done": "Permit closed — no activity relies on it from today",
+          "pmt_close": "Close"
         },
         "block": {
           "archived": "The project is archived — nothing changes",
@@ -19820,7 +19860,12 @@
           "bad_days": "Lost days are a whole number, and only for a lost-time injury",
           "no_work": "Write the work the permit covers",
           "no_who": "Write who it is issued to",
-          "bad_period": "The permit cannot end before it starts"
+          "bad_period": "The permit cannot end before it starts",
+          "rfi_party": "An RFI names who owes the answer",
+          "type_text": "State the permit's kind",
+          "pmt_closed": "The permit is already closed",
+          "pmt_expired": "The permit has already expired",
+          "pmt_refused": "Closing a permit is safety's"
         }
       },
       "too_big": "A file is larger than 15 MB",
@@ -21197,7 +21242,10 @@
           "no_permit": "No valid work permit",
           "materials": "Missing {names}",
           "materials_more": "Missing {names} and {count} more",
-          "plant": "{what} not on site"
+          "plant": "{what} not on site",
+          "pred_insp": "{code} in the preceding work has no passed inspection",
+          "no_permit_kind": "No valid “{kind}” permit on {date}",
+          "plant_waiting": "{what} requested, not yet approved"
         },
         "title": "Weekly work plan",
         "sub": "What we commit to this week — measured at its end",
@@ -21632,24 +21680,45 @@
         "by_sub": "Supplied by the subcontractor within his scope — not requested or counted here"
       },
       "hold": {
-        "hold": "Postpone",
+        "hold": "Suspend",
         "resume": "Resume",
-        "title": "Postpone the project",
-        "desc": "Work stops; the project stays open and its indirect costs keep running.",
-        "why": "Reason for postponement",
-        "why_ph": "e.g. the owner's decision to redesign the façades",
-        "since": "Stopped on",
+        "title": "Suspend the project",
+        "desc": "The project stays open and every record works — indirect costs keep running. Suspension does not extend the duration: an extension is an approved claim.",
+        "why": "Reason",
+        "why_ph": "Anything worth recording",
+        "since": "Suspended since",
         "note": "From {date} the portfolio shows it postponed with its reason, and management sees how long it has stood.",
-        "submit": "Postpone",
-        "held": "Project postponed — its day and reason are recorded",
+        "submit": "Suspend",
+        "held": "Project suspended — the line is open in the suspension log under your name",
         "resumed": "Work resumed — the project is live again",
         "block": {
           "archived": "The project is archived",
-          "not_live": "Only a live project can be postponed",
-          "not_held": "The project is not postponed",
-          "no_reason": "State the reason",
-          "bad_day": "The day cannot be in the future"
-        }
+          "not_live": "Only a live project can be suspended",
+          "not_held": "The project is not suspended",
+          "no_reason": "Choose the reason",
+          "bad_day": "The day cannot be in the future",
+          "reason_text": "State the other reason",
+          "before_start": "A suspension cannot be dated before the project started"
+        },
+        "reason": {
+          "client": "Client decision",
+          "design": "Redesign or major change",
+          "permit": "Permit or authority",
+          "pay": "Our payments are late",
+          "site": "Site not available",
+          "oth": "Other — stated"
+        },
+        "reason_other": "Other — {text}",
+        "reason_text": "The reason, in words",
+        "reason_text_ph": "State the reason",
+        "note_label": "Note (optional)",
+        "log_title": "Suspension log",
+        "log_open": "Still suspended",
+        "log_span": "{from} to {to} · {days}",
+        "log_since": "Since {from} · {days} so far",
+        "log_by": "Suspended by {name}",
+        "log_resumed_by": "Resumed by {name}",
+        "log_final_by": "Completed by final acceptance — {name}"
       },
       "seg": {
         "info": "Contract details",

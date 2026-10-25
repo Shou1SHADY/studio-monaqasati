@@ -29,6 +29,7 @@ import { inForce, PM_ADDENDA, type PmAddendum } from "@/lib/pm/addenda"
 import { delayAndDamages, grantedDays, PM_CLAIMS, type PmClaim } from "@/lib/pm/claim"
 import { addDays } from "@/lib/pm/programme"
 import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
+import type { HoldEntry } from "@/lib/pm/hold-writes"
 import { PM_SETTINGS, PmInfoError, setSelfApproval, updatePmInfo, type InfoActor, type PmOrgSettings } from "@/lib/pm/info-writes"
 import { lifecycleOf, startBlocks } from "@/lib/pm/lifecycle"
 import { PmProjectError, startProject } from "@/lib/pm/project-writes"
@@ -37,6 +38,7 @@ import { approvedValue, PM_VARIATIONS, type PmVariation } from "@/lib/pm/variati
 import { displayDocNumber } from "@/lib/sales-numbering"
 import { CheckLine, ChoiceChips, FormHint } from "./ContractBits"
 import { clientTypeKey } from "./AcceptHandoverWizard"
+import { PmHoldLog, useHoldReason } from "./PmHoldControl"
 
 export interface PmFileProject {
   name?: string | null
@@ -61,6 +63,10 @@ export interface PmFileProject {
     acceptances?: { prov?: { on: string } | null } | null
     holdSince?: string | null
     holdWhy?: string | null
+    holdK?: string | null
+    holdNote?: string | null
+    holdByName?: string | null
+    holdLog?: HoldEntry[] | null
   } | null
 }
 
@@ -85,6 +91,7 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
   const firestore = useFirestore()
   const { toast } = useToast()
   const claims = useClaims(projectId)
+  const holdReason = useHoldReason()
   const [editing, setEditing] = useState(false)
   const [location, setLocation] = useState("")
   const [consultant, setConsultant] = useState("")
@@ -151,21 +158,28 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
       <KeyValueRow label={t("info.location")} value={project.location || "—"} />
       <KeyValueRow label={t("info.consultant")} value={project.consultant || "—"} />
       <KeyValueRow label={t("info.manager")} value={project.projectManagerName || "—"} />
-      {onHold && (pm.holdWhy || pm.holdSince) && (
+      {onHold && (pm.holdWhy || pm.holdK || pm.holdSince) && (
         <KeyValueRow
           label={t("info.hold_why")}
           value={
             <span className="block text-end">
-              <b dir="auto">{pm.holdWhy || "—"}</b>
+              <b dir="auto">{holdReason(pm.holdK, pm.holdWhy)}</b>
               {pm.holdSince && (
                 <span className="block text-xs text-muted-foreground">
                   {t("info.hold_since", { date: pmDate(pm.holdSince, locale), days: t("days", { count: dayGap(pm.holdSince, todayDay()) }) })}
+                  {pm.holdByName ? ` · ${t("hold.log_by", { name: pm.holdByName })}` : ""}
+                </span>
+              )}
+              {pm.holdNote && (
+                <span className="block text-xs text-muted-foreground" dir="auto">
+                  {pm.holdNote}
                 </span>
               )}
             </span>
           }
         />
       )}
+      <PmHoldLog pm={pm} />
       <KeyValueRow
         label={t("info.start_duration")}
         value={

@@ -158,7 +158,8 @@ export function CloseoutPanel({
   // Without money the certificates are not read — their rows are not shown rather
   // than shown wrong; without the client side they are not this person's to see.
   const shown = shownCloseRows(rows, clientMoney)
-  const left = shown.filter((r) => !r.ok)
+  // A warning row (an open letter, 1.1 WF-31) is shown but never stands between the project and closing.
+  const left = shown.filter((r) => !r.ok && !r.warn)
   const openMoney = openMoneyRows(rows, clientMoney)
   const canClose = access.allowed("project.close") && lifecycle === "done"
 
@@ -286,7 +287,7 @@ export function CloseoutPanel({
                     {!r.ok && FINANCE_ROWS.has(r.key) && ` ${t("close.waits_finance")}`}
                   </span>
                 </span>
-                {!r.ok && <StatusPill tone="warn">{t("close.pending")}</StatusPill>}
+                {!r.ok && <StatusPill tone={r.warn ? "mute" : "warn"}>{t(r.warn ? "close.warn_only" : "close.pending")}</StatusPill>}
               </>
             )
             const cls = cn("flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-start text-sm", r.ok ? "border-success/20" : "border-warning/30 bg-warning/5")
