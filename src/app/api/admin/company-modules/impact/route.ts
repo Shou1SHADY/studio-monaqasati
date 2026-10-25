@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { adminCaller, adminError } from "@/lib/admin-caller-server"
 import { assessPackageChange, contractorOff, readStoredModules } from "@/lib/procurement/package-change-server"
 import { PROJECT_SCAN_CAP } from "@/lib/procurement/package-migration"
+import { companyRoleOf } from "@/lib/admin-accounts"
 
 // Admin-only: «ما يتغيّر» for the package the admin has staged on a contractor — the transition rule's counts, read from the
 // company's own records. Counts only; nothing is written. `off` is the staged list (absent = the stored one, no change).
@@ -12,8 +13,10 @@ export async function GET(req: NextRequest) {
     if (caller instanceof NextResponse) return caller
     const orgId = req.nextUrl.searchParams.get("orgId")?.trim() || ""
     if (!orgId || orgId.includes("/")) return adminError("orgId is required", "INVALID_INPUT", 400)
-    const owner = (await caller.db.collection("users").doc(orgId).get()).data()
-    if (!owner || owner.role !== "Contractor") return adminError("Not a contractor company", "NOT_FOUND", 404)
+    // A company is its owner's users doc (primary) or an organizations doc (a secondary company).
+    const userSnap = await caller.db.collection("users").doc(orgId).get()
+    const owner = userSnap.exists ? userSnap.data() : (await caller.db.collection("organizations").doc(orgId).get()).data()
+    if (companyRoleOf(owner, userSnap.exists ? "user" : "org") !== "Contractor") return adminError("Not a contractor company", "NOT_FOUND", 404)
 
     const stored = await readStoredModules(caller.db, orgId)
     const staged = req.nextUrl.searchParams.get("off")

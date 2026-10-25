@@ -11476,7 +11476,7 @@
         "total_count": "Total Contractors",
         "verified_count": "Verified",
         "pending_count": "Pending Verification",
-        "contractors_list": "Contractors Log",
+        "contractors_list": "Contractor companies",
         "no_contractors_found": "No matching contractors found",
         "id": "ID",
         "company_name": "Contractor",
@@ -11535,7 +11535,10 @@
         "delete_account": "Delete Account",
         "delete_confirm_title": "Confirm Account Deletion",
         "delete_confirm_desc": "Are you sure you want to delete {name}'s account? This action cannot be undone.",
-        "delete_success": "Account deleted successfully"
+        "delete_success": "Account deleted successfully",
+        "companies_shown": "Showing {shown} of {total, plural, one {1 company} other {# companies}}",
+        "show_more_count": "Show {count, plural, one {1 more company} other {# more companies}}",
+        "sort_by": "Sort by {column}"
       },
       "Leads": {
         "page_title": "Leads",
@@ -26803,10 +26806,12 @@
         "new": "New contractor"
       },
       "kpi": {
-        "subscribers": "Subscribers",
+        "subscribers": "Subscribing companies",
         "full": "On the full package",
         "no_fin": "Without Finance — accountant export",
-        "mismatch": "Said “yes” but not opened"
+        "mismatch": "Said “yes” but not opened",
+        "verified": "Verified companies",
+        "awaiting": "Awaiting verification"
       },
       "list": {
         "package": "Package",
@@ -26849,6 +26854,7 @@
           "title": "Their package",
           "base": "Base package: Procurement + Inventory",
           "base_desc": "Always on — every connector plugs into it.",
+          "base_locked": "Always on",
           "shortcuts": "Shortcuts:",
           "provisional": "Shortcut names are provisional, pending the commercial-names decision."
         },
@@ -26929,7 +26935,8 @@
         "pages_sub": "What their menu shows to someone holding every permission.",
         "hidden": "Not in their package",
         "flow": "How Procurement works for them",
-        "limit": "the approval limit set in their policies"
+        "limit": "the approval limit set in their policies",
+        "limit_default": "{amount} — the reference value; the company has not set one"
       }
     },
     "AdminPipeline": {

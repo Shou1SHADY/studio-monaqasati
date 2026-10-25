@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { doc } from "firebase/firestore"
-import { ArrowRight, Check, Eye, Layers, Loader2, NotebookPen, Send } from "lucide-react"
+import { ArrowRight, Check, Eye, Layers, Loader2, Lock, NotebookPen, Send } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Button } from "@/components/ui/button"
@@ -20,11 +20,12 @@ import { COMPANY_MODULES, forcedOffBy, offSet, type OptionalModule } from "@/lib
 import { CONNECTORS, PRESETS, offFor, packageLabel, packageOf, samePackage, type Connector, type PackageFlags } from "@/lib/procurement/package"
 import { impactQuiet, readImpactReport, type ImpactReport } from "@/lib/procurement/package-impact-report"
 import { SUBSCRIPTION_STATUSES, subscriptionStatusOf, type SubscriptionStatus } from "@/lib/subscription-status"
+import { displayCity } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { ConnectorCard } from "./ConnectorCard"
 import { ImpactPanel } from "./ImpactPanel"
 import { NeedQuestions, type NeedAnswers } from "./NeedQuestions"
-import { PackageChips } from "./PackageIcons"
+import { PackageChips, UnitIcon } from "./PackageIcons"
 import { PackagePipeline } from "./PackagePipeline"
 import { SubscriptionStatusPill } from "./SubscriptionStatusPill"
 
@@ -64,7 +65,11 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
 
   const ownerRef = useMemoFirebase(() => (firestore ? doc(firestore, "users", orgId) : null), [firestore, orgId])
   const modulesRef = useMemoFirebase(() => (firestore ? doc(firestore, COMPANY_MODULES, orgId) : null), [firestore, orgId])
-  const { data: owner, isLoading: ownerLoading } = useDoc(ownerRef)
+  // A secondary company (company switcher) has no users doc of its own: its identity is organizations/{id}.
+  const orgRef = useMemoFirebase(() => (firestore ? doc(firestore, "organizations", orgId) : null), [firestore, orgId])
+  const { data: userOwner, isLoading: ownerLoading } = useDoc(ownerRef)
+  const { data: orgDoc, isLoading: orgLoading } = useDoc(orgRef)
+  const owner = userOwner ?? orgDoc
   const { data: stored, isLoading: modulesLoading } = useDoc(modulesRef)
 
   const storedOff = useMemo(() => [...offSet(stored as { off?: unknown } | null, "contractor")].sort(), [stored])
@@ -165,7 +170,7 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
     }
   }
 
-  const ready = !ownerLoading && !modulesLoading
+  const ready = !ownerLoading && !orgLoading && !modulesLoading
   const o = (owner ?? null) as OwnerDoc | null
   const labels = { core: tp("base.core.short"), inv: tp("base.inv.short"), pm: tp("conn.pm.short"), fin: tp("conn.fin.short"), mfg: tp("conn.mfg.short") }
   const since = sinceOf(o?.joinedAt, locale)
@@ -190,7 +195,7 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
               <div className="min-w-0 space-y-1">
                 <h1 className="text-2xl font-black text-foreground">{o.name}</h1>
                 <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                  {[o.city, since && t("since", { date: since })].filter(Boolean).join(" · ")}
+                  {[o.city ? displayCity(o.city, locale) : "", since && t("since", { date: since })].filter(Boolean).join(" · ")}
                   <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold">{o.isVerified ? tc("status_active") : o.verificationRequested ? tc("status_pending") : tc("status_review")}</span>
                   <SubscriptionStatusPill status={storedSubscription} />
                   <PackageChips pkg={pkg} labels={labels} />
@@ -234,13 +239,21 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
                     {packageLabel(pkg, tp)}
                   </span>
                 </h2>
-                <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-3">
-                  <PackageChips pkg={{ pm: false, fin: false, mfg: false }} labels={labels} />
+                {/* The base is always on: its two units, never the connectors (each has its own card below), and a locked
+                    switch drawn ON — a disabled switch's pale look read as «off» on a full company. */}
+                <div className="flex items-center gap-3 rounded-xl border bg-muted/30 p-3" data-testid="base-package">
+                  <span className="inline-flex shrink-0 items-center gap-1" aria-hidden="true">
+                    <UnitIcon unit="core" />
+                    <UnitIcon unit="inv" />
+                  </span>
                   <div className="min-w-0 flex-1 text-xs">
                     <b className="block text-sm">{t("pkg.base")}</b>
                     <span className="text-muted-foreground">{t("pkg.base_desc")}</span>
                   </div>
-                  <Switch checked disabled aria-label={t("pkg.base")} />
+                  <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-bold text-success" title={t("pkg.base_locked")}>
+                    <Lock size={13} aria-hidden="true" />
+                    <Switch checked disabled aria-label={`${t("pkg.base")} — ${t("pkg.base_locked")}`} className="disabled:opacity-100" />
+                  </span>
                 </div>
                 <div className="space-y-2">
                   {CONNECTORS.map((conn) => (

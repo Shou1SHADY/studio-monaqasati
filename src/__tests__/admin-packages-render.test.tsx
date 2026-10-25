@@ -263,6 +263,50 @@ describe("the subscription status and the read-only preview (AD-01, AD-03)", () 
   })
 })
 
+describe("the package page and preview read the company honestly", () => {
+  it("the base card is on: its two units only, a locked switch at full colour — never the connectors greyed", async () => {
+    render(<ContractorPackagePage orgId={ORG} />)
+    await flush()
+    const base = document.querySelector('[data-testid="base-package"]') as HTMLElement
+    expect(base.querySelectorAll("span.grid")).toHaveLength(2)
+    expect(base.querySelector(".border-dashed")).toBeNull()
+    const sw = base.querySelector('[role="switch"]') as HTMLElement
+    expect(sw.getAttribute("aria-checked")).toBe("true")
+    expect(sw.className).toContain("disabled:opacity-100")
+  })
+
+  it("the English header names the city in English", async () => {
+    setLocale("en")
+    render(<ContractorPackagePage orgId={ORG} />)
+    await flush()
+    expect(document.querySelector("header")?.textContent).toContain("Riyadh")
+    expect(document.querySelector("header")?.textContent).not.toContain("الرياض")
+  })
+
+  it("a secondary company opens from its organizations doc", async () => {
+    seed("organizations/org-9", { role: "Contractor", name: "ركن الثانية", ownerUserId: "u2" })
+    render(<ContractorPackagePage orgId="org-9" />)
+    await flush()
+    expect(document.querySelector("h1")?.textContent).toBe("ركن الثانية")
+  })
+
+  it("the preview's station 5 names the company's approval limit, else the reference value said as such", async () => {
+    seed(`procurementSettings/${ORG}`, { organizationId: ORG, managerApprovalLimit: 150000 })
+    const view = render(<ContractorPackagePreview orgId={ORG} />)
+    await flush()
+    expect(text()).toContain("150,000")
+    expect(text()).not.toContain("حدّ الاعتماد المضبوط في سياساته")
+    view.unmount()
+    resetFakeDb()
+    seed("users/adm", { role: "Admin", name: "Admin A", email: "a@x.sa" })
+    seed(`users/${ORG}`, { role: "Contractor", name: "شركة البنيان" })
+    render(<ContractorPackagePreview orgId={ORG} />)
+    await flush()
+    expect(text()).toContain("القيمة المرجعية، لم تضبط الشركة حدّاً")
+    expect(missingKeys.size).toBe(0)
+  })
+})
+
 describe("the contractors list (ADM-01)", () => {
   it("adds the package, the version and the strip of four numbers, and opens the page instead of a dialog", async () => {
     seed("users/c2", { role: "Contractor", name: "مؤسسة ركن", organizationId: "c2", organizationRole: "owner" })
@@ -271,7 +315,7 @@ describe("the contractors list (ADM-01)", () => {
     render(<AdminContractorsPage />)
     await flush(10)
     const kpis = Array.from(document.querySelectorAll('[data-testid="package-kpis"] [data-kpi]')).map((li) => [li.getAttribute("data-kpi"), li.querySelector("b")?.textContent])
-    expect(kpis).toEqual([["subscribers", "2"], ["full", "1"], ["no_fin", "0"], ["mismatch", "1"]])
+    expect(kpis).toEqual([["subscribers", "2"], ["full", "1"], ["no_fin", "0"], ["mismatch", "1"], ["verified", "1"], ["awaiting", "0"]])
     const labels = Array.from(document.querySelectorAll('[data-testid="version-label"]')).map((e) => e.textContent)
     expect(labels).toEqual(expect.arrayContaining(["الكاملة", "الأساسية + المالية"]))
     expect(text()).toContain("أجاب «نعم» عن المشاريع")
@@ -299,6 +343,53 @@ describe("the contractors list rows (AD-02, AD-03)", () => {
     const links = Array.from(row.querySelectorAll("a")).map((a) => a.getAttribute("href"))
     expect(links.filter((h) => h === `/admin/contractors/${ORG}`).length).toBe(2)
     expect(missingKeys.size).toBe(0)
+  })
+
+  it("list COMPANIES: a team member is a user of his owner's company, not a row — the strip and the table count the same rows", async () => {
+    seed("users/m1", { role: "Contractor", name: "عضو", organizationId: ORG, organizationRole: "member" })
+    seed("users/m2", { role: "Contractor", name: "عضو ثانٍ", organizationId: ORG, organizationRole: "member" })
+    seed("users/u2", { role: "Contractor", primaryRole: "Contractor", name: "مؤسسة ركن", organizationId: "org-9", organizationRole: "owner" })
+    seed("organizations/org-9", { role: "Contractor", name: "ركن الثانية", ownerUserId: "u2", verificationRequested: true })
+    setPathname("/admin/contractors")
+    render(<AdminContractorsPage />)
+    await flush(12)
+    const names = Array.from(document.querySelectorAll("tbody tr")).map((r) => r.querySelector("td span.font-bold")?.textContent).sort()
+    expect(names).toEqual(["ركن الثانية", "شركة البنيان", "مؤسسة ركن"].sort())
+    const kpi = (id: string) => document.querySelector(`[data-kpi="${id}"] b`)?.textContent
+    expect(kpi("subscribers")).toBe("3")
+    expect(kpi("verified")).toBe("1")
+    expect(kpi("awaiting")).toBe("1")
+    expect(document.querySelector('[data-testid="companies-count"]')?.textContent).toBe("يُعرض 3 من 3 شركات")
+    // the actions stay in the row
+    expect(document.querySelectorAll("tbody tr")[0].querySelectorAll("button").length).toBeGreaterThanOrEqual(3)
+    expect(missingKeys.size).toBe(0)
+  })
+
+  it("on a phone each company is a card that keeps its actions", async () => {
+    const width = window.innerWidth
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 375 })
+    try {
+      setPathname("/admin/contractors")
+      render(<AdminContractorsPage />)
+      await flush(12)
+      expect(document.querySelector("table")).toBeNull()
+      const card = document.querySelector('ul[aria-label="الشركات المقاولة"] > li') as HTMLElement
+      expect(card.textContent).toContain("شركة البنيان")
+      expect(card.querySelectorAll("button").length).toBeGreaterThanOrEqual(3)
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: width })
+    }
+  })
+
+  it("stop at 20 companies and say so, then show the rest", async () => {
+    for (let i = 0; i < 24; i++) seed(`users/c${i}`, { role: "Contractor", name: `شركة ${i}`, organizationId: `c${i}`, organizationRole: "owner" })
+    setPathname("/admin/contractors")
+    render(<AdminContractorsPage />)
+    await flush(12)
+    expect(document.querySelectorAll("tbody tr")).toHaveLength(20)
+    expect(document.querySelector('[data-testid="companies-count"]')?.textContent).toBe("يُعرض 20 من 25 شركة")
+    fireEvent.click(button("اعرض 5 شركات أخرى") as HTMLElement)
+    expect(document.querySelectorAll("tbody tr")).toHaveLength(25)
   })
 })
 
