@@ -10,12 +10,14 @@ import { useMemo } from "react"
 import { useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
 import { AlertTriangle, Link2, ShoppingCart, TrendingUp } from "lucide-react"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { Panel } from "@/components/module-ui/Panel"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { useSupplyWorld } from "@/hooks/useSupplyWorld"
 import { pmDate, pmMoney } from "@/lib/pm/format"
 import { ESTIMATE_GAP_PERCENT, poReceivedShare, priceVsEstimate } from "@/lib/pm/supply"
@@ -68,6 +70,128 @@ export function ProjectPurchasingPanel({ projectId, orgId, items, startOn, acces
   }, [world, used, startOn, poLines, items])
   const rising = prices.filter((p) => p.change > 5 && p.codes.length)
   const codeOf = (id: string | null | undefined) => items.find((i) => i.id === id)
+  const labels = useTableLabels()
+
+  type PriceRow = (typeof prices)[number]
+  const poColumns: DataColumn<PurchaseOrderX>[] = [
+    {
+      key: "po",
+      header: t("po.col.po"),
+      cell: (o) => (
+        <>
+          <b dir="ltr">{displayPoNumber(o.docNumber, locale)}</b>
+          <p className="text-xs text-muted-foreground">{pmDate(o.createdAt, locale)}</p>
+        </>
+      ),
+    },
+    { key: "supplier", header: t("po.col.supplier"), cell: (o) => <span className="text-xs" dir="auto">{o.supplierName}</span> },
+    {
+      key: "item",
+      header: t("po.col.item"),
+      hideBelow: "lg",
+      cell: (o) => {
+        const firstItem = o.lines.map((l) => codeOf(l.boqItemId)).find(Boolean)
+        return (
+          <span className="text-xs" dir="auto">
+            {firstItem ? (
+              <>
+                <b dir="ltr">{firstItem.code}</b> — {firstItem.description.slice(0, 26)}
+              </>
+            ) : (
+              o.lines.map((l) => l.name).slice(0, 2).join(" · ")
+            )}
+          </span>
+        )
+      },
+    },
+    ...(money
+      ? ([
+          { key: "value", header: t("po.col.value"), numeric: true, cell: (o) => pmMoney(poValue(o)) },
+          {
+            key: "received",
+            label: t("po.col.received"),
+            header: (
+              <>
+                {t("po.col.received")} <SourceBadge module="warehouses" label={t("own.inv")} />
+              </>
+            ),
+            numeric: true,
+            cell: (o) => {
+              const acc = acceptedValue(o)
+              return acc == null ? "—" : pmMoney(acc)
+            },
+          },
+          {
+            key: "paid",
+            label: t("po.col.paid"),
+            header: (
+              <>
+                {t("po.col.paid")} <SourceBadge module="payments" label={t("po.from_fin")} />
+              </>
+            ),
+            numeric: true,
+            cell: (o) => pmMoney(paidTotal(o)),
+          },
+        ] satisfies DataColumn<PurchaseOrderX>[])
+      : []),
+    {
+      key: "status",
+      header: t("po.col.status"),
+      cell: (o) => {
+        const share = poReceivedShare(o.lines)
+        return <StatusPill tone={share >= 0.995 ? "ok" : "warn"}>{share >= 0.995 ? t("po.full") : t("po.pct", { pct: Math.round(share * 100) })}</StatusPill>
+      },
+    },
+  ]
+  const priceColumns: DataColumn<PriceRow>[] = [
+    {
+      key: "material",
+      header: t("price.col.material"),
+      cell: (p) => (
+        <>
+          <b dir="auto">{p.name}</b>
+          <p className="text-xs text-muted-foreground">{t("price.per", { unit: p.unit })}</p>
+        </>
+      ),
+    },
+    {
+      key: "last",
+      header: t("price.col.last"),
+      numeric: true,
+      cell: (p) => (
+        <>
+          {money ? pmMoney(p.last.price) : "•••"}
+          <span className="block text-xs font-normal text-muted-foreground">{pmDate(p.last.day, locale)}</span>
+        </>
+      ),
+    },
+    {
+      key: "change",
+      header: t("price.col.change"),
+      numeric: true,
+      cell: (p) => (
+        <span className={cn(p.change > PRICE_RISE_ALARM_PERCENT ? "text-destructive" : p.change < -PRICE_RISE_ALARM_PERCENT ? "text-success" : "text-muted-foreground")}>
+          {p.change > 0 ? "+" : ""}
+          {Math.round(p.change * 10) / 10}%
+          {money && p.dif !== null && Math.abs(p.dif) > ESTIMATE_GAP_PERCENT && (
+            <span className={cn("block text-xs", p.dif > 0 ? "text-destructive" : "text-success")} dir="auto">
+              {p.dif > 0 ? t("po.above_est", { pct: Math.round(p.dif) }) : t("po.below_est", { pct: Math.round(-p.dif) })}
+            </span>
+          )}
+        </span>
+      ),
+    },
+    { key: "supplier", header: t("price.col.supplier"), hideBelow: "lg", cell: (p) => <span className="text-xs" dir="auto">{p.last.supplierName}</span> },
+    {
+      key: "items",
+      header: t("price.col.items"),
+      cell: (p) => (
+        <span className="text-xs" dir="ltr">
+          {p.codes.length ? p.codes.slice(0, 3).join(" · ") + (p.codes.length > 3 ? ` +${p.codes.length - 3}` : "") : <span dir="auto">{t("price.not_here")}</span>}
+        </span>
+      ),
+    },
+  ]
 
   return (
     <div className="space-y-4">
@@ -75,128 +199,31 @@ export function ProjectPurchasingPanel({ projectId, orgId, items, startOn, acces
         {t("po.note")} <SourceBadge module="procurement" label={t("po.from_proc")} />
       </Callout>
       <Panel title={t("po.title")} icon={ShoppingCart} count={orders.length} bodyClassName="p-0">
-        {orders.length === 0 ? (
-          <EmptyState icon={ShoppingCart} title={t("po.empty")} className="py-8" />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm">
-              <thead>
-                <tr className="border-b text-start text-xs text-muted-foreground">
-                  <th className="px-4 py-2 text-start font-medium">{t("po.col.po")}</th>
-                  <th className="px-2 py-2 text-start font-medium">{t("po.col.supplier")}</th>
-                  <th className="px-2 py-2 text-start font-medium">{t("po.col.item")}</th>
-                  {money && <th className="px-2 py-2 text-end font-medium">{t("po.col.value")}</th>}
-                  {money && (
-                    <th className="px-2 py-2 text-end font-medium">
-                      {t("po.col.received")} <SourceBadge module="warehouses" label={t("own.inv")} />
-                    </th>
-                  )}
-                  {money && (
-                    <th className="px-2 py-2 text-end font-medium">
-                      {t("po.col.paid")} <SourceBadge module="payments" label={t("po.from_fin")} />
-                    </th>
-                  )}
-                  <th className="px-4 py-2 text-center font-medium">{t("po.col.status")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {orders.map((o) => {
-                  const share = poReceivedShare(o.lines)
-                  const firstItem = o.lines.map((l) => codeOf(l.boqItemId)).find(Boolean)
-                  const acc = acceptedValue(o)
-                  return (
-                    <tr key={o.id}>
-                      <td className="px-4 py-2">
-                        <b dir="ltr">{displayPoNumber(o.docNumber, locale)}</b>
-                        <p className="text-xs text-muted-foreground">{pmDate(o.createdAt, locale)}</p>
-                      </td>
-                      <td className="px-2 py-2 text-xs" dir="auto">
-                        {o.supplierName}
-                      </td>
-                      <td className="px-2 py-2 text-xs" dir="auto">
-                        {firstItem ? (
-                          <>
-                            <b dir="ltr">{firstItem.code}</b> — {firstItem.description.slice(0, 26)}
-                          </>
-                        ) : (
-                          o.lines.map((l) => l.name).slice(0, 2).join(" · ")
-                        )}
-                      </td>
-                      {money && (
-                        <td className="px-2 py-2 text-end tabular-nums" dir="ltr">
-                          {pmMoney(poValue(o))}
-                        </td>
-                      )}
-                      {money && (
-                        <td className="px-2 py-2 text-end tabular-nums" dir="ltr">
-                          {acc == null ? "—" : pmMoney(acc)}
-                        </td>
-                      )}
-                      {money && (
-                        <td className="px-2 py-2 text-end tabular-nums" dir="ltr">
-                          {pmMoney(paidTotal(o))}
-                        </td>
-                      )}
-                      <td className="px-4 py-2 text-center">
-                        <StatusPill tone={share >= 0.995 ? "ok" : "warn"}>{share >= 0.995 ? t("po.full") : t("po.pct", { pct: Math.round(share * 100) })}</StatusPill>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DataTable
+          columns={poColumns}
+          rows={orders}
+          rowKey={(o) => o.id}
+          caption={t("po.title")}
+          labels={labels}
+          bordered={false}
+          dense
+          maxHeight="70vh"
+          empty={<EmptyState bare icon={ShoppingCart} title={t("po.empty")} />}
+        />
       </Panel>
 
       {withPrices && (
         <Panel title={t("price.title")} icon={TrendingUp} actions={<SourceBadge module="procurement" label={t("price.from")} />} bodyClassName="p-0">
-          {prices.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("price.empty")}</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px] text-sm">
-                <thead>
-                  <tr className="border-b text-xs text-muted-foreground">
-                    <th className="px-4 py-2 text-start font-medium">{t("price.col.material")}</th>
-                    <th className="px-2 py-2 text-end font-medium">{t("price.col.last")}</th>
-                    <th className="px-2 py-2 text-end font-medium">{t("price.col.change")}</th>
-                    <th className="px-2 py-2 text-start font-medium">{t("price.col.supplier")}</th>
-                    <th className="px-4 py-2 text-start font-medium">{t("price.col.items")}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {prices.map((p) => (
-                    <tr key={p.key}>
-                      <td className="px-4 py-2">
-                        <b dir="auto">{p.name}</b>
-                        <p className="text-xs text-muted-foreground">{t("price.per", { unit: p.unit })}</p>
-                      </td>
-                      <td className="px-2 py-2 text-end tabular-nums" dir="ltr">
-                        {money ? pmMoney(p.last.price) : "•••"}
-                        <p className="text-xs text-muted-foreground">{pmDate(p.last.day, locale)}</p>
-                      </td>
-                      <td className={cn("px-2 py-2 text-end tabular-nums", p.change > PRICE_RISE_ALARM_PERCENT ? "text-destructive" : p.change < -PRICE_RISE_ALARM_PERCENT ? "text-success" : "text-muted-foreground")} dir="ltr">
-                        {p.change > 0 ? "+" : ""}
-                        {Math.round(p.change * 10) / 10}%
-                        {money && p.dif !== null && Math.abs(p.dif) > ESTIMATE_GAP_PERCENT && (
-                          <p className={cn("text-xs", p.dif > 0 ? "text-destructive" : "text-success")} dir="auto">
-                            {p.dif > 0 ? t("po.above_est", { pct: Math.round(p.dif) }) : t("po.below_est", { pct: Math.round(-p.dif) })}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-2 py-2 text-xs" dir="auto">
-                        {p.last.supplierName}
-                      </td>
-                      <td className="px-4 py-2 text-xs" dir="ltr">
-                        {p.codes.length ? p.codes.slice(0, 3).join(" · ") + (p.codes.length > 3 ? ` +${p.codes.length - 3}` : "") : <span dir="auto">{t("price.not_here")}</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <DataTable
+            columns={priceColumns}
+            rows={prices}
+            rowKey={(p) => p.key}
+            caption={t("price.title")}
+            labels={labels}
+            bordered={false}
+            dense
+            empty={<p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("price.empty")}</p>}
+          />
           {rising.length > 0 && money && (
             <p className="flex items-start gap-1.5 border-t px-4 py-2 text-xs text-warning">
               <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
