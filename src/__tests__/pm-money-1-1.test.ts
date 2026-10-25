@@ -4,15 +4,22 @@
  *  - IPC-07 (FX-14, FX-15): the advance is frozen (`pm.advAmt`) and recovery is
  *    capped at what is left of it; "recovered" counts from submitted onward.
  *  - CST-05: one cash-in figure (frozen advance + collections − VAT) for the head and the money tab.
+ *  - AMD-09 (FX-22): an addendum's cap is checked against CERTIFIED retention.
+ *  - AMD-01 (FX-48): an addendum keeps its written drafting date.
+ *  - AMD-10 (FX-49): the self-approval switch is the organisation owner's, set from Team & permissions.
  */
 
 jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-utils/fake-firestore")>("@/test-utils/fake-firestore").firestoreModule)
 
 import { fakeFirestore, readDoc, resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import type { Firestore } from "firebase/firestore"
-import { pmCeiling, type PmContext } from "@/lib/pm/access"
+import { pmCeiling, PmAccessError, type PmContext } from "@/lib/pm/access"
+import { addendumNo, draftBlocks, type PmAddendum } from "@/lib/pm/addenda"
+import { draftAddendum } from "@/lib/pm/addendum-writes"
+import { setOrgSelfApproval } from "@/lib/pm/info-writes"
+import { todayDay } from "@/lib/pm/format"
 import { planAdvanceBackfill } from "@/lib/pm/advance-backfill"
-import { certificateAmounts, collectionFigures, frozenAdvance, legacyClaimsCollected, projectCashIn, type CertificateFacts } from "@/lib/pm/certificate"
+import { certificateAmounts, certifiedRetention, collectionFigures, frozenAdvance, legacyClaimsCollected, projectCashIn, type CertificateFacts } from "@/lib/pm/certificate"
 import { prepareCertificate, type PmCertificate } from "@/lib/pm/certificate-writes"
 import { approveSheet, writeSheet } from "@/lib/pm/measurement-writes"
 import { goLive, startProject } from "@/lib/pm/project-writes"
@@ -122,5 +129,55 @@ describe("CST-05 — one cash-in figure", () => {
 
   it("legacy claims count only when collected", () => {
     expect(legacyClaimsCollected([{ status: "collected", amount: 1_000 }, { status: "submitted", amount: 9_000 }, { status: "collected", amount: "250" }])).toBe(1_250)
+  })
+})
+
+describe("AMD-09 (FX-22) — the cap is checked against the retention actually held", () => {
+  it("only certified certificates hold retention — a draft or one still with the consultant holds nothing yet", () => {
+    expect(certifiedRetention([facts({ status: "int", retention: 99 }), facts({ status: "sub", retention: 99 }), facts({ status: "appr", retention: 10 }), facts({ status: "paid", retention: 5 })])).toBe(15)
+  })
+
+  it("a cap the PREPARED retention would refuse is accepted while nothing of it is certified", async () => {
+    project(1_000_000, { retentionHeld: 50_000 })
+    seed("projects/p1/pmCertificates/01", { seq: 1, status: "sub", retention: 50_000 })
+    // 4% × 1,000,000 = 40,000 < 50,000 prepared — but nothing is certified: the 1.0 code refused it.
+    await expect(draftAddendum(db, pm, "p1", pmActor, { next: { ...terms, retentionCap: 0.04 }, reason: "client" })).resolves.toBe(1)
+  })
+})
+
+describe("AMD-01 (FX-48) — the addendum keeps its real drafting date", () => {
+  const today = todayDay()
+  const ago = (n: number) => new Date(Date.parse(`${today}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10)
+
+  it("a written day is kept; never in the future, never before the last signed addendum", async () => {
+    project(1_000_000)
+    await draftAddendum(db, pm, "p1", pmActor, { next: { ...terms, paymentDays: 45 }, reason: "client", day: ago(5) })
+    expect(readDoc<PmAddendum>(`projects/p1/pmAddenda/${addendumNo(1)}`)?.day).toBe(ago(5))
+    await expect(draftAddendum(db, pm, "p1", pmActor, { next: { ...terms, paymentDays: 50 }, reason: "client", day: "2999-01-01" })).rejects.toMatchObject({ blocks: ["day_future"] })
+  })
+
+  it("the pure rule", () => {
+    const base = { lifecycle: "live", archived: false, terms, next: { ...terms, paymentDays: 45 }, reason: "client" as const, contractValue: 1, retentionHeld: 0 }
+    expect(draftBlocks({ ...base, day: "2026-05-01", today: "2026-06-01", lastSignedOn: "2026-05-10" })).toEqual(["day_before_last"])
+    expect(draftBlocks({ ...base, day: "", today: "2026-06-01" })).toEqual(["no_day"])
+    expect(draftBlocks({ ...base, day: "2026-05-20", today: "2026-06-01", lastSignedOn: "2026-05-10" })).toEqual([])
+  })
+})
+
+describe("AMD-10 (FX-49) — self-approval is an organisation setting, the owner's", () => {
+  it("the owner sets it; anyone else is refused before any write", async () => {
+    await expect(setOrgSelfApproval(db, { owner: false }, "org", pmActor, true)).rejects.toBeInstanceOf(PmAccessError)
+    expect(readDoc("pmSettings/org")).toBeNull()
+    await setOrgSelfApproval(db, { owner: true }, "org", { uid: "org", name: "Owner" }, true)
+    expect(readDoc("pmSettings/org")).toMatchObject({ selfApproval: true, selfApprovalBy: "org", selfApprovalByName: "Owner" })
+  })
+
+  it("the project page no longer carries the switch", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const src = require("fs").readFileSync(require("path").join(process.cwd(), "src/components/pm/PmFilePanels.tsx"), "utf8") as string
+    expect(src).not.toMatch(/setSelfApproval|setOrgSelfApproval/)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const team = require("fs").readFileSync(require("path").join(process.cwd(), "src/components/team-management.tsx"), "utf8") as string
+    expect(team).toMatch(/<PmSelfApprovalSetting/)
   })
 })

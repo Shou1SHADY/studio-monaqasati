@@ -5,7 +5,7 @@
 // late checks honest: a draft whose `from` was overtaken by another signature,
 // and a cap that fell below the retention a certificate held in between.
 
-import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
+import { collection, doc, getDocs, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, mayWithdrawAddendum, PmAccessError, type PmContext } from "./access"
 import {
   addendumNo,
@@ -26,6 +26,7 @@ import { lifecycleOf } from "./lifecycle"
 import { withFreshState } from "./project-writes"
 import { termChanges, type ContractTerms } from "./terms"
 import { readContractValue } from "./contract-value"
+import { certifiedRetention, PM_CERTIFICATES, type CertificateFacts } from "./certificate"
 
 export class PmAddendumError extends Error {
   constructor(readonly code: "missing" | "not_pm_project" | "not_started" | "blocked", readonly blocks: string[] = []) {
@@ -46,7 +47,8 @@ export interface PmBlockData {
   original?: ContractTerms | null
   addendaCount?: number
   signedCount?: number
-  /** Retention held on certificates so far — maintained by the certificate writes. */
+  /** Retention on every live certificate so far (prepared included) — maintained by the
+   * certificate writes; the cap check reads the CERTIFIED part (`readHeldRetention`, AMD-09). */
   retentionHeld?: number
   /** The contract in force after the last signature (terms.ts `termsNow`): what
    * everyone on the project reads, since the addenda themselves are money's or approve's. */
@@ -80,6 +82,22 @@ export async function readContract(tx: Transaction, firestore: Firestore, projec
   return { pRef, project, pm, addenda, original, terms: inForce(original, addenda) }
 }
 
+/**
+ * AMD-09 — the retention actually held: Σ retention of the CERTIFIED certificates,
+ * read beside the transaction (a certificate is certified once and never goes
+ * back, so a retry reads no less). Someone who may not read certificates falls
+ * back to the project's running total, which only errs on the strict side.
+ */
+export async function readHeldRetention(firestore: Firestore, projectId: string, fallback: number): Promise<number> {
+  try {
+    const snap = await getDocs(collection(firestore, "projects", projectId, PM_CERTIFICATES))
+    return certifiedRetention(snap.docs.map((d) => d.data() as CertificateFacts))
+  } catch (err) {
+    if ((err as { code?: string })?.code === "permission-denied") return fallback
+    throw err
+  }
+}
+
 const stage = (project: ProjectData) => ({ lifecycle: lifecycleOf(project), archived: Boolean(project.pm) && lifecycleOf(project) === "closed" })
 
 export interface AddendumFile {
@@ -96,6 +114,8 @@ export interface DraftInput {
   files?: AddendumFile[]
   /** The approver records it as already signed — draft and signature in one step. */
   signNow?: { signedOn: string; signatory?: string | null } | null
+  /** The drafting day as written (AMD-01) — a paper addendum keeps its real date; default today. */
+  day?: string | null
 }
 
 /** Draft an addendum: "awaiting signature" — the contract in force does not move. */
@@ -104,36 +124,44 @@ export async function draftAddendum(firestore: Firestore, ctx: PmContext, projec
   await runTransaction(firestore, async (tx) => {
     const { pRef, project, pm, terms, addenda } = await readContract(tx, firestore, projectId)
     assertPm(withFreshState(ctx, project), "addendum.draft")
+    const today = todayDay()
+    const day = input.day === undefined || input.day === null ? today : input.day
+    const contractValue = await readContractValue(firestore, projectId, project.budget)
+    const retentionHeld = await readHeldRetention(firestore, projectId, pm.retentionHeld ?? 0)
     const blocks = draftBlocks({
       ...stage(project),
       terms,
       next: input.next,
       reason: input.reason,
       reasonText: input.reasonText,
-      contractValue: await readContractValue(firestore, projectId, project.budget),
-      retentionHeld: pm.retentionHeld ?? 0,
+      contractValue,
+      retentionHeld,
+      day,
+      today,
+      lastSignedOn: lastSignedOn(addenda),
     })
     if (blocks.length) throw new PmAddendumError("blocked", blocks)
     seq = (pm.addendaCount ?? 0) + 1
     const signNow = input.signNow ?? null
     if (signNow) {
       assertPm(withFreshState(ctx, project), "addendum.sign")
+      // «Signed now» takes effect from the WRITTEN drafting day (AMD-04).
       const sBlocks = signBlocks({
         ...stage(project),
-        addendum: { status: "draft", day: todayDay(), changes: termChanges(terms, input.next) },
+        addendum: { status: "draft", day, changes: termChanges(terms, input.next) },
         terms,
         signedOn: signNow.signedOn || null,
         lastSignedOn: lastSignedOn(addenda),
-        today: todayDay(),
-        contractValue: await readContractValue(firestore, projectId, project.budget),
-        retentionHeld: pm.retentionHeld ?? 0,
+        today,
+        contractValue,
+        retentionHeld,
       })
       if (sBlocks.length) throw new PmAddendumError("blocked", sBlocks)
     }
     const signedSeq = signNow ? (pm.signedCount ?? 0) + 1 : null
     const addendum: Omit<PmAddendum, "id"> = {
       seq,
-      day: todayDay(),
+      day,
       by: actor.uid,
       byName: actor.name,
       reason: input.reason,
@@ -187,7 +215,7 @@ export async function signAddendum(
       lastSignedOn: lastSignedOn(addenda),
       today: todayDay(),
       contractValue: await readContractValue(firestore, projectId, project.budget),
-      retentionHeld: pm.retentionHeld ?? 0,
+      retentionHeld: await readHeldRetention(firestore, projectId, pm.retentionHeld ?? 0),
     })
     if (blocks.length) throw new PmAddendumError("blocked", blocks)
     const signedSeq = (pm.signedCount ?? 0) + 1

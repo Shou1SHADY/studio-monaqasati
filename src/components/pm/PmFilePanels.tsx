@@ -3,7 +3,8 @@
 // File › Contract details on a PM 1.0 project (the prototype's fileInfo): the
 // project's information — only the location and the consultant are edited
 // here, by whoever approves; the contract terms at a glance with the org's
-// recorded self-approval (the owner's switch); and "Start work" while the
+// recorded self-approval (read here — switched in Settings › Team & permissions,
+// AMD-10); and "Start work" while the
 // project is in planning.
 
 import { useMemo, useState } from "react"
@@ -29,13 +30,14 @@ import { inForce, PM_ADDENDA, type PmAddendum } from "@/lib/pm/addenda"
 import { delayAndDamages, grantedDays, PM_CLAIMS, type PmClaim } from "@/lib/pm/claim"
 import { addDays } from "@/lib/pm/programme"
 import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
-import { PM_SETTINGS, PmInfoError, setSelfApproval, updatePmInfo, type InfoActor, type PmOrgSettings } from "@/lib/pm/info-writes"
+import { PM_SETTINGS, PmInfoError, updatePmInfo, type InfoActor, type PmOrgSettings } from "@/lib/pm/info-writes"
+import { liveContractValue } from "@/lib/pm/contract-value"
 import { lifecycleOf, startBlocks } from "@/lib/pm/lifecycle"
 import { PmProjectError, startProject } from "@/lib/pm/project-writes"
 import { defaultTerms, termProblems, type ContractTerms } from "@/lib/pm/terms"
 import { approvedValue, PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
 import { displayDocNumber } from "@/lib/sales-numbering"
-import { CheckLine, ChoiceChips, FormHint } from "./ContractBits"
+import { CheckLine, FormHint } from "./ContractBits"
 import { clientTypeKey } from "./AcceptHandoverWizard"
 
 export interface PmFileProject {
@@ -218,27 +220,27 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
   )
 }
 
-/** C-32 — the terms at a glance (money), with the org's recorded self-approval (the owner's). */
+/** C-32 — the terms at a glance (money), with the org's recorded self-approval
+ * read-only (AMD-10: the owner switches it in Settings › Team & permissions). */
 export function PmTermsGlance({
   projectId,
   project,
   items,
   access,
-  actor,
   onOpenTerms,
 }: {
   projectId: string
   project: PmFileProject
   items: Array<{ id: string; quantity: number; rate: number; executed: number }>
   access: PmAccess
-  actor: InfoActor
+  /** Kept for the callers; the project page no longer writes the setting. */
+  actor?: InfoActor
   onOpenTerms?: () => void
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const text = usePmTermText()
   const firestore = useFirestore()
-  const { toast } = useToast()
   const orgId = project.organizationId ?? ""
   // The addenda are money's or approve's to read (the rules): without the
   // check a site engineer opening the file tab drew a refused read each time.
@@ -249,12 +251,12 @@ export function PmTermsGlance({
   const { data: vos } = useCollection(voQ)
   const setQ = useMemoFirebase(() => (firestore && orgId && seesTerms ? doc(firestore, PM_SETTINGS, orgId) : null), [firestore, orgId, seesTerms])
   const { data: settings } = useDoc(setQ)
-  const [busy, setBusy] = useState(false)
   const plan = usePmPlan(projectId, project, items)
   if (!access.has("money")) return null
   const pm = project.pm ?? {}
   const terms = inForce(pm.original ?? pm.terms ?? defaultTerms(), (addenda ?? []) as unknown as PmAddendum[])
-  const value = (project.budget ?? 0) + approvedValue((vos ?? []) as unknown as PmVariation[])
+  // CON-02: the shared contract value — priced items (else the handover's figure) + approved variations.
+  const value = liveContractValue({ budget: project.budget, items, approvedVariations: approvedValue((vos ?? []) as unknown as PmVariation[]) })
   const today = todayDay()
   const delay = delayAndDamages({
     lifecycle: lifecycleOf(project),
@@ -268,20 +270,6 @@ export function PmTermsGlance({
   })
   const self = (settings as PmOrgSettings | null)?.selfApproval === true
   const s = settings as PmOrgSettings | null
-
-  const toggle = async (allowed: boolean) => {
-    if (!firestore || !orgId || allowed === self) return
-    setBusy(true)
-    try {
-      await setSelfApproval(firestore, access.ctx, orgId, actor, allowed)
-      toast({ title: t("glance.self_saved") })
-    } catch (err) {
-      console.error(err)
-      toast({ title: t(err instanceof PmAccessError ? `refused.${err.code}` : "error.save"), variant: "destructive" })
-    } finally {
-      setBusy(false)
-    }
-  }
 
   return (
     <Panel
@@ -311,23 +299,10 @@ export function PmTermsGlance({
         ))}
       <KeyValueRow label={t("terms.claimNoticeDays")} value={text("claimNoticeDays", terms.claimNoticeDays)} />
       <FormHint>{t("terms.mean.notice")}</FormHint>
-      {access.has("admin") && !access.ctx.archived && (
-        <div className="mt-4 space-y-1.5">
-          <Label>{t("glance.self_label")}</Label>
-          <ChoiceChips
-            label={t("glance.self_label")}
-            options={[
-              { id: "on", label: t("glance.self_on") },
-              { id: "off", label: t("glance.self_off") },
-            ]}
-            value={self ? "on" : "off"}
-            onChange={(v) => void toggle(v === "on")}
-            disabled={busy}
-          />
-          <FormHint>{self ? t("glance.self_on_hint") : t("glance.self_off_hint")}</FormHint>
-          {s?.selfApprovalByName && s.selfApprovalOn && <FormHint>{t("glance.self_by", { who: s.selfApprovalByName, date: pmDate(s.selfApprovalOn, locale) })}</FormHint>}
-        </div>
-      )}
+      {/* AMD-10: the organisation's setting — switched in Settings › Team & permissions, read here. */}
+      <KeyValueRow label={t("glance.self_label")} value={self ? t("glance.self_on") : t("glance.self_off")} />
+      <FormHint>{t("glance.self_where")}</FormHint>
+      {s?.selfApprovalByName && s.selfApprovalOn && <FormHint>{t("glance.self_by", { who: s.selfApprovalByName, date: pmDate(s.selfApprovalOn, locale) })}</FormHint>}
     </Panel>
   )
 }

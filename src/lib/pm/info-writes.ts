@@ -4,7 +4,8 @@
 // the signing date come from the handover — value changes by variation,
 // duration by extension, terms by addendum, the manager in Team.
 // Self-approval is the company's decision (admin), org-wide and recorded by
-// name and date; the certificate write reads it inside its own transaction.
+// name and date; the certificate write reads it inside its own transaction. It
+// is set in Settings › Team & permissions (AMD-10); a project shows it read-only.
 
 import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, PmAccessError, type PmContext } from "./access"
@@ -58,7 +59,13 @@ export async function readSelfApproval(tx: Transaction, firestore: Firestore, or
 }
 
 export async function setSelfApproval(firestore: Firestore, ctx: PmContext, orgId: string, actor: InfoActor, allowed: boolean): Promise<void> {
-  if (!ctx.ceiling.has("admin")) throw new PmAccessError("owner_only", "settings.selfApproval")
+  return setOrgSelfApproval(firestore, { owner: ctx.ceiling.has("admin") }, orgId, actor, allowed)
+}
+
+/** AMD-10 — the same setting, from Settings › Team & permissions (never a project
+ * page): the organisation's owner edits it; everyone else reads it. */
+export async function setOrgSelfApproval(firestore: Firestore, who: { owner: boolean }, orgId: string, actor: InfoActor, allowed: boolean): Promise<void> {
+  if (!who.owner) throw new PmAccessError("owner_only", "settings.selfApproval")
   await runTransaction(firestore, async (tx) => {
     const ref = doc(firestore, PM_SETTINGS, orgId)
     await tx.get(ref)

@@ -324,6 +324,12 @@ export interface CollectionFigures {
   retentionHeld: number
 }
 
+/** AMD-09 — the retention ACTUALLY held: what sits in certificates the consultant
+ * certified (appr / part / paid). An internal draft or one still with the
+ * consultant holds nothing yet, so an addendum's cap is checked against this,
+ * never against the running total the preparation moves (`pm.retentionHeld`). */
+export const certifiedRetention = (certs: Array<Pick<CertificateFacts, "status" | "retention">>) => r2(certs.filter(isCertified).reduce((a, c) => a + (c.retention || 0), 0))
+
 /** Submitted to the consultant or further: what "recovered" is shown from (IPC-07). */
 export const isSubmitted = (c: Pick<CertificateFacts, "status">) => c.status === "sub" || isCertified(c)
 

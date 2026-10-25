@@ -17367,7 +17367,10 @@
           "no_date": "Set the signing date",
           "before_draft": "The signing date cannot be before {date}",
           "before_last": "The signing date cannot be before the last signed addendum ({date})",
-          "future": "The signing date cannot be in the future"
+          "future": "The signing date cannot be in the future",
+          "no_day": "Set the drafting date",
+          "day_future": "The drafting date cannot be in the future",
+          "day_before_last": "The drafting date cannot be before the last signed addendum ({date})"
         },
         "withdraw_block": {
           "not_draft": "It is no longer awaiting signature",
@@ -17426,6 +17429,8 @@
         "note_ph": "Cash retention replaced by a 5% bank guarantee until final acceptance",
         "draft_file": "The addendum or its draft — optional",
         "draft_file_hint": "Attach the signed copy when recording the signature if it is not ready now.",
+        "draft_day": "Drafting date",
+        "draft_day_hint": "The date written on the addendum — for a paper addendum entered later. Not in the future, not before the last signed addendum.",
         "signed_file": "The signed addendum — optional",
         "signed_file_hint": "Without a signed copy it rests on your word — still optional.",
         "sign_now_note": "Already signed? Record it in force now with its date — the same checks as a signature.",
@@ -21446,7 +21451,9 @@
         "self_on_hint": "For the small firm without two people: the preparer may approve, and the exception is logged by name and date.",
         "self_off_hint": "The preparer never approves the certificate — the default control.",
         "self_by": "Set by {who} on {date}",
-        "self_saved": "Self-approval setting saved"
+        "self_saved": "Self-approval setting saved",
+        "self_where": "Organisation-wide — the owner changes it in Settings › Team & permissions.",
+        "self_owner_only": "Only the organisation owner changes this setting."
       },
       "startp": {
         "title": "Start work",
