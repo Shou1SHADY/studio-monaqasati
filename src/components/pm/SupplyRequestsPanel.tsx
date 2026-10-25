@@ -123,11 +123,10 @@ export function SupplyRequestsPanel({
 
   const requestsPanel = (
     <div className="space-y-3">
-      <Panel title={t("sup.title")} icon={ShoppingCart} count={live.length} actions={newBtn} bodyClassName="p-0">
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t("sup.sub")}</p>
-        {!canReq && !access.ctx.archived && <p className="px-4 pt-2 text-xs text-amber-700 dark:text-amber-400">{t("sup.no_seat")}</p>}
+      <Panel title={t("sup.title")} icon={ShoppingCart} count={live.length} description={t("sup.sub")} actions={newBtn} bodyClassName="p-0">
+        {!canReq && !access.ctx.archived && <p className="border-b px-4 py-2 text-xs text-warning">{t("sup.no_seat")}</p>}
         {world.requests.length === 0 ? (
-          <EmptyState icon={ClipboardList} title={t("sup.empty")} className="py-8" />
+          <EmptyState bare icon={ClipboardList} title={t("sup.empty")} />
         ) : live.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("sup.none_open")}</p>
         ) : (
@@ -174,10 +173,9 @@ export function SupplyRequestsPanel({
   return (
     <ProcLineProvider projectId={projectId} orgId={orgId}>
       {withStore ? (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          {requestsPanel}
-          <Panel title={t("sup.need.title")} icon={Box} count={needs.gaps.length} bodyClassName="p-0">
-            <p className="px-4 pt-3 text-xs text-muted-foreground">{t("sup.need.sub")}</p>
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0">{requestsPanel}</div>
+          <Panel title={t("sup.need.title")} icon={Box} count={needs.gaps.length} description={t("sup.need.sub")} className="min-w-0" bodyClassName="p-0">
             {needs.gaps.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("sup.need.none")}</p>
             ) : (
@@ -197,7 +195,7 @@ export function SupplyRequestsPanel({
                         <p className="text-xs font-bold text-destructive">{t("sup.need.short", { q: qty(n.gap), unit: n.unit })}</p>
                       </div>
                       {canReq && (
-                        <Button size="sm" variant="outline" onClick={() => setComposer({ seed: { itemId: n.itemId, key: n.key, name: n.name, unit: n.unit, q: n.gap } })}>
+                        <Button size="sm" variant="ghost" className="shrink-0 text-module" onClick={() => setComposer({ seed: { itemId: n.itemId, key: n.key, name: n.name, unit: n.unit, q: n.gap } })}>
                           <Plus size={13} className="me-1" aria-hidden="true" />
                           {t("sup.need.ask")}
                         </Button>
@@ -407,7 +405,7 @@ function RequestRow({ r, world, items, access, actor, projectId, onOpen, onRejec
                 <Check size={13} className="me-1" aria-hidden="true" />
                 {ch ? t("sup.approve_rest") : t("sup.approve")}
               </Button>
-              <Button size="sm" variant="outline" className="h-7 text-destructive" onClick={onReject}>
+              <Button size="sm" variant="ghost" className="h-7 text-destructive" onClick={onReject}>
                 {t("sup.reject")}
               </Button>
             </div>
@@ -476,8 +474,8 @@ function RequestDrawer({
 
   return (
     <Sheet open onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side={side} className="w-full overflow-y-auto sm:max-w-xl" dir={dir}>
-        <SheetHeader className="text-start">
+      <SheetContent side={side} className="w-full overflow-y-auto sm:max-w-2xl" dir={dir}>
+        <SheetHeader className="pe-10 text-start">
           <SheetTitle dir="auto">{r.title || t("sup.untitled")}</SheetTitle>
           <SheetDescription className="flex flex-wrap items-center gap-2">
             {r.seq ? <StatusPill tone="module">{t("sup.no", { no: reqNo(r.seq) })}</StatusPill> : null}
@@ -539,7 +537,7 @@ function RequestDrawer({
               <div className="flex flex-wrap gap-2 pt-2">
                 {approver && (
                   <>
-                    <Button variant="success" size="sm"  disabled={blocks.length > 0 || busy !== null} onClick={() => firestore && void run("ok", () => approveAndIngest(firestore, access.ctx, projectId, actor, r.id), t("sup.approved", { no: reqNo(r.seq ?? 0) })).then((ok) => ok && onClose())}>
+                    <Button variant="success" size="sm" disabled={blocks.length > 0 || busy !== null} onClick={() => firestore && void run("ok", () => approveAndIngest(firestore, access.ctx, projectId, actor, r.id), t("sup.approved", { no: reqNo(r.seq ?? 0) })).then((ok) => ok && onClose())}>
                       <Check size={14} className="me-1.5" aria-hidden="true" />
                       {checks.held ? t("sup.approve_hold") : t("sup.approve_send")}
                     </Button>
@@ -549,7 +547,7 @@ function RequestDrawer({
                   </>
                 )}
                 {r.requestedByUserId === actor.uid && !access.ctx.archived && (
-                  <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => firestore && void run("wd", () => withdrawMaterialRequest(firestore, access.ctx, projectId, actor, r.id), t("sup.withdrawn", { no: reqNo(r.seq ?? 0) })).then((ok) => ok && onClose())}>
+                  <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => firestore && void run("wd", () => withdrawMaterialRequest(firestore, access.ctx, projectId, actor, r.id), t("sup.withdrawn", { no: reqNo(r.seq ?? 0) })).then((ok) => ok && onClose())}>
                     {t("sup.withdraw")}
                   </Button>
                 )}
@@ -725,13 +723,13 @@ function DrawerLine({
             canChg ? (
               <>
                 <div className="flex flex-wrap gap-1.5">
-                  <Button size="sm" variant="outline" className="h-7" disabled={busy !== null || opts.usOverLimit} onClick={onUs}>
+                  <Button size="sm" variant="ghost" className="h-7" disabled={busy !== null || opts.usOverLimit} onClick={onUs}>
                     {t("sup.chg.us")}
                   </Button>
                   <Button size="sm" className="h-7" onClick={() => onLine({ kind: "own", request: r, index })}>
                     {t("sup.chg.own")}
                   </Button>
-                  <Button size="sm" variant="outline" className="h-7 text-destructive" disabled={busy !== null} onClick={onNo}>
+                  <Button size="sm" variant="ghost" className="h-7 text-destructive" disabled={busy !== null} onClick={onNo}>
                     {t("sup.chg.no")}
                   </Button>
                 </div>
@@ -759,11 +757,11 @@ function DrawerLine({
               <p className="font-bold text-destructive">{t("sup.chg.client_rejected", { no: voNo(l.chg.voSeq ?? 0) })}</p>
               {canChg && (
                 <div className="flex flex-wrap gap-1.5">
-                  <Button size="sm" variant="outline" className="h-7" disabled={busy !== null || opts.usOverLimit} onClick={onUs}>
+                  <Button size="sm" variant="ghost" className="h-7" disabled={busy !== null || opts.usOverLimit} onClick={onUs}>
                     {t("sup.chg.us_after")}
                   </Button>
                   {canClose && lineOut(l) > 0 && (
-                    <Button size="sm" variant="outline" className="h-7" onClick={() => onLine({ kind: "stop", request: r, index })}>
+                    <Button size="sm" variant="ghost" className="h-7" onClick={() => onLine({ kind: "stop", request: r, index })}>
                       {t("sup.stop.title")}
                     </Button>
                   )}
@@ -843,7 +841,7 @@ function DrawerLine({
           <div className="flex items-center justify-between gap-2 text-xs">
             <span className="text-muted-foreground">{t("sup.got_of", { got: qty(got), q: qty(l.qty), unit: l.unit })}</span>
             {canClose && out > 0 && (
-              <Button size="sm" variant="outline" className="h-7" onClick={() => onLine({ kind: "stop", request: r, index })}>
+              <Button size="sm" variant="ghost" className="h-7" onClick={() => onLine({ kind: "stop", request: r, index })}>
                 {got > 0 ? t("sup.stop.title") : t("sup.stop.cancel_title")}
               </Button>
             )}
