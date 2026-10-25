@@ -223,6 +223,8 @@ export interface Deal {
   log: DealLogEntry[]
   /** The contractor's payment terms shown before quoting. */
   terms?: PaymentTerm[]
+  /** The buyer's delivery options per place (ED-19) — who unloads, the time, the access note — as on the visitor link. */
+  delivery?: Array<{ unload?: "supplier" | "us"; slot?: "am" | "pm" | "any"; note?: string }>
   /** The conversation of the deal: its last message and what the supplier has not read. */
   chat?: { last: string; lastAt: string; unread: number; chatId: string; /** ms of the last message, for ordering. */ lastTs?: number; /** The last message is his own. */ mine?: boolean }
   /** Stars the supplier gave the contractor after full payment. */

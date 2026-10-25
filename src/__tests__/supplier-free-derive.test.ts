@@ -110,6 +110,12 @@ describe("a request the supplier has not quoted", () => {
     expect(w.deals[0].channel).toBe("invite")
   })
 
+  it("carries the buyer's delivery options per place into his request (ED-19); none when none were set", () => {
+    const w = deriveWorld(base({ rfqs: [rfq({ deliveryOptions: { s1: { unload: "supplier", slot: "am", note: " البوابة الشمالية " }, s2: { bogus: 1 } } })] }))
+    expect(w.deals[0].delivery).toEqual([{ unload: "supplier", slot: "am", note: "البوابة الشمالية" }])
+    expect(deriveWorld(base()).deals[0].delivery).toBeUndefined()
+  })
+
   it("one that closed without a quote is not his to see", () => {
     expect(deriveWorld(base({ rfqs: [rfq({ status: "Cancelled" })] })).deals).toHaveLength(0)
   })

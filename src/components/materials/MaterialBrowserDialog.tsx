@@ -151,7 +151,20 @@ export function MaterialBrowserDialog({
         {!showsDetail && (
           <div className="relative">
             <Search size={14} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("tree_search")} aria-label={t("tree_search")} className="ps-9" dir="auto" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => {
+                // ED-08: Enter opens the first hit with the values its words named.
+                if (e.key !== "Enter" || !hits.length) return
+                e.preventDefault()
+                open1(hits[0].node, Object.fromEntries(hits[0].preset.map((p) => [p.spec.ar, p.value])))
+              }}
+              placeholder={t("tree_search")}
+              aria-label={t("tree_search")}
+              className="ps-9"
+              dir="auto"
+            />
           </div>
         )}
 
@@ -225,6 +238,10 @@ export function MaterialBrowserDialog({
             {children.map((c) => {
               const subs = c.children.filter((x) => !x.hidden).length
               const leaf = isMaterial(c)
+              // ED-08: the caption says what is inside — sub-categories under a category, materials under a
+              // sub-category, specifications on a material.
+              const specCount = leaf ? specsOf(index, c.id).length : 0
+              const caption = leaf ? (specCount ? t("specs_count", { count: specCount }) : t("a_material")) : c.level === 1 ? t("subs_count", { count: subs }) : t("items_count", { count: subs })
               const pickedSub = outside != null && outsideSub?.id === c.id
               return (
                 <li key={c.id}>
@@ -237,7 +254,7 @@ export function MaterialBrowserDialog({
                     )}
                   >
                     <span className="text-sm font-semibold">{label(c, locale)}</span>
-                    <span className="text-[11px] text-muted-foreground">{leaf ? t("a_material") : t("subs_count", { count: subs })}</span>
+                    <span className="text-[11px] text-muted-foreground">{caption}</span>
                   </button>
                 </li>
               )

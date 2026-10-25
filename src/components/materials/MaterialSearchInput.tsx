@@ -6,7 +6,7 @@
 // filled in one go; «الأكثر طلباً» under the box adds six common materials in one tap; «تصفّح شجرة المواد» opens
 // the browser; «غير موجود؟ اكتبه كما هو» keeps the words as a material outside the list.
 
-import { useId, useMemo, useRef, useState } from "react"
+import { useId, useMemo, useRef, useState, type Ref } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { ChevronDown, FolderTree, PenLine, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
@@ -14,7 +14,7 @@ import { MaterialOptionsPanel, type OptionsResult } from "@/components/materials
 import { cn } from "@/lib/utils"
 import { isHeavyEquipmentRental } from "@/lib/materials/equipment"
 import { popularChips } from "@/lib/materials/popular"
-import { label, pathLabel, searchMaterials, shortSpecName, unitsOf, type MaterialHit, type MaterialIndex } from "@/lib/materials/tree"
+import { label, pathLabel, searchMaterials, shortSpecName, specsOf, unitsOf, type MaterialHit, type MaterialIndex } from "@/lib/materials/tree"
 
 export function MaterialSearchInput({
   index,
@@ -28,6 +28,7 @@ export function MaterialSearchInput({
   autoFocus,
   className,
   pmOn = false,
+  inputRef,
 }: {
   index: MaterialIndex | null
   onPick: (hit: MaterialHit) => void
@@ -43,6 +44,8 @@ export function MaterialSearchInput({
   className?: string
   /** Project Management is on for this company: a heavy-equipment rental goes to its equipment desk. */
   pmOn?: boolean
+  /** The box itself — the editor brings focus back here after Enter in a row's quantity (ED-03). */
+  inputRef?: Ref<HTMLInputElement>
 }) {
   const t = useTranslations("Portal.Materials")
   const locale = useLocale()
@@ -90,6 +93,7 @@ export function MaterialSearchInput({
       >
         <Search size={14} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <Input
+          ref={inputRef}
           value={q}
           autoFocus={autoFocus}
           onChange={(e) => {
@@ -168,6 +172,8 @@ export function MaterialSearchInput({
                 )}
                 {hits.map((h, i) => {
                   const units = unitsOf(index as MaterialIndex, h.node.id)
+                  // ED-04: the specs the words did not name, dimmed after the preset ones — what can still be chosen.
+                  const rest = specsOf(index as MaterialIndex, h.node.id).filter((s) => !h.preset.some((p) => p.spec.ar === s.ar))
                   return (
                     <div key={h.node.id} className={cn("flex items-center gap-1 rounded-md", i === active ? "bg-module/10" : "hover:bg-muted")}>
                       <button
@@ -179,12 +185,24 @@ export function MaterialSearchInput({
                         onMouseEnter={() => setActive(i)}
                         className="flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded-md px-3 py-2 text-start"
                       >
-                        <span className="text-sm font-semibold text-foreground">{label(h.node, locale)}</span>
+                        <span className="flex w-full items-center gap-2">
+                          <span className="text-sm font-semibold text-foreground">{label(h.node, locale)}</span>
+                          {i === active && (
+                            <kbd className="ms-auto rounded border bg-background px-1.5 py-px font-sans text-[10px] font-semibold text-muted-foreground" dir="ltr">
+                              {t("enter_key")}
+                            </kbd>
+                          )}
+                        </span>
                         <span className="text-[11px] text-muted-foreground">{pathLabel(h.path, locale)}</span>
                         <span className="flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
                           {h.preset.map((p) => (
                             <span key={p.spec.ar}>
                               {label(shortSpecName(p.spec), locale)}: <b className="font-semibold text-foreground">{label(p.value, locale)}</b>
+                            </span>
+                          ))}
+                          {rest.map((s) => (
+                            <span key={`r-${s.ar}`} className="text-muted-foreground/70">
+                              {label(shortSpecName(s), locale)}
                             </span>
                           ))}
                           {units.length > 0 && <span>{t("unit_is", { unit: units.map((u) => label(u, locale)).join(" · ") })}</span>}

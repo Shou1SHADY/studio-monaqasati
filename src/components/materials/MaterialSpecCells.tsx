@@ -1,8 +1,8 @@
 "use client"
 
 // The row's specification cells (PUR-04): each spec of the material is a small cell
-// with its options («المقاس 16 مم», «الدرجة G60»), and «+» adds an unchosen spec, a
-// brand of the material's category, or a free spec typed as words. The same cells
+// with its options («المقاس 16 مم», «الدرجة G60») — an unchosen one a dashed empty cell
+// («المقاس —») — and «+» adds a brand of the material's category, or a free spec typed as words. The same cells
 // wherever a material is asked for.
 
 import { useState } from "react"
@@ -92,11 +92,30 @@ export function MaterialSpecCells({ index, pick, onChange, readOnly }: { index: 
           </DropdownMenu>
         )
       })}
+      {/* ED-05: an unchosen spec is a dashed empty cell («المقاس —») with the same options, so the row shows
+          what the material still asks for. */}
+      {unchosen.map((s) => (
+        <DropdownMenu key={`e-${s.ar}`}>
+          <DropdownMenuTrigger className={cn(cellClass, "border-dashed text-muted-foreground")} aria-label={t("spec_empty", { name: label(shortSpecName(s), locale) })}>
+            <span>{label(shortSpecName(s), locale)}</span>
+            <span aria-hidden="true">—</span>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+            <DropdownMenuRadioGroup value="" onValueChange={(val) => setSpec(s, s.options.find((o) => optionKey(o) === val) || null)}>
+              {s.options.map((o, i) => (
+                <DropdownMenuRadioItem key={`${optionKey(o)}-${i}`} value={optionKey(o)}>
+                  <span dir="auto">{label(o, locale)}</span>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ))}
       {pick.specs
         .filter((x) => x.free)
         .map((x) => (
           <span key={`f-${x.name.ar}`} className={cn(cellClass, "pe-1")}>
-            <span className="text-muted-foreground">{x.name.ar}</span>
+            <span className="text-muted-foreground">{label(x.name, locale)}:</span>
             <b className="font-semibold" dir="auto">
               {x.value.ar}
             </b>
@@ -107,6 +126,7 @@ export function MaterialSpecCells({ index, pick, onChange, readOnly }: { index: 
         ))}
       {pick.brand && (
         <span className={cn(cellClass, "pe-1")}>
+          <span className="text-muted-foreground">{t("brand")}:</span>
           <b className="font-semibold">{label(pick.brand, locale)}</b>
           <button type="button" onClick={() => onChange({ ...pick, brand: null })} aria-label={t("remove")} className="rounded p-0.5 hover:bg-muted">
             <X size={12} />
@@ -115,20 +135,9 @@ export function MaterialSpecCells({ index, pick, onChange, readOnly }: { index: 
       )}
       <DropdownMenu>
         <DropdownMenuTrigger className={cn(cellClass, "text-muted-foreground")} aria-label={t("add_spec")}>
-          {!shown.length && !pick.brand && !pick.specs.length ? <span>{t("spec")}</span> : <Plus size={12} aria-hidden="true" />}
+          {!specs.length && !pick.brand && !pick.specs.length ? <span>{t("spec")}</span> : <Plus size={12} aria-hidden="true" />}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
-          {unchosen.map((s) => (
-            <div key={s.ar}>
-              <DropdownMenuLabel className="text-xs">{label(shortSpecName(s), locale)}</DropdownMenuLabel>
-              {s.options.slice(0, 14).map((o, i) => (
-                <DropdownMenuItem key={`${optionKey(o)}-${i}`} onSelect={() => setSpec(s, o)}>
-                  <span dir="auto">{label(o, locale)}</span>
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-            </div>
-          ))}
           {brands.length > 0 && !pick.brand && (
             <>
               <DropdownMenuLabel className="text-xs">{t("brand_of_category")}</DropdownMenuLabel>

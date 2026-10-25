@@ -8,6 +8,7 @@
 // every older document carries, so a quote or an order from before this release still reads.
 
 import { awardDisclosed, supplierSegmentOf } from "@/lib/procurement/supplier"
+import { readDeliveryOptions } from "@/lib/procurement/delivery-options"
 import { isWithdrawnOffer } from "@/lib/procurement/award"
 import { bafoOpen, revalOpen } from "@/lib/procurement/offer-decisions"
 import { termsListOf } from "@/lib/procurement/terms-freeze"
@@ -424,6 +425,8 @@ export function deriveWorld(raw: RawWorld): World {
       log: [],
     }
     if (terms) deal.terms = terms
+    const delivery = Object.values(readDeliveryOptions(rfq.deliveryOptions))
+    if (delivery.length) deal.delivery = delivery
 
     if (offer) {
       const disclosed = !offer.poId || awardDisclosed({ status: str(offer.status), poId: str(offer.poId), awaitingOrderApproval: !!offer.awaitingOrderApproval }, posById as ReadonlyMap<string, PurchaseOrder>)

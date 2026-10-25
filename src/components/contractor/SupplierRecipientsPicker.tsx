@@ -11,6 +11,18 @@ export interface SupplierOption {
   orgId: string
   name: string
   isFavorite: boolean
+  /** A short muted tag after the facts («من المنصة») — the direct-award pool mixes ours and the platform's. */
+  note?: string
+}
+
+type PickerFacts = { onTime: number | null; crExpired: boolean; block?: SourcingBlock | null; unverified?: boolean; matches?: boolean; subs?: string[] }
+
+/** ED-14: favourites, then the suppliers whose sub-categories the materials fall in («مختص»), then by name. */
+export function orderRecipients(options: SupplierOption[], facts?: Map<string, PickerFacts>): SupplierOption[] {
+  const matches = (o: SupplierOption) => Boolean(facts?.get(o.orgId)?.matches)
+  return [...options].sort((a, b) =>
+    a.isFavorite !== b.isFavorite ? (a.isFavorite ? -1 : 1) : matches(a) !== matches(b) ? (matches(a) ? -1 : 1) : a.name.localeCompare(b.name),
+  )
 }
 
 /** Favourites first, then alphabetical. */
@@ -136,6 +148,8 @@ export function SupplierRecipientsPicker({
   id = "rfq-recipients",
   className,
   facts,
+  single,
+  heading,
 }: {
   options: SupplierOption[]
   selected: string[]
@@ -147,7 +161,11 @@ export function SupplierRecipientsPicker({
    * and why he may not be invited at all (`supplierSourcingBlock`): such a row is greyed and cannot be ticked.
    * `unverified`: one who joined through our invitation — he may be picked, with his «غير موثّق» tag (PUR-05),
    * but «حدّد الكل» does not tick him for us. */
-  facts?: Map<string, { onTime: number | null; crExpired: boolean; block?: SourcingBlock | null; unverified?: boolean; matches?: boolean }>
+  facts?: Map<string, PickerFacts>
+  /** ED-13: one supplier is chosen (a direct award) — radios, no «حدّد الكل», no count. */
+  single?: boolean
+  /** The list's title and hint when it is not a private RFQ's recipients. */
+  heading?: { title: string; hint?: string }
 }) {
   const t = useTranslations("Portal.Contractor")
   const tp = useTranslations("Portal.Procurement")
@@ -156,15 +174,17 @@ export function SupplierRecipientsPicker({
   const invitable = options.filter((o) => !facts?.get(o.orgId)?.block && !facts?.get(o.orgId)?.unverified).map((o) => o.orgId)
   const allSelected = invitable.length > 0 && invitable.every((id) => selected.includes(id))
   const toggle = (orgId: string) =>
-    onChange(selected.includes(orgId) ? selected.filter((s) => s !== orgId) : [...selected, orgId])
+    onChange(single ? [orgId] : selected.includes(orgId) ? selected.filter((s) => s !== orgId) : [...selected, orgId])
+  const rows = orderRecipients(options, facts)
 
   return (
     <div id={id} className={className}>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <p className="text-sm font-bold text-foreground">{t("newrfq_visibility_recipients_label")}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{t("newrfq_visibility_recipients_hint")}</p>
+          <p className="text-sm font-bold text-foreground">{heading ? heading.title : t("newrfq_visibility_recipients_label")}</p>
+          {(heading ? heading.hint : t("newrfq_visibility_recipients_hint")) && <p className="text-xs text-muted-foreground mt-0.5">{heading ? heading.hint : t("newrfq_visibility_recipients_hint")}</p>}
         </div>
+        {!single && (
         <button
           type="button"
           disabled={disabled}
@@ -173,10 +193,11 @@ export function SupplierRecipientsPicker({
         >
           {allSelected ? t("newrfq_visibility_clear_all") : t("newrfq_visibility_select_all")}
         </button>
+        )}
       </div>
 
       <div className="mt-2.5 max-h-52 overflow-y-auto rounded-xl border border-border bg-white divide-y divide-border">
-        {options.map((option) => {
+        {rows.map((option) => {
           const block = facts?.get(option.orgId)?.block || null
           const isSelected = !block && selected.includes(option.orgId)
           return (
@@ -189,7 +210,8 @@ export function SupplierRecipientsPicker({
               )}
             >
               <input
-                type="checkbox"
+                type={single ? "radio" : "checkbox"}
+                name={single ? `${id}-one` : undefined}
                 checked={isSelected}
                 disabled={disabled || Boolean(block)}
                 onChange={() => toggle(option.orgId)}
@@ -206,6 +228,13 @@ export function SupplierRecipientsPicker({
                       facts.get(option.orgId)?.crExpired && <span className="text-destructive"> · {tp("rfqpo.form.cr_expired")}</span>
                     )}
                     {!block && facts.get(option.orgId)?.unverified && <span className="font-semibold text-warning"> · {tp("rfqextras.sourcing.tag_unverified")}</span>}
+                    {option.note && <span> · {option.note}</span>}
+                  </span>
+                )}
+                {facts && (facts.get(option.orgId)?.subs?.length ?? 0) > 0 && (
+                  <span className="block truncate text-[11px] text-muted-foreground/80" dir="auto">
+                    {(facts.get(option.orgId)?.subs || []).slice(0, 3).join(" · ")}
+                    {(facts.get(option.orgId)?.subs || []).length > 3 ? " …" : ""}
                   </span>
                 )}
               </span>
@@ -223,6 +252,7 @@ export function SupplierRecipientsPicker({
         })}
       </div>
 
+      {!single && (
       <p
         className={cn(
           "text-xs mt-2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border w-fit font-semibold",
@@ -240,6 +270,7 @@ export function SupplierRecipientsPicker({
           ? t("newrfq_visibility_selected_count", { selected: selected.length, total: options.length })
           : t("newrfq_val_recipients_required")}
       </p>
+      )}
     </div>
   )
 }

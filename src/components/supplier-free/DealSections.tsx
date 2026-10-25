@@ -4,6 +4,7 @@
 // receipts · invoices and transfers · warranty · the conversation. Each reads the deal — nothing here keeps a figure of its own.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useTranslations } from "next-intl"
 import { Bell, ClipboardList, FileText, MessageSquare, Paperclip, Send, Shield, Truck, Upload, Wallet } from "lucide-react"
 import { arrayRemove, collection, doc, orderBy, query, updateDoc, type Firestore } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
@@ -14,6 +15,7 @@ import { Callout } from "@/components/module-ui/Callout"
 import { displayCategory } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { lineCalc } from "@/lib/procurement/offer-calc"
+import { deliveryLine } from "@/lib/procurement/delivery-options"
 import { r2 } from "@/lib/supplier-free/deal-logic"
 import { riyadhDayOf } from "@/lib/supplier-free/format"
 import { sendDealMessage } from "@/lib/supplier-free/money-writes"
@@ -76,6 +78,10 @@ export function SecRequest({ f, d }: { f: Free; d: Deal }) {
   // bidders) — served by the server; asking goes through it too, so the request's owner is told.
   const { rows: list, ask: askServer } = useSupplierQuestions(d.id)
   const { toast } = useToast()
+  // ED-19: the buyer's delivery options reach the supplier's portal, as on the visitor link.
+  const te = useTranslations("Portal.ProcEditor")
+  const delivLines = Array.from(new Set((d.delivery || []).map((x) => deliveryLine(x, te)).filter(Boolean)))
+  const delivNotes = Array.from(new Set((d.delivery || []).map((x) => x.note).filter((n): n is string => !!n)))
   const ask = async () => {
     const text = q.trim()
     if (!text || !f.profile) return
@@ -99,6 +105,8 @@ export function SecRequest({ f, d }: { f: Free; d: Deal }) {
         <KV k={t("fTerms")} v={d.terms ? termsText(f, d.terms) : "—"} />
         <KV k={t("fChannel")} v={t(`ch_${d.channel}`)} />
         <KV k={t("fCat")} v={<span dir="auto">{displayCategory(d.cat, f.locale)}</span>} />
+        {delivLines.length > 0 && <KV k={te("deliv_label")} v={delivLines.join(" · ")} />}
+        {delivNotes.length > 0 && <KV k={te("deliv_note")} v={<span dir="auto">{delivNotes.join(" · ")}</span>} />}
       </dl>
       <div className={stkWrap}>
         <table className={stk.table}>

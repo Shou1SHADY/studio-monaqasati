@@ -9,6 +9,7 @@ import { CITIES_EN, SAUDI_CITIES } from "../constants"
 import { foldSearchText } from "../search-text"
 import { readDeliveryOptions } from "./delivery-options"
 import { normaliseMapUrl } from "./delivery-site-input"
+import type { PermissionId } from "../permissions"
 
 /** `workshop`: the workshop's own warehouse, a place only a company with Manufacturing in its package has. */
 export type DeliverySiteKind = "site" | "warehouse" | "project" | "workshop"
@@ -166,4 +167,12 @@ const writable = (s: DeliverySite): DeliverySite => Object.fromEntries(Object.en
 export function upsertSite(list: DeliverySite[], site: DeliverySite): DeliverySite[] {
   const i = list.findIndex((s) => s.id === site.id)
   return (i >= 0 ? list.map((s, j) => (j === i ? site : s)) : [...list, site]).map(writable)
+}
+
+/** ED-22 — who may write this site: changing a stored one (or retiring) is the approvers'; adding a new one is also the buyers'. */
+export const ADD_SITE_PERMISSIONS: readonly PermissionId[] = ["po.approve", "rfq.create", "rfq.manage", "offers.accept"]
+export function siteWriteRefusal(can: (p: PermissionId) => boolean, replacesStored: boolean, retires: boolean): "FORBIDDEN" | null {
+  if (can("po.approve")) return null
+  if (replacesStored || retires) return "FORBIDDEN"
+  return ADD_SITE_PERMISSIONS.some((p) => can(p)) ? null : "FORBIDDEN"
 }

@@ -299,7 +299,9 @@ describe("the editor's review and publishing step", () => {
     const v = mount(values())
     expect(text()).toContain("مورد واحد يُختار")
     expect(text()).toContain("لا تجد مورّدك؟ ادعُه إلى المنصة")
-    expect(document.querySelector("option[value='s1']")?.textContent).toContain("مختص")
+    // ED-13: direct uses the same rows as «خاص», one radio per supplier.
+    const row = Array.from(document.querySelectorAll("#rfq-direct label")).find((l) => l.querySelector("input[type='radio']"))
+    expect(row?.textContent).toContain("مختص")
     v.unmount()
   })
 

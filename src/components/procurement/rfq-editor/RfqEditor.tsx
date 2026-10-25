@@ -68,6 +68,7 @@ import {
   lineComplete,
   lineStarted,
   linesFromPaste,
+  pasteSummary,
   materialsProblems,
   newGroup,
   numberedLines,
@@ -85,6 +86,7 @@ import { EditorPublish, linkOn, type PublishValues } from "./EditorPublish"
 import { EditorReview, type ReviewModel } from "./EditorReview"
 import { RfqPublishedPanel } from "./RfqPublishedPanel"
 import { parseNeedSource, type Need } from "@/lib/procurement/needs"
+import { cleanDelivery, deliveryLine } from "@/lib/procurement/delivery-options"
 
 type Rec = Record<string, unknown>
 type Step = 1 | 2 | 3
@@ -433,6 +435,22 @@ export function RfqEditor({
     {},
     linesDoc.subCategoryIds,
   )
+  // ED-14: each platform supplier's sub-categories, named from the tree, under his name in the pickers.
+  const supplierSubs = useMemo(() => {
+    const out = new Map<string, string[]>()
+    for (const s of platform) {
+      const names = (s.subIds || []).map((id) => index?.byId.get(id)).filter((n): n is NonNullable<typeof n> => !!n).map((n) => label(n, locale))
+      if (names.length) for (const id of [s.orgId, ...s.memberIds]) out.set(id, names)
+    }
+    return out
+  }, [platform, index, locale])
+  // ED-13: the direct pool's rows carry the same facts as «خاص»; any sourcing block stops a direct award.
+  const directFacts = new Map(
+    directPool.map((p) => {
+      const block = sourcingOf(p.orgId)
+      return [p.orgId, { onTime: recipientFacts.get(p.orgId)?.onTime ?? null, crExpired: block === "cr_expired", block, matches: matching.has(p.orgId) }] as const
+    }),
+  )
   const estimate = useMemo(() => {
     if (values.audience !== "direct" || !complete.length) return null
     return directEstimate(
@@ -613,6 +631,7 @@ export function RfqEditor({
     favourite: favouriteReached,
     perSub: reach.perSub.map((s) => ({ name: index?.byId.get(s.subId) ? label(index.byId.get(s.subId)!, locale) : s.subId, count: s.count })),
     privateCount: selectedRecipients.length,
+    privateNames: selectedRecipients.map((id) => recipientOptions.find((o) => o.orgId === id)?.name || "").filter(Boolean),
     directName: directPool.find((p) => p.orgId === values.directSupplierOrgId)?.name || null,
     deadline: values.deadline,
     daysToDeadline: values.deadline ? daysBetween(todayDay(), values.deadline) : null,
@@ -625,6 +644,14 @@ export function RfqEditor({
           .filter((g) => g.lines.some(lineComplete))
           .map((g) => `${g.label || t("group_unnamed")} · ${siteLine(g, (c) => displayCity(c, locale))}`)
           .join(" ؛ "),
+    deliveryOptions: groups
+      .filter((g) => g.lines.some(lineComplete))
+      .map((g) => {
+        const d = cleanDelivery(g.delivery)
+        const line = [deliveryLine(d, t), d?.note || ""].filter(Boolean).join(" — ")
+        return line ? (place.multi || groups.filter((x) => x.lines.some(lineComplete)).length > 1 ? `${g.label || t("group_unnamed")}: ${line}` : line) : ""
+      })
+      .filter(Boolean),
     files: values.attachments.map((a) => a.name),
     budget: values.budget.trim() && toAmount(values.budget) > 0 ? toAmount(values.budget).toLocaleString("en-US") : null,
     noSpec: facts.noSpec,
@@ -726,6 +753,7 @@ export function RfqEditor({
           </div>
         )}
         <RfqPublishedPanel
+          rfqId={done.id}
           number={displayDocNumber(done.number, locale)}
           reached={done.reached}
           closesOn={done.closesOn}
@@ -812,16 +840,18 @@ export function RfqEditor({
           uploading={uploading}
           onRemoveAttachment={(p) => void removeAttachment(p)}
           showProblems={showProblems}
+          supplierSubs={supplierSubs}
+          directFacts={directFacts}
         />
       ) : (
-        <EditorReview model={reviewModel} fmtDay={fmtDay} />
+        <EditorReview model={reviewModel} fmtDay={fmtDay} onInvite={() => setInviteOpen(true)} />
       )}
 
       {/* The footer: what the RFQ is so far, and the step's one action (fixed on a phone). */}
-      <div className={cn(panel ? "sticky bottom-0 rounded-xl border bg-card px-4 py-3 max-md:pe-20" : "fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 py-3 backdrop-blur max-md:pe-20 md:static md:z-auto md:rounded-xl md:border md:bg-card")}>
+      <div className={cn(panel ? "sticky bottom-0 rounded-xl border bg-card px-4 py-3 max-md:pe-20" : "fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 py-3 backdrop-blur max-md:pe-20 md:sticky md:bottom-3 md:z-20 md:rounded-xl md:border md:bg-card md:shadow-md")}>
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3">
           <p className="min-w-0 flex-1 text-xs text-muted-foreground">
-            {t("footer_sum", { lines: facts.lines, groups: facts.groups, subs: facts.subs, reach: reach.distinct.length })}
+            {t(pmOn ? "footer_sum_pm" : "footer_sum", { lines: facts.lines, groups: facts.groups, subs: facts.subs, reach: reach.distinct.length })}
             {step === 1 && !panel && <span className="hidden md:block">{t("ebar_hint")}</span>}
           </p>
           {step > 1 && (
@@ -881,6 +911,8 @@ export function RfqEditor({
                 })
                 setPasteText("")
                 setPasteOpen(false)
+                const sum = pasteSummary(lines)
+                toast({ title: t("paste_done", sum) })
               }}
             >
               {t("paste_add", { count: parsePaste(pasteText).length })}

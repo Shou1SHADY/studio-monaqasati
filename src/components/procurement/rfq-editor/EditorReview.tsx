@@ -7,7 +7,8 @@
 // pressed only here, on both roads (the editor and the incoming request's panel).
 
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, Info } from "lucide-react"
+import { AlertTriangle, Info, UserPlus } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { sarLtr } from "@/lib/riyal"
 import type { Audience, Pricing } from "./EditorPublish"
@@ -22,6 +23,8 @@ export interface ReviewModel {
   favourite: string | null
   perSub: Array<{ name: string; count: number }>
   privateCount: number
+  /** ED-16: the chosen suppliers' names, «خاص: …». */
+  privateNames?: string[]
   directName: string | null
   deadline: string | null
   daysToDeadline: number | null
@@ -30,6 +33,8 @@ export interface ReviewModel {
   link: boolean
   terms: string
   delivery: string
+  /** ED-17: each place's delivery options as the supplier reads them («موقع · التنزيل على المورّد · صباحاً — ملاحظة»). */
+  deliveryOptions?: string[]
   files: string[]
   /** The internal budget, as typed: the supplier never sees it. */
   budget: string | null
@@ -38,10 +43,20 @@ export interface ReviewModel {
   unitDiffers: string[]
 }
 
-export function EditorReview({ model, fmtDay }: { model: ReviewModel; fmtDay: (d: string) => string }) {
+export const REVIEW_NAMES_SHOWN = 5
+
+export function EditorReview({ model, fmtDay, onInvite }: { model: ReviewModel; fmtDay: (d: string) => string; onInvite?: () => void }) {
   const t = useTranslations("Portal.ProcEditor")
   const locale = useLocale()
   const m = model
+  const sep = locale === "ar" ? "، " : ", "
+  const names = m.privateNames || []
+  const privateValue = names.length
+    ? `${names.slice(0, REVIEW_NAMES_SHOWN).join(sep)}${names.length > REVIEW_NAMES_SHOWN ? ` ${t("rev_private_more", { count: names.length - REVIEW_NAMES_SHOWN })}` : ""}`
+    : t("rev_private", { count: m.privateCount })
+  // ED-15 / SP-05: a public RFQ warns for EACH sub-category no supplier on the platform has chosen, even when
+  // the other lines do reach suppliers (with no reach at all, the one message below says it).
+  const emptySubs = m.audience === "public" && m.reach > 0 ? m.perSub.filter((s) => s.count === 0) : []
   return (
     <div className="space-y-4">
       <p className="rounded-xl bg-module/10 px-4 py-3 text-sm font-semibold text-foreground">
@@ -55,13 +70,14 @@ export function EditorReview({ model, fmtDay }: { model: ReviewModel; fmtDay: (d
             {m.perSub.length > 0 && <KeyValueRow label={t("rev_by_sub")} value={`${m.perSub.map((s) => `${s.name} ${s.count}`).join(" · ")} (${t("rev_distinct", { count: m.reach })})`} />}
           </>
         )}
-        {m.audience === "private" && <KeyValueRow label={t("rev_reaches")} value={t("rev_private", { count: m.privateCount })} />}
+        {m.audience === "private" && <KeyValueRow label={t("rev_reaches")} value={names.length ? `${t("aud_private")}: ${privateValue}` : privateValue} />}
         {m.audience === "direct" && <KeyValueRow label={t("rev_reaches")} value={m.directName || "—"} />}
         {m.deadline && <KeyValueRow label={t("deadline")} value={`${fmtDay(m.deadline)}${m.daysToDeadline != null ? ` · ${t("in_days", { count: m.daysToDeadline })}` : ""}`} />}
         <KeyValueRow label={t("rev_link")} value={m.link ? t("rev_link_on") : t("rev_link_off")} />
         <KeyValueRow label={t("pricing")} value={m.pricing === "line" ? t("pricing_line") : t("pricing_total")} />
         <KeyValueRow label={t("rev_terms")} value={m.terms} />
         <KeyValueRow label={t("rev_delivery")} value={m.delivery} />
+        {(m.deliveryOptions || []).length > 0 && <KeyValueRow label={t("rev_delivery_opts")} value={(m.deliveryOptions || []).join(" ؛ ")} />}
         {m.files.length > 0 && <KeyValueRow label={t("attachments")} value={m.files.join(locale === "ar" ? "، " : ", ")} />}
         {m.budget && (
           <KeyValueRow
@@ -82,6 +98,17 @@ export function EditorReview({ model, fmtDay }: { model: ReviewModel; fmtDay: (d
           <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> {t("rev_reach_none")}
         </p>
       )}
+      {emptySubs.map((s) => (
+        <div key={`z-${s.name}`} className="flex flex-wrap items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1">{t("rev_sub_none", { name: s.name })}</span>
+          {onInvite && (
+            <Button type="button" variant="link" className="h-auto gap-1 p-0 text-xs text-cta" onClick={onInvite}>
+              <UserPlus size={13} aria-hidden="true" /> {t("rev_sub_invite")}
+            </Button>
+          )}
+        </div>
+      ))}
       {m.noSpec.map((n) => (
         <p key={`s-${n}`} className="flex items-start gap-2 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
           <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> {t("rev_no_spec", { name: n })}

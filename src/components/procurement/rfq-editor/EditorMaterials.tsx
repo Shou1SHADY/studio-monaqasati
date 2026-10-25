@@ -8,11 +8,12 @@
 // order.
 
 import { displayNeedRef } from "@/lib/procurement/format"
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { CalendarClock, Copy, Layers, MapPin, MoreHorizontal, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { IconButton } from "@/components/module-ui/IconButton"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
@@ -26,11 +27,12 @@ import { LocationChips } from "@/components/procurement/location/LocationChips"
 import { NewLocationDialog } from "@/components/procurement/location/NewLocationDialog"
 import { DeliveryOptionsRow } from "@/components/procurement/location/DeliveryOptionsRow"
 import { useProcActor } from "@/hooks/useProcActor"
+import { usePermissions } from "@/hooks/usePermissions"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { SAUDI_CITIES, displayCity } from "@/lib/constants"
 import { label, pathLabel, pathOf, pickOf, unitConversion, unitsOf, type MaterialHit, type MaterialIndex } from "@/lib/materials/tree"
-import { siteLine, type DeliverySite } from "@/lib/procurement/delivery-sites"
+import { siteLine, siteWriteRefusal, type DeliverySite } from "@/lib/procurement/delivery-sites"
 import { fmtDayLong } from "@/lib/procurement/format"
 import { daysBetween } from "@/lib/procurement/po"
 import {
@@ -86,8 +88,10 @@ export function EditorMaterials({
   const tm = useTranslations("Portal.Materials")
   const locale = useLocale()
   const { toast } = useToast()
-  const { actor, orgId } = useProcActor()
-  const maySetSites = actor.isOwner || actor.canApprove
+  const { orgId } = useProcActor()
+  // ED-22: «+ موقع جديد» is open to whoever builds the request (the server adds and never lets him change a stored site).
+  const { can, isOrgOwner } = usePermissions()
+  const maySetSites = isOrgOwner || siteWriteRefusal(can, false, false) === null
   const [browse, setBrowse] = useState<{ groupKey: string; lineKey: string | null; query: string; freeText: string | null; startAt?: string | null } | null>(null)
   // The groups whose city and district are open for change (a place typed by hand stays open while it is typed).
   const [placeOpen, setPlaceOpen] = useState<Set<string>>(() => new Set())
@@ -111,23 +115,48 @@ export function EditorMaterials({
     )
     if (!pick) return
     const units = unitsOf(index, hit.node.id)
-    place(groupKey, lineKey, pick, units.length === 1 ? units[0] : units[0] || null)
+    return place(groupKey, lineKey, pick, units.length === 1 ? units[0] : units[0] || null)
   }
 
-  const place = (groupKey: string, lineKey: string | null, pick: BrowserResult["pick"], unit: MaterialUnit | null, name?: string, repeat = false, quantity = "") => {
+  // ED-03: a row added from the search box, a «الأكثر طلباً» chip or «خيارات» takes the focus to ITS quantity;
+  // Enter in a quantity brings it back to the group's search box — what the bar's «Enter: صف جديد» promises.
+  const rootRef = useRef<HTMLDivElement>(null)
+  const pendingFocus = useRef<string | null>(null)
+  const searchRefs = useRef(new Map<string, HTMLInputElement>())
+  const focusQuantity = (lineKey: string | null | undefined) => {
+    if (lineKey) pendingFocus.current = lineKey
+  }
+  useEffect(() => {
+    const key = pendingFocus.current
+    if (!key || !rootRef.current) return
+    const inputs = [...rootRef.current.querySelectorAll<HTMLInputElement>("input[data-qty]")].filter((x) => x.dataset.qty === key)
+    // The desktop row and the phone card both carry one; the visible one is the one with a layout box.
+    const el = inputs.find((x) => x.offsetParent !== null) || inputs[0]
+    if (!el) return
+    pendingFocus.current = null
+    el.focus()
+    el.select()
+  })
+
+  // ED-12: a group with rows can be removed too, after a confirm that counts what goes with it.
+  const [dropGroup, setDropGroup] = useState<EditorGroup | null>(null)
+
+  const place = (groupKey: string, lineKey: string | null, pick: BrowserResult["pick"], unit: MaterialUnit | null, name?: string, repeat = false, quantity = ""): string | null => {
     const unitText = unit ? label(unit, locale) : ""
     if (lineKey) {
       const g = groups.find((x) => x.key === groupKey)
       const l = g?.lines.find((x) => x.key === lineKey)
-      if (!l) return
+      if (!l) return null
       let next = updateLine(groups, groupKey, lineKey, lineFromPick(name ? { ...l, name } : l, pick, unitText, locale))
       if (repeat) next = repeatLine(next, groupKey, lineKey)
       onChange(next)
+      return lineKey
     } else {
       const fresh = lineFromPick({ ...blankLine(), name: name || "", quantity }, pick, unitText, locale)
       let next = addLine(groups, groupKey, fresh)
       if (repeat) next = repeatLine(next, groupKey, fresh.key)
       onChange(next)
+      return fresh.key
     }
   }
 
@@ -250,6 +279,12 @@ export function EditorMaterials({
         inputMode="decimal"
         value={l.quantity}
         onChange={(e) => onChange(updateLine(groups, g.key, l.key, { quantity: e.target.value }))}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return
+          e.preventDefault()
+          searchRefs.current.get(g.key)?.focus()
+        }}
+        data-qty={l.key}
         aria-label={t("col_quantity")}
         aria-invalid={bad || undefined}
         className={cn("h-9 w-24 text-end tabular-nums", bad && "border-destructive")}
@@ -352,7 +387,7 @@ export function EditorMaterials({
     codes.length && no ? <p className="text-[11px] font-semibold text-destructive">{codes.map((c) => (fixed && c === "material" ? t("row_err_step2") : t(`row_err_${c}`))).join(" · ")}</p> : null
 
   return (
-    <div className="space-y-5">
+    <div ref={rootRef} className="space-y-5">
       {/* Desktop column heads */}
       <div className="hidden grid-cols-[2rem_minmax(0,1.4fr)_minmax(0,1.6fr)_6.5rem_7rem_2.5rem] gap-3 px-3 text-xs font-semibold text-muted-foreground md:grid">
         <span />
@@ -434,6 +469,9 @@ export function EditorMaterials({
                 </label>
               )}
               {groups.length > 1 && !lines.some(lineStarted) && <IconButton label={t("remove_group")} icon={Trash2} iconSize={14} onClick={() => onChange(removeGroup(groups, g.key))} />}
+              {groups.length > 1 && lines.some(lineStarted) && !locked && !fixed && !g.requestRefs.length && (
+                <IconButton label={t("remove_group")} icon={Trash2} iconSize={14} onClick={() => setDropGroup(g)} />
+              )}
             </header>
             {!fixed && <DeliveryOptionsRow value={g.delivery} onChange={(delivery) => setGroup(g, { delivery })} />}
             {fixed &&
@@ -508,9 +546,13 @@ export function EditorMaterials({
                   <MaterialSearchInput
                     pmOn={pmOn}
                     index={index}
-                    onPick={(hit) => fillFromHit(g.key, null, hit)}
-                    onQuick={(hit) => fillFromHit(g.key, null, hit)}
-                    onPickOptions={(r: OptionsResult) => place(g.key, null, r.pick, r.unit, undefined, false, r.quantity)}
+                    inputRef={(el) => {
+                      if (el) searchRefs.current.set(g.key, el)
+                      else searchRefs.current.delete(g.key)
+                    }}
+                    onPick={(hit) => focusQuantity(fillFromHit(g.key, null, hit))}
+                    onQuick={(hit) => focusQuantity(fillFromHit(g.key, null, hit))}
+                    onPickOptions={(r: OptionsResult) => focusQuantity(place(g.key, null, r.pick, r.unit, undefined, false, r.quantity))}
                     onBrowse={(q) => setBrowse({ groupKey: g.key, lineKey: null, query: q, freeText: null })}
                     onFreeText={(text) => setBrowse({ groupKey: g.key, lineKey: null, query: "", freeText: text })}
                   />
@@ -546,9 +588,36 @@ export function EditorMaterials({
         }}
       />
 
+      <AlertDialog open={!!dropGroup} onOpenChange={(o) => !o && setDropGroup(null)}>
+        <AlertDialogContent dir={locale === "ar" ? "rtl" : "ltr"}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("remove_group_title", { name: dropGroup?.label || t("group_unnamed") })}</AlertDialogTitle>
+            <AlertDialogDescription>{t("remove_group_desc", { count: dropGroup ? dropGroup.lines.filter(lineStarted).length : 0 })}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className={buttonVariants({ variant: "destructive" })}
+              onClick={() => {
+                if (dropGroup) onChange(removeGroup(groups, dropGroup.key))
+                setDropGroup(null)
+              }}
+            >
+              {t("remove_group")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <MaterialBrowserDialog
         open={!!browse}
-        onOpenChange={(o) => !o && setBrowse(null)}
+        onOpenChange={(o) => {
+          if (o) return
+          // ED-07: words kept «كما هو» are not lost when the window is dismissed — they stay as a row with
+          // «اختر المادة», which the step's checks already hold back until a material is picked.
+          if (browse?.freeText && !browse.lineKey) onChange(addLine(groups, browse.groupKey, { ...blankLine(), name: browse.freeText }))
+          setBrowse(null)
+        }}
         index={index}
         initialQuery={browse?.query || ""}
         freeText={browse?.freeText ?? null}

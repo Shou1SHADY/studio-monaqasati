@@ -4,7 +4,8 @@
  *  - the chips: a place used by another group is disabled, the chosen one comes first, a retired one only while chosen;
  *  - a site's map link is an https address (anything else is refused) and the workshop is a kind only with Manufacturing;
  *  - the editor's group keeps its delivery options through the draft, and they travel to the RFQ and to the order;
- *  - `POST /api/procurement/delivery-sites` — the server writes the sites: the owner and whoever approves orders, nobody else.
+ *  - `POST /api/procurement/delivery-sites` — the server writes the sites: the owner and whoever approves orders change them;
+ *    whoever builds a request may also add a new one (ED-22).
  */
 
 import { NextRequest } from "next/server"
@@ -185,6 +186,20 @@ describe("POST /api/procurement/delivery-sites (ED-03, SET-02)", () => {
     expect(doc.sealOffersUntilDeadline).toBe(false)
     expect(doc.organizationId).toBe(ORG)
     expect(doc.updatedById).toBe("u1")
+  })
+
+  it("whoever builds a request adds a new site from «+ موقع جديد», but never changes or retires a stored one (ED-22)", async () => {
+    for (const perm of ["rfq.create", "rfq.manage", "offers.accept"]) {
+      mockCaller.mockResolvedValue(caller((p) => p === perm))
+      const res = await call({ site: { name: `موقع ${perm}`, city: "الرياض" } })
+      expect(res.status).toBe(200)
+    }
+    expect(settings()!.deliverySites!.map((s) => s.name)).toEqual(["موقع قديم", "موقع rfq.create", "موقع rfq.manage", "موقع offers.accept"])
+    mockCaller.mockResolvedValue(caller((p) => p === "rfq.manage"))
+    expect((await call({ site: { id: "s0", name: "موقع قديم", city: "جدة" } })).status).toBe(403)
+    expect((await call({ site: { name: "موقع متقاعد", city: "جدة", retired: true } })).status).toBe(403)
+    expect(settings()!.deliverySites!.find((s) => s.id === "s0")?.city).not.toBe("جدة")
+    expect(settings()!.deliverySites).toHaveLength(4)
   })
 
   it("a site with an id already stored is replaced, not added again", async () => {
