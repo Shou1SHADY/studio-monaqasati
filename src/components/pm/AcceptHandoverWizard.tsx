@@ -433,7 +433,7 @@ export function AcceptHandoverWizard({
               </Label>
               <Input id="new-name" dir="auto" value={draft.name} onChange={(e) => set("name", e.target.value)} placeholder={t("manual.name_ph")} disabled={busy} aria-required="true" />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="new-client">
                   {t("field.client")} <span className="text-destructive">*</span>
@@ -465,7 +465,7 @@ export function AcceptHandoverWizard({
                 <p className="text-xs text-muted-foreground">{t("manual.kind_hint")}</p>
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="new-region">{t("manual.region")}</Label>
                 <Input id="new-region" dir="auto" value={draft.region} onChange={(e) => set("region", e.target.value)} placeholder={t("manual.region_ph")} disabled={busy} />
@@ -475,7 +475,7 @@ export function AcceptHandoverWizard({
                 <Input id="new-loc" dir="auto" value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t("wizard.site_location_ph")} disabled={busy} />
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="new-pm">{t("wizard.pm_label")}</Label>
                 <Select value={managerUid} onValueChange={setManagerUid} disabled={busy}>
@@ -512,7 +512,7 @@ export function AcceptHandoverWizard({
                 <p className="text-xs text-muted-foreground">{t("wizard.site_hint")}</p>
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label htmlFor="new-start">{t("manual.start")}</Label>
                 <Input id="new-start" type="date" dir="ltr" value={draft.startOn} onChange={(e) => set("startOn", e.target.value)} disabled={busy} />
@@ -528,7 +528,7 @@ export function AcceptHandoverWizard({
                 <p className="text-xs text-muted-foreground">{t("manual.value_hint")}</p>
               </div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <fieldset className="space-y-1.5">
                 <legend className="text-sm font-medium">{t("manual.advance")}</legend>
                 <div className="flex flex-wrap gap-1.5">
@@ -590,7 +590,7 @@ export function AcceptHandoverWizard({
               {fileExtras(handover).consultantName && <KeyValueRow label={t("wizard.row_consultant")} value={<span dir="auto">{fileExtras(handover).consultantName}</span>} />}
               <KeyValueRow label={t("wizard.row_boq")} value={crmCount ? t("wizard.boq_from_bid", { count: crmCount }) : <span className="font-bold text-destructive">{t("wizard.boq_not_attached")}</span>} />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="acc-region">{t("manual.region")}</Label>
                 <Input id="acc-region" dir="auto" value={region} onChange={(e) => setRegion(e.target.value)} placeholder={t("manual.region_ph")} disabled={busy} />
@@ -685,7 +685,7 @@ export function AcceptHandoverWizard({
                       </Button>
                     </div>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {rows.map((id) => {
                       const def = SECTION_REGISTRY[id]
                       const on = sections.includes(id)
@@ -734,7 +734,7 @@ export function AcceptHandoverWizard({
                   <ChevronDown size={14} className="transition-transform group-open:rotate-180" aria-hidden="true" />
                 </summary>
                 <div className="space-y-2 border-t p-3">
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {ghosts.map((id) => (
                       <div key={id} className="rounded-xl border border-dashed p-3 opacity-70">
                         <p className="text-sm font-bold">{secName(id)}</p>
@@ -753,7 +753,7 @@ export function AcceptHandoverWizard({
           <div className="space-y-4">
             <fieldset className="space-y-2">
               <legend className="text-sm font-bold">{t("wizard.boq_where")}</legend>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {(handover ? boqSourcesFor(handover) : boqSourcesFor({ boq: [] })).map((s) => {
                   const Icon = SOURCE_ICON[s]
                   return (

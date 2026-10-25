@@ -216,7 +216,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
   const noteFields = (withMeter: boolean) => (
     <>
       {withMeter && (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {field("meter", t("plant.meter"), { type: "number", min: "0", dir: "ltr" })}
           {choice("fuel", t("plant.fuel"), FUEL_LEVELS, (o) => (o === "full" ? t("plant.fuel_full") : o))}
         </div>
@@ -399,27 +399,27 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
             <div className="space-y-4">
               {mode.kind === "receive" && (
                 <>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {field("tag", t("plant.tag"), { dir: "ltr" })}
                     {field("name", t("plant.name"), { dir: "auto" })}
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     {choice("category", t("plant.category"), PLANT_CATEGORIES, (o) => t(`plant.cat.${o}`))}
                     {choice("own", t("plant.ownership"), PLANT_OWNERSHIP, (o) => t(`plant.own.${o}`))}
                     {field("qty", t("plant.qty"), { type: "number", min: "1", step: "1", dir: "ltr" })}
                   </div>
                   {f.own === "hire" && field("supplier", t("plant.supplier"), { dir: "auto" })}
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {field("from", t("plant.from"), { type: "date", dir: "ltr", max: today })}
                     {field("to", t("plant.to"), { type: "date", dir: "ltr" })}
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {money && cat !== "tool" && field("rate", t("plant.rate"), { type: "number", min: "0", dir: "ltr" })}
                     {hasMeter(cat) && field("licence", t("plant.licence"), { type: "date", dir: "ltr" })}
                   </div>
                   {!money && cat !== "tool" && <Callout tone="info">{t("plant.rate_later")}</Callout>}
                   {hasMeter(cat) && (
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {field("herc", t("plant.herc"), { dir: "ltr" })}
                       {field("service", t("plant.service_at"), { type: "number", min: "0", dir: "ltr" })}
                     </div>
@@ -434,7 +434,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                   <Callout tone="info">{t("plant.day_note")}</Callout>
                   {choice("st", t("plant.day_state"), PLANT_DAY_STATES, (o) => t(`plant.st.${o}`))}
                   {f.st && ["idle", "stby", "down"].includes(f.st) && <p className="-mt-2 text-[11px] text-muted-foreground">{t(`plant.st_hint.${f.st}`)}</p>}
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {field("day", t("plant.day"), { type: "date", dir: "ltr", max: lastDay(mode.p), min: mode.p.from })}
                     {f.st === "work" && field("hours", t("plant.hours"), { type: "number", min: "0", max: "24", step: "0.5", dir: "ltr" })}
                   </div>
@@ -480,7 +480,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
               {mode.kind === "desk" && (
                 <>
                   <Callout tone="info">{t("plant.desk_note")}</Callout>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {field("no", t("plant.off_number"), { dir: "ltr" })}
                     {field("on", t("plant.desk_date"), { type: "date", dir: "ltr", max: today, min: mode.p.offReq?.on ?? mode.p.from })}
                   </div>

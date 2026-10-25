@@ -315,7 +315,7 @@ export function CorrespondencePanel({
               </Label>
               <Input id="corr-subject" dir="auto" value={subject} placeholder={t("corr.subject_ph")} onChange={(e) => setSubject(e.target.value)} disabled={busy !== null} />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="corr-day">{t("corr.day")}</Label>
                 <Input id="corr-day" type="date" dir="ltr" value={day} max={today} onChange={(e) => setDay(e.target.value)} disabled={busy !== null} />

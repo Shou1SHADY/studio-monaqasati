@@ -644,7 +644,7 @@ function RefuseTransferDialog({ projectId, x, index, onClose }: { projectId: str
   }
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("store.refuse.title")}</DialogTitle>
           <DialogDescription dir="auto">{t("store.refuse.desc", { q: qty(m.q), unit: x.unit, name: x.name, project: m.otherProjectName || "—" })}</DialogDescription>
@@ -848,7 +848,7 @@ function RateDialog({ projectId, x, item, access, onClose }: { projectId: string
   }
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{had ? t("store.rate.correct_the") : t("store.rate.set_the")}</DialogTitle>
           <DialogDescription dir="auto">

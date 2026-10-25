@@ -136,7 +136,7 @@ function PettyDialog({ projectId, orgId, access, actor, list, onClose }: { proje
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("petty.form.title")}</DialogTitle>
           <DialogDescription>{t("petty.form.desc", { one: n0(PETTY_CAP.one), month: n0(PETTY_CAP.month) })}</DialogDescription>
@@ -146,7 +146,7 @@ function PettyDialog({ projectId, orgId, access, actor, list, onClose }: { proje
             <Label htmlFor="pt-what">{t("petty.form.what")} *</Label>
             <Input id="pt-what" dir="auto" placeholder={t("petty.form.what_ph")} value={what} onChange={(e) => setWhat(e.target.value)} />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="pt-sup">{t("petty.form.from")} *</Label>
               <Input id="pt-sup" dir="auto" placeholder={t("petty.form.from_ph")} value={supplier} onChange={(e) => setSupplier(e.target.value)} />

@@ -123,7 +123,7 @@ export function SectionsPanel({
               return (
                 <div key={group}>
                   <p className="mb-2 text-xs font-bold text-muted-foreground">{tShared(`sec_group_${group}`)}</p>
-                  <div className="grid gap-2.5 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     {ids.map((id) => {
                       const def = SECTION_REGISTRY[id]
                       const on = enabled.has(id)
@@ -225,7 +225,7 @@ export function SectionsPanel({
             <div className="space-y-3 border-t p-4">
               <Callout tone="warn">{t("sec.soon_note")}</Callout>
               {soonOurs.length > 0 && (
-                <div className="grid gap-2.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                   {soonOurs.map((id) => (
                     <div key={id} className="rounded-xl border border-dashed p-3">
                       <p className="text-sm font-bold">{tShared(sectionLabelKey(id))}</p>

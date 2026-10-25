@@ -234,13 +234,13 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
       {prov && <KeyValueRow label={t("info.prov")} value={t("info.prov_value", { date: pmDate(prov, locale), end: pmDate(addDays(prov, terms.defectsDays), locale) })} />}
 
       <Dialog open={editing} onOpenChange={(o) => !busy && setEditing(o)}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("info.edit_title")}</DialogTitle>
             <DialogDescription dir="auto">{project.name ?? ""}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="pi-loc">{t("info.location")}</Label>
                 <Input id="pi-loc" value={location} onChange={(e) => setLocation(e.target.value)} disabled={busy} dir="auto" />

@@ -185,7 +185,7 @@ export function SubStoreMoveDialog({
               </div>
             </>
           )}
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="sm-q">
                 {t(`subs.recon.move_qty_${kind}`)}
@@ -277,7 +277,7 @@ export function SubStoreRecoverDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("subs.recon.recover_title")}</DialogTitle>
           <DialogDescription dir="auto">
@@ -289,7 +289,7 @@ export function SubStoreRecoverDialog({
           <div className="rounded-xl border px-3">
             <KeyValueRow label={t("subs.recon.open_gap")} value={`${qty(Math.max(0, gap ?? 0))} ${x.unit}`} ltr strong />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="sr-q">
                 {t("subs.recon.recover_qty")} ({x.unit}) *

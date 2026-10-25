@@ -207,7 +207,7 @@ function ReplyDialog({ projectId, r, access, actor, onClose }: { projectId: stri
   }
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("plantreq.rep.title")}</DialogTitle>
           <DialogDescription dir="auto">

@@ -781,7 +781,7 @@ function RegisterDialog({
           <DialogDescription>{t("subs.form.desc")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>{t("subs.form.supplier")}</Label>
               <SearchableSelect
@@ -803,7 +803,7 @@ function RegisterDialog({
               <Input id="sc-name" dir="auto" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("subs.form.name_ph")} />
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="sc-ret">{t("subs.form.retention")}</Label>
               <Input id="sc-ret" dir="ltr" type="number" min={0} max={20} step={0.5} value={ret} onChange={(e) => setRet(e.target.value)} />
@@ -1131,7 +1131,7 @@ function MoveDialog({
   const gap = kind === "cnt" && day && Number.isFinite(qn) ? custodyFigures({ ...custody, moves: [...custody.moves, { t: "cnt", q: qn, day, by: custody.by }] }, executed).gap : null
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t(`subs.recon.move_title_${kind}`)}</DialogTitle>
           <DialogDescription dir="auto">
@@ -1149,7 +1149,7 @@ function MoveDialog({
               </div>
             </>
           )}
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="mv-q">
                 {t(`subs.recon.move_qty_${kind}`)} ({custody.unit}) *
@@ -1219,7 +1219,7 @@ function RecoverDialog({
   const amount = recoveryAmount(num(q) || 0, num(rate) || 0, double)
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("subs.recon.recover_title")}</DialogTitle>
           <DialogDescription dir="auto">
@@ -1231,7 +1231,7 @@ function RecoverDialog({
           <div className="rounded-xl border px-3">
             <KeyValueRow label={t("subs.recon.open_gap")} value={`${qty(Math.max(0, f.gap ?? 0))} ${custody.unit}`} ltr strong />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="rc-q">
                 {t("subs.recon.recover_qty")} ({custody.unit}) *
