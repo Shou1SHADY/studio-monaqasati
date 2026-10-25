@@ -61,12 +61,14 @@ export function ProjectPulse({
           {t("pulse.note_no_boq_body")}
         </Callout>
       )}
-      <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
-        <div className="space-y-4">
+      {/* One column below `lg` (a phone's columns were 519 px in a 390 px screen — UX-09): tracks are `minmax(0, …)` so a
+          long row can never widen its column, and `items-start` keeps a short column from stretching (UX-08). */}
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-4">
           <PmTodayPanel projectId={projectId} project={project} access={access} onOpen={onOpen} />
           <PulseMoneyTrail projectId={projectId} project={trailProject} access={access} ipcOn={has("ipc")} costOn={has("cost")} />
         </div>
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           {has("zone") && sections && <UnitsPulsePanel projectId={projectId} items={items} startedOn={project.pm?.startedAt ?? null} onDetails={() => open("pmUnits")} />}
           <SectionsBehindPanel projectId={projectId} project={project} items={items} onProgramme={programmeOn ? () => open("pmProgramme") : undefined} />
           <WaitingOnOthers

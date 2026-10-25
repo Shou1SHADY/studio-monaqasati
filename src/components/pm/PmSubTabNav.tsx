@@ -188,5 +188,5 @@ export function PmSubTabNav({
     return { id: x.key, label: x.label, count, tone, readOnlyLabel: READ_ONLY.has(x.key) ? tPm("seg_read") : undefined }
   })
 
-  return <SegmentedNav ariaLabel={tPm(`grp.${group}`)} active={active} onSelect={onSelect} segments={segments} />
+  return <SegmentedNav variant="tray" ariaLabel={tPm(`grp.${group}`)} active={active} onSelect={onSelect} segments={segments} />
 }

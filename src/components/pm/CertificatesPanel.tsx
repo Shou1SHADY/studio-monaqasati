@@ -280,7 +280,7 @@ export function CertificatesPanel({
 
   return (
     <>
-      {showCollection ? <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">{list}{side}</div> : list}
+      {showCollection ? <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">{list}{side}</div> : list}
 
       {canPrepare && (
         <PrepareCertificateDialog

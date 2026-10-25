@@ -15,15 +15,16 @@
 import { ShowMoreRow } from "@/components/module-ui/ShowMoreRow"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, Banknote, CalendarCheck2, ClipboardList, Coins, FolderKanban, Hand, HandCoins, TrendingUp, Wallet, Zap } from "lucide-react"
+import { AlertTriangle, Banknote, CalendarCheck2, ChevronRight, ClipboardList, Coins, FolderKanban, Hand, HandCoins, TrendingUp, Wallet, Zap } from "lucide-react"
 import { collection, query, where } from "firebase/firestore"
 import { Button } from "@/components/ui/button"
 import { DecisionRow } from "@/components/module-ui/DecisionRow"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { ModuleHeader, type ModuleKpi } from "@/components/module-ui/ModuleHeader"
 import { Panel } from "@/components/module-ui/Panel"
-import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
+import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { DecisionItem } from "@/components/pm/PmTodayPanel"
+import { moneyTile } from "@/components/pm/ProjectHead"
 import { PmSeatChip } from "@/components/pm/PmSeatChip"
 import { WaitingOnOthers } from "@/components/pm/WaitingOnOthers"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
@@ -194,9 +195,11 @@ export function PmPortfolioToday() {
             detail={[fileExtras(h).dealNo ? t("dec.ho.deal", { no: fileExtras(h).dealNo as string }) : null, t("dec.ho.detail", { client: h.clientName || "—", value: h.value ? pmMoney(h.value) : t("dec.ho.no_value"), start: h.startOn ? pmDate(h.startOn, locale) : "—" })].filter(Boolean).join(" · ")}
             age={age ? t("days", { count: age }) : undefined}
             ageDays={age}
+            dense
             action={
-              <Button size="sm" className={cn(f.severity === "red" ? "bg-module text-module-foreground hover:bg-module/90" : "border border-border bg-card text-foreground shadow-none hover:bg-muted")} variant={f.severity === "red" ? "default" : "outline"} onClick={() => router.push("/contractor/projects/inbox")}>
+              <Button size="sm" className={cn("gap-1", f.severity === "red" ? "bg-module text-module-foreground hover:bg-module/90" : "border border-border bg-card text-foreground shadow-none hover:bg-muted")} variant={f.severity === "red" ? "default" : "outline"} onClick={() => router.push("/contractor/projects/inbox")}>
                 {t("dec.ho.act")}
+                <ChevronRight size={14} className="rtl-flip" aria-hidden="true" />
               </Button>
             }
           />
@@ -248,7 +251,7 @@ export function PmPortfolioToday() {
   const valueKpi: ModuleKpi = {
     id: "value",
     label: t("dec.kpi_value"),
-    value: pmMoney(liveValue),
+    ...moneyTile(liveValue),
     note: client && liveBudget > 0 ? t("dec.kpi_value_note_budget", { count: live.length, budget: pmMoney(liveBudget) }) : t("dec.kpi_value_note", { count: live.length }),
     tone: "neutral",
     icon: Coins,
@@ -265,13 +268,13 @@ export function PmPortfolioToday() {
     money && client
       ? [
           valueKpi,
-          { id: "unbilled", label: t("pulse.kpi_unbilled"), value: pmMoney(unbilled), note: t("dec.kpi_unbilled_note"), tone: unbilled > 0 ? "bad" : "good", icon: Banknote },
-          { id: "cash", label: t("pulse.kpi_cash"), value: pmMoney(cash), note: cashNote, tone: cash < 0 ? "bad" : "good", icon: Wallet },
+          { id: "unbilled", label: t("pulse.kpi_unbilled"), ...moneyTile(unbilled), note: t("dec.kpi_unbilled_note"), tone: unbilled > 0 ? "bad" : "good", icon: Banknote },
+          { id: "cash", label: t("pulse.kpi_cash"), ...moneyTile(cash), note: cashNote, tone: cash < 0 ? "bad" : "good", icon: Wallet },
         ]
       : money
         ? [
             valueKpi,
-            { id: "committed", label: t("dec.kpi_committed"), value: pmMoney(committed), note: t("dec.kpi_committed_note"), tone: "neutral", icon: HandCoins },
+            { id: "committed", label: t("dec.kpi_committed"), ...moneyTile(committed), note: t("dec.kpi_committed_note"), tone: "neutral", icon: HandCoins },
             { id: "requests", label: t("dec.kpi_requests_waiting"), value: String(pendingRequests), note: t("dec.kpi_short_30", { count: shortages }), tone: pendingRequests ? "warn" : "good", icon: ClipboardList },
           ]
         : [
@@ -303,23 +306,28 @@ export function PmPortfolioToday() {
       {!isLoading && projects.length === 0 && handovers.length === 0 ? (
         <EmptyState icon={CalendarCheck2} title={t("dec.no_projects")} description={t("dec.no_projects_desc")} />
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-[1.35fr_1fr]">
-          <Panel title={t("dec.panel_title")} icon={Zap} count={items.length || undefined} countTone={red ? "bad" : "mute"} bodyClassName="p-0">
-            {items.length > 0 && (red > 0 || oldest > 0) && (
-              <p className="border-b px-4 py-2 text-xs text-muted-foreground">
-                {[red ? t("dec.sub_urgent", { count: red }) : null, oldest ? t("dec.sub_oldest", { count: oldest }) : null].filter(Boolean).join(" · ")}
-              </p>
-            )}
+        // One column below `lg`, `minmax(0, …)` tracks: the panel can never be wider than a phone (UX-09).
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+          <Panel
+            title={t("dec.panel_title")}
+            icon={Zap}
+            count={items.length || undefined}
+            countTone={red ? "bad" : "mute"}
+            description={items.length > 0 && (red > 0 || oldest > 0) ? [red ? t("dec.sub_urgent", { count: red }) : null, oldest ? t("dec.sub_oldest", { count: oldest }) : null].filter(Boolean).join(" · ") : undefined}
+            bodyClassName="p-0"
+          >
             {items.length > 0 && groupChips.length > 0 && (
-              <div className="border-b px-4 py-3">
-                <ProcChipGroup
-                  items={[{ id: "all" as const, label: t("dec.grp.all"), count: items.length }, ...groupChips]}
+              <div className="border-b px-4 py-2.5">
+                {/* The tray wraps, so the last group is never cut at the edge (UX-21). */}
+                <SegmentedNav
+                  variant="tray"
+                  segments={[{ id: "all", label: t("dec.grp.all"), count: items.length }, ...groupChips]}
                   active={group}
-                  onPick={(g) => {
-                    setGroup(g)
+                  onSelect={(g) => {
+                    setGroup(g as DecisionGroup | "all")
                     setAll(false)
                   }}
-                  label={t("dec.panel_title")}
+                  ariaLabel={t("dec.panel_title")}
                 />
               </div>
             )}
@@ -337,7 +345,7 @@ export function PmPortfolioToday() {
             )}
           </Panel>
 
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             <Panel
               title={t("dec.my_projects")}
               icon={FolderKanban}

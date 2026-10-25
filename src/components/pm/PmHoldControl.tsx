@@ -6,8 +6,10 @@
 
 import { useState } from "react"
 import { useTranslations } from "next-intl"
-import { Loader2, Pause, Play } from "lucide-react"
+import { Loader2, MoreHorizontal, Pause, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { IconButton } from "@/components/module-ui/IconButton"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -25,7 +27,9 @@ import { useLocaleDir } from "./SupplyDialogs"
 
 type HoldProject = { pm?: { lifecycle?: string | null; holdSince?: string | null; holdWhy?: string | null } | null; status?: string | null }
 
-export function PmHoldControl({ projectId, project, access, actor }: { projectId: string; project: HoldProject; access: PmAccess; actor: { uid: string; name: string | null } }) {
+/** `trigger="menu"` (the project head, PM 1.1 UX-04): Postpone is a secondary act, so it sits behind a «…» button
+ * instead of a third full button that ran off a phone's screen; Resume — the one act left on a postponed project — stays a button. */
+export function PmHoldControl({ projectId, project, access, actor, trigger = "button" }: { projectId: string; project: HoldProject; access: PmAccess; actor: { uid: string; name: string | null }; trigger?: "button" | "menu" }) {
   const t = useTranslations("Portal.PM")
   const { locale } = useLocaleDir()
   const firestore = useFirestore()
@@ -65,10 +69,25 @@ export function PmHoldControl({ projectId, project, access, actor }: { projectId
 
   return (
     <>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-        <Pause size={14} className="me-1.5" aria-hidden="true" />
-        {t("hold.hold")}
-      </Button>
+      {/* The menu is not modal: a dialog opened from a modal menu inherits its locked pointer events. */}
+      {trigger === "menu" ? (
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <IconButton icon={MoreHorizontal} label={t("head.more")} variant="outline" className="rounded-xl border border-border bg-card shadow-none hover:bg-muted md:h-9 md:w-9" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => setOpen(true)} className="gap-2">
+              <Pause size={14} aria-hidden="true" />
+              {t("hold.hold")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+          <Pause size={14} className="me-1.5" aria-hidden="true" />
+          {t("hold.hold")}
+        </Button>
+      )}
       <Dialog open={open} onOpenChange={(o) => !o && !busy && setOpen(false)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>

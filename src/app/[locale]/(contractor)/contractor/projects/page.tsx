@@ -20,7 +20,8 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { ModuleHeader, type ModuleKpi } from "@/components/module-ui/ModuleHeader"
-import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
+import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
+import { moneyTile } from "@/components/pm/ProjectHead"
 import { PmProjectCard } from "@/components/pm/PmProjectCard"
 import { PmArchiveTable, PmFilterBar, PmFilterDropdown, PmPortfolioTable } from "@/components/pm/PmPortfolioViews"
 import { PmTodayRedCount } from "@/components/pm/PmPortfolioToday"
@@ -211,7 +212,7 @@ export default function ProjectsListPage() {
         {
           id: "value",
           label: tPm("list.kpi_arch_value"),
-          value: money ? pmMoney(k.value) : MASK,
+          ...(money ? moneyTile(k.value) : { value: MASK }),
           note: k.cost !== null ? tPm("list.kpi_at_cost", { cost: money ? pmMoney(k.cost) : MASK }) : tPm("list.kpi_cost_pending"),
           tone: "neutral",
           icon: Coins,
@@ -236,7 +237,7 @@ export default function ProjectsListPage() {
       {
         id: "value",
         label: tPm("list.kpi_value"),
-        value: money ? pmMoney(list.reduce((a, r) => a + r.value, 0)) : MASK,
+        ...(money ? moneyTile(list.reduce((a, r) => a + r.value, 0)) : { value: MASK }),
         note: !money ? tPm("list.kpi_at_budget", { budget: MASK }) : budget > 0 ? tPm("list.kpi_at_budget", { budget: pmMoney(budget) }) : tPm("list.kpi_no_budget"),
         tone: "neutral",
         icon: Coins,
@@ -286,11 +287,13 @@ export default function ProjectsListPage() {
           tabsLabel={tPm("list.title")}
         />
 
-        <ProcChipGroup
-          items={PORTFOLIO_STATES.map((c) => ({ id: c, label: c === "all" ? tPm("list.chip_all") : tPm(`list.chip.${c}`), count: counts[c] }))}
+        {/* The states in the same tray as a project's sub-tabs; it wraps, so a phone never cuts «مكتملة» (UX-07). */}
+        <SegmentedNav
+          variant="tray"
+          segments={PORTFOLIO_STATES.map((c) => ({ id: c, label: c === "all" ? tPm("list.chip_all") : tPm(`list.chip.${c}`), count: counts[c] }))}
           active={st}
-          onPick={pickState}
-          label={tPm("list.title")}
+          onSelect={(c) => pickState(c as PortfolioState)}
+          ariaLabel={tPm("list.title")}
         />
 
         <div className="flex flex-wrap items-center gap-2">

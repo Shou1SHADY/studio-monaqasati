@@ -20162,7 +20162,8 @@
         "kpi_committed": "Committed",
         "kpi_committed_of": "of {budget} budget",
         "kpi_committed_note": "POs and subcontracts",
-        "kpi_cash_note": "in {in} · out {out} — VAT excluded"
+        "kpi_cash_note": "in {in} · out {out} — VAT excluded",
+        "more": "More actions"
       },
       "trail": {
         "title": "The money trail",
