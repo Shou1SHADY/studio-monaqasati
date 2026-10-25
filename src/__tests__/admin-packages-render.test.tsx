@@ -29,6 +29,7 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react"
 import { resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import { installDomShims, missingKeys, pushed, setLocale, setPathname, setSignedIn } from "@/test-utils/render-world"
 import { ContractorPackagePage } from "@/components/admin/packages/ContractorPackagePage"
+import { ContractorPackagePreview } from "@/components/admin/packages/ContractorPackagePreview"
 import { PipelineContractPage } from "@/components/admin/packages/PipelineContractPage"
 import AdminContractorsPage from "@/app/[locale]/(admin)/admin/contractors/page"
 import { EVENTS } from "@/lib/procurement/package-data"
@@ -193,6 +194,75 @@ describe("the contractor's package page", () => {
   })
 })
 
+describe("the subscription status and the read-only preview (AD-01, AD-03)", () => {
+  const open = async (data?: Record<string, unknown>) => {
+    if (data) seed(`companyModules/${ORG}`, { organizationId: ORG, ...data })
+    const view = render(<ContractorPackagePage orgId={ORG} />)
+    await flush()
+    return view
+  }
+  const pill = () => document.querySelector("header [data-subscription]")?.textContent
+
+  it("no field is «نشط», beside the verification status that stays", async () => {
+    await open([] as never)
+    expect(pill()).toBe("اشتراك نشط")
+    expect(document.querySelector("header")?.textContent).toMatch(/^شركة البنيانالرياضنشطاشتراك نشط/)
+  })
+
+  it("the admin sets «تجريبي» from the page: it waits for Save, then posts with the package", async () => {
+    await open({ off: [] })
+    const group = document.querySelector('[role="group"][aria-label="حالة الاشتراك"]') as HTMLElement
+    fireEvent.click(Array.from(group.querySelectorAll("button")).find((b) => b.textContent === "تجريبي") as HTMLElement)
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(0)
+    const save = button("احفظ الباقة") as HTMLButtonElement
+    expect(save.disabled).toBe(false)
+    fireEvent.click(save)
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true))
+    expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({ orgId: ORG, subscription: "trial" })
+    expect(calls.filter((c) => c.method === "GET")).toHaveLength(0)
+  })
+
+  it("a stored «trial» reads «تجريبي»; an unchanged status is not posted", async () => {
+    await open({ off: [], subscription: "trial" })
+    expect(pill()).toBe("اشتراك تجريبي")
+    const group = document.querySelector('[role="group"][aria-label="إدارة المشاريع"]') as HTMLElement
+    fireEvent.click(Array.from(group.querySelectorAll("button")).find((b) => b.textContent === "نعم") as HTMLElement)
+    fireEvent.click(button("احفظ الباقة") as HTMLElement)
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true))
+    expect(calls.find((c) => c.method === "POST")?.body).not.toHaveProperty("subscription")
+  })
+
+  it("«اعرض كما يراها» opens the admin's preview — and is disabled while a change is unsaved", async () => {
+    await open({ off: [] })
+    const link = Array.from(document.querySelectorAll("a")).find((a) => (a.textContent ?? "").includes("اعرض كما يراها")) as HTMLAnchorElement
+    expect(link.getAttribute("href")).toBe(`/admin/contractors/${ORG}/preview`)
+    fireEvent.click(byLabel("التصنيع"))
+    await flush()
+    expect(Array.from(document.querySelectorAll("a")).some((a) => (a.textContent ?? "").includes("اعرض كما يراها"))).toBe(false)
+    expect((button("اعرض كما يراها") as HTMLButtonElement).disabled).toBe(true)
+    expect(text()).toContain("احفظ الباقة أو تراجع أولاً.")
+  })
+
+  it("the preview shows the SAVED package read-only: its menu, its subscription panel and how Procurement works — no link into the portal", async () => {
+    seed(`companyModules/${ORG}`, { organizationId: ORG, off: ["manufacturing"], subscription: "trial" })
+    setPathname(`/admin/contractors/${ORG}/preview`)
+    render(<ContractorPackagePreview orgId={ORG} />)
+    await flush()
+    expect(text()).toContain("معاينة للقراءة فقط")
+    expect(document.querySelector('[data-testid="preview-package-label"]')?.textContent).toBe("الأساسية + المشاريع + المالية")
+    expect(document.querySelector("[data-subscription]")?.textContent).toBe("اشتراك تجريبي")
+    const modules = Array.from(document.querySelectorAll('[data-testid="preview-modules"] > li')).map((li) => li.getAttribute("data-module"))
+    expect(modules).toContain("procurement")
+    expect(modules).not.toContain("manufacturing")
+    expect(document.querySelector('[data-testid="preview-hidden"]')?.textContent).toContain("التصنيع")
+    expect(document.querySelector('[data-connector="mfg"]')?.getAttribute("data-subscribed")).toBe("false")
+    expect(document.querySelectorAll('[data-testid="guide-stations"] [data-station]').length).toBeGreaterThan(0)
+    expect(document.querySelector('a[href^="/contractor"]')).toBeNull()
+    expect(document.querySelectorAll('button, input, select, [role="switch"]')).toHaveLength(0)
+    expect(missingKeys.size).toBe(0)
+  })
+})
+
 describe("the contractors list (ADM-01)", () => {
   it("adds the package, the version and the strip of four numbers, and opens the page instead of a dialog", async () => {
     seed("users/c2", { role: "Contractor", name: "مؤسسة ركن", organizationId: "c2", organizationRole: "owner" })
@@ -207,6 +277,27 @@ describe("the contractors list (ADM-01)", () => {
     expect(text()).toContain("أجاب «نعم» عن المشاريع")
     expect(button("مقاول جديد")).toBeTruthy()
     expect(text()).toContain("المقاولون والباقات")
+    expect(missingKeys.size).toBe(0)
+  })
+})
+
+describe("the contractors list rows (AD-02, AD-03)", () => {
+  it("say «{city} · {N} users · since {date}» under the name, carry the subscription status, and the package opens the page", async () => {
+    seed(`users/${ORG}`, { role: "Contractor", name: "شركة البنيان", city: "الرياض", organizationId: ORG, organizationRole: "owner", isVerified: true, createdAt: "2026-03-05T08:00:00Z" })
+    seed("users/m1", { role: "Contractor", name: "عضو", organizationId: ORG, organizationRole: "member" })
+    seed("users/m2", { role: "Supplier", name: "عضو آخر", organizationId: ORG, organizationRole: "member" })
+    seed(`companyModules/${ORG}`, { organizationId: ORG, off: [], subscription: "trial" })
+    setPathname("/admin/contractors")
+    render(<AdminContractorsPage />)
+    await flush(12)
+    const row = Array.from(document.querySelectorAll("tbody tr")).find((r) => r.querySelector("span.font-bold")?.textContent === "شركة البنيان") as HTMLElement
+    const sub = row.querySelector('[data-testid="contractor-subline"]')?.textContent ?? ""
+    expect(sub).toContain("الرياض")
+    expect(sub).toContain("3 مستخدمين")
+    expect(sub).toMatch(/منذ .*2026/)
+    expect(row.querySelector("[data-subscription]")?.textContent).toBe("اشتراك تجريبي")
+    const links = Array.from(row.querySelectorAll("a")).map((a) => a.getAttribute("href"))
+    expect(links.filter((h) => h === `/admin/contractors/${ORG}`).length).toBe(2)
     expect(missingKeys.size).toBe(0)
   })
 })

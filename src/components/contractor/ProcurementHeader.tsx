@@ -12,7 +12,8 @@
 //
 // The search is the prototype's: `/` focuses it, Enter jumps to the incoming
 // requests (an expediter's to the orders) on "all", and the target page reads
-// `?search=` — changing tab drops it.
+// `?search=` — changing tab drops it. On a tab whose list reads `?search=` live
+// (requests, RFQs) it filters THIS page as you type («ابحث في هذه الصفحة…», FR-01).
 
 import type { ElementType, ReactNode } from "react"
 import { Suspense, useEffect, useRef, useState } from "react"
@@ -25,6 +26,7 @@ import { useProcurementShell } from "@/hooks/useProcurementShell"
 import { useProcurementNavBadges } from "@/hooks/useProcurementNavBadges"
 import { useAutoForwardTick } from "@/hooks/useAutoForwardTick"
 import { PROC_TABS, activeProcTab, visibleProcTabs } from "@/lib/procurement/shell"
+import { LIVE_SEARCH_TABS, searchHref } from "@/lib/procurement/frame"
 import type { KpiTile } from "@/lib/procurement/kpis"
 import { displayCategory } from "@/lib/constants"
 import { sarLtr } from "@/lib/riyal"
@@ -131,7 +133,7 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
         <div className="flex flex-wrap items-center gap-2">
           {searchTarget && (
             <Suspense fallback={null}>
-              <ProcSearch targetHref={searchTarget.href} />
+              <ProcSearch targetHref={searchTarget.href} liveHere={!!active && LIVE_SEARCH_TABS.includes(active.id) && pathname === active.href} />
             </Suspense>
           )}
           {authority && (
@@ -219,7 +221,7 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
 
 /** Reads `?search=` — inside its own Suspense boundary, so a statically
  * rendered page never has to wait on the URL. */
-function ProcSearch({ targetHref }: { targetHref: string }) {
+function ProcSearch({ targetHref, liveHere = false }: { targetHref: string; liveHere?: boolean }) {
   const tShared = useTranslations("Portal.Shared")
   const pathname = usePathname()
   const router = useRouter()
@@ -227,7 +229,24 @@ function ProcSearch({ targetHref }: { targetHref: string }) {
   const urlSearch = searchParams.get("search") || ""
   const [term, setTerm] = useState(urlSearch)
   const inputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => setTerm(urlSearch), [urlSearch])
+  // What this box last wrote to the address while typing: the URL catching up must not overwrite what was typed since.
+  const pushed = useRef<string | null>(null)
+  const timer = useRef<number | null>(null)
+  useEffect(() => {
+    if (pushed.current !== null && urlSearch === pushed.current.trim()) return
+    setTerm(urlSearch)
+  }, [urlSearch])
+  useEffect(() => () => void (timer.current !== null && window.clearTimeout(timer.current)), [])
+  const filterHere = (value: string, wait: number) => {
+    if (timer.current !== null) window.clearTimeout(timer.current)
+    const apply = () => {
+      timer.current = null
+      pushed.current = value
+      router.replace(searchHref(pathname, new URLSearchParams(searchParams.toString()), value))
+    }
+    if (wait > 0) timer.current = window.setTimeout(apply, wait)
+    else apply()
+  }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return
@@ -251,16 +270,20 @@ function ProcSearch({ targetHref }: { targetHref: string }) {
       className="relative w-full sm:w-64"
       onSubmit={(e) => {
         e.preventDefault()
-        run(term)
+        if (liveHere) filterHere(term, 0)
+        else run(term)
       }}
     >
       <Search size={14} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
       <input
         ref={inputRef}
         value={term}
-        onChange={(e) => setTerm(e.target.value)}
-        placeholder={tShared("proc_search_ph")}
-        aria-label={tShared("proc_search_ph")}
+        onChange={(e) => {
+          setTerm(e.target.value)
+          if (liveHere) filterHere(e.target.value, 250)
+        }}
+        placeholder={tShared(liveHere ? "proc_search_page_ph" : "proc_search_ph")}
+        aria-label={tShared(liveHere ? "proc_search_page_ph" : "proc_search_ph")}
         aria-keyshortcuts="/"
         className="h-10 w-full rounded-lg border bg-card pe-9 ps-9 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
@@ -269,7 +292,8 @@ function ProcSearch({ targetHref }: { targetHref: string }) {
           type="button"
           onClick={() => {
             setTerm("")
-            if (urlSearch) run("")
+            if (liveHere) filterHere("", 0)
+            else if (urlSearch) run("")
           }}
           aria-label={tShared("so_search_clear")}
           className="absolute end-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

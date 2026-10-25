@@ -164,6 +164,26 @@ describe("the save route", () => {
     expect(stored()).toMatchObject({ off: ["hr"], needs: { pm: 1 }, history: [] })
   })
 
+  it("the subscription status alone (Trial / Active, AD-03) is saved without touching the switches or the history", async () => {
+    mockDb.seed(`companyModules/${ORG}`, { organizationId: ORG, off: ["hr"], history: [] })
+    const res = await save(post({ orgId: ORG, off: ["hr"], subscription: "trial" }))
+    expect(res.status).toBe(200)
+    expect(stored()).toMatchObject({ off: ["hr"], subscription: "trial", history: [] })
+    const writes = mockDb.writes.length
+    const again = await save(post({ orgId: ORG, off: ["hr"], subscription: "trial" }))
+    expect(((await again.json()) as { data: { unchanged: boolean } }).data.unchanged).toBe(true)
+    expect(mockDb.writes).toHaveLength(writes)
+    await save(post({ orgId: ORG, off: ["hr"], subscription: "active" }))
+    expect(stored()).toMatchObject({ subscription: "active" })
+  })
+
+  it("a save that does not name the subscription status leaves it as stored", async () => {
+    mockDb.seed(`companyModules/${ORG}`, { organizationId: ORG, off: [], history: [], subscription: "trial" })
+    await save(post({ orgId: ORG, off: ["manufacturing"] }))
+    expect(stored()).toMatchObject({ off: ["manufacturing"], subscription: "trial" })
+    expect((await save(post({ orgId: ORG, off: [], subscription: "paid" }))).status).toBe(400)
+  })
+
   it("keeps the last twenty history entries and the earlier ones in order", async () => {
     mockDb.seed(`companyModules/${ORG}`, { organizationId: ORG, off: [], history: Array.from({ length: 20 }, (_, i) => ({ id: `h${i}` })) })
     await save(post({ orgId: ORG, off: ["manufacturing"] }))

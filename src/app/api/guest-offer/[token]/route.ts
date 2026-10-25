@@ -3,6 +3,8 @@ import { getAdminFirestore } from "@/lib/firebaseAdmin"
 import { guestVisibleStatus, resolveGuestOfferToken } from "@/lib/guest-offer"
 import { guestOfferAvailability } from "@/utils/guest-offer-workflow"
 import { answeredQueries, mergeGuestPapers, type GuestPaper, type InquiryDoc } from "@/lib/procurement/guest-supplier"
+import { orderUrlOf } from "@/lib/procurement/visitor-order-link"
+import { OFFER_STATUS } from "@/utils/guest-offer-workflow"
 
 // Public endpoint: resolves a guest offer token to everything the supplier
 // needs to follow their offer through the workflow — current status, what the
@@ -73,6 +75,15 @@ export async function GET(
     // What the guest may see of an award: nothing until its order is sent.
     const shownStatus = await guestVisibleStatus(db, offer)
 
+    // Awarded with its order sent: the order's own link, where the delivery is reported in 2.0 (VL-01). None → the legacy form.
+    let orderUrl: string | null = null
+    if (shownStatus === OFFER_STATUS.accepted && typeof offer.poId === "string") {
+      orderUrl = await orderUrlOf(db, offer.poId).catch((err) => {
+        console.error("Guest offer order link failed:", err)
+        return null
+      })
+    }
+
     const availability = guestOfferAvailability(
       { status: shownStatus, sampleStatus: offer.sampleStatus as string },
       Boolean(delivery)
@@ -126,6 +137,7 @@ export async function GET(
           : null,
         contractorName,
         delivery,
+        orderUrl,
         availability,
       },
     })

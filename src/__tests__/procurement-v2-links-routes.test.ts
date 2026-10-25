@@ -231,6 +231,26 @@ describe("what the visitor is shown (LNK-01, G-06, B-06, B-07, B-14)", () => {
     expect(text).not.toContain("24.7136")
   })
 
+  it("an awarded guest whose order was sent is handed the order's link — the delivery step lives there (VL-01)", async () => {
+    mockDb.seed("offers/O1", { rfqId: "R1", companyName: "Mine Trading", price: "111", isGuestOffer: true, status: "مقبول", poId: "P1" })
+    mockDb.seed("purchaseOrders/P1", { organizationId: "org1", status: "sent", lines: [], rfqId: "R1", offerId: "O1" })
+    const info = await createGuestOfferLink({ offerId: "O1", rfqId: "R1", contractorId: "u1" })
+    let body = (await (await viewOffer(new NextRequest(`http://localhost/api/guest-offer/${info.token}`), ctx(info.token))).json()) as { data: { orderUrl: string | null; offer: { status: string } } }
+    expect(body.data.offer.status).toBe("مقبول")
+    expect(body.data.orderUrl).toBeNull()
+    mockDb.seed("orderLinks/P1", { poId: "P1", revoked: false })
+    body = (await (await viewOffer(new NextRequest(`http://localhost/api/guest-offer/${info.token}`), ctx(info.token))).json()) as typeof body
+    expect(body.data.orderUrl).toMatch(/^https:\/\/uat\.mdmaktech\.sa\/po\/[A-Za-z0-9_-]+$/)
+  })
+
+  it("an offer still under review is handed no order link", async () => {
+    mockDb.seed("offers/O1", { rfqId: "R1", companyName: "Mine Trading", price: "111", isGuestOffer: true, status: "قيد المراجعة", poId: "P1" })
+    mockDb.seed("orderLinks/P1", { poId: "P1", revoked: false })
+    const info = await createGuestOfferLink({ offerId: "O1", rfqId: "R1", contractorId: "u1" })
+    const body = (await (await viewOffer(new NextRequest(`http://localhost/api/guest-offer/${info.token}`), ctx(info.token))).json()) as { data: { orderUrl: string | null } }
+    expect(body.data.orderUrl).toBeNull()
+  })
+
   it("an old 64-hex link still opens, a malformed token is refused as invalid", async () => {
     mockDb.seed("rfqShareLinks/OLD", { token: "cd".repeat(32), rfqId: "R1", revoked: false, expiresWith: "deadline", expiresAt: deadlineEnd(FUTURE), invites: [] })
     expect((await getLink("cd".repeat(32))).status).toBe(200)

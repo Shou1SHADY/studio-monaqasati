@@ -116,6 +116,14 @@ describe("the overview: two panels, as the prototype", () => {
     expect(missingKeys.size).toBe(0)
   })
 
+  it("each of the seven opens with its icon, in the module's colour (ST-06)", () => {
+    open()
+    const seven = heading(R.overview.seven).closest("section") as HTMLElement
+    const icons = Array.from(seven.querySelectorAll("li > svg")).map((svg) => svg.getAttribute("data-icon"))
+    expect(icons).toEqual(["Users", "MapPin", "Clock", "Scale", "AlertTriangle", "TrendingDown", "Wallet"])
+    expect(Array.from(seven.querySelectorAll("li > svg")).every((svg) => (svg.getAttribute("class") || "").includes("text-module"))).toBe(true)
+  })
+
   it("without Project Management the second report is «بحسب موقع التسليم»; without Finance the seventh is «مستلَم ودُفع — للمحاسب»", () => {
     mockModules = { "project-management": false, payments: false }
     open()

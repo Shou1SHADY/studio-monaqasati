@@ -9,13 +9,15 @@ import { useTranslations } from "next-intl"
 import { Check, Plus } from "lucide-react"
 import { useModules } from "@/hooks/useCompanyModules"
 import { StatusPill } from "@/components/module-ui/StatusPill"
+import { UnitIcon } from "@/components/admin/packages/PackageIcons"
 import { CONNECTORS, connectorTexts, packageLabel, packageOf, packageTitle, type Connector } from "@/lib/procurement/package"
 
-export function SubscriptionPanel() {
+/** `off` — a stored package to show instead of the viewer's own company's (the admin's read-only preview, AD-01). */
+export function SubscriptionPanel({ off: storedOff }: { off?: readonly string[] } = {}) {
   const t = useTranslations("Portal.ProcSubscription")
   const tp = useTranslations("Portal.ProcPackage")
   const { off } = useModules()
-  const pkg = packageOf(Array.from(off))
+  const pkg = packageOf(Array.from(storedOff ?? off))
 
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border bg-card" aria-label={t("title")}>
@@ -32,7 +34,8 @@ export function SubscriptionPanel() {
       <ul className="divide-y">
         {(["core", "inv"] as const).map((id) => (
           <li key={id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3.5">
-            <div className="min-w-0">
+            <UnitIcon unit={id} />
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-bold text-foreground">{tp(`base.${id}.name`)}</p>
               <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{tp(`base.${id}.add1`)}</p>
             </div>
@@ -70,7 +73,8 @@ function ConnectorRow({
   return (
     <li className="px-4 py-3.5" data-connector={conn} data-subscribed={on}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
+        <UnitIcon unit={conn} on={on} />
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-foreground">{texts.name}</p>
           <p className="mt-0.5 text-[11px] text-muted-foreground">{texts.question}</p>
         </div>

@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   ArrowDown,
   Banknote,
+  Bell,
   Box,
   Calendar,
   CalendarClock,
@@ -22,7 +23,6 @@ import {
   Clock,
   Download,
   File,
-  Languages,
   Loader2,
   MapPin,
   Package,
@@ -42,8 +42,17 @@ import type { AnsweredQuery } from "@/lib/procurement/guest-supplier"
 import { GuestAnsweredQueries } from "@/components/procurement/guest/GuestAnsweredQueries"
 import { JoinFreeButton } from "@/components/supplier-free/JoinFreeButton"
 import { GuestPapersPanel, type GuestPaperSummary } from "@/components/procurement/guest/GuestPapersPanel"
+import { LinkShell } from "@/components/procurement/guest/LinkShell"
+import { LinkResult } from "@/components/procurement/guest/LinkResult"
+import { PromoCard } from "@/components/procurement/guest/PromoCard"
+import type { VisitorResult } from "@/lib/procurement/rfq-share-view"
 
 // The same Join form contractors subscribe through, with «Supplier» ticked (11 Oct 2026).
+//
+// Procurement 2.0 (VL-01): the page sits in the visitor link's frame — `LinkShell` («طلب عرض سعر · {company}»), the decided
+// result as `LinkResult` (with the order's link once the order is out: the delivery is reported there, not here), what the
+// buyer asks of him under «طُلب منك», and the registration card at the foot. Its acts — a revised price, sample sent, the
+// delivery notice on a legacy award, the papers — are unchanged.
 
 type GuestOfferData = {
   offer: {
@@ -83,6 +92,8 @@ type GuestOfferData = {
   } | null
   contractorName: string
   delivery: { status: string; deliveryPersonName: string; deliveryDate: string | null } | null
+  /** The order's own link once the award's order was sent (VL-01); null on a legacy award or before. */
+  orderUrl?: string | null
   availability: {
     canRevisePrice: boolean
     canMarkSampleSent: boolean
@@ -118,8 +129,8 @@ export function GuestOfferContent() {
   const token = params.token as string
   const t = useTranslations("GuestOffer")
   const ts = useTranslations("Portal.Shared")
+  const tl = useTranslations("PublicRfq")
   const locale = useLocale()
-  const isRTL = locale === "ar"
   const { toast } = useToast()
 
   const [data, setData] = useState<GuestOfferData | null>(null)
@@ -245,6 +256,15 @@ export function GuestOfferContent() {
   const offer = data?.offer
   const rfq = data?.rfq
   const availability = data?.availability
+  // A decided offer reads as the visitor link's result (VL-01): awarded with the order's link, or not awarded.
+  const result: VisitorResult | null = !offer
+    ? null
+    : offer.status === OFFER_STATUS.accepted
+      ? { kind: "awarded", orderUrl: data?.orderUrl ?? null }
+      : offer.status === OFFER_STATUS.rejected || offer.status === CLOSED_UNAWARDED
+        ? { kind: "lost" }
+        : null
+  const resultRfq = { closedAt: offer?.decidedAt ?? null, closeAt: rfq?.deadline ?? null, closedEarly: false }
 
   const statusLabel = (status: string) => {
     switch (status) {
@@ -290,31 +310,7 @@ export function GuestOfferContent() {
     value ? new Date(value).toLocaleDateString(locale) : t("not_specified")
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 font-body" dir={isRTL ? "rtl" : "ltr"}>
-      {/* ===== Top bar ===== */}
-      <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-xl border-b border-slate-200/70">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-          <Link href="/" className="flex items-center gap-2 shrink-0" aria-label="Mdmak Tech">
-            <span className="text-lg font-black text-primary">{isRTL ? "مدماك تيك" : "Mdmak Tech"}</span>
-            <span className="hidden sm:inline text-xs font-bold text-accent bg-accent/10 px-2 py-0.5 rounded-full">
-              {t("brand_tagline")}
-            </span>
-          </Link>
-          <div className="flex items-center gap-2">
-            <Link href={`/offer/${token}`} locale={isRTL ? "en" : "ar"}>
-              <Button variant="ghost" size="sm" className="gap-1.5 text-slate-600 rounded-lg">
-                <Languages size={15} />
-                {isRTL ? "English" : "العربية"}
-              </Button>
-            </Link>
-            <JoinFreeButton size="sm" className="rounded-lg font-bold shadow-sm">
-                {t("register_cta")}
-              </JoinFreeButton>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+    <LinkShell company={data?.contractorName || ""} langHref={`/offer/${token}`}>
         {isLoading && (
           <div className="py-32 flex flex-col items-center justify-center gap-4 text-muted-foreground">
             <Loader2 className="animate-spin text-primary" size={40} />
@@ -369,10 +365,10 @@ export function GuestOfferContent() {
             )}
 
             {/* ===== Status hero ===== */}
-            <section className="bg-white rounded-2xl border border-slate-200/70 shadow-xl shadow-primary/5 overflow-hidden">
-              <div className="relative px-5 py-5 border-b bg-gradient-to-bl from-primary/8 via-primary/3 to-white overflow-hidden">
-                <div className="absolute -top-8 -end-8 w-32 h-32 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
-                <div className="relative space-y-2.5">
+            {result && <LinkResult result={result} rfq={resultRfq} />}
+            <section className="overflow-hidden rounded-md border bg-card">
+              <div className="border-b px-4 py-4">
+                <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge className={cn("font-black border", statusTone(offer.status))}>
                       {statusLabel(offer.status)}
@@ -391,7 +387,7 @@ export function GuestOfferContent() {
                       #{offer.id.substring(0, 8).toUpperCase()}
                     </span>
                   </div>
-                  <h1 className="text-lg sm:text-xl font-black text-slate-800 leading-tight">
+                  <h1 className="text-xl font-black leading-snug text-foreground" dir="auto">
                     {rfq?.title || t("offer_fallback_title")}
                   </h1>
                   <p className="text-sm text-slate-600">
@@ -400,7 +396,7 @@ export function GuestOfferContent() {
                 </div>
               </div>
 
-              <div className="px-5 py-5 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-1 gap-2.5 px-4 py-4 sm:grid-cols-3">
                 <div className="flex flex-col gap-1.5 p-3.5 rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/5 to-transparent">
                   <div className="flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                     <Banknote size={11} className="text-primary" />
@@ -433,18 +429,18 @@ export function GuestOfferContent() {
 
             {/* ===== What's needed from you ===== */}
             {availability?.canRevisePrice && (
-              <section className="bg-white rounded-2xl border border-amber-200 shadow-lg shadow-amber-500/5 overflow-hidden">
-                <div className="px-5 py-4 border-b border-amber-100 bg-amber-50/70 flex items-start gap-2.5">
-                  <div className="h-9 w-9 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                    <ArrowDown size={16} className="text-amber-700" />
-                  </div>
-                  <div className="min-w-0">
-                    <h2 className="text-base font-black text-slate-800">{t("reduction_title")}</h2>
-                    <p className="text-sm text-slate-600 mt-0.5 leading-relaxed">{t("reduction_desc")}</p>
-                  </div>
+              <section className="space-y-3 rounded-md border bg-card p-3.5" aria-labelledby="guest-tasks-title" data-task="reduction">
+                <h2 id="guest-tasks-title" className="flex flex-wrap items-center gap-x-2 text-sm font-bold text-foreground">
+                  <Bell size={15} className="text-primary" aria-hidden="true" />
+                  {tl("tasks_title")}
+                  <span className="text-xs font-normal text-muted-foreground">{tl("tasks_sub")}</span>
+                </h2>
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-foreground">{t("reduction_title")}</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground">{t("reduction_desc")}</p>
                 </div>
 
-                <div className="px-5 py-5 space-y-4">
+                <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50/60">
                       <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
@@ -610,7 +606,7 @@ export function GuestOfferContent() {
                     <Button
                       type="submit"
                       disabled={priceForm.formState.isSubmitting}
-                      className="w-full h-11 rounded-xl bg-amber-600 hover:bg-amber-700 font-bold gap-2"
+                      className="min-h-11 w-full gap-2 font-bold"
                     >
                       {priceForm.formState.isSubmitting ? (
                         <Loader2 size={16} className="animate-spin" />
@@ -625,7 +621,7 @@ export function GuestOfferContent() {
             )}
 
             {availability?.canMarkSampleSent && (
-              <section className="bg-white rounded-2xl border border-blue-200 shadow-lg shadow-blue-500/5 overflow-hidden">
+              <section className="overflow-hidden rounded-md border bg-card">
                 <div className="px-5 py-4 border-b border-blue-100 bg-blue-50/70 flex items-start gap-2.5">
                   <div className="h-9 w-9 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
                     <Box size={16} className="text-blue-700" />
@@ -653,7 +649,7 @@ export function GuestOfferContent() {
                   <Button
                     type="submit"
                     disabled={sampleForm.formState.isSubmitting}
-                    className="w-full h-11 rounded-xl bg-blue-600 hover:bg-blue-700 font-bold gap-2"
+                    className="min-h-11 w-full gap-2 font-bold"
                   >
                     {sampleForm.formState.isSubmitting ? (
                       <Loader2 size={16} className="animate-spin" />
@@ -666,8 +662,9 @@ export function GuestOfferContent() {
               </section>
             )}
 
-            {availability?.canSendDeliveryNotice && (
-              <section className="bg-white rounded-2xl border border-success/25 shadow-lg shadow-success/5 overflow-hidden">
+            {/* Once the order's link exists the delivery is reported there (VL-01); the notice here stays for a legacy award. */}
+            {availability?.canSendDeliveryNotice && !data?.orderUrl && (
+              <section className="overflow-hidden rounded-md border bg-card">
                 <div className="px-5 py-4 border-b border-success/15 bg-success/5 flex items-start gap-2.5">
                   <div className="h-9 w-9 rounded-xl bg-success/15 flex items-center justify-center shrink-0">
                     <Truck size={16} className="text-success" />
@@ -752,14 +749,9 @@ export function GuestOfferContent() {
             )}
 
             {offer.status === OFFER_STATUS.rejected && (
-              <div className="flex items-start gap-3 p-4 rounded-2xl border border-slate-200 bg-slate-50">
-                <XCircle size={18} className="text-slate-400 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm text-slate-700 leading-relaxed">{t("rejected_desc")}</p>
-                  <JoinFreeButton size="sm" className="rounded-lg font-bold">
-                      {t("register_cta_long")}
-                    </JoinFreeButton>
-                </div>
+              <div className="flex items-start gap-3 rounded-md border bg-card p-4">
+                <XCircle size={18} className="text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
+                <p className="text-sm leading-relaxed text-muted-foreground">{t("rejected_desc")}</p>
               </div>
             )}
 
@@ -868,13 +860,15 @@ export function GuestOfferContent() {
               </section>
             )}
 
+            {/* The registration card (LNK-04) — where the old header's «إنشاء حساب» went. */}
+            <PromoCard />
+
             <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground pt-2">
-              <User size={12} />
+              <User size={12} aria-hidden="true" />
               {t("private_link_note")}
             </div>
           </>
         )}
-      </main>
-    </div>
+    </LinkShell>
   )
 }

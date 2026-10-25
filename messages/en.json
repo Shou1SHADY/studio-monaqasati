@@ -8507,6 +8507,7 @@
       "proc_module_name": "Procurement",
       "proc_module_sub": "Needs · Quotes · Purchase orders",
       "proc_search_ph": "Search: material · supplier · document…",
+      "proc_search_page_ph": "Search this page…",
       "proc_authority_owner": "Company-wide read · approves above the manager’s limit",
       "proc_authority_buyer": "All categories · prepares POs, never approves",
       "proc_authority_buyer_cats": "Own categories: {cats} · prepares POs, never approves",
@@ -16448,7 +16449,9 @@
           "label": "Delivery notice route",
           "desc": "Where a supplier's delivery notice lands first — with us, to forward to the receiver, or with both at once",
           "procurement": "Reaches Procurement, then we forward it to the receiver",
-          "both": "To both at once"
+          "both": "To both at once",
+          "legacy": "Chosen before 2.0 — in 2.0 it reaches Procurement first",
+          "back": "Switch back to Procurement first"
         },
         "buyerReceives": {
           "label": "No separate receiver: the buyer receives",
@@ -26669,7 +26672,11 @@
         "version": "Procurement version",
         "open": "Open",
         "said_yes": "Said yes to {names}",
-        "join": " and "
+        "join": " and ",
+        "subscription": "Subscription",
+        "users": "{count, plural, one {1 user} other {# users}}",
+        "since": "since {date}",
+        "open_package": "Open {name}’s package"
       },
       "new": {
         "title": "New contractor",
@@ -26739,6 +26746,16 @@
           "saved": "Saved {name}: {label}. The switches live on the server; screens and events follow.",
           "failed": "Could not save the package. Try again.",
           "ack_required": "This change touches the company's records — read “What changes” and acknowledge."
+        },
+        "preview": "View as they see it",
+        "preview_dirty": "Save or undo the package first.",
+        "subscription": {
+          "label": "Subscription status",
+          "hint": "Shown beside the package; it changes nothing in their portal.",
+          "active": "Active",
+          "trial": "Trial",
+          "pill_active": "Active subscription",
+          "pill_trial": "Trial subscription"
         }
       },
       "impact": {
@@ -26761,6 +26778,17 @@
         "hr_dependent": "Closing {finance} also closes {hr} for this company, because salaries are paid from Finance.",
         "capped": "The company has more than {cap} projects; project requests are counted on the first {cap} only.",
         "quiet": "No open records are affected by this change."
+      },
+      "preview": {
+        "back": "{name}’s package",
+        "badge": "Read-only preview",
+        "title": "What their saved package shows",
+        "sub": "From the saved package alone — their portal is not opened and none of their records is read.",
+        "pages": "Pages and sections in their portal",
+        "pages_sub": "What their menu shows to someone holding every permission.",
+        "hidden": "Not in their package",
+        "flow": "How Procurement works for them",
+        "limit": "the approval limit set in their policies"
       }
     },
     "AdminPipeline": {

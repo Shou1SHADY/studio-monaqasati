@@ -30,6 +30,7 @@ import { supplierCommunicationSection } from "@/lib/company-modules"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useProcurementNavBadgeFeed } from "@/hooks/useProcurementNavBadges"
 import { BnplSoonDialog } from "@/components/procurement/BnplSoonDialog"
+import { foldsToIcons } from "@/hooks/useSidebarFold"
 import type { PermissionId } from "@/lib/permissions"
 import {
   Sidebar,
@@ -110,7 +111,10 @@ function childIsActive(children: NavItem[], pathname: string, search: URLSearchP
   )
 }
 
-/** An item's count (a plan's NAV-03): its page's own number, red when it waits on the user. */
+/** Hidden while the sidebar is folded to icons (FR-02) — the classes only act in that state, so no other sidebar changes. */
+const FOLD_HIDE = "group-data-[collapsible=icon]:hidden"
+
+/** An item's count (a plan's NAV-03): its page's own number, red when it waits on the user. Folded to icons, a dot. */
 function ItemBadge({ badge }: { badge: NavBadge }) {
   return (
     <span
@@ -118,6 +122,7 @@ function ItemBadge({ badge }: { badge: NavBadge }) {
       dir="ltr"
       className={cn(
         "ms-auto grid h-5 min-w-5 shrink-0 place-items-center rounded-full px-1.5 text-[10.5px] font-bold tabular-nums",
+        "group-data-[collapsible=icon]:absolute group-data-[collapsible=icon]:end-1 group-data-[collapsible=icon]:top-1 group-data-[collapsible=icon]:h-2 group-data-[collapsible=icon]:min-w-2 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:text-[0px]",
         badge.tone === "red" ? "bg-destructive text-destructive-foreground" : badge.tone === "blue" ? "bg-cta text-cta-foreground" : "bg-sidebar-accent text-sidebar-foreground"
       )}
     >
@@ -126,7 +131,7 @@ function ItemBadge({ badge }: { badge: NavBadge }) {
   )
 }
 
-function NavItemRenderer({ item, pathname, search, t, can, badge }: { item: NavItem; pathname: string; search: URLSearchParams; t: ReturnType<typeof useTranslations>; can: (p: PermissionId) => boolean; badge?: NavBadge }) {
+function NavItemRenderer({ item, pathname, search, t, can, badge, fold }: { item: NavItem; pathname: string; search: URLSearchParams; t: ReturnType<typeof useTranslations>; can: (p: PermissionId) => boolean; badge?: NavBadge; fold?: boolean }) {
   const hasChildren = !!item.children?.length
   const isChildActive = hasChildren && childIsActive(item.children!, pathname, search)
   // A parent whose child tab is selected hands the highlight to that child.
@@ -148,20 +153,21 @@ function NavItemRenderer({ item, pathname, search, t, can, badge }: { item: NavI
         <SidebarMenuItem>
           <div
             className={cn(
-              "flex items-center gap-1 h-10 px-3 rounded-md transition-all",
+              "flex items-center gap-1 h-10 px-3 rounded-md transition-all group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2",
               isParentActive
                 ? "bg-module-on-dark text-module-foreground shadow-sm"
                 : "text-sidebar-foreground hover:bg-sidebar-accent"
             )}
           >
-            <Link href={item.href} className="flex items-center gap-3 flex-1 min-w-0">
+            <Link href={item.href} className="flex items-center gap-3 flex-1 min-w-0" title={fold ? t(item.titleKey) : undefined}>
               <item.icon className="h-4 w-4 shrink-0" />
-              <span className="text-sm font-medium truncate">{t(item.titleKey)}</span>
+              <span className={cn("text-sm font-medium truncate", FOLD_HIDE)}>{t(item.titleKey)}</span>
             </Link>
             <button
               onClick={handleToggle}
               className={cn(
                 "h-6 w-6 flex items-center justify-center rounded hover:bg-sidebar-accent shrink-0 transition-transform",
+                FOLD_HIDE,
                 expanded && "rotate-180"
               )}
               aria-label={expanded ? "Collapse" : "Expand"}
@@ -174,7 +180,7 @@ function NavItemRenderer({ item, pathname, search, t, can, badge }: { item: NavI
         {/* Logical properties on the child list, not ml/pl/border-l — in Arabic
             the physical versions put the indent and its rule on the wrong side. */}
         {expanded && (
-          <div className="ms-4 border-s border-sidebar-border/50 ps-2">
+          <div className={cn("ms-4 border-s border-sidebar-border/50 ps-2", FOLD_HIDE)}>
             {item.children!.filter((child) => itemIsVisible(child, can)).map((child) => (
               <SidebarMenuItem key={child.titleKey}>
                 <SidebarMenuButton
@@ -207,8 +213,8 @@ function NavItemRenderer({ item, pathname, search, t, can, badge }: { item: NavI
     const soonRow = (
       <>
         <item.icon className="h-4 w-4 shrink-0" />
-        <span className="text-sm font-medium truncate">{t(item.titleKey)}</span>
-        <span className="ms-auto shrink-0 rounded-full bg-sidebar-accent/60 px-1.5 py-0.5 text-[10px] font-semibold text-sidebar-foreground/60">
+        <span className={cn("text-sm font-medium truncate", FOLD_HIDE)}>{t(item.titleKey)}</span>
+        <span className={cn("ms-auto shrink-0 rounded-full bg-sidebar-accent/60 px-1.5 py-0.5 text-[10px] font-semibold text-sidebar-foreground/60", FOLD_HIDE)}>
           {t("coming_soon")}
         </span>
       </>
@@ -243,6 +249,8 @@ function NavItemRenderer({ item, pathname, search, t, can, badge }: { item: NavI
       <SidebarMenuButton
         asChild
         isActive={isParentActive}
+        // Folded to icons, each item names itself in a tooltip (FR-02); a sidebar that never folds keeps no tooltip.
+        tooltip={fold ? t(item.titleKey) : undefined}
         className={cn(
           "h-10 transition-all",
           isParentActive
@@ -252,7 +260,7 @@ function NavItemRenderer({ item, pathname, search, t, can, badge }: { item: NavI
       >
         <Link href={item.href} className="flex items-center gap-3">
           <item.icon className="h-4 w-4 shrink-0" />
-          <span className="text-sm font-medium">{t(item.titleKey)}</span>
+          <span className={cn("text-sm font-medium", FOLD_HIDE)}>{t(item.titleKey)}</span>
           {badge && badge.n ? <ItemBadge badge={badge} /> : null}
         </Link>
       </SidebarMenuButton>
@@ -288,6 +296,8 @@ export function RoleSidebar() {
   const procBadges = useProcurementNavBadgeFeed()
   const navBadges = useMemo(() => ({ ...procBadges, ...frameBadges }), [procBadges, frameBadges])
   // The path decides the module, but the company's own copy of it (switched-off entries left out) is what renders.
+  // Procurement's sidebar folds to icons; every other one slides away as before (FR-02).
+  const fold = foldsToIcons(pathname)
   const ownCopy = (active: PortalComponentDef) => modules.find((m) => m.id === active.id) ?? visibleComponents(modules, can)[0] ?? active
 
   let sections: NavSection[] = []
@@ -298,6 +308,8 @@ export function RoleSidebar() {
   let portalRoleKey = ""
   let moduleSubKey = ""
   let dashboardHref = "/"
+  // Folded to icons, the header keeps the module's own icon (FR-02).
+  let ModuleIcon: React.ElementType | null = null
 
   if (pathname.startsWith("/supplier")) {
     const activeComponent = resolveVisibleComponent(ownCopy(resolveActiveSupplierComponent(pathname, supplierComponents)), modules, can)
@@ -314,6 +326,7 @@ export function RoleSidebar() {
     portalRoleKey = "contractor_portal_role"
     if (activeComponent.id === "procurement") moduleSubKey = "proc_sub"
     dashboardHref = activeComponent.homeHref
+    ModuleIcon = activeComponent.icon
   } else if (pathname.startsWith("/admin")) {
     sections = adminSections
     portalTitleKey = "admin_portal"
@@ -325,9 +338,9 @@ export function RoleSidebar() {
   if (!portalTitleKey) return null
 
   return (
-    <Sidebar side={locale === 'ar' ? 'right' : 'left'} className={locale === 'ar' ? 'border-l bg-sidebar' : 'border-r bg-sidebar'}>
-      <SidebarHeader className="p-6 border-b border-sidebar-border">
-        <div className="flex flex-col gap-3">
+    <Sidebar side={locale === 'ar' ? 'right' : 'left'} collapsible={fold ? "icon" : "offcanvas"} className={locale === 'ar' ? 'border-l bg-sidebar' : 'border-r bg-sidebar'}>
+      <SidebarHeader className="p-6 border-b border-sidebar-border group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-4">
+        <div className={cn("flex flex-col gap-3", FOLD_HIDE)}>
           <Link href={dashboardHref} className="block">
             <Image
               src="/logo1.png"
@@ -353,6 +366,11 @@ export function RoleSidebar() {
           </div>
           {moduleSubKey && <p className="text-[11px] leading-relaxed text-sidebar-foreground/60">{t(moduleSubKey)}</p>}
         </div>
+        {fold && ModuleIcon && (
+          <Link href={dashboardHref} aria-label={t(portalTitleKey)} title={t(portalTitleKey)} className="hidden h-8 w-8 place-items-center rounded-md bg-module-on-dark text-module-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-data-[collapsible=icon]:grid" data-testid="sidebar-fold-module">
+            <ModuleIcon className="h-4 w-4" aria-hidden="true" />
+          </Link>
+        )}
       </SidebarHeader>
       <SidebarContent className="py-4">
         {sections.map((section) => (
@@ -364,22 +382,22 @@ export function RoleSidebar() {
               {t(section.labelKey)}
             </SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu className="px-3 gap-1">
+              <SidebarMenu className="px-3 gap-1 group-data-[collapsible=icon]:px-2">
                 {section.items.map((item) => (
-                  <NavItemRenderer key={item.titleKey} item={item} pathname={pathname} search={search} t={t} can={can} badge={navBadges?.[item.href]} />
+                  <NavItemRenderer key={item.titleKey} item={item} pathname={pathname} search={search} t={t} can={can} badge={navBadges?.[item.href]} fold={fold} />
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
       </SidebarContent>
-      <SidebarFooter className="p-4 border-t border-sidebar-border">
+      <SidebarFooter className="p-4 border-t border-sidebar-border group-data-[collapsible=icon]:p-2">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild className="text-red-400 hover:bg-red-950/20 hover:text-red-300">
+            <SidebarMenuButton asChild tooltip={fold ? t("logout") : undefined} className="text-red-400 hover:bg-red-950/20 hover:text-red-300">
               <Link href="/" className="flex items-center gap-3">
                 <LogOut className="h-5 w-5" />
-                <span className="text-sm font-medium">{t("logout")}</span>
+                <span className={cn("text-sm font-medium", FOLD_HIDE)}>{t("logout")}</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

@@ -10,6 +10,7 @@
 import type { ElementType, ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
+import { useSearchParams } from "next/navigation"
 import { useForm, useWatch, type UseFormReturn } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -28,13 +29,14 @@ import { ReceiverRegister } from "@/components/procurement/ReceiverRegister"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { DeliverySitesPanel } from "@/components/procurement/DeliverySitesPanel"
 import { SubscriptionPanel } from "@/components/procurement/SubscriptionPanel"
+import { UNIT_CHIP } from "@/components/admin/packages/PackageIcons"
 import { useModules } from "@/hooks/useCompanyModules"
 import { deliverySites, storedSites } from "@/lib/procurement/delivery-sites"
 import { openRequestsBySite } from "@/lib/procurement/site-counts"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { roleColumns, roleRows, type RoleCell, type RoleRowId } from "@/lib/procurement/roles-matrix"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
-import { DEFAULT_RESOLVED_POLICIES, POLICY_OWNER, resolvePolicies, type PolicyOwner, type ResolvedPolicies } from "@/lib/procurement/policies"
+import { DEFAULT_RESOLVED_POLICIES, POLICY_OWNER, policyPatch, resolvePolicies, type PolicyOwner, type ResolvedPolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_SETTINGS } from "@/lib/procurement/types"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
@@ -100,6 +102,13 @@ const schema = z.object({
   advanceUnknownSupplierOwner: z.boolean(),
 })
 type FormValues = z.infer<typeof schema>
+/** The keys the form owns — the only ones a save writes (ST-01). */
+const FORM_KEYS = schema.keyof().options
+
+/** «مسار إشعار التسليم» (ST-01): not a form field — fixed in 2.0 (it reaches Procurement first); a 1.5 company that chose «both»
+ * sees it and may switch back. Shown where the prototype puts it, just before the auto-forward row. */
+type ShownRow = Row | { kind: "notice" }
+const withNoticeRow = (rows: Row[]): ShownRow[] => rows.flatMap((row): ShownRow[] => (row.kind === "number" && row.key === "forwardWindowDays" ? [{ kind: "notice" }, row] : [row]))
 
 // Procurement 1.5 (PUR-08): only what the customer sets — in his words, no programme keys. The developers'
 // pages (the purchase path, «الفكرتان», the links with other modules, «لم يُبنَ · التعارضات · السجل») moved to
@@ -108,11 +117,12 @@ type Segment = "pol" | "sites" | "receivers" | "roles" | "sub"
 const SEGMENTS: Segment[] = ["pol", "sites", "receivers", "roles", "sub"]
 
 type Party = "pm" | "mfg" | "inv" | "fin" | "sup" | "me" | "gov"
+// One colour per unit everywhere (ST-05): the module chips take the unit's token from the package icons.
 const PARTY_TONE: Record<Party, string> = {
-  pm: "bg-pm/10 text-pm",
-  mfg: "bg-warning/10 text-warning",
-  inv: "bg-cta/10 text-cta",
-  fin: "bg-success/10 text-success",
+  pm: UNIT_CHIP.pm,
+  mfg: UNIT_CHIP.mfg,
+  inv: UNIT_CHIP.inv,
+  fin: UNIT_CHIP.fin,
   sup: "bg-accent/15 text-foreground",
   gov: "bg-muted text-muted-foreground",
   me: "bg-module/10 text-module",
@@ -158,7 +168,9 @@ export function ProcurementSettings() {
   const { needs } = useProcurementNeeds(procWorld)
   const openBySite = useMemo(() => openRequestsBySite(needs, siteList), [needs, siteList])
   const [saving, setSaving] = useState(false)
-  const [segment, setSegment] = useState<Segment>("pol")
+  // The top bar's package chip opens «الاشتراك» directly (`?seg=sub`, FR-04).
+  const searchParams = useSearchParams()
+  const [segment, setSegment] = useState<Segment>(() => SEGMENTS.find((id) => id === searchParams?.get("seg")) ?? "pol")
 
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: policies })
   const tiePct = useWatch({ control: form.control, name: "tieBandPct" })
@@ -178,7 +190,7 @@ export function ProcurementSettings() {
     if (!firestore || !orgId || !user || !mayEdit) return
     setSaving(true)
     try {
-      const clean = resolvePolicies(values)
+      const clean = policyPatch(values, FORM_KEYS)
       await setDoc(doc(firestore, PROCUREMENT_SETTINGS, orgId), { ...clean, organizationId: orgId, updatedAt: serverTimestamp(), updatedById: user.uid }, { merge: true })
       form.reset(clean)
       toast({ title: t("saved") })
@@ -210,6 +222,22 @@ export function ProcurementSettings() {
       toast({ title: t("saved") })
     } catch {
       toast({ title: t("saveFailed"), variant: "destructive" })
+    }
+  }
+
+  // A company that chose «both» before 2.0 keeps it until the owner switches back — one write of that key alone.
+  const [routingBusy, setRoutingBusy] = useState(false)
+  const routeToProcurement = async () => {
+    if (!firestore || !orgId || !user || !mayEdit) return
+    setRoutingBusy(true)
+    try {
+      await setDoc(doc(firestore, PROCUREMENT_SETTINGS, orgId), { organizationId: orgId, noticeRouting: "procurement", updatedAt: serverTimestamp(), updatedById: user.uid }, { merge: true })
+      toast({ title: t("saved") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("saveFailed"), variant: "destructive" })
+    } finally {
+      setRoutingBusy(false)
     }
   }
 
@@ -247,7 +275,30 @@ export function ProcurementSettings() {
                   <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="divide-y">
                       {/* Whoever never sees an amount (the expediter) never reads a riyal limit either. */}
-                      {ROWS.filter((row) => rowVisible(row)).map((row) => {
+                      {withNoticeRow(ROWS.filter((row) => rowVisible(row))).map((row) => {
+                        if (row.kind === "notice")
+                          return (
+                            <div key="noticeRouting" className="grid gap-1 px-4 py-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-bold text-foreground">{t("policy.noticeRouting.label")}</p>
+                                {ownerChip("noticeRouting")}
+                              </div>
+                              <p className="text-[11px] leading-relaxed text-muted-foreground">{t("policy.noticeRouting.desc")}</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-2">
+                                <p className="text-xs font-semibold text-foreground">{t(`policy.noticeRouting.${policies.noticeRouting}`)}</p>
+                                {policies.noticeRouting === "both" && (
+                                  <>
+                                    <span className="text-[11px] text-muted-foreground">{t("policy.noticeRouting.legacy")}</span>
+                                    {mayEdit && (
+                                      <Button type="button" variant="outline" size="sm" className="h-8" disabled={routingBusy} onClick={() => void routeToProcurement()}>
+                                        {t("policy.noticeRouting.back")}
+                                      </Button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          )
                         if (row.kind === "fixed")
                           return (
                             <div key={row.id} className="grid gap-1 px-4 py-3">

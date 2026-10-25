@@ -12,6 +12,8 @@ export interface StoredModules {
   off: string[]
   needs: Record<string, unknown>
   history: unknown[]
+  /** «نشط» / «تجريبي» (AD-03) as stored — read it through `subscriptionStatusOf`. */
+  subscription?: string
 }
 
 /** The switches a contractor can have, with the ones that need an off one added — the list as the app reads it. */
@@ -23,6 +25,7 @@ export async function readStoredModules(db: Firestore, orgId: string): Promise<S
     off: contractorOff(data.off),
     needs: data.needs && typeof data.needs === "object" ? (data.needs as Record<string, unknown>) : {},
     history: Array.isArray(data.history) ? data.history : [],
+    subscription: typeof data.subscription === "string" ? data.subscription : undefined,
   }
 }
 
