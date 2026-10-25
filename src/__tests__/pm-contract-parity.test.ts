@@ -98,8 +98,11 @@ describe("BOQ view (C-01…C-08)", () => {
     await expect(priceItem(db, pm, "p1", pmA, "x", { rate: 70, cost: 0 })).rejects.toBeInstanceOf(PmBoqError)
   })
 
-  it("import writes into an empty BOQ only", async () => {
+  it("import writes into an empty BOQ only — and only before the start (CON-03, FX-54)", async () => {
     const rows = parseBoqPaste("02-01-01\tExcavation\tm3\t100\t24\t18").ok
+    await expect(importBoq(db, pm, "p1", rows)).rejects.toMatchObject({ code: "started" })
+    const p = readDoc<Record<string, any>>("projects/p1") as Record<string, any>
+    seed("projects/p1", { ...p, pm: { ...p.pm, lifecycle: "plan" } })
     await importBoq(db, pm, "p1", rows)
     expect(listCollection("projects/p1/boqItems")).toHaveLength(1)
     await expect(importBoq(db, pm, "p1", rows)).rejects.toMatchObject({ code: "has_items" })
