@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
+import { DataTable } from "@/components/module-ui/DataTable"
 import { Panel } from "@/components/module-ui/Panel"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
@@ -24,6 +25,8 @@ import { PmAccessError } from "@/lib/pm/access"
 import { PM_INSPECTIONS, WIR_PARTIES, type PmInspection, type WirParty } from "@/lib/pm/inspection"
 import { itpBlocks, itpDone, itpGap, PM_ITP, type PmItpRow } from "@/lib/pm/itp"
 import { addItpRow, PmItpError } from "@/lib/pm/itp-writes"
+
+const TABLE_LABELS = { sortBy: (c: string) => c, showMore: (n: number) => `+${n}` }
 
 export function ItpPanel({ projectId, items, access, actor }: { projectId: string; items: Array<{ id: string; code: string; description: string }>; access: PmAccess; actor: { uid: string; name: string | null } }) {
   const t = useTranslations("Portal.PM")
@@ -82,6 +85,7 @@ export function ItpPanel({ projectId, items, access, actor }: { projectId: strin
     <Panel
       title={t("itp.title")}
       icon={ShieldCheck}
+      description={t("itp.sub")}
       bodyClassName="p-0"
       actions={
         canQa && items.length > 0 ? (
@@ -92,59 +96,56 @@ export function ItpPanel({ projectId, items, access, actor }: { projectId: strin
         ) : null
       }
     >
-      <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("itp.sub")}</p>
-      {rows.length === 0 ? (
-        <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t("itp.empty")}</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead className="bg-muted/40 text-xs text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 text-start font-semibold">{t("itp.col_item")}</th>
-                <th className="px-3 py-2 text-start font-semibold">{t("itp.col_stage")}</th>
-                <th className="px-3 py-2 text-start font-semibold">{t("itp.col_test")}</th>
-                <th className="px-3 py-2 text-start font-semibold">{t("itp.col_freq")}</th>
-                <th className="px-4 py-2 text-center font-semibold">{t("itp.col_done")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {rows.map((r) => {
-                const i = byId.get(r.itemId)
-                const done = itpDone(r.itemId, inspections)
-                const gap = itpGap(r.need, done)
-                return (
-                  <tr key={r.id}>
-                    <td className="px-4 py-2.5">
-                      <p className="font-semibold" dir="auto">
-                        {i?.description || r.code}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        <span dir="ltr">{i?.code ?? r.code}</span> · {partyName(r)}
-                      </p>
-                    </td>
-                    <td className="px-3 py-2.5 text-xs" dir="auto">
-                      {r.stage}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs" dir="auto">
-                      {r.test}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs" dir="auto">
-                      {r.freq}
-                    </td>
-                    <td className="px-4 py-2.5 text-center">
-                      <span dir="ltr" className="tabular-nums">
-                        <b>{done}</b>
-                        <span className="text-xs text-muted-foreground">/{r.need}</span>
-                      </span>
-                      {gap > 0 && <p className="text-xs font-bold text-warning">{t("itp.short", { count: gap })}</p>}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable<PmItpRow>
+        caption={t("itp.title")}
+        rows={rows}
+        rowKey={(r) => r.id}
+        labels={TABLE_LABELS}
+        bordered={false}
+        dense
+        empty={<p className="px-4 py-5 text-center text-sm text-muted-foreground">{t("itp.empty")}</p>}
+        rowTone={(r) => (itpGap(r.need, itpDone(r.itemId, inspections)) > 0 ? "warn" : undefined)}
+        columns={[
+          {
+            key: "item",
+            header: t("itp.col_item"),
+            cell: (r) => {
+              const i = byId.get(r.itemId)
+              return (
+                <>
+                  <p className="font-semibold" dir="auto">
+                    {i?.description || r.code}
+                  </p>
+                  <p className="text-xs font-normal text-muted-foreground">
+                    <span dir="ltr">{i?.code ?? r.code}</span> · {partyName(r)}
+                  </p>
+                </>
+              )
+            },
+          },
+          { key: "stage", header: t("itp.col_stage"), className: "text-xs", cell: (r) => <span dir="auto">{r.stage}</span> },
+          { key: "test", header: t("itp.col_test"), className: "text-xs", cell: (r) => <span dir="auto">{r.test}</span> },
+          { key: "freq", header: t("itp.col_freq"), className: "text-xs", hideBelow: "lg", cell: (r) => <span dir="auto">{r.freq}</span> },
+          {
+            key: "done",
+            header: t("itp.col_done"),
+            className: "text-end",
+            cell: (r) => {
+              const done = itpDone(r.itemId, inspections)
+              const gap = itpGap(r.need, done)
+              return (
+                <>
+                  <bdi dir="ltr" className="tabular-nums">
+                    <b>{done}</b>
+                    <span className="text-xs text-muted-foreground">/{r.need}</span>
+                  </bdi>
+                  {gap > 0 && <span className="block text-xs font-bold text-warning">{t("itp.short", { count: gap })}</span>}
+                </>
+              )
+            },
+          },
+        ]}
+      />
 
       <Dialog open={adding} onOpenChange={setAdding}>
         <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
@@ -166,7 +167,7 @@ export function ItpPanel({ projectId, items, access, actor }: { projectId: strin
                 disabled={busy}
               />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="itp-stage">{t("itp.col_stage")}</Label>
                 <Input id="itp-stage" value={stage} placeholder={t("itp.stage_ph")} onChange={(e) => setStage(e.target.value)} disabled={busy} dir="auto" />
@@ -180,7 +181,7 @@ export function ItpPanel({ projectId, items, access, actor }: { projectId: strin
               <Label htmlFor="itp-test">{t("itp.col_test")}</Label>
               <Input id="itp-test" value={test} placeholder={t("itp.test_ph")} onChange={(e) => setTest(e.target.value)} disabled={busy} dir="auto" />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="itp-need">{t("itp.need")}</Label>
                 <Input id="itp-need" type="number" min="1" step="1" dir="ltr" value={need} onChange={(e) => setNeed(e.target.value)} disabled={busy} />
