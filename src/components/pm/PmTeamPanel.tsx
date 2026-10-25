@@ -137,9 +137,9 @@ export function PmTeamPanel({
   const lastDutyChange = (r: MemberRow) => [...(r.seat?.log ?? [])].reverse().find((e) => e.act === "duties")
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
       <Panel
-        className="lg:col-span-2"
+        className="min-w-0 lg:col-span-2"
         title={
           <span className="inline-flex items-center gap-2">
             {t("team.title")}
@@ -157,14 +157,15 @@ export function PmTeamPanel({
             </Button>
           ) : null
         }
+        description={t("team.sub")}
+        bodyClassName="p-0"
       >
-        <p className="mb-3 text-xs text-muted-foreground">{t("team.sub")}</p>
         {!project.projectManagerId && !access.ctx.archived && (
-          <Callout tone="block" className="mb-4" title={t("team.no_pm_title")}>
+          <Callout tone="block" className="m-3" title={t("team.no_pm_title")}>
             {t("team.no_pm_note")}
           </Callout>
         )}
-        <ul className="space-y-2">
+        <ul className="divide-y">
           {liveRows.map((r) => {
             const s = r.seat!
             const name = nameOf(r.id)
@@ -174,7 +175,7 @@ export function PmTeamPanel({
             const by = assignedBy(r)
             const change = lastDutyChange(r)
             return (
-              <li key={r.id} className="rounded-xl border p-3">
+              <li key={r.id} className="px-4 py-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0 space-y-1">
                     <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
@@ -194,12 +195,12 @@ export function PmTeamPanel({
                   </div>
                   {mayTouch && (
                     <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                      <Button size="sm" variant="outline" onClick={() => setEditing(s)}>
+                      <Button size="sm" variant="ghost" onClick={() => setEditing(s)}>
                         <Pencil size={14} className="me-1" aria-hidden="true" />
                         {t("team.duties_btn")}
                       </Button>
                       {(s.role !== "pm" || admin) && (
-                        <Button size="sm" variant="outline" className="text-destructive hover:bg-destructive/10" onClick={() => setRemoving(s)}>
+                        <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => setRemoving(s)}>
                           <UserMinus size={14} className="me-1" aria-hidden="true" />
                           {t("team.remove_btn")}
                         </Button>
@@ -242,7 +243,7 @@ export function PmTeamPanel({
             )
           })}
           {legacyRows.map((r) => (
-            <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed p-3">
+            <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 bg-muted/30 px-4 py-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold" dir="auto">
                   {nameOf(r.id)}
@@ -250,18 +251,18 @@ export function PmTeamPanel({
                 <p className="text-xs text-muted-foreground">{t("team.legacy_note")}</p>
               </div>
               {canManage && !access.ctx.archived && (
-                <Button size="sm" variant="outline" onClick={() => setEditing({ uid: r.id, role: "site", off: [] })}>
+                <Button size="sm" variant="ghost" className="border" onClick={() => setEditing({ uid: r.id, role: "site", off: [] })}>
                   {t("team.give_role")}
                 </Button>
               )}
             </li>
           ))}
         </ul>
-        {liveRows.length === 0 && legacyRows.length === 0 && <p className="py-4 text-center text-sm text-muted-foreground">{t("team.nobody")}</p>}
-        <p className="mt-4 border-t pt-3 text-xs leading-relaxed text-muted-foreground">{t("team.governance_note")}</p>
+        {liveRows.length === 0 && legacyRows.length === 0 && <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("team.nobody")}</p>}
+        <p className="border-t px-4 py-3 text-xs leading-relaxed text-muted-foreground">{t("team.governance_note")}</p>
         {leftRows.length > 0 && (
-          <details className="mt-3 rounded-xl border">
-            <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-sm font-semibold">
+          <details className="border-t">
+            <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-4 text-sm font-semibold">
               <History size={14} aria-hidden="true" />
               {t("team.left_title")}
               <StatusPill tone="mute">
@@ -272,7 +273,7 @@ export function PmTeamPanel({
               {leftRows.map((r) => {
                 const s = r.seat!
                 return (
-                  <li key={r.id} className="px-3 py-2">
+                  <li key={r.id} className="px-4 py-2">
                     <p className="text-sm font-semibold" dir="auto">
                       {nameOf(r.id)}
                     </p>
@@ -330,15 +331,16 @@ function PermHelp({ cut }: { cut: Array<{ name: string; off: PmDuty[] }> }) {
     </li>
   )
   return (
-    <Panel title={t("team.help.title")} icon={ShieldCheck} className="self-start">
+    <Panel title={t("team.help.title")} icon={ShieldCheck} className="min-w-0">
       <ul className="space-y-3">
         {step(t("team.help.s1"), t("team.help.s1_note"))}
         {step(t("team.help.s2"), t("team.help.s2_note"))}
         {step(t("team.help.s3"), t("team.help.s3_note"))}
       </ul>
-      <Callout tone="info" className="mt-3" title={t("team.help.rule")}>
-        {t("team.help.rule_note")}
-      </Callout>
+      <div className="mt-3 border-t pt-3">
+        <p className="text-sm font-semibold">{t("team.help.rule")}</p>
+        <p className="text-xs leading-relaxed text-muted-foreground">{t("team.help.rule_note")}</p>
+      </div>
       {cut.length > 0 && (
         <Callout tone="warn" className="mt-2.5">
           {t("team.help.cut", { count: cut.length, list: cut.map((c) => `${c.name} (${c.off.map((d) => t(`duty.${d}`)).join("، ")})`).join(" · ") })}
@@ -380,8 +382,7 @@ export function PmTeamRoster({ projectId, project, access }: { projectId: string
   }, [members, orgMembers, groups, managerLimit, today])
 
   return (
-    <Panel title={t("team.roster_title")} icon={Users}>
-      <p className="mb-2 text-xs text-muted-foreground">{t("team.roster_sub")}</p>
+    <Panel title={t("team.roster_title")} icon={Users} description={t("team.roster_sub")}>
       {people.length === 0 ? (
         <p className="py-3 text-center text-sm text-muted-foreground">{t("team.nobody")}</p>
       ) : (
