@@ -52,8 +52,11 @@ import {
   buildLines,
   changeBlocks,
   lineLink,
+  monthOf,
   pettyBlocks,
+  pettyMonth,
   pettyNo,
+  pettySpentBefore,
   plantBlocks,
   plantHireable,
   plantNo,
@@ -82,6 +85,7 @@ import {
   type PlantReplyKind,
   type PlantWhy,
   type PmPlantRequest,
+  type PettyTally,
   type PmMaterialRequest,
   type PortionKind,
   type ReqLine,
@@ -100,7 +104,7 @@ export interface SupplyActor {
   name: string | null
 }
 
-type PmCounters = { no?: string; mrCount?: number; grnCount?: number; pettyCount?: number; plantCount?: number; plantReqCount?: number; voCount?: number }
+type PmCounters = { no?: string; mrCount?: number; grnCount?: number; pettyCount?: number; pettyMonth?: PettyTally | null; plantCount?: number; plantReqCount?: number; voCount?: number }
 type ProjectData = { organizationId?: string; name?: string; status?: string; projectManagerId?: string | null; pm?: PmCounters & Record<string, unknown> }
 
 const num = (v: unknown) => {
@@ -771,16 +775,23 @@ export async function confirmStoreReturn(firestore: Firestore, projectId: string
 
 // ── Direct purchases ─────────────────────────────────────────────────────────
 
-/** A site purchase under the cap, with its receipt number. It reaches Finance as
- * a project cost (prj:CASH). Above the per-purchase cap it is a normal request. */
+/** A site purchase under the caps, with its receipt number. It reaches Finance as
+ * a project cost (prj:CASH). Above the per-purchase cap it is a normal request;
+ * past the calendar month's cap it is refused (STK-08). The month is read from
+ * the purchases before the transaction and from the project's running tally
+ * (`pm.pettyMonth`) inside it — so two purchases at once cannot both slip under. */
 export async function logDirectPurchase(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, input: { what: string; supplier: string; amount: number; receipt: string | null; day: string; files?: PmAttachment[] | null }): Promise<number> {
+  const listed = await getDocs(collection(firestore, "projects", projectId, PM_PETTY))
+  const listedMonth = pettyMonth(listed.docs.map((d) => d.data() as { day: string; amount: number }).filter((x) => typeof x.day === "string"), input.day)
   let seq = 0
   await runTransaction(firestore, async (tx) => {
     const { ref, project, pm } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "supply.request")
     const today = todayDay()
-    blocked(pettyBlocks({ archived: fresh.archived, what: input.what, supplier: input.supplier, amount: input.amount, day: input.day, today }))
+    const tally = pm.pettyMonth ?? null
+    const monthSpent = pettySpentBefore(listedMonth, tally, input.day)
+    blocked(pettyBlocks({ archived: fresh.archived, what: input.what, supplier: input.supplier, amount: input.amount, day: input.day, today, monthSpent }))
     seq = (pm.pettyCount ?? 0) + 1
     tx.set(doc(firestore, "projects", projectId, PM_PETTY, pettyNo(seq)), {
       seq,
@@ -808,7 +819,10 @@ export async function logDirectPurchase(firestore: Firestore, ctx: PmContext, pr
       by: actor.uid,
       at: new Date().toISOString(),
     })
-    tx.update(ref, { pm: { ...pm, pettyCount: seq }, updatedAt: serverTimestamp() })
+    // The tally follows the latest month; a purchase dated into an earlier month leaves it.
+    const ym = monthOf(input.day)
+    const nextTally = !tally || tally.ym <= ym ? { pettyMonth: { ym, sum: r2(monthSpent + input.amount) } } : {}
+    tx.update(ref, { pm: { ...pm, pettyCount: seq, ...nextTally }, updatedAt: serverTimestamp() })
   })
   return seq
 }

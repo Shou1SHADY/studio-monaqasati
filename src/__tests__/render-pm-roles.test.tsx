@@ -426,7 +426,7 @@ describe("acts a role holds are live, not just drawn", () => {
 
   it("direct purchases: the site engineer logs them but reads ••• for the spend, as the prototype's money()", async () => {
     const view = await openAs("site", "pmPetty")
-    expect(text()).toContain("صُرف خلال 30 يوماً")
+    expect(text()).toContain("صُرف هذا الشهر")
     expect(text()).toContain("•••")
     expect(text()).not.toContain(RIYAL)
     view.unmount()

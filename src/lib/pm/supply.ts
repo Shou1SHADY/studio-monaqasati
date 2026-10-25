@@ -744,7 +744,7 @@ const addDays = (d: string, n: number) => new Date(Date.parse(`${d.slice(0, 10)}
 
 // ── Direct purchases under a cap ────────────────────────────────────────────
 
-/** PRD §13 defaults: per purchase and per rolling 30 days. */
+/** PRD §13 defaults: per purchase and per CALENDAR month (STK-08) — both block at save. */
 export const PETTY_CAP = { one: 3000, month: 15000 } as const
 
 export interface PmPetty {
@@ -762,17 +762,34 @@ export interface PmPetty {
 
 export const pettyNo = (seq: number) => String(seq).padStart(2, "0")
 
-export const pettyMonth = (list: Array<Pick<PmPetty, "day" | "amount">>, today: string) => r2(list.filter((x) => daysBetween(x.day, today) <= 30 && daysBetween(x.day, today) >= 0).reduce((a, x) => a + x.amount, 0))
+/** The calendar month a day falls in (`YYYY-MM`). */
+export const monthOf = (day: string) => day.slice(0, 7)
 
-export type PettyBlock = "archived" | "no_what" | "no_supplier" | "bad_amount" | "over_one" | "future"
+/** Spent on direct purchases in the calendar month of `day` (STK-08 — not a rolling 30 days). */
+export const pettyMonth = (list: Array<Pick<PmPetty, "day" | "amount">>, day: string) => r2(list.filter((x) => monthOf(x.day) === monthOf(day)).reduce((a, x) => a + x.amount, 0))
 
-export function pettyBlocks(input: { archived: boolean; what: string; supplier: string; amount: number; day: string; today: string }): PettyBlock[] {
+/** The project's running tally of the month, kept in the purchase's own transaction
+ * (`pm.pettyMonth` — a client transaction cannot query the purchases). */
+export interface PettyTally {
+  ym: string
+  sum: number
+}
+
+/** What the month had spent before this purchase: the listed purchases of that
+ * month, or the tally kept in the transaction when it is the same month and
+ * higher (one written since the list was read). */
+export const pettySpentBefore = (listed: number, tally: PettyTally | null | undefined, day: string) => r2(Math.max(listed, tally && tally.ym === monthOf(day) ? Number(tally.sum) || 0 : 0))
+
+export type PettyBlock = "archived" | "no_what" | "no_supplier" | "bad_amount" | "over_one" | "over_month" | "future"
+
+export function pettyBlocks(input: { archived: boolean; what: string; supplier: string; amount: number; day: string; today: string; monthSpent?: number }): PettyBlock[] {
   const out: PettyBlock[] = []
   if (input.archived) out.push("archived")
   if (!input.what.trim()) out.push("no_what")
   if (!input.supplier.trim()) out.push("no_supplier")
   if (!(Number.isFinite(input.amount) && input.amount > 0)) out.push("bad_amount")
   else if (input.amount > PETTY_CAP.one) out.push("over_one")
+  else if ((input.monthSpent ?? 0) + input.amount > PETTY_CAP.month + 0.005) out.push("over_month")
   if (input.day > input.today) out.push("future")
   return out
 }

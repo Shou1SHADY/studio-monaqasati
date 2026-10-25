@@ -20616,7 +20616,8 @@
           "sub_supplies": "This item is let to a subcontractor who supplies its materials under his contract — the project does not request them",
           "rej_why": "Say why the rejected quantity was rejected",
           "rej_text": "State the reason for the rejection",
-          "own_transfer": "You sent this transfer — the receiving project's engineer confirms or refuses it"
+          "own_transfer": "You sent this transfer — the receiving project's engineer confirms or refuses it",
+          "over_month": "Above this month's cap — make it a normal request"
         },
         "err": {
           "missing": "The document is missing — it may have changed on another device",
@@ -21091,7 +21092,7 @@
         "title": "Direct site purchases",
         "add": "Log a purchase",
         "caps": "{one} SAR per purchase · {month} SAR per month",
-        "spent": "Spent in 30 days",
+        "spent": "Spent this month",
         "of": "of {cap}",
         "left": "Left this month",
         "exhausted": "exhausted — everything goes through a normal request",

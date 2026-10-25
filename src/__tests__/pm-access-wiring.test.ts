@@ -10,6 +10,7 @@ import path from "path"
 import {
   PM_CEILING_PERMISSIONS,
   PM_DUTIES,
+  PM_GUARD,
   PM_ROLE_TEMPLATES,
   PM_SYSTEM_CEILINGS,
   PM_SYSTEM_KEYS,
@@ -122,6 +123,16 @@ describe("firestore.rules mirror access.ts", () => {
       expect(m).not.toBeNull()
       expect(list(m![1])).toEqual(sorted(PM_SYSTEM_CEILINGS[role]))
     }
+  })
+
+  it("off-hire and hand-back are `req` in the guard AND in the pmPlant rules (PM 1.1, owner's decision)", () => {
+    expect(PM_GUARD["plant.return"]).toEqual({ all: ["req"] })
+    const body = rules.slice(rules.indexOf("match /pmPlant/{plantId}"), rules.indexOf("match /pmNcrs/{ncrId}"))
+    // use → req (the off-hire request) and req → back (the hand-back): each branch names its duty first.
+    const offHire = body.match(/\(pmDuty\(projectId, '(\w+)'\) && resource\.data\.status == 'use' && request\.resource\.data\.status == 'req'/)
+    const handBack = body.match(/\(pmDuty\(projectId, '(\w+)'\) && resource\.data\.status == 'req' && resource\.data\.get\('offOk', null\) != null/)
+    expect(offHire?.[1]).toBe("req")
+    expect(handBack?.[1]).toBe("req")
   })
 
   it("the rules know every duty and system key they may be asked about", () => {

@@ -430,6 +430,8 @@ const projPath = `projects/${P}`
   up("pm.subCustodyCount: site engineer (req)", U.site, live, withPm(live, { subCustodyCount: 1 }), "ALLOW")
   up("pm.letterCount + lettersOut: QS (corr)", U.cost, live, withPm(live, { letterCount: 1, lettersOut: 1 }), "ALLOW")
   up("pm.mrCount/pettyCount/plantCount: site engineer (req)", U.site, live, withPm(live, { mrCount: 1, pettyCount: 1, plantCount: 1, plantReqCount: 1 }), "ALLOW")
+  up("pm.pettyCount + pettyMonth tally (STK-08): site engineer (req)", U.site, live, withPm(live, { pettyCount: 1, pettyMonth: { ym: "2026-10", sum: 400 } }), "ALLOW")
+  up("pm.pettyMonth tally: hse officer (no req)", U.hse, live, withPm(live, { pettyCount: 1, pettyMonth: { ym: "2026-10", sum: 400 } }), "DENY")
   up("pm.grnCount: site engineer (rcv)", U.site, live, withPm(live, { grnCount: 1 }), "ALLOW")
   up("pm.rfiCount/obstacleCount: site engineer (daily)", U.site, live, withPm(live, { rfiCount: 1, obstacleCount: 1 }), "ALLOW")
   up("pm.incidentCount/permitCount: hse officer", U.hse, live, withPm(live, { incidentCount: 1, permitCount: 1 }), "ALLOW")
@@ -1234,6 +1236,12 @@ const projPath = `projects/${P}`
   const dp = `projects/${P}/pmDaily/${TODAY}`
   const daily = (uid: string, over: D = {}): D => ({ day: TODAY, labour: 5, plant: 1, done: "poured", obstacle: null, files: [], ...base(uid), ...over })
   add("daily report: site engineer (daily)", U.site, "create", dp, "ALLOW", { after: daily(U.site) })
+  // PM 1.1: off-hire and hand-back are `req` (owner's decision) — no longer `daily`.
+  const pp = `projects/${P}/pmPlant/01`
+  const unit: D = { seq: 1, tag: "M-1", name: "Excavator", category: "heavy", qty: 1, status: "use", from: TODAY, days: {}, ...base(U.site) }
+  const offReq = (uid: string): D => ({ ...unit, status: "req", offReq: { on: TODAY, ready: TODAY, why: "done", whyText: null, by: uid, byName: "n" } })
+  add("plant off-hire: PM (req, no daily)", U.pmm, "update", pp, "ALLOW", { before: unit, after: offReq(U.pmm) })
+  add("plant off-hire: hse officer (daily, no req)", U.hse, "update", pp, "DENY", { before: unit, after: offReq(U.hse) })
   add("daily report: PM (pm.manage has no daily key, client agrees)", U.pmm, "create", dp, "DENY", { after: daily(U.pmm) })
   add("daily report: owner", U.owner, "create", dp, "ALLOW", { after: daily(U.owner) })
   add("daily report: QS (no daily)", U.cost, "create", dp, "DENY", { after: daily(U.cost) })

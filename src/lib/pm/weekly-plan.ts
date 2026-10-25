@@ -149,7 +149,8 @@ export function activityConstraints(a: LookActivity, f: LookFacts, today = new D
     out.push({ k: "mat", ok: !miss.length, detail: miss.length ? { kind: "materials", names: miss.slice(0, 2), count: miss.length } : undefined })
   }
   if (f.on.eqp) {
-    const rq = (f.plant ?? []).filter((r) => r.activityId === a.id && r.status === "go")
+    // WWP-02: a machine requested for it counts while approved OR still awaiting approval.
+    const rq = (f.plant ?? []).filter((r) => r.activityId === a.id && (r.status === "go" || r.status === "wait"))
     const miss = rq.filter((r) => !r.got)
     out.push({ k: "crew", ok: rq.length ? !miss.length : null, detail: miss.length ? { kind: "plant", what: miss[0].what, count: miss.length } : undefined })
   }
