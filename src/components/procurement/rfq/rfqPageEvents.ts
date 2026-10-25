@@ -6,3 +6,10 @@ export const RFQ_EXTEND_EVENT = "proc:rfq:extend"
 export function requestExtend(rfqId: string): void {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(RFQ_EXTEND_EVENT, { detail: { rfqId } }))
 }
+
+/** «ذكّر من لم يقدّم» from the empty offers tab: the lifecycle bar opens its remind dialog. */
+export const RFQ_REMIND_EVENT = "proc:rfq:remind"
+
+export function requestRemind(rfqId: string): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(RFQ_REMIND_EVENT, { detail: { rfqId } }))
+}

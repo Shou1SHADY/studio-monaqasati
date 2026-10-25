@@ -153,7 +153,7 @@ describe("the page's state and its path (RFQ-01, FLW-03)", () => {
 
   it("names the request, its source, who asked and the need date — or «من المشتريات مباشرة»", () => {
     const withRequest = pathModel({ rfq: { id: "R1", status: "New", deadline: "2026-10-30", createdAt: "2026-10-11T08:00:00Z" }, today: TODAY, offerCount: 3, requests: requestsOfRfq([request(), request({ mrKey: "x", lines: [{ no: 1, name: "z", unit: "u", qty: 1, rfqId: "R9", v: 1 }] })], "R1"), orders: [], awardWindowDays: 2 })
-    expect(withRequest.request).toEqual({ refs: ["MR 04"], source: "pm", requester: "سالم القحطاني", needBy: "2026-11-03" })
+    expect(withRequest.request).toEqual({ refs: ["MR 04"], keys: ["pm:P1:04"], source: "pm", requester: "سالم القحطاني", needBy: "2026-11-03" })
     expect(withRequest.published).toBe("2026-10-11")
     expect(withRequest.award).toEqual({ kind: "can", before: "2026-10-30" })
     expect(withRequest.offers).toMatchObject({ count: 3, until: "2026-10-30", closed: false })

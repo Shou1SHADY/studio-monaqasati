@@ -6,7 +6,9 @@
 import type { ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Check } from "lucide-react"
+import { Link } from "@/i18n/routing"
 import { fmtDayLong, displayNeedRef } from "@/lib/procurement/format"
+import { needKeyOfMr } from "@/lib/procurement/incoming-need"
 import { stepClasses, type PageStage, type PathModel, type StepClass } from "@/lib/procurement/rfq-path"
 import { cn } from "@/lib/utils"
 
@@ -33,7 +35,10 @@ function Step({ n, state, label, value, sub }: { n: number; state: StepClass; la
   )
 }
 
-export function RfqPathHeader({ path, stage }: { path: PathModel; stage: PageStage }) {
+/** The incoming request on the desk where it is answered — the address «الطلبات الواردة فيه» opens too. */
+export const requestHref = (mrKey: string): string => `/contractor/rfqs/requests?seg=all&publish=${encodeURIComponent(needKeyOfMr(mrKey))}&step=1`
+
+export function RfqPathHeader({ path, stage, onMoreRequests }: { path: PathModel; stage: PageStage; onMoreRequests?: () => void }) {
   const t = useTranslations("Portal.Procurement.rfqpage.path")
   const locale = useLocale()
   const day = (d: string | null) => fmtDayLong(d, locale, false)
@@ -66,8 +71,21 @@ export function RfqPathHeader({ path, stage }: { path: PathModel; stage: PageSta
         {refs.length ? (
           <div className="mt-1 space-y-0.5">
             <p className="text-sm font-black" dir="auto">
-              <bdi>{refs[0]}</bdi>
-              {refs.length > 1 && <span className="ms-1 text-xs opacity-80">+{refs.length - 1}</span>}
+              {r.keys?.[0] ? (
+                <Link href={requestHref(r.keys[0])} className="rounded-sm underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={t("open_request")}>
+                  <bdi>{refs[0]}</bdi>
+                </Link>
+              ) : (
+                <bdi>{refs[0]}</bdi>
+              )}
+              {refs.length > 1 &&
+                (onMoreRequests ? (
+                  <button type="button" onClick={onMoreRequests} className="ms-1 rounded-full border border-current/30 px-1.5 text-xs opacity-80 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={t("more_requests", { count: refs.length - 1 })}>
+                    +{refs.length - 1}
+                  </button>
+                ) : (
+                  <span className="ms-1 text-xs opacity-80">+{refs.length - 1}</span>
+                ))}
             </p>
             <p className="text-xs font-semibold" dir="auto">
               {r.source ? t(`src_${r.source}`) : ""}

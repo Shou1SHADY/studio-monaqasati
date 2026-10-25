@@ -253,3 +253,15 @@ export function manualOfferDoc(input: ManualOfferInput, products: Array<{ rfqPro
     createdAt: at,
   }
 }
+
+/** The lines a supplier may price per piece and the pieces he may use («زوايا (قطعة 6 م أو قطعة 12 م)») — the details' note that
+ * the comparison still reads in the requested unit (prototype rdDet). */
+export function pieceRules(
+  rfq: { products?: Array<{ name?: string | null; saleUnits?: Array<{ ar?: string; en?: string; lengthM?: number }> | null } | null> | null },
+  locale: string
+): Array<{ name: string; units: string[] }> {
+  return (rfq.products || []).flatMap((p) => {
+    const units = (p?.saleUnits || []).filter((u) => Number(u?.lengthM) > 0).map((u) => ((locale === "ar" ? u.ar || u.en : u.en || u.ar) || "").trim() || String(u.lengthM))
+    return units.length ? [{ name: (p?.name || "").trim() || "—", units: Array.from(new Set(units)) }] : []
+  })
+}

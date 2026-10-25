@@ -6,7 +6,7 @@
 
 import type { ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Ban, CheckCircle2, MailQuestion, RotateCcw, Star, TrendingDown } from "lucide-react"
+import { Ban, CheckCircle2, MailQuestion, RotateCcw, ShieldAlert, Star, TrendingDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Callout } from "@/components/module-ui/Callout"
@@ -19,7 +19,8 @@ import type { AwardSelection, RfqWorld } from "@/hooks/useRfqWorld"
 import { awardSupplierOrgId } from "@/lib/procurement/award"
 import { fromHalalas, lineOf, pricedProducts } from "@/lib/procurement/offer-calc"
 import { bafoOf } from "@/lib/procurement/offer-decisions"
-import { currentNote, offerHistory, type OfferRowModel } from "@/lib/procurement/rfq-offers-view"
+import { currentNote, offerHistory, priceConfirmed, type OfferRowModel } from "@/lib/procurement/rfq-offers-view"
+import { warrantyAskedOf } from "@/lib/procurement/offer-versions"
 import { inquiryKind, answerOf, publicQuestion } from "@/lib/procurement/rfq-inquiries"
 import { rfqDisplayNumber } from "@/lib/procurement/format"
 import { cn } from "@/lib/utils"
@@ -74,6 +75,7 @@ export function RfqOfferDrawer({ row, world, actions, onClose, fallbackName }: {
     const orgId = awardSupplierOrgId(r.offer as never)
     const profile = orgId ? world.profiles[orgId] : null
     const exp = world.experienceOf(orgId)
+    const verified = world.verifiedOf ? world.verifiedOf(orgId) : false
     const guest = r.origin === "guest"
     const out = r.excluded || r.withdrawn || r.declined
     const open = world.state.stage === "open" || world.state.stage === "compare"
@@ -92,7 +94,7 @@ export function RfqOfferDrawer({ row, world, actions, onClose, fallbackName }: {
         <SheetHeader className="space-y-1 border-b px-4 py-4 text-start">
           <div className="flex flex-wrap items-center gap-1.5">
             {r.rank && <StatusPill tone={r.rank === 1 ? "warn" : "mute"}>{`#${r.rank}`}</StatusPill>}
-            <StatusPill tone={guest ? "warn" : "info"}>{guest ? tl("off_platform") : tl("platform")}</StatusPill>
+            <StatusPill tone={guest ? "warn" : verified ? "ok" : "info"}>{guest ? tl("off_platform") : r.origin === "mdmak" ? tl("mdmak") : verified ? tl("docs_verified") : tl("docs_unverified")}</StatusPill>
             <OfferTags row={{ tags: r.tags.filter((x) => x.code === "awarded" || x.code === "excluded") }} />
           </div>
           <SheetTitle className="text-lg font-black" dir="auto">
@@ -144,9 +146,20 @@ export function RfqOfferDrawer({ row, world, actions, onClose, fallbackName }: {
               {products.map((p) => {
                 const line = lineOf(ev, p.rfqProductIndex)
                 const warrantyMonths = (r.offer.lines || []).find((l) => Number(l.rfqProductIndex) === p.rfqProductIndex)?.warrantyMonths
+                const asked = warrantyAskedOf(rfq?.products?.[p.rfqProductIndex] as Parameters<typeof warrantyAskedOf>[0])
+                const short = asked != null && warrantyMonths != null && Number(warrantyMonths) < asked
+                const star = !out && ev.kind !== "lump" && Boolean(world.evaluation.lines.find((l) => l.rfqProductIndex === p.rfqProductIndex)?.lowestIds.includes(r.id))
                 return (
                   <div key={p.rfqProductIndex} className="space-y-0.5 py-2" data-line={p.rfqProductIndex}>
-                    <p className="font-semibold" dir="auto">{p.name}</p>
+                    <p className="flex flex-wrap items-center gap-1.5 font-semibold" dir="auto">
+                      <span>{p.name}</span>
+                      {star && world.access.seesPrices && line && (
+                        <StatusPill tone="ok">
+                          <Star size={10} className="fill-current" aria-hidden="true" />
+                          {t("line_lowest")}
+                        </StatusPill>
+                      )}
+                    </p>
                     {!world.access.seesPrices ? (
                       <p className="text-muted-foreground">—</p>
                     ) : line ? (
@@ -165,7 +178,16 @@ export function RfqOfferDrawer({ row, world, actions, onClose, fallbackName }: {
                         <p className="text-[11px] text-muted-foreground">
                           {t("effective")} <Money value={fromHalalas(line.effH)} /> / {p.unit}
                           {line.pack?.perReceivedH != null && <> · {t("per_received")} <Money value={fromHalalas(line.pack.perReceivedH)} /></>}
-                          {warrantyMonths != null && <> · {warrantyMonths === 0 ? tl("warranty_none") : t("warranty_months", { months: warrantyMonths })}</>}
+                          {warrantyMonths != null && (
+                            <>
+                              {" · "}
+                              <span className={cn(short && "inline-flex items-center gap-1 font-bold text-destructive")} data-warranty={short ? "short" : "ok"}>
+                                {short && <ShieldAlert size={11} aria-hidden="true" />}
+                                {warrantyMonths === 0 ? tl("warranty_none") : t("warranty_months", { months: warrantyMonths })}
+                                {short && ` — ${t("warranty_asked", { months: asked ?? 0 })}`}
+                              </span>
+                            </>
+                          )}
                         </p>
                       </>
                     ) : ev.kind === "lump" ? (
@@ -189,6 +211,7 @@ export function RfqOfferDrawer({ row, world, actions, onClose, fallbackName }: {
                   {r.validUntil ? date(r.validUntil) : "—"}
                   {r.validity === "expired" && <StatusPill tone="bad">{t("expired")}</StatusPill>}
                   {r.validity === "soon" && <StatusPill tone="warn">{t("soon")}</StatusPill>}
+                  {priceConfirmed(r.offer) && <StatusPill tone="ok">{t("price_confirmed")}</StatusPill>}
                 </span>
               }
             />

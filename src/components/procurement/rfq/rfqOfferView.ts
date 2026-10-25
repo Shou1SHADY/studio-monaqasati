@@ -50,6 +50,9 @@ export interface RfqView extends NoteRfq {
   deadline?: string | null
   visibility?: string | null
   directAward?: boolean | null
+  /** A direct award above the direct-purchase cap, and the reason the buyer gave for it (WF-11). */
+  dirOver?: boolean | null
+  directWhy?: string | null
   estimatedBudget?: number | null
   requiresWarranty?: boolean | null
   notes?: string | null
@@ -81,6 +84,8 @@ export interface RfqView extends NoteRfq {
     needBy?: string | null
     boqItemId?: string | null
     requiresWarranty?: boolean | null
+    /** The sale units a supplier may price this line in («قطعة 6 م»), from the material tree. */
+    saleUnits?: Array<{ ar?: string; en?: string; lengthM?: number }> | null
     /** The project this line is charged to, and its name when it was written. */
     projectId?: string | null
     projectName?: string | null

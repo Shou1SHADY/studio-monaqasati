@@ -195,9 +195,12 @@ export function RfqInquiriesTab({ world, onExtend }: { world: RfqWorld; onExtend
                           {t("edit_wording")}
                         </Button>
                       )}
-                      <button type="button" onClick={onExtend} className="rounded-sm text-xs font-semibold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                        {t("extend_hint")}
-                      </button>
+                      {/* «يغيّر النطاق؟ مدّد الموعد» only while offers still arrive — once the date passed, extending is a reopen, the lifecycle bar's. */}
+                      {world.state.stage === "open" && (
+                        <button type="button" onClick={onExtend} className="rounded-sm text-xs font-semibold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                          {t("extend_hint")}
+                        </button>
+                      )}
                     </div>
                     {anon && <p className="text-[11px] text-muted-foreground">{t("anon_all_only")}</p>}
                   </div>

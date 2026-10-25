@@ -53,6 +53,8 @@ export function pageState(rfq: StageRfq, today: string): PageState {
 export interface PathRequest {
   /** The numbers of the requests this RFQ answers (`MR 04`, `MAT-2026/014`); empty = «من المشتريات مباشرة». */
   refs: string[]
+  /** The same requests' keys (`mrKey`, in `refs` order) — what opens each one on the incoming desk. */
+  keys: string[]
   /** The first request's source and who asked. */
   source: IncomingSrc | null
   requester: string | null
@@ -102,6 +104,7 @@ export function pathModel(input: { rfq: PathRfq; today: string; offerCount: numb
   const first = requests[0] || null
   const request: PathRequest = {
     refs: requests.map((r) => r.no),
+    keys: requests.map((r) => r.mrKey),
     source: first ? first.src : null,
     requester: first ? first.requestedFor?.name || first.requestedBy?.name || null : null,
     needBy: needs[0] || null,

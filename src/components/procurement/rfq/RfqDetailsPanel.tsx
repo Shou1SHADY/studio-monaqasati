@@ -22,13 +22,24 @@ import { procLinks } from "@/lib/procurement/events"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { pricedProducts, pricingModeOf } from "@/lib/procurement/offer-pricing"
 import { poValue, type NoticeFact } from "@/lib/procurement/po"
-import { invitedRows, rfqLog, type InviteOfferLike, type RfqLogEntry } from "@/lib/procurement/rfq-detail"
+import { invitedRows, pieceRules, rfqLog, type InviteOfferLike, type RfqLogEntry } from "@/lib/procurement/rfq-detail"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import type { RfqView } from "./rfqOfferView"
 import { useLineFor } from "./rfqOfferText"
 import { lineNeed, needKeyOfSource, rfqFiles } from "@/lib/procurement/rfq-view"
 import { NEED_LINE_HREF } from "@/lib/procurement/today"
 import { guestLinkLine } from "@/lib/procurement/rfq-extras"
+
+/** The material's specification as the buyer wrote it (grade, size, weight) — the prototype's «المواصفات» column. */
+function SpecLine({ rfq, index }: { rfq: RfqView; index: number }) {
+  const spec = (rfq.products?.[index]?.description || "").trim()
+  if (!spec) return null
+  return (
+    <span className="block text-[11px] text-muted-foreground" dir="auto" data-spec>
+      {spec}
+    </span>
+  )
+}
 
 const SOURCE_KEY: Record<string, string> = { mfg_purchase: "source.mfg", project_request: "source.project", stock_gap: "source.stock" }
 
@@ -77,6 +88,7 @@ export function RfqDetailsPanel({
   const products = pricedProducts(rfq)
   const privacy = rfq.directAward ? "direct" : rfq.visibility === "private" ? "private" : "public"
   const forText = useLineFor(rfq, projectName ?? null)
+  const pieces = pieceRules(rfq, locale)
 
   return (
     <div className="space-y-4">
@@ -126,6 +138,11 @@ export function RfqDetailsPanel({
           <KeyValueRow label={t("details.pricing")} value={pricingModeOf(rfq) === "line" ? t("details.pricing_line") : t("details.pricing_total")} />
           <KeyValueRow label={t("details.created_by")} value={`${rfq.createdByUserName || "—"} · ${date(rfq.createdAt)}`} />
         </div>
+        {rfq.directAward && rfq.dirOver && (
+          <div className="mt-2">
+            <StatusPill tone="warn" className="whitespace-normal">{t("details.direct_over", { reason: (rfq.directWhy || "").trim() || "—" })}</StatusPill>
+          </div>
+        )}
         {showPrices && rfq.estimatedBudget != null && Number(rfq.estimatedBudget) > 0 && (
           <Callout tone="info" className="mt-3">
             {t.rich("details.budget", { amount: () => <Money value={Number(rfq.estimatedBudget)} className="font-bold" /> })}
@@ -162,6 +179,7 @@ export function RfqDetailsPanel({
                   <b className="block" dir="auto">
                     {p.name || "—"}
                   </b>
+                  <SpecLine rfq={rfq} index={p.rfqProductIndex} />
                   <span className="text-[11px] text-muted-foreground" dir="auto">
                     <LineSource rfq={rfq} index={p.rfqProductIndex} />
                     {` · ${forText(p.rfqProductIndex)}`}
@@ -179,6 +197,11 @@ export function RfqDetailsPanel({
             )
           })}
         </ul>
+        {pieces.length > 0 && (
+          <Callout tone="info" className="mx-4 my-3">
+            {t("details.pieces", { lines: pieces.map((x) => t("details.pieces_line", { name: x.name, units: x.units.join(t("details.pieces_or")) })).join(locale === "ar" ? "، " : ", ") })}
+          </Callout>
+        )}
         {rfq.requiresWarranty && <p className="border-t px-4 py-2 text-[11.5px] text-muted-foreground">{t("details.warranty")}</p>}
         {rfq.notes && (
           <p className="border-t px-4 py-2 text-sm text-foreground/80" dir="auto">
@@ -347,6 +370,7 @@ export function RfqDraftPanel({
                 <b className="block" dir="auto">
                   {p.name || "—"}
                 </b>
+                <SpecLine rfq={rfq} index={p.rfqProductIndex} />
                 <span className="text-[11px] text-muted-foreground" dir="auto">
                   <LineSource rfq={rfq} index={p.rfqProductIndex} />
                   {` · ${forText(p.rfqProductIndex)}`}
