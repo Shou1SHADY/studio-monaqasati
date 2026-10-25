@@ -175,6 +175,26 @@ describe("the top bar on Procurement's pages (FR-01, FR-03, FR-04)", () => {
     view.unmount()
   })
 
+  it("beside the unit icons (xl) the chip's words step aside instead of shrinking to «ا.»; the title keeps the name (UI review 2)", async () => {
+    const view = await open("/contractor/rfqs/orders")
+    const chip = document.querySelector('[data-testid="package-chip"]') as HTMLElement
+    const words = [...chip.querySelectorAll("span")].find((s) => s.textContent?.startsWith("الباقة")) as HTMLElement
+    expect(words.className).toContain("xl:hidden")
+    expect(words.className).toContain("2xl:inline")
+    expect(chip.getAttribute("title")).toBe(words.textContent)
+    view.unmount()
+  })
+
+  it("the frame beside the sidebar never widens past the screen: a wide table scrolls inside its own box on a phone (UI review 2)", async () => {
+    const view = await open("/contractor/rfqs/settings")
+    // shadcn's SidebarInset is itself a <main>, the flex item beside the sidebar; the page's own <main> sits inside it.
+    const [inset, page] = [...document.querySelectorAll("main")] as HTMLElement[]
+    expect(inset.parentElement?.className).toContain("group/sidebar-wrapper")
+    expect(inset.className).toContain("min-w-0")
+    expect(page.className).toContain("min-w-0")
+    view.unmount()
+  })
+
   it("for a member who may not read the subscription the chip stays a plain label", async () => {
     const view = await open("/contractor/rfqs/orders", "exp")
     const chip = document.querySelector('[data-testid="package-chip"]') as HTMLElement

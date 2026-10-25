@@ -694,7 +694,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider data-accent={moduleAccent} {...sidebarFold}>
       <CompanySwitchOverlay show={!!switchingOrgId} />
       {!isPortalHome && <RoleSidebar />}
-      <SidebarInset>
+      {/* min-w-0: a wide table inside a page scrolls in its own box instead of widening the whole frame on a phone. */}
+      <SidebarInset className="min-w-0">
         <header className={cn("sticky top-0 z-50 flex h-14 items-center gap-2 md:gap-4 border-b bg-background px-3 md:px-6 shadow-sm", isAdminOverview && "md:ml-24")}>
           {!isPortalHome && <SidebarToggle />}
           {!isPortalHome && (isSupplier || isContractor) && (

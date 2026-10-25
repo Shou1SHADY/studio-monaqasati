@@ -47,7 +47,8 @@ function PackageChipBody() {
   const body = (
     <>
       <Package size={13} className="shrink-0" aria-hidden="true" />
-      <span className="truncate">{label}</span>
+      {/* From xl the unit icons say it; the words come back once there is room (2xl). The title and the icons' label keep the name. */}
+      <span className="truncate xl:hidden 2xl:inline">{label}</span>
       {units}
     </>
   )
