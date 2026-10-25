@@ -18,6 +18,8 @@ import { addendumNo, draftBlocks, type PmAddendum } from "@/lib/pm/addenda"
 import { draftAddendum } from "@/lib/pm/addendum-writes"
 import { setOrgSelfApproval } from "@/lib/pm/info-writes"
 import { todayDay } from "@/lib/pm/format"
+import { finalBlocks } from "@/lib/pm/acceptance"
+import { recordFinal } from "@/lib/pm/acceptance-writes"
 import { listCollection } from "@/test-utils/fake-firestore"
 import { acceptHandover, localAcceptTransport } from "@/lib/pm/handover-writes"
 import { acceptStepBlocks, boqSourcesFor, PM_HANDOVERS } from "@/lib/pm/handover"
@@ -328,5 +330,18 @@ describe("CON-01 (FX-08) — a priced handover BOQ is transferred as it is, insi
     await expect(acceptHandover(db, pmActor, "h1", { ...base, source: "crm" }, t())).rejects.toMatchObject({ code: "boq_from_crm" })
     const { projectId } = await acceptHandover(db, pmActor, "h1", { ...base, source: "man", lines: [{ itemNo: "01", descriptionAr: "حفر", descriptionEn: "Dig", unit: "m3", quantity: 50, unitPrice: 30, groupId: null }] }, t())
     expect(listCollection(`projects/${projectId}/boqItems`)).toHaveLength(1)
+  })
+})
+
+describe("HND-01 — the final acceptance completes a suspended project", () => {
+  it("allowed from hold (the 1.0 rule refused anything not live); the suspension closes into the hold log", async () => {
+    expect(finalBlocks({ archived: false, lifecycle: "hold", acceptances: { prov: { on: "2025-01-01", by: "pm1" } }, openPunch: 0 })).toEqual([])
+    expect(finalBlocks({ archived: false, lifecycle: "plan", acceptances: { prov: { on: "2025-01-01", by: "pm1" } }, openPunch: 0 })).toEqual(["not_live"])
+    project(1_000_000, { lifecycle: "hold", holdSince: "2026-08-01", holdWhy: "Client stopped work", acceptances: { prov: { on: "2025-01-01", by: "pm1" } } })
+    await recordFinal(db, pm, "p1", pmActor)
+    const p = readDoc<{ status: string; pm: Record<string, unknown> }>("projects/p1")!
+    expect(p.pm).toMatchObject({ lifecycle: "done", holdSince: null, holdWhy: null })
+    expect(p.status).toBe("remaining_payment")
+    expect((p.pm.holdLog as Array<Record<string, unknown>>)[0]).toMatchObject({ since: "2026-08-01", why: "Client stopped work", by: "pm1", endedBy: "final" })
   })
 })

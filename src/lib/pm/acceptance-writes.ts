@@ -92,7 +92,13 @@ export async function recordFinal(firestore: Firestore, ctx: PmContext, projectI
       by: actor.uid,
       at: new Date().toISOString(),
     })
-    tx.update(pRef, { pm: { ...pm, acceptances: next, lifecycle: "done", retentionFreed: freedOf(pm) + event.amount }, status: "remaining_payment", updatedAt: serverTimestamp() })
+    // HND-01: from a suspension, the open hold closes on the final day, into the hold log.
+    const held = pm as { holdSince?: string | null; holdWhy?: string | null; holdLog?: Array<Record<string, unknown>> }
+    const endHold =
+      lifecycleOf(project) === "hold"
+        ? { holdSince: null, holdWhy: null, holdLog: [...(held.holdLog ?? []), { since: held.holdSince ?? on, why: held.holdWhy ?? "", until: on, by: actor.uid, byName: actor.name, endedBy: "final" }] }
+        : {}
+    tx.update(pRef, { pm: { ...pm, ...endHold, acceptances: next, lifecycle: "done", retentionFreed: freedOf(pm) + event.amount }, status: "remaining_payment", updatedAt: serverTimestamp() })
     tx.set(doc(firestore, PM_EVENTS, pmEventDocId(event.organizationId, event.key)), event)
   })
 }

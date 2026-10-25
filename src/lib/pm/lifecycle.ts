@@ -14,7 +14,8 @@ export type PmLifecycle = (typeof PM_LIFECYCLE)[number]
 const MOVES: Record<PmLifecycle, readonly PmLifecycle[]> = {
   plan: ["live"],
   live: ["hold", "done"],
-  hold: ["live"],
+  // HND-01: the final acceptance completes a suspended project too.
+  hold: ["live", "done"],
   done: ["closed"],
   closed: [],
 }
