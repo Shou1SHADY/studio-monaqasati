@@ -55,27 +55,27 @@ export function DirectPurchasesPanel({ projectId, orgId, access, actor }: { proj
             </Button>
           ) : null
         }
+        description={t("petty.caps", { one: n0(PETTY_CAP.one), month: n0(PETTY_CAP.month) })}
         bodyClassName="p-0"
       >
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t("petty.caps", { one: n0(PETTY_CAP.one), month: n0(PETTY_CAP.month) })}</p>
-        <div className="grid grid-cols-1 gap-2 p-4 sm:grid-cols-3">
-          <div className="rounded-xl border p-3">
+        <div className="grid grid-cols-3 [&>*+*]:border-s">
+          <div className="min-w-0 px-4 py-3">
             <p className="text-xs text-muted-foreground">{t("petty.spent")}</p>
-            <p className={cn("text-lg font-black tabular-nums", month > PETTY_CAP.month * 0.8 && "text-destructive")} dir="ltr">
+            <p className={cn("text-base font-black tabular-nums sm:text-lg", month > PETTY_CAP.month * 0.8 && "text-destructive")} dir="ltr">
               {money ? pmMoney(month) : "•••"}
             </p>
             <p className="text-xs text-muted-foreground">{t("petty.of", { cap: n0(PETTY_CAP.month) })}</p>
           </div>
-          <div className="rounded-xl border p-3">
+          <div className="min-w-0 px-4 py-3">
             <p className="text-xs text-muted-foreground">{t("petty.left")}</p>
-            <p className="text-lg font-black tabular-nums" dir="ltr">
+            <p className="text-base font-black tabular-nums sm:text-lg" dir="ltr">
               {money ? pmMoney(left) : "•••"}
             </p>
             <p className="text-xs text-muted-foreground">{left <= 0 ? t("petty.exhausted") : t("petty.after")}</p>
           </div>
-          <div className="rounded-xl border p-3">
+          <div className="min-w-0 px-4 py-3">
             <p className="text-xs text-muted-foreground">{t("petty.count")}</p>
-            <p className="text-lg font-black tabular-nums">{list.length}</p>
+            <p className="text-base font-black tabular-nums sm:text-lg">{list.length}</p>
             <p className="text-xs text-muted-foreground">{t("petty.count_sub")}</p>
           </div>
         </div>
