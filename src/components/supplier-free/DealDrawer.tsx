@@ -14,6 +14,7 @@ import { SecMsgs, SecOffer, SecPay, SecPo, SecRequest, SecShip, SecWar } from ".
 import { SecOrderChat } from "./SecOrderChat"
 import { VerifiedMark, actionBtn, docWord, useQueryState } from "./ui"
 import { useFree } from "./useFree"
+import { useCountRfqView } from "@/hooks/useCountRfqView"
 
 const STAGE_ICON = { new: Search, offered: Send, deliver: Truck, collect: Wallet, done: Check } as const
 
@@ -26,6 +27,8 @@ export function DealDrawer() {
   useEffect(() => {
     if (d) markSeen(d.id)
   }, [d, markSeen])
+  // RFQ-02: opening the deal is reading its request — counted in the buyer's «اطّلع عليه» (once per company, on the server).
+  useCountRfqView(d?.id)
   if (!id) return null
   // Closing is a step of its own in the history: back reopens the deal, as it does for every address (NAV-06).
   const close = () => q.set({ deal: null, m: null, quote: null, mode: null })

@@ -45,6 +45,7 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { useSupplierQuestions } from "@/hooks/useSupplierQuestions"
+import { useCountRfqView } from "@/hooks/useCountRfqView"
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
 import { collection, query, where, doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
@@ -119,6 +120,8 @@ function LegacyAvailableRfqsPage() {
   // His company's questions and the answered ones of other bidders (never who asked) — served by the server, which also
   // writes a new question and tells the request's owner. The rules no longer let a supplier list them himself.
   const { rows: questionRows, isLoading: inquiriesLoading, ask: askQuestion } = useSupplierQuestions(selectedRfq?.id)
+  // RFQ-02: his opening the RFQ counts in the buyer's «اطّلع عليه» (once per company, on the server).
+  useCountRfqView(selectedRfq?.id)
   const inquiries = useMemo(() => [...questionRows].reverse(), [questionRows])
 
   // ✅ تطبيق نمط الحماية: العودة بـ null طالما أن حالة المستخدم لم تكتمل
