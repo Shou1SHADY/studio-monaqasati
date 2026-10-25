@@ -89,11 +89,35 @@ describe("the tree as Watad gives it", () => {
 })
 
 describe("typing a material in the row's empty cell", () => {
+  const sizeOf = (h: ReturnType<typeof searchMaterials>[number]) => h.preset.filter((p) => p.spec.ar === "القياس").map((p) => p.value.ar)
   it("«حديد 16» finds rebar and presets the size", () => {
     const hits = searchMaterials(index, "حديد 16")
     const rebar = hits.find((h) => h.node.ar === "اسياخ حديد التسليح")!
     expect(rebar).toBeDefined()
     expect(rebar.preset.map((p) => p.value.en)).toEqual(["16 mm"])
+  })
+  it("«بلوك 20» presets 20×20×40, the option whose FIRST word is 20 — not 10×20×40 that merely contains it (ED-01)", () => {
+    const block = searchMaterials(index, "بلوك 20").find((h) => h.node.ar === "البلك الاسمنتي")!
+    expect(block).toBeDefined()
+    expect(sizeOf(block)).toEqual(["20×20×40 سم"])
+    const hollow = searchMaterials(index, "بلوك 20 مفرغ").find((h) => h.node.ar === "البلك الاسمنتي")!
+    expect(sizeOf(hollow)).toEqual(["20×20×40 سم"])
+    expect(hollow.preset.find((p) => p.spec.ar === "النوع")?.value.ar).toBe("بلوك اسمنتي مفرغ")
+  })
+  it("each spec takes one value: a second number for the same spec still matches without moving the first (ED-01)", () => {
+    const block = searchMaterials(index, "بلوك 20 40").find((h) => h.node.ar === "البلك الاسمنتي")!
+    expect(block).toBeDefined()
+    expect(sizeOf(block)).toEqual(["20×20×40 سم"])
+    expect(new Set(block.preset.map((p) => p.spec.ar)).size).toBe(block.preset.length)
+  })
+  it("ties go to the materials contractors request most (ED-02)", () => {
+    const names = searchMaterials(index, "اسمنت", 40).map((h) => h.node.ar)
+    // Same words, same depth: ordinary and sulphate-resistant cement come before white and Portland.
+    expect(names.indexOf("الاسمنت العادي")).toBeLessThan(names.indexOf("الاسمنت الأبيض"))
+    expect(names.indexOf("الاسمنت المقاوم")).toBeLessThan(names.indexOf("الاسمنت البورزلاني"))
+    const hits = searchMaterials(index, "اسمنت", 40)
+    const opc = hits.findIndex((h) => h.node.ar === "الاسمنت العادي")
+    expect(hits[opc].score % 1).toBe(0.5)
   })
   it("folds Arabic letter forms and finds nothing for nonsense", () => {
     expect(searchMaterials(index, "اسمنت").length).toBeGreaterThan(0)

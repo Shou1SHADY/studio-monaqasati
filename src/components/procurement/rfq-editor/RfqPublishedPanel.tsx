@@ -4,14 +4,16 @@
 // the guest link in one place — copy, WhatsApp, e-mail — for a supplier outside the
 // platform. Inviting a supplier to the platform itself is a different act (PUR-05).
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
 import { CheckCircle2, Copy, Eye, Mail, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
+import { LinkComposer } from "@/components/procurement/rfq/LinkComposer"
 
 export function RfqPublishedPanel({
+  rfqId,
   number,
   reached,
   closesOn,
@@ -20,6 +22,8 @@ export function RfqPublishedPanel({
   openHref,
   onNew,
 }: {
+  /** The new RFQ — WhatsApp and Email open «الرسالة التي تصل المورّد» for it (ED-18), as on the RFQ page. */
+  rfqId?: string
   number: string
   reached: number | null
   closesOn: string | null
@@ -32,6 +36,8 @@ export function RfqPublishedPanel({
   const { toast } = useToast()
   const [copied, setCopied] = useState(false)
   const message = guestUrl ? t("share_message", { title, url: guestUrl }) : ""
+  const [compose, setCompose] = useState<"wa" | "mail" | null>(null)
+  const composerRfq = useMemo(() => (rfqId ? { id: rfqId, title } : null), [rfqId, title])
   return (
     <section className="mx-auto max-w-xl space-y-5 rounded-2xl border bg-card p-6 text-center" aria-live="polite">
       <CheckCircle2 size={40} className="mx-auto text-success" aria-hidden="true" />
@@ -59,16 +65,29 @@ export function RfqPublishedPanel({
             >
               <Copy size={14} /> {copied ? t("copied") : t("copy")}
             </Button>
-            <Button asChild size="sm" variant="outline" className="gap-1.5">
-              <a href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer" onClick={() => toast({ title: t("wa_toast") })}>
-                <MessageCircle size={14} /> {t("whatsapp")}
-              </a>
-            </Button>
-            <Button asChild size="sm" variant="outline" className="gap-1.5">
-              <a href={`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(message)}`} onClick={() => toast({ title: t("mail_toast") })}>
-                <Mail size={14} /> {t("email")}
-              </a>
-            </Button>
+            {composerRfq ? (
+              <>
+                <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setCompose("wa")}>
+                  <MessageCircle size={14} /> {t("whatsapp")}
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => setCompose("mail")}>
+                  <Mail size={14} /> {t("email")}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button asChild size="sm" variant="outline" className="gap-1.5">
+                  <a href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer" onClick={() => toast({ title: t("wa_toast") })}>
+                    <MessageCircle size={14} /> {t("whatsapp")}
+                  </a>
+                </Button>
+                <Button asChild size="sm" variant="outline" className="gap-1.5">
+                  <a href={`mailto:?subject=${encodeURIComponent(title)}&body=${encodeURIComponent(message)}`} onClick={() => toast({ title: t("mail_toast") })}>
+                    <Mail size={14} /> {t("email")}
+                  </a>
+                </Button>
+              </>
+            )}
             <Button asChild size="sm" variant="outline" className="gap-1.5">
               <Link href={`${openHref}/preview/link`}>
                 <Eye size={14} /> {t("as_supplier")}
@@ -86,6 +105,7 @@ export function RfqPublishedPanel({
           {t("new_rfq")}
         </Button>
       </div>
+      <LinkComposer rfq={compose ? composerRfq : null} isOpen={!!compose} onClose={() => setCompose(null)} initialChannel={compose || undefined} />
     </section>
   )
 }

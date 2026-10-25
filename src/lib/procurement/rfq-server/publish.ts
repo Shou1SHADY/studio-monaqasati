@@ -28,6 +28,7 @@ import { termsListOf } from "../terms-freeze"
 import { PROCUREMENT_SETTINGS } from "../types"
 import { RfqError, mayPublish, mayRun, str, type Rec, type RfqCaller } from "./common"
 import { linkRfqNeeds } from "./release"
+import { cityCovers, rfqCities, supplierCities } from "@/lib/materials/reach"
 
 const id = z.string().trim().min(1).max(128)
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -138,6 +139,22 @@ export async function openGuestLink(db: Firestore, caller: RfqCaller, rfqId: str
 
 const keepLog = (log: RfqLogEntry[]): RfqLogEntry[] => log.slice(-200)
 
+/**
+ * ED-21: the public reach re-checked here on the delivery cities, with the same rule the editor counted with
+ * (`cityCovers`): a supplier whose profile covers none of the RFQ's cities is dropped from what is stored (and so from
+ * the reminders that read `reachedOrgIds`); one with no city data, or an RFQ with no city, is kept.
+ */
+export async function reachInCities(db: Firestore, orgIds: string[], rfq: Rec): Promise<string[]> {
+  const cities = rfqCities(rfq)
+  if (!cities.length || !orgIds.length) return orgIds
+  const read = async (col: string, id: string) => {
+    const snap = await db.collection(col).doc(id).get().catch(() => null)
+    return snap?.exists ? (snap.data() as Rec) : null
+  }
+  const keep = await Promise.all(orgIds.map(async (id) => cityCovers(supplierCities(await read("users", id), await read("organizations", id)), cities)))
+  return orgIds.filter((_, i) => keep[i])
+}
+
 export async function publishRfq(db: Firestore, caller: RfqCaller, input: PublishInput, now = new Date()): Promise<PublishResult> {
   if (!mayPublish(caller)) throw new RfqError("no_permission")
   const at = now.toISOString()
@@ -176,8 +193,10 @@ export async function publishRfq(db: Firestore, caller: RfqCaller, input: Publis
     if (refusal) throw new RfqError(refusal.code)
   }
 
-  const reached = input.audience === "private" ? recipients.length : direct ? 1 : input.reach.count
-  const reachedOrgIds = input.audience === "public" ? input.reach.orgIds.slice(0, 300) : []
+  const sentIds = input.audience === "public" ? [...new Set(input.reach.orgIds)].slice(0, 300) : []
+  const reachedOrgIds = input.audience === "public" ? await reachInCities(db, sentIds, doc) : []
+  const cut = sentIds.length - reachedOrgIds.length
+  const reached = input.audience === "private" ? recipients.length : direct ? 1 : Math.max(0, input.reach.count - cut)
 
   const copied: Rec = {}
   for (const key of LINE_DOC_KEYS) if (doc[key] !== undefined) copied[key] = doc[key]

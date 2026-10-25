@@ -34,7 +34,20 @@ const DAY_MS = 86_400_000
 // goes with it, SHOWN before it goes: the WhatsApp bubble or the e-mail. «افتح واتساب» / «افتح البريد» open the buyer's own app
 // on his own device with the text ready; the platform integrates with nothing and sends nothing (B-08). The count of opens is
 // here too, and it never includes his own preview.
-export function LinkComposer({ rfq, isOpen, onClose, onPrint }: { rfq: { id: string; title?: string } | null; isOpen: boolean; onClose: () => void; onPrint?: (() => void) | null }) {
+export function LinkComposer({
+  rfq,
+  isOpen,
+  onClose,
+  onPrint,
+  initialChannel,
+}: {
+  rfq: { id: string; title?: string } | null
+  isOpen: boolean
+  onClose: () => void
+  onPrint?: (() => void) | null
+  /** The message the composer opens on (the success panel's WhatsApp / Email buttons, ED-18); WhatsApp by default. */
+  initialChannel?: Channel
+}) {
   const t = useTranslations("Portal.Contractor")
   const tr = useTranslations("Portal.Procurement.rfqextras.share")
   const tl = useTranslations("Portal.Procurement.linkx")
@@ -97,9 +110,10 @@ export function LinkComposer({ rfq, isOpen, onClose, onPrint }: { rfq: { id: str
       setInvites([])
       setClosed(false)
       setInfo(null)
+      if (initialChannel) setChannel(initialChannel)
       void generate()
     }
-  }, [isOpen, rfq, generate])
+  }, [isOpen, rfq, generate, initialChannel])
 
   // The channel picked is remembered on the link: what follows in the request (a better price, the award) can reach the supplier on it.
   const recordChannel = async (c: "whatsapp" | "email" | "link") => {

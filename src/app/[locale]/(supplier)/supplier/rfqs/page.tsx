@@ -1,6 +1,6 @@
 "use client"
 
-import { categoryText, fieldCovers, rfqCategoryNames, supplierSubIds } from "@/lib/materials/reach"
+import { categoryText, publicFieldReaches, rfqCategoryNames, supplierCities, supplierSubIds } from "@/lib/materials/reach"
 import { useState, useEffect, useRef, useMemo } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
@@ -53,11 +53,13 @@ import { useRouter } from "@/i18n/routing"
 import { useStorage } from "@/firebase"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { SubmitOfferDialog } from "@/components/supplier/SubmitOfferDialog"
+import { deliveryLine, readDeliveryOptions } from "@/lib/procurement/delivery-options"
 import { PlanSwitch } from "@/components/supplier-free/PlanSwitch"
 import { FreeOpps } from "@/components/supplier-free/FreeOpps"
 
 function LegacyAvailableRfqsPage() {
   const t = useTranslations("Portal.Supplier")
+  const te = useTranslations("Portal.ProcEditor")
   const locale = useLocale()
   const { toast } = useToast()
   const router = useRouter()
@@ -67,7 +69,7 @@ function LegacyAvailableRfqsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [selectedCity, setSelectedCity] = useState<string>("all")
   const [customDeadline, setCustomDeadline] = useState("")
-  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string, contractorId?: string, products?: any[], notes?: string, pdfUrl?: string, category?: string, subCategory?: string, city?: string, district?: string, deadline?: string, locationCoords?: any, offersCount?: number, status?: string, paymentTerms?: string, createdAt?: string, requiresWarranty?: boolean, isFromMdmak?: boolean, estimatedBudget?: number, shipmentMode?: string, pricingMode?: string | null, projectId?: string | null} | null>(null)
+  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string, contractorId?: string, products?: any[], notes?: string, pdfUrl?: string, category?: string, subCategory?: string, city?: string, district?: string, deadline?: string, locationCoords?: any, offersCount?: number, status?: string, paymentTerms?: string, createdAt?: string, requiresWarranty?: boolean, isFromMdmak?: boolean, estimatedBudget?: number, shipmentMode?: string, pricingMode?: string | null, projectId?: string | null, deliveryOptions?: unknown} | null>(null)
 
   const [showMobileFilters, setShowMobileFilters] = useState(false)
   const activeFilterCount = [deadlineFilter !== "all", selectedCategory !== "all", selectedCity !== "all"].filter(Boolean).length
@@ -185,8 +187,9 @@ function LegacyAvailableRfqsPage() {
           if (supplierOrgId && (rfq.allowedSupplierOrgIds || []).includes(supplierOrgId)) return true;
           // An RFQ may carry several categories (PUR-03): the filter matches any of them, on the client.
           if (selectedCategory !== "all" && !rfqCategoryNames(rfq).includes(selectedCategory)) return false;
-          // On the tree by sub-category id, before it by category name (PUR-04).
-          return fieldCovers({ subIds: supplierSubIds(profile as Record<string, unknown> | null), specs: profile?.specializations || [] }, rfq);
+          // On the tree by sub-category id, before it by category name (PUR-04) — and in his cities (ED-21: the
+          // same rule the buyer's reach count and the publish server use; no city on either side = reached).
+          return publicFieldReaches({ subIds: supplierSubIds(profile as Record<string, unknown> | null), specs: profile?.specializations || [], cities: supplierCities(profile as Record<string, unknown> | null) }, rfq);
         })
         .sort((a: any, b: any) => {
           const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
@@ -500,7 +503,7 @@ function LegacyAvailableRfqsPage() {
                   <div className="flex gap-2">
                     <Button
                       onClick={() => {
-                        setSelectedRfq({ id: rfq.id, title: rfq.title, quantity: rfq.quantity, unitOfMeasure: rfq.unitOfMeasure, contractorId: rfq.contractorId, products: rfq.products, notes: rfq.notes, pdfUrl: rfq.pdfUrl, category: rfq.category, subCategory: rfq.subCategory, city: rfq.city, district: rfq.district, deadline: rfq.deadline, locationCoords: rfq.locationCoords, offersCount: rfq.offersCount, status: rfq.status, paymentTerms: rfq.paymentTerms, createdAt: rfq.createdAt, requiresWarranty: rfq.requiresWarranty, isFromMdmak: rfq.isFromMdmak, shipmentMode: rfq.shipmentMode, pricingMode: rfq.pricingMode ?? null, projectId: rfq.projectId ?? null })
+                        setSelectedRfq({ id: rfq.id, title: rfq.title, quantity: rfq.quantity, unitOfMeasure: rfq.unitOfMeasure, contractorId: rfq.contractorId, products: rfq.products, notes: rfq.notes, pdfUrl: rfq.pdfUrl, category: rfq.category, subCategory: rfq.subCategory, city: rfq.city, district: rfq.district, deadline: rfq.deadline, locationCoords: rfq.locationCoords, offersCount: rfq.offersCount, status: rfq.status, paymentTerms: rfq.paymentTerms, createdAt: rfq.createdAt, requiresWarranty: rfq.requiresWarranty, isFromMdmak: rfq.isFromMdmak, shipmentMode: rfq.shipmentMode, pricingMode: rfq.pricingMode ?? null, projectId: rfq.projectId ?? null, deliveryOptions: rfq.deliveryOptions })
                         setShowRfqDetails(true)
                       }}
                       variant="outline"
@@ -524,7 +527,7 @@ function LegacyAvailableRfqsPage() {
                     ) : (
                       <Button
                         onClick={() => {
-                          setSelectedRfq({ id: rfq.id, title: rfq.title, quantity: rfq.quantity, unitOfMeasure: rfq.unitOfMeasure, contractorId: rfq.contractorId, products: rfq.products, notes: rfq.notes, pdfUrl: rfq.pdfUrl, category: rfq.category, subCategory: rfq.subCategory, city: rfq.city, district: rfq.district, deadline: rfq.deadline, locationCoords: rfq.locationCoords, offersCount: rfq.offersCount, status: rfq.status, paymentTerms: rfq.paymentTerms, createdAt: rfq.createdAt, requiresWarranty: rfq.requiresWarranty, isFromMdmak: rfq.isFromMdmak, shipmentMode: rfq.shipmentMode, pricingMode: rfq.pricingMode ?? null, projectId: rfq.projectId ?? null })
+                          setSelectedRfq({ id: rfq.id, title: rfq.title, quantity: rfq.quantity, unitOfMeasure: rfq.unitOfMeasure, contractorId: rfq.contractorId, products: rfq.products, notes: rfq.notes, pdfUrl: rfq.pdfUrl, category: rfq.category, subCategory: rfq.subCategory, city: rfq.city, district: rfq.district, deadline: rfq.deadline, locationCoords: rfq.locationCoords, offersCount: rfq.offersCount, status: rfq.status, paymentTerms: rfq.paymentTerms, createdAt: rfq.createdAt, requiresWarranty: rfq.requiresWarranty, isFromMdmak: rfq.isFromMdmak, shipmentMode: rfq.shipmentMode, pricingMode: rfq.pricingMode ?? null, projectId: rfq.projectId ?? null, deliveryOptions: rfq.deliveryOptions })
                           setShowSubmitOffer(true)
                         }}
                         className="flex-[2] gap-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl h-11 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 group"
@@ -705,6 +708,30 @@ function LegacyAvailableRfqsPage() {
                 </p>
               </div>
             </div>
+
+            {/* ED-19: the buyer's delivery options per place — who unloads, the time, the access note — as on the visitor link. */}
+            {(() => {
+              const opts = Object.values(readDeliveryOptions(selectedRfq?.deliveryOptions))
+              const lines = Array.from(new Set(opts.map((d) => deliveryLine(d, te)).filter(Boolean)))
+              const notes = Array.from(new Set(opts.map((d) => d.note).filter((n): n is string => !!n)))
+              if (!lines.length && !notes.length) return null
+              return (
+                <dl className="grid gap-2 rounded-2xl border px-3.5 py-3 text-sm sm:grid-cols-2">
+                  {lines.length > 0 && (
+                    <div>
+                      <dt className="text-xs text-muted-foreground">{te("deliv_label")}</dt>
+                      <dd className="font-bold">{lines.join(" · ")}</dd>
+                    </div>
+                  )}
+                  {notes.length > 0 && (
+                    <div>
+                      <dt className="text-xs text-muted-foreground">{te("deliv_note")}</dt>
+                      <dd className="font-bold" dir="auto">{notes.join(" · ")}</dd>
+                    </div>
+                  )}
+                </dl>
+              )
+            })()}
 
             {/* Products */}
             {selectedRfq?.products && selectedRfq.products.length > 0 && (

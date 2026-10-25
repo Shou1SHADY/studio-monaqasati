@@ -16,6 +16,7 @@ import { PURCHASE_ORDERS, type PurchaseOrder } from "@/lib/procurement/types"
 import { deriveWorld, type RawWorld } from "@/lib/supplier-free/derive"
 import { createWorldLogic, type WorldLogic } from "@/lib/supplier-free/world-logic"
 import type { World } from "@/lib/supplier-free/types"
+import { cityCovers, rfqCities, supplierCities } from "@/lib/materials/reach"
 
 export interface FreeProfile {
   uid: string
@@ -305,16 +306,15 @@ function withoutPhone(c: Record<string, unknown> & { id: string }): Record<strin
   return rest as Record<string, unknown> & { id: string }
 }
 
-/** A public request is his only when it is in his coverage cities; one that names him or he quoted always is. */
-function inField(rfq: Record<string, unknown> & { id: string }, profile: FreeProfile): boolean {
+/** A public request is his when one of its delivery cities is his (ED-21 — the one rule `cityCovers` the buyer's
+ * reach and the publish server use: his coverage cities, else his own city; a request with no city is nationwide, and
+ * a supplier who gave no city at all is still reached); one that names him or he quoted always is. */
+function inField(rfq: Record<string, unknown> & { id: string }, profile: Pick<FreeProfile, "orgId" | "coverageCities" | "city">): boolean {
   const allowed = Array.isArray(rfq.allowedSupplierOrgIds) ? (rfq.allowedSupplierOrgIds as string[]) : []
   const invited = Array.isArray(rfq.invitedSupplierOrgIds) ? (rfq.invitedSupplierOrgIds as string[]) : []
   if (allowed.includes(profile.orgId) || invited.includes(profile.orgId)) return true
   if (rfq.visibility === "private") return false
-  if (!profile.coverageCities.length) return false
-  const city = String(rfq.city || "")
-  // Deliberate (RFQ-01): a request that names no city is nationwide, so it reaches every supplier in its specialty.
-  return !city || profile.coverageCities.includes(city)
+  return cityCovers(supplierCities({ coverageCities: profile.coverageCities, city: profile.city }), rfqCities(rfq))
 }
 
 export function useFreeWorld(): FreeWorldValue {

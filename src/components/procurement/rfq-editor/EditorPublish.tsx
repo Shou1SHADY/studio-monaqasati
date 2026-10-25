@@ -17,8 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Chip } from "@/components/module-ui/Chip"
 import { Callout } from "@/components/module-ui/Callout"
-import { NativeSelect } from "@/components/module-ui/NativeSelect"
-import { SupplierRecipientsPicker, type SupplierOption } from "@/components/contractor/SupplierRecipientsPicker"
+import { SupplierRecipientsPicker, orderRecipients, type SupplierOption } from "@/components/contractor/SupplierRecipientsPicker"
 import { RfqTermsPicker, type TermRow } from "@/components/procurement/rfq/RfqTermsPicker"
 import { BnplSoonDialog } from "./BnplSoonDialog"
 import { DIRECT_WHY_CODES, TERM_PRESETS, TERM_PRESET_IDS, presetOfTerms, type DirectEstimate, type DirectWhyCode } from "@/lib/procurement/rfq-publish-rules"
@@ -69,6 +68,9 @@ export function EditorPublish({
   uploading,
   onRemoveAttachment,
   showProblems,
+  supplierSubs,
+  directFacts,
+  reachCities,
 }: {
   values: PublishValues
   onChange: (patch: Partial<PublishValues>) => void
@@ -91,9 +93,14 @@ export function EditorPublish({
   uploading: boolean
   onRemoveAttachment: (path: string) => void
   showProblems: boolean
+  /** ED-14: each supplier's sub-categories from the directory, named — shown under his name. */
+  supplierSubs?: ReadonlyMap<string, string[]>
+  /** ED-13: the direct pool's facts — on-time, sourcing block (any block stops a direct award), «مختص». */
+  directFacts?: Map<string, { onTime: number | null; crExpired: boolean; block: SourcingBlock | null; matches: boolean }>
+  /** ED-21: the delivery cities the public reach is counted in («… في الرياض»); empty = nationwide. */
+  reachCities?: string
 }) {
   const t = useTranslations("Portal.ProcEditor")
-  const tm = useTranslations("Portal.Procurement.rfqextras.sourcing")
   const [more, setMore] = useState(false)
   const [soon, setSoon] = useState(false)
   const multi = linesCount > 1
@@ -101,7 +108,27 @@ export function EditorPublish({
   const over = values.audience === "direct" && estimate != null && estimate.total > directCap
   const preset = presetOfTerms(values.terms)
   const linkChecked = linkOn(values)
-  const pickerFacts = useMemo(() => new Map(Array.from(recipientFacts, ([id, f]) => [id, { ...f, matches: matching.has(id) }] as const)), [recipientFacts, matching])
+  const pickerFacts = useMemo(
+    () => new Map(Array.from(recipientFacts, ([id, f]) => [id, { ...f, matches: matching.has(id), subs: supplierSubs?.get(id) || [] }] as const)),
+    [recipientFacts, matching, supplierSubs],
+  )
+  // ED-13: direct uses the same rows as «خاص», one to choose.
+  const directOptions: SupplierOption[] = useMemo(
+    () => directPool.map((p) => ({ orgId: p.orgId, name: p.name, isFavorite: p.favourite, note: p.platform && !p.favourite ? t("platform") : undefined })),
+    [directPool, t],
+  )
+  const directPickerFacts = useMemo(
+    () =>
+      new Map(
+        directPool.map((p) => {
+          const f = directFacts?.get(p.orgId) || recipientFacts.get(p.orgId)
+          return [p.orgId, { onTime: f?.onTime ?? null, crExpired: f?.crExpired ?? false, block: f?.block ?? null, matches: matching.has(p.orgId), subs: supplierSubs?.get(p.orgId) || [] }] as const
+        }),
+      ),
+    [directPool, directFacts, recipientFacts, matching, supplierSubs],
+  )
+  /** Switching to direct picks the first favourite or «مختص» supplier who may be awarded (prototype `pub-to`). */
+  const firstDirect = () => orderRecipients(directOptions, directPickerFacts).find((o) => !directPickerFacts.get(o.orgId)?.block && (o.isFavorite || directPickerFacts.get(o.orgId)?.matches))?.orgId || ""
 
   return (
     <div className="space-y-6">
@@ -114,13 +141,17 @@ export function EditorPublish({
           <Chip selected={values.audience === "private"} icon={Lock} onClick={() => onChange({ audience: "private", link: null })}>
             {t("aud_private")}
           </Chip>
-          <Chip selected={values.audience === "direct"} icon={Handshake} onClick={() => onChange({ audience: "direct", link: null })}>
+          <Chip
+            selected={values.audience === "direct"}
+            icon={Handshake}
+            onClick={() => onChange({ audience: "direct", link: null, ...(values.audience !== "direct" && !values.directSupplierOrgId ? { directSupplierOrgId: firstDirect() } : {}) })}
+          >
             {t("aud_direct")}
           </Chip>
         </div>
         {values.audience === "public" && (
           <p className="text-sm text-muted-foreground">
-            {t("reach_public", { count: publicReachCount })}
+            {reachCities ? t("reach_public_city", { count: publicReachCount, city: reachCities }) : t("reach_public", { count: publicReachCount })}
             {favouriteName ? ` ${t("reach_fav", { name: favouriteName })}` : ""}
           </p>
         )}
@@ -137,23 +168,20 @@ export function EditorPublish({
         )}
         {values.audience === "direct" && (
           <div className="space-y-3 rounded-xl border p-3">
-            <label className="block space-y-1 text-sm">
-              <span className="font-semibold">{t("direct_supplier")}</span>
-              <NativeSelect
-                value={values.directSupplierOrgId}
-                onChange={(e) => onChange({ directSupplierOrgId: e.target.value })}
-                className={cn("w-full", showProblems && !values.directSupplierOrgId && "border-destructive")}
-              >
-                <option value="">{t("direct_pick")}</option>
-                {directPool.map((p) => (
-                  <option key={p.orgId} value={p.orgId}>
-                    {p.name}
-                    {p.favourite ? ` · ${t("favourite")}` : p.platform ? ` · ${t("platform")}` : ""}
-                    {matching.has(p.orgId) ? ` · ${tm("tag_matches")}` : ""}
-                  </option>
-                ))}
-              </NativeSelect>
-            </label>
+            {directOptions.length > 0 ? (
+              <SupplierRecipientsPicker
+                id="rfq-direct"
+                single
+                heading={{ title: t("direct_supplier"), hint: t("direct_pick") }}
+                options={directOptions}
+                selected={values.directSupplierOrgId ? [values.directSupplierOrgId] : []}
+                onChange={(next) => onChange({ directSupplierOrgId: next[0] || "" })}
+                facts={directPickerFacts}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">{t("direct_none")}</p>
+            )}
+            {showProblems && !values.directSupplierOrgId && <p className="text-xs font-semibold text-destructive">{t("err_direct_supplier")}</p>}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">{t("direct_one")}</span>
               <Button type="button" variant="link" className="h-auto gap-1.5 p-0 text-cta" onClick={onInvite}>

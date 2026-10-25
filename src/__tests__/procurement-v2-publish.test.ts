@@ -26,7 +26,7 @@ import { POST as publishRoute } from "@/app/api/procurement/rfq/publish/route"
 import { createTeamRequest } from "@/lib/procurement/incoming-server"
 import { incomingDocId, type IncomingDoc } from "@/lib/procurement/incoming-state"
 import { RfqError, type RfqCaller } from "@/lib/procurement/rfq-server/common"
-import { publishRfq, publishSchema, type PublishInput } from "@/lib/procurement/rfq-server/publish"
+import { publishRfq, publishSchema, reachInCities, type PublishInput } from "@/lib/procurement/rfq-server/publish"
 import { TERM_PRESETS, deadlineProblem, directEstimate, directReasonRefusal, presetOfTerms, rowProblems } from "@/lib/procurement/rfq-publish-rules"
 import type { PriceHistoryEntry } from "@/lib/procurement/prices"
 import { materialKey } from "@/lib/procurement/prices"
@@ -264,5 +264,39 @@ describe("G-13 · the lines an RFQ takes are linked to their request — only th
     expect(after.lines[1]).toMatchObject({ ps: "rfq", rfqId: res.id, rfqNumber: res.number })
     expect(after.lines[0].ps ?? null).toBeNull()
     expect(after.st).toBe("part")
+  })
+})
+
+describe("ED-21 · the public reach re-checked on the delivery city", () => {
+  beforeEach(() => {
+    mockDb.seed("users/ryd", { role: "Supplier", coverageCities: ["الرياض", "الخرج"] })
+    mockDb.seed("users/jed", { role: "Supplier", coverageCities: ["جدة"] })
+    mockDb.seed("users/own", { role: "Supplier", city: "جدة" })
+    mockDb.seed("users/none", { role: "Supplier" })
+    mockDb.seed("users/co_owner", { role: "Supplier", coverageCities: ["الدمام"] })
+    mockDb.seed("organizations/co", { coverageCities: ["الرياض"] })
+  })
+
+  it("keeps those who serve the city, those with no city data, and a company's own list over its owner's; the count follows", async () => {
+    const res = await publishRfq(db(), OWNER, input({ reach: { count: 6, orgIds: ["ryd", "jed", "own", "none", "co", "ghost"] } }), NOW)
+    const rfq = rfqs()[0]
+    expect(rfq.reachedOrgIds).toEqual(["ryd", "none", "co", "ghost"])
+    expect(rfq.reachedCount).toBe(4)
+    expect(res.reached).toBe(4)
+  })
+
+  it("several places: a supplier in ANY of their cities is kept", async () => {
+    await publishRfq(db(), OWNER, input({ doc: { products: [product()], city: "الرياض", cities: ["الرياض", "جدة"], subCategoryIds: ["s1"] }, reach: { count: 3, orgIds: ["ryd", "jed", "own"] } }), NOW)
+    expect(rfqs()[0].reachedOrgIds).toEqual(["ryd", "jed", "own"])
+  })
+
+  it("an RFQ that names no city is nationwide", async () => {
+    expect(await reachInCities(db(), ["ryd", "jed"], {})).toEqual(["ryd", "jed"])
+  })
+
+  it("private and direct are untouched: no public reach is stored", async () => {
+    await publishRfq(db(), OWNER, input({ audience: "private", recipients: ["sup1"], reach: { count: 2, orgIds: ["jed"] } }), NOW)
+    expect(rfqs()[0].reachedOrgIds).toEqual([])
+    expect(rfqs()[0].allowedSupplierOrgIds).toEqual(["sup1"])
   })
 })

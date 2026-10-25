@@ -38,6 +38,43 @@ export function fieldCovers(field: Pick<SupplierField, "subIds" | "specs">, rfq:
   return field.specs.includes(str(rfq.category))
 }
 
+// ---------------------------------------------------------------------------
+// The delivery city (ED-21, PRD ED-06: «عام — كل المختصين في الفئة والمدينة»)
+// ---------------------------------------------------------------------------
+// ONE rule for the editor's reach count, the publish server's re-check (and the reminders that read what it
+// stored), and the supplier's «open requests in my field» lists. It never shrinks reach on missing data: an RFQ
+// that names no city is nationwide, and a supplier who gave no city at all is still reached.
+
+const cityKey = (c: string) => c.trim().replace(/\s+/g, " ").replace(/[أإآ]/g, "ا").replace(/ة$/g, "ه").toLowerCase()
+
+/** The cities a supplier covers: his coverage list (a secondary company's own over its owner's), else his own city. */
+export function supplierCities(profile: Rec | null | undefined, org?: Rec | null): string[] {
+  const coverage = list(org?.coverageCities).length ? list(org?.coverageCities) : list(profile?.coverageCities)
+  if (coverage.length) return coverage
+  const own = str(org?.city) || str(profile?.city)
+  return own ? [own] : []
+}
+
+/** Every city an RFQ delivers to (several places → several cities), else its one city; none = nationwide. */
+export function rfqCities(rfq: Rec): string[] {
+  const many = list(rfq.cities)
+  if (many.length) return many
+  const one = str(rfq.city)
+  return one ? [one] : []
+}
+
+/** Does a delivery in `rfqCityList` reach a supplier covering `cities`? Yes when either side names no city. */
+export function cityCovers(cities: readonly string[], rfqCityList: readonly string[]): boolean {
+  if (!rfqCityList.length || !cities.length) return true
+  const mine = new Set(cities.map(cityKey))
+  return rfqCityList.some((c) => mine.has(cityKey(c)))
+}
+
+/** The one public-reach rule: his field covers the RFQ AND he serves one of its delivery cities (ED-21). */
+export function publicFieldReaches(field: SupplierField, rfq: Rec): boolean {
+  return fieldCovers(field, rfq) && cityCovers(field.cities, rfqCities(rfq))
+}
+
 /** The fields an RFQ stores about its materials: the tree ids it reaches by, and words for older readers. */
 export function rfqMaterialFields(lines: Array<{ material?: MaterialPick | null; category?: string | null; subCategory?: string | null }>): {
   subCategoryIds: string[]

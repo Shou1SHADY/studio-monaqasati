@@ -286,6 +286,16 @@ export function linesFromPaste(rows: PastedRow[], index: MaterialIndex | null, o
   })
 }
 
+/** What a paste brought in (ED-09): rows that matched the tree, rows left on «اختر المادة», and rows whose
+ * pasted unit differs from the material's — the toast after «أضِف الصفوف». */
+export function pasteSummary(lines: EditorLine[]): { matched: number; noMaterial: number; unitFlagged: number } {
+  return {
+    matched: lines.filter((l) => l.material).length,
+    noMaterial: lines.filter((l) => !l.material).length,
+    unitFlagged: lines.filter((l) => l.pastedUnit).length,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The title, the review, the document
 // ---------------------------------------------------------------------------

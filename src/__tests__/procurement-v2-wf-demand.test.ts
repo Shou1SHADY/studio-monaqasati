@@ -226,7 +226,9 @@ describe("WF-07 → WF-08 → WF-26 — two requests in one RFQ onto a new deliv
     expect(site.status).toBe(200)
     const siteId = site.json.data?.site.id as string
     expect((mockDb.get(`procurementSettings/${ORG}`) as Doc).deliverySites.map((s: Doc) => s.id)).toContain(siteId)
-    expect((await call(sitesRoute, "delivery-sites", "buyer", { site: { kind: "site", name: "x", city: "الرياض" } })).status).toBe(403)
+    // ED-22 (owner's decision, 25 Oct): the buyer adds a site from «+ موقع جديد», but never changes one already stored.
+    expect((await call(sitesRoute, "delivery-sites", "buyer", { site: { id: siteId, kind: "warehouse", name: "x", city: "الرياض" } })).status).toBe(403)
+    expect((await call(sitesRoute, "delivery-sites", "buyer", { site: { kind: "site", name: "x", city: "الرياض" } })).status).toBe(200)
 
     const res = await publish([
       product("الاسمنت العادي", 200, "كيس", { needSource: sourceOf(a.mrKey), needLine: 0, deliverySiteId: "prj-main", deliveryCity: "الرياض" }),

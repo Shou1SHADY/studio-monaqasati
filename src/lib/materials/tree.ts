@@ -168,8 +168,10 @@ export function searchMaterials(index: MaterialIndex, query: string, limit = 8):
       else if (above.includes(w)) score += 2
       else if (keys.includes(w)) score += 1
       else {
-        // A number or a size picks a spec option («16» → 16 mm, «G60»).
-        const found = specs.flatMap((s) => s.options.map((o) => ({ s, o }))).find(({ o }) => tokens(`${o.ar} ${o.en}`).includes(w))
+        // A number or a size picks a spec option («16» → 16 mm, «G60»). The option whose FIRST word is the
+        // number wins over one that merely contains it («20» → 20×20×40, not 10×20×40), and each spec takes
+        // one value: a spec already preset is matched again only when no other spec can take the word.
+        const found = bestOption(specs, w, preset)
         if (!found) {
           ok = false
           break
@@ -178,10 +180,38 @@ export function searchMaterials(index: MaterialIndex, query: string, limit = 8):
         if (!preset.some((p) => p.spec === found.s)) preset.push({ spec: found.s, value: found.o })
       }
     }
-    if (ok) hits.push({ node, path, preset, score })
+    if (ok) hits.push({ node, path, preset, score: score + (popularNames.has(foldSearchText(node.ar)) ? 0.5 : 0) })
   }
   return hits.sort((a, b) => b.score - a.score || a.path.length - b.path.length).slice(0, limit)
 }
+
+/** First word equal = 2, word contained = 1, else 0 — the prototype's `searchTree` weights. */
+function optionWeight(o: MaterialText, w: string): number {
+  const a = tokens(o.ar)
+  const b = tokens(o.en)
+  if (a[0] === w || b[0] === w) return 2
+  return a.includes(w) || b.includes(w) ? 1 : 0
+}
+
+function bestOption(specs: MaterialSpec[], w: string, preset: MaterialHit["preset"]): { s: MaterialSpec; o: MaterialText } | null {
+  const pick = (pool: MaterialSpec[]) => {
+    let best: { s: MaterialSpec; o: MaterialText; weight: number } | null = null
+    for (const s of pool)
+      for (const o of s.options) {
+        const weight = optionWeight(o, w)
+        if (weight && (!best || weight > best.weight)) best = { s, o, weight }
+      }
+    return best
+  }
+  const used = new Set(preset.map((p) => p.spec))
+  return pick(specs.filter((s) => !used.has(s))) || pick(specs.filter((s) => used.has(s)))
+}
+
+/**
+ * Materials contractors request most (ED-02): +0.5 so they come first when scores tie — the «الأكثر طلباً»
+ * chips' materials plus sulphate-resistant cement and mesh, as the prototype's `POP` set.
+ */
+const popularNames = new Set(["اسياخ حديد التسليح", "البلك الاسمنتي", "الاسمنت العادي", "الاسمنت المقاوم", "رمل لياسة", "خرسانة جاهزة للإنشاءات", "شبك حديد"].map((n) => foldSearchText(n)))
 
 // ---------------------------------------------------------------------------
 // Units

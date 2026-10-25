@@ -1,7 +1,7 @@
 // The supplier's quote as rules (PRD OFR-01…05, WF-01…05) — pure, so the form shows them live, the server runs them
 // again before it writes (NFR-08), and a test pins them. Nothing here reads or writes a database.
 
-import { fieldCovers } from "@/lib/materials/reach"
+import { publicFieldReaches } from "@/lib/materials/reach"
 import { MAX_UNIT_PRICE } from "@/lib/procurement/input-limits"
 import { lineCalc, type PackInfo } from "@/lib/procurement/offer-calc"
 import { bafoReplyBy } from "@/lib/procurement/offer-decisions"
@@ -190,11 +190,9 @@ export function requestReaches(rfq: Rec, orgId: string, field: { specs: string[]
   const named = [rfq.allowedSupplierOrgIds, rfq.invitedSupplierOrgIds].some((l) => Array.isArray(l) && (l as string[]).includes(orgId))
   if (named) return true
   if (rfq.visibility === "private") return false
-  // One RFQ may carry several sub-categories (PUR-03): any of them is his field.
-  if (!fieldCovers({ subIds: field.subIds || [], specs: field.specs }, rfq)) return false
-  // Every city it delivers to (an RFQ in several places, PUR-03), else its one city; none = nationwide.
-  const cities = Array.isArray(rfq.cities) && rfq.cities.length ? (rfq.cities as unknown[]).map(str).filter(Boolean) : [str(rfq.city)].filter(Boolean)
-  return !cities.length || cities.some((c) => field.cities.includes(c))
+  // One RFQ may carry several sub-categories (PUR-03): any of them is his field — and any city it delivers to is
+  // his when he covers it (ED-21, the one rule of `publicFieldReaches`; none on the RFQ = nationwide, none on him = reached).
+  return publicFieldReaches({ subIds: field.subIds || [], specs: field.specs, cities: field.cities }, rfq)
 }
 
 /** Whether an invitation names him (only an invitation can be declined). */
