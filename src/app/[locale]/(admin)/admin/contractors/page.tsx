@@ -9,8 +9,10 @@ import { NewContractorDialog } from "@/components/admin/packages/NewContractorDi
 import { PackageChips } from "@/components/admin/packages/PackageIcons"
 import { PackageKpis } from "@/components/admin/packages/PackageKpis"
 import { PackageVersionCell } from "@/components/admin/packages/PackageVersionCell"
+import { SubscriptionStatusPill } from "@/components/admin/packages/SubscriptionStatusPill"
+import { useOrgMemberCounts } from "@/hooks/useOrgMemberCounts"
 import { FULL_COMPANY_PACKAGE, useCompanyPackages } from "@/hooks/useCompanyPackages"
-import { useRouter } from "@/i18n/routing"
+import { Link, useRouter } from "@/i18n/routing"
 import { AccountRowActions } from "@/components/admin/AccountRowActions"
 import { companyOf } from "@/lib/admin-accounts"
 import { Input } from "@/components/ui/input"
@@ -66,6 +68,13 @@ import {
   searchContractors,
   type ContractorStatusFilter,
 } from "@/utils/contractor-filters"
+
+/** «منذ …» on a contractor's row (AD-02): the account's creation day, Latin digits in both scripts. */
+const joinedOn = (ts: unknown, locale: string): string => {
+  const v = ts as { seconds?: number; toDate?: () => Date } | string | null | undefined
+  const date = typeof v === "string" ? new Date(v) : v && typeof v.toDate === "function" ? v.toDate() : v && typeof v.seconds === "number" ? new Date(v.seconds * 1000) : null
+  return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-GB", { year: "numeric", month: "short", day: "numeric" }) : ""
+}
 
 const DOC_LABELS: Record<string, string> = {
   cr: "السجل التجاري (CR)",
@@ -234,6 +243,9 @@ export default function AdminContractorsPage() {
     ),
     cityFilter
   )
+
+  // «{city} · {N} users · since {date}» under each name (AD-02).
+  const memberCounts = useOrgMemberCounts(localContractors.map((c) => companyOf(c, localContractors).orgId))
 
   const companyPackages = Array.from(new Set(localContractors.map((c) => companyOf(c, localContractors).orgId))).map((orgId) => byOrg.get(orgId) ?? FULL_COMPANY_PACKAGE)
 
@@ -406,6 +418,7 @@ export default function AdminContractorsPage() {
                     <TableHead className="text-start">{t("company_name")}</TableHead>
                     <TableHead className="text-start hidden lg:table-cell">{tPkg("list.package")}</TableHead>
                     <TableHead className="text-start hidden md:table-cell">{tPkg("list.version")}</TableHead>
+                    <TableHead className="text-start hidden md:table-cell">{tPkg("list.subscription")}</TableHead>
                     <TableHead className="text-start hidden md:table-cell">{t("tenders_count")}</TableHead>
                     <TableHead className="text-start hidden lg:table-cell">{t("documents")}</TableHead>
                     <TableHead className="text-start">{t("status")}</TableHead>
@@ -424,16 +437,30 @@ export default function AdminContractorsPage() {
                             <span className="text-xs text-muted-foreground" dir="ltr">{c.email}</span>
                             {company.memberOf && <span className="text-xs text-muted-foreground">{t("member_of", { company: company.memberOf })}</span>}
                             {c.crNumber && <span className="text-xs text-muted-foreground">{t("cr_number")}: <bdi>{c.crNumber}</bdi></span>}
+                            <span className="text-xs text-muted-foreground" data-testid="contractor-subline">
+                              {[c.city ? displayCity(c.city, locale) : "", memberCounts.has(company.orgId) ? tPkg("list.users", { count: memberCounts.get(company.orgId) ?? 1 }) : "", joinedOn(c.createdAt, locale) && tPkg("list.since", { date: joinedOn(c.createdAt, locale) })].filter(Boolean).join(" · ")}
+                            </span>
                           </div>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
-                          <PackageChips
-                            pkg={(byOrg.get(company.orgId) ?? FULL_COMPANY_PACKAGE).pkg}
-                            labels={{ core: tProc("base.core.short"), inv: tProc("base.inv.short"), pm: tProc("conn.pm.short"), fin: tProc("conn.fin.short"), mfg: tProc("conn.mfg.short") }}
-                          />
+                          <Link
+                            href={`/admin/contractors/${company.orgId}`}
+                            aria-label={tPkg("list.open_package", { name: company.name })}
+                            className="inline-flex rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <PackageChips
+                              pkg={(byOrg.get(company.orgId) ?? FULL_COMPANY_PACKAGE).pkg}
+                              labels={{ core: tProc("base.core.short"), inv: tProc("base.inv.short"), pm: tProc("conn.pm.short"), fin: tProc("conn.fin.short"), mfg: tProc("conn.mfg.short") }}
+                            />
+                          </Link>
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
-                          <PackageVersionCell company={byOrg.get(company.orgId) ?? FULL_COMPANY_PACKAGE} />
+                          <Link href={`/admin/contractors/${company.orgId}`} className="inline-flex rounded-lg hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <PackageVersionCell company={byOrg.get(company.orgId) ?? FULL_COMPANY_PACKAGE} />
+                          </Link>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <SubscriptionStatusPill status={(byOrg.get(company.orgId) ?? FULL_COMPANY_PACKAGE).subscription} />
                         </TableCell>
                         <TableCell className="hidden md:table-cell">
                           <Badge variant="secondary" className="font-bold">{c.rfqCount}</Badge>

@@ -12,11 +12,12 @@ import { StatusPill } from "@/components/module-ui/StatusPill"
 import { UnitIcon } from "@/components/admin/packages/PackageIcons"
 import { CONNECTORS, connectorTexts, packageLabel, packageOf, packageTitle, type Connector } from "@/lib/procurement/package"
 
-export function SubscriptionPanel() {
+/** `off` — a stored package to show instead of the viewer's own company's (the admin's read-only preview, AD-01). */
+export function SubscriptionPanel({ off: storedOff }: { off?: readonly string[] } = {}) {
   const t = useTranslations("Portal.ProcSubscription")
   const tp = useTranslations("Portal.ProcPackage")
   const { off } = useModules()
-  const pkg = packageOf(Array.from(off))
+  const pkg = packageOf(Array.from(storedOff ?? off))
 
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border bg-card" aria-label={t("title")}>

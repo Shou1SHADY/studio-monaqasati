@@ -4,6 +4,7 @@ import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { adminCaller, adminError } from "@/lib/admin-caller-server"
 import { COMPANY_MODULES } from "@/lib/company-modules"
+import { SUBSCRIPTION_STATUSES, subscriptionStatusOf } from "@/lib/subscription-status"
 import { assessPackageChange, assessmentIsQuiet, contractorOff, readStoredModules } from "@/lib/procurement/package-change-server"
 import { applyPendingChanges, pendingEntries } from "@/lib/procurement/package-migration-server"
 
@@ -25,6 +26,8 @@ const bodySchema = z.object({
   off: z.array(z.string().trim().max(40)).max(12),
   needs: z.object({ pm: needValue, fin: needValue, mfg: needValue }).partial().optional(),
   ack: z.boolean().optional(),
+  /** «نشط» / «تجريبي» beside the package (AD-03) — absent leaves it as stored. */
+  subscription: z.enum(SUBSCRIPTION_STATUSES).optional(),
 })
 
 const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i])
@@ -56,7 +59,8 @@ export async function POST(req: NextRequest) {
     const nextOff = contractorOff(parsed.data.off)
     const nextNeeds = { ...stored.needs, ...(parsed.data.needs || {}) }
     const needsChanged = JSON.stringify(nextNeeds) !== JSON.stringify(stored.needs)
-    if (sameList(stored.off, nextOff) && !needsChanged) {
+    const subscriptionChanged = parsed.data.subscription !== undefined && parsed.data.subscription !== subscriptionStatusOf(stored.subscription)
+    if (sameList(stored.off, nextOff) && !needsChanged && !subscriptionChanged) {
       if (!pendingEntries(stored.history)) return NextResponse.json({ success: true, data: { unchanged: true, off: nextOff, changed: [] } })
       const resumed = await runMigration(db, orgId, caller, nextOff)
       return NextResponse.json({ success: true, data: { unchanged: true, off: nextOff, changed: [], ...resumed } })
@@ -76,7 +80,7 @@ export async function POST(req: NextRequest) {
     await db
       .collection(COMPANY_MODULES)
       .doc(orgId)
-      .set({ organizationId: orgId, off: nextOff, needs: nextNeeds, history, updatedById: caller.uid, updatedByName: caller.name, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+      .set({ organizationId: orgId, off: nextOff, needs: nextNeeds, ...(subscriptionChanged ? { subscription: parsed.data.subscription } : {}), history, updatedById: caller.uid, updatedByName: caller.name, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
 
     const migrated = await runMigration(db, orgId, caller, nextOff)
     return NextResponse.json({ success: true, data: { unchanged: false, off: nextOff, changed: entries.map((e) => ({ id: e.id, connector: e.connector, to: e.to })), ...migrated } })

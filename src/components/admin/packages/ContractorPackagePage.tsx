@@ -2,27 +2,31 @@
 
 // Admin → one contractor's package (WF-22): their needs suggest a package, the connector cards and the shortcuts set it,
 // the pipeline shows it, and «ما يتغيّر عند الحفظ» says what it does to their records before anything is saved.
-// The contractor's portal is never opened from here: the counts are the admin's view (impersonation is not built).
+// The contractor's portal is never opened from here: the counts are the admin's view (impersonation is not built). «اعرض كما
+// يراها» (AD-01) opens a read-only preview of the SAVED package instead — disabled while a change is unsaved, as the prototype.
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { doc } from "firebase/firestore"
-import { ArrowRight, Check, Layers, Loader2, NotebookPen, Send } from "lucide-react"
+import { ArrowRight, Check, Eye, Layers, Loader2, NotebookPen, Send } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
+import { Chip } from "@/components/module-ui/Chip"
 import { useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { COMPANY_MODULES, forcedOffBy, offSet, type OptionalModule } from "@/lib/company-modules"
 import { CONNECTORS, PRESETS, offFor, packageLabel, packageOf, samePackage, type Connector, type PackageFlags } from "@/lib/procurement/package"
 import { impactQuiet, readImpactReport, type ImpactReport } from "@/lib/procurement/package-impact-report"
+import { SUBSCRIPTION_STATUSES, subscriptionStatusOf, type SubscriptionStatus } from "@/lib/subscription-status"
 import { cn } from "@/lib/utils"
 import { ConnectorCard } from "./ConnectorCard"
 import { ImpactPanel } from "./ImpactPanel"
 import { NeedQuestions, type NeedAnswers } from "./NeedQuestions"
 import { PackageChips } from "./PackageIcons"
 import { PackagePipeline } from "./PackagePipeline"
+import { SubscriptionStatusPill } from "./SubscriptionStatusPill"
 
 const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i])
 
@@ -65,9 +69,11 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
 
   const storedOff = useMemo(() => [...offSet(stored as { off?: unknown } | null, "contractor")].sort(), [stored])
   const storedNeeds = useMemo(() => readNeeds((stored as { needs?: unknown } | null)?.needs), [stored])
+  const storedSubscription = subscriptionStatusOf((stored as { subscription?: unknown } | null)?.subscription)
 
   const [draftOff, setDraftOff] = useState<string[] | null>(null)
   const [draftNeeds, setDraftNeeds] = useState<NeedAnswers | null>(null)
+  const [draftSubscription, setDraftSubscription] = useState<SubscriptionStatus | null>(null)
   const [report, setReport] = useState<ImpactReport | null>(null)
   const [loadingImpact, setLoadingImpact] = useState(false)
   const [failedImpact, setFailedImpact] = useState(false)
@@ -81,7 +87,9 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
   const before = packageOf(storedOff)
   const changed = CONNECTORS.filter((c) => pkg[c] !== before[c]).map((c) => ({ conn: c, to: (pkg[c] ? "on" : "off") as "on" | "off" }))
   const needsChanged = JSON.stringify(needs) !== JSON.stringify(storedNeeds)
-  const dirty = changed.length > 0 || needsChanged || !sameList(off, storedOff)
+  const subscription = draftSubscription ?? storedSubscription
+  const subscriptionChanged = subscription !== storedSubscription
+  const dirty = changed.length > 0 || needsChanged || subscriptionChanged || !sameList(off, storedOff)
   const offKey = off.join(",")
   const changedKey = changed.map((c) => `${c.conn}:${c.to}`).join("|")
 
@@ -125,6 +133,7 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
   const undo = () => {
     setDraftOff(null)
     setDraftNeeds(null)
+    setDraftSubscription(null)
   }
 
   const hrOn = !off.includes("hr")
@@ -140,7 +149,7 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
       const res = await fetch("/api/admin/company-modules", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ orgId, off, needs, ack: needsAck ? ack : undefined }),
+        body: JSON.stringify({ orgId, off, needs, ack: needsAck ? ack : undefined, ...(subscriptionChanged ? { subscription } : {}) }),
       })
       const body = (await res.json().catch(() => null)) as { code?: string } | null
       if (!res.ok) {
@@ -177,13 +186,32 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
           <p className="rounded-xl border p-6 text-center text-sm text-muted-foreground">{t("not_found")}</p>
         ) : (
           <>
-            <header className="space-y-1">
-              <h1 className="text-2xl font-black text-foreground">{o.name}</h1>
-              <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                {[o.city, since && t("since", { date: since })].filter(Boolean).join(" · ")}
-                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold">{o.isVerified ? tc("status_active") : o.verificationRequested ? tc("status_pending") : tc("status_review")}</span>
-                <PackageChips pkg={pkg} labels={labels} />
-              </p>
+            <header className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <h1 className="text-2xl font-black text-foreground">{o.name}</h1>
+                <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                  {[o.city, since && t("since", { date: since })].filter(Boolean).join(" · ")}
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-bold">{o.isVerified ? tc("status_active") : o.verificationRequested ? tc("status_pending") : tc("status_review")}</span>
+                  <SubscriptionStatusPill status={storedSubscription} />
+                  <PackageChips pkg={pkg} labels={labels} />
+                </p>
+              </div>
+              {dirty ? (
+                <div className="flex flex-col items-end gap-1">
+                  <Button type="button" variant="outline" disabled className="gap-2">
+                    <Eye size={15} aria-hidden="true" />
+                    {t("preview")}
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground">{t("preview_dirty")}</span>
+                </div>
+              ) : (
+                <Button asChild variant="outline" className="gap-2">
+                  <Link href={`/admin/contractors/${orgId}/preview`}>
+                    <Eye size={15} aria-hidden="true" />
+                    {t("preview")}
+                  </Link>
+                </Button>
+              )}
             </header>
 
             <div className="grid gap-4 lg:grid-cols-2">
@@ -225,6 +253,19 @@ export function ContractorPackagePage({ orgId }: { orgId: string }) {
                     <span className="text-muted-foreground">{hrForcedBy ? tMod("needs_off", { module: tSide("component_finance") }) : t("hr.desc")}</span>
                   </div>
                   <Switch checked={hrOn} onCheckedChange={setHr} aria-label={t("hr.title")} disabled={busy || hrForcedBy !== null} />
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3" role="group" aria-label={t("subscription.label")}>
+                  <div className="min-w-0 text-xs">
+                    <b className="block text-sm">{t("subscription.label")}</b>
+                    <span className="text-muted-foreground">{t("subscription.hint")}</span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    {SUBSCRIPTION_STATUSES.map((s) => (
+                      <Chip key={s} selected={subscription === s} disabled={busy} onClick={() => setDraftSubscription(s)}>
+                        {t(`subscription.${s}`)}
+                      </Chip>
+                    ))}
+                  </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <small className="text-xs font-bold text-muted-foreground">{t("pkg.shortcuts")}</small>
