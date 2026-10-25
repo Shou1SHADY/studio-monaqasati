@@ -4,7 +4,8 @@
 
 import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, type PmAction, type PmContext } from "./access"
-import { claimBlocks, claimNo, claimStepBlocks, PM_CLAIMS, respondBlocks, type ClaimCause, type ClaimKind, type ClaimResponse, type PmClaim } from "./claim"
+import { claimBlocks, claimNo, claimStepBlocks, PM_CLAIMS, type ClaimCause, type ClaimKind, type PmClaim } from "./claim"
+import { planRespond } from "./consultant-answers"
 import { todayDay } from "./format"
 import { lifecycleOf } from "./lifecycle"
 import { withFreshState } from "./project-writes"
@@ -111,14 +112,16 @@ export const sendClaimNotice = (firestore: Firestore, ctx: PmContext, projectId:
 /** The detailed submission — the days and the amount are fixed here, estimated, never invented earlier. */
 export const submitClaim = (firestore: Firestore, ctx: PmContext, projectId: string, seq: number, detail: { daysAsked?: number; amountAsked?: number } = {}) => step(firestore, ctx, projectId, seq, "submit", detail)
 
-/** The client's response (CLM-02). Granted days issue the next programme revision (CLM-03). */
+/** The client's response (CLM-02), recorded from his letter. Granted days issue
+ * the next programme revision (CLM-03) — `planRespond`, the same planner the
+ * consultant portal's Admin transaction runs, so either door has one effect. */
 export async function respondToClaim(
   firestore: Firestore,
   ctx: PmContext,
   projectId: string,
   actor: ClaimActor,
   seq: number,
-  input: { response: unknown; days: number | null; amount: number | null; ref?: string | null }
+  input: { response: unknown; days: number | null; amount: number | null; ref?: string | null; files?: Array<{ url: string; name: string }> }
 ): Promise<{ revision: number | null }> {
   let revision: number | null = null
   await runTransaction(firestore, async (tx) => {
@@ -129,16 +132,11 @@ export async function respondToClaim(
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new PmClaimError("missing")
     const claim = snap.data() as PmClaim
-    const blocks = respondBlocks({ archived: fresh.archived, status: claim.status, kind: claim.kind, response: input.response, days: input.days, amount: input.amount })
-    if (blocks.length) throw new PmClaimError("blocked", blocks)
-    const response = input.response as ClaimResponse
-    const days = response === "rej" || claim.kind === "cost" ? 0 : (input.days ?? 0)
-    const amount = response === "rej" || claim.kind === "time" ? 0 : (input.amount ?? 0)
-    if (days > 0) {
-      revision = (pm.programmeRev ?? 0) + 1
-      tx.update(pRef, { pm: { ...pm, programmeRev: revision }, updatedAt: serverTimestamp() })
-    }
-    tx.update(ref, { status: response, response: { on: todayDay(), by: actor.uid, byName: actor.name, days, amount, ref: input.ref?.trim() || null }, revision, updatedAt: serverTimestamp() })
+    const planned = planRespond(claim, input, { today: todayDay(), actor: { by: actor.uid, byName: actor.name }, viaPortal: false, archived: fresh.archived, programmeRev: pm.programmeRev ?? 0 })
+    if (!planned.ok) throw new PmClaimError("blocked", planned.code === "NOT_WAITING" ? ["not_submitted"] : (planned.blocks ?? []))
+    revision = planned.plan.revision
+    if (revision !== null) tx.update(pRef, { pm: { ...pm, programmeRev: revision }, updatedAt: serverTimestamp() })
+    tx.update(ref, { ...planned.plan.claimPatch, updatedAt: serverTimestamp() })
   })
   return { revision }
 }

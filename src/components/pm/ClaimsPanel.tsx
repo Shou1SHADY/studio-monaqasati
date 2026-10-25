@@ -60,6 +60,7 @@ import { isOpenObstacle, obstacleDays, obstacleSeq, PM_OBSTACLES, type ClaimSeed
 import type { ContractTerms } from "@/lib/pm/terms"
 import { approvedValue, PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
+import { ReplySource } from "./ConsultantReply"
 import { ChoiceChips, FormHint } from "./ContractBits"
 
 const TONE: Record<ClaimStatus, PillTone> = { draft: "mute", notice: "info", sub: "warn", appr: "ok", part: "ok", rej: "bad" }
@@ -283,6 +284,11 @@ export function ClaimsPanel({
                       <p className="mt-1 text-xs font-bold text-success">{t("claim.granted_line", { days: t("days", { count: c.response.days }), date: pmDate(c.response.on, locale), rev: c.revision ?? 0 })}</p>
                     )}
                     {c.response?.ref && <p className="mt-0.5 text-xs text-muted-foreground">{t("claim.response_ref_line", { ref: c.response.ref })}</p>}
+                    {c.response?.viaPortal && (
+                      <p className="mt-0.5">
+                        <ReplySource viaPortal on={c.response.on} />
+                      </p>
+                    )}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
                     {c.kind !== "cost" && (

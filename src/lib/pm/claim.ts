@@ -38,7 +38,7 @@ export interface PmClaim {
   byName?: string | null
   noticeOn?: string | null
   submittedOn?: string | null
-  response?: { on: string; by: string; byName?: string | null; days: number; amount: number; ref?: string | null } | null
+  response?: { on: string; by: string; byName?: string | null; days: number; amount: number; ref?: string | null; files?: Array<{ url: string; name: string }>; viaPortal?: boolean } | null
   /** The programme revision these granted days issued. */
   revision?: number | null
   /** The obstacle or RFI that evidences it (`pmObstacles/{id}`, WF-19 → WF-07). */

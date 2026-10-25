@@ -13381,7 +13381,14 @@
         "hold_decided_note": "Procurement decided: {decision} ({by}) — waiting for release"
       },
       "rfqlist": {
-        "seg": { "open": "Open", "compare": "Comparing", "awarded": "Awarded", "cancelled": "Cancelled", "all": "All", "draft": "Drafts" },
+        "seg": {
+          "open": "Open",
+          "compare": "Comparing",
+          "awarded": "Awarded",
+          "cancelled": "Cancelled",
+          "all": "All",
+          "draft": "Drafts"
+        },
         "status_label": "RFQ status",
         "layout_label": "View",
         "cards": "Cards",
@@ -13454,9 +13461,24 @@
           "saved": "Name saved; suppliers see it on the RFQ and the link.",
           "failed": "The name could not be saved"
         },
-        "stage": { "draft": "Draft", "open": "Open", "compare": "Comparing", "awarded": "Awarded", "cancelled": "Cancelled", "early": "Closed early", "no_live": "No live offer" },
-        "audience": { "public": "Public", "private": "Private", "direct": "Direct award" },
-        "pricing": { "line": "Price per item", "total": "Lump sum" },
+        "stage": {
+          "draft": "Draft",
+          "open": "Open",
+          "compare": "Comparing",
+          "awarded": "Awarded",
+          "cancelled": "Cancelled",
+          "early": "Closed early",
+          "no_live": "No live offer"
+        },
+        "audience": {
+          "public": "Public",
+          "private": "Private",
+          "direct": "Direct award"
+        },
+        "pricing": {
+          "line": "Price per item",
+          "total": "Lump sum"
+        },
         "path": {
           "aria": "The request's path",
           "request": "The request — the base",
@@ -13508,7 +13530,13 @@
           "offers_l": "Offers",
           "unanswered_l": "Unanswered inquiries"
         },
-        "tabs": { "offers": "Offers", "compare": "Comparison", "inquiries": "Inquiries", "details": "Details", "unanswered_title": "{count} unanswered" },
+        "tabs": {
+          "offers": "Offers",
+          "compare": "Comparison",
+          "inquiries": "Inquiries",
+          "details": "Details",
+          "unanswered_title": "{count} unanswered"
+        },
         "best": {
           "lowest": "Lowest complete offer",
           "incl_all": "Incl. VAT · all items",
@@ -13526,8 +13554,23 @@
           "competition": "Competition",
           "competition_sub": "Live offers on the thinnest item — below the policy threshold. Remind invitees or share the link"
         },
-        "filters": { "aria": "Filter the offers", "all": "All", "complete": "Complete", "partial": "Partial", "shortlist": "Shortlist", "terms_ok": "Matches your terms", "offplatform": "Off-platform", "excluded": "Excluded" },
-        "sort": { "label": "Sort", "price": "Lowest price", "fastest": "Fastest delivery", "latest": "Newest", "rating": "Highest rated" },
+        "filters": {
+          "aria": "Filter the offers",
+          "all": "All",
+          "complete": "Complete",
+          "partial": "Partial",
+          "shortlist": "Shortlist",
+          "terms_ok": "Matches your terms",
+          "offplatform": "Off-platform",
+          "excluded": "Excluded"
+        },
+        "sort": {
+          "label": "Sort",
+          "price": "Lowest price",
+          "fastest": "Fastest delivery",
+          "latest": "Newest",
+          "rating": "Highest rated"
+        },
         "list": {
           "aria": "Offers",
           "head_supplier": "Supplier",
@@ -13565,7 +13608,13 @@
           "withdrawn": "Withdrawn his offer",
           "declined": "Declined the order",
           "excluded_why": "Excluded: {reason}",
-          "exclusion": { "spec": "Does not meet the spec", "warranty": "Warranty below required", "validity": "Validity too short", "other": "Other reason", "order_cancelled": "His order was cancelled" },
+          "exclusion": {
+            "spec": "Does not meet the spec",
+            "warranty": "Warranty below required",
+            "validity": "Validity too short",
+            "other": "Other reason",
+            "order_cancelled": "His order was cancelled"
+          },
           "none_here": "No offers in this filter.",
           "showing": "Showing {shown} of {total}",
           "show_more": "Show more",
@@ -13687,7 +13736,12 @@
           "title": "Exclude {name}'s offer",
           "sub": "Kept on record with its reason, out of comparison and award; you can restore it.",
           "reason": "Reason",
-          "code": { "spec": "Does not meet the spec", "warranty": "Warranty below required", "validity": "Validity too short", "other": "Other reason (write it)" },
+          "code": {
+            "spec": "Does not meet the spec",
+            "warranty": "Warranty below required",
+            "validity": "Validity too short",
+            "other": "Other reason (write it)"
+          },
           "suggested": "Suggested by the numbers",
           "other_text": "Write the reason",
           "other_ph": "What does not suit in this offer?",
@@ -14342,7 +14396,10 @@
           "title": "{ref} · {count, plural, one {# unanswered inquiry} other {# unanswered inquiries}}",
           "sub": "{hasTitle, select, 1 {{title} · } other {}}{closed, select, 1 {closed} other {closes {date}}} — {question}{more, plural, =0 {} other { … and # more}}"
         },
-        "team_approval": {"title": "{ref} · material request from {name} awaits your approval", "sub": "{place} · {count, plural, one {one material} other {# materials}} · {days, plural, =0 {sent today} one {waiting for a day} other {waiting for # days}}"},
+        "team_approval": {
+          "title": "{ref} · material request from {name} awaits your approval",
+          "sub": "{place} · {count, plural, one {one material} other {# materials}} · {days, plural, =0 {sent today} one {waiting for a day} other {waiting for # days}}"
+        },
         "cancel_remainder": {
           "title": "Cancel the rest with the supplier: {qty} {unit} {name}",
           "sub": "Projects closed the material — {number} · {supplier}"
@@ -15090,9 +15147,9 @@
         "part": "{received} of {ordered} {unit} received; {left} left.",
         "remind_rest": "Remind about the rest",
         "rejected": "{qty} {unit} rejected at receipt — your decision with the supplier:",
-          "ask_replace": "Ask for a replacement",
-          "ask_discount": "Ask for a discount",
-          "ask_reduce": "Return it",
+        "ask_replace": "Ask for a replacement",
+        "ask_discount": "Ask for a discount",
+        "ask_reduce": "Return it",
         "guest_due": "Did the shipment arrive? The supplier is off-platform",
         "record_notice": "Record a delivery notice",
         "supplier_late": "The supplier is {days, plural, one {# day} other {# days}} late and has not notified delivery.",
@@ -16666,7 +16723,12 @@
           "desc": "Off: the owner holds every procurement action",
           "descOn": "On: once the company has a procurement team, the owner reads and approves what is routed to him; the team acts."
         },
-        "teamApproval": {"label": "Approve team requests before Procurement", "desc": "Optional — off: a material request reaches Incoming directly.", "descOn": "On: a material request waits for the owner's or the site manager's approval, then reaches Incoming. Turning it off releases what waits.", "descPm": "With Project Management the project manager approves a project's requests before they reach Procurement, so this approval is not needed."}
+        "teamApproval": {
+          "label": "Approve team requests before Procurement",
+          "desc": "Optional — off: a material request reaches Incoming directly.",
+          "descOn": "On: a material request waits for the owner's or the site manager's approval, then reaches Incoming. Turning it off releases what waits.",
+          "descPm": "With Project Management the project manager approves a project's requests before they reach Procurement, so this approval is not needed."
+        }
       },
       "roles": {
         "title": "Roles",
@@ -16966,8 +17028,6 @@
         "boq_later": "Or accept now and import the BOQ from the project later — measurement waits for it.",
         "boq_parse_error": "The file could not be read",
         "boq_partial": "The project was created, but the BOQ did not import — import it from the project",
-        "crm_locked_title": "The winning bid's priced BOQ — transferred as it is",
-        "crm_locked_note": "Codes, quantities and rates as CRM sent them. Nothing here is edited; after the start, a change is a variation.",
         "effect_project": "The project is created “not started”, with its own number",
         "effect_manager": "You are seated as its project manager",
         "effect_terms": "The contract terms are completed in the project, then frozen at start",
@@ -17072,7 +17132,9 @@
         "group_on_done": "{count, plural, one {# section enabled} other {# sections enabled}}",
         "group_off_done": "{count, plural, one {# section disabled} other {# sections disabled}}",
         "boq_review_lines": "{count, plural, one {# item} other {# items}}",
-        "boq_review_none": "No BOQ yet — measurement waits for it"
+        "boq_review_none": "No BOQ yet — measurement waits for it",
+        "crm_locked_title": "The winning bid's priced BOQ — transferred as it is",
+        "crm_locked_note": "Codes, quantities and rates as CRM sent them. Nothing here is edited; after the start, a change is a variation."
       },
       "terms": {
         "title": "Contract terms",
@@ -17435,8 +17497,6 @@
         "note_ph": "Cash retention replaced by a 5% bank guarantee until final acceptance",
         "draft_file": "The addendum or its draft — optional",
         "draft_file_hint": "Attach the signed copy when recording the signature if it is not ready now.",
-        "draft_day": "Drafting date",
-        "draft_day_hint": "The date written on the addendum — for a paper addendum entered later. Not in the future, not before the last signed addendum.",
         "signed_file": "The signed addendum — optional",
         "signed_file_hint": "Without a signed copy it rests on your word — still optional.",
         "sign_now_note": "Already signed? Record it in force now with its date — the same checks as a signature.",
@@ -17459,7 +17519,9 @@
         "orig_head": "The original contract as signed",
         "orig_head_sub": "As work started on it — never overwritten",
         "drafts_title": "Addenda awaiting signature",
-        "drafts_sub": "Not in force until signed — work goes on under the contract in force"
+        "drafts_sub": "Not in force until signed — work goes on under the contract in force",
+        "draft_day": "Drafting date",
+        "draft_day_hint": "The date written on the addendum — for a paper addendum entered later. Not in the future, not before the last signed addendum."
       },
       "meas": {
         "title": "Measurement",
@@ -17727,13 +17789,14 @@
         "certified_by_consultant": "Certified by the consultant",
         "as_written": "Exactly as written on the consultant's certificate — no rounding",
         "cut_hint": "The reason decides what you do next: quantities are re-measured, an uninspected item gets its inspection, a variation rate is negotiated.",
-        "cut_text": "The reason as the consultant stated it",
         "vat_on_certified": "VAT on (certified − recovery)",
         "net_finance": "Net Finance will invoice",
         "back_to_unbilled": "Returns to unbilled",
         "finance_event": "On save Finance receives the “owner certificate approved” event, key",
         "finance_event_once": "resending never creates a second invoice.",
-        "certify_send": "Record & send to Finance"
+        "certify_send": "Record & send to Finance",
+        "cut_text": "The reason as the consultant stated it",
+        "cut_other": "The other reason"
       },
       "punch": {
         "title": "Punch list",
@@ -17921,10 +17984,6 @@
           "certified": "Certified",
           "retention": "Retention held at close",
           "contract_days": "Contract duration (with extensions granted)",
-          "dur_orig": "Original duration as signed",
-          "rfi_avg": "Average RFI reply",
-          "rfi_days": "{n} days",
-          "rfi_party": "{party}: {n} d",
           "actual_days": "Actual duration (start to final acceptance)",
           "delay": "Delay",
           "cost_note": "This project was archived without its cost figures — actual cost and margin were not frozen.",
@@ -17935,7 +17994,11 @@
           "closed_on": "Closed",
           "manager": "Project manager",
           "actual_cost": "Actual cost",
-          "margin": "Realised margin"
+          "margin": "Realised margin",
+          "dur_orig": "Original duration as signed",
+          "rfi_avg": "Average RFI reply",
+          "rfi_days": "{n} days",
+          "rfi_party": "{party}: {n} d"
         },
         "title_full": "Project closeout",
         "sub": "A project ends with its last document, not its last pour",
@@ -18014,10 +18077,6 @@
         "rejected_line": "Rejected {date} by {who}: {reason}",
         "update": "Update",
         "update_desc": "The price is fixed once it goes to the client; the executed share and the instruction number stay current.",
-        "pct_never_down": "Now {pct}% — it only goes up, and every change is logged with your name and the date.",
-        "pc_note": "Note (optional)",
-        "pc_log": "Executed share — history",
-        "pc_by": "{who} · {date}",
         "save": "Save",
         "saved": "Saved",
         "submit": "Submit to the client",
@@ -18141,7 +18200,11 @@
         "rejected_title": "Rejected by the client {date}",
         "rejected_body": " Whatever was executed will not be paid — each linked material is back in your decisions.",
         "files": "Documents",
-        "rej_linked_back": "{count, plural, one {# linked material returns} other {# linked materials return}} to your decisions: on us, or stop it."
+        "rej_linked_back": "{count, plural, one {# linked material returns} other {# linked materials return}} to your decisions: on us, or stop it.",
+        "pct_never_down": "Now {pct}% — it only goes up, and every change is logged with your name and the date.",
+        "pc_note": "Note (optional)",
+        "pc_log": "Executed share — history",
+        "pc_by": "{who} · {date}"
       },
       "ncr": {
         "title": "Non-conformance",
@@ -18507,9 +18570,13 @@
           "detail_by": "Prepared by {name}"
         },
         "cert_consultant": {
-          "title": "{count, plural, one {# certificate is} other {# certificates are}} with the consultant",
+          "title": "{count, plural, one {# certificate is} other {# certificates are}} with the consultant past his {days}-day period",
           "detail": "Awaiting certification.",
-          "act": "Chase the consultant"
+          "act": "Chase the consultant",
+          "detail_letter": "No portal — chase him by letter.",
+          "detail_unsent": "The portal link was not sent.",
+          "detail_sent": "The portal link was sent, not opened.",
+          "detail_seen": "He opened the portal but has not certified it."
         },
         "collection_overdue": {
           "title": "{count, plural, one {# certificate is} other {# certificates are}} past due and not collected",
@@ -18769,6 +18836,11 @@
           "title": "{count, plural, one {One delivery unit} other {# delivery units}} with an unrealistic date at its current rate",
           "detail": "It needs to run faster than it has since the start",
           "act": "Review the unit dates"
+        },
+        "portal_unopened": {
+          "title": "Portal link not opened — {count, plural, one {# item waits} other {# items wait}} for the consultant",
+          "detail": "Call his representative or resend the code.",
+          "act": "Open the portal"
         }
       },
       "sec": {
@@ -19629,7 +19701,9 @@
           "wir": "An inspection awaiting his result",
           "punch": "A fixed item awaiting his confirmation",
           "corr": "A letter awaiting his reply",
-          "ncr": "A corrective plan awaiting his acceptance"
+          "ncr": "A corrective plan awaiting his acceptance",
+          "ipc": "A certificate awaiting his certification",
+          "claim": "A claim awaiting his response"
         },
         "for": "for {age}",
         "empty": "Nothing is with the consultant",
@@ -19673,7 +19747,15 @@
         "err_forbidden": "Only the owner or the project's manager sends the portal link",
         "err_closed": "The project is closed — the portal is no longer sent",
         "err_send": "The link could not be created — try again",
-        "v_can_live": "Accept or reject with a note, record an inspection result, reply to a letter — never edit our data"
+        "v_can_live": "Accept or reject with a note, record an inspection result, reply to a letter — never edit our data",
+        "no_rep": "No consultant's representative or mobile in the project's details — the link goes to his representative's mobile.",
+        "add_rep": "Add his details",
+        "goes_to": "Goes to {name} · {phone}",
+        "edit_rep": "Change the representative",
+        "sends": "{count, plural, one {sent once} other {sent # times}}",
+        "sending": "Sending",
+        "resend_same": "A new code on the same link ({count}) — the link he already has keeps working.",
+        "v_never_11": "price · cost · margin · supplier — on a certificate he sees the contract rates and quantities only"
       },
       "dec_docs": {
         "stale_title": "{name} {code} was issued after the last certificate",
@@ -20018,14 +20100,14 @@
           "late_row": "Certificate {no} · {days, plural, one {# day} other {# days}} late",
           "cash_in": "Cash in to date",
           "adv_ret": "Advance & retention",
-          "adv_total": "Advance received (frozen at start)",
-          "adv_recovered": "Recovered on submitted certificates",
           "adv_left": "Advance ({rate}) — left to recover",
           "ret_on_you": "Retention {payer} holds on you ({rate})",
           "ret_on_subs": "Held by you on subcontractors",
           "ret_net": "Net retention out of your hands",
           "release_note": "Finance claims the release after the handover event",
-          "handover": "Handover"
+          "handover": "Handover",
+          "adv_total": "Advance received (frozen at start)",
+          "adv_recovered": "Recovered on submitted certificates"
         },
         "dr": {
           "how": "How this number was computed",
@@ -20062,7 +20144,9 @@
           "fin_pending": "event received — invoice pending",
           "fin_invoiced": "invoiced by Finance",
           "no_hand_amount": "No amount in this certificate was typed by hand. Every figure derives from approved measured quantities against contract items — which is why it can be defended before the consultant.",
-          "finance_owns": "Actual receipts are read from Finance — PM owns measurement and the claim; Finance owns the invoice and the receipt."
+          "finance_owns": "Actual receipts are read from Finance — PM owns measurement and the claim; Finance owns the invoice and the receipt.",
+          "exp_due": "Expected due",
+          "exp_due_note": "The consultant's period + the payment period, from the contract in force on submission"
         },
         "check": {
           "sig": "Measurement sheet signed by the consultant",
@@ -20614,7 +20698,13 @@
           "enters_store_stk": "It enters the project store and stays open until used. Inventory gets the confirmation to close the issue.",
           "expensed_stk": "Expensed to site overheads on arrival. Inventory gets the confirmation to close the issue.",
           "rej_why": "Why was it rejected?",
-          "rw": {"dmg": "Damaged", "spec": "Not to spec", "over": "More than the note", "exp": "Expired", "oth": "Other — stated"},
+          "rw": {
+            "dmg": "Damaged",
+            "spec": "Not to spec",
+            "over": "More than the note",
+            "exp": "Expired",
+            "oth": "Other — stated"
+          },
           "rw_oth_ph": "State the reason",
           "rej_shown": "Rejected {q} — {why}"
         },
@@ -20703,7 +20793,13 @@
           "issue_wh": "issues {q} {unit} from {warehouse}",
           "kept": "{q} {unit} not issued: {why} — to be bought"
         },
-        "rej_why": {"spec": "Not to spec", "qty": "Quantity above the need", "dup": "Duplicate of another request", "early": "Too early", "oth": "Other — stated"},
+        "rej_why": {
+          "spec": "Not to spec",
+          "qty": "Quantity above the need",
+          "dup": "Duplicate of another request",
+          "early": "Too early",
+          "oth": "Other — stated"
+        },
         "reject_pick": "Why is it rejected?",
         "reject_oth_ph": "State the reason"
       },
@@ -21534,7 +21630,23 @@
         "saved": "Saved",
         "too_long": "Too long — 200 characters at most",
         "hold_why": "Reason for postponement",
-        "hold_since": "suspended since {date} — {days}"
+        "hold_since": "suspended since {date} — {days}",
+        "rep": "Consultant's representative",
+        "rep_none": "not recorded",
+        "rep_edit": "Consultant & representative",
+        "rep_title": "The consultant and his representative",
+        "rep_desc": "The consultant portal link goes to his representative's mobile. Every field is optional.",
+        "rep_name": "Representative's name",
+        "rep_phone": "Representative's mobile",
+        "rep_phone_hint": "05XXXXXXXX or +9665XXXXXXXX",
+        "rep_email": "Representative's e-mail",
+        "rep_bad_phone": "A Saudi mobile only: 05XXXXXXXX or +9665XXXXXXXX",
+        "rep_bad_email": "That e-mail address is not valid",
+        "rep_forbidden": "Only whoever approves edits the project's details",
+        "rep_error": "Could not save — try again",
+        "rep_revoked": "The representative or his mobile changed — the portal link sent before was revoked",
+        "rep_will_revoke": "Changing the representative or his mobile, or removing the consultant, revokes the portal link already sent — his answers stay recorded.",
+        "rep_cancel": "Cancel"
       },
       "glance": {
         "title": "Contract terms at a glance",
@@ -21934,6 +22046,31 @@
         "resplit_note": "{count, plural, one {One BOQ line is} other {# BOQ lines are}} not shared out across the units as the bill of quantities stands today — the split is older than it. Split again to share today's quantities equally; possible until a measurement names a unit or a unit is handed over.",
         "resplit": "Split again",
         "resplit_done": "Quantities split again across {count} units"
+      },
+      "reply": {
+        "via_portal": "Replied through the portal",
+        "via_portal_on": "Replied through the portal · {date}",
+        "rejects_fix": "Fixes the consultant refused",
+        "rejects_plan": "Plans the consultant rejected",
+        "refused_fix_on": "Fix refused {date}",
+        "rejected_plan_on": "Plan rejected {date}",
+        "from_letter": "from his letter — recorded by {name}",
+        "refuse_fix": "Consultant refused the fix",
+        "reject_plan": "Consultant rejected the plan",
+        "refuse_fix_title": "Record the consultant's refusal of the fix (from his letter)",
+        "reject_plan_title": "Record the consultant's rejection of the plan (from his letter)",
+        "refuse_fix_desc": "The item goes back open for a new fix; the refused fix and his reason stay on its record.",
+        "reject_plan_desc": "The non-conformance goes back open for a new plan; the rejected plan and his reason stay on its record.",
+        "reason": "His reason, as in his letter",
+        "reason_required": "The reason is required",
+        "letter_on": "Date of his letter",
+        "bad_day": "The date cannot be in the future",
+        "letter_file": "His letter",
+        "cancel": "Cancel",
+        "refuse_fix_save": "Record the refusal",
+        "reject_plan_save": "Record the rejection",
+        "refused_fix_done": "The item is open again with his reason",
+        "rejected_plan_done": "The non-conformance is open again for a new plan"
       }
     },
     "HR": {
@@ -27261,7 +27398,7 @@
       "close": "Close"
     },
     "AdminModules": {
-      "button":"Components",
+      "button": "Components",
       "title": "The company's components",
       "note": "Switching a component off hides it from the company's menu, tiles and pages for every member of its team. Its data is kept, and switching it back on restores it as it was. All other components are core and always on.",
       "save": "Save",
@@ -28344,14 +28481,18 @@
       "wir": "Inspections awaiting your result",
       "punch": "Fixed items awaiting your confirmation",
       "corr": "Letters awaiting your reply",
-      "ncr": "Corrective plans awaiting your acceptance"
+      "ncr": "Corrective plans awaiting your acceptance",
+      "ipc": "Certificates awaiting your certification",
+      "claim": "Claims awaiting your response"
     },
     "no": {
       "subm": "Sample {no}",
       "wir": "Inspection {no}",
       "punch": "Item {no}",
       "corr": "Letter {no}",
-      "ncr": "NCR {no}"
+      "ncr": "NCR {no}",
+      "ipc": "Certificate {no}",
+      "claim": "Claim {no}"
     },
     "f": {
       "item": "BOQ item",
@@ -28376,7 +28517,26 @@
       "root": "Root cause",
       "plan": "Corrective plan",
       "plan_on": "Plan submitted on",
-      "files": "Files"
+      "files": "Files",
+      "period": "Period",
+      "your_period": "Your period in the contract",
+      "days_n": "{count, plural, one {# day} other {# days}}",
+      "claim_kind": "Claim type",
+      "claim_kinds": {
+        "time": "Extension of time",
+        "cost": "Cost claim",
+        "both": "Time and cost"
+      },
+      "event": "Event date",
+      "notice": "Notice date",
+      "days_asked": "Days asked",
+      "lines": "Certificate lines",
+      "qty": "Qty",
+      "rate": "Contract rate",
+      "amount": "Amount",
+      "vo_line": "Variation {no} — {title}",
+      "cuts": "Earlier deductions claimed again",
+      "gross": "Submitted total"
     },
     "sev": {
       "a": "Critical",
@@ -28401,7 +28561,32 @@
       "send_reply": "Send my reply",
       "submit": "Record my decision",
       "done": "Recorded — thank you",
-      "reject_note": "Reject with a note"
+      "reject_note": "Reject with a note",
+      "claim_appr": "Approve",
+      "claim_part": "Approve in part",
+      "claim_rej": "Reject",
+      "ipc_hint": "Certify the submitted value or less — never more. A deduction above one riyal needs a reason.",
+      "claim_hint": "Days granted are required when you approve an extension.",
+      "certified": "The value you certify",
+      "certified_max": "Submitted: {amount}",
+      "cut_reason": "Reason for the deduction",
+      "cut_reason_required": "Reason for the deduction (required)",
+      "cut_reasons": {
+        "qty": "Quantities not accepted",
+        "wir": "Item without a passed inspection",
+        "rate": "Unagreed variation rate",
+        "oth": "Other reason"
+      },
+      "cut_note": "State the reason",
+      "cons_ref": "Your certificate no. (optional)",
+      "letter_ref": "Your letter no. (optional)",
+      "days": "Days granted",
+      "amount": "Amount granted",
+      "attach": "Attach a file (optional)",
+      "uploading": "Uploading",
+      "upload_failed": "The file could not be uploaded — an image or PDF up to 4 MB",
+      "remove_file": "Remove {name}",
+      "certify": "Certify"
     },
     "what": {
       "appA": "approved",
@@ -28414,7 +28599,11 @@
       "replied": "replied",
       "accepted": "plan accepted",
       "fix_rejected": "fix rejected",
-      "plan_rejected": "plan rejected"
+      "plan_rejected": "plan rejected",
+      "certified": "Certified",
+      "claim_appr": "Claim approved",
+      "claim_part": "Approved in part",
+      "claim_rej": "Claim rejected"
     },
     "history_title": "What you answered through this link",
     "history_empty": "Nothing yet",
@@ -28427,8 +28616,16 @@
       "no_text": "Write your reply",
       "before_letter": "The reply cannot be dated before the letter",
       "future_day": "The date cannot be in the future",
-      "bad_day": "The date is not valid"
-    }
+      "bad_day": "The date is not valid",
+      "bad_amount": "Enter a valid value",
+      "over_gross": "You cannot certify more than was submitted",
+      "cut_reason": "Choose the reason for the deduction",
+      "cut_text": "State the other reason",
+      "days_required": "Enter the days granted",
+      "bad_file": "Upload the file again"
+    },
+    "err_rate": "Too many codes were asked for this mobile — try again later",
+    "closed_closed": "This project is closed — the link no longer opens."
   },
   "SupplierFree": {
     "mConnNote": "A note to the contractor (optional)",

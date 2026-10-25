@@ -6,6 +6,7 @@ import { assertPm, type PmContext } from "./access"
 import { cleanAttachments, type PmAttachment } from "./attachments"
 import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
+import { planRefuseFix } from "./consultant-answers"
 import { PM_PUNCH, punchBlocks, punchNo, punchStepBlocks, type PunchItem, type PunchSeverity, type PunchSource } from "./punch"
 
 export class PmPunchError extends Error {
@@ -128,4 +129,29 @@ export const recordConfirmation = (
       files: cleanAttachments(opts.files),
     },
   }))
+}
+
+/** PN-04 — the consultant refused the fix, recorded from his letter by quality:
+ * back to open with his reason, the refused fix kept on record (`rejects[]`).
+ * The portal's Admin write runs the same planner (`planRefuseFix`). */
+export async function refuseFix(
+  firestore: Firestore,
+  ctx: PmContext,
+  projectId: string,
+  actor: PunchActor,
+  seq: number,
+  note: string,
+  opts: { on?: string; files?: PmAttachment[] | null } = {}
+): Promise<void> {
+  await runTransaction(firestore, async (tx) => {
+    const { project } = await readProject(tx, firestore, projectId)
+    const fresh = withFreshState(ctx, project)
+    assertPm(fresh, "qa.record")
+    const ref = doc(firestore, "projects", projectId, PM_PUNCH, punchNo(seq))
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new PmPunchError("missing")
+    const planned = planRefuseFix(snap.data() as PunchItem, note, { today: todayDay(), on: opts.on, files: opts.files, actor: { by: actor.uid, byName: actor.name }, viaPortal: false, archived: fresh.archived })
+    if (!planned.ok) throw new PmPunchError("blocked", planned.code === "NOT_WAITING" ? ["wrong_state"] : (planned.blocks ?? []))
+    tx.update(ref, { ...planned.patch, updatedAt: serverTimestamp() })
+  })
 }

@@ -10,12 +10,9 @@ import { assertPm, mayApproveCertificate, PmAccessError, pmCan, type PmContext }
 import { readContract } from "./addendum-writes"
 import {
   certificateAmounts,
-  certificateEvent,
   certificateLines,
   certificateNo,
   certificateVoLines,
-  certifyBlocks,
-  dueDate,
   frozenAdvance,
   PM_CERTIFICATES,
   prepareBlocks,
@@ -29,6 +26,7 @@ import {
   type CertificateVoLine,
   type ClaimableVariation,
 } from "./certificate"
+import { expectedDue, planCertify } from "./consultant-answers"
 import { PM_EVENTS, pmEventDocId, type PmEvent } from "./events"
 import { todayDay } from "./format"
 import { lifecycleOf } from "./lifecycle"
@@ -85,6 +83,13 @@ export interface PmCertificate extends Amounts {
   /** The stated reason when the cut's reason is "other" (RSN-01). */
   cutText?: string | null
   consultantRef?: string | null
+  /** His certificate's scan or covering letter (optional). */
+  certFiles?: Array<{ url: string; name: string }>
+  /** Certified through the consultant portal (in his name) rather than recorded from his letter. */
+  viaPortal?: boolean
+  certRecordedOn?: string | null
+  /** IPC-06: set when it goes to the consultant — his period + the payment period, from the contract in force that day. */
+  expDue?: string | null
   certOn?: string | null
   certBy?: string | null
   certByName?: string | null
@@ -220,7 +225,7 @@ export async function prepareCertificate(firestore: Firestore, ctx: PmContext, p
  * unless the company allows a recorded self-approval (IPC-02). */
 export async function approveCertificate(firestore: Firestore, ctx: PmContext, projectId: string, actor: CertificateActor, seq: number, opts: { selfApprovalAllowed?: boolean } = {}): Promise<void> {
   await runTransaction(firestore, async (tx) => {
-    const { project } = await readContract(tx, firestore, projectId)
+    const { project, terms } = await readContract(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     const selfApprovalAllowed = opts.selfApprovalAllowed || (await readSelfApproval(tx, firestore, (project as { organizationId?: string }).organizationId))
     const { ref, cert } = await readCertificate(tx, firestore, projectId, seq)
@@ -228,77 +233,46 @@ export async function approveCertificate(firestore: Firestore, ctx: PmContext, p
     if (!mayApproveCertificate(fresh, actor.uid, cert.prep, selfApprovalAllowed)) {
       throw new PmAccessError(fresh.archived ? "archived" : actor.uid === cert.prep && !selfApprovalAllowed ? "self_approval" : "no_duty", "certificate.approve")
     }
-    tx.update(ref, { status: "sub", appr: actor.uid, apprName: actor.name, apprOn: todayDay(), selfApp: actor.uid === cert.prep, updatedAt: serverTimestamp() })
+    const apprOn = todayDay()
+    tx.update(ref, { status: "sub", appr: actor.uid, apprName: actor.name, apprOn, selfApp: actor.uid === cert.prep, expDue: expectedDue(apprOn, terms), updatedAt: serverTimestamp() })
   })
 }
 
-/** Record the consultant's certification (full or with a deduction): the
- * amounts recompute on the certified value, the deduction returns to unbilled,
- * and prj:IPC goes to Finance at the certified amount (IPC-03). */
+/** Record the consultant's certification from his letter (full or with a
+ * deduction): `planCertify` — the same planner the portal's Admin transaction
+ * runs — recomputes on the certified value, returns the deduction to unbilled,
+ * dates the payment from the contract in force today (IPC-06) and sends prj:IPC
+ * at the certified amount (IPC-03). */
 export async function certifyCertificate(
   firestore: Firestore,
   ctx: PmContext,
   projectId: string,
   actor: CertificateActor,
   seq: number,
-  input: { certified: number; reason?: string | null; reasonText?: string | null; consultantRef?: string | null }
+  input: { certified: number; reason?: string | null; reasonText?: string | null; consultantRef?: string | null; files?: Array<{ url: string; name: string }> }
 ): Promise<Amounts & { event: PmEvent | null }> {
   let result: Amounts & { event: PmEvent | null } = { gross: 0, recovery: 0, retention: 0, vat: 0, net: 0, event: null }
   await runTransaction(firestore, async (tx) => {
-    const { pRef, project, pm } = await readContract(tx, firestore, projectId)
+    const { pRef, project, pm, terms } = await readContract(tx, firestore, projectId)
     assertPm(withFreshState(ctx, project), "certificate.certify")
     const { ref, cert } = await readCertificate(tx, firestore, projectId, seq)
-    const blocks = certifyBlocks({ status: cert.status, gross: cert.gross, certified: input.certified, reason: input.reason, reasonText: input.reasonText })
-    if (blocks.length) throw new PmCertificateError("blocked", blocks)
-    const totals = pm as PmTotals
-    // Recomputed on the certified value, under the terms the certificate was
-    // prepared with — the other certificates' retention and recovery excluded.
-    const amounts = certificateAmounts({
-      gross: input.certified,
-      terms: cert.terms,
-      contractValue: cert.contractValue,
-      held: (totals.retentionHeld ?? 0) - cert.retention,
-      recovered: (totals.advanceRecovered ?? 0) - cert.recovery,
-    })
-    const cut = r2(cert.gross - amounts.gross)
-    const certOn = todayDay()
-    const dueOn = dueDate(certOn, cert.terms.paymentDays)
-    tx.update(ref, {
-      status: "appr",
-      submitted: { gross: cert.gross, recovery: cert.recovery, retention: cert.retention, vat: cert.vat, net: cert.net },
-      ...amounts,
-      certified: amounts.gross,
-      cut,
-      cutReason: cut > 0 ? (input.reason ?? null) : null,
-      cutText: cut > 0 && input.reason === "oth" ? input.reasonText?.trim() || null : null,
-      consultantRef: input.consultantRef?.trim() || null,
-      certOn,
-      certBy: actor.uid,
-      certByName: actor.name,
-      dueOn,
-      updatedAt: serverTimestamp(),
-    })
-    tx.update(pRef, {
-      pm: {
-        ...pm,
-        retentionHeld: r2((totals.retentionHeld ?? 0) - cert.retention + amounts.retention),
-        advanceRecovered: r2((totals.advanceRecovered ?? 0) - cert.recovery + amounts.recovery),
-        cutPool: r2((totals.cutPool ?? 0) + cut),
-      },
-      updatedAt: serverTimestamp(),
-    })
-    const event = certificateEvent({
+    const planned = planCertify(cert, input, {
+      today: todayDay(),
+      nowIso: new Date().toISOString(),
+      actor: { by: actor.uid, byName: actor.name },
+      viaPortal: false,
       organizationId: project.organizationId ?? "",
       projectId,
       projectNo: pm.no ?? projectId,
-      seq,
-      amounts,
-      dueOn,
-      by: actor.uid,
-      at: new Date().toISOString(),
+      totals: pm as PmTotals,
+      termsNow: terms,
     })
-    tx.set(doc(firestore, PM_EVENTS, pmEventDocId(event.organizationId, event.key)), event)
-    result = { ...amounts, event }
+    if (!planned.ok) throw new PmCertificateError("blocked", planned.code === "NOT_WAITING" ? ["not_submitted"] : (planned.blocks ?? []))
+    const { plan } = planned
+    tx.update(ref, { ...plan.certPatch, updatedAt: serverTimestamp() })
+    tx.update(pRef, { pm: { ...pm, ...plan.pmTotals }, updatedAt: serverTimestamp() })
+    tx.set(doc(firestore, PM_EVENTS, pmEventDocId(plan.event.organizationId, plan.event.key)), plan.event)
+    result = { ...plan.amounts, event: plan.event }
   })
   return result
 }

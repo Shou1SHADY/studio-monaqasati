@@ -8,13 +8,15 @@ import {
   readPortalSources,
   resolvePortalSession,
   riyadhDay,
+  sectionsOf,
   type PortalProjectDoc,
 } from "@/lib/pm/portal-links"
 
 // What waits on the consultant, with what he needs to answer it — through
 // `portalView`, which copies named fields only and never a price, cost or
-// amount — and the last answers he gave through the link. A closed project
-// is shown read-only.
+// margin (a certificate shows its contract rates and amounts, CP-11) — and the
+// last answers he gave through the link. Only the sections that are on (CP-06).
+// A closed project is shown read-only.
 
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
 
@@ -32,7 +34,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     if (refusal && refusal !== "PROJECT_CLOSED") return fail("Project not found", refusal, 404)
     const readOnly = refusal === "PROJECT_CLOSED"
 
-    const items = readOnly ? [] : portalView(await readPortalSources(db, link.projectId), riyadhDay(now))
+    const items = readOnly ? [] : portalView(await readPortalSources(db, link.projectId, sectionsOf(project)), riyadhDay(now))
     return NextResponse.json({
       success: true,
       data: {

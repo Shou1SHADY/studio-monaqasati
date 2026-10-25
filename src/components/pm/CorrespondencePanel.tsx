@@ -53,6 +53,7 @@ import { obstacleSeq, PM_OBSTACLES, type PmObstacle } from "@/lib/pm/site"
 import { PM_VARIATIONS, voNo, type PmVariation } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
 import { ConsultantPortalPanel } from "./ConsultantPortalPanel"
+import { ReplySource } from "./ConsultantReply"
 
 const TONE: Record<LetterStatus, PillTone> = { out: "warn", rep: "ok", in: "info", done: "mute" }
 
@@ -242,7 +243,7 @@ export function CorrespondencePanel({
                     </p>
                     {(l.status === "rep" || l.status === "done") && l.reply && (
                       <p className="mt-0.5 text-xs font-semibold text-success" dir="auto">
-                        {t("corr.reply_line", { date: pmDate(l.reply.on, locale), text: l.reply.text })}
+                        {t("corr.reply_line", { date: pmDate(l.reply.on, locale), text: l.reply.text })} <ReplySource viaPortal={l.reply.viaPortal} />
                       </p>
                     )}
                     {isLate && (

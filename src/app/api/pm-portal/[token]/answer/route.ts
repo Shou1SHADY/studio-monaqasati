@@ -11,8 +11,10 @@ import {
 // The consultant answers one record. The write is the internal one re-done in
 // a single Admin transaction (`applyPortalAnswer`): the record re-read, the
 // same rule re-run, refused when it no longer waits on him or the project is
-// closed. The project's manager — or whoever sent the link, on a project with
-// none — is told at once.
+// closed. A certification sends prj:IPC at the certified amount (Finance posts
+// it from its Projects desk); a claim response issues the programme revision.
+// The project's manager — or whoever sent the link, on a project with none —
+// is told at once.
 
 const fail = (message: string, code: string, status: number, extra?: Record<string, unknown>) => NextResponse.json({ error: true, message, code, ...extra }, { status })
 
@@ -26,7 +28,9 @@ const STATUS: Record<PortalAnswerError["code"], number> = {
   LINK_EXPIRED: 410,
 }
 
-const KIND_AR = { subm: "عيّنة", wir: "طلب فحص", punch: "ملاحظة", corr: "خطاب", ncr: "عدم مطابقة" } as const
+const KIND_AR = { subm: "عيّنة", wir: "طلب فحص", punch: "ملاحظة", corr: "خطاب", ncr: "عدم مطابقة", ipc: "مستخلص", claim: "مطالبة" } as const
+/** Where the answer is read on our side. */
+const TAB = { subm: "pmSubm", wir: "pmQa", punch: "pmQa", corr: "pmCorr", ncr: "pmQa", ipc: "ipc", claim: "pmClaims" } as const
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   try {
@@ -70,7 +74,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
           ? `رفض ${entry.byName} عبر بوابة الاستشاري في مشروع ${projectName}: ${record} — ${entry.title} — ${why}`
           : `ردّ ${entry.byName} عبر بوابة الاستشاري في مشروع ${projectName}: ${record} — ${entry.title}`,
         projectId: link.projectId,
-        link: `/contractor/projects/${link.projectId}?tab=pmCorr`,
+        link: `/contractor/projects/${link.projectId}?tab=${TAB[entry.kind]}`,
         createdAt: entry.at,
         read: false,
       })

@@ -695,6 +695,10 @@ const projPath = `projects/${P}`
   add("punch confirm: site engineer", U.site, "update", pp, "ALLOW", { before: { ...punch, status: "fix" }, after: { ...punch, status: "done", conf: { on: TODAY, by: U.site }, updatedAt: NOW } })
   add("punch skip a step (open to done)", U.site, "update", pp, "DENY", { before: punch, after: { ...punch, status: "done", updatedAt: NOW } })
   add("punch fix on a closed project", U.site, "update", pp, "DENY", { before: punch, after: { ...punch, status: "fix", updatedAt: NOW }, over: closed() })
+  const refused = { on: TODAY, by: U.site, byName: "n", note: "still cracked", refused: { on: TODAY }, viaPortal: false, recordedOn: TODAY }
+  add("punch fix refused by the consultant (PN-04): back to open with rejects", U.site, "update", pp, "ALLOW", { before: { ...punch, status: "fix", fix: { on: TODAY } }, after: { ...punch, status: "open", fix: null, rejects: [refused], updatedAt: NOW } })
+  add("punch refusal by the QS (no qa)", U.cost, "update", pp, "DENY", { before: { ...punch, status: "fix", fix: { on: TODAY } }, after: { ...punch, status: "open", fix: null, rejects: [refused], updatedAt: NOW } })
+  add("punch fix that also rewrites rejects", U.site, "update", pp, "DENY", { before: punch, after: { ...punch, status: "fix", fix: { on: TODAY }, rejects: [], updatedAt: NOW } })
 
   const np = `projects/${P}/pmNcrs/0001`
   const ncr: D = { seq: 1, itemId: "", code: null, what: null, severity: "maj", root: "bad mix", cost: 100, status: "open", day: TODAY, by: U.site, byName: "n", files: [], plan: null, accepted: null, organizationId: ORG, createdAt: NOW }
@@ -704,6 +708,8 @@ const projPath = `projects/${P}`
   add("ncr plan: site engineer", U.site, "update", np, "ALLOW", { before: ncr, after: { ...ncr, status: "plan", plan: { on: TODAY, text: "fix" }, updatedAt: NOW } })
   add("ncr accept: site engineer", U.site, "update", np, "ALLOW", { before: { ...ncr, status: "plan" }, after: { ...ncr, status: "done", accepted: { on: TODAY }, updatedAt: NOW } })
   add("ncr plan: also edits the cost field (money holder revising cost)", U.pmm, "update", np, "ALLOW", { before: ncr, after: { ...ncr, status: "plan", plan: { on: TODAY, text: "fix", cost: 50 }, updatedAt: NOW } })
+  add("ncr plan rejected by the consultant (NCR-02): back to open with rejects", U.site, "update", np, "ALLOW", { before: { ...ncr, status: "plan", plan: { on: TODAY, text: "fix" } }, after: { ...ncr, status: "open", plan: null, rejects: [{ on: TODAY, by: U.site, note: "no", refused: { text: "fix" }, viaPortal: false }], updatedAt: NOW } })
+  add("ncr reopen by the QS (no qa)", U.cost, "update", np, "DENY", { before: { ...ncr, status: "plan" }, after: { ...ncr, status: "open", plan: null, rejects: [], updatedAt: NOW } })
 }
 
 // ---------------------------------------------------------------- addenda
@@ -760,6 +766,7 @@ const projPath = `projects/${P}`
   add("certificate prepare: unauthenticated", null, "create", cp, "DENY", { after: cert(U.cost) })
   const sub = (by: string, self: boolean, prep = U.cost): D => ({ ...cert(prep), status: "sub", appr: by, apprName: "n", apprOn: TODAY, selfApp: self, updatedAt: NOW })
   add("certificate internal approval: PM (not the preparer)", U.pmm, "update", cp, "ALLOW", { before: cert(U.cost), after: sub(U.pmm, false) })
+  add("certificate internal approval with the expected due date (IPC-06)", U.pmm, "update", cp, "ALLOW", { before: cert(U.cost), after: { ...sub(U.pmm, false), expDue: TODAY } })
   add("certificate internal approval: owner (not the preparer)", U.owner, "update", cp, "ALLOW", { before: cert(U.cost), after: sub(U.owner, false) })
   add("certificate internal approval: QS (no ipcOk)", U.cost, "update", cp, "DENY", { before: cert(U.pmm), after: sub(U.cost, false, U.pmm) })
   add("certificate SELF-approval, no company setting", U.pmm, "update", cp, "DENY", { before: cert(U.pmm), after: sub(U.pmm, true, U.pmm) })

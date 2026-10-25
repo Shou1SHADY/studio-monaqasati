@@ -41,6 +41,7 @@ import { displayDocNumber } from "@/lib/sales-numbering"
 import { CheckLine, FormHint } from "./ContractBits"
 import { clientTypeKey } from "./AcceptHandoverWizard"
 import { PmHoldLog, useHoldReason } from "./PmHoldControl"
+import { ConsultantRepDialog } from "./ConsultantRepDialog"
 
 export interface PmFileProject {
   name?: string | null
@@ -49,6 +50,8 @@ export interface PmFileProject {
   clientType?: string | null
   location?: string | null
   consultant?: string | null
+  /** PRJ-01: his representative — the portal link goes to this mobile. */
+  consultantRep?: { name?: string | null; phone?: string | null; email?: string | null } | null
   projectManagerId?: string | null
   projectManagerName?: string | null
   budget?: number | null
@@ -69,6 +72,7 @@ export interface PmFileProject {
     holdNote?: string | null
     holdByName?: string | null
     holdLog?: HoldEntry[] | null
+    portal?: { sentOn?: string | null } | null
   } | null
 }
 
@@ -96,7 +100,7 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
   const holdReason = useHoldReason()
   const [editing, setEditing] = useState(false)
   const [location, setLocation] = useState("")
-  const [consultant, setConsultant] = useState("")
+  const [editingRep, setEditingRep] = useState(false)
   const [busy, setBusy] = useState(false)
   const pm = project.pm ?? {}
   // The terms IN FORCE (original + signed addenda) — addenda are read by money or approve only.
@@ -115,7 +119,8 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
     if (!firestore) return
     setBusy(true)
     try {
-      await updatePmInfo(firestore, access.ctx, projectId, { location, consultant })
+      // The consultant and his representative are saved by their own dialog (the server revokes a stale portal link).
+      await updatePmInfo(firestore, access.ctx, projectId, { location, consultant: project.consultant ?? "" })
       toast({ title: t("info.saved") })
       setEditing(false)
     } catch (err) {
@@ -137,7 +142,6 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
             variant="outline"
             onClick={() => {
               setLocation(project.location ?? "")
-              setConsultant(project.consultant ?? "")
               setEditing(true)
             }}
           >
@@ -158,7 +162,38 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
       />
       <KeyValueRow label={t("info.types")} value={[clientTypeText(project.clientType), pm.kind ? tShared(`pm_kind_${pm.kind}` as "pm_kind_bld") : null].filter(Boolean).join(" · ") || "—"} />
       <KeyValueRow label={t("info.location")} value={project.location || "—"} />
-      <KeyValueRow label={t("info.consultant")} value={project.consultant || "—"} />
+      <KeyValueRow
+        label={t("info.consultant")}
+        value={
+          <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+            <span dir="auto">{project.consultant || "—"}</span>
+            {canEdit && (
+              <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={() => setEditingRep(true)}>
+                {t("info.rep_edit")}
+              </Button>
+            )}
+          </span>
+        }
+      />
+      {project.consultant && (
+        <KeyValueRow
+          label={t("info.rep")}
+          value={
+            project.consultantRep?.name || project.consultantRep?.phone || project.consultantRep?.email ? (
+              <span className="block text-end">
+                <span dir="auto">{project.consultantRep?.name || "—"}</span>
+                {(project.consultantRep?.phone || project.consultantRep?.email) && (
+                  <span className="block text-xs text-muted-foreground" dir="ltr">
+                    {[project.consultantRep?.phone, project.consultantRep?.email].filter(Boolean).join(" · ")}
+                  </span>
+                )}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">{t("info.rep_none")}</span>
+            )
+          }
+        />
+      )}
       <KeyValueRow label={t("info.manager")} value={project.projectManagerName || "—"} />
       {onHold && (pm.holdWhy || pm.holdK || pm.holdSince) && (
         <KeyValueRow
@@ -210,10 +245,6 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
                 <Label htmlFor="pi-loc">{t("info.location")}</Label>
                 <Input id="pi-loc" value={location} onChange={(e) => setLocation(e.target.value)} disabled={busy} dir="auto" />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="pi-cons">{t("info.consultant")}</Label>
-                <Input id="pi-cons" value={consultant} onChange={(e) => setConsultant(e.target.value)} placeholder={t("info.consultant_ph")} disabled={busy} dir="auto" />
-              </div>
             </div>
             <Callout tone="info" title={t("info.not_here_title")}>
               {t("info.not_here")}
@@ -230,6 +261,7 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConsultantRepDialog open={editingRep} onOpenChange={setEditingRep} projectId={projectId} project={project} linkSent={Boolean(pm.portal?.sentOn)} />
     </Panel>
   )
 }

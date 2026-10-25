@@ -6,6 +6,7 @@
 // Pure: no I/O.
 
 import type { PmAttachment } from "./attachments"
+import type { PortalRejection } from "./consultant-portal"
 
 /** `projects/{id}/pmNcrs/{NN}`, numbered by the project's `pm.ncrCount`. */
 export const PM_NCRS = "pmNcrs"
@@ -36,7 +37,9 @@ export interface PmNcr {
   files?: PmAttachment[]
   plan?: { on: string; by: string; byName?: string | null; text: string; cost?: number | null; files?: PmAttachment[] } | null
   /** `on` = the consultant's acceptance day; `cost` = the actual rework cost. */
-  accepted?: { on: string; by: string; byName?: string | null; cost?: number | null; recordedOn?: string | null; files?: PmAttachment[] } | null
+  accepted?: { on: string; by: string; byName?: string | null; cost?: number | null; recordedOn?: string | null; files?: PmAttachment[]; viaPortal?: boolean } | null
+  /** Corrective plans the consultant rejected (by the portal or from his letter), each with his reason (NCR-02). */
+  rejects?: PortalRejection[]
 }
 
 export const ncrNo = (seq: number) => String(seq).padStart(2, "0")

@@ -5,12 +5,14 @@ import { mintToken, tokenFormat } from "./token"
 export const LINK_TOKEN_INDEX = "linkTokens"
 export const MAX_TOKENS_PER_LINK = 25
 
-export type LinkKind = "rfq" | "offer" | "po"
+export type LinkKind = "rfq" | "offer" | "po" | "pm"
 
 export const LINK_COLLECTIONS: Record<LinkKind, string> = {
   rfq: "rfqShareLinks",
   offer: "guestOfferLinks",
   po: "orderLinks",
+  /** The PM consultant portal (one link per project, src/lib/pm/portal-links.ts). */
+  pm: "pmPortalLinks",
 }
 
 export const hashToken = (token: string): string => createHash("sha256").update(token).digest("hex")

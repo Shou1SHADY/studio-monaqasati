@@ -8,6 +8,7 @@
 // confirmation. Pure: no I/O.
 
 import type { PmAttachment } from "./attachments"
+import type { PortalRejection } from "./consultant-portal"
 
 /** `projects/{id}/pmPunch/{NN}`, numbered by the project's `pm.punchCount`. */
 export const PM_PUNCH = "pmPunch"
@@ -42,7 +43,9 @@ export interface PunchItem {
   files?: PmAttachment[]
   fix?: { on: string; by: string; byName?: string | null; note?: string | null; files?: PmAttachment[] } | null
   /** Who confirmed the closure — always the party that raised it (PN-02, 1.1); `by` is who recorded it. */
-  conf?: { on: string; by: string; byName?: string | null; party: PunchSource; partyText?: string | null; files?: PmAttachment[] } | null
+  conf?: { on: string; by: string; byName?: string | null; party: PunchSource; partyText?: string | null; files?: PmAttachment[]; viaPortal?: boolean } | null
+  /** Fixes the consultant refused (by the portal or from his letter), each with his reason (PN-04). */
+  rejects?: PortalRejection[]
 }
 
 export const punchNo = (seq: number) => String(seq).padStart(2, "0")

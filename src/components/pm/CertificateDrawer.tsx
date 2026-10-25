@@ -28,6 +28,7 @@ import { approveCertificate, PmCertificateError, withdrawCertificate, type Certi
 import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
 import { PM_SETTINGS, type PmOrgSettings } from "@/lib/pm/info-writes"
 import { cn } from "@/lib/utils"
+import { ReplySource } from "./ConsultantReply"
 
 export const CERT_TONE: Record<CertificateStatus, PillTone> = { int: "warn", sub: "info", appr: "module", part: "warn", paid: "ok", void: "mute" }
 
@@ -227,6 +228,7 @@ export function CertificateDrawer({
               {c.status === "sub" && (
                 <DrawerSection title={<span className="flex items-center gap-1.5"><ShieldCheck size={14} aria-hidden="true" />{t("money.dr.consultant")}</span>}>
                   <p className="text-sm">{t("money.dr.submitted_since", { date: pmDate(c.apprOn, locale), days: c.apprOn ? Math.max(0, daysBetween(c.apprOn, today)) : 0 })}</p>
+                  {c.expDue && <KeyValueRow label={t("money.dr.exp_due")} value={<span title={t("money.dr.exp_due_note")}>{pmDate(c.expDue, locale)}</span>} />}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     {canCertify ? (
                       <Button size="sm" onClick={() => onCertify(c)}>
@@ -248,6 +250,11 @@ export function CertificateDrawer({
                 <DrawerSection title={<span className="flex items-center gap-1.5"><ShieldCheck size={14} aria-hidden="true" />{t("money.dr.consultant")}</span>}>
                   <KeyValueRow label={t("money.dr.submitted")} value={pmMoney(c.submitted?.gross ?? c.gross)} ltr />
                   <KeyValueRow label={`${t("money.dr.certified")}${c.consultantRef ? ` · ${c.consultantRef}` : ""}`} value={pmMoney(c.certified ?? c.gross)} ltr strong />
+                  {c.viaPortal && (
+                    <div className="flex justify-end py-1">
+                      <ReplySource viaPortal on={c.certOn} />
+                    </div>
+                  )}
                   {(c.cut ?? 0) > 0 && (
                     <>
                       <KeyValueRow

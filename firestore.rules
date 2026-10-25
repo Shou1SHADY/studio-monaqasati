@@ -45,6 +45,8 @@ service cloud.firestore {
     function keepsOrg() { return inOrg() && request.resource.data.organizationId == resource.data.organizationId; }
     function pmOnly(keys) { return changedKeys().hasOnly(['pm', 'updatedAt']) && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(keys); }
     function bySeq() { return request.resource.data.by == request.auth.uid && request.resource.data.seq is int; }
+    // One PM step: status a → b, touching only these keys.
+    function pmStep(a, b, keys) { return resource.data.status == a && request.resource.data.status == b && changedKeys().hasOnly(keys); }
     // The incoming document — folded so a rules block reads shorter (the ruleset sits at Google's size ceiling).
     function rd() { return request.resource.data; }
     function warehouseOrg(warehouseId) { return get(/databases/$(database)/documents/warehouses/$(warehouseId)).data.organizationId; }
@@ -1359,7 +1361,7 @@ service cloud.firestore {
           && ((projectOpen(projectId) && ((resource.data.status == 'int' && request.resource.data.status == 'sub'
                 && request.resource.data.appr == request.auth.uid
                 && changedKeys()
-                     .hasOnly(['status', 'appr', 'apprName', 'apprOn', 'selfApp', 'updatedAt'])
+                     .hasOnly(['status', 'appr', 'apprName', 'apprOn', 'selfApp', 'expDue', 'updatedAt'])
                 && pmDuty(projectId, 'ipcOk')
                 // Two people (IPC-02). A small firm's recorded self-approval needs a company
                 // setting that does not exist yet — until it does, never the preparer.
@@ -1926,11 +1928,11 @@ service cloud.firestore {
           && request.resource.data.root is string && request.resource.data.root.size() > 0
           && request.resource.data.seq is int;
 
+        // NCR-02: the consultant's rejected plan (from his letter) reopens it, kept in `rejects`.
         allow update: if pmOpen(projectId, 'qa')
-          && ((resource.data.status == 'open' && request.resource.data.status == 'plan'
-                && changedKeys().hasOnly(['status', 'plan', 'updatedAt']))
-              || (resource.data.status == 'plan' && request.resource.data.status == 'done'
-                && changedKeys().hasOnly(['status', 'accepted', 'updatedAt'])));
+          && (pmStep('open', 'plan', ['status', 'plan', 'updatedAt'])
+              || pmStep('plan', 'done', ['status', 'accepted', 'updatedAt'])
+              || pmStep('plan', 'open', ['status', 'plan', 'rejects', 'updatedAt']));
 
         allow delete: if isAdmin();
       }
@@ -1944,11 +1946,11 @@ service cloud.firestore {
           && request.resource.data.location is string && request.resource.data.location.size() > 0
           && request.resource.data.seq is int;
 
+        // PN-04: the consultant's refused fix (from his letter) reopens it, kept in `rejects`.
         allow update: if pmOpen(projectId, 'qa')
-          && ((resource.data.status == 'open' && request.resource.data.status == 'fix'
-                && changedKeys().hasOnly(['status', 'fix', 'updatedAt']))
-              || (resource.data.status == 'fix' && request.resource.data.status == 'done'
-                && changedKeys().hasOnly(['status', 'conf', 'updatedAt'])));
+          && (pmStep('open', 'fix', ['status', 'fix', 'updatedAt'])
+              || pmStep('fix', 'done', ['status', 'conf', 'updatedAt'])
+              || pmStep('fix', 'open', ['status', 'fix', 'rejects', 'updatedAt']));
 
         allow delete: if isAdmin();
       }

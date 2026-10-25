@@ -34,7 +34,7 @@ export interface PmSubmittal {
   /** The catalogue and certificates (optional). */
   files?: PmAttachment[]
   /** `on` = the reply's day as given; `files` = the signed reply. */
-  reply?: { on: string; by: string; byName?: string | null; note?: string | null; files?: PmAttachment[]; recordedOn?: string | null } | null
+  reply?: { on: string; by: string; byName?: string | null; note?: string | null; files?: PmAttachment[]; recordedOn?: string | null; viaPortal?: boolean } | null
 }
 
 export const sampleNo = (seq: number) => String(seq).padStart(2, "0")

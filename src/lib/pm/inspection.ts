@@ -38,6 +38,8 @@ export interface WirAttempt {
   files?: PmAttachment[]
   /** The signed inspection form — attached with the result (optional). */
   rFiles?: PmAttachment[]
+  /** The result came through the consultant portal, in his name (CP-10). */
+  viaPortal?: boolean
 }
 
 export interface PmInspection {

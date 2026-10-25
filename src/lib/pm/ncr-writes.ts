@@ -5,6 +5,7 @@ import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction 
 import { assertPm, type PmContext } from "./access"
 import { cleanAttachments, type PmAttachment } from "./attachments"
 import { todayDay } from "./format"
+import { planRejectPlan } from "./consultant-answers"
 import { ncrBlocks, ncrNo, ncrStepBlocks, PM_NCRS, type NcrSeverity, type PmNcr } from "./ncr"
 import { withFreshState } from "./project-writes"
 
@@ -109,4 +110,29 @@ export const acceptNcr = (firestore: Firestore, ctx: PmContext, projectId: strin
     status: "done",
     accepted: { on: opts.on || today, by: actor.uid, byName: actor.name, cost: opts.cost ?? null, recordedOn: today, files: cleanAttachments(opts.files) },
   }))
+}
+
+/** NCR-02 — the consultant rejected the corrective plan, recorded from his
+ * letter by quality: the NCR is open again for a new plan, the rejected plan
+ * kept with his reason (`rejects[]`). The portal runs the same planner. */
+export async function rejectNcrPlan(
+  firestore: Firestore,
+  ctx: PmContext,
+  projectId: string,
+  actor: NcrActor,
+  seq: number,
+  note: string,
+  opts: { on?: string; files?: PmAttachment[] | null } = {}
+): Promise<void> {
+  await runTransaction(firestore, async (tx) => {
+    const { project } = await readProject(tx, firestore, projectId)
+    const fresh = withFreshState(ctx, project)
+    assertPm(fresh, "qa.record")
+    const ref = doc(firestore, "projects", projectId, PM_NCRS, ncrNo(seq))
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new PmNcrError("missing")
+    const planned = planRejectPlan(snap.data() as PmNcr, note, { today: todayDay(), on: opts.on, files: opts.files, actor: { by: actor.uid, byName: actor.name }, viaPortal: false, archived: fresh.archived })
+    if (!planned.ok) throw new PmNcrError("blocked", planned.code === "NOT_WAITING" ? ["wrong_state"] : (planned.blocks ?? []))
+    tx.update(ref, { ...planned.patch, updatedAt: serverTimestamp() })
+  })
 }

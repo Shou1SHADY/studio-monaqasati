@@ -41,6 +41,7 @@ import {
   Wallet,
   type LucideIcon,
   Boxes,
+  Link2,
 } from "lucide-react"
 import { ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -105,6 +106,7 @@ export const DECISION_ICON: Record<DecisionKind, LucideIcon> = {
   po_budget: Scale,
   zone: Boxes,
   ztight: Clock,
+  portal_unopened: Link2,
 }
 
 /** One decision row: the kind's own action, filled when it is red (the prototype's rule). */
