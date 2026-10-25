@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { DecisionRow } from "@/components/module-ui/DecisionRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
@@ -63,31 +64,33 @@ export function PmBudgetDecisions({ projectId, orgId, access, actor }: { project
 
   return (
     <>
-      <Panel title={t("budget.title")} icon={Scale} count={rows.length} bodyClassName="p-0">
-        <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("budget.sub")}</p>
+      <Panel title={t("budget.title")} icon={Scale} count={rows.length} description={t("budget.sub")} bodyClassName="p-0">
         <ul className="divide-y">
           {rows.map((po) => (
-            <li key={po.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-foreground">
+            <DecisionRow
+              key={po.id}
+              dense
+              severity="amber"
+              icon={Scale}
+              title={
+                <>
                   <span dir="ltr">{displayPoNumber(po.docNumber, locale)}</span>
                   {po.supplierName ? <span className="font-normal text-muted-foreground" dir="auto"> — {po.supplierName}</span> : null}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {[money && po.pmBudget?.over ? t("budget.over", { amount: pmMoney(po.pmBudget.over) }) : null, po.pmBudget?.askedByName ? t("budget.asked", { name: po.pmBudget.askedByName, date: po.pmBudget.askedAt ? pmDate(po.pmBudget.askedAt, locale) : "—" }) : null]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => setOpen({ po, decision: "renegotiate" })}>
-                  {t("budget.renegotiate")}
-                </Button>
-                <Button size="sm" className="bg-module text-module-foreground hover:bg-module/90" onClick={() => setOpen({ po, decision: "accepted" })}>
-                  {t("budget.accept")}
-                </Button>
-              </div>
-            </li>
+                </>
+              }
+              detail={po.pmBudget?.askedByName ? t("budget.asked", { name: po.pmBudget.askedByName, date: po.pmBudget.askedAt ? pmDate(po.pmBudget.askedAt, locale) : "—" }) : undefined}
+              amount={money && po.pmBudget?.over ? t("budget.over", { amount: pmMoney(po.pmBudget.over) }) : undefined}
+              action={
+                <div className="flex flex-wrap gap-1.5">
+                  <Button size="sm" variant="ghost" className="max-sm:min-h-11" onClick={() => setOpen({ po, decision: "renegotiate" })}>
+                    {t("budget.renegotiate")}
+                  </Button>
+                  <Button size="sm" variant="module" className="max-sm:min-h-11" onClick={() => setOpen({ po, decision: "accepted" })}>
+                    {t("budget.accept")}
+                  </Button>
+                </div>
+              }
+            />
           ))}
         </ul>
       </Panel>
