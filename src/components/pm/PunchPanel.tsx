@@ -141,37 +141,40 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
   return (
     <div className="space-y-4">
       {!bare && (
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border bg-card p-3">
-            <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-              <AlertTriangle size={12} aria-hidden="true" />
-              {t("punch.k_open")}
+        <ul className="grid grid-cols-3 gap-2 sm:gap-3" aria-label={t("punch.title")}>
+          <li className="min-w-0 rounded-xl border bg-card p-3">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground sm:text-xs">
+              <AlertTriangle size={12} className="hidden shrink-0 sm:block" aria-hidden="true" />
+              <span className="line-clamp-2">{t("punch.k_open")}</span>
             </p>
-            <p className={cn("mt-1 text-2xl font-bold tabular-nums", open.length ? "text-destructive" : "text-success")}>{open.length}</p>
-            <p className="text-xs text-muted-foreground">{t("punch.k_open_sub", { count: critical })}</p>
-          </div>
-          <div className="rounded-xl border bg-card p-3">
-            <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-              <Check size={12} aria-hidden="true" />
-              {t("punch.k_closed")}
+            <p className={cn("mt-1 text-lg font-bold tabular-nums sm:text-2xl", open.length ? "text-destructive" : "text-success")}>{open.length}</p>
+            <p className="line-clamp-2 text-[11px] text-muted-foreground sm:text-xs">{t("punch.k_open_sub", { count: critical })}</p>
+          </li>
+          <li className="min-w-0 rounded-xl border bg-card p-3">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground sm:text-xs">
+              <Check size={12} className="hidden shrink-0 sm:block" aria-hidden="true" />
+              <span className="line-clamp-2">{t("punch.k_closed")}</span>
             </p>
-            <p className="mt-1 text-2xl font-bold tabular-nums">{items.length - open.length}</p>
-            <p className="text-xs text-muted-foreground">{t("punch.k_closed_sub", { count: items.length })}</p>
-          </div>
-          <div className="rounded-xl border bg-card p-3">
-            <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-              <Lock size={12} aria-hidden="true" />
-              {t("punch.k_effect")}
+            <p className="mt-1 text-lg font-bold tabular-nums sm:text-2xl">{items.length - open.length}</p>
+            <p className="line-clamp-2 text-[11px] text-muted-foreground sm:text-xs">{t("punch.k_closed_sub", { count: items.length })}</p>
+          </li>
+          <li className="min-w-0 rounded-xl border bg-card p-3">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground sm:text-xs">
+              <Lock size={12} className="hidden shrink-0 sm:block" aria-hidden="true" />
+              <span className="line-clamp-2">{t("punch.k_effect")}</span>
             </p>
-            <p className="mt-1 text-sm font-bold">{open.length ? t("punch.k_blocks") : t("punch.k_clear")}</p>
-            <p className="text-xs text-muted-foreground">{t("punch.k_effect_sub")}</p>
-          </div>
-        </div>
+            <p className={cn("mt-1 text-sm font-bold leading-snug", open.length ? "text-destructive" : "text-success")}>{open.length ? t("punch.k_blocks") : t("punch.k_clear")}</p>
+            <p className="line-clamp-2 text-[11px] text-muted-foreground sm:text-xs" title={t("punch.k_effect_sub")}>
+              {t("punch.k_effect_sub")}
+            </p>
+          </li>
+        </ul>
       )}
       <Panel
         title={t("punch.title")}
         icon={ListTodo}
         count={open.length || undefined}
+        bodyClassName="p-0"
         actions={
           canQa ? (
             <Button size="sm" onClick={() => setRaising(true)}>
@@ -182,18 +185,18 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
         }
       >
         {bare && open.length > 0 && (
-          <Callout tone="warn" className="mb-4">
+          <Callout tone="warn" className="m-4">
             {t("punch.blocks_final", { count: open.length })}
           </Callout>
         )}
         {items.length === 0 ? (
-          <EmptyState icon={ListTodo} title={t("punch.empty")} description={t("punch.empty_desc")} />
+          <EmptyState bare icon={ListTodo} title={t("punch.empty")} description={t("punch.empty_desc")} />
         ) : (
-          <ul className="space-y-2">
+          <ul className="divide-y">
             {items.map((p) => {
               const known = (PUNCH_STATUSES as readonly string[]).includes(p.status)
               return (
-                <li key={p.id} className="rounded-xl border p-3">
+                <li key={p.id} className="px-4 py-3">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0 flex-1 basis-56">
                       <p className="text-sm font-bold" dir="auto">
@@ -224,7 +227,6 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
                       {canQa && p.status === "open" && (
                         <Button
                           size="sm"
-                          variant="outline"
                           onClick={() => {
                             setFixNote("")
                             setFixOn(todayDay())
@@ -250,7 +252,7 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
                         </Button>
                       )}
                       {canQa && p.status === "fix" && p.source === "cons" && (
-                        <Button size="sm" variant="outline" onClick={() => setRefusing(p)}>
+                        <Button size="sm" variant="ghost" onClick={() => setRefusing(p)}>
                           {t("reply.refuse_fix")}
                         </Button>
                       )}
@@ -274,7 +276,7 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
               <Label htmlFor="pn-what">{t("punch.what")}</Label>
               <Input id="pn-what" value={what} placeholder={t("punch.what_ph")} onChange={(e) => setWhat(e.target.value)} disabled={busy !== null} dir="auto" />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="pn-loc">{t("punch.location")}</Label>
                 <Input id="pn-loc" value={location} placeholder={t("punch.location_ph")} onChange={(e) => setLocation(e.target.value)} disabled={busy !== null} dir="auto" />
@@ -286,7 +288,7 @@ export function PunchPanel({ projectId, orgId, access, actor, bare, unitsOn }: {
                 <Input id="pn-day" type="date" dir="ltr" max={today} value={day} onChange={(e) => setDay(e.target.value)} disabled={busy !== null} />
               </div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="pn-src">{t("punch.raised_by")}</Label>
                 <Select value={source} onValueChange={(v) => setSource(v as PunchSource)} disabled={busy !== null}>
