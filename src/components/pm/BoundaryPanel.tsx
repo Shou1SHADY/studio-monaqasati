@@ -10,11 +10,13 @@ import { useMemo } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
 import { AlertTriangle, Ban, Check, Clock, Eye, Landmark, Link2, ShieldCheck } from "lucide-react"
+import { DataTable } from "@/components/module-ui/DataTable"
 import { Panel } from "@/components/module-ui/Panel"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { JOURNAL_ENTRIES } from "@/lib/accounting/journal"
 import { BOUNDARY_CONFLICTS, boundaryRows, eventStats, incomingEntries } from "@/lib/pm/boundary"
 import { PM_CERTIFICATES } from "@/lib/pm/certificate"
@@ -27,16 +29,17 @@ import { pmDate, pmMoney } from "@/lib/pm/format"
 import { cn } from "@/lib/utils"
 
 const BLOCKS = [
-  { key: "own", icon: Check, tone: "border-success/25 bg-success/5", iconTone: "text-success" },
-  { key: "read", icon: Eye, tone: "border-cta/20 bg-cta/5", iconTone: "text-cta" },
-  { key: "send", icon: Link2, tone: "border-warning/25 bg-warning/5", iconTone: "text-warning" },
-  { key: "never", icon: Ban, tone: "border-destructive/25 bg-destructive/5", iconTone: "text-destructive" },
+  { key: "own", icon: Check, iconTone: "text-success" },
+  { key: "read", icon: Eye, iconTone: "text-cta" },
+  { key: "send", icon: Link2, iconTone: "text-warning" },
+  { key: "never", icon: Ban, iconTone: "text-destructive" },
 ] as const
 
 export function BoundaryPanel({ projectId, orgId, access }: { projectId: string; orgId: string; access: PmAccess }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const firestore = useFirestore()
+  const labels = useTableLabels()
   const money = access.has("money")
 
   const q = useMemoFirebase(
@@ -79,52 +82,45 @@ export function BoundaryPanel({ projectId, orgId, access }: { projectId: string;
 
   return (
     <div className="space-y-4">
-      <Panel title={t("bound.title")} icon={ShieldCheck}>
-        <p className="mb-3 text-xs text-muted-foreground">{t("bound.sub")}</p>
-        <div className="grid gap-2.5 md:grid-cols-2">
-          {BLOCKS.map(({ key, icon: Icon, tone, iconTone }) => (
-            <div key={key} className={cn("flex gap-2.5 rounded-xl border px-3.5 py-3 text-sm leading-relaxed", tone)}>
+      <Panel title={t("bound.title")} icon={ShieldCheck} description={t("bound.sub")} bodyClassName="p-0">
+        {/* UX-15: four statements as flat rows with a toned icon — not four tinted boxes. */}
+        <ul className="grid grid-cols-1 divide-y md:grid-cols-2 md:divide-y-0 md:[&>li:nth-child(n+3)]:border-t">
+          {BLOCKS.map(({ key, icon: Icon, iconTone }) => (
+            <li key={key} className="flex gap-2.5 px-4 py-3 text-sm leading-relaxed">
               <Icon size={16} className={cn("mt-1 shrink-0", iconTone)} aria-hidden="true" />
               <p>
                 <b>{t(`bound.${key}_title`)}:</b> {t(`bound.${key}`)}
               </p>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       </Panel>
 
-      <Panel title={t("bound.fin_title")} icon={Landmark} bodyClassName="p-0">
-        <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("bound.fin_sub")}</p>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead className="bg-muted/40 text-xs text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 text-start font-semibold">{t("bound.col_event")}</th>
-                <th className="px-4 py-2 text-start font-semibold">{t("bound.col_when")}</th>
-                <th className="px-4 py-2 text-start font-semibold">{t("bound.col_key")}</th>
-                <th className="px-4 py-2 text-end font-semibold">{t("bound.col_sent")}</th>
-                <th className="px-4 py-2 text-start font-semibold">{t("bound.col_last")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {stats.map((s) => (
-                <tr key={s.kind}>
-                  <td className="px-4 py-2.5 font-semibold">{t(`bound.ev.${s.kind}`)}</td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground">{t(`bound.ev_when.${s.kind}`)}</td>
-                  <td className="px-4 py-2.5">
-                    <span dir="ltr" className="font-mono text-xs text-muted-foreground [unicode-bidi:isolate]">
-                      {s.key}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-end font-bold tabular-nums" dir="ltr">
-                    {s.sent}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs">{s.last ? pmDate(s.last.slice(0, 10), locale) : <StatusPill tone="bad">{t("bound.none_sent")}</StatusPill>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <Panel title={t("bound.fin_title")} icon={Landmark} description={t("bound.fin_sub")} bodyClassName="p-0">
+        <DataTable
+          columns={[
+            { key: "event", header: t("bound.col_event"), cell: (s) => <span className="font-semibold">{t(`bound.ev.${s.kind}`)}</span> },
+            { key: "when", header: t("bound.col_when"), hideBelow: "lg", cell: (s) => <span className="text-xs text-muted-foreground">{t(`bound.ev_when.${s.kind}`)}</span> },
+            {
+              key: "key",
+              header: t("bound.col_key"),
+              cell: (s) => (
+                <span dir="ltr" className="font-mono text-xs text-muted-foreground [unicode-bidi:isolate]">
+                  {s.key}
+                </span>
+              ),
+            },
+            { key: "sent", header: t("bound.col_sent"), numeric: true, cell: (s) => <b>{s.sent}</b> },
+            { key: "last", header: t("bound.col_last"), cell: (s) => (s.last ? <span className="text-xs">{pmDate(s.last.slice(0, 10), locale)}</span> : <StatusPill tone="bad">{t("bound.none_sent")}</StatusPill>) },
+          ]}
+          rows={stats}
+          rowKey={(s) => s.kind}
+          caption={t("bound.fin_title")}
+          labels={labels}
+          bordered={false}
+          dense
+          empty={null}
+        />
       </Panel>
 
       <details className="overflow-hidden rounded-xl border bg-card">
