@@ -8,10 +8,10 @@
 // paying a subcontractor) wait for Finance and carry no button here (WAIT-01).
 // Below, what the project taught — numbers, not opinions.
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ElementType } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc } from "firebase/firestore"
-import { Archive, BookOpen, CheckCircle2, Clock, Coins, Loader2, Lock } from "lucide-react"
+import { AlertTriangle, Archive, BookOpen, CheckCircle2, Clock, Coins, Loader2, Lock, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Callout } from "@/components/module-ui/Callout"
@@ -212,11 +212,8 @@ export function CloseoutPanel({
     const f = pm.fin
     return (
       <div className="space-y-4">
-        <Panel title={t("close.archived_title")} icon={Lock}>
-          <Callout tone="info" className="mb-4">
-            {t("close.archived_note", { date: pmDate(pm.closedOn, locale), who: pm.closedByName || "—" })}
-          </Callout>
-          <div className="grid gap-x-6 sm:grid-cols-2">
+        <Panel title={t("close.archived_title")} icon={Lock} description={t("close.archived_note", { date: pmDate(pm.closedOn, locale), who: pm.closedByName || "—" })}>
+          <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
             {money && <KeyValueRow label={t("close.snap.contract")} value={pmMoney(f.contractValue)} ltr />}
             {money && <KeyValueRow label={t("close.snap.earned")} value={pmMoney(f.earned)} ltr />}
             {money && <KeyValueRow label={t("close.snap.certified")} value={pmMoney(f.certified)} ltr />}
@@ -278,20 +275,20 @@ export function CloseoutPanel({
   return (
     <div className="space-y-4">
       <Panel
-        title={
-          <span className="inline-flex items-center gap-2">
-            {t("close.title_full")}
-            <StatusPill tone={left.length ? "warn" : "ok"}>
-              <span dir="ltr">
-                {shown.length - left.length}/{shown.length}
-              </span>
-            </StatusPill>
-          </span>
-        }
+        title={t("close.title_full")}
         icon={Archive}
+        description={t("close.sub")}
+        actions={
+          <StatusPill tone={left.length ? "warn" : "ok"}>
+            <span dir="ltr">
+              {shown.length - left.length}/{shown.length}
+            </span>
+          </StatusPill>
+        }
+        bodyClassName="p-0"
       >
-        <p className="mb-3 text-xs text-muted-foreground">{t("close.sub")}</p>
-        <ul className="space-y-1.5">
+        {/* UX-15: flat rows divided by a line — the state is the icon and the pill, not a tinted box per row. */}
+        <ul className="divide-y" data-close-rows="">
           {shown.map((r) => {
             const tab = CLOSE_ROW_TAB[r.key]
             const body = (
@@ -307,15 +304,11 @@ export function CloseoutPanel({
                 {!r.ok && <StatusPill tone={r.warn ? "mute" : "warn"}>{t(r.warn ? "close.warn_only" : "close.pending")}</StatusPill>}
               </>
             )
-            const cls = cn("flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-start text-sm", r.ok ? "border-success/20" : "border-warning/30 bg-warning/5")
+            const cls = "flex w-full items-start gap-2.5 px-4 py-2.5 text-start text-sm"
             return (
               <li key={r.key}>
                 {onOpen ? (
-                  <button
-                    type="button"
-                    onClick={() => onOpen(tab)}
-                    className={cn(cls, "transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2")}
-                  >
+                  <button type="button" onClick={() => onOpen(tab)} className={cn(cls, "min-h-11 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring")}>
                     {body}
                   </button>
                 ) : (
@@ -325,33 +318,33 @@ export function CloseoutPanel({
             )
           })}
         </ul>
-        {!clientMoney && hasClient && <p className="mt-2 text-xs text-muted-foreground">{t("close.money_hidden")}</p>}
-        <div className="mt-3 space-y-2">
+        <div className="space-y-2 border-t px-4 py-3">
+          {!clientMoney && hasClient && <p className="text-xs text-muted-foreground">{t("close.money_hidden")}</p>}
           {left.length > 0 && <Callout tone="warn">{t("close.left_note", { count: left.length })}</Callout>}
           {openMoney.length > 0 && (
-            <div role="note" className="flex gap-2.5 rounded-xl border border-destructive/25 bg-destructive/5 px-3.5 py-3 text-sm leading-relaxed">
-              <Coins size={17} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
+            <p role="note" className="flex gap-2 text-sm leading-relaxed">
+              <Coins size={16} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />
               <span>
-                {t("close.money_title")}: {openMoney.map((r) => sentence(r)).join(" · ")}
+                <b className="text-destructive">{t("close.money_title")}:</b> {openMoney.map((r) => sentence(r)).join(" · ")}
               </span>
-            </div>
+            </p>
           )}
           {blocked.length === 0 && (
-            <div role="note" className="flex gap-2.5 rounded-xl border border-success/25 bg-success/5 px-3.5 py-3 text-sm leading-relaxed">
-              <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
+            <p role="note" className="flex gap-2 text-sm font-semibold leading-relaxed text-success">
+              <CheckCircle2 size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
               <span>{t("close.all_clear")}</span>
+            </p>
+          )}
+          {access.allowed("project.close") && (
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <Button size="sm" className="max-sm:min-h-11" onClick={() => setConfirming(true)} disabled={!canClose || blocked.length > 0}>
+                <Archive size={16} className="me-1.5" aria-hidden="true" />
+                {t("close.button")}
+              </Button>
+              <span className="text-xs text-muted-foreground">{lifecycle !== "done" ? t("close.not_done") : t("close.archive_hint")}</span>
             </div>
           )}
         </div>
-        {access.allowed("project.close") && (
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <Button variant={blocked.length ? "outline" : "default"} onClick={() => setConfirming(true)} disabled={!canClose || blocked.length > 0}>
-              <Archive size={16} className="me-1.5" aria-hidden="true" />
-              {t("close.button")}
-            </Button>
-            <span className="text-xs text-muted-foreground">{lifecycle !== "done" ? t("close.not_done") : t("close.archive_hint")}</span>
-          </div>
-        )}
 
         <Dialog open={confirming} onOpenChange={setConfirming}>
           <DialogContent className="max-w-lg">
@@ -378,30 +371,24 @@ export function CloseoutPanel({
 
 function LessonsPanel({ lessons, money, lost }: { lessons: ReturnType<typeof projectLessons>; money: boolean; lost: number | null }) {
   const t = useTranslations("Portal.PM")
-  const card = (tone: string, title: string, body: string) => (
-    <div className={cn("rounded-xl border px-3.5 py-3 text-sm leading-relaxed", tone)}>
-      <p className="font-bold">{title}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">{body}</p>
-    </div>
+  // UX-15: four lessons as flat rows with a toned icon — not four tinted boxes.
+  const row = (Icon: ElementType, tone: string, title: string, body: string) => (
+    <li className="flex items-start gap-2.5 px-4 py-3 text-sm leading-relaxed">
+      <Icon size={16} className={cn("mt-0.5 shrink-0", tone)} aria-hidden="true" />
+      <span className="min-w-0">
+        <span className="block font-bold">{title}</span>
+        <span className="block text-xs text-muted-foreground">{body}</span>
+      </span>
+    </li>
   )
   return (
-    <Panel title={t("close.lessons.title")} icon={BookOpen}>
-      <p className="mb-3 text-xs text-muted-foreground">{t("close.lessons.sub")}</p>
-      <div className="grid gap-2.5 sm:grid-cols-2">
-        {money &&
-          card(
-            "border-destructive/25 bg-destructive/5",
-            t("close.lessons.rework", { amount: pmMoney(lessons.rework) }),
-            t("close.lessons.rework_note", { count: lessons.ncrs })
-          )}
-        {money && lost !== null && card("border-warning/25 bg-warning/5", t("close.lessons.lost", { amount: pmMoney(lost) }), t("close.lessons.lost_note"))}
-        {card(
-          "border-cta/20 bg-cta/5",
-          t("close.lessons.obstacles", { count: lessons.obstaclesClosed }),
-          lessons.avgResponseDays === null ? t("close.lessons.obstacles_note") : t("close.lessons.obstacles_avg", { count: lessons.avgResponseDays })
-        )}
-        {card("border-success/25 bg-success/5", t("close.lessons.team", { count: lessons.team }), t("close.lessons.team_note"))}
-      </div>
+    <Panel title={t("close.lessons.title")} icon={BookOpen} description={t("close.lessons.sub")} bodyClassName="p-0">
+      <ul className="grid grid-cols-1 divide-y sm:grid-cols-2 sm:divide-y-0 sm:[&>li:nth-child(n+3)]:border-t">
+        {money && row(AlertTriangle, "text-destructive", t("close.lessons.rework", { amount: pmMoney(lessons.rework) }), t("close.lessons.rework_note", { count: lessons.ncrs }))}
+        {money && lost !== null && row(Coins, "text-warning", t("close.lessons.lost", { amount: pmMoney(lost) }), t("close.lessons.lost_note"))}
+        {row(Clock, "text-cta", t("close.lessons.obstacles", { count: lessons.obstaclesClosed }), lessons.avgResponseDays === null ? t("close.lessons.obstacles_note") : t("close.lessons.obstacles_avg", { count: lessons.avgResponseDays }))}
+        {row(Users, "text-success", t("close.lessons.team", { count: lessons.team }), t("close.lessons.team_note"))}
+      </ul>
     </Panel>
   )
 }
