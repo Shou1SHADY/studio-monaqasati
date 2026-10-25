@@ -10,6 +10,7 @@
 import type { ElementType, ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
+import { useSearchParams } from "next/navigation"
 import { useForm, useWatch, type UseFormReturn } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -167,7 +168,9 @@ export function ProcurementSettings() {
   const { needs } = useProcurementNeeds(procWorld)
   const openBySite = useMemo(() => openRequestsBySite(needs, siteList), [needs, siteList])
   const [saving, setSaving] = useState(false)
-  const [segment, setSegment] = useState<Segment>("pol")
+  // The top bar's package chip opens «الاشتراك» directly (`?seg=sub`, FR-04).
+  const searchParams = useSearchParams()
+  const [segment, setSegment] = useState<Segment>(() => SEGMENTS.find((id) => id === searchParams?.get("seg")) ?? "pol")
 
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: policies })
   const tiePct = useWatch({ control: form.control, name: "tieBandPct" })

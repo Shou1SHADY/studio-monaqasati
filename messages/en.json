@@ -8507,6 +8507,7 @@
       "proc_module_name": "Procurement",
       "proc_module_sub": "Needs · Quotes · Purchase orders",
       "proc_search_ph": "Search: material · supplier · document…",
+      "proc_search_page_ph": "Search this page…",
       "proc_authority_owner": "Company-wide read · approves above the manager’s limit",
       "proc_authority_buyer": "All categories · prepares POs, never approves",
       "proc_authority_buyer_cats": "Own categories: {cats} · prepares POs, never approves",

@@ -8507,6 +8507,7 @@
       "proc_module_name": "المشتريات",
       "proc_module_sub": "الاحتياج · العروض · أوامر الشراء",
       "proc_search_ph": "ابحث: مادة · مورد · رقم مستند…",
+      "proc_search_page_ph": "ابحث في هذه الصفحة…",
       "proc_authority_owner": "قراءة شاملة · يعتمد ما فوق حد مدير المشتريات",
       "proc_authority_buyer": "كل التصنيفات · يُعِدّ الأمر ولا يعتمده",
       "proc_authority_buyer_cats": "تصنيفاته فقط: {cats} · يُعِدّ الأمر ولا يعتمده",

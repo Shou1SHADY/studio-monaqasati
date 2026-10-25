@@ -93,7 +93,11 @@ describe("Procurement never promises to confirm receipt", () => {
     }
     walk(path.join(root, "src/components/procurement"))
     files.push(path.join(root, "src/components/contractor/ProcurementHeader.tsx"))
-    const offenders = files.filter((f) => /ReceiveDeliveryDialog|recordReceipt|buyerReceives|noticeRouting/.test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(root, f))
+    // Settings shows the delivery notice route as the 2.0 prototype does — fixed, «it reaches Procurement first» — and only
+    // ever writes it BACK to "procurement" for a 1.5 company that chose «both» (ST-01); no other screen names it.
+    const settings = path.join(root, "src/components/procurement/ProcurementSettings.tsx")
+    const offenders = files.filter((f) => (f === settings ? /ReceiveDeliveryDialog|recordReceipt|buyerReceives/ : /ReceiveDeliveryDialog|recordReceipt|buyerReceives|noticeRouting/).test(fs.readFileSync(f, "utf8"))).map((f) => path.relative(root, f))
     expect(offenders).toEqual([])
+    expect(fs.readFileSync(settings, "utf8")).not.toMatch(/noticeRouting:\s*"both"/)
   })
 })
