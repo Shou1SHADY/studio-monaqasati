@@ -1,7 +1,11 @@
 // How the free supplier's screens write things (PRD NFR-04, SUP-12): one rule for money, dates and
-// numbers, the same in every screen and both languages — "SAR 1,200" / "1,200 ر.س", "11 Oct 2026" /
-// "11 أكتوبر" (the year only when it is not the data's year), Western digits, thousands separators,
-// and the short forms "349 K" / "349 ألف". Pure: the unit words come in as labels.
+// numbers, the same in every screen and both languages — "11 Oct 2026" / "11 أكتوبر" (the year only
+// when it is not the data's year), Western digits, thousands separators, and the short forms "349 K" /
+// "349 ألف". Pure: the unit words come in as labels.
+//
+// Money on screen carries the official riyal sign (U+20C1, `src/lib/riyal.ts`) LEFT of the figure in
+// both scripts, as everywhere else on the platform — pass `sign`. `moneyText` keeps the words ("SAR
+// 1,200" / "1,200 ر.س") for text that leaves the page (a message, push or e-mail), where the font is not.
 
 import { dayNum } from "./deal-logic"
 
@@ -40,8 +44,14 @@ export function fd(iso: string | null | undefined, locale: Locale, dataYear: num
   return year || y !== dataYear ? `${base} ${y}` : base
 }
 
-export function makeFmt(locale: Locale, labels: FmtLabels, dataYear: number) {
-  const money = (n: number) => (locale === "ar" ? `${fmtM(n)} ${labels.cur}` : `${labels.cur} ${fmtM(n)}`)
+/** Left-to-right isolate … pop: the sign stays left of the figure whatever direction the sentence around it runs. */
+const LRI = "\u2066"
+const PDI = "\u2069"
+const NBSP = "\u00A0"
+
+export function makeFmt(locale: Locale, labels: FmtLabels, dataYear: number, opts: { sign?: string } = {}) {
+  const moneyText = (n: number) => (locale === "ar" ? `${fmtM(n)} ${labels.cur}` : `${labels.cur} ${fmtM(n)}`)
+  const money = opts.sign ? (n: number) => `${LRI}${opts.sign}${NBSP}${fmtM(n)}${PDI}` : moneyText
   /** 349 ألف · 1.86 م — the short money form of the cards. */
   const kM = (n: number) => {
     const a = Math.abs(n)
@@ -50,7 +60,7 @@ export function makeFmt(locale: Locale, labels: FmtLabels, dataYear: number) {
     return fmtN(n)
   }
   const date = (iso: string | null | undefined, year?: boolean) => fd(iso, locale, dataYear, year)
-  return { money, kM, date, n: fmtN, cur: labels.cur }
+  return { money, moneyText, kM, date, n: fmtN, cur: opts.sign ?? labels.cur }
 }
 
 export type Fmt = ReturnType<typeof makeFmt>
