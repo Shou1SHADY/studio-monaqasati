@@ -23,7 +23,7 @@ import { pageState, pathModel, requestsOfRfq, type PageState, type PathModel } f
 import { bestCards, buildOfferRows, type BestCards, type OfferRowModel, type OfferRows, type RowOffer } from "@/lib/procurement/rfq-offers-view"
 import { createdIso, inquiryCounts, type InquiryCounts, type InquiryDoc } from "@/lib/procurement/rfq-inquiries"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type ProcActor, type ProcurementPolicies, type PurchaseOrder, type ReceiptFact, type SupplierFacts } from "@/lib/procurement/types"
-import type { SupplierRecord } from "@/lib/procurement/supplier-file"
+import { supplierFactsWithRecord, type SupplierRecord } from "@/lib/procurement/supplier-file"
 import type { RfqOfferView, RfqView } from "@/components/procurement/rfq/rfqOfferView"
 
 export type WorldOffer = RfqOfferView & RowOffer
@@ -101,6 +101,8 @@ export interface RfqWorld {
   lowestCompleteGrossH: number | null
   experienceOf: (orgId: string | null) => SupplierExperience
   hasRecord: (row: OfferRowModel) => boolean
+  /** Registered AND verified by his documents (the comparison's «موثّق»), apart from whether we have a record of him. */
+  verifiedOf: (orgId: string | null) => boolean
 }
 
 const asDay = (v: unknown): string | null => {
@@ -244,6 +246,15 @@ export function useRfqWorld(rfqId: string): RfqWorld {
     [experienceOf, records]
   )
 
+  const verifiedOf = useMemo(
+    () => (id: string | null) => {
+      if (!id) return false
+      const base = profiles[id]?.facts
+      return Boolean(base && supplierFactsWithRecord(base, records.get(id)).verified === true)
+    },
+    [profiles, records]
+  )
+
   const built = useMemo(
     () =>
       buildOfferRows({
@@ -309,5 +320,6 @@ export function useRfqWorld(rfqId: string): RfqWorld {
     lowestCompleteGrossH: built.ev.lowestComplete?.grossH ?? null,
     experienceOf,
     hasRecord,
+    verifiedOf,
   }
 }

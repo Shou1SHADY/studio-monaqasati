@@ -182,8 +182,11 @@ describe("cells that cannot be awarded (CMP-18)", () => {
     renderIt({ offers: [A, S, M, H, { ...AM, validUntil: today } as PlanOffer] })
     expect(cell("Angles", "Amal").disabled).toBe(false)
   })
-  it("an excluded offer is shown and locked, and can be hidden", () => {
+  it("an excluded offer is hidden by default once one is excluded (RQ-18), and shown locked when the chip is turned off", () => {
     renderIt({ decisions: { H: { shortlist: null, exclusion: { code: "spec", text: null, at: "x", byId: "u", byName: "u" } } } })
+    expect(screen.queryAllByLabelText(/"supplier":"Ufuq"/)).toHaveLength(0)
+    expect(screen.getByText(/hide_excluded/).closest("button")?.getAttribute("aria-pressed")).toBe("true")
+    fireEvent.click(screen.getByText(/hide_excluded/))
     expect(cell("Angles", "Ufuq").disabled).toBe(true)
     fireEvent.click(screen.getByText(/hide_excluded/))
     expect(screen.queryAllByLabelText(/"supplier":"Ufuq"/)).toHaveLength(0)
@@ -224,5 +227,58 @@ describe("a lump sum and a viewer without prices", () => {
     expect(c.disabled).toBe(true)
     fireEvent.click(c)
     expect(onPicksChange).not.toHaveBeenCalled()
+  })
+})
+
+describe("the prototype's remaining comparison ideas (RQ-06, RQ-13, RQ-14, RQ-16, RQ-19)", () => {
+  it("RQ-19: a «whole RFQ only» offer is picked whole from any one cell, and unpicked whole", () => {
+    const W = offer("W", "Whole", [{ rfqProductIndex: 0, unitPrice: 12.4 }, { rfqProductIndex: 1, unitPrice: 3.5 }], { whole: true })
+    const { onPicksChange, rerender } = renderIt({ offers: [A, W] })
+    fireEvent.click(cell("Angles", "Whole"))
+    expect(onPicksChange).toHaveBeenLastCalledWith({ 0: { offerId: "W", rev: 1 }, 1: { offerId: "W", rev: 1 } })
+    rerender(
+      <RfqCompareGrid rfq={rfq} offers={[A, W]} decisions={{}} orders={[]} receipts={[]} history={[]} policies={policies} verifiedOf={() => true} picks={{ 0: { offerId: "W", rev: 1 }, 1: { offerId: "W", rev: 1 } }} onPicksChange={onPicksChange} canPick showPrices today={today} actor={{ uid: "u", isOwner: false, canPrepare: true, canApprove: false }} onReview={() => {}} />
+    )
+    fireEvent.click(cell("Timber", "Whole"))
+    expect(onPicksChange).toHaveBeenLastCalledWith({})
+  })
+
+  it("RQ-06: a «lowest per line» request from outside picks in the grid and is reported handled", () => {
+    const onLowestHandled = jest.fn()
+    const { onPicksChange } = renderIt({ lowestRequest: 1, onLowestHandled })
+    expect(onLowestHandled).toHaveBeenCalledTimes(1)
+    const picks = onPicksChange.mock.calls.at(-1)?.[0] as AwardPicks
+    expect(picks[0].offerId).toBe("A")
+    expect(picks[1].offerId).toBe("AM")
+  })
+
+  it("RQ-13: after a new version the cell shows the old line total struck beside the new one", () => {
+    const V = offer("V", "Versioned", [{ rfqProductIndex: 0, unitPrice: 12.6 }, { rfqProductIndex: 1, unitPrice: 3.6 }], {
+      versions: [{ n: 1, lines: [{ rfqProductIndex: 0, unitPrice: 13 }, { rfqProductIndex: 1, unitPrice: 3.6 }] }, { n: 2, lines: [{ rfqProductIndex: 0, unitPrice: 12.6 }, { rfqProductIndex: 1, unitPrice: 3.6 }] }],
+    })
+    renderIt({ offers: [A, V] })
+    const struck = cell("Angles", "Versioned").querySelector("s")
+    expect(struck?.textContent).toContain("2,275")
+    expect(cell("Timber", "Versioned").querySelector("s")).toBeNull()
+  })
+
+  it("RQ-14: a line asking 24 months says so under its name, and a 12-month cell is flagged short", () => {
+    const asks = { ...rfq, products: [prod("Angles 50x50x5", 175, { warrantyMonths: 24 }), prod("Timber planks", 320)] } as unknown as PlanRfq
+    const Wt = offer("Wt", "Warranty", [{ rfqProductIndex: 0, unitPrice: 12.5, warrantyMonths: 12 }, { rfqProductIndex: 1, unitPrice: 3.6, warrantyMonths: 12 }])
+    renderIt({ rfq: asks, offers: [A, Wt] })
+    expect(document.body.textContent).toContain('cmp2.warranty_asked{"months":24}')
+    expect(cell("Angles", "Warranty").textContent).toContain("cmp2.warranty_below")
+    expect(cell("Timber", "Warranty").textContent).not.toContain("cmp2.warranty_below")
+  })
+
+  it("RQ-16: the commitment fact adds our stars, the last rejection with its order, and what is late now", () => {
+    const now = new Date("2026-10-22T09:00:00Z")
+    const po = { id: "p1", docNumber: "PO-2026/031", status: "accepted", supplierOrgId: "org_S", supplierName: "Sharq", isGuestSupplier: false, supplierAcceptedAt: "2026-09-01", promisedDate: "2026-10-01", rating: { conformity: 4, cooperation: 4 }, lines: [{ id: "l1", name: "x", unit: "t", quantity: 10, accepted: 5, rejected: 3 }] } as unknown as PurchaseOrder
+    const receipt = { id: "g1", status: "confirmed", poId: "p1", poNumber: "PO-2026/031", confirmedAt: "2026-09-25", lines: [{ poLineId: "l1", name: "x", unit: "t", noticeQuantity: 8, rejected: 3, rejectReason: "damaged" }] }
+    renderIt({ orders: [po], receipts: [receipt as never], now })
+    const body = document.body.textContent || ""
+    expect(screen.getByLabelText('cmp2.rating_label{"rating":4}')).toBeTruthy()
+    expect(body).toMatch(/cmp2\.experience_last_reject\{"qty":"3","unit":"t","reason":"rejectReason\.\w+","po":"PO-2026\/031"\}/)
+    expect(body).toContain('cmp2.experience_late_now{"count":1}')
   })
 })

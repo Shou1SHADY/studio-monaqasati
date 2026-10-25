@@ -12259,6 +12259,13 @@
         "experience_orders": "our record: {count, plural, one {1 order} other {# orders}}",
         "experience_rejects": "{percent}% of what arrived was rejected",
         "new_to_us": "New — no supply record yet",
+        "rating_label": "Our rating {rating} of 5",
+        "experience_last_reject": "{qty} {unit} rejected: {reason} ({po})",
+        "experience_late_now": "late now on {count, plural, one {1 order} other {# orders}}",
+        "whole_picked": "{name} takes the whole RFQ only — everything he priced was picked",
+        "warranty_asked": "{months, plural, one {1-month} other {#-month}} warranty required",
+        "warranty_below": "Below the required warranty",
+        "was_total": "was {total}",
         "last_buy": "Last buy {price}",
         "strip_title": "Lowest per item",
         "sort_by": "Sort by it",
@@ -12745,7 +12752,12 @@
           "cancelled_title": "Cancelled",
           "cancelled_by": "{reason} — by {name} on {date}.",
           "closed_early_title": "Closed early by the award",
-          "closed_early_by": "By {name} on {date}: {reason}"
+          "closed_early_by": "By {name} on {date}: {reason}",
+          "direct_over": "Direct award above the cap: {reason}",
+          "direct_over_short": "Direct award above the cap",
+          "pieces": "Per-piece pricing allowed: {lines}. Compared in the requested unit.",
+          "pieces_line": "{name} ({units})",
+          "pieces_or": " or "
         },
         "privacy": {
           "public": "Public",
@@ -13408,7 +13420,9 @@
           "src_pm": "Project Management",
           "src_team": "Team material request",
           "src_inv": "Inventory",
-          "src_mfg": "Manufacturing workshop"
+          "src_mfg": "Manufacturing workshop",
+          "open_request": "Open the incoming request",
+          "more_requests": "{count, plural, one {1 more request} other {# more requests}} — in Details"
         },
         "numbers": {
           "reached": "{count, plural, one {Reached 1 supplier} other {Reached # suppliers}}",
@@ -13484,6 +13498,13 @@
           "empty_title": "No offers yet",
           "empty": "They show here the moment they arrive, until {date}. Remind those who have not quoted, or share the visitor link with a supplier off the platform.",
           "empty_link": "Visitor link",
+          "empty_remind": "Remind those who have not quoted",
+          "docs_verified": "Verified",
+          "docs_unverified": "Unverified",
+          "orders_with_us": "{count, plural, one {1 order with us} other {# orders with us}}",
+          "new_with_us": "New to us",
+          "by_piece_named": "Per piece: {packs}",
+          "packs_sep": ", ",
           "foot": "Offers arrive until {date} and show here at once. You may award before the deadline: the RFQ closes early and the others are told."
         },
         "drawer": {
@@ -13511,6 +13532,9 @@
           "effective": "Effective per unit",
           "per_received": "per unit received",
           "warranty_months": "{months}-month warranty",
+          "line_lowest": "Lowest",
+          "warranty_asked": "{months} months required",
+          "price_confirmed": "Price confirmed",
           "in_lump": "Within the lump sum",
           "not_priced": "Not priced",
           "terms": "Terms",
@@ -13581,6 +13605,7 @@
           "invited": "Invitation sent",
           "in_ours": "In our suppliers",
           "add_on_join": "Added to our suppliers when he joins",
+          "add_hint": "He joins our suppliers now by his name and mobile, and stays off the platform until he accepts your invitation.",
           "wa_message": "About your offer on the RFQ \"{rfq}\":",
           "wa_message_link": "About your offer on the RFQ \"{rfq}\" — your own offer link: {url}"
         },
@@ -13815,6 +13840,12 @@
           "copy": "Copy",
           "share": "Share as a guest link",
           "supplier_view": "What the supplier sees now",
+          "hint_closed": "The link is closed: whoever opens it reads that the RFQ no longer takes offers.",
+          "works_until": "Works until {date} · {count, plural, =0 {no offers} one {1 offer} other {# offers}} through it",
+          "offers_via": "{count, plural, =0 {No offers} one {1 offer} other {# offers}} through it",
+          "closed_award": "Closed {date} on award · {count, plural, =0 {no offers} one {1 offer} other {# offers}} through it",
+          "closed_deadline": "Closed {date} with the deadline · {count, plural, =0 {no offers} one {1 offer} other {# offers}} through it",
+          "closed_cancelled": "Closed {date} when the RFQ was cancelled · {count, plural, =0 {no offers} one {1 offer} other {# offers}} through it",
           "copied": "Link copied",
           "failed": "The guest link could not be created"
         },

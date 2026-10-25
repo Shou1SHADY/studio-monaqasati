@@ -5,7 +5,7 @@
 // (excluded · expired · carried by a live order · not priced). Clicking an open cell picks that supplier's version for that line.
 
 import { useTranslations } from "next-intl"
-import { Lock, Star } from "lucide-react"
+import { Lock, ShieldAlert, Star } from "lucide-react"
 import { moneyFigure } from "@/components/procurement/PoModel"
 import type { CompareCell as CellModel } from "@/lib/procurement/compare-model"
 import { cn } from "@/lib/utils"
@@ -87,10 +87,21 @@ export function CompareCell({ cell, unit, lineName, supplier, showPrices, intera
                 {t("per_received")} <bdi dir="ltr">{sar(pack.perReceivedH)}</bdi>
               </span>
             )}
-            <span dir="ltr" className="text-[11px] tabular-nums text-muted-foreground">
-              {sar(cell.totalH)}
+            <span dir="ltr" className="inline-flex flex-wrap items-baseline gap-x-1.5 text-[11px] tabular-nums text-muted-foreground">
+              <span>{sar(cell.totalH)}</span>
+              {cell.previousTotalH != null && (
+                <s className="text-[10px] opacity-80" aria-label={t("was_total", { total: sar(cell.previousTotalH) })}>
+                  {sar(cell.previousTotalH)}
+                </s>
+              )}
             </span>
-            {cell.warrantyMonths != null && <span className="text-[10px] text-muted-foreground">{cell.warrantyMonths > 0 ? t("warranty_months", { months: cell.warrantyMonths }) : t("warranty_none")}</span>}
+            {cell.warrantyMonths != null && (
+              <span className={cn("inline-flex items-center gap-1 text-[10px]", cell.warrantyShort ? "font-bold text-destructive" : "text-muted-foreground")}>
+                {cell.warrantyShort && <ShieldAlert size={11} aria-hidden="true" />}
+                {cell.warrantyMonths > 0 ? t("warranty_months", { months: cell.warrantyMonths }) : t("warranty_none")}
+                {cell.warrantyShort && <span className="sr-only">{t("warranty_below")}</span>}
+              </span>
+            )}
           </>
         )}
         {lock && (

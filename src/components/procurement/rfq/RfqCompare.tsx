@@ -11,7 +11,7 @@ import { Callout } from "@/components/module-ui/Callout"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { RfqWorld, AwardSelection } from "@/hooks/useRfqWorld"
-import { useRouter } from "@/i18n/routing"
+import { Link, useRouter } from "@/i18n/routing"
 import { logFinanceAudit } from "@/lib/finance-audit"
 import { awardSupplierOrgId } from "@/lib/procurement/award"
 import { pickAllOf, planAward, type AwardPicks, type PlanOffer, type PlanRfq } from "@/lib/procurement/award-plan"
@@ -19,11 +19,26 @@ import { procLinks } from "@/lib/procurement/events"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { PRICE_HISTORY, type PriceHistoryEntry } from "@/lib/procurement/prices"
 import { locksOf } from "@/lib/procurement/rfq-server/award-locks"
-import { supplierFactsWithRecord } from "@/lib/procurement/supplier-file"
 import { AwardReviewDialog, type AwardDone } from "./AwardReviewDialog"
 import { RfqCompareGrid } from "./RfqCompareGrid"
 
-export function RfqCompare({ world, selection, onSelectionHandled }: { world: RfqWorld; selection: AwardSelection | null; onSelectionHandled: () => void }) {
+export function RfqCompare({
+  world,
+  selection,
+  onSelectionHandled,
+  onAskReval,
+  lowestRequest,
+  onLowestHandled,
+}: {
+  world: RfqWorld
+  selection: AwardSelection | null
+  onSelectionHandled: () => void
+  /** «انتهى — اطلب تأكيد السعر» on an expired cell: the page owns the request dialog. */
+  onAskReval?: (offerId: string) => void
+  /** The best cards' «اختر الأقل لكل بند», applied by the grid. */
+  lowestRequest?: number | null
+  onLowestHandled?: () => void
+}) {
   const ta = useTranslations("Portal.Procurement.award2")
   const locale = useLocale()
   const firestore = useFirestore()
@@ -39,16 +54,8 @@ export function RfqCompare({ world, selection, onSelectionHandled }: { world: Rf
   const planRfq = rfq as unknown as PlanRfq | null
   const planActor = useMemo(() => ({ uid: actor.uid, isOwner: actor.isOwner, canPrepare: actor.canPrepare, canApprove: actor.canApprove }), [actor])
 
-  const verifiedOf = useCallback(
-    (offer: PlanOffer): boolean => {
-      const id = awardSupplierOrgId(offer as never)
-      if (!id) return false
-      const base = world.profiles[id]?.facts
-      if (!base) return false
-      return supplierFactsWithRecord(base, world.records.get(id)).verified === true
-    },
-    [world.profiles, world.records]
-  )
+  const worldVerified = world.verifiedOf
+  const verifiedOf = useCallback((offer: PlanOffer): boolean => worldVerified(awardSupplierOrgId(offer as never)), [worldVerified])
 
   const locks = useMemo(() => locksOf(world.orders), [world.orders])
   const ctx = useMemo(() => ({ today: world.today, policies: world.policies, decisions: world.decisions, locked: locks.locked, liveOfferIds: locks.liveOfferIds }), [world.today, world.policies, world.decisions, locks])
@@ -128,6 +135,9 @@ export function RfqCompare({ world, selection, onSelectionHandled }: { world: Rf
         today={world.today}
         actor={planActor}
         onReview={() => setReviewOpen(true)}
+        onAskReval={onAskReval && access.acts ? (offer) => onAskReval(offer.id) : undefined}
+        lowestRequest={lowestRequest}
+        onLowestHandled={onLowestHandled}
         awardedBlock={planRfq.status === "Awarded" ? <AwardedBlock orders={world.orders} /> : null}
       />
       <AwardReviewDialog
@@ -161,7 +171,10 @@ function AwardedBlock({ orders }: { orders: RfqWorld["orders"] }) {
       <ul className="space-y-0.5 text-xs">
         {live.map((o) => (
           <li key={o.id} dir="auto">
-            <bdi dir="ltr">{displayPoNumber(o.docNumber, locale)}</bdi> · {o.supplierName}
+            <Link href={procLinks.order(o.id)} className="rounded-sm font-bold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <bdi dir="ltr">{displayPoNumber(o.docNumber, locale)}</bdi>
+            </Link>{" "}
+            · {o.supplierName}
             {o.awardReasonText ? ` — ${t("award_reason", { reason: o.awardReasonText })}` : ""}
           </li>
         ))}
