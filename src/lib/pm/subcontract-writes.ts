@@ -132,6 +132,8 @@ export interface RegisterInput {
   note: string | null
   lines: Array<{ itemId: string; qty: number; rate: number }>
   files?: PmAttachment[] | null
+  /** Who supplies the let items' materials (REQ-01): «his» stops the project requesting them. */
+  materials?: "ours" | "his" | null
 }
 
 /** Register a subcontract: his scope from the BOQ with his quantity and rate.
@@ -182,6 +184,7 @@ export async function registerSubcontract(firestore: Firestore, ctx: PmContext, 
       startOn: input.startOn,
       endOn: input.endOn || null,
       note: input.note?.trim() || null,
+      materials: input.materials === "his" ? "his" : "ours",
       lines,
       value: r2(lines.reduce((a, l) => a + l.value, 0)),
       paid: 0,

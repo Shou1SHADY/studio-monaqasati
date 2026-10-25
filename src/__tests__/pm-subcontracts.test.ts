@@ -204,6 +204,13 @@ describe("the writes", () => {
     await expect(register(site, "se1")).rejects.toBeInstanceOf(PmAccessError)
   })
 
+  it("keeps who supplies the materials (REQ-01): «ours» unless the form says «his»", async () => {
+    await register(pm, "pm1", 500)
+    expect(readDoc<PmSubcontract>("projects/p1/pmSubcontracts/01")!.materials).toBe("ours")
+    await registerSubcontract(db, pm, "p1", { uid: "pm1", name: "pm1" }, { party: { name: "Al-Bina" }, retentionPct: 5, startOn: "2026-09-01", endOn: null, note: null, materials: "his", lines: [{ itemId: "i1", qty: 100, rate: 40 }] })
+    expect(readDoc<PmSubcontract>("projects/p1/pmSubcontracts/02")!.materials).toBe("his")
+  })
+
   it("prepares capped at our measurement, deducts recoveries once, and approval sends prj:SC", async () => {
     await register(owner, "own")
     await openCustody(db, pm, "p1", { uid: "pm1", name: "PM" }, { subcontractSeq: 1, itemId: "i1", material: "Block", unit: "pc", unitCost: 3, perUnit: 12.5, waste: 4, issueQty: 6000, day: todayDay(), note: null })

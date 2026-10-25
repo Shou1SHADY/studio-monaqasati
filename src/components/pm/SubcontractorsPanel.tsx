@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
+import { Chip } from "@/components/module-ui/Chip"
 import { Callout } from "@/components/module-ui/Callout"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
@@ -748,6 +749,7 @@ function RegisterDialog({
   const [startOn, setStartOn] = useState(todayDay())
   const [endOn, setEndOn] = useState("")
   const [note, setNote] = useState("")
+  const [materials, setMaterials] = useState<"ours" | "his">("ours")
   const [picked, setPicked] = useState<Picked>({})
   const [search, setSearch] = useState("")
   const [files, setFiles] = useState<PmAttachment[]>([])
@@ -902,6 +904,17 @@ function RegisterDialog({
               {shown.length === 0 && <li className="px-3 py-4 text-center text-xs text-muted-foreground">{t("subs.form.no_items")}</li>}
             </ul>
           </div>
+          <fieldset className="space-y-1.5">
+            <legend className="text-sm font-medium">{t("subs.form.materials")}</legend>
+            <div className="flex flex-wrap gap-2">
+              {(["ours", "his"] as const).map((m) => (
+                <Chip key={m} selected={materials === m} onClick={() => setMaterials(m)}>
+                  {t(`subs.form.materials_${m}`)}
+                </Chip>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">{t(`subs.form.materials_hint_${materials}`)}</p>
+          </fieldset>
           <div className="space-y-1.5">
             <Label htmlFor="sc-note">{t("subs.form.note")}</Label>
             <Input id="sc-note" dir="auto" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("subs.form.note_ph")} />
@@ -933,7 +946,7 @@ function RegisterDialog({
           disabled={blocks.length > 0}
           label={t("subs.form.save")}
           onSave={async () => {
-            const ok = await onSave({ party: { name, supplierId: supplierId || null }, retentionPct: retNum, startOn, endOn: endOn || null, note: note || null, lines: lines.map(({ itemId, qty: q, rate }) => ({ itemId, qty: q, rate })), files })
+            const ok = await onSave({ party: { name, supplierId: supplierId || null }, retentionPct: retNum, startOn, endOn: endOn || null, note: note || null, materials, lines: lines.map(({ itemId, qty: q, rate }) => ({ itemId, qty: q, rate })), files })
             if (ok) onClose()
           }}
         />

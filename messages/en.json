@@ -17795,8 +17795,7 @@
         "finance_event": "On save Finance receives the “owner certificate approved” event, key",
         "finance_event_once": "resending never creates a second invoice.",
         "certify_send": "Record & send to Finance",
-        "cut_text": "The reason as the consultant stated it",
-        "cut_other": "The other reason"
+        "cut_text": "The reason as the consultant stated it"
       },
       "punch": {
         "title": "Punch list",
@@ -19375,6 +19374,11 @@
           "no_items": "No items",
           "note": "Note — optional",
           "note_ph": "Includes consumables and scaffolding",
+          "materials": "Who supplies the materials",
+          "materials_ours": "From our store",
+          "materials_his": "He does, under his contract",
+          "materials_hint_ours": "We issue his items' materials from the project store, and the project requests them as usual.",
+          "materials_hint_his": "He supplies them under his contract — so the project never requests them for his items.",
           "value": "Contract value",
           "over_limit": "The contract value {value} exceeds your approval limit {limit} — the owner registers it",
           "save": "Register",
