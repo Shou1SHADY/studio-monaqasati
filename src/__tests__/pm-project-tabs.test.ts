@@ -33,4 +33,10 @@ describe("the project's seven tabs", () => {
       ["settings", ["team"]],
     ])
   })
+
+  it("gives the consultant portal its own File screen, after Correspondence and before Closeout (CP-01)", () => {
+    expect(groupOf("pmPortal")).toBe("file")
+    const tabs = [{ key: "pmClose" }, { key: "pmPortal" }, { key: "pmCorr" }, { key: "pmDocs" }, { key: "info" }]
+    expect(groupTabs(tabs).map((g) => g.tabs.map((t) => t.key))).toEqual([["info", "pmDocs", "pmCorr", "pmPortal", "pmClose"]])
+  })
 })

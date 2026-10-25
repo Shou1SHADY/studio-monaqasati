@@ -39,6 +39,7 @@ import { SectionsPanel } from "@/components/pm/SectionsPanel"
 import { BoundaryPanel } from "@/components/pm/BoundaryPanel"
 import type { ClaimSeed } from "@/lib/pm/site"
 import { DocumentsPanel } from "@/components/pm/DocumentsPanel"
+import { ConsultantPortalPanel } from "@/components/pm/ConsultantPortalPanel"
 import { CorrespondencePanel } from "@/components/pm/CorrespondencePanel"
 import { ProjectTermsPanel, type PmProjectBlock } from "@/components/pm/ProjectTermsPanel"
 import type { ProjectHandover } from "@/lib/crm"
@@ -199,11 +200,12 @@ import { ProjectHead, type PmHeadProject } from "@/components/pm/ProjectHead"
 import { PmHoldControl } from "@/components/pm/PmHoldControl"
 import { PmBudgetDecisions } from "@/components/pm/PmBudgetDecisions"
 import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
+import { IconButton } from "@/components/module-ui/IconButton"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { groupOf, groupTabs, visibleTab, type ProjectGroup } from "@/lib/pm/project-tabs"
 import { bulkDeleteSplit } from "@/lib/procurement/rfq-view"
 import { createRfqWithNumber } from "@/lib/procurement/rfq-writes"
-import { Activity, ClipboardCheck, Coins, FileStack, HardHat, Mail, SlidersHorizontal, Truck, ScrollText } from "lucide-react"
+import { Activity, ClipboardCheck, Coins, FileStack, HardHat, Link2, Mail, MoreHorizontal, SlidersHorizontal, Truck, ScrollText } from "lucide-react"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { AdoptProjectDialog } from "@/components/pm/AdoptProjectDialog"
 import { PmSectionsError, readSectionFacts, SECTION_OFF_REASONS, switchBlocks, switchSections, type SectionFacts, type SectionOffReason } from "@/lib/pm/sections-governance"
@@ -2075,6 +2077,8 @@ export default function ProjectDetailPage() {
           ...(pmOn.close ? [{ key: "pmClose" as ActiveTab, label: tPm("seg.close"), icon: <KeyRound size={15} /> }] : []),
           ...(pmOn.docs ? [{ key: "pmDocs" as ActiveTab, label: tPm("docs.tab"), icon: <FileStack size={15} /> }] : []),
           ...(pmOn.corr ? [{ key: "pmCorr" as ActiveTab, label: tPm("corr.tab"), icon: <Mail size={15} /> }] : []),
+          // CP-01: the consultant portal is its own File screen, beside Correspondence (it sat under it).
+          ...(pmOn.corr ? [{ key: "pmPortal" as ActiveTab, label: tPm("portal.title"), icon: <Link2 size={15} /> }] : []),
         ]
       : []),
     // The legacy tenders tab is not a PM 1.0 screen: Supply is requests · store · submittals · direct · orders.
@@ -2222,49 +2226,65 @@ export default function ProjectDetailPage() {
                 )}
               </div>
             </div>
-            <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:shrink-0">
-              {typedProject.pm && pmAccess.allowed("measurement.write") && (
-                <Button variant="outline" size="sm" onClick={() => handleTabChange("pmMeasure")} className="gap-1.5 rounded-xl border border-border bg-card text-foreground shadow-none hover:bg-card hover:border-module/40">
-                  <Ruler size={14} />
-                  {tPm("pulse.act_measure")}
-                </Button>
-              )}
-              {typedProject.pm && pmAccess.allowed("certificate.prepare") && dynamicTabs.includes("ipc" as SectionId) && (
-                <Button size="sm" onClick={() => handleTabChange("ipc")} className="gap-1.5 rounded-xl bg-module text-module-foreground hover:bg-module/90">
-                  <Receipt size={14} />
-                  {tPm("pulse.act_certificate")}
-                </Button>
-              )}
-              {!typedProject.pm && isOrgOwner && (
-                <Button variant="outline" size="sm" onClick={() => setShowAdopt(true)} className="gap-1">
-                  <FolderInput size={14} />
-                  {tPm("adopt.button")}
-                </Button>
-              )}
-              {(typedProject.pm ? pmAccess.allowed("sections.manage") : can("projects.edit")) && (
-                <Button variant="outline" size="sm" onClick={typedProject.pm ? () => handleTabChange("pmSections") : openManageSections} className="gap-1">
-                  <Settings2 size={14} />
-                  {t("proj_manage_sections_btn")}
-                </Button>
-              )}
-              {can("projects.edit") && (
-                <Button variant="outline" size="sm" onClick={startEdit} className="gap-1">
-                  <Pencil size={14} />
-                  {t("proj_edit")}
-                </Button>
-              )}
-              {can("projects.delete") && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowDeleteDialog(true)}
-                  className="gap-1 text-destructive border-destructive/30 hover:bg-destructive hover:text-white hover:border-destructive"
-                >
-                  <Trash2 size={14} />
-                  {t("proj_delete")}
-                </Button>
-              )}
-            </div>
+            {/* UX-25: the legacy head reads like the PM one — small light buttons, and with three acts or more the
+                secondary ones (sections, delete) behind «…». */}
+            {(() => {
+              const canAdopt = isOrgOwner
+              const canSections = can("projects.edit")
+              const canEdit = can("projects.edit")
+              const canDelete = can("projects.delete")
+              const fold = [canAdopt, canSections, canEdit, canDelete].filter(Boolean).length >= 3
+              const light = "gap-1.5 rounded-xl border border-border bg-card text-foreground shadow-none hover:border-module/40 hover:bg-card"
+              return (
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
+                  {canAdopt && (
+                    <Button variant="outline" size="sm" onClick={() => setShowAdopt(true)} className={light}>
+                      <FolderInput size={14} />
+                      {tPm("adopt.button")}
+                    </Button>
+                  )}
+                  {canSections && !fold && (
+                    <Button variant="outline" size="sm" onClick={openManageSections} className={light}>
+                      <Settings2 size={14} />
+                      {t("proj_manage_sections_btn")}
+                    </Button>
+                  )}
+                  {canEdit && (
+                    <Button variant="outline" size="sm" onClick={startEdit} className={light}>
+                      <Pencil size={14} />
+                      {t("proj_edit")}
+                    </Button>
+                  )}
+                  {canDelete && !fold && (
+                    <Button variant="outline" size="sm" onClick={() => setShowDeleteDialog(true)} className={cn(light, "text-destructive hover:border-destructive/40")}>
+                      <Trash2 size={14} />
+                      {t("proj_delete")}
+                    </Button>
+                  )}
+                  {fold && (
+                    <DropdownMenu modal={false}>
+                      <DropdownMenuTrigger asChild>
+                        <IconButton icon={MoreHorizontal} label={tPm("head.more")} variant="outline" className="rounded-xl border border-border bg-card shadow-none hover:bg-muted md:h-9 md:w-9" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {canSections && (
+                          <DropdownMenuItem onSelect={openManageSections} className="gap-2">
+                            <Settings2 size={14} aria-hidden="true" />
+                            {t("proj_manage_sections_btn")}
+                          </DropdownMenuItem>
+                        )}
+                        {canDelete && (
+                          <DropdownMenuItem onSelect={() => setShowDeleteDialog(true)} className="gap-2 text-destructive focus:text-destructive">
+                            <Trash2 size={14} aria-hidden="true" />
+                            {t("proj_delete")}
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )}
 
@@ -3469,6 +3489,7 @@ export default function ProjectDetailPage() {
         {current === "pmCorr" && typedProject.pm && (
           <CorrespondencePanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} projectName={typedProject.name ?? ""} pm={typedProject.pm} items={pmItems} access={pmAccess} actor={pmActor} />
         )}
+        {current === "pmPortal" && typedProject.pm && <ConsultantPortalPanel projectId={projectId} projectName={typedProject.name ?? ""} portal={(typedProject.pm as { portal?: { sentOn?: string | null; seenOn?: string | null } | null }).portal ?? null} items={pmItems} access={pmAccess} />}
         {current === "pmVo" && typedProject.pm && <VariationsPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} baseValue={typedProject.budget ?? 0} items={pmItems} access={pmAccess} actor={pmActor} />}
         {current === "pmClaims" && typedProject.pm?.terms && (
           <ClaimsPanel
