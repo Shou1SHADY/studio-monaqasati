@@ -59,7 +59,7 @@ export function BoqItemDialog({ projectId, access, money, line, existingCodes, o
           <DialogDescription>{t("boq.item_desc")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="bi-code">
                 {t("boq.f_code")} <span className="text-warning">*</span>
@@ -73,7 +73,7 @@ export function BoqItemDialog({ projectId, access, money, line, existingCodes, o
               <Input id="bi-desc" dir="auto" value={description} onChange={(e) => setDescription(e.target.value)} disabled={busy} aria-invalid={touched && row.problems.includes("no_description")} />
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="bi-unit">{t("boq.f_unit")}</Label>
               <Input id="bi-unit" dir="auto" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="m3" disabled={busy} />
@@ -86,7 +86,7 @@ export function BoqItemDialog({ projectId, access, money, line, existingCodes, o
             </div>
           </div>
           {money && (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="bi-rate">{t("boq.rate")}</Label>
                 <Input id="bi-rate" dir="ltr" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="0.00" disabled={busy} />

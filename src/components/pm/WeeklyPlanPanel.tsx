@@ -152,14 +152,14 @@ export function WeeklyPlanPanel({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
       <Panel
         title={t("wwp.la_title")}
         icon={CalendarRange}
+        description={t("wwp.la_sub")}
         bodyClassName="p-0"
         actions={<StatusPill tone={blocked.length ? "bad" : "ok"}>{blocked.length ? t("wwp.n_blocked", { count: blocked.length }) : t("wwp.all_clear")}</StatusPill>}
       >
-        <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("wwp.la_sub")}</p>
         {rows.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t("wwp.la_empty")}</p>
         ) : (
@@ -209,6 +209,7 @@ export function WeeklyPlanPanel({
       <Panel
         title={t("wwp.title")}
         icon={ListChecks}
+        description={t("wwp.sub")}
         bodyClassName="p-0"
         actions={
           <>
@@ -234,7 +235,6 @@ export function WeeklyPlanPanel({
           </>
         }
       >
-        <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("wwp.sub")}</p>
         {cur && cur.status === "open" ? (
           <>
             {late ? (

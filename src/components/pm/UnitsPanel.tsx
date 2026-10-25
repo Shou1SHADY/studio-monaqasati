@@ -214,10 +214,10 @@ export function UnitsPanel({
     return (
       <div className="flex flex-col gap-4">
         {intro}
-        <Panel title={t("units.setup_title")} icon={Box} actions={<span className="text-xs text-muted-foreground">{t("units.setup_sub")}</span>}>
+        <Panel title={t("units.setup_title")} icon={Box} description={t("units.setup_sub")}>
           <div className="flex flex-col gap-4">
             {noBoq ? <Callout tone="block">{t("units.err.no_boq")}</Callout> : <Callout tone="warn">{t("units.setup_note")}</Callout>}
-            <div className="grid gap-3 sm:grid-cols-[1fr_1.4fr]">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="units-count">{t("units.count")}</Label>
                 <Input id="units-count" type="number" min={UNITS_MIN} max={UNITS_MAX} dir="ltr" value={count} onChange={(e) => setCount(e.target.value)} disabled={!canManage} />
@@ -262,7 +262,7 @@ export function UnitsPanel({
   return (
     <div className="flex flex-col gap-4">
       {intro}
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-3">
         <Figure icon={TrendingUp} label={t("units.avg")} value={pmPct((avg ?? 0) / 100)} sub={spread >= 1 ? t("units.avg_spread", { n: Math.round(spread) }) : loose > 1 ? t("units.avg_loose") : t("units.avg_level")} />
         <Figure icon={Hand} label={t("units.ready")} value={t("units.of", { n: ready, total: units.length })} sub={done ? t("units.done_n", { count: done }) : t("units.done_none")} tone={ready ? "pos" : undefined} />
         <Figure icon={Clock} label={t("units.tight")} value={String(tight.length)} sub={t("units.tight_sub")} tone={tight.length ? "neg" : undefined} />
@@ -280,7 +280,7 @@ export function UnitsPanel({
         </Callout>
       )}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
         {rows.map(({ u, f, blocks, tight: tt, state, ret }) => {
           const Icon = STATE_ICON[state]
           const need = unitNeed(f.progress, u.plan, today)
@@ -326,25 +326,37 @@ export function UnitsPanel({
                 </div>
               </dl>
               {u.ho ? (
-                <Callout tone="info">{t("units.handed_note", { on: pmDate(u.ho.on, locale), end: pmDate(defectsEnd(u.ho.on, terms?.defectsDays ?? 365), locale) })}</Callout>
+                <p className="flex items-start gap-1.5 border-t pt-2 text-xs text-muted-foreground">
+                  <Check size={13} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
+                  <span>{t("units.handed_note", { on: pmDate(u.ho.on, locale), end: pmDate(defectsEnd(u.ho.on, terms?.defectsDays ?? 365), locale) })}</span>
+                </p>
               ) : blocks.length ? (
-                <Callout tone="block">
-                  <span className="inline-flex items-start gap-1.5">
-                    <Lock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
-                    <span>
-                      <b>{t("units.not_until")}</b> {blocks.map(blockText).join(" · ")}
-                    </span>
+                <p className="flex items-start gap-1.5 border-t pt-2 text-xs text-destructive" role="note">
+                  <Lock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  <span>
+                    <b>{t("units.not_until")}</b> {blocks.map(blockText).join(" · ")}
                   </span>
-                </Callout>
+                </p>
               ) : (
-                <Callout tone="info">{t("units.all_met")}</Callout>
+                <p className="flex items-start gap-1.5 border-t pt-2 text-xs text-success">
+                  <Check size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  <span>{t("units.all_met")}</span>
+                </p>
               )}
               {!u.ho && tt && need !== null && (
-                <Callout tone="warn">{t("units.pace", { need: pmPct(need / 100), rate: pmPct(unitRate(f.progress, startedOn, today) / 100) })}</Callout>
+                <p className="flex items-start gap-1.5 text-xs font-semibold text-warning">
+                  <Clock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  <span>{t("units.pace", { need: pmPct(need / 100), rate: pmPct(unitRate(f.progress, startedOn, today) / 100) })}</span>
+                </p>
               )}
-              {!u.ho && tt && need === null && <Callout tone="warn">{t("units.pace_passed", { date: pmDate(u.plan, locale) })}</Callout>}
+              {!u.ho && tt && need === null && (
+                <p className="flex items-start gap-1.5 text-xs font-semibold text-warning">
+                  <Clock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  <span>{t("units.pace_passed", { date: pmDate(u.plan, locale) })}</span>
+                </p>
+              )}
               <footer className="mt-auto flex flex-wrap items-center gap-2">
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setOpenId(u.id)}>
+                <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setOpenId(u.id)}>
                   <Eye size={14} aria-hidden="true" />
                   {t("units.items")}
                 </Button>
@@ -372,7 +384,7 @@ export function UnitsPanel({
       </div>
 
       {(loose > 1 || common.length > 0) && (
-        <Panel title={t("units.loose_title")} icon={List} actions={<span className="text-xs text-muted-foreground">{t("units.loose_sub")}</span>} bodyClassName="p-0">
+        <Panel title={t("units.loose_title")} icon={List} description={t("units.loose_sub")} bodyClassName="p-0">
           <ul className="divide-y">
             {common.length > 0 && (
               <li className="flex items-start gap-3 px-4 py-3">
@@ -408,10 +420,10 @@ export function UnitsPanel({
       )}
 
       <Sheet open={opened !== null} onOpenChange={(o) => !o && setOpenId(null)}>
-        <SheetContent side={locale === "ar" ? "left" : "right"} className="w-full overflow-y-auto sm:max-w-lg">
+        <SheetContent side={locale === "ar" ? "left" : "right"} className="w-full overflow-y-auto sm:max-w-2xl">
           {opened && (
             <>
-              <SheetHeader>
+              <SheetHeader className="pe-12 text-start">
                 <SheetTitle className="flex items-center gap-2" dir="auto">
                   <Box size={17} className="text-module" aria-hidden="true" />
                   {opened.u.name}
@@ -517,12 +529,12 @@ function UnitMoney({ figures, unit, items, actualCost, ret }: { figures: { contr
 
 function Figure({ icon: Icon, label, value, sub, tone }: { icon: typeof Box; label: string; value: string; sub: string; tone?: "pos" | "neg" }) {
   return (
-    <div className="flex flex-col gap-1 rounded-xl border bg-card p-4">
+    <div className="flex min-w-0 flex-col gap-1 rounded-xl border bg-card p-3 sm:p-4">
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Icon size={12} aria-hidden="true" />
         {label}
       </span>
-      <span className={cn("text-xl font-bold tabular-nums", tone === "pos" && "text-success", tone === "neg" && "text-destructive")} dir="auto">
+      <span className={cn("text-lg font-bold tabular-nums sm:text-xl", tone === "pos" && "text-success", tone === "neg" && "text-destructive")} dir="auto">
         {value}
       </span>
       <span className="text-xs text-muted-foreground">{sub}</span>

@@ -130,7 +130,7 @@ export function RequestInspectionDialog({
             <p className="text-[11px] text-muted-foreground">{t("wir.what_where_hint")}</p>
           </div>
           <UnitField id="wir-unit" units={units} value={unit} onChange={setUnit} disabled={busy} />
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="wir-on">{t("wir.requested_on")}</Label>
               <Input id="wir-on" type="date" dir="ltr" value={on} onChange={(e) => setOn(e.target.value)} disabled={busy} />

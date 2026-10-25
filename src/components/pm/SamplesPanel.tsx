@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable } from "@/components/module-ui/DataTable"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
@@ -62,6 +63,8 @@ export interface SampleItem {
 
 type Draft = { itemId: string; what: string; supplier: string; day: string; files: PmAttachment[] }
 const EMPTY = (): Draft => ({ itemId: "", what: "", supplier: "", day: todayDay(), files: [] })
+
+const TABLE_LABELS = { sortBy: (c: string) => c, showMore: (n: number) => `+${n}` }
 
 export function SamplesPanel({
   projectId,
@@ -145,6 +148,7 @@ export function SamplesPanel({
         title={t("sample.title2")}
         icon={TestTube}
         count={openCount || undefined}
+        description={t("sample.sub2", { open: openCount, total: subs.length })}
         bodyClassName="p-0"
         actions={
           <>
@@ -163,87 +167,109 @@ export function SamplesPanel({
           </>
         }
       >
-        <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("sample.sub2", { open: openCount, total: subs.length })}</p>
         {subs.length === 0 ? (
-          <EmptyState icon={TestTube} title={t("sample.empty")} description={t("sample.empty_desc")} />
+          <EmptyState bare icon={TestTube} title={t("sample.empty")} description={t("sample.empty_desc")} />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
-              <thead className="bg-muted/40 text-xs text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2 text-start font-semibold">{t("sample.col_no")}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t("sample.item")}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t("sample.col_supplier")}</th>
-                  <th className="px-3 py-2 text-center font-semibold">{t("sample.col_revs")}</th>
-                  <th className="px-3 py-2 text-center font-semibold">{t("sample.col_turn")}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t("sample.col_status")}</th>
-                  <th className="px-4 py-2" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {subs.map((s) => {
-                  const known = (SAMPLE_STATUSES as readonly string[]).includes(s.status)
+          <DataTable<PmSubmittal>
+            caption={t("sample.title2")}
+            rows={subs}
+            rowKey={(s) => s.id}
+            labels={TABLE_LABELS}
+            bordered={false}
+            dense
+            empty={null}
+            columns={[
+              {
+                key: "no",
+                header: t("sample.col_no"),
+                cell: (s) => {
                   const i = byId.get(s.itemId)
+                  return (
+                    <>
+                      <p className="font-semibold" dir="auto">
+                        {s.what || i?.description || s.code}
+                      </p>
+                      <p className="text-xs font-normal text-muted-foreground">
+                        {t("sample.no", { no: sampleNo(s.seq) })} · {pmDate(s.day, locale)}
+                      </p>
+                      {s.reply?.note && (
+                        <p className={cn("mt-0.5 text-xs font-semibold", s.status === "rej" ? "text-destructive" : "text-warning")} dir="auto">
+                          {s.reply.note}
+                        </p>
+                      )}
+                      <ReplySource viaPortal={s.reply?.viaPortal} on={s.reply?.on} />
+                    </>
+                  )
+                },
+              },
+              {
+                key: "item",
+                header: t("sample.item"),
+                className: "text-xs",
+                hideBelow: "lg",
+                cell: (s) => {
+                  const i = byId.get(s.itemId)
+                  return (
+                    <>
+                      <span dir="ltr">{i?.code ?? s.code}</span>
+                      {i?.description && (
+                        <span className="block text-muted-foreground" dir="auto">
+                          {i.description.slice(0, 26)}
+                        </span>
+                      )}
+                    </>
+                  )
+                },
+              },
+              { key: "supplier", header: t("sample.col_supplier"), className: "text-xs", cell: (s) => <span dir="auto">{s.supplier}</span> },
+              { key: "revs", header: t("sample.col_revs"), hideBelow: "lg", cell: (s) => <StatusPill tone={s.rev > 1 ? "warn" : "mute"}>{s.rev}</StatusPill> },
+              {
+                key: "turn",
+                header: t("sample.col_turn"),
+                className: "text-xs",
+                cell: (s) => {
                   const turn = turnaround(s, today)
                   return (
-                    <tr key={s.id} className="align-top">
-                      <td className="px-4 py-2.5">
-                        <p className="font-semibold" dir="auto">
-                          {s.what || i?.description || s.code}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {t("sample.no", { no: sampleNo(s.seq) })} · {pmDate(s.day, locale)}
-                        </p>
-                        {s.reply?.note && (
-                          <p className={cn("mt-0.5 text-xs font-semibold", s.status === "rej" ? "text-destructive" : "text-warning")} dir="auto">
-                            {s.reply.note}
-                          </p>
-                        )}
-                        <ReplySource viaPortal={s.reply?.viaPortal} on={s.reply?.on} />
-                      </td>
-                      <td className="px-3 py-2.5 text-xs">
-                        <span dir="ltr">{i?.code ?? s.code}</span>
-                        {i?.description && (
-                          <p className="text-muted-foreground" dir="auto">
-                            {i.description.slice(0, 26)}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs" dir="auto">
-                        {s.supplier}
-                      </td>
-                      <td className="px-3 py-2.5 text-center">
-                        <StatusPill tone={s.rev > 1 ? "warn" : "mute"}>{s.rev}</StatusPill>
-                      </td>
-                      <td className="px-3 py-2.5 text-center text-xs">
-                        {turn.open ? <span className="font-bold text-warning">{t("sample.open_for", { count: turn.days })}</span> : t("days", { count: turn.days })}
-                        <div className="mt-1 flex justify-center gap-1">
-                          <AttachmentTag files={s.files} />
-                          <AttachmentTag files={s.reply?.files} tone="teal" />
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <StatusPill tone={known ? STATUS_TONE[s.status] : "bad"}>{known ? t(`sample.status.${s.status}`) : t("unknown_state")}</StatusPill>
-                      </td>
-                      <td className="px-4 py-2.5 text-end">
-                        {canRecord && s.status === "sub" && (
-                          <Button size="sm" onClick={() => setReplying({ s, reply: "", note: "", on: today, files: [] })}>
-                            {t("sample.record_reply")}
-                          </Button>
-                        )}
-                        {canRecord && canResubmit(s, subs) && (
-                          <Button size="sm" variant="outline" onClick={() => setDraft({ itemId: s.itemId, what: s.what ?? i?.description ?? "", supplier: s.supplier, day: today, files: [] })}>
-                            <RotateCcw size={14} className="me-1.5" aria-hidden="true" />
-                            {t("sample.resubmit")}
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
+                    <>
+                      {turn.open ? <span className="font-bold text-warning">{t("sample.open_for", { count: turn.days })}</span> : t("days", { count: turn.days })}
+                      <span className="mt-1 flex gap-1">
+                        <AttachmentTag files={s.files} />
+                        <AttachmentTag files={s.reply?.files} tone="teal" />
+                      </span>
+                    </>
                   )
-                })}
-              </tbody>
-            </table>
-          </div>
+                },
+              },
+              {
+                key: "status",
+                header: t("sample.col_status"),
+                cell: (s) => {
+                  const known = (SAMPLE_STATUSES as readonly string[]).includes(s.status)
+                  return <StatusPill tone={known ? STATUS_TONE[s.status] : "bad"}>{known ? t(`sample.status.${s.status}`) : t("unknown_state")}</StatusPill>
+                },
+              },
+              {
+                key: "act",
+                header: "",
+                className: "text-end",
+                cell: (s) => (
+                  <span className="inline-flex flex-wrap justify-end gap-2">
+                    {canRecord && s.status === "sub" && (
+                      <Button size="sm" onClick={() => setReplying({ s, reply: "", note: "", on: today, files: [] })}>
+                        {t("sample.record_reply")}
+                      </Button>
+                    )}
+                    {canRecord && canResubmit(s, subs) && (
+                      <Button size="sm" variant={s.status === "sub" ? "ghost" : "default"} onClick={() => setDraft({ itemId: s.itemId, what: s.what ?? byId.get(s.itemId)?.description ?? "", supplier: s.supplier, day: today, files: [] })}>
+                        <RotateCcw size={14} className="me-1.5" aria-hidden="true" />
+                        {t("sample.resubmit")}
+                      </Button>
+                    )}
+                  </span>
+                ),
+              },
+            ]}
+          />
         )}
         {avg !== null && (
           <p className="border-t bg-muted/30 px-4 py-2.5 text-xs text-muted-foreground">
@@ -279,7 +305,7 @@ export function SamplesPanel({
                 <Label htmlFor="smp-what">{t("sample.what")}</Label>
                 <Input id="smp-what" value={draft.what} placeholder={t("sample.what_ph")} onChange={(e) => setDraft({ ...draft, what: e.target.value })} disabled={busy !== null} dir="auto" />
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="smp-sup">{t("sample.supplier2")}</Label>
                   <Input id="smp-sup" value={draft.supplier} placeholder={t("sample.supplier_ph")} onChange={(e) => setDraft({ ...draft, supplier: e.target.value })} disabled={busy !== null} dir="auto" />

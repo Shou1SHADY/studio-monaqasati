@@ -116,6 +116,7 @@ export function NcrPanel({
       title={t("ncr.title2")}
       icon={FileWarning}
       count={open.length}
+      description={t("ncr.sub")}
       bodyClassName="p-0"
       actions={
         canQa ? (
@@ -126,9 +127,8 @@ export function NcrPanel({
         ) : null
       }
     >
-      <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("ncr.sub")}</p>
       {ncrs.length === 0 ? (
-        <EmptyState icon={FileWarning} title={t("ncr.empty2")} description={t("ncr.empty_desc")} />
+        <EmptyState bare icon={FileWarning} title={t("ncr.empty2")} description={t("ncr.empty_desc")} />
       ) : (
         <ul className="divide-y">
           {ncrs.map((n) => {
@@ -207,7 +207,7 @@ export function NcrPanel({
                     </Button>
                   )}
                   {canQa && n.status === "plan" && (
-                    <Button size="sm" variant="outline" onClick={() => setRejecting(n)}>
+                    <Button size="sm" variant="ghost" onClick={() => setRejecting(n)}>
                       {t("reply.reject_plan")}
                     </Button>
                   )}
@@ -232,7 +232,7 @@ export function NcrPanel({
               </Label>
               <Input id="ncr-what" value={what} placeholder={t("ncr.what_ph")} onChange={(e) => setWhat(e.target.value)} disabled={busy !== null} dir="auto" />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>{t("ncr.item")}</Label>
                 <SearchableSelect
@@ -258,7 +258,7 @@ export function NcrPanel({
               </Label>
               <Textarea id="ncr-root" value={root} placeholder={t("ncr.root_ph")} onChange={(e) => setRoot(e.target.value)} disabled={busy !== null} dir="auto" />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="ncr-sev">{t("ncr.severity")}</Label>
                 <Select value={severity} onValueChange={(v) => setSeverity(v as NcrSeverity)} disabled={busy !== null}>

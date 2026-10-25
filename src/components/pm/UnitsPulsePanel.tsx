@@ -43,7 +43,7 @@ export function UnitsPulsePanel({ projectId, items, startedOn, onDetails }: { pr
       title={t("units.tab")}
       icon={Box}
       actions={
-        <Button size="sm" variant="outline" onClick={onDetails}>
+        <Button size="sm" variant="ghost" onClick={onDetails}>
           {t("units.pulse_details")}
         </Button>
       }
@@ -51,7 +51,7 @@ export function UnitsPulsePanel({ projectId, items, startedOn, onDetails }: { pr
     >
       {rows.map(({ u, f, tight, state }) => (
         <div key={u.id} className="flex items-center gap-2">
-          <b className="min-w-16 truncate text-xs" dir="auto">
+          <b className="w-24 min-w-0 shrink-0 truncate text-xs" dir="auto">
             {u.name}
           </b>
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted" role="presentation">

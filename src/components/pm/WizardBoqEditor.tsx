@@ -59,7 +59,7 @@ export function WizardBoqEditor({ rows, onChange, disabled }: { rows: BoqDraftRo
                 <Input aria-label={t("wizard.boq_col_unit")} dir="auto" className="h-9 text-xs" value={r.unit} onChange={(e) => patch(r.id, { unit: e.target.value })} disabled={disabled} />
                 <Input aria-label={t("boq.qty")} type="number" min={0} step="any" inputMode="decimal" dir="ltr" className="h-9 text-xs" value={r.quantity > 0 ? r.quantity : ""} onChange={(e) => patch(r.id, { quantity: toNumber(e.target.value) })} disabled={disabled} />
                 <Input aria-label={t("boq.rate")} type="number" min={0} step="any" inputMode="decimal" dir="ltr" className="h-9 text-xs" value={r.rate > 0 ? r.rate : ""} onChange={(e) => patch(r.id, { rate: toNumber(e.target.value) })} placeholder="—" disabled={disabled} />
-                <Button type="button" variant="ghost" size="icon" className="h-9 w-9" aria-label={t("wizard.boq_remove_row")} onClick={() => onChange(rows.filter((x) => x.id !== r.id))} disabled={disabled}>
+                <Button type="button" variant="ghost" size="icon" className="h-9 w-9 max-md:h-11 max-md:w-11" aria-label={t("wizard.boq_remove_row")} onClick={() => onChange(rows.filter((x) => x.id !== r.id))} disabled={disabled}>
                   <Trash2 size={14} aria-hidden="true" />
                 </Button>
               </div>

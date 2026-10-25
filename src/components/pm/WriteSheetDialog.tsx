@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Loader2, ShieldCheck } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -150,7 +150,7 @@ export function WriteSheetDialog({
               )
             })}
           </ul>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="ms-day">{t("meas.day")}</Label>
               <Input id="ms-day" type="date" max={today} dir="ltr" value={day} onChange={(e) => setDay(e.target.value)} disabled={busy} />
@@ -177,12 +177,7 @@ export function WriteSheetDialog({
           )}
           {unpriced && <Callout tone="warn">{t("meas.unpriced_warn")}</Callout>}
           {!self && (
-            <Callout tone="warn">
-              <span className="inline-flex items-start gap-1.5">
-                <ShieldCheck size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
-                {t("meas.not_self")}
-              </span>
-            </Callout>
+            <Callout tone="warn">{t("meas.not_self")}</Callout>
           )}
           <BlockingReasons title={t("cannot_save")} reasons={blocks.map((b) => t(`meas.block.${b}`))} />
         </div>

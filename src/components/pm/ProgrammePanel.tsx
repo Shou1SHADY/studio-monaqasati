@@ -16,6 +16,8 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable } from "@/components/module-ui/DataTable"
+import { IconButton } from "@/components/module-ui/IconButton"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
@@ -65,6 +67,8 @@ type Item = {
   executed: number
 }
 
+
+const TABLE_LABELS = { sortBy: (c: string) => c, showMore: (n: number) => `+${n}` }
 
 const STATE_TONE: Record<ActivityState, PillTone> = {
   done: "ok",
@@ -181,7 +185,7 @@ export function ProgrammePanel({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-3">
         <Tile
           icon={CalendarClock}
           label={t("prg.in_force")}
@@ -242,37 +246,27 @@ export function ProgrammePanel({
             <p className="mt-2 text-xs text-muted-foreground">{k === 1 ? t("prg.curve_note") : t("prg.curve_note_k")}</p>
             <details className="mt-2">
               <summary className="cursor-pointer text-xs font-semibold text-cta">{t("prg.as_table")}</summary>
-              <table className="mt-2 w-full text-sm">
-                <thead className="text-xs text-muted-foreground">
-                  <tr>
-                    <th className="py-1 text-start font-semibold">{t("prg.date")}</th>
-                    <th className="py-1 text-end font-semibold">
-                      {t("prg.planned")} R{current.rev}
-                    </th>
-                    <th className="py-1 text-end font-semibold">{t("prg.actual")}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {curve.map((p) => (
-                    <tr key={p.day}>
-                      <td className="py-1">{pmDate(p.day, locale)}</td>
-                      <td className="py-1 text-end tabular-nums" dir="ltr">
-                        {p.planned}%
-                      </td>
-                      <td className="py-1 text-end tabular-nums" dir="ltr">
-                        {p.actual == null ? "—" : `${p.actual}%`}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <DataTable<CurvePoint>
+                caption={t("prg.curve_title")}
+                rows={curve}
+                rowKey={(p) => p.day}
+                labels={TABLE_LABELS}
+                empty={null}
+                dense
+                maxHeight="50vh"
+                className="mt-2"
+                columns={[
+                  { key: "day", header: t("prg.date"), cell: (p) => pmDate(p.day, locale) },
+                  { key: "planned", header: `${t("prg.planned")} R${current.rev}`, numeric: true, cell: (p) => `${p.planned}%` },
+                  { key: "actual", header: t("prg.actual"), numeric: true, cell: (p) => (p.actual == null ? "—" : `${p.actual}%`) },
+                ]}
+              />
             </details>
           </>
         )}
       </Panel>
 
-      <Panel title={t("prg.revisions_title")} icon={FileClock} bodyClassName="p-0">
-        <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("prg.revisions_desc")}</p>
+      <Panel title={t("prg.revisions_title")} icon={FileClock} description={t("prg.revisions_desc")} bodyClassName="p-0">
         <ul className="divide-y">
           {revisions
             .slice()
@@ -304,22 +298,24 @@ export function ProgrammePanel({
       </Panel>
 
       {sections.length > 0 && (
-        <Panel title={t("prg.sections_title")} icon={ListChecks} bodyClassName="p-0">
-          <p className="border-b px-4 py-2 text-xs text-muted-foreground">
-            {t("prg.sections_desc", {
-              planned: delay?.planned ?? 0,
-              rev: `R${current.rev}`,
-            })}
-          </p>
+        <Panel
+          title={t("prg.sections_title")}
+          icon={ListChecks}
+          description={t("prg.sections_desc", {
+            planned: delay?.planned ?? 0,
+            rev: `R${current.rev}`,
+          })}
+          bodyClassName="p-0"
+        >
           <ul className="divide-y">
             {sections.map((s) => (
-              <li key={s.division} className="flex items-center gap-3 px-4 py-2.5">
-                <span className="min-w-0 flex-1 truncate text-sm" dir="auto">
+              <li key={s.division} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
+                <span className="w-full min-w-0 truncate text-sm sm:w-56 sm:shrink-0" dir="auto">
                   <b className="font-semibold">{s.division}</b>
                   <span className="text-xs text-muted-foreground"> · {t("prg.sec_items", { count: sectionCount.get(s.division) ?? 0 })}</span>
                 </span>
                 <span className="hidden text-xs text-muted-foreground sm:inline">{t("prg.sec_plan", { pct: Math.round(s.planned ?? s.progress - s.deviation) })}</span>
-                <div className="h-1.5 w-32 overflow-hidden rounded-full bg-muted sm:w-48">
+                <div className="h-1.5 min-w-16 flex-1 overflow-hidden rounded-full bg-muted" dir="ltr">
                   <div
                     className={cn("h-full rounded-full", s.deviation < -6 ? "bg-destructive" : s.deviation < -2 ? "bg-warning" : "bg-success")}
                     style={{
@@ -347,16 +343,16 @@ export function ProgrammePanel({
           title={t("prg.acts_title")}
           icon={CalendarRange}
           count={acts.length || undefined}
+          description={t("prg.acts_desc")}
           actions={
             canManage ? (
-              <Button size="sm" className="gap-1.5 bg-module text-module-foreground hover:bg-module/90" onClick={() => setEditing("new")}>
+              <Button size="sm" variant="module" className="gap-1.5" onClick={() => setEditing("new")}>
                 <Plus size={14} aria-hidden="true" /> {t("prg.act_add")}
               </Button>
             ) : undefined
           }
           bodyClassName="p-0"
         >
-          <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("prg.acts_desc")}</p>
           {acts.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("prg.acts_empty")}</p>
           ) : (
@@ -516,11 +512,11 @@ function SCurve({
 
 function Tile({ icon: Icon, label, value, note, bad }: { icon: typeof Clock; label: string; value: string; note: string; bad?: boolean }) {
   return (
-    <div className="rounded-2xl border bg-card p-4">
+    <div className="min-w-0 rounded-xl border bg-card p-3 sm:p-4">
       <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-        <Icon size={13} aria-hidden="true" /> {label}
+        <Icon size={13} className="shrink-0" aria-hidden="true" /> {label}
       </p>
-      <p className={cn("mt-1 text-xl font-black tabular-nums", bad ? "text-destructive" : "text-foreground")} dir="auto">
+      <p className={cn("mt-1 break-words text-lg font-black tabular-nums sm:text-xl", bad ? "text-destructive" : "text-foreground")} dir="auto">
         {value}
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">{note}</p>
@@ -598,7 +594,7 @@ function ActivityRows({
                     : t("prg.act_late", { pts: Math.round(plan - (pc ?? 0)) })}
                 </p>
               )}
-              {st === "idle" && <p className="mt-1 text-xs font-semibold text-amber-600">{t("prg.act_idle", { date: pmDate(a.from, locale) })}</p>}
+              {st === "idle" && <p className="mt-1 text-xs font-semibold text-warning">{t("prg.act_idle", { date: pmDate(a.from, locale) })}</p>}
               {pc == null && <p className="mt-1 text-xs text-muted-foreground">{t("prg.act_no_items")}</p>}
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
@@ -607,12 +603,8 @@ function ActivityRows({
                 {pc == null ? "—" : `${pc}%`}
               </span>
               <span className="text-[11px] text-muted-foreground">{t("prg.act_plan", { pc: plan })}</span>
-              {canManage && (
-                <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs" onClick={() => onEdit(a)} aria-label={t("prg.act_edit")}>
-                  <Pencil size={12} aria-hidden="true" />
-                </Button>
-              )}
             </div>
+            {canManage && <IconButton icon={Pencil} label={t("prg.act_edit")} onClick={() => onEdit(a)} className="-me-2 -mt-1.5 shrink-0" />}
           </li>
         )
       })}
@@ -709,7 +701,7 @@ function ActivityDialog({
             <Label htmlFor="act-name">{t("prg.act_name")}</Label>
             <Input id="act-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("prg.act_name_ph")} dir="auto" />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="act-from">{t("prg.act_from")}</Label>
               <Input id="act-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} dir="ltr" disabled={datesLocked} />
