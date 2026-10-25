@@ -25,6 +25,8 @@ import { approvedValue, PM_VARIATIONS, type PmVariation } from "./variation"
 import { certificatesApply } from "./terms"
 import { liveContractValue } from "./contract-value"
 import { onSite, PM_PLANT, type PmPlant } from "./plant"
+import { grantedDays, PM_CLAIMS, type PmClaim } from "./claim"
+import { PM_OBSTACLES, type PmObstacle } from "./site"
 
 export class PmCloseError extends Error {
   constructor(readonly code: "not_done" | "blocked", readonly blocks: string[] = []) {
@@ -51,7 +53,7 @@ export async function readCloseFacts(firestore: Firestore, projectId: string) {
   const project = (pSnap.exists() ? pSnap.data() : {}) as { enabledSections?: string[] }
   const sections = project.enabledSections ?? []
   const col = (name: string) => getDocs(collection(firestore, "projects", projectId, name))
-  const [items, punch, certs, ncrs, vos, subs, subCerts, letters, plant, store] = await Promise.all([
+  const [items, punch, certs, ncrs, vos, subs, subCerts, letters, plant, store, claims, obstacles] = await Promise.all([
     col("boqItems"),
     col(PM_PUNCH),
     col(PM_CERTIFICATES),
@@ -62,6 +64,8 @@ export async function readCloseFacts(firestore: Firestore, projectId: string) {
     col(PM_LETTERS),
     col(PM_PLANT),
     sections.includes("store") ? col(PM_STORE) : Promise.resolve(null),
+    col(PM_CLAIMS),
+    col(PM_OBSTACLES),
   ])
   const contracts = subs.docs.map((d) => ({ ...(d.data() as PmSubcontract), id: d.id }))
   const storeItems = items.docs.map((d) => storeItemOf(d.id, d.data() as Record<string, unknown>))
@@ -78,6 +82,12 @@ export async function readCloseFacts(firestore: Firestore, projectId: string) {
     subs: sections.includes("subs") || contracts.length ? subDues(contracts, subCerts.docs.map((d) => d.data() as PmSubCertificate)) : null,
     letters: letters.docs.map((d) => d.data() as PmLetter),
     plantOnSite: plant.docs.length ? onSite(plant.docs.map((d) => d.data() as Pick<PmPlant, "status">)).length : null,
+    /** Extension days granted — the effective duration the archive measures delay against (CST-04). */
+    grantedDays: grantedDays(claims.docs.map((d) => d.data() as PmClaim)),
+    obstacles: obstacles.docs.map((d) => {
+      const o = d.data() as PmObstacle
+      return { type: o.type, party: o.party, openOn: o.openOn, closeOn: o.closeOn ?? null }
+    }),
   }
 }
 
@@ -123,6 +133,8 @@ export async function closeAndArchive(firestore: Firestore, ctx: PmContext, proj
       retentionHeld: block.retentionHeld ?? 0,
       advanceRecovered: block.advanceRecovered ?? 0,
       durationDays: block.durationDays ?? null,
+      grantedDays: facts.grantedDays,
+      obstacles: facts.obstacles,
       startedAt: block.startedAt ?? null,
       provisionalOn: block.acceptances?.prov?.on ?? null,
       finalOn: block.acceptances?.final?.on ?? null,

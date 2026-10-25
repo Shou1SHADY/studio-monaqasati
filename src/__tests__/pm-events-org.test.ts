@@ -14,7 +14,7 @@ import { fakeFirestore, listCollection, readDoc, resetFakeDb, seed } from "@/tes
 import type { Firestore } from "firebase/firestore"
 import type { CrmOpportunity } from "@/lib/crm"
 import { eventDocId, pmEventDocId, PM_EVENTS, type PmEvent } from "@/lib/pm/events"
-import { acceptHandover, sendHandoverFile } from "@/lib/pm/handover-writes"
+import { acceptHandover, localAcceptTransport, sendHandoverFile } from "@/lib/pm/handover-writes"
 
 const db = fakeFirestore as unknown as Firestore
 
@@ -38,7 +38,7 @@ async function born(org: string, managerUid: string): Promise<string> {
     to: managerUid,
     toName: "Manager",
   })
-  const { projectNo } = await acceptHandover(db, { uid: managerUid, name: "Manager" }, id, { kind: "bld", location: null, enabledSections: ["contract", "procure"], manager: { uid: managerUid, name: "Manager", groupId: null } })
+  const { projectNo } = await acceptHandover(db, { uid: managerUid, name: "Manager" }, id, { kind: "bld", location: null, enabledSections: ["contract", "procure"], manager: { uid: managerUid, name: "Manager", groupId: null } }, localAcceptTransport(db, { uid: managerUid, owner: false }))
   return projectNo
 }
 

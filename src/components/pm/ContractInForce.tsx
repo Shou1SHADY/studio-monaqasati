@@ -27,6 +27,8 @@ import { ADDENDUM_TERMS, addendumNo, amendedBy, draftAge, inForce, lastSignedOn,
 import { claimNo, grantedDays, PM_CLAIMS, type PmClaim } from "@/lib/pm/claim"
 import { contractEvents, type RecordKind } from "@/lib/pm/contract-record"
 import { pmMoney } from "@/lib/pm/format"
+import { certifiedRetention, PM_CERTIFICATES, type CertificateFacts } from "@/lib/pm/certificate"
+import { liveContractValue } from "@/lib/pm/contract-value"
 import { approvedValue, PM_VARIATIONS, voNo, type PmVariation } from "@/lib/pm/variation"
 import type { PillTone } from "@/components/module-ui/StatusPill"
 import { FileLinks } from "./ContractBits"
@@ -104,17 +106,28 @@ export function ContractInForce({
   const { data: voData } = useCollection(voQ)
   const claimQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_CLAIMS) : null), [firestore, projectId])
   const { data: claimData } = useCollection(claimQ)
+  // CON-02: the contract value in force reads the priced BOQ too (contract-value.ts), as the writes do.
+  const itemQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, "boqItems") : null), [firestore, projectId])
+  const { data: itemData } = useCollection(itemQ)
+  // AMD-09: "retention held" is what certified certificates hold — the cap check reads that, not what was prepared.
+  const money = access.has("money")
+  const certQ = useMemoFirebase(() => (firestore && money ? collection(firestore, "projects", projectId, PM_CERTIFICATES) : null), [firestore, projectId, money])
+  const { data: certData } = useCollection(certQ)
   const vos = useMemo(() => (voData ?? []) as unknown as PmVariation[], [voData])
   const claims = useMemo(() => (claimData ?? []) as unknown as PmClaim[], [claimData])
   const terms = useMemo(() => inForce(original, addenda), [original, addenda])
   const marks = useMemo(() => amendedBy(addenda), [addenda])
   const drafts = addenda.filter((a) => a.status === "draft")
   const approvedVos = vos.filter((v) => v.status === "appr")
-  const liveValue = contractValue + approvedValue(vos)
+  const liveValue = useMemo(() => {
+    const items = ((itemData ?? []) as Array<{ quantity?: unknown; unitPrice?: unknown }>).map((i) => ({ quantity: Number(i.quantity) || 0, rate: Number(i.unitPrice) || 0 }))
+    return liveContractValue({ budget: contractValue, items, approvedVariations: approvedValue(vos) })
+  }, [itemData, contractValue, vos])
+  const heldNow = money && certData ? certifiedRetention(certData as unknown as CertificateFacts[]) : retentionHeld
   const eot = grantedDays(claims)
   const meaning = useTermMeaning({
     contractValue: liveValue,
-    retentionHeld,
+    retentionHeld: heldNow,
     money: access.has("money"),
     advanceRecovered,
   })
@@ -250,7 +263,8 @@ export function ContractInForce({
               <ul className="divide-y overflow-hidden rounded-xl border">
                 {drafts.map((a) => {
                   const mayWithdraw = open && mayWithdrawAddendum(access.ctx, access.uid ?? "", a.by)
-                  const stale = staleChanges(a.changes, terms).length > 0
+                  const staleList = staleChanges(a.changes, terms)
+                  const stale = staleList.length > 0
                   return (
                     <DecisionRow
                       key={a.id}
@@ -279,8 +293,14 @@ export function ContractInForce({
                           )}
                           <FileLinks files={a.files} className="mt-1" />
                           {stale && (
-                            <Callout tone="block" className="mt-2 py-2 text-xs">
-                              {t("amend.stale_inline")}
+                            // AMD-05: the block shows in the list itself, with both values — drafted on / in force now.
+                            <Callout tone="block" title={t("amend.stale_title")} className="mt-2 py-2 text-xs">
+                              <ul className="space-y-0.5">
+                                {staleList.map((x) => (
+                                  <li key={x.key}>{t("amend.stale_line", { term: t(`terms.${x.key}` as "terms.save"), drafted: text(x.key, x.drafted), now: text(x.key, x.now) })}</li>
+                                ))}
+                              </ul>
+                              <span className="mt-1 block">{t("amend.stale_inline")}</span>
                             </Callout>
                           )}
                         </>
@@ -410,8 +430,8 @@ export function ContractInForce({
           actor={actor}
           terms={terms}
           lifecycle={lifecycle}
-          contractValue={contractValue}
-          retentionHeld={retentionHeld}
+          contractValue={liveValue}
+          retentionHeld={heldNow}
           lastSigned={lastSigned}
         />
       )}
@@ -426,8 +446,8 @@ export function ContractInForce({
           terms={terms}
           lifecycle={lifecycle}
           lastSigned={lastSigned}
-          contractValue={contractValue}
-          retentionHeld={retentionHeld}
+          contractValue={liveValue}
+          retentionHeld={heldNow}
           orgId={orgId}
         />
       )}

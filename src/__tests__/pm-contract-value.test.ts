@@ -79,6 +79,7 @@ describe("the certificate is measured against it (RET-01, INV-04)", () => {
 describe("an addendum's cap is checked against it (AMD-09)", () => {
   it("a cap that the handover value alone would refuse is accepted once a variation is approved", async () => {
     project(1_000_000, { retentionHeld: 50_000 })
+    seed("projects/p1/pmCertificates/01", { seq: 1, status: "appr", retention: 50_000 })
     seed("projects/p1/boqItems/i1", { itemNo: "03-01", quantity: "1000", unitPrice: "1000", executedQuantity: 0 })
     // 4.5% of 1,000,000 = 45,000 < 50,000 held → refused…
     await expect(draftAddendum(db, pm, "p1", { uid: "pm1", name: "Abdullah" }, { next: { ...terms, retentionCap: 0.045 }, reason: "client" })).rejects.toMatchObject({ code: "blocked" })

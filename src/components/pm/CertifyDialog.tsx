@@ -21,7 +21,7 @@ import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { PmAccessError } from "@/lib/pm/access"
-import { certificateAmounts, certificateNo, certifyBlocks, CUT_REASONS, type CutReason } from "@/lib/pm/certificate"
+import { certificateAmounts, certificateNo, certifyBlocks, CUT_REASON_ABOVE, CUT_REASONS, type CutReason } from "@/lib/pm/certificate"
 import { certifyCertificate, PmCertificateError, type CertificateActor, type PmCertificate } from "@/lib/pm/certificate-writes"
 import { pmMoney } from "@/lib/pm/format"
 import { onPmCertificateCertified } from "@/lib/accounting/pm-hooks"
@@ -52,6 +52,7 @@ export function CertifyDialog({
   const { toast } = useToast()
   const [value, setValue] = useState("")
   const [reason, setReason] = useState<CutReason | null>(null)
+  const [reasonText, setReasonText] = useState("")
   const [ref, setRef] = useState("")
   const [busy, setBusy] = useState(false)
   const projectRef = useMemoFirebase(() => (firestore ? doc(firestore, "projects", projectId) : null), [firestore, projectId])
@@ -62,12 +63,13 @@ export function CertifyDialog({
     if (open) {
       setValue("")
       setReason(null)
+      setReasonText("")
       setRef("")
     }
   }, [open])
 
   const certified = value.trim() === "" ? NaN : Number(value)
-  const blocks = certifyBlocks({ status: cert.status, gross: cert.gross, certified, reason })
+  const blocks = certifyBlocks({ status: cert.status, gross: cert.gross, certified, reason, reasonText })
   const valid = Number.isFinite(certified) && certified > 0 && certified <= cert.gross + 0.005
   const amounts = valid ? certificateAmounts({ gross: certified, terms: cert.terms, contractValue: cert.contractValue, held: held - cert.retention, recovered: recovered - cert.recovery }) : null
   const cut = valid ? Math.max(0, cert.gross - certified) : 0
@@ -77,7 +79,7 @@ export function CertifyDialog({
     if (!firestore || blocks.length) return
     setBusy(true)
     try {
-      const res = await certifyCertificate(firestore, access.ctx, projectId, actor, cert.seq, { certified, reason: cut > 0.005 ? reason : null, consultantRef: ref })
+      const res = await certifyCertificate(firestore, access.ctx, projectId, actor, cert.seq, { certified, reason: cut > 0.005 ? reason : null, reasonText: cut > 0.005 && reason === "oth" ? reasonText : null, consultantRef: ref })
       if (res.event) onPmCertificateCertified(firestore, { organizationId: res.event.organizationId, userId: actor.uid, userName: actor.name || "" }, res.event)
       toast({ title: t("ipc.certified_done", { no: certificateNo(cert.seq) }), description: cut > 0 ? t("ipc.cut_back", { amount: pmMoney(cut) }) : undefined })
       onOpenChange(false)
@@ -117,9 +119,15 @@ export function CertifyDialog({
           {cut > 0.005 && (
             <div className="space-y-1.5">
               <p className="text-sm font-medium">
-                {t("ipc.cut_reason")} <span className="text-destructive">*</span>
+                {t("ipc.cut_reason")} {cut > CUT_REASON_ABOVE && <span className="text-destructive">*</span>}
               </p>
               <ChoiceChips label={t("ipc.cut_reason")} options={CUT_REASONS.map((r) => ({ id: r, label: t(`ipc.cut_reasons.${r}`) }))} value={reason} onChange={setReason} disabled={busy} />
+              {reason === "oth" && (
+                <div className="space-y-1.5 pt-1">
+                  <Label htmlFor="ipc-cut-text">{t("ipc.cut_text")}</Label>
+                  <Input id="ipc-cut-text" value={reasonText} onChange={(e) => setReasonText(e.target.value)} disabled={busy} dir="auto" />
+                </div>
+              )}
               <FormHint>{t("ipc.cut_hint")}</FormHint>
             </div>
           )}

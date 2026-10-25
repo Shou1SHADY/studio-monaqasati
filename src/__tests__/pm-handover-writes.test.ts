@@ -12,7 +12,7 @@ import type { Firestore } from "firebase/firestore"
 import type { CrmOpportunity } from "@/lib/crm"
 import { PM_EVENTS } from "@/lib/pm/events"
 import { PM_HANDOVERS, type PmHandover } from "@/lib/pm/handover"
-import { acceptHandover, reassignHandover, returnHandover, sendHandoverFile, PmHandoverError } from "@/lib/pm/handover-writes"
+import { acceptHandover, localAcceptTransport, reassignHandover, returnHandover, sendHandoverFile, PmHandoverError } from "@/lib/pm/handover-writes"
 import { PmAccessError, pmCeiling, type PmContext } from "@/lib/pm/access"
 import { savePlanTerms, startProject, PmProjectError } from "@/lib/pm/project-writes"
 import { defaultTerms } from "@/lib/pm/terms"
@@ -49,12 +49,19 @@ async function send(over: Partial<Parameters<typeof sendHandoverFile>[1]> = {}) 
 }
 const file = (id: string) => readDoc<PmHandover>(`${PM_HANDOVERS}/${id}`) as PmHandover
 const accept = (id: string, actor: { uid: string; name: string; owner?: boolean } = pm) =>
-  acceptHandover(db, actor, id, { kind: "bld", location: null, enabledSections: ["contract", "procure"], manager: { uid: actor.uid, name: actor.name, groupId: "g-pm" } })
+  acceptHandover(db, actor, id, { kind: "bld", location: null, enabledSections: ["contract", "procure"], manager: { uid: actor.uid, name: actor.name, groupId: "g-pm" } }, localAcceptTransport(db, { uid: actor.uid, owner: Boolean(actor.owner) }))
 
 const pmCtx: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.manage"] }), seat: { uid: "pm1", role: "pm" }, archived: false }
 const siteCtx: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.site"] }), seat: { uid: "se1", role: "site" }, archived: false }
 
-beforeEach(() => resetFakeDb())
+beforeEach(() => {
+  resetFakeDb()
+  // HO-04: a file goes only to a project manager (default group with pm.manage) or the owner.
+  seed("teamGroups/g-pm", { organizationId: ORG, permissions: ["pm.manage"] })
+  seed("teamGroups/g-site", { organizationId: ORG, permissions: ["pm.site"] })
+  seed("users/pm2", { organizationId: ORG, organizationRole: "member", defaultGroupId: "g-pm", name: "Fahad" })
+  seed("users/se1", { organizationId: ORG, organizationRole: "member", defaultGroupId: "g-site", name: "Omar" })
+})
 
 describe("CRM sends a file — it creates no project (HO-01)", () => {
   it("writes a waiting file addressed to the manager, and marks the deal handed over without a project", async () => {
@@ -128,6 +135,15 @@ describe("return and reassign (HO-03, HO-04)", () => {
     await accept(id, other)
     expect(file(id).status).toBe("acc")
   })
+
+  it("HO-04 (FX-07): the handler refuses a target who is not a project manager or the owner — whatever the screen listed", async () => {
+    const id = await send()
+    await expect(reassignHandover(db, pm, id, { to: "se1", toName: "Omar", reason: "load" })).rejects.toMatchObject({ code: "not_candidate" })
+    await expect(reassignHandover(db, pm, id, { to: "ghost", toName: "?", reason: "load" })).rejects.toMatchObject({ code: "not_candidate" })
+    expect(file(id).to).toBe("pm1")
+    await reassignHandover(db, pm, id, { to: ORG, toName: "Owner", reason: "spec" })
+    expect(file(id).to).toBe(ORG)
+  })
 })
 
 describe("the acceptance wizard's choices and the owner (G-31, G-35, G-37)", () => {
@@ -144,7 +160,7 @@ describe("the acceptance wizard's choices and the owner (G-31, G-35, G-37)", () 
       siteEngineer: { uid: "se1", name: "Omar", groupId: "g-site" },
       note: " Access road not ready ",
       store: { name: "Store Al-Yasmin", centralWarehouseId: "central_x" },
-    })
+    }, localAcceptTransport(db, { uid: ORG, owner: true }))
     const project = readDoc<Record<string, any>>(`projects/${projectId}`) as Record<string, any>
     expect(project).toMatchObject({ projectManagerId: "pm2", projectManagerName: "Fahad", contractorId: ORG, pm: { acceptNote: "Access road not ready" } })
     expect(readDoc(`projects/${projectId}/members/pm2`)).toMatchObject({ pmRole: "pm", viaHandover: true, groupId: "g-pm", addedBy: ORG })
@@ -158,7 +174,7 @@ describe("the acceptance wizard's choices and the owner (G-31, G-35, G-37)", () 
     const { projectId } = await accept(await send())
     expect((readDoc<Record<string, any>>(`projects/${projectId}`) as Record<string, any>).warehouseId).toBeUndefined()
     const id = await send()
-    await expect(acceptHandover(db, pm, id, { kind: "bld", location: null, enabledSections: [], manager: { uid: "", name: null, groupId: null } })).rejects.toMatchObject({ code: "invalid" })
+    await expect(acceptHandover(db, pm, id, { kind: "bld", location: null, enabledSections: [], manager: { uid: "", name: null, groupId: null } }, localAcceptTransport(db, { uid: pm.uid, owner: false }))).rejects.toMatchObject({ code: "invalid" })
   })
 })
 

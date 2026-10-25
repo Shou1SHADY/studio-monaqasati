@@ -3,11 +3,11 @@
 // Accepting a handover (HO-02, WF-01; the prototype's formPrj with a file):
 // project & contract (read from CRM, not edited here) with the manager, an
 // optional site engineer and a note → sections by a template per project type →
-// the BOQ (from the bid, a file or typed — whichever it is, the lines are edited
-// here before they are written) → a review of what the system will do. The
-// project is born "not started" with its number and its manager; the advance
-// term goes to Finance once; the BOQ is written right after, as the
-// new-project wizard writes it; then the project opens on its Pulse.
+// the BOQ (a file's priced BOQ is transferred as it is — read-only, the only
+// source, CON-01; otherwise a file or typed lines, edited here) → a review of
+// what the system will do. The project is born "not started" with its number,
+// its manager, the advance term sent to Finance once and its BOQ — all in one
+// server transaction (/api/pm/handover-accept); then it opens on its Pulse.
 // Without a file it is the prototype's manual «مشروع جديد» (formPrj without h):
 // the exception path, the same four steps with the project and contract typed
 // in step one (name and client required), and the project born the same way.
@@ -288,7 +288,7 @@ export function AcceptHandoverWizard({
   const unpricedCount = lineRows.filter((i) => !(i.rate > 0)).length
   const selfDev = isSelfDevelopment(kind)
   const manualBlocks = manual ? manualProjectBlocks({ ...draft, kind, location }, managerUid || null) : []
-  const stepBlockCodes = acceptStepBlocks({ source, managerUid: managerUid || null, xlItems: lineRows.length, xlBad: rowsBad + (source === "xl" ? xlBad.length : 0), xlLoaded })
+  const stepBlockCodes = acceptStepBlocks({ source, managerUid: managerUid || null, xlItems: lineRows.length, xlBad: rowsBad + (source === "xl" ? xlBad.length : 0), xlLoaded, fileBoq: crmCount > 0 })
   const boqStepBlocks = stepBlockCodes.map((b) => t(`wizard.block.${b}`))
   const boqNextBlocked = stepBlockCodes.some((b) => b !== "no_manager")
   const blocks = [
@@ -310,6 +310,20 @@ export function AcceptHandoverWizard({
       const siteSeat = site ? { uid: site.uid, name: site.name, groupId: site.groupId } : null
       const store = storeOn ? { name: tC("proj_auto_warehouse_name", { name: title }), centralWarehouseId: central?.id ?? null } : null
       const managerNotification = { title: t("notif.named_pm_title"), message: t("notif.named_pm_message", { project: title, by: actor.name ?? "" }) }
+      const lines = lineRows.map((r) => ({
+        itemNo: r.itemNo.trim(),
+        descriptionAr: r.descriptionAr.trim() || r.descriptionEn.trim(),
+        descriptionEn: r.descriptionEn.trim() || r.descriptionAr.trim(),
+        unit: r.unit.trim(),
+        quantity: r.quantity,
+        unitPrice: r.rate > 0 ? r.rate : 0,
+        groupId: r.groupId,
+        extra: r.extra as Record<string, string | number | boolean | null> | undefined,
+      }))
+      const usedGroups = new Set(lineRows.map((i) => i.groupId))
+      const groups = source === "xl" ? (boq?.groups ?? []).filter((g) => usedGroups.has(g.id)).map((g) => ({ id: g.id, titleAr: g.titleAr, categoryAr: g.categoryAr })) : []
+      // CON-01: a handover's BOQ is written INSIDE the acceptance (the server's transaction) — the file's own
+      // priced lines when it carries them, never a later client batch that could stop half-way.
       const { projectId, projectNo } = handover
         ? await acceptHandover(firestore, actor, handover.id, {
             kind,
@@ -320,6 +334,9 @@ export function AcceptHandoverWizard({
             siteEngineer: siteSeat,
             note,
             store,
+            source: source ?? "later",
+            lines: source === "crm" ? [] : lines,
+            groups,
             notification: { title: t("notif.accepted_title"), message: t("notif.accepted_message", { project: handover.title, by: actor.name ?? "" }) },
             managerNotification,
           })
@@ -335,27 +352,15 @@ export function AcceptHandoverWizard({
             })
           : { projectId: "", projectNo: "" }
       if (!projectId) return
-      const lines = lineRows.map((r) => ({
-        itemNo: r.itemNo.trim(),
-        descriptionAr: r.descriptionAr.trim() || r.descriptionEn.trim(),
-        descriptionEn: r.descriptionEn.trim() || r.descriptionAr.trim(),
-        unit: r.unit.trim(),
-        quantity: r.quantity,
-        unitPrice: r.rate > 0 ? r.rate : 0,
-        groupId: r.groupId,
-        extra: r.extra,
-      }))
-      if (lines.length) {
+      // A project created by hand writes its lines as the new-project wizard does.
+      if (!handover && lines.length) {
         const batch = writeBatch(firestore)
         const itemsRef = collection(firestore, "projects", projectId, "boqItems")
         const groupsRef = collection(firestore, "projects", projectId, "boqGroups")
         lines.forEach(({ extra, ...line }) =>
           batch.set(doc(itemsRef), { ...line, ...extra, tenderId: null, isEditable: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
         )
-        if (source === "xl") {
-          const used = new Set(lineRows.map((i) => i.groupId))
-          ;(boq?.groups ?? []).filter((g) => used.has(g.id)).forEach((g) => batch.set(doc(groupsRef, g.id), { titleAr: g.titleAr, categoryAr: g.categoryAr, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
-        }
+        groups.forEach((g) => batch.set(doc(groupsRef, g.id), { titleAr: g.titleAr, categoryAr: g.categoryAr, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
         try {
           await batch.commit()
         } catch (err) {
@@ -798,7 +803,8 @@ export function AcceptHandoverWizard({
                 )}
               </>
             )}
-            {source && source !== "later" && (source !== "xl" || xlLoaded) && <WizardBoqEditor rows={rows} onChange={setRows} disabled={busy} />}
+            {source === "crm" && <CrmBoqLocked rows={rows} />}
+            {source && source !== "later" && source !== "crm" && (source !== "xl" || xlLoaded) && <WizardBoqEditor rows={rows} onChange={setRows} disabled={busy} />}
             <BlockingReasons title={t("cannot_accept")} reasons={boqStepBlocks.filter((_, i) => stepBlockCodes[i] !== "no_manager")} />
           </div>
         )}
@@ -866,5 +872,63 @@ export function AcceptHandoverWizard({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** CON-01 — the bid's priced BOQ as it will be transferred: codes, quantities and rates as sent, nothing editable. */
+function CrmBoqLocked({ rows }: { rows: BoqDraftRow[] }) {
+  const t = useTranslations("Portal.PM")
+  const filled = rows.filter((r) => !isBlankDraftRow(r))
+  return (
+    <section className="rounded-xl border" aria-labelledby="boq-crm-title">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
+        <div>
+          <p id="boq-crm-title" className="flex items-center gap-1.5 text-sm font-bold">
+            <Lock size={14} className="text-module" aria-hidden="true" />
+            {t("wizard.crm_locked_title")}
+          </p>
+          <p className="text-xs text-muted-foreground">{t("wizard.crm_locked_note")}</p>
+        </div>
+        <span className="text-sm font-bold tabular-nums" dir="ltr">
+          {pmMoney(draftTotal(filled))}
+        </span>
+      </div>
+      <div className="max-h-80 overflow-auto">
+        <table className="w-full min-w-[560px] text-sm">
+          <thead>
+            <tr className="border-b text-xs text-muted-foreground">
+              <th className="px-3 py-2 text-start font-semibold">{t("wizard.boq_col_code")}</th>
+              <th className="px-3 py-2 text-start font-semibold">{t("wizard.boq_col_desc")}</th>
+              <th className="px-3 py-2 text-start font-semibold">{t("wizard.boq_col_unit")}</th>
+              <th className="px-3 py-2 text-end font-semibold">{t("boq.qty")}</th>
+              <th className="px-3 py-2 text-end font-semibold">{t("boq.rate")}</th>
+              <th className="px-3 py-2 text-end font-semibold">{t("boq.total")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filled.map((r) => (
+              <tr key={r.id} className="border-b last:border-0">
+                <td className="px-3 py-2 tabular-nums" dir="ltr">
+                  {r.itemNo}
+                </td>
+                <td className="px-3 py-2" dir="auto">
+                  {r.descriptionAr || r.descriptionEn}
+                </td>
+                <td className="px-3 py-2">{r.unit}</td>
+                <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
+                  {r.quantity}
+                </td>
+                <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
+                  {r.rate > 0 ? pmMoney(r.rate) : "—"}
+                </td>
+                <td className="px-3 py-2 text-end tabular-nums" dir="ltr">
+                  {r.rate > 0 ? pmMoney(r.rate * r.quantity) : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }

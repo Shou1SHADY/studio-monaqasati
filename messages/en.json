@@ -16814,7 +16814,10 @@
         "not_yours": "This handover is addressed to another manager",
         "not_waiting": "This handover was already answered",
         "blocked": "It cannot be accepted until its value, duration and signature are fixed",
-        "invalid": "Some values are not valid"
+        "invalid": "Some values are not valid",
+        "not_candidate": "A handover goes only to a project manager or the owner",
+        "boq_from_crm": "This file carries a priced BOQ — it is accepted only with that BOQ, as sent",
+        "boq_empty": "Add at least one item, or choose “Import later”"
       },
       "field": {
         "client": "Client",
@@ -16963,6 +16966,8 @@
         "boq_later": "Or accept now and import the BOQ from the project later — measurement waits for it.",
         "boq_parse_error": "The file could not be read",
         "boq_partial": "The project was created, but the BOQ did not import — import it from the project",
+        "crm_locked_title": "The winning bid's priced BOQ — transferred as it is",
+        "crm_locked_note": "Codes, quantities and rates as CRM sent them. Nothing here is edited; after the start, a change is a variation.",
         "effect_project": "The project is created “not started”, with its own number",
         "effect_manager": "You are seated as its project manager",
         "effect_terms": "The contract terms are completed in the project, then frozen at start",
@@ -17039,7 +17044,8 @@
           "no_boq_file": "Upload the Excel file",
           "boq_bad_rows": "Some items have errors — fix the rows marked in red",
           "boq_nothing_read": "No item could be read from this file — use the BOQ template",
-          "boq_no_lines": "Add at least one item, or choose “Import later”"
+          "boq_no_lines": "Add at least one item, or choose “Import later”",
+          "boq_from_crm": "This file carries the winning bid's priced BOQ — it is transferred as it is"
         },
         "done_crm": "{number} accepted — project created and the priced BOQ transferred ({count, plural, one {# item} other {# items}})",
         "done_xl": "{number} accepted — {count, plural, one {# item} other {# items}} imported",
@@ -17367,7 +17373,10 @@
           "no_date": "Set the signing date",
           "before_draft": "The signing date cannot be before {date}",
           "before_last": "The signing date cannot be before the last signed addendum ({date})",
-          "future": "The signing date cannot be in the future"
+          "future": "The signing date cannot be in the future",
+          "no_day": "Set the drafting date",
+          "day_future": "The drafting date cannot be in the future",
+          "day_before_last": "The drafting date cannot be before the last signed addendum ({date})"
         },
         "withdraw_block": {
           "not_draft": "It is no longer awaiting signature",
@@ -17426,6 +17435,8 @@
         "note_ph": "Cash retention replaced by a 5% bank guarantee until final acceptance",
         "draft_file": "The addendum or its draft — optional",
         "draft_file_hint": "Attach the signed copy when recording the signature if it is not ready now.",
+        "draft_day": "Drafting date",
+        "draft_day_hint": "The date written on the addendum — for a paper addendum entered later. Not in the future, not before the last signed addendum.",
         "signed_file": "The signed addendum — optional",
         "signed_file_hint": "Without a signed copy it rests on your word — still optional.",
         "sign_now_note": "Already signed? Record it in force now with its date — the same checks as a signature.",
@@ -17699,7 +17710,8 @@
           "not_submitted": "It is not with the consultant",
           "bad_amount": "Enter the certified value",
           "over_gross": "The consultant cannot certify more than was submitted",
-          "cut_reason": "Choose why the consultant deducted"
+          "cut_reason": "Choose why the consultant deducted",
+          "cut_text": "State the consultant's other reason"
         },
         "prepared_net": "Certificate {no} prepared — net {net}. It cannot be submitted without a second approver.",
         "approved_net": "Certificate {no} approved internally and submitted — net {net}",
@@ -17715,6 +17727,7 @@
         "certified_by_consultant": "Certified by the consultant",
         "as_written": "Exactly as written on the consultant's certificate — no rounding",
         "cut_hint": "The reason decides what you do next: quantities are re-measured, an uninspected item gets its inspection, a variation rate is negotiated.",
+        "cut_text": "The reason as the consultant stated it",
         "vat_on_certified": "VAT on (certified − recovery)",
         "net_finance": "Net Finance will invoice",
         "back_to_unbilled": "Returns to unbilled",
@@ -17907,7 +17920,11 @@
           "earned": "Earned (approved executed × rate)",
           "certified": "Certified",
           "retention": "Retention held at close",
-          "contract_days": "Contract duration",
+          "contract_days": "Contract duration (with extensions granted)",
+          "dur_orig": "Original duration as signed",
+          "rfi_avg": "Average RFI reply",
+          "rfi_days": "{n} days",
+          "rfi_party": "{party}: {n} d",
           "actual_days": "Actual duration (start to final acceptance)",
           "delay": "Delay",
           "cost_note": "This project was archived without its cost figures — actual cost and margin were not frozen.",
@@ -17997,6 +18014,10 @@
         "rejected_line": "Rejected {date} by {who}: {reason}",
         "update": "Update",
         "update_desc": "The price is fixed once it goes to the client; the executed share and the instruction number stay current.",
+        "pct_never_down": "Now {pct}% — it only goes up, and every change is logged with your name and the date.",
+        "pc_note": "Note (optional)",
+        "pc_log": "Executed share — history",
+        "pc_by": "{who} · {date}",
         "save": "Save",
         "saved": "Saved",
         "submit": "Submit to the client",
@@ -18030,7 +18051,9 @@
           "no_date": "Enter the date",
           "before_request": "The decision cannot precede the request",
           "future": "The date cannot be in the future",
-          "below_billed": "The executed share cannot go below what a certificate already billed"
+          "below_billed": "The executed share cannot go below what a certificate already billed",
+          "below_current": "Executed work never goes down — enter the current share or more",
+          "no_change": "The executed share is unchanged"
         },
         "form_title": "Variation order",
         "sub": "Logged, priced, submitted, approved in writing",
@@ -19995,6 +20018,8 @@
           "late_row": "Certificate {no} · {days, plural, one {# day} other {# days}} late",
           "cash_in": "Cash in to date",
           "adv_ret": "Advance & retention",
+          "adv_total": "Advance received (frozen at start)",
+          "adv_recovered": "Recovered on submitted certificates",
           "adv_left": "Advance ({rate}) — left to recover",
           "ret_on_you": "Retention {payer} holds on you ({rate})",
           "ret_on_subs": "Held by you on subcontractors",
@@ -21523,7 +21548,9 @@
         "self_on_hint": "For the small firm without two people: the preparer may approve, and the exception is logged by name and date.",
         "self_off_hint": "The preparer never approves the certificate — the default control.",
         "self_by": "Set by {who} on {date}",
-        "self_saved": "Self-approval setting saved"
+        "self_saved": "Self-approval setting saved",
+        "self_where": "Organisation-wide — the owner changes it in Settings › Team & permissions.",
+        "self_owner_only": "Only the organisation owner changes this setting."
       },
       "startp": {
         "title": "Start work",

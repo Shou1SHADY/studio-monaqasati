@@ -1412,12 +1412,14 @@ service cloud.firestore {
           && ((resource.data.status == 'draft'
                 && request.resource.data.status in ['draft', 'wait']
                 && (request.resource.data.status == 'draft' || request.resource.data.value > 0)
-                && changedKeys().hasOnly(['value', 'cost', 'instructionNo', 'executedPct', 'status', 'days', 'files', 'updatedAt'])
+                && changedKeys().hasOnly(['value', 'cost', 'instructionNo', 'status', 'days', 'files', 'updatedAt'])
                 && pmDuty(projectId, 'vo'))
-              || (resource.data.status in ['wait', 'appr']
+              // VO-03: the executed share (and its log, `pcLog`) is approve's on any variation not
+              // rejected; the instruction number stays the logger's (vo).
+              || (resource.data.status != 'rej'
                 && request.resource.data.status == resource.data.status
-                && changedKeys().hasOnly(['executedPct', 'instructionNo', 'updatedAt'])
-                && pmDuty(projectId, 'vo'))
+                && changedKeys().hasOnly(['executedPct', 'pcLog', 'instructionNo', 'updatedAt'])
+                && pmDuty(projectId, changedKeys().hasAny(['executedPct', 'pcLog']) ? 'approve' : 'vo'))
               || (resource.data.status == 'wait'
                 && request.resource.data.status in ['appr', 'rej']
                 && request.resource.data.decision.by == request.auth.uid

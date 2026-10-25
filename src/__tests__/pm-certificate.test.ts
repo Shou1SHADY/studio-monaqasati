@@ -12,7 +12,8 @@ jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-u
 import { fakeFirestore, listCollection, readDoc, resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import type { Firestore } from "firebase/firestore"
 import { PmAccessError, pmCeiling, type PmContext } from "@/lib/pm/access"
-import { draftAddendum } from "@/lib/pm/addendum-writes"
+import { draftAddendum, signAddendum } from "@/lib/pm/addendum-writes"
+import { todayDay } from "@/lib/pm/format"
 import { certificateAmounts, certificateLines, certifyBlocks, dueDate, prepareBlocks, unbilledValue, type BillableItem } from "@/lib/pm/certificate"
 import { approveCertificate, certifyCertificate, PmCertificateError, prepareCertificate, withdrawCertificate, type PmCertificate } from "@/lib/pm/certificate-writes"
 import { PM_EVENTS } from "@/lib/pm/events"
@@ -135,14 +136,18 @@ describe("the chain (WF-05, AC-09)", () => {
     expect(pmBlock()).toMatchObject({ retentionHeld: 0, advanceRecovered: 0 })
   })
 
-  it("a certificate approved between drafting and signing makes a lower cap unsignable (AMD-09 through the chain)", async () => {
+  it("a certificate CERTIFIED between drafting and signing makes a lower cap unsignable (AMD-09 through the chain)", async () => {
     seedProject({ ...fidic, retentionCap: 0.2 })
     await measure("i1", 1000)
     const { seq } = await prepareCertificate(db, qs, "p1", qsA, { itemIds: ["i1"] })
     expect(pmBlock().retentionHeld).toBe(50_000)
-    await expect(draftAddendum(db, pm, "p1", pmA, { next: { ...fidic, retentionCap: 0.04 }, reason: "client" })).rejects.toMatchObject({ blocks: ["cap_below_held"] })
+    // 1.1 (FX-22): prepared retention is not yet held — a 4% cap (40,000) may be drafted…
+    await expect(draftAddendum(db, pm, "p1", pmA, { next: { ...fidic, retentionCap: 0.04 }, reason: "client" })).resolves.toBe(1)
     await approveCertificate(db, pm, "p1", pmA, seq)
     expect(pmBlock().retentionHeld).toBe(50_000)
+    // …but once the consultant certifies it, the 50,000 is held and the signature is refused.
+    await certifyCertificate(db, pm, "p1", pmA, seq, { certified: 500_000 })
+    await expect(signAddendum(db, pm, "p1", pmA, 1, { signedOn: todayDay() })).rejects.toMatchObject({ blocks: ["cap_below_held"] })
   })
 
   it("the site engineer prepares nothing; the preparer never approves their own", async () => {

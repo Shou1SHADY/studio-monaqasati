@@ -12,7 +12,7 @@ import { Callout } from "@/components/module-ui/Callout"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { REASSIGN_REASONS, reassignBlocks, type HandoverCandidate, type PmHandover, type ReassignReason } from "@/lib/pm/handover"
-import { reassignHandover, type PmActor } from "@/lib/pm/handover-writes"
+import { PmHandoverError, reassignHandover, type PmActor } from "@/lib/pm/handover-writes"
 import { cn } from "@/lib/utils"
 
 function Choice({ on, onClick, title, sub }: { on: boolean; onClick: () => void; title: string; sub?: string }) {
@@ -91,7 +91,7 @@ export function ReassignHandoverDialog({
       onOpenChange(false)
     } catch (err) {
       console.error(err)
-      toast({ title: t("error.save"), variant: "destructive" })
+      toast({ title: t(err instanceof PmHandoverError && err.code === "not_candidate" ? "error.not_candidate" : "error.save"), variant: "destructive" })
     } finally {
       setBusy(false)
     }

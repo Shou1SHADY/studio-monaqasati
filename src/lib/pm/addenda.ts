@@ -84,8 +84,10 @@ export function staleChanges(changes: TermChange[], terms: ContractTerms): Array
 }
 
 /** Lowering the cap below what is already held is refused — when drafted and
- * again when signed, since a certificate may be approved in between. Releasing
- * the difference is Finance's action, not an addendum's (AMD-09). */
+ * again when signed, since a certificate may be certified in between. "Held" is
+ * the retention in certificates the consultant CERTIFIED (certificate.ts
+ * `certifiedRetention`) — one helper for the block and the hint. Releasing the
+ * difference is Finance's action, not an addendum's (AMD-09). */
 export function capBelowHeld(changes: TermChange[], contractValue: number, retentionHeld: number): { cap: number; held: number } | null {
   const c = changes.find((x) => x.key === "retentionCap")
   if (!c) return null
@@ -95,9 +97,11 @@ export function capBelowHeld(changes: TermChange[], contractValue: number, reten
 
 type Stage = { lifecycle: string; archived: boolean }
 
-export type DraftBlock = "not_started" | "archived" | "no_change" | "reason_text" | "invalid_terms" | "cap_below_held"
+export type DraftBlock = "not_started" | "archived" | "no_change" | "reason_text" | "invalid_terms" | "cap_below_held" | "no_day" | "day_future" | "day_before_last"
 
-/** What stops saving a draft (AMD-01, AMD-03, AMD-09, RSN-01). */
+/** What stops saving a draft (AMD-01, AMD-03, AMD-09, RSN-01). The drafting day
+ * is WRITTEN (a paper addendum entered later keeps its real date): never in the
+ * future, never before the last signed addendum. */
 export function draftBlocks(input: Stage & {
   terms: ContractTerms
   next: ContractTerms
@@ -105,10 +109,19 @@ export function draftBlocks(input: Stage & {
   reasonText?: string | null
   contractValue: number
   retentionHeld: number
+  /** The drafting day as written; checked when given with `today`. */
+  day?: string | null
+  today?: string
+  lastSignedOn?: string | null
 }): DraftBlock[] {
   const out: DraftBlock[] = []
   if (input.archived) out.push("archived")
   else if (input.lifecycle === "plan") out.push("not_started")
+  if (input.day !== undefined && input.today) {
+    if (!input.day || !/^\d{4}-\d{2}-\d{2}$/.test(input.day)) out.push("no_day")
+    else if (input.day > input.today) out.push("day_future")
+    else if (input.lastSignedOn && input.day < input.lastSignedOn) out.push("day_before_last")
+  }
   const changes = termChanges(input.terms, input.next)
   if (!changes.length) out.push("no_change")
   if (!input.reason || (input.reason === "other" && !input.reasonText?.trim())) out.push("reason_text")

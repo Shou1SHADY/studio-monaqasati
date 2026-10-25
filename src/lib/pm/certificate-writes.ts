@@ -16,6 +16,7 @@ import {
   certificateVoLines,
   certifyBlocks,
   dueDate,
+  frozenAdvance,
   PM_CERTIFICATES,
   prepareBlocks,
   termsSnapshot,
@@ -81,6 +82,8 @@ export interface PmCertificate extends Amounts {
   certified?: number | null
   cut?: number | null
   cutReason?: string | null
+  /** The stated reason when the cut's reason is "other" (RSN-01). */
+  cutText?: string | null
   consultantRef?: string | null
   certOn?: string | null
   certBy?: string | null
@@ -157,7 +160,9 @@ export async function prepareCertificate(firestore: Firestore, ctx: PmContext, p
 
     // INV-01: priced items + approved variations (the handover's figure only while no BOQ is priced).
     const contractValue = await readContractValue(firestore, projectId, project.budget)
-    const amounts = certificateAmounts({ gross, terms, contractValue, held: totals.retentionHeld ?? 0, recovered: totals.advanceRecovered ?? 0 })
+    // IPC-07: recovery is capped at what is left of the FROZEN advance, at today's rate.
+    const snapshot = termsSnapshot(terms, frozenAdvance(pm, contractValue))
+    const amounts = certificateAmounts({ gross, terms: snapshot, contractValue, held: totals.retentionHeld ?? 0, recovered: totals.advanceRecovered ?? 0 })
     const seq = (totals.ipcCount ?? 0) + 1
     const prepOn = todayDay()
     const cert: Omit<PmCertificate, "id"> = {
@@ -170,7 +175,7 @@ export async function prepareCertificate(firestore: Firestore, ctx: PmContext, p
       periodTo: prepOn,
       checks: [...new Set(input.checks ?? [])],
       ...amounts,
-      terms: termsSnapshot(terms),
+      terms: snapshot,
       contractValue,
       prep: actor.uid,
       prepName: actor.name,
@@ -236,14 +241,14 @@ export async function certifyCertificate(
   projectId: string,
   actor: CertificateActor,
   seq: number,
-  input: { certified: number; reason?: string | null; consultantRef?: string | null }
+  input: { certified: number; reason?: string | null; reasonText?: string | null; consultantRef?: string | null }
 ): Promise<Amounts & { event: PmEvent | null }> {
   let result: Amounts & { event: PmEvent | null } = { gross: 0, recovery: 0, retention: 0, vat: 0, net: 0, event: null }
   await runTransaction(firestore, async (tx) => {
     const { pRef, project, pm } = await readContract(tx, firestore, projectId)
     assertPm(withFreshState(ctx, project), "certificate.certify")
     const { ref, cert } = await readCertificate(tx, firestore, projectId, seq)
-    const blocks = certifyBlocks({ status: cert.status, gross: cert.gross, certified: input.certified, reason: input.reason })
+    const blocks = certifyBlocks({ status: cert.status, gross: cert.gross, certified: input.certified, reason: input.reason, reasonText: input.reasonText })
     if (blocks.length) throw new PmCertificateError("blocked", blocks)
     const totals = pm as PmTotals
     // Recomputed on the certified value, under the terms the certificate was
@@ -265,6 +270,7 @@ export async function certifyCertificate(
       certified: amounts.gross,
       cut,
       cutReason: cut > 0 ? (input.reason ?? null) : null,
+      cutText: cut > 0 && input.reason === "oth" ? input.reasonText?.trim() || null : null,
       consultantRef: input.consultantRef?.trim() || null,
       certOn,
       certBy: actor.uid,

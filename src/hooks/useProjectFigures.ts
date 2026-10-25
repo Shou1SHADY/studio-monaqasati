@@ -12,12 +12,14 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { useProjectMoneyFlow } from "@/hooks/useProjectMoneyFlow"
 import { progressOf } from "@/lib/pm/acceptance"
-import { PM_CERTIFICATES } from "@/lib/pm/certificate"
+import { frozenAdvance, PM_CERTIFICATES, projectCashIn } from "@/lib/pm/certificate"
+import { liveContractValue } from "@/lib/pm/contract-value"
+import type { ContractTerms } from "@/lib/pm/terms"
 import type { PmCertificate } from "@/lib/pm/certificate-writes"
 import { delayAndDamages } from "@/lib/pm/claim"
 import { usePmPlan } from "@/hooks/usePmPlan"
 import { moneyTrail } from "@/lib/pm/pulse"
-import { PM_VARIATIONS } from "@/lib/pm/variation"
+import { approvedValue, PM_VARIATIONS, type VoStatus } from "@/lib/pm/variation"
 import { todayDay } from "@/lib/pm/format"
 import { lifecycleOf } from "@/lib/pm/lifecycle"
 
@@ -37,17 +39,26 @@ export interface ProjectFigures {
   unbilled: number
   collected: number
   paid: number
-  /** Collected less the VAT in it, and what went out — the cash tile's two sides. */
+  /** The frozen advance (once started) + collected − the VAT in it, and what went out —
+   * the cash tile's two sides. Cash in is the money tab's own figure (CST-05). */
   cashIn: number
   cashOut: number
   cash: number
   /** Certified and past due, not yet collected. */
   overdue: number
+  /** The contract value in force (contract-value.ts — priced items or the handover's figure, + approved variations). */
+  contractValue: number
+  /** The advance at its frozen value (IPC-07), 0 before start. */
+  advance: number
 }
 
 export function useProjectFigures(
   projectId: string,
-  project: { status?: string | null; budget?: number | null; pm?: { lifecycle?: string; startedAt?: string | null; durationDays?: number; cutPool?: number } | null } | null,
+  project: {
+    status?: string | null
+    budget?: number | null
+    pm?: { lifecycle?: string; startedAt?: string | null; durationDays?: number; cutPool?: number; advAmt?: number | null; original?: ContractTerms | null; terms?: ContractTerms } | null
+  } | null,
   access: Pick<PmAccess, "has">
 ): ProjectFigures {
   const firestore = useFirestore()
@@ -78,14 +89,17 @@ export function useProjectFigures(
     const list = ((certs ?? []) as unknown as PmCertificate[]).filter((c) => c.status !== "void")
     const shareOf = (c: PmCertificate) => (c.status === "paid" ? 1 : c.status === "part" ? Math.min(1, Math.max(0, (c as { collected?: number }).collected ?? 0)) : 0)
     const pmIn = list.reduce((a, c) => a + c.net * shareOf(c), 0)
-    const vatIn = list.reduce((a, c) => a + (c.vat || 0) * shareOf(c), 0)
     const today = todayDay()
     const overdue = list
       .filter((c) => (c.status === "appr" || c.status === "part") && c.dueOn && c.dueOn.slice(0, 10) < today)
       .reduce((a, c) => a + c.net * (1 - shareOf(c)), 0)
     const collected = r2(pmIn + (flow.collected || 0))
     const paid = r2(flow.paid || 0)
-    const cashIn = r2(collected - vatIn)
+    // CON-02: the shared contract value; CST-05: the advance at its frozen value and one cash-in formula with the money tab.
+    const contractValue = liveContractValue({ budget: project?.budget, items, approvedVariations: approvedValue(variations as Array<{ status: VoStatus; value: number }>) })
+    const started = project?.pm ? lifecycleOf(project) !== "plan" : false
+    const advanceTotal = frozenAdvance(project?.pm ?? null, contractValue)
+    const cashIn = projectCashIn({ certs: list, advanceTotal, started, legacyCollected: flow.collected || 0 })
     return {
       itemCount: items.length,
       unpricedCount: items.filter((i) => !(i.rate > 0)).length,
@@ -99,6 +113,8 @@ export function useProjectFigures(
       cashOut: paid,
       cash: r2(cashIn - paid),
       overdue: r2(overdue),
+      contractValue,
+      advance: started ? advanceTotal : 0,
     }
   }, [items, vos, plan0, certs, flow.collected, flow.paid, project])
 }

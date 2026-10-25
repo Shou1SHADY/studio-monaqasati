@@ -40,6 +40,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { useTranslations, useLocale } from "next-intl"
+import { PmSelfApprovalSetting } from "@/components/pm/PmSelfApprovalSetting"
 import {
   Users,
   UserPlus,
@@ -775,6 +776,10 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
           {/* ================= GROUPS ================= */}
           <TabsContent value="groups">
             <div className="space-y-4">
+              {/* AMD-10: the organisation's recorded self-approval lives here, not on a project page. */}
+              {role === "Contractor" && orgId && user && (
+                <PmSelfApprovalSetting orgId={orgId} isOwner={isOwner} actor={{ uid: user.uid, name: (profile?.name as string | undefined) ?? user.displayName ?? null }} />
+              )}
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">{t("team_groups_desc")}</p>
                 {isOwner && (

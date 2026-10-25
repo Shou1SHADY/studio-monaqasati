@@ -63,6 +63,10 @@ type Feed = {
   committed: number
   /** Approved variations — they add to the contract value. */
   variations: number
+  /** The contract value in force (CON-02 — contract-value.ts, the same figure the project shows). */
+  contractValue: number
+  /** The advance at its frozen value once started (IPC-07). */
+  advance: number
   /** Its requests and store returns held by Procurement / Inventory (the prototype's waitingOn). */
   waits: WaitRow[]
   /** Certificates still collectable, `projectId:seq` — with Accounting off they are what Finance still owes. */
@@ -74,7 +78,7 @@ const SEVERITY_RANK = { red: 0, amber: 1, blue: 2 } as const
 const CLIP = 7
 
 const signature = (f: Feed) =>
-  `${f.visible}|${f.money}|${f.client}|${f.progress}|${f.behind}|${f.unbilled}|${f.cash}|${f.overdue}|${f.obstacles}|${f.requests}|${f.shortages}|${f.costBudget}|${f.committed}|${f.variations}|${f.waits.map((w) => `${w.id}:${w.age}:${w.late}`).join(",")}|${f.openCerts.join(",")}|${f.decisions.map((d) => `${d.kind}:${d.count ?? ""}:${d.amount ?? ""}:${d.age ?? ""}:${d.severity}:${d.title ?? ""}:${d.detail ?? ""}:${d.act ?? ""}:${JSON.stringify(d.vars ?? {})}`).join(",")}`
+  `${f.visible}|${f.money}|${f.client}|${f.progress}|${f.behind}|${f.unbilled}|${f.cash}|${f.overdue}|${f.obstacles}|${f.requests}|${f.shortages}|${f.costBudget}|${f.committed}|${f.variations}|${f.contractValue}|${f.advance}|${f.waits.map((w) => `${w.id}:${w.age}:${w.late}`).join(",")}|${f.openCerts.join(",")}|${f.decisions.map((d) => `${d.kind}:${d.count ?? ""}:${d.amount ?? ""}:${d.age ?? ""}:${d.severity}:${d.title ?? ""}:${d.detail ?? ""}:${d.act ?? ""}:${JSON.stringify(d.vars ?? {})}`).join(",")}`
 
 /** Reads one project's facts and reports them up; renders nothing. */
 function ProjectFeed({ project, onFeed }: { project: Row; onFeed: (id: string, f: Feed) => void }) {
@@ -108,10 +112,12 @@ function ProjectFeed({ project, onFeed }: { project: Row; onFeed: (id: string, f
         costBudget: facts.costBudget,
         committed,
         variations: facts.approvedVariations,
+        contractValue: fig.contractValue,
+        advance: fig.advance,
         waits,
         openCerts,
       })
-  }, [access.isLoading, visible, money, client, decisions, fig.progress, fig.behind, fig.unbilled, fig.cash, overdue, facts, committed, waits, openCerts, project.id, onFeed])
+  }, [access.isLoading, visible, money, client, decisions, fig.progress, fig.behind, fig.unbilled, fig.cash, fig.contractValue, fig.advance, overdue, facts, committed, waits, openCerts, project.id, onFeed])
   return null
 }
 
@@ -232,15 +238,14 @@ export function PmPortfolioToday() {
   const live = mine.filter((p) => lifecycleOf(p as { pm?: { lifecycle?: string }; status?: string }) === "live")
   const withProgress = mine.filter((p) => feeds[p.id].progress !== null)
   const avgProgress = withProgress.length ? Math.round(withProgress.reduce((a, p) => a + (feeds[p.id].progress ?? 0), 0) / withProgress.length) : null
-  const liveValue = live.reduce((a, p) => a + (p.budget ?? 0) + feeds[p.id].variations, 0)
+  // CON-02: each project's contract value from the shared helper — priced BOQ (else the handover's figure) + approved variations.
+  const liveValue = live.reduce((a, p) => a + feeds[p.id].contractValue, 0)
   const liveBudget = live.reduce((a, p) => a + feeds[p.id].costBudget, 0)
   const unbilled = mine.reduce((a, p) => a + feeds[p.id].unbilled, 0)
   const cash = mine.reduce((a, p) => a + feeds[p.id].cash, 0)
   const overdue = mine.reduce((a, p) => a + feeds[p.id].overdue, 0)
-  // The advances received: the advance term of every project past planning (the prototype's advRecv).
-  const advances = mine
-    .filter((p) => lifecycleOf(p as { pm?: { lifecycle?: string }; status?: string }) !== "plan")
-    .reduce((a, p) => a + (p.budget ?? 0) * ((p.pm?.original ?? p.pm?.terms)?.advance ?? 0), 0)
+  // The advances received: every project past planning, at its frozen advance (IPC-07).
+  const advances = mine.reduce((a, p) => a + feeds[p.id].advance, 0)
   const pendingRequests = mine.reduce((a, p) => a + feeds[p.id].requests, 0)
   const openObstacles = mine.reduce((a, p) => a + feeds[p.id].obstacles, 0)
   const shortages = mine.reduce((a, p) => a + feeds[p.id].shortages, 0)

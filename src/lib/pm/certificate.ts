@@ -37,10 +37,14 @@ const r2 = (n: number) => Math.round(n * 100) / 100
 
 export const certificateNo = (seq: number) => String(seq).padStart(2, "0")
 
-/** The terms a certificate is prepared under — kept with it. */
-export type CertificateTerms = Pick<ContractTerms, "payer" | "advance" | "advanceRecovery" | "retention" | "retentionCap" | "paymentDays" | "consultantDays">
+/** The terms a certificate is prepared under — kept with it: its preparation-day
+ * rates (1.1's advPc / retPc) and the advance it recovers against (IPC-07). */
+export type CertificateTerms = Pick<ContractTerms, "payer" | "advance" | "advanceRecovery" | "retention" | "retentionCap" | "paymentDays" | "consultantDays"> & {
+  /** The frozen advance (`pm.advAmt`) the day it was prepared; absent on certificates from before the freeze. */
+  advAmt?: number | null
+}
 
-export const termsSnapshot = (t: ContractTerms): CertificateTerms => ({
+export const termsSnapshot = (t: ContractTerms, advAmt?: number | null): CertificateTerms => ({
   payer: t.payer,
   advance: t.advance,
   advanceRecovery: t.advanceRecovery,
@@ -48,7 +52,28 @@ export const termsSnapshot = (t: ContractTerms): CertificateTerms => ({
   retentionCap: t.retentionCap,
   paymentDays: t.paymentDays,
   consultantDays: t.consultantDays,
+  ...(advAmt != null && Number.isFinite(advAmt) ? { advAmt: r2(advAmt) } : {}),
 })
+
+/** The project block as the frozen advance reads it. */
+export interface AdvanceBlock {
+  advAmt?: number | null
+  original?: Pick<ContractTerms, "advance" | "payer"> | null
+  terms?: Pick<ContractTerms, "advance" | "payer"> | null
+}
+
+/** IPC-07: the advance is received once and frozen — `pm.advAmt`, written in the
+ * transaction that sends prj:ADV (or at go-live). A variation never raises it and
+ * an addendum never changes it (an addendum changes only the recovery RATE of
+ * later certificates). A project from before the freeze reads its ORIGINAL rate
+ * × the contract value until `scripts/backfill-pm-advance.ts` freezes it. Nobody
+ * pays → no advance. */
+export function frozenAdvance(pm: AdvanceBlock | null | undefined, contractValue: number): number {
+  if (pm && typeof pm.advAmt === "number" && Number.isFinite(pm.advAmt)) return r2(Math.max(0, pm.advAmt))
+  const t = pm?.original ?? pm?.terms
+  if (!t || t.payer === "none" || !(t.advance > 0)) return 0
+  return r2(Math.max(0, contractValue) * t.advance)
+}
 
 export interface CertificateLine {
   itemId: string
@@ -68,10 +93,13 @@ export interface Amounts {
 }
 
 /** §8.6. `held` is the retention on every OTHER live certificate; `recovered`
- * the advance recovered on them. The cap is applied, and a rate above it is fine. */
-export function certificateAmounts(input: { gross: number; terms: Pick<CertificateTerms, "advance" | "retention" | "retentionCap">; contractValue: number; held: number; recovered: number }): Amounts {
+ * the advance recovered on them. The cap is applied, and a rate above it is fine.
+ * Recovery = gross × the preparation-day rate, never past what is left of the
+ * FROZEN advance (`terms.advAmt`, IPC-07); a certificate from before the freeze
+ * keeps its old base (contract × rate). */
+export function certificateAmounts(input: { gross: number; terms: Pick<CertificateTerms, "advance" | "retention" | "retentionCap" | "advAmt">; contractValue: number; held: number; recovered: number }): Amounts {
   const gross = r2(Math.max(0, input.gross))
-  const advanceTotal = input.contractValue * input.terms.advance
+  const advanceTotal = typeof input.terms.advAmt === "number" ? input.terms.advAmt : input.contractValue * input.terms.advance
   const recovery = r2(Math.max(0, Math.min(gross * input.terms.advance, advanceTotal - input.recovered)))
   const retention = r2(Math.max(0, Math.min(gross * input.terms.retention, input.terms.retentionCap * input.contractValue - input.held)))
   const vat = r2((gross - recovery) * PM_VAT)
@@ -111,23 +139,30 @@ export function prepareBlocks(input: { archived: boolean; lifecycle: string; pay
   return out
 }
 
-export type CertifyBlock = "not_submitted" | "bad_amount" | "over_gross" | "cut_reason"
+export type CertifyBlock = "not_submitted" | "bad_amount" | "over_gross" | "cut_reason" | "cut_text"
 
 /** Why the consultant cut (prototype CUTR) — the reason decides the follow-up:
  * quantities are re-measured, an uninspected item gets its inspection, a
- * variation rate is negotiated. Stored as the code, shown translated. */
+ * variation rate is negotiated. Stored as the code, shown translated; "oth" is
+ * stated (RSN-01). */
 export const CUT_REASONS = ["qty", "wir", "rate", "oth"] as const
 export type CutReason = (typeof CUT_REASONS)[number]
 export const isCutReason = (r: unknown): r is CutReason => (CUT_REASONS as readonly unknown[]).includes(r)
 
+/** A deduction needs its reason only ABOVE one riyal (IPC-03 / CP-07): rounding is not a cut. */
+export const CUT_REASON_ABOVE = 1
+
 /** The consultant certifies the submitted gross, or less — never more; a
- * deduction states one of the four reasons. */
-export function certifyBlocks(input: { status: CertificateStatus; gross: number; certified: number; reason?: string | null }): CertifyBlock[] {
+ * deduction above one riyal states one of the four reasons, "other" with its text. */
+export function certifyBlocks(input: { status: CertificateStatus; gross: number; certified: number; reason?: string | null; reasonText?: string | null }): CertifyBlock[] {
   const out: CertifyBlock[] = []
   if (input.status !== "sub") out.push("not_submitted")
   if (!(input.certified > 0) || !Number.isFinite(input.certified)) out.push("bad_amount")
   else if (input.certified > input.gross + 0.005) out.push("over_gross")
-  else if (input.gross - input.certified > 0.005 && !isCutReason(input.reason)) out.push("cut_reason")
+  else if (input.gross - input.certified > CUT_REASON_ABOVE) {
+    if (!isCutReason(input.reason)) out.push("cut_reason")
+    else if (input.reason === "oth" && !input.reasonText?.trim()) out.push("cut_text")
+  }
   return out
 }
 
@@ -289,17 +324,48 @@ export interface CollectionFigures {
   /** Advance received (once the project started) + collected − the VAT in it (not ours). */
   cashIn: number
   advanceTotal: number
+  /** Recovered on certificates submitted onward (IPC-07: an internal draft recovers nothing yet). */
+  advanceRecovered: number
   advanceLeft: number
   /** Retention the client holds on certified certificates, until Finance releases it. */
   retentionHeld: number
 }
+
+/** AMD-09 — the retention ACTUALLY held: what sits in certificates the consultant
+ * certified (appr / part / paid). An internal draft or one still with the
+ * consultant holds nothing yet, so an addendum's cap is checked against this,
+ * never against the running total the preparation moves (`pm.retentionHeld`). */
+export const certifiedRetention = (certs: Array<Pick<CertificateFacts, "status" | "retention">>) => r2(certs.filter(isCertified).reduce((a, c) => a + (c.retention || 0), 0))
+
+/** Submitted to the consultant or further: what "recovered" is shown from (IPC-07). */
+export const isSubmitted = (c: Pick<CertificateFacts, "status">) => c.status === "sub" || isCertified(c)
+
+/** CST-05 — the project's cash in, ONE figure for the project head and the money
+ * tab: the frozen advance once the project started + what the client paid on
+ * certificates (and on legacy claims) − the VAT in it (the authority's, not
+ * ours). "Out" is Finance's and is not here. */
+export function projectCashIn(input: { certs: Array<Pick<CertificateFacts, "status" | "collected" | "net" | "vat">>; advanceTotal: number; started: boolean; legacyCollected?: number }): number {
+  const certified = input.certs.filter(isCertified)
+  const collected = certified.reduce((a, c) => a + collectedAmount(c), 0)
+  const vatIn = certified.reduce((a, c) => a + (c.vat || 0) * collectedShare(c), 0)
+  return r2((input.started ? input.advanceTotal : 0) + collected + (input.legacyCollected ?? 0) - vatIn)
+}
+
+/** What the client paid on legacy progress claims (`ipcClaims`, status "collected")
+ * — an adopted project's cash before PM 1.0; both cash figures add it. */
+export const legacyClaimsCollected = (claims: Array<{ status?: unknown; amount?: unknown }>) =>
+  r2(claims.filter((c) => c.status === "collected").reduce((a, c) => a + (Number(c.amount) || 0), 0))
 
 export function collectionFigures(input: {
   certs: CertificateFacts[]
   today: string
   contractValue: number
   advance: number
+  /** The frozen advance (`frozenAdvance`); without it, contract × rate (older callers). */
+  advanceTotal?: number | null
   started: boolean
+  /** Collected on legacy claims (`legacyClaimsCollected`). */
+  legacyCollected?: number
   retentionReleased: boolean
   /** Finance received the first half after the provisional handover (a "half" release term). */
   retentionHalfReleased?: boolean
@@ -310,16 +376,15 @@ export function collectionFigures(input: {
     .map((c) => ({ seq: c.seq, days: lateDays(c, input.today), amount: r2(c.net * (1 - collectedShare(c))) }))
     .filter((l) => l.days > 0 && l.amount > 0.005)
     .sort((a, b) => b.days - a.days)
-  const advanceTotal = r2(input.contractValue * input.advance)
-  const recovered = input.certs.filter((c) => c.status !== "void").reduce((a, c) => a + c.recovery, 0)
-  const collected = certified.reduce((a, c) => a + collectedAmount(c), 0)
-  const vatIn = certified.reduce((a, c) => a + c.vat * collectedShare(c), 0)
+  const advanceTotal = r2(typeof input.advanceTotal === "number" ? input.advanceTotal : input.contractValue * input.advance)
+  const recovered = r2(input.certs.filter(isSubmitted).reduce((a, c) => a + c.recovery, 0))
   return {
     outstanding,
     overdue: r2(late.reduce((a, l) => a + l.amount, 0)),
     late,
-    cashIn: r2((input.started ? advanceTotal : 0) + collected - vatIn),
+    cashIn: projectCashIn({ certs: input.certs, advanceTotal, started: input.started, legacyCollected: input.legacyCollected }),
     advanceTotal,
+    advanceRecovered: recovered,
     advanceLeft: r2(Math.max(0, advanceTotal - recovered)),
     retentionHeld: input.retentionReleased ? 0 : r2(certified.reduce((a, c) => a + c.retention, 0) * (input.retentionHalfReleased ? 0.5 : 1)),
   }

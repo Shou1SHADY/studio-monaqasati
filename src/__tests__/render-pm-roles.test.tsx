@@ -326,7 +326,6 @@ it("the fixture's writes all landed", () => {
 // first tab of the group (the page's visibleTab), so the titles are absent.
 // ---------------------------------------------------------------------------
 
-const O: Role[] = ["owner"]
 const OP: Role[] = ["owner", "pm"]
 const OPQ: Role[] = ["owner", "pm", "qs"]
 const OPS: Role[] = ["owner", "pm", "site"]
@@ -343,7 +342,7 @@ interface ViewSpec {
 
 const VIEWS: Record<string, ViewSpec> = {
   pmToday: { titles: ["يحتاج قرارك", "أكثر الأقسام تأخراً", "معلّق عند غيرنا", "سجل المشروع"], money: ["مسار المال"], acts: { "افتح التحصيل": OPQ, "افتح المستخلص": ["qs"] } },
-  info: { titles: ["معلومات المشروع", "الاستلام الابتدائي", "الاستلام النهائي"], money: ["شروط العقد باختصار"], acts: { تعديل: OP, "افتح الشروط": OPQ, "مسموح ويُسجَّل": O, "تسجيل الاستلام الابتدائي": OP } },
+  info: { titles: ["معلومات المشروع", "الاستلام الابتدائي", "الاستلام النهائي"], money: ["شروط العقد باختصار"], acts: { تعديل: OP, "افتح الشروط": OPQ, "تسجيل الاستلام الابتدائي": OP } },
   // The view chips and the «ينزف» pill carry counts, never an amount — the site engineer sees them too (owner decision on V2-02).
   boq: { titles: ["البند", "متعاقد", "المنفَّذ", "حفر وردم للقواعد"], money: ["التكلفة", "الهامش"], acts: { "بنود تنزف": ALL, "غير مفوتر": ALL } },
   pmTerms: { titles: ["العقد الساري", "ما يعنيه هذا العقد نقداً", "الأصلي كما وُقّع"], acts: { "تسجيل التوقيع": OP, سحب: OP, "تعديل العقد": OPQ }, only: OPQ },

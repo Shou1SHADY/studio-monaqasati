@@ -156,13 +156,13 @@ describe("the writes (WF-08)", () => {
     expect(allAddenda()).toHaveLength(2)
   })
 
-  it("a cap below held is refused at draft, and again at signing when a certificate raised it in between (AC-08)", async () => {
+  it("a cap below held is refused at draft, and again at signing when a certificate was CERTIFIED in between (AC-08, AMD-09)", async () => {
+    // AMD-09 (1.1, FX-22): "held" is the retention in certificates the consultant certified.
     seedProject({ retentionHeld: 250_000 })
+    seed("projects/p1/pmCertificates/01", { seq: 1, status: "appr", retention: 250_000 })
     await expect(draftAddendum(db, pm, "p1", pmA, { next: { ...original, retentionCap: 0.02 }, reason: "client" })).rejects.toMatchObject({ blocks: ["cap_below_held"] })
-    seedProject({ retentionHeld: 250_000 })
     await draftAddendum(db, pm, "p1", pmA, { next: { ...original, retentionCap: 0.03 }, reason: "client" })
-    const p = readDoc<Record<string, any>>("projects/p1")!
-    seed("projects/p1", { ...p, pm: { ...p.pm, retentionHeld: 320_000 } })
+    seed("projects/p1/pmCertificates/02", { seq: 2, status: "appr", retention: 70_000 })
     await expect(signAddendum(db, pm, "p1", pmA, 1, { signedOn: today })).rejects.toMatchObject({ blocks: ["cap_below_held"] })
   })
 

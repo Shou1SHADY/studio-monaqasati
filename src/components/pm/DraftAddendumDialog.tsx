@@ -5,7 +5,8 @@
 // stated), an optional note and the addendum or its draft. Saving leaves it
 // awaiting signature — the contract in force does not move until the
 // signature is recorded. Whoever signs (approve) may record it already signed
-// in the same step: dated, and checked as a signature would be.
+// in the same step: dated, and checked as a signature would be. The drafting
+// day is written (AMD-01): a paper addendum entered later keeps its real date.
 
 import { useEffect, useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
@@ -65,6 +66,7 @@ export function DraftAddendumDialog({
   const [reasonText, setReasonText] = useState("")
   const [note, setNote] = useState("")
   const [file, setFile] = useState<UploadedFile | null>(null)
+  const [day, setDay] = useState(today)
   const [signedOn, setSignedOn] = useState(today)
   const [signatory, setSignatory] = useState("")
   const [busy, setBusy] = useState<"draft" | "sign" | null>(null)
@@ -78,6 +80,7 @@ export function DraftAddendumDialog({
       setReasonText("")
       setNote("")
       setFile(null)
+      setDay(todayDay())
       setSignedOn(todayDay())
       setSignatory("")
     }
@@ -85,13 +88,16 @@ export function DraftAddendumDialog({
 
   const changes = useMemo(() => termChanges(terms, next), [terms, next])
   const changed = useMemo(() => new Set(changes.map((c) => c.key)), [changes])
-  const blocks = draftBlocks({ lifecycle, archived: access.ctx.archived, terms, next, reason, reasonText, contractValue, retentionHeld })
-  const sBlocks = signBlocks({ lifecycle, archived: access.ctx.archived, addendum: { status: "draft", day: today, changes }, terms, signedOn: signedOn || null, lastSignedOn: lastSigned, today, contractValue, retentionHeld }).filter((b) => b !== "cap_below_held")
+  // AMD-01: the drafting day is written (a paper addendum keeps its real date) — never future, never before the last signature.
+  const blocks = draftBlocks({ lifecycle, archived: access.ctx.archived, terms, next, reason, reasonText, contractValue, retentionHeld, day, today, lastSignedOn: lastSigned })
+  const sBlocks = signBlocks({ lifecycle, archived: access.ctx.archived, addendum: { status: "draft", day, changes }, terms, signedOn: signedOn || null, lastSignedOn: lastSigned, today, contractValue, retentionHeld }).filter((b) => b !== "cap_below_held")
   const cap = capBelowHeld(changes, contractValue, retentionHeld)
-  const earliest = earliestSignDay(today, lastSigned)
+  const earliest = earliestSignDay(day || today, lastSigned)
 
   const blockText = (b: string) =>
-    b === "cap_below_held" && cap ? t("amend.block.cap_below_held", { cap: pmMoney(cap.cap), held: pmMoney(cap.held) }) : t(`amend.block.${b}` as "amend.block.stale", { date: earliest })
+    b === "cap_below_held" && cap
+      ? t("amend.block.cap_below_held", { cap: pmMoney(cap.cap), held: pmMoney(cap.held) })
+      : t(`amend.block.${b}` as "amend.block.stale", { date: b === "day_before_last" ? (lastSigned ?? "") : earliest })
 
   const hint = (k: TermKey): string | undefined => {
     if (!changed.has(k)) return undefined
@@ -108,7 +114,7 @@ export function DraftAddendumDialog({
     if (!firestore || blocks.length || !reason || (sign && sBlocks.length)) return
     setBusy(sign ? "sign" : "draft")
     try {
-      const seq = await draftAddendum(firestore, access.ctx, projectId, actor, { next, reason, reasonText, note, files: file ? [file] : [], signNow: sign ? { signedOn, signatory } : null })
+      const seq = await draftAddendum(firestore, access.ctx, projectId, actor, { next, reason, reasonText, note, day, files: file ? [file] : [], signNow: sign ? { signedOn, signatory } : null })
       toast({ title: sign ? t("amend.signed", { no: String(seq).padStart(2, "0") }) : t("amend.drafted", { no: String(seq).padStart(2, "0") }) })
       onOpenChange(false)
     } catch (err) {
@@ -153,6 +159,11 @@ export function DraftAddendumDialog({
                 <Input id="amd-reason-text" value={reasonText} onChange={(e) => setReasonText(e.target.value)} disabled={busy !== null} dir="auto" />
               </div>
             )}
+          </div>
+          <div className="space-y-1.5 sm:max-w-xs">
+            <Label htmlFor="amd-day">{t("amend.draft_day")}</Label>
+            <Input id="amd-day" type="date" min={lastSigned ?? undefined} max={today} dir="ltr" value={day} onChange={(e) => setDay(e.target.value)} disabled={busy !== null} />
+            <p className="text-xs text-muted-foreground">{t("amend.draft_day_hint")}</p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="amd-note">{t("amend.note")}</Label>

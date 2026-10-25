@@ -3,14 +3,9 @@
 // completion, or passes it on. Each answer is one transaction that re-reads the
 // file, so two managers — or two tabs — cannot both act on it.
 
-import { addDoc, collection, doc, runTransaction, serverTimestamp, setDoc, updateDoc, type Firestore } from "firebase/firestore"
+import { addDoc, collection, doc, runTransaction, serverTimestamp, setDoc, updateDoc, type DocumentData, type Firestore, type Transaction, type UpdateData } from "firebase/firestore"
 import { CRM_OPPORTUNITIES, type CrmOpportunity } from "../crm"
-import { defaultEnabledSections } from "../project-sections"
-import { drawYearlyDocNumber } from "../sales-numbering"
-import { advanceEvent, PM_EVENTS, pmEventDocId } from "./events"
 import {
-  acceptBlocks,
-  isSelfDevelopment,
   mayActOnHandover,
   PM_HANDOVERS,
   reassignBlocks,
@@ -19,11 +14,15 @@ import {
   type PmHandover,
   type ProjectKind,
   type ReassignReason,
+  type BoqSource,
 } from "./handover"
-import { defaultTerms, termProblems, type ContractTerms } from "./terms"
+import type { ContractTerms } from "./terms"
+import { pmCeiling } from "./access"
+import { getAuth } from "firebase/auth"
+import { acceptHandoverCore, AcceptCoreError, type AcceptBoqGroup, type AcceptBoqLine, type AcceptCoreInput, type AcceptCoreResult } from "./handover-accept"
 
 export class PmHandoverError extends Error {
-  constructor(readonly code: "missing" | "not_yours" | "not_waiting" | "blocked" | "invalid") {
+  constructor(readonly code: "missing" | "not_yours" | "not_waiting" | "blocked" | "invalid" | "not_candidate" | "boq_from_crm" | "boq_empty") {
     super(code)
     this.name = "PmHandoverError"
   }
@@ -165,6 +164,25 @@ function mustAnswer(h: PmHandover | undefined, actor: PmActor): PmHandover {
   return h
 }
 
+/**
+ * HO-04 — whether `uid` may be handed a file: the organisation's owner, or a
+ * member whose DEFAULT group gives the PM ceiling `approve` (a project manager).
+ * Read inside the caller's transaction: a group changed meanwhile is seen.
+ */
+export async function mayReceiveHandover(tx: Transaction, firestore: Firestore, organizationId: string, uid: string): Promise<boolean> {
+  if (!uid) return false
+  if (uid === organizationId) return true
+  const snap = await tx.get(doc(firestore, "users", uid))
+  if (!snap.exists()) return false
+  const u = snap.data() as { organizationId?: string; organizationRole?: string | null; defaultGroupId?: string | null }
+  if ((u.organizationId ?? uid) !== organizationId) return false
+  if (!("organizationRole" in u) || u.organizationRole === "owner") return true
+  if (!u.defaultGroupId) return false
+  const g = await tx.get(doc(firestore, "teamGroups", u.defaultGroupId))
+  const permissions = g.exists() ? (((g.data() as { permissions?: unknown }).permissions as string[] | undefined) ?? []) : []
+  return pmCeiling({ owner: false, permissions }).has("approve")
+}
+
 export async function reassignHandover(
   firestore: Firestore,
   actor: PmActor,
@@ -176,6 +194,8 @@ export async function reassignHandover(
     const snap = await tx.get(ref)
     const h = mustAnswer(snap.exists() ? ({ id: snap.id, ...snap.data() } as PmHandover) : undefined, actor)
     if (reassignBlocks(h, input.to, input.reason, input.reasonText).length) throw new PmHandoverError("invalid")
+    // HO-04 (FX-07): only to a project manager or the owner — checked here, not by the list the screen showed.
+    if (!(await mayReceiveHandover(tx, firestore, h.organizationId, input.to))) throw new PmHandoverError("not_candidate")
     tx.update(ref, {
       to: input.to,
       toName: input.toName,
@@ -237,84 +257,91 @@ export interface AcceptInput {
   notification?: Notice
   /** Told to the named manager when it is not the acceptor. */
   managerNotification?: Notice
+  /** Where the BOQ comes from (default «later»). A file with a priced BOQ takes only «crm» — its own lines. */
+  source?: BoqSource
+  /** An Excel / typed BOQ's lines, written in the acceptance itself. */
+  lines?: AcceptBoqLine[]
+  groups?: AcceptBoqGroup[]
 }
+
+/** Calls the server's acceptance (`/api/pm/handover-accept`) — or, in tests, the same core over another store. */
+export type AcceptTransport = (handoverId: string, input: AcceptCoreInput) => Promise<AcceptCoreResult>
+
+const ACCEPT_URL = "/api/pm/handover-accept"
+
+/** The browser's transport: the signed-in user's ID token to the server route. */
+export const routeAcceptTransport: AcceptTransport = async (handoverId, input) => {
+  const token = (await getAuth().currentUser?.getIdToken().catch(() => "")) || ""
+  const res = await fetch(ACCEPT_URL, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ handoverId, ...input }) })
+  const json = (await res.json().catch(() => null)) as { data?: AcceptCoreResult; code?: string } | null
+  if (!res.ok || !json?.data) throw new PmHandoverError(((json?.code as PmHandoverError["code"]) || "invalid") as PmHandoverError["code"])
+  return json.data
+}
+
+/** The same core over the client SDK — for the in-memory Firestore of the tests only: in production the
+ * rules refuse a client creating a project and its BOQ lines together, which is why the route exists. */
+export const localAcceptTransport =
+  (firestore: Firestore, actor: { uid: string; owner: boolean }): AcceptTransport =>
+  (handoverId, input) =>
+    acceptHandoverCore(
+      {
+        run: (fn) =>
+          runTransaction(firestore, (t) =>
+            fn({
+              get: async (path) => {
+                const snap = await t.get(doc(firestore, path))
+                return snap.exists() ? (snap.data() as Record<string, unknown>) : null
+              },
+              set: (path, data) => {
+                t.set(doc(firestore, path), data)
+              },
+              update: (path, data) => {
+                t.update(doc(firestore, path), data as UpdateData<DocumentData>)
+              },
+            })
+          ),
+        newId: (col) => doc(collection(firestore, col)).id,
+        stamp: () => serverTimestamp(),
+      },
+      actor,
+      handoverId,
+      input
+    ).catch((err) => {
+      throw err instanceof AcceptCoreError ? new PmHandoverError(err.code) : err
+    })
 
 /**
  * Accept: the project is born "plan" with its number, its original terms (still
- * editable until Start), the manager seated as project manager, and the
- * advance-payment term sent to Finance once under its key (WF-01 step 4).
- * The BOQ is written by the wizard right after, as the new-project wizard does.
+ * editable until Start), the manager seated as project manager, the
+ * advance-payment term sent to Finance once under its key (WF-01 step 4) and
+ * frozen beside it (IPC-07) — and its BOQ, in the SAME server transaction
+ * (CON-01: a file's priced BOQ is transferred as sent, nothing else). The seats,
+ * the site store and the notices follow, as before.
  */
-export async function acceptHandover(firestore: Firestore, actor: PmActor, handoverId: string, input: AcceptInput): Promise<{ projectId: string; projectNo: string }> {
+export async function acceptHandover(firestore: Firestore, actor: PmActor, handoverId: string, input: AcceptInput, transport: AcceptTransport = routeAcceptTransport): Promise<{ projectId: string; projectNo: string; lines: number }> {
   if (!input.manager?.uid) throw new PmHandoverError("invalid")
-  const hRef = doc(firestore, PM_HANDOVERS, handoverId)
-  const projectRef = doc(collection(firestore, "projects"))
-  const storeRef = input.store ? doc(collection(firestore, "warehouses")) : null
   const note = input.note?.trim() || null
-  let projectNo = ""
-  let file: PmHandover | null = null
-
-  await runTransaction(firestore, async (tx) => {
-    const snap = await tx.get(hRef)
-    const h = mustAnswer(snap.exists() ? ({ id: snap.id, ...snap.data() } as PmHandover) : undefined, actor)
-    if (acceptBlocks(h).length) throw new PmHandoverError("blocked")
-    const terms = input.terms ?? defaultTerms({ advance: h.advance, retention: h.retention, selfDevelopment: isSelfDevelopment(input.kind) })
-    if (termProblems(terms).length) throw new PmHandoverError("invalid")
-    projectNo = await drawYearlyDocNumber(firestore, tx, h.organizationId, "PJ")
-    const event = advanceEvent({ organizationId: h.organizationId, projectId: projectRef.id, projectNo, contractValue: h.value, terms, by: actor.uid, at: new Date().toISOString() })
-    file = h
-
-    tx.set(projectRef, {
-      organizationId: h.organizationId,
-      contractorId: actor.uid,
-      name: h.title,
-      description: h.note,
-      location: input.location ?? h.location,
-      region: input.region?.trim() || fileExtras(h).region || null,
-      consultant: fileExtras(h).consultantName || null,
-      budget: h.value,
-      status: "approved_waiting_start",
-      projectType: input.kind,
-      clientName: h.clientName,
-      clientType: h.clientType,
-      blueprintUrl: null,
-      enabledSections: input.enabledSections.length ? input.enabledSections : Array.from(defaultEnabledSections()),
-      rfqIds: [],
-      sourceOpportunityId: h.opportunityId,
-      pmHandoverId: h.id,
-      contractNumber: h.contractNumber,
-      projectManagerId: input.manager.uid,
-      projectManagerName: input.manager.name,
-      ...(storeRef ? { warehouseId: storeRef.id } : {}),
-      pm: {
-        no: projectNo,
-        lifecycle: "plan",
-        kind: input.kind,
-        startOn: h.startOn,
-        durationDays: h.durationDays,
-        signedOn: h.signedOn,
-        terms,
-        original: null,
-        startedAt: null,
-        acceptNote: note,
-      },
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    })
-    tx.update(hRef, { status: "acc", projectId: projectRef.id, acceptedAt: new Date().toISOString(), acceptedBy: actor.uid, acceptNote: note })
-    tx.update(doc(firestore, CRM_OPPORTUNITIES, h.opportunityId), {
-      projectId: projectRef.id,
-      handoverStatus: "accepted",
-      projectManagerId: input.manager.uid,
-      projectManagerName: input.manager.name,
-      updatedAt: serverTimestamp(),
-    })
-    if (event) tx.set(doc(firestore, PM_EVENTS, pmEventDocId(event.organizationId, event.key)), event)
+  const result = await transport(handoverId, {
+    kind: input.kind,
+    location: input.location,
+    region: input.region ?? null,
+    enabledSections: input.enabledSections,
+    ...(input.terms ? { terms: input.terms } : {}),
+    manager: { uid: input.manager.uid, name: input.manager.name },
+    note,
+    wantsStore: Boolean(input.store),
+    source: input.source ?? "later",
+    lines: input.lines ?? [],
+    groups: input.groups ?? [],
   })
+  const projectRef = doc(firestore, "projects", result.projectId)
+  const projectNo = result.projectNo
+  const storeRef = result.storeId ? doc(firestore, "warehouses", result.storeId) : null
+  const file = { organizationId: result.organizationId, location: result.location, title: result.title, requestedBy: result.requestedBy } as Pick<PmHandover, "organizationId" | "location" | "title" | "requestedBy">
 
   // The seats follow the project, as the CRM handover did: separate writes so
   // the rules can read the project that now exists.
-  const orgId = (file as PmHandover | null)?.organizationId ?? null
+  const orgId = file.organizationId ?? null
   const seat = (who: AcceptSeat, pmRole: "pm" | "site") =>
     setDoc(doc(firestore, "projects", projectRef.id, "members", who.uid), {
       userId: who.uid,
@@ -340,12 +367,12 @@ export async function acceptHandover(firestore: Firestore, actor: PmActor, hando
     try {
       await setDoc(storeRef, {
         name: input.store.name,
-        location: input.location ?? (file as PmHandover | null)?.location ?? null,
+        location: input.location ?? file.location ?? null,
         description: null,
         organizationId: orgId,
         centralWarehouseId: input.store.centralWarehouseId,
         projectId: projectRef.id,
-        projectName: (file as PmHandover | null)?.title ?? null,
+        projectName: file.title ?? null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       })
@@ -356,9 +383,9 @@ export async function acceptHandover(firestore: Firestore, actor: PmActor, hando
   if (input.manager.uid !== actor.uid && input.managerNotification) {
     await notify(firestore, input.manager.uid, { ...input.managerNotification, type: "project_manager_named", projectId: projectRef.id, link: `/contractor/projects/${projectRef.id}?tab=pmToday` })
   }
-  const requester = (file as PmHandover | null)?.requestedBy
+  const requester = file.requestedBy
   if (requester && requester !== actor.uid && input.notification) {
     await notify(firestore, requester, { ...input.notification, type: "project_handover_accepted", projectId: projectRef.id, pmHandoverId: handoverId })
   }
-  return { projectId: projectRef.id, projectNo }
+  return { projectId: projectRef.id, projectNo, lines: result.lines }
 }
