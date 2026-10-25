@@ -120,6 +120,9 @@ const withNoticeRow = (rows: Row[]): ShownRow[] => rows.flatMap((row): ShownRow[
 // the team's documents (docs/procurement-boundaries.md).
 type Segment = "pol" | "sites" | "receivers" | "roles" | "sub"
 const SEGMENTS: Segment[] = ["pol", "sites", "receivers", "roles", "sub"]
+/** The reference prototype's names for the same segments (`loc`, `rcv`) — a link written with them opens the right one, not Policies. */
+const SEGMENT_ALIAS: Record<string, Segment> = { loc: "sites", rcv: "receivers" }
+export const segmentOf = (asked: string | null | undefined): Segment => SEGMENTS.find((id) => id === asked) ?? (asked ? SEGMENT_ALIAS[asked] : undefined) ?? "pol"
 
 type Party = "pm" | "mfg" | "inv" | "fin" | "sup" | "me" | "gov"
 // One colour per unit everywhere (ST-05): the module chips take the unit's token from the package icons.
@@ -178,7 +181,7 @@ export function ProcurementSettings() {
   const [saving, setSaving] = useState(false)
   // The top bar's package chip opens «الاشتراك» directly (`?seg=sub`, FR-04).
   const searchParams = useSearchParams()
-  const [segment, setSegment] = useState<Segment>(() => SEGMENTS.find((id) => id === searchParams?.get("seg")) ?? "pol")
+  const [segment, setSegment] = useState<Segment>(() => segmentOf(searchParams?.get("seg")))
 
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: policies })
   const tiePct = useWatch({ control: form.control, name: "tieBandPct" })

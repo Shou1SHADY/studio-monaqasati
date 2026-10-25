@@ -9,7 +9,7 @@
 // budget the supplier never sees. The SAME step from the incoming request's panel and the editor.
 
 import { useMemo, useState } from "react"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { ChevronDown, Coins, Globe, Handshake, Loader2, Lock, Paperclip, Trash2, UserPlus } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
@@ -101,6 +101,7 @@ export function EditorPublish({
   reachCities?: string
 }) {
   const t = useTranslations("Portal.ProcEditor")
+  const locale = useLocale()
   const [more, setMore] = useState(false)
   const [soon, setSoon] = useState(false)
   const multi = linesCount > 1
@@ -218,7 +219,7 @@ export function EditorPublish({
 
       <label className="block max-w-xs space-y-1">
         <span className="text-sm font-bold">{t("deadline")}</span>
-        <Input type="date" min={firstDeadline} value={values.deadline} onChange={(e) => onChange({ deadline: e.target.value })} className={cn(deadlineBad && "border-destructive")} dir="ltr" />
+        <Input type="date" lang={locale} min={firstDeadline} value={values.deadline} onChange={(e) => onChange({ deadline: e.target.value })} className={cn(deadlineBad && "border-destructive")} dir="ltr" />
         <span className={cn("block text-xs", deadlineBad ? "font-semibold text-destructive" : "text-muted-foreground")}>{deadlineBad ? t("err_deadline") : deadlineHint}</span>
       </label>
 

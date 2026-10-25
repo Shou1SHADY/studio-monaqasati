@@ -19,6 +19,8 @@ const buttonVariants = cva(
         success: "bg-success text-success-foreground hover:bg-success/90",
         primary: "bg-primary text-primary-foreground hover:bg-primary/90",
         accent: "bg-accent text-primary hover:bg-accent/90",
+        // The ACTIVE module's colour (data-accent on the portal frame) — a module's main act.
+        module: "bg-module text-module-foreground hover:bg-module/90",
         ghost: "hover:bg-muted hover:text-foreground",
         link: "text-cta underline-offset-4 hover:underline",
       },

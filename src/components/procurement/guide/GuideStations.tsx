@@ -16,15 +16,16 @@ export function GuideStations({ stations, limit, allowed }: { stations: GuideSta
       <ol className="flex flex-wrap items-center gap-1.5 rounded-2xl border bg-card p-3 shadow-sm" data-testid="guide-mini">
         {stations.map((s, i) => (
           <li key={s.id} className="flex items-center gap-1.5">
+            {/* The arrow LEADS each station after the first, so a wrapped line starts «→ 7 …» and never ends on a lone arrow. */}
+            {i > 0 && (
+              <em className="text-xs not-italic text-muted-foreground" aria-hidden="true" data-testid="guide-mini-arrow">
+                <span className="inline-block rtl:rotate-180">→</span>
+              </em>
+            )}
             <span className={cn("inline-flex items-center gap-1.5 rounded-full py-1 pe-3 ps-1.5 text-xs font-bold", ROLE_STYLE[s.who[0]].soft)}>
               <i className={cn("grid h-[18px] w-[18px] place-items-center rounded-full text-[10px] not-italic text-white", ROLE_STYLE[s.who[0]].solid)}>{s.n}</i>
               {t(`station.${s.id}.name`)}
             </span>
-            {i < stations.length - 1 && (
-              <em className="text-xs not-italic text-muted-foreground" aria-hidden="true">
-                <span className="inline-block rtl:rotate-180">→</span>
-              </em>
-            )}
           </li>
         ))}
       </ol>

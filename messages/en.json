@@ -13454,7 +13454,7 @@
           "saved": "Name saved; suppliers see it on the RFQ and the link.",
           "failed": "The name could not be saved"
         },
-        "stage": { "draft": "Draft", "open": "Open", "compare": "Comparing", "awarded": "Awarded", "cancelled": "Cancelled", "early": "Closed early" },
+        "stage": { "draft": "Draft", "open": "Open", "compare": "Comparing", "awarded": "Awarded", "cancelled": "Cancelled", "early": "Closed early", "no_live": "No live offer" },
         "audience": { "public": "Public", "private": "Private", "direct": "Direct award" },
         "pricing": { "line": "Price per item", "total": "Lump sum" },
         "path": {
@@ -13502,7 +13502,11 @@
           "offers_off": "{count} from off the platform",
           "lowest": "Lowest complete offer",
           "unanswered": "{count, plural, one {1 inquiry without an answer} other {# inquiries without an answer}}",
-          "no_questions": "No unanswered inquiry"
+          "no_questions": "No unanswered inquiry",
+          "reached_l": "Suppliers reached",
+          "views_l": "Times viewed",
+          "offers_l": "Offers",
+          "unanswered_l": "Unanswered inquiries"
         },
         "tabs": { "offers": "Offers", "compare": "Comparison", "inquiries": "Inquiries", "details": "Details", "unanswered_title": "{count} unanswered" },
         "best": {
@@ -15280,8 +15284,8 @@
       "subtitle": "Procurement follows until supply completes; only the receiver counts and confirms.",
       "showMore": "Show {n} more",
       "caption": {
-        "notices": "No “Confirm receipt” in Procurement: only the notice status and its button. Auto-forward runs on the Policies delay; a location without a receiver is not forwarded and shows here.",
-        "receipts": "Every receipt reaches Procurement and opens as a PDF. The receipt is the receiver’s: blind count, photos and ticket, confirmed by login or code. Only manual ones are recorded by Procurement, for off-platform purchases, and they are tagged."
+        "notices": "Only the receiver counts and confirms a delivery. A notice is forwarded to them automatically after the delay set in Policies; a site without a receiver keeps its notices here.",
+        "receipts": "Every receipt reaches Procurement and opens as a PDF. The receiver counts blind, attaches photos and the ticket, and confirms from their account or with a code. A manual receipt is recorded by Procurement for an off-platform purchase, and is tagged as such."
       },
       "hub": {
         "delivery": "delivery",
@@ -15419,7 +15423,14 @@
         "incoming": "Nothing here",
         "log": "No receipts yet",
         "nopo": "No receipts without a PO",
-        "nopoHint": "Off-platform purchases are recorded with “Record a manual receipt” above."
+        "nopoHint": "Off-platform purchases are recorded with “Record a manual receipt” above.",
+        "transit": "No deliveries on the way",
+        "transitHint": "A supplier's delivery notice appears here when they send it, and stays until the receiver counts and confirms the delivery.",
+        "fwd": "No notices awaiting your forward",
+        "fwdHint": "A supplier's notice lands here for you to forward to the receiver; it is forwarded automatically after the delay set in Policies.",
+        "count": "No deliveries awaiting a count",
+        "countHint": "Once a notice is forwarded, the delivery shows here until the receiver counts and confirms it.",
+        "logHint": "Every receipt the receiver confirms appears here and opens as a PDF."
       },
       "incoming": {
         "noNoticeYet": "No notice yet",
@@ -15960,7 +15971,7 @@
     "ProcReports": {
       "page": {
         "title": "Reports",
-        "subtitle": "The seven reports as today, per package."
+        "subtitle": "Seven standard reports on today's figures, as your package allows."
       },
       "overview": {
         "seven": "The seven reports"
@@ -15985,6 +15996,7 @@
       "csv": "CSV",
       "showMore": "Show {count} more",
       "empty": "No data in the period",
+      "empty_supplier_hint": "Each supplier's spend on this month's purchase orders shows here.",
       "emptyCommitments": "No open orders",
       "total": "Total",
       "noPrices": "Your role sees dates and quantities — reports with values are not shown",
@@ -16475,6 +16487,7 @@
           "name": "Projects",
           "short": "Projects",
           "question": "Do they run projects with sites and BOQs, where engineers request materials?",
+          "benefit": "If you run projects with sites and BOQs, your engineers request materials from them.",
           "add1": "Requests arrive from projects with their number and BOQ item, after technical approval",
           "add2": "Project sites with city, district and receiver join delivery locations automatically",
           "add3": "Each material’s status returns to the project: in RFQ · in PO · arrived",
@@ -16487,6 +16500,7 @@
           "name": "Finance",
           "short": "Finance",
           "question": "Do they want accounting and payment inside Mdmak? (“No” if they use another system)",
+          "benefit": "If you want accounting and payment inside Mdmak rather than in another system.",
           "add1": "An approved PO reaches Finance as a commitment; advances are requested from it",
           "add2": "Payments come back from Finance; the PO closes when paid",
           "add3": "The procurement manager’s approval limit is read from Finance",
@@ -16500,6 +16514,7 @@
           "name": "Manufacturing",
           "short": "Manufacturing",
           "question": "Do they have a workshop or factory that makes some of what they buy?",
+          "benefit": "If you have a workshop or factory that makes some of what you buy.",
           "add1": "Workshop material requests arrive from work orders with their numbers",
           "add2": "“Ask the workshop”: make it instead of buying, with the reference purchase price",
           "add3": "The workshop store is a delivery location with its receiver; status returns to the work order",
@@ -27295,8 +27310,8 @@
       "err_publish": "The RFQ was not published — try again",
       "favourite": "favourite",
       "platform": "on the platform",
-      "footer_sum": "{lines, plural, =0 {no materials yet} one {# material} other {# materials}} · {groups, plural, =0 {—} one {# place} other {# places}} · {subs, plural, =0 {—} one {# sub-category} other {# sub-categories}} · {reach, plural, =0 {no specialised supplier yet} one {reaches # specialised supplier} other {reaches # specialised suppliers}}",
-      "footer_sum_pm": "{lines, plural, =0 {no materials yet} one {# material} other {# materials}} · {groups, plural, =0 {—} one {# project} other {# projects}} · {subs, plural, =0 {—} one {# sub-category} other {# sub-categories}} · {reach, plural, =0 {no specialised supplier yet} one {reaches # specialised supplier} other {reaches # specialised suppliers}}",
+      "footer_sum": "{lines, plural, =0 {no materials yet} one {# material} other {# materials}} · {groups, plural, =0 {no place yet} one {# place} other {# places}} · {subs, plural, =0 {0 sub-categories} one {# sub-category} other {# sub-categories}} · {reach, plural, =0 {no specialised supplier yet} one {reaches # specialised supplier} other {reaches # specialised suppliers}}",
+      "footer_sum_pm": "{lines, plural, =0 {no materials yet} one {# material} other {# materials}} · {groups, plural, =0 {no project yet} one {# project} other {# projects}} · {subs, plural, =0 {0 sub-categories} one {# sub-category} other {# sub-categories}} · {reach, plural, =0 {no specialised supplier yet} one {reaches # specialised supplier} other {reaches # specialised suppliers}}",
       "from_incoming": "Add from incoming requests ({count})",
       "from_request": "From {ref}",
       "group_city": "Delivery city",

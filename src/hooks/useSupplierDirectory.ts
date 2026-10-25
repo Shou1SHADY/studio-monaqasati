@@ -443,6 +443,27 @@ async function authed(user: { getIdToken: () => Promise<string> } | null, url: s
   return ((await res.json()) as { data: unknown }).data
 }
 
+/** The directory's size alone, for the «دليل موردي المنصة» segment's count before the segment is opened — one page of ONE row from
+ * the same server read (the daily cards), so it costs a request, not a directory. Undefined while it loads or if it fails. */
+export function usePlatformDirectoryTotal(enabled = true): number | undefined {
+  const { user } = useUser()
+  const [total, setTotal] = useState<number | undefined>(undefined)
+  useEffect(() => {
+    if (!user || !enabled) return
+    let live = true
+    authed(user, "/api/procurement/suppliers?limit=1")
+      .then((d) => {
+        const n = (d as { total?: unknown } | null)?.total
+        if (live && typeof n === "number") setTotal(n)
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [user, enabled])
+  return total
+}
+
 /** The platform numbers (operations completed, on-time, computed rating) of the named suppliers — read from the daily cards through the server. */
 export function usePlatformCards(orgIds: string[], enabled = true): Map<string, SupplierCard> {
   const { user } = useUser()

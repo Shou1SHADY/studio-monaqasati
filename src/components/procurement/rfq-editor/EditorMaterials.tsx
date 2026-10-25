@@ -388,16 +388,6 @@ export function EditorMaterials({
 
   return (
     <div ref={rootRef} className="space-y-5">
-      {/* Desktop column heads */}
-      <div className="hidden grid-cols-[2rem_minmax(0,1.4fr)_minmax(0,1.6fr)_6.5rem_7rem_2.5rem] gap-3 px-3 text-xs font-semibold text-muted-foreground md:grid">
-        <span />
-        <span>{t("col_material")}</span>
-        <span>{t("col_specs")}</span>
-        <span className="text-end">{t("col_quantity")}</span>
-        <span>{t("col_unit")}</span>
-        <span />
-      </div>
-
       {groups.map((g) => {
         const lines = g.lines
         const placeBad = showProblems && problems.some((p) => p.groupKey === g.key && p.code === "no_place")
@@ -465,7 +455,7 @@ export function EditorMaterials({
               ) : (
                 <label className="ms-auto flex items-center gap-1.5 text-xs text-muted-foreground">
                   {t("need_by")}
-                  <Input type="date" value={g.needBy || ""} onChange={(e) => setGroup(g, { needBy: e.target.value || null })} className="h-8 w-36 text-xs" dir="ltr" />
+                  <Input type="date" lang={locale} value={g.needBy || ""} onChange={(e) => setGroup(g, { needBy: e.target.value || null })} className="h-8 w-36 text-xs" dir="ltr" />
                 </label>
               )}
               {groups.length > 1 && !lines.some(lineStarted) && <IconButton label={t("remove_group")} icon={Trash2} iconSize={14} onClick={() => onChange(removeGroup(groups, g.key))} />}
@@ -495,6 +485,17 @@ export function EditorMaterials({
               })}
             {placeBad && <p className="px-3 pt-2 text-[11px] font-semibold text-destructive">{t("err_no_place")}</p>}
 
+            {/* Desktop column heads — inside the card, right above the lines they name (the prototype's place). */}
+            {lines.some(lineStarted) && (
+              <div className="hidden grid-cols-[2rem_minmax(0,1.4fr)_minmax(0,1.6fr)_6.5rem_7rem_2.5rem] gap-3 border-b px-3 py-1.5 text-xs font-semibold text-muted-foreground md:grid" data-testid="editor-col-heads">
+                <span />
+                <span>{t("col_material")}</span>
+                <span>{t("col_specs")}</span>
+                <span className="text-end">{t("col_quantity")}</span>
+                <span>{t("col_unit")}</span>
+                <span />
+              </div>
+            )}
             <ul className="divide-y">
               {lines.filter(lineStarted).map((l) => {
                 const no = numbers.get(l.key)
@@ -514,7 +515,7 @@ export function EditorMaterials({
                         {l.needBy != null && (
                           <label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                             {t("line_need_by")}
-                            <Input type="date" value={l.needBy || ""} onChange={(e) => onChange(updateLine(groups, g.key, l.key, { needBy: e.target.value }))} className="h-7 w-36 text-xs" dir="ltr" />
+                            <Input type="date" lang={locale} value={l.needBy || ""} onChange={(e) => onChange(updateLine(groups, g.key, l.key, { needBy: e.target.value }))} className="h-7 w-36 text-xs" dir="ltr" />
                           </label>
                         )}
                         {warrantyCell(g, l)}

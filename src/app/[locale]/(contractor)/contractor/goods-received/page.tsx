@@ -10,7 +10,7 @@
 import { getAuth } from "firebase/auth"
 import { usePrintProfile } from "@/hooks/usePrintProfile"
 import { printedNumber } from "@/lib/company-print-profile"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
@@ -28,9 +28,9 @@ import { ReceiptExportDialog } from "@/components/procurement/ReceiptExportDialo
 import { ReceiverPreviewDialog } from "@/components/procurement/ReceiverPreviewDialog"
 import { RECORDED_TONE, ReceiptDrawer, ReceiptStatePill, RecordedByPill, type ReceiptDrawerProps } from "@/components/procurement/ReceiptDrawer"
 import { RegulariseReceiptDialog } from "@/components/procurement/RegulariseReceiptDialog"
+import { EmptyState } from "@/components/module-ui/EmptyState"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
@@ -333,17 +333,18 @@ export default function GoodsReceivedPage() {
             </Button>
           }
           action={
-            <div className="flex flex-wrap gap-2">
+            // The main act first, so when the line runs out it is the secondary one that wraps — never the primary left behind.
+            <div className="flex flex-wrap justify-end gap-2">
+              {canPrepare && (
+                <Button variant="module" className="gap-2 rounded-xl" onClick={() => setManualOpen(true)}>
+                  <PlusCircle size={18} aria-hidden="true" />
+                  {t("manual.button")}
+                </Button>
+              )}
               {mayCountArrival && (
                 <Button variant="outline" className="gap-2 rounded-xl" onClick={() => setArrivalOpen(true)}>
                   <Truck size={16} aria-hidden="true" />
                   {t("arrival.button")}
-                </Button>
-              )}
-              {canPrepare && (
-                <Button className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90" onClick={() => setManualOpen(true)}>
-                  <PlusCircle size={18} aria-hidden="true" />
-                  {t("manual.button")}
                 </Button>
               )}
             </div>
@@ -354,16 +355,22 @@ export default function GoodsReceivedPage() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <ProcChipGroup items={RECEIPT_SEGMENTS.map((s) => ({ id: s, label: segTitle[s], count: counts[s] }))} active={tab} onPick={(s) => setQuery({ tab: s })} label={t("title")} />
           <div className="flex flex-col gap-2 sm:flex-row">
-            <NativeSelect value={placeFilter} onChange={(e) => setPlaceFilter(e.target.value)} aria-label={t("placeFilter")} className={cn("h-10 w-full sm:w-56", placeFilter !== "all" && "border-module text-module")}>
-              <option value="all">{t("allPlaces")}</option>
-              {liveSites.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-              <option value={PLACE_GENERAL}>{t("place.general")}</option>
-              {mfgOn && <option value={PLACE_WORKSHOP}>{t("place.workshop")}</option>}
-            </NativeSelect>
+{/* The same styled dropdown as Orders' site/project filter — sibling tabs, one control. */}
+            <Select value={placeFilter} onValueChange={setPlaceFilter}>
+              <SelectTrigger className={cn("h-10 w-full rounded-xl bg-card text-sm sm:w-56", placeFilter !== "all" && "border-module text-module")} aria-label={t("placeFilter")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("allPlaces")}</SelectItem>
+                {liveSites.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+                <SelectItem value={PLACE_GENERAL}>{t("place.general")}</SelectItem>
+                {mfgOn && <SelectItem value={PLACE_WORKSHOP}>{t("place.workshop")}</SelectItem>}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -376,8 +383,8 @@ export default function GoodsReceivedPage() {
         ) : isNoticeTab ? (
           <>
             {stale > 0 && tab !== "count" && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                <p className="text-xs text-amber-800">{t("incoming.staleHint", { n: stale })}</p>
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2">
+                <p className="text-xs text-warning">{t("incoming.staleHint", { n: stale })}</p>
                 <Button type="button" size="sm" variant="outline" className="gap-1.5" disabled={forwardingStale} onClick={() => void forwardStale()}>
                   {forwardingStale ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Forward size={13} aria-hidden="true" />}
                   {t("incoming.forwardStale", { n: stale })}
@@ -385,6 +392,7 @@ export default function GoodsReceivedPage() {
               </div>
             )}
             <NoticeList
+              segment={tab as "transit" | "fwd" | "count"}
               rows={noticeShown.slice(0, limit)}
               total={noticeShown.length}
               all={desk}
@@ -404,7 +412,7 @@ export default function GoodsReceivedPage() {
               onOpen={(id) => setQuery({ delivery: id })}
               onMore={() => setLimit((n) => n + PAGE)}
             />
-            <p className="rounded-xl border border-cta/20 bg-cta/5 p-3 text-xs leading-relaxed text-cta">{t("caption.notices")}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">{t("caption.notices")}</p>
           </>
         ) : (
           <>
@@ -422,8 +430,16 @@ export default function GoodsReceivedPage() {
               logFilter={tab === "recs" ? logFilter : null}
               onLogFilter={setLogFilter}
               onMore={() => setLimit((n) => n + PAGE)}
+              emptyAction={
+                canPrepare ? (
+                  <Button variant="outline" className="gap-2 rounded-xl" onClick={() => setManualOpen(true)}>
+                    <PlusCircle size={16} aria-hidden="true" />
+                    {t("manual.button")}
+                  </Button>
+                ) : undefined
+              }
             />
-            <p className="rounded-xl border border-cta/20 bg-cta/5 p-3 text-xs leading-relaxed text-cta">{t("caption.receipts")}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">{t("caption.receipts")}</p>
           </>
         )}
 
@@ -561,6 +577,8 @@ function MoreButton({ shown, total, onMore }: { shown: number; total: number; on
 // ---------------------------------------------------------------------------
 
 interface NoticeListProps {
+  /** Which notice segment is shown — its empty state says what would be here. */
+  segment: "transit" | "fwd" | "count"
   rows: NoticeRow[]
   total: number
   all: DeskDelivery[]
@@ -583,7 +601,7 @@ interface NoticeListProps {
 }
 
 function NoticeList(props: NoticeListProps) {
-  const { rows, total, all, locale, followsPo, escalating, receivers, forwardWindowDays, placeOf, warehouseName, projectName, onForward, onPreview, onRemindReceiver, onEscalate, onOpen, onMore } = props
+  const { segment, rows, total, all, locale, followsPo, escalating, receivers, forwardWindowDays, placeOf, warehouseName, projectName, onForward, onPreview, onRemindReceiver, onEscalate, onOpen, onMore } = props
   const t = useTranslations("Portal.ProcReceipts")
   const dayText = useDateText()
   const tc = useTranslations("Portal.Contractor")
@@ -599,7 +617,7 @@ function NoticeList(props: NoticeListProps) {
         <p className="text-xs leading-relaxed text-muted-foreground">{t("incoming.panelSub")}</p>
       </header>
       {!rows.length ? (
-        <Empty text={t("empty.incoming")} />
+        <EmptyState icon={Truck} title={t(`empty.${segment}`)} description={t(`empty.${segment}Hint`)} className="m-4" />
       ) : (
         <ul className="divide-y">
           {rows.map((r) => {
@@ -760,6 +778,8 @@ interface ReceiptListProps {
   /** Every delivery — a notice's number is its place among its order's notices. */
   all: DeskDelivery[]
   rows: ReceiptRow[]
+  /** The one way to fill an empty log (a manual receipt), for who may record one. */
+  emptyAction?: ReactNode
   total: number
   locale: string
   onOpen: (id: string) => void
@@ -773,7 +793,7 @@ interface ReceiptListProps {
   onMore: () => void
 }
 
-function ReceiptList({ all, rows, total, locale, onOpen, onPdf, warehouseName, projectName, placeKind, nopo, logFilter, onLogFilter, onMore }: ReceiptListProps) {
+function ReceiptList({ all, rows, total, locale, onOpen, onPdf, warehouseName, projectName, placeKind, nopo, logFilter, onLogFilter, onMore, emptyAction }: ReceiptListProps) {
   const t = useTranslations("Portal.ProcReceipts")
   const tp = useTranslations("Portal.Procurement")
   const when = useWhenText()
@@ -802,7 +822,7 @@ function ReceiptList({ all, rows, total, locale, onOpen, onPdf, warehouseName, p
         )}
       </header>
       {!rows.length ? (
-        <Empty text={nopo ? t("empty.nopo") : t("empty.log")} hint={nopo ? t("empty.nopoHint") : undefined} />
+        <EmptyState icon={PackageCheck} title={nopo ? t("empty.nopo") : t("empty.log")} description={nopo ? t("empty.nopoHint") : t("empty.logHint")} action={emptyAction} className="m-4" />
       ) : (
         <table className="w-full text-sm">
           <thead className="hidden bg-muted/50 text-xs text-muted-foreground md:table-header-group">
@@ -922,16 +942,6 @@ function ReceiptList({ all, rows, total, locale, onOpen, onPdf, warehouseName, p
       )}
       <MoreButton shown={rows.length} total={total} onMore={onMore} />
     </section>
-  )
-}
-
-function Empty({ text, hint }: { text: string; hint?: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 p-16 text-center">
-      <PackageCheck size={40} className="text-muted-foreground/30" aria-hidden="true" />
-      <p className="text-sm font-medium text-muted-foreground">{text}</p>
-      {hint && <p className="max-w-md text-xs text-muted-foreground">{hint}</p>}
-    </div>
   )
 }
 

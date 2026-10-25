@@ -70,7 +70,7 @@ export function ProcGuide() {
             </span>
             <Link
               href={backHref}
-              className="ms-auto inline-flex items-center gap-1.5 rounded-lg border bg-card px-3 py-1.5 text-xs font-bold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="ms-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg border bg-card px-3 py-1.5 text-xs font-bold sm:min-h-0 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <ArrowRight size={13} className="rtl:rotate-0 ltr:rotate-180" aria-hidden="true" />
               {t("strip.back")}
@@ -95,7 +95,7 @@ export function ProcGuide() {
                 aria-pressed={pkg[c]}
                 onClick={() => toggle(c)}
                 className={cn(
-                  "inline-flex min-h-9 items-center gap-1.5 rounded-full border-[1.5px] px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "inline-flex min-h-11 items-center gap-1.5 rounded-full border-[1.5px] px-3 py-1.5 text-xs font-semibold transition-colors sm:min-h-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   pkg[c] ? "border-module bg-module/10 text-module" : "bg-card text-muted-foreground hover:bg-muted",
                 )}
               >

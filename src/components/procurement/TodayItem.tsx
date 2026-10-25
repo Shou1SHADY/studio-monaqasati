@@ -31,9 +31,22 @@ const SEVERITY_TILE: Record<TaskSeverity, string> = {
   blue: "bg-module/10 text-module",
 }
 
+/** The user's own words inside a sentence (an RFQ's title, a supplier's name, a material) are isolated (FSI … PDI — `<bdi>` in text),
+ * so an Arabic title inside an English sentence keeps its own order and the sentence keeps the page's direction. Select keys and
+ * numbers are never touched. */
+const USER_TEXT_KEYS = ["title", "ref", "name", "supplier", "buyer", "receiver", "text", "lines", "list", "note", "material", "question", "place", "need", "why", "project", "request", "what", "unit", "number", "invoice"]
+export function isolateUserText(p: Params): Params {
+  const out: Params = { ...p }
+  for (const k of USER_TEXT_KEYS) {
+    const v = out[k]
+    if (typeof v === "string" && v) out[k] = `\u2068${v}\u2069`
+  }
+  return out
+}
+
 const buttonClass = (solid: boolean) =>
   cn(
-    "inline-flex min-h-9 shrink-0 items-center justify-center gap-1 rounded-lg border px-3 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
+    "inline-flex min-h-11 shrink-0 sm:min-h-9 items-center justify-center gap-1 rounded-lg border px-3 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
     "max-sm:flex-1",
     solid ? "border-module bg-module text-white hover:bg-module/90" : "border-border bg-card text-foreground hover:border-module/40"
   )
@@ -51,7 +64,7 @@ export function TodayItem({ task }: { task: Task }) {
   const present = (p: Params) => {
     const out = presentParams(p, locale, (key) => tProc(key))
     if (typeof out.where === "string") out.where = t(`modules.${out.where}`)
-    return out
+    return isolateUserText(out)
   }
   // «الباقي منه» is a pill after the title, the same one the incoming card wears — not words inside it.
   const remainderPill = task.kind === "need_request" && task.titleParams.remainder === 1
@@ -78,7 +91,7 @@ export function TodayItem({ task }: { task: Task }) {
         <Icon size={16} aria-hidden="true" />
       </span>
       <div className="min-w-0 flex-1 basis-48">
-        <p className="text-sm font-bold leading-snug text-foreground" dir="auto">
+        <p className="text-sm font-bold leading-snug text-foreground">
           {title}
           {remainderPill && (
             <StatusPill tone="violet" className="ms-1.5 align-middle text-[10px]">
@@ -86,7 +99,7 @@ export function TodayItem({ task }: { task: Task }) {
             </StatusPill>
           )}
         </p>
-        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground" dir="auto">
+        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
           {sub}
           {task.kind === "reject_decide" && task.reasonCode && <span className="ms-1.5 inline-block rounded-md bg-destructive/10 px-1.5 py-0.5 text-[10px] font-semibold text-destructive">{tProc(`rejectReason.${task.reasonCode}`)}</span>}
         </p>
@@ -99,7 +112,7 @@ export function TodayItem({ task }: { task: Task }) {
           {task.basis && <span className="text-[10px] font-semibold text-muted-foreground">{t(`basis.${task.basis}`)}</span>}
         </span>
       )}
-      <div className="flex shrink-0 flex-wrap items-center gap-2 self-center max-sm:ms-11 max-sm:basis-full">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 self-center max-sm:ms-11 max-sm:basis-[calc(100%-2.75rem)]">
         {task.act ? (
           <button type="button" onClick={escalate} disabled={busy} className={buttonClass(solid)}>
             {busy ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : null}

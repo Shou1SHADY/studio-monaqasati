@@ -15,6 +15,7 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { PoDrawer } from "@/components/procurement/PoDrawer"
 import { AccountantExportDialog } from "@/components/procurement/AccountantExportDialog"
+import { EmptyState } from "@/components/module-ui/EmptyState"
 import { Button } from "@/components/ui/button"
 import { Money, PoStatusPill, PoTags, WhoTag, useStepSentence } from "@/components/procurement/PoBits"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
@@ -205,11 +206,7 @@ export default function PurchaseOrdersPage() {
             <Loader2 className="animate-spin text-muted-foreground" size={28} aria-label={t("loading")} />
           </div>
         ) : shown.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground">
-            <ClipboardList size={36} className="mx-auto mb-2 opacity-20" aria-hidden="true" />
-            <p className="text-sm font-medium">{searching ? t("empty_search", { term: search.trim() }) : t(`empty.${segment}`)}</p>
-            <p className="mt-1 text-xs">{searching ? t("empty_search_hint") : t(`empty_hint.${segment}`)}</p>
-          </div>
+          <EmptyState icon={ClipboardList} title={searching ? t("empty_search", { term: search.trim() }) : t(`empty.${segment}`)} description={searching ? t("empty_search_hint") : t(`empty_hint.${segment}`)} />
         ) : (
           <>
             {/* Desktop: the table — order · supplier · location · value · next step · who we wait on (the prototype's columns) */}

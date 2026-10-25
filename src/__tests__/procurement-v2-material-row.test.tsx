@@ -21,7 +21,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { act, fireEvent, render } from "@testing-library/react"
 import { resetFakeDb, seed } from "@/test-utils/fake-firestore"
-import { installDomShims, missingKeys, setPathname, setSignedIn } from "@/test-utils/render-world"
+import { installDomShims, missingKeys, setLocale, setPathname, setSignedIn } from "@/test-utils/render-world"
 import { indexTree } from "@/lib/materials/tree"
 import { popularChips } from "@/lib/materials/popular"
 import type { MaterialTreeFile } from "@/lib/materials/types"
@@ -112,6 +112,41 @@ describe("«الأكثر طلباً» (CAT-03)", () => {
     await click(button("حديد 12"))
     expect(document.querySelector('button[aria-label="المقاس: 12 مم"]')).not.toBeNull()
     expect([...missingKeys]).toEqual([])
+    view.unmount()
+  })
+
+  it("shows in English too — the chips are resolved on the tree, never by the page's language (UI review: missing in EN was the tree still loading)", async () => {
+    setLocale("en")
+    try {
+      const view = render(<NewRfqPage />)
+      await flush()
+      expect(text()).toContain("Most requested:")
+      for (const c of ["Rebar 16", "Rebar 12", "OPC cement", "Hollow block 20", "Ready-mix C30", "Plastering sand", "Browse the tree"]) expect(button(c)).toBeDefined()
+      expect([...missingKeys]).toEqual([])
+      view.unmount()
+    } finally {
+      setLocale("ar")
+    }
+  })
+})
+
+describe("the editor's frame (UI review)", () => {
+  it("names its column heads inside the place's card, above the lines — none float above an empty card", async () => {
+    const view = render(<NewRfqPage />)
+    await flush()
+    expect(document.querySelector("[data-testid=editor-col-heads]")).toBeNull()
+    await click(button("حديد 16"))
+    const heads = document.querySelector("[data-testid=editor-col-heads]")
+    expect(heads).not.toBeNull()
+    expect(heads?.closest("section")).not.toBeNull()
+    view.unmount()
+  })
+
+  it("the footer's summary speaks words for zero, never «—»", async () => {
+    const view = render(<NewRfqPage />)
+    await flush()
+    const footer = Array.from(document.querySelectorAll("p")).find((p) => (p.textContent || "").includes("لا مواد بعد"))
+    expect(footer?.textContent).not.toContain("—")
     view.unmount()
   })
 })

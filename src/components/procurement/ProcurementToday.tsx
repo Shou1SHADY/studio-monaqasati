@@ -16,7 +16,7 @@ import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { RaiseMaterialRequest } from "@/components/procurement/RaiseMaterialRequest"
 import { TodayFlow } from "@/components/procurement/TodayFlow"
 import { TodayInvitations } from "@/components/procurement/TodayInvitations"
-import { TodayItem } from "@/components/procurement/TodayItem"
+import { TodayItem, isolateUserText } from "@/components/procurement/TodayItem"
 import { TodayMoreButton } from "@/components/procurement/TodayMoreButton"
 import { useStepSentence } from "@/components/procurement/PoBits"
 import { Button } from "@/components/ui/button"
@@ -77,7 +77,7 @@ export function ProcurementToday() {
   const visibleWaits = allWaits ? waits : waits.slice(0, CLIP_WAITS)
 
   const sources = listOf([on("project-management") ? t("page.source_projects") : t("page.source_team"), on("manufacturing") ? t("page.source_workshop") : "", t("page.source_inventory")].filter(Boolean), locale)
-  const present = (p: Params) => presentParams(p, locale, (key) => tProc(key))
+  const present = (p: Params) => isolateUserText(presentParams(p, locale, (key) => tProc(key)))
   const waitSub = (w: Wait) => (w.step ? stepText(w.step) : t(w.subKey, present(w.subParams)))
 
   return (
@@ -89,7 +89,7 @@ export function ProcurementToday() {
           <div className="flex flex-wrap items-center gap-2">
             <RaiseMaterialRequest orgId={loaded.orgId} />
             {canCreate && (
-              <Button asChild className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90">
+              <Button asChild variant="module" className="gap-2 rounded-xl">
                 <Link href="/contractor/rfqs/new">
                   <Send size={16} aria-hidden="true" />
                   {tCon("rfqv_new")}
@@ -144,10 +144,10 @@ export function ProcurementToday() {
                       <li key={w.id}>
                         <Link href={w.href} className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-bold leading-snug text-foreground" dir="auto">
+                            <p className="text-sm font-bold leading-snug text-foreground">
                               {t(w.titleKey, present(w.titleParams))}
                             </p>
-                            <p className="mt-0.5 text-xs text-muted-foreground" dir="auto">
+                            <p className="mt-0.5 text-xs text-muted-foreground">
                               {waitSub(w)}
                               {w.kind === "held_inspection" && w.reasonCode && <> · {tProc(`holdReason.${w.reasonCode}`)}</>}
                             </p>

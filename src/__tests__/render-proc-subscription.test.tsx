@@ -74,6 +74,9 @@ describe("the subscription panel is read-only and names the package (B-11)", () 
       expect(text()).toContain(`الباقة: ${LABEL[state.id]}`)
       for (const name of ["المشتريات", "المخزون", "إدارة المشاريع", "المالية", "التصنيع"]) expect(text()).toContain(name)
       expect(text()).toContain("يفتح فريق مدماك الاشتراك من بوابة الإدارة")
+      // Addressed to the company, never the admin's onboarding question about it («هل يدير…؟ / هل لديه…؟», UI review).
+      expect(text()).not.toMatch(/هل يدير|هل يريد|هل لديه/)
+      expect(text()).toContain("إن كنتم تديرون مشاريع")
       expect(document.querySelectorAll('button, input, select, textarea, [role="switch"], [role="checkbox"]')).toHaveLength(0)
       const rows = Array.from(document.querySelectorAll("[data-connector]")) as HTMLElement[]
       expect(rows.map((r) => `${r.dataset.connector}:${r.dataset.subscribed}`)).toEqual([`pm:${state.pkg.pm}`, `fin:${state.pkg.fin}`, `mfg:${state.pkg.mfg}`])
@@ -139,6 +142,18 @@ describe("the Settings segment «الاشتراك»", () => {
       expect(text()).toContain("باقتكم الآن: المشتريات + المشاريع")
       expect(text()).toContain("الباقة: الأساسية + المشاريع")
       expect([...missingKeys]).toEqual([])
+      view.unmount()
+    }
+  })
+
+  it("opens the segment a link names — the prototype's `loc` and `rcv` too, never Policies by mistake (UI review)", async () => {
+    setSignedIn(ORG)
+    const selected = () => (document.querySelector('[role="tab"][aria-selected="true"]')?.textContent || "").trim()
+    for (const [seg, name] of [["sites", "مواقع التسليم"], ["loc", "مواقع التسليم"], ["rcv", "المستلمون"], ["sub", "الاشتراك"]]) {
+      setPathname("/contractor/rfqs/settings", `seg=${seg}`)
+      const view = render(<SettingsPage />)
+      await flush()
+      expect(selected()).toBe(name)
       view.unmount()
     }
   })

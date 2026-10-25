@@ -289,7 +289,7 @@ export default function ContractorRfqsPage() {
           description={tp("rfqlist.page_desc")}
           action={
             canCreate ? (
-              <Button asChild className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90">
+              <Button asChild variant="module" className="gap-2 rounded-xl">
                 <Link href="/contractor/rfqs/new">
                   <Send size={16} aria-hidden="true" />
                   {t("rfqv_new")}
@@ -345,7 +345,7 @@ export default function ContractorRfqsPage() {
             <p className="text-muted-foreground">{tp("rfqx.empty.none")}</p>
             <div className="flex flex-wrap items-center justify-center gap-3">
               {canCreate && (
-                <Button asChild className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90">
+                <Button asChild variant="module" className="gap-2 rounded-xl">
                   <Link href="/contractor/rfqs/new">
                     <Send size={16} />
                     {t("rfqv_new")}

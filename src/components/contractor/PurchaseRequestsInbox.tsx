@@ -240,15 +240,15 @@ export function PurchaseRequestsInbox() {
           teamOn || canStartRfq ? (
             <div className="flex flex-wrap items-center gap-2">
               {teamOn && (
-                <Button variant={canStartRfq ? "outline" : "default"} className="gap-1.5" onClick={() => setRaising(true)}>
+                <Button variant={canStartRfq ? "outline" : "module"} className="gap-1.5 rounded-xl" onClick={() => setRaising(true)}>
                   <PackagePlus size={15} aria-hidden="true" /> {t("tr_open")}
                 </Button>
               )}
               {/* The same blank RFQ Today offers (IN-01): a buyer need not leave Incoming to start one. */}
               {canStartRfq && (
-                <Button asChild className="gap-1.5">
+                <Button asChild variant="module" className="gap-2 rounded-xl">
                   <Link href="/contractor/rfqs/new">
-                    <Send size={15} aria-hidden="true" /> {t("rq_new_rfq")}
+                    <Send size={16} aria-hidden="true" /> {t("rq_new_rfq")}
                   </Link>
                 </Button>
               )}

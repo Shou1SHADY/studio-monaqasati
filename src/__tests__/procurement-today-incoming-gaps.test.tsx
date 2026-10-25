@@ -16,7 +16,7 @@ import fs from "fs"
 import path from "path"
 import React from "react"
 import { fireEvent, render, screen } from "@testing-library/react"
-import { installDomShims, missingKeys } from "@/test-utils/render-world"
+import { installDomShims, missingKeys, setLocale } from "@/test-utils/render-world"
 import { todayTasks, type ProcWorld, type RfqFact, type Task } from "@/lib/procurement/today"
 import { DEFAULT_POLICIES, type ProcActor } from "@/lib/procurement/types"
 import { TodayItem, taskIcon } from "@/components/procurement/TodayItem"
@@ -80,6 +80,36 @@ describe("Today — TD-01 / TD-03: the row's icon and the remainder pill", () =>
     expect(title?.textContent).toContain("الباقي منه")
     expect(title?.querySelector("span")?.textContent).toBe("الباقي منه")
     expect(missingKeys.size).toBe(0)
+  })
+})
+
+describe("Today — a row in English with an Arabic title (UI review)", () => {
+  it("keeps the sentence in the page's direction and isolates the title, so the English words stay in order", () => {
+    setLocale("en")
+    try {
+      const { container } = render(
+        <ul>
+          <TodayItem task={task({ kind: "rfq_award", chip: "rfq", titleKey: "task.rfq_award.title", titleParams: { ref: "طلب عروض أسعار - حديد تسليح", count: 1 }, subKey: "task.rfq_award.sub", subParams: { title: "طلب عروض أسعار - حديد تسليح", date: "2026-09-12", when: "past", n: 43 }, actionKey: "actions.compareAward" })} />
+        </ul>,
+      )
+      const [title, sub] = Array.from(container.querySelectorAll("p"))
+      expect(title.getAttribute("dir")).toBeNull()
+      expect(sub.getAttribute("dir")).toBeNull()
+      expect(title.textContent).toBe("\u2068طلب عروض أسعار - حديد تسليح\u2069 closed with 1 offer")
+      expect(sub.textContent).toMatch(/^\u2068طلب عروض أسعار - حديد تسليح\u2069 · award by /)
+      expect(missingKeys.size).toBe(0)
+    } finally {
+      setLocale("ar")
+    }
+  })
+
+  it("on a phone the buttons take the width beside the icon's indent — never the full row plus the indent", () => {
+    const { container } = render(<ul><TodayItem task={task({})} /></ul>)
+    const actions = container.querySelector("li > div:last-child") as HTMLElement
+    expect(actions.className).toContain("max-sm:ms-11")
+    expect(actions.className).toContain("max-sm:basis-[calc(100%-2.75rem)]")
+    expect(actions.className).not.toMatch(/max-sm:basis-full/)
+    expect(actions.querySelector("a")?.className).toContain("min-h-11")
   })
 })
 

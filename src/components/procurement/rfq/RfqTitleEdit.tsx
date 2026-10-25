@@ -57,10 +57,11 @@ export function RfqTitleEdit({ rfqId, title, canEdit }: { rfqId: string; title: 
 
   return (
     <h1 className="flex min-w-0 items-center gap-2 text-xl font-black leading-relaxed text-primary sm:text-2xl">
-      <span className="min-w-0 truncate" dir="auto">
+      {/* Two lines, then an ellipsis — a long RFQ name stays readable on a phone; the whole name is the tooltip. */}
+      <span className="line-clamp-2 min-w-0 break-words" dir="auto" title={title || undefined}>
         {title || "—"}
       </span>
-      {canEdit && <IconButton label={t("edit")} icon={Pencil} iconSize={14} className="h-8 w-8 md:h-8 md:w-8" onClick={() => (setValue(title), setEditing(true))} />}
+      {canEdit && <IconButton label={t("edit")} icon={Pencil} iconSize={14} className="shrink-0 md:h-8 md:w-8" onClick={() => (setValue(title), setEditing(true))} />}
     </h1>
   )
 }
