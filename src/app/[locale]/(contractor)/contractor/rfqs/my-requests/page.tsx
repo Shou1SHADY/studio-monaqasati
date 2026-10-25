@@ -46,7 +46,7 @@ export default function MyMaterialRequestsPage() {
             <p className="mt-1 text-sm text-muted-foreground">{t("desc")}</p>
             <GuideLink variant="mine" className="mt-2" />
           </div>
-          <RaiseMaterialRequest orgId={organizationId || ""} variant="default" fullName onSent={() => setRefreshKey((k) => k + 1)} />
+          <RaiseMaterialRequest orgId={organizationId || ""} variant="default" fullName openOnRaise onSent={() => setRefreshKey((k) => k + 1)} />
         </header>
         {projectsOn ? (
           <EmptyState

@@ -3,11 +3,14 @@ import { z } from "zod"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { callerOf } from "@/lib/receipt-links"
 import { setWatch, watchedKeys } from "@/lib/procurement/upcoming-watch-server"
+import { orgIssueRates } from "@/lib/procurement/issue-rate-server"
+import { riyadhDay } from "@/lib/hr/format"
 
 export const dynamic = "force-dynamic"
 
 // «نبّهني حين يصل» (Procurement 2.0, INC-06): the caller's own watches on what is not in Incoming yet. GET lists the keys he watches;
-// POST puts one on or takes it off. The documents are written and read here only.
+// POST puts one on or takes it off. The documents are written and read here only. GET also returns the stock items' issue rates
+// (`rates`, per warehouse and item, per day — `issue-rate.ts`) so «قادمة» can say how many days the stock lasts.
 
 const body = z.object({ key: z.string().min(3).max(300), on: z.boolean() })
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
@@ -30,7 +33,8 @@ export async function GET(req: NextRequest) {
     const db = getAdminFirestore()
     const caller = await callerOf(db, uid)
     if (!caller) return fail("Sign in first", "UNAUTHENTICATED", 401)
-    return NextResponse.json({ success: true, data: { keys: await watchedKeys(db, caller.orgId, uid) } })
+    const [keys, rates] = await Promise.all([watchedKeys(db, caller.orgId, uid), orgIssueRates(db, caller.orgId, riyadhDay(new Date())).catch((e) => (console.warn("issue rates:", e), {}))])
+    return NextResponse.json({ success: true, data: { keys, rates } })
   } catch (error) {
     console.error("upcoming watch (list):", error)
     return fail("Internal server error", "INTERNAL", 500)

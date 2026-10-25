@@ -78,7 +78,8 @@ describe("the guide's first station", () => {
   it("offers both buttons — open «طلباتي» as he sees it, and raise one on his behalf — without Projects", () => {
     const [first] = flowStations(team, team)
     expect(first.links.map((l) => l.labelKey)).toEqual(["btn.open_mine_as", "btn.on_behalf_him"])
-    expect(first.links.every((l) => l.href === MY_REQUESTS_HREF)).toBe(true)
+    // «طلباتي» as he sees it, and the on-behalf door opens the dialog there directly (IN-18).
+    expect(first.links.map((l) => l.href)).toEqual([MY_REQUESTS_HREF, `${MY_REQUESTS_HREF}?raise=1`])
   })
 
   it("offers none with Projects, or when previewing from a company that has it", () => {

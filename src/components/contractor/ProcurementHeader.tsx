@@ -19,7 +19,7 @@ import type { ElementType, ReactNode } from "react"
 import { Suspense, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
-import { Lock, Plus, Search, X } from "lucide-react"
+import { Inbox, Lock, Plus, Search, TrendingUp, Truck, X } from "lucide-react"
 import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useProcurementShell } from "@/hooks/useProcurementShell"
@@ -46,6 +46,9 @@ export interface ProcurementKpi {
   href: string
   icon?: ElementType
 }
+
+/** Each tile's label carries its icon (the prototype's `inbox` · `truck` · `trend`). */
+const KPI_ICON: Record<string, ElementType> = { needs: Inbox, committed: Truck, drift: TrendingUp }
 
 const TONE_CHIP: Record<ProcurementKpi["tone"], string> = {
   good: "bg-success/10 text-success",
@@ -106,6 +109,7 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
     note: tToday(k.noteKey, k.noteParams),
     tone: k.tone,
     href: k.href,
+    icon: KPI_ICON[k.id],
   }))
   const limit = sarLtr((typeof shell.approvalLimit === "number" ? shell.approvalLimit : 0).toLocaleString("en-US"))
   const authority =
@@ -161,7 +165,10 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
                 href={kpi.href}
                 className="block h-full rounded-2xl border bg-card p-4 shadow-sm transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:p-5"
               >
-                <p className="text-xs font-semibold text-muted-foreground">{kpi.label}</p>
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                  {kpi.icon && <kpi.icon size={14} className="shrink-0 text-module" aria-hidden="true" />}
+                  {kpi.label}
+                </p>
                 <p className="mt-2 flex items-baseline gap-1.5 truncate">
                   <span className="text-2xl font-black tabular-nums text-foreground" dir="ltr">
                     {kpi.value}

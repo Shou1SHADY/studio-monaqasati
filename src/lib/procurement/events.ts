@@ -73,6 +73,11 @@ export type ProcEventKind =
   | "po_receipt_for_supplier" // → the supplier: the contractor recorded a receipt on his order (with a quantity difference, when one)
   | "sup_request_accepted" // → the supplier: the contractor accepted his request to connect
   | "sup_request_declined" // → the supplier: the contractor declined his request to connect
+  | "team_request_awaiting" // → the approvers (owner + the site's manager): a team «طلب مواد» waits before Procurement
+  | "team_request_approved" // → the requester: approved, now in Incoming
+  | "team_request_returned" // → the requester: returned with a reason — edit and send again
+  | "team_request_released" // → buyers (offers.accept / rfq.manage) + owner: an approved team request reached Incoming
+  | "team_request_escalated" // → the owner: a team request waited past the window (daily job)
 
 export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "po_awaiting_approval",
@@ -130,6 +135,11 @@ export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "po_receipt_for_supplier",
   "sup_request_accepted",
   "sup_request_declined",
+  "team_request_awaiting",
+  "team_request_approved",
+  "team_request_returned",
+  "team_request_released",
+  "team_request_escalated",
 ]
 
 /** Who is told: a role, named users, or the org owner. */
@@ -402,6 +412,26 @@ export const PROC_EVENT_COPY_AR: Record<ProcEventKind, { title: string; message:
   sup_request_declined: {
     title: "اعتذر {contractor} عن طلب ارتباطك",
     message: "اعتذر {contractor} عن طلب الارتباط. يمكنك طلب الارتباط بمقاول آخر.",
+  },
+  team_request_awaiting: {
+    title: "طلب مواد {number} بانتظار اعتمادك",
+    message: "أرسل {name} طلب المواد {number} لـ{place}. اعتمده ليصل المشتريات، أو أعده بسبب.",
+  },
+  team_request_approved: {
+    title: "اعتُمد طلب المواد {number}",
+    message: "اعتمد {actor} طلب المواد {number}، ووصل «طلبات الشراء الواردة».",
+  },
+  team_request_returned: {
+    title: "أُعيد طلب المواد {number} للتعديل",
+    message: "أعاد {actor} طلب المواد {number}: {reason}. عدّله وأرسله من جديد من «طلباتي».",
+  },
+  team_request_released: {
+    title: "طلب مواد جديد {number}",
+    message: "وصل طلب المواد {number} من {name} إلى «طلبات الشراء الواردة» بعد اعتماده.",
+  },
+  team_request_escalated: {
+    title: "طلب المواد {number} ينتظر الاعتماد منذ {days} أيام",
+    message: "ينتظر طلب المواد {number} من {name} اعتماده منذ {days} أيام. اعتمده أو أعده.",
   },
 }
 

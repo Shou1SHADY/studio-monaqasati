@@ -178,10 +178,12 @@ describe("«بالمادة — قارن واجمع»", () => {
     setPathname("/contractor/rfqs/requests", "view=mat")
     const view = render(<RequestsPage />)
     await flush()
-    expect(document.body.querySelector('a[href*="/contractor/rfqs/new"]')).toBeNull()
+    // The header's own «طلب عروض جديد» (IN-01) is a plain link to a blank RFQ; the combine link names requests.
+    const combine = () => document.body.querySelector('a[href*="/contractor/rfqs/new?requests="]') as HTMLAnchorElement | null
+    expect(combine()).toBeNull()
     await act(async () => void fireEvent.click(document.querySelector('[role="checkbox"]') as HTMLElement))
     await flush()
-    const href = (document.querySelector('a[href*="/contractor/rfqs/new"]') as HTMLAnchorElement | null)?.getAttribute("href") || ""
+    const href = combine()?.getAttribute("href") || ""
     expect(decodeURIComponent(href)).toContain("requests=team:a|team:b")
     expect(decodeURIComponent(href)).toContain("lines=team:a@0|team:b@0")
     expect(text()).toContain("اجمعها في طلب عروض واحد")

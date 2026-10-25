@@ -5,7 +5,7 @@
 // WITHOUT Project Management has it; with it, materials are requested from the project. The page of
 // «طلباتي» names it «طلب مواد جديد» (Procurement 2.0); the short name stays in «الواردة» and «مهامي».
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
 import { PackagePlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -13,10 +13,13 @@ import { useModules } from "@/hooks/useCompanyModules"
 import { TeamRequestDialog } from "@/components/procurement/TeamRequestDialog"
 import { cn } from "@/lib/utils"
 
-export function RaiseMaterialRequest({ orgId, onSent, variant = "outline", className, fullName = false }: { orgId: string; onSent?: (number: string) => void; variant?: "outline" | "default"; className?: string; fullName?: boolean }) {
+export function RaiseMaterialRequest({ orgId, onSent, variant = "outline", className, fullName = false, openOnRaise = false }: { orgId: string; onSent?: (number: string) => void; variant?: "outline" | "default"; className?: string; fullName?: boolean; /** Opens at once when the address carries `?raise=1` (the guide's «ارفع طلباً نيابةً عنه»). */ openOnRaise?: boolean }) {
   const t = useTranslations("Portal.Shared")
   const { on, loading } = useModules()
   const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (openOnRaise && new URLSearchParams(window.location.search).get("raise") === "1") setOpen(true)
+  }, [openOnRaise])
   if (loading || on("project-management") || !orgId) return null
   return (
     <>

@@ -14,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { fmtDay } from "@/components/procurement/need-bits"
 import { byMaterial, combinable, combineHref } from "@/lib/procurement/by-material"
+import { whenParams } from "@/lib/procurement/today"
 import { displayNeedRef, displayPoNumber } from "@/lib/procurement/format"
 import type { NeedRow } from "@/lib/procurement/need-desk"
 import type { PriceHistoryEntry } from "@/lib/procurement/prices"
@@ -81,7 +82,8 @@ export function ByMaterialView({ rows, history, canCombine }: { rows: NeedRow[];
                       <p className="mt-1 flex flex-wrap gap-1">
                         {g.specs.map((s) => (
                           <span key={s.name.ar} className="rounded-md bg-muted px-1.5 py-0.5 text-[11px]" dir="auto">
-                            {ar ? s.value.ar : s.value.en}
+                            {/* Label and value — «16 مم» alone loses «المقاس» (the prototype's `specCells(L, true)`). */}
+                            <span className="text-muted-foreground">{ar ? s.name.ar : s.name.en}:</span> {ar ? s.value.ar : s.value.en}
                           </span>
                         ))}
                       </p>
@@ -108,7 +110,7 @@ export function ByMaterialView({ rows, history, canCombine }: { rows: NeedRow[];
                   <td className="p-3 text-xs">
                     {g.lastOrderDay ? (
                       <StatusPill tone={g.lastOrderIn != null && g.lastOrderIn <= 2 ? "bad" : g.lastOrderIn != null && g.lastOrderIn <= 7 ? "warn" : "mute"}>
-                        {fmtDay(g.lastOrderDay, locale)}
+                        {fmtDay(g.lastOrderDay, locale)} · {t("bymat_when", whenParams(g.lastOrderIn))}
                       </StatusPill>
                     ) : (
                       "—"

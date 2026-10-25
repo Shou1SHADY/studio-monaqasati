@@ -104,7 +104,7 @@ describe("«الواردة» without Project Management says where requests come
     await flush()
     expect(text()).toContain("بلا إدارة المشاريع: الطلبات يرفعها الفريق من «طلباتي» بدور «طالب مواد»")
     expect(link("كما يراها صاحب الطلب")?.getAttribute("href")).toBe("/contractor/rfqs/my-requests")
-    expect(link("المسار كاملاً")?.getAttribute("href")).toBe("/contractor/rfqs/guide")
+    expect(link("المسار كاملاً")?.getAttribute("href")).toBe("/contractor/rfqs/guide?from=incoming")
     expect([...missingKeys]).toEqual([])
     view.unmount()
   })

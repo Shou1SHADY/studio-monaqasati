@@ -63,6 +63,7 @@ import { reachesProcurement, type ProjectRequestDoc } from "./needs"
 import type { PurchaseRequestRecord } from "../manufacturing-engine"
 import { PROCUREMENT_RECEIVERS } from "./receivers"
 import { notifyArrived, notifyStockReached } from "./upcoming-watch-server"
+import { workOrderWatchKey } from "./upcoming"
 
 export const MAT_TYPE = "MAT"
 const LEGACY_MIGRATED = "migrated"
@@ -467,6 +468,31 @@ export async function createTeamRequest(
   })
 }
 
+/** What a team request awaiting approval becomes once approved (or released): its number, id, first day and history are kept. */
+export interface LandedTeamRequest {
+  input: Omit<NewTeamRequest, "organizationId" | "id" | "no" | "seq" | "requestedBy" | "at"> & { requestedFor: IncomingPerson }
+  preset: { id: string; no: string; seq: number | null; requestedBy: { id: string; name: string }; createdAt: string; approvedBy: { name: string; on: string } | null; log: IncomingLogEntry[] }
+}
+
+/**
+ * The incoming request `team:{id}` written in the transaction that decides its approval (`team-approval-server.ts`): `gate` reads
+ * and writes the approval document first (every read before any write), then the request is created with the stock check a new
+ * team request gets. `gate` returns a refusal code to write nothing.
+ */
+export async function landTeamRequest(db: Db, orgId: string, by: Actor, gate: (tx: Transaction) => Promise<LandedTeamRequest | string>, now = new Date()): Promise<IncomingDoc | string> {
+  const [policies, off] = await Promise.all([policiesOf(db, orgId), offListOf(db, orgId)])
+  return db.runTransaction(async (tx) => {
+    const g = await gate(tx)
+    if (typeof g === "string") return g
+    const base = newTeamRequest({ ...g.input, organizationId: orgId, id: g.preset.id, no: g.preset.no, seq: g.preset.seq, requestedBy: g.preset.requestedBy, at: g.preset.createdAt })
+    const made: IncomingDoc = { ...base, approvedBy: g.preset.approvedBy, log: g.preset.log.length ? g.preset.log : base.log }
+    const { doc, plans } = withStockCheck(db, made, { now, policies, off, by })
+    tx.create(docRef(db, orgId, doc.mrKey), clean(doc) as unknown as Record<string, unknown>)
+    plans.forEach((p) => tx.create(p.ref, clean(p.event) as unknown as Record<string, unknown>))
+    return doc
+  })
+}
+
 // ── Telling the people the request is for ───────────────────────────────────
 
 const fill = (text: string, params: Record<string, string>) => text.replace(/\{(\w+)\}/g, (_, k: string) => params[k] ?? "")
@@ -703,6 +729,8 @@ export async function syncIncoming(db: Db, orgId: string, opts: { now?: Date; by
       result.created++
       existing.set(made.mrKey, made)
       if (made.src === "pm") arrived.push({ key: made.mrKey, ref: made.no })
+      // A planned work order watched in «قادمة» (`wo:{id}`) is told when its first shortfall lands.
+      else if (made.src === "mfg" && made.workOrderId) arrived.push({ key: workOrderWatchKey(made.workOrderId), ref: made.workOrderNo || made.no })
     }
   }
   // «قادمة» → «نبّهني حين يصل»: whoever watched a project's request that was approved, or a stock item that reached its minimum, is told once.
@@ -734,6 +762,20 @@ export async function syncIncoming(db: Db, orgId: string, opts: { now?: Date; by
 // ── The requester's own list («طلباتي») ─────────────────────────────────────
 
 /** His requests, read fresh from the RFQs and orders that name them — the quantities and the dates, never a price or a supplier. */
+/** The day an RFQ closes (`YYYY-MM-DD`), for «في عروض RFQ-… · يُغلق …». */
+async function rfqDeadlineOf(db: Db, rfqId: string | null | undefined): Promise<string | null> {
+  if (!rfqId) return null
+  const d = (await db.collection("rfqs").doc(rfqId).get().catch(() => null))?.data()
+  return typeof d?.deadline === "string" ? d.deadline.slice(0, 10) : null
+}
+
+/** The earliest open delivery notice on an order — the goods are on their way («في الطريق — يصل …»). */
+async function transitDateOf(db: Db, poId: string): Promise<string | null> {
+  const snap = await db.collection("deliveries").where("poId", "==", poId).get().catch(() => null)
+  const days = (snap?.docs || []).map((d) => d.data()).filter((d) => d.status === "pending_confirmation" && typeof d.deliveryDate === "string").map((d) => String(d.deliveryDate).slice(0, 10))
+  return days.sort()[0] ?? null
+}
+
 export async function myRequests(db: Db, orgId: string, uid: string, now = new Date()): Promise<MyRequest[]> {
   await migrateLegacyTeam(db, orgId)
   const snap = await db.collection(PROC_INCOMING).where("organizationId", "==", orgId).where("requesterIds", "array-contains", uid).get()
@@ -752,6 +794,7 @@ export async function myRequests(db: Db, orgId: string, uid: string, now = new D
     }
     const po = world.orders.find((o) => o.id === doc.lines.find((l) => l.poId)?.poId)
     const failed = doc.lines.find((l) => l.fail)?.fail
+    const [rfqDeadline, transitDate] = await Promise.all([rfqDeadlineOf(db, doc.lines.find((l) => l.ps === "rfq" && l.rfqId)?.rfqId), po ? transitDateOf(db, po.id) : Promise.resolve(null)])
     out.push({
       id: doc.mrKey,
       mrKey: doc.mrKey,
@@ -769,6 +812,8 @@ export async function myRequests(db: Db, orgId: string, uid: string, now = new D
       rfqNumber: doc.lines.find((l) => l.rfqNumber)?.rfqNumber ?? null,
       poNumber: doc.lines.find((l) => l.poNumber)?.poNumber ?? null,
       promisedDate: po?.promisedDate ?? null,
+      rfqDeadline,
+      transitDate,
       failed: failed ? { why: failed.why, alt: failed.alt } : null,
       withdrawable: doc.src === "team" && (doc.st === "new" || doc.st === "prep") && !doc.lines.some((l) => l.ps === "rfq" || l.ps === "po") && !hasDraft(doc, world.rfqs),
     })

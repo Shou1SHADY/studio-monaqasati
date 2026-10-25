@@ -47,6 +47,7 @@ export const siteInputSchema = z
     district: z.string().trim().max(80).default(""),
     address: z.string().trim().max(300).default(""),
     receiverId: z.string().trim().max(128).nullable().optional(),
+    managerId: z.string().trim().max(128).nullable().optional(),
     projectId: z.string().trim().max(128).nullable().optional(),
     warehouseId: z.string().trim().max(128).nullable().optional(),
     mapUrl,

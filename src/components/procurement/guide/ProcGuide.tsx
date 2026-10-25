@@ -5,7 +5,7 @@
 // packages. The package chips only change what this page SHOWS (FLW-02): nothing is written, and no button here creates a
 // request — every button is a plain link to the real page (B-10, R-30).
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
 import { doc } from "firebase/firestore"
 import { ArrowRight, Check, Layers, Loader2, NotebookPen, Plus } from "lucide-react"
@@ -15,7 +15,7 @@ import { useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useModules } from "@/hooks/useCompanyModules"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
-import { flowSources, flowStations, legendRoles, MY_REQUESTS_HREF, type GuideLinkDef } from "@/lib/procurement/guide"
+import { flowSources, flowStations, guideBackHref, legendRoles, type GuideLinkDef } from "@/lib/procurement/guide"
 import { CONNECTORS, packageOf, samePackage, type Connector } from "@/lib/procurement/package"
 import { resolvePolicies } from "@/lib/procurement/policies"
 import { visibleProcTabs } from "@/lib/procurement/shell"
@@ -44,7 +44,10 @@ export function ProcGuide() {
 
   const tabs = visibleProcTabs(can)
   const allowed = (link: GuideLinkDef) => !link.tab || tabs.some((x) => x.id === link.tab)
-  const backHref = tabs[0]?.href ?? MY_REQUESTS_HREF
+  // «عُد إلى المشتريات» returns to the page the guide was opened from (`?from=`, the prototype's `flowFrom`), else the first tab.
+  const [from, setFrom] = useState<string | null>(null)
+  useEffect(() => setFrom(new URLSearchParams(window.location.search).get("from")), [])
+  const backHref = guideBackHref(from, tabs[0]?.href, tabs.some((x) => x.id === "requests"))
   const limit = sarLtr(resolvePolicies(settings as Parameters<typeof resolvePolicies>[0]).managerApprovalLimit.toLocaleString("en-US"))
 
   const stations = useMemo(() => flowStations(pkg, actual), [pkg, actual])

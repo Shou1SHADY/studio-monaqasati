@@ -30,6 +30,10 @@ export interface OperatingPolicies {
   /** The owner holds every Procurement act (Procurement 1.5, question 1 — decided 20 Oct 2026). Set, he
    * steps back once the company has procurement staff: he reads, and approves what is routed to him. OFF by default. */
   ownerStepsBack: boolean
+  /** A company WITHOUT Projects: a team «طلب مواد» waits for the owner's (or the site manager's) approval before it reaches
+   * Incoming (REQ-05, `team-approval.ts`). OFF by default; turning it off releases what waits. With Projects the project
+   * manager already approves a project's requests. */
+  teamApproval: boolean
 }
 
 export const DEFAULT_OPERATING_POLICIES: OperatingPolicies = {
@@ -38,6 +42,7 @@ export const DEFAULT_OPERATING_POLICIES: OperatingPolicies = {
   buyerSelfIssueLimit: 2_000,
   replyWindowDays: 1,
   ownerStepsBack: false,
+  teamApproval: false,
 }
 
 export type ResolvedPolicies = ProcurementPolicies & OperatingPolicies
@@ -109,6 +114,7 @@ export function resolvePolicies(raw: Partial<ResolvedPolicies> | null | undefine
   if (typeof raw.sendOnApproval === "boolean") out.sendOnApproval = raw.sendOnApproval
   if (typeof raw.buyerReceives === "boolean") out.buyerReceives = raw.buyerReceives
   if (typeof raw.ownerStepsBack === "boolean") out.ownerStepsBack = raw.ownerStepsBack
+  if (typeof raw.teamApproval === "boolean") out.teamApproval = raw.teamApproval
   if (raw.noticeRouting && (NOTICE_ROUTINGS as readonly string[]).includes(raw.noticeRouting)) out.noticeRouting = raw.noticeRouting
   return out
 }
@@ -116,7 +122,7 @@ export function resolvePolicies(raw: Partial<ResolvedPolicies> | null | undefine
 /** The operating four from a policy set that may have been typed as the mirrored `ProcurementPolicies`. */
 export const operatingPolicies = (p: ProcurementPolicies | Partial<ResolvedPolicies> | null | undefined): OperatingPolicies => {
   const r = resolvePolicies(p as Partial<ResolvedPolicies> | null | undefined)
-  return { noticeRouting: r.noticeRouting, buyerReceives: r.buyerReceives, buyerSelfIssueLimit: r.buyerSelfIssueLimit, replyWindowDays: r.replyWindowDays, ownerStepsBack: r.ownerStepsBack }
+  return { noticeRouting: r.noticeRouting, buyerReceives: r.buyerReceives, buyerSelfIssueLimit: r.buyerSelfIssueLimit, replyWindowDays: r.replyWindowDays, ownerStepsBack: r.ownerStepsBack, teamApproval: r.teamApproval }
 }
 
 /**
@@ -150,6 +156,7 @@ export const POLICY_OWNER: Record<keyof ResolvedPolicies, PolicyOwner> = {
   splitWindowDays: "gov",
   sendOnApproval: "gov",
   ownerStepsBack: "gov",
+  teamApproval: "gov",
   rfqDefaultDays: "gov",
   supplyLeadDays: "gov",
   tieBandPct: "gov",

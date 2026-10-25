@@ -36,13 +36,15 @@ import { openRequestsBySite } from "@/lib/procurement/site-counts"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { roleColumns, roleRows, type RoleCell, type RoleRowId } from "@/lib/procurement/roles-matrix"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
+import { useOrgMembers } from "@/hooks/useOrgMembers"
 import { DEFAULT_RESOLVED_POLICIES, POLICY_OWNER, policyPatch, resolvePolicies, type PolicyOwner, type ResolvedPolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_SETTINGS } from "@/lib/procurement/types"
+import { releaseTeamApprovals } from "@/lib/procurement/team-approval-client"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 
 type Unit = "sar" | "percent" | "count" | "days"
-type SwitchKey = "sendOnApproval" | "ownerStepsBack" | "advanceUnknownSupplierOwner"
+type SwitchKey = "sendOnApproval" | "ownerStepsBack" | "advanceUnknownSupplierOwner" | "teamApproval"
 // The receiver alone counts and confirms (G-09): the 1.5 receiving policies are not offered here.
 type NumericKey = { [K in keyof ResolvedPolicies]: ResolvedPolicies[K] extends number ? K : never }[keyof ResolvedPolicies]
 type PairId = "cycle" | "competition" | "direct"
@@ -56,6 +58,8 @@ type Row =
 const ROWS: Row[] = [
   { kind: "fixed", id: "offerVisibility", owner: "gov" },
   { kind: "fixed", id: "awardBeforeDeadline", owner: "gov" },
+  // REQ-05 (optional, off): a team «طلب مواد» waits for the owner or the site's manager before Procurement — without Projects only.
+  { kind: "switch", key: "teamApproval" },
   { kind: "number", key: "forwardWindowDays", unit: "days" },
   { kind: "number", key: "rfqDefaultDays", unit: "days" },
   { kind: "pair", id: "cycle", keys: ["rfqWindowDays", "awardCycleDays"], units: ["days", "days"] },
@@ -100,6 +104,7 @@ const schema = z.object({
   sendOnApproval: z.boolean(),
   ownerStepsBack: z.boolean(),
   advanceUnknownSupplierOwner: z.boolean(),
+  teamApproval: z.boolean(),
 })
 type FormValues = z.infer<typeof schema>
 /** The keys the form owns — the only ones a save writes (ST-01). */
@@ -152,6 +157,9 @@ export function ProcurementSettings() {
   const financeOn = on("payments")
   const pmOn = on("project-management")
   const mfgOn = on("manufacturing")
+  // Without Projects a site may name its manager (he approves the team's requests there when the policy is on).
+  const { orgMembers } = useOrgMembers(orgId && !pmOn ? orgId : null)
+  const siteMembers = useMemo(() => orgMembers.map((m) => ({ id: m.id, name: String(m.name || m.email || m.id) })), [orgMembers])
   const roleRowsNow = useMemo(() => roleRows({ financeOn, pmOn, mfgOn, ownerStepsBack: policies.ownerStepsBack }), [financeOn, pmOn, mfgOn, policies.ownerStepsBack])
   const roleColumnsNow = useMemo(() => roleColumns({ pmOn }), [pmOn])
   // «مواقع التسليم»: the stored ones, the warehouses, and with Project Management the projects.
@@ -192,6 +200,8 @@ export function ProcurementSettings() {
     try {
       const clean = policyPatch(values, FORM_KEYS)
       await setDoc(doc(firestore, PROCUREMENT_SETTINGS, orgId), { ...clean, organizationId: orgId, updatedAt: serverTimestamp(), updatedById: user.uid }, { merge: true })
+      // Turning the team approval off releases whatever waits straight to Incoming (the server checks the stored policy is off).
+      if (policies.teamApproval && !clean.teamApproval) await releaseTeamApprovals().catch(() => undefined)
       form.reset(clean)
       toast({ title: t("saved") })
     } catch (err) {
@@ -322,10 +332,10 @@ export function ProcurementSettings() {
                                       <FormLabel className="text-sm font-bold text-foreground">{t(`policy.${row.key}.label`)}</FormLabel>
                                       {ownerChip(row.key)}
                                     </div>
-                                    <FormDescription className="mt-1 text-[11px] leading-relaxed">{t(field.value ? `policy.${row.key}.descOn` : `policy.${row.key}.desc`)}</FormDescription>
+                                    <FormDescription className="mt-1 text-[11px] leading-relaxed">{t(row.key === "teamApproval" && pmOn ? "policy.teamApproval.descPm" : field.value ? `policy.${row.key}.descOn` : `policy.${row.key}.desc`)}</FormDescription>
                                   </div>
                                   <FormControl>
-                                    <Switch checked={field.value} onCheckedChange={field.onChange} disabled={!mayEdit} aria-label={t(`policy.${row.key}.label`)} />
+                                    <Switch checked={field.value} onCheckedChange={field.onChange} disabled={!mayEdit || (row.key === "teamApproval" && pmOn)} aria-label={t(`policy.${row.key}.label`)} />
                                   </FormControl>
                                 </FormItem>
                               )}
@@ -407,7 +417,7 @@ export function ProcurementSettings() {
           )}
 
 
-          {segment === "sites" && <DeliverySitesPanel stored={storedSiteList} sites={siteList} receivers={receivers} mayEdit={mayEditSites} openRequests={(id) => openBySite[id] ?? 0} pmOn={pmOn} mfgOn={mfgOn} projects={(projectDocs || []) as Array<{ id: string; name?: string }>} />}
+          {segment === "sites" && <DeliverySitesPanel stored={storedSiteList} sites={siteList} receivers={receivers} mayEdit={mayEditSites} openRequests={(id) => openBySite[id] ?? 0} pmOn={pmOn} mfgOn={mfgOn} projects={(projectDocs || []) as Array<{ id: string; name?: string }>} members={pmOn ? undefined : siteMembers} />}
 
           {segment === "sub" && mayEditSites && <SubscriptionPanel />}
 

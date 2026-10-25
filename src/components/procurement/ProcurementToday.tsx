@@ -9,7 +9,7 @@
 import type { ElementType, ReactNode } from "react"
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, CheckCircle2, ChevronDown, Hourglass, Loader2, Send } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Hourglass, Loader2, Send } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
@@ -17,11 +17,14 @@ import { RaiseMaterialRequest } from "@/components/procurement/RaiseMaterialRequ
 import { TodayFlow } from "@/components/procurement/TodayFlow"
 import { TodayInvitations } from "@/components/procurement/TodayInvitations"
 import { TodayItem } from "@/components/procurement/TodayItem"
+import { TodayMoreButton } from "@/components/procurement/TodayMoreButton"
 import { useStepSentence } from "@/components/procurement/PoBits"
 import { Button } from "@/components/ui/button"
 import { useModules } from "@/hooks/useCompanyModules"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useProcTodayWorld } from "@/hooks/useTodayWorld"
+import { useTeamApprovals } from "@/hooks/useTeamApprovals"
+import { teamApprovalTasks, withApprovalTasks } from "@/lib/procurement/team-approval-today"
 import { runsRfqs } from "@/lib/procurement/rfq-access"
 import { presentParams, type Params } from "@/lib/procurement/today-present"
 import { TODAY_CHIPS, chipCounts, todayFlow, todayInvitations, todayTasks, todayWaits, type TodayChip, type Wait } from "@/lib/procurement/today"
@@ -57,7 +60,9 @@ export function ProcurementToday() {
   // The same gate as the RFQs page's «طرح طلب عروض أسعار جديد» (rfq-access.ts): whoever runs RFQs, the owner only without staff.
   const runner = { ...loaded.actor, managesRfqs: can("rfq.manage") || can("rfq.create"), ownerHasTeam: loaded.actor.isOwner && needs.ownerHasTeam }
   const canCreate = runsRfqs(runner) && (can("rfq.create") || can("projects.publish") || can("offers.accept") || can("po.approve"))
-  const tasks = useMemo(() => todayTasks(world, actor, now), [world, actor, now])
+  // A team «طلب مواد» awaiting the viewer's approval is one of his decisions too (REQ-05).
+  const { approvals } = useTeamApprovals()
+  const tasks = useMemo(() => withApprovalTasks(todayTasks(world, actor, now), teamApprovalTasks(approvals)), [world, actor, now, approvals])
   const waits = useMemo(() => todayWaits(world, actor, now), [world, actor, now])
   const flow = useMemo(() => todayFlow(world, actor, now), [world, actor, now])
   const invitations = useMemo(() => todayInvitations(world.invitations || [], world.supplierRecords, now), [world.invitations, world.supplierRecords, now])
@@ -125,7 +130,7 @@ export function ProcurementToday() {
                   ))}
                 </ul>
               )}
-              {shown.length > CLIP_TASKS && <MoreButton open={allTasks} onClick={() => setAllTasks((v) => !v)} label={allTasks ? t("showLess") : t("showMore", { count: shown.length - CLIP_TASKS })} />}
+              {shown.length > CLIP_TASKS && <TodayMoreButton open={allTasks} onClick={() => setAllTasks((v) => !v)} label={allTasks ? t("showLess") : t("showMore", { count: shown.length - CLIP_TASKS })} />}
             </Panel>
 
             <div className="space-y-4">
@@ -153,7 +158,7 @@ export function ProcurementToday() {
                     ))}
                   </ul>
                 )}
-                {waits.length > CLIP_WAITS && <MoreButton open={allWaits} onClick={() => setAllWaits((v) => !v)} label={allWaits ? t("showLess") : t("showMore", { count: waits.length - CLIP_WAITS })} />}
+                {waits.length > CLIP_WAITS && <TodayMoreButton open={allWaits} onClick={() => setAllWaits((v) => !v)} label={allWaits ? t("showLess") : t("showMore", { count: waits.length - CLIP_WAITS })} />}
               </Panel>
 
               <TodayInvitations rows={invitations} />
@@ -187,19 +192,5 @@ function Empty({ icon: Icon, title, body }: { icon: ElementType; title: string; 
       <p className="text-sm font-bold text-foreground">{title}</p>
       {body && <p className="text-xs text-muted-foreground">{body}</p>}
     </div>
-  )
-}
-
-function MoreButton({ open, onClick, label }: { open: boolean; onClick: () => void; label: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-expanded={open}
-      className="flex min-h-11 w-full items-center justify-center gap-1.5 border-t text-sm font-bold text-cta transition-colors hover:bg-module/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-    >
-      {label}
-      <ChevronDown size={14} className={cn("transition-transform", open && "rotate-180")} aria-hidden="true" />
-    </button>
   )
 }

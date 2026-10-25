@@ -23,6 +23,8 @@ export interface DeliverySite {
   address: string
   /** `procurementReceivers` id proposed for its deliveries. */
   receiverId: string | null
+  /** The site's manager (a member's uid): with the team-approval policy he approves the team's requests for this site beside the owner. */
+  managerId?: string | null
   projectId?: string | null
   warehouseId?: string | null
   /** An https map link the supplier opens (SET-02); absent when none was given. */
@@ -76,6 +78,7 @@ export function storedSites(raw: unknown): DeliverySite[] {
       district: text(x.district),
       address: text(x.address),
       receiverId: text(x.receiverId) || null,
+      ...(text(x.managerId) ? { managerId: text(x.managerId) } : {}),
       projectId: text(x.projectId) || null,
       warehouseId: text(x.warehouseId) || null,
       // Never `retired: undefined`: the list is written back whole, and Firestore refuses undefined.

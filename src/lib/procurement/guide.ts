@@ -7,6 +7,18 @@ import type { ProcTabId } from "./tab-gates"
 
 export const GUIDE_HREF = "/contractor/rfqs/guide"
 export const MY_REQUESTS_HREF = "/contractor/rfqs/my-requests"
+/** «ارفع طلباً نيابةً عنه» opens the «طلب مواد» dialog on «طلباتي» directly (the page reads `?raise=1`). */
+export const RAISE_HREF = `${MY_REQUESTS_HREF}?raise=1`
+export const INCOMING_HREF = "/contractor/rfqs/requests"
+
+/** Where the guide was opened from (`?from=`): «عُد إلى المشتريات» returns there, else to the viewer's first tab. */
+export type GuideFrom = "incoming" | "mine"
+export const guideHref = (from?: GuideFrom): string => (from ? `${GUIDE_HREF}?from=${from}` : GUIDE_HREF)
+export function guideBackHref(from: string | null | undefined, firstTabHref: string | undefined, holdsIncoming: boolean): string {
+  if (from === "mine") return MY_REQUESTS_HREF
+  if (from === "incoming" && holdsIncoming) return INCOMING_HREF
+  return firstTabHref ?? MY_REQUESTS_HREF
+}
 
 export const ROLE_IDS = ["req", "pm", "buy", "app", "sup", "rcv", "inv", "fin", "mfg"] as const
 export type RoleId = (typeof ROLE_IDS)[number]
@@ -64,7 +76,7 @@ export function flowStations(pkg: PackageFlags, actual: PackageFlags = pkg): Gui
     previewOnly,
   })
   return [
-    st(1, "request", pkg.pm ? ["pm"] : ["req"], pkg.pm ? "station.request.what_pm" : "station.request.what_team", "with_proc", pkg.pm || actual.pm ? [] : [link(MY_REQUESTS_HREF, "btn.open_mine_as"), link(MY_REQUESTS_HREF, "btn.on_behalf_him")], ["need_line", ...(pkg.mfg ? ["mfg_sends"] : [])], !pkg.pm && actual.pm),
+    st(1, "request", pkg.pm ? ["pm"] : ["req"], pkg.pm ? "station.request.what_pm" : "station.request.what_team", "with_proc", pkg.pm || actual.pm ? [] : [link(MY_REQUESTS_HREF, "btn.open_mine_as"), link(RAISE_HREF, "btn.on_behalf_him")], [...(pkg.pm ? [] : ["approval"]), "need_line", ...(pkg.mfg ? ["mfg_sends"] : [])], !pkg.pm && actual.pm),
     st(2, "incoming", ["buy", "inv"], "station.incoming.what", "with_proc", [link("/contractor/rfqs/requests", "btn.incoming", "requests")], ["inv_asked", ...(pkg.mfg ? ["mfg_asked"] : [])]),
     st(3, "publish", ["buy"], "station.publish.what", "in_rfq", [link("/contractor/rfqs/new", "btn.new_rfq", "rfqs")]),
     st(4, "offers", ["sup"], "station.offers.what", "in_rfq", [link("/contractor/rfqs", "btn.open_rfqs", "rfqs")]),
@@ -79,7 +91,7 @@ export function flowSources(pkg: PackageFlags, actual: PackageFlags = pkg): Guid
   const out: GuideSource[] = []
   if (!pkg.pm) out.push({ id: "team", role: "req", link: link(MY_REQUESTS_HREF, "btn.open_mine") })
   else out.push({ id: "pm", role: "pm", link: null })
-  if (!pkg.pm) out.push({ id: "buy", role: "buy", link: actual.pm ? null : link(MY_REQUESTS_HREF, "btn.on_behalf") })
+  if (!pkg.pm) out.push({ id: "buy", role: "buy", link: actual.pm ? null : link(RAISE_HREF, "btn.on_behalf") })
   out.push({ id: "inv", role: "inv", link: link("/contractor/rfqs/requests", "btn.incoming", "requests") })
   if (pkg.mfg) out.push({ id: "mfg", role: "mfg", link: null })
   return out

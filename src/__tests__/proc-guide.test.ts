@@ -40,18 +40,19 @@ describe("the eight stations", () => {
 
   it("the extra lines follow the connectors: the workshop in the first two stations, Finance at the award", () => {
     const get = (pkg: PackageFlags, id: string) => flowStations(pkg).find((x) => x.id === id)?.more
-    expect(get(base, "request")).toEqual(["need_line"])
-    expect(get(flags(false, false, true), "request")).toEqual(["need_line", "mfg_sends"])
+    // Without Projects the first station also says the team approval is optional (REQ-05, the owner's decision of 25 Oct 2026).
+    expect(get(base, "request")).toEqual(["approval", "need_line"])
+    expect(get(flags(false, false, true), "request")).toEqual(["approval", "need_line", "mfg_sends"])
+    expect(get(full, "request")).toEqual(["need_line", "mfg_sends"])
     expect(get(flags(false, false, true), "incoming")).toEqual(["inv_asked", "mfg_asked"])
     expect(get(base, "award")).toEqual(["bnpl"])
     expect(get(flags(false, true, false), "award")).toEqual(["fin", "bnpl"])
     expect(get(base, "receive")).toEqual(["stock"])
   })
 
-  it("the held sentence about approving team requests before Procurement is not there (open decision 03)", () => {
-    const all = PACKAGE_STATES.flatMap((s) => flowStations(s.pkg).flatMap((x) => x.more))
-    expect(all).not.toContain("team_approval")
-    expect(JSON.stringify(ar.Portal.ProcGuide)).not.toContain("اعتماد قبل المشتريات اختياري")
+  it("the sentence about approving team requests before Procurement is there without Projects only (decision 03 settled: owner or site manager)", () => {
+    for (const s of PACKAGE_STATES) expect(flowStations(s.pkg)[0].more.includes("approval")).toBe(!s.pkg.pm)
+    expect(JSON.stringify(ar.Portal.ProcGuide)).toContain("اعتماد قبل المشتريات اختياري")
   })
 
   it("with Projects the project manager sees the first seven; the requester sees the last — without Projects always the requester", () => {
@@ -65,7 +66,8 @@ describe("the eight stations", () => {
     expect(preview.links).toEqual([])
     const own = flowStations(base, base)[0]
     expect(own.previewOnly).toBe(false)
-    expect(own.links.map((l) => l.href)).toEqual([MY_REQUESTS_HREF, MY_REQUESTS_HREF])
+    // «ارفع طلباً نيابةً عنه» opens the dialog on «طلباتي» directly (IN-18).
+    expect(own.links.map((l) => l.href)).toEqual([MY_REQUESTS_HREF, `${MY_REQUESTS_HREF}?raise=1`])
     expect(own.links.map((l) => l.labelKey)).toEqual(["btn.open_mine_as", "btn.on_behalf_him"])
     expect(flowStations(full, full)[0].links).toEqual([])
   })
@@ -89,7 +91,7 @@ describe("the sources of a request", () => {
   })
 
   it("the buyer's door is a link only when the company itself has no Projects", () => {
-    expect(flowSources(base, base).find((s) => s.id === "buy")?.link?.href).toBe(MY_REQUESTS_HREF)
+    expect(flowSources(base, base).find((s) => s.id === "buy")?.link?.href).toBe(`${MY_REQUESTS_HREF}?raise=1`)
     expect(flowSources(base, full).find((s) => s.id === "buy")?.link).toBeNull()
   })
 })
