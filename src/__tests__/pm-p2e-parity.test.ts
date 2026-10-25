@@ -64,9 +64,9 @@ describe("booked plant (row 101)", () => {
   })
 })
 
-describe("the obstacle chase has no duty gate (row 84)", () => {
-  it("anyone holding a duty on the project chases; recording/closing stays daily|approve", () => {
-    expect(pmAllowed(qs, "obstacle.chase")).toBe(true)
+describe("the obstacle chase is daily | approve (PM 1.1 §C3 — row 84 had no gate)", () => {
+  it("the site record or the manager chases, as they record and close; the QS office does not", () => {
+    expect(pmAllowed(qs, "obstacle.chase")).toBe(false)
     expect(pmAllowed(qs, "obstacle.record")).toBe(false)
     expect(pmAllowed(site, "obstacle.chase")).toBe(true)
     const outsider: PmContext = { ...site, seat: null }

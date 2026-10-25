@@ -10,6 +10,7 @@ import path from "path"
 import {
   PM_CEILING_PERMISSIONS,
   PM_DUTIES,
+  PM_GUARD,
   PM_ROLE_TEMPLATES,
   PM_SYSTEM_CEILINGS,
   PM_SYSTEM_KEYS,
@@ -126,5 +127,13 @@ describe("firestore.rules mirror access.ts", () => {
 
   it("the rules know every duty and system key they may be asked about", () => {
     for (const k of [...PM_DUTIES, ...PM_SYSTEM_KEYS.filter((k) => k !== "admin" && k !== "create")]) expect(rules).toContain(`'${k}'`)
+  })
+
+  it("an obstacle chase is daily | approve in both places (PM 1.1 §C3)", () => {
+    expect(PM_GUARD["obstacle.chase"]).toEqual({ any: ["daily", "approve"] })
+    const block = rules.slice(rules.indexOf("match /pmObstacles/{obstacleId}"), rules.indexOf("match /pmIncidents/{incidentId}"))
+    const update = block.slice(block.indexOf("allow update"))
+    expect(update).toMatch(/&& \(pmDuty\(projectId, 'daily'\) \|\| pmDuty\(projectId, 'approve'\)\)\s*&& \(\(changedKeys\(\)\.hasOnly\(\['chases'/)
+    expect(update).not.toMatch(/pmLiveSeat/)
   })
 })

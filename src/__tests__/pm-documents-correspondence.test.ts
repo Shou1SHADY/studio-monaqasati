@@ -157,20 +157,25 @@ describe("correspondence — dates, deadlines and replies", () => {
   })
 
   it("letters number per direction and a reply closes them; corr is the duty", async () => {
-    const a = await logLetter(db, qs, "p1", qsA, { dir: "out", party: "cons", subject: "Clarification", day: shift(today, -12), due: 7, links: "RFI-07" })
-    const b = await logLetter(db, qs, "p1", qsA, { dir: "in", party: "cons", subject: "Site instruction 17", day: shift(today, -5), due: 5, links: "" })
-    const c = await logLetter(db, qs, "p1", qsA, { dir: "out", party: "gov", subject: "Permit", day: today, due: 30, links: "" })
+    // FX-68 (1.1): links are the project's own records — a record it does not hold is dropped at save.
+    seed("projects/p1/pmObstacles/rfi-07", { type: "rfi", seq: 7, title: "Duct clash" })
+    const a = await logLetter(db, qs, "p1", qsA, { dir: "out", party: "cons", subject: "Clarification", day: shift(today, -12), due: 7, refs: [{ kind: "obs", id: "rfi-07" }, { kind: "vo", id: "99" }] })
+    const b = await logLetter(db, qs, "p1", qsA, { dir: "in", party: "cons", subject: "Site instruction 17", day: shift(today, -5), due: 5 })
+    const c = await logLetter(db, qs, "p1", qsA, { dir: "out", party: "gov", subject: "Permit", day: today, due: 30 })
     expect([a.no, b.no, c.no]).toEqual(["014/001", "014/001", "014/002"])
     expect(readDoc<{ pm: Record<string, number> }>("projects/p1")!.pm).toMatchObject({ letterCount: 3, lettersOut: 2, lettersIn: 1 })
     const first = readDoc<PmLetter>("projects/p1/pmLetters/01")!
-    expect(first).toMatchObject({ status: "out", links: ["RFI-07"], due: 7 })
+    expect(first).toMatchObject({ status: "out", links: ["RFI-07"], refs: [{ kind: "obs", id: "rfi-07" }], due: 7 })
     expect(isLetterLate(first, today)).toBe(true)
     expect(readDoc<PmLetter>("projects/p1/pmLetters/02")!.status).toBe("in")
 
     await logReply(db, qs, "p1", qsA, 1, { text: "Relocate the duct 20 cm", on: today })
     expect(readDoc<PmLetter>("projects/p1/pmLetters/01")!).toMatchObject({ status: "rep", reply: { text: "Relocate the duct 20 cm", by: "qs1" } })
     await expect(logReply(db, qs, "p1", qsA, 1, { text: "again", on: today })).rejects.toBeInstanceOf(PmLetterError)
-    await expect(logLetter(db, site, "p1", { uid: "se1", name: "Omar" }, { dir: "out", party: "cons", subject: "x", day: today, due: 7, links: "" })).rejects.toBeInstanceOf(PmAccessError)
+    // FX-26 (1.1): OUR reply closes an incoming letter — "closed", not "replied".
+    await logReply(db, qs, "p1", qsA, 2, { text: "Done as instructed", on: today })
+    expect(readDoc<PmLetter>("projects/p1/pmLetters/02")!.status).toBe("done")
+    await expect(logLetter(db, site, "p1", { uid: "se1", name: "Omar" }, { dir: "out", party: "cons", subject: "x", day: today, due: 7 })).rejects.toBeInstanceOf(PmAccessError)
   })
 })
 
