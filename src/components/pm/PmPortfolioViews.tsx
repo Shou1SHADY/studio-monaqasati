@@ -5,15 +5,16 @@
 // everyone; without money their amounts read «•••» (the prototype's money()).
 
 import { ShowMoreRow } from "@/components/module-ui/ShowMoreRow"
-import { useEffect } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Check, ChevronDown, X } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { LIFECYCLE_TONE, ProgressLine, projectHref } from "@/components/pm/PmProjectCard"
 import { usePortfolioFeed, type PortfolioFeed, type PortfolioProject } from "@/hooks/usePortfolioFeed"
-import { useRouter } from "@/i18n/routing"
+import { useTableLabels } from "@/hooks/useTableLabels"
+import { Link, useRouter } from "@/i18n/routing"
 import { pmDate, pmMoney } from "@/lib/pm/format"
 import { lifecycleOf } from "@/lib/pm/lifecycle"
 import { costOf, marginOf, type FilterSelection, type PortfolioFilter, type PortfolioRow } from "@/lib/pm/portfolio"
@@ -22,80 +23,95 @@ import { cn } from "@/lib/utils"
 
 const mask = (money: boolean, v: number) => (money ? pmMoney(v) : "•••")
 
-const rowClick = (go: () => void) => ({
-  role: "link" as const,
-  tabIndex: 0,
-  onClick: go,
-  onKeyDown: (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault()
-      go()
-    }
-  },
-  className: "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-})
+/** Reads one project's feed for the table (a hook per project) and hands it up — renders nothing. */
+function FeedProbe({ project, onFeed }: { project: PortfolioProject; onFeed: (id: string, f: PortfolioFeed) => void }) {
+  const feed = usePortfolioFeed(project)
+  useEffect(() => onFeed(project.id, feed), [onFeed, project.id, feed])
+  return null
+}
 
-function PortfolioRowView({ project, money, onFeed }: { project: PortfolioProject; money: boolean; onFeed: (id: string, f: PortfolioFeed) => void }) {
+const nameLink = "rounded hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
+// PM 1.1 UX-12: the portfolio and archive tables are module-ui DataTables — the header stays in view, secondary
+// columns step aside on a narrow desktop (never Status), and a phone gets a card per project instead of a sideways
+// scroll. The whole row opens the project; the name is the real link for the keyboard.
+export function PmPortfolioTable({ projects, money, onFeed }: { projects: PortfolioProject[]; money: boolean; onFeed: (id: string, f: PortfolioFeed) => void }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const router = useRouter()
-  const feed = usePortfolioFeed(project)
-  const lifecycle = lifecycleOf(project as { pm?: { lifecycle?: string }; status?: string })
-  const value = feed.contract
-  useEffect(() => onFeed(project.id, feed), [onFeed, project.id, feed])
-  return (
-    <TableRow {...rowClick(() => router.push(projectHref(project)))}>
-      <TableCell className="sticky start-0 max-w-[260px] bg-card">
-        <p className="truncate text-sm font-bold" dir="auto">
-          {project.name || "—"}
-        </p>
-        <p className="truncate text-xs text-muted-foreground" dir="auto">
-          {[project.pm?.no ? displayDocNumber(project.pm.no, locale) : null, project.clientName].filter(Boolean).join(" · ")}
-        </p>
-      </TableCell>
-      <TableCell>
-        <StatusPill tone={LIFECYCLE_TONE[lifecycle]}>{t(`lifecycle.${lifecycle}`)}</StatusPill>
-      </TableCell>
-      <TableCell className="min-w-[160px]">
-        <ProgressLine feed={feed} />
-      </TableCell>
-      <TableCell className="text-end text-sm tabular-nums" dir="ltr">
-        {value > 0 ? mask(money, value) : "—"}
-      </TableCell>
-      <TableCell className={cn("text-end text-sm tabular-nums", money && feed.unbilled > 50_000 && "font-bold text-destructive")} dir="ltr">
-        {mask(money, feed.unbilled)}
-      </TableCell>
-      <TableCell className={cn("text-end text-sm tabular-nums", money && (feed.cash < 0 ? "text-destructive" : "text-success"))} dir="ltr">
-        {mask(money, feed.cash)}
-      </TableCell>
-      <TableCell className="text-center">{feed.red ? <StatusPill tone="bad">{feed.red}</StatusPill> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
-    </TableRow>
+  const labels = useTableLabels()
+  const [feeds, setFeeds] = useState<Record<string, PortfolioFeed>>({})
+  const take = useCallback(
+    (id: string, f: PortfolioFeed) => {
+      setFeeds((prev) => (prev[id] === f ? prev : { ...prev, [id]: f }))
+      onFeed(id, f)
+    },
+    [onFeed]
   )
-}
-
-export function PmPortfolioTable({ projects, money, onFeed }: { projects: PortfolioProject[]; money: boolean; onFeed: (id: string, f: PortfolioFeed) => void }) {
-  const t = useTranslations("Portal.PM")
+  const columns: DataColumn<PortfolioProject>[] = [
+    {
+      key: "project",
+      header: t("list.col_project"),
+      cell: (p) => (
+        <div className="min-w-0 max-w-[260px]">
+          <Link href={projectHref(p)} className={cn("block truncate text-sm font-bold", nameLink)} dir="auto">
+            {p.name || "—"}
+          </Link>
+          <p className="truncate text-xs text-muted-foreground" dir="auto">
+            {[p.pm?.no ? displayDocNumber(p.pm.no, locale) : null, p.clientName].filter(Boolean).join(" · ")}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      header: t("list.col_status"),
+      cell: (p) => {
+        const lifecycle = lifecycleOf(p as { pm?: { lifecycle?: string }; status?: string })
+        return <StatusPill tone={LIFECYCLE_TONE[lifecycle]}>{t(`lifecycle.${lifecycle}`)}</StatusPill>
+      },
+    },
+    { key: "progress", header: t("list.col_progress"), className: "min-w-40", cell: (p) => (feeds[p.id] ? <ProgressLine feed={feeds[p.id]} /> : "—") },
+    {
+      key: "value",
+      header: t("list.contract_value"),
+      numeric: true,
+      sortValue: money ? (p) => feeds[p.id]?.contract ?? null : undefined,
+      cell: (p) => {
+        const v = feeds[p.id]?.contract ?? 0
+        return v > 0 ? mask(money, v) : "—"
+      },
+    },
+    {
+      key: "unbilled",
+      header: t("list.unbilled"),
+      numeric: true,
+      hideBelow: "lg",
+      sortValue: money ? (p) => feeds[p.id]?.unbilled ?? null : undefined,
+      cell: (p) => {
+        const f = feeds[p.id]
+        return <span className={cn(money && (f?.unbilled ?? 0) > 50_000 && "font-bold text-destructive")}>{mask(money, f?.unbilled ?? 0)}</span>
+      },
+    },
+    {
+      key: "cash",
+      header: t("list.cash"),
+      numeric: true,
+      hideBelow: "lg",
+      cell: (p) => {
+        const f = feeds[p.id]
+        return <span className={cn(money && f && (f.cash < 0 ? "text-destructive" : "text-success"))}>{mask(money, f?.cash ?? 0)}</span>
+      },
+    },
+    { key: "alerts", header: t("list.col_alerts"), cell: (p) => (feeds[p.id]?.red ? <StatusPill tone="bad">{feeds[p.id].red}</StatusPill> : <span className="text-xs text-muted-foreground">—</span>) },
+  ]
   return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="sticky start-0 bg-card text-start">{t("list.col_project")}</TableHead>
-            <TableHead className="text-start">{t("list.col_status")}</TableHead>
-            <TableHead className="text-start">{t("list.col_progress")}</TableHead>
-            <TableHead className="text-end">{t("list.contract_value")}</TableHead>
-            <TableHead className="text-end">{t("list.unbilled")}</TableHead>
-            <TableHead className="text-end">{t("list.cash")}</TableHead>
-            <TableHead className="text-center">{t("list.col_alerts")}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {projects.map((p) => (
-            <PortfolioRowView key={p.id} project={p} money={money} onFeed={onFeed} />
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <>
+      {projects.map((p) => (
+        <FeedProbe key={p.id} project={p} onFeed={take} />
+      ))}
+      <DataTable columns={columns} rows={projects} rowKey={(p) => p.id} caption={t("list.col_project")} labels={labels} empty={null} onRowClick={(p) => router.push(projectHref(p))} />
+    </>
   )
 }
 
@@ -103,90 +119,95 @@ export function PmArchiveTable({ rows, money, kindLabel, managerLabel, shown, on
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const router = useRouter()
+  const labels = useTableLabels()
   const page = rows.slice(0, shown)
   const left = rows.length - page.length
+  const href = (r: PortfolioRow) => `/contractor/projects/${r.id}?tab=pmToday`
+  const columns: DataColumn<PortfolioRow>[] = [
+    { key: "no", header: t("list.arch.no"), cell: (r) => <bdi className="text-xs font-bold tabular-nums">{r.noDisplay ?? "—"}</bdi> },
+    {
+      key: "project",
+      header: t("list.arch.project"),
+      cell: (r) => (
+        <div className="min-w-0 max-w-[240px]">
+          <Link href={href(r)} className={cn("block truncate text-sm font-bold", nameLink)} dir="auto">
+            {r.name}
+          </Link>
+          <p className="truncate text-xs text-muted-foreground" dir="auto">
+            {r.client ?? "—"}
+          </p>
+        </div>
+      ),
+    },
+    { key: "kind", header: t("list.arch.kind"), hideBelow: "xl", cell: (r) => <span className="text-xs text-muted-foreground">{kindLabel(r.kind)}</span> },
+    {
+      key: "region",
+      header: t("list.arch.region"),
+      hideBelow: "xl",
+      cell: (r) => (
+        <span className="text-xs text-muted-foreground" dir="auto">
+          {r.region ?? "—"}
+        </span>
+      ),
+    },
+    { key: "value", header: t("list.contract_value"), numeric: true, cell: (r) => mask(money, r.fin?.contractValue ?? r.value) },
+    { key: "cost", header: t("list.arch.cost"), numeric: true, hideBelow: "lg", cell: (r) => (costOf(r.fin) != null ? mask(money, costOf(r.fin) as number) : "—") },
+    {
+      key: "margin",
+      header: t("list.arch.margin"),
+      className: "text-end",
+      cell: (r) => {
+        const m = marginOf(r.fin)
+        return !money ? (
+          <span className="text-sm tabular-nums text-muted-foreground">•••</span>
+        ) : m ? (
+          <>
+            <StatusPill tone={m.pct > 12 ? "ok" : m.pct > 7 ? "warn" : "bad"}>
+              <span dir="ltr">{m.pct}%</span>
+            </StatusPill>
+            <p className="text-[11px] tabular-nums text-muted-foreground" dir="ltr">
+              {pmMoney(m.amount)}
+            </p>
+          </>
+        ) : (
+          <span className="text-xs text-muted-foreground" title={t("list.arch.cost_pending")}>
+            —
+          </span>
+        )
+      },
+    },
+    {
+      key: "duration",
+      header: t("list.arch.duration"),
+      cell: (r) => {
+        const late = r.fin?.delayDays ?? 0
+        return (
+          <>
+            <span className="text-sm font-semibold tabular-nums">{r.fin?.actualDays ?? "—"}</span>
+            <span className="text-xs tabular-nums text-muted-foreground"> / {r.fin?.contractDays ?? "—"}</span>
+            <div className="mt-0.5">
+              {late > 0 ? <StatusPill tone="bad">{t("list.arch.late", { count: late })}</StatusPill> : r.fin?.actualDays != null ? <StatusPill tone="ok">{t("list.arch.on_time")}</StatusPill> : null}
+            </div>
+          </>
+        )
+      },
+    },
+    { key: "closed", header: t("list.arch.closed"), hideBelow: "lg", cell: (r) => <span className="text-xs text-muted-foreground">{pmDate(r.fin?.closedOn, locale)}</span> },
+    { key: "retention", header: t("list.arch.retention"), numeric: true, hideBelow: "xl", cell: (r) => mask(money, r.fin?.retentionHeld ?? 0) },
+    {
+      key: "manager",
+      header: t("list.arch.manager"),
+      hideBelow: "xl",
+      cell: (r) => (
+        <span className="text-xs text-muted-foreground" dir="auto">
+          {managerLabel(r)}
+        </span>
+      ),
+    },
+  ]
   return (
     <div className="overflow-hidden rounded-xl border bg-card">
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="sticky start-0 bg-card text-start">{t("list.arch.no")}</TableHead>
-              <TableHead className="text-start">{t("list.arch.project")}</TableHead>
-              <TableHead className="text-start">{t("list.arch.kind")}</TableHead>
-              <TableHead className="text-start">{t("list.arch.region")}</TableHead>
-              <TableHead className="text-end">{t("list.contract_value")}</TableHead>
-              <TableHead className="text-end">{t("list.arch.cost")}</TableHead>
-              <TableHead className="text-end">{t("list.arch.margin")}</TableHead>
-              <TableHead className="text-center">{t("list.arch.duration")}</TableHead>
-              <TableHead className="text-start">{t("list.arch.closed")}</TableHead>
-              <TableHead className="text-end">{t("list.arch.retention")}</TableHead>
-              <TableHead className="text-start">{t("list.arch.manager")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {page.map((r) => {
-              const m = marginOf(r.fin)
-              const late = r.fin?.delayDays ?? 0
-              return (
-                <TableRow key={r.id} {...rowClick(() => router.push(`/contractor/projects/${r.id}?tab=pmToday`))}>
-                  <TableCell className="sticky start-0 bg-card text-xs font-bold tabular-nums">{r.noDisplay ?? "—"}</TableCell>
-                  <TableCell className="max-w-[240px]">
-                    <p className="truncate text-sm font-bold" dir="auto">
-                      {r.name}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground" dir="auto">
-                      {r.client ?? "—"}
-                    </p>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{kindLabel(r.kind)}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground" dir="auto">
-                    {r.region ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-end text-sm tabular-nums" dir="ltr">
-                    {mask(money, r.fin?.contractValue ?? r.value)}
-                  </TableCell>
-                  <TableCell className="text-end text-sm tabular-nums" dir="ltr">
-                    {costOf(r.fin) != null ? mask(money, costOf(r.fin) as number) : "—"}
-                  </TableCell>
-                  <TableCell className="text-end">
-                    {!money ? (
-                      <span className="text-sm tabular-nums text-muted-foreground">•••</span>
-                    ) : m ? (
-                        <>
-                          <StatusPill tone={m.pct > 12 ? "ok" : m.pct > 7 ? "warn" : "bad"}>
-                            <span dir="ltr">{m.pct}%</span>
-                          </StatusPill>
-                          <p className="text-[11px] tabular-nums text-muted-foreground" dir="ltr">
-                            {pmMoney(m.amount)}
-                          </p>
-                        </>
-                      ) : (
-                        <span className="text-xs text-muted-foreground" title={t("list.arch.cost_pending")}>
-                          —
-                        </span>
-                      )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <span className="text-sm font-semibold tabular-nums">{r.fin?.actualDays ?? "—"}</span>
-                    <span className="text-xs tabular-nums text-muted-foreground"> / {r.fin?.contractDays ?? "—"}</span>
-                    <div className="mt-0.5">
-                      {late > 0 ? <StatusPill tone="bad">{t("list.arch.late", { count: late })}</StatusPill> : r.fin?.actualDays != null ? <StatusPill tone="ok">{t("list.arch.on_time")}</StatusPill> : null}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{pmDate(r.fin?.closedOn, locale)}</TableCell>
-                  <TableCell className="text-end text-sm tabular-nums" dir="ltr">
-                    {mask(money, r.fin?.retentionHeld ?? 0)}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground" dir="auto">
-                    {managerLabel(r)}
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable columns={columns} rows={page} rowKey={(r) => r.id} caption={t("list.arch.project")} labels={labels} bordered={false} empty={null} cardTitleKey="project" onRowClick={(r) => router.push(href(r))} />
       {left > 0 && (
         <ShowMoreRow onClick={onMore}>
           {t("list.arch.more", { n: Math.min(12, left), left })}
