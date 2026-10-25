@@ -27,7 +27,8 @@ export interface ExportFilter {
 
 export const ALL_PLACES = "all"
 
-export const placeOfDelivery = (d: Pick<DeskDelivery, "landedWarehouseId"> & { warehouseId?: string | null; manualDraft?: { warehouseId?: string } | null }): string => d.landedWarehouseId || d.warehouseId || d.manualDraft?.warehouseId || ""
+export const placeOfDelivery = (d: Pick<DeskDelivery, "landedWarehouseId"> & { warehouseId?: string | null; manualDraft?: { warehouseId?: string } | null; deliverySiteId?: string | null }): string =>
+  d.landedWarehouseId || d.warehouseId || d.manualDraft?.warehouseId || d.deliverySiteId || ""
 
 /** The receipts a filter takes: confirmed ones, whose day is inside the period and whose place matches. */
 export function exportedReceipts(deliveries: DeskDelivery[], filter: ExportFilter): DeskDelivery[] {
@@ -65,7 +66,8 @@ export function exportRows(deliveries: DeskDelivery[], orders: PurchaseOrder[], 
   for (const d of deliveries) {
     const po = d.poId ? byId.get(d.poId) || null : null
     const lines = receiptLinesOf(d)
-    const place = placeName(placeOfDelivery(d))
+    // A manual receipt at a work site with no store names the site itself (RC-04).
+    const place = placeName(placeOfDelivery(d)) || d.deliverySiteName || ""
     const module = d.source === "manual" ? words.recordedIn.procurement : d.receiverModule === "projects" ? words.recordedIn.projects : words.recordedIn.inventory
     const kind = d.source === "manual" ? words.kind.manual : d.noNotice ? words.kind.noNotice : words.kind.receipt
     const poCell = po?.docNumber || d.poNumber || (isNoPo(d) ? words.noPo : "")

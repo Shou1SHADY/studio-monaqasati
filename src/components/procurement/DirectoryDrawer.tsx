@@ -18,11 +18,17 @@ import { DrawerSection } from "@/components/module-ui/DrawerSection"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { displayCategory, displayCity } from "@/lib/constants"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { keyLabel, specialtyKeys } from "@/lib/materials/subs"
+import { todayOf } from "@/lib/procurement/po"
+import { effectiveCrExpiry, effectiveVat, profileVatMark, supplierDocs } from "@/lib/procurement/supplier-file"
 import { SupplierWriteError, addFromDirectory } from "@/lib/procurement/supplier-writes"
 import type { ProcActor } from "@/lib/procurement/types"
 import type { PlatformSupplier } from "@/hooks/useSupplierDirectory"
+import { supplierInitials } from "@/lib/procurement/supplier-list"
 import type { SupplierCard } from "@/lib/procurement/supplier-stats"
 import { Stars } from "./SupplierFileDrawer"
+import { SupplierOfficialSection, SupplierOptionalSlots, SupplierStatePills } from "./SupplierProfileSections"
 
 function Stat({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -62,8 +68,14 @@ export function DirectoryDrawer({
   const { toast } = useToast()
   const [adding, setAdding] = useState(false)
   const supplierVat = useSupplierVat(supplier?.orgId, supplier?.profileVat, open)
+  const { index } = useMaterialTree()
 
   if (!supplier) return null
+  // SP-02: the same profile our file shows — the buyer is asked to check it before adding him.
+  const today = todayOf(new Date())
+  const vat = effectiveVat(null, profileVatMark(supplier))
+  const docs = supplierDocs(vat, effectiveCrExpiry(null, supplier.profileCrExpiry), today)
+  const specialties = specialtyKeys(index, supplier.subIds, supplier.categories)
 
   const add = async () => {
     if (!firestore) return
@@ -85,7 +97,7 @@ export function DirectoryDrawer({
         <SheetHeader className="space-y-1 border-b px-5 py-4 text-start">
           <div className="flex items-center gap-3">
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-module/10 text-sm font-black text-module" aria-hidden="true">
-              {supplier.name.slice(0, 2)}
+              {supplierInitials(supplier.name)}
             </span>
             <div className="min-w-0">
               <SheetTitle className="truncate text-lg" dir="auto">
@@ -96,6 +108,9 @@ export function DirectoryDrawer({
                 {supplier.city && <span>· {displayCity(supplier.city, locale)}</span>}
                 {supplier.platformVerified && <StatusPill tone="module" className="px-2 py-0 text-[10.5px]">{t("dir.platform_verified")}</StatusPill>}
               </SheetDescription>
+              <div className="pt-1.5">
+                <SupplierStatePills verified={supplier.platformVerified} onPlatform since={supplier.since} ours={supplier.isMine} />
+              </div>
             </div>
           </div>
         </SheetHeader>
@@ -145,10 +160,10 @@ export function DirectoryDrawer({
 
           <DrawerSection title={t("col.supplies")}>
             <div className="flex flex-wrap gap-1.5 border-b border-border/60 py-2">
-              {supplier.categories.length ? (
-                supplier.categories.map((c) => (
+              {specialties.length ? (
+                specialties.map((c) => (
                   <StatusPill key={c} tone="mute">
-                    {displayCategory(c, locale)}
+                    {keyLabel(index, c, locale, displayCategory)}
                   </StatusPill>
                 ))
               ) : (
@@ -158,6 +173,17 @@ export function DirectoryDrawer({
             <KeyValueRow label={t("col.city")} value={supplier.city ? displayCity(supplier.city, locale) : "—"} />
             <KeyValueRow label={t("dir.on_platform_since")} value={supplier.since ? supplier.since.slice(0, 4) : "—"} />
           </DrawerSection>
+
+          {supplier.bio && (
+            <p className="rounded-xl border bg-muted/30 px-3 py-2.5 text-sm" dir="auto">
+              {supplier.bio}
+            </p>
+          )}
+          <SupplierOfficialSection
+            supplier={supplier}
+            facts={{ crExpiry: docs.crExpiry, crDays: docs.crDays, crExpired: docs.state === "cr_expired", vatText: supplierVat || (supplier.profileHasVat ? t("file.vat_on_file") : null) }}
+          />
+          <SupplierOptionalSlots supplier={supplier} today={today} />
 
           <DrawerSection title={t("dir.before_adding")}>
             <KeyValueRow label={t("dir.dealt_with")} value={supplier.isMine ? t("dir.dealt_yes") : t("dir.dealt_no")} />

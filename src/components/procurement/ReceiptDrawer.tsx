@@ -56,11 +56,13 @@ import {
   type TrailState,
 } from "@/lib/procurement/receipt-desk"
 import { isWorkshopOrder, noticeWait } from "@/lib/procurement/receipt-desk"
-import { printGoodsReceipt, type ReceiptPrintCompany, type SupplierIdentity } from "@/lib/procurement/receipt-print"
+import type { ReceiptPrintCompany, ReceiptPrintInput, SupplierIdentity } from "@/lib/procurement/receipt-print"
 import type { PoLine, ProcActor, ProcurementPolicies, PurchaseOrder, ReceiptCheck, RejectDecision } from "@/lib/procurement/types"
 import { ProcWriteError, decideReject, ratePurchaseOrder, type RatingInput } from "@/lib/procurement/writes"
 import { RejectDecisionDialog } from "./PoActionDialogs"
 import { PoRateDialog } from "./PoRateDialog"
+import { ReceiptDocumentDialog } from "./ReceiptDocumentDialog"
+import { SupplierLink } from "./SupplierLink"
 
 const STATE_TONE: Record<ReceiptState, string> = {
   on_the_way: "bg-success/10 text-success",
@@ -143,6 +145,8 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
   const financeOn = modules.on("payments")
   const [rejectLine, setRejectLine] = useState<PoLine | null>(null)
   const [rateOpen, setRateOpen] = useState(false)
+  // RC-01: the receipt opens as its A4 page in a dialog stacked over this drawer, and closes back to it.
+  const [doc, setDoc] = useState<ReceiptPrintInput | null>(null)
 
   const lines = useMemo(() => (d ? receiptLinesOf(d) : []), [d])
   if (!d) return null
@@ -155,7 +159,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
   const when = d.confirmedAt || d.deliveryDate || null
   const placeId = d.landedWarehouseId || (d as { warehouseId?: string | null }).warehouseId
   // Where it is received: the store it lands in, else the order's own place (PUR-06 — never a bare «—»).
-  const place = warehouseName(placeId) || po?.projectName || null
+  const place = warehouseName(placeId) || po?.projectName || d.deliverySiteName || null
   const project = projectName(d.projectId || po?.projectId) || null
   const kind = placeKind(d, po)
   const by = recordedBy(d, kind)
@@ -203,7 +207,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
   }
 
   const print = () => {
-    const ok = printGoodsReceipt({
+    setDoc({
       delivery: d,
       po,
       company,
@@ -219,8 +223,8 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
       tp: (k, p) => tp(k as "doc.GR", p),
       now,
     })
-    if (!ok) toast({ title: t("drawer.popupBlocked"), variant: "destructive" })
   }
+  const docDialog = <ReceiptDocumentDialog input={doc} onOpenChange={(o) => !o && setDoc(null)} />
 
   const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
     <section className="space-y-2">
@@ -265,7 +269,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
       </Section>
     ) : null
 
-  const effects = receiptEffects({ dest: kind, workshop: isWorkshopOrder(po), pmOn: modules.on("project-management"), mfgOn: modules.on("manufacturing"), finOn: financeOn })
+  const effects = receiptEffects({ dest: kind, workshop: isWorkshopOrder(po), pmOn: modules.on("project-management"), mfgOn: modules.on("manufacturing"), finOn: financeOn, recordOnly: Boolean(d.deliverySiteId) && !d.landedWarehouseId })
   const FxSection = () =>
     pending ? null : (
       <Section title={t("drawer.fxTitle")}>
@@ -378,6 +382,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
             <FxSection />
             <LogSection />
           </div>
+          {docDialog}
         </SheetContent>
       </Sheet>
     )
@@ -475,9 +480,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
               label={t("drawer.supplier")}
               value={
                 po && !po.isGuestSupplier ? (
-                  <Link href={`/contractor/suppliers?supplier=${po.supplierOrgId}`} className="text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    {po.supplierName}
-                  </Link>
+                  <SupplierLink orgId={po.supplierOrgId} name={po.supplierName} />
                 ) : (
                   po?.supplierName || d.supplierName
                 )
@@ -766,6 +769,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
             />
           </>
         )}
+        {docDialog}
       </SheetContent>
     </Sheet>
   )

@@ -26,6 +26,8 @@ import { cn } from "@/lib/utils"
 import { CompareCell } from "./CompareCell"
 import { FACT_IDS, FactCell } from "./CompareFacts"
 import { LastBuy } from "./LastBuy"
+import { awardSupplierOrgId } from "@/lib/procurement/award"
+import { SupplierLink } from "../SupplierLink"
 import { MaterialStrip } from "./MaterialStrip"
 
 const sar = (h: number | null | undefined): string => moneyFigure(h == null ? null : h / 100)
@@ -395,7 +397,8 @@ function SupplierHead({ col }: { col: CompareColumn }) {
     <>
       <span className="block truncate font-bold text-foreground" dir="auto" title={col.name}>
         {col.shortlisted && <Star size={11} className="me-1 inline text-warning" aria-label={t("shortlisted")} />}
-        {col.name || "—"}
+        {/* SP-03: the supplier's name opens his file over the comparison. */}
+        <SupplierLink orgId={col.facts.guest ? null : awardSupplierOrgId(col.offer as never)} name={col.name} />
       </span>
       {col.shortlisted && <small className="block text-warning">{t("shortlist_short")}</small>}
       {col.facts.guest && <small className="block text-violet">{t("off_platform")}</small>}

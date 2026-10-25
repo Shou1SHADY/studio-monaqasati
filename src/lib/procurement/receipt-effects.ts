@@ -4,7 +4,7 @@
 
 import type { DestKind } from "./receipt-desk"
 
-export type EffectKey = "core" | "inv" | "pm" | "mfg" | "fin" | "fin_off"
+export type EffectKey = "core" | "inv" | "pm" | "mfg" | "fin" | "fin_off" | "site"
 export type EffectModule = "core" | "inv" | "pm" | "mfg" | "fin"
 
 export interface ReceiptEffect {
@@ -19,10 +19,13 @@ export interface EffectInput {
   pmOn: boolean
   mfgOn: boolean
   finOn: boolean
+  /** A manual receipt at a delivery site with no store (RC-04): a record of what arrived there, no stock moved. */
+  recordOnly?: boolean
 }
 
-export function receiptEffects({ dest, workshop, pmOn, mfgOn, finOn }: EffectInput): ReceiptEffect[] {
+export function receiptEffects({ dest, workshop, pmOn, mfgOn, finOn, recordOnly = false }: EffectInput): ReceiptEffect[] {
   const out: ReceiptEffect[] = [{ module: "core", key: "core" }]
+  if (recordOnly) out.push({ module: "core", key: "site" })
   if (dest === "inv" && !workshop) out.push({ module: "inv", key: "inv" })
   if (dest === "prj" && pmOn) out.push({ module: "pm", key: "pm" })
   if (workshop && mfgOn) out.push({ module: "mfg", key: "mfg" })

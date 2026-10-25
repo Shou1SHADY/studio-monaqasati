@@ -20,18 +20,19 @@ import { Link } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 import { matchesSearch } from "@/lib/search-text"
 import type { CatalogItem } from "@/hooks/useInventoryCatalog"
-import { displayAgreementNumber, displayPoNumber } from "@/lib/procurement/format"
+import { displayAgreementNumber, displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { CHART_COLORS, priceChart, type PriceChart } from "@/lib/procurement/price-chart"
 import { diffVsPrevious, materialKey, priceSeries, priceStats, priceTrends, type PriceAgreement, type PriceHistoryEntry, type PriceOfferLike, type PricePoint, type PriceRfqLike, type PriceSource } from "@/lib/procurement/prices"
 import { readByManufacturing } from "@/lib/procurement/supplier-file"
 import type { PurchaseOrder, ReceiptFact } from "@/lib/procurement/types"
 import { MaterialDrawer } from "./MaterialDrawer"
+import { SupplierLink } from "./SupplierLink"
 import { sarLtr } from "@/lib/riyal"
 
 const priceText = (n: number) => sarLtr(Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 const plain = (n: number) => Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 })
 const CHIPS_SHOWN = 12
-const SOURCE_TONE: Record<PriceSource, PillTone> = { po: "module", offer: "mute", agreement: "violet" }
+const SOURCE_TONE: Record<PriceSource, PillTone> = { po: "module", offer: "mute", agreement: "violet", manual: "warn" }
 const COLOR = ["text-module", "text-success", "text-cta", "text-warning", "text-destructive", "text-accent"].slice(0, CHART_COLORS)
 
 interface Material {
@@ -184,7 +185,7 @@ export function PriceHistoryView({
   const signedPct = (n: number | null) => (n == null ? "—" : `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n)}%`)
   const columns: DataColumn<PricePoint>[] = [
     { key: "day", header: th("col_date"), cell: (p) => fmtDate(p.day, locale) },
-    { key: "supplier", header: th("col_supplier"), cell: (p) => <span dir="auto">{p.supplier || "—"}</span> },
+    { key: "supplier", header: th("col_supplier"), cell: (p) => <SupplierLink orgId={p.supplierKey} name={p.supplier} /> },
     { key: "source", header: th("col_source"), cell: (p) => <StatusPill tone={SOURCE_TONE[p.source]}>{th(`source_${p.source}`)}</StatusPill> },
     { key: "qty", header: th("col_qty"), numeric: true, cell: (p) => (p.quantity ? `${plain(p.quantity)} ${current?.unit ?? ""}` : "—") },
     { key: "price", header: th("col_price"), numeric: true, cell: (p) => <b>{plain(p.price)}</b> },
@@ -209,6 +210,14 @@ export function PriceHistoryView({
           <Link href={`/contractor/suppliers?segment=agreements&agreement=${p.agreementId}`} className="rounded text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="ltr">
             {displayAgreementNumber(p.agreementNo, loc)}
           </Link>
+        ) : p.source === "manual" && p.poNo ? (
+          p.receiptId ? (
+            <Link href={`/contractor/goods-received?tab=nopo&delivery=${p.receiptId}`} className="rounded text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="ltr">
+              {displayReceiptNumber(p.poNo, loc)}
+            </Link>
+          ) : (
+            <span dir="ltr">{displayReceiptNumber(p.poNo, loc)}</span>
+          )
         ) : p.rfqId ? (
           <Link href={`/contractor/rfqs/${p.rfqId}/offers`} className="rounded text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="ltr">
             {p.rfqNo || "—"}
@@ -248,7 +257,16 @@ export function PriceHistoryView({
       {current && (
         <>
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-            <Tile label={th("tile_last")} sub={stats.last ? `${stats.last.supplier || "—"} · ${fmtDate(stats.last.day, locale)}` : undefined}>
+            <Tile
+              label={th("tile_last")}
+              sub={
+                stats.last ? (
+                  <>
+                    <SupplierLink orgId={stats.last.supplierKey} name={stats.last.supplier} /> · {fmtDate(stats.last.day, locale)}
+                  </>
+                ) : undefined
+              }
+            >
               {stats.last ? <span dir="ltr">{priceText(stats.last.price)}</span> : "—"}
               {stats.last && <small className="ms-1 text-xs font-normal text-muted-foreground">{th("per", { unit: current.unit })}</small>}
             </Tile>

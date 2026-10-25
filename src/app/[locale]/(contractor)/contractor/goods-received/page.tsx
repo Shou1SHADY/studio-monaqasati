@@ -23,6 +23,7 @@ import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { ArrivalPickerDialog } from "@/components/procurement/ArrivalPickerDialog"
 import { ManualDraftInbox, pendingDrafts } from "@/components/procurement/ManualDraftInbox"
 import { ManualReceiptDialog } from "@/components/procurement/ManualReceiptDialog"
+import { ReceiptDocumentDialog } from "@/components/procurement/ReceiptDocumentDialog"
 import { ReceiptExportDialog } from "@/components/procurement/ReceiptExportDialog"
 import { ReceiverPreviewDialog } from "@/components/procurement/ReceiverPreviewDialog"
 import { RECORDED_TONE, ReceiptDrawer, ReceiptStatePill, RecordedByPill, type ReceiptDrawerProps } from "@/components/procurement/ReceiptDrawer"
@@ -30,12 +31,14 @@ import { RegulariseReceiptDialog } from "@/components/procurement/RegulariseRece
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { useModules } from "@/hooks/useCompanyModules"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
+import { useDeliverySiteList } from "@/hooks/useDeliverySiteList"
 import { useProcTeam } from "@/hooks/useProcTeam"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { useProcurementWorld, type ProcurementWorld } from "@/hooks/useProcurementWorld"
@@ -66,6 +69,7 @@ import {
   recordedBy,
   segmentCounts,
   shipmentOrdinal,
+  siteFilterOf,
   suggestedReceiver,
   type DeskDelivery,
   type DestKind,
@@ -76,7 +80,8 @@ import {
   type ReceiptSegment,
 } from "@/lib/procurement/receipt-desk"
 import { selectStaleNotices } from "@/lib/procurement/auto-forward"
-import { printGoodsReceipt, supplierIdentityOf, type ReceiptPrintInput } from "@/lib/procurement/receipt-print"
+import { manualPlaces } from "@/lib/procurement/manual-receipt-form"
+import { supplierIdentityOf, type ReceiptPrintInput } from "@/lib/procurement/receipt-print"
 import type { ProcReceiver } from "@/lib/procurement/receivers"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import { poActs } from "@/lib/procurement/po-extras"
@@ -104,6 +109,7 @@ export default function GoodsReceivedPage() {
   const { on } = useModules()
   const pmOn = on("project-management")
   const financeOn = on("payments")
+  const mfgOn = on("manufacturing")
   const { actor, orgId, orgName, orders, deliveries, policies, loading } = world
   const { user } = useUser()
   const { can } = usePermissions()
@@ -163,8 +169,16 @@ export default function GoodsReceivedPage() {
     return list.some((w) => w.id === central) || !orgId ? list : [{ id: central, name: tc("wh_central_name"), projectId: null }, ...list]
   }, [warehouses, orgId, tc])
 
+  // RC-04/RC-05: every delivery site — warehouses, work sites and (with Projects) project sites — in every package.
+  const { sites: deliverySiteList } = useDeliverySiteList(orgId, pmOn)
+  const liveSites = useMemo(() => deliverySiteList.filter((s) => !s.retired && (mfgOn || s.kind !== "workshop")), [deliverySiteList, mfgOn])
+  const places = useMemo(() => manualPlaces({ sites: deliverySiteList, warehouses, orgId, centralName: tc("wh_central_name"), mfgOn }), [deliverySiteList, warehouses, orgId, tc, mfgOn])
+
   const desk = deliveries as DeskDelivery[]
-  const filter = useMemo(() => ({ term, projectId: placeFilter === "all" ? null : placeFilter }), [term, placeFilter])
+  const filter = useMemo(() => {
+    const site = liveSites.find((s) => s.id === placeFilter)
+    return { term, projectId: placeFilter === "all" || site ? null : placeFilter, site: site ? siteFilterOf(site, warehouses) : null }
+  }, [term, placeFilter, liveSites, warehouses])
   const counts = useMemo(() => segmentCounts(desk, orders, filter, now, escalateAfter), [desk, orders, filter, now, escalateAfter])
   const notices = useMemo(() => noticeRows(desk, orders, now, escalateAfter).filter((r) => noticeRowMatches(r, filter)), [desk, orders, filter, now, escalateAfter])
   const recs = useMemo(() => receiptRows(desk, orders, "recs", now).filter((r) => receiptRowMatches(r, filter)), [desk, orders, filter, now])
@@ -283,7 +297,7 @@ export default function GoodsReceivedPage() {
         company,
         supplier: supplier === undefined ? supplierIdentityOf(null, vat) : supplier,
         noticeNumber: ordinal ? displayNoticeNumber(ordinal, locale) : null,
-        placeName: warehouseName(placeId) || po?.projectName || null,
+        placeName: warehouseName(placeId) || po?.projectName || d.deliverySiteName || null,
         projectName: projectName(d.projectId || po?.projectId),
         displayNumber: d.docNumber ? displayReceiptNumber(d.docNumber, locale) : `DEL-${d.id.slice(0, 8).toUpperCase()}`,
         displayPoNumber: po ? displayPoNumber(po.docNumber, locale) : d.poNumber ? displayPoNumber(d.poNumber, locale) : null,
@@ -296,9 +310,9 @@ export default function GoodsReceivedPage() {
     },
     [poOf, world.supplierRecords, company, desk, locale, warehouseName, projectName, actor.seesPrices, tPrint, tProc, now]
   )
-  const openPdf = (d: DeskDelivery) => {
-    if (!printGoodsReceipt(printInputFor(d))) toast({ title: t("drawer.popupBlocked"), variant: "destructive" })
-  }
+  // RC-01: «PDF» opens the receipt as its A4 page inside the app (download · print · close), not a self-printing pop-up.
+  const [docInput, setDocInput] = useState<ReceiptPrintInput | null>(null)
+  const openPdf = (d: DeskDelivery) => setDocInput(printInputFor(d))
 
   const segTitle: Record<ReceiptSegment, string> = { transit: t("segments.transit"), fwd: t("segments.fwd"), count: t("segments.count"), recs: t("segments.recs"), nopo: t("segments.nopo") }
   const forwardPo = forwardTarget ? poOf(forwardTarget) : null
@@ -344,23 +358,16 @@ export default function GoodsReceivedPage() {
               <Search size={14} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground ltr:left-3 rtl:right-3" aria-hidden="true" />
               <Input value={term} onChange={(e) => setTerm(e.target.value)} placeholder={t("searchPlaceholder")} aria-label={t("searchPlaceholder")} className="h-10 w-full ps-9 sm:w-64" dir="auto" />
             </div>
-            {pmOn && (
-              <Select value={placeFilter} onValueChange={setPlaceFilter}>
-                <SelectTrigger className={cn("h-10 w-full sm:w-52", placeFilter !== "all" && "border-module text-module")} aria-label={t("projectFilter")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("allProjects")}</SelectItem>
-                  {projects.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value={PLACE_GENERAL}>{t("place.general")}</SelectItem>
-                  <SelectItem value={PLACE_WORKSHOP}>{t("place.workshop")}</SelectItem>
-                </SelectContent>
-              </Select>
-            )}
+            <NativeSelect value={placeFilter} onChange={(e) => setPlaceFilter(e.target.value)} aria-label={t("placeFilter")} className={cn("h-10 w-full sm:w-56", placeFilter !== "all" && "border-module text-module")}>
+              <option value="all">{t("allPlaces")}</option>
+              {liveSites.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+              <option value={PLACE_GENERAL}>{t("place.general")}</option>
+              {mfgOn && <option value={PLACE_WORKSHOP}>{t("place.workshop")}</option>}
+            </NativeSelect>
           </div>
         </div>
 
@@ -461,7 +468,15 @@ export default function GoodsReceivedPage() {
           />
         )}
         {previewTarget && (
-          <ReceiverPreviewDialog open onOpenChange={(o) => !o && setPreviewTarget(null)} delivery={previewTarget} po={previewPo} placeName={warehouseName(previewPlace) || tc("wh_central_name")} />
+          <ReceiverPreviewDialog
+            open
+            onOpenChange={(o) => !o && setPreviewTarget(null)}
+            delivery={previewTarget}
+            po={previewPo}
+            placeName={warehouseName(previewPlace) || tc("wh_central_name")}
+            companyName={company.name}
+            noticeNumber={noticeNumberOf(previewTarget, desk, previewPo)}
+          />
         )}
 
         <ManualReceiptDialog
@@ -470,12 +485,13 @@ export default function GoodsReceivedPage() {
           actor={actor}
           orgId={orgId}
           orders={orders}
-          warehouses={manualSites}
+          places={places}
           onDone={(deliveryId, tabAfter) => {
             setManualOpen(false)
             setQuery({ tab: tabAfter, delivery: deliveryId })
           }}
         />
+        <ReceiptDocumentDialog input={docInput} onOpenChange={(o) => !o && setDocInput(null)} />
         <ArrivalPickerDialog open={arrivalOpen} onOpenChange={setArrivalOpen} orders={orders} />
         <ReceiptExportDialog
           open={exportOpen}
