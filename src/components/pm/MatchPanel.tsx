@@ -10,13 +10,16 @@ import { useMemo } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Scale } from "lucide-react"
 import { Callout } from "@/components/module-ui/Callout"
+import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
+import { EmptyState } from "@/components/module-ui/EmptyState"
 import { Panel } from "@/components/module-ui/Panel"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { useTableLabels } from "@/hooks/useTableLabels"
 import { useProjectCost } from "@/hooks/useProjectCost"
 import { pmDate, pmMoney } from "@/lib/pm/format"
-import { matchRows, MATCH_STATES, type MatchState } from "@/lib/pm/match"
+import { matchRows, MATCH_STATES, type MatchRow, type MatchState } from "@/lib/pm/match"
 import { PURCHASE_REQUESTS, reqNo, requestOf } from "@/lib/pm/supply"
 import { displayDocNumber } from "@/lib/sales-numbering"
 import { collection } from "firebase/firestore"
@@ -29,6 +32,7 @@ export function MatchPanel({ projectId, orgId, items, access }: { projectId: str
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const money = access.has("money")
+  const labels = useTableLabels()
   const world = useProjectCost(projectId, orgId, money)
   const rows = useMemo(() => matchRows(world.pos, world.invoices), [world.pos, world.invoices])
   const codeOf = useMemo(() => new Map(items.map((i) => [i.id, i.code])), [items])
@@ -46,80 +50,86 @@ export function MatchPanel({ projectId, orgId, items, access }: { projectId: str
 
   if (!money) return <Callout tone="info">{t("money.money_only")}</Callout>
 
+  const columns: DataColumn<MatchRow>[] = [
+    {
+      key: "material",
+      header: t("money.match.col.material"),
+      cell: (r) => {
+        const code = r.itemId ? codeOf.get(r.itemId) : null
+        return (
+          <>
+            <p className="font-bold" dir="auto">
+              {r.material}
+            </p>
+            {code && (
+              <p className="text-xs text-muted-foreground" dir="ltr">
+                {code}
+              </p>
+            )}
+          </>
+        )
+      },
+    },
+    {
+      key: "po",
+      header: t("money.match.col.po"),
+      cell: (r) => {
+        const seq = reqSeq(r)
+        return (
+          <span className="text-xs">
+            <span dir="ltr">{displayDocNumber(r.poNo, locale)}</span>
+            {seq !== null && <span className="block text-muted-foreground">{t("boqsup.po_from", { no: reqNo(seq) })}</span>}
+            {r.invoice && <span className="block text-muted-foreground">{t("money.match.invoice_line", { no: r.invoice.no, date: pmDate(r.invoice.date, locale) })}</span>}
+          </span>
+        )
+      },
+    },
+    { key: "ordered", header: t("money.match.col.ordered"), numeric: true, cell: (r) => qty(r.ordered) },
+    { key: "received", header: t("money.match.col.received"), numeric: true, cell: (r) => qty(r.received) },
+    {
+      key: "invoiced",
+      header: t("money.match.col.invoiced"),
+      numeric: true,
+      cell: (r) => (
+        <>
+          {r.invoiced === null ? "—" : qty(r.invoiced)}
+          {r.invoicedAmount !== null && money && <span className="block text-xs text-muted-foreground">{pmMoney(r.invoicedAmount)}</span>}
+        </>
+      ),
+    },
+    {
+      key: "status",
+      header: t("money.match.col.status"),
+      cell: (r) => {
+        const known = (MATCH_STATES as readonly string[]).includes(r.state)
+        return <StatusPill tone={known ? TONE[r.state] : "bad"}>{known ? t(`money.match.state.${r.state}`) : t("unknown_state")}</StatusPill>
+      },
+    },
+  ]
+
   return (
     <Panel
       title={t("money.match.title")}
       icon={Scale}
       count={rows.length || undefined}
       countTone={bad > 0 ? "bad" : "ok"}
+      description={t("money.match.sub")}
       actions={<SourceBadge module="payments" label={t("money.match.payment_in_finance")} />}
       bodyClassName="p-0"
     >
-      <p className="px-4 pt-3 text-xs text-muted-foreground">{t("money.match.sub")}</p>
-      {rows.length === 0 ? (
-        <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("money.match.empty")}</p>
-      ) : (
-        <>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[680px] text-sm">
-              <thead>
-                <tr className="border-b text-xs text-muted-foreground">
-                  <th className="px-4 py-2 text-start font-semibold">{t("money.match.col.material")}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t("money.match.col.po")}</th>
-                  <th className="px-3 py-2 text-center font-semibold">{t("money.match.col.ordered")}</th>
-                  <th className="px-3 py-2 text-center font-semibold">{t("money.match.col.received")}</th>
-                  <th className="px-3 py-2 text-center font-semibold">{t("money.match.col.invoiced")}</th>
-                  <th className="px-4 py-2 text-start font-semibold">{t("money.match.col.status")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const known = (MATCH_STATES as readonly string[]).includes(r.state)
-                  const code = r.itemId ? codeOf.get(r.itemId) : null
-                  const seq = reqSeq(r)
-                  return (
-                    <tr key={`${r.poId}:${r.lineId}`} className="border-b last:border-0">
-                      <td className="px-4 py-2.5">
-                        <p className="font-bold" dir="auto">
-                          {r.material}
-                        </p>
-                        {code && (
-                          <p className="text-xs text-muted-foreground" dir="ltr">
-                            {code}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs">
-                        <span dir="ltr">{displayDocNumber(r.poNo, locale)}</span>
-                        {seq !== null && <p className="text-muted-foreground">{t("boqsup.po_from", { no: reqNo(seq) })}</p>}
-                        {r.invoice && (
-                          <p className="text-muted-foreground">
-                            {t("money.match.invoice_line", { no: r.invoice.no, date: pmDate(r.invoice.date, locale) })}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
-                        {qty(r.ordered)}
-                      </td>
-                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
-                        {qty(r.received)}
-                      </td>
-                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
-                        {r.invoiced === null ? "—" : qty(r.invoiced)}
-                        {r.invoicedAmount !== null && money && <p className="text-xs text-muted-foreground">{pmMoney(r.invoicedAmount)}</p>}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <StatusPill tone={known ? TONE[r.state] : "bad"}>{known ? t(`money.match.state.${r.state}`) : t("unknown_state")}</StatusPill>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-          <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">{bad ? t("money.match.over_note", { count: bad }) : t("money.match.all_ok")}</p>
-        </>
-      )}
+      <DataTable
+        columns={columns}
+        rows={rows}
+        rowKey={(r) => `${r.poId}:${r.lineId}`}
+        caption={t("money.match.title")}
+        labels={labels}
+        bordered={false}
+        dense
+        maxHeight="70vh"
+        rowTone={(r) => (r.state === "over" ? "bad" : undefined)}
+        empty={<EmptyState bare icon={Scale} title={t("money.match.empty")} />}
+      />
+      {rows.length > 0 && <p className="border-t px-4 py-2.5 text-xs text-muted-foreground">{bad ? t("money.match.over_note", { count: bad }) : t("money.match.all_ok")}</p>}
     </Panel>
   )
 }
