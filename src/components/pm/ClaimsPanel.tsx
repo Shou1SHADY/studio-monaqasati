@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection } from "firebase/firestore"
-import { AlertTriangle, Clock, Coins, Gavel, Link2, Loader2, Plus, ShieldCheck } from "lucide-react"
+import { AlertTriangle, Ban, Clock, Coins, Gavel, Link2, Loader2, Plus, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -199,7 +199,7 @@ export function ClaimsPanel({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-3">
         <Tile icon={Gavel} label={t("claim.tile.open")} value={String(open.length)} note={pendingDays ? t("claim.tile.pending", { days: t("days", { count: pendingDays }) }) : t("claim.tile.no_pending")} />
         <Tile
           icon={Coins}
@@ -234,7 +234,7 @@ export function ClaimsPanel({
         bodyClassName="p-0"
       >
         {claims.length === 0 ? (
-          <EmptyState icon={Gavel} title={t("claim.empty")} description={t("claim.empty_desc")} className="p-6" />
+          <EmptyState bare icon={Gavel} title={t("claim.empty")} description={t("claim.empty_desc")} />
         ) : (
           <ul className="divide-y">
             {claims.map((c) => {
@@ -271,14 +271,16 @@ export function ClaimsPanel({
                       </p>
                     )}
                     {isLate && (
-                      <Callout tone="block" className="mt-2 py-2 text-xs">
+                      <p role="alert" className="mt-1.5 flex items-start gap-1.5 text-xs font-semibold text-destructive">
+                        <Ban size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
                         {t("claim.late_block", { since: t("days", { count: Math.max(0, daysFrom(c.eventOn, today)) }), period: t("days", { count: terms.claimNoticeDays }) })}
-                      </Callout>
+                      </p>
                     )}
                     {left !== null && (
-                      <Callout tone="warn" className="mt-2 py-2 text-xs">
+                      <p role="note" className="mt-1.5 flex items-start gap-1.5 text-xs font-semibold text-warning">
+                        <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
                         {t("claim.left_block", { days: t("days", { count: left }) })}
-                      </Callout>
+                      </p>
                     )}
                     {c.response && (c.status === "appr" || c.status === "part") && c.response.days > 0 && (
                       <p className="mt-1 text-xs font-bold text-success">{t("claim.granted_line", { days: t("days", { count: c.response.days }), date: pmDate(c.response.on, locale), rev: c.revision ?? 0 })}</p>
@@ -318,7 +320,7 @@ export function ClaimsPanel({
                       </Button>
                     )}
                     {canRespond && c.status === "sub" && (
-                      <Button size="sm" variant="outline" onClick={() => setResponding({ c, response: "", days: "", amount: "", ref: "" })}>
+                      <Button size="sm" onClick={() => setResponding({ c, response: "", days: "", amount: "", ref: "" })}>
                         {t("claim.record_response")}
                       </Button>
                     )}
@@ -581,11 +583,11 @@ export function ClaimsPanel({
 
 function Tile({ icon: Icon, label, value, note, tone }: { icon: typeof Clock; label: string; value: string; note: string; tone?: "good" | "bad" }) {
   return (
-    <div className="rounded-2xl border bg-card p-4">
+    <div className="min-w-0 rounded-xl border bg-card p-3 sm:p-4">
       <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
         <Icon size={13} aria-hidden="true" /> {label}
       </p>
-      <p className={cn("mt-1 text-xl font-black tabular-nums", tone === "bad" ? "text-destructive" : tone === "good" ? "text-success" : "text-foreground")} dir="auto">
+      <p className={cn("mt-1 text-lg font-black tabular-nums sm:text-xl", tone === "bad" ? "text-destructive" : tone === "good" ? "text-success" : "text-foreground")} dir="auto">
         {value}
       </p>
       <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
