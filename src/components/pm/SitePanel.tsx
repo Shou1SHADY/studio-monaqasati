@@ -195,13 +195,13 @@ export function SitePanel({
     return (
       <div className={cn("flex shrink-0 flex-wrap gap-1.5", stacked && "flex-col items-end")}>
         {canChase && (
-          <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => chase(o)}>
+          <Button size="sm" disabled={busy !== null} onClick={() => chase(o)}>
             {busy === `c${o.id}` && <Loader2 size={14} className="me-1.5 animate-spin" aria-hidden="true" />}
             {t("site.obs.chase")}
           </Button>
         )}
         {canClaim && claimable(o) && !cover && (
-          <Button size="sm" variant="outline" onClick={() => onLogClaim?.(claimSeed(o))}>
+          <Button size="sm" variant={canChase ? "ghost" : "default"} onClick={() => onLogClaim?.(claimSeed(o))}>
             <Gavel size={14} className="me-1.5" aria-hidden="true" />
             {t("site.obs.log_claim")}
           </Button>
@@ -240,12 +240,8 @@ export function SitePanel({
   const shown = allDaily ? reports : reports.slice(0, DAILY_SHOWN)
   const dailyPanel = (
     <Panel
-      title={
-        <>
-          {t("site.daily.title")}
-          <span className="ms-2 text-xs font-normal text-muted-foreground">{t("site.daily.sub")}</span>
-        </>
-      }
+      title={t("site.daily.title")}
+      description={t("site.daily.sub")}
       icon={Camera}
       actions={
         canDaily ? (
@@ -265,9 +261,7 @@ export function SitePanel({
       bodyClassName="p-0"
     >
       {reports.length === 0 ? (
-        <div className="p-4">
-          <EmptyState icon={Camera} title={t("site.daily.empty")} description={t("site.daily.empty_desc")} />
-        </div>
+        <EmptyState bare icon={Camera} title={t("site.daily.empty")} description={t("site.daily.empty_desc")} />
       ) : (
         <>
           <ul className="divide-y">
@@ -385,12 +379,8 @@ export function SitePanel({
 
   const sidePanel = (
     <Panel
-      title={
-        <>
-          {t("site.obs.title")}
-          {closed.length > 0 && <span className="ms-2 text-xs font-normal text-muted-foreground">{t("site.obs.and_closed", { count: closed.length })}</span>}
-        </>
-      }
+      title={t("site.obs.title")}
+      description={closed.length > 0 ? t("site.obs.and_closed", { count: closed.length }) : undefined}
       icon={AlertTriangle}
       count={open.length}
       actions={newObstacle}
@@ -416,11 +406,9 @@ export function SitePanel({
   const boards = (
     <Panel title={t("site.obs.title")} icon={AlertTriangle} count={open.length} actions={newObstacle} bodyClassName="p-0">
       {obstacles.length === 0 ? (
-        <div className="p-4">
-          <EmptyState icon={AlertTriangle} title={t("site.obs.empty")} description={t("site.obs.empty_desc")} />
-        </div>
+        <EmptyState bare icon={AlertTriangle} title={t("site.obs.empty")} description={t("site.obs.empty_desc")} />
       ) : (
-        <div className="grid lg:grid-cols-2 lg:divide-x lg:rtl:divide-x-reverse">
+        <div className="grid grid-cols-1 lg:grid-cols-2 lg:divide-x lg:rtl:divide-x-reverse">
           <section aria-label={t("site.obs.open")}>
             <h4 className="flex items-center gap-2 border-b px-4 py-2.5 text-xs font-bold">
               <AlertTriangle size={14} className="text-warning" aria-hidden="true" />
@@ -484,12 +472,8 @@ export function SitePanel({
   )
   const safetyPanel = (
     <Panel
-      title={
-        <>
-          {t("site.hse.title")}
-          <span className="ms-2 text-xs font-normal text-muted-foreground">{t("site.hse.sub")}</span>
-        </>
-      }
+      title={t("site.hse.title")}
+      description={t("site.hse.sub")}
       icon={ShieldCheck}
       actions={
         canHse ? (
@@ -507,17 +491,17 @@ export function SitePanel({
       }
       bodyClassName="p-0"
     >
-      <div className="m-4 grid overflow-hidden rounded-xl border sm:grid-cols-3 sm:divide-x sm:rtl:divide-x-reverse max-sm:divide-y">
+      <div className="grid grid-cols-1 border-b sm:grid-cols-3 sm:divide-x sm:rtl:divide-x-reverse max-sm:divide-y">
         {tile(t("site.hse.since_lti"), since ? t("days", { count: since.days }) : "—", since ? (since.fromLti ? t("site.hse.since_lti_last") : t("site.hse.since_lti_none")) : t("site.hse.since_lti_unstarted"))}
         {tile(t("site.hse.lost"), String(lost), t("site.hse.lost_sub"), lost > 0)}
         {tile(t("site.hse.live_permits"), String(live.length), dead.length ? t("site.hse.expired_n", { count: dead.length }) : t("site.hse.none_expired"))}
       </div>
       {permits.length > 0 && (
-        <ul className="mx-4 mb-3 space-y-1.5">
+        <ul className="divide-y border-b">
           {permits.map((p) => {
             const st = permitState(p, today)
             return (
-              <li key={p.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
+              <li key={p.id} className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-sm">
                 <span className="min-w-0 flex-1">
                   <b className="block" dir="auto">
                     {pmtKind(p) ? `${pmtKind(p)} — ${p.title}` : p.title}
@@ -529,7 +513,7 @@ export function SitePanel({
                 <Files files={p.files} />
                 <StatusPill tone={pmtTone[st]}>{pmtText(p)}</StatusPill>
                 {canHse && st !== "closed" && st !== "expired" && (
-                  <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => closePermit(p)}>
+                  <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => closePermit(p)}>
                     {busy === `p${p.id}` && <Loader2 size={14} className="me-1.5 animate-spin" aria-hidden="true" />}
                     {t("site.hse.pmt_close")}
                   </Button>
@@ -540,9 +524,9 @@ export function SitePanel({
         </ul>
       )}
       {incidents.length === 0 ? (
-        <p className="border-t px-4 py-6 text-center text-sm text-muted-foreground">{t("site.hse.empty")}</p>
+        <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("site.hse.empty")}</p>
       ) : (
-        <ul className="divide-y border-t">
+        <ul className="divide-y">
           {incidents.map((x) => {
             const known = (INCIDENT_TYPES as readonly string[]).includes(x.type)
             return (
