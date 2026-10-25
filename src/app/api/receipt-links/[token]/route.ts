@@ -3,6 +3,7 @@ import { getAdminFirestore } from "@/lib/firebaseAdmin"
 import { deliveryLines, maskPhone, resolveReceiptLink } from "@/lib/receipt-links"
 import { resolveLanding } from "@/lib/procurement/receipt-effects-server"
 import { projectsOn } from "@/lib/procurement/financeless-server"
+import { buyerCompanyName, receiveNoticeNumber, receivePlace } from "@/lib/procurement/receive-view"
 
 // Public: what the receiver needs to count a delivery — and nothing more.
 // The token is 32 random bytes, so it is the key; what comes back is the
@@ -30,6 +31,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
       { warehouseId: (delivery.landedWarehouseId as string | undefined) || (delivery.warehouseId as string | undefined) || null, projectId: (delivery.projectId as string | undefined) || (po?.projectId as string | undefined) || null, receiverUserId: link.receiver.userId },
       false
     )
+    // RC-06: where the goods are going and for which company — the header strip and the meta row above the count.
+    const orgId = link.organizationId
+    const [whDoc, projectDoc, orgDoc, ownerDoc] = await Promise.all([
+      db.collection("warehouses").doc(place.warehouseId).get(),
+      po?.projectId || delivery.projectId ? db.collection("projects").doc(String(po?.projectId || delivery.projectId)).get() : Promise.resolve(null),
+      db.collection("organizations").doc(orgId).get(),
+      db.collection("users").doc(orgId).get(),
+    ])
+    const facts = receivePlace({
+      site: (po?.site as Parameters<typeof receivePlace>[0]["site"]) || null,
+      warehouse: whDoc.exists ? (whDoc.data() as { name?: string; location?: string }) : null,
+      project: projectDoc && projectDoc.exists ? (projectDoc.data() as { name?: string; location?: string }) : null,
+    })
+    const poNumber = (po?.docNumber as string) || (delivery.poNumber as string) || null
     return NextResponse.json({
       success: true,
       data: {
@@ -37,7 +52,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
         receiverName: link.receiver.name,
         phoneMasked: maskPhone(link.receiver.phone),
         supplierName: (delivery.supplierName as string) || "",
-        poNumber: (po?.docNumber as string) || (delivery.poNumber as string) || null,
+        poNumber,
+        noticeNumber: receiveNoticeNumber(poNumber, delivery.seq),
+        placeName: facts.placeName,
+        address: facts.address,
+        mapUrl: facts.mapUrl,
+        companyName: buyerCompanyName(orgDoc.exists ? orgDoc.data() : null, ownerDoc.exists ? ownerDoc.data() : null),
         rfqTitle: (po?.rfqTitle as string) || (delivery.rfqTitle as string) || "",
         // The member it was forwarded to may confirm signed in, without a code.
         receiverUserId: link.receiver.userId || null,

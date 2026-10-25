@@ -15141,7 +15141,7 @@
         "errNotMember": "That person is not on your company's team",
         "cancel": "Cancel"
       },
-      "title": "Goods receipts",
+      "title": "Receipts",
       "subtitle": "Procurement follows until supply completes; only the receiver counts and confirms.",
       "showMore": "Show {n} more",
       "caption": {
@@ -15197,7 +15197,13 @@
         "frame": "Preview of the receiver's page",
         "deliveryDay": "Delivery",
         "viaAccount": "in his account: My tasks",
-        "viaLink": "by link and code"
+        "viaLink": "by link and code",
+        "view": "View",
+        "view_phone": "Phone",
+        "view_full": "Full screen",
+        "tasks_frame": "Mdmak · My tasks",
+        "code_step": "Enter the code sent to your mobile {phone}",
+        "code_enter": "Enter"
       },
       "draft": {
         "title": "Awaiting your confirmation",
@@ -15260,6 +15266,8 @@
       "searchPlaceholder": "Search by receipt, order, supplier or line…",
       "projectFilter": "Project",
       "allProjects": "All projects",
+      "placeFilter": "Delivery location",
+      "allPlaces": "All locations",
       "segments": {
         "transit": "In transit",
         "fwd": "Awaiting your forward",
@@ -15546,7 +15554,7 @@
         "afterCash": "Cash expense with no PO: goes to the accounting file with its value, and shows in the exceptions report."
       },
       "manual": {
-        "button": "Record a receipt manually",
+        "button": "Record a manual receipt",
         "title": "Record a manual receipt",
         "subtitle": "For purchases made off-platform: joins the receipts tagged “manual”, with the same effects as any receipt.",
         "site": "Delivery location",
@@ -15607,7 +15615,15 @@
         "errDate": "The date is today or earlier",
         "errCountOne": "Enter the count for at least one line",
         "errCountNumber": "A count is a number, zero or more",
-        "qtyHint": "Quantity here is what was actually received, with the same material row as everywhere."
+        "qtyHint": "Quantity here is what was actually received, with the same material row as everywhere.",
+        "lineMaterial": "Material",
+        "pickFromTree": "Pick the material from the tree",
+        "outsideTree": "Not in the list",
+        "optional": "optional",
+        "lineInvoicePlaceholder": "As written on the shop's invoice",
+        "rowNo": "Row {n}",
+        "siteNoStore": "site without a warehouse",
+        "siteEffectRecord": "A site without a warehouse: a receipt record only — no stock enters."
       },
       "regularise": {
         "title": "Regularise with a retroactive PO",
@@ -15718,6 +15734,15 @@
         "sig_reviewed": "Reviewed",
         "sig_copy": "Gets a copy"
       },
+      "doc": {
+        "title": "Receipt {number} — PDF",
+        "caption": "As printed and sent; the supplier and receiver hold copies.",
+        "download": "Download PDF",
+        "print": "Print",
+        "close": "Close",
+        "frame": "Receipt page {number}",
+        "downloadHint": "Choose “Save as PDF” in the print window — the file is named after the receipt."
+      },
       "place": {
         "general": "General stock",
         "workshop": "Workshop"
@@ -15793,7 +15818,8 @@
         "pm": "Projects: charged to the BOQ item; the material shows “arrived”",
         "mfg": "Manufacturing: the work order’s material reached the workshop store",
         "fin": "Finance: second match leg; billable cap = accepted",
-        "fin_off": "Without Finance: goes into the period’s accounting export"
+        "fin_off": "Without Finance: goes into the period’s accounting export",
+        "site": "Site: a receipt record only — no warehouse there, so no stock"
       }
     },
     "ProcReports": {
@@ -16112,6 +16138,7 @@
         "source_po": "Purchase order",
         "source_offer": "Offer",
         "source_agreement": "Agreement",
+        "source_manual": "Manual",
         "material_file": "Material file",
         "table": "Prices of {name} by source",
         "caption": "Built from the POs, offers and price agreements themselves; it feeds “Price vs last purchase” above the pages and the reference price Manufacturing reads.",
@@ -27841,6 +27868,15 @@
   },
   "ReceiveLink": {
     "eyebrow": "Receive a delivery",
+    "brand_mark": "M",
+    "brand": "Mdmak",
+    "order_label": "Order",
+    "from_supplier": "A delivery from {name}",
+    "meta_label": "Delivery details",
+    "map": "Map",
+    "delivery_on": "Delivery",
+    "switch_lang": "العربية",
+    "footer": "Mdmak Tech — connecting contractors and suppliers",
     "supplier_unknown": "Delivery",
     "intro": "{name} forwarded this delivery to you. Count what actually arrived, say what you did not accept and why, then confirm the receipt — confirming is your signature.",
     "intro_arrival": "This delivery arrived with no notice from the supplier. Count what actually arrived, say what you did not accept and why, then confirm the receipt.",

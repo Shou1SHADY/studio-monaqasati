@@ -12,7 +12,10 @@ import { manualReceiptKey } from "./event-keys"
 import type { ManualReceiptBody } from "./manual-receipt-form"
 import { sendProcEvent } from "./proc-event-server"
 import { centralWarehouseId, landStock, resolveLanding } from "./receipt-effects-server"
-import type { DeliveryLine } from "./types"
+import { projectSiteId, storedSites } from "./delivery-sites"
+import { PRICE_HISTORY, materialKey, specKeyOf } from "./prices"
+import { round2 } from "./po"
+import { PROCUREMENT_SETTINGS, type DeliveryLine } from "./types"
 
 export type ManualReceiptRefusalCode = "site_missing" | "date_future" | "delivery_missing" | "not_a_draft" | "not_yours"
 
@@ -48,15 +51,24 @@ const yearOf = (now: Date) => Number(riyadhDay(now).slice(0, 4))
 export async function createManualReceipt(db: Firestore, caller: ManualCaller, body: ManualReceiptBody, now: Date = new Date()): Promise<ManualReceiptResult> {
   const orgId = caller.orgId
   if (body.deliveryDate > riyadhDay(now)) throw new ManualReceiptRefusal("date_future")
-  // The company's central store is made the first time anything needs it, with the id everyone uses.
-  if (body.warehouseId === centralWarehouseId(orgId)) await resolveLanding(db, orgId, { warehouseId: body.warehouseId })
-  const wh = (await db.collection("warehouses").doc(body.warehouseId).get()).data() as { organizationId?: string; projectId?: string | null; name?: string } | undefined
-  if (!wh || wh.organizationId !== orgId) throw new ManualReceiptRefusal("site_missing")
-  const draft = !wh.projectId
+  const place = await resolveManualPlace(db, orgId, body)
+  const draft = place.kind === "main"
+  const recordOnly = place.kind === "site"
+  const warehouseId = place.warehouseId
   const at = now.toISOString()
   const ref = db.collection("deliveries").doc()
-  const items = body.items.map((it) => ({ itemId: null, name: it.name, quantity: it.quantity, unit: it.unit, unitPrice: it.unitPrice ?? null }))
-  const lines: DeliveryLine[] = body.items.map((it, i) => ({ poLineId: `i${i + 1}`, name: it.name, unit: it.unit, noticeQuantity: 0, counted: it.quantity, rejected: 0, held: 0, accepted: it.quantity }))
+  // RC-03: a row carries the tree's material and its specification key, so the purchase joins price history and the material drawer.
+  const specOf = (it: ManualReceiptBody["items"][number]) => (it.material ? specKeyOf({ name: it.name, unit: it.unit, material: it.material }) : { materialId: null, specKey: null })
+  const material = (it: ManualReceiptBody["items"][number]) => {
+    const k = specOf(it)
+    return {
+      ...(it.material ? { material: it.material } : {}),
+      ...(k.specKey ? { materialId: k.materialId, specKey: k.specKey } : {}),
+      ...(it.invoiceName ? { invoiceName: it.invoiceName } : {}),
+    }
+  }
+  const items = body.items.map((it) => ({ itemId: null, name: it.name, quantity: it.quantity, unit: it.unit, unitPrice: it.unitPrice ?? null, ...material(it) }))
+  const lines: DeliveryLine[] = body.items.map((it, i) => ({ poLineId: `i${i + 1}`, name: it.name, unit: it.unit, noticeQuantity: 0, counted: it.quantity, rejected: 0, held: 0, accepted: it.quantity, ...material(it) }))
   const year = yearOf(now)
   const counter = db.collection("mfgCounters").doc(`${orgId}__GR__${year}`)
 
@@ -73,9 +85,10 @@ export async function createManualReceipt(db: Firestore, caller: ManualCaller, b
       deliveryDate: body.deliveryDate,
       notes: body.notes || null,
       receiptNote: body.notes || null,
-      warehouseId: body.warehouseId,
-      landedWarehouseId: draft ? null : body.warehouseId,
-      projectId: wh.projectId || null,
+      warehouseId,
+      landedWarehouseId: draft || recordOnly ? null : warehouseId,
+      projectId: place.projectId,
+      ...(recordOnly ? { deliverySiteId: place.siteId, deliverySiteName: place.name, recordOnly: true } : {}),
       items,
       lines,
       docNumber: number,
@@ -86,7 +99,7 @@ export async function createManualReceipt(db: Firestore, caller: ManualCaller, b
       status: "confirmed",
       source: "manual",
       recordedBy: "procurement_manual",
-      receiverModule: draft ? "inventory" : "projects",
+      receiverModule: draft ? "inventory" : recordOnly && !place.projectId ? "inventory" : "projects",
       receivedByName: caller.name,
       confirmedByUserId: caller.uid,
       confirmedByName: caller.name,
@@ -95,14 +108,15 @@ export async function createManualReceipt(db: Firestore, caller: ManualCaller, b
       attachmentUrls: body.attachments.map((a) => a.url),
       postedNet: null,
       selfReceived: false,
-      ...(draft ? { manualDraft: { state: "draft", warehouseId: body.warehouseId, byId: caller.uid, byName: caller.name, at } } : {}),
+      ...(draft ? { manualDraft: { state: "draft", warehouseId, byId: caller.uid, byName: caller.name, at } } : {}),
       ...(body.after === "cash" ? { regularisation: "expense", regularisedAt: at, regularisedById: caller.uid, regularisedByName: caller.name } : {}),
     })
     return number
   })
 
-  const stockLanded = draft ? false : await landManual(db, orgId, body.warehouseId, items)
-  await sendProcEvent(db, { id: "receipt_manual", key: manualReceiptKey(docNumber), organizationId: orgId, by: caller.uid, at, refs: { grn: docNumber, warehouse: body.warehouseId }, payload: { supplier: body.supplierName, lines: lines.length, draft, after: body.after } })
+  const stockLanded = draft || recordOnly || !warehouseId ? false : await landManual(db, orgId, warehouseId, items)
+  await recordManualPrices(db, { orgId, deliveryId: ref.id, docNumber, day: body.deliveryDate, supplierName: body.supplierName, supplierOrgId: body.supplierOrgId || null, items: body.items })
+  await sendProcEvent(db, { id: "receipt_manual", key: manualReceiptKey(docNumber), organizationId: orgId, by: caller.uid, at, refs: { grn: docNumber, ...(warehouseId ? { warehouse: warehouseId } : { site: place.siteId || "" }) }, payload: { supplier: body.supplierName, lines: lines.length, draft, after: body.after, ...(recordOnly ? { recordOnly: true } : {}) } })
   const who = { uid: caller.uid, name: caller.name }
   const common = { organizationId: orgId, poId: null, link: `/contractor/goods-received?tab=nopo&delivery=${ref.id}` }
   await notifyNamed(db, who, { kind: "receipt_manual", ...common, params: { receipt: docNumber, supplier: body.supplierName, order: draft ? " — مسودة بانتظار تأكيد أمين المستودع" : "" } }, [], { permissions: ["invoices.manage", "accounting.post"] }).catch(warn)
@@ -112,6 +126,85 @@ export async function createManualReceipt(db: Firestore, caller: ManualCaller, b
 }
 
 const warn = (err: unknown) => console.warn("manual receipt notice failed:", (err as { code?: string })?.code || err)
+
+/** Where a manual receipt goes (RC-04): a project's store (lands at once), a main store (a draft the storekeeper confirms), or a
+ * delivery site with no store — a work site — where it is a RECORD of what arrived, and no stock moves. */
+export interface ManualPlaceResolved {
+  kind: "project" | "main" | "site"
+  warehouseId: string | null
+  siteId: string | null
+  projectId: string | null
+  name: string | null
+}
+
+export async function resolveManualPlace(db: Firestore, orgId: string, body: Pick<ManualReceiptBody, "warehouseId" | "siteId">): Promise<ManualPlaceResolved> {
+  if (body.warehouseId) {
+    // The company's central store is made the first time anything needs it, with the id everyone uses.
+    if (body.warehouseId === centralWarehouseId(orgId)) await resolveLanding(db, orgId, { warehouseId: body.warehouseId })
+    const wh = (await db.collection("warehouses").doc(body.warehouseId).get()).data() as { organizationId?: string; projectId?: string | null; name?: string } | undefined
+    if (!wh || wh.organizationId !== orgId) throw new ManualReceiptRefusal("site_missing")
+    return { kind: wh.projectId ? "project" : "main", warehouseId: body.warehouseId, siteId: null, projectId: wh.projectId || null, name: wh.name || null }
+  }
+  const siteId = body.siteId || ""
+  if (!siteId) throw new ManualReceiptRefusal("site_missing")
+  const settings = (await db.collection(PROCUREMENT_SETTINGS).doc(orgId).get()).data() as { deliverySites?: unknown } | undefined
+  const site = storedSites(settings?.deliverySites).find((s) => s.id === siteId && !s.retired)
+  if (site) {
+    // A stored site that IS a store is that store (the browser sends the store; this is the belt to its braces).
+    if (site.warehouseId) return resolveManualPlace(db, orgId, { warehouseId: site.warehouseId })
+    return { kind: "site", warehouseId: null, siteId: site.id, projectId: site.projectId || null, name: site.name }
+  }
+  // A project's site not stored yet (`prj_<id>`, Projects on, the project has no store of its own).
+  if (siteId.startsWith("prj_")) {
+    const projectId = siteId.slice(4)
+    const project = (await db.collection("projects").doc(projectId).get()).data() as { organizationId?: string; name?: string; warehouseId?: string | null } | undefined
+    if (project && project.organizationId === orgId && projectSiteId(projectId) === siteId) {
+      if (project.warehouseId) return resolveManualPlace(db, orgId, { warehouseId: project.warehouseId })
+      return { kind: "site", warehouseId: null, siteId, projectId, name: project.name || null }
+    }
+  }
+  throw new ManualReceiptRefusal("site_missing")
+}
+
+/**
+ * RC-03: what was paid for each priced row joins the price history as a «يدوي» point — the same `priceHistory` rows an approved order
+ * writes, keyed by the receipt's line so a retry overwrites its own row. Best-effort: a receipt is never refused for its prices.
+ */
+async function recordManualPrices(
+  db: Firestore,
+  m: { orgId: string; deliveryId: string; docNumber: string; day: string; supplierName: string; supplierOrgId: string | null; items: ManualReceiptBody["items"] }
+): Promise<void> {
+  try {
+    await Promise.all(
+      m.items.map((it, i) => {
+        const price = it.unitPrice != null ? round2(Number(it.unitPrice)) : 0
+        if (!(price > 0)) return null
+        const k = it.material ? specKeyOf({ name: it.name, unit: it.unit, material: it.material }) : { materialId: null, specKey: null }
+        return db
+          .collection(PRICE_HISTORY)
+          .doc(`${m.deliveryId}__i${i + 1}`)
+          .set({
+            organizationId: m.orgId,
+            materialKey: materialKey(it.name, it.unit),
+            ...(k.specKey ? { specKey: k.specKey, materialId: k.materialId } : {}),
+            name: it.name,
+            unit: it.unit,
+            supplierOrgId: m.supplierOrgId || "",
+            supplierName: m.supplierName,
+            price,
+            day: m.day,
+            kind: "manual",
+            poId: null,
+            poNumber: null,
+            receiptId: m.deliveryId,
+            receiptNumber: m.docNumber,
+          })
+      })
+    )
+  } catch (err) {
+    console.warn("manual receipt prices not recorded:", (err as { code?: string })?.code || err)
+  }
+}
 
 async function landManual(db: Firestore, orgId: string, warehouseId: string, items: Array<{ name: string; quantity: number; unit: string; unitPrice: number | null }>): Promise<boolean> {
   try {

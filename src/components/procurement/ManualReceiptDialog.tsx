@@ -13,25 +13,31 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useLocale, useTranslations } from "next-intl"
 import { getAuth } from "firebase/auth"
 import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage"
-import { Loader2, Paperclip, Plus, PlusCircle, Trash2, X } from "lucide-react"
+import { Loader2, MapPin, Paperclip, Plus, PlusCircle, Trash2, X } from "lucide-react"
 import { useStorage } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Chip } from "@/components/module-ui/Chip"
+import { NativeSelect } from "@/components/module-ui/NativeSelect"
+import { StatusPill } from "@/components/module-ui/StatusPill"
+import { MaterialSearchInput } from "@/components/materials/MaterialSearchInput"
+import { MaterialSpecCells } from "@/components/materials/MaterialSpecCells"
+import { MaterialBrowserDialog, type BrowserResult } from "@/components/materials/MaterialBrowserDialog"
+import { useMaterialTree } from "@/hooks/useMaterialTree"
+import { label, pathLabel, pickOf, unitsOf, type MaterialHit } from "@/lib/materials/tree"
 import { cn } from "@/lib/utils"
 import { displayReceiptNumber } from "@/lib/procurement/format"
-import { MANUAL_AFTER, manualFormToBody, manualReceiptSchema, type ManualReceiptValues } from "@/lib/procurement/manual-receipt-form"
+import { MANUAL_AFTER, manualFormToBody, manualReceiptSchema, type ManualPlace, type ManualReceiptValues } from "@/lib/procurement/manual-receipt-form"
 import { registeredSuppliers } from "@/lib/procurement/receipt-regularise"
 import type { ProcActor, PurchaseOrder } from "@/lib/procurement/types"
 
 type FormValues = ManualReceiptValues
 
-const emptyRow = (): FormValues["rows"][number] => ({ inventoryItemId: "", itemName: "", quantity: "", unit: "", unitPrice: "" })
+const emptyRow = (): FormValues["rows"][number] => ({ inventoryItemId: "", itemName: "", quantity: "", unit: "", unitPrice: "", material: null, invoiceName: "" })
 
 export interface ManualReceiptDialogProps {
   open: boolean
@@ -39,12 +45,12 @@ export interface ManualReceiptDialogProps {
   actor: ProcActor
   orgId: string
   orders: PurchaseOrder[]
-  /** The stores a purchase can be delivered to; the central one first. */
-  warehouses: Array<{ id: string; name: string; projectId?: string | null }>
+  /** Every place a purchase can be delivered to (RC-04): stores, project sites and work sites; the central store first. */
+  places: ManualPlace[]
   onDone: (deliveryId: string, tab: "nopo") => void
 }
 
-export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, warehouses, onDone }: ManualReceiptDialogProps) {
+export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, places, onDone }: ManualReceiptDialogProps) {
   const t = useTranslations("Portal.ProcReceipts")
   const tc = useTranslations("Portal.Contractor")
   const locale = useLocale()
@@ -54,6 +60,9 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
   const today = new Date().toISOString().slice(0, 10)
   const fileRef = useRef<HTMLInputElement>(null)
   const [files, setFiles] = useState<File[]>([])
+  const { index } = useMaterialTree()
+  // The row whose material is being picked in the tree browser (RC-03), and the words it opened with.
+  const [browse, setBrowse] = useState<{ row: number; query: string; freeText: string | null } | null>(null)
 
   const blank = (): FormValues => ({ supplierName: "", supplierOrgId: "", deliveryDate: today, warehouseId: "", invoiceNumber: "", invoiceValue: "", after: "later", notes: "", rows: [emptyRow()] })
   const schema = useMemo(() => manualReceiptSchema(today), [today])
@@ -64,8 +73,26 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
   const warehouseId = useWatch({ control, name: "warehouseId" })
   const after = useWatch({ control, name: "after" })
   const supplierName = useWatch({ control, name: "supplierName" })
+  const rows = useWatch({ control, name: "rows" })
   const registered = useMemo(() => registeredSuppliers(orders), [orders])
-  const picked = warehouses.find((w) => w.id === warehouseId) || null
+  // `warehouseId` holds the picked PLACE's id (a site, or `wh_<id>` for a store no site names).
+  const picked = places.find((w) => w.id === warehouseId) || null
+
+  /** Fill a row from the tree: the material, the specs the words named, the material's unit (RC-03 — the row used everywhere). */
+  const fillRow = (i: number, pick: BrowserResult["pick"], unitText: string, typed?: string) => {
+    const cur = form.getValues(`rows.${i}`)
+    const leaf = pick.path[pick.path.length - 1]
+    setValue(`rows.${i}.material`, pick, { shouldDirty: true })
+    setValue(`rows.${i}.itemName`, typed?.trim() || cur.itemName.trim() || (pick.outside ? cur.itemName : label(leaf, locale)), { shouldValidate: formState.isSubmitted })
+    if (unitText && !cur.unit.trim()) setValue(`rows.${i}.unit`, unitText)
+  }
+  const fromHit = (i: number, hit: MaterialHit) => {
+    if (!index) return
+    const pick = pickOf(index, hit.node.id, hit.preset.map((p) => ({ name: { ar: p.spec.ar, en: p.spec.en }, value: p.value })))
+    if (!pick) return
+    const units = unitsOf(index, hit.node.id)
+    fillRow(i, pick, units[0] ? label(units[0], locale) : "")
+  }
 
   const reset = () => {
     form.reset(blank())
@@ -93,7 +120,8 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
     if (!user || !orgId) return
     try {
       const guess = registered.find((s) => s.name.trim() === v.supplierName.trim())
-      const body = manualFormToBody({ ...v, supplierOrgId: guess?.orgId || "" }, await upload(), { seesPrices: actor.seesPrices, unitDefault: t("manual.unitDefault") })
+      const place = places.find((w) => w.id === v.warehouseId) || null
+      const body = manualFormToBody({ ...v, supplierOrgId: guess?.orgId || "" }, await upload(), { seesPrices: actor.seesPrices, unitDefault: t("manual.unitDefault"), place })
       const res = await fetch("/api/procurement/manual-receipt", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user.getIdToken()}` }, body: JSON.stringify(body) })
       const json = (await res.json().catch(() => null)) as { data?: { deliveryId: string; docNumber: string; draft: boolean; stockLanded: boolean }; code?: string } | null
       if (!res.ok || !json?.data) {
@@ -141,21 +169,22 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="manual-site">{t("manual.site")} *</Label>
-              <Select value={warehouseId || "__none__"} onValueChange={(v) => setValue("warehouseId", v === "__none__" ? "" : v, { shouldValidate: formState.isSubmitted })}>
-                <SelectTrigger id="manual-site" aria-invalid={Boolean(errors.warehouseId)}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">{t("manual.sitePlaceholder")}</SelectItem>
-                  {warehouses.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>
-                      {w.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <NativeSelect id="manual-site" value={warehouseId || ""} onChange={(e) => setValue("warehouseId", e.target.value, { shouldValidate: formState.isSubmitted })} aria-invalid={Boolean(errors.warehouseId)}>
+                <option value="">{t("manual.sitePlaceholder")}</option>
+                {places.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                    {w.warehouseId ? "" : ` — ${t("manual.siteNoStore")}`}
+                  </option>
+                ))}
+              </NativeSelect>
               <FieldError code={errors.warehouseId?.message} />
-              {picked && <p className="text-[11px] text-muted-foreground">{picked.projectId ? t("manual.siteEffectSite") : t("manual.siteEffectMain")}</p>}
+              {picked && (
+                <p className="flex items-start gap-1 text-[11px] text-muted-foreground">
+                  <MapPin size={11} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  {!picked.warehouseId ? t("manual.siteEffectRecord") : picked.projectId ? t("manual.siteEffectSite") : t("manual.siteEffectMain")}
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="manual-date">{t("manual.date")} *</Label>
@@ -186,35 +215,84 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
             <div className="space-y-2">
               {fields.map((row, i) => {
                 const rowErr = errors.rows?.[i]
+                const cur = rows?.[i]
+                const material = cur?.material || null
+                const started = Boolean(material) || Boolean(cur?.itemName?.trim())
+                const units = material && index && !material.outside ? unitsOf(index, material.nodeId) : []
                 return (
-                  <div key={row.id} className={cn("grid grid-cols-2 gap-2 rounded-md border p-2", rowErr ? "border-destructive/50" : "", actor.seesPrices ? "sm:grid-cols-[2.2fr_1fr_1fr_1fr_auto]" : "sm:grid-cols-[2.2fr_1fr_1fr_auto]")}>
-                    <div className="col-span-2 sm:col-span-1">
-                      <Label htmlFor={`mi-name-${i}`} className="text-[11px]">{t("manual.lineDesc")}</Label>
-                      <Input id={`mi-name-${i}`} {...register(`rows.${i}.itemName`)} placeholder={t("manual.lineDescPlaceholder")} className="h-9 text-sm" dir="auto" aria-invalid={Boolean(rowErr?.itemName)} />
-                    </div>
-                    <div>
-                      <Label htmlFor={`mi-qty-${i}`} className="text-[11px]">{tc("goods_manual_item_qty")}</Label>
-                      <Input id={`mi-qty-${i}`} inputMode="decimal" {...register(`rows.${i}.quantity`)} placeholder="0" dir="ltr" className="h-9 text-sm tabular-nums" aria-invalid={Boolean(rowErr?.quantity)} />
-                    </div>
-                    <div>
-                      <Label htmlFor={`mi-unit-${i}`} className="text-[11px]">{tc("goods_manual_item_unit")}</Label>
-                      <Input id={`mi-unit-${i}`} {...register(`rows.${i}.unit`)} placeholder={t("manual.unitPlaceholder")} className="h-9 text-sm" dir="auto" />
-                    </div>
-                    {actor.seesPrices && (
-                      <div>
-                        <Label htmlFor={`mi-price-${i}`} className="text-[11px]">{t("manual.unitPrice")}</Label>
-                        <Input id={`mi-price-${i}`} inputMode="decimal" {...register(`rows.${i}.unitPrice`)} placeholder="—" dir="ltr" className="h-9 text-sm tabular-nums" />
+                  <div key={row.id} className={cn("space-y-2 rounded-md border p-2", rowErr ? "border-destructive/50" : "")}>
+                    <div className="flex items-start gap-2">
+                      <span className="pt-2 text-xs tabular-nums text-muted-foreground">{i + 1}</span>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <Label htmlFor={`mi-name-${i}`} className="text-[11px]">{t("manual.lineMaterial")}</Label>
+                        {started ? (
+                          <>
+                            <Input id={`mi-name-${i}`} {...register(`rows.${i}.itemName`)} placeholder={t("manual.lineDescPlaceholder")} className="h-9 text-sm font-semibold" dir="auto" aria-invalid={Boolean(rowErr?.itemName)} />
+                            <button
+                              type="button"
+                              onClick={() => setBrowse({ row: i, query: cur?.itemName || "", freeText: null })}
+                              className="block max-w-full truncate rounded px-1 text-start text-[11px] text-muted-foreground hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              {material ? pathLabel(material.path, locale, !material.outside) : t("manual.pickFromTree")}
+                              {material?.outside && (
+                                <StatusPill tone="warn" className="ms-1.5 text-[10px]">
+                                  {t("manual.outsideTree")}
+                                </StatusPill>
+                              )}
+                            </button>
+                            {material && <MaterialSpecCells index={index} pick={material} onChange={(m) => setValue(`rows.${i}.material`, m, { shouldDirty: true })} />}
+                          </>
+                        ) : (
+                          <MaterialSearchInput
+                            index={index}
+                            ariaLabel={t("manual.lineMaterial")}
+                            onPick={(hit) => fromHit(i, hit)}
+                            onBrowse={(q) => setBrowse({ row: i, query: q, freeText: null })}
+                            onFreeText={(text) => setValue(`rows.${i}.itemName`, text, { shouldValidate: formState.isSubmitted })}
+                          />
+                        )}
                       </div>
-                    )}
-                    <div className="flex items-end justify-end">
                       {fields.length > 1 && (
-                        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-destructive/60 hover:text-destructive" aria-label={t("manual.removeLine")} onClick={() => remove(i)}>
+                        <Button type="button" variant="ghost" size="icon" className="mt-5 h-9 w-9 shrink-0 text-destructive/60 hover:text-destructive" aria-label={t("manual.removeLine")} onClick={() => remove(i)}>
                           <Trash2 size={14} aria-hidden="true" />
                         </Button>
                       )}
                     </div>
+                    <div className={cn("grid grid-cols-2 gap-2", actor.seesPrices ? "sm:grid-cols-[2fr_1fr_1fr_1fr]" : "sm:grid-cols-[2fr_1fr_1fr]")}>
+                      <div className="col-span-2 sm:col-span-1">
+                        <Label htmlFor={`mi-inv-${i}`} className="text-[11px]">
+                          {t("manual.lineDesc")} <span className="font-normal text-muted-foreground">({t("manual.optional")})</span>
+                        </Label>
+                        <Input id={`mi-inv-${i}`} {...register(`rows.${i}.invoiceName`)} placeholder={t("manual.lineInvoicePlaceholder")} className="h-9 text-sm" dir="auto" />
+                      </div>
+                      <div>
+                        <Label htmlFor={`mi-qty-${i}`} className="text-[11px]">{tc("goods_manual_item_qty")}</Label>
+                        <Input id={`mi-qty-${i}`} inputMode="decimal" {...register(`rows.${i}.quantity`)} placeholder="0" dir="ltr" className="h-9 text-sm tabular-nums" aria-invalid={Boolean(rowErr?.quantity)} />
+                      </div>
+                      <div>
+                        <Label htmlFor={`mi-unit-${i}`} className="text-[11px]">{tc("goods_manual_item_unit")}</Label>
+                        {units.length > 1 ? (
+                          <NativeSelect id={`mi-unit-${i}`} value={cur?.unit || ""} onChange={(e) => setValue(`rows.${i}.unit`, e.target.value)} className="h-9 text-sm">
+                            <option value="">—</option>
+                            {units.map((u) => (
+                              <option key={u.key} value={label(u, locale)}>
+                                {label(u, locale)}
+                              </option>
+                            ))}
+                          </NativeSelect>
+                        ) : (
+                          <Input id={`mi-unit-${i}`} {...register(`rows.${i}.unit`)} placeholder={t("manual.unitPlaceholder")} className="h-9 text-sm" dir="auto" />
+                        )}
+                      </div>
+                      {actor.seesPrices && (
+                        <div>
+                          <Label htmlFor={`mi-price-${i}`} className="text-[11px]">{t("manual.unitPrice")}</Label>
+                          <Input id={`mi-price-${i}`} inputMode="decimal" {...register(`rows.${i}.unitPrice`)} placeholder="—" dir="ltr" className="h-9 text-sm tabular-nums" />
+                        </div>
+                      )}
+                    </div>
                     {(rowErr?.itemName || rowErr?.quantity) && (
-                      <div className="col-span-full space-y-0.5">
+                      <div className="space-y-0.5">
                         <FieldError code={rowErr?.itemName?.message} n={i + 1} />
                         <FieldError code={rowErr?.quantity?.message} n={i + 1} />
                       </div>
@@ -283,6 +361,19 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
             {t("manual.submit")}
           </Button>
         </DialogFooter>
+        <MaterialBrowserDialog
+          open={!!browse}
+          onOpenChange={(o) => !o && setBrowse(null)}
+          index={index}
+          initialQuery={browse?.query || ""}
+          freeText={browse?.freeText ?? null}
+          target={browse ? t("manual.rowNo", { n: browse.row + 1 }) : undefined}
+          onAdd={(r) => {
+            if (!browse) return
+            fillRow(browse.row, r.pick, r.unit ? label(r.unit, locale) : "", r.name)
+            setBrowse(null)
+          }}
+        />
       </DialogContent>
     </Dialog>
   )

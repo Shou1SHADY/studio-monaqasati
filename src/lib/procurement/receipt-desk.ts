@@ -55,6 +55,9 @@ export interface DeskDelivery extends ReceiptFact {
   escalation?: DeliveryEscalation | null
   reportedBy?: "supplier" | "onBehalf" | "link" | null
   deliveryDateIso?: string | null
+  /** A manual receipt at a delivery site with no warehouse (RC-04): the site it names and its name then — a record, no stock. */
+  deliverySiteId?: string | null
+  deliverySiteName?: string | null
 }
 
 export interface ManualDraft {
@@ -256,6 +259,35 @@ export const PLACE_WORKSHOP = "__workshop__"
 export interface DeskFilter {
   term: string
   projectId: string | null
+  /** RC-05: one delivery site, in every package — a warehouse, a work site or (with Projects) a project's site. */
+  site?: SiteFilter | null
+}
+
+/** A delivery site as the desk filter reads it: its id, the stores that are it, and its project. */
+export interface SiteFilter {
+  id: string
+  warehouseIds: string[]
+  projectId: string | null
+}
+
+/** The filter for one site: its own store, and — for a project's site — the project's stores. */
+export function siteFilterOf(site: { id: string; warehouseId?: string | null; projectId?: string | null }, warehouses: ReadonlyArray<{ id: string; projectId?: string | null }>): SiteFilter {
+  const ids = new Set<string>()
+  if (site.warehouseId) ids.add(site.warehouseId)
+  if (site.projectId) for (const w of warehouses) if (w.projectId === site.projectId) ids.add(w.id)
+  return { id: site.id, warehouseIds: [...ids], projectId: site.projectId || null }
+}
+
+/** Whether a delivery went (or goes) to the site: the site its order froze, the site a manual receipt named, its store, or its project. */
+export function siteMatches(d: DeskDelivery, po: PurchaseOrder | null, site: SiteFilter | null | undefined): boolean {
+  if (!site) return true
+  const poSite = po?.site?.id || null
+  if (poSite) return poSite === site.id
+  if (d.deliverySiteId) return d.deliverySiteId === site.id
+  const wh = d.landedWarehouseId || (d as { warehouseId?: string | null }).warehouseId || d.manualDraft?.warehouseId || null
+  if (wh && site.warehouseIds.includes(wh)) return true
+  const project = projectOf(d, po)
+  return Boolean(site.projectId && project === site.projectId)
 }
 
 const projectOf = (d: DeskDelivery, po: PurchaseOrder | null) => d.projectId || po?.projectId || null
@@ -275,7 +307,7 @@ export function segmentCounts(deliveries: DeskDelivery[], orders: PurchaseOrder[
   const byId = new Map(orders.map((o) => [o.id, o]))
   const keep = (d: DeskDelivery) => {
     const po = d.poId ? byId.get(d.poId) || null : null
-    return placeMatches(projectOf(d, po), po, filter.projectId) && deliveryMatches(filter.term, d, po)
+    return placeMatches(projectOf(d, po), po, filter.projectId) && siteMatches(d, po, filter.site) && deliveryMatches(filter.term, d, po)
   }
   return {
     transit: open.length,
@@ -288,11 +320,13 @@ export function segmentCounts(deliveries: DeskDelivery[], orders: PurchaseOrder[
 
 export function noticeRowMatches(r: NoticeRow, filter: DeskFilter): boolean {
   if (!placeMatches(projectOf(r.delivery, r.po), r.po, filter.projectId)) return false
+  if (!siteMatches(r.delivery, r.po, filter.site)) return false
   return deliveryMatches(filter.term, r.delivery, r.po)
 }
 
 export function receiptRowMatches(r: ReceiptRow, filter: DeskFilter): boolean {
   if (!placeMatches(projectOf(r.delivery, r.po), r.po, filter.projectId)) return false
+  if (!siteMatches(r.delivery, r.po, filter.site)) return false
   return deliveryMatches(filter.term, r.delivery, r.po)
 }
 

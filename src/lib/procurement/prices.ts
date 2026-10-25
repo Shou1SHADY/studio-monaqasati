@@ -202,8 +202,9 @@ export function renewalUntil(a: Pick<PriceAgreement, "until">, today: string): s
 // ---------------------------------------------------------------------------
 
 /** `po` — a price we committed to when an order was approved. `variance` — the
- * price a supplier's invoice settled at, once somebody accepted the difference. */
-export type PriceKind = "po" | "variance"
+ * price a supplier's invoice settled at, once somebody accepted the difference. `manual` — what a purchase made outside the
+ * platform was paid, as its manual receipt typed it (RC-03). */
+export type PriceKind = "po" | "variance" | "manual"
 
 export interface PriceHistoryEntry {
   id: string
@@ -223,6 +224,9 @@ export interface PriceHistoryEntry {
   kind: PriceKind
   poId: string | null
   poNumber: string | null
+  /** A `manual` row: the receipt that recorded it. */
+  receiptId?: string | null
+  receiptNumber?: string | null
 }
 
 const forMaterial = (history: PriceHistoryEntry[], name: string, unit: string): PriceHistoryEntry[] => {
@@ -388,8 +392,9 @@ export function historyRowsForApproval(po: PurchaseOrder, at: string): HistoryRo
 // the agreements we signed — and what an agreement has consumed. Pure and read-only: nothing here is stored.
 // ---------------------------------------------------------------------------
 
-/** `po` — a price we committed to on an approved order. `offer` — a price quoted to us. `agreement` — a price we agreed. */
-export type PriceSource = "po" | "offer" | "agreement"
+/** `po` — a price we committed to on an approved order. `offer` — a price quoted to us. `agreement` — a price we agreed.
+ * `manual` — a price paid outside the platform, from a manual receipt (RC-03). */
+export type PriceSource = "po" | "offer" | "agreement" | "manual"
 
 export interface PricePoint {
   id: string
@@ -410,6 +415,8 @@ export interface PricePoint {
   rfqNo: string | null
   agreementId: string | null
   agreementNo: string | null
+  /** A `manual` point: the receipt it came from (its number is `poNo`). */
+  receiptId?: string | null
 }
 
 export interface PriceOfferLike {
@@ -447,7 +454,7 @@ const isoDay = (v: unknown): string => {
 
 const sameMaterial = (key: string, p: { materialKey: string; specKey?: string | null }): boolean => (key.startsWith("spec:") ? p.specKey === key : p.materialKey === key)
 
-const SOURCE_ORDER: Record<PriceSource, number> = { agreement: 0, offer: 1, po: 2 }
+const SOURCE_ORDER: Record<PriceSource, number> = { agreement: 0, offer: 1, po: 2, manual: 3 }
 
 /**
  * Every price one material has had, oldest first. `key` is a name-and-unit key (`materialKey`) or a specification key
@@ -479,6 +486,27 @@ export function priceSeries(
       rfqNo: null,
       agreementId: po?.agreementId ?? null,
       agreementNo: po?.agreementNo ?? null,
+    })
+  }
+  // A purchase made outside the platform (RC-03): a price we paid, so a filled dot, named by its receipt.
+  for (const h of src.history) {
+    if (h.kind !== "manual" || !(h.price > 0) || !sameMaterial(key, h)) continue
+    out.push({
+      id: `manual:${h.id}`,
+      day: h.day,
+      supplier: h.supplierName || "",
+      supplierKey: h.supplierOrgId || h.supplierName,
+      price: h.price,
+      quantity: null,
+      source: "manual",
+      awarded: true,
+      poId: null,
+      poNo: h.receiptNumber ?? null,
+      rfqId: null,
+      rfqNo: null,
+      agreementId: null,
+      agreementNo: null,
+      receiptId: h.receiptId ?? null,
     })
   }
   const rfqById = new Map((src.rfqs || []).map((r) => [r.id, r]))

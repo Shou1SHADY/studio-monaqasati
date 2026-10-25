@@ -11,15 +11,18 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
 import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
-import { Camera, CheckCircle2, FileText, Loader2, PackageCheck, Printer, ShieldCheck, TriangleAlert } from "lucide-react"
+import { Camera, CheckCircle2, FileText, Loader2, Printer, ShieldCheck, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useUser } from "@/firebase"
 import { RECEIVER_REJECT_REASONS } from "@/lib/procurement/receipt-count"
-import { printGoodsReceipt, receiptPrintInputFromFacts, type ReceiptPrintFacts } from "@/lib/procurement/receipt-print"
+import { receiptPrintInputFromFacts, type ReceiptPrintFacts, type ReceiptPrintInput } from "@/lib/procurement/receipt-print"
+import { ReceiptDocumentDialog } from "@/components/procurement/ReceiptDocumentDialog"
 import { cn } from "@/lib/utils"
+import { Link } from "@/i18n/routing"
+import { ReceivePageHead } from "@/components/procurement/receive/ReceivePageHead"
 
 interface LinkData {
   receiverName: string
@@ -32,6 +35,12 @@ interface LinkData {
   note?: string | null
   noNotice?: boolean
   where?: "warehouse" | "project" | "site"
+  /** RC-06: where the goods go and for which company (the header strip and the meta row). */
+  placeName?: string | null
+  address?: string | null
+  mapUrl?: string | null
+  companyName?: string | null
+  noticeNumber?: string | null
   lines: Array<{ poLineId: string; name: string; unit: string }>
   receiverUserId?: string | null
   files?: Array<{ name: string; url: string; kind: "photo" | "ticket" | "cert" }>
@@ -85,6 +94,7 @@ export function ReceiveLinkContent() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<Done | null>(null)
+  const [doc, setDoc] = useState<ReceiptPrintInput | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -247,7 +257,7 @@ export function ReceiveLinkContent() {
     const accepted = done.print.lines.reduce((s, l) => s + (l.accepted ?? 0), 0)
     const rejected = done.print.lines.reduce((s, l) => s + (l.rejected ?? 0), 0)
     const print = () =>
-      printGoodsReceipt(
+      setDoc(
         receiptPrintInputFromFacts(done.print, {
           locale,
           displayNumber: displayReceiptNumber(done.docNumber, locale),
@@ -275,6 +285,7 @@ export function ReceiveLinkContent() {
             {t("done_pdf")}
           </Button>
         </div>
+        <ReceiptDocumentDialog input={doc} onOpenChange={(o) => !o && setDoc(null)} />
       </Shell>
     )
   }
@@ -283,24 +294,30 @@ export function ReceiveLinkContent() {
 
   return (
     <Shell>
-      <header className="space-y-1">
-        <p className="flex items-center gap-1.5 text-xs font-semibold text-module">
-          <PackageCheck size={14} aria-hidden="true" />
-          {t("eyebrow")}
-        </p>
-        <h1 className="text-xl font-black leading-relaxed text-foreground">{data.supplierName || t("supplier_unknown")}</h1>
-        <p className="text-sm text-muted-foreground">
-          {data.poNumber ? <span dir="ltr">{displayPoNumber(data.poNumber, locale)}</span> : null}
-          {data.poNumber && data.rfqTitle ? " · " : ""}
-          {data.rfqTitle}
-        </p>
+      <div className="space-y-2">
+        <ReceivePageHead
+          companyName={data.companyName}
+          supplierName={data.supplierName}
+          poNumber={data.poNumber}
+          noticeNumber={data.noticeNumber}
+          rfqTitle={data.rfqTitle}
+          placeName={data.placeName}
+          address={data.address}
+          mapUrl={data.mapUrl}
+          deliveryDate={data.deliveryDate}
+          localeSwitch={
+            <Link href={`/receive/${token}`} locale={locale === "ar" ? "en" : "ar"} className="inline-flex h-9 shrink-0 items-center rounded-md border px-3 text-xs font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {t("switch_lang")}
+            </Link>
+          }
+        />
         <p className="pt-1 text-sm text-foreground">{data.noNotice ? t("intro_arrival") : t("intro", { name: data.forwardedBy })}</p>
         {data.note && (
           <p className="mt-2 rounded-lg border border-cta/30 bg-cta/5 p-3 text-sm leading-relaxed text-foreground">
             <b>{t("procurement_note")}:</b> <span dir="auto">{data.note}</span>
           </p>
         )}
-      </header>
+      </div>
 
       <section className="space-y-2" aria-labelledby="lines-h">
         <h2 id="lines-h" className="text-sm font-bold text-foreground">{t("lines_title")}</h2>
