@@ -14309,15 +14309,15 @@
         },
         "rfq_award": {
           "title": "{ref} أُغلق بـ{count, plural, one {عرض واحد} two {عرضين} few {# عروض} many {# عرضاً} other {# عرض}}",
-          "sub": "{title} · رسِّه قبل {date} · {when, select, past {فات منذ {n, plural, one {يوم} two {يومين} few {# أيام} many {# يوماً} other {# يوم}}} today {اليوم} future {{n, plural, =1 {غداً} two {بعد يومين} few {بعد # أيام} many {بعد # يوماً} other {بعد # يوم}}} other {}}"
+          "sub": "{hasTitle, select, 1 {{title} · } other {}}رسِّه قبل {date} · {when, select, past {فات منذ {n, plural, one {يوم} two {يومين} few {# أيام} many {# يوماً} other {# يوم}}} today {اليوم} future {{n, plural, =1 {غداً} two {بعد يومين} few {بعد # أيام} many {بعد # يوماً} other {بعد # يوم}}} other {}}"
         },
         "rfq_no_live": {
           "title": "{ref} · لا عرض حيّ",
-          "sub": "{title} · أعد فتحه بموعد جديد أو ألغِه"
+          "sub": "{hasTitle, select, 1 {{title} · } other {}}أعد فتحه بموعد جديد أو ألغِه"
         },
         "rfq_can_award": {
           "title": "{ref} · وصلته {count, plural, one {عرض واحد} two {عرضان} few {# عروض} many {# عرضاً} other {# عرض}}",
-          "sub": "{title}{hasLowest, select, 1 { · أقل عرض كامل {lowest} {vat, select, 1 {شامل الضريبة} other {بلا ضريبة}}} other {}} · يُغلق {date} — تستطيع الترسية الآن"
+          "sub": "{hasTitle, select, 1 {{title}{hasLowest, select, 1 { · أقل عرض كامل {lowest} {vat, select, 1 {شامل الضريبة} other {بلا ضريبة}}} other {}} · } other {{hasLowest, select, 1 {أقل عرض كامل {lowest} {vat, select, 1 {شامل الضريبة} other {بلا ضريبة}} · } other {}}}}يُغلق {date} — تستطيع الترسية الآن"
         },
         "agreement_expiring": {
           "title": "اتفاقية أسعار {supplier} تنتهي {inDays, plural, =0 {اليوم} one {غداً} other {بعد # أيام}}",
@@ -14333,7 +14333,7 @@
         },
         "rfq_query": {
           "title": "{ref} · {count, plural, one {استفسار} two {استفساران} few {# استفسارات} many {# استفساراً} other {# استفسار}} بلا جواب",
-          "sub": "{title} · {closed, select, 1 {أُغلق} other {يُغلق {date}}} — {question}{more, plural, =0 {} other { … و# أخرى}}"
+          "sub": "{hasTitle, select, 1 {{title} · } other {}}{closed, select, 1 {أُغلق} other {يُغلق {date}}} — {question}{more, plural, =0 {} other { … و# أخرى}}"
         },
         "team_approval": {"title": "{ref} · طلب مواد من {name} بانتظار اعتمادك", "sub": "{place} · {count, plural, one {مادة واحدة} two {مادتان} few {# مواد} many {# مادة} other {# مادة}} · {days, plural, =0 {أُرسل اليوم} one {ينتظر منذ يوم} two {ينتظر منذ يومين} few {ينتظر منذ # أيام} many {ينتظر منذ # يوماً} other {ينتظر منذ # يوم}}"},
         "cancel_remainder": {

@@ -8506,7 +8506,7 @@
       "proc_tab_mine": "My requests",
       "proc_module_name": "Procurement",
       "proc_module_sub": "Needs · Quotes · Purchase orders",
-      "proc_search_ph": "Search: material · supplier · document…",
+      "proc_search_ph": "Search material, supplier, no.…",
       "proc_search_page_ph": "Search this page…",
       "proc_authority_owner": "Company-wide read · approves above the manager’s limit",
       "proc_authority_buyer": "All categories · prepares POs, never approves",
@@ -14309,15 +14309,15 @@
         },
         "rfq_award": {
           "title": "{ref} closed with {count, plural, one {# offer} other {# offers}}",
-          "sub": "{title} · award by {date} · {when, select, past {{n, plural, one {# day} other {# days}} ago} today {today} future {{n, plural, =1 {tomorrow} other {in # days}}} other {}}"
+          "sub": "{hasTitle, select, 1 {{title} · } other {}}award by {date} · {when, select, past {{n, plural, one {# day} other {# days}} ago} today {today} future {{n, plural, =1 {tomorrow} other {in # days}}} other {}}"
         },
         "rfq_no_live": {
           "title": "{ref} · no live offer",
-          "sub": "{title} · reopen with a new deadline or cancel it"
+          "sub": "{hasTitle, select, 1 {{title} · } other {}}reopen with a new deadline or cancel it"
         },
         "rfq_can_award": {
           "title": "{ref} · {count, plural, one {# offer is in} other {# offers are in}}",
-          "sub": "{title}{hasLowest, select, 1 { · lowest complete {lowest} {vat, select, 1 {incl. VAT} other {no VAT}}} other {}} · closes {date} — you can award now"
+          "sub": "{hasTitle, select, 1 {{title}{hasLowest, select, 1 { · lowest complete {lowest} {vat, select, 1 {incl. VAT} other {no VAT}}} other {}} · } other {{hasLowest, select, 1 {lowest complete {lowest} {vat, select, 1 {incl. VAT} other {no VAT}} · } other {}}}}closes {date} — you can award now"
         },
         "agreement_expiring": {
           "title": "{supplier}'s price agreement ends {inDays, plural, =0 {today} one {tomorrow} other {in # days}}",
@@ -14333,7 +14333,7 @@
         },
         "rfq_query": {
           "title": "{ref} · {count, plural, one {# unanswered inquiry} other {# unanswered inquiries}}",
-          "sub": "{title} · {closed, select, 1 {closed} other {closes {date}}} — {question}{more, plural, =0 {} other { … and # more}}"
+          "sub": "{hasTitle, select, 1 {{title} · } other {}}{closed, select, 1 {closed} other {closes {date}}} — {question}{more, plural, =0 {} other { … and # more}}"
         },
         "team_approval": {"title": "{ref} · material request from {name} awaits your approval", "sub": "{place} · {count, plural, one {one material} other {# materials}} · {days, plural, =0 {sent today} one {waiting for a day} other {waiting for # days}}"},
         "cancel_remainder": {

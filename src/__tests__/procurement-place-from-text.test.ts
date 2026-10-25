@@ -28,9 +28,9 @@ describe("a project's location read as a city and a district", () => {
 })
 
 describe("an RFQ's number on screen", () => {
-  it("is the numbered one, or «RFQ-—» — never a piece of the document id", () => {
+  it("is the numbered one, or nothing — never a «RFQ-—» placeholder nor a piece of the document id", () => {
     expect(rfqDisplayNumber({ rfqNumber: "RFQ-2026/005" }, "en")).toBe("RFQ-2026/005")
-    expect(rfqDisplayNumber({ rfqNumber: null }, "ar")).toBe("RFQ-—")
-    expect(rfqDisplayNumber({}, "en")).toBe("RFQ-—")
+    expect(rfqDisplayNumber({ rfqNumber: null }, "ar")).toBe("")
+    expect(rfqDisplayNumber({}, "en")).toBe("")
   })
 })

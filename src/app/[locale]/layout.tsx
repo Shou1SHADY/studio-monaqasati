@@ -10,6 +10,7 @@ import { routing } from '@/i18n/routing';
 import { notFound } from 'next/navigation';
 import StructuredData from '@/components/StructuredData';
 import { EnvironmentRibbon } from '@/components/EnvironmentRibbon';
+import { RadixDirection } from '@/components/layout/RadixDirection';
 import { IS_UAT, SITE_URL } from '@/lib/app-env';
 
 const notoSansArabic = Noto_Sans_Arabic({
@@ -135,11 +136,13 @@ export default async function RootLayout({
           `}
         </Script>
         <NextIntlClientProvider messages={messages}>
-          <StructuredData />
-          <EnvironmentRibbon />
-          {children}
-          <Toaster />
-          <BodyPointerEventsGuard />
+          <RadixDirection locale={locale}>
+            <StructuredData />
+            <EnvironmentRibbon />
+            {children}
+            <Toaster />
+            <BodyPointerEventsGuard />
+          </RadixDirection>
         </NextIntlClientProvider>
       </body>
     </html>

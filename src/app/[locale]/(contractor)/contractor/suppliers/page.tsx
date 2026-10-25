@@ -18,11 +18,10 @@ import { useCallback, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
 import { addDoc, arrayRemove, arrayUnion, collection, doc, query, serverTimestamp, updateDoc, where } from "firebase/firestore"
-import { Briefcase, Loader2, Search, Send, UserPlus, X } from "lucide-react"
+import { Briefcase, Loader2, Send, UserPlus } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,7 +43,6 @@ import { useOurSuppliers, usePlatformCards, usePlatformSupplier, type PlatformSu
 import { useMaterialTree } from "@/hooks/useMaterialTree"
 import { categoryTree, treeScope, treeSupplier } from "@/lib/materials/category-tree"
 import { keyLabel, specialtyKeys } from "@/lib/materials/subs"
-import { matchesSearch } from "@/lib/search-text"
 import { displayCategory } from "@/lib/constants"
 import { MFG_PRODUCTS } from "@/lib/manufacturing-engine"
 import { poStatus, supplierScore, todayOf } from "@/lib/procurement/po"
@@ -77,7 +75,6 @@ import { SupplierConnectionRequests } from "@/components/procurement/SupplierCon
 import { InviteSupplierDialog, type InvitePrefill } from "@/components/procurement/InviteSupplierDialog"
 import { PriceAgreementsView } from "@/components/procurement/PriceAgreementsView"
 import { PriceHistoryView } from "@/components/procurement/PriceHistoryView"
-import { displayAgreementNumber } from "@/lib/procurement/format"
 import type { GuestOfferFact } from "@/lib/procurement/supplier-offplatform"
 import type { PriceOfferLike, PriceRfqLike } from "@/lib/procurement/prices"
 import { useInventoryCatalog } from "@/hooks/useInventoryCatalog"
@@ -170,9 +167,21 @@ export default function SuppliersPage() {
     })
   }
 
-  const [searchQuery, setSearchQuery] = useState("")
-  const [oursFilter, setOursFilter] = useState<SupplierFilter>(EMPTY_SUPPLIER_FILTER)
-  const [dirFilter, setDirFilter] = useState<SupplierFilter>(EMPTY_SUPPLIER_FILTER)
+  // The page's one search is the header's (review 2 #1): every segment reads `?search=` live — our suppliers, the
+  // directory, the agreements and the price history — and a list clearing its filters clears it.
+  const searchQuery = searchParams?.get("search") ?? ""
+  const setSearchQuery = useCallback((q: string) => replaceParams((p) => (q.trim() ? p.set("search", q) : p.delete("search"))), [])
+  const [oursFilter, setOursFilterOwn] = useState<SupplierFilter>(EMPTY_SUPPLIER_FILTER)
+  const [dirFilter, setDirFilterOwn] = useState<SupplierFilter>(EMPTY_SUPPLIER_FILTER)
+  const withSearch = useCallback(
+    (set: (f: SupplierFilter) => void) => (next: SupplierFilter) => {
+      set({ ...next, q: "" })
+      if (next.q !== searchQuery) setSearchQuery(next.q)
+    },
+    [searchQuery, setSearchQuery]
+  )
+  const oursShown = useMemo(() => ({ ...oursFilter, q: searchQuery }), [oursFilter, searchQuery])
+  const dirShown = useMemo(() => ({ ...dirFilter, q: searchQuery }), [dirFilter, searchQuery])
   const [oursLayout, setOursLayout] = useState<SupplierLayout>("rows")
   const [dirLayout, setDirLayout] = useState<SupplierLayout>("cards")
   const [dirTotal, setDirTotal] = useState<number | undefined>(undefined)
@@ -200,10 +209,6 @@ export default function SuppliersPage() {
   const platformCards = usePlatformCards(
     useMemo(() => [...mineRows.map((s) => s.orgId), fileId || "", dirId || ""].filter(Boolean), [mineRows, fileId, dirId]),
     segment === "mine" || Boolean(fileId) || Boolean(dirId)
-  )
-  const shownAgreements = useMemo(
-    () => agreements.filter((a) => matchesSearch(searchQuery, [a.docNumber, displayAgreementNumber(a.docNumber, locale), a.supplierName, ...(a.lines || []).map((l) => l.name)])),
-    [agreements, searchQuery, locale]
   )
   const catalog = useInventoryCatalog(orgId, actor.seesPrices && segment === "history")
 
@@ -298,22 +303,6 @@ export default function SuppliersPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           <ProcChipGroup items={segments.map((s) => ({ id: s, label: t(`seg.${s}`), count: counts[s] }))} active={segment} onPick={pickSegment} label={tC("suppliers_scope_label")} />
-          {(segment === "agreements" || segment === "history") && (
-          <div className="relative ms-auto w-full sm:w-72">
-            <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input placeholder={t("p2c.search_all")} aria-label={t("p2c.search_all")} className="pe-8 ps-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} dir="auto" />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                aria-label={tC("suppliers_search_clear")}
-                className="absolute end-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
-            )}
-          </div>
-          )}
         </div>
 
         {segment === "agreements" ? (
@@ -321,7 +310,8 @@ export default function SuppliersPage() {
             spinner
           ) : (
             <PriceAgreementsView
-              agreements={shownAgreements}
+              agreements={agreements}
+              query={searchQuery}
               history={history}
               orders={orders}
               actor={actor}
@@ -363,8 +353,9 @@ export default function SuppliersPage() {
           spinner
         ) : segment === "platform" ? (
           <SupplierDirectory
-            filter={dirFilter}
-            onFilter={setDirFilter}
+            filter={dirShown}
+            onFilter={withSearch(setDirFilterOwn)}
+            searchless
             layout={dirLayout}
             onLayout={setDirLayout}
             specialtyLabel={specialtyLabel}
@@ -394,8 +385,9 @@ export default function SuppliersPage() {
               rows={mineRows}
               cards={platformCards}
               today={today}
-              filter={oursFilter}
-              onFilter={setOursFilter}
+              filter={oursShown}
+              onFilter={withSearch(setOursFilterOwn)}
+              searchless
               layout={oursLayout}
               onLayout={setOursLayout}
               specialtiesOf={specialtiesOf}

@@ -49,6 +49,8 @@ export interface SupplierListProps<T extends SupplierListItem> {
   /** Shown instead of the empty-filter state when there is nothing at all. */
   emptyAll?: ReactNode
   caption?: string
+  /** The page's head already searches (`?search=` drives `filter.q`): the list draws no box of its own. */
+  searchless?: boolean
 }
 
 function Avatar({ name }: { name: string }) {
@@ -60,7 +62,7 @@ function Avatar({ name }: { name: string }) {
 }
 
 export function SupplierList<T extends SupplierListItem>(props: SupplierListProps<T>) {
-  const { kind, rows, matched, total, more, facets, filter, onFilter, layout, onLayout, specialtyLabel, onOpen, onAdd, onShowMore, loading, failed, statusExtra, emptyAll, caption } = props
+  const { kind, rows, matched, total, more, facets, filter, onFilter, layout, onLayout, specialtyLabel, onOpen, onAdd, onShowMore, loading, failed, statusExtra, emptyAll, caption, searchless } = props
   const t = useTranslations("Portal.ProcSuppliers.list")
   const locale = useLocale()
   const statuses: readonly SupplierStatus[] = kind === "ours" ? OURS_STATUSES : DIR_STATUSES
@@ -169,9 +171,10 @@ export function SupplierList<T extends SupplierListItem>(props: SupplierListProp
 
   const bar = (
     <div className="flex flex-wrap items-center gap-2">
+      {!searchless && (
       <div className="relative w-full sm:w-72">
         <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-        <Input value={filter.q} onChange={(e) => set({ q: e.target.value })} placeholder={t("search")} aria-label={t("search")} className="pe-8 ps-10" dir="auto" />
+        <Input value={filter.q} onChange={(e) => set({ q: e.target.value })} placeholder={t("search")} aria-label={t("search")} className="pe-8 ps-10" />
         {filter.q && (
           <button
             type="button"
@@ -183,6 +186,7 @@ export function SupplierList<T extends SupplierListItem>(props: SupplierListProp
           </button>
         )}
       </div>
+      )}
       <NativeSelect aria-label={t("all_specialties")} value={filter.specialty} onChange={(e) => set({ specialty: e.target.value })} className={cn("max-w-full", filter.specialty && "border-module text-module")}>
         <option value="">{t("all_specialties")}</option>
         {facets.specialties.map(([k, n]) => (

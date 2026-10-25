@@ -56,11 +56,14 @@ export function RfqStagePill({ row }: { row: Pick<RfqListRow, "state" | "closedE
   )
 }
 
+/** The number chip — none at all for an RFQ drafted before numbers existed. */
 export function RfqNumber({ rfq }: { rfq: Pick<RfqRow, "id" | "rfqNumber"> }) {
   const locale = useLocale()
+  const number = rfqDisplayNumber(rfq, locale)
+  if (!number) return null
   return (
-    <span className="whitespace-nowrap rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground" dir="ltr">
-      {rfqDisplayNumber(rfq, locale)}
+    <span className="whitespace-nowrap rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground" dir="ltr" data-testid="rfq-number">
+      {number}
     </span>
   )
 }

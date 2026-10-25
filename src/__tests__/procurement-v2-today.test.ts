@@ -187,6 +187,13 @@ describe("TDY-03 · RFQ rows", () => {
     expect(kinds(world({ rfqs: [rfq({ deadline: day(3), offersCount: 0 })] }))).toEqual([])
   })
 
+  it("an RFQ drafted before numbers existed is named by its title once — the sub-line does not repeat it (review 1 #2)", () => {
+    const unnumbered = todayTasks(world({ rfqs: [rfq({ number: null, offersCount: 0 })] }), MANAGER, NOW).find((x) => x.kind === "rfq_no_live")
+    expect(unnumbered).toMatchObject({ titleParams: { ref: "Rebar for Tower A" }, subParams: { hasTitle: 0 } })
+    const numbered = todayTasks(world({ rfqs: [rfq({ offersCount: 0 })] }), MANAGER, NOW).find((x) => x.kind === "rfq_no_live")
+    expect(numbered).toMatchObject({ titleParams: { ref: "RFQ-2026/011" }, subParams: { title: "Rebar for Tower A", hasTitle: 1 } })
+  })
+
   it("open, with every item at the competition limit: «تستطيع الترسية الآن» — blue, with the same lowest complete figure the comparison shows (G-03)", () => {
     const offers = [offer("a", "10,000"), offer("b", "11,000"), offer("c", "12,000")]
     const open = rfq({ deadline: day(3) })

@@ -101,7 +101,12 @@ export function RfqOfferDrawer({ row, world, actions, onClose, fallbackName }: {
             {name}
           </SheetTitle>
           <SheetDescription dir="auto">
-            <bdi>{rfqDisplayNumber(rfq as { rfqNumber?: string | null }, locale)}</bdi> · {rfq?.title}
+            {rfqDisplayNumber(rfq as { rfqNumber?: string | null }, locale) && (
+              <>
+                <bdi>{rfqDisplayNumber(rfq as { rfqNumber?: string | null }, locale)}</bdi> ·{" "}
+              </>
+            )}
+            {rfq?.title}
           </SheetDescription>
         </SheetHeader>
 

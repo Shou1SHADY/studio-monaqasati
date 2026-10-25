@@ -22,6 +22,7 @@ export function SupplierDirectory({
   onOpen,
   onAdd,
   onTotal,
+  searchless,
 }: {
   filter: SupplierFilter
   onFilter: (next: SupplierFilter) => void
@@ -34,6 +35,8 @@ export function SupplierDirectory({
   onAdd?: (orgId: string) => void
   /** The directory's size, for the segment's count. */
   onTotal?: (total: number) => void
+  /** The page's head searches: no box in the list. */
+  searchless?: boolean
 }) {
   const t = useTranslations("Portal.ProcSuppliers")
   const dir = usePlatformDirectory(filter)
@@ -58,6 +61,7 @@ export function SupplierDirectory({
         specialtyLabel={specialtyLabel}
         onOpen={onOpen}
         onAdd={onAdd}
+        searchless={searchless}
         onShowMore={dir.loadMore}
         loading={dir.loading || (!dir.ready && !dir.failed)}
         failed={dir.failed}
