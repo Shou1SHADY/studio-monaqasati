@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
 import { collection, query, where } from "firebase/firestore"
-import { ClipboardList, FileSpreadsheet, LayoutGrid, Loader2, Search, X } from "lucide-react"
+import { ClipboardList, FileSpreadsheet, LayoutGrid, Loader2 } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { PoDrawer } from "@/components/procurement/PoDrawer"
@@ -20,7 +20,6 @@ import { Money, PoStatusPill, PoTags, WhoTag, useStepSentence } from "@/componen
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DEFAULT_SEGMENT, PO_SEGMENTS, segmentCounts, segmentOf, visibleOrders, type PoSegment } from "@/components/procurement/PoModel"
-import { Input } from "@/components/ui/input"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useModules } from "@/hooks/useCompanyModules"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
@@ -62,13 +61,17 @@ export default function PurchaseOrdersPage() {
 
   const filterParam = searchParams?.get("filter")
   const [segment, setSegment] = useState<PoSegment>(() => segmentOf(filterParam) ?? DEFAULT_SEGMENT)
-  // The header's search sends the expediter here with `?search=` (P-09).
-  const [search, setSearch] = useState(() => searchParams?.get("search") ?? "")
+  // The page's one search is the header's (review 2 #1): it filters this list live through `?search=` — and the expediter
+  // lands here with it from another tab (P-09). Picking a segment drops it, as the old box did.
+  const search = searchParams?.get("search") ?? ""
   const searching = search.trim().length > 0
   const pick = (s: PoSegment) => {
-    setSearch("")
     setSegment(s)
-    replaceParams((p) => (s === DEFAULT_SEGMENT ? p.delete("filter") : p.set("filter", s)))
+    replaceParams((p) => {
+      p.delete("search")
+      if (s === DEFAULT_SEGMENT) p.delete("filter")
+      else p.set("filter", s)
+    })
   }
 
   // The project filter (the prototype's "all projects"): a line may serve its
@@ -149,20 +152,6 @@ export default function PurchaseOrdersPage() {
             dimmed={searching}
           />
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Search size={16} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground start-3" aria-hidden="true" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("search_ph")} aria-label={t("search_ph")} className="h-10 w-full rounded-xl bg-card ps-9 pe-9 sm:w-56" dir="auto" />
-              {searching && (
-                <button
-                  type="button"
-                  onClick={() => setSearch("")}
-                  aria-label={t("search_clear")}
-                  className="absolute top-1/2 -translate-y-1/2 end-2 grid h-6 w-6 place-items-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
             {exportsToAccountant && (
               <Button variant="outline" className="h-10 gap-1.5 rounded-xl" onClick={() => setExporting(true)}>
                 <FileSpreadsheet size={15} aria-hidden="true" />

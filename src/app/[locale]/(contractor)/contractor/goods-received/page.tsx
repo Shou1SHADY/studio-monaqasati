@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
-import { BellRing, Download, Eye, ExternalLink, FileText, Forward, Loader2, MapPin, PackageCheck, Paperclip, PlusCircle, Search, Siren, Truck } from "lucide-react"
+import { BellRing, Download, Eye, ExternalLink, FileText, Forward, Loader2, MapPin, PackageCheck, Paperclip, PlusCircle, Siren, Truck } from "lucide-react"
 import { ForwardReceiptDialog } from "@/components/procurement/ForwardReceiptDialog"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
@@ -30,7 +30,6 @@ import { RECORDED_TONE, ReceiptDrawer, ReceiptStatePill, RecordedByPill, type Re
 import { RegulariseReceiptDialog } from "@/components/procurement/RegulariseReceiptDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
@@ -134,7 +133,8 @@ export default function GoodsReceivedPage() {
     [router, pathname, searchParams]
   )
 
-  const [term, setTerm] = useState("")
+  // The page's one search is the header's: it filters these lists live through `?search=` (review 2 #1).
+  const term = searchParams.get("search") || ""
   const [placeFilter, setPlaceFilter] = useState<string>("all")
   const [logFilter, setLogFilter] = useState<LogCompleteness>("all")
   const [limit, setLimit] = useState(PAGE)
@@ -354,10 +354,6 @@ export default function GoodsReceivedPage() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <ProcChipGroup items={RECEIPT_SEGMENTS.map((s) => ({ id: s, label: segTitle[s], count: counts[s] }))} active={tab} onPick={(s) => setQuery({ tab: s })} label={t("title")} />
           <div className="flex flex-col gap-2 sm:flex-row">
-            <div className="relative">
-              <Search size={14} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground ltr:left-3 rtl:right-3" aria-hidden="true" />
-              <Input value={term} onChange={(e) => setTerm(e.target.value)} placeholder={t("searchPlaceholder")} aria-label={t("searchPlaceholder")} className="h-10 w-full ps-9 sm:w-64" dir="auto" />
-            </div>
             <NativeSelect value={placeFilter} onChange={(e) => setPlaceFilter(e.target.value)} aria-label={t("placeFilter")} className={cn("h-10 w-full sm:w-56", placeFilter !== "all" && "border-module text-module")}>
               <option value="all">{t("allPlaces")}</option>
               {liveSites.map((p) => (

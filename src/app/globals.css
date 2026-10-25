@@ -224,8 +224,24 @@
   }
 }
 
-.rtl-flip {
+/* Mirrors a directional icon on a right-to-left page ONLY: an icon is drawn pointing the LTR way (ArrowLeft = back,
+   ChevronRight = forward, Send to the north-east) and flips in Arabic. It used to flip in both languages, which turned
+   every English breadcrumb and back arrow around (review 3 #1). */
+[dir="rtl"] .rtl-flip {
   transform: scaleX(-1);
+}
+
+/* A rail that scrolls sideways on a phone fades out at its END edge, so a tab cut by the edge reads as "more this way"
+   (review 1 #18, review 3 #10). The rail pads its end by the fade's width, so its last tab can scroll clear of it. */
+@media (max-width: 639.98px) {
+  .rail-fade {
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent);
+    mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent);
+  }
+  [dir="rtl"] .rail-fade {
+    -webkit-mask-image: linear-gradient(to left, black calc(100% - 2rem), transparent);
+    mask-image: linear-gradient(to left, black calc(100% - 2rem), transparent);
+  }
 }
 
 /* ============================================================

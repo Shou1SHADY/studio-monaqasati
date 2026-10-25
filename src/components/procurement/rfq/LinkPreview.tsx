@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
-import { ArrowRight, Eye, Loader2, Monitor, Smartphone } from "lucide-react"
+import { ArrowLeft, Eye, Loader2, Monitor, Smartphone } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Chip } from "@/components/module-ui/Chip"
 import { LinkPage } from "@/components/procurement/guest/LinkPage"
@@ -85,7 +85,7 @@ export function LinkPreview({ rfqId }: { rfqId: string }) {
         <span className="flex-1" />
         <Button asChild variant="outline" size="sm" className="gap-1.5">
           <Link href={`/contractor/rfqs/${rfqId}/offers`}>
-            <ArrowRight size={14} className="rtl-flip" aria-hidden="true" />
+            <ArrowLeft size={14} className="rtl-flip" aria-hidden="true" />
             {t("preview_back")}
           </Link>
         </Button>

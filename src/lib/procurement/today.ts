@@ -746,6 +746,8 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
       if (buyerOnly && !rfqInScope(r, scope)) continue
       const title = r.title || ""
       const ref = r.number || title
+      // Without a number the row's title already IS the RFQ's title: the sub-line does not say it again (review 1 #2).
+      const hasTitle = r.number && title ? 1 : 0
       const days = daysFromNow(r.deadline, now)
       if (r.status === "Draft") {
         // Never published: its lines are held for nothing.
@@ -758,7 +760,7 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
       const closed = Boolean(r.closedEarly) || (days != null && days < 0)
       if (noLiveOffer(r, offers, decisions, now)) {
         // WF-26: nothing in the running — reopen with a new date, or cancel it.
-        add({ id: `rfq_no_live:${r.id}`, kind: "rfq_no_live", severity: "red", due: 0, titleKey: "task.rfq_no_live.title", titleParams: { ref }, subKey: "task.rfq_no_live.sub", subParams: { title }, amount: null, href: RFQ_HREF(r.id), actionKey: "actions.openRfq" })
+        add({ id: `rfq_no_live:${r.id}`, kind: "rfq_no_live", severity: "red", due: 0, titleKey: "task.rfq_no_live.title", titleParams: { ref }, subKey: "task.rfq_no_live.sub", subParams: { title, hasTitle }, amount: null, href: RFQ_HREF(r.id), actionKey: "actions.openRfq" })
       } else if (live.length) {
         const ev = evaluatePlanOffers(r as PricedRfq, offers as PlanOffer[], decisions, { today, policies: w.policies })
         const lowest = ev.lowestComplete
@@ -768,11 +770,11 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
           const base = dayOf(r.deadline) || dayOf(r.closedEarly?.at) || today
           const by = addDays(base, w.policies.awardCycleDays)
           const byIn = daysFromNow(by, now) ?? 0
-          add({ id: `rfq_award:${r.id}`, kind: "rfq_award", severity: byIn <= 1 ? "red" : "amber", due: byIn, titleKey: "task.rfq_award.title", titleParams: { ref, count: live.length }, subKey: "task.rfq_award.sub", subParams: { title, date: by, ...whenParams(byIn) }, amount: gross, basis: lowest && basisOf(lowest.vatRate) === "no_vat" ? "none" : "incl", href: RFQ_HREF(r.id), actionKey: "actions.compareAward" })
+          add({ id: `rfq_award:${r.id}`, kind: "rfq_award", severity: byIn <= 1 ? "red" : "amber", due: byIn, titleKey: "task.rfq_award.title", titleParams: { ref, count: live.length }, subKey: "task.rfq_award.sub", subParams: { title, hasTitle, date: by, ...whenParams(byIn) }, amount: gross, basis: lowest && basisOf(lowest.vatRate) === "no_vat" ? "none" : "incl", href: RFQ_HREF(r.id), actionKey: "actions.compareAward" })
         } else {
           // Open, and every item has the live offers the competition limit asks for: awarding now is possible.
           if (thinnestItem(ev, r as PricedRfq, live.length) >= w.policies.minOffers) {
-            add({ id: `rfq_can_award:${r.id}`, kind: "rfq_can_award", severity: "blue", due: days ?? 0, titleKey: "task.rfq_can_award.title", titleParams: { ref, count: live.length }, subKey: "task.rfq_can_award.sub", subParams: { title, hasLowest: gross == null ? 0 : 1, lowest: gross ?? 0, vat: lowest && basisOf(lowest.vatRate) === "incl_vat" ? 1 : 0, date: dayOf(r.deadline) }, amount: null, href: RFQ_HREF(r.id), actionKey: "actions.compare" })
+            add({ id: `rfq_can_award:${r.id}`, kind: "rfq_can_award", severity: "blue", due: days ?? 0, titleKey: "task.rfq_can_award.title", titleParams: { ref, count: live.length }, subKey: "task.rfq_can_award.sub", subParams: { title, hasTitle, hasLowest: gross == null ? 0 : 1, lowest: gross ?? 0, vat: lowest && basisOf(lowest.vatRate) === "incl_vat" ? 1 : 0, date: dayOf(r.deadline) }, amount: null, href: RFQ_HREF(r.id), actionKey: "actions.compare" })
           }
         }
       }
@@ -780,7 +782,7 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
       // questions on one RFQ never take five of the seven visible rows.
       const asked = (w.rfqQueries || []).filter((q) => q.rfqId === r.id && !q.answered)
       if (asked.length) {
-        add({ id: `rfq_query:${r.id}`, kind: "rfq_query", severity: "amber", due: closed ? 0 : (days ?? 0), titleKey: "task.rfq_query.title", titleParams: { ref, count: asked.length }, subKey: "task.rfq_query.sub", subParams: { title, closed: closed ? 1 : 0, date: dayOf(r.deadline), question: asked[0].question, more: asked.length - 1 }, amount: null, href: `${RFQ_HREF(r.id)}?tab=inquiries`, actionKey: "actions.answer" })
+        add({ id: `rfq_query:${r.id}`, kind: "rfq_query", severity: "amber", due: closed ? 0 : (days ?? 0), titleKey: "task.rfq_query.title", titleParams: { ref, count: asked.length }, subKey: "task.rfq_query.sub", subParams: { title, hasTitle, closed: closed ? 1 : 0, date: dayOf(r.deadline), question: asked[0].question, more: asked.length - 1 }, amount: null, href: `${RFQ_HREF(r.id)}?tab=inquiries`, actionKey: "actions.answer" })
       }
     }
   }

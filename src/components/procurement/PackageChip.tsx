@@ -35,7 +35,7 @@ function PackageChipBody() {
   const pkg = packageOf(Array.from(off))
   const label = tp("chip", { label: packageLabel(pkg, tp) })
   const units = (
-    <span className="hidden items-center gap-0.5 lg:inline-flex" role="img" aria-label={[tp("base.core.short"), tp("base.inv.short"), ...CONNECTORS.filter((c) => pkg[c]).map((c) => tp(`conn.${c}.short`))].join(" + ")}>
+    <span className="hidden items-center gap-0.5 xl:inline-flex" role="img" aria-label={[tp("base.core.short"), tp("base.inv.short"), ...CONNECTORS.filter((c) => pkg[c]).map((c) => tp(`conn.${c}.short`))].join(" + ")}>
       <UnitIcon unit="core" className="h-5 w-5 rounded-md" />
       <UnitIcon unit="inv" className="h-5 w-5 rounded-md" />
       <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
@@ -51,7 +51,7 @@ function PackageChipBody() {
       {units}
     </>
   )
-  const look = "hidden max-w-[24rem] items-center gap-1.5 truncate rounded-full bg-module/10 px-2.5 py-1 text-xs font-bold text-module md:inline-flex"
+  const look = "hidden min-w-0 max-w-[24rem] items-center gap-1.5 truncate rounded-full bg-module/10 px-2.5 py-1 text-xs font-bold text-module md:inline-flex"
   // The subscription is read by the roles the Settings matrix names: the owner and whoever approves orders.
   if (!isLoading && (actor.isOwner || actor.canApprove))
     return (

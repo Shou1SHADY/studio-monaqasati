@@ -41,6 +41,7 @@ export function PriceAgreementsView({
   fmtDate,
   focusId,
   onFocusChange,
+  query,
 }: {
   agreements: PriceAgreement[]
   history: PriceHistoryEntry[]
@@ -58,6 +59,8 @@ export function PriceAgreementsView({
   /** The agreement whose drawer is open — `?agreement=` or a supplier file's link. */
   focusId?: string | null
   onFocusChange?: (id: string | null) => void
+  /** The page's head search (`?search=`): given, the list reads it and draws no box of its own. */
+  query?: string
 }) {
   const t = useTranslations("Portal.ProcPrices")
   const firestore = useFirestore()
@@ -66,7 +69,8 @@ export function PriceAgreementsView({
   const [endReason, setEndReason] = useState("")
   const [ending, setEnding] = useState(false)
   const [endError, setEndError] = useState<string | null>(null)
-  const [q, setQ] = useState("")
+  const [ownQ, setQ] = useState("")
+  const q = query ?? ownQ
   const [openId, setOpenId] = useState<string | null>(focusId || null)
   useEffect(() => setOpenId(focusId || null), [focusId])
   const pick = (id: string | null) => {
@@ -108,10 +112,12 @@ export function PriceAgreementsView({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">{t("agreements.intro")}</p>
         <div className="flex flex-wrap items-center gap-2">
+          {query === undefined && (
           <div className="relative w-full sm:w-64">
             <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("agreements.search")} aria-label={t("agreements.search")} className="ps-9" />
           </div>
+          )}
           {mayEdit && (
             <Button size="sm" onClick={() => setDialogFor(null)}>
               <Plus size={14} className="me-1.5" aria-hidden="true" />

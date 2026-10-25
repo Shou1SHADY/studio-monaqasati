@@ -58,6 +58,7 @@ export function OurSuppliersTable({
   specialtyLabel,
   onOpen,
   emptyAll,
+  searchless,
 }: {
   rows: SupplierRow[]
   cards: ReadonlyMap<string, SupplierCard>
@@ -71,6 +72,8 @@ export function OurSuppliersTable({
   specialtyLabel: (key: string) => string
   onOpen: (orgId: string) => void
   emptyAll?: React.ReactNode
+  /** The page's head searches: no box in the list. */
+  searchless?: boolean
 }) {
   const t = useTranslations("Portal.ProcSuppliers")
   const fmt = useDateText()
@@ -98,6 +101,7 @@ export function OurSuppliersTable({
       onOpen={onOpen}
       onShowMore={() => setLimit((n) => n + SUPPLIER_PAGE_SIZE)}
       emptyAll={emptyAll}
+      searchless={searchless}
       statusExtra={(s) =>
         !s.onPlatform ? null : (
           <>

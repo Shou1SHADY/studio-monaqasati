@@ -11,7 +11,7 @@ import { useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
-import { ArrowRight, Download, FileSpreadsheet, FileText, Landmark, ShieldCheck } from "lucide-react"
+import { ArrowLeft, Download, FileSpreadsheet, FileText, Landmark, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Callout } from "@/components/module-ui/Callout"
 import { DataTable, Figure, type DataColumn } from "@/components/module-ui/DataTable"
@@ -156,7 +156,7 @@ export function HrReportsView({ access }: { access: HrAccess }) {
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Button variant="ghost" size="sm" onClick={() => setFile(null)}>
-            <ArrowRight size={15} className="me-1.5 rtl-flip ltr:rotate-180" aria-hidden="true" />
+            <ArrowLeft size={15} className="me-1.5 rtl-flip" aria-hidden="true" />
             {t("rep.back")}
           </Button>
           <Button size="sm" onClick={() => download(`${file}-${sent.month}.csv`, fileText)} disabled={pv.count === 0}>
@@ -204,7 +204,7 @@ export function HrReportsView({ access }: { access: HrAccess }) {
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Button variant="ghost" size="sm" onClick={() => setOpen(null)}>
-            <ArrowRight size={15} className="me-1.5 rtl-flip ltr:rotate-180" aria-hidden="true" />
+            <ArrowLeft size={15} className="me-1.5 rtl-flip" aria-hidden="true" />
             {t("rep.back")}
           </Button>
           <Button size="sm" onClick={() => exportCsv(open)} disabled={rows.length === 0}>

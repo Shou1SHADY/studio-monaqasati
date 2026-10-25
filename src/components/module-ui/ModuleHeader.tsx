@@ -7,7 +7,7 @@
 // member sees is decided by the caller, so a test can read it.
 
 import type { ElementType, ReactNode } from "react"
-import { ChevronLeft } from "lucide-react"
+import { ChevronRight } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 
@@ -54,7 +54,8 @@ function KpiBody({ kpi }: { kpi: ModuleKpi }) {
         {kpi.unit && <bdi className="text-xs font-bold text-muted-foreground max-sm:block sm:mr-1">{kpi.unit}</bdi>}
         {kpi.unit ? <bdi>{kpi.value}</bdi> : kpi.value}
       </p>
-      {kpi.note && <p className={cn("mt-1.5 inline-block max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold sm:text-[11px]", TONE_CHIP[kpi.tone ?? "neutral"])}>{kpi.note}</p>}
+      {/* A phone's third of the row is too narrow for a one-line note («13 في تخصص…», review 3 #19): it wraps there; `sm` up it stays one line. */}
+      {kpi.note && <p className={cn("mt-1.5 inline-block max-w-full break-words rounded-md px-1.5 py-0.5 text-[10px] font-semibold max-sm:leading-snug sm:truncate sm:text-[11px]", TONE_CHIP[kpi.tone ?? "neutral"])}>{kpi.note}</p>}
     </>
   )
 }
@@ -98,7 +99,7 @@ export function ModuleHeader({
                 ) : (
                   <span className="font-semibold text-foreground">{c.label}</span>
                 )}
-                {i < crumbs.length - 1 && <ChevronLeft size={12} className="rtl-flip rotate-180 rtl:rotate-0" aria-hidden="true" />}
+                {i < crumbs.length - 1 && <ChevronRight size={12} className="rtl-flip" aria-hidden="true" />}
               </li>
             ))}
           </ol>
@@ -144,7 +145,7 @@ export function ModuleHeader({
 
       {tabs && tabs.length > 1 && (
         <nav aria-label={tabsLabel}>
-          <ul className="sticky top-0 z-10 -mx-4 flex items-center gap-1 overflow-x-auto border-b bg-background px-4 [scrollbar-width:thin] sm:mx-0 sm:px-0">
+          <ul className="rail-fade sticky top-0 z-10 -mx-4 flex items-center gap-1 overflow-x-auto border-b bg-background pe-10 ps-4 [scrollbar-width:thin] sm:mx-0 sm:pe-0 sm:ps-0">
             {tabs.map((tab) => {
               const on = tab.id === activeTab
               const TabIcon = tab.icon

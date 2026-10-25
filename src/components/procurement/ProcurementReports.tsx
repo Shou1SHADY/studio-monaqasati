@@ -17,7 +17,7 @@ import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
 import { collection, query, where } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
-import { AlertTriangle, ArrowRight, Clock, Download, Info, Loader2, Lock, MapPin, Printer, Scale, TrendingDown, Users, Wallet, type LucideIcon } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Clock, Download, Info, Loader2, Lock, MapPin, Printer, Scale, TrendingDown, Users, Wallet, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -363,7 +363,7 @@ export function ProcurementReports() {
               onClick={() => setReport(null)}
               className="inline-flex items-center gap-1.5 rounded text-sm font-semibold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <ArrowRight size={14} className="rtl-flip" aria-hidden="true" />
+              <ArrowLeft size={14} className="rtl-flip" aria-hidden="true" />
               {t("overview.seven")}
             </button>
           </div>

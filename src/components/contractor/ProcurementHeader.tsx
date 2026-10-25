@@ -13,7 +13,12 @@
 // The search is the prototype's: `/` focuses it, Enter jumps to the incoming
 // requests (an expediter's to the orders) on "all", and the target page reads
 // `?search=` — changing tab drops it. On a tab whose list reads `?search=` live
-// (requests, RFQs) it filters THIS page as you type («ابحث في هذه الصفحة…», FR-01).
+// (requests, RFQs, orders, receipts, suppliers) it filters THIS page as you type
+// («ابحث في هذه الصفحة…», FR-01) — the page's one search box; Reports has none.
+//
+// On a phone the rail comes straight under the title and the actions, and the three
+// numbers follow it as one compact strip (review 1 #7, review 2 #3); from `sm` up the
+// head is drawn as before.
 
 import type { ElementType, ReactNode } from "react"
 import { Suspense, useEffect, useRef, useState } from "react"
@@ -26,7 +31,7 @@ import { useProcurementShell } from "@/hooks/useProcurementShell"
 import { useProcurementNavBadges } from "@/hooks/useProcurementNavBadges"
 import { useAutoForwardTick } from "@/hooks/useAutoForwardTick"
 import { PROC_TABS, activeProcTab, visibleProcTabs } from "@/lib/procurement/shell"
-import { LIVE_SEARCH_TABS, searchHref } from "@/lib/procurement/frame"
+import { LIVE_SEARCH_TABS, SEARCHLESS_TABS, searchHref } from "@/lib/procurement/frame"
 import type { KpiTile } from "@/lib/procurement/kpis"
 import { displayCategory } from "@/lib/constants"
 import { sarLtr } from "@/lib/riyal"
@@ -99,7 +104,15 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
   // The orders tab's own act (prototype poFree): whoever prepares orders, never the reading owner.
   const serviceOrder = active?.id === "orders" && !shell.ownerReadOnly && (shell.actor.isOwner || shell.actor.canPrepare)
   const ownAction = shell.ownerReadOnly ? null : action
-  const searchTarget = tabs.find((x) => x.id === (shell.role === "expediter" ? "orders" : "requests")) ?? tabs.find((x) => x.id === "orders")
+  const searchTarget = active && SEARCHLESS_TABS.includes(active.id) ? undefined : (tabs.find((x) => x.id === (shell.role === "expediter" ? "orders" : "requests")) ?? tabs.find((x) => x.id === "orders"))
+  // A phone opens the rail at its start: the active tab may sit past the edge — bring it into view once it is known.
+  const railRef = useRef<HTMLUListElement>(null)
+  const activeHref = active?.href
+  useEffect(() => {
+    const el = activeHref ? railRef.current?.querySelector<HTMLElement>('[aria-current="page"]') : null
+    if (!el || !railRef.current || railRef.current.scrollWidth <= railRef.current.clientWidth) return
+    el.scrollIntoView?.({ block: "nearest", inline: "nearest" })
+  }, [activeHref, tabs.length])
 
   const kpis: ProcurementKpi[] = (shell.kpis?.tiles ?? []).map((k) => ({
     id: k.id,
@@ -126,7 +139,7 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
               : null
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
       {/* The title keeps its words whole (PUR-09 #2): when search, CSV and the actions do not
           fit beside it they wrap onto a line of their own. The old module subtitle is gone (PUR-08). */}
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -158,24 +171,26 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
       </div>
 
       {kpis.length > 0 && (
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3" aria-label={tShared("proc_kpis_label")}>
+        // A phone: three small figures in one row, after the rail; the note is read out, not drawn. `sm` up: as before.
+        <ul className="order-last grid grid-cols-3 gap-2 sm:order-none sm:gap-3" aria-label={tShared("proc_kpis_label")} data-testid="proc-kpis">
           {kpis.map((kpi) => (
             <li key={kpi.id} className="min-w-0">
               <Link
                 href={kpi.href}
-                className="block h-full rounded-2xl border bg-card p-4 shadow-sm transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:p-5"
+                className="block h-full rounded-xl border bg-card p-2.5 shadow-sm transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:rounded-2xl sm:p-5"
               >
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                  {kpi.icon && <kpi.icon size={14} className="shrink-0 text-module" aria-hidden="true" />}
-                  {kpi.label}
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground sm:text-xs">
+                  {kpi.icon && <kpi.icon size={14} className="hidden shrink-0 text-module sm:block" aria-hidden="true" />}
+                  <span className="truncate sm:overflow-visible sm:whitespace-normal">{kpi.label}</span>
                 </p>
-                <p className="mt-2 flex items-baseline gap-1.5 truncate">
-                  <span className="text-2xl font-black tabular-nums text-foreground" dir="ltr">
+                <p className="mt-1 flex items-baseline gap-1.5 truncate sm:mt-2">
+                  <span className="text-lg font-black tabular-nums text-foreground sm:text-2xl" dir="ltr">
                     {kpi.value}
                   </span>
-                  {kpi.unit && <span className="text-sm font-bold text-muted-foreground">{kpi.unit}</span>}
+                  {kpi.unit && <span className="text-[10px] font-bold text-muted-foreground sm:text-sm">{kpi.unit}</span>}
                 </p>
-                <p className={cn("mt-2 inline-block max-w-full truncate rounded-full px-2 py-0.5 text-[11px] font-semibold", TONE_CHIP[kpi.tone])}>{kpi.note}</p>
+                <p className={cn("mt-2 hidden max-w-full truncate rounded-full px-2 py-0.5 text-[11px] font-semibold sm:inline-block", TONE_CHIP[kpi.tone])}>{kpi.note}</p>
+                <span className="sr-only sm:hidden">{kpi.note}</span>
               </Link>
             </li>
           ))}
@@ -196,7 +211,7 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
 
       {tabs.length > 1 && (
         <nav aria-label={tShared("proc_nav_label")} className="sticky top-14 z-40 bg-background" data-testid="proc-rail">
-          <ul className="-mx-4 flex items-center gap-1 overflow-x-auto border-b px-4 [scrollbar-width:thin] sm:mx-0 sm:px-0">
+          <ul ref={railRef} className="rail-fade -mx-4 flex items-center gap-1 overflow-x-auto border-b pe-10 ps-4 [scrollbar-width:thin] sm:mx-0 sm:pe-0 sm:ps-0">
             {tabs.map((tab) => {
               const isActive = tab === active
               const count = shell.counts[tab.id]

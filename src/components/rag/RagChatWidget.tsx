@@ -230,13 +230,14 @@ export function RagChatWidget({ userRole }: { userRole: 'Contractor' | 'Supplier
 
   return (
     <>
-      {/* Floating button */}
+      {/* Floating button — smaller and tucked into the corner on a phone, where it sat over tabs and cards (review 1 #18).
+          The portal's <main> pads its foot (pb-28) past the button, and the fixed bars keep `max-md:pe-20` clear of it. */}
       <motion.button
         className={cn(
-          'fixed bottom-6 z-50 w-14 h-14 rounded-full shadow-xl',
+          'fixed bottom-4 z-50 h-12 w-12 rounded-full shadow-xl sm:bottom-6 sm:h-14 sm:w-14',
           'bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2',
-          isRTL ? 'left-6' : 'right-6'
+          isRTL ? 'left-4 sm:left-6' : 'right-4 sm:right-6'
         )}
         onClick={isOpen ? () => setIsOpen(false) : handleOpen}
         whileHover={{ scale: 1.08 }}

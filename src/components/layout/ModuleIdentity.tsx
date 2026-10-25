@@ -14,14 +14,17 @@ export function ModuleIdentity({ pathname }: { pathname: string }) {
   if (component.id !== "procurement") return null
   const Icon = component.icon
   return (
-    <div className="hidden min-w-0 items-center gap-2 sm:flex" data-testid="module-identity">
+    // Never narrower than its name (review 1 #3, review 2 #12, review 3 #2): the identity does not shrink, the name never
+    // truncates, and the module's line — the sidebar's header already says it — shows only where the bar has room for it,
+    // capped so it cannot push the bar's other items.
+    <div className="hidden shrink-0 items-center gap-2 sm:flex" data-testid="module-identity">
       <span className="h-6 w-px shrink-0 bg-border" aria-hidden="true" />
       <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-module/10 text-module">
         <Icon size={16} aria-hidden="true" />
       </span>
-      <span className="min-w-0 leading-tight">
-        <b className="block truncate text-sm font-black text-foreground">{t(component.labelKey)}</b>
-        <span className="hidden truncate text-[11px] text-muted-foreground md:block">{t("proc_sub")}</span>
+      <span className="leading-tight">
+        <b className="block whitespace-nowrap text-sm font-black text-foreground">{t(component.labelKey)}</b>
+        <span className="hidden max-w-[14rem] truncate text-[11px] text-muted-foreground xl:block">{t("proc_sub")}</span>
       </span>
     </div>
   )

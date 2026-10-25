@@ -31,7 +31,7 @@ import { PortalBreadcrumbs } from "@/components/layout/portal-breadcrumbs"
 import { PackageChip } from "@/components/procurement/PackageChip"
 import { foldsToIcons, useSidebarFold } from "@/hooks/useSidebarFold"
 import { ModuleIdentity } from "@/components/layout/ModuleIdentity"
-import { isProcTabPage } from "@/lib/procurement/frame"
+import { hidesTopBarSearch } from "@/lib/procurement/frame"
 import { useUser, useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase"
 import { useLocale, useTranslations } from "next-intl"
 import { doc, collection, query, where, orderBy, limit, updateDoc } from "firebase/firestore"
@@ -709,8 +709,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
           {/* Procurement's identity after the hub (FR-03); nothing on any other module. */}
           <ModuleIdentity pathname={pathname} />
 
-          {/* A Procurement rail page searches in its own head (FR-01) — one search per page, so the top bar's box steps aside there. */}
-          {!isProcTabPage(pathname) && (
+          {/* A Procurement page searches in its own head (FR-01) — one search per page, so the top bar's box steps aside there. */}
+          {!hidesTopBarSearch(pathname, procurementActive ? "procurement" : null) && (
           <div className="hidden md:flex flex-1 max-w-md">
             <TooltipProvider>
               <Tooltip delayDuration={300}>
@@ -734,7 +734,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
           </div>
           )}
 
-          <div className={cn("flex items-center gap-2 md:gap-3", locale === 'ar' ? 'mr-auto' : 'ml-auto')}>
+          <div className={cn("flex min-w-0 items-center gap-2 md:gap-3", locale === 'ar' ? 'mr-auto' : 'ml-auto')}>
             <PackageChip pathname={pathname} />
             <AppSwitcher />
             <LanguageSwitcher />

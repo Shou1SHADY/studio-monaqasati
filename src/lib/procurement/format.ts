@@ -51,9 +51,10 @@ export function displayNoticeNumber(number: string | null | undefined, locale: s
 
 export { displayDocNumber }
 
-/** An RFQ's number as the reader reads it. One drafted before numbers existed has none: it reads «RFQ-—», never a piece of its document id. */
+/** An RFQ's number as the reader reads it. One drafted before numbers existed has none: it reads "" — the screens then show
+ * no number at all (a «RFQ-—» chip looked broken, review 1 #2), never a piece of its document id. */
 export function rfqDisplayNumber(rfq: { rfqNumber?: string | null }, locale: string): string {
-  return rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : "RFQ-—"
+  return rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : ""
 }
 
 /** «10 نوفمبر 2026» — a day as the procurement screens print it, Gregorian, Latin digits. */

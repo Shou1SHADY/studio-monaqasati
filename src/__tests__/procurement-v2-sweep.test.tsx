@@ -39,7 +39,6 @@ import { installDomShims, missingKeys, setLocale, setPathname, setSignedIn } fro
 import RequestsPage from "@/app/[locale]/(contractor)/contractor/rfqs/requests/page"
 import RfqsPage from "@/app/[locale]/(contractor)/contractor/rfqs/page"
 import OrdersPage from "@/app/[locale]/(contractor)/contractor/rfqs/orders/page"
-import ChatsPage from "@/app/[locale]/(contractor)/contractor/rfqs/chats/page"
 import ChatsRootPage from "@/app/[locale]/(contractor)/contractor/chats/page"
 import SettingsPage from "@/app/[locale]/(contractor)/contractor/rfqs/settings/page"
 import GuidePage from "@/app/[locale]/(contractor)/contractor/rfqs/guide/page"
@@ -226,7 +225,6 @@ const PAGES: Page[] = [
   { id: "order-accepted", path: "/contractor/rfqs/orders", search: "po=po3", node: () => <OrdersPage /> },
   { id: "order-guest-late", path: "/contractor/rfqs/orders", search: "po=po4", node: () => <OrdersPage /> },
   { id: "order-cancelled", path: "/contractor/rfqs/orders", search: "po=po5", node: () => <OrdersPage /> },
-  { id: "chats", path: "/contractor/rfqs/chats", node: () => <ChatsPage /> },
   { id: "chats-root", path: "/contractor/chats", node: () => <ChatsRootPage /> },
   { id: "settings", path: "/contractor/rfqs/settings", node: () => <SettingsPage />, clickTabs: true },
   { id: "guide", path: "/contractor/rfqs/guide", node: () => <GuidePage /> },
