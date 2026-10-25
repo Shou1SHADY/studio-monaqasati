@@ -119,6 +119,18 @@ export const operatingPolicies = (p: ProcurementPolicies | Partial<ResolvedPolic
   return { noticeRouting: r.noticeRouting, buyerReceives: r.buyerReceives, buyerSelfIssueLimit: r.buyerSelfIssueLimit, replyWindowDays: r.replyWindowDays, ownerStepsBack: r.ownerStepsBack }
 }
 
+/**
+ * What a policy form writes: its own keys, resolved — never the rest. `resolvePolicies` fills every policy with its reference
+ * value, so writing its whole result back (with `merge`) reset whatever the form does not show — a 1.5 company's «both» notice
+ * route, the buyer-receives flag (ST-01).
+ */
+export function policyPatch<K extends keyof ResolvedPolicies>(values: Partial<ResolvedPolicies>, keys: readonly K[]): Pick<ResolvedPolicies, K> {
+  const resolved = resolvePolicies(values)
+  const out = {} as Pick<ResolvedPolicies, K>
+  for (const key of keys) out[key] = resolved[key]
+  return out
+}
+
 /** Who owns each policy — the module the chip names (prototype `ext()`). */
 export type PolicyOwner = "gov" | "fin" | "inv" | "mfg"
 export const POLICY_OWNER: Record<keyof ResolvedPolicies, PolicyOwner> = {

@@ -34,7 +34,7 @@ import { openRequestsBySite } from "@/lib/procurement/site-counts"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { roleColumns, roleRows, type RoleCell, type RoleRowId } from "@/lib/procurement/roles-matrix"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
-import { DEFAULT_RESOLVED_POLICIES, POLICY_OWNER, resolvePolicies, type PolicyOwner, type ResolvedPolicies } from "@/lib/procurement/policies"
+import { DEFAULT_RESOLVED_POLICIES, POLICY_OWNER, policyPatch, resolvePolicies, type PolicyOwner, type ResolvedPolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_SETTINGS } from "@/lib/procurement/types"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
@@ -49,11 +49,14 @@ type Row =
   | { kind: "switch"; key: SwitchKey }
   | { kind: "pair"; id: PairId; keys: [NumericKey, NumericKey]; units: [Unit, Unit] }
   | { kind: "fixed"; id: "offerVisibility" | "awardBeforeDeadline"; owner: PolicyOwner }
+  | { kind: "notice" }
 
 /** The prototype's order (§6.4): what shapes a quote, the clocks of buying, the limits, then the receipt. */
 const ROWS: Row[] = [
   { kind: "fixed", id: "offerVisibility", owner: "gov" },
   { kind: "fixed", id: "awardBeforeDeadline", owner: "gov" },
+  // «مسار إشعار التسليم» (ST-01): fixed in 2.0 — it reaches Procurement first; a 1.5 company that chose «both» sees it and may switch back.
+  { kind: "notice" },
   { kind: "number", key: "forwardWindowDays", unit: "days" },
   { kind: "number", key: "rfqDefaultDays", unit: "days" },
   { kind: "pair", id: "cycle", keys: ["rfqWindowDays", "awardCycleDays"], units: ["days", "days"] },
@@ -100,6 +103,8 @@ const schema = z.object({
   advanceUnknownSupplierOwner: z.boolean(),
 })
 type FormValues = z.infer<typeof schema>
+/** The keys the form owns — the only ones a save writes (ST-01). */
+const FORM_KEYS = schema.keyof().options
 
 // Procurement 1.5 (PUR-08): only what the customer sets — in his words, no programme keys. The developers'
 // pages (the purchase path, «الفكرتان», the links with other modules, «لم يُبنَ · التعارضات · السجل») moved to
@@ -178,7 +183,7 @@ export function ProcurementSettings() {
     if (!firestore || !orgId || !user || !mayEdit) return
     setSaving(true)
     try {
-      const clean = resolvePolicies(values)
+      const clean = policyPatch(values, FORM_KEYS)
       await setDoc(doc(firestore, PROCUREMENT_SETTINGS, orgId), { ...clean, organizationId: orgId, updatedAt: serverTimestamp(), updatedById: user.uid }, { merge: true })
       form.reset(clean)
       toast({ title: t("saved") })
@@ -213,8 +218,24 @@ export function ProcurementSettings() {
     }
   }
 
+  // A company that chose «both» before 2.0 keeps it until the owner switches back — one write of that key alone.
+  const [routingBusy, setRoutingBusy] = useState(false)
+  const routeToProcurement = async () => {
+    if (!firestore || !orgId || !user || !mayEdit) return
+    setRoutingBusy(true)
+    try {
+      await setDoc(doc(firestore, PROCUREMENT_SETTINGS, orgId), { organizationId: orgId, noticeRouting: "procurement", updatedAt: serverTimestamp(), updatedById: user.uid }, { merge: true })
+      toast({ title: t("saved") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("saveFailed"), variant: "destructive" })
+    } finally {
+      setRoutingBusy(false)
+    }
+  }
+
   const rowVisible = (row: Row): boolean => {
-    if (row.kind === "fixed" || row.kind === "switch") return true
+    if (row.kind === "fixed" || row.kind === "switch" || row.kind === "notice") return true
     const keys: NumericKey[] = row.kind === "pair" ? row.keys : [row.key]
     const units: Unit[] = row.kind === "pair" ? row.units : [row.unit]
     if (units.includes("sar") && !actor.seesPrices) return false
@@ -256,6 +277,29 @@ export function ProcurementSettings() {
                                 <PartyChip party={OWNER_PARTY[row.owner]} label={t(`owner.${row.owner}`)} />
                               </div>
                               <p className="text-[11px] leading-relaxed text-muted-foreground">{t(`policy.${row.id}.desc`)}</p>
+                            </div>
+                          )
+                        if (row.kind === "notice")
+                          return (
+                            <div key="noticeRouting" className="grid gap-1 px-4 py-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-bold text-foreground">{t("policy.noticeRouting.label")}</p>
+                                {ownerChip("noticeRouting")}
+                              </div>
+                              <p className="text-[11px] leading-relaxed text-muted-foreground">{t("policy.noticeRouting.desc")}</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-2">
+                                <p className="text-xs font-semibold text-foreground">{t(`policy.noticeRouting.${policies.noticeRouting}`)}</p>
+                                {policies.noticeRouting === "both" && (
+                                  <>
+                                    <span className="text-[11px] text-muted-foreground">{t("policy.noticeRouting.legacy")}</span>
+                                    {mayEdit && (
+                                      <Button type="button" variant="outline" size="sm" className="h-8" disabled={routingBusy} onClick={() => void routeToProcurement()}>
+                                        {t("policy.noticeRouting.back")}
+                                      </Button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
                             </div>
                           )
                         if (row.kind === "switch")

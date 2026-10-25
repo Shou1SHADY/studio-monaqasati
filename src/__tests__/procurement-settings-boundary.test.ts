@@ -4,7 +4,7 @@
  * names the module that owns it.
  */
 
-import { DEFAULT_OPERATING_POLICIES, operatingPolicies, POLICY_OWNER, resolvePolicies } from "@/lib/procurement/policies"
+import { DEFAULT_OPERATING_POLICIES, operatingPolicies, POLICY_OWNER, policyPatch, resolvePolicies } from "@/lib/procurement/policies"
 import { DEFAULT_POLICIES } from "@/lib/procurement/types"
 
 describe("operating policies", () => {
@@ -25,5 +25,12 @@ describe("operating policies", () => {
     expect(POLICY_OWNER.managerApprovalLimit).toBe("fin")
     expect(POLICY_OWNER.overReceiptTolerancePercent).toBe("inv")
     expect(Object.keys(POLICY_OWNER).sort()).toEqual(Object.keys(resolvePolicies(null)).sort())
+  })
+
+  it("a policy form's patch holds only its own keys, resolved (ST-01)", () => {
+    const patch = policyPatch({ managerApprovalLimit: "-5" as never, inventoryReplyDays: 3 }, ["managerApprovalLimit", "inventoryReplyDays", "replyWindowDays"] as const)
+    expect(patch).toEqual({ managerApprovalLimit: DEFAULT_POLICIES.managerApprovalLimit, inventoryReplyDays: 3, replyWindowDays: 3 })
+    expect(Object.keys(patch)).not.toContain("noticeRouting")
+    expect({ ...{ noticeRouting: "both", buyerReceives: true }, ...patch }).toMatchObject({ noticeRouting: "both", buyerReceives: true })
   })
 })

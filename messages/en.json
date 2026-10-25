@@ -16386,7 +16386,9 @@
           "label": "Delivery notice route",
           "desc": "Where a supplier's delivery notice lands first — with us, to forward to the receiver, or with both at once",
           "procurement": "Reaches Procurement, then we forward it to the receiver",
-          "both": "To both at once"
+          "both": "To both at once",
+          "legacy": "Chosen before 2.0 — in 2.0 it reaches Procurement first",
+          "back": "Switch back to Procurement first"
         },
         "buyerReceives": {
           "label": "No separate receiver: the buyer receives",

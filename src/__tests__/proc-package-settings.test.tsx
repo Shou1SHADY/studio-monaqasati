@@ -15,7 +15,7 @@ jest.mock("@/components/layout/portal-layout", () => jest.requireActual("@/test-
 
 import React from "react"
 import { act, fireEvent, render } from "@testing-library/react"
-import { resetFakeDb, seed } from "@/test-utils/fake-firestore"
+import { readDoc, resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import { installDomShims, missingKeys, setPathname, setSignedIn } from "@/test-utils/render-world"
 import SettingsPage from "@/app/[locale]/(contractor)/contractor/rfqs/settings/page"
 
@@ -114,6 +114,51 @@ describe("the policies (§14)", () => {
     expect(text()).toContain("السياسات يعدّلها المالك وحده")
     expect(numberInputs().every((i) => i.disabled)).toBe(true)
     expect(buttons()).not.toContain("احفظ")
+    view.unmount()
+  })
+})
+
+describe("saving the policies (ST-01)", () => {
+  it("never writes a policy the form does not show: a stored «both» notice route and the buyer-receives flag survive a save", async () => {
+    world()
+    seed(`procurementSettings/${ORG}`, { organizationId: ORG, noticeRouting: "both", buyerReceives: true, managerApprovalLimit: 90000 })
+    const view = await open(ORG)
+    const input = numberInputs()[0]
+    await act(async () => void fireEvent.change(input, { target: { value: "7" } }))
+    await flush()
+    const save = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").trim() === "احفظ") as HTMLButtonElement
+    expect(save.disabled).toBe(false)
+    await act(async () => void fireEvent.click(save))
+    await flush()
+    const stored = readDoc<Record<string, unknown>>(`procurementSettings/${ORG}`)
+    expect(stored?.updatedById).toBe(ORG)
+    expect([stored?.noticeRouting, stored?.buyerReceives, stored?.managerApprovalLimit]).toEqual(["both", true, 90000])
+    view.unmount()
+  })
+
+  it("show the delivery notice route as fixed: it reaches Procurement first (2.0), with no switch", async () => {
+    world()
+    const view = await open(ORG)
+    expect(text()).toContain("مسار إشعار التسليم")
+    expect(text()).toContain("يصل المشتريات ثم نحوّله للمستلم")
+    expect(buttons()).not.toContain("أعِده إلى المشتريات أولاً")
+    view.unmount()
+  })
+
+  it("a company that chose «both» before 2.0 sees it, and the owner switches back with one write of that key alone", async () => {
+    world()
+    seed(`procurementSettings/${ORG}`, { organizationId: ORG, noticeRouting: "both", buyerReceives: true })
+    let view = await open("mgr")
+    expect(text()).toContain("يصل الطرفين معاً")
+    expect(buttons()).not.toContain("أعِده إلى المشتريات أولاً")
+    view.unmount()
+    view = await open(ORG)
+    const back = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").trim() === "أعِده إلى المشتريات أولاً") as HTMLButtonElement
+    await act(async () => void fireEvent.click(back))
+    await flush()
+    const stored = readDoc<Record<string, unknown>>(`procurementSettings/${ORG}`)
+    expect([stored?.noticeRouting, stored?.buyerReceives]).toEqual(["procurement", true])
+    expect(text()).toContain("يصل المشتريات ثم نحوّله للمستلم")
     view.unmount()
   })
 })
