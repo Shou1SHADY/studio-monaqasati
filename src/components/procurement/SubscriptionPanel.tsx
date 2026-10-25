@@ -76,7 +76,9 @@ function ConnectorRow({
         <UnitIcon unit={conn} on={on} />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-foreground">{texts.name}</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">{texts.question}</p>
+          {/* Addressed to the company: what this connector is for. The admin's onboarding question («هل يدير…؟») is the admin's — it
+              stays on the package page (AD-01), never on the customer's own screen. */}
+          <p className="mt-0.5 text-[11px] text-muted-foreground">{tp(`conn.${conn}.benefit`)}</p>
         </div>
         <StatusPill tone={on ? "ok" : "warn"}>{on ? inLabel : addsLabel}</StatusPill>
       </div>

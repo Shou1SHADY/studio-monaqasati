@@ -21,6 +21,7 @@ import { dumpDb, resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import { installDomShims, missingKeys, setLocale, setPathname, setSignedIn } from "@/test-utils/render-world"
 import GuidePage from "@/app/[locale]/(contractor)/contractor/rfqs/guide/page"
 import { GuideLink } from "@/components/procurement/guide/GuideLink"
+import { PortalBreadcrumbs } from "@/components/layout/portal-breadcrumbs"
 
 installDomShims()
 jest.setTimeout(60_000)
@@ -159,6 +160,37 @@ describe("the buttons are plain links the viewer may follow", () => {
     await open()
     const strip = Array.from(document.querySelectorAll("a")).find((a) => (a.textContent ?? "").includes("عُد إلى المشتريات"))
     expect(strip?.getAttribute("href")).toBe("/contractor/rfqs/today")
+  })
+})
+
+describe("the guide's frame (UI review)", () => {
+  it("the mini path's arrows lead each station after the first — a wrapped line never ends on a lone arrow", async () => {
+    await open()
+    const items = Array.from(document.querySelectorAll('[data-testid="guide-mini"] > li'))
+    expect(items.length).toBeGreaterThan(1)
+    items.forEach((li, i) => {
+      expect(li.firstElementChild?.getAttribute("data-testid") === "guide-mini-arrow").toBe(i > 0)
+      expect(li.lastElementChild?.getAttribute("data-testid")).not.toBe("guide-mini-arrow")
+    })
+  })
+
+  it("has ONE way back: the band's «عُد إلى المشتريات»; the breadcrumb keeps its trail but drops its own back button here", async () => {
+    setSignedIn(ORG)
+    setPathname("/contractor/rfqs/guide", "")
+    const view = render(<PortalBreadcrumbs />)
+    await flush()
+    const nav = document.querySelector("nav")
+    expect(nav).not.toBeNull()
+    expect(nav?.textContent).not.toMatch(/العودة إلى/)
+    expect(nav?.querySelector("ol")).not.toBeNull()
+    view.unmount()
+    setPathname("/contractor/rfqs/my-requests", "")
+    const mine = render(<PortalBreadcrumbs />)
+    await flush()
+    // The page being shown is always its own last crumb — «طلباتي» is in the sidebar only for members without Procurement.
+    expect(document.querySelector("nav [aria-current='page']")?.textContent).toBe("طلباتي")
+    expect(document.querySelector("nav")?.textContent).toMatch(/العودة إلى/)
+    mine.unmount()
   })
 })
 

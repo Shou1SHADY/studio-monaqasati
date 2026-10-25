@@ -41,14 +41,17 @@ export type RfqCardRow = RfqListRow<RfqRow>
 
 const REACH_ICON = { public: Globe, private: Lock, direct: Hand } as const
 
-export function RfqStagePill({ row }: { row: Pick<RfqListRow, "state" | "closedEarly"> & { publishedMs?: number } }) {
+export function RfqStagePill({ row }: { row: Pick<RfqListRow, "state" | "closedEarly"> & { publishedMs?: number; noLive?: RfqListRow["noLive"] } }) {
   const tp = useTranslations("Portal.Procurement.rfqpage")
   const tList = useTranslations("Portal.Procurement.rfqlist")
+  // A round with nothing in the running (closed with none, or every offer excluded) is not «comparing» — the pill says what the
+  // card's own line says, in red, until it is reopened or cancelled (WF-26).
+  const noLive = Boolean(row.noLive) && (row.state === "open" || row.state === "compare")
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      <StatusPill tone={STATE_TONE[row.state]}>
+      <StatusPill tone={noLive ? "bad" : STATE_TONE[row.state]}>
         <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
-        {tp(`stage.${row.state}`)}
+        {noLive ? tp("stage.no_live") : tp(`stage.${row.state}`)}
       </StatusPill>
       {row.closedEarly && row.state === "awarded" && <StatusPill tone="warn">{tp("stage.early")}</StatusPill>}
       {isJustPublished(row, Date.now()) && <StatusPill tone="ok">{tList("just_published")}</StatusPill>}
@@ -172,11 +175,11 @@ export function RfqPrimaryAction({ row, canAct, onReopen, className }: { row: Rf
   const Icon = ACTION_ICON[action]
   const label = action === "complete" ? tx("complete") : action === "compare" ? tp("compare_cta") : action === "reopen" ? tl("reopen") : t("open")
   const filled = action === "compare" || action === "complete"
-  const cls = cn("h-8 gap-1.5 rounded-xl text-xs font-semibold", filled ? "bg-module text-module-foreground hover:bg-module/90" : "border border-border bg-card text-foreground shadow-none hover:bg-muted", className)
+  const cls = cn("h-11 gap-1.5 rounded-xl text-xs font-semibold sm:h-8", !filled && "border border-border bg-card text-foreground shadow-none hover:bg-muted", className)
   const href = actionHref(row, action, rfqReviewHref)
   if (href)
     return (
-      <Button asChild size="sm" variant={filled ? "default" : "outline"} className={cls} data-action={action}>
+      <Button asChild size="sm" variant={filled ? "module" : "outline"} className={cls} data-action={action}>
         <Link href={href}>
           <Icon size={14} aria-hidden="true" />
           {label}
@@ -232,7 +235,7 @@ export function RfqCard(p: RfqCardProps) {
   })()
 
   return (
-    <article className={cn("flex flex-col rounded-2xl border border-t-[3px] bg-card shadow-sm transition-shadow hover:shadow-md", STAGE_EDGE[row.state])}>
+    <article className={cn("flex flex-col rounded-2xl border border-t-[3px] bg-card shadow-sm transition-shadow hover:shadow-md", live && row.noLive ? "border-t-destructive" : STAGE_EDGE[row.state])}>
       <div className="flex flex-1 flex-col gap-3 p-4">
         <div className="flex items-center justify-between gap-2">
           <RfqStagePill row={row} />
@@ -291,25 +294,25 @@ export function RfqCard(p: RfqCardProps) {
         <div className="flex flex-wrap items-center gap-2">
           <RfqPrimaryAction row={row} canAct={p.canAct} onReopen={p.onReopen} className="flex-1 min-w-[7rem]" />
           {row.state === "draft" && p.canDelete && (
-            <Button size="sm" variant="outline" className="h-8 gap-1.5 rounded-xl border border-destructive/30 bg-card text-xs font-semibold text-destructive shadow-none hover:bg-destructive/5 hover:text-destructive" onClick={p.onDelete}>
+            <Button size="sm" variant="outline" className="h-11 gap-1.5 rounded-xl border border-destructive/30 sm:h-8 bg-card text-xs font-semibold text-destructive shadow-none hover:bg-destructive/5 hover:text-destructive" onClick={p.onDelete}>
               <Trash2 size={14} aria-hidden="true" />
               {tc("rfqv_delete")}
             </Button>
           )}
           {share && (
-            <Button size="sm" variant="outline" className="h-8 gap-1.5 rounded-xl border border-border bg-card text-xs font-semibold text-muted-foreground shadow-none hover:bg-muted hover:text-foreground" onClick={p.onShare} title={tc("rfqv_share")}>
+            <Button size="sm" variant="outline" className="h-11 gap-1.5 rounded-xl border border-border bg-card text-xs font-semibold text-muted-foreground sm:h-8 shadow-none hover:bg-muted hover:text-foreground" onClick={p.onShare} title={tc("rfqv_share")}>
               <Link2 size={14} aria-hidden="true" />
               {tg("guest_link")}
             </Button>
           )}
           {row.state !== "draft" && (
-            <Button size="sm" variant="outline" className="h-8 w-8 shrink-0 rounded-xl border border-border bg-card p-0 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground" onClick={p.onPrint} aria-label={t("print")} title={t("print")}>
+            <Button size="sm" variant="outline" className="h-11 w-11 shrink-0 rounded-xl sm:h-8 sm:w-8 border border-border bg-card p-0 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground" onClick={p.onPrint} aria-label={t("print")} title={t("print")}>
               <Printer size={14} aria-hidden="true" />
             </Button>
           )}
         </div>
         {extendable && (
-          <button type="button" onClick={p.onExtend} className="block w-full rounded text-center text-xs font-semibold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button type="button" onClick={p.onExtend} className="block min-h-11 w-full rounded text-center text-xs font-semibold text-cta hover:underline sm:min-h-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {row.state === "compare" ? t("republish") : tc("rfqv_edit_open")}
           </button>
         )}

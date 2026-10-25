@@ -17,7 +17,7 @@ import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
 import { collection, query, where } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
-import { AlertTriangle, ArrowRight, Clock, Download, Info, Loader2, Lock, MapPin, Printer, Scale, TrendingDown, Users, Wallet, type LucideIcon } from "lucide-react"
+import { AlertTriangle, ArrowRight, ChevronLeft, ChevronRight, Clock, Download, Info, Loader2, Lock, MapPin, Printer, Scale, TrendingDown, Users, Wallet, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -25,6 +25,7 @@ import { Link, useRouter } from "@/i18n/routing"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { Chip } from "@/components/module-ui/Chip"
+import { EmptyState } from "@/components/module-ui/EmptyState"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useModules } from "@/hooks/useCompanyModules"
@@ -103,6 +104,7 @@ export function ProcurementReports() {
   const tProc = useTranslations("Portal.Procurement")
   const tPay = useTranslations("Portal.ProcOrders.pay")
   const locale = useLocale()
+  const RowChevron = locale === "ar" ? ChevronLeft : ChevronRight
   const router = useRouter()
   const params = useSearchParams()
   const { on } = useModules()
@@ -312,11 +314,12 @@ export function ProcurementReports() {
             <Loader2 className="animate-spin text-muted-foreground" size={28} aria-hidden="true" />
           </div>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
+          // items-start: an empty panel is as tall as what it says, not stretched to the seven reports beside it.
+          <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
             {monthSpend && (
               <Panel title={t("report.supplier")} sub={`${monthLabel} · ${basis}`}>
                 {monthSpend.rows.length === 0 ? (
-                  <Empty>{t("empty")}</Empty>
+                  <EmptyState icon={Users} title={t("empty")} description={t("empty_supplier_hint")} className="m-4" />
                 ) : (
                   <Table head={[t("cols.supplier"), t("cols.orders"), mh("value")]}>
                     {monthSpend.rows.slice(0, 8).map((r) => (
@@ -335,17 +338,24 @@ export function ProcurementReports() {
             <Panel title={t("overview.seven")} sub="">
               <ul>
                 {reports.map((id) => (
-                  <li key={id} className="flex flex-wrap items-center gap-2 border-t px-4 py-3 first:border-t-0">
-                    <ReportIcon id={id} />
+                  <li key={id} className="flex items-center gap-2 border-t px-2 py-1.5 first:border-t-0">
+                    {/* The whole row opens the report — it reads as a link (chevron, hover), on a phone too; CSV stays its own button. */}
                     <button
                       type="button"
                       onClick={() => setReport(id)}
-                      className="min-w-0 flex-1 rounded text-start font-bold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      data-testid={`report-row-${id}`}
+                      aria-label={reportLabel(id)}
+                      aria-describedby={REPORT_NEEDS_PRICE[id] ? `proc-rep-basis-${id}` : undefined}
+                      className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-start transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      {reportLabel(id)}
+                      <ReportIcon id={id} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-bold">{reportLabel(id)}</span>
+                        {REPORT_NEEDS_PRICE[id] && <span id={`proc-rep-basis-${id}`} className="block text-[11px] text-muted-foreground">{basis}</span>}
+                      </span>
+                      <RowChevron size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
                     </button>
-                    {REPORT_NEEDS_PRICE[id] && <span className="text-[11px] text-muted-foreground">{basis}</span>}
-                    <Button variant="outline" size="sm" className="gap-1.5" onClick={() => exportCsv(id)} aria-label={`${t("csv")} - ${reportLabel(id)}`}>
+                    <Button variant="outline" size="sm" className="h-11 shrink-0 gap-1.5 sm:h-9" onClick={() => exportCsv(id)} aria-label={`${t("csv")} - ${reportLabel(id)}`}>
                       <Download size={14} aria-hidden="true" />
                       {t("csv")}
                     </Button>

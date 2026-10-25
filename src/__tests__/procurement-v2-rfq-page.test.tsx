@@ -174,12 +174,13 @@ describe("the head of the page (RFQ-01, RFQ-02, G-03)", () => {
   it("the numbers row: reached, viewed, offers with the off-platform one, the lowest complete offer, the unanswered question that opens the tab", async () => {
     const view = await open()
     const row = document.querySelector("[data-testid=rfq-numbers]")?.textContent ?? ""
-    expect(row).toContain("وصل إلى 10 مورّد")
-    expect(row).toContain("اطّلع عليه 19 مرة")
-    expect(row).toContain("11 عرض")
+    // Each box leads with its label and shows a FIGURE — never a sentence with the number missing.
+    expect(row).toContain("موردون وصلهم الطلب10")
+    expect(row).toContain("مرات الاطّلاع19")
+    expect(row).toContain("العروض11")
     expect(row).toContain("منها 1 من خارج المنصة")
-    expect(row).toContain("استفسار بلا جواب")
-    await click(buttons().find((b) => (b.textContent || "").includes("استفسار بلا جواب")))
+    expect(row).toContain("استفسارات بلا جواب1")
+    await click(buttons().find((b) => (b.textContent || "").includes("استفسارات بلا جواب")))
     expect(text()).toContain("هل التسليم شامل التنزيل؟")
     view.unmount()
   })

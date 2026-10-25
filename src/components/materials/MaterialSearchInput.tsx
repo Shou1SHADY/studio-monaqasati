@@ -128,7 +128,8 @@ export function MaterialSearchInput({
           aria-controls={listId}
           aria-autocomplete="list"
           className="h-10 ps-9 pe-10"
-          dir="auto"
+          // Empty, `dir="auto"` falls back to LTR and the Arabic placeholder's quote marks jump; the page's direction until typed.
+          dir={q ? "auto" : locale === "ar" ? "rtl" : "ltr"}
         />
         <button
           type="button"
@@ -262,7 +263,7 @@ export function MaterialSearchInput({
               key={c.key}
               type="button"
               onClick={() => onQuick?.(c.hit)}
-              className="inline-flex min-h-7 items-center rounded-full border bg-background px-2.5 text-[11px] font-semibold text-foreground transition-colors hover:border-module hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex min-h-11 items-center rounded-full border bg-background px-2.5 sm:min-h-7 text-[11px] font-semibold text-foreground transition-colors hover:border-module hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {t(`popular_${c.key}`)}
             </button>
@@ -270,7 +271,7 @@ export function MaterialSearchInput({
           <button
             type="button"
             onClick={() => onBrowse("")}
-            className="inline-flex min-h-7 items-center gap-1 rounded-full border border-dashed bg-background px-2.5 text-[11px] font-semibold text-module transition-colors hover:bg-module/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-11 items-center gap-1 rounded-full border border-dashed sm:min-h-7 bg-background px-2.5 text-[11px] font-semibold text-module transition-colors hover:bg-module/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <FolderTree size={12} aria-hidden="true" />
             {t("popular_browse")}

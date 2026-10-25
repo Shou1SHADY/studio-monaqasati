@@ -40,7 +40,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useProcTeam } from "@/hooks/useProcTeam"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
-import { useOurSuppliers, usePlatformCards, usePlatformSupplier, type PlatformSupplier } from "@/hooks/useSupplierDirectory"
+import { useOurSuppliers, usePlatformCards, usePlatformDirectoryTotal, usePlatformSupplier, type PlatformSupplier } from "@/hooks/useSupplierDirectory"
 import { useMaterialTree } from "@/hooks/useMaterialTree"
 import { categoryTree, treeScope, treeSupplier } from "@/lib/materials/category-tree"
 import { keyLabel, specialtyKeys } from "@/lib/materials/subs"
@@ -176,6 +176,8 @@ export default function SuppliersPage() {
   const [oursLayout, setOursLayout] = useState<SupplierLayout>("rows")
   const [dirLayout, setDirLayout] = useState<SupplierLayout>("cards")
   const [dirTotal, setDirTotal] = useState<number | undefined>(undefined)
+  // The segment shows its count before it is opened, like the other four (the prototype's «دليل موردي المنصة 20»).
+  const dirTotalAhead = usePlatformDirectoryTotal(dirTotal === undefined && segment !== "platform")
   const [showInvite, setShowInvite] = useState(false)
   const [removeTarget, setRemoveTarget] = useState<PlatformSupplier | null>(null)
   const [removing, setRemoving] = useState(false)
@@ -267,7 +269,7 @@ export default function SuppliersPage() {
   }
 
   const segments = visibleSupplierSegments(actor.seesPrices)
-  const counts: Record<SupplierTabSegment, number | undefined> = { mine: mineRows.length, invitations: invitations.length, platform: dirTotal, agreements: agreements.length, history: undefined }
+  const counts: Record<SupplierTabSegment, number | undefined> = { mine: mineRows.length, invitations: invitations.length, platform: dirTotal ?? dirTotalAhead, agreements: agreements.length, history: undefined }
   const spinner = (
     <div className="flex flex-col items-center justify-center p-20 text-muted-foreground">
       <Loader2 className="mb-4 animate-spin" size={32} aria-hidden="true" />
@@ -287,7 +289,7 @@ export default function SuppliersPage() {
           description={t("page.subtitle")}
           action={
             canManage && (
-              <Button className="gap-2 bg-module text-module-foreground hover:bg-module/90" onClick={() => setShowInvite(true)}>
+              <Button variant="module" className="gap-2 rounded-xl" onClick={() => setShowInvite(true)}>
                 <Send size={16} className="rtl-flip" aria-hidden="true" />
                 {tC("suppliers_invite_platform")}
                 {pendingInvitations > 0 && <span className="rounded-full bg-warning px-1.5 text-[10px] font-bold text-white">{pendingInvitations}</span>}

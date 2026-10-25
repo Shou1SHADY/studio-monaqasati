@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
 import { arrayRemove, deleteDoc, doc, updateDoc } from "firebase/firestore"
-import { ArrowRight, Bell, Link2, Loader2, Scale, TrendingUp } from "lucide-react"
+import { Bell, Link2, Loader2, Scale, TrendingUp } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -27,7 +27,7 @@ import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { usePrintProfile } from "@/hooks/usePrintProfile"
 import { useRfqWorld, type AwardSelection } from "@/hooks/useRfqWorld"
 import { useToast } from "@/hooks/use-toast"
-import { useRouter, Link } from "@/i18n/routing"
+import { useRouter } from "@/i18n/routing"
 import { printedNumber } from "@/lib/company-print-profile"
 import { displayCity } from "@/lib/constants"
 import { releaseBoqDrawsForRfq } from "@/lib/boq-draws"
@@ -36,6 +36,7 @@ import { unlinkNeedsFromRfq } from "@/lib/procurement/needs-writes"
 import { DecisionRefused, decideOffer } from "@/lib/procurement/offer-decisions-client"
 import { invitedRows } from "@/lib/procurement/rfq-detail"
 import { noLiveOffer } from "@/lib/procurement/rfq-no-live"
+import { reachCountOf } from "@/lib/procurement/rfq-list"
 import { logRfqDocument } from "@/lib/procurement/rfq-writes"
 import { actsOnRfq } from "@/lib/procurement/rfq-access"
 import { awardSupplierOrgId } from "@/lib/procurement/award"
@@ -228,11 +229,7 @@ export function RfqPage({ rfqId }: { rfqId: string }) {
   return (
     <PortalLayout>
       <div className="space-y-4 text-start">
-        <Link href="/contractor/rfqs" className="inline-flex items-center gap-1.5 rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <ArrowRight size={14} className="rotate-180 rtl:rotate-0" aria-hidden="true" />
-          {t("back")}
-        </Link>
-
+        {/* «العودة إلى طلبات العروض» is the portal's breadcrumb, above — one back link per page. */}
         {world.loading || !rfq ? (
           <div className="flex flex-col items-center justify-center gap-3 p-20 text-muted-foreground">
             <Loader2 className="animate-spin" size={36} aria-hidden="true" />
@@ -243,7 +240,8 @@ export function RfqPage({ rfqId }: { rfqId: string }) {
             <header className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <RfqNumber rfq={{ id: rfqId, rfqNumber: rfq.rfqNumber ?? null }} />
-                <StatusPill tone={STAGE_TONE[state.stage] ?? "mute"}>{stageLabel}</StatusPill>
+                {/* Nothing in the running is not «comparing» — the same red pill as the list's card (WF-26). */}
+                <StatusPill tone={noLive && open ? "bad" : (STAGE_TONE[state.stage] ?? "mute")}>{noLive && open ? t("stage.no_live") : stageLabel}</StatusPill>
                 {state.closedEarly && state.stage === "awarded" && <StatusPill tone="warn">{t("stage.early")}</StatusPill>}
                 <StatusPill tone="mute">{t(`audience.${audience}`)}</StatusPill>
                 <StatusPill tone="mute">{t(`pricing.${pricingModeOf(rfq as never)}`)}</StatusPill>
@@ -285,7 +283,7 @@ export function RfqPage({ rfqId }: { rfqId: string }) {
               <>
                 <RfqPathHeader path={world.path} stage={state.stage} onMoreRequests={showRequests} />
                 <RfqNumbersRow
-                  reached={typeof (rfq as { reachedCount?: number }).reachedCount === "number" ? (rfq as { reachedCount?: number }).reachedCount ?? null : null}
+                  reached={reachCountOf(rfq as Parameters<typeof reachCountOf>[0])}
                   views={Number((rfq as { viewsCount?: number }).viewsCount) || 0}
                   offers={world.offers.length}
                   offPlatform={offPlatform}

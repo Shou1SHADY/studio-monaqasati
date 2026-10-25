@@ -34,6 +34,10 @@ import {
  * Renders nothing on a portal root (nowhere to go back to) or in the admin
  * portal, whose nav lives outside this registry.
  */
+/** Pages that carry their OWN way back to where they were opened from — one back link per page, so the bar shows the trail only.
+ * The Procurement guide's «عُد إلى المشتريات» returns to the page that opened it (`?from=`, IN-18), which this bar cannot know. */
+const OWN_BACK = new Set(["/contractor/rfqs/guide"])
+
 export function PortalBreadcrumbs() {
   const pathname = usePathname()
   const t = useTranslations("Portal.Sidebar")
@@ -56,6 +60,9 @@ export function PortalBreadcrumbs() {
   // A crumb the member cannot open would be a dead end, so gate on the same
   // permission check the sidebar uses and drop anything they may not see.
   const openable = (crumb: NavCrumb) => {
+    // The page being shown is open by definition — «طلباتي» is in the sidebar only for members WITHOUT Procurement (`requiredNone`),
+    // yet the owner who opens it from Incoming must still see where he is.
+    if (hrefPathname(crumb.href) === pathname) return true
     for (const section of component.sections) {
       for (const item of section.items) {
         const pool = [item, ...(item.children || [])]
@@ -86,6 +93,7 @@ export function PortalBreadcrumbs() {
 
   return (
     <nav aria-label={tShared("breadcrumb_label")} className="mb-4 flex items-center gap-3 flex-wrap">
+      {OWN_BACK.has(pathname) ? null : (
       <Link
         href={backTo.href}
         className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-border bg-card text-xs font-semibold text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -93,6 +101,7 @@ export function PortalBreadcrumbs() {
         <ChevronLeft size={14} className="rtl-flip" />
         {tShared("breadcrumb_back_to", { name: t(backTo.titleKey) })}
       </Link>
+      )}
 
       <ol className="flex items-center gap-1.5 flex-wrap text-xs text-muted-foreground min-w-0">
         {trail.map((crumb, i) => {

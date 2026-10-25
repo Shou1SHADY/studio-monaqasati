@@ -34,8 +34,8 @@ const text = () => document.body.textContent ?? ""
 const flush = async (n = 8) => {
   for (let i = 0; i < n; i++) await act(async () => void (await new Promise((r) => setTimeout(r, 0))))
 }
-const chip = (label: string) => Array.from(document.querySelectorAll("button[aria-pressed]")).find((b) => (b.textContent ?? "").trim().startsWith(label)) as HTMLButtonElement | undefined
-const pressed = () => Array.from(document.querySelectorAll("button[aria-pressed='true']")).map((b) => (b.textContent ?? "").trim())
+const chip = (label: string) => Array.from(document.querySelectorAll("[role='tab']")).find((b) => (b.textContent ?? "").trim().startsWith(label)) as HTMLButtonElement | undefined
+const pressed = () => Array.from(document.querySelectorAll("[role='tab'][aria-selected='true']")).map((b) => (b.textContent ?? "").trim())
 const button = (label: string) => Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").trim() === label || b.getAttribute("aria-label") === label) as HTMLButtonElement | undefined
 const select = (label: string) => document.querySelector(`select[aria-label="${label}"]`) as HTMLSelectElement
 const cards = () => Array.from(document.querySelectorAll("article"))
@@ -134,7 +134,7 @@ describe("the chips", () => {
   it("are the prototype's — مفتوحة · تُقارن · رُسّيت · أُلغيت · الكل — each with its count, drafts apart", async () => {
     const view = await open()
     expect([...missingKeys]).toEqual([])
-    const labels = Array.from(document.querySelectorAll("button[aria-pressed]")).map((b) => (b.textContent ?? "").trim())
+    const labels = Array.from(document.querySelectorAll("[role='tab']")).map((b) => (b.textContent ?? "").trim())
     expect(labels).toEqual(expect.arrayContaining(["مفتوحة1", "تُقارن2", "رُسّيت2", "أُلغيت1", "الكل6", "المسودات1"]))
     expect(text()).not.toMatch(/نشطة|مكتملة/)
     view.unmount()
@@ -245,6 +245,12 @@ describe("a card", () => {
     const empty = byTitle("رمل لياسة")
     expect(empty.querySelector("[data-action]")?.textContent).toContain("أعد فتحه")
     expect(empty.textContent).toContain("لا عرض حيّ — أُغلق بلا عروض")
+    // The pill agrees with the card's own line (UI review): nothing in the running is not «يُقارن».
+    const pill = empty.querySelector("h3")?.previousElementSibling?.textContent ?? ""
+    expect(pill).toContain("لا عرض حيّ")
+    expect(pill).not.toContain("يُقارن")
+    const comparing = cards().find((c) => c.querySelector("h3")?.textContent !== "رمل لياسة") as HTMLElement
+    expect(comparing.querySelector("h3")?.previousElementSibling?.textContent).toContain("يُقارن")
     await click(chip("رُسّيت"))
     for (const c of cards()) {
       expect(c.querySelector("[data-action]")?.textContent).toContain("افتح")
@@ -358,7 +364,7 @@ describe("the filter bar", () => {
     const input = document.querySelector('input[aria-label="ابحث برقم الطلب أو المادة…"]') as HTMLInputElement
     await act(async () => void fireEvent.change(input, { target: { value: "RFQ-2026/011" } }))
     expect(titles()).toEqual(["زوايا حديد — برج العليا"])
-    expect(chip("مفتوحة")?.getAttribute("aria-pressed")).toBe("false")
+    expect(chip("مفتوحة")?.getAttribute("aria-selected")).toBe("false")
     await act(async () => void fireEvent.change(input, { target: { value: "النخبة" } }))
     expect(titles()).toEqual(["زوايا حديد — برج العليا"])
     await act(async () => void fireEvent.change(input, { target: { value: "رمل" } }))
@@ -509,7 +515,7 @@ describe("English", () => {
     setLocale("en")
     const view = await open()
     expect([...missingKeys]).toEqual([])
-    const labels = Array.from(document.querySelectorAll("button[aria-pressed]")).map((b) => (b.textContent ?? "").trim())
+    const labels = Array.from(document.querySelectorAll("[role='tab']")).map((b) => (b.textContent ?? "").trim())
     expect(labels).toEqual(expect.arrayContaining(["Open1", "Comparing2", "Awarded2", "Cancelled1", "All6", "Drafts1"]))
     const t = cards()[0].textContent ?? ""
     expect(t).toContain("Public · 10 suppliers")

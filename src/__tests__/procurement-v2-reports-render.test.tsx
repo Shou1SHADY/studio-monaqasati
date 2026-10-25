@@ -119,9 +119,20 @@ describe("the overview: two panels, as the prototype", () => {
   it("each of the seven opens with its icon, in the module's colour (ST-06)", () => {
     open()
     const seven = heading(R.overview.seven).closest("section") as HTMLElement
-    const icons = Array.from(seven.querySelectorAll("li > svg")).map((svg) => svg.getAttribute("data-icon"))
+    const icons = Array.from(seven.querySelectorAll("li > button[data-testid^=report-row] > svg:first-of-type")).map((svg) => svg.getAttribute("data-icon"))
     expect(icons).toEqual(["Users", "MapPin", "Clock", "Scale", "AlertTriangle", "TrendingDown", "Wallet"])
-    expect(Array.from(seven.querySelectorAll("li > svg")).every((svg) => (svg.getAttribute("class") || "").includes("text-module"))).toBe(true)
+    expect(Array.from(seven.querySelectorAll("li > button[data-testid^=report-row] > svg:first-of-type")).every((svg) => (svg.getAttribute("class") || "").includes("text-module"))).toBe(true)
+  })
+
+  it("each report row reads as a link — the whole row is the button, ending in a chevron that points forward in Arabic (UI review)", () => {
+    open()
+    const rows = Array.from(document.querySelectorAll("button[data-testid^=report-row]"))
+    expect(rows).toHaveLength(7)
+    for (const row of rows) {
+      const icons = Array.from(row.querySelectorAll("svg")).map((svg) => svg.getAttribute("data-icon"))
+      expect(icons[icons.length - 1]).toBe("ChevronLeft")
+      expect(row.className).toContain("hover:bg-muted")
+    }
   })
 
   it("without Project Management the second report is «بحسب موقع التسليم»; without Finance the seventh is «مستلَم ودُفع — للمحاسب»", () => {

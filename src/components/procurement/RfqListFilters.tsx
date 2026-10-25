@@ -7,7 +7,7 @@
 import { useLocale, useTranslations } from "next-intl"
 import { LayoutGrid, List, Pencil, Search, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { Chip } from "@/components/module-ui/Chip"
+import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { NativeSelect } from "@/components/module-ui/NativeSelect"
 import { LIST_LAYOUTS, LIST_REACHES, LIST_SORTS, listFilterActive, type ListCounts, type ListFacets, type ListLayout, type ListReach, type ListSort, type ListView, type RfqListFilter } from "@/lib/procurement/rfq-list"
 import { cn } from "@/lib/utils"
@@ -57,24 +57,19 @@ export function RfqListFilters({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("status_label")}>
-          {CHIPS.filter((c) => c !== "cancelled" || counts.cancelled > 0 || filter.view === "cancelled").map((chip) => (
-            <Chip key={chip} selected={filter.view === chip && !searching} count={counts[chip]} onClick={() => pick(chip)}>
-              {t(`seg.${chip}`)}
-            </Chip>
-          ))}
-          {(counts.draft > 0 || filter.view === "draft") && (
-            <Chip selected={filter.view === "draft" && !searching} count={counts.draft} icon={Pencil} onClick={() => pick("draft")}>
-              {t("seg.draft")}
-            </Chip>
-          )}
-        </div>
-        <div className="ms-auto flex gap-1" role="group" aria-label={t("layout_label")}>
-          {LIST_LAYOUTS.map((l) => (
-            <Chip key={l} selected={layout === l} icon={l === "rows" ? List : LayoutGrid} onClick={() => onLayout(l)}>
-              {t(l)}
-            </Chip>
-          ))}
+        {/* The same segment strip as Today, Incoming, Orders and Receipts — one chip style across the module. */}
+        <ProcChipGroup<ListView>
+          label={t("status_label")}
+          active={filter.view}
+          onPick={pick}
+          dimmed={searching}
+          items={[
+            ...CHIPS.filter((c) => c !== "cancelled" || counts.cancelled > 0 || filter.view === "cancelled").map((chip) => ({ id: chip as ListView, label: t(`seg.${chip}`), count: counts[chip] })),
+            ...(counts.draft > 0 || filter.view === "draft" ? [{ id: "draft" as ListView, label: t("seg.draft"), count: counts.draft, icon: Pencil }] : []),
+          ]}
+        />
+        <div className="ms-auto">
+          <ProcChipGroup<ListLayout> label={t("layout_label")} active={layout} onPick={onLayout} items={LIST_LAYOUTS.map((l) => ({ id: l, label: t(l), icon: l === "rows" ? List : LayoutGrid }))} />
         </div>
       </div>
 
