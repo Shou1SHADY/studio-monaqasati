@@ -233,6 +233,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
     <Panel
       title={t("plant.title")}
       icon={Truck}
+      description={t("plant.sub")}
       bodyClassName="p-0"
       actions={
         <>
@@ -251,7 +252,6 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
         </>
       }
     >
-      <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("plant.sub")}</p>
       {on.length === 0 && booked.length === 0 ? (
         <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t("plant.empty")}</p>
       ) : (
@@ -309,7 +309,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                     </p>
                   )}
                 </div>
-                <div className="flex flex-col items-end gap-1.5">
+                <div className="flex min-w-0 flex-col items-end gap-1.5">
                   {p.category === "tool" ? (
                     <StatusPill tone="mute">{t("plant.custody")}</StatusPill>
                   ) : noRate ? (
@@ -331,17 +331,17 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                       </Button>
                     )}
                     {canDay && (
-                      <Button size="sm" variant="outline" onClick={() => open({ kind: "day", p }, { day: lastDay(p), st: loggedOr(p, lastDay(p), "work") })}>
+                      <Button size="sm" variant="ghost" onClick={() => open({ kind: "day", p }, { day: lastDay(p), st: loggedOr(p, lastDay(p), "work") })}>
                         {t("plant.log_today")}
                       </Button>
                     )}
                     {canReturn && p.status === "use" && (
-                      <Button size="sm" variant="outline" onClick={() => open({ kind: "off", p }, { ready: today })}>
+                      <Button size="sm" variant="ghost" onClick={() => open({ kind: "off", p }, { ready: today })}>
                         {t("plant.off_hire")}
                       </Button>
                     )}
                     {canReq && p.status === "req" && !p.offOk && (
-                      <Button size="sm" variant="outline" onClick={() => open({ kind: "desk", p }, { on: today })}>
+                      <Button size="sm" variant="ghost" onClick={() => open({ kind: "desk", p }, { on: today })}>
                         {t("plant.desk_record")}
                       </Button>
                     )}
