@@ -50,14 +50,11 @@ type Row =
   | { kind: "switch"; key: SwitchKey }
   | { kind: "pair"; id: PairId; keys: [NumericKey, NumericKey]; units: [Unit, Unit] }
   | { kind: "fixed"; id: "offerVisibility" | "awardBeforeDeadline"; owner: PolicyOwner }
-  | { kind: "notice" }
 
 /** The prototype's order (§6.4): what shapes a quote, the clocks of buying, the limits, then the receipt. */
 const ROWS: Row[] = [
   { kind: "fixed", id: "offerVisibility", owner: "gov" },
   { kind: "fixed", id: "awardBeforeDeadline", owner: "gov" },
-  // «مسار إشعار التسليم» (ST-01): fixed in 2.0 — it reaches Procurement first; a 1.5 company that chose «both» sees it and may switch back.
-  { kind: "notice" },
   { kind: "number", key: "forwardWindowDays", unit: "days" },
   { kind: "number", key: "rfqDefaultDays", unit: "days" },
   { kind: "pair", id: "cycle", keys: ["rfqWindowDays", "awardCycleDays"], units: ["days", "days"] },
@@ -106,6 +103,11 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 /** The keys the form owns — the only ones a save writes (ST-01). */
 const FORM_KEYS = schema.keyof().options
+
+/** «مسار إشعار التسليم» (ST-01): not a form field — fixed in 2.0 (it reaches Procurement first); a 1.5 company that chose «both»
+ * sees it and may switch back. Shown where the prototype puts it, just before the auto-forward row. */
+type ShownRow = Row | { kind: "notice" }
+const withNoticeRow = (rows: Row[]): ShownRow[] => rows.flatMap((row): ShownRow[] => (row.kind === "number" && row.key === "forwardWindowDays" ? [{ kind: "notice" }, row] : [row]))
 
 // Procurement 1.5 (PUR-08): only what the customer sets — in his words, no programme keys. The developers'
 // pages (the purchase path, «الفكرتان», the links with other modules, «لم يُبنَ · التعارضات · السجل») moved to
@@ -237,7 +239,7 @@ export function ProcurementSettings() {
   }
 
   const rowVisible = (row: Row): boolean => {
-    if (row.kind === "fixed" || row.kind === "switch" || row.kind === "notice") return true
+    if (row.kind === "fixed" || row.kind === "switch") return true
     const keys: NumericKey[] = row.kind === "pair" ? row.keys : [row.key]
     const units: Unit[] = row.kind === "pair" ? row.units : [row.unit]
     if (units.includes("sar") && !actor.seesPrices) return false
@@ -270,17 +272,7 @@ export function ProcurementSettings() {
                   <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="divide-y">
                       {/* Whoever never sees an amount (the expediter) never reads a riyal limit either. */}
-                      {ROWS.filter((row) => rowVisible(row)).map((row) => {
-                        if (row.kind === "fixed")
-                          return (
-                            <div key={row.id} className="grid gap-1 px-4 py-3">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-sm font-bold text-foreground">{t(`policy.${row.id}.label`)}</p>
-                                <PartyChip party={OWNER_PARTY[row.owner]} label={t(`owner.${row.owner}`)} />
-                              </div>
-                              <p className="text-[11px] leading-relaxed text-muted-foreground">{t(`policy.${row.id}.desc`)}</p>
-                            </div>
-                          )
+                      {withNoticeRow(ROWS.filter((row) => rowVisible(row))).map((row) => {
                         if (row.kind === "notice")
                           return (
                             <div key="noticeRouting" className="grid gap-1 px-4 py-3">
@@ -302,6 +294,16 @@ export function ProcurementSettings() {
                                   </>
                                 )}
                               </div>
+                            </div>
+                          )
+                        if (row.kind === "fixed")
+                          return (
+                            <div key={row.id} className="grid gap-1 px-4 py-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-bold text-foreground">{t(`policy.${row.id}.label`)}</p>
+                                <PartyChip party={OWNER_PARTY[row.owner]} label={t(`owner.${row.owner}`)} />
+                              </div>
+                              <p className="text-[11px] leading-relaxed text-muted-foreground">{t(`policy.${row.id}.desc`)}</p>
                             </div>
                           )
                         if (row.kind === "switch")
