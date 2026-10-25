@@ -95,6 +95,8 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
   const money = access.has("money")
   const canReq = !access.ctx.archived && access.allowed("plant.request")
   const canDay = !access.ctx.archived && access.allowed("daily.write")
+  // Off-hire and hand-back: whoever runs the plant (`req`, PM 1.1 — the owner's decision).
+  const canReturn = !access.ctx.archived && access.allowed("plant.return")
   const canRate = plantRateRefusal(access.ctx) === null
   const red = on.some((p) => overdueDays(p, today) > 0 || idleSince(p) >= IDLE_ALERT_DAYS)
   const cost = list.reduce((a, p) => a + plantCost(p), 0)
@@ -333,7 +335,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                         {t("plant.log_today")}
                       </Button>
                     )}
-                    {canDay && p.status === "use" && (
+                    {canReturn && p.status === "use" && (
                       <Button size="sm" variant="outline" onClick={() => open({ kind: "off", p }, { ready: today })}>
                         {t("plant.off_hire")}
                       </Button>
@@ -343,7 +345,7 @@ export function PlantPanel({ projectId, orgId, access, actor }: { projectId: str
                         {t("plant.desk_record")}
                       </Button>
                     )}
-                    {canDay && p.status === "req" && p.offOk && (
+                    {canReturn && p.status === "req" && p.offOk && (
                       <Button size="sm" onClick={() => open({ kind: "back", p }, { condition: "ok", acc: p.handover.accessories ?? "" })}>
                         <Check size={14} className="me-1.5" aria-hidden="true" />
                         {t("plant.hand_back")}

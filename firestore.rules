@@ -971,7 +971,7 @@ service cloud.firestore {
         || (d.hasOnly(['addendaCount']) && pmDuty(projectId, 'prep'))
         || (d.hasOnly(['addendaCount', 'signedCount', 'inForce']) && pmDuty(projectId, 'approve'))
         // …requests, direct purchases, equipment requests (`req`); project receipts (`rcv`).
-        || (d.hasOnly(['mrCount', 'pettyCount', 'plantCount', 'plantReqCount']) && pmDuty(projectId, 'req'))
+        || (d.hasOnly(['mrCount', 'pettyCount', 'pettyMonth', 'plantCount', 'plantReqCount']) && pmDuty(projectId, 'req'))
         || (d.hasOnly(['grnCount']) && pmDuty(projectId, 'rcv'))
         // …`approve` approves the monthly reconciliation — `pm.eac` (the approved estimate) and
         // `pm.budCount` (its revision).
@@ -1874,7 +1874,7 @@ service cloud.firestore {
       }
 
       // PM 1.0 plant on site (EQP-08…15, WF-14) — `pmPlant/{NN}` (`pm.plantCount`).
-      // Received, off-hired and handed back by `req`; the day log is `daily`
+      // Received, off-hired and handed back by `req` (PM 1.1 — `plant.return`); the day log is `daily`
       // (one key per day, never after the unit went back). use → req → back;
       // the desk's confirmation (offNo/offOk) is recorded once, while `req`.
       match /pmPlant/{plantId} {
@@ -1890,13 +1890,13 @@ service cloud.firestore {
           && resource.data.status != 'back'
           && ((pmDuty(projectId, 'daily')
                 && changedKeys().hasOnly(['days', 'hours', 'updatedAt']))
-              || (pmDuty(projectId, 'daily') && resource.data.status == 'use' && request.resource.data.status == 'req'
+              || (pmDuty(projectId, 'req') && resource.data.status == 'use' && request.resource.data.status == 'req'
                 && request.resource.data.offReq.by == request.auth.uid
                 && changedKeys().hasOnly(['status', 'offReq', 'updatedAt']))
               || (pmDuty(projectId, 'req') && resource.data.status == 'req' && resource.data.get('offOk', null) == null
                 && request.resource.data.offOk.by == request.auth.uid
                 && changedKeys().hasOnly(['offNo', 'offOk', 'updatedAt']))
-              || (pmDuty(projectId, 'daily') && resource.data.status == 'req' && resource.data.get('offOk', null) != null
+              || (pmDuty(projectId, 'req') && resource.data.status == 'req' && resource.data.get('offOk', null) != null
                 && request.resource.data.status == 'back'
                 && request.resource.data.back.by == request.auth.uid
                 && changedKeys().hasOnly(['status', 'back', 'updatedAt']))
@@ -2165,7 +2165,7 @@ service cloud.firestore {
         // PM 1.0: technical approval / rejection by the project manager (`approve`).
         allow update: if resource.data.status == 'pending'
           && request.resource.data.status in ['approved', 'rejected']
-          && changedKeys().hasOnly(['pm', 'lines', 'items', 'status', 'rejectReason', 'approvedOn', 'approvedBy', 'approvedByName', 'decidedByUserId', 'decidedByUserName', 'decidedAt', 'updatedAt'])
+          && changedKeys().hasOnly(['pm', 'lines', 'items', 'status', 'rejectReason', 'rejectWhy', 'approvedOn', 'approvedBy', 'approvedByName', 'decidedByUserId', 'decidedByUserName', 'decidedAt', 'updatedAt'])
           && inProject(projectId)
           && ('pm' in projectData(projectId))
           && pmDuty(projectId, 'approve');

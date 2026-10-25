@@ -82,6 +82,10 @@ export interface PmSubcontract {
   note: string | null
   lines: SubcontractLine[]
   value: number
+  /** Who supplies the materials of the let items: «ours» (default — we issue
+   * them from the project store) or «his» under his contract, and then the
+   * project never requests them (REQ-01). */
+  materials?: "ours" | "his" | null
   /** Paid to him — Finance's figure, read here, never written by the project. */
   paid?: number
   /** The signed contract. */
@@ -520,8 +524,9 @@ function openGap(moves: CountedMove[], cap: number): number | null {
   let recovered = 0
   moves.forEach((m, i) => {
     const after = m.day > count.day || (m.day === count.day && i > at)
-    if (!after) issuedThen += m.t === "iss" ? m.q : m.t === "back" ? -m.q : 0
-    else if (m.t === "back" && m.recovery) recovered += m.q
+    // A charge (`chg`, or a legacy recovery `back`) leaves his custody as a return does.
+    if (!after) issuedThen += m.t === "iss" ? m.q : m.t === "back" || m.t === "chg" ? -m.q : 0
+    else if (m.t === "chg" || (m.t === "back" && m.recovery)) recovered += m.q
   })
   return r2(issuedThen - cap - count.q - recovered)
 }
@@ -629,12 +634,12 @@ export interface LedgerCustody {
   gap: number | null
 }
 
-/** One subcontractor's custody of one material: issued − returned against his
+/** One subcontractor's custody of one material: issued − returned − charged against his
  * theoretical use (the store's rate × his share of each item's executed work
  * since tracking began) and its allowed waste; the latest count and the gap
  * still open on it (see `openGap`). */
 export function ledgerCustody(x: Pick<PmStoreLine, "moves" | "rates">, items: StoreItem[], contracts: ContractScope[], key: string): LedgerCustody {
-  const issued = r2(subSum(x, "iss", key) - subSum(x, "back", key))
+  const issued = r2(subSum(x, "iss", key) - subSum(x, "back", key) - subSum(x, "chg", key))
   let theoretical = 0
   let allowed = 0
   for (const id of storeCodes(x, items)) {

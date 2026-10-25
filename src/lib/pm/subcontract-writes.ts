@@ -585,7 +585,9 @@ export async function recordSubStoreMove(firestore: Firestore, ctx: PmContext, p
 
 /** Recover the value of his waste on a material: kept on the ledger line,
  * deducted from his next certificate before retention, and booked as an
- * accounting return so the book and the count agree. Never more than the gap
+ * outgoing movement «charged to the subcontractor» (`chg`, STK-04): the material
+ * is gone, so it leaves the project's balance AND his custody — the engineer's
+ * hold does not grow, and nothing is counted lost twice. Never more than the gap
  * still open on his last count — re-read here, so it cannot be charged twice. */
 export async function recordStoreRecovery(
   firestore: Firestore,
@@ -610,8 +612,8 @@ export async function recordStoreRecovery(
     const day = todayDay()
     const note = input.note?.trim() || null
     const rec: StoreRecovery = { sub: input.partyKey, subName: party.name, q: r2(input.q), rate: r2(input.rate), double: input.double, amount, on: day, by: actor.uid, byName: actor.name, note, certSeq: null }
-    const back: StoreMove = { t: "back", q: r2(input.q), on: day, by: actor.uid, byName: actor.name, sub: input.partyKey, subName: party.name, note, recovery: true }
-    tx.update(ref, { recoveries: [...(line.recoveries ?? []), rec], moves: [...line.moves, back], updatedAt: serverTimestamp() })
+    const charge: StoreMove = { t: "chg", q: r2(input.q), on: day, by: actor.uid, byName: actor.name, sub: input.partyKey, subName: party.name, note }
+    tx.update(ref, { recoveries: [...(line.recoveries ?? []), rec], moves: [...line.moves, charge], updatedAt: serverTimestamp() })
   })
   return amount
 }

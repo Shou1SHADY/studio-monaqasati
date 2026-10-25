@@ -178,6 +178,8 @@ export const PM_GUARD = {
   "supply.request": { all: ["req"] },
   "store.move": { all: ["req"] },
   "plant.request": { all: ["req"] },
+  // Off-hire and hand-back of a unit on site: whoever runs the plant (1.1, owner's decision — no longer `daily`).
+  "plant.return": { all: ["req"] },
   "supply.stopUnarrived": { any: ["req", "approve"] },
   "supply.receive": { all: ["rcv"] },
   "subcontract.manage": { all: ["sub"] },

@@ -493,7 +493,13 @@ function RequestDrawer({
             <Stat label={t("sup.d.materials")} value={String(r.lines.length)} sub={itemIds.length === 1 && itemIds[0] ? t("sup.d.on_item", { code: r.lines[0].code || "" }) : itemIds.length === 1 ? t("sup.general") : t("sup.d.on_items", { count: itemIds.length })} />
             <Stat label={t("sup.d.by")} value={r.mfgRequestId ? t("sup.d.by_mfg") : t("sup.d.by_proc")} sub={prop ? t("sup.d.by_prop") : t("sup.d.by_live")} />
           </div>
-          {r.status === "rejected" && !r.withdrawn && <Callout tone="block" title={t("sup.st.rej")}>{(r as { rejectReason?: string | null }).rejectReason || t("sup.rej_no_reason")}</Callout>}
+          {r.status === "rejected" && !r.withdrawn && (
+            <Callout tone="block" title={t("sup.st.rej")}>
+              {/* REQ-02: the listed reason in the reader's language, «other» with its text; older ones carry text only. */}
+              {r.rejectWhy && r.rejectWhy !== "oth" ? t(`sup.rej_why.${r.rejectWhy}`) : r.rejectReason || (r.rejectWhy ? t("sup.rej_why.oth") : t("sup.rej_no_reason"))}
+              {r.decidedByUserName ? ` — ${r.decidedByUserName}` : ""}
+            </Callout>
+          )}
           <DrawerSection title={t("sup.d.lines")} count={r.lines.length}>
             <div className="space-y-2 py-1">
               {r.lines.map((l, i) => (
@@ -524,7 +530,7 @@ function RequestDrawer({
           {prop && checks && (
             <DrawerSection title={t("sup.chk.title")}>
               {!approver && <CheckLine ok={false} title={t("sup.chk.not_yours")} note={t("sup.chk.not_yours_note")} />}
-              <CheckLine ok={checks.sample !== "rej" && checks.sample !== "none"} title={t("sup.chk.sample")} note={sampleNote} />
+              <CheckLine ok={checks.sample !== "rej" && checks.sample !== "none" && checks.sample !== "pend"} title={t("sup.chk.sample")} note={sampleNote} />
               <CheckLine ok={checks.held === 0} title={t("sup.chk.changes")} note={checks.held ? t("sup.chk.changes_held", { count: checks.held }) : t("sup.chk.changes_none")} />
               <CheckLine ok={checks.over.length === 0} title={t("sup.chk.qty")} note={checks.over.length ? t("sup.chk.qty_over", { count: checks.over.length }) : t("sup.chk.qty_ok")} />
               <CheckLine ok={checks.long.length === 0} title={t("sup.chk.period")} note={checks.long.length ? t("sup.chk.period_long", { name: checks.long[0].line.name, days: checks.long[0].days }) : t("sup.chk.period_ok")} />
@@ -548,6 +554,7 @@ function RequestDrawer({
                   </Button>
                 )}
               </div>
+              <p className="pt-1 text-xs text-muted-foreground">{t("sup.chk.route_full")}</p>
               {blocks.filter((b) => b !== "not_pending").map((b) => (
                 <p key={b} className="text-xs font-bold text-destructive">
                   {t(`sup.block.${b}`)}
@@ -789,7 +796,7 @@ function DrawerLine({
             {prop ? t("sup.ph.prop") : t(`sup.ph.${phase}`)}
             {by.poNumber && !prop ? ` · ${by.poNumber}` : ""}
             {phase === "fail" && proc?.fail ? ` · ${proc.fail.alt ? t("sup.fail_why_alt", { why: proc.fail.why, alt: proc.fail.alt }) : t("sup.fail_why", { why: proc.fail.why })}` : ""}
-            {(l.receipts || []).length > 0 && ` · ${(l.receipts || []).map((x) => `${t("sup.grn", { no: x.grn })} ${qty(x.q)}${x.rej ? ` (${t("sup.rej_s", { q: qty(x.rej) })})` : ""}`).join(" · ")}`}
+            {(l.receipts || []).length > 0 && ` · ${(l.receipts || []).map((x) => `${t("sup.grn", { no: x.grn })} ${qty(x.q)}${x.rej ? ` (${x.rejWhy ? t("sup.rcv.rej_shown", { q: qty(x.rej), why: x.rejWhy === "oth" && x.rejNote ? x.rejNote : t(`sup.rcv.rw.${x.rejWhy}`) }) : t("sup.rej_s", { q: qty(x.rej) })})` : ""}`).join(" · ")}`}
           </span>
           {prop ? (
             <StatusPill tone="mute">{t("sup.expected")}</StatusPill>

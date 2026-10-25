@@ -19,7 +19,7 @@ import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
 import { lastPaid, PRICE_HISTORY, type PriceHistoryEntry } from "../procurement/prices"
 import { PURCHASE_ORDERS } from "../procurement/types"
-import { pmApprovalLimit } from "./subcontract"
+import { pmApprovalLimit, PM_SUBCONTRACTS } from "./subcontract"
 import { PM_VARIATIONS, voNo } from "./variation"
 import {
   decidedMove,
@@ -32,6 +32,7 @@ import {
   r3,
   rateBlocks,
   ratedOn,
+  ratesWithoutRequest,
   storeBalance,
   storeIdOf,
   storeLineOf,
@@ -41,6 +42,7 @@ import {
   type LoggedMove,
   type MoveDecision,
   type PmStoreLine,
+  type RejectWhy,
   type RxFrom,
   type StoreItem,
   type StoreMove,
@@ -50,8 +52,11 @@ import {
   buildLines,
   changeBlocks,
   lineLink,
+  monthOf,
   pettyBlocks,
+  pettyMonth,
   pettyNo,
+  pettySpentBefore,
   plantBlocks,
   plantHireable,
   plantNo,
@@ -65,12 +70,14 @@ import {
   receivablePortions,
   receiveBlocks,
   receivedLine,
+  rejectBlocks,
   reqNo,
   requestBlocks,
   requestOf,
   requestSample,
   stopBlocks,
   stoppedLine,
+  subSuppliedItems,
   type CloseWhy,
   type LineDraft,
   type OrderFact,
@@ -78,8 +85,11 @@ import {
   type PlantReplyKind,
   type PlantWhy,
   type PmPlantRequest,
+  type PettyTally,
+  type PmMaterialRequest,
   type PortionKind,
   type ReqLine,
+  type ReqRejectWhy,
 } from "./supply"
 
 export class PmSupplyError extends Error {
@@ -94,7 +104,7 @@ export interface SupplyActor {
   name: string | null
 }
 
-type PmCounters = { no?: string; mrCount?: number; grnCount?: number; pettyCount?: number; plantCount?: number; plantReqCount?: number; voCount?: number }
+type PmCounters = { no?: string; mrCount?: number; grnCount?: number; pettyCount?: number; pettyMonth?: PettyTally | null; plantCount?: number; plantReqCount?: number; voCount?: number }
 type ProjectData = { organizationId?: string; name?: string; status?: string; projectManagerId?: string | null; pm?: PmCounters & Record<string, unknown> }
 
 const num = (v: unknown) => {
@@ -198,6 +208,28 @@ async function readStores(firestore: Firestore, projectId: string): Promise<PmSt
   return snap.docs.map((d) => storeLineOf(d.id, d.data() as Partial<PmStoreLine>))
 }
 
+/** The items let to a subcontractor who supplies their materials (REQ-01). Read
+ * before the transaction (it cannot query); a contract registered meanwhile is
+ * caught by the next request. */
+async function readSubSupplied(firestore: Firestore, projectId: string): Promise<Set<string>> {
+  const snap = await getDocs(collection(firestore, "projects", projectId, PM_SUBCONTRACTS))
+  return subSuppliedItems(snap.docs.map((d) => d.data() as { materials?: string | null; lines?: Array<{ itemId: string }> }))
+}
+
+/** REQ-05: a FIRST request that dies (withdrawn or rejected) takes back the
+ * materials it added to its items, unless a rate was set on them since. Reads
+ * now — inside the transaction, before any write — and returns the writes. */
+async function takeBackFirstMaterials(tx: Transaction, firestore: Firestore, projectId: string, request: PmMaterialRequest): Promise<Array<() => void>> {
+  const writes: Array<() => void> = []
+  const ids = [...new Set(request.lines.filter((l) => l.first && l.itemId).map((l) => storeIdOf(l.key)))]
+  for (const id of ids) {
+    const { ref, line } = await readStore(tx, firestore, projectId, id)
+    const rates = line ? ratesWithoutRequest(line, request.id) : null
+    if (rates) writes.push(() => tx.update(ref, { rates, updatedAt: serverTimestamp() }))
+  }
+  return writes
+}
+
 // ── Requests ─────────────────────────────────────────────────────────────────
 
 export interface RequestInput {
@@ -211,18 +243,19 @@ export interface RequestInput {
  * A material outside its item's list is a change request; the first request on
  * an item with no list builds it. */
 export async function createMaterialRequest(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, input: RequestInput): Promise<number> {
-  const stores = await readStores(firestore, projectId)
+  const [stores, subSupplied] = await Promise.all([readStores(firestore, projectId), readSubSupplied(firestore, projectId)])
   let seq = 0
   await runTransaction(firestore, async (tx) => {
     const { ref, project, pm } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "supply.request")
-    blocked(requestBlocks({ archived: fresh.archived, lines: input.lines, needBy: input.needBy, today: todayDay() }))
+    blocked(requestBlocks({ archived: fresh.archived, lines: input.lines, needBy: input.needBy, today: todayDay(), subSupplied }))
     const items = await readItems(tx, firestore, projectId, input.lines.map((l) => l.itemId))
     const lines = buildLines(stores, items, input.lines)
-    const cache = new Map<string, { ref: ReturnType<typeof doc>; line: PmStoreLine | null }>()
-    for (const l of lines) if (l.first) await addItemMaterial(tx, firestore, projectId, l, { r: null, w: 5, src: "first" }, items.find((i) => i.id === l.itemId)?.executed ?? 0, cache)
     seq = (pm.mrCount ?? 0) + 1
+    const cache = new Map<string, { ref: ReturnType<typeof doc>; line: PmStoreLine | null }>()
+    // Each material a first request adds names the request, so it can take it back (REQ-05).
+    for (const l of lines) if (l.first) await addItemMaterial(tx, firestore, projectId, l, { r: null, w: 5, src: "first", rq: reqNo(seq) }, items.find((i) => i.id === l.itemId)?.executed ?? 0, cache)
     const day = todayDay()
     tx.set(doc(firestore, "projects", projectId, PURCHASE_REQUESTS, reqNo(seq)), {
       pm: true,
@@ -298,14 +331,18 @@ export async function approveMaterialRequest(firestore: Firestore, ctx: PmContex
   return outcome
 }
 
-export async function rejectMaterialRequest(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, requestId: string, reason: string | null): Promise<void> {
+/** Reject with a reason from the list (REQ-02) — «other» with its text; the
+ * requester sees it. A first request takes back the materials it added (REQ-05). */
+export async function rejectMaterialRequest(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, requestId: string, input: { why: ReqRejectWhy | null; text: string | null }): Promise<void> {
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "request.decide")
     const { ref, request } = await readRequest(tx, firestore, projectId, requestId)
-    blocked(request.status !== "pending" ? ["not_pending"] : fresh.archived ? ["archived"] : [])
-    tx.update(ref, { status: "rejected", rejectReason: reason?.trim() || null, decidedByUserId: actor.uid, decidedByUserName: actor.name, decidedAt: serverTimestamp(), updatedAt: serverTimestamp() })
+    blocked(rejectBlocks({ archived: fresh.archived, status: request.status, why: input.why, text: input.text }))
+    const takeBack = await takeBackFirstMaterials(tx, firestore, projectId, request)
+    tx.update(ref, { status: "rejected", rejectWhy: input.why, rejectReason: input.why === "oth" ? input.text?.trim() || null : null, decidedByUserId: actor.uid, decidedByUserName: actor.name, decidedAt: serverTimestamp(), updatedAt: serverTimestamp() })
+    takeBack.forEach((w) => w())
   })
 }
 
@@ -318,7 +355,9 @@ export async function withdrawMaterialRequest(firestore: Firestore, ctx: PmConte
     const { ref, request } = await readRequest(tx, firestore, projectId, requestId)
     if (request.requestedByUserId !== actor.uid) refuse("no_duty", "supply.request")
     blocked(request.status !== "pending" ? ["not_pending"] : [])
+    const takeBack = await takeBackFirstMaterials(tx, firestore, projectId, request)
     tx.update(ref, { status: "rejected", withdrawn: true, decidedByUserId: actor.uid, decidedByUserName: actor.name, decidedAt: serverTimestamp(), updatedAt: serverTimestamp() })
+    takeBack.forEach((w) => w())
   })
 }
 
@@ -465,6 +504,9 @@ export interface ReceiveInput {
   /** Which portion the delivery note is for — what a main store issued, or what
    * was bought. Needed only while both are on their way. */
   portion?: PortionKind | null
+  /** Why `rej` was rejected — required when anything was (STK-09). */
+  rejWhy?: RejectWhy | null
+  rejNote?: string | null
 }
 
 /** The project-side receipt: the site confirms what arrived from the delivery
@@ -487,7 +529,7 @@ export async function receiveOnProject(firestore: Firestore, ctx: PmContext, pro
     // With the store's issue and the supplier's delivery both on their way, the receiver says which this note is.
     if (!input.portion && open.length > 1 && !fresh.archived) blocked(["no_source"])
     const portion = (input.portion ? open.find((p) => p.k === input.portion) : open[0]) ?? null
-    blocked(receiveBlocks({ archived: fresh.archived, receivable: Boolean(portion), remaining: portion?.left ?? 0, acc: input.acc, rej: input.rej }))
+    blocked(receiveBlocks({ archived: fresh.archived, receivable: Boolean(portion), remaining: portion?.left ?? 0, acc: input.acc, rej: input.rej, rejWhy: input.rejWhy, rejNote: input.rejNote }))
     if (!portion) throw new PmSupplyError("blocked", ["not_receivable"])
     const seq = (pm.grnCount ?? 0) + 1
     grn = reqNo(seq)
@@ -495,13 +537,15 @@ export async function receiveOnProject(firestore: Firestore, ctx: PmContext, pro
     const acc = r3(Math.max(0, input.acc))
     const rej = r3(Math.max(0, input.rej))
     const files = cleanAttachments(input.files)
-    const next = receivedLine(line, { grn, q: acc, rej, on: day, by: actor.uid, byName: actor.name, dn: input.dn?.trim() || null, note: input.note?.trim() || null, short: input.short, src: portion.k, ...(files.length ? { files } : {}) }, day, actor.uid)
+    // The rejection's reason rides the receipt (what Procurement and Inventory read) and the store move.
+    const why = rej > 0 && input.rejWhy ? { rejWhy: input.rejWhy, rejNote: input.rejWhy === "oth" ? input.rejNote?.trim() || null : null } : null
+    const next = receivedLine(line, { grn, q: acc, rej, ...(why ?? {}), on: day, by: actor.uid, byName: actor.name, dn: input.dn?.trim() || null, note: input.note?.trim() || null, short: input.short, src: portion.k, ...(files.length ? { files } : {}) }, day, actor.uid)
     let storeWrite: { ref: ReturnType<typeof doc>; line: PmStoreLine } | null = null
     if (acc > 0 && line.itemId && input.withStore !== false) {
       const id = storeIdOf(line.key)
       const got = await readStore(tx, firestore, projectId, id)
       const base: PmStoreLine = got.line ?? { id, key: line.key, name: line.name, unit: line.unit, rates: {}, moves: [] }
-      const move: StoreMove = { t: "rc", q: acc, on: day, by: actor.uid, byName: actor.name, itemId: line.itemId, code: line.code, reqId: requestId, reqSeq: request.seq ?? null, grn, dn: input.dn?.trim() || null, rej: rej || null, source: (portion.k === "stk" ? line.inv?.warehouseName : by.poNumber) || null, ...(files.length ? { files } : {}) }
+      const move: StoreMove = { t: "rc", q: acc, on: day, by: actor.uid, byName: actor.name, itemId: line.itemId, code: line.code, reqId: requestId, reqSeq: request.seq ?? null, grn, dn: input.dn?.trim() || null, rej: rej || null, ...(why ? { rw: why.rejWhy, rwNote: why.rejNote } : {}), source: (portion.k === "stk" ? line.inv?.warehouseName : by.poNumber) || null, ...(files.length ? { files } : {}) }
       storeWrite = { ref: got.ref, line: { ...base, moves: [...base.moves, move] } }
     }
     const lines = request.lines.map((l, i) => (i === lineIndex ? next : l))
@@ -656,38 +700,30 @@ export async function decideStoreMove(firestore: Firestore, ctx: PmContext, proj
   })
 }
 
-/** The receiving project's engineer confirms a material moved in; the sending
- * project's move closes with it, and the cost moves (prj:XFER). */
-export async function confirmMoveIn(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, storeId: string, index: number, costHint: number | null): Promise<void> {
-  await runTransaction(firestore, async (tx) => {
-    const { project, pm } = await readProject(tx, firestore, projectId)
-    const fresh = withFreshState(ctx, project)
-    assertPm(fresh, "store.move")
-    const { ref, line } = await readStore(tx, firestore, projectId, storeId)
-    const move = line?.moves[index]
-    if (!line || !move) throw new PmSupplyError("missing")
-    if (move.t !== "xi" || move.st !== "wait") throw new PmSupplyError("blocked", ["not_waiting"])
-    const day = todayDay()
-    let src: { ref: ReturnType<typeof doc>; line: PmStoreLine | null } | null = null
-    if (move.otherProjectId && move.srcStoreId) src = await readStore(tx, firestore, move.otherProjectId, move.srcStoreId)
-    tx.update(ref, { moves: line.moves.map((m, i) => (i === index ? { ...m, st: "done", appr: actor.uid, apprName: actor.name, apprOn: day } : m)), updatedAt: serverTimestamp() })
-    if (src?.line && move.srcMove != null && src.line.moves[move.srcMove]?.t === "xo") {
-      tx.update(src.ref, { moves: src.line.moves.map((m, i) => (i === move.srcMove ? { ...m, st: "done" } : m)), updatedAt: serverTimestamp() })
-    }
-    const projectNo = pm.no ?? projectId
-    const key = `prj:XFER:${projectNo}:${storeId}:${index}`
-    tx.set(doc(firestore, PM_EVENTS, pmEventDocId(project.organizationId ?? "", key)), {
-      key,
-      kind: "XFER",
-      organizationId: project.organizationId ?? "",
-      projectId,
-      projectNo,
-      amount: costHint != null ? r2(costHint * move.q) : 0,
-      params: { material: line.name, unit: line.unit, qty: move.q, fromProjectId: move.otherProjectId ?? "", fromProject: move.otherProjectName ?? "", unitCost: costHint ?? 0 },
-      by: actor.uid,
-      at: new Date().toISOString(),
-    })
+/** The receiving project's `req` answers a material moved in from another
+ * project (STK-11): confirmed, it enters here and the sending project's move
+ * closes with it (prj:XFER); refused, with the reason, it goes back into the
+ * sender's balance. Never by the person who sent it. Written on the server
+ * (`/api/pm/store-transfer`): the sender's line belongs to another project,
+ * which the receiving engineer's own rules may not touch. */
+export async function answerMoveIn(projectId: string, storeId: string, index: number, input: { answer: "confirm" | "refuse"; why?: string | null; costHint?: number | null }): Promise<void> {
+  const { getAuth } = await import("firebase/auth")
+  const token = await getAuth().currentUser?.getIdToken()
+  if (!token) throw new PmAccessError("not_on_team", "store.move")
+  const res = await fetch("/api/pm/store-transfer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ projectId, storeId, index, answer: input.answer, why: input.why ?? null, costHint: input.costHint ?? null }),
   })
+  if (res.ok) return
+  const body = (await res.json().catch(() => null)) as { code?: string; blocks?: string[] } | null
+  if (body?.code === "REFUSED") {
+    const code = body.blocks?.[0]
+    throw new PmAccessError(code === "archived" || code === "not_on_team" ? code : "no_duty", "store.move")
+  }
+  if (body?.code === "BLOCKED") throw new PmSupplyError("blocked", body.blocks ?? [])
+  if (body?.code === "NOT_FOUND") throw new PmSupplyError("missing")
+  throw new Error(body?.code || `store-transfer ${res.status}`)
 }
 
 /** Inventory confirms a return is back in its main store (the keeper's act, from
@@ -739,16 +775,23 @@ export async function confirmStoreReturn(firestore: Firestore, projectId: string
 
 // ── Direct purchases ─────────────────────────────────────────────────────────
 
-/** A site purchase under the cap, with its receipt number. It reaches Finance as
- * a project cost (prj:CASH). Above the per-purchase cap it is a normal request. */
+/** A site purchase under the caps, with its receipt number. It reaches Finance as
+ * a project cost (prj:CASH). Above the per-purchase cap it is a normal request;
+ * past the calendar month's cap it is refused (STK-08). The month is read from
+ * the purchases before the transaction and from the project's running tally
+ * (`pm.pettyMonth`) inside it — so two purchases at once cannot both slip under. */
 export async function logDirectPurchase(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, input: { what: string; supplier: string; amount: number; receipt: string | null; day: string; files?: PmAttachment[] | null }): Promise<number> {
+  const listed = await getDocs(collection(firestore, "projects", projectId, PM_PETTY))
+  const listedMonth = pettyMonth(listed.docs.map((d) => d.data() as { day: string; amount: number }).filter((x) => typeof x.day === "string"), input.day)
   let seq = 0
   await runTransaction(firestore, async (tx) => {
     const { ref, project, pm } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "supply.request")
     const today = todayDay()
-    blocked(pettyBlocks({ archived: fresh.archived, what: input.what, supplier: input.supplier, amount: input.amount, day: input.day, today }))
+    const tally = pm.pettyMonth ?? null
+    const monthSpent = pettySpentBefore(listedMonth, tally, input.day)
+    blocked(pettyBlocks({ archived: fresh.archived, what: input.what, supplier: input.supplier, amount: input.amount, day: input.day, today, monthSpent }))
     seq = (pm.pettyCount ?? 0) + 1
     tx.set(doc(firestore, "projects", projectId, PM_PETTY, pettyNo(seq)), {
       seq,
@@ -776,7 +819,10 @@ export async function logDirectPurchase(firestore: Firestore, ctx: PmContext, pr
       by: actor.uid,
       at: new Date().toISOString(),
     })
-    tx.update(ref, { pm: { ...pm, pettyCount: seq }, updatedAt: serverTimestamp() })
+    // The tally follows the latest month; a purchase dated into an earlier month leaves it.
+    const ym = monthOf(input.day)
+    const nextTally = !tally || tally.ym <= ym ? { pettyMonth: { ym, sum: r2(monthSpent + input.amount) } } : {}
+    tx.update(ref, { pm: { ...pm, pettyCount: seq, ...nextTally }, updatedAt: serverTimestamp() })
   })
   return seq
 }

@@ -20417,7 +20417,7 @@
           "sample": "Consultant-approved sample",
           "sample_free": "no sample required",
           "sample_ok": "approved",
-          "sample_pend": "under review — no PO before it",
+          "sample_pend": "with the consultant — approve after the reply",
           "sample_rej": "rejected — resubmit",
           "sample_none": "not submitted",
           "changes": "Change decisions",
@@ -20433,7 +20433,8 @@
           "dup_yes": "{count, plural, one {# material is} other {# materials are}} already requested for a close date",
           "dup_no": "no overlap — batches far apart are fine",
           "lead": "Enough lead time",
-          "lead_none": "not urgent"
+          "lead_none": "not urgent",
+          "route_full": "Once approved it reaches Procurement in full — Procurement asks the store first"
         },
         "trail": {
           "title": "Request trail — and who owns each step",
@@ -20505,7 +20506,8 @@
           "ovh_none": "No site overhead budget recorded on this project.",
           "main_stock": "{q} in the main stores — may be committed elsewhere; the store decides",
           "main_none": "no stock in the main stores",
-          "mat_change": "Change"
+          "mat_change": "Change",
+          "sub_supplies": "Item {code} is let to {name}, who supplies its materials under his contract — not requested by the project."
         },
         "rcv": {
           "title": "Receive on the project",
@@ -20540,7 +20542,11 @@
           "from_store": "From {store}",
           "short_hint_stk": "Inventory is asked to close the transfer gap",
           "enters_store_stk": "It enters the project store and stays open until used. Inventory gets the confirmation to close the issue.",
-          "expensed_stk": "Expensed to site overheads on arrival. Inventory gets the confirmation to close the issue."
+          "expensed_stk": "Expensed to site overheads on arrival. Inventory gets the confirmation to close the issue.",
+          "rej_why": "Why was it rejected?",
+          "rw": {"dmg": "Damaged", "spec": "Not to spec", "over": "More than the note", "exp": "Expired", "oth": "Other — stated"},
+          "rw_oth_ph": "State the reason",
+          "rej_shown": "Rejected {q} — {why}"
         },
         "stop": {
           "title": "Stop the rest",
@@ -20606,7 +20612,13 @@
           "no_free": "Give the date it is free",
           "no_text": "Say what was offered",
           "not_hireable": "Hire only when the fleet is busy or has none",
-          "in_transit": "{q} {unit} on the way — what left the store is not cancelled; receive it, then return it if unwanted"
+          "in_transit": "{q} {unit} on the way — what left the store is not cancelled; receive it, then return it if unwanted",
+          "sample_pending": "Not yet: the item's sample is still with the consultant — approve the request after the reply",
+          "sub_supplies": "This item is let to a subcontractor who supplies its materials under his contract — the project does not request them",
+          "rej_why": "Say why the rejected quantity was rejected",
+          "rej_text": "State the reason for the rejection",
+          "own_transfer": "You sent this transfer — the receiving project's engineer confirms or refuses it",
+          "over_month": "Above this month's cap — make it a normal request"
         },
         "err": {
           "missing": "The document is missing — it may have changed on another device",
@@ -20620,7 +20632,10 @@
           "none": "not issued — {why} — it is bought",
           "issue_wh": "issues {q} {unit} from {warehouse}",
           "kept": "{q} {unit} not issued: {why} — to be bought"
-        }
+        },
+        "rej_why": {"spec": "Not to spec", "qty": "Quantity above the need", "dup": "Duplicate of another request", "early": "Too early", "oth": "Other — stated"},
+        "reject_pick": "Why is it rejected?",
+        "reject_oth_ph": "State the reason"
       },
       "store": {
         "title": "Project store",
@@ -20717,7 +20732,8 @@
           "sret": "Back to the supplier",
           "iss": "Issued to a subcontractor",
           "back": "Returned from a subcontractor",
-          "cnt": "Count at a subcontractor"
+          "cnt": "Count at a subcontractor",
+          "chg": "Charged to a subcontractor"
         },
         "mv_det": {
           "purchase": "purchase",
@@ -20728,7 +20744,10 @@
           "appr": "approved by {name}",
           "self": "self-approved by the owner",
           "recovery": "accounting return — deducted from his certificate",
-          "inv_ok": "Inventory confirmed · {name}"
+          "inv_ok": "Inventory confirmed · {name}",
+          "rw": "rejected: {why}",
+          "charged": "charged to him — deducted from his certificate",
+          "refused": "refused by {name}: {why}"
         },
         "w": {
           "approval": "awaiting approval",
@@ -20736,7 +20755,8 @@
           "xo": "awaiting the other project",
           "sret": "with Procurement",
           "inv": "with Inventory",
-          "rejected": "rejected — not counted"
+          "rejected": "rejected — not counted",
+          "refused": "refused — back with the sender"
         },
         "mine": "you logged it — someone else approves",
         "on_supplier": "On the supplier",
@@ -20817,7 +20837,8 @@
           "rx_ok": "Inbound approved — it entered the project store",
           "rej": "Rejected — not counted",
           "sup": "Charged to the supplier — Procurement claims it; not a project loss",
-          "xi": "Moved material received — it entered the project store"
+          "xi": "Moved material received — it entered the project store",
+          "xi_rej": "Transfer refused — it went back to the sending project"
         },
         "rate": {
           "set": "Set a rate",
@@ -20831,6 +20852,15 @@
           "save": "Save the rate",
           "saved": "Rate set {r} {unit} per {per} — use is computed from measurement from now on",
           "corrected": "Rate corrected to {r} — use recomputed since tracking began"
+        },
+        "refuse_in": "Refuse",
+        "sent_by_you": "You sent it — the receiving project answers",
+        "refuse": {
+          "title": "Refuse the transfer",
+          "desc": "{q} {unit} of {name} from {project}",
+          "why": "Why is it refused?",
+          "why_ph": "e.g. not needed here, wrong material, damaged",
+          "note": "It does not enter this project: it goes back into the sending project's balance, and its engineer sees your reason."
         }
       },
       "plant": {
@@ -21063,7 +21093,7 @@
         "title": "Direct site purchases",
         "add": "Log a purchase",
         "caps": "{one} SAR per purchase · {month} SAR per month",
-        "spent": "Spent in 30 days",
+        "spent": "Spent this month",
         "of": "of {cap}",
         "left": "Left this month",
         "exhausted": "exhausted — everything goes through a normal request",

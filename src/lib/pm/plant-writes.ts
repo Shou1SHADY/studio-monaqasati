@@ -1,7 +1,7 @@
 // PM 1.0 — plant-on-site writes (WF-14). The handover and the desk's
-// confirmation are `plant.request` (req); the day log, the off-hire request and
-// the hand-back are the site record (`daily.write` — the prototype's
-// CAN('daily') on eqSitePanel). One transaction each, guard first;
+// confirmation are `plant.request` (req); the off-hire request and the hand-back
+// are `plant.return` (req — PM 1.1, the owner's decision); the day log is the
+// site record (`daily.write`). One transaction each, guard first;
 // the project numbers the units it receives. Nothing is ever deleted. A unit
 // received against an equipment request closes that request in the same write.
 // The day rate is an amount: whoever receives a unit without seeing money
@@ -198,7 +198,7 @@ export async function setPlantDayRate(firestore: Firestore, ctx: PmContext, proj
 /** Ask the desk to take it back. The charge runs until the desk confirms. */
 export async function requestOffHire(firestore: Firestore, ctx: PmContext, projectId: string, actor: Actor, seq: number, input: { ready: string; why: OffReason | null; whyText?: string | null }): Promise<void> {
   await runTransaction(firestore, async (tx) => {
-    const { fresh } = await readProject(tx, firestore, ctx, projectId, "daily.write")
+    const { fresh } = await readProject(tx, firestore, ctx, projectId, "plant.return")
     const { ref, plant } = await readPlant(tx, firestore, projectId, seq)
     const today = todayDay()
     const blocks = offBlocks({ archived: fresh.archived, status: plant.status, why: input.why, whyText: input.whyText, ready: input.ready, today })
@@ -226,7 +226,7 @@ export async function recordOffHireConfirmation(firestore: Firestore, ctx: PmCon
 /** Hand it back with the second reading — the one that closes the account. */
 export async function handBackPlant(firestore: Firestore, ctx: PmContext, projectId: string, actor: Actor, seq: number, input: NoteInput): Promise<void> {
   await runTransaction(firestore, async (tx) => {
-    const { fresh } = await readProject(tx, firestore, ctx, projectId, "daily.write")
+    const { fresh } = await readProject(tx, firestore, ctx, projectId, "plant.return")
     const { ref, plant } = await readPlant(tx, firestore, projectId, seq)
     const blocks = backBlocks({ archived: fresh.archived, plant, meter: input.meter, condition: input.condition, remark: input.remark })
     if (blocks.length) throw new PmPlantError("blocked", blocks)

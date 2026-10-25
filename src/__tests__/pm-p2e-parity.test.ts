@@ -1,6 +1,6 @@
 /**
- * PM 1.0 parity (P2E): plant off-hire and hand-back are the site record
- * (CAN('daily')), booked plant, the obstacle chase anyone on the project logs,
+ * PM 1.0 parity (P2E): plant off-hire and hand-back are whoever runs the plant
+ * (`req` — PM 1.1, the owner's decision; no longer `daily`), booked plant, the obstacle chase anyone on the project logs,
  * and the supply helpers — the store/buy split, the main-store stock and
  * catalogue, the site-overheads budget left, and an order against the estimate.
  */
@@ -41,13 +41,18 @@ beforeEach(() => {
   })
 })
 
-describe("plant on site — off-hire and hand-back are the daily duty (row 100)", () => {
-  it("the site engineer requests the off-hire and hands it back; the PM (no daily) cannot", async () => {
-    await expect(requestOffHire(db, pm, "p1", pmA, 1, { ready: "2099-01-01", why: "done" })).rejects.toBeInstanceOf(PmAccessError)
-    await requestOffHire(db, site, "p1", seA, 1, { ready: "2099-01-01", why: "done" })
+describe("plant on site — off-hire and hand-back are the req duty (PM 1.1, owner's decision)", () => {
+  const hse: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.site"] }), seat: { uid: "hs1", role: "hse" }, archived: false }
+  const hsA = { uid: "hs1", name: "Sami" }
+  it("whoever holds `req` requests the off-hire and hands it back; a `daily`-only seat cannot", async () => {
+    expect(pmAllowed(hse, "daily.write")).toBe(true)
+    expect(pmAllowed(hse, "plant.return")).toBe(false)
+    await expect(requestOffHire(db, hse, "p1", hsA, 1, { ready: "2099-01-01", why: "done" })).rejects.toBeInstanceOf(PmAccessError)
+    // The PM holds `req` (no `daily` in his ceiling) — he may now.
+    await requestOffHire(db, pm, "p1", pmA, 1, { ready: "2099-01-01", why: "done" })
     expect(readDoc("projects/p1/pmPlant/01")).toMatchObject({ status: "req" })
     await recordOffHireConfirmation(db, site, "p1", seA, 1, { no: "OH-7", on: todayDay() })
-    await expect(handBackPlant(db, pm, "p1", pmA, 1, { meter: 150, condition: "ok" })).rejects.toBeInstanceOf(PmAccessError)
+    await expect(handBackPlant(db, hse, "p1", hsA, 1, { meter: 150, condition: "ok" })).rejects.toBeInstanceOf(PmAccessError)
     await handBackPlant(db, site, "p1", seA, 1, { meter: 150, condition: "ok" })
     expect(readDoc("projects/p1/pmPlant/01")).toMatchObject({ status: "back" })
   })

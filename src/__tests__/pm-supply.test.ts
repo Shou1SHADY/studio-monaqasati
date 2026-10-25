@@ -189,9 +189,11 @@ describe("writes", () => {
     expect(await approveMaterialRequest(db, pm, "p1", pmActor, "01")).toBe("approved")
     await expect(receiveOnProject(db, site, "p1", siteActor, "01", 0, { acc: 60, rej: 0, dn: "DN-1", note: null, short: false })).rejects.toBeInstanceOf(PmSupplyError)
     seed(`${P}/purchaseRequests/01`, { ...(readDoc<Record<string, unknown>>(`${P}/purchaseRequests/01`) as Record<string, unknown>), poId: "po1", poNumber: "PO-2026/001" })
-    expect(await receiveOnProject(db, site, "p1", siteActor, "01", 0, { acc: 60, rej: 5, dn: "DN-1", note: null, short: false })).toBe("01")
+    // STK-09: a rejected quantity carries its reason.
+    await expect(receiveOnProject(db, site, "p1", siteActor, "01", 0, { acc: 60, rej: 5, dn: "DN-1", note: null, short: false })).rejects.toMatchObject({ blocks: ["rej_why"] })
+    expect(await receiveOnProject(db, site, "p1", siteActor, "01", 0, { acc: 60, rej: 5, rejWhy: "dmg", dn: "DN-1", note: null, short: false })).toBe("01")
     const s = readDoc<PmStoreLine>(`${P}/pmStore/${storeIdOf(cement)}`)
-    expect(s?.moves.at(-1)).toMatchObject({ t: "rc", q: 60, grn: "01", rej: 5 })
+    expect(s?.moves.at(-1)).toMatchObject({ t: "rc", q: 60, grn: "01", rej: 5, rw: "dmg" })
     await stopLine(db, site, "p1", siteActor, "01", 0, "need", null)
     const after = requestOf({ id: "01", ...(readDoc<Record<string, unknown>>(`${P}/purchaseRequests/01`) as Record<string, unknown>) })
     expect(after.lines[0].cl?.t).toBe("short")
@@ -214,11 +216,14 @@ describe("writes", () => {
     expect(listCollection("users/se1/notifications")).toHaveLength(0)
   })
 
-  it("a line whose sample is with the consultant reaches Procurement as «عيّنة قيد الاعتماد» until the consultant approves", async () => {
+  it("a sample with the consultant blocks approval (SUB-03); a request approved before keeps «عيّنة قيد الاعتماد» until the consultant approves", async () => {
     seed(`${P}/boqItems/i1`, { itemNo: "04-02-01", descriptionAr: "لياسة", unit: "m2", quantity: 10000, executedQuantity: 2000, pmSample: true, pmSub: "sub" })
     seed(`${P}/pmSubmittals/01`, { seq: 1, itemId: "i1", status: "sub", day: "2026-09-01", supplier: "Al Jazira", what: "Cement 42.5", by: "se1" })
     await createMaterialRequest(db, site, "p1", siteActor, { title: "", needBy: null, notes: null, lines: [{ itemId: "i1", name: "Cement", unit: "bag", qty: 100 }] })
-    await approveMaterialRequest(db, pm, "p1", pmActor, "01")
+    await expect(approveMaterialRequest(db, pm, "p1", pmActor, "01")).rejects.toMatchObject({ blocks: ["sample_pending"] })
+    expect(readDoc<{ status: string }>(`${P}/purchaseRequests/01`)?.status).toBe("pending")
+    // Approved before SUB-03: the PO-stage mark stays the second guard.
+    seed(`${P}/purchaseRequests/01`, { ...(readDoc<Record<string, unknown>>(`${P}/purchaseRequests/01`) as Record<string, unknown>), status: "approved" })
     expect(readDoc<{ items: unknown[] }>(`${P}/purchaseRequests/01`)?.items).toEqual([{ name: "Cement", quantity: 100, unit: "bag", itemId: "i1", samplePending: true }])
     await recordSampleReply(db, pm, "p1", pmActor, 1, { reply: "appA", note: null })
     expect(readDoc<{ items: unknown[] }>(`${P}/purchaseRequests/01`)?.items).toEqual([{ name: "Cement", quantity: 100, unit: "bag", itemId: "i1" }])

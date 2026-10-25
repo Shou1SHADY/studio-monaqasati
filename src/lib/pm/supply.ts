@@ -17,7 +17,7 @@
 import type { MaterialPick } from "@/lib/materials/types"
 import type { PmAttachment } from "./attachments"
 import { sampleStateOf } from "./sample"
-import { itemProgress, materialKeyOf, r2, r3, ratedOn, storeBalance, type PmStoreLine, type StoreItem } from "./store"
+import { itemProgress, materialKeyOf, r2, r3, ratedOn, storeBalance, type PmStoreLine, type RejectWhy, type StoreItem } from "./store"
 
 export const PURCHASE_REQUESTS = "purchaseRequests"
 export const PM_PETTY = "pmPetty"
@@ -56,6 +56,9 @@ export interface ReqReceipt {
   grn: string
   q: number
   rej: number
+  /** Why `rej` was rejected (STK-09) — required when anything was; `rejNote` states «other». */
+  rejWhy?: RejectWhy | null
+  rejNote?: string | null
   on: string
   by: string
   byName?: string | null
@@ -128,6 +131,11 @@ export interface ProcurementItem {
 
 export type ReqStatus = "pending" | "approved" | "rejected"
 
+/** Why the project manager rejects a request (REQ-02): not to spec · quantity
+ * above need · duplicate · too early · other, stated. */
+export const REQ_REJECT_WHY = ["spec", "qty", "dup", "early", "oth"] as const
+export type ReqRejectWhy = (typeof REQ_REJECT_WHY)[number]
+
 export interface PmMaterialRequest {
   id: string
   pm?: boolean
@@ -144,6 +152,9 @@ export interface PmMaterialRequest {
   approvedOn?: string | null
   approvedByName?: string | null
   decidedByUserName?: string | null
+  /** Rejected: the listed reason (REQ-02) and the stated text (the only text before it). */
+  rejectWhy?: ReqRejectWhy | null
+  rejectReason?: string | null
   items?: ProcurementItem[]
   rfqId?: string | null
   rfqNumber?: string | null
@@ -192,6 +203,8 @@ export function requestOf(d: Raw): PmMaterialRequest {
     approvedOn: str(d.approvedOn) || null,
     approvedByName: str(d.approvedByName) || str(d.decidedByUserName) || null,
     decidedByUserName: str(d.decidedByUserName) || null,
+    rejectWhy: (REQ_REJECT_WHY as readonly string[]).includes(str(d.rejectWhy)) ? (d.rejectWhy as ReqRejectWhy) : null,
+    rejectReason: str(d.rejectReason) || null,
     // Carried so a rewrite of the lines keeps the marks `items` already holds.
     ...(Array.isArray(d.items) ? { items: d.items as ProcurementItem[] } : {}),
     rfqId: str(d.rfqId) || null,
@@ -442,14 +455,21 @@ export function lineKind(stores: Array<Pick<PmStoreLine, "key" | "name" | "unit"
   return mats.some((m) => m.key === materialKeyOf(d.name, d.unit)) ? "own" : "change"
 }
 
-export type RequestBlock = "archived" | "no_lines" | "bad_line" | "bad_date"
+export type RequestBlock = "archived" | "no_lines" | "bad_line" | "bad_date" | "sub_supplies"
 
-export function requestBlocks(input: { archived: boolean; lines: LineDraft[]; needBy: string | null; today: string }): RequestBlock[] {
+/** The BOQ items let to a subcontractor who supplies their materials under his
+ * contract (REQ-01) — the project does not request those. */
+export function subSuppliedItems(contracts: Array<{ materials?: string | null; lines?: Array<{ itemId: string }> | null }>): Set<string> {
+  return new Set(contracts.filter((c) => c.materials === "his").flatMap((c) => (c.lines ?? []).map((l) => l.itemId)))
+}
+
+export function requestBlocks(input: { archived: boolean; lines: LineDraft[]; needBy: string | null; today: string; subSupplied?: ReadonlySet<string> }): RequestBlock[] {
   const out: RequestBlock[] = []
   if (input.archived) out.push("archived")
   if (!input.lines.length) out.push("no_lines")
   if (input.lines.some((l) => !l.name.trim() || !l.unit.trim() || !(Number.isFinite(l.qty) && l.qty > 0))) out.push("bad_line")
   if (input.needBy && input.needBy < input.today) out.push("bad_date")
+  if (input.subSupplied && input.lines.some((l) => l.itemId && input.subSupplied?.has(l.itemId))) out.push("sub_supplies")
   return out
 }
 
@@ -550,21 +570,24 @@ export function approvalChecks(input: { request: PmMaterialRequest; requests: Pm
   }
 }
 
-export type ApproveBlock = "archived" | "not_pending" | "sample_rejected" | "sample_missing" | "all_changes"
+export type ApproveBlock = "archived" | "not_pending" | "sample_rejected" | "sample_missing" | "sample_pending" | "all_changes"
 
+/** A sample still with the consultant is not an approved one (SUB-03): the request
+ * waits for the reply. (Requests approved before this rule keep the PO-stage mark.) */
 export function approveBlocks(input: { archived: boolean; request: Pick<PmMaterialRequest, "status" | "lines">; sample: SampleVerdict }): ApproveBlock[] {
   const out: ApproveBlock[] = []
   if (input.archived) out.push("archived")
   if (input.request.status !== "pending") out.push("not_pending")
   if (input.sample === "rej") out.push("sample_rejected")
   if (input.sample === "none") out.push("sample_missing")
+  if (input.sample === "pend") out.push("sample_pending")
   if (input.request.lines.length && input.request.lines.every(held)) out.push("all_changes")
   return out
 }
 
 // ── Stopping what has not arrived ───────────────────────────────────────────
 
-export type StopBlock = "archived" | "not_open" | "closed" | "nothing_left" | "why_text" | "in_transit"
+export type StopBlock = "archived" | "not_open" | "closed" | "nothing_left" | "no_reason" | "why_text" | "in_transit"
 
 /** Stop the rest: what nobody started on is withdrawn; an order's remainder is
  * cancelled by Procurement with the supplier. What arrived stays in the store. */
@@ -576,7 +599,9 @@ export function stopBlocks(input: { archived: boolean; request: Pick<PmMaterialR
   else if (lineOut(input.line) <= 0) out.push("nothing_left")
   // What left a main store is not cancelled — it is received, then returned if unwanted.
   if (lineInTransit(input.line) > 0) out.push("in_transit")
-  if (input.why === "oth" && !input.whyNote?.trim()) out.push("why_text")
+  // The reason is chosen from the list before it saves (REQ-04) — «other» with its text.
+  if (!input.why) out.push("no_reason")
+  else if (input.why === "oth" && !input.whyNote?.trim()) out.push("why_text")
   return out
 }
 
@@ -584,14 +609,32 @@ export const stoppedLine = (l: ReqLine, c: Omit<ReqClose, "t">): ReqLine => ({ .
 
 // ── Receiving on the project ────────────────────────────────────────────────
 
-export type ReceiveBlock = "archived" | "not_receivable" | "bad_qty" | "over_remaining"
+export type ReceiveBlock = "archived" | "not_receivable" | "bad_qty" | "over_remaining" | "rej_why" | "rej_text"
 
-export function receiveBlocks(input: { archived: boolean; receivable: boolean; remaining: number; acc: number; rej: number }): ReceiveBlock[] {
+/** Anything rejected carries its reason from the list, «other» with its text (STK-09). */
+export function receiveBlocks(input: { archived: boolean; receivable: boolean; remaining: number; acc: number; rej: number; rejWhy?: RejectWhy | null; rejNote?: string | null }): ReceiveBlock[] {
   const out: ReceiveBlock[] = []
   if (input.archived) out.push("archived")
   if (!input.receivable) out.push("not_receivable")
   if (!(input.acc >= 0 && input.rej >= 0 && input.acc + input.rej > 0)) out.push("bad_qty")
   else if (input.receivable && input.acc > input.remaining + 0.005) out.push("over_remaining")
+  if (input.rej > 0) {
+    if (!input.rejWhy) out.push("rej_why")
+    else if (input.rejWhy === "oth" && !input.rejNote?.trim()) out.push("rej_text")
+  }
+  return out
+}
+
+export type RequestRejectBlock = "archived" | "not_pending" | "no_reason" | "why_text"
+
+/** Rejecting a request (REQ-02): pending only, with a reason from the list —
+ * «other» with its text. */
+export function rejectBlocks(input: { archived: boolean; status: ReqStatus; why: ReqRejectWhy | null; text: string | null }): RequestRejectBlock[] {
+  const out: RequestRejectBlock[] = []
+  if (input.status !== "pending") out.push("not_pending")
+  else if (input.archived) out.push("archived")
+  if (!input.why) out.push("no_reason")
+  else if (input.why === "oth" && !input.text?.trim()) out.push("why_text")
   return out
 }
 
@@ -701,7 +744,7 @@ const addDays = (d: string, n: number) => new Date(Date.parse(`${d.slice(0, 10)}
 
 // ── Direct purchases under a cap ────────────────────────────────────────────
 
-/** PRD §13 defaults: per purchase and per rolling 30 days. */
+/** PRD §13 defaults: per purchase and per CALENDAR month (STK-08) — both block at save. */
 export const PETTY_CAP = { one: 3000, month: 15000 } as const
 
 export interface PmPetty {
@@ -719,17 +762,34 @@ export interface PmPetty {
 
 export const pettyNo = (seq: number) => String(seq).padStart(2, "0")
 
-export const pettyMonth = (list: Array<Pick<PmPetty, "day" | "amount">>, today: string) => r2(list.filter((x) => daysBetween(x.day, today) <= 30 && daysBetween(x.day, today) >= 0).reduce((a, x) => a + x.amount, 0))
+/** The calendar month a day falls in (`YYYY-MM`). */
+export const monthOf = (day: string) => day.slice(0, 7)
 
-export type PettyBlock = "archived" | "no_what" | "no_supplier" | "bad_amount" | "over_one" | "future"
+/** Spent on direct purchases in the calendar month of `day` (STK-08 — not a rolling 30 days). */
+export const pettyMonth = (list: Array<Pick<PmPetty, "day" | "amount">>, day: string) => r2(list.filter((x) => monthOf(x.day) === monthOf(day)).reduce((a, x) => a + x.amount, 0))
 
-export function pettyBlocks(input: { archived: boolean; what: string; supplier: string; amount: number; day: string; today: string }): PettyBlock[] {
+/** The project's running tally of the month, kept in the purchase's own transaction
+ * (`pm.pettyMonth` — a client transaction cannot query the purchases). */
+export interface PettyTally {
+  ym: string
+  sum: number
+}
+
+/** What the month had spent before this purchase: the listed purchases of that
+ * month, or the tally kept in the transaction when it is the same month and
+ * higher (one written since the list was read). */
+export const pettySpentBefore = (listed: number, tally: PettyTally | null | undefined, day: string) => r2(Math.max(listed, tally && tally.ym === monthOf(day) ? Number(tally.sum) || 0 : 0))
+
+export type PettyBlock = "archived" | "no_what" | "no_supplier" | "bad_amount" | "over_one" | "over_month" | "future"
+
+export function pettyBlocks(input: { archived: boolean; what: string; supplier: string; amount: number; day: string; today: string; monthSpent?: number }): PettyBlock[] {
   const out: PettyBlock[] = []
   if (input.archived) out.push("archived")
   if (!input.what.trim()) out.push("no_what")
   if (!input.supplier.trim()) out.push("no_supplier")
   if (!(Number.isFinite(input.amount) && input.amount > 0)) out.push("bad_amount")
   else if (input.amount > PETTY_CAP.one) out.push("over_one")
+  else if ((input.monthSpent ?? 0) + input.amount > PETTY_CAP.month + 0.005) out.push("over_month")
   if (input.day > input.today) out.push("future")
   return out
 }

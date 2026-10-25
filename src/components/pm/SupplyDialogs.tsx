@@ -28,8 +28,9 @@ import type { PmAttachment } from "@/lib/pm/attachments"
 import { INVENTORY_UNIT_CODES, unitMessageKey } from "@/lib/inventory-units"
 import { pmMoney, todayDay } from "@/lib/pm/format"
 import { addDays } from "@/lib/pm/programme"
-import { itemMaterials, lineDays, lineGot, lineInTransit, lineKind, lineLink, lineNeed, lineOut, mainStock, receivablePortions, reqNo, reqTitle, siteOverheadLeft, stockCatalogue, CLOSE_WHY, type CloseWhy, type LineDraft, type MainStockRow, type OrderFact, type PmMaterialRequest, type PortionKind } from "@/lib/pm/supply"
-import { materialKeyOf, r2, ratedOn, storeBalance, type StoreItem } from "@/lib/pm/store"
+import { itemMaterials, lineDays, lineGot, lineInTransit, lineKind, lineLink, lineNeed, lineOut, mainStock, receivablePortions, receiveBlocks, rejectBlocks, reqNo, reqTitle, siteOverheadLeft, stockCatalogue, CLOSE_WHY, REQ_REJECT_WHY, type CloseWhy, type LineDraft, type MainStockRow, type OrderFact, type PmMaterialRequest, type PortionKind, type ReqRejectWhy } from "@/lib/pm/supply"
+import { materialKeyOf, r2, ratedOn, REJECT_WHY, storeBalance, type RejectWhy, type StoreItem } from "@/lib/pm/store"
+import { PM_SUBCONTRACTS, type PmSubcontract } from "@/lib/pm/subcontract"
 import { PM_VARIATIONS, voNo, type PmVariation } from "@/lib/pm/variation"
 import { createMaterialRequest, decideChange, PmSupplyError, receiveOnProject, rejectMaterialRequest, stopLine, type SupplyActor } from "@/lib/pm/supply-writes"
 import { PURCHASE_ORDERS } from "@/lib/procurement/types"
@@ -136,6 +137,14 @@ export function NewRequestDialog({
   const hasGen = lines.some((l) => l.itemId === GEN)
   const indirect = usePmIndirect(projectId, orgId ?? null, money && hasGen)
   const ovhLeft = money ? siteOverheadLeft(indirect.budgets.ovh, indirect.byKind.ovh) : undefined
+  // REQ-01: an item let to a subcontractor who supplies its materials is not requested.
+  const scQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_SUBCONTRACTS) : null), [firestore, projectId])
+  const { data: scData } = useCollection(scQ)
+  const hisSupply = useMemo(() => {
+    const out = new Map<string, string>()
+    for (const c of (scData ?? []) as unknown as PmSubcontract[]) if (c.materials === "his") for (const l of c.lines ?? []) out.set(l.itemId, c.party?.name ?? "")
+    return out
+  }, [scData])
 
   const resolve = (l: LineState): LineDraft | null => {
     const mat = l.itemId === GEN && !l.mat && !catalogue.length ? NEW : l.mat
@@ -148,8 +157,9 @@ export function NewRequestDialog({
     return { itemId: l.itemId === GEN ? null : l.itemId, name, unit, qty: q, why: l.why, ...(!picked && l.material ? { material: l.material } : {}) }
   }
   const drafts = lines.map(resolve)
-  const ok = drafts.some(Boolean) && needBy >= today
   const valid = drafts.filter((d): d is LineDraft => Boolean(d))
+  const subLines = valid.filter((d) => d.itemId && hisSupply.has(d.itemId))
+  const ok = drafts.some(Boolean) && needBy >= today && subLines.length === 0
   const changes = valid.filter((d) => lineKind(world.stores, d) === "change").length
   const gens = valid.filter((d) => !d.itemId).length
   const auto = reqTitle(valid, t("sup.form.title_ph"))
@@ -187,6 +197,11 @@ export function NewRequestDialog({
                 onRemove={() => setLines((ls) => ls.filter((_, j) => j !== i))}
               />
             ))}
+            {subLines.map((d) => (
+              <FormHint key={d.itemId} tone="bad">
+                {t("sup.form.sub_supplies", { code: items.find((i) => i.id === d.itemId)?.code || "—", name: hisSupply.get(d.itemId as string) || "—" })}
+              </FormHint>
+            ))}
             {lines.length < 8 && (
               <Button type="button" size="sm" variant="outline" onClick={() => setLines((ls) => [...ls, blankLine(ls[ls.length - 1]?.itemId ?? "")])}>
                 <Plus size={14} className="me-1.5" aria-hidden="true" />
@@ -222,7 +237,7 @@ export function NewRequestDialog({
         <DialogFooter>
           {!ok && (
             <p role="status" className="me-auto self-center text-xs text-muted-foreground">
-              {needBy < today ? t("sup.form.need_date") : t("sup.form.need_line")}
+              {needBy < today ? t("sup.form.need_date") : subLines.length ? t("sup.block.sub_supplies") : t("sup.form.need_line")}
             </p>
           )}
           <Button variant="outline" onClick={onClose} disabled={busy !== null}>
@@ -489,10 +504,14 @@ export function ReceiveDialog({
   const [note, setNote] = useState("")
   const [short, setShort] = useState(false)
   const [files, setFiles] = useState<PmAttachment[]>([])
+  const [rejWhy, setRejWhy] = useState<RejectWhy | null>(null)
+  const [rejNote, setRejNote] = useState("")
   const a = Number(acc) || 0
   const r = Number(rej) || 0
   const over = Boolean(portion) && a > left + 0.005
-  const bad = !portion || a < 0 || r < 0 || a + r <= 0 || over
+  // STK-09: anything rejected carries its reason — the same rule the write runs.
+  const whyBlocks = receiveBlocks({ archived: false, receivable: true, remaining: Infinity, acc: a, rej: r, rejWhy, rejNote }).filter((b) => b === "rej_why" || b === "rej_text")
+  const bad = !portion || a < 0 || r < 0 || a + r <= 0 || over || whyBlocks.length > 0
   const sourceOf = (k: PortionKind) =>
     k === "stk" ? t("sup.rcv.from_store", { store: line.inv?.warehouseName || t("store.rcv.main_store") }) : by.poNumber ? t("sup.rcv.from_po", { no: by.poNumber }) : by.mfgRequestId ? t("sup.rcv.from_mfg") : t("sup.rcv.from_proc")
   // What a main store issued is on the road: the hints speak of the store, not a supplier.
@@ -504,7 +523,7 @@ export function ReceiveDialog({
     const done = await run(
       "rcv",
       async () => {
-        grn = await receiveOnProject(firestore, access.ctx, projectId, actor, request.id, index, { acc: a, rej: r, dn, note, short, files, withStore, portion: portion?.k ?? null })
+        grn = await receiveOnProject(firestore, access.ctx, projectId, actor, request.id, index, { acc: a, rej: r, rejWhy: r > 0 ? rejWhy : null, rejNote: r > 0 ? rejNote : null, dn, note, short, files, withStore, portion: portion?.k ?? null })
       },
       () => t(dn.trim() ? "sup.rcv.done" : "sup.rcv.done_no_dn", { no: grn, q: qty(a), unit: line.unit, name: line.name })
     )
@@ -547,6 +566,18 @@ export function ReceiveDialog({
               <Input id="rc-rej" type="number" min={0} dir="ltr" placeholder="0" value={rej} onChange={(e) => setRej(e.target.value)} />
               <FormHint>{portion?.k === "stk" ? t("sup.rcv.rej_stk") : t("sup.rcv.rej_buy")}</FormHint>
             </div>
+            {r > 0 && (
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>{t("sup.rcv.rej_why")} *</Label>
+                <ChoiceChips label={t("sup.rcv.rej_why")} options={REJECT_WHY.map((w) => ({ id: w, label: t(`sup.rcv.rw.${w}`) }))} value={rejWhy} onChange={setRejWhy} />
+                {rejWhy === "oth" && <Input aria-label={t("sup.rcv.rw_oth_ph")} dir="auto" placeholder={t("sup.rcv.rw_oth_ph")} value={rejNote} onChange={(e) => setRejNote(e.target.value)} />}
+                {whyBlocks.map((b) => (
+                  <FormHint key={b} tone="bad">
+                    {t(`sup.block.${b}`)}
+                  </FormHint>
+                ))}
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="rc-dn">
                 {t("sup.rcv.dn")} <span className="text-xs text-muted-foreground">{t("sup.form.optional")}</span>
@@ -594,7 +625,8 @@ export function StopLineDialog({ projectId, access, actor, request, index, onClo
   const mode = got > 0 ? "close" : "cancel"
   const [why, setWhy] = useState<CloseWhy | null>(null)
   const [note, setNote] = useState("")
-  const whyOk = why !== "oth" || note.trim().length > 0
+  // REQ-04: a reason from the list is required — «other» with its text.
+  const whyOk = why !== null && (why !== "oth" || note.trim().length > 0)
   const transit = lineInTransit(line)
   // What stops is the line's own order — or, with none out yet, nothing anyone started on.
   const by = lineLink(request, line)
@@ -622,10 +654,9 @@ export function StopLineDialog({ projectId, access, actor, request, index, onClo
             <KeyValueRow label={`${qty(lineOut(line))} ${line.unit}`} value={<span className="text-xs">{fate}</span>} />
           </div>
           <div className="space-y-1.5">
-            <Label>
-              {t("sup.stop.why")} <span className="text-xs text-muted-foreground">{t("sup.form.optional")}</span>
-            </Label>
-            <ChoiceChips label={t("sup.stop.why")} options={CLOSE_WHY.map((w) => ({ id: w, label: t(`sup.close_why.${w}`) }))} value={why} onChange={(v) => setWhy(v === why ? null : v)} />
+            <Label>{t("sup.stop.why")} *</Label>
+            <ChoiceChips label={t("sup.stop.why")} options={CLOSE_WHY.map((w) => ({ id: w, label: t(`sup.close_why.${w}`) }))} value={why} onChange={setWhy} />
+            {!why && <FormHint>{t("sup.block.no_reason")}</FormHint>}
             {why === "oth" && <Input aria-label={t("sup.stop.oth_ph")} dir="auto" placeholder={t("sup.stop.oth_ph")} value={note} onChange={(e) => setNote(e.target.value)} />}
           </div>
           {transit > 0 ? <Callout tone="block">{t("sup.block.in_transit", { q: qty(transit), unit: line.unit })}</Callout> : <Callout tone="info">{t("sup.stop.note")}</Callout>}
@@ -716,10 +747,13 @@ export function RejectRequestDialog({ projectId, access, actor, request, onClose
   const t = useTranslations("Portal.PM")
   const firestore = useFirestore()
   const { busy, run } = useSupplyRun()
-  const [reason, setReason] = useState("")
+  const [why, setWhy] = useState<ReqRejectWhy | null>(null)
+  const [text, setText] = useState("")
+  // REQ-02: a reason from the list, «other» with its text — the same rule the write runs.
+  const blocks = rejectBlocks({ archived: access.ctx.archived, status: request.status, why, text })
   const save = async () => {
     if (!firestore) return
-    const done = await run("rej", () => rejectMaterialRequest(firestore, access.ctx, projectId, actor, request.id, reason), t("sup.rejected", { no: reqNo(request.seq ?? 0) }))
+    const done = await run("rej", () => rejectMaterialRequest(firestore, access.ctx, projectId, actor, request.id, { why, text: why === "oth" ? text : null }), t("sup.rejected", { no: reqNo(request.seq ?? 0) }))
     if (done) onClose()
   }
   return (
@@ -730,17 +764,17 @@ export function RejectRequestDialog({ projectId, access, actor, request, onClose
           <DialogDescription dir="auto">{request.title}</DialogDescription>
         </DialogHeader>
         <div className="space-y-1.5">
-          <Label htmlFor="mr-rej">
-            {t("sup.reject_reason")} <span className="text-xs text-muted-foreground">{t("sup.form.optional")}</span>
-          </Label>
-          <Textarea id="mr-rej" dir="auto" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
+          <Label>{t("sup.reject_pick")} *</Label>
+          <ChoiceChips label={t("sup.reject_pick")} options={REQ_REJECT_WHY.map((w) => ({ id: w, label: t(`sup.rej_why.${w}`) }))} value={why} onChange={setWhy} />
+          {why === "oth" && <Textarea id="mr-rej" aria-label={t("sup.reject_oth_ph")} dir="auto" rows={2} placeholder={t("sup.reject_oth_ph")} value={text} onChange={(e) => setText(e.target.value)} />}
           <FormHint>{t("sup.reject_hint")}</FormHint>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy !== null}>
             {t("sup.back")}
           </Button>
-          <Button variant="destructive" onClick={() => void save()} disabled={busy !== null}>
+          <Button variant="destructive" onClick={() => void save()} disabled={blocks.length > 0 || busy !== null}>
+            {busy && <Loader2 size={14} className="me-1.5 animate-spin" aria-hidden="true" />}
             {t("sup.reject")}
           </Button>
         </DialogFooter>

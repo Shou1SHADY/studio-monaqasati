@@ -1,8 +1,8 @@
 "use client"
 
 // Supply › Direct purchases on a PM 1.0 project (prototype pettyPanel · formCASH):
-// site cash under an approved cap — per purchase and per rolling 30 days — with a
-// receipt. Above the cap it is a normal material request. Each purchase reaches
+// site cash under an approved cap — per purchase and per calendar month, both
+// blocking at save (STK-08) — with a receipt. Above a cap it is a normal material request. Each purchase reaches
 // Finance as a project cost (prj:CASH).
 
 import { useMemo, useState } from "react"
@@ -105,12 +105,12 @@ export function DirectPurchasesPanel({ projectId, orgId, access, actor }: { proj
         )}
         <p className="border-t px-4 py-2 text-xs text-muted-foreground">{t("petty.foot")}</p>
       </Panel>
-      {open && <PettyDialog projectId={projectId} orgId={orgId} access={access} actor={actor} month={month} onClose={() => setOpen(false)} />}
+      {open && <PettyDialog projectId={projectId} orgId={orgId} access={access} actor={actor} list={list} onClose={() => setOpen(false)} />}
     </>
   )
 }
 
-function PettyDialog({ projectId, orgId, access, actor, month, onClose }: { projectId: string; orgId?: string | null; access: PmAccess; actor: SupplyActor; month: number; onClose: () => void }) {
+function PettyDialog({ projectId, orgId, access, actor, list, onClose }: { projectId: string; orgId?: string | null; access: PmAccess; actor: SupplyActor; list: PmPetty[]; onClose: () => void }) {
   const t = useTranslations("Portal.PM")
   const firestore = useFirestore()
   const { busy, run } = useSupplyRun()
@@ -122,9 +122,11 @@ function PettyDialog({ projectId, orgId, access, actor, month, onClose }: { proj
   const [day, setDay] = useState(today)
   const [files, setFiles] = useState<PmAttachment[]>([])
   const amt = Number(amount) || 0
-  const blocks = pettyBlocks({ archived: access.ctx.archived, what, supplier, amount: amt, day, today })
+  // The cap is the calendar month of the purchase's own date — the write re-checks it.
+  const month = pettyMonth(list, day || today)
+  const blocks = pettyBlocks({ archived: access.ctx.archived, what, supplier, amount: amt, day, today, monthSpent: month })
   const overOne = amt > PETTY_CAP.one
-  const overMonth = !overOne && month + amt > PETTY_CAP.month
+  const overMonth = blocks.includes("over_month")
 
   const save = async () => {
     if (!firestore) return
@@ -165,7 +167,11 @@ function PettyDialog({ projectId, orgId, access, actor, month, onClose }: { proj
             </div>
           </div>
           <PmFilesField orgId={orgId} folder={`projects/${projectId}/petty`} value={files} onChange={setFiles} label={t("petty.form.photo")} hint={t("petty.form.photo_hint")} />
-          {overMonth && <Callout tone="warn">{t("petty.form.over_month", { spent: n0(month), month: n0(PETTY_CAP.month) })}</Callout>}
+          {overMonth && (
+            <Callout tone="block">
+              {t("petty.form.over_month", { spent: n0(month), month: n0(PETTY_CAP.month) })} {t("sup.block.over_month")}
+            </Callout>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy !== null}>
