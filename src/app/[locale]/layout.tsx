@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, Noto_Sans_Arabic } from 'next/font/google';
+import localFont from 'next/font/local';
 import Script from 'next/script';
 import '../globals.css';
 import { Toaster } from '@/components/ui/toaster';
@@ -13,15 +13,16 @@ import { EnvironmentRibbon } from '@/components/EnvironmentRibbon';
 import { RadixDirection } from '@/components/layout/RadixDirection';
 import { IS_UAT, SITE_URL } from '@/lib/app-env';
 
-const notoSansArabic = Noto_Sans_Arabic({
-  subsets: ['arabic'],
-  weight: ['400', '500', '600', '700'],
+const notoSansArabic = localFont({
+  src: '../../fonts/noto-sans-arabic-arabic-wght-normal.woff2',
+  weight: '100 900',
   display: 'swap',
   variable: '--font-body',
 });
 
-const inter = Inter({
-  subsets: ['latin'],
+const inter = localFont({
+  src: '../../fonts/inter-latin-wght-normal.woff2',
+  weight: '100 900',
   display: 'swap',
   variable: '--font-inter',
 });

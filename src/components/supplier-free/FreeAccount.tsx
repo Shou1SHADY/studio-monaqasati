@@ -25,6 +25,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
+import { OwnerOnlyGate } from "@/components/OwnerOnlyGate"
 import { Callout } from "@/components/module-ui/Callout"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { cn } from "@/lib/utils"
@@ -77,6 +78,14 @@ function Stars({ v }: { v: number }) {
 }
 
 export function FreeAccount() {
+  return (
+    <OwnerOnlyGate>
+      <FreeAccountBody />
+    </OwnerOnlyGate>
+  )
+}
+
+function FreeAccountBody() {
   const f = useFree()
   const { t, profile } = f
   const q = useQueryState()

@@ -1,0 +1,1 @@
+Self-hosted so a build never fetches fonts from Google (DEV-67). Both are SIL Open Font License 1.1 variable fonts (wght axis), taken from @fontsource-variable/inter and @fontsource-variable/noto-sans-arabic 5.3.0: Inter (latin subset) and Noto Sans Arabic (arabic subset).
