@@ -6,7 +6,7 @@ export const MATERIALS_TEMPLATE_SHEET = 'المواد';
 export const MATERIALS_HOW_SHEET = 'طريقة التعبئة';
 
 const HEADER = ['المادة / Material', 'المقاس أو المواصفة / Size or spec', 'الكمية / Qty', 'الوحدة / Unit', 'ملاحظة / Note'];
-export const MATERIALS_UNITS: readonly string[] = ['م³', 'م²', 'طن', 'كيس', 'حبة', 'متر', 'متر طولي', 'لفة', 'برميل', 'لتر', 'نقلة'];
+export const MATERIALS_UNITS: readonly string[] = ['م³', 'م²', 'طن', 'كجم', 'كيس', 'حبة', 'متر', 'متر طولي', 'لفة', 'برميل', 'لتر', 'نقلة'];
 const HOW_BOLD = [0, 8, 15];
 const HOW: string[][] = [
   ['قالب مدماك لاستيراد المواد إلى طلب عروض أسعار — Mdmak materials import template'],

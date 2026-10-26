@@ -123,7 +123,6 @@ export function AcceptHandoverWizard({
 }) {
   const t = useTranslations("Portal.PM")
   const tShared = useTranslations("Portal.Shared")
-  const tBoq = useTranslations("Portal.PmBoqImport")
   const tC = useTranslations("Portal.Contractor")
   const locale = useLocale()
   const firestore = useFirestore()
@@ -232,13 +231,12 @@ export function AcceptHandoverWizard({
   // A CRM line is judged here; an uploaded or typed one was settled line by line in the BOQ window.
   const rowsBad = source === "crm" ? draftRowProblems(rows).filter((p) => p.length > 0).length : 0
   const xlLoaded = !!(source === "xl" || source === "man") && !!payloads[source]
-  const negativeLines = lineRows.some((r) => r.quantity < 0)
   const unpricedCount = lineRows.filter((i) => !(i.rate > 0)).length
   const selfDev = isSelfDevelopment(kind)
   const manualBlocks = manual ? manualProjectBlocks({ ...draft, kind, location }, managerUid || null) : []
   const stepBlockCodes = acceptStepBlocks({ source, managerUid: managerUid || null, xlItems: lineRows.length, xlBad: rowsBad, xlLoaded, fileBoq: crmCount > 0 })
-  const boqStepBlocks = [...stepBlockCodes.map((b) => t(`wizard.block.${b}`)), ...(negativeLines ? [tBoq("wizard.negative")] : [])]
-  const boqNextBlocked = stepBlockCodes.some((b) => b !== "no_manager") || negativeLines
+  const boqStepBlocks = stepBlockCodes.map((b) => t(`wizard.block.${b}`))
+  const boqNextBlocked = stepBlockCodes.some((b) => b !== "no_manager")
   const blocks = [
     ...(handover ? acceptBlocks(handover).map((b) => t(`accept_block.${b}`)) : manualBlocks.filter((b) => b !== "no_manager").map((b) => t(`manual.block.${b}`))),
     ...boqStepBlocks,

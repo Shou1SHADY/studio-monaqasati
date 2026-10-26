@@ -73,7 +73,6 @@ const FILES = [
   "UnitsPanel.tsx",
   "UnitsPulsePanel.tsx",
   "UnitField.tsx",
-  "WizardBoqEditor.tsx",
   "PulseExtras.tsx",
   "ProcLineFacts.tsx",
 ]

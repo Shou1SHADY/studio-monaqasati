@@ -24,7 +24,6 @@ import { listCollection } from "@/test-utils/fake-firestore"
 import { acceptHandover, localAcceptTransport } from "@/lib/pm/handover-writes"
 import { acceptStepBlocks, boqSourcesFor, PM_HANDOVERS } from "@/lib/pm/handover"
 import { archiveSnapshot, rfiReplyAverages } from "@/lib/pm/closeout"
-import { importBoq, PmBoqError } from "@/lib/pm/boq-writes"
 import { certifyBlocks } from "@/lib/pm/certificate"
 import { pmAllowed } from "@/lib/pm/access"
 import { stepBlocks, type PmVariation } from "@/lib/pm/variation"
@@ -227,12 +226,6 @@ describe("CON-03 — later pricing and no import after the start", () => {
     const line = src.split("\n").find((l) => l.includes("const canPrice")) ?? ""
     expect(line).toContain('access.allowed("item.price")')
     expect(line).not.toContain('access.has("approve")')
-  })
-  it("FX-54: a started project with NO lines refuses an import", async () => {
-    project(1_000_000)
-    const row = { line: 1, code: "03-01", description: "Concrete", unit: "m3", quantity: 10, rate: 100, cost: null, problems: [] }
-    await expect(importBoq(db, pm, "p1", [row] as unknown as Parameters<typeof importBoq>[3])).rejects.toMatchObject({ code: "started" })
-    await expect(importBoq(db, pm, "p1", [row] as unknown as Parameters<typeof importBoq>[3])).rejects.toBeInstanceOf(PmBoqError)
   })
 })
 

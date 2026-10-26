@@ -46,7 +46,7 @@ const ORDER = ["owner", "pm", "site", "qs", "hse", "supervisor", "other"] as con
 // ● = allowed, · = refused, in the PRD's column order.
 const MATRIX: Array<[PmAction, string]> = [
   ["project.create", "●●·····"],
-  ["boq.import", "●●·····"],
+  ["boq.import", "●●·●···"],
   ["terms.complete", "●●·●···"],
   ["addendum.draft", "●●·●···"],
   ["addendum.sign", "●●·····"],
@@ -127,7 +127,7 @@ describe("the guard itself (QA 3/7)", () => {
   it("an archived project refuses every change, the owner's included, but keeps system keys", () => {
     const archived: PmContext = { ...COLUMNS.owner, archived: true }
     const allowed = (Object.keys(PM_GUARD) as PmAction[]).filter((a) => pmAllowed(archived, a))
-    expect(allowed.sort()).toEqual(["boq.import", "project.create"])
+    expect(allowed.sort()).toEqual(["project.create"])
     expect(pmRefusal(archived, "measurement.write")).toBe("archived")
     expect(pmCan(archived, "money")).toBe(true)
     expect(mayManageTeam(archived, false)).toBe(false)

@@ -217,7 +217,7 @@ export const PM_GUARD = {
   // VO-03 (1.1 `vopc`): the executed share is recorded by approve — never down, logged.
   "variation.progress": { all: ["approve"] },
   "project.create": { all: ["create"] },
-  "boq.import": { all: ["create"] },
+  "boq.import": { any: ["create", "prep"] },
   "terms.complete": { all: ["money"], any: ["all", "approve"] },
 } as const satisfies Record<string, Req>
 export type PmAction = keyof typeof PM_GUARD

@@ -34,7 +34,7 @@ const line = z.object({
   descriptionAr: z.string().max(2000),
   descriptionEn: z.string().max(2000),
   unit: z.string().max(40),
-  quantity: z.number().finite().min(0).max(1e12),
+  quantity: z.number().finite().min(-1e12).max(1e12),
   unitPrice: z.number().finite().min(0).max(1e12),
   groupId: z.string().max(200).nullable(),
   extra: z.record(z.union([z.string().max(500), z.number().finite(), z.boolean(), z.null()])).optional(),

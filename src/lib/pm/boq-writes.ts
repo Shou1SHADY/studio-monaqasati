@@ -5,9 +5,9 @@
 // Importing writes every validated row in one transaction, and only into an
 // empty BOQ — a second paste never doubles lines.
 
-import { collection, doc, getDocs, limit, query, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
+import { collection, doc, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
 import { assertPm, PmAccessError, type PmContext } from "./access"
-import { divisionOfCode, MAX_IMPORT_ROWS, priceBlocks, type ImportRow } from "./boq"
+import { divisionOfCode, priceBlocks, type ImportRow } from "./boq"
 import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
 
@@ -53,45 +53,6 @@ export async function priceItem(firestore: Firestore, ctx: PmContext, projectId:
       updatedAt: serverTimestamp(),
     })
   })
-}
-
-/** Rows already judged by `parseBoqPaste` — only its `ok` list is passed here. */
-export async function importBoq(firestore: Firestore, ctx: PmContext, projectId: string, rows: ImportRow[]): Promise<number> {
-  if (!rows.length) throw new PmBoqError("no_rows")
-  if (rows.length > MAX_IMPORT_ROWS) throw new PmBoqError("too_many")
-  if (rows.some((r) => r.problems.length)) throw new PmBoqError("blocked", ["invalid_rows"])
-  const existing = await getDocs(query(collection(firestore, "projects", projectId, "boqItems"), limit(1)))
-  if (!existing.empty) throw new PmBoqError("has_items")
-  await runTransaction(firestore, async (tx) => {
-    const pSnap = await tx.get(doc(firestore, "projects", projectId))
-    if (!pSnap.exists()) throw new PmBoqError("missing")
-    const project = pSnap.data() as ProjectData
-    if (!project.pm) throw new PmBoqError("not_pm_project")
-    assertPm(withFreshState(ctx, project), "boq.import")
-    // CON-03 (FX-54): no BOQ import after the start — even onto a project with no lines.
-    if ((project.pm.lifecycle ?? "plan") !== "plan") throw new PmBoqError("started")
-    const items = collection(firestore, "projects", projectId, "boqItems")
-    for (const r of rows) {
-      tx.set(doc(items), {
-        itemNo: r.code,
-        descriptionAr: r.description,
-        descriptionEn: r.description,
-        unit: r.unit,
-        quantity: r.quantity,
-        unitPrice: r.rate && r.rate > 0 ? r.rate : 0,
-        estCost: r.cost && r.cost > 0 ? r.cost : null,
-        divisionNo: divisionOfCode(r.code),
-        tenderId: null,
-        isEditable: true,
-        groupId: null,
-        executedQuantity: 0,
-        billedQuantity: 0,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      })
-    }
-  })
-  return rows.length
 }
 
 /** One line added or corrected by hand — only while the project is still planning: after the start, quantity and rate move by variation. */

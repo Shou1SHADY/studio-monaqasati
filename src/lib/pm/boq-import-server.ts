@@ -90,7 +90,7 @@ export async function applyBoqImport(db: Firestore, uid: string, input: BoqImpor
     if (!project.pm) throw new BoqImportError("NOT_PM_PROJECT", 409)
     const ctx = pmContextFrom(caller, project, mSnap.exists ? (mSnap.data() as Record<string, unknown>) : null, today)
     const refusal = pmRefusal(ctx, "boq.import")
-    if (refusal) throw new BoqImportError(refusal === "archived" ? "BLOCKED" : "FORBIDDEN", refusal === "archived" ? 409 : 403, [refusal])
+    if (refusal) throw new BoqImportError(refusal === "archived" ? "BLOCKED" : "FORBIDDEN", refusal === "archived" ? 409 : 403, [refusal === "archived" ? "started" : refusal])
     if (lifecycleOf(project) !== "plan") throw new BoqImportError("BLOCKED", 409, ["started"])
     const docs = existing.docs
     if (docs.some((d) => num((d.data() as Record<string, unknown>).executedQuantity) > 0)) throw new BoqImportError("BLOCKED", 409, ["measured"])

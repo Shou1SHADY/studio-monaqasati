@@ -58,7 +58,7 @@ export const publishSchema = z.object({
   notes: z.string().max(4000).default(""),
   budget: z.number().finite().min(0).max(1e10).nullable().optional(),
   attachments: z.array(z.object({ name: z.string().max(300), url: z.string().max(2000), path: z.string().max(500) })).max(10).default([]),
-  doc: z.object({ products: z.array(product).min(1).max(200) }).passthrough(),
+  doc: z.object({ products: z.array(product).min(1).max(500) }).passthrough(),
   reach: z.object({ count: z.number().int().min(0).max(100000), orgIds: z.array(id).max(300).default([]) }).default({ count: 0, orgIds: [] }),
 })
 export type PublishInput = z.infer<typeof publishSchema>

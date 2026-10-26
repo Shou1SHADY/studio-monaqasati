@@ -9,24 +9,22 @@
 
 jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-utils/fake-firestore")>("@/test-utils/fake-firestore").firestoreModule)
 
-import { fakeFirestore, listCollection, readDoc, resetFakeDb, seed } from "@/test-utils/fake-firestore"
+import { fakeFirestore, readDoc, resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import type { Firestore } from "firebase/firestore"
 import { PmAccessError, pmCeiling, type PmContext } from "@/lib/pm/access"
 import {
   boqTotals,
-  crmMismatch,
   filterLines,
   groupLines,
   lineBleeding,
   lineMarginPct,
   lineUnbilled,
-  parseBoqPaste,
   priceBlocks,
   unpricedNote,
   viewCounts,
   type PmBoqLine,
 } from "@/lib/pm/boq"
-import { importBoq, PmBoqError, priceItem } from "@/lib/pm/boq-writes"
+import { PmBoqError, priceItem } from "@/lib/pm/boq-writes"
 import { contractEvents, termsCash } from "@/lib/pm/contract-record"
 import { draftAddendum } from "@/lib/pm/addendum-writes"
 import { curveK, planF, programmeK } from "@/lib/pm/programme"
@@ -79,16 +77,6 @@ describe("BOQ view (C-01…C-08)", () => {
     expect(unpricedNote(lines)).toEqual({ count: 1, executed: 1, unweighted: (30 / 230) * 100 })
   })
 
-  it("import: every row judged; CRM value mismatch over 0.5%", () => {
-    const r = parseBoqPaste("02-01-01\tExcavation\tm3\t18400\t24\t18.5\n02-01-01\tDup\tm3\t1\n9x\t\tm2\t-1\tabc", ["22-01-01"])
-    expect(r.ok).toHaveLength(1)
-    expect(r.bad.map((b) => b.problems)).toEqual([["duplicate"], ["code_format", "no_description", "bad_qty", "bad_rate"]])
-    expect(parseBoqPaste("٠٢-٠١-٠١|x|m|١٠").ok[0]).toBeUndefined()
-    expect(parseBoqPaste("02-01-01|x|m|١٠").ok[0].quantity).toBe(10)
-    expect(crmMismatch(r.ok, 441_600)).toBeNull()
-    expect(crmMismatch(r.ok, 500_000)).toMatchObject({ under: true, diff: 58_400 })
-  })
-
   it("pricing: once, agreed rate, prep|approve with money", async () => {
     expect(priceBlocks({ archived: false, currentRate: 10, rate: 0, cost: -1 })).toEqual(["already_priced", "bad_rate", "bad_cost"])
     seed("projects/p1/boqItems/x", { itemNo: "04-02-01", unitPrice: "", quantity: 30, executedQuantity: 5 })
@@ -98,15 +86,6 @@ describe("BOQ view (C-01…C-08)", () => {
     await expect(priceItem(db, pm, "p1", pmA, "x", { rate: 70, cost: 0 })).rejects.toBeInstanceOf(PmBoqError)
   })
 
-  it("import writes into an empty BOQ only — and only before the start (CON-03, FX-54)", async () => {
-    const rows = parseBoqPaste("02-01-01\tExcavation\tm3\t100\t24\t18").ok
-    await expect(importBoq(db, pm, "p1", rows)).rejects.toMatchObject({ code: "started" })
-    const p = readDoc<Record<string, any>>("projects/p1") as Record<string, any>
-    seed("projects/p1", { ...p, pm: { ...p.pm, lifecycle: "plan" } })
-    await importBoq(db, pm, "p1", rows)
-    expect(listCollection("projects/p1/boqItems")).toHaveLength(1)
-    await expect(importBoq(db, pm, "p1", rows)).rejects.toMatchObject({ code: "has_items" })
-  })
 })
 
 describe("variations (C-16…C-20)", () => {

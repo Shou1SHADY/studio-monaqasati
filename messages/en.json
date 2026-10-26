@@ -27117,8 +27117,7 @@
         "none": "No items entered yet.",
         "loaded": "{items} entered · {total}",
         "unpriced": "{count} of them unpriced",
-        "from_file": "From “{file}”",
-      "negative": "An item has a negative quantity (an omission). Add it from the BOQ after the project is created."
+        "from_file": "From “{file}”"
       }
     },
     "InvPm": {

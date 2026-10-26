@@ -1,7 +1,7 @@
 /**
  * BOQ Import PM 1.0 — the new-project wizard: the BOQ step opens the same window as the project's own BOQ
  * (upload, the template or typing), holds what the window hands over, and writes it with the section and the
- * source on every line when the project is accepted. A negative quantity waits for the project's own BOQ.
+ * source on every line when the project is accepted.
  */
 
 jest.mock("firebase/firestore", () => jest.requireActual("@/test-utils/render-world").firestoreMock)
@@ -115,7 +115,7 @@ describe("the wizard's BOQ step", () => {
     expect([...missingKeys]).toEqual([])
   })
 
-  it("typed by hand: the window opens empty; a line with a negative quantity waits for the project's own BOQ", async () => {
+  it("typed by hand: the window opens empty; a line with a negative quantity (an omission) is held like any other", async () => {
     await toBoqStep()
     fireEvent.click(screen.getByRole("button", { name: /Enter manually/ }))
     fireEvent.click(screen.getByRole("button", { name: "Enter the items by hand" }))
@@ -127,8 +127,8 @@ describe("the wizard's BOQ step", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Add 1 item to the BOQ/ }))
     await flush()
     expect(screen.getByText(/1 item entered/)).toBeTruthy()
-    expect(nextButton()).toBeDisabled()
-    expect(screen.getByText(/negative quantity \(an omission\)/)).toBeTruthy()
+    expect(nextButton()).not.toBeDisabled()
+    expect(screen.queryByText(/negative quantity \(an omission\)/)).toBeNull()
   })
 
   it("a held BOQ is reopened with its own lines and can be replaced by another file", async () => {
