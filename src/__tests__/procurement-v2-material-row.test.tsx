@@ -28,12 +28,8 @@ import type { MaterialTreeFile } from "@/lib/materials/types"
 import {
   blankLine,
   groupsFromRfq,
-  lineGaps,
-  linesFromPaste,
   newGroup,
-  parsePaste,
   rfqLinesDoc,
-  unitNote,
   warrantyOf,
   warrantyPatch,
   type EditorGroup,
@@ -263,40 +259,5 @@ describe("the warranty is a switch with a duration (CAT-05)", () => {
     expect(legacy[0].lines[0].warrantyMonths).toBe(12)
     const none = groupsFromRfq({ products: [{ name: "x", quantity: 1, unitOfMeasure: "طن", warrantyMonths: 7 }], editorGroups: [] })
     expect(none[0].lines[0].warrantyMonths).toBeNull()
-  })
-})
-
-describe("«الصق من إكسل» (CAT-07)", () => {
-  const rows = parsePaste("اسياخ حديد التسليح 16\t8\tطن\nشي مجهول تماماً\t3\tحبة\nالاسمنت العادي\t100\tحبة\n")
-
-  it("matches the tree where one material fits; the rest waits with «اختر المادة»; a unit that differs from the material's is kept and said", () => {
-    expect(rows.map((r) => [r.name, r.quantity, r.unit])).toEqual([
-      ["اسياخ حديد التسليح 16", "8", "طن"],
-      ["شي مجهول تماماً", "3", "حبة"],
-      ["الاسمنت العادي", "100", "حبة"],
-    ])
-    const lines = linesFromPaste(rows, index)
-    expect(lines[0].material?.path.at(-1)?.ar).toBe("اسياخ حديد التسليح")
-    expect(lines[0].material?.specs.map((s) => s.value.ar)).toEqual(["16 مم"])
-    expect(lineGaps(lines[1])).toEqual(["material"])
-    expect(lines[1].material).toBeNull()
-    expect(lines[2].material?.path.at(-1)?.ar).toBe("الاسمنت العادي")
-    expect(unitNote(lines[2], index)).toEqual({ kind: "differs", units: ["كيس", "طن"] })
-    expect(lines[2].unit).toBe("حبة")
-  })
-
-  it("the dialog adds the rows and the editor says which one needs its material", async () => {
-    const view = render(<NewRfqPage />)
-    await flush()
-    await click(button("الصق من إكسل"))
-    const area = document.querySelector('textarea[aria-label="الصق من إكسل"]') as HTMLTextAreaElement
-    await act(async () => void fireEvent.change(area, { target: { value: "اسياخ حديد التسليح 16\t8\tطن\nشي مجهول تماماً\t3\tحبة" } }))
-    await click(Array.from(document.querySelectorAll("button")).find((b) => (b.textContent || "").trim().startsWith("أضِف")))
-    expect(text()).toContain("اسياخ حديد التسليح")
-    expect(text()).toContain("شي مجهول تماماً")
-    await click(button("التالي: النشر"))
-    expect(Array.from(document.querySelectorAll("p.text-destructive")).map((p) => p.textContent)).toContain("اختر المادة")
-    expect([...missingKeys]).toEqual([])
-    view.unmount()
   })
 })

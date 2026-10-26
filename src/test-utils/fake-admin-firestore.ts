@@ -18,6 +18,7 @@ export interface FakeDocRef {
   set: (data: Doc, opts?: { merge?: boolean }) => Promise<void>
   update: (patch: Doc) => Promise<void>
   create: (data: Doc) => Promise<void>
+  delete: () => Promise<void>
   collection: (name: string) => FakeCollection
 }
 
@@ -90,6 +91,7 @@ export class FakeAdminDb {
         if (this.docs.has(path)) throw new AdminError("already-exists")
         this.write(path, data)
       },
+      delete: async () => void this.docs.delete(path),
       collection: (name) => this.collection(`${path}/${name}`),
     }
     return ref
@@ -135,6 +137,7 @@ export class FakeAdminDb {
       set: (ref, data, opts) => void pending.push(() => ref.set(data, opts)),
       update: (ref, patch) => void pending.push(() => ref.update(patch)),
       create: (ref, data) => void pending.push(() => ref.create(data)),
+      delete: (ref) => void pending.push(() => ref.delete()),
       commit: async () => {
         this.batches++
         for (const w of pending) await w()
@@ -165,6 +168,7 @@ export class FakeAdminDb {
         if (this.docs.has(ref.path)) throw new AdminError("already-exists")
         pending.push(() => ref.create(data))
       },
+      delete: (ref) => void pending.push(() => ref.delete()),
     }
     const out = await fn(tx)
     for (const w of pending) await w()
@@ -176,6 +180,7 @@ export interface FakeBatch {
   set: (ref: FakeDocRef, data: Doc, opts?: { merge?: boolean }) => void
   update: (ref: FakeDocRef, patch: Doc) => void
   create: (ref: FakeDocRef, data: Doc) => void
+  delete: (ref: FakeDocRef) => void
   commit: () => Promise<void>
 }
 
@@ -187,4 +192,5 @@ export interface FakeTx {
   set: (ref: FakeDocRef, data: Doc, opts?: { merge?: boolean }) => void
   update: (ref: FakeDocRef, patch: Doc) => void
   create: (ref: FakeDocRef, data: Doc) => void
+  delete: (ref: FakeDocRef) => void
 }

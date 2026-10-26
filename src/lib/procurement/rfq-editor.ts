@@ -13,8 +13,9 @@
 
 import { productStarted } from "@/lib/rfq-products"
 import { rfqMaterialFields } from "@/lib/materials/reach"
-import { label, pathLabel, searchMaterials, unitIsTheMaterials, unitsOf, type MaterialIndex, pickOf } from "@/lib/materials/tree"
+import { OTHER_SPEC, label, pathLabel, shortSpecName, unitIsTheMaterials, unitsOf, type MaterialIndex, pickOf } from "@/lib/materials/tree"
 import type { MaterialPick } from "@/lib/materials/types"
+import { matcherOf, type MaterialMatch } from "@/lib/boq-import/materials-match"
 import { toAmount } from "./offer-pricing"
 import type { Need, NeedSource } from "./needs"
 import { projectSiteId, type DeliverySite } from "./delivery-sites"
@@ -34,10 +35,10 @@ export interface EditorLine {
   material: MaterialPick | null
   quantity: string
   unit: string
-  /** The unit came with the line (an incoming request, a paste): kept even when the tree's differs. */
+  /** The unit came with the line (an incoming request, an uploaded row with no material): kept even when the tree's differs. */
   unitFromSource: boolean
-  /** A pasted unit that is not one of the material's: the row takes the material's unit and says so. */
-  pastedUnit?: string | null
+  /** The row came from an uploaded Excel file (IMP 1.3): where, and what the file said of its unit when that was not the material's. */
+  imported?: LineImport | null
   /** «موعد مختلف»: its own need-by date. */
   needBy?: string | null
   /** Asked for with a duration (CAT-05); null/absent = no warranty. */
@@ -52,6 +53,17 @@ export interface EditorLine {
   boqItemId?: string | null
   /** A line of an RFQ written before the tree, being edited: its old words stand. */
   legacy?: { category: string; subCategory: string } | null
+}
+
+export interface LineImport {
+  file: string
+  /** Named only when the file had several sheets read. */
+  sheet: string | null
+  row: number
+  /** The file's own words for the line. */
+  text?: string
+  /** What the file said of the quantity and unit while the row's unit is not the file's: converted inside one kind, or still to be confirmed. */
+  hint?: { quantity: string | null; unit: string; converted: boolean } | null
 }
 
 /** What the panel's first step says of a request: who asked, who approved and when, and its last day to order. */
@@ -175,7 +187,7 @@ export function repeatLine(groups: EditorGroup[], groupKey: string, lineKey: str
   const g = groups.find((x) => x.key === groupKey)
   const l = g?.lines.find((x) => x.key === lineKey)
   if (!g || !l) return groups
-  const copy: EditorLine = { ...l, key: newKey(), quantity: "", source: null, material: l.material ? { ...l.material, specs: [] } : null, unitFromSource: false }
+  const copy: EditorLine = { ...l, key: newKey(), quantity: "", source: null, imported: null, material: l.material ? { ...l.material, specs: [] } : null, unitFromSource: false }
   return addLine(groups, groupKey, copy, lineKey)
 }
 
@@ -250,50 +262,36 @@ export function addRequests(groups: EditorGroup[], requests: IncomingRequest[]):
 export const requestKeysIn = (groups: EditorGroup[]): Set<string> => new Set(groups.flatMap((g) => g.lines.map((l) => l.source?.key).filter((k): k is string => !!k)))
 
 // ---------------------------------------------------------------------------
-// «الصق من إكسل»: material · quantity · unit
+// Words → rows (a project's BOQ lines on their way to the editor)
 // ---------------------------------------------------------------------------
 
-export interface PastedRow {
+/** The chosen values of a match as a pick's specs: the short spec names the row's cells read, and the free values as «أخرى». */
+export function pickFromMatch(index: MaterialIndex, match: Pick<MaterialMatch, "nodeId" | "specs" | "free" | "brand">): MaterialPick | null {
+  if (!match.nodeId) return null
+  const node = index.byId.get(match.nodeId)
+  if (!node) return null
+  const specs: MaterialPick["specs"] = [
+    ...match.specs.map((c) => ({ name: shortSpecName(node.specs[c.spec]), value: node.specs[c.spec].options[c.option] })),
+    ...match.free.map((value) => ({ name: OTHER_SPEC, value: { ar: value, en: value }, free: true })),
+  ]
+  return pickOf(index, node.id, specs, match.brand == null ? null : node.brands[match.brand] || null)
+}
+
+export interface NamedRow {
   name: string
   quantity: string
   unit: string
 }
 
-export function parsePaste(text: string): PastedRow[] {
-  return text
-    .split(/\r?\n/)
-    .map((row) => row.split(row.includes("\t") ? "\t" : /[;,]/).map((c) => c.trim()))
-    .filter((cells) => cells.some(Boolean))
-    .map(([name = "", quantity = "", unit = ""]) => ({ name, quantity: quantity.replace(/[٬,]/g, ""), unit }))
-    .filter((r) => r.name)
-    .slice(0, 200)
-}
-
-/** A pasted row is the same material row: matched to the tree when its words name ONE material
- * well enough, else it waits with «اختر المادة» on it. The pasted unit stays, flagged if it differs. */
-export function linesFromPaste(rows: PastedRow[], index: MaterialIndex | null, opts: { unitFromMaterial?: boolean } = {}): EditorLine[] {
+/** Rows made from words: a row is matched to the tree only when its words name ONE material clearly, else it waits with «اختر المادة». */
+export function linesFromNames(rows: NamedRow[], index: MaterialIndex | null): EditorLine[] {
+  const matcher = index ? matcherOf(index) : null
   return rows.map((r) => {
-    const hits = index ? searchMaterials(index, r.name, 2) : []
-    const sure = hits.length > 0 && (hits.length === 1 || hits[0].score > hits[1].score)
-    const material = sure && index ? pickOf(index, hits[0].node.id, hits[0].preset.map((p) => ({ name: { ar: p.spec.ar, en: p.spec.en }, value: p.value }))) : null
-    const materialUnits = material && index ? unitsOf(index, material.nodeId) : []
-    if (opts.unitFromMaterial && material && materialUnits.length) {
-      const own = r.unit && unitIsTheMaterials(r.unit, materialUnits)
-      return { key: newKey(), name: r.name, material, quantity: r.quantity, unit: own ? r.unit : materialUnits[0].ar, unitFromSource: false, pastedUnit: r.unit && !own ? r.unit : null }
-    }
-    const unit = r.unit || materialUnits[0]?.ar || ""
+    const match = matcher ? matcher.match(r.name) : null
+    const material = index && match && match.how === "cat" ? pickFromMatch(index, match) : null
+    const unit = r.unit || (material && index ? unitsOf(index, material.nodeId)[0]?.ar : "") || ""
     return { key: newKey(), name: r.name, material, quantity: r.quantity, unit, unitFromSource: Boolean(r.unit) }
   })
-}
-
-/** What a paste brought in (ED-09): rows that matched the tree, rows left on «اختر المادة», and rows whose
- * pasted unit differs from the material's — the toast after «أضِف الصفوف». */
-export function pasteSummary(lines: EditorLine[]): { matched: number; noMaterial: number; unitFlagged: number } {
-  return {
-    matched: lines.filter((l) => l.material).length,
-    noMaterial: lines.filter((l) => !l.material).length,
-    unitFlagged: lines.filter((l) => l.pastedUnit).length,
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -387,6 +385,7 @@ export function rfqLinesDoc(groups: EditorGroup[], locale: string, projectName: 
       deliveryCity: g.city,
       deliveryDistrict: g.district,
       ...(l.source ? { needSource: opts.perLine?.has(l.source.key) && l.source.requestLine != null ? { ...l.source.need, line: l.source.requestLine } : l.source.need, needLine: l.source.line } : {}),
+      ...(l.imported ? { importedFrom: { file: l.imported.file, sheet: l.imported.sheet, row: l.imported.row } } : {}),
     }
   })
   return { products, ...rfqMaterialFields(rows.map((r) => ({ material: r.line.material, category: r.line.legacy?.category, subCategory: r.line.legacy?.subCategory }))) }
@@ -431,6 +430,12 @@ export function deliveryOptionsOf(groups: EditorGroup[]): Record<string, NonNull
   return out
 }
 
+const importedOf = (v: unknown): LineImport | null => {
+  if (!v || typeof v !== "object") return null
+  const o = v as Record<string, unknown>
+  return typeof o.file === "string" && typeof o.row === "number" ? { file: o.file, sheet: typeof o.sheet === "string" ? o.sheet : null, row: o.row } : null
+}
+
 /** An RFQ back on the editor: its groups from `editorGroups`, its rows from the products (older ones by their words). */
 export function groupsFromRfq(rfq: Record<string, unknown>): EditorGroup[] {
   const products = Array.isArray(rfq.products) ? (rfq.products as Array<Record<string, unknown>>) : []
@@ -461,6 +466,7 @@ export function groupsFromRfq(rfq: Record<string, unknown>): EditorGroup[] {
       needBy: str(p.needBy) && str(p.needBy) !== g.needBy ? str(p.needBy) : null,
       ...warrantyPatch(asWarranty(p.warrantyMonths) ?? (p.requiresWarranty === true ? DEFAULT_WARRANTY : null)),
       source: ns ? { need: ns, line: Number(p.needLine) || 0, key: "" } : null,
+      imported: importedOf(p.importedFrom),
       legacy: material || !str(p.category) ? null : { category: str(p.category), subCategory: str(p.subCategory) },
     })
   }

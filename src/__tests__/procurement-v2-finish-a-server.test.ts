@@ -37,7 +37,7 @@ import { notifyArrived, notifyStockReached, setWatch, watchedKeys, watchDocId } 
 import { UPCOMING_STOCK_MARGIN, isWatchKey, sortUpcoming, upcomingFromProjects, upcomingFromStock } from "@/lib/procurement/upcoming"
 import { isJustPublished, JUST_PUBLISHED_MS } from "@/lib/procurement/rfq-list"
 import { offerTags } from "@/lib/procurement/offer-labels"
-import { linesFromPaste } from "@/lib/procurement/rfq-editor"
+import { linesFromNames } from "@/lib/procurement/rfq-editor"
 import { indexTree } from "@/lib/materials/tree"
 import type { MaterialTreeFile } from "@/lib/materials/types"
 import type { Firestore } from "firebase-admin/firestore"
@@ -223,30 +223,18 @@ describe("the offer's own words and the list's «نُشر الآن»", () => {
   })
 })
 
-describe("«الصق من إكسل» — the unit comes from the material; a different pasted unit is flagged (CAT-07)", () => {
+describe("words → rows (a project's BOQ lines): the unit stays as it arrived, a new row takes the material's unit when it came with none", () => {
   const tree = JSON.parse(readFileSync(join(process.cwd(), "public/data/material-tree.json"), "utf8")) as MaterialTreeFile
   const index = indexTree(tree.roots)
 
-  it("a unit that names one of the material's is kept; one that does not is flagged and the row takes the material's", () => {
-    const [ok, differs, free] = linesFromPaste(
-      [
-        { name: "اسياخ حديد التسليح 16", quantity: "8", unit: "طن" },
-        { name: "اسياخ حديد التسليح 12", quantity: "5", unit: "حبة" },
-        { name: "شيء غريب جداً", quantity: "3", unit: "كرتون" },
-      ],
-      index,
-      { unitFromMaterial: true },
-    )
-    expect(ok).toMatchObject({ unit: "طن", pastedUnit: null, unitFromSource: false })
-    expect(differs.material).not.toBeNull()
-    expect(differs).toMatchObject({ unit: "طن", pastedUnit: "حبة", unitFromSource: false })
-    expect(free.material).toBeNull()
-    expect(free).toMatchObject({ unit: "كرتون", unitFromSource: true })
+  it("the BOQ's unit is kept even when it is not one of the material's", () => {
+    const [row] = linesFromNames([{ name: "اسياخ حديد التسليح 12", quantity: "5", unit: "حبة" }], index)
+    expect(row.material).not.toBeNull()
+    expect(row).toMatchObject({ unit: "حبة", unitFromSource: true })
   })
 
-  it("without the option the pasted unit stays as it arrived (the BOQ import's way)", () => {
-    const [row] = linesFromPaste([{ name: "اسياخ حديد التسليح 12", quantity: "5", unit: "حبة" }], index)
-    expect(row).toMatchObject({ unit: "حبة", unitFromSource: true })
-    expect(row.pastedUnit).toBeUndefined()
+  it("a matched row with no unit takes the material's first", () => {
+    const [row] = linesFromNames([{ name: "اسياخ حديد التسليح 12", quantity: "5", unit: "" }], index)
+    expect(row).toMatchObject({ unit: "طن", unitFromSource: false })
   })
 })

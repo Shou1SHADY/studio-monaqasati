@@ -7,11 +7,10 @@ import {
   addRequests,
   blankLine,
   lineFromPick,
-  linesFromPaste,
+  linesFromNames,
   materialsProblems,
   newGroup,
   numberedLines,
-  parsePaste,
   repeatLine,
   requestKeysIn,
   reviewFacts,
@@ -109,12 +108,17 @@ describe("one RFQ, as written (PUR-03)", () => {
   })
 })
 
-it("«الصق من إكسل»: three columns become rows, matched to the tree when the words are sure", () => {
-  const rows = parsePaste("اسياخ حديد التسليح 16\t8\tطن\nشيء غريب جداً\t5\tحبة\n\n")
-  expect(rows).toEqual([{ name: "اسياخ حديد التسليح 16", quantity: "8", unit: "طن" }, { name: "شيء غريب جداً", quantity: "5", unit: "حبة" }])
-  const lines = linesFromPaste(rows, index)
+it("words become rows: matched to the tree when they name ONE material clearly, else they wait with «اختر المادة»", () => {
+  const lines = linesFromNames(
+    [
+      { name: "اسياخ حديد التسليح 16", quantity: "8", unit: "طن" },
+      { name: "شيء غريب جداً", quantity: "5", unit: "حبة" },
+    ],
+    index,
+  )
   expect(lines[0].material?.nodeId).toBe(rebar.nodeId)
   expect(lines[0].material?.specs.map((s) => s.value.en)).toEqual(["16 mm"])
+  expect(lines[0]).toMatchObject({ unit: "طن", unitFromSource: true })
   expect(lines[1].material).toBeNull()
   expect(lines[1].unitFromSource).toBe(true)
 })

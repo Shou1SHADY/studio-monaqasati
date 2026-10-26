@@ -1,4 +1,8 @@
 import '@testing-library/jest-dom';
+import { TextDecoder, TextEncoder } from 'util';
+
+// jsdom has no TextDecoder; the BOQ reader (src/lib/boq-import) builds one when it is first imported.
+if (typeof globalThis.TextDecoder === 'undefined') Object.assign(globalThis, { TextDecoder, TextEncoder });
 
 // Mock Firebase
 jest.mock('firebase/firestore', () => ({

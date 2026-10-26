@@ -44,7 +44,6 @@ import { RfqPublishedPanel } from "@/components/procurement/rfq-editor/RfqPublis
 import { BnplSoonDialog } from "@/components/procurement/rfq-editor/BnplSoonDialog"
 import { orderRecipients } from "@/components/contractor/SupplierRecipientsPicker"
 import { indexTree, pickOf } from "@/lib/materials/tree"
-import { linesFromPaste, parsePaste, pasteSummary } from "@/lib/procurement/rfq-editor"
 import { siteWriteRefusal } from "@/lib/procurement/delivery-sites"
 import type { MaterialTreeFile } from "@/lib/materials/types"
 
@@ -86,10 +85,6 @@ const type = async (el: HTMLInputElement, value: string) => {
 }
 
 describe("pure helpers", () => {
-  it("the paste toast counts matched rows, rows left on «اختر المادة», and units flagged (ED-09)", () => {
-    const lines = linesFromPaste(parsePaste("اسياخ حديد التسليح 16\t8\tطن\nشيء لا يوجد\t3\tحبة\nاسياخ حديد التسليح 12\t2\tكيس"), index, { unitFromMaterial: true })
-    expect(pasteSummary(lines)).toEqual({ matched: 2, noMaterial: 1, unitFlagged: 1 })
-  })
   it("recipients: favourites, then «مختص», then by name (ED-14)", () => {
     const facts = new Map([["c", { onTime: null, crExpired: false, matches: true }]])
     const order = orderRecipients(

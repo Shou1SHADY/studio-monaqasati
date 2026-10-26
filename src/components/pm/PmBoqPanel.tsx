@@ -1,9 +1,12 @@
 "use client"
 
 // Contract › Bill of quantities on a PM 1.0 project (the prototype's scopeBOQ).
-// Read-only: after start a line's quantity and rate change only by variation;
-// the one write here is pricing an unpriced line by its agreed rate («سعّره»),
-// and importing a BOQ into a project that has none. Money columns are for
+// Read-only once a measurement is approved: from then on a line's quantity and
+// rate change only by variation. Before it, whoever prepares the contract uploads
+// the BOQ as received, fills the Mdmak template or types the items (one window —
+// BoqImportDialog), and reopens the current list for hand edits; the write runs on
+// the server. The other write here is pricing an unpriced line by its agreed rate
+// («سعّره»). Money columns are for
 // holders of money — the site engineer sees quantities and progress, and •••
 // where a riyal would be; the view chips (bleeding, unbilled) and the «ينزف»
 // pill carry no amount, so he sees them too (prototype scopeBOQ). A bleeding line (actual unit cost > estimate + 2%)
@@ -13,15 +16,15 @@
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
-import { AlertTriangle, ChevronDown, CircleDollarSign, Flame, ListTree, Loader2, Pencil, Plus, Search, TableProperties } from "lucide-react"
+import { ChevronDown, CircleDollarSign, Flame, ListTree, Loader2, Lock, Pencil, Search, TableProperties, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { BoqImportDialog, type BoqImportMode } from "./BoqImportDialog"
 import { BoqItemDialog } from "./BoqItemDialog"
 import { BoqItemSupply } from "./BoqItemSupply"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Textarea } from "@/components/ui/textarea"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Callout } from "@/components/module-ui/Callout"
 import { DrawerSection } from "@/components/module-ui/DrawerSection"
@@ -30,6 +33,7 @@ import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Chip } from "@/components/module-ui/Chip"
 import { DataTable, type DataColumn } from "@/components/module-ui/DataTable"
 import { StatusPill } from "@/components/module-ui/StatusPill"
+import { Link } from "@/i18n/routing"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
@@ -38,7 +42,6 @@ import {
   actualUnitCost,
   boqLineOf,
   boqTotals,
-  crmMismatch,
   filterLines,
   groupLines,
   lineBilled,
@@ -52,8 +55,6 @@ import {
   linePriced,
   lineProgress,
   lineUnbilled,
-  MAX_IMPORT_ROWS,
-  parseBoqPaste,
   priceBlocks,
   unpricedNote,
   UNBILLED_FLOOR,
@@ -61,7 +62,9 @@ import {
   type BoqView,
   type PmBoqLine,
 } from "@/lib/pm/boq"
-import { importBoq, PmBoqError, priceItem, type BoqActor } from "@/lib/pm/boq-writes"
+import { boqSourceOf, currentLineOf } from "@/lib/pm/boq-import-payload"
+import { submitBoqImport } from "@/lib/pm/boq-import-writes"
+import { PmBoqError, priceItem, type BoqActor } from "@/lib/pm/boq-writes"
 import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
 import { itemCommitments, type CommitPo } from "@/lib/pm/item-commitments"
 import { isOpenObstacle, obstacleDays, obstacleSeq, PM_OBSTACLES, type PmObstacle } from "@/lib/pm/site"
@@ -102,6 +105,7 @@ export function PmBoqPanel({
   planning?: boolean
 }) {
   const t = useTranslations("Portal.PM")
+  const tb = useTranslations("Portal.PmBoqImport")
   const locale = useLocale()
   const firestore = useFirestore()
   const money = access.has("money")
@@ -114,18 +118,18 @@ export function PmBoqPanel({
   }, [openItemId])
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [pricing, setPricing] = useState<PmBoqLine | null>(null)
-  const [importing, setImporting] = useState(false)
-  const [editing, setEditing] = useState<PmBoqLine | "new" | null>(null)
+  const [dialog, setDialog] = useState<{ mode: BoqImportMode; start: "upload" | "manual" } | null>(null)
+  const [editing, setEditing] = useState<PmBoqLine | null>(null)
 
   const q = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, "boqItems") : null), [firestore, projectId])
   const { data, isLoading } = useCollection(q)
-  const lines = useMemo(
-    () =>
-      ((data ?? []) as Array<Record<string, unknown> & { id: string }>)
-        .map((d) => boqLineOf(d.id, d, locale, actualCost?.get(d.id) ?? null))
-        .sort((a, b) => a.code.localeCompare(b.code, "en", { numeric: true })),
-    [data, locale, actualCost],
-  )
+  const docs = useMemo(() => (data ?? []) as Array<Record<string, unknown> & { id: string }>, [data])
+  const lines = useMemo(() => {
+    const row = new Map(docs.map((d) => [d.id, typeof d.srcRow === "number" ? d.srcRow : 1e9]))
+    return docs
+      .map((d) => boqLineOf(d.id, d, locale, actualCost?.get(d.id) ?? null))
+      .sort((a, b) => a.code.localeCompare(b.code, "en", { numeric: true }) || (row.get(a.id) ?? 1e9) - (row.get(b.id) ?? 1e9))
+  }, [docs, locale, actualCost])
   const counts = useMemo(() => viewCounts(lines), [lines])
   const shown = useMemo(() => filterLines(lines, view, search), [lines, view, search])
   const groups = useMemo(() => groupLines(shown, bySection), [shown, bySection])
@@ -135,7 +139,17 @@ export function PmBoqPanel({
   // approve) AND sees amounts — the QS office or the PM — exactly as the write.
   const canPrice = money && !access.ctx.archived && access.allowed("item.price")
   const canImport = !access.ctx.archived && access.allowed("boq.import")
-  const canEditLines = canImport && planning
+  const measured = lines.filter((l) => l.executed > 0).length
+  // BOQ Import PM 1.0: before the start and before any approved measurement the BOQ is uploaded, replaced and edited by
+  // hand; after it nothing is — the change goes by a change order, so nothing executed is lost.
+  const canChange = canImport && planning && measured === 0
+  const canEditLines = canChange
+  const source = useMemo(() => boqSourceOf(docs), [docs])
+  const award = contractValue > 0 ? contractValue : null
+  const current = useMemo(() => {
+    const byId = new Map(docs.map((d) => [d.id, d]))
+    return lines.flatMap((l) => (byId.has(l.id) ? [currentLineOf(l.id, byId.get(l.id) as Record<string, unknown>)] : []))
+  }, [docs, lines])
   const open = lines.find((b) => b.id === openId) ?? null
   const filtering = search.trim() !== "" || view !== "all"
   const divisionKeys = groups.flatMap((g) => (g.division === null ? [] : [g.division]))
@@ -149,43 +163,97 @@ export function PmBoqPanel({
       return next
     })
 
+  const importDialog = dialog && (
+    <BoqImportDialog
+      open
+      mode={dialog.mode}
+      start={dialog.start}
+      awardValue={award}
+      current={dialog.mode === "edit" ? current : undefined}
+      currentCount={lines.length}
+      onOpenChange={(o) => !o && setDialog(null)}
+      onApply={(payload) => submitBoqImport(projectId, payload)}
+    />
+  )
+
   if (!isLoading && lines.length === 0) {
     return (
       <section className="rounded-xl border bg-card">
         <EmptyState
           icon={TableProperties}
-          title={t("boq.empty")}
-          description={t("boq.empty_desc")}
+          title={tb("panel.empty_title")}
+          description={tb("panel.empty_body")}
           bare
           className="py-10"
           action={
             // CON-03: no import after the start — work outside the BOQ enters by a variation.
-            canImport && planning ? (
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button onClick={() => setImporting(true)}>
-                  <Plus size={15} className="me-1.5" aria-hidden="true" />
-                  {t("boq.add")}
+            canChange ? (
+              <div className="flex flex-col items-center gap-2">
+                <Button onClick={() => setDialog({ mode: "create", start: "upload" })}>
+                  <Upload size={15} className="me-1.5" aria-hidden="true" />
+                  {tb("panel.upload")}
                 </Button>
-                {planning && (
-                  <Button variant="outline" onClick={() => setEditing("new")}>
-                    <Plus size={15} className="me-1.5" aria-hidden="true" />
-                    {t("boq.item_add")}
-                  </Button>
-                )}
+                <Button variant="link" className="h-11" onClick={() => setDialog({ mode: "create", start: "manual" })}>
+                  {tb("panel.add_manual")}
+                </Button>
               </div>
             ) : canImport ? (
               <p className="text-xs text-muted-foreground">{t("boq.import_err.started")}</p>
-            ) : undefined
+            ) : (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Lock size={13} aria-hidden="true" />
+                {tb("panel.no_permission")}
+              </p>
+            )
           }
         />
-        {canImport && planning && <ImportDialog open={importing} onOpenChange={setImporting} projectId={projectId} access={access} contractValue={contractValue} money={money} />}
-        {editing && <BoqItemDialog projectId={projectId} access={access} money={money} line={null} existingCodes={[]} onClose={() => setEditing(null)} />}
+        {importDialog}
       </section>
     )
   }
 
+  const sourceText = source
+    ? [
+        source.kind === "file" ? tb("source.file", { file: source.file ?? "—", by: source.byName ?? "—", date: pmDate(source.day, locale) }) : tb("source.manual", { by: source.byName ?? "—", date: pmDate(source.day, locale) }),
+        source.editedByName ? tb("source.edited", { by: source.editedByName }) : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : null
+
   return (
     <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="min-w-0 text-xs text-muted-foreground" dir="auto">
+          <b className="text-foreground">{tb("items_count", { count: lines.length })}</b>
+          {sourceText ? ` · ${sourceText}` : ""}
+        </p>
+        {canChange ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" className="max-md:h-11" onClick={() => setDialog({ mode: "replace", start: "upload" })}>
+              <Upload size={14} className="me-1.5" aria-hidden="true" />
+              {tb("panel.upload_other")}
+            </Button>
+            <Button size="sm" variant="outline" className="max-md:h-11" onClick={() => setDialog({ mode: "edit", start: "manual" })}>
+              <Pencil size={14} className="me-1.5" aria-hidden="true" />
+              {tb("panel.edit")}
+            </Button>
+          </div>
+        ) : !canImport && !access.ctx.archived ? (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Lock size={13} aria-hidden="true" />
+            {tb("panel.no_permission")}
+          </p>
+        ) : null}
+      </div>
+      {canImport && !canChange && (
+        <Callout tone="warn">
+          {measured > 0 ? tb("panel.locked_measured", { items: tb("items_count", { count: measured }) }) : tb("panel.locked_started")}{" "}
+          <Link href={`/contractor/projects/${projectId}?tab=pmVo`} className="font-semibold text-cta underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {tb("panel.open_changes")}
+          </Link>
+        </Callout>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div role="group" aria-label={t("boq.views")} className="flex flex-wrap items-center gap-1.5">
           {(
@@ -221,12 +289,6 @@ export function PmBoqPanel({
           <Chip selected={bySection} icon={ListTree} onClick={() => setBySection((v) => !v)}>
             {t("boq.group")}
           </Chip>
-          {canEditLines && (
-            <Button size="sm" onClick={() => setEditing("new")}>
-              <Plus size={14} className="me-1.5" aria-hidden="true" />
-              {t("boq.item_add")}
-            </Button>
-          )}
           {bySection && divisionKeys.length > 1 && !filtering && (
             <Button size="sm" variant="ghost" onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(divisionKeys))}>
               {t(allCollapsed ? "boq.expand_all" : "boq.collapse_all")}
@@ -262,15 +324,16 @@ export function PmBoqPanel({
       <ItemDrawer projectId={projectId} orgId={orgId ?? null} line={open} lines={lines} money={money} onClose={() => setOpenId(null)} />
       {editing && (
         <BoqItemDialog
-          key={editing === "new" ? "new" : editing.id}
+          key={editing.id}
           projectId={projectId}
           access={access}
           money={money}
-          line={editing === "new" ? null : editing}
-          existingCodes={lines.filter((l) => editing === "new" || l.id !== editing.id).map((l) => l.code)}
+          line={editing}
+          existingCodes={lines.filter((l) => l.id !== editing.id).map((l) => l.code)}
           onClose={() => setEditing(null)}
         />
       )}
+      {importDialog}
       {pricing && <PriceDialog projectId={projectId} line={pricing} access={access} actor={actor} onClose={() => setPricing(null)} />}
     </div>
   )
@@ -772,155 +835,6 @@ function PriceDialog({ projectId, line, access, actor, onClose }: { projectId: s
           <Button onClick={() => void save()} disabled={busy || blocks.length > 0}>
             {busy ? <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" /> : <CircleDollarSign size={16} className="me-1.5" aria-hidden="true" />}
             {t("boq.price_save")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function ImportDialog({
-  open,
-  onOpenChange,
-  projectId,
-  access,
-  contractValue,
-  money,
-}: {
-  open: boolean
-  onOpenChange: (o: boolean) => void
-  projectId: string
-  access: PmAccess
-  contractValue: number
-  money: boolean
-}) {
-  const t = useTranslations("Portal.PM")
-  const firestore = useFirestore()
-  const { toast } = useToast()
-  const [raw, setRaw] = useState("")
-  const [busy, setBusy] = useState(false)
-  const r = useMemo(() => parseBoqPaste(raw), [raw])
-  const rows = [...r.ok, ...r.bad].sort((a, b) => a.line - b.line)
-  const mismatch = crmMismatch(r.ok, contractValue)
-  const unpriced = r.ok.filter((o) => !o.rate).length
-  const noCost = r.ok.filter((o) => !o.cost).length
-  const tooMany = r.ok.length > MAX_IMPORT_ROWS
-  const ready = r.ok.length > 0 && r.bad.length === 0 && !tooMany
-
-  const save = async () => {
-    if (!firestore || !ready) return
-    setBusy(true)
-    try {
-      const n = await importBoq(firestore, access.ctx, projectId, r.ok)
-      toast({ title: t("boq.imported", { count: n }) })
-      setRaw("")
-      onOpenChange(false)
-    } catch (err) {
-      console.error(err)
-      toast({
-        title: t(err instanceof PmAccessError ? `refused.${err.code}` : err instanceof PmBoqError ? `boq.import_err.${err.code}` : "error.save"),
-        variant: "destructive",
-      })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{t("boq.import_title")}</DialogTitle>
-          <DialogDescription>{t("boq.import_desc")}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <Label htmlFor="boq-raw">{t("boq.paste_here")}</Label>
-              <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setRaw(t("boq.sample"))} disabled={busy}>
-                {t("boq.fill_sample")}
-              </Button>
-            </div>
-            <Textarea id="boq-raw" value={raw} onChange={(e) => setRaw(e.target.value)} className="h-40 font-mono text-xs" placeholder="02-01-01	…	m3	18400	24	18.5" disabled={busy} dir="auto" />
-          </div>
-          {rows.length > 0 && (
-            <DataTable<(typeof rows)[number]>
-              caption={t("boq.import_title")}
-              rows={rows}
-              rowKey={(o) => String(o.line)}
-              labels={TABLE_LABELS}
-              empty={null}
-              dense
-              maxHeight="40vh"
-              cardTitleKey="item"
-              columns={[
-                { key: "line", header: "#", numeric: true, cardHidden: true, className: "w-10 text-muted-foreground", cell: (o) => o.line },
-                {
-                  key: "item",
-                  header: t("boq.col.item"),
-                  cell: (o) => (
-                    <>
-                      <b className="block" dir="auto">
-                        {o.description || "—"}
-                      </b>
-                      <span className="font-mono text-xs font-normal text-muted-foreground" dir="ltr">
-                        {o.code} · {o.unit}
-                      </span>
-                    </>
-                  ),
-                },
-                { key: "qty", header: t("boq.qty"), numeric: true, cell: (o) => (Number.isNaN(o.quantity) ? "—" : fmt(o.quantity)) },
-                { key: "rate", header: t("boq.rate"), numeric: true, cell: (o) => (o.rate ? fmt(o.rate) : <span className="text-muted-foreground">{t("boq.no_rate")}</span>) },
-                { key: "cost", header: t("boq.cost"), numeric: true, cell: (o) => (o.cost ? fmt(o.cost) : "—") },
-                {
-                  key: "verdict",
-                  header: t("boq.verdict"),
-                  cell: (o) =>
-                    o.problems.length ? (
-                      <span className="flex flex-wrap gap-1">
-                        {o.problems.map((p) => (
-                          <StatusPill key={p} tone="bad">
-                            {t(`boq.problem.${p}`)}
-                          </StatusPill>
-                        ))}
-                      </span>
-                    ) : (
-                      <StatusPill tone="ok">{t("boq.valid")}</StatusPill>
-                    ),
-                },
-              ]}
-            />
-          )}
-          {mismatch && money && (
-            <Callout tone={mismatch.under ? "warn" : "block"}>
-              {t("boq.crm_mismatch", {
-                total: pmMoney(mismatch.total),
-                value: pmMoney(mismatch.value),
-                diff: pmMoney(mismatch.diff),
-              })}
-            </Callout>
-          )}
-          {r.ok.length > 0 && (unpriced > 0 || noCost > 0) && (
-            <Callout tone="warn">
-              {unpriced > 0 && <span className="block">{t("boq.import_unpriced", { count: unpriced })}</span>}
-              {noCost > 0 && <span className="block">{t("boq.import_no_cost", { count: noCost })}</span>}
-            </Callout>
-          )}
-          {r.bad.length > 0 && (
-            <p className="flex items-center gap-1.5 text-xs font-bold text-destructive">
-              <AlertTriangle size={13} aria-hidden="true" />
-              {t("boq.import_bad", { count: r.bad.length })}
-            </p>
-          )}
-          {tooMany && <p className="text-xs font-bold text-destructive">{t("boq.import_too_many", { max: MAX_IMPORT_ROWS })}</p>}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
-            {t("cancel")}
-          </Button>
-          <Button onClick={() => void save()} disabled={busy || !ready}>
-            {busy && <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" />}
-            {t("boq.import_n", { count: r.ok.length })}
           </Button>
         </DialogFooter>
       </DialogContent>

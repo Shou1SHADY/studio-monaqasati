@@ -17,7 +17,7 @@ import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
 import { collection, doc, getDoc, getDocs, limit, query, setDoc, updateDoc, where } from "firebase/firestore"
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage"
-import { ArrowLeft, ArrowRight, ClipboardPaste, Inbox, Loader2, Send } from "lucide-react"
+import { ArrowLeft, ArrowRight, Inbox, Loader2, Send } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useStorage, useUser } from "@/firebase"
 import { useRouter } from "@/i18n/routing"
 import { useToast } from "@/hooks/use-toast"
@@ -28,7 +28,6 @@ import { useOpenNeeds } from "@/hooks/useOpenNeeds"
 import { useSupplierDirectory } from "@/hooks/useSupplierDirectory"
 import { useMaterialTree } from "@/hooks/useMaterialTree"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { WizardSteps } from "@/components/module-ui/WizardSteps"
@@ -67,12 +66,9 @@ import {
   incomingFromNeed,
   lineComplete,
   lineStarted,
-  linesFromPaste,
-  pasteSummary,
   materialsProblems,
   newGroup,
   numberedLines,
-  parsePaste,
   partialRequestKeys,
   requestKeysIn,
   reviewFacts,
@@ -80,8 +76,10 @@ import {
   rfqPlace,
   suggestTitle,
   type EditorGroup,
+  type EditorLine,
 } from "@/lib/procurement/rfq-editor"
 import { EditorMaterials } from "./EditorMaterials"
+import { UploadMaterials } from "@/components/procurement/import/UploadMaterials"
 import { EditorPublish, linkOn, type PublishValues } from "./EditorPublish"
 import { EditorReview, type ReviewModel } from "./EditorReview"
 import { RfqPublishedPanel } from "./RfqPublishedPanel"
@@ -243,8 +241,6 @@ export function RfqEditor({
   const [publishing, setPublishing] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
-  const [pasteOpen, setPasteOpen] = useState(false)
-  const [pasteText, setPasteText] = useState("")
   const [pickOpen, setPickOpen] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
   const [done, setDone] = useState<{ id: string; number: string; guestUrl: string | null; reached: number; closesOn: string | null } | null>(null)
@@ -777,6 +773,12 @@ export function RfqEditor({
     )
   }
 
+  // IMP 1.3: the rows an uploaded file made join the chosen place, after the rows already begun there.
+  const addImported = (lines: EditorLine[], groupKey: string) =>
+    setGroups((gs) => {
+      const key = gs.some((g) => g.key === groupKey) ? groupKey : gs[0]?.key
+      return gs.map((g) => (g.key === key ? { ...g, lines: [...g.lines.filter(lineStarted), ...lines] } : g))
+    })
   const steps = [panel ? t("step_request") : t("step_materials"), t("step_publish"), t("step_review")]
   const prepareHref = `/contractor/rfqs/new?requests=${encodeURIComponent(groups.flatMap((g) => g.lines.map((l) => l.source?.key)).filter((k, i, a): k is string => !!k && a.indexOf(k) === i).join("|"))}`
   const firstGroup = groups.find((g) => g.lines.some(lineStarted))
@@ -812,9 +814,7 @@ export function RfqEditor({
             <Button type="button" variant="outline" className="gap-2" disabled={!newRequests.length} title={newRequests.length ? undefined : t("none_left")} onClick={() => setPickOpen(true)}>
               <Inbox size={15} /> {t("from_incoming", { count: newRequests.length })}
             </Button>
-            <Button type="button" variant="outline" className="gap-2" onClick={() => setPasteOpen(true)}>
-              <ClipboardPaste size={15} /> {t("paste")}
-            </Button>
+            <UploadMaterials index={index} groups={groups} onAdd={addImported} />
           </div>
         )}
       </div>
@@ -904,38 +904,6 @@ export function RfqEditor({
         platform={platform.map((s) => ({ orgId: s.orgId, name: s.name, phone: s.phone, email: s.email }))}
         onAddExisting={() => router.push("/contractor/suppliers?segment=platform")}
       />
-
-      <Dialog open={pasteOpen} onOpenChange={setPasteOpen}>
-        <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{t("paste_title")}</DialogTitle>
-            <DialogDescription>
-              {t("paste_desc")} {t("paste_more")}
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} rows={8} dir="auto" aria-label={t("paste_title")} placeholder={t("paste_placeholder")} />
-          <p className="text-xs text-muted-foreground">{t("paste_unit_hint")}</p>
-          <DialogFooter>
-            <Button
-              type="button"
-              disabled={!parsePaste(pasteText).length}
-              onClick={() => {
-                const lines = linesFromPaste(parsePaste(pasteText), index, { unitFromMaterial: true })
-                setGroups((gs) => {
-                  const last = gs[gs.length - 1]
-                  return [...gs.slice(0, -1), { ...last, lines: [...last.lines.filter(lineStarted), ...lines] }]
-                })
-                setPasteText("")
-                setPasteOpen(false)
-                const sum = pasteSummary(lines)
-                toast({ title: t("paste_done", sum) })
-              }}
-            >
-              {t("paste_add", { count: parsePaste(pasteText).length })}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={pickOpen} onOpenChange={setPickOpen}>
         <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-h-[85vh] max-w-xl overflow-y-auto">

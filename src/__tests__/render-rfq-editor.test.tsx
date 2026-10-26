@@ -118,7 +118,7 @@ describe("the RFQ editor (PUR-02/03)", () => {
     setPathname("/contractor/rfqs/new", "")
     const view = render(<NewRfqPage />)
     await flush()
-    for (const s of ["المواد", "النشر", "المراجعة", "الصق من إكسل"]) expect(text()).toContain(s)
+    for (const s of ["المواد", "النشر", "المراجعة", "ارفع ملف إكسل", "قالب مدماك"]) expect(text()).toContain(s)
     expect(document.querySelector('input[role="combobox"]')).not.toBeNull()
     expect([...missingKeys]).toEqual([])
     view.unmount()

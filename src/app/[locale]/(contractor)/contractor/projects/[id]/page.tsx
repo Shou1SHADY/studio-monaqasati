@@ -23,6 +23,8 @@ import { PmSubTabNav } from "@/components/pm/PmSubTabNav"
 import { pmTabVisible, qualityPanelsOn } from "@/lib/pm/sections"
 import type { ProjectKind } from "@/lib/pm/handover"
 import { PmBoqPanel } from "@/components/pm/PmBoqPanel"
+import { BoqImportDialog } from "@/components/pm/BoqImportDialog"
+import { divisionExtra, sectionLabel, type BoqImportPayload } from "@/lib/pm/boq-import-payload"
 import { PmInfoPanel, PmStartPanel, PmTermsGlance } from "@/components/pm/PmFilePanels"
 import { ItpPanel } from "@/components/pm/ItpPanel"
 import { WeeklyPlanPanel } from "@/components/pm/WeeklyPlanPanel"
@@ -375,7 +377,6 @@ export default function ProjectDetailPage() {
   const modules = useModules()
   const mfgOn = modules.on("manufacturing")
   const hrOn = modules.on("hr")
-  const boqFileRef = useRef<HTMLInputElement>(null)
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     const tab = searchParams.get("tab") || "info"
@@ -408,7 +409,7 @@ export default function ProjectDetailPage() {
   // BOQ state
   const [boqItems, setBoqItems] = useState<BoqItem[]>([])
   const [boqGroups, setBoqGroups] = useState<BoqGroupMeta[]>([])
-  const [boqParsing, setBoqParsing] = useState(false)
+  const [boqImportOpen, setBoqImportOpen] = useState(false)
   const [boqSaving, setBoqSaving] = useState(false)
   const [boqLoaded, setBoqLoaded] = useState(false)
   // Row drag-and-drop is a CUSTOM POINTER-EVENTS implementation — NOT native HTML5 DnD. Native
@@ -1041,52 +1042,39 @@ export default function ProjectDetailPage() {
     }
   }
 
-  // BOQ file parsing — uses the shared, richer parser (Arabic/English split + category detection)
-  const handleBoqFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setBoqParsing(true)
-    ;(async () => {
-      try {
-        const { parseBoqFile } = await import("@/lib/boq-parser")
-        const result = await parseBoqFile(file)
-        if (result.items.length === 0) {
-          toast({ title: t("proj_boq_parse_error"), variant: "destructive" })
-          return
-        }
-        const parsed: BoqItem[] = result.items.map((item) => ({
-          id: item.id,
-          itemNo: item.itemNo,
-          descriptionAr: item.descriptionAr,
-          descriptionEn: item.descriptionEn,
-          quantity: String(item.quantity ?? ""),
-          unit: item.unit,
-          unitPrice: item.rate ? String(item.rate) : "",
-          sheet: item.sheet,
-          divisionNo: item.divisionNo,
-          divisionNameEn: item.divisionNameEn,
-          divisionNameAr: item.divisionNameAr,
-          subCategoryCode: item.subCategoryCode,
-          subCategoryNameEn: item.subCategoryNameEn,
-          subCategoryNameAr: item.subCategoryNameAr,
-          suggestedCategory: item.suggestedCategory,
-          suggestedSubCategory: item.suggestedSubCategory,
+  // BOQ upload / hand entry: the shared review window hands over the settled lines; they replace the table
+  // here and are saved with the rest of the sheet. A heading becomes a section; the category of a section is
+  // chosen afterwards, as for a section added by hand.
+  const applyBoqImport = async (payload: BoqImportPayload) => {
+    if (!firestore || !projectId) return
+    const groupsColRef = collection(firestore, "projects", projectId, "boqGroups")
+    const groupIds = new Map(payload.sections.map((sec) => [sec.key, doc(groupsColRef).id]))
+    const sectionOf = new Map(payload.sections.map((sec) => [sec.key, sec]))
+    const firstCategory = Object.keys(CATEGORIES_DATA)[0] || ""
+    const stamp = Date.now()
+    setBoqItems(
+      payload.lines.map((line, i) => {
+        const division = divisionExtra(line, line.section ? sectionOf.get(line.section) : undefined)
+        return {
+          id: `imp_${stamp}_${i}`,
+          itemNo: line.code,
+          descriptionAr: line.descriptionAr,
+          descriptionEn: line.descriptionEn,
+          quantity: String(line.quantity),
+          unit: line.unit,
+          unitPrice: line.rate ? String(line.rate) : "",
+          sheet: line.sheet,
+          divisionNo: String(division.divisionNo ?? ""),
+          divisionNameAr: String(division.divisionNameAr ?? ""),
+          divisionNameEn: String(division.divisionNameEn ?? ""),
           tenderId: null,
           isEditable: true,
-          groupId: item.groupId,
+          groupId: line.section ? (groupIds.get(line.section) ?? null) : null,
           requiresWarranty: false,
-        }))
-        setBoqItems(parsed)
-        setBoqGroups(result.groups.map((g) => ({ id: g.id, titleAr: g.titleAr, categoryAr: g.categoryAr })))
-        toast({ title: t("proj_boq_import_success", { count: parsed.length }) })
-      } catch (err) {
-        console.error(err)
-        toast({ title: t("proj_boq_parse_error"), variant: "destructive" })
-      } finally {
-        setBoqParsing(false)
-        if (boqFileRef.current) boqFileRef.current.value = ""
-      }
-    })()
+        }
+      }),
+    )
+    setBoqGroups(payload.sections.map((sec) => ({ id: groupIds.get(sec.key) as string, titleAr: sectionLabel(sec), categoryAr: firstCategory })))
   }
 
   // Save BOQ to Firestore. Locked (isEditable:false) rows are never touched by a bulk save —
@@ -1304,7 +1292,7 @@ export default function ProjectDetailPage() {
   }, [])
 
   // Split an item out of its current section into a brand-new one — mirrors the same
-  // title-defaulting convention as src/utils/boq-groups.ts's splitItemToNewGroup.
+  // title-defaulting convention: the first 60 characters of the item description.
   const splitItemToNewGroup = useCallback((item: BoqItem) => {
     if (!firestore || !projectId) return
     const newId = doc(collection(firestore, "projects", projectId, "boqGroups")).id
@@ -2606,6 +2594,14 @@ export default function ProjectDetailPage() {
         )}
         {current === "boq" && !typedProject.pm && (
           <div className="space-y-4">
+              <BoqImportDialog
+                open={boqImportOpen}
+                onOpenChange={setBoqImportOpen}
+                mode={boqItems.length > 0 ? "replace" : "create"}
+                awardValue={typedProject.budget && typedProject.budget > 0 ? typedProject.budget : null}
+                currentCount={boqItems.length}
+                onApply={applyBoqImport}
+              />
               {/* Stats bar */}
               {/* Three numbers do not need three tall cards. As a single strip this band
                   drops from 72px to roughly 40px, which is 30px of the sheet you can
@@ -2636,24 +2632,16 @@ export default function ProjectDetailPage() {
                   outline for the sheet-building actions, ghost for selection — and by
                   keeping the two warehouse actions behind one trigger. */}
               <div className="flex items-center justify-between gap-3 flex-wrap bg-card border rounded-xl p-2.5">
-                <input
-                  ref={boqFileRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  className="hidden"
-                  onChange={handleBoqFile}
-                />
                 <div className="flex items-center gap-2 flex-wrap">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => boqFileRef.current?.click()}
-                    disabled={boqParsing}
+                    onClick={() => setBoqImportOpen(true)}
                     className="gap-1.5"
                     title={t("proj_boq_upload_hint")}
                   >
-                    {boqParsing ? <Loader2 className="animate-spin" size={14} /> : <Upload size={14} />}
-                    {boqParsing ? t("proj_boq_parsing") : t("proj_boq_upload")}
+                    <Upload size={14} />
+                    {t("proj_boq_upload")}
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => addBoqRow()} className="gap-1.5">
                     <Plus size={14} />
@@ -2744,9 +2732,9 @@ export default function ProjectDetailPage() {
                   {/* An empty sheet is the one moment importing matters most, and the
                       toolbar offered no way in — the upload sat unlabelled behind «⋯». */}
                   <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
-                    <Button size="sm" onClick={() => boqFileRef.current?.click()} disabled={boqParsing} className="gap-1.5">
-                      {boqParsing ? <Loader2 className="animate-spin" size={14} /> : <Upload size={14} />}
-                      {boqParsing ? t("proj_boq_parsing") : t("proj_boq_upload")}
+                    <Button size="sm" onClick={() => setBoqImportOpen(true)} className="gap-1.5">
+                      <Upload size={14} />
+                      {t("proj_boq_upload")}
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => addBoqRow()} className="gap-1.5">
                       <Plus size={14} />

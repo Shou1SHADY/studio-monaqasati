@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Check, CheckCircle2, ChevronDown, Clock, FileSpreadsheet, Link2, List, Loader2, Lock, Upload, X } from "lucide-react"
+import { Check, CheckCircle2, ChevronDown, Clock, FileSpreadsheet, Link2, List, Loader2, Lock, X } from "lucide-react"
 import { collection, doc, serverTimestamp, writeBatch } from "firebase/firestore"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -29,15 +29,15 @@ import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { WizardSteps } from "@/components/module-ui/WizardSteps"
-import { WizardBoqEditor } from "./WizardBoqEditor"
+import { BoqImportWizardStep } from "./BoqImportWizardStep"
 import { useFirestore } from "@/firebase"
 import { resolveCentralForRegion, useCentralWarehouse } from "@/hooks/useCentralWarehouse"
 import { useHandoverPeople } from "@/hooks/useHandoverPeople"
 import { useToast } from "@/hooks/use-toast"
 import { useTableLabels } from "@/hooks/useTableLabels"
 import { useRouter } from "@/i18n/routing"
-import { parseBoqFile, type BoqParseResult } from "@/lib/boq-parser"
-import { blankDraftRow, divisionOfCode, draftRowProblems, draftTotal, isBlankDraftRow, parseBoqCsv, type BoqDraftRow, type ImportRow } from "@/lib/pm/boq"
+import { blankDraftRow, draftRowProblems, draftTotal, isBlankDraftRow, type BoqDraftRow } from "@/lib/pm/boq"
+import { draftRowsOf, type BoqImportPayload } from "@/lib/pm/boq-import-payload"
 import type { PortalComponentId } from "@/lib/portal-components"
 import { cascadeDisable, cascadeEnable, SECTION_GROUPS, SECTION_IDS, SECTION_REGISTRY, sectionDescKey, sectionLabelKey, type SectionId } from "@/lib/project-sections"
 import { pmDate, pmMoney, pmPct } from "@/lib/pm/format"
@@ -123,6 +123,7 @@ export function AcceptHandoverWizard({
 }) {
   const t = useTranslations("Portal.PM")
   const tShared = useTranslations("Portal.Shared")
+  const tBoq = useTranslations("Portal.PmBoqImport")
   const tC = useTranslations("Portal.Contractor")
   const locale = useLocale()
   const firestore = useFirestore()
@@ -145,12 +146,9 @@ export function AcceptHandoverWizard({
   const [note, setNote] = useState("")
   const [sections, setSections] = useState<SectionId[]>(sectionsForKind(handover?.kind ?? "bld"))
   const [source, setSource] = useState<BoqSource | null>(null)
-  const [boq, setBoq] = useState<BoqParseResult | null>(null)
-  // The package's template is a CSV: read as the template is written, row by row.
-  const [csv, setCsv] = useState<{ ok: ImportRow[]; bad: ImportRow[] } | null>(null)
-  // Each source keeps its own lines, so switching back and forth loses no edit.
+  // Each source keeps its own lines, so switching back and forth loses no edit; an uploaded or typed BOQ keeps what the window handed over.
   const [rowsBy, setRowsBy] = useState<Partial<Record<BoqSource, BoqDraftRow[]>>>({})
-  const [parsing, setParsing] = useState(false)
+  const [payloads, setPayloads] = useState<Partial<Record<"xl" | "man", BoqImportPayload>>>({})
   const [busy, setBusy] = useState(false)
 
   const crmCount = handover ? handoverBoqCount(handover) : 0
@@ -168,9 +166,8 @@ export function AcceptHandoverWizard({
     setNote("")
     setSections(sectionsForKind(handover?.kind ?? "bld"))
     setSource(null)
-    setBoq(null)
-    setCsv(null)
     setRowsBy({})
+    setPayloads({})
   }, [open, handover])
 
   useEffect(() => {
@@ -182,7 +179,6 @@ export function AcceptHandoverWizard({
     setRowsBy((cur) => {
       if (cur[s]) return cur
       if (s === "crm" && handover) return { ...cur, crm: (handover.boq ?? []).filter((l) => l.quantity > 0).map((l, i) => ({ ...blankDraftRow(`crm-${i}`), itemNo: l.code, descriptionAr: l.descriptionAr, descriptionEn: l.descriptionEn ?? l.descriptionAr, unit: l.unit, quantity: l.quantity, rate: l.rate || 0 })) }
-      if (s === "man") return { ...cur, man: [blankDraftRow("new-0")] }
       return cur
     })
   }
@@ -225,80 +221,31 @@ export function AcceptHandoverWizard({
     toast({ title: t(on ? "wizard.group_on_done" : "wizard.group_off_done", { count: Math.abs(next.size - sections.length) }) })
   }
 
-  const onFile = async (file: File | undefined) => {
-    if (!file) return
-    setParsing(true)
-    try {
-      let rows: BoqDraftRow[]
-      if (/\.csv$/i.test(file.name)) {
-        const parsed = parseBoqCsv(await file.text())
-        setBoq(null)
-        setCsv(parsed)
-        rows = parsed.ok.map((r) => ({
-          ...blankDraftRow(`csv-${r.line}`),
-          itemNo: r.code,
-          descriptionAr: r.description,
-          descriptionEn: r.description,
-          unit: r.unit,
-          quantity: r.quantity,
-          rate: r.rate && r.rate > 0 ? r.rate : 0,
-          extra: { estCost: r.cost && r.cost > 0 ? r.cost : null, divisionNo: divisionOfCode(r.code) },
-        }))
-      } else {
-        const parsed = await parseBoqFile(file)
-        setCsv(null)
-        setBoq(parsed)
-        rows = parsed.items
-          .filter((i) => i.selected)
-          .map((item) => ({
-            ...blankDraftRow(item.id),
-            itemNo: item.itemNo,
-            descriptionAr: item.descriptionAr,
-            descriptionEn: item.descriptionEn,
-            unit: item.unit,
-            quantity: item.quantity,
-            rate: item.rate || 0,
-            groupId: item.groupId as string | null,
-            extra: {
-              sheet: item.sheet,
-              divisionNo: item.divisionNo,
-              divisionNameEn: item.divisionNameEn,
-              divisionNameAr: item.divisionNameAr,
-              subCategoryCode: item.subCategoryCode,
-              subCategoryNameEn: item.subCategoryNameEn,
-              subCategoryNameAr: item.subCategoryNameAr,
-              suggestedCategory: item.suggestedCategory,
-              suggestedSubCategory: item.suggestedSubCategory,
-            },
-          }))
-      }
-      setRowsBy((cur) => ({ ...cur, xl: rows }))
-    } catch (err) {
-      console.error(err)
-      toast({ title: t("wizard.boq_parse_error"), variant: "destructive" })
-    } finally {
-      setParsing(false)
-    }
+  const applyBoq = (which: "xl" | "man", payload: BoqImportPayload) => {
+    const stamp = { kind: payload.source, file: payload.fileName, by: actor.uid, byName: actor.name, day: todayDay() }
+    setPayloads((cur) => ({ ...cur, [which]: payload }))
+    setRowsBy((cur) => ({ ...cur, [which]: draftRowsOf(payload, stamp, which) }))
   }
 
   const rows = source ? (rowsBy[source] ?? []) : []
-  const setRows = (next: BoqDraftRow[]) => source && setRowsBy((cur) => ({ ...cur, [source]: next }))
   const lineRows = source === "later" ? [] : rows.filter((r) => !isBlankDraftRow(r))
-  const rowsBad = draftRowProblems(rows).filter((p) => p.length > 0).length
-  const xlBad = csv?.bad ?? []
-  const xlLoaded = !!(csv || boq)
+  // A CRM line is judged here; an uploaded or typed one was settled line by line in the BOQ window.
+  const rowsBad = source === "crm" ? draftRowProblems(rows).filter((p) => p.length > 0).length : 0
+  const xlLoaded = !!(source === "xl" || source === "man") && !!payloads[source]
+  const negativeLines = lineRows.some((r) => r.quantity < 0)
   const unpricedCount = lineRows.filter((i) => !(i.rate > 0)).length
   const selfDev = isSelfDevelopment(kind)
   const manualBlocks = manual ? manualProjectBlocks({ ...draft, kind, location }, managerUid || null) : []
-  const stepBlockCodes = acceptStepBlocks({ source, managerUid: managerUid || null, xlItems: lineRows.length, xlBad: rowsBad + (source === "xl" ? xlBad.length : 0), xlLoaded, fileBoq: crmCount > 0 })
-  const boqStepBlocks = stepBlockCodes.map((b) => t(`wizard.block.${b}`))
-  const boqNextBlocked = stepBlockCodes.some((b) => b !== "no_manager")
+  const stepBlockCodes = acceptStepBlocks({ source, managerUid: managerUid || null, xlItems: lineRows.length, xlBad: rowsBad, xlLoaded, fileBoq: crmCount > 0 })
+  const boqStepBlocks = [...stepBlockCodes.map((b) => t(`wizard.block.${b}`)), ...(negativeLines ? [tBoq("wizard.negative")] : [])]
+  const boqNextBlocked = stepBlockCodes.some((b) => b !== "no_manager") || negativeLines
   const blocks = [
     ...(handover ? acceptBlocks(handover).map((b) => t(`accept_block.${b}`)) : manualBlocks.filter((b) => b !== "no_manager").map((b) => t(`manual.block.${b}`))),
     ...boqStepBlocks,
   ]
   const title = handover ? handover.title : draft.name.trim()
   const advance = handover ? handover.advance : draft.advance
+  const awardValue = (handover ? handover.value : manualValue(draft)) > 0 ? (handover ? handover.value : manualValue(draft)) : null
   const manager = people.find((p) => p.uid === managerUid)
   const site = people.find((p) => p.uid === siteUid)
   const storeOn = sections.includes("store")
@@ -322,8 +269,6 @@ export function AcceptHandoverWizard({
         groupId: r.groupId,
         extra: r.extra as Record<string, string | number | boolean | null> | undefined,
       }))
-      const usedGroups = new Set(lineRows.map((i) => i.groupId))
-      const groups = source === "xl" ? (boq?.groups ?? []).filter((g) => usedGroups.has(g.id)).map((g) => ({ id: g.id, titleAr: g.titleAr, categoryAr: g.categoryAr })) : []
       // CON-01: a handover's BOQ is written INSIDE the acceptance (the server's transaction) — the file's own
       // priced lines when it carries them, never a later client batch that could stop half-way.
       const { projectId, projectNo } = handover
@@ -338,7 +283,6 @@ export function AcceptHandoverWizard({
             store,
             source: source ?? "later",
             lines: source === "crm" ? [] : lines,
-            groups,
             notification: { title: t("notif.accepted_title"), message: t("notif.accepted_message", { project: handover.title, by: actor.name ?? "" }) },
             managerNotification,
           })
@@ -358,11 +302,9 @@ export function AcceptHandoverWizard({
       if (!handover && lines.length) {
         const batch = writeBatch(firestore)
         const itemsRef = collection(firestore, "projects", projectId, "boqItems")
-        const groupsRef = collection(firestore, "projects", projectId, "boqGroups")
         lines.forEach(({ extra, ...line }) =>
           batch.set(doc(itemsRef), { ...line, ...extra, tenderId: null, isEditable: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
         )
-        groups.forEach((g) => batch.set(doc(groupsRef, g.id), { titleAr: g.titleAr, categoryAr: g.categoryAr, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }))
         try {
           await batch.commit()
         } catch (err) {
@@ -781,32 +723,17 @@ export function AcceptHandoverWizard({
               </div>
             </fieldset>
             {source === "later" && <Callout tone="warn">{t("wizard.later_warn")}</Callout>}
-            {source === "xl" && (
-              <>
-                <Callout tone="info">{t("wizard.xl_note")}</Callout>
-                <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border bg-card px-3 text-sm font-semibold hover:border-module/40 focus-within:ring-2 focus-within:ring-ring">
-                  {parsing ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Upload size={16} aria-hidden="true" />}
-                  {t("wizard.boq_upload")}
-                  <input type="file" accept=".xlsx,.xls,.csv" className="sr-only" onChange={(e) => void onFile(e.target.files?.[0])} disabled={parsing || busy} />
-                </label>
-                {xlLoaded && xlBad.length === 0 && <p className="text-sm font-semibold text-success">{t("wizard.boq_loaded", { count: lineRows.length })}</p>}
-                {xlBad.length > 0 && (
-                  <Callout tone="block">
-                    <p className="font-bold">{t("wizard.xl_bad", { count: xlBad.length })}</p>
-                    <ul className="mt-1 space-y-0.5 text-xs">
-                      {xlBad.slice(0, 8).map((r) => (
-                        <li key={r.line}>
-                          {t("wizard.xl_bad_row", { line: r.line })} <span dir="ltr">{r.code}</span> — {r.problems.map((p) => t(`boq.problem.${p}`)).join(" · ")}
-                        </li>
-                      ))}
-                    </ul>
-                    {xlBad.length > 8 && <p className="mt-1 text-xs">{t("wizard.xl_bad_more", { count: xlBad.length - 8 })}</p>}
-                  </Callout>
-                )}
-              </>
+            {(source === "xl" || source === "man") && (
+              <BoqImportWizardStep
+                key={source}
+                payload={payloads[source] ?? null}
+                awardValue={awardValue}
+                prefer={source === "xl" ? "upload" : "manual"}
+                disabled={busy}
+                onApply={(payload) => applyBoq(source, payload)}
+              />
             )}
             {source === "crm" && <CrmBoqLocked rows={rows} />}
-            {source && source !== "later" && source !== "crm" && (source !== "xl" || xlLoaded) && <WizardBoqEditor rows={rows} onChange={setRows} disabled={busy} />}
             <BlockingReasons title={t("cannot_accept")} reasons={boqStepBlocks.filter((_, i) => stepBlockCodes[i] !== "no_manager")} />
           </div>
         )}
@@ -862,11 +789,11 @@ export function AcceptHandoverWizard({
             </Button>
           )}
           {step < 3 ? (
-            <Button onClick={() => setStep((s) => s + 1)} disabled={(step === 0 && (!managerUid || manualBlocks.length > 0)) || (step === 2 && (boqNextBlocked || parsing))}>
+            <Button onClick={() => setStep((s) => s + 1)} disabled={(step === 0 && (!managerUid || manualBlocks.length > 0)) || (step === 2 && boqNextBlocked)}>
               {t("next")}
             </Button>
           ) : (
-            <Button onClick={() => void accept()} disabled={busy || blocks.length > 0 || parsing}>
+            <Button onClick={() => void accept()} disabled={busy || blocks.length > 0}>
               {busy ? <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" /> : <Check size={16} className="me-2" aria-hidden="true" />}
               {handover ? t("wizard.submit") : t("manual.submit")}
             </Button>

@@ -86,6 +86,7 @@ export function EditorMaterials({
 }) {
   const t = useTranslations("Portal.ProcEditor")
   const tm = useTranslations("Portal.Materials")
+  const ti = useTranslations("Portal.Procurement.import")
   const locale = useLocale()
   const { toast } = useToast()
   const { orgId } = useProcActor()
@@ -266,6 +267,11 @@ export function EditorMaterials({
           </Button>
         </>
       )}
+      {l.imported && (
+        <p className="truncate px-1 text-[11px] text-muted-foreground" dir="auto" title={l.imported.text ? ti("in_file", { text: l.imported.text }) : undefined}>
+          {ti(l.imported.sheet ? "source_sheet" : "source", { sheet: l.imported.sheet ?? "", row: l.imported.row })}
+        </p>
+      )}
     </div>
   )
 
@@ -333,7 +339,11 @@ export function EditorMaterials({
             dir="auto"
           />
         )}
-        {l.pastedUnit && <p className="max-w-[10rem] text-[10.5px] leading-snug text-amber-700">{t("paste_unit_differs", { unit: l.pastedUnit })}</p>}
+        {l.imported?.hint && (
+          <p className={cn("max-w-[10rem] text-[10.5px] leading-snug", l.imported.hint.converted ? "text-muted-foreground" : "text-amber-700")}>
+            {ti(l.imported.hint.quantity ? "file_hint" : "file_hint_unit", { quantity: l.imported.hint.quantity ?? "", unit: l.imported.hint.unit })}
+          </p>
+        )}
         {note && (
           <p className="max-w-[10rem] text-[10.5px] leading-snug text-amber-700">
             {conv

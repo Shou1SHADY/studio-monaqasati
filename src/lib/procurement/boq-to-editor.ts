@@ -3,7 +3,7 @@
 // sub-category, one it does not arrives uncategorised («اختر المادة») for the editor to colour. The
 // draft is never published from here — the buyer reviews it in the editor and publishes it there.
 
-import { groupsMeta, linesFromPaste, newGroup, numberedLines, rfqLinesDoc } from "./rfq-editor"
+import { groupsMeta, linesFromNames, newGroup, numberedLines, rfqLinesDoc } from "./rfq-editor"
 import { projectSiteId } from "./delivery-sites"
 import type { MaterialIndex } from "@/lib/materials/tree"
 
@@ -35,7 +35,7 @@ export interface BoqDraftInput {
 }
 
 export function boqDraftDoc(input: BoqDraftInput): Record<string, unknown> {
-  const lines = linesFromPaste(
+  const lines = linesFromNames(
     input.items.map((i) => ({ name: (i.descriptionAr || i.descriptionEn || "").trim(), quantity: String(i.draw), unit: (i.unit || "").trim() })),
     input.index,
   ).map((l, k) => ({ ...l, requiresWarranty: !!input.items[k].requiresWarranty }))
