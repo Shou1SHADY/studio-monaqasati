@@ -20,6 +20,7 @@ import { FolderTree,
   ChevronDown,
   Inbox,
   Layers,
+  UserPlus,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -68,6 +69,7 @@ const adminSections: NavSection[] = [
       { titleKey: "admin_leads", href: "/admin/leads", icon: Inbox },
       { titleKey: "admin_crm", href: "/admin/crm", icon: Handshake },
       { titleKey: "admin_suppliers", href: "/admin/suppliers", icon: Users },
+      { titleKey: "admin_free_suppliers", href: "/admin/free-suppliers", icon: UserPlus },
       { titleKey: "admin_contractors", href: "/admin/contractors", icon: Users },
       { titleKey: "admin_pipeline", href: "/admin/pipeline", icon: Layers },
       { titleKey: "admin_rfqs", href: "/admin/rfqs", icon: Package },

@@ -4,7 +4,7 @@ import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { verifyOtp, type OtpVerdict } from "@/lib/otp"
 import { normalizePhoneE164 } from "@/lib/sms"
-import { claimedOfferPatch, claimedOrderPatch, fieldFromClaims, isClaimableGuestOffer, newAccountSchema, newSupplierUser, phoneSubject } from "@/lib/supplier-free/phone-auth"
+import { claimedOfferPatch, claimedOrderPatch, fieldFromClaims, isClaimableGuestOffer, newAccountSchema, newSupplierUser, phoneSubject, signupSourceOf } from "@/lib/supplier-free/phone-auth"
 
 // Public: checks the code and signs the supplier in. A mobile that already has an account enters it; a new one needs
 // a name and a company first (answered BEFORE the code is spent, so the same code is then used once), and the account
@@ -18,6 +18,7 @@ const bodySchema = z.object({
   code: z.string().trim().min(4).max(8),
   name: z.string().trim().max(80).optional(),
   company: z.string().trim().max(120).optional(),
+  source: z.literal("self").optional(),
 })
 
 const fail = (message: string, code: string, status: number) => NextResponse.json({ error: true, message, code }, { status })
@@ -95,11 +96,13 @@ export async function POST(req: NextRequest) {
       })
     } else if (account.success) {
       uid = existing ? existing.uid : (await auth.createUser({ phoneNumber: phone, displayName: account.data.name })).uid
-      await db.collection("users").doc(uid).set({ ...newSupplierUser(uid, phone, account.data), joinedAt: FieldValue.serverTimestamp(), lastLoginAt: FieldValue.serverTimestamp() })
+      const userRef = db.collection("users").doc(uid)
+      await userRef.set({ ...newSupplierUser(uid, phone, account.data), signupSource: signupSourceOf(0), signedUpAt: FieldValue.serverTimestamp(), joinedAt: FieldValue.serverTimestamp(), lastLoginAt: FieldValue.serverTimestamp() })
       claimed = await claimGuestWork(uid, phone, account.data.name, account.data.company).catch((err) => {
         console.error("Guest work not claimed:", err)
         return 0
       })
+      if (claimed > 0) await userRef.set({ signupSource: signupSourceOf(claimed) }, { merge: true })
     } else {
       return fail("Enter a name and a company", "INVALID_INPUT", 400)
     }

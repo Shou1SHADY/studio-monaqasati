@@ -10,7 +10,8 @@ import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { PortalHomeView } from "@/components/portal-home/PortalHomeView"
 import { useModuleComponents } from "@/hooks/useCompanyModules"
-import { freeHomeModel } from "./home-model"
+import { FirstSteps } from "./FirstSteps"
+import { firstSteps, freeHomeModel } from "./home-model"
 import { RequestCard } from "./RequestCard"
 import { useFree } from "./useFree"
 
@@ -29,6 +30,9 @@ export function FreeHome() {
   const homeProfile = f.ready && profile ? { ...profile.raw, name: profile.name, companyName: profile.companyName } : null
   const linked = world.deals.find((d) => d.offer) || world.deals[0]
   const linkedName = linked ? f.L.C(linked.c)?.name || "" : ""
+
+  const steps = f.ready && profile ? firstSteps(profile.raw) : null
+  const needsSpecialties = f.ready && !!profile && !(profile.specialtyIds || []).length
 
   const banner = m.fresh ? (
     <section aria-label={t("nothingYet")} className="flex flex-wrap items-center gap-3 rounded-2xl border border-dashed bg-card px-4 py-4">
@@ -79,9 +83,10 @@ export function FreeHome() {
       recent={[]}
       decisions={{ loading: !f.ready, items: m.decisions }}
       banner={
-        f.ready && profile && !(profile.specialtyIds || []).length ? (
+        needsSpecialties || steps ? (
           <div className="space-y-3">
-            <SpecialtiesPrompt />
+            {needsSpecialties && <SpecialtiesPrompt />}
+            {steps && <FirstSteps steps={steps} t={t} />}
             {banner}
           </div>
         ) : (

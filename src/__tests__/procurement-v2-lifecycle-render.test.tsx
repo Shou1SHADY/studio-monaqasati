@@ -20,6 +20,7 @@ import { RfqLifecycleBar, lifecycleState, type LifecycleRfq } from "@/components
 import { NoLiveBanner } from "@/components/procurement/rfq/NoLiveBanner"
 import { RFQ_EXTEND_EVENT } from "@/components/procurement/rfq/rfqPageEvents"
 import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
+import { addDays, todayOf } from "@/lib/procurement/po"
 
 installDomShims()
 
@@ -70,18 +71,20 @@ describe("RfqLifecycleBar", () => {
   })
 
   it("the extend dialog sends the picked date to the server and says so", async () => {
-    mockCall.mockResolvedValue({ action: "extend", rfqId: "R1", deadline: "2026-10-30", count: 0, told: 2, reopened: false })
-    const v = render(<RfqLifecycleBar rfq={rfq()} actor={OWNER} />)
+    const deadline = addDays(todayOf(new Date()), 3)
+    const picked = addDays(deadline, 4)
+    mockCall.mockResolvedValue({ action: "extend", rfqId: "R1", deadline: picked, count: 0, told: 2, reopened: false })
+    const v = render(<RfqLifecycleBar rfq={rfq({ deadline })} actor={OWNER} />)
     await act(async () => void fireEvent.click(button("مدّد")!))
     const date = document.querySelector('input[type="date"]') as HTMLInputElement
-    expect(date.min).toBe("2026-10-26")
+    expect(date.min).toBe(addDays(deadline, 1))
     const go = Array.from(document.querySelectorAll('[role="dialog"] button')).find((b) => (b.textContent || "").trim() === "مدّد") as HTMLButtonElement
     expect(go.disabled).toBe(true)
-    await act(async () => void fireEvent.change(date, { target: { value: "2026-10-30" } }))
+    await act(async () => void fireEvent.change(date, { target: { value: picked } }))
     expect(go.disabled).toBe(false)
     await act(async () => void fireEvent.click(go))
     await flush()
-    expect(mockCall).toHaveBeenCalledWith({ action: "extend", rfqId: "R1", deadline: "2026-10-30" })
+    expect(mockCall).toHaveBeenCalledWith({ action: "extend", rfqId: "R1", deadline: picked })
     expect([...missingKeys]).toEqual([])
     v.unmount()
   })

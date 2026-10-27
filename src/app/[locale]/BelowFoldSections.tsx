@@ -601,7 +601,7 @@ export default function BelowFoldSections() {
                 ))}
               </div>
               <div className="flex items-center gap-4 flex-wrap">
-                <Link href="/#demo">
+                <Link href="/supplier-signup">
                   <Button className="group h-12 px-8 text-sm font-bold rounded-xl bg-cta hover:bg-sky-500 text-white border-none transition-all hover:shadow-lg hover:shadow-cta/20">
                     {tSupplier('cta')}
                     <ArrowLeft size={13} className="rtl:me-2 ltr:ms-2 rtl:rotate-0 ltr:rotate-180 group-hover:translate-x-1 rtl:group-hover:-translate-x-1 transition-transform" />
@@ -821,6 +821,13 @@ export default function BelowFoldSections() {
             </Link>
           </div>
 
+          <p className="-mt-4 mb-8 text-sm font-semibold text-slate-400">
+            {tCTA('supplier_prompt')}{' '}
+            <Link href="/supplier-signup" className="text-sky-400 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 rounded">
+              {tCTA('supplier_link')}
+            </Link>
+          </p>
+
           <div className="flex flex-wrap items-center justify-center gap-5 text-[11px] font-bold text-slate-500">
             <span className="flex items-center gap-1.5"><CheckCircle2 size={13} className="text-sky-400/70" />{tCTA('vision')}</span>
             <span className="w-px h-3 bg-white/10" />
@@ -949,7 +956,7 @@ export default function BelowFoldSections() {
                   { label: tFooter('l_about'), href: '/about' },
                   { label: tFooter('l_features'), href: '/#features' },
                   { label: tFooter('l_pricing'), href: '/pricing' },
-                  { label: tFooter('l_suppliers'), href: '/#demo' },
+                  { label: tFooter('l_suppliers'), href: '/supplier-signup' },
                   { label: tFooter('l_contractors'), href: '/#demo' },
                 ].map(l => (
                   <li key={l.label}>

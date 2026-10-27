@@ -8,6 +8,7 @@ const publicRoutes: Array<{ path: string; lastModified: string }> = [
   { path: '/',        lastModified: '2026-06-17' },
   { path: '/about',   lastModified: '2026-06-17' },
   { path: '/pricing', lastModified: '2026-06-17' },
+  { path: '/supplier-signup', lastModified: '2026-10-27' },
   { path: '/contact', lastModified: '2026-01-01' },
   { path: '/terms',   lastModified: '2026-01-01' },
   { path: '/privacy', lastModified: '2026-01-01' },

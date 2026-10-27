@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { Link } from "@/i18n/routing";
+import { Link, useRouter } from "@/i18n/routing";
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, CheckCircle2, Clock, Zap, TrendingUp, Menu, X, FileText, BarChart3, ShieldCheck } from 'lucide-react';
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
@@ -10,7 +10,6 @@ import { useTranslations, useLocale } from 'next-intl';
 import { cn } from '@/lib/utils';
 import BelowFoldSections from './BelowFoldSections'
 import { OnboardingWizard } from '@/components/OnboardingWizard';
-import type { CompanyType } from '@/lib/company-types';
 
 const HERO_SLIDES = [
   { wm: { ar: '٢٤',  en: '24'  } },
@@ -329,6 +328,8 @@ export default function HomeContent() {
   const tAction = useTranslations('Landing.HeroAction');
   const tStats  = useTranslations('Landing.Stats');
   const locale  = useLocale();
+  const router  = useRouter();
+  const routerRef = useRef(router);
 
   const slideContents = [
     { badge: tHero('slide1_badge'), title: tHero('slide1_title'), accent: tHero('slide1_accent'), sub: tHero('slide1_sub') },
@@ -341,16 +342,14 @@ export default function HomeContent() {
   const [scrolled,        setScrolled]       = useState(false);
   const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false);
   const [onboardingOpen,  setOnboardingOpen]  = useState(false);
-  const [joinTypes,       setJoinTypes]       = useState<CompanyType[]>([]);
   const [liveData,        setLiveData]       = useState<LandingPreview | null>(null);
 
-  // `?join=supplier` (the offer and RFQ pages' «register» buttons) or `?join=1` opens the Join form on arrival —
-  // contractors and suppliers subscribe through the same form.
+  // `?join=1` opens the Join form on arrival; a supplier (`?join=supplier`) signs up free on his own page instead.
   useEffect(() => {
     const join = new URLSearchParams(window.location.search).get('join');
     if (!join) return;
-    if (join === 'supplier') setJoinTypes(['supplier']);
-    setOnboardingOpen(true);
+    if (join === 'supplier') routerRef.current.replace('/supplier-signup');
+    else setOnboardingOpen(true);
   }, []);
 
   useEffect(() => {
@@ -411,7 +410,7 @@ export default function HomeContent() {
               {tNav('how_it_works')}
               <span className="absolute -bottom-1 right-0 w-0 h-0.5 bg-cta transition-all group-hover:w-full" />
             </Link>
-            <Link href="/#demo" className="hover:text-white transition-colors relative group">
+            <Link href="/supplier-signup" className="hover:text-white transition-colors relative group">
               {tNav('suppliers_portal')}
               <span className="absolute -bottom-1 right-0 w-0 h-0.5 bg-cta transition-all group-hover:w-full" />
             </Link>
@@ -473,7 +472,7 @@ export default function HomeContent() {
               {[
                 { label: tNav('features'),            href: '#features' },
                 { label: tNav('how_it_works'),        href: '#how' },
-                { label: tNav('suppliers_portal'),    href: '/#demo' },
+                { label: tNav('suppliers_portal'),    href: '/supplier-signup' },
                 { label: tNav('contractors_portal'),  href: '/#demo' },
               ].map(item => (
                 <Link
@@ -563,7 +562,7 @@ export default function HomeContent() {
               </p>
 
               {/* CTAs */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-5">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 mb-5">
                 <Button
                   onClick={() => setOnboardingOpen(true)}
                   className="w-full sm:w-auto h-12 px-7 text-sm font-black rounded-xl bg-cta hover:bg-sky-600 text-white gap-2.5 transition-all hover:scale-[1.02] shadow-xl shadow-cta/25 border-none"
@@ -576,6 +575,14 @@ export default function HomeContent() {
                     className="w-full h-12 px-6 text-sm font-bold rounded-xl text-slate-300 border border-white/10 hover:bg-white/[0.06] hover:text-white hover:border-white/20 transition-all"
                   >
                     {tAction('demo_cta')}
+                  </Button>
+                </Link>
+                <Link href="/supplier-signup" className="w-full sm:w-auto">
+                  <Button
+                    variant="ghost"
+                    className="w-full h-12 px-6 text-sm font-bold rounded-xl text-sky-300 border border-sky-400/30 hover:bg-sky-400/10 hover:text-sky-200 hover:border-sky-400/50 transition-all"
+                  >
+                    {tAction('supplier_signup_cta')}
                   </Button>
                 </Link>
               </div>
@@ -672,7 +679,7 @@ export default function HomeContent() {
 
       <BelowFoldSections />
 
-      <OnboardingWizard open={onboardingOpen} onClose={() => setOnboardingOpen(false)} initialTypes={joinTypes} />
+      <OnboardingWizard open={onboardingOpen} onClose={() => setOnboardingOpen(false)} />
     </div>
   );
 }

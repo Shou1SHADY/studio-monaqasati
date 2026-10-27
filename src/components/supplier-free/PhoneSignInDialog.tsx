@@ -52,7 +52,7 @@ async function post<T>(url: string, body: Record<string, unknown>): Promise<{ ok
   }
 }
 
-export function PhoneSignInDialog({ open, onOpenChange, mode, initialPhone }: { open: boolean; onOpenChange: (open: boolean) => void; mode: "signup" | "signin"; initialPhone?: string }) {
+export function PhoneSignInDialog({ open, onOpenChange, mode, initialPhone, source }: { open: boolean; onOpenChange: (open: boolean) => void; mode: "signup" | "signin"; initialPhone?: string; source?: "self" }) {
   const t = useTranslations("SupplierFree")
   const locale = useLocale()
   const auth = useAuth()
@@ -83,7 +83,7 @@ export function PhoneSignInDialog({ open, onOpenChange, mode, initialPhone }: { 
     if (!challenge || !auth) return
     setBusy(true)
     setError(null)
-    const r = await post<{ needsProfile?: boolean; token?: string }>("/api/supplier-free/phone/verify", { challengeId: challenge.id, phone, code, name, company })
+    const r = await post<{ needsProfile?: boolean; token?: string }>("/api/supplier-free/phone/verify", { challengeId: challenge.id, phone, code, name, company, source })
     if (!r.ok) {
       setBusy(false)
       return fail(r.code)

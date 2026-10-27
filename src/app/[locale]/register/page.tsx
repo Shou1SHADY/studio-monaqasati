@@ -43,7 +43,7 @@ export default function RegisterPage() {
     const params = new URLSearchParams(window.location.search)
     const inviteParam = params.get("invite")
     if (!inviteParam) {
-      // No invitation: the Join form every company subscribes through.
+      // No invitation: the Join form, which sends a supplier on to his free sign-up (/supplier-signup).
       router.replace("/?join=1")
       return
     }
@@ -59,7 +59,7 @@ export default function RegisterPage() {
         const data = await res.json().catch(() => null)
         if (cancelled) return
         if (!res.ok || !data?.success) {
-          router.replace("/#demo")
+          router.replace("/?join=1")
           return
         }
         setInviteInfo(data.data)
@@ -71,7 +71,7 @@ export default function RegisterPage() {
         setCheckingInvite(false)
       } catch (err) {
         console.error("Failed to look up invitation:", err)
-        if (!cancelled) router.replace("/#demo")
+        if (!cancelled) router.replace("/?join=1")
       }
     }
     lookupInvite()

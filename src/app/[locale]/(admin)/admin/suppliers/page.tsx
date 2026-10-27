@@ -7,34 +7,22 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CompanyModulesDialog } from "@/components/admin/CompanyModulesDialog"
 import { AccountRowActions } from "@/components/admin/AccountRowActions"
+import { SupplierFileDialog, type SupplierFile, type SupplierOrigin } from "@/components/admin/SupplierFileDialog"
 import { companyOf } from "@/lib/admin-accounts"
+import { isSubscribedAccount } from "@/lib/admin-free-suppliers"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Separator } from "@/components/ui/separator"
 import {
   Users,
   Search,
   ShieldCheck,
   ShieldAlert,
   Filter,
-  CheckCircle2,
   XCircle,
   Loader2,
-  FileText,
-  Building,
-  Award,
-  ExternalLink,
-  AlertCircle,
+  ArrowRight,
   Trash2,
-  Zap
 } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,12 +34,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query, where, updateDoc, doc, limit, deleteField, addDoc } from "firebase/firestore"
-import { NativeSelect } from "@/components/module-ui/NativeSelect"
+import { collection, query, where, updateDoc, doc, deleteField } from "firebase/firestore"
+import { Link } from "@/i18n/routing"
 import { isInternationalSupplier } from "@/lib/procurement/supplier-file"
 import { useToast } from "@/hooks/use-toast"
 import { useIdentityOverlays } from "@/hooks/useIdentityOverlays"
-import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
+import { useSupplierCompanies } from "@/hooks/useSupplierCompanies"
+import { decideSupplierSpecs, setSupplierApproval, standingRefOfAccount } from "@/lib/supplier-admin-writes"
 import { stripIdentityFields } from "@/lib/identity-fields"
 import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
@@ -68,19 +57,10 @@ import {
   type SupplierStatusFilter,
 } from "@/utils/supplier-filters"
 
-const DOC_LABELS: Record<string, string> = {
-  cr: "السجل التجاري (CR)",
-  vat: "شهادة ضريبة القيمة المضافة (VAT)",
-}
-
 export default function AdminSuppliersPage() {
   const t = useTranslations("Portal.Admin.Suppliers")
   const tMod = useTranslations("Portal.AdminModules")
   const locale = useLocale()
-  const docLabels: Record<string, string> = {
-    cr: t("doc_cr"),
-    vat: t("doc_vat"),
-  }
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { index: treeIndex } = useMaterialTree()
@@ -90,6 +70,7 @@ export default function AdminSuppliersPage() {
   const [selectedSupplier, setSelectedSupplier] = useState<any>(null)
   const [modulesFor, setModulesFor] = useState<{ orgId: string; name: string } | null>(null)
   const [showDetailDialog, setShowDetailDialog] = useState(false)
+  const { fullOrgIds, freeCompanies, isLoading: companiesLoading } = useSupplierCompanies()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
@@ -101,14 +82,11 @@ export default function AdminSuppliersPage() {
 
   const suppliersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
-    return query(
-      collection(firestore, "users"),
-      where("role", "==", "Supplier"),
-      limit(limitCount)
-    )
-  }, [firestore, user, isUserLoading, limitCount])
+    return query(collection(firestore, "users"), where("role", "==", "Supplier"))
+  }, [firestore, user, isUserLoading])
 
-  const { data: suppliers, isLoading } = useCollection(suppliersQuery)
+  const { data: suppliers, isLoading: accountsLoading } = useCollection(suppliersQuery)
+  const isLoading = accountsLoading || companiesLoading
   const [localSuppliers, setLocalSuppliers] = useState<any[]>([])
   // A supplier account switched into a secondary company (added via the
   // company-switcher) has that company's identity fields on
@@ -116,8 +94,8 @@ export default function AdminSuppliersPage() {
   const supplierIdentityOverlays = useIdentityOverlays((suppliers || []) as { id: string; organizationId?: string; organizationRole?: string }[])
 
   useEffect(() => {
-    if (suppliers) {
-      setLocalSuppliers(suppliers.map((row: any) => {
+    if (suppliers && !companiesLoading) {
+      setLocalSuppliers(suppliers.filter((row: any) => isSubscribedAccount(row, fullOrgIds)).map((row: any) => {
         const overlay = supplierIdentityOverlays.get(row.id)
         const s = overlay ? { ...stripIdentityFields(row), ...overlay } : row
         const legalDocs = s.legalDocuments || {}
@@ -170,7 +148,7 @@ export default function AdminSuppliersPage() {
         return aPending ? -1 : 1
       }))
     }
-  }, [suppliers, sortBy])
+  }, [suppliers, sortBy, fullOrgIds, companiesLoading])
 
   const handleVerify = async (id: string, verify: boolean) => {
     if (!firestore) return
@@ -178,27 +156,8 @@ export default function AdminSuppliersPage() {
     // Verification status is a company-identity field — for a secondary
     // company (added via the company-switcher) it lives on
     // organizations/{id}, not on the owner's own users/{id} doc.
-    const targetRef = row && isSecondaryOrg(row.organizationId, id, row.organizationRole)
-      ? identityDocRef(firestore, row.organizationId)
-      : doc(firestore, "users", id)
     try {
-      await updateDoc(targetRef, {
-        isVerified: verify,
-        verificationRequested: false
-      })
-      // Approval is what lets a supplier quote (onboarding, 18 Oct 2026) — tell him. Best-effort: the approval stands.
-      if (verify) {
-        await addDoc(collection(firestore, "users", id, "notifications"), {
-          userId: id,
-          type: "supplier_approved",
-          i18n: { title: "pn_supplier_approved_title", message: "pn_supplier_approved", params: {} },
-          title: "اعتُمدت منشأتك",
-          message: "اعتمدت مدماك تِك منشأتك، ويمكنك الآن إرسال عروض الأسعار.",
-          link: "/supplier/rfqs",
-          createdAt: new Date().toISOString(),
-          read: false,
-        }).catch((err) => console.warn("approval notice failed:", err))
-      }
+      await setSupplierApproval(firestore, { standing: standingRefOfAccount(firestore, row ?? { id }), notifyUserId: id, verify })
       setLocalSuppliers(prev =>
         prev.map(s => s.id === id
           ? { ...s, verified: verify, verificationRequested: false, status: verify ? t("status_active") : t("status_review") }
@@ -218,22 +177,16 @@ export default function AdminSuppliersPage() {
     if (!firestore) return
     const row = localSuppliers.find((s) => s.id === id)
     if (!row?.hasSpecsRequest) return
-    const targetRef = isSecondaryOrg(row.organizationId, id, row.organizationRole)
-      ? identityDocRef(firestore, row.organizationId)
-      : doc(firestore, "users", id)
     try {
-      await updateDoc(targetRef, {
-        ...(approve && row.pendingSpecializations ? { specializations: row.pendingSpecializations } : {}),
-        ...(approve && row.pendingCoverageCities ? { coverageCities: row.pendingCoverageCities } : {}),
-        pendingSpecializations: deleteField(),
-        pendingCoverageCities: deleteField(),
-      })
-      await addDoc(collection(firestore, "users", id, "notifications"), {
-        title: approve ? t("specs_approved_notif_title") : t("specs_rejected_notif_title"),
-        message: approve ? t("specs_approved_notif_msg") : t("specs_rejected_notif_msg"),
-        type: "specs_decision",
-        createdAt: new Date().toISOString(),
-        read: false,
+      await decideSupplierSpecs(firestore, {
+        standing: standingRefOfAccount(firestore, row),
+        notifyUserId: id,
+        approve,
+        pendingSpecializations: row.pendingSpecializations,
+        pendingCoverageCities: row.pendingCoverageCities,
+        notice: approve
+          ? { title: t("specs_approved_notif_title"), message: t("specs_approved_notif_msg") }
+          : { title: t("specs_rejected_notif_title"), message: t("specs_rejected_notif_msg") },
       })
       const applied = (s: any) => ({
         ...s,
@@ -338,6 +291,12 @@ export default function AdminSuppliersPage() {
           <div>
             <h1 className="text-3xl font-black text-foreground font-headline">{t("page_title")}</h1>
             <p className="text-muted-foreground mt-1">{t("page_subtitle")}</p>
+            {!companiesLoading && (
+              <Link href="/admin/free-suppliers" data-testid="free-suppliers-link" className="mt-2 inline-flex min-h-9 items-center gap-1.5 rounded-lg text-sm font-bold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {t("free_link", { count: freeCompanies.length })}
+                <ArrowRight size={16} className="rtl-flip" aria-hidden="true" />
+              </Link>
+            )}
           </div>
           <div className="flex gap-2">
             <div className="relative w-full sm:w-64">
@@ -522,7 +481,7 @@ export default function AdminSuppliersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredSuppliers.map((s) => (
+                  {filteredSuppliers.slice(0, limitCount).map((s) => (
                     <TableRow key={s.id} className="hover:bg-slate-50/50 transition-colors">
                       {isVisible("id") && <TableCell className="font-mono text-xs hidden 2xl:table-cell">{s.id.substring(0, 8)}</TableCell>}
                       <TableCell>
@@ -587,7 +546,7 @@ export default function AdminSuppliersPage() {
                 </TableBody>
               </Table>
             )}
-            {suppliers && suppliers.length >= limitCount && (
+            {filteredSuppliers.length > limitCount && (
               <div className="p-4 text-center border-t">
                 <Button variant="outline" onClick={() => setLimitCount(limitCount + 20)}>
                   {t("show_more")}
@@ -599,244 +558,16 @@ export default function AdminSuppliersPage() {
 
         {/* Detail Dialog */}
         {modulesFor && <CompanyModulesDialog orgId={modulesFor.orgId} companyName={modulesFor.name} portal="supplier" onClose={() => setModulesFor(null)} />}
-      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-xl">
-                <Building size={22} className="text-primary" />
-                {t("supplier_details")}
-              </DialogTitle>
-              <DialogDescription>
-                {t("details_subtitle")}
-              </DialogDescription>
-            </DialogHeader>
-
-            {selectedSupplier && (
-              <div className="space-y-5 py-2">
-                {/* Basic Info */}
-                <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-bold text-lg text-slate-800">{selectedSupplier.name}</h4>
-                    {getStatusBadge(selectedSupplier.status)}
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                    <div><span className="text-muted-foreground">{t("email_label")}</span><span className="mr-2 font-medium text-xs">{selectedSupplier.email || "—"}</span></div>
-                    <div><span className="text-muted-foreground">{t("phone_label")}</span><span className="mr-2 font-medium">{selectedSupplier.contact || "—"}</span></div>
-                    <div><span className="text-muted-foreground">{t("city_label")}</span><span className="mr-2 font-medium">{selectedSupplier.city || "—"}</span></div>
-                    <div><span className="text-muted-foreground">{t("cr_label")}</span><span className="mr-2 font-medium">{selectedSupplier.crNumber || "—"}</span></div>
-                    <div><span className="text-muted-foreground">{t("tax_label")}</span><span className="mr-2 font-medium">{selectedSupplier.taxNumber || "—"}</span></div>
-                    <div><span className="text-muted-foreground">{t("spec_label")}</span><span className="mr-2 font-medium">{selectedSupplier.category || "—"}</span></div>
-                  </div>
-                  <div className="flex flex-col gap-1.5 border-t pt-3 sm:flex-row sm:items-center sm:gap-3">
-                    <label htmlFor="supplier-origin" className="text-sm text-muted-foreground shrink-0">{t("origin_label")}</label>
-                    <NativeSelect
-                      id="supplier-origin"
-                      value={selectedSupplier.origin}
-                      onChange={(e) => void handleOrigin(selectedSupplier.id, e.target.value as "auto" | "local" | "international")}
-                      className="sm:w-64"
-                    >
-                      <option value="auto">{t(selectedSupplier.international ? "origin_auto_intl" : "origin_auto_local")}</option>
-                      <option value="local">{t("origin_local")}</option>
-                      <option value="international">{t("origin_international")}</option>
-                    </NativeSelect>
-                  </div>
-                  {selectedSupplier.specializations?.length > 1 && (
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {selectedSupplier.specializations.map((spec: string) => (
-                        <Badge key={spec} variant="secondary" className="text-xs">{spec}</Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {selectedSupplier.hasSpecsRequest && (
-                  <>
-                    <Separator />
-                    <div className="space-y-3 p-4 rounded-xl bg-cta/5 border border-cta/20">
-                      <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                        <Zap size={18} className="text-cta" />
-                        {t("specs_request_title")}
-                      </h4>
-                      {selectedSupplier.pendingSpecializations && (
-                        <div className="space-y-1.5">
-                          <p className="text-xs font-bold text-muted-foreground">{t("specs_requested_specializations")}</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {selectedSupplier.pendingSpecializations.map((spec: string) => (
-                              <Badge key={spec} className={selectedSupplier.specializations.includes(spec) ? "bg-slate-100 text-slate-600 text-xs" : "bg-cta/10 text-cta border-cta/20 text-xs"}>
-                                {spec}
-                              </Badge>
-                            ))}
-                            {selectedSupplier.pendingSpecializations.length === 0 && (
-                              <span className="text-xs text-muted-foreground">{t("specs_requested_empty")}</span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      {selectedSupplier.pendingCoverageCities && (
-                        <div className="space-y-1.5">
-                          <p className="text-xs font-bold text-muted-foreground">{t("specs_requested_coverage")}</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {selectedSupplier.pendingCoverageCities.map((city: string) => (
-                              <Badge key={city} className={selectedSupplier.coverageCities.includes(city) ? "bg-slate-100 text-slate-600 text-xs" : "bg-cta/10 text-cta border-cta/20 text-xs"}>
-                                {city}
-                              </Badge>
-                            ))}
-                            {selectedSupplier.pendingCoverageCities.length === 0 && (
-                              <span className="text-xs text-muted-foreground">{t("specs_requested_empty")}</span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      <div className="flex gap-2 pt-1">
-                        <Button size="sm" onClick={() => handleSpecsDecision(selectedSupplier.id, true)} className="gap-1.5">
-                          <CheckCircle2 size={14} />
-                          {t("specs_approve")}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSpecsDecision(selectedSupplier.id, false)}
-                          className="text-destructive border-destructive/20 hover:bg-destructive/5"
-                        >
-                          {t("specs_reject")}
-                        </Button>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                <Separator />
-
-                {/* Legal Documents — Uploaded PDFs */}
-                <div className="space-y-3">
-                  <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                    <FileText size={18} className="text-primary" />
-                    {t("legal_docs_title")}
-                  </h4>
-
-                  {Object.entries(docLabels).map(([key, label]) => {
-                    const docData = selectedSupplier.legalDocuments?.[key]
-                    const hasUrl = docData?.url && docData.url.length > 0
-                    return (
-                      <div
-                        key={key}
-                        className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${hasUrl ? "bg-emerald-50/60 border-emerald-200" : "bg-slate-50 border-slate-200"}`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${hasUrl ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-400"}`}>
-                            <FileText size={18} />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-bold text-sm text-slate-800">{label}</p>
-                            {hasUrl ? (
-                              <p className="text-xs text-emerald-700 font-medium mt-0.5">
-                                {t("uploaded")}
-                                {docData.expiryDate && <span className="text-slate-500 mr-2">{t("expires", { date: docData.expiryDate })}</span>}
-                              </p>
-                            ) : (
-                              <p className="text-xs text-slate-400 mt-0.5">{t("not_uploaded")}</p>
-                            )}
-                          </div>
-                        </div>
-                        {hasUrl ? (
-                          <a
-                            href={docData.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="shrink-0"
-                          >
-                            <Button size="sm" variant="outline" className="gap-1.5 text-xs font-bold border-emerald-300 hover:bg-emerald-50">
-                              <ExternalLink size={13} />
-                              {t("open_file")}
-                            </Button>
-                          </a>
-                        ) : (
-                          <Badge variant="secondary" className="text-xs shrink-0">{t("not_found_doc")}</Badge>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {/* Certificates */}
-                {selectedSupplier.certificates?.length > 0 && (
-                  <>
-                    <Separator />
-                    <div className="space-y-3">
-                      <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                        <Award size={18} className="text-purple-500" />
-                        {t("certificates_title", { count: selectedSupplier.certificates.length })}
-                      </h4>
-                      <div className="space-y-2">
-                        {selectedSupplier.certificates.map((cert: any, idx: number) => (
-                          <div key={idx} className="p-3 rounded-xl border bg-purple-50/40 border-purple-100 flex items-center justify-between">
-                            <div>
-                              <p className="font-bold text-sm">{cert.name}</p>
-                              <p className="text-xs text-muted-foreground">{cert.issuer}{cert.expiryDate && ` • ${t("expires", { date: cert.expiryDate })}`}</p>
-                            </div>
-                            {cert.documentUrl && (
-                              <a href={cert.documentUrl} target="_blank" rel="noopener noreferrer">
-                                  <Button size="sm" variant="outline" className="gap-1 text-xs">
-                                  <ExternalLink size={12} />
-                                  {t("view")}
-                                </Button>
-                              </a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* Warning if no docs at all */}
-                {!selectedSupplier.hasAllRequiredDocs && (
-                  <div className="flex items-start gap-3 p-4 rounded-xl bg-destructive/10 border border-destructive/20">
-                    <AlertCircle className="text-destructive shrink-0 mt-0.5" size={18} />
-                    <p className="text-sm text-destructive font-bold">
-                      {t("cannot_verify")}
-                    </p>
-                  </div>
-                )}
-
-                <Separator />
-
-                {/* Actions */}
-                <div className="flex gap-3 pt-1 flex-wrap">
-                  <Button variant="outline" className="flex-1" onClick={() => setShowDetailDialog(false)}>
-                    {t("close")}
-                  </Button>
-                  {selectedSupplier.verified ? (
-                    <Button
-                      variant="outline"
-                      className="flex-1 text-destructive border-destructive/20 hover:bg-destructive/5"
-                      onClick={() => { handleVerify(selectedSupplier.id, false); setShowDetailDialog(false) }}
-                    >
-                      {t("unverify_account")}
-                    </Button>
-                  ) : (
-                    <Button
-                      className="flex-1 gap-2"
-                      disabled={!selectedSupplier.hasAllRequiredDocs}
-                      onClick={() => { handleVerify(selectedSupplier.id, true); setShowDetailDialog(false) }}
-                    >
-                      <CheckCircle2 size={16} />
-                      {t("verify_account")}
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    className="gap-2 text-destructive border-destructive/20 hover:bg-destructive/5"
-                    onClick={() => { setShowDetailDialog(false); setShowDeleteDialog(true) }}
-                  >
-                    <Trash2 size={15} />
-                    {t("delete_account")}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
+        <SupplierFileDialog
+          supplier={selectedSupplier as SupplierFile | null}
+          open={showDetailDialog}
+          onOpenChange={setShowDetailDialog}
+          statusBadge={selectedSupplier ? getStatusBadge(selectedSupplier.status) : null}
+          onVerify={(verify) => selectedSupplier && void handleVerify(selectedSupplier.id, verify)}
+          onSpecsDecision={(approve) => selectedSupplier && void handleSpecsDecision(selectedSupplier.id, approve)}
+          onOrigin={(origin: SupplierOrigin) => selectedSupplier && void handleOrigin(selectedSupplier.id, origin)}
+          onDelete={() => { setShowDetailDialog(false); setShowDeleteDialog(true) }}
+        />
 
         <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
           <AlertDialogContent dir={locale === "ar" ? "rtl" : "ltr"}>

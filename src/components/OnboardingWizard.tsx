@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import { cn } from "@/lib/utils"
 import { X, CheckCircle2, Loader2 } from "lucide-react"
+import { Link } from "@/i18n/routing"
 import { CompanyTypePicker } from "@/components/CompanyTypePicker"
 import { hasCompanyType, type CompanyType } from "@/lib/company-types"
 
@@ -19,9 +20,9 @@ const selectCls =
   "w-full h-11 rounded-xl bg-[#0f1e33] border border-white/[0.1] text-sm font-medium ps-3 pe-9 focus:outline-none focus:border-[#20CBD5]/50 transition-all appearance-none cursor-pointer"
 const errorBorderCls = "border-red-500/40 focus:border-red-500/50"
 
-/** The one Join form for every company (contractor or supplier). `initialTypes` ticks a type on opening — a supplier
- * coming from an offer or RFQ page arrives with «Supplier» ticked. */
-export function OnboardingWizard({ open, onClose, initialTypes }: { open: boolean; onClose: () => void; initialTypes?: CompanyType[] }) {
+/** The Join form: a request the platform team reviews. A supplier on his own does not need it — he signs up free at
+ * /supplier-signup, and the form says so. */
+export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useTranslations("Landing.Onboarding")
   const tType = useTranslations("Landing.CompanyType")
   const locale = useLocale()
@@ -47,11 +48,6 @@ export function OnboardingWizard({ open, onClose, initialTypes }: { open: boolea
   }, [])
 
   const handleClose = useCallback(() => { reset(); onClose() }, [reset, onClose])
-
-  const presetKey = (initialTypes || []).join(",")
-  useEffect(() => {
-    if (open && presetKey) setCompanyTypes(presetKey.split(",") as CompanyType[])
-  }, [open, presetKey])
 
   useEffect(() => {
     if (!open) return
@@ -145,6 +141,13 @@ export function OnboardingWizard({ open, onClose, initialTypes }: { open: boolea
             </div>
           ) : (
             <>
+              <p className="rounded-xl border border-sky-400/20 bg-sky-400/[0.06] px-3 py-2.5 text-xs font-medium leading-relaxed text-slate-300">
+                {t("supplier_notice")}{" "}
+                <Link href="/supplier-signup" onClick={handleClose} className="font-bold text-sky-300 underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 rounded">
+                  {t("supplier_notice_link")}
+                </Link>
+              </p>
+
               {/* Row 1: name + company */}
               <div className="grid grid-cols-2 gap-3">
                 <Field label={t("name_label")} error={errors.name}>

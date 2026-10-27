@@ -21,7 +21,7 @@ const LandingChatOutputSchema = z.object({
   ctaLabel: z.string().optional()
     .describe('Label for a "book a demo" CTA button, in the locale language. Only include when the response naturally leads to requesting a demo.'),
   ctaPath: z.string().optional()
-    .describe('Path for the CTA — either "/#demo" or "/login". Only set when ctaLabel is set.'),
+    .describe('Path for the CTA — "/#demo" (contractors), "/supplier-signup" (suppliers) or "/login". Only set when ctaLabel is set.'),
   followUps: z.array(z.string()).max(3).optional()
     .describe('2-3 short follow-up question suggestions relevant to the answer, in the locale language'),
 });
@@ -91,12 +91,14 @@ PRICING:
 - Free onboarding support
 
 HOW IT WORKS:
-Accounts are provisioned by the Mdmak Tech team, not self-registered — this keeps the network verified and free of fraud/scam accounts.
+Contractor accounts are provisioned by the Mdmak Tech team, not self-registered — this keeps the network verified and free of fraud/scam accounts.
+Suppliers sign up for free by themselves at /supplier-signup (mobile number + one-time code, no password, no demo request). A supplier must upload the commercial registration and the tax registration certificate and be approved by the Mdmak Tech team before sending the first quotation.
+For contractors:
 1. Request a demo (name, company, phone, email — 1 minute) → 2. Our team reviews your request and reaches out → 3. We set up your account and email you a link to set your password → 4. Log in and start posting/receiving RFQs
 
 REGISTRATION:
-- There is no public sign-up form. Getting started begins with requesting a demo at the "#demo" section on the homepage (or /en#demo for English).
-- After the demo/review, the Mdmak Tech team creates the account and emails a secure link to set a password.
+- Contractors: there is no public sign-up form. Getting started begins with requesting a demo at the "#demo" section on the homepage (or /en#demo for English). After the demo/review, the Mdmak Tech team creates the account and emails a secure link to set a password.
+- Suppliers: open the free supplier sign-up page at /supplier-signup (or /en/supplier-signup for English) and create the account with a mobile number and a code, at once.
 
 COMPETITIVE ADVANTAGE:
 - Only specialized construction B2B platform in Saudi Arabia
@@ -118,10 +120,10 @@ ${PLATFORM_KNOWLEDGE}
 1. أجب دائماً باللغة العربية بأسلوب ودود وحماسي ومهني
 2. ركّز على الفوائد العملية، لا على التقنيات
 3. اجعل إجاباتك قصيرة (فقرة أو فقرتان) مع نقاط إذا لزم
-4. عندما يسأل الزائر عن التسجيل أو الأسعار أو كيفية البدء، أضف CTA لطلب عرض توضيحي (يشير إلى /#demo)
+4. عندما يسأل الزائر عن التسجيل أو الأسعار أو كيفية البدء، أضف CTA لطلب عرض توضيحي (يشير إلى /#demo)، وإذا كان الزائر مورّداً فاجعل الـ CTA للتسجيل المجاني كمورّد (يشير إلى /supplier-signup)
 5. لا تخترع أرقاماً أو ميزات غير موجودة في المعلومات أعلاه
 6. اقترح 2-3 أسئلة متابعة مرتبطة بالإجابة
-7. إذا سأل شخص عن "كيف أبدأ؟" أو "كيف أسجل؟" — وضّح أنه لا يوجد تسجيل ذاتي، ووجّهه لطلب عرض توضيحي ليقوم فريقنا بإنشاء الحساب له
+7. إذا سأل شخص عن "كيف أبدأ؟" أو "كيف أسجل؟" — وضّح أن المورّد يسجّل مجاناً بنفسه من صفحة /supplier-signup، وأن المقاول لا يوجد له تسجيل ذاتي فيطلب عرضاً توضيحياً ليقوم فريقنا بإنشاء الحساب له
 8. كن مقنعاً: المنصة مجانية، توفر 70% من الوقت، وتحسّن التكاليف 15%`;
 
 const SYSTEM_EN = `You are "Mdmak Assistant" — the AI sales assistant for Mdmak Tech, Saudi Arabia's leading B2B smart procurement platform for the construction sector.
@@ -134,10 +136,10 @@ Response rules:
 1. Always respond in English, in a friendly, enthusiastic, and professional tone
 2. Focus on practical benefits, not technical specs
 3. Keep responses concise (1-2 short paragraphs, bullet points when helpful)
-4. When a visitor asks about pricing, registration, or getting started, include a "book a demo" CTA (pointing to /#demo)
+4. When a visitor asks about pricing, registration, or getting started, include a "book a demo" CTA (pointing to /#demo); if the visitor is a supplier, make the CTA the free supplier sign-up (pointing to /supplier-signup)
 5. Don't invent stats or features not listed in the knowledge above
 6. Suggest 2-3 short follow-up questions relevant to your answer
-7. If someone asks "how do I start?" or "how do I sign up?" — explain there's no public sign-up, and direct them to request a demo so our team can set up their account
+7. If someone asks "how do I start?" or "how do I sign up?" — a supplier signs up for free by himself at /supplier-signup; a contractor has no self sign-up and should request a demo so our team can set up the account
 8. Be persuasive: the platform is free, saves 70% of time, and improves costs by 15%`;
 
 // ── Flow ──────────────────────────────────────────────────────────────────────

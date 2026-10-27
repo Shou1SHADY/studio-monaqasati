@@ -106,7 +106,7 @@ import { PortalFrameContext } from "@/components/layout/portal-frame-context"
 import { SupplierPlanContext } from "@/components/supplier-free/PlanSwitch"
 import { SupplierPlanFrame } from "@/components/supplier-free/SupplierPlanFrame"
 import { FreeHome } from "@/components/supplier-free/FreeHome"
-import { DOMAIN_MODULE, freeHomeModel, freeNavBadges, taskHref, taskPage } from "@/components/supplier-free/home-model"
+import { DOMAIN_MODULE, firstSteps, freeHomeModel, freeNavBadges, taskHref, taskPage } from "@/components/supplier-free/home-model"
 import ar from "../../messages/ar.json"
 import en from "../../messages/en.json"
 
@@ -420,6 +420,73 @@ describe("the free home, rendered", () => {
     expect(screen.getAllByText("Nothing yet").length).toBeGreaterThan(0)
     expect(screen.getByRole("link", { name: "Complete your profile" })).toHaveAttribute("href", "/supplier/profile")
     expect(screen.queryByText("Owed to you")).toBeNull()
+  })
+})
+
+// ---- a new account's first steps (after the public sign-up) -------------------------------------------------------------
+
+describe("the first steps on the free home", () => {
+  const doc = { url: "https://files/x.pdf", name: "x.pdf" }
+  const renderFresh = (raw: Record<string, unknown>, locale: "ar" | "en" = "en") => {
+    mockFree = makeFree(EMPTY, locale, raw)
+    mockPath = "/supplier"
+    return render(
+      <SupplierPlanContext.Provider value={{ plan: "free", loading: false, orgId: IDS.supplier }}>
+        <PortalFrameContext.Provider value={{ openSubscription: jest.fn() }}>
+          <FreeHome />
+        </PortalFrameContext.Provider>
+      </SupplierPlanContext.Provider>
+    )
+  }
+  const steps = () => within(screen.getByRole("region", { name: "Your first steps" })).getAllByRole("listitem")
+
+  it("says which steps stand between a new company and its first quotation", () => {
+    expect(firstSteps({})).toEqual([
+      { id: "docs", done: false, waiting: false },
+      { id: "approval", done: false, waiting: false },
+    ])
+    expect(firstSteps({ legalDocuments: { cr: doc, vat: doc } })).toEqual([
+      { id: "docs", done: true, waiting: false },
+      { id: "approval", done: false, waiting: false },
+    ])
+    expect(firstSteps({ legalDocuments: { cr: doc } })?.[0].done).toBe(false)
+    expect(firstSteps({ legalDocuments: { cr: doc, vat: doc }, verificationRequested: true })).toEqual([
+      { id: "docs", done: true, waiting: false },
+      { id: "approval", done: true, waiting: true },
+    ])
+    expect(firstSteps({ isVerified: true })).toBeNull()
+  })
+
+  it("a new account sees both steps open, with a way into the profile's legal tab", () => {
+    renderFresh({})
+    expect(steps().map((li) => li.textContent)).toEqual(["Upload the commercial registration and the tax registration certificate", "Ask for your company's approval"])
+    expect(screen.getByRole("link", { name: "Open legal documents" })).toHaveAttribute("href", "/supplier/profile?tab=legal")
+    expect(screen.getByText("You can send quotes once the platform team approves your company.")).toBeInTheDocument()
+  })
+
+  it("marks the documents done once uploaded and keeps the way in until approval is asked", () => {
+    renderFresh({ legalDocuments: { cr: doc, vat: doc } })
+    expect(within(steps()[0]).getByText("Done")).toBeInTheDocument()
+    expect(within(steps()[1]).queryByText("Done")).toBeNull()
+    expect(screen.getByRole("link", { name: "Open legal documents" })).toBeInTheDocument()
+  })
+
+  it("while the admin has not answered it says waiting, with nothing left to do", () => {
+    renderFresh({ legalDocuments: { cr: doc, vat: doc }, verificationRequested: true })
+    expect(within(steps()[1]).getByText("Waiting for approval")).toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "Open legal documents" })).toBeNull()
+  })
+
+  it("an approved company sees no first steps", () => {
+    renderFresh({ isVerified: true })
+    expect(screen.queryByRole("region", { name: "Your first steps" })).toBeNull()
+  })
+
+  it("reads in Arabic from the message file", () => {
+    renderFresh({}, "ar")
+    const t = (ar as unknown as { SupplierFree: Record<string, string> }).SupplierFree
+    expect(within(screen.getByRole("region", { name: t.fsTitle })).getByText(t.fsDocs)).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: t.fsOpen })).toHaveAttribute("href", "/supplier/profile?tab=legal")
   })
 })
 

@@ -5,6 +5,7 @@
 
 import type { HomeDecision, HomeKpi } from "@/components/portal-home/PortalHomeView"
 import type { NavBadge, PortalComponentId } from "@/lib/portal-components"
+import { approvalState } from "@/lib/supplier-approval"
 import { profileFacts, profilePct } from "@/lib/supplier-free/profile"
 import { TASK_DOMAIN, type Task, type TaskDomain, type WorldLogic } from "@/lib/supplier-free/world-logic"
 import { taskView } from "./TaskCard"
@@ -54,6 +55,25 @@ export function isFresh(f: Pick<Free, "L" | "world">): boolean {
 
 /** The profile's completion (ACC-04); 100 when there is no profile to judge. */
 export const profileCompletion = (profile: Free["profile"]): number => (profile ? profilePct(profileFacts(profile.raw)) : 100)
+
+export const FIRST_STEPS_HREF = "/supplier/profile?tab=legal"
+
+export interface FirstStep {
+  id: "docs" | "approval"
+  done: boolean
+  waiting: boolean
+}
+
+/** What a company still owes the platform before its first quotation: its two documents, then the request for approval.
+ * Null once the admin approved it (onboarding, 18 Oct 2026). */
+export function firstSteps(raw: Parameters<typeof approvalState>[0]): FirstStep[] | null {
+  const state = approvalState(raw)
+  if (state === "approved") return null
+  return [
+    { id: "docs", done: state !== "missing", waiting: false },
+    { id: "approval", done: state === "pending", waiting: state === "pending" },
+  ]
+}
 
 export interface FreeHomeModel {
   fresh: boolean

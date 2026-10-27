@@ -32,6 +32,14 @@ export const newAccountSchema = z.object({
   company: z.string().trim().min(2).max(120),
 })
 
+/** How a supplier account came to be, as the admin's free-suppliers page reads it. Accounts made through invitations
+ * or by a contractor carry "invited", written by that code. */
+export type SignupSource = "self" | "guest_claim"
+
+/** Made from the public sign-up page or the login page: "self". Made when his earlier guest offers were claimed in the
+ * same step: "guest_claim". */
+export const signupSourceOf = (claimed: number): SignupSource => (claimed > 0 ? "guest_claim" : "self")
+
 export interface NewSupplierUser {
   id: string
   name: string
