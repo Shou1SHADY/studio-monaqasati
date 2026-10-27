@@ -7,6 +7,10 @@ IP; the site posts each SMS here, the relay forwards it to Taqnyat.
 `index.php` is Taqnyat's own middleware with four changes: a shared key, POST only,
 no CORS, timeouts. It stores nothing — the token arrives with each request.
 
+**Production uses a static-IP proxy service instead (Fixie, `TAQNYAT_PROXY_URL`)** —
+nothing to host, and the call stays encrypted end to end. This relay is the fallback
+for when you have your own fixed-IP PHP host.
+
 ## Set up
 
 1. A host with a fixed public IP that runs PHP 7.4+ with the curl extension (a small

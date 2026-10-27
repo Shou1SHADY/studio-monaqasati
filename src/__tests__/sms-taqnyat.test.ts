@@ -47,7 +47,7 @@ function configureTwilioVerify() {
   process.env.TWILIO_VERIFY_SERVICE_SID = "VA" + "2".repeat(32)
 }
 
-const reply = (status: number, data: Record<string, unknown>) => ({ ok: status >= 200 && status < 300, status, json: async () => data })
+const reply = (status: number, data: Record<string, unknown>) => ({ ok: status >= 200 && status < 300, status, json: async () => data, text: async () => JSON.stringify(data) })
 
 describe("Taqnyat configuration", () => {
   it("needs both the bearer token and an approved-shape sender name", () => {

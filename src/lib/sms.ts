@@ -1,6 +1,9 @@
 // Server-only — SMS via Taqnyat (taqnyat.sa, a Saudi gateway) or the Twilio REST API.
 // Never import this file in client components.
 
+import { request as httpsRequest } from "node:https"
+import { HttpsProxyAgent } from "https-proxy-agent"
+
 type SendSmsInput = {
   to: string
   body: string
@@ -41,12 +44,22 @@ function twilioCredentials(): boolean {
 // SMS ticked) and a sender name approved on that account (case-sensitive).
 // Taqnyat refuses a send from an IP its Security settings have not marked
 // "allowed" (a CST rule), so the server's outgoing IP must be registered there.
-// Vercel's outgoing IP is not fixed, so production sends through a relay on a
-// fixed-IP host (`ops/taqnyat-relay/index.php`, Taqnyat's own middleware made
-// private): TAQNYAT_RELAY_URL (https only) + TAQNYAT_RELAY_KEY, the shared
-// secret the relay checks. The relay holds nothing — the token travels in the
-// POST body and the relay passes Taqnyat's status and answer back unchanged.
+// Vercel's outgoing IP is not fixed, so production goes out through a fixed IP,
+// one of two ways:
+//   - TAQNYAT_PROXY_URL: a static-IP proxy service (Fixie: the FIXIE_URL it gives,
+//     http://user:pass@host:port). The call is tunnelled (CONNECT), so TLS runs from
+//     here to Taqnyat and the proxy never sees the token or the text. Whitelist the
+//     service's IPs in Taqnyat.
+//   - TAQNYAT_RELAY_URL (https only) + TAQNYAT_RELAY_KEY: a relay on our own fixed-IP
+//     host (`ops/taqnyat-relay/index.php`, Taqnyat's middleware made private). The
+//     token travels in the POST body; the relay passes Taqnyat's answer back unchanged.
+// The relay wins when both are set.
 const TAQNYAT_URL = "https://api.taqnyat.sa/v1/messages"
+
+function taqnyatProxy(): string | null {
+  const url = (process.env.TAQNYAT_PROXY_URL || "").trim()
+  return /^https?:\/\/[^\s/]+/.test(url) ? url : null
+}
 
 function taqnyatRelay(): { url: string; key: string } | null {
   const url = (process.env.TAQNYAT_RELAY_URL || "").trim()
@@ -143,23 +156,63 @@ export async function checkVerification(verificationSid: string, code: string): 
 /** Taqnyat answers 201 with `accepted`/`rejected` recipient lists; a 400 carries
  * the reason in `message` (balance, sender, IP not allowed…). The number goes
  * without "+" or "00". Neither the number nor the text is logged. */
+type TaqnyatReply = { status: number; data: { statusCode?: number; message?: string; accepted?: unknown; rejected?: unknown } }
+
+const parseReply = (raw: string): TaqnyatReply["data"] => {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return parsed && typeof parsed === "object" ? (parsed as TaqnyatReply["data"]) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** fetch() cannot take a proxy agent, so the proxied call is a plain https request. */
+function postThroughProxy(proxy: string, headers: Record<string, string>, payload: string): Promise<TaqnyatReply> {
+  return new Promise((resolve, reject) => {
+    const req = httpsRequest(
+      TAQNYAT_URL,
+      { method: "POST", headers: { ...headers, "Content-Length": String(Buffer.byteLength(payload)) }, agent: new HttpsProxyAgent(proxy), timeout: 20_000 },
+      (res) => {
+        let raw = ""
+        res.setEncoding("utf8")
+        res.on("data", (chunk: string) => (raw += chunk))
+        res.on("end", () => resolve({ status: res.statusCode || 0, data: parseReply(raw) }))
+        res.on("error", reject)
+      },
+    )
+    req.on("timeout", () => req.destroy(new Error("Taqnyat proxy timeout")))
+    req.on("error", reject)
+    req.end(payload)
+  })
+}
+
+async function taqnyatPost(token: string, message: Record<string, unknown>): Promise<TaqnyatReply> {
+  const relay = taqnyatRelay()
+  if (relay) {
+    const res = await fetch(relay.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Relay-Key": relay.key },
+      body: JSON.stringify({ bearerTokens: token, ...message }),
+      signal: AbortSignal.timeout(20_000),
+    })
+    return { status: res.status, data: parseReply(await res.text().catch(() => "")) }
+  }
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+  const proxy = taqnyatProxy()
+  if (proxy) return postThroughProxy(proxy, headers, JSON.stringify(message))
+  const res = await fetch(TAQNYAT_URL, { method: "POST", headers, body: JSON.stringify(message), signal: AbortSignal.timeout(20_000) })
+  return { status: res.status, data: parseReply(await res.text().catch(() => "")) }
+}
+
 async function taqnyatSend(to: string, body: string): Promise<{ sent: boolean; error?: string }> {
   const token = (process.env.TAQNYAT_BEARER_TOKEN || "").trim()
   const message = { recipients: [to.replace(/^\+/, "")], body, sender: taqnyatSender() }
-  const relay = taqnyatRelay()
   try {
-    const res = await fetch(relay ? relay.url : TAQNYAT_URL, {
-      method: "POST",
-      headers: relay
-        ? { "Content-Type": "application/json", "X-Relay-Key": relay.key }
-        : { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(relay ? { bearerTokens: token, ...message } : message),
-      signal: AbortSignal.timeout(20_000),
-    })
-    const data = (await res.json().catch(() => ({}))) as { statusCode?: number; message?: string; accepted?: unknown; rejected?: unknown }
-    if (!res.ok) {
-      console.error("Taqnyat API error:", res.status, data.statusCode, data.message)
-      return { sent: false, error: `TAQNYAT_${data.statusCode || res.status}` }
+    const { status, data } = await taqnyatPost(token, message)
+    if (status < 200 || status >= 300) {
+      console.error("Taqnyat API error:", status, data.statusCode, data.message)
+      return { sent: false, error: `TAQNYAT_${data.statusCode || status}` }
     }
     const rejected = Array.isArray(data.rejected) ? data.rejected.length : typeof data.rejected === "string" && data.rejected.replace(/[[\]\s]/g, "") ? 1 : 0
     if (rejected > 0) {
