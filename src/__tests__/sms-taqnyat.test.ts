@@ -3,6 +3,8 @@ import { canSendCodes, checkVerification, isSmsConfigured, isTaqnyatConfigured, 
 const ENV_KEYS = [
   "TAQNYAT_BEARER_TOKEN",
   "TAQNYAT_SENDER",
+  "TAQNYAT_RELAY_URL",
+  "TAQNYAT_RELAY_KEY",
   "TWILIO_ACCOUNT_SID",
   "TWILIO_AUTH_TOKEN",
   "TWILIO_PHONE_NUMBER",
@@ -133,5 +135,51 @@ describe("sendSms through Taqnyat", () => {
     fetchMock.mockResolvedValue(reply(201, {}))
     expect(await sendSms({ to: "+966501234567", body: "x" })).toEqual({ sent: true })
     expect(fetchMock.mock.calls[0][0]).toContain("api.twilio.com")
+  })
+})
+
+describe("sendSms through the fixed-IP relay", () => {
+  const KEY = "k".repeat(64)
+
+  it("posts to the relay with the shared key, and the token in the body (the relay's format), never as a header", async () => {
+    configureTaqnyat()
+    process.env.TAQNYAT_RELAY_URL = "https://sms.example.sa/relay/"
+    process.env.TAQNYAT_RELAY_KEY = KEY
+    fetchMock.mockResolvedValue(reply(201, { statusCode: 201, rejected: "[]" }))
+    expect(await sendSms({ to: "+966501234567", body: "رمزك 123456" })).toEqual({ sent: true })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe("https://sms.example.sa/relay/")
+    expect(init.headers["X-Relay-Key"]).toBe(KEY)
+    expect(init.headers.Authorization).toBeUndefined()
+    expect(JSON.parse(init.body)).toEqual({ bearerTokens: "b".repeat(32), recipients: ["966501234567"], body: "رمزك 123456", sender: "MdmakTech" })
+  })
+
+  it("reads Taqnyat's refusal passed back by the relay", async () => {
+    configureTaqnyat()
+    process.env.TAQNYAT_RELAY_URL = "https://sms.example.sa/relay/"
+    process.env.TAQNYAT_RELAY_KEY = KEY
+    fetchMock.mockResolvedValue(reply(400, { statusCode: 400, message: "Balance is zero" }))
+    expect(await sendSms({ to: "+966501234567", body: "x" })).toEqual({ sent: false, error: "TAQNYAT_400" })
+  })
+
+  it("treats a relay URL without its key, or over plain http, as not configured instead of calling Taqnyat directly", () => {
+    configureTaqnyat()
+    process.env.TAQNYAT_RELAY_URL = "https://sms.example.sa/relay/"
+    expect(isTaqnyatConfigured()).toBe(false)
+    process.env.TAQNYAT_RELAY_KEY = "short"
+    expect(isTaqnyatConfigured()).toBe(false)
+    process.env.TAQNYAT_RELAY_URL = "http://sms.example.sa/relay/"
+    process.env.TAQNYAT_RELAY_KEY = KEY
+    expect(isTaqnyatConfigured()).toBe(false)
+    process.env.TAQNYAT_RELAY_URL = "https://sms.example.sa/relay/"
+    expect(isTaqnyatConfigured()).toBe(true)
+  })
+
+  it("a relay that cannot be reached is a network error, not a crash", async () => {
+    configureTaqnyat()
+    process.env.TAQNYAT_RELAY_URL = "https://sms.example.sa/relay/"
+    process.env.TAQNYAT_RELAY_KEY = KEY
+    fetchMock.mockRejectedValue(new Error("timeout"))
+    expect(await sendSms({ to: "+966501234567", body: "x" })).toEqual({ sent: false, error: "SMS_NETWORK_ERROR" })
   })
 })

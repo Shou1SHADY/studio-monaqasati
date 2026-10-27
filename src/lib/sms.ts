@@ -41,7 +41,18 @@ function twilioCredentials(): boolean {
 // SMS ticked) and a sender name approved on that account (case-sensitive).
 // Taqnyat refuses a send from an IP its Security settings have not marked
 // "allowed" (a CST rule), so the server's outgoing IP must be registered there.
+// Vercel's outgoing IP is not fixed, so production sends through a relay on a
+// fixed-IP host (`ops/taqnyat-relay/index.php`, Taqnyat's own middleware made
+// private): TAQNYAT_RELAY_URL (https only) + TAQNYAT_RELAY_KEY, the shared
+// secret the relay checks. The relay holds nothing — the token travels in the
+// POST body and the relay passes Taqnyat's status and answer back unchanged.
 const TAQNYAT_URL = "https://api.taqnyat.sa/v1/messages"
+
+function taqnyatRelay(): { url: string; key: string } | null {
+  const url = (process.env.TAQNYAT_RELAY_URL || "").trim()
+  const key = (process.env.TAQNYAT_RELAY_KEY || "").trim()
+  return url.startsWith("https://") && key.length >= 32 ? { url, key } : null
+}
 
 function taqnyatSender(): string | null {
   const sender = (process.env.TAQNYAT_SENDER || "").trim()
@@ -49,7 +60,9 @@ function taqnyatSender(): string | null {
 }
 
 export function isTaqnyatConfigured(): boolean {
-  return (process.env.TAQNYAT_BEARER_TOKEN || "").trim().length >= 20 && taqnyatSender() != null
+  // A relay URL without its key is a misconfiguration, not "send direct" — Vercel would be refused.
+  const relayHalfSet = Boolean((process.env.TAQNYAT_RELAY_URL || "").trim()) && taqnyatRelay() == null
+  return (process.env.TAQNYAT_BEARER_TOKEN || "").trim().length >= 20 && taqnyatSender() != null && !relayHalfSet
 }
 
 export function isSmsConfigured(): boolean {
@@ -131,11 +144,17 @@ export async function checkVerification(verificationSid: string, code: string): 
  * the reason in `message` (balance, sender, IP not allowed…). The number goes
  * without "+" or "00". Neither the number nor the text is logged. */
 async function taqnyatSend(to: string, body: string): Promise<{ sent: boolean; error?: string }> {
+  const token = (process.env.TAQNYAT_BEARER_TOKEN || "").trim()
+  const message = { recipients: [to.replace(/^\+/, "")], body, sender: taqnyatSender() }
+  const relay = taqnyatRelay()
   try {
-    const res = await fetch(TAQNYAT_URL, {
+    const res = await fetch(relay ? relay.url : TAQNYAT_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${(process.env.TAQNYAT_BEARER_TOKEN || "").trim()}` },
-      body: JSON.stringify({ recipients: [to.replace(/^\+/, "")], body, sender: taqnyatSender() }),
+      headers: relay
+        ? { "Content-Type": "application/json", "X-Relay-Key": relay.key }
+        : { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(relay ? { bearerTokens: token, ...message } : message),
+      signal: AbortSignal.timeout(20_000),
     })
     const data = (await res.json().catch(() => ({}))) as { statusCode?: number; message?: string; accepted?: unknown; rejected?: unknown }
     if (!res.ok) {
