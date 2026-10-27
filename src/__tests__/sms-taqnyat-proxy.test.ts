@@ -31,7 +31,7 @@ jest.mock("node:https", () => ({
 
 import { isTaqnyatConfigured, sendSms } from "@/lib/sms"
 
-const ENV_KEYS = ["TAQNYAT_BEARER_TOKEN", "TAQNYAT_SENDER", "TAQNYAT_PROXY_URL", "TAQNYAT_RELAY_URL", "TAQNYAT_RELAY_KEY", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"] as const
+const ENV_KEYS = ["TAQNYAT_BEARER_TOKEN", "TAQNYAT_SENDER", "TAQNYAT_PROXY_URL", "FIXIE_URL", "TAQNYAT_RELAY_URL", "TAQNYAT_RELAY_KEY", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"] as const
 const savedEnv: Record<string, string | undefined> = {}
 const PROXY = "http://fixie:secret@ventoux.usefixie.com:80"
 let fetchMock: jest.Mock
@@ -83,6 +83,14 @@ describe("sendSms through a static-IP proxy (Fixie)", () => {
     answer = { error: new Error("ECONNREFUSED") }
     expect(await sendSms({ to: "+966501234567", body: "x" })).toEqual({ sent: false, error: "SMS_NETWORK_ERROR" })
     expect(JSON.stringify((console.error as jest.Mock).mock.calls)).not.toContain("secret")
+  })
+
+  it("uses FIXIE_URL, the variable Fixie's Vercel integration sets, when TAQNYAT_PROXY_URL is absent", async () => {
+    delete process.env.TAQNYAT_PROXY_URL
+    process.env.FIXIE_URL = PROXY
+    expect(await sendSms({ to: "+966501234567", body: "x" })).toEqual({ sent: true })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(captured[0].options.agent).toEqual({ proxy: PROXY })
   })
 
   it("the relay wins when both are set", async () => {
