@@ -1,4 +1,4 @@
-// Server-only — SMS via the Twilio REST API.
+// Server-only — SMS via Taqnyat (taqnyat.sa, a Saudi gateway) or the Twilio REST API.
 // Never import this file in client components.
 
 type SendSmsInput = {
@@ -37,15 +37,33 @@ function twilioCredentials(): boolean {
   return ACCOUNT_SID.test(accountSid) && !/^ACx+/i.test(accountSid) && authToken.length >= 32 && authToken !== "your_auth_token_here"
 }
 
-export function isSmsConfigured(): boolean {
-  return twilioCredentials() && smsSender() != null
+// Taqnyat: a bearer token from portal.taqnyat.sa (Developers → Applications,
+// SMS ticked) and a sender name approved on that account (case-sensitive).
+// Taqnyat refuses a send from an IP its Security settings have not marked
+// "allowed" (a CST rule), so the server's outgoing IP must be registered there.
+const TAQNYAT_URL = "https://api.taqnyat.sa/v1/messages"
+
+function taqnyatSender(): string | null {
+  const sender = (process.env.TAQNYAT_SENDER || "").trim()
+  return ALPHA_SENDER.test(sender) ? sender : null
 }
+
+export function isTaqnyatConfigured(): boolean {
+  return (process.env.TAQNYAT_BEARER_TOKEN || "").trim().length >= 20 && taqnyatSender() != null
+}
+
+export function isSmsConfigured(): boolean {
+  return isTaqnyatConfigured() || (twilioCredentials() && smsSender() != null)
+}
+
+const twilioVerifyReady = () => twilioCredentials() && VERIFY_SERVICE_SID.test(process.env.TWILIO_VERIFY_SERVICE_SID || "")
 
 /** One-time codes through Twilio Verify: Twilio makes the code, delivers it
  * through its own registered senders (no Saudi sender-ID wait — Twilio's
- * guidance for OTP) and checks it. Needs no sender of ours. */
+ * guidance for OTP) and checks it. Needs no sender of ours. With Taqnyat set
+ * up, codes are ours and go out through Taqnyat's Saudi sender instead. */
 export function isVerifyConfigured(): boolean {
-  return twilioCredentials() && VERIFY_SERVICE_SID.test(process.env.TWILIO_VERIFY_SERVICE_SID || "")
+  return !isTaqnyatConfigured() && twilioVerifyReady()
 }
 
 /** Whether a one-time code can reach a phone by any route. */
@@ -99,7 +117,8 @@ export type RemoteCheck = "approved" | "wrong" | "expired" | "error"
 /** Twilio's verdict on a guess. A verification that is gone (expired,
  * approved already, too many guesses) answers 404 — "expired" here. */
 export async function checkVerification(verificationSid: string, code: string): Promise<RemoteCheck> {
-  if (!isVerifyConfigured()) return "error"
+  // Not isVerifyConfigured(): a code Verify sent just before Taqnyat was switched on is still answered.
+  if (!twilioVerifyReady()) return "error"
   const r = await twilioPost(verifyUrl("VerificationCheck"), { VerificationSid: verificationSid, Code: code })
   if (!r.ok) return r.status === 404 ? "expired" : "error"
   const status = String(r.data.status || "")
@@ -108,9 +127,37 @@ export async function checkVerification(verificationSid: string, code: string): 
   return "expired"
 }
 
+/** Taqnyat answers 201 with `accepted`/`rejected` recipient lists; a 400 carries
+ * the reason in `message` (balance, sender, IP not allowed…). The number goes
+ * without "+" or "00". Neither the number nor the text is logged. */
+async function taqnyatSend(to: string, body: string): Promise<{ sent: boolean; error?: string }> {
+  try {
+    const res = await fetch(TAQNYAT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${(process.env.TAQNYAT_BEARER_TOKEN || "").trim()}` },
+      body: JSON.stringify({ recipients: [to.replace(/^\+/, "")], body, sender: taqnyatSender() }),
+    })
+    const data = (await res.json().catch(() => ({}))) as { statusCode?: number; message?: string; accepted?: unknown; rejected?: unknown }
+    if (!res.ok) {
+      console.error("Taqnyat API error:", res.status, data.statusCode, data.message)
+      return { sent: false, error: `TAQNYAT_${data.statusCode || res.status}` }
+    }
+    const rejected = Array.isArray(data.rejected) ? data.rejected.length : typeof data.rejected === "string" && data.rejected.replace(/[[\]\s]/g, "") ? 1 : 0
+    if (rejected > 0) {
+      console.error("Taqnyat rejected the recipient:", data.statusCode, data.message)
+      return { sent: false, error: "TAQNYAT_REJECTED" }
+    }
+    return { sent: true }
+  } catch (err) {
+    console.error("Failed to reach Taqnyat:", err)
+    return { sent: false, error: "SMS_NETWORK_ERROR" }
+  }
+}
+
 export async function sendSms({ to, body }: SendSmsInput): Promise<{ sent: boolean; error?: string }> {
+  if (isTaqnyatConfigured()) return taqnyatSend(to, body)
   if (!isSmsConfigured()) {
-    console.warn("Twilio credentials not configured — SMS skipped.")
+    console.warn("SMS gateway not configured — SMS skipped.")
     return { sent: false, error: "SMS_NOT_CONFIGURED" }
   }
   return twilioSend({ To: to, ...smsSender()!, Body: body })
