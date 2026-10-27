@@ -472,3 +472,25 @@ html {
   user-select: none;
   pointer-events: none;
 }
+
+/* New landing (/landing-new): a faint blueprint grid that fades out at the edges */
+.ln-grid-bg {
+  background-image:
+    linear-gradient(rgba(148, 210, 240, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 210, 240, 0.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+  -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 45%, #000 30%, transparent 85%);
+  mask-image: radial-gradient(ellipse 75% 70% at 50% 45%, #000 30%, transparent 85%);
+}
+
+/* New landing: a pulse travelling along the channel lines */
+@keyframes ln-dash {
+  to { stroke-dashoffset: -120; }
+}
+.ln-dash {
+  stroke-dasharray: 10 110;
+  animation: ln-dash 3.2s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ln-dash { animation: none; stroke-dasharray: none; opacity: 0.35; }
+}
